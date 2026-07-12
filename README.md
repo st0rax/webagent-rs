@@ -10,9 +10,9 @@ Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: plattformunabhä
 CDP-Browsertreiber statt Playwright.
 
 > **Status:** Kern vollständig portiert und getestet (`cargo test` grün). Der
-> Browsertreiber ist live gegen Chromium verifiziert. **Noch offen:** der
-> interaktive `login`-Flow — bis dahin muss die Brain-Session einmalig manuell im
-> Profilverzeichnis angemeldet werden (siehe [Login](#login)).
+> Browsertreiber ist live gegen Chromium verifiziert. `login`, `run`, `diagnose`,
+> `doctor`, `watchdog` und `maintenance-check` sind verdrahtet. Ein interaktiver
+> `repl` (Session über mehrere Turns offen halten) ist noch offen.
 
 ## Architektur
 
@@ -57,13 +57,18 @@ Die Dependencies sind bewusst rein-Rust (keine C-Toolchain nötig): `serde`,
 ## Nutzung
 
 ```
-webagent run   --brain <id> --task "<aufgabe>" [--headless] [--max-cycles N] [--resume <run_id>]
-webagent doctor  [--brain <id>]... [--json]
+webagent login    --brain <id> [--timeout <sek>]
+webagent run      --brain <id> --task "<aufgabe>" [--headless] [--max-cycles N] [--resume <run_id>]
+webagent diagnose --brain <id> [--headless]
+webagent doctor   [--brain <id>]... [--json]
 webagent watchdog [--repair] [--json]
 webagent maintenance-check [--json]
 ```
 
 Verfügbare Brains: `chatgpt, deepseek, kimi, gemini, qwen, claude, mistral, zai`.
+
+Typischer Erstlauf: `webagent login --brain claude` (einloggen), dann
+`webagent diagnose --brain claude` (prüfen), dann `webagent run …`.
 
 Beispiel:
 
@@ -76,9 +81,12 @@ Der Standard ist **sichtbarer** Browser (Cloudflare blockiert echtes Headless);
 
 ### Login
 
-Der interaktive `login`-Befehl ist noch nicht portiert. Bis dahin: einmalig ein
-Chromium auf das Profilverzeichnis des Brains anmelden — danach nutzt der Agent
-die persistente Session. Profilpfade: `profiles/<brain>/` (siehe `webagent doctor`).
+`webagent login --brain <id>` öffnet ein **sichtbares** Chromium auf der
+Provider-Seite und wartet, bis du dich **selbst** angemeldet hast — es werden
+**keine Zugangsdaten eingegeben oder gespeichert**; der Agent pollt nur den
+Login-Zustand und schließt danach sauber, damit Chrome die Session ins
+persistente Profil (`profiles/<brain>/`) schreibt. Danach nutzen `run`/`diagnose`
+diese Session. Prüfen mit `webagent diagnose --brain <id>`.
 
 ## Konfiguration (Umgebungsvariablen)
 
