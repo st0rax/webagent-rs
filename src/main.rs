@@ -311,6 +311,7 @@ fn cmd_watchdog(
         &runs_dir,
         Some(&store),
         repair,
+        None,
     );
 
     if json {

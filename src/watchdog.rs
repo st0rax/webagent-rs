@@ -712,6 +712,7 @@ mod tests {
             runs_dir.to_str().unwrap(),
             Some(&store),
             false, // dry-run
+            None,
         );
 
 
@@ -758,6 +759,7 @@ mod tests {
             runs_dir.to_str().unwrap(),
             Some(&store),
             true, // repair
+            None,
         );
 
         assert_eq!(report.repaired_runs.len(), 1);
