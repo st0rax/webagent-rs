@@ -4,10 +4,8 @@ use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::process;
 
-use webagent::config::available_brain_ids;
-use webagent::doctor::run_doctor;
+use webagent::config::brains;
 use webagent::run_store::RunStore;
-use webagent::watchdog::{run_watchdog, WatchdogReport};
 
 #[derive(Parser)]
 #[command(name = "webagent")]
@@ -40,6 +38,17 @@ enum Commands {
         /// Maximale Anzahl an Zyklen
         #[arg(long, default_value = "100")]
         max_cycles: u32,
+    },
+
+    /// Sichtbaren Browser oeffnen und auf manuellen Login warten (keine Zugangsdaten-Eingabe)
+    Login {
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+        #[arg(long)]
+        brain: String,
+
+        /// Maximale Wartezeit auf den Login in Sekunden
+        #[arg(long, default_value = "300")]
+        timeout: u64,
     },
 
     /// Pro-Brain Diagnose: Selektoren, Profil-Lock, letzte Antwort, Recovery
@@ -104,6 +113,8 @@ fn main() {
             max_cycles,
         } => cmd_run(&brain, &task, resume.as_deref(), headless, max_cycles),
 
+        Commands::Login { brain, timeout } => cmd_login(&brain, timeout),
+
         Commands::Doctor { brain, json } => cmd_doctor(
             if brain.is_empty() { None } else { Some(brain) },
             json,
@@ -166,6 +177,35 @@ fn cmd_run(
         }
         Err(e) => {
             eprintln!("[run] Fehler: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_login(brain: &str, timeout_secs: u64) -> i32 {
+    use std::time::Duration;
+    use webagent::browser::WebBrainBackend;
+
+    let mut backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[login] {e}");
+            return 2;
+        }
+    };
+    match backend.interactive_login(Duration::from_secs(timeout_secs)) {
+        Ok(true) => {
+            println!("[login] {brain}: Login erkannt und Session gespeichert.");
+            0
+        }
+        Ok(false) => {
+            eprintln!(
+                "[login] {brain}: kein Login innerhalb von {timeout_secs}s erkannt. Erneut versuchen mit --timeout."
+            );
+            1
+        }
+        Err(e) => {
+            eprintln!("[login] {brain}: Fehler: {e}");
             1
         }
     }

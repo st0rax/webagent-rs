@@ -283,6 +283,39 @@ return {{count:count,text:text,stop:stop}};}})()"#,
         }
         Ok(())
     }
+
+    /// Öffnet ein **sichtbares** Chromium auf der Brain-URL und wartet, bis der
+    /// Nutzer eingeloggt ist. Es werden **keine Zugangsdaten eingegeben** — die
+    /// Anmeldung macht der Nutzer selbst im Fenster; diese Methode pollt nur den
+    /// Login-Zustand und schließt danach sauber (damit Chrome die Session ins
+    /// persistente Profil schreibt). Gibt `true`, wenn Login erkannt wurde.
+    pub fn interactive_login(&mut self, timeout: Duration) -> Result<bool, String> {
+        self.start(false)?; // headed — Login erfordert Nutzerinteraktion
+        let start = Instant::now();
+        if self.is_logged_in() {
+            std::thread::sleep(Duration::from_secs(1));
+            let _ = self.stop();
+            return Ok(true);
+        }
+        eprintln!(
+            "[login] Browser geöffnet — bitte im Fenster bei '{}' anmelden. Warte auf Login…",
+            self.brain_id
+        );
+        loop {
+            self.dismiss_consent();
+            if self.is_logged_in() {
+                // Kurz warten, damit Chrome Cookies/Session ins Profil flusht.
+                std::thread::sleep(Duration::from_secs(2));
+                let _ = self.stop();
+                return Ok(true);
+            }
+            if start.elapsed() >= timeout {
+                let _ = self.stop();
+                return Ok(false);
+            }
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    }
 }
 
 fn stable_hash(s: &str) -> u32 {
