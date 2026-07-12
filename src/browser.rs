@@ -359,6 +359,20 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn start(&mut self, headless: bool) -> Result<(), String> {
+        // Remote-CDP-Endpunkt: kein lokaler Chrome-Launch (für Android/Termux).
+        if let Ok(endpoint) = std::env::var("WEBAGENT_CDP_ENDPOINT") {
+            if !endpoint.trim().is_empty() {
+                let mut client =
+                    CdpClient::connect_endpoint(&endpoint).map_err(|e| e.to_string())?;
+                client
+                    .navigate(&self.url, Duration::from_secs(30))
+                    .map_err(|e| e.to_string())?;
+                *self.process.borrow_mut() = None;
+                *self.client.borrow_mut() = Some(client);
+                self.baseline_count.set(0);
+                return Ok(());
+            }
+        }
         let proc = ChromeProcess::launch(&self.profile_dir, headless, self.port)
             .map_err(|e| e.to_string())?;
         let ws_url = proc.page_ws_url().map_err(|e| e.to_string())?;

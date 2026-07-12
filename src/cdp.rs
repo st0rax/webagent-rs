@@ -21,6 +21,7 @@ pub enum CdpError {
     Discovery(String),
     Protocol(String),
     Timeout(String),
+    InvalidEndpoint(String),
 }
 
 impl std::fmt::Display for CdpError {
@@ -30,6 +31,7 @@ impl std::fmt::Display for CdpError {
             CdpError::Discovery(m) => write!(f, "target-discovery: {m}"),
             CdpError::Protocol(m) => write!(f, "cdp-protocol: {m}"),
             CdpError::Timeout(m) => write!(f, "cdp-timeout: {m}"),
+            CdpError::InvalidEndpoint(m) => write!(f, "cdp-endpoint: {m}"),
         }
     }
 }
@@ -176,7 +178,12 @@ impl Drop for ChromeProcess {
 /// bis EOF lesen, sondern `Content-Length` auswerten und exakt am Body-Ende
 /// stoppen. Fehlt Content-Length, wird bis Leerlauf/Timeout gelesen.
 fn http_get(port: u16, path: &str) -> std::result::Result<String, String> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
+    http_get_to("127.0.0.1", port, path)
+}
+
+/// HTTP/1.1-GET zu einem beliebigen Host:Port (für Remote-CDP-Endpunkte).
+fn http_get_to(host: &str, port: u16, path: &str) -> std::result::Result<String, String> {
+    let mut stream = TcpStream::connect((host, port)).map_err(|e| e.to_string())?;
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .map_err(|e| e.to_string())?;
@@ -239,7 +246,67 @@ pub struct CdpClient {
     next_id: u64,
 }
 
+/// Zerlegt einen konfigurierten CDP-Endpunkt in eine WebSocket-URL.
+///
+/// Unterstützt:
+/// - direkte `ws://` / `wss://` URL -> 1:1 durchgereicht (Remote-Page-Target)
+/// - `host:port` (optional mit Pfad, mit/ohne `http://`-Präfix) -> die erste
+///   `page`-Target-WebSocket-URL wird per HTTP von `http://host:port/json`
+///   aufgelöst (Chrome läuft auf einem ANDEREN Rechner, kein lokaler Launch)
+///
+/// `WEBAGENT_CDP_ENDPOINT` wird so ausgewertet, damit der Agent unter Android
+/// (Termux) zu einem Desktop-Chrome per `ws://` verbindet.
+pub fn resolve_cdp_ws(endpoint: &str) -> Result<String> {
+    let e = endpoint.trim();
+    if e.is_empty() {
+        return Err(CdpError::Discovery("leerer CDP-Endpunkt".into()));
+    }
+    if e.starts_with("ws://") || e.starts_with("wss://") {
+        return Ok(e.to_string());
+    }
+    let authority = e
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .trim_end_matches('/');
+    let (host, port) = parse_host_port(authority).map_err(|e| CdpError::InvalidEndpoint(e))?;
+    let body = http_get_to(host, port, "/json").map_err(CdpError::Discovery)?;
+    let targets: Value =
+        serde_json::from_str(&body).map_err(|e| CdpError::Discovery(e.to_string()))?;
+    if let Some(arr) = targets.as_array() {
+        for t in arr {
+            if t.get("type").and_then(|v| v.as_str()) == Some("page") {
+                if let Some(ws) = t.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) {
+                    return Ok(ws.to_string());
+                }
+            }
+        }
+    }
+    Err(CdpError::Discovery(
+        "kein page-Target am Remote-Endpunkt".into(),
+    ))
+}
+
+/// Spaltet `host:port` (oder reines `host`) in Host und Port (Default 9222).
+fn parse_host_port(authority: &str) -> std::result::Result<(&str, u16), String> {
+    match authority.rsplit_once(':') {
+        Some((h, p)) => {
+            let port = p
+                .parse::<u16>()
+                .map_err(|_| format!("ungültiger Port in '{authority}'"))?;
+            Ok((if h.is_empty() { "127.0.0.1" } else { h }, port))
+        }
+        None => Ok((authority, 9222)),
+    }
+}
+
 impl CdpClient {
+    /// Verbindet direkt zu einem konfigurierten CDP-Endpunkt
+    /// (siehe [`resolve_cdp_ws`]) — überspringt den lokalen Chrome-Launch.
+    pub fn connect_endpoint(endpoint: &str) -> Result<Self> {
+        let ws_url = resolve_cdp_ws(endpoint)?;
+        Self::connect(&ws_url)
+    }
+
     pub fn connect(ws_url: &str) -> Result<Self> {
         let (ws, _resp) =
             tungstenite::connect(ws_url).map_err(|e| CdpError::Protocol(e.to_string()))?;
@@ -416,5 +483,39 @@ mod tests {
 
         proc.kill();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_passthrough_ws_url() {
+        let ep = "ws://192.168.1.10:9222/devtools/page/abc123";
+        assert_eq!(resolve_cdp_ws(ep).unwrap(), ep);
+        let ep2 = "wss://host.example/devtools/browser/xyz";
+        assert_eq!(resolve_cdp_ws(ep2).unwrap(), ep2);
+    }
+
+    #[test]
+    fn resolve_empty_endpoint_errors() {
+        assert!(resolve_cdp_ws("").is_err());
+        assert!(resolve_cdp_ws("   ").is_err());
+    }
+
+    #[test]
+    fn parse_host_port_default_and_explicit() {
+        assert_eq!(parse_host_port("example.com").unwrap(), ("example.com", 9222));
+        assert_eq!(
+            parse_host_port("example.com:9333").unwrap(),
+            ("example.com", 9333)
+        );
+        assert_eq!(parse_host_port("127.0.0.1:9222").unwrap(), ("127.0.0.1", 9222));
+        assert!(parse_host_port("example.com:notaport").is_err());
+    }
+
+    #[test]
+    fn resolve_strips_http_prefix_without_network() {
+        // Nur die Vorbereitung (Host/Port-Parsing) prüfen; die echte HTTP-Abfrage
+        // schlägt ohne Server fehl, aber der Prefix-Abbau muss vorher korrekt sein.
+        let err = resolve_cdp_ws("http://example.com:9222").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("page-Target") || msg.contains("HTTP") || msg.contains("Verbindung"));
     }
 }
