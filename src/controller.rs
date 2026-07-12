@@ -332,7 +332,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                                 counts_key.to_string(),
                                 serde_json::Value::String(serde_json::to_string(&counts).unwrap_or_default()),
                             );
-                            self.run_store.save(meta);
+                            self.run_store.save(meta).ok();
 
                             if count >= LOOP_GUARD_WARN_COUNT {
                                 observations.push(loop_guard_message(&fp, count));
