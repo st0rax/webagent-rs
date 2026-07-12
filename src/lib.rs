@@ -53,7 +53,7 @@ fn unix_now() -> (i64, u32) {
 
 /// (Jahr, Monat, Tag, Stunde, Minute, Sekunde) aus Unix-Sekunden (UTC).
 /// Algorithmus nach Howard Hinnant (civil_from_days), gemeinfrei.
-fn civil_utc(secs: i64) -> (i64, u32, u32, u32, u32, u32) {
+pub fn civil_utc(secs: i64) -> (i64, u32, u32, u32, u32, u32) {
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
     let hour = (rem / 3600) as u32;
