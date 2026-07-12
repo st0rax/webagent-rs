@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Root-Verzeichnis der WebAgent-Installation (Elternverzeichnis von src/).
 pub fn root_dir() -> PathBuf {
