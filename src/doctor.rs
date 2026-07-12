@@ -562,27 +562,18 @@ fn calculate_age_hours(created_at: &str, now_secs: i64) -> f64 {
     -1.0
 }
 
-/// Vereinfachte Umrechnung von civil time zu Unix-Sekunden (UTC).
+/// Umrechnung von civil time (UTC) zu Unix-Sekunden — exakte Umkehrung von
+/// `crate::civil_utc` nach Howard Hinnant (days_from_civil). `mo` ist 1-basiert.
 fn civil_to_unix(y: i64, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> i64 {
-    // Umkehrung von civil_utc — vereinfacht
-    let mut year = y;
-    let mut month = mo as i64;
-    
-    // Monat auf 0-11 normalisieren
-    month -= 1;
-    if month < 0 {
-        year -= 1;
-        month += 12;
-    }
-    
-    // Tage seit Epoch berechnen (vereinfacht, nicht exakt für alle Randfälle)
+    let m = mo as i64;
+    // Jan/Feb zählen zum Vorjahr (Schaltjahr-Randbehandlung).
+    let year = y - if m <= 2 { 1 } else { 0 };
     let era = if year >= 0 { year } else { year - 399 } / 400;
-    let yoe = year - era * 400;
-    let doy = (153 * (month + if month < 10 { 3 } else { -9 }) + 2) / 5 + d as i64 - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146097 + doe - 719468;
-    
-    days * 86400 + h as i64 * 3600 + mi as i64 * 60 + s as i64
+    let yoe = year - era * 400; // [0, 399]
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d as i64 - 1; // [0, 365]
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    let days = era * 146_097 + doe - 719_468;
+    days * 86_400 + h as i64 * 3600 + mi as i64 * 60 + s as i64
 }
 
 #[cfg(test)]
