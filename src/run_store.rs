@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Terminal-Status, die nicht mehr geändert werden können.
 const TERMINAL_STATUSES: &[&str] = &["done", "failed", "interrupted"];
@@ -109,7 +110,16 @@ impl RunStore {
 
     /// Erstellt einen neuen Run.
     pub fn create(&self, brain_id: &str, task: &str) -> Result<RunMeta, String> {
-        let run_id = format!("{}_{}", crate::now_run_stamp(), uuid::Uuid::new_v4().simple().to_string().chars().take(8).collect::<String>());
+        // Einfache Zufalls-ID ohne uuid-Crate: Timestamp + Prozess-ID + Zufallszahl
+        let random_suffix = {
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos();
+            let pid = std::process::id();
+            format!("{:08x}", (nanos ^ pid).wrapping_mul(0x9e3779b9))
+        };
+        let run_id = format!("{}_{}", crate::now_run_stamp(), random_suffix);
         let meta = RunMeta {
             run_id: run_id.clone(),
             brain_id: brain_id.to_string(),
@@ -292,7 +302,10 @@ impl RunStore {
     /// Markiert verwaiste `running`-Runs als `interrupted`.
     pub fn reconcile_stale_runs(&self, legacy_age_seconds: f64) -> Vec<String> {
         let mut repaired = Vec::new();
-        let now = chrono::Utc::now();
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
         
         for run_id in self.list_runs() {
             let meta = match self.load(&run_id) {
@@ -310,12 +323,12 @@ impl RunStore {
                 !crate::pid_alive(pid)
             } else {
                 // Legacy: kein owner_pid → Alter prüfen
-                match chrono::DateTime::parse_from_rfc3339(&meta.created_at) {
-                    Ok(created) => {
-                        let age = (now - created.with_timezone(&chrono::Utc)).num_seconds() as f64;
+                match parse_rfc3339_to_unix(&meta.created_at) {
+                    Some(created_secs) => {
+                        let age = (now_secs - created_secs) as f64;
                         age >= legacy_age_seconds
                     }
-                    Err(_) => true, // Ungültiger Zeitstempel → als stale behandeln
+                    None => true, // Ungültiger Zeitstempel → als stale behandeln
                 }
             };
             
@@ -343,6 +356,41 @@ impl RunStore {
     }
 }
 
+/// Parst RFC3339-Zeitstempel zu Unix-Sekunden (UTC).
+/// Vereinfachte Implementierung für ISO 8601 / RFC3339 wie `2024-01-15T10:30:45.123456+00:00`.
+fn parse_rfc3339_to_unix(s: &str) -> Option<i64> {
+    // Format: YYYY-MM-DDTHH:MM:SS[.ffffff](+00:00|Z)
+    let re = regex::Regex::new(
+        r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|\+00:00)$"
+    ).ok()?;
+    
+    let caps = re.captures(s)?;
+    let year: i32 = caps.get(1)?.as_str().parse().ok()?;
+    let month: u32 = caps.get(2)?.as_str().parse().ok()?;
+    let day: u32 = caps.get(3)?.as_str().parse().ok()?;
+    let hour: u32 = caps.get(4)?.as_str().parse().ok()?;
+    let minute: u32 = caps.get(5)?.as_str().parse().ok()?;
+    let second: u32 = caps.get(6)?.as_str().parse().ok()?;
+    
+    // Umrechnung zu Unix-Timestamp (Tage seit Epoch + Tageszeit)
+    // Vereinfachte Variante von civil_to_days (inverse von civil_utc in lib.rs)
+    let y = year as i64;
+    let m = month as i64;
+    let d = day as i64;
+    
+    let adj_year = if m <= 2 { y - 1 } else { y };
+    let adj_month = if m <= 2 { m + 12 } else { m };
+    
+    let era = if adj_year >= 0 { adj_year } else { adj_year - 399 } / 400;
+    let yoe = adj_year - era * 400;
+    let doy = (153 * (adj_month - 3) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    
+    let secs = days * 86_400 + (hour as i64) * 3600 + (minute as i64) * 60 + (second as i64);
+    Some(secs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,9 +405,19 @@ mod tests {
         let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
         let mut meta = store.create("mock", "stale").unwrap();
         
-        // Setze created_at auf 1 Stunde in der Vergangenheit
-        let past = chrono::Utc::now() - chrono::Duration::hours(1);
-        meta.created_at = past.to_rfc3339();
+        // Setze created_at auf 1 Stunde in der Vergangenheit (3600 Sekunden)
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let past_secs = now_secs - 3600;
+        
+        // Konvertiere zu RFC3339 (vereinfacht, nur für Test)
+        let (y, mo, d, h, mi, s) = crate::lib::civil_utc(past_secs);
+        meta.created_at = format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.000000+00:00",
+            y, mo, d, h, mi, s
+        );
         store.save_internal(&meta).unwrap();
         
         let repaired = store.reconcile_stale_runs(10.0);
