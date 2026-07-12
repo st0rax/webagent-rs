@@ -284,6 +284,23 @@ return {{count:count,text:text,stop:stop}};}})()"#,
         Ok(())
     }
 
+    /// Setzt den Text in den Composer (fokussiert, `value`/`textContent`, feuert
+    /// `input`). Gibt true, wenn ein Composer gefunden wurde.
+    fn fill_composer(&self, composer_js: &str, text: &str) -> bool {
+        let t = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
+        let body = format!(
+            "var el=document.querySelector(S[i]);if(el){{el.focus();if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){{el.value={t};}}else{{el.textContent={t};}}el.dispatchEvent(new InputEvent('input',{{bubbles:true}}));return true;}}"
+        );
+        self.eval_bool(&Self::js_scan(composer_js, &body, "false"))
+    }
+
+    /// True, wenn der Composer leer ist (Indiz, dass die Nachricht abgeschickt und
+    /// das Feld geleert wurde). False auch, wenn kein Composer gefunden wird.
+    fn composer_is_empty(&self, composer_js: &str) -> bool {
+        let body = "var el=document.querySelector(S[i]);if(el){var v=(el.value!==undefined&&el.value!==null?el.value:el.textContent)||'';return v.trim().length===0;}";
+        self.eval_bool(&Self::js_scan(composer_js, body, "false"))
+    }
+
     /// Öffnet ein **sichtbares** Chromium auf der Brain-URL und wartet, bis der
     /// Nutzer eingeloggt ist. Es werden **keine Zugangsdaten eingegeben** — die
     /// Anmeldung macht der Nutzer selbst im Fenster; diese Methode pollt nur den
@@ -408,25 +425,46 @@ impl BrainBackend for WebBrainBackend {
         let baseline = self.assistant_count();
         self.baseline_count.set(baseline);
 
-        let sels = self.sel("composer");
-        if sels.is_empty() {
+        if self.sel("composer").is_empty() {
             return Err("Keine Composer-Selektoren konfiguriert".into());
         }
-        let text_json = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
-        let expr = format!(
-            r#"(function(){{var S={sels};var T={text};for(var i=0;i<S.length;i++){{var el=document.querySelector(S[i]);if(el){{el.focus();if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){{el.value=T;}}else{{el.textContent=T;}}el.dispatchEvent(new InputEvent('input',{{bubbles:true}}));return true;}}}}return false;}})()"#,
-            sels = Self::js_selectors(&sels),
-            text = text_json
-        );
-        if !self.eval_bool(&expr) {
-            return Err("Composer-Feld nicht gefunden".into());
+        let composer_js = self.sel_js("composer", &[]);
+        let has_send_button = !self.sel("send_button").is_empty();
+
+        // Composer befüllen, mit kurzem Retry (Seite evtl. noch am Laden/Rendern).
+        if !self.fill_composer(&composer_js, text) {
+            std::thread::sleep(Duration::from_millis(600));
+            if !self.fill_composer(&composer_js, text) {
+                return Err("Composer-Feld nicht gefunden".into());
+            }
         }
         std::thread::sleep(Duration::from_millis(150));
-        // Zuerst Enter versuchen; wenn ein Senden-Button existiert, zusätzlich klicken.
-        self.press_enter().ok();
-        if !self.sel("send_button").is_empty() {
-            self.click_first("send_button");
+
+        // Bis zu drei Absende-Versuche mit Verifikation. Manche Brains senden per
+        // Enter, andere brauchen den Button — und Enter fügt bei manchen nur eine
+        // Zeile ein. Als abgeschickt gilt: neue Nachricht, sichtbarer Stop-Button
+        // oder geleerter Composer.
+        for attempt in 0..3 {
+            if attempt == 0 || !has_send_button {
+                self.press_enter().ok();
+            } else {
+                self.click_first("send_button");
+            }
+            for _ in 0..8 {
+                std::thread::sleep(Duration::from_millis(250));
+                if self.assistant_count() > baseline
+                    || self.any_visible("stop_button")
+                    || self.composer_is_empty(&composer_js)
+                {
+                    return Ok(baseline);
+                }
+            }
+            // Nicht abgeschickt — Text neu setzen und den nächsten Weg versuchen.
+            self.fill_composer(&composer_js, text);
         }
+
+        // Best effort: der Controller/`wait_response` erkennt ein ausbleibendes
+        // Ergebnis über sein Timeout.
         Ok(baseline)
     }
 
