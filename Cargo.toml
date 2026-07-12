@@ -16,6 +16,15 @@ regex = "1"
 fancy-regex = "0.14"
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 lazy_static = "1.5"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+which = "6"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["wincon"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [lib]
 name = "webagent"
