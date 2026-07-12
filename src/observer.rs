@@ -17,17 +17,6 @@ fn transient_status_regex() -> &'static Regex {
     })
 }
 
-/// Regex für Thinking-Präfixe, die aus Antworten entfernt werden sollen.
-fn thinking_prefix_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(
-            r"(?i)^(?:Thought\s*Process|Thinking\.{0,3}|Reasoning|Verstanden!?|Ich sehe das Problem)[\s:.…\n]*"
-        )
-        .unwrap()
-    })
-}
-
 /// Regex für reine Zeitanzeigen (z.B. "11:05").
 fn clock_only_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
