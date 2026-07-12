@@ -1,0 +1,18 @@
+# Aider-Konfiguration für den WebAgent-Rust-Port.
+# Modell: Anthropic Claude (vom Operator gewählt). Key via ANTHROPIC_API_KEY.
+# Alias "sonnet" wird von aider auf das aktuelle Claude-Sonnet gemappt; bei Bedarf
+# auf ein explizites Modell umstellen (z.B. anthropic/claude-sonnet-4-5).
+model: sonnet
+
+# Nicht-interaktiv: für scriptgesteuerte Läufe (aider_build.ps1).
+yes-always: true
+auto-commits: true
+auto-test: false
+dark-mode: true
+
+# Konventionen immer als Kontext laden.
+read:
+  - CONVENTIONS.md
+
+# Kein Telemetrie-/Analytics-Ping.
+analytics-disable: true
