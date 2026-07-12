@@ -239,7 +239,8 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
                 return Err(format!("shell action {} braucht command", action_id));
             }
 
-            let raw_timeout = obj.get("timeout_seconds").unwrap_or(&Value::Number(30.into()));
+            let default_timeout = Value::Number(30.into());
+            let raw_timeout = obj.get("timeout_seconds").unwrap_or(&default_timeout);
             
             // Prüfe ob es ein bool ist (nicht erlaubt)
             if raw_timeout.is_boolean() {
