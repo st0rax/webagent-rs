@@ -4,6 +4,11 @@ use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::process;
 
+use webagent::config::available_brain_ids;
+use webagent::doctor::run_doctor;
+use webagent::run_store::RunStore;
+use webagent::watchdog::{run_watchdog, WatchdogReport};
+
 #[derive(Parser)]
 #[command(name = "webagent")]
 #[command(about = "Gehirnunabhängiger lokaler Agent (Rust-Port)", long_about = None)]
@@ -48,6 +53,29 @@ enum Commands {
         json: bool,
     },
 
+    /// Watchdog: Scannt verwaiste Runs, Bridge-Locks, Profil-Locks (Dry-Run/Repair)
+    Watchdog {
+        /// Bridge-Lock-Root (bot2bot Verzeichnis)
+        #[arg(long)]
+        bot2bot_root: Option<String>,
+
+        /// Profil-Verzeichnis
+        #[arg(long)]
+        profile_dir: Option<String>,
+
+        /// Runs-Verzeichnis (Fallback wenn kein RunStore)
+        #[arg(long)]
+        runs_dir: Option<String>,
+
+        /// Reparieren (Standard: Dry-Run)
+        #[arg(long)]
+        repair: bool,
+
+        /// Maschinenlesbares JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Read-only gate for autonomous maintenance
     MaintenanceCheck {
         /// Maschinenlesbares JSON
@@ -80,6 +108,14 @@ fn main() {
             if brain.is_empty() { None } else { Some(brain) },
             json,
         ),
+
+        Commands::Watchdog {
+            bot2bot_root,
+            profile_dir,
+            runs_dir,
+            repair,
+            json,
+        } => cmd_watchdog(bot2bot_root, profile_dir, runs_dir, repair, json),
 
         Commands::MaintenanceCheck {
             json,
@@ -241,6 +277,73 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
     }
 
     if report.ok() { 0 } else { 2 }
+}
+
+fn cmd_watchdog(
+    bot2bot_root: Option<String>,
+    profile_dir: Option<String>,
+    runs_dir: Option<String>,
+    repair: bool,
+    json: bool,
+) -> i32 {
+    use webagent::config;
+    use webagent::run_store::RunStore;
+    use webagent::watchdog;
+
+    let bot2bot_root = bot2bot_root.unwrap_or_else(|| {
+        config::bot2bot_root().to_string_lossy().to_string()
+    });
+    let profile_dir = profile_dir.unwrap_or_else(|| {
+        config::profiles_dir().join("shared").to_string_lossy().to_string()
+    });
+    let runs_dir = runs_dir.unwrap_or_else(|| {
+        config::runs_dir().to_string_lossy().to_string()
+    });
+
+    let store = RunStore::new(
+        config::runs_dir(),
+        config::runs_dir().join("logs"),
+    );
+
+    let report = watchdog::run_watchdog(
+        &bot2bot_root,
+        &profile_dir,
+        &runs_dir,
+        Some(&store),
+        repair,
+    );
+
+    if json {
+        match serde_json::to_string_pretty(&report) {
+            Ok(output) => println!("{}", output),
+            Err(e) => {
+                eprintln!("[watchdog] JSON-Serialisierung fehlgeschlagen: {}", e);
+                return 1;
+            }
+        }
+    } else {
+        println!("[watchdog] {}", report.timestamp);
+        println!("[watchdog] orphaned_runs: {}", report.orphaned_runs.len());
+        println!("[watchdog] stale_bridge_locks: {}", report.stale_bridge_locks.len());
+        println!("[watchdog] stale_profile_locks: {}", report.stale_profile_locks.len());
+        if repair {
+            println!("[watchdog] repaired_runs: {}", report.repaired_runs.len());
+            println!("[watchdog] repaired_bridge_locks: {}", report.repaired_bridge_locks.len());
+            println!("[watchdog] repaired_profile_locks: {}", report.repaired_profile_locks.len());
+        }
+        if !report.errors.is_empty() {
+            println!("[watchdog] errors: {}", report.errors.join(", "));
+        }
+        println!();
+    }
+
+    if report.ok() && report.errors.is_empty() {
+        0
+    } else if repair && report.total_repaired() > 0 {
+        0
+    } else {
+        2
+    }
 }
 
 fn cmd_maintenance_check(json: bool, pytest: bool, pytest_timeout: f64) -> i32 {

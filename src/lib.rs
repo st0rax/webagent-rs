@@ -19,6 +19,7 @@ pub mod protocol;
 pub mod run_store;
 pub mod timeouts;
 pub mod transcript;
+pub mod watchdog;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

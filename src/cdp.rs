@@ -105,7 +105,7 @@ impl ChromeProcess {
             match cmd.spawn() {
                 Ok(child) => {
                     let proc = ChromeProcess { child, port, binary: bin };
-                    proc.wait_ready(Duration::from_secs(20))?;
+                    proc.wait_ready(Duration::from_secs(45))?;
                     return Ok(proc);
                 }
                 Err(e) => {
