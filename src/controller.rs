@@ -87,7 +87,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         if let Some(meta) = &mut self.meta {
             if let Some(ref_val) = self.brain.get_conversation_ref() {
                 meta.conversation_ref = Some(ref_val);
-                self.run_store.save(meta);
+                let _ = self.run_store.save(meta);
             }
         }
     }
@@ -164,7 +164,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     /// Beendet Run mit brain_incomplete Status.
     fn finish_brain_incomplete(&mut self, meta: &mut RunMeta, transcript: &mut Transcript) -> RunMeta {
         meta.status = "brain_incomplete".to_string();
-        self.run_store.save(meta);
+        let _ = self.run_store.save(meta);
         let _ = transcript.append(
             "system",
             &format!(
@@ -195,7 +195,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         );
 
         if let Some(meta) = &self.meta {
-            self.run_store.save(meta);
+            let _ = self.run_store.save(meta);
         }
 
         if self.incomplete_retries > Self::MAX_INCOMPLETE_RETRIES {
@@ -211,7 +211,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         self.completed_actions.insert(action_id.to_string(), result.to_string());
         if let Some(meta) = &mut self.meta {
             meta.completed_actions.insert(action_id.to_string(), result.to_string());
-            self.run_store.save(meta);
+            let _ = self.run_store.save(meta);
         }
     }
 
@@ -227,7 +227,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 .unwrap_or(0)
                 + added;
             meta.extra.insert("observation_bytes".to_string(), serde_json::Value::String(total.to_string()));
-            self.run_store.save(meta);
+            let _ = self.run_store.save(meta);
             total
         } else {
             0
@@ -490,7 +490,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             );
         }
 
-        self.brain.new_chat();
+        let _ = self.brain.new_chat();
         let tail = transcript.recovery_tail(RESUME_TRANSCRIPT_CHAR_BUDGET).unwrap_or_default();
         let _ = transcript.append("system", "resume_fallback=new_chat+transcript", HashMap::new());
         self.run_once(&resume_recovery_prompt(&task, &tail), Some(transcript))
