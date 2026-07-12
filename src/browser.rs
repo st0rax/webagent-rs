@@ -137,6 +137,22 @@ impl WebBrainBackend {
         format!("[{}]", items.join(","))
     }
 
+    /// JS-Array-Literal der Selektoren zu einem Schlüssel; `fallback` greift,
+    /// wenn keine konfiguriert sind.
+    fn sel_js(&self, key: &str, fallback: &[&str]) -> String {
+        let mut sels = self.sel(key);
+        if sels.is_empty() {
+            sels = fallback.iter().map(|s| s.to_string()).collect();
+        }
+        Self::js_selectors(&sels)
+    }
+
+    /// Baut ein IIFE, das die Selektorliste `list_js` durchläuft und `body` auf
+    /// jeden Selektor `S[i]` anwendet; liefert `default`, wenn nichts matcht.
+    fn js_scan(list_js: &str, body: &str, default: &str) -> String {
+        format!("(function(){{var S={list_js};for(var i=0;i<S.length;i++){{{body}}}return {default};}})()")
+    }
+
     /// Führt ein JS im Seitenkontext aus (mit ausgeliehenem Client).
     fn eval(&self, expr: &str) -> Result<Value, String> {
         let mut guard = self.client.borrow_mut();
@@ -163,29 +179,23 @@ impl WebBrainBackend {
 
     /// Anzahl der Assistenten-Nachrichten (robust über die Selektorliste).
     fn assistant_count(&self) -> i32 {
-        let mut sels = self.sel("assistant_message");
-        if sels.is_empty() {
-            sels = vec!["div.prose".to_string()];
-        }
-        let expr = format!(
-            r#"(function(){{var S={};for(var i=0;i<S.length;i++){{var n=document.querySelectorAll(S[i]).length;if(n>0)return n;}}return 0;}})()"#,
-            Self::js_selectors(&sels)
+        let list = self.sel_js("assistant_message", &["div.prose"]);
+        let expr = Self::js_scan(
+            &list,
+            "var n=document.querySelectorAll(S[i]).length;if(n>0)return n;",
+            "0",
         );
         self.eval_i64(&expr) as i32
     }
 
     /// innerText der n-ten Assistenten-Nachricht.
     fn assistant_text(&self, index: i32) -> String {
-        let mut sels = self.sel("assistant_message");
-        if sels.is_empty() {
-            sels = vec!["div.prose".to_string()];
-        }
-        let expr = format!(
-            r#"(function(){{var S={};for(var i=0;i<S.length;i++){{var els=document.querySelectorAll(S[i]);if(els.length>{idx}){{return (els[{idx}].innerText||"").trim();}}}}return "";}})()"#,
-            Self::js_selectors(&sels),
+        let list = self.sel_js("assistant_message", &["div.prose"]);
+        let body = format!(
+            "var els=document.querySelectorAll(S[i]);if(els.length>{idx}){{return (els[{idx}].innerText||\"\").trim();}}",
             idx = index
         );
-        self.eval_str(&expr)
+        self.eval_str(&Self::js_scan(&list, &body, "\"\""))
     }
 
     /// Ist mindestens ein Selektor aus der Liste im DOM sichtbar?
@@ -194,9 +204,10 @@ impl WebBrainBackend {
         if sels.is_empty() {
             return false;
         }
-        let expr = format!(
-            r#"(function(){{var S={};for(var i=0;i<S.length;i++){{var el=document.querySelector(S[i]);if(el){{var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}}}}return false;}})()"#,
-            Self::js_selectors(&sels)
+        let expr = Self::js_scan(
+            &Self::js_selectors(&sels),
+            "var el=document.querySelector(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}",
+            "false",
         );
         self.eval_bool(&expr)
     }
@@ -207,11 +218,38 @@ impl WebBrainBackend {
         if sels.is_empty() {
             return false;
         }
-        let expr = format!(
-            r#"(function(){{var S={};for(var i=0;i<S.length;i++){{var el=document.querySelector(S[i]);if(el){{el.click();return true;}}}}return false;}})()"#,
-            Self::js_selectors(&sels)
+        let expr = Self::js_scan(
+            &Self::js_selectors(&sels),
+            "var el=document.querySelector(S[i]);if(el){el.click();return true;}",
+            "false",
         );
         self.eval_bool(&expr)
+    }
+
+    /// Ein einziger CDP-Roundtrip, der Nachrichtenanzahl, den Text der Nachricht
+    /// `target` und die Sichtbarkeit des Stop-Buttons gemeinsam ermittelt — statt
+    /// dreier separater `Runtime.evaluate`-Aufrufe pro Poll-Iteration.
+    fn probe_generation(&self, assistant_js: &str, stop_js: &str, target: i32) -> (i32, String, bool) {
+        let expr = format!(
+            r#"(function(){{
+var A={assistant_js};var count=0,els=null;
+for(var i=0;i<A.length;i++){{var e=document.querySelectorAll(A[i]);if(e.length>0){{count=e.length;els=e;break;}}}}
+var text="";if(els&&{target}>=0&&els.length>{target}){{text=(els[{target}].innerText||"").trim();}}
+var stop=false;var S={stop_js};
+for(var j=0;j<S.length;j++){{var el=document.querySelector(S[j]);if(el){{var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){{stop=true;break;}}}}}}
+return {{count:count,text:text,stop:stop}};}})()"#,
+            assistant_js = assistant_js,
+            stop_js = stop_js,
+            target = target
+        );
+        match self.eval(&expr) {
+            Ok(v) => (
+                v.get("count").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+                v.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                v.get("stop").and_then(|x| x.as_bool()).unwrap_or(false),
+            ),
+            Err(_) => (0, String::new(), false),
+        }
     }
 
     fn is_cloudflare_blocked(&self) -> bool {
@@ -361,26 +399,31 @@ impl BrainBackend for WebBrainBackend {
 
     fn wait_response(&mut self, baseline_count: i32, timeout: f64) -> Result<BrainResponse, String> {
         let start = Instant::now();
-        let has_stop = !self.sel("stop_button").is_empty();
+        // Selektor-Literale einmal bauen (ändern sich zur Laufzeit nie), dann pro
+        // Poll-Iteration nur einen einzigen CDP-Roundtrip fahren.
+        let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
+        let stop_sel = self.sel("stop_button");
+        let has_stop = !stop_sel.is_empty();
+        let stop_js = Self::js_selectors(&stop_sel);
+
+        let mk = |text: String, idx: i32, done: bool, status: &str| BrainResponse {
+            text,
+            message_index: idx,
+            generation_complete: done,
+            backend_status: status.to_string(),
+            ..Default::default()
+        };
 
         // Phase 1: auf neue Nachricht ODER einen sichtbaren Stop-/Generating-Button
         // warten (die Generierung kann starten, bevor der Nachrichten-Container im
         // DOM committet ist).
         loop {
-            if self.assistant_count() > baseline_count {
-                break;
-            }
-            if has_stop && self.any_visible("stop_button") {
+            let (count, _text, stop) = self.probe_generation(&assistant_js, &stop_js, -1);
+            if count > baseline_count || (has_stop && stop) {
                 break;
             }
             if start.elapsed().as_secs_f64() >= timeout {
-                return Ok(BrainResponse {
-                    text: String::new(),
-                    message_index: -1,
-                    generation_complete: false,
-                    backend_status: "timeout_no_message".into(),
-                    ..Default::default()
-                });
+                return Ok(mk(String::new(), -1, false, "timeout_no_message"));
             }
             std::thread::sleep(Duration::from_millis(300));
         }
@@ -391,15 +434,16 @@ impl BrainBackend for WebBrainBackend {
         let mut last_text = String::new();
         let mut stable_since = Instant::now();
         let mut stop_seen_ever = false;
-        let mut target = (self.assistant_count() - 1).max(baseline_count).max(0);
+        let mut target = (self.probe_generation(&assistant_js, &stop_js, -1).0 - 1)
+            .max(baseline_count)
+            .max(0);
 
         loop {
-            let count = self.assistant_count();
+            let (count, current, stop_raw) = self.probe_generation(&assistant_js, &stop_js, target);
             if count - 1 > target {
                 target = count - 1;
             }
-            let current = self.assistant_text(target);
-            let stop_visible = has_stop && self.any_visible("stop_button");
+            let stop_visible = has_stop && stop_raw;
             stop_seen_ever |= stop_visible;
 
             if current != last_text {
@@ -409,15 +453,7 @@ impl BrainBackend for WebBrainBackend {
             let stable_secs = stable_since.elapsed().as_secs_f64();
 
             match classify_completion(&current, has_stop, stop_seen_ever, stop_visible, stable_secs) {
-                Completion::RateLimited => {
-                    return Ok(BrainResponse {
-                        text: current,
-                        message_index: target,
-                        generation_complete: false,
-                        backend_status: "rate_limit".into(),
-                        ..Default::default()
-                    });
-                }
+                Completion::RateLimited => return Ok(mk(current, target, false, "rate_limit")),
                 Completion::Complete => {
                     // Kurzes Settle: der letzte Chunk committet oft erst, nachdem
                     // der Stop-Button verschwunden ist. Danach final nachlesen.
@@ -428,13 +464,7 @@ impl BrainBackend for WebBrainBackend {
                     } else {
                         current
                     };
-                    return Ok(BrainResponse {
-                        text,
-                        message_index: target,
-                        generation_complete: true,
-                        backend_status: "ok".into(),
-                        ..Default::default()
-                    });
+                    return Ok(mk(text, target, true, "ok"));
                 }
                 Completion::Continue => {}
             }
@@ -447,13 +477,7 @@ impl BrainBackend for WebBrainBackend {
                 } else {
                     "timeout_unstable"
                 };
-                return Ok(BrainResponse {
-                    text: last_text,
-                    message_index: target,
-                    generation_complete: false,
-                    backend_status: status.into(),
-                    ..Default::default()
-                });
+                return Ok(mk(last_text, target, false, status));
             }
             std::thread::sleep(Duration::from_millis(300));
         }
@@ -470,8 +494,7 @@ impl BrainBackend for WebBrainBackend {
         {
             return true;
         }
-        // Sonst: expliziter Login-Button => nicht eingeloggt; ohne jedes Signal
-        // konservativ als nicht eingeloggt behandeln.
+        // Ohne positives Signal konservativ als nicht eingeloggt behandeln.
         false
     }
 

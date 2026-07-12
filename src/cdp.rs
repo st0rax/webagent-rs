@@ -330,11 +330,6 @@ impl CdpClient {
             .to_string())
     }
 
-    /// Convenience: JS auswerten und als bool zurückgeben.
-    pub fn eval_bool(&mut self, expression: &str) -> Result<bool> {
-        Ok(self.evaluate(expression)?.as_bool().unwrap_or(false))
-    }
-
     /// Navigiert zu einer URL und wartet (best effort) auf document.readyState=complete.
     pub fn navigate(&mut self, url: &str, timeout: Duration) -> Result<()> {
         self.call("Page.navigate", json!({ "url": url }))?;
@@ -390,6 +385,17 @@ mod tests {
 
         let sum = client.evaluate("1+1").expect("eval arithmetic");
         assert_eq!(sum.as_i64(), Some(2));
+
+        // Objektrückgabe (returnByValue) — genau das nutzt browser::probe_generation.
+        let obj = client
+            .evaluate(
+                "(function(){return {count:document.querySelectorAll('.prose').length,\
+                 text:document.querySelectorAll('.prose')[0].innerText,stop:false};})()",
+            )
+            .expect("eval object");
+        assert_eq!(obj.get("count").and_then(|v| v.as_i64()), Some(2));
+        assert!(obj.get("text").and_then(|v| v.as_str()).unwrap_or("").contains("Hallo"));
+        assert_eq!(obj.get("stop").and_then(|v| v.as_bool()), Some(false));
 
         proc.kill();
         let _ = std::fs::remove_dir_all(&dir);

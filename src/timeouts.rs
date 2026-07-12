@@ -78,9 +78,20 @@ fn env_float(name: &str, default: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // resolve_timeout liest prozess-globale Env-Vars (WEBAGENT_TIMEOUT_*). Da Rust
+    // Tests parallel ausführt, würde test_env_multiplier sonst die anderen Tests
+    // verfälschen. Alle env-empfindlichen Tests laufen daher über dieses Lock seriell.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn test_chatgpt_shorter_than_claude() {
+        let _g = env_guard();
         let chatgpt = resolve_timeout("wait_response", "chatgpt", "hi", None);
         let claude = resolve_timeout("wait_response", "claude", "hi", None);
         assert!(claude > chatgpt);
@@ -88,6 +99,7 @@ mod tests {
 
     #[test]
     fn test_long_message_increases_timeout() {
+        let _g = env_guard();
         let short_msg = "x".repeat(100);
         let long_msg = "x".repeat(5000);
         let short = resolve_timeout("wait_response", "chatgpt", &short_msg, None);
@@ -97,6 +109,7 @@ mod tests {
 
     #[test]
     fn test_override_is_minimum() {
+        let _g = env_guard();
         let auto = resolve_timeout("relay", "kimi", "test", None);
         let with_override = resolve_timeout("relay", "kimi", "test", Some(300.0));
         assert!(with_override >= 300.0);
@@ -105,6 +118,7 @@ mod tests {
 
     #[test]
     fn test_env_multiplier() {
+        let _g = env_guard();
         std::env::set_var("WEBAGENT_TIMEOUT_MULT", "2");
         let base = resolve_timeout("ensure_ready", "chatgpt", "", None);
         assert!(base >= 80.0); // 45.0 * 1.0 * 2.0 = 90.0, clamped by min 30.0
