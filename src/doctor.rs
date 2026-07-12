@@ -589,6 +589,7 @@ fn civil_to_unix(y: i64, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> i64 {
 mod tests {
     use super::*;
     use std::env;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn unique_tmp() -> PathBuf {
@@ -699,8 +700,8 @@ mod tests {
             created_at: past,
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -729,8 +730,8 @@ mod tests {
             created_at: "2026-07-12T12:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -758,8 +759,8 @@ mod tests {
             created_at: "2026-07-12T12:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -802,8 +803,8 @@ mod tests {
             created_at: "2026-07-12T11:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -844,8 +845,8 @@ mod tests {
             created_at: past,
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -880,8 +881,8 @@ mod tests {
             created_at: "2026-07-12T10:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -909,8 +910,8 @@ mod tests {
             created_at: "2026-07-12T08:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -943,8 +944,8 @@ mod tests {
             created_at: "2026-07-09T12:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -979,8 +980,8 @@ mod tests {
             created_at: "2026-07-11T01:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
@@ -1205,8 +1206,8 @@ mod tests {
             created_at: past,
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
 
@@ -1253,8 +1254,8 @@ mod tests {
             created_at: "2026-07-12T10:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
-            completed_actions: 0,
-            conversation_ref: String::new(),
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
             cycles: 0,
         };
         fs::write(
