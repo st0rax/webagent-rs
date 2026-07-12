@@ -115,6 +115,35 @@ angemeldeten Nutzerkontext ausführen. Nur in vertrauenswürdiger Umgebung nutze
 - Tests: `cargo test` (kein echter Browser/Netz in Unit-Tests). Der Live-CDP-Test
   läuft nur explizit: `cargo test --lib cdp -- --ignored`.
 
+## Android (via GitHub)
+
+Das Projekt ist für Android nutzbar — geklont über GitHub und auf dem Gerät
+(Termux) gebaut, **ohne Android‑NDK**. Verbindung zu einem entfernten Chrome
+(Metaline) über den CDP‑Endpunkt, statt lokalen Chrome zu starten.
+
+```bash
+# In Termux (oder jedem Linux/arm64):
+pkg install rust git
+git clone https://github.com/st0rax/webagent-rs
+cd webagent-rs
+cargo install cargo-zigbuild --locked
+export CARGO_BUILD_TARGET=aarch64-linux-android
+cargo zigbuild --release
+# Binär: target/aarch64-linux-android/release/webagent
+```
+
+Danach den Agenten zu einem Desktop‑Chrome lenken (kein Chrome auf dem Handy nötig):
+
+```bash
+export WEBAGENT_CDP_ENDPOINT=ws://192.168.1.10:9222/devtools/page/<id>
+# oder host:port  ->  http://host:port/json wird nach dem page-Target abgefragt
+./target/aarch64-linux-android/release/webagent run --brain claude --task "…"
+```
+
+Bei gesetztem `WEBAGENT_CDP_ENDPOINT` überspringt `start()` den lokalen
+Browser‑Launch komplett (siehe `src/cdp.rs` / `src/browser.rs`). Eine CI, die den
+arm64‑Build automatisch prüft, liegt unter `.github/workflows/android.yml`.
+
 ## Lizenz
 
 MIT.
