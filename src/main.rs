@@ -62,6 +62,17 @@ enum Commands {
         headless: bool,
     },
 
+    /// Interaktive REPL: mehrere Aufgaben nacheinander gegen dasselbe Brain
+    Repl {
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+        #[arg(long, default_value = "chatgpt")]
+        brain: String,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// Pro-Brain Diagnose: Selektoren, Profil-Lock, letzte Antwort, Recovery
     Doctor {
         /// Nur diese Gehirne prüfen (leer = alle)
@@ -127,6 +138,8 @@ fn main() {
         Commands::Login { brain, timeout } => cmd_login(&brain, timeout),
 
         Commands::Diagnose { brain, headless } => cmd_diagnose(&brain, headless),
+
+        Commands::Repl { brain, headless } => webagent::repl::run_repl(&brain, headless),
 
         Commands::Doctor { brain, json } => cmd_doctor(
             if brain.is_empty() { None } else { Some(brain) },

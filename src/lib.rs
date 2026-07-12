@@ -16,6 +16,7 @@ pub mod memory;
 pub mod observer;
 pub mod prompts;
 pub mod protocol;
+pub mod repl;
 pub mod run_store;
 pub mod timeouts;
 pub mod transcript;
