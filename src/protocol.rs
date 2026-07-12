@@ -1,1 +1,870 @@
-//! protocol — TODO: Port aus ../src/webagent/. Wird von Aider gefüllt.
+//! Strukturiertes Aktionsprotokoll webagent/1.
+
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::sync::OnceLock;
+
+pub const PROTOCOL_VERSION: &str = "webagent/1";
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ActionType {
+    Shell,
+    Message,
+    Finish,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Action {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub action_type: ActionType,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub command: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub text: String,
+    #[serde(default = "default_timeout")]
+    pub timeout_seconds: f64,
+}
+
+fn default_timeout() -> f64 {
+    30.0
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseResult {
+    pub valid: bool,
+    pub actions: Vec<Action>,
+    pub error: String,
+    pub raw_text: String,
+}
+
+impl ParseResult {
+    fn invalid(error: impl Into<String>, raw_text: impl Into<String>) -> Self {
+        Self {
+            valid: false,
+            actions: Vec::new(),
+            error: error.into(),
+            raw_text: raw_text.into(),
+        }
+    }
+
+    fn valid(actions: Vec<Action>, raw_text: impl Into<String>) -> Self {
+        Self {
+            valid: true,
+            actions,
+            error: String::new(),
+            raw_text: raw_text.into(),
+        }
+    }
+}
+
+fn json_block_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"```(?:json)?\s*(\{.*\})\s*```").unwrap())
+}
+
+fn rendered_json_label_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)^json\s*\r?\n(?:(?:copy|kopieren)\s*\r?\n)?(?:(?:download|herunterladen)\s*\r?\n)?(?=\s*\{)",
+        )
+        .unwrap()
+    })
+}
+
+fn ui_control_line_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)^(?:json|copy|kopieren|download|herunterladen|\d+)$").unwrap()
+    })
+}
+
+fn leading_prose_line_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)^(?:denke nach|thinking|thought process|thoughtprocess|reasoning|ueberlege|überlege|思考|antworte|hier ist|sure|ok|okay|alright|verstanden|ich sehe das problem|thought|erneut versuchen)[\s.…:]*$",
+        )
+        .unwrap()
+    })
+}
+
+fn script_envelope_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?s)\AWEBAGENT/1 SHELL\r?\nid:\s*([A-Za-z0-9][A-Za-z0-9._-]{0,127})\r?\ntimeout_seconds:\s*([0-9]+(?:\.[0-9]+)?)\r?\n---SCRIPT---\r?\n([\s\S]+?)\r?\n---END SCRIPT---\s*\z",
+        )
+        .unwrap()
+    })
+}
+
+fn strip_leading_prose(text: &str) -> &str {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut index = 0;
+    let re = leading_prose_line_regex();
+    while index < lines.len() && re.is_match(lines[index].trim()) {
+        index += 1;
+    }
+    if index > 0 {
+        lines[index..].join("\n").leak()
+    } else {
+        text
+    }
+}
+
+fn extract_first_protocol_json(text: &str) -> Option<String> {
+    // Suche nach einem Top-Level-Objekt mit "protocol": "webagent/1"
+    let re = Regex::new(
+        r#"(?is)(\{\s*"protocol"\s*:\s*"webagent/1"[\s\S]*?\n\s*\}\s*)"#,
+    )
+    .unwrap();
+    
+    if let Some(cap) = re.captures(text) {
+        let candidate = cap[1].trim();
+        if let Ok(obj) = serde_json::from_str::<Value>(candidate) {
+            if obj.get("protocol").and_then(|v| v.as_str()) == Some(PROTOCOL_VERSION) {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+
+    // Fallback: erstes { bis letztes }
+    if let Some(first) = text.find('{') {
+        if let Some(last) = text.rfind('}') {
+            if last > first {
+                let candidate = &text[first..=last];
+                if let Ok(obj) = serde_json::from_str::<Value>(candidate) {
+                    if let Some(obj_map) = obj.as_object() {
+                        if obj_map.get("protocol").and_then(|v| v.as_str()) == Some(PROTOCOL_VERSION) {
+                            return Some(candidate.trim().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn strip_rendered_ui_controls(text: &str) -> String {
+    let normalized = text
+        .replace('\u{00a0}', " ")
+        .replace('\u{202f}', " ")
+        .replace('\u{200b}', "")
+        .trim()
+        .to_string();
+    
+    let normalized = strip_leading_prose(&normalized);
+    let lines: Vec<&str> = normalized.lines().collect();
+    let mut index = 0;
+    let mut saw_json_label = false;
+    let re = ui_control_line_regex();
+
+    while index < lines.len() {
+        let label = lines[index].trim();
+        if !re.is_match(label) {
+            break;
+        }
+        if label.eq_ignore_ascii_case("json") {
+            saw_json_label = true;
+        } else if !saw_json_label {
+            break;
+        }
+        index += 1;
+    }
+
+    if saw_json_label {
+        lines[index..].join("\n").trim().to_string()
+    } else {
+        normalized.to_string()
+    }
+}
+
+fn repair_message_windows_paths(json_text: &str) -> Option<String> {
+    // Nur reparieren wenn alle Actions vom Typ "message" sind
+    if !json_text.contains(r#""type""#) || !json_text.contains(r#""message""#) {
+        return None;
+    }
+    if json_text.contains(r#""shell""#) || json_text.contains(r#""finish""#) {
+        return None;
+    }
+
+    let re = Regex::new(r#"[A-Za-z]:\\[^"\r\n]*"#).unwrap();
+    let repaired = re.replace_all(json_text, |caps: &regex::Captures| {
+        caps[0].replace('\\', "\\\\")
+    });
+
+    if repaired != json_text {
+        Some(repaired.to_string())
+    } else {
+        None
+    }
+}
+
+fn action_from_value(val: &Value) -> Result<Action, String> {
+    let obj = val.as_object().ok_or("jede Action muss ein Objekt sein")?;
+    
+    let action_id = obj
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("jede Action braucht eine id")?
+        .to_string();
+
+    let action_type_str = obj
+        .get("type")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("Action {} braucht type", action_id))?;
+
+    let action_type = match action_type_str {
+        "shell" => ActionType::Shell,
+        "message" => ActionType::Message,
+        "finish" => ActionType::Finish,
+        _ => return Err(format!("unbekannter type: {:?}", action_type_str)),
+    };
+
+    match action_type {
+        ActionType::Shell => {
+            let command = obj
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            
+            if command.is_empty() {
+                return Err(format!("shell action {} braucht command", action_id));
+            }
+
+            let raw_timeout = obj.get("timeout_seconds").unwrap_or(&Value::Number(30.into()));
+            
+            // Prüfe ob es ein bool ist (nicht erlaubt)
+            if raw_timeout.is_boolean() {
+                return Err(format!(
+                    "shell action {}: timeout_seconds muss eine Zahl sein",
+                    action_id
+                ));
+            }
+
+            let timeout = raw_timeout
+                .as_f64()
+                .ok_or_else(|| {
+                    format!(
+                        "shell action {}: timeout_seconds muss eine Zahl sein",
+                        action_id
+                    )
+                })?;
+
+            if !timeout.is_finite() || timeout <= 0.0 || timeout > 3600.0 {
+                return Err(format!(
+                    "shell action {}: timeout_seconds muss endlich und groesser als 0 und hoechstens 3600 sein",
+                    action_id
+                ));
+            }
+
+            // Prüfe auf verschachteltes Rohskript
+            let re = script_envelope_regex();
+            if let Some(caps) = re.captures(&command) {
+                let nested_id = &caps[1];
+                if nested_id != action_id {
+                    return Err(
+                        "verschachtelte Rohskript-ID stimmt nicht mit Action-ID überein"
+                            .to_string(),
+                    );
+                }
+                let nested_command = caps[3].trim().to_string();
+                let nested_timeout: f64 = caps[2].parse().unwrap();
+                return Ok(Action {
+                    id: action_id,
+                    action_type: ActionType::Shell,
+                    command: nested_command,
+                    text: String::new(),
+                    timeout_seconds: nested_timeout,
+                });
+            }
+
+            Ok(Action {
+                id: action_id,
+                action_type: ActionType::Shell,
+                command,
+                text: String::new(),
+                timeout_seconds: timeout,
+            })
+        }
+        ActionType::Message => {
+            let text = obj
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            
+            if text.is_empty() {
+                return Err(format!("message action {} braucht text", action_id));
+            }
+
+            Ok(Action {
+                id: action_id,
+                action_type: ActionType::Message,
+                command: String::new(),
+                text,
+                timeout_seconds: 30.0,
+            })
+        }
+        ActionType::Finish => Ok(Action {
+            id: action_id,
+            action_type: ActionType::Finish,
+            command: String::new(),
+            text: String::new(),
+            timeout_seconds: 30.0,
+        }),
+    }
+}
+
+pub fn parse(response_text: &str) -> ParseResult {
+    let text = strip_rendered_ui_controls(response_text);
+    
+    if text.is_empty() {
+        return ParseResult::invalid("Leere Antwort.", text);
+    }
+
+    // Graceful handling für Model capacity / rate limit
+    let capacity_re = Regex::new(
+        r"(?i)(Höchstgrenze|Kapazität|capacity|rate limit|zu viele|erneut versuchen)",
+    )
+    .unwrap();
+    if capacity_re.is_match(&text) {
+        return ParseResult::invalid("Model capacity / rate limit.", text);
+    }
+
+    // WEBAGENT/1 SHELL Rohskript-Format
+    let script_re = script_envelope_regex();
+    if let Some(caps) = script_re.captures(&text) {
+        let timeout: f64 = caps[2].parse().unwrap();
+        if !timeout.is_finite() || timeout <= 0.0 || timeout > 3600.0 {
+            return ParseResult::invalid(
+                "timeout_seconds muss groesser als 0 und hoechstens 3600 sein",
+                text,
+            );
+        }
+        return ParseResult::valid(
+            vec![Action {
+                id: caps[1].to_string(),
+                action_type: ActionType::Shell,
+                command: caps[3].trim().to_string(),
+                text: String::new(),
+                timeout_seconds: timeout,
+            }],
+            text,
+        );
+    }
+
+    // Entferne gerenderte JSON-Labels
+    let label_re = rendered_json_label_regex();
+    let text = label_re.replace(&text, "").trim().to_string();
+
+    // Suche nach JSON-Codeblock
+    let block_re = json_block_regex();
+    let json_str = if let Some(caps) = block_re.captures(&text) {
+        let before = &text[..caps.get(0).unwrap().start()];
+        let after = &text[caps.get(0).unwrap().end()..];
+        let outside = format!("{}{}", before, after).trim().to_string();
+        
+        if !outside.is_empty() {
+            return ParseResult::invalid(
+                "Text außerhalb des JSON-Codeblocks ist nicht erlaubt.",
+                text,
+            );
+        }
+        caps[1].trim().to_string()
+    } else {
+        text.clone()
+    };
+
+    // Robuste Extraktion für Brains mit "Thought Process" etc.
+    let json_str = if !json_str.trim().starts_with('{') {
+        extract_first_protocol_json(&text).unwrap_or(json_str)
+    } else {
+        json_str
+    };
+
+    // Parse JSON
+    let doc = match serde_json::from_str::<Value>(&json_str) {
+        Ok(v) => v,
+        Err(exc) => {
+            // Versuche Windows-Path-Reparatur
+            if let Some(repaired) = repair_message_windows_paths(&json_str) {
+                match serde_json::from_str::<Value>(&repaired) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return ParseResult::invalid(
+                            format!("Ungültiges JSON: {}", exc),
+                            text,
+                        );
+                    }
+                }
+            } else {
+                return ParseResult::invalid(format!("Ungültiges JSON: {}", exc), text);
+            }
+        }
+    };
+
+    let obj = match doc.as_object() {
+        Some(o) => o,
+        None => {
+            return ParseResult::invalid("Wurzel muss ein JSON-Objekt sein.", text);
+        }
+    };
+
+    if obj.get("protocol").and_then(|v| v.as_str()) != Some(PROTOCOL_VERSION) {
+        return ParseResult::invalid(
+            format!("protocol muss \"{}\" sein.", PROTOCOL_VERSION),
+            text,
+        );
+    }
+
+    let raw_actions = match obj.get("actions").and_then(|v| v.as_array()) {
+        Some(arr) if !arr.is_empty() => arr,
+        _ => {
+            return ParseResult::invalid(
+                "actions muss eine nicht-leere Liste sein.",
+                text,
+            );
+        }
+    };
+
+    let mut actions = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+
+    for item in raw_actions {
+        match action_from_value(item) {
+            Ok(action) => {
+                if !seen_ids.insert(action.id.clone()) {
+                    return ParseResult::invalid(
+                        format!("doppelte Action-id: {}", action.id),
+                        text,
+                    );
+                }
+                actions.push(action);
+            }
+            Err(e) => return ParseResult::invalid(e, text),
+        }
+    }
+
+    // Validierung: finish muss alleine sein
+    let finish_count = actions
+        .iter()
+        .filter(|a| a.action_type == ActionType::Finish)
+        .count();
+    if finish_count > 0 && actions.len() != 1 {
+        return ParseResult::invalid(
+            "finish muss die einzige Action der Antwort sein",
+            text,
+        );
+    }
+
+    // Validierung: message muss alleine sein
+    let message_count = actions
+        .iter()
+        .filter(|a| a.action_type == ActionType::Message)
+        .count();
+    if message_count > 0 && actions.len() != 1 {
+        return ParseResult::invalid(
+            "message muss nach allen Werkzeugbeobachtungen als einzige Action in einer eigenen Antwort stehen",
+            text,
+        );
+    }
+
+    ParseResult::valid(actions, text)
+}
+
+pub fn is_possibly_truncated(response_text: &str) -> bool {
+    let text = strip_rendered_ui_controls(response_text);
+    
+    if text.starts_with("WEBAGENT/1 SHELL") {
+        let re = script_envelope_regex();
+        return !re.is_match(&text);
+    }
+
+    if !text.starts_with('{') {
+        return false;
+    }
+
+    // Unvollständiges Root-Objekt
+    if !text.trim_end().ends_with('}') {
+        return true;
+    }
+
+    match serde_json::from_str::<Value>(&text) {
+        Ok(_) => false,
+        Err(e) => {
+            let msg = e.to_string().to_lowercase();
+            msg.contains("unterminated string")
+                || msg.contains("expecting ',' delimiter")
+                || msg.contains("expecting property name")
+                || (msg.contains("expecting value")
+                    && (text.len() < 32
+                        || text.trim_end().ends_with('[')
+                        || text.trim_end().ends_with(':')
+                        || text.trim_end().ends_with(',')))
+        }
+    }
+}
+
+pub fn format_observation(
+    action_id: &str,
+    stdout: &str,
+    stderr: &str,
+    exit_code: Option<i32>,
+    interrupted: bool,
+) -> String {
+    let header = if interrupted {
+        format!(
+            "[Terminal-Ausgabe action_id={} - Ctrl+C unterbrochen]",
+            action_id
+        )
+    } else {
+        format!("[Terminal-Ausgabe action_id={}]", action_id)
+    };
+
+    let mut parts = vec![header];
+
+    if !stdout.trim().is_empty() {
+        parts.push(stdout.trim_end().to_string());
+    }
+
+    if !stderr.trim().is_empty() {
+        parts.push(format!("[stderr]\n{}", stderr.trim_end()));
+    }
+
+    if let Some(code) = exit_code {
+        parts.push(format!("[exit_code: {}]", code));
+    }
+
+    if parts.len() == 1 {
+        parts.push("(keine Ausgabe)".to_string());
+    }
+
+    parts.join("\n")
+}
+
+pub fn format_protocol_error(detail: &str) -> String {
+    let example = serde_json::json!({
+        "protocol": PROTOCOL_VERSION,
+        "actions": [
+            {
+                "id": "step-1",
+                "type": "shell",
+                "command": "Get-Location",
+                "timeout_seconds": 30
+            }
+        ]
+    });
+
+    format!(
+        "[Controller] Ungültige Antwort. {} Antworte mit genau einem JSON-Dokument \
+        (optional in einem ```json```-Block), protocol=\"{}\", jede Action mit id. \
+        WICHTIG: Alle Anführungszeichen und Backslashes im 'command' String korrekt \
+        als \\\" bzw. \\\\ escapen, damit JSON valide bleibt.\nBeispiel:\n{}",
+        detail,
+        PROTOCOL_VERSION,
+        serde_json::to_string_pretty(&example).unwrap()
+    )
+}
+
+pub fn format_observations_bundle(parts: &[String]) -> String {
+    parts.join("\n\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn valid_envelope() -> Value {
+        json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "s1", "type": "shell", "command": "Get-Location", "timeout_seconds": 30}
+            ]
+        })
+    }
+
+    #[test]
+    fn test_parse_valid_envelope() {
+        let result = parse(&serde_json::to_string(&valid_envelope()).unwrap());
+        assert!(result.valid);
+        assert_eq!(result.actions.len(), 1);
+        assert_eq!(result.actions[0].id, "s1");
+        assert_eq!(result.actions[0].command, "Get-Location");
+    }
+
+    #[test]
+    fn test_parse_valid_markdown_block() {
+        let text = format!("```json\n{}\n```", serde_json::to_string(&valid_envelope()).unwrap());
+        let result = parse(&text);
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_parse_raw_complex_powershell_envelope() {
+        let text = r#"WEBAGENT/1 SHELL
+id: report-1
+timeout_seconds: 300
+---SCRIPT---
+$html = "<div style='color:red'>Hallo</div>"
+Write-Output $html
+---END SCRIPT---"#;
+        let result = parse(text);
+        assert!(result.valid);
+        assert_eq!(result.actions[0].id, "report-1");
+        assert!(result.actions[0].command.contains("style='color:red'"));
+        assert_eq!(result.actions[0].timeout_seconds, 300.0);
+    }
+
+    #[test]
+    fn test_complex_powershell_envelope_must_be_complete() {
+        let partial = r#"WEBAGENT/1 SHELL
+id: report-1
+timeout_seconds: 300
+---SCRIPT---
+Write-Output "x""#;
+        assert!(is_possibly_truncated(partial));
+        assert!(!parse(partial).valid);
+    }
+
+    #[test]
+    fn test_nested_raw_script_envelope_is_safely_unwrapped() {
+        let envelope = r#"WEBAGENT/1 SHELL
+id: nested-1
+timeout_seconds: 120
+---SCRIPT---
+$html = @'
+<h1>Quote "Test"</h1>
+'@
+Write-Output $html
+---END SCRIPT---"#;
+        let doc = json!({
+            "protocol": "webagent/1",
+            "actions": [{"id": "nested-1", "type": "shell", "command": envelope}]
+        });
+        let result = parse(&serde_json::to_string(&doc).unwrap());
+        assert!(result.valid);
+        assert!(result.actions[0].command.starts_with("$html = @'"));
+        assert!(!result.actions[0].command.contains("WEBAGENT/1 SHELL"));
+        assert_eq!(result.actions[0].timeout_seconds, 120.0);
+    }
+
+    #[test]
+    fn test_parse_rendered_json_code_block_label() {
+        for label in &["JSON\n", "json\n", "Json\r\n"] {
+            let text = format!("{}{}", label, serde_json::to_string(&valid_envelope()).unwrap());
+            let result = parse(&text);
+            assert!(result.valid, "failed for label {:?}", label);
+            assert_eq!(result.actions[0].id, "s1");
+        }
+    }
+
+    #[test]
+    fn test_parse_rendered_deepseek_code_controls() {
+        for labels in &["json\nKopieren\nHerunterladen\n", "JSON\nCopy\nDownload\n"] {
+            let text = format!("{}{}", labels, serde_json::to_string(&valid_envelope()).unwrap());
+            let result = parse(&text);
+            assert!(result.valid, "failed for labels {:?}", labels);
+        }
+    }
+
+    #[test]
+    fn test_parse_qwen_rendered_line_numbers_and_nbsp() {
+        let rendered = format!(
+            "JSON\n1\n2\n3\n{}",
+            serde_json::to_string(&valid_envelope()).unwrap().replace(' ', "\u{00a0}")
+        );
+        let result = parse(&rendered);
+        assert!(result.valid);
+        assert_eq!(result.actions[0].id, "s1");
+    }
+
+    #[test]
+    fn test_parse_strips_leading_prose_before_json_controls() {
+        for prefix in &["Denke nach…\n", "Thinking\n", "Hier ist\n"] {
+            let rendered = format!(
+                "{}JSON\nCopy\n{}",
+                prefix,
+                serde_json::to_string(&valid_envelope()).unwrap()
+            );
+            let result = parse(&rendered);
+            assert!(result.valid, "failed for prefix {:?}", prefix);
+            assert_eq!(result.actions[0].id, "s1");
+        }
+    }
+
+    #[test]
+    fn test_parse_tolerates_thought_process_and_prose_from_chatgpt_zai_deepseek() {
+        for bad_prefix in &[
+            "Thought Process\n\n",
+            "Thought Process\njson\n",
+            "Thinking...\n\n",
+            "Thought Process\n\nVerstanden! Hier das JSON:\n",
+        ] {
+            let rendered = format!("{}{}", bad_prefix, serde_json::to_string(&valid_envelope()).unwrap());
+            let result = parse(&rendered);
+            assert!(result.valid, "failed for prefix {:?}: {}", bad_prefix, result.error);
+            assert_eq!(result.actions[0].id, "s1");
+        }
+    }
+
+    #[test]
+    fn test_repair_unescaped_windows_path_for_message_only() {
+        let rendered = r#"{"protocol":"webagent/1","actions":[{"id":"answer","type":"message","text":"Pfad: C:\Users\storax\Desktop\webagent"}]}"#;
+        let result = parse(rendered);
+        assert!(result.valid);
+        assert!(result.actions[0].text.ends_with(r"C:\Users\storax\Desktop\webagent"));
+    }
+
+    #[test]
+    fn test_never_repair_unescaped_windows_path_for_shell() {
+        let rendered = r#"{"protocol":"webagent/1","actions":[{"id":"work","type":"shell","command":"Get-Item C:\Users\storax"}]}"#;
+        assert!(!parse(rendered).valid);
+    }
+
+    #[test]
+    fn test_message_must_be_separate_after_shell() {
+        let doc = json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "work", "type": "shell", "command": "Get-Date"},
+                {"id": "answer", "type": "message", "text": "fertig"}
+            ]
+        });
+        let result = parse(&serde_json::to_string(&doc).unwrap());
+        assert!(!result.valid);
+        assert!(result.error.contains("eigene"));
+    }
+
+    #[test]
+    fn test_reject_text_outside_block() {
+        let text = format!("Hier:\n```json\n{}\n```", serde_json::to_string(&valid_envelope()).unwrap());
+        let result = parse(&text);
+        assert!(!result.valid);
+    }
+
+    #[test]
+    fn test_reject_raw_fallback() {
+        let result = parse("Get-Date");
+        assert!(!result.valid);
+    }
+
+    #[test]
+    fn test_reject_wrong_protocol() {
+        let bad = json!({"protocol": "other/1", "actions": [{"id": "x", "type": "finish"}]});
+        let result = parse(&serde_json::to_string(&bad).unwrap());
+        assert!(!result.valid);
+    }
+
+    #[test]
+    fn test_reject_missing_id() {
+        let bad = json!({
+            "protocol": "webagent/1",
+            "actions": [{"type": "finish"}]
+        });
+        let result = parse(&serde_json::to_string(&bad).unwrap());
+        assert!(!result.valid);
+    }
+
+    #[test]
+    fn test_parse_finish() {
+        let doc = json!({
+            "protocol": "webagent/1",
+            "actions": [{"id": "done", "type": "finish"}]
+        });
+        let result = parse(&serde_json::to_string(&doc).unwrap());
+        assert!(result.valid);
+        assert_eq!(result.actions[0].action_type, ActionType::Finish);
+    }
+
+    #[test]
+    fn test_finish_must_be_the_only_action() {
+        let doc = json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "work", "type": "shell", "command": "Get-Date"},
+                {"id": "done", "type": "finish"}
+            ]
+        });
+        let result = parse(&serde_json::to_string(&doc).unwrap());
+        assert!(!result.valid);
+        assert!(result.error.contains("einzige Action"));
+    }
+
+    #[test]
+    fn test_detects_possibly_truncated_streamed_json() {
+        for text in &[
+            r#"{"pr"#,
+            r#"{"protocol":"webagent/1","actions":[{"id":"x","type":"shell","command":"unterminated"#,
+            r#"{"protocol":"webagent/1","actions":["#,
+        ] {
+            assert!(is_possibly_truncated(text), "failed for text {:?}", text);
+        }
+    }
+
+    #[test]
+    fn test_truncated_message_with_windows_path_is_not_released_early() {
+        let text = r#"{"protocol":"webagent/1","actions":[{"id":"answer","type":"message","text":"Pfad C:\Users\storax"#;
+        assert!(is_possibly_truncated(text));
+    }
+
+    #[test]
+    fn test_does_not_mark_non_json_or_complete_json_as_truncated() {
+        for text in &["Denke nach…", "not json", &serde_json::to_string(&valid_envelope()).unwrap()] {
+            assert!(!is_possibly_truncated(text), "failed for text {:?}", text);
+        }
+    }
+
+    #[test]
+    fn test_format_observation_includes_action_id() {
+        let obs = format_observation("step-1", "hello", "", Some(0), false);
+        assert!(obs.contains("action_id=step-1"));
+        assert!(obs.contains("hello"));
+    }
+
+    #[test]
+    fn test_shell_timeout_accepts_numeric_range() {
+        let doc = json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "low", "type": "shell", "command": "Get-Date", "timeout_seconds": 0.1},
+                {"id": "high", "type": "shell", "command": "Get-Date", "timeout_seconds": 3600}
+            ]
+        });
+        let result = parse(&serde_json::to_string(&doc).unwrap());
+        assert!(result.valid);
+        assert_eq!(
+            result.actions.iter().map(|a| a.timeout_seconds).collect::<Vec<_>>(),
+            vec![0.1, 3600.0]
+        );
+    }
+
+    #[test]
+    fn test_shell_timeout_rejects_invalid_values() {
+        for timeout in &[
+            json!(0),
+            json!(-1),
+            json!(3600.1),
+            json!(true),
+            json!("30"),
+        ] {
+            let doc = json!({
+                "protocol": "webagent/1",
+                "actions": [
+                    {"id": "bad", "type": "shell", "command": "Get-Date", "timeout_seconds": timeout}
+                ]
+            });
+            let result = parse(&serde_json::to_string(&doc).unwrap());
+            assert!(!result.valid, "should reject timeout {:?}", timeout);
+        }
+    }
+}
