@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::run_store::{RunMeta, RunStore};
+use crate::run_store::RunMeta;
 
 /// Ergebnis des Doctor-Checks für ein einzelnes Gehirn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -699,6 +699,9 @@ mod tests {
             created_at: past,
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -726,6 +729,9 @@ mod tests {
             created_at: "2026-07-12T12:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -752,6 +758,9 @@ mod tests {
             created_at: "2026-07-12T12:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -793,6 +802,9 @@ mod tests {
             created_at: "2026-07-12T11:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -832,6 +844,9 @@ mod tests {
             created_at: past,
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -865,6 +880,9 @@ mod tests {
             created_at: "2026-07-12T10:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -891,6 +909,9 @@ mod tests {
             created_at: "2026-07-12T08:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -922,6 +943,9 @@ mod tests {
             created_at: "2026-07-09T12:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -955,6 +979,9 @@ mod tests {
             created_at: "2026-07-11T01:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
@@ -1178,6 +1205,9 @@ mod tests {
             created_at: past,
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
 
         let list_fn = || vec!["run_001".to_string()];
@@ -1223,6 +1253,9 @@ mod tests {
             created_at: "2026-07-12T10:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
+            completed_actions: 0,
+            conversation_ref: String::new(),
+            cycles: 0,
         };
         fs::write(
             run_dir.join("meta.json"),
