@@ -367,10 +367,7 @@ pub fn parse(response_text: &str) -> ParseResult {
 
     // Entferne gerenderte JSON-Labels
     let label_re = rendered_json_label_regex();
-    let text = match label_re.replace(&text, "") {
-        Ok(replaced) => replaced.trim().to_string(),
-        Err(_) => text.trim().to_string(),
-    };
+    let text = label_re.replace(&text, "").trim().to_string();
 
     // Suche nach JSON-Codeblock
     let block_re = json_block_regex();
