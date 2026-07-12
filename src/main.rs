@@ -125,13 +125,13 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
     if json {
         // JSON-Ausgabe
         match serde_json::to_string_pretty(&serde_json::json!({
-            "ok": report.ok,
+            "ok": report.ok(),
             "timestamp": report.timestamp,
-            "healthy": report.healthy_brain_ids,
-            "unhealthy": report.unhealthy_brain_ids,
+            "healthy": report.healthy_brain_ids(),
+            "unhealthy": report.unhealthy_brain_ids(),
             "brains": report.brains.iter().map(|(id, check)| {
                 (id, serde_json::json!({
-                    "healthy": check.healthy,
+                    "healthy": check.healthy(),
                     "selectors_ok": check.selectors_ok,
                     "selectors_path": check.selectors_path,
                     "selectors_mtime": check.selectors_mtime,
@@ -156,14 +156,14 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
         println!("[doctor] {}", report.timestamp);
         println!(
             "[doctor] healthy: {}",
-            if report.healthy_brain_ids.is_empty() {
+            if report.healthy_brain_ids().is_empty() {
                 "keine".to_string()
             } else {
-                report.healthy_brain_ids.join(", ")
+                report.healthy_brain_ids().join(", ")
             }
         );
-        if !report.unhealthy_brain_ids.is_empty() {
-            println!("[doctor] unhealthy: {}", report.unhealthy_brain_ids.join(", "));
+        if !report.unhealthy_brain_ids().is_empty() {
+            println!("[doctor] unhealthy: {}", report.unhealthy_brain_ids().join(", "));
         }
         println!();
 
@@ -172,7 +172,7 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
 
         for brain_id in brain_ids {
             let check = &report.brains[brain_id];
-            let status_icon = if check.healthy { "ok" } else { "PROBLEM" };
+            let status_icon = if check.healthy() { "ok" } else { "PROBLEM" };
             println!("  [{}] {}", status_icon, brain_id);
             println!(
                 "    selectors:  {} ({})",
@@ -210,7 +210,7 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
         }
     }
 
-    if report.ok { 0 } else { 2 }
+    if report.ok() { 0 } else { 2 }
 }
 
 fn cmd_maintenance_check(json: bool, pytest: bool, pytest_timeout: f64) -> i32 {
