@@ -1,12 +1,19 @@
 //! Lokaler, brain-unabhängiger Langzeitspeicher (JSON-Lines-basiert).
 
+use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+
+lazy_static! {
+    /// Globale Sperre für alle Memory-Schreiboperationen, um Race Conditions
+    /// bei parallelen Threads zu vermeiden (next_id + append müssen atomar sein).
+    static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
+}
 
 static TOKEN_RE: OnceLock<Regex> = OnceLock::new();
 
@@ -87,6 +94,9 @@ impl MemoryStore {
             .map(|s| s.to_string())
             .unwrap_or_else(|| format!("manual:{}", uuid_simple()));
 
+        // Globale Sperre für next_id + append (atomar gegen parallele Threads)
+        let _guard = WRITE_LOCK.lock().unwrap();
+
         // Prüfe, ob source bereits existiert
         if let Some(existing) = self.find_by_source(&source) {
             return Ok(existing.id);
@@ -110,6 +120,8 @@ impl MemoryStore {
 
     /// Löscht eine Erinnerung anhand ihrer ID.
     pub fn delete(&self, memory_id: u64) -> Result<bool, String> {
+        let _guard = WRITE_LOCK.lock().unwrap();
+
         let entries = self.load_all()?;
         let original_len = entries.len();
         let filtered: Vec<_> = entries.into_iter().filter(|e| e.id != memory_id).collect();
