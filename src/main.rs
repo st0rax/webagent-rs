@@ -51,6 +51,17 @@ enum Commands {
         timeout: u64,
     },
 
+    /// Live-Diagnose: echten Browser oeffnen und Login/Composer/Selektoren pruefen
+    Diagnose {
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+        #[arg(long)]
+        brain: String,
+
+        /// Headless statt sichtbar (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// Pro-Brain Diagnose: Selektoren, Profil-Lock, letzte Antwort, Recovery
     Doctor {
         /// Nur diese Gehirne prüfen (leer = alle)
@@ -114,6 +125,8 @@ fn main() {
         } => cmd_run(&brain, &task, resume.as_deref(), headless, max_cycles),
 
         Commands::Login { brain, timeout } => cmd_login(&brain, timeout),
+
+        Commands::Diagnose { brain, headless } => cmd_diagnose(&brain, headless),
 
         Commands::Doctor { brain, json } => cmd_doctor(
             if brain.is_empty() { None } else { Some(brain) },
@@ -206,6 +219,41 @@ fn cmd_login(brain: &str, timeout_secs: u64) -> i32 {
         }
         Err(e) => {
             eprintln!("[login] {brain}: Fehler: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_diagnose(brain: &str, headless: bool) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let mut backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[diagnose] {e}");
+            return 2;
+        }
+    };
+    eprintln!("[diagnose] {brain}: starte Browser (headless={headless})…");
+    match backend.live_diagnose(headless) {
+        Ok(d) => {
+            let ok = |b: bool| if b { "ok" } else { "FEHLT" };
+            println!("[diagnose] {}", d.brain_id);
+            println!("    session_state:  {:?}", d.session_state);
+            println!("    logged_in:      {}", d.logged_in);
+            println!("    composer:       {}", ok(d.composer_found));
+            println!("    assistant_msgs: {}", d.assistant_count);
+            println!("    cloudflare:     {}", d.cloudflare);
+            println!("    url:            {}", d.url);
+            // Healthy = eingeloggt, Composer da, keine Cloudflare-Blockade.
+            if d.logged_in && d.composer_found && !d.cloudflare {
+                0
+            } else {
+                1
+            }
+        }
+        Err(e) => {
+            eprintln!("[diagnose] {brain}: Fehler: {e}");
             1
         }
     }

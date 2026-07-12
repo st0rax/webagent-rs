@@ -79,6 +79,18 @@ fn classify_completion(
 }
 
 /// Web-Chat-Backend für einen Provider (chatgpt, claude, …).
+/// Ergebnis einer Live-Diagnose (echter Browser gegen die Provider-Seite).
+#[derive(Debug, Clone)]
+pub struct LiveDiagnosis {
+    pub brain_id: String,
+    pub url: String,
+    pub cloudflare: bool,
+    pub logged_in: bool,
+    pub composer_found: bool,
+    pub assistant_count: i32,
+    pub session_state: SessionState,
+}
+
 pub struct WebBrainBackend {
     brain_id: String,
     url: String,
@@ -318,6 +330,26 @@ return {{count:count,text:text,stop:stop}};}})()"#,
             }
             std::thread::sleep(Duration::from_secs(2));
         }
+    }
+
+    /// Live-Diagnose: startet den Browser, prüft am echten DOM Login-Zustand,
+    /// Composer-/Assistant-Selektoren und Cloudflare, und schließt wieder. Deckt
+    /// Selektor-Drift auf, die `doctor` (read-only) nicht sehen kann.
+    pub fn live_diagnose(&mut self, headless: bool) -> Result<LiveDiagnosis, String> {
+        self.start(headless)?;
+        self.dismiss_consent();
+        let session_state = self.ensure_ready(15.0).unwrap_or(SessionState::Error);
+        let diag = LiveDiagnosis {
+            brain_id: self.brain_id.clone(),
+            url: self.get_conversation_ref().unwrap_or_default(),
+            cloudflare: self.is_cloudflare_blocked(),
+            logged_in: self.is_logged_in(),
+            composer_found: self.any_visible("composer"),
+            assistant_count: self.assistant_count(),
+            session_state,
+        };
+        let _ = self.stop();
+        Ok(diag)
     }
 }
 
