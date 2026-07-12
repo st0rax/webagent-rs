@@ -10,9 +10,10 @@ Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: plattformunabhä
 CDP-Browsertreiber statt Playwright.
 
 > **Status:** Kern vollständig portiert und getestet (`cargo test` grün). Der
-> Browsertreiber ist live gegen Chromium verifiziert. `login`, `run`, `diagnose`,
-> `doctor`, `watchdog` und `maintenance-check` sind verdrahtet. Ein interaktiver
-> `repl` (Session über mehrere Turns offen halten) ist noch offen.
+> Browsertreiber ist live gegen Chromium verifiziert. Alle Befehle sind
+> verdrahtet: `login`, `run`, `repl`, `diagnose`, `doctor`, `watchdog`,
+> `maintenance-check`. (Die `repl` startet in v1 den Browser pro Turn neu — eine
+> über Turns offene Session ist eine mögliche spätere Optimierung.)
 
 ## Architektur
 
@@ -59,6 +60,7 @@ Die Dependencies sind bewusst rein-Rust (keine C-Toolchain nötig): `serde`,
 ```
 webagent login    --brain <id> [--timeout <sek>]
 webagent run      --brain <id> --task "<aufgabe>" [--headless] [--max-cycles N] [--resume <run_id>]
+webagent repl     --brain <id> [--headless]
 webagent diagnose --brain <id> [--headless]
 webagent doctor   [--brain <id>]... [--json]
 webagent watchdog [--repair] [--json]
