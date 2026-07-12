@@ -16,6 +16,12 @@ use std::time::{Duration, Instant};
 pub trait ShellExecutor {
     /// Führt einen Shell-Befehl aus und gibt stdout/stderr/exit_code zurück.
     fn execute(&self, command: &str, timeout_seconds: f64) -> ExecutionResult;
+
+    /// Lebenszyklus-Hooks wie im Python-Original (Default: No-op). Eine
+    /// prozess-persistente Shell-Impl kann sie überschreiben.
+    fn start(&self) {}
+    fn stop(&self) {}
+    fn send_interrupt(&self) {}
 }
 
 /// Ergebnis einer Shell-Ausführung.

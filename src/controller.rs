@@ -41,6 +41,7 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     max_cycles: usize,
     run_store: RunStore,
     memory: MemoryStore,
+    runs_dir: std::path::PathBuf,
     meta: Option<RunMeta>,
     completed_actions: HashMap<String, String>,
     incomplete_retries: usize,
@@ -53,6 +54,17 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         let data_dir = env::current_dir()
             .unwrap_or_else(|_| env::temp_dir())
             .join("data");
+        Self::with_data_dir(brain, executor, max_cycles, data_dir)
+    }
+
+    /// Wie `new`, aber mit explizitem Daten-Verzeichnis. Ermöglicht Test-Isolation
+    /// (statt des Python-`monkeypatch`) und erlaubt `main`, den Datenpfad zu setzen.
+    pub fn with_data_dir(
+        brain: B,
+        executor: E,
+        max_cycles: usize,
+        data_dir: std::path::PathBuf,
+    ) -> Self {
         let runs_dir = data_dir.join("runs");
         let logs_dir = data_dir.join("logs");
         let memory_path = data_dir.join("memory.jsonl");
@@ -61,8 +73,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             brain,
             executor,
             max_cycles,
-            run_store: RunStore::new(runs_dir, logs_dir),
+            run_store: RunStore::new(runs_dir.clone(), logs_dir),
             memory: MemoryStore::new(memory_path),
+            runs_dir,
             meta: None,
             completed_actions: HashMap::new(),
             incomplete_retries: 0,
@@ -80,8 +93,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     }
 
     /// Führt einen einzelnen Brain-Turn aus.
-    pub fn run_once(&mut self, message: &str, transcript: Option<&mut Transcript>) -> BrainTurn {
-        if let Some(t) = transcript {
+    pub fn run_once(&mut self, message: &str, mut transcript: Option<&mut Transcript>) -> BrainTurn {
+        if let Some(t) = transcript.as_deref_mut() {
             let _ = t.append("user", message, HashMap::new());
         }
 
@@ -105,7 +118,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             && protocol::is_possibly_truncated(&response.text)
             && rereads < 3
         {
-            if let Some(t) = transcript {
+            if let Some(t) = transcript.as_deref_mut() {
                 let mut extra = HashMap::new();
                 extra.insert("fragment".to_string(), serde_json::Value::String(response.text.clone()));
                 let _ = t.append(
@@ -121,7 +134,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             rereads += 1;
         }
 
-        if let Some(t) = transcript {
+        if let Some(t) = transcript.as_deref_mut() {
             let mut extra = HashMap::new();
             extra.insert("complete".to_string(), serde_json::Value::String(response.generation_complete.to_string()));
             extra.insert("status".to_string(), serde_json::Value::String(response.backend_status.clone()));
@@ -439,11 +452,14 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
     /// Resume: Initial Turn (restore oder fallback).
     fn resume_initial_turn(&mut self, transcript: &mut Transcript) -> BrainTurn {
-        let meta = self.meta.as_ref().unwrap();
+        // Benoetigte Werte vorab kopieren, damit kein langlebiger &self.meta-Borrow
+        // die spaeteren &mut self-Aufrufe (run_once) blockiert.
+        let conv_ref = self.meta.as_ref().unwrap().conversation_ref.clone();
+        let task = self.meta.as_ref().unwrap().task.clone();
         let mut restored = false;
 
-        if let Some(ref conv_ref) = meta.conversation_ref {
-            restored = self.brain.restore_conversation(conv_ref).unwrap_or(false);
+        if let Some(cr) = conv_ref.as_ref() {
+            restored = self.brain.restore_conversation(cr).unwrap_or(false);
         }
 
         if restored && self.brain.ensure_ready(30.0).ok() == Some(crate::brain::SessionState::Ready) {
@@ -451,7 +467,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 "system",
                 &format!(
                     "resume_restored conversation_ref={}",
-                    meta.conversation_ref.as_ref().unwrap()
+                    conv_ref.as_ref().unwrap()
                 ),
                 HashMap::new(),
             );
@@ -469,7 +485,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         self.brain.new_chat();
         let tail = transcript.recovery_tail(RESUME_TRANSCRIPT_CHAR_BUDGET).unwrap_or_default();
         let _ = transcript.append("system", "resume_fallback=new_chat+transcript", HashMap::new());
-        self.run_once(&resume_recovery_prompt(&meta.task, &tail), Some(transcript))
+        self.run_once(&resume_recovery_prompt(&task, &tail), Some(transcript))
     }
 
     /// Hauptschleife: run().
@@ -480,10 +496,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         resume_id: Option<&str>,
         headless: bool,
     ) -> Result<RunMeta, String> {
-        let runs_dir = env::current_dir()
-            .unwrap_or_else(|_| env::temp_dir())
-            .join("data")
-            .join("runs");
+        let runs_dir = self.runs_dir.clone();
 
         let (mut meta, mut transcript, task) = if let Some(rid) = resume_id {
             let meta = self.run_store.load(rid)?;
@@ -596,7 +609,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         let mut last_heartbeat = loop_started;
         let heartbeat_interval = Duration::from_secs_f64(CONTROLLER_HEARTBEAT_INTERVAL_SECONDS);
 
-        while !finished && cycle < self.max_cycles {
+        while !finished && (cycle as usize) < self.max_cycles {
             cycle += 1;
             meta.cycles = cycle;
             self.run_store.save(&meta).ok();
@@ -635,6 +648,18 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     self.brain.stop().ok();
                     return Ok(final_meta);
                 }
+            }
+        }
+
+        // Die Helfer (persist_conversation_ref, record_completed_action,
+        // Observation-/Loop-Zähler) mutieren self.meta. Im Python-Original ist
+        // self._meta dasselbe Objekt wie meta; hier ist es ein Clone, daher die
+        // helfer-eigenen Felder vor dem finalen Speichern ins lokale meta spiegeln.
+        if let Some(sm) = self.meta.take() {
+            meta.conversation_ref = sm.conversation_ref;
+            meta.completed_actions = sm.completed_actions;
+            for (k, v) in sm.extra {
+                meta.extra.entry(k).or_insert(v);
             }
         }
 
@@ -683,6 +708,20 @@ mod tests {
     use crate::executor::ExecutionResult;
     use std::cell::RefCell;
     use std::rc::Rc;
+
+    /// Eindeutiges Daten-Verzeichnis pro Testaufruf — Tests laufen parallel und
+    /// dürfen sich nicht dieselben runs/memory teilen (Ersatz für Python-monkeypatch).
+    fn unique_data_dir() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let id = N.fetch_add(1, Ordering::Relaxed);
+        env::temp_dir().join(format!(
+            "test_controller_{}_{}_{}",
+            std::process::id(),
+            crate::now_run_stamp(),
+            id
+        ))
+    }
 
     struct MockBrain {
         brain_id: String,
@@ -857,14 +896,13 @@ mod tests {
         *conv_ref.borrow_mut() = Some("https://example.test/chat/persisted".to_string());
 
         let executor = MockExecutor::new();
-        let mut controller = AgentController::new(brain, executor, 5);
+        let data_dir = unique_data_dir();
+        let mut controller =
+            AgentController::with_data_dir(brain, executor, 5, data_dir.clone());
 
         let meta = controller.run("Testaufgabe", "mock", None, false).unwrap();
         assert_eq!(meta.status, "done");
 
-        let data_dir = env::current_dir()
-            .unwrap_or_else(|_| env::temp_dir())
-            .join("data");
         let runs_dir = data_dir.join("runs");
         let logs_dir = data_dir.join("logs");
         let store = RunStore::new(runs_dir, logs_dir);
@@ -880,7 +918,8 @@ mod tests {
         let brain = MockBrain::new()
             .with_responses(vec![&finish_response()], vec![true]);
         let executor = MockExecutor::new();
-        let mut controller = AgentController::new(brain, executor, 5);
+        let mut controller =
+            AgentController::with_data_dir(brain, executor, 5, unique_data_dir());
 
         let meta = controller.run("Merke diesen Testlauf", "mock", None, false).unwrap();
 
@@ -913,7 +952,8 @@ mod tests {
         let executor = MockExecutor::new();
         let commands = executor.commands.clone();
 
-        let mut controller = AgentController::new(brain, executor, 10);
+        let mut controller =
+            AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
         let meta = controller.run("Dedupe", "mock", None, false).unwrap();
 
         assert_eq!(meta.status, "done");
