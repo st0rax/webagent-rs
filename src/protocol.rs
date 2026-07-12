@@ -1,6 +1,7 @@
 //! Strukturiertes Aktionsprotokoll webagent/1.
 
 use regex::Regex;
+use fancy_regex::Regex as FancyRegex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::OnceLock;
@@ -65,10 +66,10 @@ fn json_block_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"```(?:json)?\s*(\{.*\})\s*```").unwrap())
 }
 
-fn rendered_json_label_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
+fn rendered_json_label_regex() -> &'static FancyRegex {
+    static RE: OnceLock<FancyRegex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(
+        FancyRegex::new(
             r"(?i)^json\s*\r?\n(?:(?:copy|kopieren)\s*\r?\n)?(?:(?:download|herunterladen)\s*\r?\n)?(?=\s*\{)",
         )
         .unwrap()
@@ -118,13 +119,14 @@ fn strip_leading_prose(text: &str) -> &str {
 
 fn extract_first_protocol_json(text: &str) -> Option<String> {
     // Suche nach einem Top-Level-Objekt mit "protocol": "webagent/1"
+    // Kein Lookahead nötig, einfaches Pattern
     let re = Regex::new(
-        r#"(?is)(\{\s*"protocol"\s*:\s*"webagent/1"[\s\S]*?\n\s*\}\s*)"#,
+        r#"(?is)\{\s*"protocol"\s*:\s*"webagent/1"[^}]*\}"#,
     )
     .unwrap();
     
-    if let Some(cap) = re.captures(text) {
-        let candidate = cap[1].trim();
+    if let Some(mat) = re.find(text) {
+        let candidate = mat.as_str().trim();
         if let Ok(obj) = serde_json::from_str::<Value>(candidate) {
             if obj.get("protocol").and_then(|v| v.as_str()) == Some(PROTOCOL_VERSION) {
                 return Some(candidate.to_string());
@@ -365,7 +367,10 @@ pub fn parse(response_text: &str) -> ParseResult {
 
     // Entferne gerenderte JSON-Labels
     let label_re = rendered_json_label_regex();
-    let text = label_re.replace(&text, "").trim().to_string();
+    let text = match label_re.replace(&text, "") {
+        Ok(replaced) => replaced.trim().to_string(),
+        Err(_) => text.trim().to_string(),
+    };
 
     // Suche nach JSON-Codeblock
     let block_re = json_block_regex();
