@@ -98,11 +98,41 @@ fn cmd_run(
     headless: bool,
     max_cycles: u32,
 ) -> i32 {
-    eprintln!("[run] Noch nicht verdrahtet: Browser-Backends fehlen.");
-    eprintln!("[run] brain={}, task={}, resume={:?}, headless={}, max_cycles={}",
-        brain, task, resume, headless, max_cycles);
-    eprintln!("[run] Bitte verwende vorerst die Python-Version (python -m webagent.cli run ...)");
-    1
+    use webagent::browser::WebBrainBackend;
+    use webagent::controller::AgentController;
+    use webagent::executor::PlatformShellExecutor;
+
+    let backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[run] {e}");
+            return 2;
+        }
+    };
+    let executor = PlatformShellExecutor::new();
+    let mut controller = AgentController::new(backend, executor, max_cycles as usize);
+
+    eprintln!(
+        "[run] brain={} headless={} max_cycles={} — starte Chromium via CDP…",
+        brain, headless, max_cycles
+    );
+    match controller.run(task, brain, resume, headless) {
+        Ok(meta) => {
+            println!(
+                "[run] status={} run_id={} cycles={}",
+                meta.status, meta.run_id, meta.cycles
+            );
+            if meta.status == "done" {
+                0
+            } else {
+                1
+            }
+        }
+        Err(e) => {
+            eprintln!("[run] Fehler: {e}");
+            1
+        }
+    }
 }
 
 fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {

@@ -1,0 +1,65 @@
+{
+  "composer": [
+    "div[contenteditable='true'][role='textbox']",
+    "div[role='textbox'][contenteditable='true']",
+    "div.ProseMirror[contenteditable='true']",
+    "div[data-placeholder*='Message' i]",
+    "p[data-placeholder*='Message' i]",
+    "div[contenteditable='true']",
+    "fieldset div[contenteditable='true']",
+    "textarea[placeholder*='Claude' i]",
+    "[contenteditable='true']",
+    "div[role='textbox']"
+  ],
+  "send_button": [
+    "button[aria-label='Send message']",
+    "button[aria-label='Send Message']",
+    "button[aria-label*='Send message' i]",
+    "button[aria-label='Nachricht senden']",
+    "button[data-testid='send-button']",
+    "fieldset button[type='submit']",
+    "button[type='submit']"
+  ],
+  "stop_button": [
+    "button[aria-label='Stop response']",
+    "button[aria-label='Stop Response']",
+    "button[aria-label='Stop generating']",
+    "button[data-testid='stop-button']",
+    "button:has-text('Stop response')"
+  ],
+  "assistant_message": [
+    "div[data-testid='assistant-message']",
+    "div[data-is-streaming='true']",
+    "div.font-claude-response",
+    "div[class*='font-claude-response']"
+  ],
+  "new_chat_button": [
+    "a[href='/new']",
+    "button[aria-label='New chat']",
+    "button[data-testid='new-chat-button']",
+    "a:has-text('New chat')",
+    "button:has-text('New chat')"
+  ],
+  "login_button": [
+    "a[href*='/login']",
+    "button:has-text('Log in')",
+    "a:has-text('Log in')",
+    "button:has-text('Sign in')",
+    "a:has-text('Sign in')",
+    "button:has-text('Anmelden')"
+  ],
+  "login_indicator": [
+    "div.ProseMirror[contenteditable='true']",
+    "div[role='textbox'][contenteditable='true']",
+    "button[aria-label='Send message']",
+    "button[aria-label='Send Message']"
+  ],
+  "consent_reject_button": [
+    "button[data-testid='consent-reject']",
+    "button:has-text('Reject non-essential cookies')",
+    "button:has-text('Reject optional cookies')",
+    "button:has-text('Nur notwendige Cookies')",
+    "button:has-text('Optionale Cookies ablehnen')",
+    "button:has-text('Alle Cookies ablehnen')"
+  ]
+}

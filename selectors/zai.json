@@ -1,0 +1,41 @@
+{
+  "composer": [
+    "#chat-input",
+    "textarea#chat-input"
+  ],
+  "send_button": [
+    "#send-message-button",
+    "button#send-message-button"
+  ],
+  "stop_button": [
+    "#stop-response-button",
+    "button#stop-response-button",
+    "button:has-text('Stop')",
+    "button[aria-label*='Stop' i]"
+  ],
+  "assistant_message": [
+    "div.chat-assistant .prose",
+    "div.chat-assistant .markdown-prose",
+    "div.chat-assistant"
+  ],
+  "new_chat_button": [
+    "#sidebar-new-chat-button",
+    "button#sidebar-new-chat-button",
+    "button:has-text('New Chat')",
+    "button:has-text('New chat')",
+    "button:has-text('新建')"
+  ],
+  "login_button": [
+    "button:has-text('Continue with Google')",
+    "button:has-text('Continue with Email')",
+    "button:has-text('Continue with Github')",
+    "button:has-text('Skip for now')",
+    "button:has-text('Sign in')",
+    "button:has-text('Log in')",
+    "button:has-text('登录')"
+  ],
+  "login_indicator": [
+    "#sidebar-new-chat-button",
+    "button#sidebar-new-chat-button"
+  ]
+}

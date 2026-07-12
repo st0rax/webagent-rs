@@ -6,6 +6,7 @@
 
 pub mod brain;
 pub mod browser;
+pub mod cdp;
 pub mod config;
 pub mod controller;
 pub mod doctor;

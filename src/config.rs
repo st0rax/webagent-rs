@@ -70,94 +70,54 @@ pub fn use_shared_browser() -> bool {
         == "1"
 }
 
-/// Brain-Definitionen: ID -> {url, selectors, profile_dir}
+/// selectors/-Verzeichnis (ROOT/selectors/<brain>.json), wie SELECTORS_DIR in config.py.
+pub fn selectors_dir() -> PathBuf {
+    root_dir().join("selectors")
+}
+
+/// Statische Brain-Tabelle: (id, url) — exakt wie das BRAINS-Dict in config.py.
+pub const BRAIN_TABLE: &[(&str, &str)] = &[
+    ("chatgpt", "https://chatgpt.com/"),
+    ("deepseek", "https://chat.deepseek.com/"),
+    ("kimi", "https://www.kimi.com/"),
+    ("gemini", "https://gemini.google.com/app"),
+    ("qwen", "https://chat.qwen.ai/"),
+    ("claude", "https://claude.ai/new"),
+    ("mistral", "https://chat.mistral.ai/chat"),
+    ("zai", "https://chat.z.ai/"),
+];
+
+/// Brain-Definitionen: ID -> {url, selectors, profile_dir}.
 ///
-/// Portiert aus BRAINS-Dict in config.py. Selektoren-Pfade sind relativ zu src/.
+/// Portiert aus BRAINS-Dict in config.py. Selektoren liegen unter
+/// ROOT/selectors/<brain>.json; jedes Brain erhaelt ein eigenes Profil unter
+/// profiles/<brain> (Referenzprofil-Ansatz), das doctor prueft.
 pub fn brains() -> HashMap<String, HashMap<String, String>> {
-    let src = src_dir();
+    let sel = selectors_dir();
     let profiles = profiles_dir();
-
     let mut brains = HashMap::new();
-
-    // ChatGPT
-    let mut chatgpt = HashMap::new();
-    chatgpt.insert("url".to_string(), "https://chatgpt.com/".to_string());
-    chatgpt.insert(
-        "selectors".to_string(),
-        src.join("webagent/brains/chatgpt_selectors.json")
-            .to_string_lossy()
-            .to_string(),
-    );
-    chatgpt.insert(
-        "profile_dir".to_string(),
-        profiles.join("chatgpt").to_string_lossy().to_string(),
-    );
-    brains.insert("chatgpt".to_string(), chatgpt);
-
-    // Claude
-    let mut claude = HashMap::new();
-    claude.insert("url".to_string(), "https://claude.ai/new".to_string());
-    claude.insert(
-        "selectors".to_string(),
-        src.join("webagent/brains/claude_selectors.json")
-            .to_string_lossy()
-            .to_string(),
-    );
-    claude.insert(
-        "profile_dir".to_string(),
-        profiles.join("claude").to_string_lossy().to_string(),
-    );
-    brains.insert("claude".to_string(), claude);
-
-    // DeepSeek
-    let mut deepseek = HashMap::new();
-    deepseek.insert("url".to_string(), "https://chat.deepseek.com/".to_string());
-    deepseek.insert(
-        "selectors".to_string(),
-        src.join("webagent/brains/deepseek_selectors.json")
-            .to_string_lossy()
-            .to_string(),
-    );
-    deepseek.insert(
-        "profile_dir".to_string(),
-        profiles.join("deepseek").to_string_lossy().to_string(),
-    );
-    brains.insert("deepseek".to_string(), deepseek);
-
-    // Gemini
-    let mut gemini = HashMap::new();
-    gemini.insert(
-        "url".to_string(),
-        "https://gemini.google.com/app".to_string(),
-    );
-    gemini.insert(
-        "selectors".to_string(),
-        src.join("webagent/brains/gemini_selectors.json")
-            .to_string_lossy()
-            .to_string(),
-    );
-    gemini.insert(
-        "profile_dir".to_string(),
-        profiles.join("gemini").to_string_lossy().to_string(),
-    );
-    brains.insert("gemini".to_string(), gemini);
-
-    // Kimi
-    let mut kimi = HashMap::new();
-    kimi.insert("url".to_string(), "https://kimi.moonshot.cn/".to_string());
-    kimi.insert(
-        "selectors".to_string(),
-        src.join("webagent/brains/kimi_selectors.json")
-            .to_string_lossy()
-            .to_string(),
-    );
-    kimi.insert(
-        "profile_dir".to_string(),
-        profiles.join("kimi").to_string_lossy().to_string(),
-    );
-    brains.insert("kimi".to_string(), kimi);
-
+    for (id, url) in BRAIN_TABLE {
+        let mut b = HashMap::new();
+        b.insert("url".to_string(), url.to_string());
+        b.insert(
+            "selectors".to_string(),
+            sel.join(format!("{id}.json")).to_string_lossy().to_string(),
+        );
+        b.insert(
+            "profile_dir".to_string(),
+            profiles.join(id).to_string_lossy().to_string(),
+        );
+        brains.insert(id.to_string(), b);
+    }
     brains
+}
+
+/// Laedt die Selektor-JSON eines Brains (wie config.load_selectors in Python).
+pub fn load_selectors(brain_id: &str) -> std::io::Result<serde_json::Value> {
+    let path = selectors_dir().join(format!("{brain_id}.json"));
+    let content = std::fs::read_to_string(path)?;
+    serde_json::from_str(&content)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
 }
 
 /// Gibt die Liste aller verfügbaren Brain-IDs zurück (sortiert).

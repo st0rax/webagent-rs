@@ -1,0 +1,35 @@
+{
+  "composer": [
+    "div#prompt-textarea",
+    "textarea[data-id='root']",
+    "div[contenteditable='true']"
+  ],
+  "send_button": [
+    "button[data-testid='send-button']",
+    "button[aria-label='Send prompt']"
+  ],
+  "stop_button": [
+    "button[data-testid='stop-button']",
+    "button[aria-label='Stop streaming']",
+    "button[aria-label='Stop generating']",
+    "button[aria-label='Generierung beenden']",
+    "button[aria-label*='Stop']",
+    "button[aria-label*='beenden']"
+  ],
+  "assistant_message": [
+    "div[data-message-author-role='assistant']"
+  ],
+  "new_chat_button": [
+    "a[href='/']",
+    "button[data-testid='new-chat-button']"
+  ],
+  "login_button": [
+    "button[data-testid='login-button']",
+    "text=Anmelden",
+    "text=Log in"
+  ],
+  "login_indicator": [
+    "div#prompt-textarea",
+    "textarea[data-id='root']"
+  ]
+}

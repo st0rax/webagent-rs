@@ -16,6 +16,9 @@ regex = "1"
 fancy-regex = "0.14"
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 lazy_static = "1.5"
+# WebSocket-Client fuer das Chrome DevTools Protocol (ws:// zu localhost, kein TLS
+# noetig -> keine C-Toolchain). Nur der Protokoll-/Handshake-Teil.
+tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
 
 [lib]
 name = "webagent"

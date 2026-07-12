@@ -1,0 +1,35 @@
+{
+  "composer": [
+    "textarea",
+    "div[contenteditable='true']",
+    "div.ds-editor textarea"
+  ],
+  "send_button": [
+    "button[type='submit']",
+    "button[aria-label*='Send']",
+    "button:has(svg)"
+  ],
+  "stop_button": [
+    "button[aria-label*='Stop']",
+    "button:has-text('Stop')"
+  ],
+  "assistant_message": [
+    "div.ds-markdown",
+    "div[class*='message'] div.markdown",
+    "div[data-role='assistant']"
+  ],
+  "new_chat_button": [
+    "a[href='/']",
+    "button:has-text('New Chat')",
+    "button:has-text('Neuer Chat')"
+  ],
+  "login_button": [
+    "text=Log in",
+    "text=Anmelden",
+    "button:has-text('Sign in')"
+  ],
+  "login_indicator": [
+    "textarea",
+    "div[contenteditable='true']"
+  ]
+}

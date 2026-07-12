@@ -1,0 +1,65 @@
+{
+  "composer": [
+    "div[data-lexical-editor=\"true\"]",
+    "div[contenteditable=\"true\"][data-lexical-editor]",
+    "div[contenteditable=\"true\"]",
+    "div[role='textbox']",
+    "div.km-editor",
+    "div[class*='chat-input'] [contenteditable]",
+    "div[class*='InputArea'] [contenteditable]",
+    "textarea"
+  ],
+  "send_button": [
+    "button[aria-label*='Send' i]",
+    "button[aria-label*='send' i]",
+    "button[type='submit']",
+    "button:has-text('Send')",
+    "button:has-text('发送')"
+  ],
+  "stop_button": [
+    "button[aria-label*='Stop' i]",
+    "button[aria-label*='stop' i]",
+    "button:has-text('Stop')",
+    "button:has-text('停止')",
+    "button:has-text('停止生成')",
+    "button:has-text('暂停')",
+    "button[class*='stop' i]"
+  ],
+  "assistant_message": [
+    "div.markdown",
+    "div[class*='chat-message-assistant'] .prose",
+    "div[class*='assistant-message'] .prose",
+    "div[class*='chat-message-assistant']",
+    "div[class*='assistant-message']",
+    "div[data-role='assistant']",
+    "div[class*='ai-message']",
+    "div[class*='chat-message']:not([class*='user'])"
+  ],
+  "new_chat_button": [
+    "button:has-text('New chat')",
+    "button:has-text('Neuer Chat')",
+    "button:has-text('New')",
+    "button:has-text('新建')",
+    "a[href*='/new']",
+    "button[aria-label*='new' i]",
+    "button[class*='new-chat']"
+  ],
+  "login_button": [
+    "button:has-text('Log in')",
+    "button:has-text('Sign in')",
+    "button:has-text('登录')",
+    "button:has-text('Anmelden')",
+    "a:has-text('Log in')",
+    "a:has-text('Sign in')",
+    "a:has-text('登录')",
+    "button[class*='login' i]:not([class*='user' i])",
+    "button[class*='sign-in' i]"
+  ],
+  "login_indicator": [
+    "nav[class*='sidebar']",
+    "div[class*='user-info']",
+    "div[class*='avatar']",
+    "button[class*='user' i]",
+    "a[href*='/settings']"
+  ]
+}

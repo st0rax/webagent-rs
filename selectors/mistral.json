@@ -1,0 +1,57 @@
+{
+  "composer": [
+    "div.ProseMirror[contenteditable='true']",
+    "textarea[placeholder*='Ask' i]",
+    "textarea[aria-label*='message' i]",
+    "div[role='textbox'][contenteditable='true']"
+  ],
+  "send_button": [
+    "button[data-testid='send-button']",
+    "button[aria-label='Send message']",
+    "button[aria-label='Send']",
+    "button[aria-label='Senden']"
+  ],
+  "dialog_dismiss_button": [
+    "div[role='dialog'][data-state='open'] button:has-text('Got it')",
+    "div[role='dialog'][data-state='open'] button:has-text('Continue')",
+    "div[role='dialog'][data-state='open'] button:has-text('OK')",
+    "div[role='dialog'][data-state='open'] button:has-text('Close')",
+    "div[role='dialog'][data-state='open'] button:has-text('Schließen')",
+    "div[role='dialog'][data-state='open'] button[aria-label='Close']"
+  ],
+  "consent_reject_button": [
+    "#didomi-notice-disagree-button",
+    "button:has-text('Continue without accepting')",
+    "button:has-text('Reject all')",
+    "button:has-text('Tout refuser')"
+  ],
+  "stop_button": [
+    "button[data-testid='stop-button']",
+    "button[aria-label='Stop generating']",
+    "button[aria-label='Stop generation']"
+  ],
+  "assistant_message": [
+    "[data-message-author-role='assistant']",
+    "[data-testid='assistant-message']",
+    "article[data-role='assistant']",
+    "div.prose"
+  ],
+  "new_chat_button": [
+    "a[href='/chat']",
+    "button[aria-label='New chat']",
+    "button:has-text('New chat')",
+    "button:has-text('Nouvelle discussion')"
+  ],
+  "login_button": [
+    "a[href*='/login']",
+    "button:has-text('Log in')",
+    "button:has-text('Sign in')",
+    "button:has-text('Se connecter')"
+  ],
+  "login_indicator": [
+    "div.ProseMirror[contenteditable='true']",
+    "textarea[placeholder*='Ask' i]",
+    "textarea[aria-label*='message' i]",
+    "div[role='textbox'][contenteditable='true']"
+  ]
+}
