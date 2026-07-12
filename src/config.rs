@@ -127,6 +127,26 @@ pub fn available_brain_ids() -> Vec<String> {
     ids
 }
 
+/// Deterministischer Chrome-Remote-Debugging-Port je Brain (kollisionsarm).
+/// Basisport via `WEBAGENT_DEBUG_PORT_BASE` überschreibbar (Standard 9222).
+pub fn debug_port(brain_id: &str) -> u16 {
+    let base: u16 = env::var("WEBAGENT_DEBUG_PORT_BASE")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(9222);
+    base.wrapping_add((fnv1a(brain_id) % 400) as u16)
+}
+
+/// FNV-1a-Hash (gemeinfrei) für die stabile Port-Zuteilung.
+fn fnv1a(s: &str) -> u32 {
+    let mut h: u32 = 2166136261;
+    for b in s.bytes() {
+        h ^= b as u32;
+        h = h.wrapping_mul(16777619);
+    }
+    h
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,6 +181,17 @@ mod tests {
         let mut sorted = ids.clone();
         sorted.sort();
         assert_eq!(ids, sorted);
+    }
+
+    #[test]
+    fn test_debug_port_deterministic_and_in_range() {
+        let p1 = debug_port("chatgpt");
+        assert_eq!(p1, debug_port("chatgpt"), "deterministisch");
+        assert!((9222..9622).contains(&p1), "in Range: {p1}");
+        // Die 8 konfigurierten Brains sollten großteils verschiedene Ports haben.
+        let ports: std::collections::HashSet<u16> =
+            BRAIN_TABLE.iter().map(|(id, _)| debug_port(id)).collect();
+        assert!(ports.len() >= 6, "zu viele Port-Kollisionen: {ports:?}");
     }
 
     #[test]

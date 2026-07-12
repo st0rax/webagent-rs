@@ -113,8 +113,8 @@ impl WebBrainBackend {
         let profile_dir = PathBuf::from(spec.get("profile_dir").cloned().unwrap_or_default());
         let selectors = crate::config::load_selectors(brain_id)
             .map_err(|e| format!("Selektoren nicht ladbar: {e}"))?;
-        // Debug-Port deterministisch je Brain, um Kollisionen zu vermeiden.
-        let port = 9222 + (stable_hash(brain_id) % 400) as u16;
+        // Debug-Port deterministisch je Brain (zentral in config, env-überschreibbar).
+        let port = crate::config::debug_port(brain_id);
         Ok(Self {
             brain_id: brain_id.to_string(),
             url,
@@ -351,15 +351,6 @@ return {{count:count,text:text,stop:stop}};}})()"#,
         let _ = self.stop();
         Ok(diag)
     }
-}
-
-fn stable_hash(s: &str) -> u32 {
-    let mut h: u32 = 2166136261;
-    for b in s.bytes() {
-        h ^= b as u32;
-        h = h.wrapping_mul(16777619);
-    }
-    h
 }
 
 impl BrainBackend for WebBrainBackend {
@@ -738,6 +729,23 @@ mod tests {
         assert_eq!(unstable, Completion::Continue);
         let stable = classify_completion("fertiger Text", false, false, false, STABILITY_SECONDS + 0.1);
         assert_eq!(stable, Completion::Complete);
+    }
+
+    #[test]
+    fn js_scan_wraps_body_and_default() {
+        let js = WebBrainBackend::js_scan("[\"a.b\"]", "return 1;", "0");
+        assert!(js.contains("var S=[\"a.b\"]"), "js={js}");
+        assert!(js.contains("return 1;"));
+        assert!(js.trim_end().ends_with("return 0;})()"), "js={js}");
+    }
+
+    #[test]
+    fn sel_js_uses_fallback_when_key_missing() {
+        let b = WebBrainBackend::from_config("chatgpt").unwrap();
+        let composer = b.sel_js("composer", &["div.prose"]);
+        assert!(composer.starts_with('[') && composer.len() > 2);
+        let fb = b.sel_js("does_not_exist_key", &["div.fallback"]);
+        assert!(fb.contains("div.fallback"), "fb={fb}");
     }
 
     #[test]
