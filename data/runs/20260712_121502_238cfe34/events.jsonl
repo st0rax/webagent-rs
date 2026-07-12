@@ -1,9 +1,0 @@
-{"payload":{"status":"running"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.420415+00:00","type":"created"}
-{"payload":{"status":"running"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.455331+00:00","type":"meta_saved"}
-{"payload":{"status":"running"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.508435+00:00","type":"meta_saved"}
-{"payload":{"status":"running"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.526013+00:00","type":"meta_saved"}
-{"payload":{"status":"running"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.568089+00:00","type":"meta_saved"}
-{"payload":{"status":"running"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.633030+00:00","type":"meta_saved"}
-{"payload":{"status":"running"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.663483+00:00","type":"meta_saved"}
-{"payload":{"from":"running","to":"done"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.697936+00:00","type":"status_changed"}
-{"payload":{"status":"done"},"run_id":"20260712_121502_238cfe34","timestamp":"2026-07-12T12:15:02.745932+00:00","type":"meta_saved"}
