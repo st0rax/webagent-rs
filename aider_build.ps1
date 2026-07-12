@@ -77,22 +77,23 @@ function Invoke-AiderModule($m) {
     & aider --message $m.msg @readArgs --file $file --no-check-update --no-show-model-warnings 2>&1 |
         Tee-Object -FilePath $log -Append
 
-    # Build-Gate + ein Reparaturdurchgang.
-    $build = & cargo build 2>&1
-    $build | Out-File $log -Append -Encoding utf8
-    if ($LASTEXITCODE -ne 0) {
-        "--- [$($m.name)] cargo build FEHLER — Reparaturdurchgang ---" | Tee-Object -FilePath $log -Append
-        $errText = ($build | Out-String)
-        if ($errText.Length -gt 6000) { $errText = $errText.Substring(0, 6000) }
-        $fix = "cargo build meldet folgende Fehler. Behebe sie ausschliesslich in $file (keine neuen Dependencies, nutze die Helfer aus lib.rs):`n$errText"
+    # Test-Gate (kompiliert + fuehrt Tests aus) + bis zu zwei Reparaturdurchgaenge.
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $out = & cargo test 2>&1
+        $out | Out-File $log -Append -Encoding utf8
+        if ($LASTEXITCODE -eq 0) { break }
+        if ($attempt -eq 3) {
+            "!!! [$($m.name)] nach $($attempt-1) Reparaturen weiter ROT — manuell pruefen." | Tee-Object -FilePath $log -Append
+            break
+        }
+        "--- [$($m.name)] cargo test FEHLER — Reparaturdurchgang $attempt ---" | Tee-Object -FilePath $log -Append
+        $errText = ($out | Out-String)
+        if ($errText.Length -gt 7000) { $errText = $errText.Substring(0, 7000) }
+        $fix = "cargo test meldet folgende Fehler. Behebe sie ausschliesslich in $file (keine neuen Dependencies ausser den in Cargo.toml vorhandenen; die regex-Crate kann kein Lookahead — nutze dafuer fancy_regex; nutze die Helfer aus lib.rs):`n$errText"
         & aider --message $fix --file $file --no-check-update --no-show-model-warnings 2>&1 |
             Tee-Object -FilePath $log -Append
-        & cargo build 2>&1 | Out-File $log -Append -Encoding utf8
-        if ($LASTEXITCODE -ne 0) {
-            "!!! [$($m.name)] baut nach Reparatur weiter NICHT — manuell pruefen." | Tee-Object -FilePath $log -Append
-        }
     }
-    "--- [$($m.name)] fertig (build exit=$LASTEXITCODE) ---" | Tee-Object -FilePath $log -Append
+    "--- [$($m.name)] fertig (test exit=$LASTEXITCODE) ---" | Tee-Object -FilePath $log -Append
 }
 
 # Selektion

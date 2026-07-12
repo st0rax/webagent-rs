@@ -12,6 +12,8 @@ license = "MIT"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
+# Rein-Rust-Regex MIT Lookaround-Support (die regex-Crate kann kein Lookahead/-behind).
+fancy-regex = "0.14"
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 
 [lib]

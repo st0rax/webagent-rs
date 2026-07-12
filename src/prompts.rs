@@ -182,7 +182,7 @@ mod tests {
         
         assert!(prompt.contains(task), "Prompt muss die Aufgabe enthalten");
         assert!(prompt.contains(memory), "Prompt muss den Memory-Kontext enthalten");
-        assert!(prompt.contains("Langzeiterinnerungen"), "Prompt muss Memory-Header enthalten");
+        assert!(prompt.contains("Lokale Langzeiterinnerungen"), "Prompt muss Memory-Header enthalten");
         assert!(prompt.contains(PROTOCOL_VERSION), "Prompt muss Protokollversion enthalten");
     }
 
@@ -192,7 +192,7 @@ mod tests {
         let prompt = autonomous_task_prompt(task, "");
         
         assert!(prompt.contains(task), "Prompt muss die Aufgabe enthalten");
-        assert!(!prompt.contains("Langzeiterinnerungen"), "Prompt darf keinen Memory-Header ohne Kontext haben");
+        assert!(!prompt.contains("Lokale Langzeiterinnerungen"), "Prompt darf keinen Memory-Header ohne Kontext haben");
         assert!(prompt.contains(PROTOCOL_VERSION), "Prompt muss Protokollversion enthalten");
     }
 

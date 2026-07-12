@@ -35,7 +35,13 @@ plattformunabhängig nach Rust. Nicht 1:1 übersetzen, sondern idiomatisch.
 ## Dependencies — bewusst minimal
 
 Erlaubt sind nur rein-Rust-Crates ohne C-Toolchain-Bedarf: `serde`, `serde_json`,
-`regex`, `clap` (bereits in `Cargo.toml`). **Nicht** hinzufügen: `chrono`,
+`regex`, `fancy-regex`, `clap` (bereits in `Cargo.toml`).
+
+**Regex-Lookaround:** Die `regex`-Crate unterstützt KEIN Lookahead/Lookbehind
+(`(?=...)`, `(?<=...)`) — solche Muster panics beim Kompilieren. Für jedes aus
+Python übernommene Pattern mit Lookaround `fancy_regex::Regex` verwenden (dessen
+`.find`/`.captures` geben `Result` zurück, entsprechend behandeln). Muster ohne
+Lookaround weiter mit der schnelleren `regex`-Crate. **Nicht** hinzufügen: `chrono`,
 `windows-sys`, `libc`, `time` mit lokaler Zeitzone — sie ziehen auf Windows-GNU
 `dlltool`/MSVC nach und brechen den Build. Zeit/PID über die Helfer oben lösen.
 
