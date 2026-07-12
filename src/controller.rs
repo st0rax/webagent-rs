@@ -1,7 +1,6 @@
 //! AgentController – Plan/Act/Observe-Loop.
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use std::env;
@@ -204,10 +203,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             let total: usize = meta
                 .extra
                 .get("observation_bytes")
-                .and_then(|v| v.parse().ok())
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
                 .unwrap_or(0)
                 + added;
-            meta.extra.insert("observation_bytes".to_string(), total.to_string());
+            meta.extra.insert("observation_bytes".to_string(), serde_json::Value::String(total.to_string()));
             self.run_store.save(meta);
             total
         } else {
@@ -222,7 +222,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         }
 
         let meta = self.meta.as_ref().unwrap();
-        let action_dir = self.run_store.runs_dir().join(&meta.run_id).join("action_output");
+        let runs_dir = env::current_dir()
+            .unwrap_or_else(|_| env::temp_dir())
+            .join("data")
+            .join("runs");
+        let action_dir = runs_dir.join(&meta.run_id).join("action_output");
         std::fs::create_dir_all(&action_dir).ok();
 
         let safe_id: String = action_id
@@ -258,22 +262,26 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         for action in actions {
             if self.completed_actions.contains_key(&action.id) {
                 let stored = self.completed_actions[&action.id].clone();
-                if action.action_type == "shell" {
-                    observations.push(format!(
-                        "[Controller] action_id={} wurde bereits ausgefuehrt; \
-                         gespeicherte Observation wird erneut geliefert. \
-                         Fuer einen korrigierten oder erneut versuchten Befehl \
-                         ist eine neue, runweit eindeutige Action-ID erforderlich.\n{}",
-                        action.id, stored
-                    ));
-                } else if action.action_type == "finish" {
-                    finished = true;
+                match action.action_type {
+                    protocol::ActionType::Shell => {
+                        observations.push(format!(
+                            "[Controller] action_id={} wurde bereits ausgefuehrt; \
+                             gespeicherte Observation wird erneut geliefert. \
+                             Fuer einen korrigierten oder erneut versuchten Befehl \
+                             ist eine neue, runweit eindeutige Action-ID erforderlich.\n{}",
+                            action.id, stored
+                        ));
+                    }
+                    protocol::ActionType::Finish => {
+                        finished = true;
+                    }
+                    _ => {}
                 }
                 continue;
             }
 
-            match action.action_type.as_str() {
-                "finish" => {
+            match action.action_type {
+                protocol::ActionType::Finish => {
                     finished = true;
                     let mut extra = HashMap::new();
                     extra.insert("action_id".to_string(), serde_json::Value::String(action.id.clone()));
@@ -281,7 +289,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     self.record_completed_action(&action.id, "finish");
                     break;
                 }
-                "message" => {
+                protocol::ActionType::Message => {
                     let mut extra = HashMap::new();
                     extra.insert("action_id".to_string(), serde_json::Value::String(action.id.clone()));
                     let _ = transcript.append("message", &action.text, extra);
@@ -290,7 +298,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     finished = true;
                     break;
                 }
-                "shell" => {
+                protocol::ActionType::Shell => {
                     println!("[shell:{}] {}", action.id, action.command);
                     let result = self.executor.execute(&action.command, action.timeout_seconds);
                     let observation = protocol::format_observation(
@@ -298,7 +306,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         &result.stdout,
                         &result.stderr,
                         result.exit_code,
-                        result.interrupted,
+                        result.timed_out,
                     );
                     let observation = self.bounded_observation(&action.id, &observation);
                     observations.push(observation.clone());
@@ -312,16 +320,17 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                             let mut counts: HashMap<String, usize> = meta
                                 .extra
                                 .get(counts_key)
+                                .and_then(|v| v.as_str())
                                 .and_then(|s| serde_json::from_str(s).ok())
                                 .unwrap_or_default();
 
-                            let n = counts.entry(fp.clone()).or_insert(0);
+                            let n = counts.entry(fp.to_string()).or_insert(0);
                             *n += 1;
                             let count = *n;
 
                             meta.extra.insert(
                                 counts_key.to_string(),
-                                serde_json::to_string(&counts).unwrap_or_default(),
+                                serde_json::Value::String(serde_json::to_string(&counts).unwrap_or_default()),
                             );
                             self.run_store.save(meta);
 
@@ -342,7 +351,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         }
                     }
                 }
-                _ => {}
+                protocol::ActionType::Unknown => {}
             }
         }
 
