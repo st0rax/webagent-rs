@@ -4,12 +4,14 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use std::env;
+
 use crate::brain::BrainBackend;
 use crate::executor::ShellExecutor;
 use crate::loop_guard::{loop_guard_message, shell_read_fingerprint};
 use crate::memory::MemoryStore;
 use crate::prompts::{autonomous_task_prompt, resume_continue_prompt, resume_recovery_prompt};
-use crate::protocol::{self, Action, ParseResult};
+use crate::protocol::{self, Action};
 use crate::run_store::{RunMeta, RunStore};
 use crate::transcript::Transcript;
 
@@ -17,6 +19,14 @@ const INCOMPLETE_RETRY_PROMPT: &str =
     "[Controller] Die letzte Web-Antwort war unvollständig oder leer. \
      Setze mit einer gültigen webagent/1-Antwort fort. \
      Wenn die Aufgabe abgeschlossen ist, sende eine message-Action.";
+
+// Konfigurationskonstanten (aus CONVENTIONS.md: keine externe config-Crate)
+const MAX_OBSERVATION_CHARS: usize = 16_000;
+const LOOP_GUARD_WARN_COUNT: usize = 3;
+const LOOP_GUARD_ABORT_COUNT: usize = 5;
+const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
+const MEMORY_CONTEXT_LIMIT: usize = 5;
+const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
 
 /// Ergebnis eines einzelnen Brain-Turns.
 #[derive(Debug, Clone)]
@@ -41,12 +51,19 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     pub const MAX_INCOMPLETE_RETRIES: usize = 5;
 
     pub fn new(brain: B, executor: E, max_cycles: usize) -> Self {
+        let data_dir = env::current_dir()
+            .unwrap_or_else(|_| env::temp_dir())
+            .join("data");
+        let runs_dir = data_dir.join("runs");
+        let logs_dir = data_dir.join("logs");
+        let memory_path = data_dir.join("memory.jsonl");
+
         Self {
             brain,
             executor,
             max_cycles,
-            run_store: RunStore::new(),
-            memory: MemoryStore::new(),
+            run_store: RunStore::new(runs_dir, logs_dir),
+            memory: MemoryStore::new(memory_path),
             meta: None,
             completed_actions: HashMap::new(),
             incomplete_retries: 0,
@@ -66,11 +83,23 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     /// Führt einen einzelnen Brain-Turn aus.
     pub fn run_once(&mut self, message: &str, transcript: Option<&mut Transcript>) -> BrainTurn {
         if let Some(t) = transcript {
-            t.append("user", message, &[]);
+            let _ = t.append("user", message, HashMap::new());
         }
 
-        let baseline = self.brain.send(message);
-        let mut response = self.brain.wait_response(baseline);
+        let baseline = match self.brain.send(message) {
+            Ok(b) => b,
+            Err(_) => 0,
+        };
+        
+        let mut response = match self.brain.wait_response(baseline, 60.0) {
+            Ok(r) => r,
+            Err(e) => {
+                return BrainTurn {
+                    text: format!("{{\"error\": \"{}\"}}", e),
+                    complete: false,
+                };
+            }
+        };
         let mut rereads = 0;
 
         while response.generation_complete
@@ -78,24 +107,29 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             && rereads < 3
         {
             if let Some(t) = transcript {
-                t.append(
+                let mut extra = HashMap::new();
+                extra.insert("fragment".to_string(), serde_json::Value::String(response.text.clone()));
+                let _ = t.append(
                     "system",
                     "brain_stream_fragment; rereading same assistant message",
-                    &[("fragment", &response.text)],
+                    extra,
                 );
             }
-            response = self.brain.wait_response(baseline);
+            response = match self.brain.wait_response(baseline, 60.0) {
+                Ok(r) => r,
+                Err(_) => break,
+            };
             rereads += 1;
         }
 
         if let Some(t) = transcript {
-            t.append(
+            let mut extra = HashMap::new();
+            extra.insert("complete".to_string(), serde_json::Value::String(response.generation_complete.to_string()));
+            extra.insert("status".to_string(), serde_json::Value::String(response.backend_status.clone()));
+            let _ = t.append(
                 "brain",
                 &response.text,
-                &[
-                    ("complete", &response.generation_complete.to_string()),
-                    ("status", &response.backend_status),
-                ],
+                extra,
             );
         }
 
@@ -113,13 +147,13 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     fn finish_brain_incomplete(&mut self, meta: &mut RunMeta, transcript: &mut Transcript) -> RunMeta {
         meta.status = "brain_incomplete".to_string();
         self.run_store.save(meta);
-        transcript.append(
+        let _ = transcript.append(
             "system",
             &format!(
                 "run_finished status={} incomplete_retries={}",
                 meta.status, self.incomplete_retries
             ),
-            &[],
+            HashMap::new(),
         );
         meta.clone()
     }
@@ -131,7 +165,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         context: &str,
     ) -> Option<BrainTurn> {
         self.incomplete_retries += 1;
-        transcript.append(
+        let _ = transcript.append(
             "system",
             &format!(
                 "brain_incomplete_retry={}/{} context={}",
@@ -139,7 +173,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 Self::MAX_INCOMPLETE_RETRIES,
                 context
             ),
-            &[],
+            HashMap::new(),
         );
 
         if let Some(meta) = &self.meta {
@@ -183,13 +217,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
     /// Begrenzt Observation auf MAX_OBSERVATION_CHARS und archiviert vollständige Ausgabe.
     fn bounded_observation(&mut self, action_id: &str, observation: &str) -> String {
-        let limit = crate::config::max_observation_chars();
-        if observation.len() <= limit || self.meta.is_none() {
+        if observation.len() <= MAX_OBSERVATION_CHARS || self.meta.is_none() {
             return observation.to_string();
         }
 
         let meta = self.meta.as_ref().unwrap();
-        let action_dir = Path::new(&meta.dir).join("action_output");
+        let action_dir = self.run_store.runs_dir().join(&meta.run_id).join("action_output");
         std::fs::create_dir_all(&action_dir).ok();
 
         let safe_id: String = action_id
@@ -200,16 +233,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         std::fs::write(&artifact, observation).ok();
 
-        let head_size = (limit as f64 * 0.65) as usize;
-        let tail_size = limit - head_size;
+        let head_size = (MAX_OBSERVATION_CHARS as f64 * 0.65) as usize;
+        let tail_size = MAX_OBSERVATION_CHARS - head_size;
         let omitted = observation.len() - head_size - tail_size;
 
         format!(
             "{}\n\n[Ausgabe gekürzt: {} Zeichen ausgelassen. Vollständig gespeichert: {}]\n\n{}",
-            &observation[..head_size],
+            crate::char_prefix(observation, head_size),
             omitted,
             artifact.display(),
-            &observation[observation.len() - tail_size..]
+            crate::char_suffix(observation, tail_size)
         )
     }
 
@@ -242,12 +275,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             match action.action_type.as_str() {
                 "finish" => {
                     finished = true;
-                    transcript.append("system", "finish", &[("action_id", &action.id)]);
+                    let mut extra = HashMap::new();
+                    extra.insert("action_id".to_string(), serde_json::Value::String(action.id.clone()));
+                    let _ = transcript.append("system", "finish", extra);
                     self.record_completed_action(&action.id, "finish");
                     break;
                 }
                 "message" => {
-                    transcript.append("message", &action.text, &[("action_id", &action.id)]);
+                    let mut extra = HashMap::new();
+                    extra.insert("action_id".to_string(), serde_json::Value::String(action.id.clone()));
+                    let _ = transcript.append("message", &action.text, extra);
                     println!("{}", action.text);
                     self.record_completed_action(&action.id, &action.text);
                     finished = true;
@@ -288,16 +325,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                             );
                             self.run_store.save(meta);
 
-                            if count >= crate::config::loop_guard_warn_count() {
+                            if count >= LOOP_GUARD_WARN_COUNT {
                                 observations.push(loop_guard_message(&fp, count));
                             }
-                            if count >= crate::config::loop_guard_abort_count() {
+                            if count >= LOOP_GUARD_ABORT_COUNT {
                                 meta.status = "analysis_loop".to_string();
                                 self.run_store.save(meta);
-                                transcript.append(
+                                let _ = transcript.append(
                                     "system",
                                     &format!("analysis_loop fingerprint={} count={}", fp, count),
-                                    &[],
+                                    HashMap::new(),
                                 );
                                 finished = true;
                                 break;
@@ -322,7 +359,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         if !parsed.valid {
             let detail = parsed.error.clone();
-            transcript.append("system", &format!("protocol_invalid: {}", detail), &[]);
+            let _ = transcript.append("system", &format!("protocol_invalid: {}", detail), HashMap::new());
 
             let failures: usize = self
                 .meta
@@ -338,10 +375,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             }
 
             if failures >= 3 {
-                transcript.append(
+                let _ = transcript.append(
                     "system",
                     "protocol_repair_aborted after=3 consecutive errors",
-                    &[],
+                    HashMap::new(),
                 );
                 return (String::new(), false);
             }
@@ -398,28 +435,28 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         }
 
         if restored && self.brain.ensure_ready() == crate::brain::SessionState::Ready {
-            transcript.append(
+            let _ = transcript.append(
                 "system",
                 &format!(
                     "resume_restored conversation_ref={}",
                     meta.conversation_ref.as_ref().unwrap()
                 ),
-                &[],
+                HashMap::new(),
             );
             let restored_turn = self.run_once(&resume_continue_prompt(), Some(transcript));
             if restored_turn.complete {
                 return restored_turn;
             }
-            transcript.append(
+            let _ = transcript.append(
                 "system",
                 "resume_restored_unresponsive; falling back to new chat",
-                &[],
+                HashMap::new(),
             );
         }
 
         self.brain.new_chat();
-        let tail = transcript.recovery_tail(crate::config::resume_transcript_char_budget());
-        transcript.append("system", "resume_fallback=new_chat+transcript", &[]);
+        let tail = transcript.recovery_tail(RESUME_TRANSCRIPT_CHAR_BUDGET).unwrap_or_default();
+        let _ = transcript.append("system", "resume_fallback=new_chat+transcript", HashMap::new());
         self.run_once(&resume_recovery_prompt(&meta.task, &tail), Some(transcript))
     }
 
@@ -459,23 +496,24 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             meta.extra.insert("error_type".to_string(), "RuntimeError".to_string());
             meta.extra.insert("error".to_string(), e.clone());
             self.run_store.save(&meta);
-            transcript.append(
+            let mut extra = HashMap::new();
+            extra.insert("error_type".to_string(), serde_json::Value::String("RuntimeError".to_string()));
+            extra.insert("error".to_string(), serde_json::Value::String(e.clone()));
+            let _ = transcript.append(
                 "system",
                 &format!("run_finished status={}", meta.status),
-                &[("error_type", "RuntimeError"), ("error", &e)],
+                extra,
             );
             e
         })?;
 
-        self.executor.start();
         let state = self.brain.ensure_ready();
-        transcript.append("system", &format!("session_state={:?}", state), &[]);
+        let _ = transcript.append("system", &format!("session_state={:?}", state), HashMap::new());
 
         if state != crate::brain::SessionState::Ready {
             meta.status = format!("{:?}", state).to_lowercase();
             self.run_store.save(&meta);
-            transcript.append("system", &format!("run_finished status={}", meta.status), &[]);
-            self.executor.stop();
+            let _ = transcript.append("system", &format!("run_finished status={}", meta.status), HashMap::new());
             self.brain.stop().ok();
             return Ok(meta);
         }
@@ -483,21 +521,21 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // Pending response oder Resume oder Initial
         let mut turn = if resume_id.is_some() {
             if let Some(pending) = meta.extra.remove("pending_response") {
-                transcript.append("system", "resume_pending_response", &[]);
+                let _ = transcript.append("system", "resume_pending_response", HashMap::new());
                 self.run_store.save(&meta);
                 BrainTurn {
                     text: pending,
                     complete: true,
                 }
             } else {
-                transcript.append("system", &format!("resume run {}", resume_id.unwrap()), &[]);
+                let _ = transcript.append("system", &format!("resume run {}", resume_id.unwrap()), HashMap::new());
                 self.resume_initial_turn(&mut transcript)
             }
         } else {
             let memories = self.memory.search(
                 &task,
                 &["shared", brain_id],
-                crate::config::memory_context_limit(),
+                MEMORY_CONTEXT_LIMIT,
             );
             let memory_context: String = memories
                 .iter()
@@ -532,9 +570,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         let mut cycle = meta.cycles;
         let loop_started = Instant::now();
         let mut last_heartbeat = loop_started;
-        let heartbeat_interval = Duration::from_secs_f64(
-            crate::config::controller_heartbeat_interval_seconds(),
-        );
+        let heartbeat_interval = Duration::from_secs_f64(CONTROLLER_HEARTBEAT_INTERVAL_SECONDS);
 
         while !finished && cycle < self.max_cycles {
             cycle += 1;
@@ -544,10 +580,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             let now = Instant::now();
             if now.duration_since(last_heartbeat) >= heartbeat_interval {
                 let elapsed = now.duration_since(loop_started).as_secs_f64();
-                transcript.append(
+                let _ = transcript.append(
                     "system",
                     &format!("heartbeat cycle={} elapsed_s={:.1}", cycle, elapsed),
-                    &[],
+                    HashMap::new(),
                 );
                 self.run_store.save(&meta);
                 last_heartbeat = now;
@@ -595,9 +631,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             }
         }
 
-        transcript.append("system", &format!("run_finished status={}", meta.status), &[]);
+        let _ = transcript.append("system", &format!("run_finished status={}", meta.status), HashMap::new());
 
-        self.executor.stop();
         self.brain.stop().ok();
 
         Ok(meta)
@@ -680,12 +715,12 @@ mod tests {
             *self.conversation_ref.borrow_mut() = Some("https://example.test/chat/new".to_string());
         }
 
-        fn send(&mut self, text: &str) -> usize {
+        fn send(&mut self, text: &str) -> Result<i32, String> {
             self.messages.borrow_mut().push(text.to_string());
-            0
+            Ok(0)
         }
 
-        fn wait_response(&self, _baseline_count: usize) -> BrainResponse {
+        fn wait_response(&mut self, _baseline_count: i32, _timeout: f64) -> Result<BrainResponse, String> {
             let idx = *self.response_index.borrow();
             *self.response_index.borrow_mut() = idx + 1;
             let text = self
@@ -694,11 +729,11 @@ mod tests {
                 .cloned()
                 .unwrap_or_else(|| "{}".to_string());
             let complete = self.complete_flags.get(idx).copied().unwrap_or(true);
-            BrainResponse {
+            Ok(BrainResponse {
                 text,
                 generation_complete: complete,
                 backend_status: "ok".to_string(),
-            }
+            })
         }
 
         fn is_logged_in(&self) -> bool {
@@ -737,14 +772,6 @@ mod tests {
     }
 
     impl ShellExecutor for MockExecutor {
-        fn start(&mut self) {
-            *self.started.borrow_mut() = true;
-        }
-
-        fn stop(&mut self) {
-            *self.started.borrow_mut() = false;
-        }
-
         fn execute(&self, command: &str, _timeout: f64) -> ExecutionResult {
             self.commands.borrow_mut().push(command.to_string());
             ExecutionResult {
