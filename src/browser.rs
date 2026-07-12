@@ -17,6 +17,67 @@ use crate::protocol::is_possibly_truncated;
 
 const STABILITY_SECONDS: f64 = 1.5;
 
+/// Ergebnis der Vollständigkeitsprüfung einer laufenden Antwort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Completion {
+    /// Antwort ist vollständig — zurückgeben.
+    Complete,
+    /// Noch nicht fertig — weiter beobachten.
+    Continue,
+    /// Rate-Limit/Usage-Banner statt echter Antwort.
+    RateLimited,
+}
+
+/// Reine, testbare Entscheidung, ob eine Antwort vollständig ist.
+///
+/// Autoritatives Fertigsignal ist das Verschwinden des Stop-/Generating-Buttons
+/// (bzw. ein bereits vollständiges Protokoll-Dokument). Reine Textstabilität ist
+/// nur der Fallback für UIs ohne erkennbaren Stop-Button. Damit werden die zwei
+/// Hauptprobleme adressiert: (a) Timeout mitten im Stream (wir warten, solange der
+/// Stop-Button sichtbar ist) und (b) fälschlich „unvollständig" (ein vollständiges
+/// JSON gilt sofort als fertig, unabhängig vom Stabilitätsfenster).
+fn classify_completion(
+    text: &str,
+    has_stop_selectors: bool,
+    stop_seen_ever: bool,
+    stop_visible: bool,
+    stable_secs: f64,
+) -> Completion {
+    if is_claude_limit_response_text(text) {
+        return Completion::RateLimited;
+    }
+
+    let text_ready = !text.trim().is_empty()
+        && !is_transient_response_text(text)
+        && !is_possibly_truncated(text);
+    if !text_ready {
+        return Completion::Continue;
+    }
+
+    // Ein vollständig geparstes Protokoll-Dokument ist immer fertig — auch wenn
+    // der Stop-Button (durch Polling-Timing) noch kurz sichtbar wirkt.
+    if crate::protocol::parse(text).valid {
+        return Completion::Complete;
+    }
+
+    if has_stop_selectors {
+        if stop_seen_ever && !stop_visible {
+            // Generierung war aktiv und ist nun beendet.
+            Completion::Complete
+        } else if !stop_seen_ever && stable_secs >= STABILITY_SECONDS * 1.5 {
+            // Stop-Button wurde nie erfasst (sehr schnelle Antwort) — nach etwas
+            // längerer Stabilität dennoch als fertig werten, statt zu blockieren.
+            Completion::Complete
+        } else {
+            Completion::Continue
+        }
+    } else if stable_secs >= STABILITY_SECONDS {
+        Completion::Complete
+    } else {
+        Completion::Continue
+    }
+}
+
 /// Web-Chat-Backend für einen Provider (chatgpt, claude, …).
 pub struct WebBrainBackend {
     brain_id: String,
@@ -300,76 +361,102 @@ impl BrainBackend for WebBrainBackend {
 
     fn wait_response(&mut self, baseline_count: i32, timeout: f64) -> Result<BrainResponse, String> {
         let start = Instant::now();
-        // Phase 1: auf neue Nachricht warten.
-        let mut count = self.assistant_count();
-        while count <= baseline_count && start.elapsed().as_secs_f64() < timeout {
-            std::thread::sleep(Duration::from_millis(300));
-            count = self.assistant_count();
-        }
-        if count <= baseline_count {
-            return Ok(BrainResponse {
-                text: String::new(),
-                message_index: -1,
-                generation_complete: false,
-                backend_status: "timeout_no_message".into(),
-                ..Default::default()
-            });
-        }
+        let has_stop = !self.sel("stop_button").is_empty();
 
-        // Phase 2: Text-Stabilität der Zielnachricht.
-        let target = count - 1;
-        let mut last_text = String::new();
-        let mut stable_since = Instant::now();
-        while start.elapsed().as_secs_f64() < timeout {
-            let current = self.assistant_text(target);
-            if is_claude_limit_response_text(&current) {
+        // Phase 1: auf neue Nachricht ODER einen sichtbaren Stop-/Generating-Button
+        // warten (die Generierung kann starten, bevor der Nachrichten-Container im
+        // DOM committet ist).
+        loop {
+            if self.assistant_count() > baseline_count {
+                break;
+            }
+            if has_stop && self.any_visible("stop_button") {
+                break;
+            }
+            if start.elapsed().as_secs_f64() >= timeout {
                 return Ok(BrainResponse {
-                    text: current,
-                    message_index: target,
+                    text: String::new(),
+                    message_index: -1,
                     generation_complete: false,
-                    backend_status: "rate_limit".into(),
+                    backend_status: "timeout_no_message".into(),
                     ..Default::default()
                 });
             }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+
+        // Phase 2: Generierung überwachen. Autoritatives Fertigsignal ist das
+        // Verschwinden des Stop-Buttons (bzw. ein vollständiges Protokoll-Dokument);
+        // reine Textstabilität ist nur der Fallback für UIs ohne Stop-Button.
+        let mut last_text = String::new();
+        let mut stable_since = Instant::now();
+        let mut stop_seen_ever = false;
+        let mut target = (self.assistant_count() - 1).max(baseline_count).max(0);
+
+        loop {
+            let count = self.assistant_count();
+            if count - 1 > target {
+                target = count - 1;
+            }
+            let current = self.assistant_text(target);
+            let stop_visible = has_stop && self.any_visible("stop_button");
+            stop_seen_ever |= stop_visible;
+
             if current != last_text {
                 last_text = current.clone();
                 stable_since = Instant::now();
-            } else if !current.is_empty()
-                && !is_transient_response_text(&current)
-                && !is_possibly_truncated(&current)
-                && stable_since.elapsed().as_secs_f64() >= STABILITY_SECONDS
-            {
-                return Ok(BrainResponse {
-                    text: current,
-                    message_index: target,
-                    generation_complete: true,
-                    backend_status: "ok".into(),
-                    ..Default::default()
-                });
             }
-            // Schnellpfad: Protokoll-JSON bereits vollständig erkennbar.
-            if current.replace(' ', "").contains("\"protocol\":\"webagent/1\"")
-                && !is_possibly_truncated(&current)
-            {
+            let stable_secs = stable_since.elapsed().as_secs_f64();
+
+            match classify_completion(&current, has_stop, stop_seen_ever, stop_visible, stable_secs) {
+                Completion::RateLimited => {
+                    return Ok(BrainResponse {
+                        text: current,
+                        message_index: target,
+                        generation_complete: false,
+                        backend_status: "rate_limit".into(),
+                        ..Default::default()
+                    });
+                }
+                Completion::Complete => {
+                    // Kurzes Settle: der letzte Chunk committet oft erst, nachdem
+                    // der Stop-Button verschwunden ist. Danach final nachlesen.
+                    std::thread::sleep(Duration::from_millis(500));
+                    let finalized = self.assistant_text(target);
+                    let text = if finalized.len() >= current.len() {
+                        finalized
+                    } else {
+                        current
+                    };
+                    return Ok(BrainResponse {
+                        text,
+                        message_index: target,
+                        generation_complete: true,
+                        backend_status: "ok".into(),
+                        ..Default::default()
+                    });
+                }
+                Completion::Continue => {}
+            }
+
+            if start.elapsed().as_secs_f64() >= timeout {
+                let status = if stop_visible {
+                    "timeout_still_generating"
+                } else if last_text.trim().is_empty() {
+                    "timeout_no_text"
+                } else {
+                    "timeout_unstable"
+                };
                 return Ok(BrainResponse {
-                    text: current,
+                    text: last_text,
                     message_index: target,
-                    generation_complete: true,
-                    backend_status: "ok".into(),
+                    generation_complete: false,
+                    backend_status: status.into(),
                     ..Default::default()
                 });
             }
             std::thread::sleep(Duration::from_millis(300));
         }
-
-        // Timeout: letzten bekannten Text unvollständig zurückgeben.
-        Ok(BrainResponse {
-            text: last_text,
-            message_index: target,
-            generation_complete: false,
-            backend_status: "timeout_or_incomplete".into(),
-            ..Default::default()
-        })
     }
 
     fn is_logged_in(&self) -> bool {
@@ -475,5 +562,72 @@ mod tests {
     fn session_state_error_without_client() {
         let backend = WebBrainBackend::from_config("claude").unwrap();
         assert_eq!(backend.session_state(), SessionState::Error);
+    }
+
+    const VALID_JSON: &str =
+        r#"{"protocol":"webagent/1","actions":[{"id":"a","type":"finish"}]}"#;
+
+    #[test]
+    fn complete_when_stop_button_disappears() {
+        // Stop-Button war sichtbar, ist jetzt weg, Text steht.
+        let r = classify_completion("Antworttext ohne JSON", true, true, false, 0.2);
+        assert_eq!(r, Completion::Complete);
+    }
+
+    #[test]
+    fn keep_waiting_while_stop_button_visible() {
+        // Solange der Stop-Button sichtbar ist, weiter warten (kein Timeout im Stream).
+        let r = classify_completion("Teiltext, streamt noch", true, true, true, 5.0);
+        assert_eq!(r, Completion::Continue);
+    }
+
+    #[test]
+    fn valid_protocol_json_completes_immediately() {
+        // Vollständiges JSON gilt sofort als fertig, selbst wenn der Stop-Button
+        // scheinbar noch sichtbar ist (Polling-Timing).
+        let r = classify_completion(VALID_JSON, true, true, true, 0.0);
+        assert_eq!(r, Completion::Complete);
+    }
+
+    #[test]
+    fn truncated_json_keeps_waiting() {
+        let partial = r#"{"protocol":"webagent/1","actions":[{"id":"a","type":"shell","command":"unterminated"#;
+        let r = classify_completion(partial, true, true, false, 5.0);
+        assert_eq!(r, Completion::Continue);
+    }
+
+    #[test]
+    fn transient_label_keeps_waiting() {
+        let r = classify_completion("Thinking…", true, false, true, 0.0);
+        assert_eq!(r, Completion::Continue);
+    }
+
+    #[test]
+    fn rate_limit_detected() {
+        let r = classify_completion(
+            "You have reached your usage limit for Claude.",
+            true,
+            true,
+            false,
+            0.0,
+        );
+        assert_eq!(r, Completion::RateLimited);
+    }
+
+    #[test]
+    fn no_stop_button_falls_back_to_stability() {
+        // UI ohne Stop-Button: erst nach Stabilitätsfenster fertig.
+        let unstable = classify_completion("fertiger Text", false, false, false, 0.5);
+        assert_eq!(unstable, Completion::Continue);
+        let stable = classify_completion("fertiger Text", false, false, false, STABILITY_SECONDS + 0.1);
+        assert_eq!(stable, Completion::Complete);
+    }
+
+    #[test]
+    fn missed_stop_button_completes_after_longer_stability() {
+        // Stop-Button nie erfasst (sehr schnelle Antwort): nach 1.5×-Fenster fertig,
+        // statt dauerhaft zu blockieren.
+        let r = classify_completion("kurze Antwort", true, false, false, STABILITY_SECONDS * 1.5 + 0.1);
+        assert_eq!(r, Completion::Complete);
     }
 }

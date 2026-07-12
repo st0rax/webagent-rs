@@ -102,8 +102,14 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             Ok(b) => b,
             Err(_) => 0,
         };
-        
-        let mut response = match self.brain.wait_response(baseline, 60.0) {
+
+        // Dynamisches Timeout je Brain-Geschwindigkeit und Nachrichtengröße,
+        // statt eines pauschalen Werts (langsame Brains wie claude/gemini brauchen
+        // mehr Zeit; hartkodierte 60s waren die Haupt-Timeout-Ursache).
+        let wait_timeout =
+            crate::timeouts::resolve_timeout("wait_response", self.brain.brain_id(), message, None);
+
+        let mut response = match self.brain.wait_response(baseline, wait_timeout) {
             Ok(r) => r,
             Err(e) => {
                 return BrainTurn {
@@ -127,7 +133,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     extra,
                 );
             }
-            response = match self.brain.wait_response(baseline, 60.0) {
+            response = match self.brain.wait_response(baseline, wait_timeout) {
                 Ok(r) => r,
                 Err(_) => break,
             };
@@ -462,7 +468,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             restored = self.brain.restore_conversation(cr).unwrap_or(false);
         }
 
-        if restored && self.brain.ensure_ready(30.0).ok() == Some(crate::brain::SessionState::Ready) {
+        let ready_timeout =
+            crate::timeouts::resolve_timeout("ensure_ready", self.brain.brain_id(), "", None);
+        if restored && self.brain.ensure_ready(ready_timeout).ok() == Some(crate::brain::SessionState::Ready) {
             let _ = transcript.append(
                 "system",
                 &format!(
@@ -543,7 +551,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             e
         })?;
 
-        let state = self.brain.ensure_ready(30.0).unwrap_or(crate::brain::SessionState::Error);
+        let ready_timeout =
+            crate::timeouts::resolve_timeout("ensure_ready", self.brain.brain_id(), "", None);
+        let state = self
+            .brain
+            .ensure_ready(ready_timeout)
+            .unwrap_or(crate::brain::SessionState::Error);
         let _ = transcript.append("system", &format!("session_state={:?}", state), HashMap::new());
 
         if state != crate::brain::SessionState::Ready {
