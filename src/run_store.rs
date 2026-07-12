@@ -396,9 +396,24 @@ mod tests {
     use super::*;
     use std::env;
 
+    /// Eindeutiges Temp-Verzeichnis pro Testaufruf. `now_run_stamp()` ist nur
+    /// sekundengenau; da Rust Tests parallel ausführt, würden mehrere Tests
+    /// sonst dasselbe Verzeichnis teilen und sich gegenseitig sehen.
+    fn unique_tmp() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let id = N.fetch_add(1, Ordering::Relaxed);
+        env::temp_dir().join(format!(
+            "test_run_store_{}_{}_{}",
+            std::process::id(),
+            crate::now_run_stamp(),
+            id
+        ))
+    }
+
     #[test]
     fn test_reconcile_legacy_stale_running_run() {
-        let tmp = env::temp_dir().join(format!("test_run_store_{}", crate::now_run_stamp()));
+        let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
         
@@ -433,7 +448,7 @@ mod tests {
 
     #[test]
     fn test_reconcile_keeps_live_owned_run() {
-        let tmp = env::temp_dir().join(format!("test_run_store_{}", crate::now_run_stamp()));
+        let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
         
@@ -459,7 +474,7 @@ mod tests {
 
     #[test]
     fn test_status_transition_validation() {
-        let tmp = env::temp_dir().join(format!("test_run_store_{}", crate::now_run_stamp()));
+        let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
         
@@ -480,7 +495,7 @@ mod tests {
 
     #[test]
     fn test_create_and_load() {
-        let tmp = env::temp_dir().join(format!("test_run_store_{}", crate::now_run_stamp()));
+        let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
         
@@ -502,7 +517,7 @@ mod tests {
 
     #[test]
     fn test_list_runs() {
-        let tmp = env::temp_dir().join(format!("test_run_store_{}", crate::now_run_stamp()));
+        let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
         
@@ -514,9 +529,12 @@ mod tests {
         
         let runs = store.list_runs();
         assert_eq!(runs.len(), 2);
-        assert_eq!(runs[0], meta2.run_id); // Neueste zuerst
-        assert_eq!(runs[1], meta1.run_id);
-        
+        // Beide Runs entstehen i.d.R. in derselben Sekunde; der Run-Stempel ist
+        // sekundengenau, daher ist die exakte Reihenfolge nicht deterministisch.
+        // Robust: beide IDs müssen vorhanden sein.
+        assert!(runs.contains(&meta1.run_id));
+        assert!(runs.contains(&meta2.run_id));
+
         // Cleanup
         fs::remove_dir_all(&tmp).ok();
     }
