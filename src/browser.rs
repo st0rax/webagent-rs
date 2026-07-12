@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::brain::{BrainBackend, BrainResponse, SessionState};
 use crate::cdp::{CdpClient, ChromeProcess};
@@ -267,21 +267,7 @@ return {{count:count,text:text,stop:stop}};}})()"#,
         let client = guard
             .as_mut()
             .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-        for phase in ["keyDown", "keyUp"] {
-            client
-                .call(
-                    "Input.dispatchKeyEvent",
-                    json!({
-                        "type": phase,
-                        "key": "Enter",
-                        "code": "Enter",
-                        "windowsVirtualKeyCode": 13,
-                        "nativeVirtualKeyCode": 13
-                    }),
-                )
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(())
+        client.press_key("Enter", "Enter", 13).map_err(|e| e.to_string())
     }
 
     /// Setzt den Text in den Composer (fokussiert, `value`/`textContent`, feuert
@@ -394,6 +380,11 @@ impl BrainBackend for WebBrainBackend {
 
     fn session_state(&self) -> SessionState {
         if self.client.borrow().is_none() {
+            return SessionState::Error;
+        }
+        // Verbindungs-Liveness: schlägt ein triviales Eval fehl, ist die
+        // Seite/CDP-Verbindung tot — das ist ein Fehler, kein fehlender Login.
+        if self.eval("1").is_err() {
             return SessionState::Error;
         }
         if self.is_cloudflare_blocked() {

@@ -349,6 +349,23 @@ impl CdpClient {
     pub fn current_url(&mut self) -> Result<String> {
         self.eval_string("location.href")
     }
+
+    /// Sendet einen Tastendruck (keyDown + keyUp) an das fokussierte Element.
+    pub fn press_key(&mut self, key: &str, code: &str, virtual_key: i64) -> Result<()> {
+        for phase in ["keyDown", "keyUp"] {
+            self.call(
+                "Input.dispatchKeyEvent",
+                json!({
+                    "type": phase,
+                    "key": key,
+                    "code": code,
+                    "windowsVirtualKeyCode": virtual_key,
+                    "nativeVirtualKeyCode": virtual_key
+                }),
+            )?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
