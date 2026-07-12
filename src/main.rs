@@ -181,7 +181,7 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
             );
             println!(
                 "    selectors:  mtime={}",
-                check.selectors_mtime.as_deref().unwrap_or("n/a")
+                if check.selectors_mtime.is_empty() { "n/a" } else { &check.selectors_mtime }
             );
             println!(
                 "    profile:    {} ({})",
@@ -191,20 +191,20 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
             if !check.profile_lock_files.is_empty() {
                 println!("    locks:      {}", check.profile_lock_files.join(", "));
             }
-            if let Some(ref last_run) = check.last_done_run {
+            if !check.last_done_run.is_empty() {
                 let age = check.last_done_run_age_hours;
                 let age_str = if age >= 0.0 {
                     format!("{:.0}h", age)
                 } else {
                     "unbekannt".to_string()
                 };
-                println!("    last_run:   {} ({})", last_run, age_str);
+                println!("    last_run:   {} ({})", check.last_done_run, age_str);
             } else {
                 println!("    last_run:   keiner");
             }
             println!("    login_state: {}", check.login_state);
-            if let Some(ref hint) = check.recovery_hint {
-                println!("    recovery:   {}", hint);
+            if !check.recovery_hint.is_empty() {
+                println!("    recovery:   {}", check.recovery_hint);
             }
             println!();
         }
