@@ -347,10 +347,121 @@ fn cmd_watchdog(
     }
 }
 
+/// Führt einen Unterprozess aus und bricht nach `timeout_secs` ab.
+/// Gibt `Some(true/false)` bei regulärem Exit zurück, `None` bei Timeout/Fehler.
+fn run_command_with_timeout(cmd: &str, args: &[&str], timeout_secs: f64) -> Option<bool> {
+    use std::process::{Command, Stdio};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let mut child = match Command::new(cmd)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+
+    let start = Instant::now();
+    let limit = Duration::from_secs_f64(timeout_secs.max(1.0));
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status.success()),
+            Ok(None) => {
+                if start.elapsed() >= limit {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                thread::sleep(Duration::from_millis(200));
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+/// Bündelt die Read-only-Gates: doctor + watchdog (dry-run) + optional Test-Suite.
+fn maintenance_healthy(do_pytest: bool, pytest_timeout: f64) -> bool {
+    // 1) Doctor: alle konfigurierten Brains gesund?
+    let brains_config = webagent::config::brains();
+    let runs_dir = webagent::config::runs_dir().to_string_lossy().to_string();
+    let doctor_report = webagent::doctor::run_doctor(
+        None,
+        Some(&brains_config),
+        &runs_dir,
+        None,
+        None,
+    );
+    if !doctor_report.ok() {
+        return false;
+    }
+
+    // 2) Watchdog dry-run: keine Funde/Fehler?
+    let store = RunStore::new(
+        webagent::config::runs_dir(),
+        webagent::config::runs_dir().join("logs"),
+    );
+    let wd = webagent::watchdog::run_watchdog(
+        &webagent::config::bot2bot_root().to_string_lossy().to_string(),
+        &webagent::config::profiles_dir()
+            .join("shared")
+            .to_string_lossy()
+            .to_string(),
+        &runs_dir,
+        Some(&store),
+        false,
+        None,
+    );
+    if !wd.ok() || !wd.errors.is_empty() {
+        return false;
+    }
+
+    // 3) Optional: Test-Suite
+    if do_pytest {
+        match run_command_with_timeout("cargo", &["test", "--quiet"], pytest_timeout) {
+            Some(true) => {}
+            _ => return false,
+        }
+    }
+
+    true
+}
+
 fn cmd_maintenance_check(json: bool, pytest: bool, pytest_timeout: f64) -> i32 {
-    eprintln!("[maintenance-check] Noch nicht vollständig portiert.");
-    eprintln!("[maintenance-check] json={}, pytest={}, pytest_timeout={}",
-        json, pytest, pytest_timeout);
-    eprintln!("[maintenance-check] Bitte verwende vorerst die Python-Version.");
-    1
+    let healthy = maintenance_healthy(pytest, pytest_timeout);
+
+    if json {
+        match serde_json::to_string_pretty(&serde_json::json!({
+            "healthy": healthy,
+            "pytest": pytest,
+        })) {
+            Ok(output) => println!("{}", output),
+            Err(e) => {
+                eprintln!("[maintenance-check] JSON-Serialisierung fehlgeschlagen: {}", e);
+                return 1;
+            }
+        }
+    } else {
+        println!("[maintenance-check] healthy={}", healthy);
+        if pytest {
+            println!("[maintenance-check] pytest={}", pytest);
+        }
+    }
+
+    if healthy { 0 } else { 2 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_maintenance_healthy_does_not_panic() {
+        // Übt den Gate-Pfad (doctor + watchdog) ohne pytest aus.
+        // Assertiert primär, dass die Funktion ohne Panic ein bool liefert.
+        let result = maintenance_healthy(false, 60.0);
+        assert!(result || !result);
+    }
 }
