@@ -8,8 +8,6 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_NDK_ROOT: ${{ github.workspace }}/android-ndk-r27c
     steps:
       - uses: actions/checkout@v4
 
@@ -18,24 +16,11 @@ jobs:
         with:
           targets: aarch64-linux-android
 
-      - name: Install Zig (Cross-Linker)
-        run: |
-          ZIG_VERSION=0.13.0
-          curl -L "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" -o zig.tar.xz
-          tar -xf zig.tar.xz
-          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
-
-      - name: Install Android NDK (Sysroot for linker)
-        run: |
-          curl -L "https://dl.google.com/android/repository/android-ndk-r27c-linux.zip" -o ndk.zip
-          unzip -q ndk.zip
-          echo "ANDROID_NDK_ROOT=$PWD/android-ndk-r27c" >> "$GITHUB_ENV"
-
-      - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild --locked
+      - name: Install cross (Docker-NBuild mit NDK-Sysroot)
+        run: cargo install cross --locked
 
       - name: Build for Android arm64
-        run: cargo zigbuild --release --target aarch64-linux-android
+        run: cross build --target aarch64-linux-android --release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
