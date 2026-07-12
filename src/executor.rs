@@ -38,23 +38,27 @@ impl PlatformShellExecutor {
 
     #[cfg(windows)]
     fn get_shell_command() -> (&'static str, Vec<&'static str>) {
-        // PowerShell mit UTF-8-Ausgabe und ohne Profil
+        // PowerShell ohne Profil, nicht-interaktiv. Hinweis: powershell.exe hat
+        // KEINEN -OutputEncoding-Schalter (das ist eine Preference-Variable) —
+        // ein ungueltiges Flag hier macht jeden Aufruf malformt.
         (
             "powershell.exe",
-            vec![
-                "-NoProfile",
-                "-NonInteractive",
-                "-OutputEncoding",
-                "UTF8",
-                "-Command",
-            ],
+            vec!["-NoProfile", "-NonInteractive", "-Command"],
         )
     }
 
     #[cfg(unix)]
     fn get_shell_command() -> (&'static str, Vec<&'static str>) {
-        // Bevorzuge bash, fallback auf sh
-        if which::which("bash").is_ok() {
+        // Bevorzuge bash, fallback auf sh — Verfuegbarkeit via std pruefen
+        // (kein which-Crate, um rein-Rust ohne C-Toolchain zu bleiben).
+        let has_bash = Command::new("bash")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if has_bash {
             ("bash", vec!["-c"])
         } else {
             ("sh", vec!["-c"])
