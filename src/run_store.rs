@@ -412,8 +412,8 @@ mod tests {
             .as_secs() as i64;
         let past_secs = now_secs - 3600;
         
-        // Konvertiere zu RFC3339 (vereinfacht, nur für Test)
-        let (y, mo, d, h, mi, s) = crate::lib::civil_utc(past_secs);
+        // Konvertiere zu RFC3339 (nutzt civil_utc aus lib.rs)
+        let (y, mo, d, h, mi, s) = crate::civil_utc(past_secs);
         meta.created_at = format!(
             "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.000000+00:00",
             y, mo, d, h, mi, s
