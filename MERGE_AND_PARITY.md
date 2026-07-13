@@ -40,11 +40,10 @@ transcript, timeouts, loop_guard, observer, prompts, config). **Fehlend in Rust:
 
 Diese verletzen das „self-contained, plattformunabhängig, lokaler Browser"-Ziel:
 
-1. **`presence-check` ist ein Windows-/Python-Shim.** `cmd_presence_check`
-   (`main.rs`) ruft `cmd /C cd /d C:\Users\storax\Desktop\webagent && venv\Scripts\
-   python.exe presence/presence_check.py`. → Nur Windows, braucht Python-venv,
-   hartkodierter Pfad. Auf Android/Linux **nicht lauffähig**. Muss **nativ in Rust**
-   reimplementiert werden (oder entfernt, wenn Zweck unklar).
+1. ~~**`presence-check` ist ein Windows-/Python-Shim.**~~ ✅ **ERLEDIGT (entfernt).**
+   presence-check ist Qwens Personal-Assistant-Feature (erkennen ob Storax zuhause
+   ist) und gehört NICHT in webagent (Storax-Entscheidung). Aus webagent-rs entfernt;
+   Qwens `presence_check.py` bleibt in Qwens eigenem Bereich.
 2. **Android-Strategie = Remote-CDP zu Desktop-Chrome.** `WEBAGENT_CDP_ENDPOINT`
    lässt Android auf einen entfernten Desktop-Chrome zeigen (README/`cdp.rs`).
    **Das ist nicht das Ziel** — auf Android soll der **lokale** Browser (das Chrome
@@ -84,7 +83,7 @@ archivieren; `webagent-rs` wird der einzige Baum (ggf. in `webagent/` umziehen).
 
 - **Merge-Richtung:** Rust ersetzt Python vollständig (empfohlen), Python nur
   archivieren? Oder Python parallel halten?
-- **presence-check:** Zweck? (Was soll „Präsenz" erkennen — Nutzer da / anderer
-  Agent aktiv / Brain online?) Danach nativ bauen oder entfernen.
+- ~~**presence-check:** Zweck?~~ ✅ GEKLÄRT: Qwens Personal-Assistant-Feature, nicht
+  webagent. Aus webagent-rs entfernt.
 - **Remote-CDP:** als optionalen Escape-Hatch behalten (empfohlen) oder ganz raus?
 - **Genius-Council-Parität** wirklich nötig für v1, oder später? (Größter Aufwand.)
