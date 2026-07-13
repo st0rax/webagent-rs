@@ -9,10 +9,17 @@ Stand der Antworterkennung pro Brain, aus echten Läufen (`examples/inspect.rs`,
 | chatgpt | 🟢 **LÄUFT** | End-to-end verifiziert: tippen→senden→vollständige Antwort (complete=true, nicht abgeschnitten, 403 Zeichen). Brauchte den Composer-Wartefix (Feld rendert verzögert nach ensure_ready=Ready). |
 | deepseek | 🟢 **LÄUFT** | End-to-end verifiziert (complete=true, 604 Zeichen, nicht abgeschnitten). |
 | kimi | 🟠 **HART** | Senden + Antwort erscheinen (inspect: `.user-content`/`.markdown`, assistant_message=1), aber `relay` bekommt `timeout_no_message` — Phase-1-Erkennung greift nicht (vermutlich Enter sendet nicht / Zähler-/Konversations-Eigenheit). Zu den harten Fällen (mit Qwen) am Ende. |
-| claude | ⏳ zu verifizieren | |
-| gemini | ⏳ zu verifizieren | |
-| mistral | ⏳ zu verifizieren | |
-| zai | ⏳ zu verifizieren | |
+| claude | 🟢 **LÄUFT** | complete=true, 194 Zeichen. (Thinking-Label „Dachte 2s nach" wird mit erfasst — der Protokoll-Parser strippt es im Agenten-Fall.) |
+| gemini | 🟠 **HART** | `timeout_no_text`: Phase 1 triggert, aber `assistant_message`-Text bleibt leer (Selektor-Drift beim Antwort-Container). |
+| mistral | 🟠 **HART** | `timeout_no_message` (wie kimi). |
+| zai | 🟢 **LÄUFT** | complete=true, 160 Zeichen. („Thought Process"-Prefix wird im Agenten-Fall gestrippt.) |
+
+## Zwischenstand: 4 von 8 laufen end-to-end
+
+🟢 **chatgpt, deepseek, claude, zai** — tippen→senden→**vollständige** Antwort erkannt (nicht abgeschnitten).
+🟠 **kimi, gemini, mistral, qwen** — provider-spezifische Selektor-/Sende-Eigenheiten, je eine DOM-Inspektion nötig (wie bei Qwen). Zum Schluss.
+
+Gemeinsames Muster der harten Fälle: `assistant_message`/`send_button`-Selektoren aus dem Python-Projekt sind für diese vier veraltet, ODER Enter sendet nicht → braucht `examples/inspect.rs <brain>` + korrigierte `selectors/<brain>.json`.
 
 ## Universelle Fixes aus der Qwen-Diagnose (bereits committet)
 
