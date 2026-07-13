@@ -100,6 +100,10 @@ pub struct WebBrainBackend {
     process: RefCell<Option<ChromeProcess>>,
     client: RefCell<Option<CdpClient>>,
     baseline_count: Cell<i32>,
+    /// Text der letzten Assistenten-Nachricht VOR dem Senden — damit wait_response
+    /// den Antwortbeginn auch dann erkennt, wenn der Nachrichtenzähler nicht
+    /// inkrementiert (Container-Selektor / bestehende Konversation).
+    baseline_text: RefCell<String>,
 }
 
 impl WebBrainBackend {
@@ -124,6 +128,7 @@ impl WebBrainBackend {
             process: RefCell::new(None),
             client: RefCell::new(None),
             baseline_count: Cell::new(0),
+            baseline_text: RefCell::new(String::new()),
         })
     }
 
@@ -251,7 +256,8 @@ impl WebBrainBackend {
             r#"(function(){{
 var A={assistant_js};var count=0,els=null;
 for(var i=0;i<A.length;i++){{try{{var e=document.querySelectorAll(A[i]);if(e.length>0){{count=e.length;els=e;break;}}}}catch(x){{}}}}
-var text="";if(els&&{target}>=0&&els.length>{target}){{text=(els[{target}].innerText||"").trim();}}
+var ti={target};if(ti<0)ti=count-1;
+var text="";if(els&&ti>=0&&els.length>ti){{text=(els[ti].innerText||"").trim();}}
 var stop=false;var S={stop_js};
 for(var j=0;j<S.length;j++){{try{{var el=document.querySelector(S[j]);if(el){{var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){{stop=true;break;}}}}}}catch(x){{}}}}
 return {{count:count,text:text,stop:stop}};}})()"#,
@@ -521,6 +527,13 @@ impl BrainBackend for WebBrainBackend {
     fn send(&mut self, text: &str) -> Result<i32, String> {
         let baseline = self.assistant_count();
         self.baseline_count.set(baseline);
+        // Text der letzten Nachricht merken (Fallback-Trigger fuer wait_response).
+        let bt = if baseline > 0 {
+            self.assistant_text(baseline - 1)
+        } else {
+            String::new()
+        };
+        *self.baseline_text.borrow_mut() = bt;
 
         if self.sel("composer").is_empty() {
             return Err("Keine Composer-Selektoren konfiguriert".into());
@@ -590,12 +603,14 @@ impl BrainBackend for WebBrainBackend {
             ..Default::default()
         };
 
-        // Phase 1: auf neue Nachricht ODER einen sichtbaren Stop-/Generating-Button
-        // warten (die Generierung kann starten, bevor der Nachrichten-Container im
-        // DOM committet ist).
+        // Phase 1: warten auf (a) neue Nachricht, (b) sichtbaren Stop-Button ODER
+        // (c) geänderten Text der letzten Nachricht — Trigger (c) fängt Brains ab,
+        // deren Zähler nicht inkrementiert (Container-Selektor / bestehende Konversation).
+        let baseline_text = self.baseline_text.borrow().clone();
         loop {
-            let (count, _text, stop) = self.probe_generation(&assistant_js, &stop_js, -1);
-            if count > baseline_count || (has_stop && stop) {
+            let (count, text, stop) = self.probe_generation(&assistant_js, &stop_js, -1);
+            let text_changed = !text.trim().is_empty() && text != baseline_text;
+            if count > baseline_count || (has_stop && stop) || text_changed {
                 break;
             }
             if start.elapsed().as_secs_f64() >= timeout {

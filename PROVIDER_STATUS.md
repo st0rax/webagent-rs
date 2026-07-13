@@ -7,8 +7,8 @@ Stand der Antworterkennung pro Brain, aus echten Läufen (`examples/inspect.rs`,
 |---|---|---|
 | qwen | 🔴 **UNFRIENDLY** | Zeigt trotz Desktop-Viewport, `webdriver=false`, Klick-Fokus, `insertText` hartnäckig „Current System does not Support / Download App" und nimmt keine Eingabe an. Provider-spezifischer Hard-Block; Playwright kommt auf demselben Profil durch. **Zuletzt angehen**, wenn alle anderen laufen. |
 | chatgpt | 🟢 **LÄUFT** | End-to-end verifiziert: tippen→senden→vollständige Antwort (complete=true, nicht abgeschnitten, 403 Zeichen). Brauchte den Composer-Wartefix (Feld rendert verzögert nach ensure_ready=Ready). |
-| deepseek | ⏳ zu verifizieren | |
-| kimi | ⏳ zu verifizieren | |
+| deepseek | 🟢 **LÄUFT** | End-to-end verifiziert (complete=true, 604 Zeichen, nicht abgeschnitten). |
+| kimi | 🟠 **HART** | Senden + Antwort erscheinen (inspect: `.user-content`/`.markdown`, assistant_message=1), aber `relay` bekommt `timeout_no_message` — Phase-1-Erkennung greift nicht (vermutlich Enter sendet nicht / Zähler-/Konversations-Eigenheit). Zu den harten Fällen (mit Qwen) am Ende. |
 | claude | ⏳ zu verifizieren | |
 | gemini | ⏳ zu verifizieren | |
 | mistral | ⏳ zu verifizieren | |
