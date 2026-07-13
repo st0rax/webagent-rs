@@ -528,12 +528,20 @@ impl BrainBackend for WebBrainBackend {
         let composer_js = self.sel_js("composer", &[]);
         let has_send_button = !self.sel("send_button").is_empty();
 
-        // Composer befüllen, mit kurzem Retry (Seite evtl. noch am Laden/Rendern).
-        if !self.fill_composer(&composer_js, text) {
-            std::thread::sleep(Duration::from_millis(600));
-            if !self.fill_composer(&composer_js, text) {
-                return Err("Composer-Feld nicht gefunden".into());
+        // Auf den Composer WARTEN und befüllen: manche Seiten (z.B. ChatGPT)
+        // melden ensure_ready=Ready, bevor das Eingabefeld hydratisiert/gerendert
+        // ist. Bis ~12s pollen, statt sofort zu scheitern.
+        let fill_deadline = Instant::now() + Duration::from_secs(12);
+        let mut filled = false;
+        while Instant::now() < fill_deadline {
+            if self.fill_composer(&composer_js, text) {
+                filled = true;
+                break;
             }
+            std::thread::sleep(Duration::from_millis(400));
+        }
+        if !filled {
+            return Err("Composer-Feld nicht gefunden (Timeout)".into());
         }
         std::thread::sleep(Duration::from_millis(150));
 
