@@ -11,13 +11,12 @@
 //!   Integriert doctor lock find.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime, Duration as TimeDuration};
-use std::time::Duration;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::run_store::RunMeta;
 
@@ -560,6 +559,7 @@ mod tests {
     use super::*;
     use crate::run_store::RunStore;
     use std::env;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use time::Duration;
 
@@ -663,7 +663,7 @@ mod tests {
 
         // Laufenden Run ohne owner_pid, aber alt (>600s)
         let mut meta = store.create("chatgpt", "stale task").unwrap();
-        let past = OffsetDateTime::now_utc() - TimeDuration::seconds(3600); // 1h her
+        let past = OffsetDateTime::now_utc() - Duration::seconds(3600); // 1h her
         meta.created_at = past.format(&Rfc3339).unwrap();
         meta.extra.remove("owner_pid"); // Legacy: kein owner_pid
         store.save(&meta).unwrap();
@@ -693,7 +693,7 @@ mod tests {
         // Verwaister Run
         let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
         let mut meta = store.create("chatgpt", "test").unwrap();
-        let past = OffsetDateTime::now_utc() - TimeDuration::seconds(3600);
+        let past = OffsetDateTime::now_utc() - Duration::seconds(3600);
         meta.created_at = past.format(&Rfc3339).unwrap();
         meta.extra.remove("owner_pid");
         store.save(&meta).unwrap();
@@ -742,7 +742,7 @@ mod tests {
 
         let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
         let mut meta = store.create("chatgpt", "test").unwrap();
-        let past = OffsetDateTime::now_utc() - TimeDuration::seconds(3600);
+        let past = OffsetDateTime::now_utc() - Duration::seconds(3600);
         meta.created_at = past.format(&Rfc3339).unwrap();
         meta.extra.remove("owner_pid");
         store.save(&meta).unwrap();

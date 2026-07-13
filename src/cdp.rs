@@ -307,6 +307,17 @@ fn parse_host_port(authority: &str) -> std::result::Result<(&str, u16), String> 
     }
 }
 
+/// Liest die Umgebungsvariable `WEBAGENT_CDP_ENDPOINT` aus und gibt sie
+/// (getrimmt) zurück, sofern gesetzt und nicht leer. `None` sonst — das ist die
+/// Entscheidungsgrundlage, ob der Agent lokal ein Chromium startet oder sich
+/// per `ws://` zu einem Remote-Chrome auf einem anderen Rechner verbindet.
+pub fn cdp_endpoint_from_env() -> Option<String> {
+    std::env::var("WEBAGENT_CDP_ENDPOINT")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 impl CdpClient {
     /// Verbindet direkt zu einem konfigurierten CDP-Endpunkt
     /// (siehe [`resolve_cdp_ws`]) — überspringt den lokalen Chrome-Launch.
@@ -558,5 +569,27 @@ mod tests {
         let err = resolve_cdp_ws("http://example.com:9222").unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("page-Target") || msg.contains("HTTP") || msg.contains("Verbindung"));
+    }
+
+    #[test]
+    fn cdp_endpoint_from_env_selection() {
+        // Ungesetzt -> None (lokaler Launch).
+        std::env::remove_var("WEBAGENT_CDP_ENDPOINT");
+        assert_eq!(cdp_endpoint_from_env(), None);
+
+        // Leer / nur Whitespace -> None.
+        std::env::set_var("WEBAGENT_CDP_ENDPOINT", "   ");
+        assert_eq!(cdp_endpoint_from_env(), None);
+
+        // Gesetzt -> Some (Remote-Verbindung, Whitespace getrimmt).
+        std::env::set_var("WEBAGENT_CDP_ENDPOINT", " ws://host:9222/devtools/page/1 ");
+        assert_eq!(
+            cdp_endpoint_from_env(),
+            Some("ws://host:9222/devtools/page/1".to_string())
+        );
+
+        // Aufräumen.
+        std::env::remove_var("WEBAGENT_CDP_ENDPOINT");
+        assert_eq!(cdp_endpoint_from_env(), None);
     }
 }

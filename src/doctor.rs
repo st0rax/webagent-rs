@@ -456,7 +456,11 @@ pub fn check_brain(
     let p_dir = if !profile_dir.is_empty() {
         profile_dir
     } else {
-        spec.get("profile").map(|s| s.as_str()).unwrap_or("")
+        spec
+            .get("profile_dir")
+            .or_else(|| spec.get("profile"))
+            .map(|s| s.as_str())
+            .unwrap_or("")
     };
 
     let mut check = BrainCheck {
