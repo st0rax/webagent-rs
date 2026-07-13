@@ -1,11 +1,20 @@
 # Provider-Status (Live-Verifikation Rust-Port)
 
-Stand der Antworterkennung pro Brain, aus echten Läufen (`examples/inspect.rs`,
-`examples/relay.rs`) gegen das eingeloggte Shared-Profil.
+> **WICHTIG — Begriffsklärung:** Diese Tabelle bewertet die **Provider-Integrationen**
+> `webagent/<id>` (die Browser-Automatisierung gegen die jeweilige Web-Chat-Seite),
+> **NICHT** die KI-Entitäten dahinter. „Hart"/„läuft" ist eine Aussage über die
+> *technische Automatisierbarkeit der Weboberfläche*, nicht über das Modell.
+>
+> Beispiel: **`webagent/qwen`** (die Automatisierung von chat.qwen.ai) ist hart —
+> aber **Qwen** (die Entität, Teammitglied/Co-Lead) ist erreichbar und hilfreich
+> (bestätigt über den Python-Relay). Die Integration klemmt, nicht der Kollege.
 
-| Brain | Status | Notiz |
+Stand der Antworterkennung pro **Provider-Integration**, aus echten Läufen
+(`examples/inspect.rs`, `examples/relay.rs`) gegen das eingeloggte Shared-Profil.
+
+| `webagent/<id>` | Status | Notiz |
 |---|---|---|
-| qwen | 🔴 **UNFRIENDLY** | Zeigt trotz Desktop-Viewport, `webdriver=false`, Klick-Fokus, `insertText` hartnäckig „Current System does not Support / Download App" und nimmt keine Eingabe an. Provider-spezifischer Hard-Block; Playwright kommt auf demselben Profil durch. **Zuletzt angehen**, wenn alle anderen laufen. |
+| `webagent/qwen` | 🔴 **INTEGRATION HART** | Die Automatisierung von chat.qwen.ai zeigt trotz Desktop-Viewport, `webdriver=false`, Klick-Fokus, `insertText` hartnäckig „Current System does not Support / Download App" und nimmt keine Eingabe an. Provider-spezifischer Hard-Block; Playwright kommt auf demselben Profil durch. **Zuletzt angehen.** (Die Entität **Qwen** ist davon unberührt und erreichbar.) |
 | chatgpt | 🟢 **LÄUFT** | End-to-end verifiziert: tippen→senden→vollständige Antwort (complete=true, nicht abgeschnitten, 403 Zeichen). Brauchte den Composer-Wartefix (Feld rendert verzögert nach ensure_ready=Ready). |
 | deepseek | 🟢 **LÄUFT** | End-to-end verifiziert (complete=true, 604 Zeichen, nicht abgeschnitten). |
 | kimi | 🟠 **HART** | Senden + Antwort erscheinen (inspect: `.user-content`/`.markdown`, assistant_message=1), aber `relay` bekommt `timeout_no_message` — Phase-1-Erkennung greift nicht (vermutlich Enter sendet nicht / Zähler-/Konversations-Eigenheit). Zu den harten Fällen (mit Qwen) am Ende. |
@@ -16,12 +25,14 @@ Stand der Antworterkennung pro Brain, aus echten Läufen (`examples/inspect.rs`,
 
 ## Zwischenstand: 4 von 8 laufen end-to-end
 
-🟢 **chatgpt, deepseek, claude, zai** — tippen→senden→**vollständige** Antwort erkannt (nicht abgeschnitten).
-🟠 **kimi, gemini, mistral, qwen** — provider-spezifische Selektor-/Sende-Eigenheiten, je eine DOM-Inspektion nötig (wie bei Qwen). Zum Schluss.
+🟢 **`webagent/chatgpt`, `/deepseek`, `/claude`, `/zai`** — tippen→senden→**vollständige** Antwort erkannt (nicht abgeschnitten).
+🟠 **`webagent/kimi`, `/gemini`, `/mistral`, `/qwen`** — Integrationen mit Selektor-/Sende-Drift, je eine DOM-Inspektion nötig. Zum Schluss.
 
-Gemeinsames Muster der harten Fälle: `assistant_message`/`send_button`-Selektoren aus dem Python-Projekt sind für diese vier veraltet, ODER Enter sendet nicht → braucht `examples/inspect.rs <brain>` + korrigierte `selectors/<brain>.json`.
+(Nochmal: das betrifft die **Integrationen**, nicht die Entitäten. Kimi/Gemini/Mistral/Qwen als Modelle/Teammitglieder sind erreichbar.)
 
-## Universelle Fixes aus der Qwen-Diagnose (bereits committet)
+Gemeinsames Muster der harten Integrationen: `assistant_message`/`send_button`-Selektoren aus dem Python-Projekt sind veraltet, ODER Enter sendet nicht → braucht `examples/inspect.rs <id>` + korrigierte `selectors/<id>.json`.
+
+## Universelle Fixes aus der `webagent/qwen`-Diagnose (bereits committet)
 
 1. `js_scan`/`probe`: try/catch pro Selektor — ein ungültiger (`:has-text`) Selektor bricht nicht mehr die ganze Liste.
 2. CDP-Enter mit `text:"\r"` — löst Submit aus.
