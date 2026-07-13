@@ -95,6 +95,12 @@ pub const BRAIN_TABLE: &[(&str, &str)] = &[
 pub fn brains() -> HashMap<String, HashMap<String, String>> {
     let sel = selectors_dir();
     let profiles = profiles_dir();
+    // Optionaler Override: alle Brains dasselbe Profil nutzen lassen (z.B. das
+    // eingeloggte Shared-Profil des Python-webagent) via WEBAGENT_PROFILE_DIR.
+    let profile_override = env::var("WEBAGENT_PROFILE_DIR")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let mut brains = HashMap::new();
     for (id, url) in BRAIN_TABLE {
         let mut b = HashMap::new();
@@ -103,10 +109,10 @@ pub fn brains() -> HashMap<String, HashMap<String, String>> {
             "selectors".to_string(),
             sel.join(format!("{id}.json")).to_string_lossy().to_string(),
         );
-        b.insert(
-            "profile_dir".to_string(),
-            profiles.join(id).to_string_lossy().to_string(),
-        );
+        let profile_dir = profile_override
+            .clone()
+            .unwrap_or_else(|| profiles.join(id).to_string_lossy().to_string());
+        b.insert("profile_dir".to_string(), profile_dir);
         brains.insert(id.to_string(), b);
     }
     brains

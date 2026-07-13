@@ -97,11 +97,19 @@ impl ChromeProcess {
                 .arg("--no-first-run")
                 .arg("--no-default-browser-check")
                 .arg("--disable-background-networking")
-                .arg("--disable-features=Translate,AutomationControlled")
-                .arg("--remote-allow-origins=*");
+                .arg("--disable-features=Translate")
+                // Versteckt navigator.webdriver & Co. — DAS ist der korrekte Flag
+                // (blink-features), damit Provider den Browser nicht als Automation
+                // erkennen und ein "nicht unterstuetzt"-Layout zeigen.
+                .arg("--disable-blink-features=AutomationControlled")
+                .arg("--remote-allow-origins=*")
+                // Fenstergröße IMMER setzen: bei zu kleinem Fenster rendern manche
+                // Provider (z.B. Qwen) ein Mobil-/"nicht unterstuetzt"-Layout ohne
+                // funktionierenden Chat.
+                .arg("--window-size=1280,900")
+                .arg("--window-position=0,0");
             if headless {
                 cmd.arg("--headless=new");
-                cmd.arg("--window-size=1280,900");
             }
             cmd.arg("about:blank");
             match cmd.spawn() {
@@ -417,18 +425,51 @@ impl CdpClient {
         self.eval_string("location.href")
     }
 
-    /// Sendet einen Tastendruck (keyDown + keyUp) an das fokussierte Element.
-    pub fn press_key(&mut self, key: &str, code: &str, virtual_key: i64) -> Result<()> {
-        for phase in ["keyDown", "keyUp"] {
+    /// Sendet einen Tastendruck an das fokussierte Element. `text` wird beim
+    /// keyDown mitgesendet (z.B. "\r" fuer Enter) — ohne das feuert Chrome kein
+    /// keypress/beforeinput, und viele Web-Composer loesen dann kein Submit aus.
+    pub fn press_key(&mut self, key: &str, code: &str, virtual_key: i64, text: &str) -> Result<()> {
+        let mut down = json!({
+            "type": "keyDown",
+            "key": key,
+            "code": code,
+            "windowsVirtualKeyCode": virtual_key,
+            "nativeVirtualKeyCode": virtual_key
+        });
+        if !text.is_empty() {
+            down["text"] = json!(text);
+            down["unmodifiedText"] = json!(text);
+        }
+        self.call("Input.dispatchKeyEvent", down)?;
+        self.call(
+            "Input.dispatchKeyEvent",
+            json!({
+                "type": "keyUp",
+                "key": key,
+                "code": code,
+                "windowsVirtualKeyCode": virtual_key,
+                "nativeVirtualKeyCode": virtual_key
+            }),
+        )?;
+        Ok(())
+    }
+
+    /// Fügt Text als "echtes Tippen" ins fokussierte Element ein (CDP
+    /// `Input.insertText`). Löst beforeinput/input aus, sodass Frameworks
+    /// (React/Vue) den Wert übernehmen — im Gegensatz zu direkter `.value`-Zuweisung.
+    pub fn insert_text(&mut self, text: &str) -> Result<()> {
+        self.call("Input.insertText", json!({ "text": text }))?;
+        Ok(())
+    }
+
+    /// Echter Linksklick an Viewport-Koordinaten (mousePressed + mouseReleased) —
+    /// gibt einem Element echten Fokus, wie Playwrights click(); JS-`el.focus()`
+    /// reicht manchen Frameworks/`insertText` nicht.
+    pub fn click_at(&mut self, x: f64, y: f64) -> Result<()> {
+        for typ in ["mousePressed", "mouseReleased"] {
             self.call(
-                "Input.dispatchKeyEvent",
-                json!({
-                    "type": phase,
-                    "key": key,
-                    "code": code,
-                    "windowsVirtualKeyCode": virtual_key,
-                    "nativeVirtualKeyCode": virtual_key
-                }),
+                "Input.dispatchMouseEvent",
+                json!({"type": typ, "x": x, "y": y, "button": "left", "clickCount": 1}),
             )?;
         }
         Ok(())
