@@ -1,0 +1,52 @@
+name: release
+
+# Builds release binaries on tag push (v*) and attaches them to the GitHub Release.
+#
+# Android (aarch64) release is deliberately NOT built here.
+# Android-Release folgt nach Klärung lokaler-Browser/Termux (siehe MERGE_AND_PARITY.md).
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            build_flags: --release
+            artifact: target/release/webagent
+          - name: windows-x86_64
+            # MSVC ist auf windows-latest vorinstalliert (Linker vorhanden); die
+            # rein-Rust-Deps bauen damit ohne MinGW. Robuster als der GNU-Target auf CI.
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            build_flags: --release
+            artifact: target/release/webagent.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release
+        run: cargo build ${{ matrix.build_flags }}
+
+      - name: Attach binary to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact }}
