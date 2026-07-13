@@ -79,11 +79,22 @@ archivieren; `webagent-rs` wird der einzige Baum (ggf. in `webagent/` umziehen).
 - R3 Android (aarch64) — **erst nach P2/P3** (lokaler Browser + nativer Build).
 - GitHub-Actions Release-Workflow, der die drei Artefakte an ein Tag hängt.
 
-## 5. Entscheidungen, die ich von Storax brauche
+## 5. Entscheidungen (alle geklärt, 2026-07-13)
 
-- **Merge-Richtung:** Rust ersetzt Python vollständig (empfohlen), Python nur
-  archivieren? Oder Python parallel halten?
-- ~~**presence-check:** Zweck?~~ ✅ GEKLÄRT: Qwens Personal-Assistant-Feature, nicht
-  webagent. Aus webagent-rs entfernt.
-- **Remote-CDP:** als optionalen Escape-Hatch behalten (empfohlen) oder ganz raus?
-- **Genius-Council-Parität** wirklich nötig für v1, oder später? (Größter Aufwand.)
+- ✅ **Merge-Richtung:** Rust ersetzt Python vollständig; Python wird archiviert.
+- ✅ **presence-check:** Qwens Personal-Assistant-Feature, nicht webagent. Aus
+  webagent-rs entfernt; ausgegliedert nach `Desktop/presence/` (eigenes Repo geplant).
+- ✅ **Remote-CDP:** bleibt als **optionaler** Escape-Hatch (nicht Kern-Strategie).
+  Auf Android ist das Ziel der **lokale** Browser.
+- ✅ **Genius-Council:** DEFERRED. Konzept ausgearbeitet in
+  [`docs/GENIUS_COUNCIL_CONCEPT.md`](docs/GENIUS_COUNCIL_CONCEPT.md) (nicht v1).
+
+## 6. Projekt-/Repo-Aufteilung (Storax: jedes Projekt = eigenes Repo + README)
+
+- `webagent-rs` — DAS webagent-Projekt (Rust, plattformunabhängig). Eigenes Repo.
+- `presence` (`Desktop/presence/`) — Home-Presence-Erkennung. Eigenes Repo (privat
+  empfohlen — Geräte-MACs). Lokaler Scaffold + README steht; GitHub-Push offen.
+- `bot2bot` — optional als eigenes Projekt ausgliedern (webagent hat mit `comms`
+  eine eigene interne Schnittstelle; nur wenn architektonisch sinnvoll).
+- Offen für GitHub-Push: `gh` ist NICHT installiert; Account/public-private noch
+  von Storax zu bestätigen.
