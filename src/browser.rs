@@ -248,6 +248,35 @@ impl WebBrainBackend {
         self.eval_bool(&expr)
     }
 
+    /// Klickt das erste sichtbare Element aus der Selektorliste per ECHTEM CDP-
+    /// Mausklick (trusted `Input.dispatchMouseEvent` auf die Element-Mitte). Nötig,
+    /// wo synthetisches `el.click()` von Anti-Automation ignoriert wird — z.B.
+    /// Geminis „Nachricht senden"-Button (Text steht im Composer, Button ist
+    /// enabled, aber der untrusted Klick löst keinen Submit aus). Spiegelt den
+    /// Composer-Klick in `fill_composer`, der bei allen Providern funktioniert.
+    fn click_visible_real(&self, key: &str) -> bool {
+        let sels = self.sel(key);
+        if sels.is_empty() {
+            return false;
+        }
+        let coord_body = "var el=document.querySelector(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
+        let coords = self
+            .eval(&Self::js_scan(&Self::js_selectors(&sels), coord_body, "null"))
+            .unwrap_or(Value::Null);
+        let (x, y) = match (
+            coords.get("x").and_then(|v| v.as_f64()),
+            coords.get("y").and_then(|v| v.as_f64()),
+        ) {
+            (Some(x), Some(y)) => (x, y),
+            _ => return false,
+        };
+        let mut guard = self.client.borrow_mut();
+        match guard.as_mut() {
+            Some(client) => client.click_at(x, y).is_ok(),
+            None => false,
+        }
+    }
+
     /// Ein einziger CDP-Roundtrip, der Nachrichtenanzahl, den Text der Nachricht
     /// `target` und die Sichtbarkeit des Stop-Buttons gemeinsam ermittelt — statt
     /// dreier separater `Runtime.evaluate`-Aufrufe pro Poll-Iteration.
@@ -307,6 +336,12 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
 }})()"#
         );
         self.eval(&expr)
+    }
+
+    /// Diagnose-Hilfe: beliebiges JS am aktiven Target auswerten. Nur für
+    /// `examples/`/Tools zur Selektor-Analyse gedacht — nicht im Agentenpfad nutzen.
+    pub fn eval_js(&self, expr: &str) -> Result<Value, String> {
+        self.eval(expr)
     }
 
     fn is_cloudflare_blocked(&self) -> bool {
@@ -572,7 +607,10 @@ impl BrainBackend for WebBrainBackend {
             if attempt == 0 || !has_send_button {
                 self.press_enter().ok();
             } else {
-                self.click_first("send_button");
+                // Echter CDP-Klick (trusted); Fallback auf synthetisches el.click().
+                if !self.click_visible_real("send_button") {
+                    self.click_first("send_button");
+                }
             }
             for _ in 0..8 {
                 std::thread::sleep(Duration::from_millis(250));
