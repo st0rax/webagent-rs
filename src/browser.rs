@@ -318,6 +318,15 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         self.click_first("consent_reject_button")
     }
 
+    /// Provider-spezifische Unterbrechungen wegklicken, die den Antwortfluss
+    /// blockieren — z.B. Geminis „Welche Antwort bevorzugst du?"-Vergleich
+    /// (`response_preference_choice`) oder Hinweis-Dialoge (`notice_close_button`).
+    /// Alle Aufrufe sind harmlos, wenn die Selektoren nicht konfiguriert sind.
+    fn handle_interruptions(&self) {
+        self.click_first("response_preference_choice");
+        self.click_first("notice_close_button");
+    }
+
     /// Enter im aktuell fokussierten Element auslösen (echtes Tastatur-Event via CDP).
     fn press_enter(&self) -> Result<(), String> {
         let mut guard = self.client.borrow_mut();
@@ -435,18 +444,15 @@ impl BrainBackend for WebBrainBackend {
 
     fn start(&mut self, headless: bool) -> Result<(), String> {
         // Remote-CDP-Endpunkt: kein lokaler Chrome-Launch (für Android/Termux).
-        if let Ok(endpoint) = std::env::var("WEBAGENT_CDP_ENDPOINT") {
-            if !endpoint.trim().is_empty() {
-                let mut client =
-                    CdpClient::connect_endpoint(&endpoint).map_err(|e| e.to_string())?;
-                client
-                    .navigate(&self.url, Duration::from_secs(30))
-                    .map_err(|e| e.to_string())?;
-                *self.process.borrow_mut() = None;
-                *self.client.borrow_mut() = Some(client);
-                self.baseline_count.set(0);
-                return Ok(());
-            }
+        if let Some(endpoint) = crate::cdp::cdp_endpoint_from_env() {
+            let mut client = CdpClient::connect_endpoint(&endpoint).map_err(|e| e.to_string())?;
+            client
+                .navigate(&self.url, Duration::from_secs(30))
+                .map_err(|e| e.to_string())?;
+            *self.process.borrow_mut() = None;
+            *self.client.borrow_mut() = Some(client);
+            self.baseline_count.set(0);
+            return Ok(());
         }
         let proc = ChromeProcess::launch(&self.profile_dir, headless, self.port)
             .map_err(|e| e.to_string())?;
@@ -630,6 +636,9 @@ impl BrainBackend for WebBrainBackend {
             .max(0);
 
         loop {
+            // Provider-Unterbrechungen (z.B. Geminis Antwort-Vergleich) wegklicken,
+            // sonst bleibt der Antwort-Container leer und die Erkennung timeoutet.
+            self.handle_interruptions();
             let (count, current, stop_raw) = self.probe_generation(&assistant_js, &stop_js, target);
             if count - 1 > target {
                 target = count - 1;

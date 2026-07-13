@@ -19,7 +19,7 @@ Stand der Antworterkennung pro **Provider-Integration**, aus echten Läufen
 | deepseek | 🟢 **LÄUFT** | End-to-end verifiziert (complete=true, 604 Zeichen, nicht abgeschnitten). |
 | kimi | 🟢 **LÄUFT** | Lief nach dem **new_chat-vor-Run-Fix** (bestehende Konversation → baseline>0 → Erkennung verfehlte den Start). complete=true, 127 Zeichen. |
 | claude | 🟢 **LÄUFT** | complete=true, 194 Zeichen. (Thinking-Label „Dachte 2s nach" wird mit erfasst — der Protokoll-Parser strippt es im Agenten-Fall.) |
-| gemini | 🟠 **HART** | `timeout_no_text`: Phase 1 triggert, aber `assistant_message`-Text bleibt leer (Selektor-Drift beim Antwort-Container). |
+| gemini | 🟠 **HART** | `timeout_no_text`: `assistant_message` matcht 1 Element, dessen innerText aber leer bleibt — Antwort-Container liegt tiefer (Google-Angular, evtl. Custom-Element/Shadow-DOM). `handle_interruptions` (Antwort-Vergleich wegklicken) hinzugefügt, reicht aber nicht. Braucht eine eigene DOM-Sitzung wie Qwen. |
 | mistral | 🟢 **LÄUFT** | Ebenfalls mit dem new_chat-Fix gelöst. complete=true, 165 Zeichen. |
 | zai | 🟢 **LÄUFT** | complete=true, 160 Zeichen. („Thought Process"-Prefix wird im Agenten-Fall gestrippt.) |
 
