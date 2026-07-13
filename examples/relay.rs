@@ -35,6 +35,10 @@ fn main() {
     let state = backend.ensure_ready(60.0).unwrap_or(webagent::brain::SessionState::Error);
     eprintln!("[relay] session_state={state:?}");
 
+    // Frischen Chat erzwingen, damit baseline=0 (keine bestehende Konversation).
+    let _ = backend.new_chat();
+    std::thread::sleep(Duration::from_millis(800));
+
     let baseline = match backend.send(&message) {
         Ok(b) => b,
         Err(e) => {

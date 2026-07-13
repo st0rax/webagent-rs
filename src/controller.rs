@@ -582,6 +582,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 self.resume_initial_turn(&mut transcript)
             }
         } else {
+            // Frischer Run: neuen Chat erzwingen, damit die Antworterkennung von
+            // einer leeren Konversation ausgeht (baseline=0). Ohne das verfehlt die
+            // Erkennung bei Brains mit bestehender Konversation den Antwortbeginn
+            // (verifiziert: kimi/mistral liefen erst mit vorherigem new_chat).
+            let _ = self.brain.new_chat();
+
             let memories = self.memory.search(
                 &task,
                 &["shared", brain_id],
@@ -855,14 +861,12 @@ mod tests {
 
     struct MockExecutor {
         commands: Rc<RefCell<Vec<String>>>,
-        started: Rc<RefCell<bool>>,
     }
 
     impl MockExecutor {
         fn new() -> Self {
             Self {
                 commands: Rc::new(RefCell::new(Vec::new())),
-                started: Rc::new(RefCell::new(false)),
             }
         }
     }
@@ -905,8 +909,6 @@ mod tests {
     fn test_conversation_ref_persisted_after_complete_brain_response() {
         let brain = MockBrain::new()
             .with_responses(vec![&finish_response()], vec![true]);
-        let conv_ref = brain.conversation_ref.clone();
-        *conv_ref.borrow_mut() = Some("https://example.test/chat/persisted".to_string());
 
         let executor = MockExecutor::new();
         let data_dir = unique_data_dir();
@@ -916,13 +918,15 @@ mod tests {
         let meta = controller.run("Testaufgabe", "mock", None, false).unwrap();
         assert_eq!(meta.status, "done");
 
+        // Ein frischer Run legt einen neuen Chat an; dessen conversation_ref
+        // (vom Mock-new_chat gesetzt) muss nach Abschluss persistiert sein.
         let runs_dir = data_dir.join("runs");
         let logs_dir = data_dir.join("logs");
         let store = RunStore::new(runs_dir, logs_dir);
         let reloaded = store.load(&meta.run_id).unwrap();
         assert_eq!(
             reloaded.conversation_ref,
-            Some("https://example.test/chat/persisted".to_string())
+            Some("https://example.test/chat/new".to_string())
         );
     }
 
