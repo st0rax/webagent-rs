@@ -22,7 +22,7 @@ fn concise(v: &Value) -> String {
     let b64f = |o: &Value, k: &str| o.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
 
     // Nachrichten-Container mit Text (Kandidaten fuer assistant_message).
-    let msgs: Vec<String> = v
+    let _msgs: Vec<String> = v
         .get("messages")
         .and_then(|m| m.as_array())
         .unwrap_or(&empty)
