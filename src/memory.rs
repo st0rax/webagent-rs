@@ -146,13 +146,15 @@ impl MemoryStore {
     }
 
     /// Sucht Erinnerungen basierend auf Token-Overlap und Ranking.
+    /// Reihenfolge wie Python: `ORDER BY id DESC` vor dem Scoring.
     pub fn search(
         &self,
         query: &str,
         scopes: &[&str],
         limit: usize,
     ) -> Result<Vec<MemoryEntry>, String> {
-        let entries = self.load_all()?;
+        let mut entries = self.load_all()?;
+        entries.sort_by_key(|e| std::cmp::Reverse(e.id));
         let query_tokens = tokens(query);
 
         let mut scored: Vec<(f64, StoredEntry)> = Vec::new();
@@ -160,6 +162,7 @@ impl MemoryStore {
         for (position, entry) in entries
             .into_iter()
             .filter(|e| scopes.contains(&e.scope.as_str()))
+            .take(1000)
             .enumerate()
         {
             let content_tokens = tokens(&entry.content);
@@ -442,6 +445,67 @@ mod tests {
 
         assert_eq!(store.record_run(&meta).unwrap(), None);
         assert_eq!(store.list(20).unwrap().len(), 0);
+    }
+
+    /// Python-parity fixture: gleiche IDs/Importance/Inhalte → gleiche Top-N-Reihenfolge.
+    #[test]
+    fn test_search_ranking_parity_fixture() {
+        let tmp = unique_tmp();
+        let store = MemoryStore::new(tmp.join("memory.jsonl"));
+
+        store
+            .add(
+                "Aufgabe: Arduino Firmware flashen",
+                "shared",
+                "episode",
+                Some("run:ep1"),
+                0.35,
+            )
+            .unwrap();
+        store
+            .add(
+                "Der Benutzer bevorzugt Rust statt Python",
+                "shared",
+                "explicit",
+                Some("manual:rust"),
+                0.9,
+            )
+            .unwrap();
+        store
+            .add(
+                "Aufgabe: DeepSeek Profil testen",
+                "shared",
+                "episode",
+                Some("run:ep2"),
+                0.35,
+            )
+            .unwrap();
+        store
+            .add(
+                "Browserfenster immer minimiert halten",
+                "shared",
+                "fact",
+                Some("manual:browser"),
+                0.7,
+            )
+            .unwrap();
+
+        let deepseek = store.search("DeepSeek Profil", &["shared"], 3).unwrap();
+        assert!(!deepseek.is_empty());
+        assert!(deepseek[0].content.contains("DeepSeek"));
+        assert!(deepseek.iter().all(|e| e.kind != "episode" || e.content.contains("DeepSeek")));
+
+        let rust_mem = store.search("Rust Python", &["shared"], 3).unwrap();
+        assert!(!rust_mem.is_empty());
+        assert!(rust_mem[0].content.contains("Rust"));
+
+        let browser = store.search("Browserfenster minimiert", &["shared"], 3).unwrap();
+        assert!(!browser.is_empty());
+        assert!(browser[0].content.contains("minimiert"));
+
+        // Episoden ohne Token-Overlap werden ausgeschlossen (wie Python).
+        let unrelated = store.search("Quantencomputer", &["shared"], 5).unwrap();
+        assert!(unrelated.iter().all(|e| e.kind != "episode"));
     }
 
     #[test]

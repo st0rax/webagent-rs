@@ -93,6 +93,24 @@ pub fn use_shared_browser() -> bool {
     matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes")
 }
 
+/// Tabs zwischen Relay-Hops offen halten. Default: an wenn shared browser an.
+pub fn persist_browser_tabs() -> bool {
+    let v = env::var("WEBAGENT_PERSIST_TABS").unwrap_or_default();
+    match v.trim().to_lowercase().as_str() {
+        "0" | "false" | "no" | "off" => false,
+        "1" | "true" | "yes" | "on" => true,
+        _ => use_shared_browser(),
+    }
+}
+
+/// Fester Debug-Port für den Shared-Browser-Pool (ein Chromium, viele Tabs).
+pub fn shared_debug_port() -> u16 {
+    env::var("WEBAGENT_SHARED_DEBUG_PORT")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(9222)
+}
+
 /// selectors/-Verzeichnis (ROOT/selectors/<brain>.json), wie SELECTORS_DIR in config.py.
 pub fn selectors_dir() -> PathBuf {
     root_dir().join("selectors")
@@ -231,6 +249,27 @@ mod tests {
         assert_eq!(MAX_OBSERVATION_CHARS, 12_000);
         assert_eq!(LOOP_GUARD_WARN_COUNT, 3);
         assert_eq!(LOOP_GUARD_ABORT_COUNT, 8);
+    }
+
+    #[test]
+    fn test_persist_browser_tabs_defaults() {
+        let shared_key = "WEBAGENT_USE_SHARED_BROWSER";
+        let tabs_key = "WEBAGENT_PERSIST_TABS";
+        let prev_shared = env::var(shared_key).ok();
+        let prev_tabs = env::var(tabs_key).ok();
+        env::set_var(shared_key, "1");
+        env::remove_var(tabs_key);
+        assert!(persist_browser_tabs());
+        env::set_var(tabs_key, "0");
+        assert!(!persist_browser_tabs());
+        match prev_tabs {
+            Some(v) => env::set_var(tabs_key, v),
+            None => env::remove_var(tabs_key),
+        }
+        match prev_shared {
+            Some(v) => env::set_var(shared_key, v),
+            None => env::remove_var(shared_key),
+        }
     }
 
     #[test]

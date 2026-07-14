@@ -146,6 +146,32 @@ impl ChromeProcess {
         )))
     }
 
+    /// Erstellt ein neues Page-Target und liefert `(target_id, webSocketDebuggerUrl)`.
+    pub fn new_page_target(&self, url: &str) -> Result<(String, String)> {
+        let encoded = url_encode_path_query(url);
+        let created =
+            http_get(self.port, &format!("/json/new?{encoded}")).map_err(CdpError::Discovery)?;
+        let t: Value =
+            serde_json::from_str(&created).map_err(|e| CdpError::Discovery(e.to_string()))?;
+        let id = t
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| CdpError::Discovery("kein target-id".into()))?
+            .to_string();
+        let ws = t
+            .get("webSocketDebuggerUrl")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| CdpError::Discovery("kein webSocketDebuggerUrl".into()))?
+            .to_string();
+        Ok((id, ws))
+    }
+
+    /// Schließt ein Page-Target per DevTools-HTTP-API.
+    pub fn close_target(&self, target_id: &str) -> Result<()> {
+        let _ = http_get(self.port, &format!("/json/close/{target_id}"));
+        Ok(())
+    }
+
     /// WebSocket-URL des ersten Page-Targets (bei Bedarf per Neuanlage).
     pub fn page_ws_url(&self) -> Result<String> {
         let body = http_get(self.port, "/json").map_err(CdpError::Discovery)?;
@@ -180,6 +206,15 @@ impl Drop for ChromeProcess {
     fn drop(&mut self) {
         self.kill();
     }
+}
+
+fn url_encode_path_query(url: &str) -> String {
+    url.chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            _ => format!("%{:02X}", c as u32),
+        })
+        .collect()
 }
 
 /// Roher HTTP/1.1-GET an den lokalen Debug-Port (kein externer HTTP-Client nötig).

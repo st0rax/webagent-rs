@@ -21,7 +21,8 @@ Companion docs already in this repo: [`MERGE_AND_PARITY.md`](MERGE_AND_PARITY.md
 | Rust module | Lines | Responsibility | Python counterpart |
 |---|---:|---|---|
 | `main.rs` | 567 | clap CLI entry, subcommand dispatch | `cli.py` (partial) |
-| `repl.rs` | 64 | interactive REPL loop | `cli.py::cmd_repl` (minimal subset) |
+| `repl.rs` | ~400 | interactive REPL loop + slash router | `cli.py::cmd_repl` (core subset) |
+| `browser_pool.rs` | ~180 | shared-browser singleton pool | `browser_pool.py` |
 | `lib.rs` | 162 | crate root, UTC/时间 helpers, `pid_alive`, char-safe slicing | (spread across Python stdlib) |
 | `protocol.rs` | 873 | `webagent/1` parser + `WEBAGENT/1 SHELL` raw format | `protocol.py` |
 | `controller.rs` | 1037 | Plan/Act/Observe state machine, resume, loop/budget guard | `controller_new.py` |
@@ -58,10 +59,10 @@ Companion docs already in this repo: [`MERGE_AND_PARITY.md`](MERGE_AND_PARITY.md
   `/remember`, `/forget`, `/switch`, `/genius` (`/consensus`), `/vote`,
   `/score` (`/perf`), `/new`, `/login`, `/waitlogin`, `/chat`, plus bare input =
   autonomous run.
-- **Rust** (`repl.rs`): `/exit`, `/quit`, `/new`, plus bare input = autonomous run.
-- **Gap:** all memory, brain-switch, council/vote/score, login and chat REPL verbs
-  are absent in Rust. Also the Rust REPL restarts the browser per turn (documented
-  in `repl.rs` header) rather than keeping a session open.
+- **Rust** (`repl.rs`): `/exit`, `/quit`, `/new`, `/memory`, `/remember`, `/forget`,
+  `/switch`, `/login`, `/chat`, plus bare input = autonomous run (persistent session).
+- **Gap:** `/update`, `/oobe`, `/genius`, `/vote`, `/score`, `/waitlogin` (council/update
+  surfaces deferred).
 
 ---
 
@@ -85,7 +86,7 @@ but with a behavioral or coverage gap (see note); **Missing** = not in Rust;
 | Brain backends (8 providers) | `brains/{chatgpt,claude,deepseek,gemini,kimi,mistral,qwen,zai}.py` | `browser.rs` (one generic backend) | **Partial** | Python has per-provider subclasses with provider-specific overrides; Rust uses a single `WebBrainBackend` fully driven by `selectors/<id>.json` + generic interruption handling. All 8 selector files present in `selectors/`. Verify provider quirks encoded in the Python subclasses are all covered by selectors/interruptions (esp. gemini/qwen). |
 | Run persistence | `persistence/run_store.py` | `run_store.rs` | **Present** | Create/load/save run meta, terminal-status guard, `reconcile_stale_runs`, `completed_actions`, `conversation_ref`, `extra` bag. |
 | Transcript | `persistence/transcript.py` | `transcript.rs` | **Present** | JSONL append with role/content/extra; recovery-tail by char budget. |
-| Long-term memory | `memory.py` | `memory.rs` | **Partial** | API parity (add/delete/list/search/record_run, scopes `shared`+brain, importance, episode recording). **Storage differs:** Python uses SQLite (`sqlite3`); Rust uses JSON-Lines. Verify search ranking/tokenization produce comparable ordering for the controller's memory-context injection. |
+| Long-term memory | `memory.py` | `memory.rs` | **Present** | API parity (add/delete/list/search/record_run). Search uses same token overlap + recency scoring; `ORDER BY id DESC` before score (2026-07-14). Storage: SQLite (Python) vs JSON-Lines (Rust) — ranking aligned via fixture tests. |
 | Doctor | `doctor.py` | `doctor.rs` | **Present** | Per-brain selectors/profile-lock/last-done-run/login-state/recovery-hint; human + `--json` output wired in `main.rs`. |
 | Watchdog | `watchdog.py` | `watchdog.rs` | **Present** | Orphaned runs, stale bridge locks, stale profile locks; dry-run vs repair; `--json`. NOTE: Rust CLI default is **dry-run** (`--repair` to fix); Python default **repairs** (`--dry-run` to scan). Interval/daemon loop present in Python CLI, not in Rust CLI. |
 | maintenance-check | `cli.py::cmd_maintenance_check` | `main.rs::cmd_maintenance_check` | **Partial** | Different checks. Python: git-clean, VERSION/pyproject/runtime version agreement, selectors+bot2bot presence, optional `pytest`. Rust: doctor-ok + watchdog dry-run-clean + optional `cargo test`. Both are read-only gates returning exit 0/2, but they assert different invariants. |
@@ -95,7 +96,7 @@ but with a behavioral or coverage gap (see note); **Missing** = not in Rust;
 | relay / bot2bot single-turn | `relay.py` (`relay_single_turn`) | `relay.rs` + `main.rs` | **Present** | `webagent relay --brain --message`; `comms.rs` bleibt separater Inbox-Store. |
 | oobe first-run wizard | `oobe.py`, `cli.py::cmd_oobe` | `oobe.rs` + `main.rs` | **Partial** | CLI-Subset: Brain-Auswahl + State; interaktiver Login-Hinweis; REPL `/oobe` fehlt noch. |
 | Agent / AgentManager | `agent.py` | (folded into `controller.rs` + `browser.rs`) | **Present (by design)** | High-level Agent abstraction; Rust achieves the same lifecycle via controller+backend. Functional equivalent for single-agent flows; sub-agent management used by council is absent (see Genius-Council). |
-| browser_pool / shared-browser | `browser_pool.py`, `browser_launch.py`, `config.use_shared_browser` | `config.rs::use_shared_browser` (flag only) | **Missing** | Python Option-2 shared pool: one Chromium process/profile, one tab per brain, tab persistence between relay hops. Rust launches a per-brain CDP Chrome process; the flag exists but there is no pool. |
+| browser_pool / shared-browser | `browser_pool.py`, `browser_launch.py`, `config.use_shared_browser` | `browser_pool.rs`, `config.rs` | **Present** | One Chromium + `profiles/shared`, one CDP tab per brain, refcount + `persist_browser_tabs()` (2026-07-14). Activate via `WEBAGENT_USE_SHARED_BROWSER=1`. |
 | terminal_status (REPL banner/summary) | `terminal_status.py` | inline `println!` in `main.rs`/`repl.rs` | **Partial** | Rust prints plain summaries; the styled banner/`print_run_summary` UX is not reproduced. |
 | Genius-Council: council policy | `council.py` | — | **Deferred** | Loadout, moderator election (ranked/instant-runoff), selection parsing. |
 | Genius-Council: consensus runner | `consensus.py`, `cli.py::cmd_genius` | — | **Deferred** | Workspace-driven multi-brain cycles + moderator synthesis. |
@@ -145,19 +146,14 @@ Genius-Council items are intentionally last (Deferred upstream).
 - [x] **Reconcile config divergences** — done (2026-07-14). **Size: S**
 - [x] **Port `brains-health`** — `brains_health.rs` + CLI (2026-07-14). **Size: S**
 - [x] **Port `relay` as a CLI command** — `relay.rs` + CLI (2026-07-14). **Size: S**
-- [ ] **Expand the REPL** — add `/memory`, `/remember`, `/forget`, `/switch`,
-  `/login`, `/chat`, and keep a browser session open across turns. Big interactive
-  UX win. **Size: M**
+- [x] **Expand the REPL** — done (2026-07-14): persistent session, `/memory`,
+  `/remember`, `/forget`, `/switch`, `/login`, `/chat`. **Size: M**
 - [x] **Port `oobe` first-run wizard** — `oobe.rs` + CLI subset (2026-07-14); REPL `/oobe` still optional. **Size: M**
 - [ ] **Align `maintenance-check` semantics** — decide whether the Rust gate should
   also assert version agreement / git-clean, or document the intentional divergence.
   **Size: S**
-- [ ] **Shared browser pool** — port `browser_pool.py` (one process, one tab per
-  brain, tab persistence) behind the existing flag, for multi-brain efficiency.
-  **Size: M**
-- [ ] **Verify memory search parity** — confirm the JSON-Lines store's ranking
-  matches the SQLite store closely enough for identical memory-context injection,
-  or port the ranking explicitly. **Size: M**
+- [x] **Shared browser pool** — `browser_pool.rs` + flag wiring (2026-07-14). **Size: M**
+- [x] **Verify memory search parity** — `ORDER BY id DESC` + fixture tests (2026-07-14). **Size: M**
 - [ ] **Genius-Council stack (DEFERRED)** — council policy, consensus runner, vote,
   performance index, leader calibration, battleroyale, countup eval, and the
   `genius`/`/vote`/`/score` surfaces. Port only after single-agent parity is

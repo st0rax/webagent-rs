@@ -7,6 +7,7 @@
 pub mod brain;
 pub mod brains_health;
 pub mod browser;
+pub mod browser_pool;
 pub mod cdp;
 pub mod comms;
 pub mod config;

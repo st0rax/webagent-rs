@@ -107,6 +107,18 @@ pub struct WebBrainBackend {
 }
 
 impl WebBrainBackend {
+    /// Start-URL des Brains (für Shared-Pool-Tabs).
+    pub fn brain_url(&self) -> &str {
+        &self.url
+    }
+
+    /// Hängt einen Pool-Client an (kein eigener Chrome-Prozess).
+    pub fn attach_pooled_client(&self, client: CdpClient) {
+        *self.client.borrow_mut() = Some(client);
+        *self.process.borrow_mut() = None;
+        self.baseline_count.set(0);
+    }
+
     /// Erstellt ein Backend aus der zentralen Brain-Konfiguration.
     pub fn from_config(brain_id: &str) -> Result<Self, String> {
         let brains = crate::config::brains();
@@ -677,6 +689,12 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn start(&mut self, headless: bool) -> Result<(), String> {
+        if crate::config::use_shared_browser() && crate::cdp::cdp_endpoint_from_env().is_none() {
+            return crate::browser_pool::BrowserPool::global()
+                .lock()
+                .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
+                .start_brain(self, headless);
+        }
         // Remote-CDP-Endpunkt: kein lokaler Chrome-Launch (für Android/Termux).
         if let Some(endpoint) = crate::cdp::cdp_endpoint_from_env() {
             let mut client = CdpClient::connect_endpoint(&endpoint).map_err(|e| e.to_string())?;
@@ -702,6 +720,13 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn stop(&mut self) -> Result<(), String> {
+        if crate::config::use_shared_browser() && crate::cdp::cdp_endpoint_from_env().is_none() {
+            *self.client.borrow_mut() = None;
+            return crate::browser_pool::BrowserPool::global()
+                .lock()
+                .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
+                .stop_brain(&self.brain_id, None);
+        }
         *self.client.borrow_mut() = None;
         if let Some(mut proc) = self.process.borrow_mut().take() {
             proc.kill();

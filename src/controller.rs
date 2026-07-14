@@ -32,6 +32,13 @@ pub struct BrainTurn {
     pub complete: bool,
 }
 
+/// Optionen für `AgentController::run_with_options` (REPL: Browser-Session offen lassen).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RunOptions {
+    pub skip_brain_start: bool,
+    pub skip_brain_stop: bool,
+}
+
 /// AgentController orchestriert Brain + Executor im Plan/Act/Observe-Loop.
 pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     brain: B,
@@ -47,6 +54,14 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
 
 impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     pub const MAX_INCOMPLETE_RETRIES: usize = 5;
+
+    pub fn brain(&self) -> &B {
+        &self.brain
+    }
+
+    pub fn brain_mut(&mut self) -> &mut B {
+        &mut self.brain
+    }
 
     pub fn new(brain: B, executor: E, max_cycles: usize) -> Self {
         let data_dir = env::current_dir()
@@ -538,6 +553,13 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         self.run_once(&resume_recovery_prompt(&task, &tail), Some(transcript))
     }
 
+    fn finish_run_cleanup(&mut self, opts: RunOptions) {
+        self.executor.stop();
+        if !opts.skip_brain_stop {
+            self.brain.stop().ok();
+        }
+    }
+
     /// Hauptschleife: run().
     pub fn run(
         &mut self,
@@ -545,6 +567,18 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         brain_id: &str,
         resume_id: Option<&str>,
         headless: bool,
+    ) -> Result<RunMeta, String> {
+        Self::run_with_options(self, task, brain_id, resume_id, headless, RunOptions::default())
+    }
+
+    /// Wie `run`, mit optional offener Browser-Session (REPL-Persistenz).
+    pub fn run_with_options(
+        &mut self,
+        task: &str,
+        brain_id: &str,
+        resume_id: Option<&str>,
+        headless: bool,
+        opts: RunOptions,
     ) -> Result<RunMeta, String> {
         let runs_dir = self.runs_dir.clone();
 
@@ -574,7 +608,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         self.run_store.save(&meta).ok();
 
         // Start Brain + Executor (persistent shell session for the whole run)
-        self.brain.start(headless).inspect_err(|e| {
+        if !opts.skip_brain_start {
+            self.brain.start(headless).inspect_err(|e| {
             meta.status = "failed".to_string();
             meta.extra.insert(
                 "error_type".to_string(),
@@ -594,7 +629,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 &format!("run_finished status={}", meta.status),
                 extra,
             );
-        })?;
+            })?;
+        }
         self.executor.start();
 
         let ready_timeout =
@@ -617,8 +653,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 &format!("run_finished status={}", meta.status),
                 HashMap::new(),
             );
-            self.executor.stop();
-            self.brain.stop().ok();
+            self.finish_run_cleanup(opts);
             return Ok(meta);
         }
 
@@ -676,8 +711,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 turn = recovered;
             } else {
                 let final_meta = self.finish_brain_incomplete(&mut meta, &mut transcript);
-                self.executor.stop();
-                self.brain.stop().ok();
+                self.finish_run_cleanup(opts);
                 return Ok(final_meta);
             }
         }
@@ -715,8 +749,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 if let Some(recovered) = self.recover_from_incomplete(&mut transcript, "cycle") {
                     if !recovered.complete {
                         let final_meta = self.finish_brain_incomplete(&mut meta, &mut transcript);
-                        self.executor.stop();
-                        self.brain.stop().ok();
+                        self.finish_run_cleanup(opts);
                         return Ok(final_meta);
                     }
                     let (new_response, new_finished) =
@@ -725,8 +758,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     finished = new_finished;
                 } else {
                     let final_meta = self.finish_brain_incomplete(&mut meta, &mut transcript);
-                    self.executor.stop();
-                    self.brain.stop().ok();
+                    self.finish_run_cleanup(opts);
                     return Ok(final_meta);
                 }
             }
@@ -780,8 +812,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             HashMap::new(),
         );
 
-        self.executor.stop();
-        self.brain.stop().ok();
+        self.finish_run_cleanup(opts);
 
         Ok(meta)
     }

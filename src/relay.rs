@@ -37,6 +37,7 @@ pub fn relay_single_turn(
     let response = backend
         .wait_response(baseline, wait_timeout)
         .map_err(RelayError)?;
+    // Shared-Pool: `stop` respektiert `persist_browser_tabs()` (Tab bleibt offen).
     let _ = backend.stop();
     if response.backend_status == "rate_limit" {
         return Err(RelayError(
