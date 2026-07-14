@@ -254,6 +254,35 @@ pub struct CdpClient {
     next_id: u64,
 }
 
+/// Ergebnis der netzwerkfreien CDP-Endpunkt-Analyse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CdpEndpointKind {
+    /// Direkte WebSocket-URL (`ws://` / `wss://`) — unverändert verbinden.
+    WebSocket(String),
+    /// HTTP-Debug-Port (`host:port`, optional mit `http(s)://`-Präfix).
+    HttpAuthority { host: String, port: u16 },
+}
+
+/// Zerlegt einen CDP-Endpunkt ohne Netzwerk (Prefix-Abbau, Host/Port).
+pub fn parse_cdp_endpoint(endpoint: &str) -> Result<CdpEndpointKind> {
+    let e = endpoint.trim();
+    if e.is_empty() {
+        return Err(CdpError::Discovery("leerer CDP-Endpunkt".into()));
+    }
+    if e.starts_with("ws://") || e.starts_with("wss://") {
+        return Ok(CdpEndpointKind::WebSocket(e.to_string()));
+    }
+    let authority = e
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .trim_end_matches('/');
+    let (host, port) = parse_host_port(authority).map_err(CdpError::InvalidEndpoint)?;
+    Ok(CdpEndpointKind::HttpAuthority {
+        host: host.to_string(),
+        port,
+    })
+}
+
 /// Zerlegt einen konfigurierten CDP-Endpunkt in eine WebSocket-URL.
 ///
 /// Unterstützt:
@@ -265,33 +294,27 @@ pub struct CdpClient {
 /// `WEBAGENT_CDP_ENDPOINT` wird so ausgewertet, damit der Agent unter Android
 /// (Termux) zu einem Desktop-Chrome per `ws://` verbindet.
 pub fn resolve_cdp_ws(endpoint: &str) -> Result<String> {
-    let e = endpoint.trim();
-    if e.is_empty() {
-        return Err(CdpError::Discovery("leerer CDP-Endpunkt".into()));
-    }
-    if e.starts_with("ws://") || e.starts_with("wss://") {
-        return Ok(e.to_string());
-    }
-    let authority = e
-        .trim_start_matches("http://")
-        .trim_start_matches("https://")
-        .trim_end_matches('/');
-    let (host, port) = parse_host_port(authority).map_err(|e| CdpError::InvalidEndpoint(e))?;
-    let body = http_get_to(host, port, "/json").map_err(CdpError::Discovery)?;
-    let targets: Value =
-        serde_json::from_str(&body).map_err(|e| CdpError::Discovery(e.to_string()))?;
-    if let Some(arr) = targets.as_array() {
-        for t in arr {
-            if t.get("type").and_then(|v| v.as_str()) == Some("page") {
-                if let Some(ws) = t.get("webSocketDebuggerUrl").and_then(|v| v.as_str()) {
-                    return Ok(ws.to_string());
+    match parse_cdp_endpoint(endpoint)? {
+        CdpEndpointKind::WebSocket(url) => Ok(url),
+        CdpEndpointKind::HttpAuthority { host, port } => {
+            let body = http_get_to(&host, port, "/json").map_err(CdpError::Discovery)?;
+            let targets: Value =
+                serde_json::from_str(&body).map_err(|e| CdpError::Discovery(e.to_string()))?;
+            if let Some(arr) = targets.as_array() {
+                for t in arr {
+                    if t.get("type").and_then(|v| v.as_str()) == Some("page") {
+                        if let Some(ws) = t.get("webSocketDebuggerUrl").and_then(|v| v.as_str())
+                        {
+                            return Ok(ws.to_string());
+                        }
+                    }
                 }
             }
+            Err(CdpError::Discovery(
+                "kein page-Target am Remote-Endpunkt".into(),
+            ))
         }
     }
-    Err(CdpError::Discovery(
-        "kein page-Target am Remote-Endpunkt".into(),
-    ))
 }
 
 /// Spaltet `host:port` (oder reines `host`) in Host und Port (Default 9222).
@@ -564,11 +587,27 @@ mod tests {
 
     #[test]
     fn resolve_strips_http_prefix_without_network() {
-        // Nur die Vorbereitung (Host/Port-Parsing) prüfen; die echte HTTP-Abfrage
-        // schlägt ohne Server fehl, aber der Prefix-Abbau muss vorher korrekt sein.
-        let err = resolve_cdp_ws("http://example.com:9222").unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("page-Target") || msg.contains("HTTP") || msg.contains("Verbindung"));
+        assert_eq!(
+            parse_cdp_endpoint("http://example.com:9222").unwrap(),
+            CdpEndpointKind::HttpAuthority {
+                host: "example.com".into(),
+                port: 9222,
+            }
+        );
+        assert_eq!(
+            parse_cdp_endpoint("https://192.168.0.5:9333/").unwrap(),
+            CdpEndpointKind::HttpAuthority {
+                host: "192.168.0.5".into(),
+                port: 9333,
+            }
+        );
+        assert_eq!(
+            parse_cdp_endpoint("127.0.0.1:9222").unwrap(),
+            CdpEndpointKind::HttpAuthority {
+                host: "127.0.0.1".into(),
+                port: 9222,
+            }
+        );
     }
 
     #[test]
