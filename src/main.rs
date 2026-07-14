@@ -106,6 +106,35 @@ enum Commands {
         json: bool,
     },
 
+    /// Pre-flight: Profile, Selektoren, Flags (ohne Browser)
+    BrainsHealth {
+        /// Leeres Shared-Profil akzeptieren (Exit 0)
+        #[arg(long)]
+        allow_empty_profile: bool,
+    },
+
+    /// Single send+wait turn (bot2bot bridge debugging)
+    Relay {
+        #[arg(long)]
+        brain: String,
+        #[arg(long)]
+        message: String,
+        #[arg(long)]
+        headless: bool,
+        #[arg(long, default_value = "0")]
+        timeout: f64,
+    },
+
+    /// First-run setup: Brain-Auswahl und optional Login-Hinweise
+    Oobe {
+        #[arg(long)]
+        brains: String,
+        #[arg(long)]
+        skip_login: bool,
+        #[arg(long)]
+        yes: bool,
+    },
+
     /// Read-only gate for autonomous maintenance
     MaintenanceCheck {
         /// Maschinenlesbares JSON
@@ -122,10 +151,35 @@ enum Commands {
     },
 }
 
+/// Startup-Helfer: stale Runs reparieren (Python `main()` vor jedem Command außer maintenance-check).
+pub fn startup_reconcile_runs() -> Vec<String> {
+    let runs_dir = webagent::config::runs_dir();
+    let store = RunStore::new(runs_dir.clone(), runs_dir.join("logs"));
+    store.reconcile_stale_runs(600.0)
+}
+
 fn main() {
     let cli = Cli::parse();
 
-    let exit_code = match cli.command {
+    let exit_code = if matches!(cli.command, Commands::MaintenanceCheck { .. }) {
+        dispatch(cli.command)
+    } else {
+        let _ = webagent::config::ensure_data_dirs();
+        let repaired = startup_reconcile_runs();
+        if !repaired.is_empty() {
+            eprintln!(
+                "[runs] {} verwaiste Run-Statuswerte repariert.",
+                repaired.len()
+            );
+        }
+        dispatch(cli.command)
+    };
+
+    process::exit(exit_code);
+}
+
+fn dispatch(command: Commands) -> i32 {
+    match command {
         Commands::Run {
             brain,
             task,
@@ -152,14 +206,53 @@ fn main() {
             json,
         } => cmd_watchdog(bot2bot_root, profile_dir, runs_dir, repair, json),
 
+        Commands::BrainsHealth {
+            allow_empty_profile,
+        } => webagent::brains_health::run_brains_health(allow_empty_profile),
+
+        Commands::Relay {
+            brain,
+            message,
+            headless,
+            timeout,
+        } => cmd_relay(&brain, &message, headless, timeout),
+
+        Commands::Oobe {
+            brains,
+            skip_login,
+            yes,
+        } => cmd_oobe(&brains, skip_login, yes),
+
         Commands::MaintenanceCheck {
             json,
             pytest,
             pytest_timeout,
         } => cmd_maintenance_check(json, pytest, pytest_timeout),
-    };
+    }
+}
 
-    process::exit(exit_code);
+fn cmd_relay(brain: &str, message: &str, headless: bool, timeout: f64) -> i32 {
+    let to = if timeout > 0.0 { Some(timeout) } else { None };
+    match webagent::relay::relay_single_turn(brain, message, headless, to) {
+        Ok(reply) => {
+            println!("{reply}");
+            0
+        }
+        Err(e) => {
+            eprintln!("[relay] error: {e}");
+            1
+        }
+    }
+}
+
+fn cmd_oobe(brains: &str, skip_login: bool, yes: bool) -> i32 {
+    match webagent::oobe::run_oobe_wizard(!yes, skip_login, brains, yes) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("[oobe] {e}");
+            2
+        }
+    }
 }
 
 fn cmd_run(brain: &str, task: &str, resume: Option<&str>, headless: bool, max_cycles: u32) -> i32 {
@@ -567,6 +660,12 @@ fn cmd_maintenance_check(json: bool, pytest: bool, pytest_timeout: f64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_startup_reconcile_runs_does_not_panic() {
+        let repaired = startup_reconcile_runs();
+        let _ = repaired;
+    }
 
     #[test]
     fn test_maintenance_healthy_does_not_panic() {

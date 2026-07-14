@@ -20,9 +20,7 @@ const INCOMPLETE_RETRY_PROMPT: &str =
      Wenn die Aufgabe abgeschlossen ist, sende eine message-Action.";
 
 // Konfigurationskonstanten (aus CONVENTIONS.md: keine externe config-Crate)
-const MAX_OBSERVATION_CHARS: usize = 16_000;
-const LOOP_GUARD_WARN_COUNT: usize = 3;
-const LOOP_GUARD_ABORT_COUNT: usize = 5;
+use crate::config::{LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT, MAX_OBSERVATION_CHARS};
 const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 const MEMORY_CONTEXT_LIMIT: usize = 5;
 const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;

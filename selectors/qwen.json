@@ -6,7 +6,13 @@
   ],
   "send_button": [
     "button[aria-label*='Send' i]",
-    "button[type='submit']"
+    "button[aria-label*='send' i]",
+    "button.send-message-button",
+    "button[class*='send-message']",
+    "button[class*='send-btn']",
+    "button[type='submit']",
+    "button.record-btn + button",
+    "button[class*='submit']"
   ],
   "consent_reject_button": [
     "button:has-text('Alle unbedingt erforderlichen Cookies akzeptieren')",
@@ -21,7 +27,12 @@
   ],
   "assistant_message": [
     "div.qwen-chat-message-assistant div.response-message-content.phase-answer",
-    "div.qwen-chat-message-assistant div.custom-qwen-markdown"
+    "div.qwen-chat-message-assistant div.custom-qwen-markdown",
+    "div.qwen-chat-message-assistant",
+    "div[class*='chat-message-assistant']",
+    "div[class*='assistant'] div[class*='markdown']",
+    "div.prose",
+    "div[class*='message-content']"
   ],
   "new_chat_button": [
     "button[aria-label*='New chat' i]",

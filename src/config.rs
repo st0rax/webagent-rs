@@ -42,9 +42,31 @@ pub fn shared_profile_dir() -> PathBuf {
     profiles_dir().join("shared")
 }
 
-/// bot2bot/ — Consensus/Genius-Workspace-Root
+/// Maximale Observation-Länge (Zeichen) — Python `MAX_OBSERVATION_CHARS`.
+pub const MAX_OBSERVATION_CHARS: usize = 12_000;
+/// Loop-Guard Warn-/Abort-Schwellen — Python `LOOP_GUARD_*`.
+pub const LOOP_GUARD_WARN_COUNT: usize = 3;
+pub const LOOP_GUARD_ABORT_COUNT: usize = 8;
+
+/// bot2bot/ — Agent-Messaging-Root (Desktop-Sibling oder Override).
 pub fn bot2bot_root() -> PathBuf {
-    root_dir().join("bot2bot")
+    if let Ok(override_path) = env::var("WEBAGENT_BOT2BOT_ROOT") {
+        let s = override_path.trim();
+        if !s.is_empty() {
+            return PathBuf::from(s);
+        }
+    }
+    let link = data_dir().join("install_bot2bot_root.txt");
+    if let Ok(content) = std::fs::read_to_string(&link) {
+        let s = content.trim();
+        if !s.is_empty() {
+            return PathBuf::from(s);
+        }
+    }
+    root_dir()
+        .parent()
+        .map(|p| p.join("bot2bot"))
+        .unwrap_or_else(|| root_dir().join("bot2bot"))
 }
 
 /// consensus_workspace() — Eindeutiger Workspace-Pfad für Genius-Council
@@ -63,11 +85,12 @@ pub fn ensure_data_dirs() -> std::io::Result<()> {
 }
 
 /// Gibt `true` zurück, wenn shared_browser aktiviert ist (Umgebungsvariable).
+/// Python-Name: `WEBAGENT_USE_SHARED_BROWSER`; Legacy-Alias: `WEBAGENT_SHARED_BROWSER`.
 pub fn use_shared_browser() -> bool {
-    env::var("WEBAGENT_SHARED_BROWSER")
-        .unwrap_or_default()
-        .to_lowercase()
-        == "1"
+    let v = env::var("WEBAGENT_USE_SHARED_BROWSER")
+        .or_else(|_| env::var("WEBAGENT_SHARED_BROWSER"))
+        .unwrap_or_default();
+    matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes")
 }
 
 /// selectors/-Verzeichnis (ROOT/selectors/<brain>.json), wie SELECTORS_DIR in config.py.
@@ -201,6 +224,27 @@ mod tests {
         let ports: std::collections::HashSet<u16> =
             BRAIN_TABLE.iter().map(|(id, _)| debug_port(id)).collect();
         assert!(ports.len() >= 6, "zu viele Port-Kollisionen: {ports:?}");
+    }
+
+    #[test]
+    fn test_parity_constants() {
+        assert_eq!(MAX_OBSERVATION_CHARS, 12_000);
+        assert_eq!(LOOP_GUARD_WARN_COUNT, 3);
+        assert_eq!(LOOP_GUARD_ABORT_COUNT, 8);
+    }
+
+    #[test]
+    fn test_use_shared_browser_env_names() {
+        let key = "WEBAGENT_USE_SHARED_BROWSER";
+        let prev = env::var(key).ok();
+        env::set_var(key, "1");
+        assert!(use_shared_browser());
+        env::set_var(key, "0");
+        assert!(!use_shared_browser());
+        match prev {
+            Some(v) => env::set_var(key, v),
+            None => env::remove_var(key),
+        }
     }
 
     #[test]

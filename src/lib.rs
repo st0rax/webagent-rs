@@ -5,6 +5,7 @@
 //! Prozess-Liveness liefert dieses Crate selbst, damit der Kern überall baut.
 
 pub mod brain;
+pub mod brains_health;
 pub mod browser;
 pub mod cdp;
 pub mod comms;
@@ -15,8 +16,10 @@ pub mod executor;
 pub mod loop_guard;
 pub mod memory;
 pub mod observer;
+pub mod oobe;
 pub mod prompts;
 pub mod protocol;
+pub mod relay;
 pub mod repl;
 pub mod run_store;
 pub mod timeouts;

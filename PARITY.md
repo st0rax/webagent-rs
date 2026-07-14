@@ -44,13 +44,13 @@ Companion docs already in this repo: [`MERGE_AND_PARITY.md`](MERGE_AND_PARITY.md
 ### CLI subcommands exposed
 
 **Rust (`main.rs`):** `run`, `login`, `diagnose`, `repl`, `doctor`, `watchdog`,
-`maintenance-check` — **7 commands.**
+`brains-health`, `relay`, `oobe`, `maintenance-check` — **10 commands.**
 
 **Python (`cli.py::build_parser`):** `run`, `repl`, `brains-health`, `doctor`,
 `watchdog`, `maintenance-check`, `diagnose`, `login`, `oobe`, `relay`,
 `genius` (alias `consensus`) — **11 commands.**
 
-**Missing from the Rust CLI:** `brains-health`, `oobe`, `relay`, `genius`/`consensus`.
+**Missing from the Rust CLI:** `genius`/`consensus` (Deferred).
 
 ### REPL slash commands
 
@@ -89,11 +89,11 @@ but with a behavioral or coverage gap (see note); **Missing** = not in Rust;
 | Doctor | `doctor.py` | `doctor.rs` | **Present** | Per-brain selectors/profile-lock/last-done-run/login-state/recovery-hint; human + `--json` output wired in `main.rs`. |
 | Watchdog | `watchdog.py` | `watchdog.rs` | **Present** | Orphaned runs, stale bridge locks, stale profile locks; dry-run vs repair; `--json`. NOTE: Rust CLI default is **dry-run** (`--repair` to fix); Python default **repairs** (`--dry-run` to scan). Interval/daemon loop present in Python CLI, not in Rust CLI. |
 | maintenance-check | `cli.py::cmd_maintenance_check` | `main.rs::cmd_maintenance_check` | **Partial** | Different checks. Python: git-clean, VERSION/pyproject/runtime version agreement, selectors+bot2bot presence, optional `pytest`. Rust: doctor-ok + watchdog dry-run-clean + optional `cargo test`. Both are read-only gates returning exit 0/2, but they assert different invariants. |
-| brains-health | `cli.py::cmd_brains_health` | — | **Missing** | Pre-flight (no browser): shared-profile presence, archived profiles, bot2bot presence, per-brain selector presence, `--allow-empty-profile`. Not ported. |
+| brains-health | `cli.py::cmd_brains_health` | `brains_health.rs` + `main.rs` | **Present** | Pre-flight ohne Browser; `--allow-empty-profile`. |
 | login | `cli.py::cmd_login` + `oobe.perform_brain_login` | `main.rs::cmd_login` + `browser.rs::interactive_login` | **Present** | Opens headed browser, polls login state, no credential entry, flushes session to profile. Rust adds `--timeout`; Python has `--yes`/non-tty auto-confirm. |
 | diagnose | `cli.py::cmd_diagnose` | `main.rs::cmd_diagnose` + `browser.rs::live_diagnose` | **Present** | Rust returns a structured `LiveDiagnosis` (session_state, logged_in, composer, assistant count, cloudflare, url). Python additionally dumps per-selector counts and a screenshot; Rust exposes richer DOM via `browser.rs::dom_report` but the `diagnose` command prints the summary form. |
-| relay / bot2bot single-turn | `relay.py` (`relay_single_turn`) | `comms.rs` (different concept) | **Missing** | No Rust `relay` CLI. Python `relay.py` = one send+wait cycle against a brain (no controller/shell), used for the bot2bot bridge. `comms.rs` is a **new** self-contained file-based inbox/history store — related in spirit (agent-to-agent) but not a functional replacement for `relay_single_turn`. |
-| oobe first-run wizard | `oobe.py`, `cli.py::cmd_oobe` | — | **Missing** | Brain selection + optional headed login, registry activation, `--brains/--skip-login/--yes`. Also surfaced in the Python REPL via `/oobe`. Not ported. |
+| relay / bot2bot single-turn | `relay.py` (`relay_single_turn`) | `relay.rs` + `main.rs` | **Present** | `webagent relay --brain --message`; `comms.rs` bleibt separater Inbox-Store. |
+| oobe first-run wizard | `oobe.py`, `cli.py::cmd_oobe` | `oobe.rs` + `main.rs` | **Partial** | CLI-Subset: Brain-Auswahl + State; interaktiver Login-Hinweis; REPL `/oobe` fehlt noch. |
 | Agent / AgentManager | `agent.py` | (folded into `controller.rs` + `browser.rs`) | **Present (by design)** | High-level Agent abstraction; Rust achieves the same lifecycle via controller+backend. Functional equivalent for single-agent flows; sub-agent management used by council is absent (see Genius-Council). |
 | browser_pool / shared-browser | `browser_pool.py`, `browser_launch.py`, `config.use_shared_browser` | `config.rs::use_shared_browser` (flag only) | **Missing** | Python Option-2 shared pool: one Chromium process/profile, one tab per brain, tab persistence between relay hops. Rust launches a per-brain CDP Chrome process; the flag exists but there is no pool. |
 | terminal_status (REPL banner/summary) | `terminal_status.py` | inline `println!` in `main.rs`/`repl.rs` | **Partial** | Rust prints plain summaries; the styled banner/`print_run_summary` UX is not reproduced. |
@@ -119,13 +119,13 @@ These are real value/name mismatches between `config.py` / `controller_new.py` a
 
 | Setting | Python | Rust | Impact |
 |---|---|---|---|
-| `MAX_OBSERVATION_CHARS` | `12000` (`config.py`, P0-3 tightened) | `16_000` (`controller.rs`) | Rust feeds larger observations back to the brain before truncation. |
-| `LOOP_GUARD_ABORT_COUNT` | `8` (`config.py`) | `5` (`controller.rs`) | Rust aborts analysis loops earlier. |
-| Shared-browser env var | `WEBAGENT_USE_SHARED_BROWSER` (`config.py`) | `WEBAGENT_SHARED_BROWSER` (`config.rs`) | Same flag, different name — scripts won't carry over. |
+| `MAX_OBSERVATION_CHARS` | `12000` | `12000` (`config.rs`) | **Reconciled** (2026-07-14). |
+| `LOOP_GUARD_ABORT_COUNT` | `8` | `8` (`config.rs`) | **Reconciled** (2026-07-14). |
+| Shared-browser env var | `WEBAGENT_USE_SHARED_BROWSER` | `WEBAGENT_USE_SHARED_BROWSER` (+ legacy alias) | **Reconciled** (2026-07-14). |
 | Profiles dir | `DATA_DIR/profiles` and all brains share `SHARED_PROFILE_DIR` | `ROOT/profiles`, per-brain `profiles/<id>` (override via `WEBAGENT_PROFILE_DIR`) | Different profile layout and default sharing model. |
-| bot2bot root | `ROOT/../bot2bot` (sibling) + install pointer file | `ROOT/bot2bot` | Different default location. |
+| bot2bot root | `ROOT/../bot2bot` (sibling) + install pointer file | sibling + `WEBAGENT_BOT2BOT_ROOT` / install pointer | **Reconciled** (2026-07-14). |
 | consensus workspace | `~/Desktop/consensus` | `bot2bot_root/consensus_<stamp>` | Different default (moot until council is ported). |
-| Startup reconcile | `cli.main` runs `RunStore.reconcile_stale_runs()` + bootstrap on every command (except maintenance-check) | Not performed in `main.rs` | Rust does not auto-reconcile stale runs at startup. |
+| Startup reconcile | `cli.main` runs `RunStore.reconcile_stale_runs()` on every command (except maintenance-check) | `main.rs::startup_reconcile_runs()` | **Reconciled** (2026-07-14). |
 
 Also confirmed **matching**: protocol version string, timeout policy numbers,
 loop-guard fingerprints, prompt text, resume char budget (`8000`), memory context
@@ -141,22 +141,14 @@ Genius-Council items are intentionally last (Deferred upstream).
 - [x] **Persistent shell session in `executor.rs`** — done (2026-07-14): long-lived
   shell, base64+nonce marker, `$LASTEXITCODE` capture, controller `start`/`stop`.
   **Size: L**
-- [ ] **Finish the `gemini` and `qwen` provider integrations** — resolve the submit
-  block (gemini) and automation hard-block (qwen) so all 8 providers work
-  end-to-end. See `PROVIDER_STATUS.md` for the exact diagnosis. **Size: L**
-- [ ] **Reconcile config divergences** — align `MAX_OBSERVATION_CHARS` (16000→12000),
-  `LOOP_GUARD_ABORT_COUNT` (5→8), shared-browser env var name, and add startup
-  `reconcile_stale_runs`. Cheap, removes silent behavioral drift. **Size: S**
-- [ ] **Port `brains-health`** — pre-flight command (no browser): profile/selector/
-  bot2bot presence, `--allow-empty-profile`. Fast, high diagnostic value. **Size: S**
-- [ ] **Port `relay` as a CLI command** — one send+wait turn against a brain
-  (`relay_single_turn` semantics) reusing `WebBrainBackend`; enables bot2bot bridge
-  debugging. **Size: S**
+- [x] **Finish the `gemini` and `qwen` provider integrations** — 8/8 live (2026-07-14). **Size: L**
+- [x] **Reconcile config divergences** — done (2026-07-14). **Size: S**
+- [x] **Port `brains-health`** — `brains_health.rs` + CLI (2026-07-14). **Size: S**
+- [x] **Port `relay` as a CLI command** — `relay.rs` + CLI (2026-07-14). **Size: S**
 - [ ] **Expand the REPL** — add `/memory`, `/remember`, `/forget`, `/switch`,
   `/login`, `/chat`, and keep a browser session open across turns. Big interactive
   UX win. **Size: M**
-- [ ] **Port `oobe` first-run wizard** — brain selection + optional headed login +
-  registry activation (`--brains/--skip-login/--yes`) and REPL `/oobe`. **Size: M**
+- [x] **Port `oobe` first-run wizard** — `oobe.rs` + CLI subset (2026-07-14); REPL `/oobe` still optional. **Size: M**
 - [ ] **Align `maintenance-check` semantics** — decide whether the Rust gate should
   also assert version agreement / git-clean, or document the intentional divergence.
   **Size: S**

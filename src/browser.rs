@@ -365,7 +365,73 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     }
 
     fn dismiss_consent(&self) -> bool {
-        self.click_first("consent_reject_button")
+        let mut dismissed = self.click_first("consent_reject_button");
+        if self.brain_id == "gemini" {
+            dismissed |= self.click_first("notice_close_button");
+        }
+        if self.brain_id == "qwen" {
+            dismissed |= self.dismiss_qwen_blocks();
+        }
+        dismissed
+    }
+
+    /// qwen: „App herunterladen / not supported"-Banner schließen.
+    fn dismiss_qwen_blocks(&self) -> bool {
+        self.eval_bool(
+            r#"(function(){
+              var hit=false;
+              document.querySelectorAll('button,a,[role=button]').forEach(function(el){
+                var t=(el.textContent||'').toLowerCase();
+                if(t.indexOf('continue on web')>=0||t.indexOf('use web')>=0||
+                   t.indexOf('web version')>=0||t.indexOf('im browser')>=0){
+                  try{el.click();hit=true;}catch(e){}
+                }
+              });
+              return hit;
+            })()"#,
+        )
+    }
+
+    /// Playwright-`fill()`-Äquivalent: DOM setzen + input/change-Events (Angular/React).
+    fn fill_composer_dom_set(&self, composer_js: &str, text: &str) -> bool {
+        let coord_body = "var el=document.querySelector(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
+        let coords = self
+            .eval(&Self::js_scan(composer_js, coord_body, "null"))
+            .unwrap_or(Value::Null);
+        let (x, y) = match (
+            coords.get("x").and_then(|v| v.as_f64()),
+            coords.get("y").and_then(|v| v.as_f64()),
+        ) {
+            (Some(x), Some(y)) => (x, y),
+            _ => return false,
+        };
+        {
+            let mut guard = self.client.borrow_mut();
+            if let Some(client) = guard.as_mut() {
+                let _ = client.click_at(x, y);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(80));
+        let t = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
+        let set_body = format!(
+            "var el=document.querySelector(S[i]);if(!el)return false;el.focus();\
+            if(el.isContentEditable){{el.textContent={t};el.dispatchEvent(new InputEvent('input',{{bubbles:true,inputType:'insertText',data:{t}}}));}}\
+            else if('value' in el){{el.value={t};el.dispatchEvent(new Event('input',{{bubbles:true}}));el.dispatchEvent(new Event('change',{{bubbles:true}}));}}\
+            else return false;return true;"
+        );
+        self.eval_bool(&Self::js_scan(composer_js, &set_body, "false"))
+    }
+
+    fn type_text_char_by_char(&self, text: &str) -> Result<(), String> {
+        let mut guard = self.client.borrow_mut();
+        let client = guard
+            .as_mut()
+            .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+        for ch in text.chars() {
+            let s = ch.to_string();
+            client.press_key(&s, &s, 0, &s).map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Provider-spezifische Unterbrechungen wegklicken, die den Antwortfluss
@@ -487,6 +553,122 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         let _ = self.stop();
         Ok(diag)
     }
+
+    fn send_generic(&mut self, text: &str) -> Result<i32, String> {
+        let baseline = self.prepare_send_baseline();
+        if self.sel("composer").is_empty() {
+            return Err("Keine Composer-Selektoren konfiguriert".into());
+        }
+        let composer_js = self.sel_js("composer", &[]);
+        let has_send_button = !self.sel("send_button").is_empty();
+        if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t)) {
+            return Err("Composer-Feld nicht gefunden (Timeout)".into());
+        }
+        std::thread::sleep(Duration::from_millis(150));
+        for attempt in 0..3 {
+            if attempt == 0 || !has_send_button {
+                self.press_enter().ok();
+            } else if !self.click_visible_real("send_button") {
+                self.click_first("send_button");
+            }
+            if self.verify_submitted(baseline, &composer_js) {
+                return Ok(baseline);
+            }
+            let _ = self.fill_composer(&composer_js, text);
+        }
+        Ok(baseline)
+    }
+
+    fn send_gemini(&mut self, text: &str) -> Result<i32, String> {
+        let baseline = self.prepare_send_baseline();
+        self.handle_interruptions();
+        let composer_js = self.sel_js("composer", &[]);
+        if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
+            s.fill_composer_dom_set(js, t)
+        }) {
+            let _ = self.wait_fill_composer(&composer_js, text, |s, js, t| {
+                s.fill_composer(js, t) && s.type_text_char_by_char(t).is_ok()
+            });
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        for _ in 0..3 {
+            if self.click_visible_real("send_button") || self.click_first("send_button") {
+                std::thread::sleep(Duration::from_millis(400));
+            }
+            if self.verify_submitted(baseline, &composer_js) {
+                return Ok(baseline);
+            }
+            let _ = self.fill_composer_dom_set(&composer_js, text);
+        }
+        Ok(baseline)
+    }
+
+    fn send_qwen(&mut self, text: &str) -> Result<i32, String> {
+        let baseline = self.prepare_send_baseline();
+        let _ = self.dismiss_qwen_blocks();
+        let composer_js = self.sel_js("composer", &[]);
+        if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t))
+            && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
+                s.fill_composer_dom_set(js, t)
+            })
+        {
+            return Err("Composer-Feld nicht gefunden (Timeout)".into());
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        for attempt in 0..4 {
+            if attempt % 2 == 0 {
+                if !self.click_visible_real("send_button") {
+                    self.click_first("send_button");
+                }
+            } else {
+                self.press_enter().ok();
+            }
+            if self.verify_submitted(baseline, &composer_js) {
+                return Ok(baseline);
+            }
+            let _ = self.fill_composer(&composer_js, text);
+        }
+        Ok(baseline)
+    }
+
+    fn prepare_send_baseline(&mut self) -> i32 {
+        let baseline = self.assistant_count();
+        self.baseline_count.set(baseline);
+        let bt = if baseline > 0 {
+            self.assistant_text(baseline - 1)
+        } else {
+            String::new()
+        };
+        *self.baseline_text.borrow_mut() = bt;
+        baseline
+    }
+
+    fn wait_fill_composer<F>(&self, composer_js: &str, text: &str, fill: F) -> bool
+    where
+        F: Fn(&Self, &str, &str) -> bool,
+    {
+        let deadline = Instant::now() + Duration::from_secs(12);
+        while Instant::now() < deadline {
+            if fill(self, composer_js, text) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(400));
+        }
+        false
+    }
+
+    fn verify_submitted(&self, baseline: i32, composer_js: &str) -> bool {
+        for _ in 0..8 {
+            std::thread::sleep(Duration::from_millis(250));
+            if self.assistant_count() > baseline
+                || self.any_visible("stop_button")
+                || self.composer_is_empty(composer_js)
+            {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl BrainBackend for WebBrainBackend {
@@ -583,68 +765,11 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn send(&mut self, text: &str) -> Result<i32, String> {
-        let baseline = self.assistant_count();
-        self.baseline_count.set(baseline);
-        // Text der letzten Nachricht merken (Fallback-Trigger fuer wait_response).
-        let bt = if baseline > 0 {
-            self.assistant_text(baseline - 1)
-        } else {
-            String::new()
-        };
-        *self.baseline_text.borrow_mut() = bt;
-
-        if self.sel("composer").is_empty() {
-            return Err("Keine Composer-Selektoren konfiguriert".into());
+        match self.brain_id.as_str() {
+            "gemini" => self.send_gemini(text),
+            "qwen" => self.send_qwen(text),
+            _ => self.send_generic(text),
         }
-        let composer_js = self.sel_js("composer", &[]);
-        let has_send_button = !self.sel("send_button").is_empty();
-
-        // Auf den Composer WARTEN und befüllen: manche Seiten (z.B. ChatGPT)
-        // melden ensure_ready=Ready, bevor das Eingabefeld hydratisiert/gerendert
-        // ist. Bis ~12s pollen, statt sofort zu scheitern.
-        let fill_deadline = Instant::now() + Duration::from_secs(12);
-        let mut filled = false;
-        while Instant::now() < fill_deadline {
-            if self.fill_composer(&composer_js, text) {
-                filled = true;
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(400));
-        }
-        if !filled {
-            return Err("Composer-Feld nicht gefunden (Timeout)".into());
-        }
-        std::thread::sleep(Duration::from_millis(150));
-
-        // Bis zu drei Absende-Versuche mit Verifikation. Manche Brains senden per
-        // Enter, andere brauchen den Button — und Enter fügt bei manchen nur eine
-        // Zeile ein. Als abgeschickt gilt: neue Nachricht, sichtbarer Stop-Button
-        // oder geleerter Composer.
-        for attempt in 0..3 {
-            if attempt == 0 || !has_send_button {
-                self.press_enter().ok();
-            } else {
-                // Echter CDP-Klick (trusted); Fallback auf synthetisches el.click().
-                if !self.click_visible_real("send_button") {
-                    self.click_first("send_button");
-                }
-            }
-            for _ in 0..8 {
-                std::thread::sleep(Duration::from_millis(250));
-                if self.assistant_count() > baseline
-                    || self.any_visible("stop_button")
-                    || self.composer_is_empty(&composer_js)
-                {
-                    return Ok(baseline);
-                }
-            }
-            // Nicht abgeschickt — Text neu setzen und den nächsten Weg versuchen.
-            self.fill_composer(&composer_js, text);
-        }
-
-        // Best effort: der Controller/`wait_response` erkennt ein ausbleibendes
-        // Ergebnis über sein Timeout.
-        Ok(baseline)
     }
 
     fn wait_response(
