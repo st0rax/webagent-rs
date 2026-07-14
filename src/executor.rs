@@ -385,7 +385,7 @@ fn wrap_bash_command(command: &str, nonce: &str) -> String {
          else \
            __w2t_script=''; \
          fi; \
-         ( eval \"$__w2t_script\" ); \
+         eval \"$__w2t_script\"; \
          __w2t_ec=$?; \
          printf '__W2T_DONE_{nonce}__%s__\\n' \"$__w2t_ec\""
     )
@@ -462,8 +462,8 @@ mod tests {
         #[cfg(windows)]
         let result = executor.execute("cmd /c exit 42", 5.0);
         #[cfg(unix)]
-        // Subshell: plain `exit` würde die persistente bash-Session beenden.
-        let result = executor.execute("(exit 42)", 5.0);
+        // Child shell: plain `exit` würde die persistente bash-Session beenden.
+        let result = executor.execute("bash -c 'exit 42'", 5.0);
 
         assert!(!result.timed_out);
         assert_eq!(result.exit_code, Some(42));
