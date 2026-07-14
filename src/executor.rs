@@ -385,7 +385,7 @@ fn wrap_bash_command(command: &str, nonce: &str) -> String {
          else \
            __w2t_script=''; \
          fi; \
-         eval \"$__w2t_script\"; \
+         ( eval \"$__w2t_script\" ); \
          __w2t_ec=$?; \
          printf '__W2T_DONE_{nonce}__%s__\\n' \"$__w2t_ec\""
     )
