@@ -1,100 +1,82 @@
 # webagent + webagent-rs — Vergleich, Parität, Merge & Plattform-Plan
 
-> **Ziel (Storax):** EIN Projekt, plattformunabhängig (Windows, Linux, Android),
-> **lokaler Browser auf jeder Plattform** (KEINE Remote-CDP-Verbindung zu einem
-> Desktop-Chrome als Kern-Strategie), self-contained (keine Python-/Toolchain-
-> Abhängigkeiten zur Laufzeit), mit Release-Binaries. `webagent-rs` (Rust) ist die
-> Zukunft; `webagent` (Python) wird nach erreichter Parität abgelöst.
+> **Ziel (Storax):** EIN Projekt, plattformunabhängig (Windows, Linux),
+> **lokaler Embedded WebView** auf jeder Plattform (kein CDP als Kern-Strategie),
+> self-contained (keine Python-/Toolchain-Abhängigkeiten zur Laufzeit), mit
+> Release-Binaries. `webagent-rs` (Rust) ist die Zukunft; `webagent` (Python) wird
+> nach erreichter Parität abgelöst.
+
+**Stand:** v0.5.0 (2026-07-14) — CDP entfernt, Embedded WebView (`wry`/`tao`).
 
 ## 1. Feature-Vergleich (CLI)
 
 | Befehl | Python `webagent` | Rust `webagent-rs` | Anmerkung |
 |---|---|---|---|
-| run | ✅ | ✅ | Kern-Loop, in Rust live verifiziert (6/8 Provider) |
-| repl | ✅ | ✅ | |
-| login | ✅ | ✅ | |
+| run | ✅ | ✅ | Kern-Loop |
+| repl | ✅ | ✅ | Session pro Turn (Optimierung offen) |
+| login | ✅ | ✅ | Sichtbares WebView |
 | diagnose | ✅ | ✅ | |
 | doctor | ✅ | ✅ | |
 | watchdog | ✅ | ✅ | |
 | maintenance-check | ✅ | ✅ | |
-| **brains-health** | ✅ | ❌ | Pre-flight ohne Browser — FEHLT in Rust |
-| **relay** | ✅ | ⚠️ nur `examples/relay.rs` | Kein CLI-Befehl — FEHLT |
-| **oobe** | ✅ | ❌ | Ersteinrichtungs-Wizard — FEHLT |
-| **genius / consensus** | ✅ | ❌ | Multi-Agent-Council — FEHLT |
-| presence-check | ❌ | ⚠️ **kaputt** | Rust-Neuzugang, siehe §3 |
+| **brains-health** | ✅ | ✅ | Pre-flight ohne Browser |
+| **relay** | ✅ | ✅ | CLI + `examples/relay.rs` |
+| **oobe** | ✅ | ✅ | Ersteinrichtungs-Wizard |
+| **genius / consensus** | ✅ | ❌ | Multi-Agent-Council — DEFERRED |
+| presence-check | ❌ | ❌ | Ausgelagert nach `presence-monitor` |
 
 ## 2. Modul-Lücken (Python hat, Rust fehlt)
 
-Kern portiert (protocol, controller, executor, browser, doctor, watchdog, memory,
-transcript, timeouts, loop_guard, observer, prompts, config). **Fehlend in Rust:**
+Kern portiert (protocol, controller, executor, browser, browser_pool, doctor,
+watchdog, memory, transcript, relay, brains_health, oobe). **Fehlend in Rust:**
 
 - **Multi-Agent-Schicht:** `council`, `consensus`, `battleroyale`,
-  `countup_eval`, `leader_calibration`, `performance` — die gesamte Genius-Council-
-  /Bewertungs-Logik.
-- **`oobe`** (Ersteinrichtung), **`relay`** (als Modul/Befehl), **`agent`**
-  (AgentManager — in Rust durch controller/brain ersetzt, funktional ok).
-- `browser_pool`/`browser_launch` — in Rust durch `cdp`/`browser` ersetzt (ok).
-- `terminal_status` — in Rust inline (ok).
+  `countup_eval`, `leader_calibration`, `performance` — DEFERRED (siehe
+  `docs/GENIUS_COUNCIL_CONCEPT.md`).
+- `browser_pool` — ✅ in Rust (`browser_pool.rs`), Shared-Profil + Tab je Brain.
+- Browser-Backend — ✅ WebView (`webview_runtime`, `page_driver`), kein CDP.
 
-## 3. Plattform-Verstöße im aktuellen Rust-Stand (MÜSSEN behoben werden)
+## 3. Plattform-Stand
 
-Diese verletzen das „self-contained, plattformunabhängig, lokaler Browser"-Ziel:
+1. **`presence-check`:** ✅ Aus webagent-rs entfernt; eigenes Repo `presence-monitor`.
+2. **Android:** Nicht v0.5.0-Ziel. Frühere Remote-CDP-Strategie ist **obsolet**.
+   Android erfordert eigenen WebView-Plan (später).
+3. **CI:** `cargo test/clippy --no-default-features` auf ubuntu (ohne GTK/WebView2).
 
-1. ~~**`presence-check` ist ein Windows-/Python-Shim.**~~ ✅ **ERLEDIGT (entfernt).**
-   presence-check ist Qwens Personal-Assistant-Feature (erkennen ob Storax zuhause
-   ist) und gehört NICHT in webagent (Storax-Entscheidung). Aus webagent-rs entfernt;
-   Qwens `presence_check.py` bleibt in Qwens eigenem Bereich.
-2. **Android-Strategie = Remote-CDP zu Desktop-Chrome.** `WEBAGENT_CDP_ENDPOINT`
-   lässt Android auf einen entfernten Desktop-Chrome zeigen (README/`cdp.rs`).
-   **Das ist nicht das Ziel** — auf Android soll der **lokale** Browser (das Chrome
-   des Geräts, per lokalem DevTools-Socket) genutzt werden. Remote-CDP darf nur ein
-   **optionaler** Escape-Hatch bleiben, nicht die Kern-Strategie.
-3. **Android-Build über `cargo zigbuild`/`zig`.** Scheitert auf Termux („zig
-   unbekannt"). Besser: **nativer Build auf dem Gerät** (`pkg install rust; cargo
-   build --release`) — keine Cross-Toolchain, kein zig.
+## 4. Plan (priorisiert)
 
-## 4. Plan (priorisiert; Stabilität bleibt Prio 1)
+**Phase S — Stabilität:** Provider-Integrationen nach WebView-Migration live
+verifizieren (siehe `PROVIDER_STATUS.md`).
 
-**Phase S — Stabilität fertig (läuft):** die 2 harten Integrationen
-(`webagent/gemini`, `webagent/qwen`) live fixen. 6/8 laufen bereits.
+**Phase P — Plattform:**
+- P1 Linux CI grün (`--no-default-features`, unix-Executor-Tests).
+- P2 Android: WebView-Strategie definieren (nach Desktop-Stabilität).
 
-**Phase P — Plattform-Bereinigung (§3):**
-- P1 `presence-check` nativ in Rust (kein Python/cmd/hardcoded path) — oder raus.
-- P2 Android: lokaler Browser (Android-Chrome via lokalem CDP-Socket); Remote-CDP
-  auf „optional" zurückstufen; README/Default korrigieren.
-- P3 Termux: nativer `cargo build` dokumentieren; zig-Weg entfernen/optional.
-
-**Phase F — Funktionsparität (§1/§2):**
-- F1 `relay` als CLI-Befehl (Logik existiert schon in `examples/relay.rs`).
-- F2 `brains-health` (Pre-flight ohne Browser).
-- F3 `oobe` (Wizard, nativ).
-- F4 Multi-Agent: `genius/council/consensus` nach Rust (größter Brocken).
+**Phase F — Funktionsparität:**
+- F1 `relay` als CLI — ✅ erledigt.
+- F2 `brains-health` — ✅ erledigt.
+- F3 `oobe` — ✅ erledigt.
+- F4 Multi-Agent — DEFERRED.
+- F5 REPL: Browser-Session über Turns offen halten — offen.
 
 **Phase M — Merge:** Wenn Rust Parität + Stabilität hat: `webagent` (Python)
-archivieren; `webagent-rs` wird der einzige Baum (ggf. in `webagent/` umziehen).
+archivieren; `webagent-rs` wird der einzige Baum.
 
 **Phase R — Releases/Binaries:**
-- R1 Windows (x86_64-pc-windows-gnu) — Release-Build steht schon lokal.
+- R1 Windows (x86_64-pc-windows-gnu).
 - R2 Linux (x86_64-unknown-linux-gnu / musl).
-- R3 Android (aarch64) — **erst nach P2/P3** (lokaler Browser + nativer Build).
-- GitHub-Actions Release-Workflow, der die drei Artefakte an ein Tag hängt.
+- R3 Android — nach P2.
 
-## 5. Entscheidungen (alle geklärt, 2026-07-13)
+## 5. Entscheidungen (2026-07-13/14)
 
-- ✅ **Merge-Richtung:** Rust ersetzt Python vollständig; Python wird archiviert.
-- ✅ **presence-check:** Qwens Personal-Assistant-Feature, nicht webagent. Aus
-  webagent-rs entfernt; ausgegliedert nach `Desktop/presence/` (eigenes Repo geplant).
-- ✅ **Remote-CDP:** bleibt als **optionaler** Escape-Hatch (nicht Kern-Strategie).
-  Auf Android ist das Ziel der **lokale** Browser.
-- ✅ **Genius-Council:** DEFERRED. Konzept ausgearbeitet in
-  [`docs/GENIUS_COUNCIL_CONCEPT.md`](docs/GENIUS_COUNCIL_CONCEPT.md) (nicht v1).
+- ✅ **Merge-Richtung:** Rust ersetzt Python vollständig.
+- ✅ **presence-check:** Eigenes Repo `presence-monitor`, nicht webagent.
+- ✅ **CDP entfernt:** Embedded WebView ist die Kern-Strategie (v0.5.0).
+- ✅ **Genius-Council:** DEFERRED.
 
-## 6. Projekt-/Repo-Aufteilung (Storax: jedes Projekt = eigenes Repo + README)
+## 6. Projekt-/Repo-Aufteilung
 
-- `webagent-rs` — DAS webagent-Projekt (Rust, plattformunabhängig). Eigenes Repo.
-- `presence` (`Desktop/presence/`) — Home-Presence-Erkennung. Eigenes Repo (privat
-  empfohlen — Geräte-MACs). Lokaler Scaffold + README steht; GitHub-Push offen.
-- `bot2bot` — optional als eigenes Projekt ausgliedern (webagent hat mit `comms`
-  eine eigene interne Schnittstelle; nur wenn architektonisch sinnvoll).
-- Offen für GitHub-Push: `gh` ist NICHT installiert; Account/public-private noch
-  von Storax zu bestätigen.
+- `webagent-rs` — DAS webagent-Projekt (Rust). Eigenes Repo.
+- `presence-monitor` — Home-Presence-Erkennung. Eigenes Repo.
+- `bot2bot` — Agent-Messaging (eigenes Repo).
+- Maßgeblicher Gesamtplan: `Desktop/HAUPTAUFGABENPLAN.md`.

@@ -2,51 +2,40 @@
 
 > **WICHTIG — Begriffsklärung:** Diese Tabelle bewertet die **Provider-Integrationen**
 > `webagent/<id>` (die Browser-Automatisierung gegen die jeweilige Web-Chat-Seite),
-> **NICHT** die KI-Entitäten dahinter. „Hart"/„läuft" ist eine Aussage über die
-> *technische Automatisierbarkeit der Weboberfläche*, nicht über das Modell.
->
-> Beispiel: **`webagent/qwen`** (die Automatisierung von chat.qwen.ai) ist hart —
-> aber **Qwen** (die Entität, Teammitglied/Co-Lead) ist erreichbar und hilfreich
-> (bestätigt über den Python-Relay). Die Integration klemmt, nicht der Kollege.
+> **NICHT** die KI-Entitäten dahinter.
 
-Stand der Antworterkennung pro **Provider-Integration**, aus echten Läufen
-(`examples/inspect.rs`, `examples/relay.rs`) gegen das eingeloggte Shared-Profil.
+> **Migration v0.5.0:** Browser-Backend von CDP auf **Embedded WebView** (`wry`/`tao`)
+> umgestellt. Die untenstehenden End-to-end-Verifikationen stammen aus der **CDP-Ära**
+> (2026-07-14). **Neu-Verifikation auf WebView steht aus** — gleiche Selektoren,
+> anderer Page-Driver.
 
-| `webagent/<id>` | Status | Notiz |
+Stand der Antworterkennung pro **Provider-Integration** (CDP-Ära, Referenz):
+
+| `webagent/<id>` | Status (CDP) | WebView (v0.5.0) |
 |---|---|---|
-| `webagent/qwen` | 🟢 **LÄUFT** | End-to-end verifiziert 2026-07-14: `insertText`-fill + Send-Button/Enter, Banner-Dismiss, erweiterte `assistant_message`-Selektoren. complete=true (39 Zeichen). |
-| chatgpt | 🟢 **LÄUFT** | End-to-end verifiziert: tippen→senden→vollständige Antwort (complete=true, nicht abgeschnitten, 403 Zeichen). Brauchte den Composer-Wartefix (Feld rendert verzögert nach ensure_ready=Ready). |
-| deepseek | 🟢 **LÄUFT** | End-to-end verifiziert (complete=true, 604 Zeichen, nicht abgeschnitten). |
-| kimi | 🟢 **LÄUFT** | Lief nach dem **new_chat-vor-Run-Fix** (bestehende Konversation → baseline>0 → Erkennung verfehlte den Start). complete=true, 127 Zeichen. |
-| claude | 🟢 **LÄUFT** | complete=true, 194 Zeichen. (Thinking-Label „Dachte 2s nach" wird mit erfasst — der Protokoll-Parser strippt es im Agenten-Fall.) |
-| gemini | 🟢 **LÄUFT** | End-to-end verifiziert 2026-07-14: DOM-fill (`InputEvent`) + nur Send-Button (kein Enter-Doppel-Submit). complete=true (61 Zeichen). |
-| mistral | 🟢 **LÄUFT** | Ebenfalls mit dem new_chat-Fix gelöst. complete=true, 165 Zeichen. |
-| zai | 🟢 **LÄUFT** | complete=true, 160 Zeichen. („Thought Process"-Prefix wird im Agenten-Fall gestrippt.) |
+| `webagent/qwen` | 🟢 LÄUFT | ⏳ ausstehend |
+| chatgpt | 🟢 LÄUFT | ⏳ ausstehend |
+| deepseek | 🟢 LÄUFT | ⏳ ausstehend |
+| kimi | 🟢 LÄUFT | ⏳ ausstehend |
+| claude | 🟢 LÄUFT | ⏳ ausstehend |
+| gemini | 🟢 LÄUFT | ⏳ ausstehend |
+| mistral | 🟢 LÄUFT | ⏳ ausstehend |
+| zai | 🟢 LÄUFT | ⏳ ausstehend |
 
-## Zwischenstand: 8 von 8 laufen end-to-end
-
-🟢 **Alle Provider** — tippen→senden→**vollständige** Antwort erkannt (nicht abgeschnitten). gemini/qwen Fixes: brain-spezifische `send_*`-Pfade in `browser.rs`.
-
-**Größter Stabilitäts-Fix:** `new_chat` VOR jedem frischen Run (Controller). Ohne
-frischen Chat startet die Erkennung mit `baseline>0` (bestehende Konversation) und
-verfehlt den Antwortbeginn — das erklärte kimi UND mistral. Jetzt im Controller
-verankert (`controller.rs`, Fresh-Run-Zweig).
-
-(Nochmal: „läuft/hart" betrifft die **Integrationen** `webagent/<id>`, nicht die
-Entitäten. Gemini/Qwen als Modelle/Teammitglieder sind erreichbar.)
-
-## Universelle Fixes aus der `webagent/qwen`-Diagnose (bereits committet)
-
-1. `js_scan`/`probe`: try/catch pro Selektor — ein ungültiger (`:has-text`) Selektor bricht nicht mehr die ganze Liste.
-2. CDP-Enter mit `text:"\r"` — löst Submit aus.
-3. Fenstergröße immer 1280×900 — kein Mobil-/„nicht unterstützt"-Layout.
-4. Echtes Tippen: Composer per CDP anklicken (Fokus) + `Input.insertText` statt `.value`.
-5. `--disable-blink-features=AutomationControlled` — `navigator.webdriver=false`.
-
-## Testkommando
+## Neu-Verifikation (WebView)
 
 ```powershell
-$env:WEBAGENT_PROFILE_DIR = "C:\Users\storax\Desktop\webagent\data\profiles\shared"
+$env:WEBAGENT_SHARED_BROWSER = "1"
 cargo run --example inspect -- <brain>
-cargo run --example relay   -- <brain> "<frage>"
+cargo run -- relay --brain <brain> --message "Antworte nur mit OK"
 ```
+
+Erwartung: `complete=true`, nicht abgeschnittene Antwort. Bei Abweichung:
+brain-spezifische `send_*`-Pfade in `browser.rs` prüfen.
+
+## Bekannte Stabilitäts-Fixes (weiter gültig)
+
+1. `new_chat` VOR jedem frischen Run (Controller) — baseline>0 vermeiden.
+2. Composer-Fokus + DOM-fill statt `.value`-Injection.
+3. Fenstergröße 1280×900 — kein Mobil-Layout.
+4. `js_scan`/`probe`: try/catch pro Selektor.

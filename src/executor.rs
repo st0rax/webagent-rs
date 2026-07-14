@@ -462,7 +462,8 @@ mod tests {
         #[cfg(windows)]
         let result = executor.execute("cmd /c exit 42", 5.0);
         #[cfg(unix)]
-        let result = executor.execute("exit 42", 5.0);
+        // Subshell: plain `exit` würde die persistente bash-Session beenden.
+        let result = executor.execute("(exit 42)", 5.0);
 
         assert!(!result.timed_out);
         assert_eq!(result.exit_code, Some(42));
