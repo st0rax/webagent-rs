@@ -1,8 +1,8 @@
-//! browser — konkretes BrainBackend, das ein echtes Chromium über CDP steuert.
+//! browser — konkretes BrainBackend, das ein Embedded WebView (wry/tao) steuert.
 //!
 //! Spiegelt `../src/webagent/brains/playwright_base.py`, ersetzt Playwright aber
-//! durch den CDP-Client (`crate::cdp`). DOM-Operationen laufen über
-//! `Runtime.evaluate`; Tastendrücke über `Input.dispatchKeyEvent`.
+//! durch [`crate::page_driver::PageDriver`]. DOM-Operationen laufen über JS-Eval;
+//! Tastendrücke/Maus über WebView-Injection.
 
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -11,7 +11,9 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use crate::brain::{BrainBackend, BrainResponse, SessionState};
-use crate::cdp::{CdpClient, ChromeProcess};
+use crate::page_driver::PageDriver;
+#[cfg(feature = "webview")]
+use crate::webview_runtime::WebViewRuntime;
 use crate::observer::{is_claude_limit_response_text, is_transient_response_text};
 use crate::protocol::is_possibly_truncated;
 
@@ -95,10 +97,11 @@ pub struct WebBrainBackend {
     brain_id: String,
     url: String,
     selectors: Value,
+    #[cfg_attr(not(feature = "webview"), allow(dead_code))]
     profile_dir: PathBuf,
-    port: u16,
-    process: RefCell<Option<ChromeProcess>>,
-    client: RefCell<Option<CdpClient>>,
+    #[cfg(feature = "webview")]
+    runtime: RefCell<Option<WebViewRuntime>>,
+    driver: RefCell<Option<Box<dyn PageDriver>>>,
     baseline_count: Cell<i32>,
     /// Text der letzten Assistenten-Nachricht VOR dem Senden — damit wait_response
     /// den Antwortbeginn auch dann erkennt, wenn der Nachrichtenzähler nicht
@@ -112,10 +115,13 @@ impl WebBrainBackend {
         &self.url
     }
 
-    /// Hängt einen Pool-Client an (kein eigener Chrome-Prozess).
-    pub fn attach_pooled_client(&self, client: CdpClient) {
-        *self.client.borrow_mut() = Some(client);
-        *self.process.borrow_mut() = None;
+    /// Hängt einen Pool-Page-Driver an (kein eigener WebView-Runtime).
+    pub fn attach_page_driver(&self, driver: Box<dyn PageDriver>) {
+        *self.driver.borrow_mut() = Some(driver);
+        #[cfg(feature = "webview")]
+        {
+            *self.runtime.borrow_mut() = None;
+        }
         self.baseline_count.set(0);
     }
 
@@ -129,16 +135,14 @@ impl WebBrainBackend {
         let profile_dir = PathBuf::from(spec.get("profile_dir").cloned().unwrap_or_default());
         let selectors = crate::config::load_selectors(brain_id)
             .map_err(|e| format!("Selektoren nicht ladbar: {e}"))?;
-        // Debug-Port deterministisch je Brain (zentral in config, env-überschreibbar).
-        let port = crate::config::debug_port(brain_id);
         Ok(Self {
             brain_id: brain_id.to_string(),
             url,
             selectors,
             profile_dir,
-            port,
-            process: RefCell::new(None),
-            client: RefCell::new(None),
+            #[cfg(feature = "webview")]
+            runtime: RefCell::new(None),
+            driver: RefCell::new(None),
             baseline_count: Cell::new(0),
             baseline_text: RefCell::new(String::new()),
         })
@@ -189,11 +193,11 @@ impl WebBrainBackend {
 
     /// Führt ein JS im Seitenkontext aus (mit ausgeliehenem Client).
     fn eval(&self, expr: &str) -> Result<Value, String> {
-        let mut guard = self.client.borrow_mut();
-        let client = guard
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard
             .as_mut()
             .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-        client.evaluate(expr).map_err(|e| e.to_string())
+        driver.evaluate(expr).map_err(|e| e.to_string())
     }
 
     fn eval_bool(&self, expr: &str) -> bool {
@@ -289,9 +293,9 @@ impl WebBrainBackend {
             (Some(x), Some(y)) => (x, y),
             _ => return false,
         };
-        let mut guard = self.client.borrow_mut();
+        let mut guard = self.driver.borrow_mut();
         match guard.as_mut() {
-            Some(client) => client.click_at(x, y).is_ok(),
+            Some(driver) => driver.click_at(x, y).is_ok(),
             None => false,
         }
     }
@@ -418,9 +422,9 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             _ => return false,
         };
         {
-            let mut guard = self.client.borrow_mut();
-            if let Some(client) = guard.as_mut() {
-                let _ = client.click_at(x, y);
+            let mut guard = self.driver.borrow_mut();
+            if let Some(driver) = guard.as_mut() {
+                let _ = driver.click_at(x, y);
             }
         }
         std::thread::sleep(Duration::from_millis(80));
@@ -435,13 +439,13 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     }
 
     fn type_text_char_by_char(&self, text: &str) -> Result<(), String> {
-        let mut guard = self.client.borrow_mut();
-        let client = guard
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard
             .as_mut()
             .ok_or_else(|| "Backend nicht gestartet".to_string())?;
         for ch in text.chars() {
             let s = ch.to_string();
-            client.press_key(&s, &s, 0, &s).map_err(|e| e.to_string())?;
+            driver.press_key(&s, &s, 0, &s).map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -457,11 +461,11 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
 
     /// Enter im aktuell fokussierten Element auslösen (echtes Tastatur-Event via CDP).
     fn press_enter(&self) -> Result<(), String> {
-        let mut guard = self.client.borrow_mut();
-        let client = guard
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard
             .as_mut()
             .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-        client
+        driver
             .press_key("Enter", "Enter", 13, "\r")
             .map_err(|e| e.to_string())
     }
@@ -483,19 +487,19 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         };
         // 2) Echter Mausklick auf den Composer (Fokus), dann leeren.
         {
-            let mut guard = self.client.borrow_mut();
-            if let Some(client) = guard.as_mut() {
-                let _ = client.click_at(x, y);
+            let mut guard = self.driver.borrow_mut();
+            if let Some(driver) = guard.as_mut() {
+                let _ = driver.click_at(x, y);
             }
         }
         std::thread::sleep(Duration::from_millis(80));
         let clear_body = "var el=document.querySelector(S[i]);if(el){el.focus();try{if('value' in el){el.value='';}else{el.textContent='';}el.dispatchEvent(new InputEvent('input',{bubbles:true}));}catch(e){}return true;}";
         let _ = self.eval_bool(&Self::js_scan(composer_js, clear_body, "false"));
-        // 3) Echt tippen via CDP Input.insertText.
+        // 3) Echt tippen via PageDriver::insert_text.
         {
-            let mut guard = self.client.borrow_mut();
-            if let Some(client) = guard.as_mut() {
-                let _ = client.insert_text(text);
+            let mut guard = self.driver.borrow_mut();
+            if let Some(driver) = guard.as_mut() {
+                let _ = driver.insert_text(text);
             }
         }
         // 4) Fallback: nur falls der Composer weiterhin leer ist, .value setzen.
@@ -689,49 +693,53 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn start(&mut self, headless: bool) -> Result<(), String> {
-        if crate::config::use_shared_browser() && crate::cdp::cdp_endpoint_from_env().is_none() {
-            return crate::browser_pool::BrowserPool::global()
-                .lock()
-                .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
-                .start_brain(self, headless);
+        #[cfg(not(feature = "webview"))]
+        {
+            let _ = headless;
+            Err(crate::page_driver::webview_unavailable().to_string())
         }
-        // Remote-CDP-Endpunkt: kein lokaler Chrome-Launch (für Android/Termux).
-        if let Some(endpoint) = crate::cdp::cdp_endpoint_from_env() {
-            let mut client = CdpClient::connect_endpoint(&endpoint).map_err(|e| e.to_string())?;
-            client
+        #[cfg(feature = "webview")]
+        {
+            if crate::config::use_shared_browser() {
+                return crate::browser_pool::BrowserPool::global()
+                    .lock()
+                    .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
+                    .start_brain(self, headless);
+            }
+            let runtime = WebViewRuntime::launch(&self.profile_dir, headless)
+                .map_err(|e| e.to_string())?;
+            let mut driver = runtime
+                .open_page(&self.profile_dir, &self.url, headless)
+                .map_err(|e| e.to_string())?;
+            driver
                 .navigate(&self.url, Duration::from_secs(30))
                 .map_err(|e| e.to_string())?;
-            *self.process.borrow_mut() = None;
-            *self.client.borrow_mut() = Some(client);
+            *self.runtime.borrow_mut() = Some(runtime);
+            *self.driver.borrow_mut() = Some(Box::new(driver));
             self.baseline_count.set(0);
-            return Ok(());
+            Ok(())
         }
-        let proc = ChromeProcess::launch(&self.profile_dir, headless, self.port)
-            .map_err(|e| e.to_string())?;
-        let ws_url = proc.page_ws_url().map_err(|e| e.to_string())?;
-        let mut client = CdpClient::connect(&ws_url).map_err(|e| e.to_string())?;
-        client
-            .navigate(&self.url, Duration::from_secs(30))
-            .map_err(|e| e.to_string())?;
-        *self.process.borrow_mut() = Some(proc);
-        *self.client.borrow_mut() = Some(client);
-        self.baseline_count.set(0);
-        Ok(())
     }
 
     fn stop(&mut self) -> Result<(), String> {
-        if crate::config::use_shared_browser() && crate::cdp::cdp_endpoint_from_env().is_none() {
-            *self.client.borrow_mut() = None;
-            return crate::browser_pool::BrowserPool::global()
-                .lock()
-                .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
-                .stop_brain(&self.brain_id, None);
+        #[cfg(not(feature = "webview"))]
+        {
+            *self.driver.borrow_mut() = None;
+            Ok(())
         }
-        *self.client.borrow_mut() = None;
-        if let Some(mut proc) = self.process.borrow_mut().take() {
-            proc.kill();
+        #[cfg(feature = "webview")]
+        {
+            if crate::config::use_shared_browser() {
+                *self.driver.borrow_mut() = None;
+                return crate::browser_pool::BrowserPool::global()
+                    .lock()
+                    .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
+                    .stop_brain(&self.brain_id, None);
+            }
+            *self.driver.borrow_mut() = None;
+            *self.runtime.borrow_mut() = None;
+            Ok(())
         }
-        Ok(())
     }
 
     fn ensure_ready(&mut self, timeout: f64) -> Result<SessionState, String> {
@@ -756,11 +764,11 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn session_state(&self) -> SessionState {
-        if self.client.borrow().is_none() {
+        if self.driver.borrow().is_none() {
             return SessionState::Error;
         }
         // Verbindungs-Liveness: schlägt ein triviales Eval fehl, ist die
-        // Seite/CDP-Verbindung tot — das ist ein Fehler, kein fehlender Login.
+        // Seite/WebView-Verbindung tot — das ist ein Fehler, kein fehlender Login.
         if self.eval("1").is_err() {
             return SessionState::Error;
         }
@@ -779,9 +787,9 @@ impl BrainBackend for WebBrainBackend {
             std::thread::sleep(Duration::from_millis(800));
         } else {
             let url = self.url.clone();
-            let mut guard = self.client.borrow_mut();
-            let client = guard.as_mut().ok_or("Backend nicht gestartet")?;
-            client
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard.as_mut().ok_or("Backend nicht gestartet")?;
+            driver
                 .navigate(&url, Duration::from_secs(30))
                 .map_err(|e| e.to_string())?;
         }
@@ -899,7 +907,7 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn is_logged_in(&self) -> bool {
-        if self.client.borrow().is_none() {
+        if self.driver.borrow().is_none() {
             return false;
         }
         // Positive Signale: Composer / New-Chat / Login-Indikator sichtbar.
@@ -929,9 +937,9 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn get_conversation_ref(&self) -> Option<String> {
-        let mut guard = self.client.borrow_mut();
-        let client = guard.as_mut()?;
-        let url = client.current_url().ok()?;
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard.as_mut()?;
+        let url = driver.current_url().ok()?;
         let url = url.trim();
         if url.is_empty() || url == "about:blank" {
             None
@@ -944,12 +952,12 @@ impl BrainBackend for WebBrainBackend {
         if reference.is_empty() {
             return Ok(false);
         }
-        let mut guard = self.client.borrow_mut();
-        let client = match guard.as_mut() {
+        let mut guard = self.driver.borrow_mut();
+        let driver = match guard.as_mut() {
             Some(c) => c,
             None => return Ok(false),
         };
-        match client.navigate(reference, Duration::from_secs(30)) {
+        match driver.navigate(reference, Duration::from_secs(30)) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }

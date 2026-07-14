@@ -271,7 +271,7 @@ fn cmd_run(brain: &str, task: &str, resume: Option<&str>, headless: bool, max_cy
     let mut controller = AgentController::new(backend, executor, max_cycles as usize);
 
     eprintln!(
-        "[run] brain={} headless={} max_cycles={} — starte Chromium via CDP…",
+        "[run] brain={} headless={} max_cycles={} — starte Embedded WebView…",
         brain, headless, max_cycles
     );
     match controller.run(task, brain, resume, headless) {

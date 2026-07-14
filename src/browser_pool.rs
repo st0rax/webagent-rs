@@ -1,30 +1,39 @@
-//! Shared browser pool — ein Chromium, ein Tab pro Brain (Python `browser_pool.py`).
+//! Shared browser pool — ein WebView-Runtime, ein Tab pro Brain (Python `browser_pool.py`).
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+#[cfg(feature = "webview")]
 use std::time::Duration;
 
+#[cfg(feature = "webview")]
 use crate::brain::BrainBackend;
 use crate::browser::WebBrainBackend;
-use crate::cdp::{CdpClient, ChromeProcess};
-use crate::config::{persist_browser_tabs, shared_debug_port, shared_profile_dir};
+use crate::config::persist_browser_tabs;
+#[cfg(feature = "webview")]
+use crate::config::shared_profile_dir;
+#[cfg(feature = "webview")]
+use crate::webview_runtime::{WebViewPageDriver, WebViewRuntime};
 
 struct PooledTab {
-    target_id: String,
-    ws_url: String,
+    #[cfg_attr(not(feature = "webview"), allow(dead_code))]
+    view_id: u64,
+    #[cfg(feature = "webview")]
+    driver_proto: WebViewPageDriver,
     refs: u32,
 }
 
 /// Prozessweiter Singleton: ein persistentes Profil, lazy Tab je `brain_id`.
 pub struct BrowserPool {
-    process: Option<ChromeProcess>,
+    #[cfg(feature = "webview")]
+    runtime: Option<WebViewRuntime>,
     tabs: HashMap<String, PooledTab>,
 }
 
 impl BrowserPool {
     fn new() -> Self {
         Self {
-            process: None,
+            #[cfg(feature = "webview")]
+            runtime: None,
             tabs: HashMap::new(),
         }
     }
@@ -42,37 +51,53 @@ impl BrowserPool {
         }
     }
 
-    /// Startet oder reaktiviert das Brain-Tab und hängt den Client ans Backend.
+    /// Startet oder reaktiviert das Brain-Tab und hängt den Driver ans Backend.
     pub fn start_brain(&mut self, backend: &WebBrainBackend, headless: bool) -> Result<(), String> {
-        let brain_id = backend.brain_id().to_lowercase();
-        self.ensure_process(headless)?;
+        #[cfg(not(feature = "webview"))]
+        {
+            let _ = (backend, headless);
+            Err(crate::page_driver::webview_unavailable().to_string())
+        }
+        #[cfg(feature = "webview")]
+        {
+            let brain_id = backend.brain_id().to_lowercase();
+            self.ensure_runtime(headless)?;
 
-        let proc = self.process.as_ref().ok_or("Shared-Browser nicht gestartet")?;
-        let tab = if let Some(tab) = self.tabs.get_mut(&brain_id) {
-            tab.refs = tab.refs.saturating_add(1);
-            tab
-        } else {
-            let url = backend.brain_url();
-            let (target_id, ws_url) = proc
-                .new_page_target(url)
+            let runtime = self
+                .runtime
+                .as_ref()
+                .ok_or("Shared-WebView nicht gestartet")?;
+
+            if let Some(tab) = self.tabs.get_mut(&brain_id) {
+                tab.refs = tab.refs.saturating_add(1);
+                let mut driver = tab.driver_proto.clone();
+                driver
+                    .navigate(backend.brain_url(), Duration::from_secs(30))
+                    .map_err(|e| e.to_string())?;
+                backend.attach_page_driver(Box::new(driver));
+                return Ok(());
+            }
+
+            let profile = shared_profile_dir();
+            let mut driver = runtime
+                .open_page(&profile, backend.brain_url(), headless)
                 .map_err(|e| e.to_string())?;
+            driver
+                .navigate(backend.brain_url(), Duration::from_secs(30))
+                .map_err(|e| e.to_string())?;
+            let view_id = driver.view_id();
+            let driver_proto = driver.clone();
             self.tabs.insert(
-                brain_id.clone(),
+                brain_id,
                 PooledTab {
-                    target_id,
-                    ws_url: ws_url.clone(),
+                    view_id,
+                    driver_proto,
                     refs: 1,
                 },
             );
-            self.tabs.get_mut(&brain_id).unwrap()
-        };
-
-        let mut client = CdpClient::connect(&tab.ws_url).map_err(|e| e.to_string())?;
-        client
-            .navigate(backend.brain_url(), Duration::from_secs(30))
-            .map_err(|e| e.to_string())?;
-        backend.attach_pooled_client(client);
-        Ok(())
+            backend.attach_page_driver(Box::new(driver));
+            Ok(())
+        }
     }
 
     /// Gibt eine Referenz frei; schließt den Tab wenn letzte Ref und nicht persist.
@@ -92,13 +117,15 @@ impl BrowserPool {
         if keep {
             return Ok(());
         }
-        let target_id = tab.target_id.clone();
+        #[cfg(feature = "webview")]
+        let view_id = tab.view_id;
         self.tabs.remove(&bid);
-        if let Some(proc) = self.process.as_ref() {
-            let _ = proc.close_target(&target_id);
+        #[cfg(feature = "webview")]
+        if let Some(rt) = self.runtime.as_ref() {
+            let _ = rt.close_page(view_id);
         }
         if self.tabs.is_empty() {
-            self.teardown_process();
+            self.teardown_runtime();
         }
         Ok(())
     }
@@ -119,30 +146,34 @@ impl BrowserPool {
             .unwrap_or(0)
     }
 
-    fn ensure_process(&mut self, headless: bool) -> Result<(), String> {
-        if self.process.is_some() {
+    #[cfg(feature = "webview")]
+    fn ensure_runtime(&mut self, headless: bool) -> Result<(), String> {
+        if self.runtime.is_some() {
             return Ok(());
         }
         let profile = shared_profile_dir();
-        let port = shared_debug_port();
-        let proc = ChromeProcess::launch(&profile, headless, port).map_err(|e| e.to_string())?;
-        self.process = Some(proc);
+        let rt = WebViewRuntime::launch(&profile, headless).map_err(|e| e.to_string())?;
+        self.runtime = Some(rt);
         Ok(())
     }
 
-    fn teardown_process(&mut self) {
-        self.process.take();
+    fn teardown_runtime(&mut self) {
+        #[cfg(feature = "webview")]
+        {
+            self.runtime.take();
+        }
     }
 
     #[cfg(test)]
     fn shutdown_force(&mut self) {
         for (bid, tab) in self.tabs.drain() {
-            if let Some(proc) = self.process.as_ref() {
-                let _ = proc.close_target(&tab.target_id);
+            #[cfg(feature = "webview")]
+            if let Some(rt) = self.runtime.as_ref() {
+                let _ = rt.close_page(tab.view_id);
             }
-            let _ = bid;
+            let _ = (bid, tab);
         }
-        self.teardown_process();
+        self.teardown_runtime();
     }
 }
 
@@ -151,15 +182,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pool_refcount_without_chrome() {
+    fn pool_refcount_without_webview() {
         BrowserPool::reset_for_tests();
         let mut pool = BrowserPool::new();
         pool.tabs.insert(
             "chatgpt".to_string(),
             PooledTab {
-                target_id: "t1".into(),
-                ws_url: "ws://127.0.0.1:9222/devtools/page/1".into(),
+                view_id: 1,
                 refs: 1,
+                #[cfg(feature = "webview")]
+                driver_proto: {
+                    let (tx, _rx) = std::sync::mpsc::channel();
+                    WebViewPageDriver {
+                        view_id: 1,
+                        page_tx: tx,
+                    }
+                },
             },
         );
         pool.stop_brain("chatgpt", Some(false)).unwrap();
@@ -173,9 +211,16 @@ mod tests {
         pool.tabs.insert(
             "claude".to_string(),
             PooledTab {
-                target_id: "t2".into(),
-                ws_url: "ws://127.0.0.1:9222/devtools/page/2".into(),
+                view_id: 2,
                 refs: 1,
+                #[cfg(feature = "webview")]
+                driver_proto: {
+                    let (tx, _rx) = std::sync::mpsc::channel();
+                    WebViewPageDriver {
+                        view_id: 2,
+                        page_tx: tx,
+                    }
+                },
             },
         );
         pool.detach_brain("claude").unwrap();

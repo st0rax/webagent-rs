@@ -1,6 +1,6 @@
 //! WebAgent — lokaler, browserbasierter Agent (Rust-Port des Python-Originals).
 //!
-//! Plattformunabhängiger Kern: Windows, Linux, Android (Browser via Remote-CDP).
+//! Plattformunabhängiger Kern: Windows, Linux, Android (Browser via Embedded WebView).
 //! Bewusst ohne schwere/plattformgebundene Dependencies — Zeitstempel und
 //! Prozess-Liveness liefert dieses Crate selbst, damit der Kern überall baut.
 
@@ -8,7 +8,10 @@ pub mod brain;
 pub mod brains_health;
 pub mod browser;
 pub mod browser_pool;
-pub mod cdp;
+pub mod mock_page;
+pub mod page_driver;
+#[cfg(feature = "webview")]
+pub mod webview_runtime;
 pub mod comms;
 pub mod config;
 pub mod controller;
