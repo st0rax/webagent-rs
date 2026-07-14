@@ -440,6 +440,7 @@ fn chrome_running_for_profile(profile_dir: &str) -> bool {
     }
     #[cfg(not(windows))]
     {
+        let _ = profile_dir;
         false // Auf Unix/Linux keine implizite Profil-Prüfung via PS
     }
 }
