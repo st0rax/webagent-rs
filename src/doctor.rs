@@ -904,14 +904,14 @@ mod tests {
         let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         fs::create_dir_all(&runs_dir).unwrap();
-        let run_dir = runs_dir.join("20260712_080000_zzz");
+        let run_dir = runs_dir.join("20260714_080000_zzz");
         fs::create_dir_all(&run_dir).unwrap();
 
         let meta = RunMeta {
-            run_id: "20260712_080000_zzz".to_string(),
+            run_id: "20260714_080000_zzz".to_string(),
             brain_id: "chatgpt".to_string(),
             status: "brain_incomplete".to_string(),
-            created_at: "2026-07-12T08:00:00+00:00".to_string(),
+            created_at: "2026-07-14T08:00:00+00:00".to_string(),
             task: "test".to_string(),
             extra: HashMap::new(),
             completed_actions: HashMap::new(),

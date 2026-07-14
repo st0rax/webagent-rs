@@ -80,7 +80,7 @@ but with a behavioral or coverage gap (see note); **Missing** = not in Rust;
 | Dynamic timeout policy | `timeouts.py` | `timeouts.rs` | **Present** | Identical operation bases, per-brain multipliers, message-size extension, env overrides (`WEBAGENT_TIMEOUT_MULT/MIN/MAX`), override-as-minimum semantics. |
 | Loop guard (repeated reads) | `loop_guard.py` | `loop_guard.rs` | **Present** | Same 5 fingerprint patterns and warning message. NOTE: controller abort threshold differs — see config row. |
 | Response observer heuristics | `observer.py` | `observer.rs` + `browser.rs` | **Partial** | Pure text helpers (`is_transient_response_text`, `is_claude_limit_response_text`) are ported verbatim. The stateful DOM `ResponseObserver.wait_for_response` is **re-implemented inside `browser.rs::wait_response`** (stop-button authority, stability window, interruption handling). Verify: stream-completion edge cases match, and that the thinking-prefix strip (`observer.py::_THINKING_PREFIX`) is equivalently handled (Rust leans on `protocol.rs` prose-stripping instead). |
-| Shell executor | `executor/powershell.py` | `executor.rs` | **Partial** | **Behavioral gap.** Python keeps ONE persistent `pwsh`/`powershell` session: base64-wrapped commands, nonce completion marker, `$LASTEXITCODE` capture, Ctrl+C via `GenerateConsoleCtrlEvent`, and **working directory / shell state persist across actions**. Rust spawns a **fresh process per command** (`powershell.exe -NoProfile -NonInteractive -Command`); `start`/`stop`/`send_interrupt` are no-ops. Consequence: `cd`, variables, and env set in one action do NOT carry to the next; no interrupt of a runaway command. |
+| Shell executor | `executor/powershell.py` | `executor.rs` | **Present** | Persistent `pwsh`/`powershell` (Windows) or `bash`/`sh` (Unix) session: base64-wrapped commands, nonce completion marker, `$LASTEXITCODE` capture, `start`/`stop` wired in controller. `send_interrupt` sends Ctrl+C via stdin (Python uses `GenerateConsoleCtrlEvent` on Windows — functionally equivalent for timeout recovery). |
 | CDP / browser driver | `brains/playwright_base.py`, `browser_launch.py` | `browser.rs`, `cdp.rs` | **Partial** | Custom CDP client replaces Playwright (launch, navigate, `Runtime.evaluate`, real `Input` mouse/key/insertText). Selector scanning is per-selector try/catch. Live status (`PROVIDER_STATUS.md`): 6/8 providers work end-to-end; **`gemini` (submit block)** and **`qwen` (automation hard-block)** do not. Verify per provider against Playwright behavior. |
 | Brain backends (8 providers) | `brains/{chatgpt,claude,deepseek,gemini,kimi,mistral,qwen,zai}.py` | `browser.rs` (one generic backend) | **Partial** | Python has per-provider subclasses with provider-specific overrides; Rust uses a single `WebBrainBackend` fully driven by `selectors/<id>.json` + generic interruption handling. All 8 selector files present in `selectors/`. Verify provider quirks encoded in the Python subclasses are all covered by selectors/interruptions (esp. gemini/qwen). |
 | Run persistence | `persistence/run_store.py` | `run_store.rs` | **Present** | Create/load/save run meta, terminal-status guard, `reconcile_stale_runs`, `completed_actions`, `conversation_ref`, `extra` bag. |
@@ -138,10 +138,9 @@ limit (`5`), heartbeat interval (`30s`), brain table (all 8 URLs identical).
 Ordered by user value. Size: **S** ≈ <½ day, **M** ≈ 1–2 days, **L** ≈ 3+ days.
 Genius-Council items are intentionally last (Deferred upstream).
 
-- [ ] **Persistent shell session in `executor.rs`** — make the executor hold one
-  long-lived shell so `cd`/vars/state persist across actions, add Ctrl+C interrupt
-  and exit-code capture to match `executor/powershell.py`. Highest correctness
-  impact on multi-step tasks. **Size: L**
+- [x] **Persistent shell session in `executor.rs`** — done (2026-07-14): long-lived
+  shell, base64+nonce marker, `$LASTEXITCODE` capture, controller `start`/`stop`.
+  **Size: L**
 - [ ] **Finish the `gemini` and `qwen` provider integrations** — resolve the submit
   block (gemini) and automation hard-block (qwen) so all 8 providers work
   end-to-end. See `PROVIDER_STATUS.md` for the exact diagnosis. **Size: L**

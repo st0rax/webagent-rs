@@ -575,7 +575,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         );
         self.run_store.save(&meta).ok();
 
-        // Start Brain + Executor
+        // Start Brain + Executor (persistent shell session for the whole run)
         self.brain.start(headless).inspect_err(|e| {
             meta.status = "failed".to_string();
             meta.extra.insert(
@@ -597,6 +597,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 extra,
             );
         })?;
+        self.executor.start();
 
         let ready_timeout =
             crate::timeouts::resolve_timeout("ensure_ready", self.brain.brain_id(), "", None);
@@ -618,6 +619,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 &format!("run_finished status={}", meta.status),
                 HashMap::new(),
             );
+            self.executor.stop();
             self.brain.stop().ok();
             return Ok(meta);
         }
@@ -780,6 +782,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             HashMap::new(),
         );
 
+        self.executor.stop();
         self.brain.stop().ok();
 
         Ok(meta)
