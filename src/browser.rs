@@ -185,7 +185,10 @@ impl WebBrainBackend {
     }
 
     fn eval_bool(&self, expr: &str) -> bool {
-        self.eval(expr).ok().and_then(|v| v.as_bool()).unwrap_or(false)
+        self.eval(expr)
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
     }
 
     fn eval_i64(&self, expr: &str) -> i64 {
@@ -261,7 +264,11 @@ impl WebBrainBackend {
         }
         let coord_body = "var el=document.querySelector(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
         let coords = self
-            .eval(&Self::js_scan(&Self::js_selectors(&sels), coord_body, "null"))
+            .eval(&Self::js_scan(
+                &Self::js_selectors(&sels),
+                coord_body,
+                "null",
+            ))
             .unwrap_or(Value::Null);
         let (x, y) = match (
             coords.get("x").and_then(|v| v.as_f64()),
@@ -280,7 +287,12 @@ impl WebBrainBackend {
     /// Ein einziger CDP-Roundtrip, der Nachrichtenanzahl, den Text der Nachricht
     /// `target` und die Sichtbarkeit des Stop-Buttons gemeinsam ermittelt — statt
     /// dreier separater `Runtime.evaluate`-Aufrufe pro Poll-Iteration.
-    fn probe_generation(&self, assistant_js: &str, stop_js: &str, target: i32) -> (i32, String, bool) {
+    fn probe_generation(
+        &self,
+        assistant_js: &str,
+        stop_js: &str,
+        target: i32,
+    ) -> (i32, String, bool) {
         let expr = format!(
             r#"(function(){{
 var A={assistant_js};var count=0,els=null;
@@ -297,7 +309,10 @@ return {{count:count,text:text,stop:stop}};}})()"#,
         match self.eval(&expr) {
             Ok(v) => (
                 v.get("count").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
-                v.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                v.get("text")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 v.get("stop").and_then(|x| x.as_bool()).unwrap_or(false),
             ),
             Err(_) => (0, String::new(), false),
@@ -368,7 +383,9 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         let client = guard
             .as_mut()
             .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-        client.press_key("Enter", "Enter", 13, "\r").map_err(|e| e.to_string())
+        client
+            .press_key("Enter", "Enter", 13, "\r")
+            .map_err(|e| e.to_string())
     }
 
     /// Setzt den Text in den Composer (fokussiert, `value`/`textContent`, feuert
@@ -630,7 +647,11 @@ impl BrainBackend for WebBrainBackend {
         Ok(baseline)
     }
 
-    fn wait_response(&mut self, baseline_count: i32, timeout: f64) -> Result<BrainResponse, String> {
+    fn wait_response(
+        &mut self,
+        baseline_count: i32,
+        timeout: f64,
+    ) -> Result<BrainResponse, String> {
         let start = Instant::now();
         // Selektor-Literale einmal bauen (ändern sich zur Laufzeit nie), dann pro
         // Poll-Iteration nur einen einzigen CDP-Roundtrip fahren.
@@ -690,7 +711,13 @@ impl BrainBackend for WebBrainBackend {
             }
             let stable_secs = stable_since.elapsed().as_secs_f64();
 
-            match classify_completion(&current, has_stop, stop_seen_ever, stop_visible, stable_secs) {
+            match classify_completion(
+                &current,
+                has_stop,
+                stop_seen_ever,
+                stop_visible,
+                stable_secs,
+            ) {
                 Completion::RateLimited => return Ok(mk(current, target, false, "rate_limit")),
                 Completion::Complete => {
                     // Kurzes Settle: der letzte Chunk committet oft erst, nachdem
@@ -794,8 +821,7 @@ mod tests {
     #[test]
     fn all_configured_brains_have_selectors() {
         for (id, _url) in crate::config::BRAIN_TABLE {
-            let backend =
-                WebBrainBackend::from_config(id).unwrap_or_else(|e| panic!("{id}: {e}"));
+            let backend = WebBrainBackend::from_config(id).unwrap_or_else(|e| panic!("{id}: {e}"));
             assert!(
                 !backend.sel("composer").is_empty(),
                 "{id}: composer-Selektoren fehlen"
@@ -825,8 +851,7 @@ mod tests {
         assert_eq!(backend.session_state(), SessionState::Error);
     }
 
-    const VALID_JSON: &str =
-        r#"{"protocol":"webagent/1","actions":[{"id":"a","type":"finish"}]}"#;
+    const VALID_JSON: &str = r#"{"protocol":"webagent/1","actions":[{"id":"a","type":"finish"}]}"#;
 
     #[test]
     fn complete_when_stop_button_disappears() {
@@ -880,7 +905,13 @@ mod tests {
         // UI ohne Stop-Button: erst nach Stabilitätsfenster fertig.
         let unstable = classify_completion("fertiger Text", false, false, false, 0.5);
         assert_eq!(unstable, Completion::Continue);
-        let stable = classify_completion("fertiger Text", false, false, false, STABILITY_SECONDS + 0.1);
+        let stable = classify_completion(
+            "fertiger Text",
+            false,
+            false,
+            false,
+            STABILITY_SECONDS + 0.1,
+        );
         assert_eq!(stable, Completion::Complete);
     }
 
@@ -905,7 +936,13 @@ mod tests {
     fn missed_stop_button_completes_after_longer_stability() {
         // Stop-Button nie erfasst (sehr schnelle Antwort): nach 1.5×-Fenster fertig,
         // statt dauerhaft zu blockieren.
-        let r = classify_completion("kurze Antwort", true, false, false, STABILITY_SECONDS * 1.5 + 0.1);
+        let r = classify_completion(
+            "kurze Antwort",
+            true,
+            false,
+            false,
+            STABILITY_SECONDS * 1.5 + 0.1,
+        );
         assert_eq!(r, Completion::Complete);
     }
 }

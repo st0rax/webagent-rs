@@ -5,21 +5,26 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct Transcript {
     path: PathBuf,
 }
 
 impl Transcript {
-    pub fn new(meta: &RunMeta, runs_dir: &PathBuf) -> Self {
+    pub fn new(meta: &RunMeta, runs_dir: &Path) -> Self {
         let dir = meta.dir(runs_dir);
         let path = dir.join("transcript.jsonl");
         Self { path }
     }
 
     /// Fügt einen Eintrag zum Transcript hinzu.
-    pub fn append(&self, role: &str, content: &str, extra: HashMap<String, Value>) -> Result<(), String> {
+    pub fn append(
+        &self,
+        role: &str,
+        content: &str,
+        extra: HashMap<String, Value>,
+    ) -> Result<(), String> {
         let mut entry = json!({
             "ts": crate::now_rfc3339(),
             "role": role,
@@ -41,8 +46,7 @@ impl Transcript {
             .open(&self.path)
             .map_err(|e| format!("Fehler beim Öffnen von {}: {}", self.path.display(), e))?;
 
-        writeln!(file, "{}", line)
-            .map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
+        writeln!(file, "{}", line).map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
 
         Ok(())
     }
@@ -74,11 +78,10 @@ impl Transcript {
 
     /// Formatiert einen Eintrag als Zeile.
     fn format_entry_line(&self, entry: &Value, compact: bool) -> String {
-        let role = entry.get("role")
-            .and_then(|v| v.as_str())
-            .unwrap_or("?");
-        
-        let mut content = entry.get("content")
+        let role = entry.get("role").and_then(|v| v.as_str()).unwrap_or("?");
+
+        let mut content = entry
+            .get("content")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -112,10 +115,11 @@ impl Transcript {
     /// Deterministisches Transcript-Ende für Resume-Fallback.
     pub fn recovery_tail(&self, char_budget: usize) -> Result<String, String> {
         let entries = self.read_all()?;
-        let lines: Vec<String> = entries.iter()
+        let lines: Vec<String> = entries
+            .iter()
             .map(|e| self.format_entry_line(e, true))
             .collect();
-        
+
         let text = lines.join("\n");
 
         if text.len() <= char_budget {
@@ -125,14 +129,18 @@ impl Transcript {
         let marker = "...(truncated from start)...\n";
         let keep = char_budget.saturating_sub(marker.len());
         let tail = crate::char_suffix(&text, keep);
-        
+
         Ok(format!("{}{}", marker, tail))
     }
 
     /// Kurzsummary der letzten Transcript-Einträge für Kontext-Injektion.
-    pub fn compact_summary(&self, max_entries: usize, char_budget: usize) -> Result<String, String> {
+    pub fn compact_summary(
+        &self,
+        max_entries: usize,
+        char_budget: usize,
+    ) -> Result<String, String> {
         let entries = self.read_all()?;
-        
+
         if entries.is_empty() {
             return Ok("(leer)".to_string());
         }
@@ -144,10 +152,11 @@ impl Transcript {
         };
 
         let tail = &entries[start..];
-        let lines: Vec<String> = tail.iter()
+        let lines: Vec<String> = tail
+            .iter()
             .map(|e| self.format_entry_line(e, true))
             .collect();
-        
+
         let text = lines.join("\n");
 
         if text.len() <= char_budget {
@@ -157,7 +166,7 @@ impl Transcript {
         let marker = "...(summary truncated)...\n";
         let keep = char_budget.saturating_sub(marker.len());
         let tail_text = crate::char_suffix(&text, keep);
-        
+
         Ok(format!("{}{}", marker, tail_text))
     }
 }
@@ -185,20 +194,20 @@ mod tests {
         let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
-        
+
         let store = RunStore::new(runs_dir.clone(), logs_dir);
         let meta = store.create("mock", "task").unwrap();
-        
+
         let transcript = Transcript::new(&meta, &runs_dir);
-        
+
         let huge = "x".repeat(5000);
         transcript.append("brain", &huge, HashMap::new()).unwrap();
-        
+
         let tail = transcript.recovery_tail(2000).unwrap();
-        
+
         assert!(tail.contains("...(brain truncated)..."));
         assert!(tail.len() <= 2100);
-        
+
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -207,21 +216,23 @@ mod tests {
         let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
-        
+
         let store = RunStore::new(runs_dir.clone(), logs_dir);
         let meta = store.create("mock", "task").unwrap();
-        
+
         let transcript = Transcript::new(&meta, &runs_dir);
-        
+
         for i in 0..20 {
-            transcript.append("system", &format!("event-{}", i), HashMap::new()).unwrap();
+            transcript
+                .append("system", &format!("event-{}", i), HashMap::new())
+                .unwrap();
         }
-        
+
         let summary = transcript.compact_summary(5, 500).unwrap();
-        
+
         assert!(summary.contains("event-19"));
         assert!(!summary.contains("event-0"));
-        
+
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

@@ -140,10 +140,9 @@ fn main() {
 
         Commands::Repl { brain, headless } => webagent::repl::run_repl(&brain, headless),
 
-        Commands::Doctor { brain, json } => cmd_doctor(
-            if brain.is_empty() { None } else { Some(brain) },
-            json,
-        ),
+        Commands::Doctor { brain, json } => {
+            cmd_doctor(if brain.is_empty() { None } else { Some(brain) }, json)
+        }
 
         Commands::Watchdog {
             bot2bot_root,
@@ -163,13 +162,7 @@ fn main() {
     process::exit(exit_code);
 }
 
-fn cmd_run(
-    brain: &str,
-    task: &str,
-    resume: Option<&str>,
-    headless: bool,
-    max_cycles: u32,
-) -> i32 {
+fn cmd_run(brain: &str, task: &str, resume: Option<&str>, headless: bool, max_cycles: u32) -> i32 {
     use webagent::browser::WebBrainBackend;
     use webagent::controller::AgentController;
     use webagent::executor::PlatformShellExecutor;
@@ -274,11 +267,9 @@ fn cmd_diagnose(brain: &str, headless: bool) -> i32 {
 fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
     // Konfiguration aus config.rs laden
     let brains_config = webagent::config::brains();
-    
+
     // Runs-Verzeichnis aus config.rs
-    let runs_dir = webagent::config::runs_dir()
-        .to_string_lossy()
-        .to_string();
+    let runs_dir = webagent::config::runs_dir().to_string_lossy().to_string();
 
     let report = webagent::doctor::run_doctor(
         brain_ids,
@@ -329,7 +320,10 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
             }
         );
         if !report.unhealthy_brain_ids().is_empty() {
-            println!("[doctor] unhealthy: {}", report.unhealthy_brain_ids().join(", "));
+            println!(
+                "[doctor] unhealthy: {}",
+                report.unhealthy_brain_ids().join(", ")
+            );
         }
         println!();
 
@@ -347,7 +341,11 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
             );
             println!(
                 "    selectors:  mtime={}",
-                if check.selectors_mtime.is_empty() { "n/a" } else { &check.selectors_mtime }
+                if check.selectors_mtime.is_empty() {
+                    "n/a"
+                } else {
+                    &check.selectors_mtime
+                }
             );
             println!(
                 "    profile:    {} ({})",
@@ -376,7 +374,11 @@ fn cmd_doctor(brain_ids: Option<Vec<String>>, json: bool) -> i32 {
         }
     }
 
-    if report.ok() { 0 } else { 2 }
+    if report.ok() {
+        0
+    } else {
+        2
+    }
 }
 
 fn cmd_watchdog(
@@ -390,20 +392,17 @@ fn cmd_watchdog(
     use webagent::run_store::RunStore;
     use webagent::watchdog;
 
-    let bot2bot_root = bot2bot_root.unwrap_or_else(|| {
-        config::bot2bot_root().to_string_lossy().to_string()
-    });
+    let bot2bot_root =
+        bot2bot_root.unwrap_or_else(|| config::bot2bot_root().to_string_lossy().to_string());
     let profile_dir = profile_dir.unwrap_or_else(|| {
-        config::profiles_dir().join("shared").to_string_lossy().to_string()
+        config::profiles_dir()
+            .join("shared")
+            .to_string_lossy()
+            .to_string()
     });
-    let runs_dir = runs_dir.unwrap_or_else(|| {
-        config::runs_dir().to_string_lossy().to_string()
-    });
+    let runs_dir = runs_dir.unwrap_or_else(|| config::runs_dir().to_string_lossy().to_string());
 
-    let store = RunStore::new(
-        config::runs_dir(),
-        config::runs_dir().join("logs"),
-    );
+    let store = RunStore::new(config::runs_dir(), config::runs_dir().join("logs"));
 
     let report = watchdog::run_watchdog(
         &bot2bot_root,
@@ -425,12 +424,24 @@ fn cmd_watchdog(
     } else {
         println!("[watchdog] {}", report.timestamp);
         println!("[watchdog] orphaned_runs: {}", report.orphaned_runs.len());
-        println!("[watchdog] stale_bridge_locks: {}", report.stale_bridge_locks.len());
-        println!("[watchdog] stale_profile_locks: {}", report.stale_profile_locks.len());
+        println!(
+            "[watchdog] stale_bridge_locks: {}",
+            report.stale_bridge_locks.len()
+        );
+        println!(
+            "[watchdog] stale_profile_locks: {}",
+            report.stale_profile_locks.len()
+        );
         if repair {
             println!("[watchdog] repaired_runs: {}", report.repaired_runs.len());
-            println!("[watchdog] repaired_bridge_locks: {}", report.repaired_bridge_locks.len());
-            println!("[watchdog] repaired_profile_locks: {}", report.repaired_profile_locks.len());
+            println!(
+                "[watchdog] repaired_bridge_locks: {}",
+                report.repaired_bridge_locks.len()
+            );
+            println!(
+                "[watchdog] repaired_profile_locks: {}",
+                report.repaired_profile_locks.len()
+            );
         }
         if !report.errors.is_empty() {
             println!("[watchdog] errors: {}", report.errors.join(", "));
@@ -438,9 +449,7 @@ fn cmd_watchdog(
         println!();
     }
 
-    if report.ok() && report.errors.is_empty() {
-        0
-    } else if repair && report.total_repaired() > 0 {
+    if (report.ok() && report.errors.is_empty()) || (repair && report.total_repaired() > 0) {
         0
     } else {
         2
@@ -487,13 +496,8 @@ fn maintenance_healthy(do_pytest: bool, pytest_timeout: f64) -> bool {
     // 1) Doctor: alle konfigurierten Brains gesund?
     let brains_config = webagent::config::brains();
     let runs_dir = webagent::config::runs_dir().to_string_lossy().to_string();
-    let doctor_report = webagent::doctor::run_doctor(
-        None,
-        Some(&brains_config),
-        &runs_dir,
-        None,
-        None,
-    );
+    let doctor_report =
+        webagent::doctor::run_doctor(None, Some(&brains_config), &runs_dir, None, None);
     if !doctor_report.ok() {
         return false;
     }
@@ -504,11 +508,11 @@ fn maintenance_healthy(do_pytest: bool, pytest_timeout: f64) -> bool {
         webagent::config::runs_dir().join("logs"),
     );
     let wd = webagent::watchdog::run_watchdog(
-        &webagent::config::bot2bot_root().to_string_lossy().to_string(),
-        &webagent::config::profiles_dir()
+        webagent::config::bot2bot_root().to_string_lossy().as_ref(),
+        webagent::config::profiles_dir()
             .join("shared")
             .to_string_lossy()
-            .to_string(),
+            .as_ref(),
         &runs_dir,
         Some(&store),
         false,
@@ -539,7 +543,10 @@ fn cmd_maintenance_check(json: bool, pytest: bool, pytest_timeout: f64) -> i32 {
         })) {
             Ok(output) => println!("{}", output),
             Err(e) => {
-                eprintln!("[maintenance-check] JSON-Serialisierung fehlgeschlagen: {}", e);
+                eprintln!(
+                    "[maintenance-check] JSON-Serialisierung fehlgeschlagen: {}",
+                    e
+                );
                 return 1;
             }
         }
@@ -550,7 +557,11 @@ fn cmd_maintenance_check(json: bool, pytest: bool, pytest_timeout: f64) -> i32 {
         }
     }
 
-    if healthy { 0 } else { 2 }
+    if healthy {
+        0
+    } else {
+        2
+    }
 }
 
 #[cfg(test)]

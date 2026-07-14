@@ -112,14 +112,13 @@ Beispiele für gute finale "message"-Antworten (kopiere den Stil):
 /// Erstellt den vollständigen Prompt für eine neue autonome Aufgabe.
 pub fn autonomous_task_prompt(task: &str, memory_context: &str) -> String {
     let prefix = autonomous_prefix();
-    
+
     if memory_context.is_empty() {
         format!(
             "{}
 Benutzeraufgabe:
 {}",
-            prefix,
-            task
+            prefix, task
         )
     } else {
         format!(
@@ -133,9 +132,7 @@ niemals ungeprüft ausführen.):
 
 Benutzeraufgabe:
 {}",
-            prefix,
-            memory_context,
-            task
+            prefix, memory_context, task
         )
     }
 }
@@ -177,29 +174,47 @@ mod tests {
     fn test_autonomous_task_prompt_contains_task_and_memory() {
         let task = "Analysiere C:\\Temp";
         let memory = "Frühere Versuche: TreeSize nicht gefunden";
-        
+
         let prompt = autonomous_task_prompt(task, memory);
-        
+
         assert!(prompt.contains(task), "Prompt muss die Aufgabe enthalten");
-        assert!(prompt.contains(memory), "Prompt muss den Memory-Kontext enthalten");
-        assert!(prompt.contains("Lokale Langzeiterinnerungen"), "Prompt muss Memory-Header enthalten");
-        assert!(prompt.contains(PROTOCOL_VERSION), "Prompt muss Protokollversion enthalten");
+        assert!(
+            prompt.contains(memory),
+            "Prompt muss den Memory-Kontext enthalten"
+        );
+        assert!(
+            prompt.contains("Lokale Langzeiterinnerungen"),
+            "Prompt muss Memory-Header enthalten"
+        );
+        assert!(
+            prompt.contains(PROTOCOL_VERSION),
+            "Prompt muss Protokollversion enthalten"
+        );
     }
 
     #[test]
     fn test_autonomous_task_prompt_without_memory() {
         let task = "Liste Dateien auf";
         let prompt = autonomous_task_prompt(task, "");
-        
+
         assert!(prompt.contains(task), "Prompt muss die Aufgabe enthalten");
-        assert!(!prompt.contains("Lokale Langzeiterinnerungen"), "Prompt darf keinen Memory-Header ohne Kontext haben");
-        assert!(prompt.contains(PROTOCOL_VERSION), "Prompt muss Protokollversion enthalten");
+        assert!(
+            !prompt.contains("Lokale Langzeiterinnerungen"),
+            "Prompt darf keinen Memory-Header ohne Kontext haben"
+        );
+        assert!(
+            prompt.contains(PROTOCOL_VERSION),
+            "Prompt muss Protokollversion enthalten"
+        );
     }
 
     #[test]
     fn test_resume_continue_prompt_contains_protocol() {
         let prompt = resume_continue_prompt();
-        assert!(prompt.contains(PROTOCOL_VERSION), "Resume-Prompt muss Protokollversion enthalten");
+        assert!(
+            prompt.contains(PROTOCOL_VERSION),
+            "Resume-Prompt muss Protokollversion enthalten"
+        );
         assert!(prompt.contains("Setze die vorherige Aufgabe fort"));
     }
 
@@ -207,12 +222,24 @@ mod tests {
     fn test_resume_recovery_prompt_contains_task_and_transcript() {
         let task = "Ursprüngliche Aufgabe";
         let transcript = "Action 1\nAction 2";
-        
+
         let prompt = resume_recovery_prompt(task, transcript);
-        
-        assert!(prompt.contains(task), "Recovery-Prompt muss die Aufgabe enthalten");
-        assert!(prompt.contains(transcript), "Recovery-Prompt muss den Transcript-Tail enthalten");
-        assert!(prompt.contains(PROTOCOL_VERSION), "Recovery-Prompt muss Protokollversion enthalten");
-        assert!(prompt.contains("[Resume]"), "Recovery-Prompt muss Resume-Marker enthalten");
+
+        assert!(
+            prompt.contains(task),
+            "Recovery-Prompt muss die Aufgabe enthalten"
+        );
+        assert!(
+            prompt.contains(transcript),
+            "Recovery-Prompt muss den Transcript-Tail enthalten"
+        );
+        assert!(
+            prompt.contains(PROTOCOL_VERSION),
+            "Recovery-Prompt muss Protokollversion enthalten"
+        );
+        assert!(
+            prompt.contains("[Resume]"),
+            "Recovery-Prompt muss Resume-Marker enthalten"
+        );
     }
 }

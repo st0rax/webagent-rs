@@ -32,7 +32,9 @@ fn main() {
         std::process::exit(1);
     }
 
-    let state = backend.ensure_ready(60.0).unwrap_or(webagent::brain::SessionState::Error);
+    let state = backend
+        .ensure_ready(60.0)
+        .unwrap_or(webagent::brain::SessionState::Error);
     eprintln!("[relay] session_state={state:?}");
 
     // Frischen Chat erzwingen, damit baseline=0 (keine bestehende Konversation).

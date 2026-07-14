@@ -167,8 +167,11 @@ mod tests {
     #[test]
     fn test_brains_config() {
         let brains = brains();
-        assert!(!brains.is_empty(), "Mindestens ein Brain sollte konfiguriert sein");
-        
+        assert!(
+            !brains.is_empty(),
+            "Mindestens ein Brain sollte konfiguriert sein"
+        );
+
         // ChatGPT sollte vorhanden sein
         assert!(brains.contains_key("chatgpt"));
         let chatgpt = &brains["chatgpt"];
@@ -182,7 +185,7 @@ mod tests {
         let ids = available_brain_ids();
         assert!(!ids.is_empty());
         assert!(ids.contains(&"chatgpt".to_string()));
-        
+
         // Sollte sortiert sein
         let mut sorted = ids.clone();
         sorted.sort();

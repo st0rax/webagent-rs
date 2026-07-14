@@ -56,7 +56,13 @@ impl CommsStore {
         // Agent-Slug säubern, damit keine Pfadausbrüche möglich sind.
         let slug: String = agent
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         self.dir.join("inbox").join(format!("{slug}.jsonl"))
     }
@@ -82,7 +88,10 @@ impl CommsStore {
         }
         let line = serde_json::to_string(msg)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
-        let mut f = fs::OpenOptions::new().create(true).append(true).open(path)?;
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
         writeln!(f, "{line}")
     }
 
@@ -164,7 +173,9 @@ mod tests {
     #[test]
     fn send_lands_in_history_and_inbox() {
         let store = CommsStore::new(unique_dir());
-        let m = store.send("claude", "qwen", "Plan", "Bitte bewerten", None).unwrap();
+        let m = store
+            .send("claude", "qwen", "Plan", "Bitte bewerten", None)
+            .unwrap();
         assert_eq!(m.from, "claude");
         assert_eq!(m.to, "qwen");
         let inbox = store.inbox("qwen");

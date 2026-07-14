@@ -55,7 +55,8 @@ pub trait BrainBackend {
     fn send(&mut self, text: &str) -> Result<i32, String>;
 
     /// Wartet auf die Antwort des Assistenten.
-    fn wait_response(&mut self, baseline_count: i32, timeout: f64) -> Result<BrainResponse, String>;
+    fn wait_response(&mut self, baseline_count: i32, timeout: f64)
+        -> Result<BrainResponse, String>;
 
     /// Prüft, ob der Benutzer eingeloggt ist.
     fn is_logged_in(&self) -> bool;
@@ -127,7 +128,11 @@ mod tests {
             Ok(0)
         }
 
-        fn wait_response(&mut self, _baseline_count: i32, _timeout: f64) -> Result<BrainResponse, String> {
+        fn wait_response(
+            &mut self,
+            _baseline_count: i32,
+            _timeout: f64,
+        ) -> Result<BrainResponse, String> {
             Ok(BrainResponse {
                 text: "Dummy response".to_string(),
                 ..Default::default()
@@ -160,18 +165,21 @@ mod tests {
         let mut brain = DummyBrain::new("test");
         assert_eq!(brain.brain_id(), "test");
         assert_eq!(brain.session_state(), SessionState::Ready);
-        
+
         brain.start(true).unwrap();
         assert_eq!(brain.ensure_ready(10.0).unwrap(), SessionState::Ready);
-        
+
         brain.new_chat().unwrap();
         let count = brain.send("Hello").unwrap();
         let response = brain.wait_response(count, 30.0).unwrap();
         assert_eq!(response.text, "Dummy response");
-        
+
         assert!(brain.is_logged_in());
-        assert_eq!(brain.get_conversation_ref(), Some("dummy://conversation/123".to_string()));
-        
+        assert_eq!(
+            brain.get_conversation_ref(),
+            Some("dummy://conversation/123".to_string())
+        );
+
         brain.stop().unwrap();
     }
 

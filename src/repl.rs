@@ -25,7 +25,9 @@ pub fn run_repl(brain_id: &str, headless: bool) -> i32 {
     let mut controller = AgentController::new(backend, executor, 100);
     let mut resume: Option<String> = None;
 
-    println!("[repl] Brain={brain_id}. Aufgabe eingeben. Befehle: /new (neue Konversation), /exit.");
+    println!(
+        "[repl] Brain={brain_id}. Aufgabe eingeben. Befehle: /new (neue Konversation), /exit."
+    );
     let stdin = io::stdin();
     loop {
         print!("\n> ");
