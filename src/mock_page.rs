@@ -125,7 +125,9 @@ mod tests {
             .on_eval("1+1", json!(2));
         let mut driver = MockPageDriver::new(state);
         assert_eq!(driver.evaluate("1+1").unwrap(), json!(2));
-        driver.navigate("https://example.com", Duration::ZERO).unwrap();
+        driver
+            .navigate("https://example.com", Duration::ZERO)
+            .unwrap();
         assert_eq!(driver.current_url().unwrap(), "https://example.com");
     }
 

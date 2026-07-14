@@ -568,7 +568,14 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         resume_id: Option<&str>,
         headless: bool,
     ) -> Result<RunMeta, String> {
-        Self::run_with_options(self, task, brain_id, resume_id, headless, RunOptions::default())
+        Self::run_with_options(
+            self,
+            task,
+            brain_id,
+            resume_id,
+            headless,
+            RunOptions::default(),
+        )
     }
 
     /// Wie `run`, mit optional offener Browser-Session (REPL-Persistenz).
@@ -610,25 +617,25 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // Start Brain + Executor (persistent shell session for the whole run)
         if !opts.skip_brain_start {
             self.brain.start(headless).inspect_err(|e| {
-            meta.status = "failed".to_string();
-            meta.extra.insert(
-                "error_type".to_string(),
-                serde_json::Value::String("RuntimeError".to_string()),
-            );
-            meta.extra
-                .insert("error".to_string(), serde_json::Value::String(e.clone()));
-            self.run_store.save(&meta).ok();
-            let mut extra = HashMap::new();
-            extra.insert(
-                "error_type".to_string(),
-                serde_json::Value::String("RuntimeError".to_string()),
-            );
-            extra.insert("error".to_string(), serde_json::Value::String(e.clone()));
-            let _ = transcript.append(
-                "system",
-                &format!("run_finished status={}", meta.status),
-                extra,
-            );
+                meta.status = "failed".to_string();
+                meta.extra.insert(
+                    "error_type".to_string(),
+                    serde_json::Value::String("RuntimeError".to_string()),
+                );
+                meta.extra
+                    .insert("error".to_string(), serde_json::Value::String(e.clone()));
+                self.run_store.save(&meta).ok();
+                let mut extra = HashMap::new();
+                extra.insert(
+                    "error_type".to_string(),
+                    serde_json::Value::String("RuntimeError".to_string()),
+                );
+                extra.insert("error".to_string(), serde_json::Value::String(e.clone()));
+                let _ = transcript.append(
+                    "system",
+                    &format!("run_finished status={}", meta.status),
+                    extra,
+                );
             })?;
         }
         self.executor.start();

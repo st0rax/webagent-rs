@@ -92,9 +92,8 @@ impl WebViewRuntime {
     /// Startet den UI-Thread.
     pub fn launch(profile_dir: &Path, headless: bool) -> Result<Self> {
         let profile_dir = profile_dir.to_path_buf();
-        std::fs::create_dir_all(&profile_dir).map_err(|e| {
-            PageDriverError::Launch(format!("Profilverzeichnis: {e}"))
-        })?;
+        std::fs::create_dir_all(&profile_dir)
+            .map_err(|e| PageDriverError::Launch(format!("Profilverzeichnis: {e}")))?;
 
         let (cmd_tx, cmd_rx) = mpsc::channel::<RuntimeMessage>();
         let cmd_tx_thread = cmd_tx.clone();
@@ -227,7 +226,11 @@ impl PageDriver for WebViewPageDriver {
     }
 }
 
-fn run_event_loop(cmd_rx: Receiver<RuntimeMessage>, _default_profile: PathBuf, _default_headless: bool) {
+fn run_event_loop(
+    cmd_rx: Receiver<RuntimeMessage>,
+    _default_profile: PathBuf,
+    _default_headless: bool,
+) {
     let mut event_loop: EventLoop<()> = EventLoop::new();
 
     let mut rt = SharedRuntime {
@@ -302,9 +305,8 @@ fn open_page(
     url: &str,
     headless: bool,
 ) -> Result<(ViewId, WebViewPageDriver)> {
-    std::fs::create_dir_all(profile_dir).map_err(|e| {
-        PageDriverError::Launch(format!("Profilverzeichnis: {e}"))
-    })?;
+    std::fs::create_dir_all(profile_dir)
+        .map_err(|e| PageDriverError::Launch(format!("Profilverzeichnis: {e}")))?;
 
     if rt.web_context.is_none() {
         rt.web_context = Some(wry::WebContext::new(Some(profile_dir.to_path_buf())));
@@ -359,17 +361,20 @@ fn close_page(rt: &mut SharedRuntime, view_id: ViewId) -> Result<()> {
     Ok(())
 }
 
-fn dispatch_page(
-    slot: &mut PageSlot,
-    msg: PageMessage,
-    event_loop: &EventLoop<()>,
-) {
+fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &EventLoop<()>) {
     match msg {
-        PageMessage::Evaluate { expression, respond } => {
+        PageMessage::Evaluate {
+            expression,
+            respond,
+        } => {
             let r = eval_js(&slot.webview, &expression, event_loop);
             let _ = respond.send(r);
         }
-        PageMessage::Navigate { url, timeout, respond } => {
+        PageMessage::Navigate {
+            url,
+            timeout,
+            respond,
+        } => {
             let r = navigate_url(&slot.webview, &url, timeout, event_loop);
             let _ = respond.send(r);
         }
@@ -430,11 +435,7 @@ fn pump_once(event_loop: &EventLoop<()>) {
     });
 }
 
-fn eval_js(
-    webview: &wry::WebView,
-    expression: &str,
-    event_loop: &EventLoop<()>,
-) -> Result<Value> {
+fn eval_js(webview: &wry::WebView, expression: &str, event_loop: &EventLoop<()>) -> Result<Value> {
     let (tx, rx) = mpsc::channel();
     let js = wrap_eval(expression);
     webview
@@ -517,11 +518,7 @@ return true;}})()"#,
     Ok(())
 }
 
-fn insert_text_js(
-    webview: &wry::WebView,
-    text: &str,
-    event_loop: &EventLoop<()>,
-) -> Result<()> {
+fn insert_text_js(webview: &wry::WebView, text: &str, event_loop: &EventLoop<()>) -> Result<()> {
     let t = js_string(text);
     let js = format!(
         r#"(function(){{
@@ -539,12 +536,7 @@ try{{
     Ok(())
 }
 
-fn click_at_js(
-    webview: &wry::WebView,
-    x: f64,
-    y: f64,
-    event_loop: &EventLoop<()>,
-) -> Result<()> {
+fn click_at_js(webview: &wry::WebView, x: f64, y: f64, event_loop: &EventLoop<()>) -> Result<()> {
     let js = format!(
         r#"(function(){{
 var x={x},y={y};

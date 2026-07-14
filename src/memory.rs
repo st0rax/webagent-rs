@@ -493,13 +493,17 @@ mod tests {
         let deepseek = store.search("DeepSeek Profil", &["shared"], 3).unwrap();
         assert!(!deepseek.is_empty());
         assert!(deepseek[0].content.contains("DeepSeek"));
-        assert!(deepseek.iter().all(|e| e.kind != "episode" || e.content.contains("DeepSeek")));
+        assert!(deepseek
+            .iter()
+            .all(|e| e.kind != "episode" || e.content.contains("DeepSeek")));
 
         let rust_mem = store.search("Rust Python", &["shared"], 3).unwrap();
         assert!(!rust_mem.is_empty());
         assert!(rust_mem[0].content.contains("Rust"));
 
-        let browser = store.search("Browserfenster minimiert", &["shared"], 3).unwrap();
+        let browser = store
+            .search("Browserfenster minimiert", &["shared"], 3)
+            .unwrap();
         assert!(!browser.is_empty());
         assert!(browser[0].content.contains("minimiert"));
 

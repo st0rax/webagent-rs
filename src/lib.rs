@@ -8,10 +8,6 @@ pub mod brain;
 pub mod brains_health;
 pub mod browser;
 pub mod browser_pool;
-pub mod mock_page;
-pub mod page_driver;
-#[cfg(feature = "webview")]
-pub mod webview_runtime;
 pub mod comms;
 pub mod config;
 pub mod controller;
@@ -19,8 +15,10 @@ pub mod doctor;
 pub mod executor;
 pub mod loop_guard;
 pub mod memory;
+pub mod mock_page;
 pub mod observer;
 pub mod oobe;
+pub mod page_driver;
 pub mod prompts;
 pub mod protocol;
 pub mod relay;
@@ -29,6 +27,8 @@ pub mod run_store;
 pub mod timeouts;
 pub mod transcript;
 pub mod watchdog;
+#[cfg(feature = "webview")]
+pub mod webview_runtime;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

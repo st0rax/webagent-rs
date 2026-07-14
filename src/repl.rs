@@ -188,7 +188,11 @@ impl ReplSession {
                     println!("[memory] Keine Erinnerungen gefunden.");
                 }
                 for entry in entries {
-                    let preview: String = entry.content.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let preview: String = entry
+                        .content
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
                     let preview = if preview.chars().count() > 180 {
                         format!("{}...", crate::char_prefix(&preview, 177))
                     } else {
@@ -206,10 +210,7 @@ impl ReplSession {
                     println!("[memory] Nutzung: /remember <fakt oder präferenz>");
                     return ReplAction::Continue;
                 }
-                match self
-                    .memory
-                    .add(&text, "shared", "explicit", None, 0.9)
-                {
+                match self.memory.add(&text, "shared", "explicit", None, 0.9) {
                     Ok(id) => println!("[memory] Gespeichert als memory:{id}"),
                     Err(e) => eprintln!("[memory] Fehler: {e}"),
                 }

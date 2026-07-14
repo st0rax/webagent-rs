@@ -11,11 +11,11 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use crate::brain::{BrainBackend, BrainResponse, SessionState};
+use crate::observer::{is_claude_limit_response_text, is_transient_response_text};
 use crate::page_driver::PageDriver;
+use crate::protocol::is_possibly_truncated;
 #[cfg(feature = "webview")]
 use crate::webview_runtime::WebViewRuntime;
-use crate::observer::{is_claude_limit_response_text, is_transient_response_text};
-use crate::protocol::is_possibly_truncated;
 
 const STABILITY_SECONDS: f64 = 1.5;
 
@@ -706,8 +706,8 @@ impl BrainBackend for WebBrainBackend {
                     .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
                     .start_brain(self, headless);
             }
-            let runtime = WebViewRuntime::launch(&self.profile_dir, headless)
-                .map_err(|e| e.to_string())?;
+            let runtime =
+                WebViewRuntime::launch(&self.profile_dir, headless).map_err(|e| e.to_string())?;
             let mut driver = runtime
                 .open_page(&self.profile_dir, &self.url, headless)
                 .map_err(|e| e.to_string())?;
