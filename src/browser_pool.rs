@@ -12,6 +12,8 @@ use crate::config::persist_browser_tabs;
 #[cfg(feature = "webview")]
 use crate::config::shared_profile_dir;
 #[cfg(feature = "webview")]
+use crate::page_driver::PageDriver;
+#[cfg(feature = "webview")]
 use crate::webview_runtime::{WebViewPageDriver, WebViewRuntime};
 
 struct PooledTab {

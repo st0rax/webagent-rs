@@ -127,7 +127,8 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Launch("WebView-Thread beendet".into()))?;
-        self.wake_and_wait(resp_rx, Duration::from_secs(60))
+        let (_view_id, driver) = self.wake_and_wait(resp_rx, Duration::from_secs(60))?;
+        Ok(driver)
     }
 
     /// Schließt einen Tab.
@@ -242,7 +243,7 @@ fn run_event_loop(
 
     let mut shutdown = false;
     while !shutdown {
-        shutdown = pump_runtime(&mut rt, &event_loop);
+        shutdown = pump_runtime(&mut rt, &mut event_loop);
 
         let _ = event_loop.run_return(|event, _, control_flow| {
             *control_flow = ControlFlow::Exit;
@@ -257,7 +258,7 @@ fn run_event_loop(
     }
 }
 
-fn pump_runtime(rt: &mut SharedRuntime, event_loop: &EventLoop<()>) -> bool {
+fn pump_runtime(rt: &mut SharedRuntime, event_loop: &mut EventLoop<()>) -> bool {
     while let Ok(msg) = rt.cmd_rx.try_recv() {
         match msg {
             RuntimeMessage::Shutdown => return true,
@@ -300,7 +301,7 @@ fn pump_runtime(rt: &mut SharedRuntime, event_loop: &EventLoop<()>) -> bool {
 
 fn open_page(
     rt: &mut SharedRuntime,
-    event_loop: &EventLoop<()>,
+    event_loop: &mut EventLoop<()>,
     profile_dir: &Path,
     url: &str,
     headless: bool,
@@ -331,8 +332,7 @@ fn open_page(
 Object.defineProperty(navigator, 'webdriver', { get: function() { return undefined; } });
 "#;
 
-    let webview = WebViewBuilder::new()
-        .with_web_context(&mut web_context)
+    let webview = WebViewBuilder::with_web_context(&mut web_context)
         .with_visible(!headless)
         .with_initialization_script(init_script)
         .with_url(url)
@@ -361,7 +361,7 @@ fn close_page(rt: &mut SharedRuntime, view_id: ViewId) -> Result<()> {
     Ok(())
 }
 
-fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &EventLoop<()>) {
+fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLoop<()>) {
     match msg {
         PageMessage::Evaluate {
             expression,
@@ -429,13 +429,17 @@ fn parse_eval_result(raw: String) -> Result<Value> {
     Ok(v)
 }
 
-fn pump_once(event_loop: &EventLoop<()>) {
+fn pump_once(event_loop: &mut EventLoop<()>) {
     let _ = event_loop.run_return(|_, _, control_flow| {
         *control_flow = ControlFlow::Exit;
     });
 }
 
-fn eval_js(webview: &wry::WebView, expression: &str, event_loop: &EventLoop<()>) -> Result<Value> {
+fn eval_js(
+    webview: &wry::WebView,
+    expression: &str,
+    event_loop: &mut EventLoop<()>,
+) -> Result<Value> {
     let (tx, rx) = mpsc::channel();
     let js = wrap_eval(expression);
     webview
@@ -461,7 +465,7 @@ fn navigate_url(
     webview: &wry::WebView,
     url: &str,
     timeout: Duration,
-    event_loop: &EventLoop<()>,
+    event_loop: &mut EventLoop<()>,
 ) -> Result<()> {
     webview
         .load_url(url)
@@ -495,7 +499,7 @@ fn press_key_js(
     code: &str,
     virtual_key: i64,
     text: &str,
-    event_loop: &EventLoop<()>,
+    event_loop: &mut EventLoop<()>,
 ) -> Result<()> {
     let key = js_string(key);
     let code = js_string(code);
@@ -518,7 +522,11 @@ return true;}})()"#,
     Ok(())
 }
 
-fn insert_text_js(webview: &wry::WebView, text: &str, event_loop: &EventLoop<()>) -> Result<()> {
+fn insert_text_js(
+    webview: &wry::WebView,
+    text: &str,
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
     let t = js_string(text);
     let js = format!(
         r#"(function(){{
@@ -536,7 +544,12 @@ try{{
     Ok(())
 }
 
-fn click_at_js(webview: &wry::WebView, x: f64, y: f64, event_loop: &EventLoop<()>) -> Result<()> {
+fn click_at_js(
+    webview: &wry::WebView,
+    x: f64,
+    y: f64,
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
     let js = format!(
         r#"(function(){{
 var x={x},y={y};

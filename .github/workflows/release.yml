@@ -43,6 +43,18 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install Linux WebView deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            pkg-config
+
       - name: Build release
         run: cargo build ${{ matrix.build_flags }}
 
