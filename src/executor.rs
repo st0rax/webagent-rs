@@ -84,10 +84,7 @@ impl PlatformShellExecutor {
             .map_err(|e| format!("Fehler beim Starten von {}: {}", shell, e))
     }
 
-    fn read_stream_to_channel(
-        mut reader: impl BufRead + Send + 'static,
-        tx: Sender<String>,
-    ) {
+    fn read_stream_to_channel(mut reader: impl BufRead + Send + 'static, tx: Sender<String>) {
         thread::spawn(move || {
             let mut line = String::new();
             while reader.read_line(&mut line).unwrap_or(0) > 0 {
@@ -193,10 +190,10 @@ mod tests {
     #[test]
     fn test_simple_command() {
         let executor = PlatformShellExecutor::new();
-        
+
         #[cfg(windows)]
         let result = executor.execute("echo hello", 5.0);
-        
+
         #[cfg(unix)]
         let result = executor.execute("echo hello", 5.0);
 
@@ -209,10 +206,10 @@ mod tests {
     #[test]
     fn test_timeout() {
         let executor = PlatformShellExecutor::new();
-        
+
         #[cfg(windows)]
         let result = executor.execute("Start-Sleep -Seconds 10", 1.0);
-        
+
         #[cfg(unix)]
         let result = executor.execute("sleep 10", 1.0);
 
@@ -223,10 +220,10 @@ mod tests {
     #[test]
     fn test_nonzero_exit() {
         let executor = PlatformShellExecutor::new();
-        
+
         #[cfg(windows)]
         let result = executor.execute("exit 42", 5.0);
-        
+
         #[cfg(unix)]
         let result = executor.execute("exit 42", 5.0);
 
@@ -237,13 +234,10 @@ mod tests {
     #[test]
     fn test_stderr_capture() {
         let executor = PlatformShellExecutor::new();
-        
+
         #[cfg(windows)]
-        let result = executor.execute(
-            "[Console]::Error.WriteLine('test error')",
-            5.0
-        );
-        
+        let result = executor.execute("[Console]::Error.WriteLine('test error')", 5.0);
+
         #[cfg(unix)]
         let result = executor.execute("echo 'test error' >&2", 5.0);
 

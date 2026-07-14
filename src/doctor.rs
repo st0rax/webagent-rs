@@ -1,13 +1,15 @@
 //! Doctor-Check pro Brain — Phase 1: Login-Zustand, Selektor, Profil-Lock, letzte Antwort, Recovery.
 
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::run_store::RunMeta;
+
+type RunMetaLoader<'a> = dyn Fn(&str) -> Option<RunMeta> + 'a;
 
 /// Ergebnis des Doctor-Checks für ein einzelnes Gehirn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,7 +64,7 @@ impl Default for BrainCheck {
 }
 
 /// Aggregierter Doctor-Bericht über alle geprüften Gehirne.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DoctorReport {
     pub timestamp: String,
     #[serde(default)]
@@ -97,15 +99,6 @@ impl DoctorReport {
     }
 }
 
-impl Default for DoctorReport {
-    fn default() -> Self {
-        Self {
-            timestamp: String::new(),
-            brains: HashMap::new(),
-        }
-    }
-}
-
 /// ISO-8601 mtime einer Datei, leerer String wenn nicht lesbar.
 fn stat_mtime(path: &str) -> String {
     if let Ok(metadata) = fs::metadata(path) {
@@ -123,7 +116,7 @@ fn stat_mtime(path: &str) -> String {
 /// Singleton-Lock-Files eines Chromium-Profils finden.
 pub fn find_lock_files(profile_dir: &str) -> Vec<String> {
     let mut locks = Vec::new();
-    
+
     if profile_dir.is_empty() || !Path::new(profile_dir).is_dir() {
         return locks;
     }
@@ -170,7 +163,7 @@ pub fn find_last_done_run(
     runs_dir: &str,
     brain_id: &str,
     list_runs_fn: Option<&dyn Fn() -> Vec<String>>,
-    load_fn: Option<&dyn Fn(&str) -> Option<RunMeta>>,
+    load_fn: Option<&RunMetaLoader<'_>>,
 ) -> (String, f64) {
     let all_runs = if let Some(list_fn) = list_runs_fn {
         list_fn()
@@ -227,7 +220,7 @@ pub fn find_recent_run_meta(
     runs_dir: &str,
     brain_id: &str,
     list_runs_fn: Option<&dyn Fn() -> Vec<String>>,
-    load_fn: Option<&dyn Fn(&str) -> Option<RunMeta>>,
+    load_fn: Option<&RunMetaLoader<'_>>,
 ) -> (String, Option<HashMap<String, Value>>, f64) {
     let all_runs = if let Some(list_fn) = list_runs_fn {
         list_fn()
@@ -271,8 +264,14 @@ pub fn find_recent_run_meta(
                 map.insert("run_id".to_string(), Value::String(meta.run_id.clone()));
                 map.insert("brain_id".to_string(), Value::String(meta.brain_id.clone()));
                 map.insert("status".to_string(), Value::String(meta.status.clone()));
-                map.insert("created_at".to_string(), Value::String(meta.created_at.clone()));
-                map.insert("extra".to_string(), serde_json::to_value(&meta.extra).unwrap_or(Value::Null));
+                map.insert(
+                    "created_at".to_string(),
+                    Value::String(meta.created_at.clone()),
+                );
+                map.insert(
+                    "extra".to_string(),
+                    serde_json::to_value(&meta.extra).unwrap_or(Value::Null),
+                );
                 return (run_id, Some(map), age_hours);
             }
         }
@@ -288,23 +287,21 @@ pub fn infer_login_state(
     runs_dir: &str,
     brain_id: &str,
     list_runs_fn: Option<&dyn Fn() -> Vec<String>>,
-    load_fn: Option<&dyn Fn(&str) -> Option<RunMeta>>,
+    load_fn: Option<&RunMetaLoader<'_>>,
 ) -> String {
-    if !last_done_run.is_empty() && last_done_run_age_hours >= 0.0 && last_done_run_age_hours < 48.0 {
+    if !last_done_run.is_empty() && (0.0..48.0).contains(&last_done_run_age_hours) {
         return "ready".to_string();
     }
 
     let (run_id, meta_opt, age) = find_recent_run_meta(runs_dir, brain_id, list_runs_fn, load_fn);
-    
+
     if let Some(meta) = meta_opt {
-        let status = meta.get("status")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
 
         if status == "login_required" {
             return "login_required".to_string();
         }
-        if status == "done" && age >= 0.0 && age < 48.0 {
+        if status == "done" && (0.0..48.0).contains(&age) {
             return "ready".to_string();
         }
         if status == "done" && age >= 48.0 {
@@ -317,7 +314,7 @@ pub fn infer_login_state(
             if let Ok(content) = fs::read_to_string(&trans_path) {
                 let lines: Vec<&str> = content.lines().collect();
                 let tail: Vec<&str> = lines.iter().rev().take(30).copied().collect();
-                
+
                 for line in tail {
                     if line.contains("session_state=ready") {
                         return if age < 0.0 || age < 48.0 {
@@ -343,8 +340,7 @@ pub fn infer_login_state(
             return "unknown (old)".to_string();
         }
         if (status == "brain_incomplete" || status == "interrupted" || status == "max_cycles")
-            && age >= 0.0
-            && age < 48.0
+            && (0.0..48.0).contains(&age)
         {
             return "likely_ready".to_string();
         }
@@ -427,7 +423,7 @@ pub fn check_brain(
     runs_dir: &str,
     profile_dir: &str,
     list_runs_fn: Option<&dyn Fn() -> Vec<String>>,
-    load_fn: Option<&dyn Fn(&str) -> Option<RunMeta>>,
+    load_fn: Option<&RunMetaLoader<'_>>,
 ) -> BrainCheck {
     let config = if let Some(cfg) = brains_config {
         cfg
@@ -456,8 +452,7 @@ pub fn check_brain(
     let p_dir = if !profile_dir.is_empty() {
         profile_dir
     } else {
-        spec
-            .get("profile_dir")
+        spec.get("profile_dir")
             .or_else(|| spec.get("profile"))
             .map(|s| s.as_str())
             .unwrap_or("")
@@ -481,7 +476,14 @@ pub fn check_brain(
     let (last_run, last_age) = find_last_done_run(runs_dir, brain_id, list_runs_fn, load_fn);
     check.last_done_run = last_run.clone();
     check.last_done_run_age_hours = last_age;
-    check.login_state = infer_login_state(&last_run, last_age, runs_dir, brain_id, list_runs_fn, load_fn);
+    check.login_state = infer_login_state(
+        &last_run,
+        last_age,
+        runs_dir,
+        brain_id,
+        list_runs_fn,
+        load_fn,
+    );
     check.recovery_hint = build_recovery_hint(&check);
 
     check
@@ -493,7 +495,7 @@ pub fn run_doctor(
     brains_config: Option<&HashMap<String, HashMap<String, String>>>,
     runs_dir: &str,
     list_runs_fn: Option<&dyn Fn() -> Vec<String>>,
-    load_fn: Option<&dyn Fn(&str) -> Option<RunMeta>>,
+    load_fn: Option<&RunMetaLoader<'_>>,
 ) -> DoctorReport {
     let config = brains_config.unwrap_or_else(|| {
         // Fallback: würde normalerweise crate::config::BRAINS nutzen
@@ -542,10 +544,10 @@ fn calculate_age_hours(created_at: &str, now_secs: i64) -> f64 {
         if let Some(date_time) = dt_part.split('T').collect::<Vec<_>>().get(0..2) {
             let date = date_time[0];
             let time = date_time[1].split('.').next().unwrap_or(date_time[1]);
-            
+
             let date_parts: Vec<&str> = date.split('-').collect();
             let time_parts: Vec<&str> = time.split(':').collect();
-            
+
             if date_parts.len() == 3 && time_parts.len() == 3 {
                 if let (Ok(y), Ok(mo), Ok(d), Ok(h), Ok(mi), Ok(s)) = (
                     date_parts[0].parse::<i64>(),
@@ -686,7 +688,10 @@ mod tests {
             .as_secs() as i64;
         let past_secs = now - 3600; // 1 Stunde her
         let (y, mo, d, h, mi, s) = crate::civil_utc(past_secs);
-        let past = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00", y, mo, d, h, mi, s);
+        let past = format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
+            y, mo, d, h, mi, s
+        );
 
         let meta = RunMeta {
             run_id: "20260712_120000_aabbccdd".to_string(),
@@ -808,7 +813,8 @@ mod tests {
         )
         .unwrap();
 
-        let (rid, m, _age) = find_recent_run_meta(runs_dir.to_str().unwrap(), "chatgpt", None, None);
+        let (rid, m, _age) =
+            find_recent_run_meta(runs_dir.to_str().unwrap(), "chatgpt", None, None);
         assert_eq!(rid, "20260712_120000_aabbccdd");
         assert!(m.is_some());
         assert_eq!(
@@ -831,7 +837,10 @@ mod tests {
             .as_secs() as i64;
         let past_secs = now - 7200; // 2 Stunden her
         let (y, mo, d, h, mi, s) = crate::civil_utc(past_secs);
-        let past = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00", y, mo, d, h, mi, s);
+        let past = format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
+            y, mo, d, h, mi, s
+        );
 
         let meta = RunMeta {
             run_id: "20260712_090000_xxx".to_string(),
@@ -1122,7 +1131,10 @@ mod tests {
         let mut brains_config = HashMap::new();
         let mut chatgpt_spec = HashMap::new();
         chatgpt_spec.insert("url".to_string(), "https://chatgpt.com/".to_string());
-        chatgpt_spec.insert("selectors".to_string(), sel_file.to_str().unwrap().to_string());
+        chatgpt_spec.insert(
+            "selectors".to_string(),
+            sel_file.to_str().unwrap().to_string(),
+        );
         chatgpt_spec.insert("profile".to_string(), profile.to_str().unwrap().to_string());
         brains_config.insert("chatgpt".to_string(), chatgpt_spec);
 
@@ -1182,7 +1194,10 @@ mod tests {
 
         let mut brains_config = HashMap::new();
         let mut chatgpt_spec = HashMap::new();
-        chatgpt_spec.insert("selectors".to_string(), sel_file.to_str().unwrap().to_string());
+        chatgpt_spec.insert(
+            "selectors".to_string(),
+            sel_file.to_str().unwrap().to_string(),
+        );
         chatgpt_spec.insert("profile".to_string(), profile.to_str().unwrap().to_string());
         brains_config.insert("chatgpt".to_string(), chatgpt_spec);
 
@@ -1192,7 +1207,10 @@ mod tests {
             .as_secs() as i64;
         let past_secs = now - 3600;
         let (y, mo, d, h, mi, s) = crate::civil_utc(past_secs);
-        let past = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00", y, mo, d, h, mi, s);
+        let past = format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+00:00",
+            y, mo, d, h, mi, s
+        );
 
         let fake_meta = RunMeta {
             run_id: "run_001".to_string(),
@@ -1233,7 +1251,10 @@ mod tests {
 
         let mut brains_config = HashMap::new();
         let mut chatgpt_spec = HashMap::new();
-        chatgpt_spec.insert("selectors".to_string(), sel_file.to_str().unwrap().to_string());
+        chatgpt_spec.insert(
+            "selectors".to_string(),
+            sel_file.to_str().unwrap().to_string(),
+        );
         chatgpt_spec.insert("profile".to_string(), profile.to_str().unwrap().to_string());
         brains_config.insert("chatgpt".to_string(), chatgpt_spec);
 
@@ -1296,7 +1317,11 @@ mod tests {
             let mut spec = HashMap::new();
             spec.insert(
                 "selectors".to_string(),
-                sel_dir.join(format!("{}.json", bid)).to_str().unwrap().to_string(),
+                sel_dir
+                    .join(format!("{}.json", bid))
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
             );
             spec.insert("profile".to_string(), profile.to_str().unwrap().to_string());
             brains_config.insert(bid.to_string(), spec);
@@ -1330,7 +1355,11 @@ mod tests {
             let mut spec = HashMap::new();
             spec.insert(
                 "selectors".to_string(),
-                sel_dir.join(format!("{}.json", bid)).to_str().unwrap().to_string(),
+                sel_dir
+                    .join(format!("{}.json", bid))
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
             );
             spec.insert("profile".to_string(), profile.to_str().unwrap().to_string());
             brains_config.insert(bid.to_string(), spec);
@@ -1374,6 +1403,8 @@ mod tests {
             None,
         );
         assert!(!report.ok());
-        assert!(report.unhealthy_brain_ids().contains(&"chatgpt".to_string()));
+        assert!(report
+            .unhealthy_brain_ids()
+            .contains(&"chatgpt".to_string()));
     }
 }

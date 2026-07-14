@@ -50,12 +50,12 @@ const PROBE: &str = r#"(function(){
 fn main() {
     let mut b = WebBrainBackend::from_config("gemini").expect("from_config");
     b.start(false).expect("start");
-    let st = b.ensure_ready(60.0).unwrap_or(webagent::brain::SessionState::Error);
+    let st = b
+        .ensure_ready(60.0)
+        .unwrap_or(webagent::brain::SessionState::Error);
     eprintln!("session_state={st:?}");
 
-    let sent = b
-        .send("Antworte NUR mit dem Wort: HALLOWELT")
-        .is_ok();
+    let sent = b.send("Antworte NUR mit dem Wort: HALLOWELT").is_ok();
     eprintln!("send returned ok={sent}");
 
     for i in 0..6 {

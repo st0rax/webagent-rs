@@ -83,10 +83,7 @@ mod tests {
 
     #[test]
     fn test_fingerprint_ignores_unrelated_commands() {
-        assert_eq!(
-            shell_read_fingerprint("Get-ChildItem C:\\Temp"),
-            None
-        );
+        assert_eq!(shell_read_fingerprint("Get-ChildItem C:\\Temp"), None);
     }
 
     #[test]

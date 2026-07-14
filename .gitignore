@@ -1,11 +1,16 @@
 /target
+target/
 .env
+.env.*
+!.env.example
 *.log
+aider_build.log
 .aider.tags.cache.v*/
 .aider.chat.history.md
 .aider.input.history
 .aider*
 /data
+data/
 /profiles
 /test_out.txt
 test_out.txt
