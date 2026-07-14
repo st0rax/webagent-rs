@@ -48,7 +48,8 @@ pub const MAX_OBSERVATION_CHARS: usize = 12_000;
 pub const LOOP_GUARD_WARN_COUNT: usize = 3;
 pub const LOOP_GUARD_ABORT_COUNT: usize = 8;
 
-/// bot2bot/ — Agent-Messaging-Root (Desktop-Sibling oder Override).
+/// bot2bot/ — Legacy Agent-Messaging-Root for bridge/watchdog (Desktop-Sibling oder Override).
+/// Note: internal messaging uses comms.rs (data/comms/) — bot2bot_root kept for compat/bridge only.
 pub fn bot2bot_root() -> PathBuf {
     if let Ok(override_path) = env::var("WEBAGENT_BOT2BOT_ROOT") {
         let s = override_path.trim();

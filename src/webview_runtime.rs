@@ -71,6 +71,7 @@ enum PageMessage {
 
 struct PageSlot {
     page_rx: Receiver<PageMessage>,
+    #[allow(dead_code)]
     window: tao::window::Window,
     webview: wry::WebView,
 }

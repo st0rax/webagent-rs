@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use std::env;
 
 use crate::brain::BrainBackend;
+use crate::comms::CommsStore;
 use crate::executor::ShellExecutor;
 use crate::loop_guard::{loop_guard_message, shell_read_fingerprint};
 use crate::memory::MemoryStore;
@@ -48,6 +49,8 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     memory: MemoryStore,
     runs_dir: std::path::PathBuf,
     meta: Option<RunMeta>,
+    #[allow(dead_code)]
+    comms: CommsStore,
     completed_actions: HashMap<String, String>,
     incomplete_retries: usize,
 }
@@ -90,6 +93,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             memory: MemoryStore::new(memory_path),
             runs_dir,
             meta: None,
+            comms: CommsStore::new(data_dir.join("comms")),
             completed_actions: HashMap::new(),
             incomplete_retries: 0,
         }

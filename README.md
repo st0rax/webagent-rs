@@ -10,10 +10,10 @@ Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: plattformunabhä
 (`wry`/`tao`) statt CDP/Playwright.
 
 > **Status (v0.5.0):** Kern vollständig portiert und getestet (`cargo test --no-default-features`
-> grün in CI). Browser-Steuerung über Embedded WebView + `BrowserPool` (ein Tab pro Brain).
-> REPL hält die Browser-Session über Turns offen (`skip_brain_start/stop`).
-> Alle CLI-Befehle verdrahtet inkl. `brains-health`, `relay`, `oobe`.
-> Provider-Live-Verifikation nach WebView-Migration: siehe [`PROVIDER_STATUS.md`](PROVIDER_STATUS.md).
+> + `cargo clippy -D warnings` grün). `comms.rs` (internes Messaging, ersetzt bot2bot für webagent-intern) in CLI/Controller verdrahtet.
+> Browser-Steuerung über Embedded WebView + `BrowserPool`.
+> REPL hält die Browser-Session über Turns offen.
+> Provider: 5/8 headless ohne Login; CF-Provider (chatgpt/claude/mistral) ehrlich als "needs manual login" dok. Siehe [`PROVIDER_STATUS.md`](PROVIDER_STATUS.md).
 
 ## Architektur
 
@@ -35,6 +35,7 @@ Brain (Web-Chat)  ──plan──▶  Controller  ──shell──▶  Executo
 | `browser_pool` | Shared-Profil: ein Runtime, ein Tab pro Brain |
 | `executor` | Shell-Ausführung (Windows: PowerShell, Unix: sh/bash) |
 | `run_store` · `transcript` · `memory` | Persistenz (JSON-Lines) |
+| `comms` | Internal agent-to-agent messaging (data/comms/ history + per-agent inbox; wired to CLI/Controller) |
 | `doctor` · `watchdog` · `brains_health` | Diagnose & Pre-flight |
 | `relay` · `oobe` | Single-turn Relay, Ersteinrichtungs-Wizard |
 | `timeouts` · `loop_guard` · `observer` · `prompts` · `config` | Politik & Heuristiken |

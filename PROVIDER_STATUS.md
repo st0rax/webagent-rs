@@ -8,16 +8,16 @@
 
 | `webagent/<id>` | WebView Smoke | Notiz |
 |---|---|---|
-| chatgpt | 🟢 PASS | Headed (headless → Cloudflare) |
-| deepseek | 🟢 PASS | „OK“ |
-| kimi | 🟢 PASS | exit 0 |
-| gemini | 🟢 PASS | exit 0 |
-| qwen | 🟢 PASS | exit 0 |
-| claude | 🟢 PASS | Headed (headless → Cloudflare) |
-| mistral | 🟢 PASS | Headed (headless → Cloudflare) |
-| zai | 🟢 PASS | exit 0 |
+| chatgpt | needs manual login | Cloudflare blocks headless; requires one-time headed login (storax profile) |
+| deepseek | 🟢 PASS (headless) | „OK“ |
+| kimi | 🟢 PASS (headless) | exit 0 |
+| gemini | 🟢 PASS (headless) | exit 0 |
+| qwen | 🟢 PASS (headless) | exit 0 |
+| claude | needs manual login | Cloudflare blocks headless; requires one-time headed login (storax profile) |
+| mistral | needs manual login | Cloudflare blocks headless; requires one-time headed login (storax profile) |
+| zai | 🟢 PASS (headless) | exit 0 |
 
-**Zwischenstand: 8 von 8** auf WebView (headed). Headless scheitert bei chatgpt/claude/mistral an Cloudflare — Standard bleibt sichtbar.
+**Zwischenstand:** 5/8 headless without manual login (deepseek/kimi/gemini/qwen/zai). chatgpt/claude/mistral: honest "needs manual login" (Cloudflare challenge); repro: run `delivery/provider_webview_smoke.ps1 -Headed` once per brain + login in the opened window; subsequent headless runs use the persisted profile. Never falsely green.
 
 Evidence: `%TEMP%\grok-goal-*\implementer\provider-webview-smoke.log`
 
