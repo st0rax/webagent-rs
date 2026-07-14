@@ -11,6 +11,7 @@ Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: plattformunabhä
 
 > **Status (v0.5.0):** Kern vollständig portiert und getestet (`cargo test --no-default-features`
 > grün in CI). Browser-Steuerung über Embedded WebView + `BrowserPool` (ein Tab pro Brain).
+> REPL hält die Browser-Session über Turns offen (`skip_brain_start/stop`).
 > Alle CLI-Befehle verdrahtet inkl. `brains-health`, `relay`, `oobe`.
 > Provider-Live-Verifikation nach WebView-Migration: siehe [`PROVIDER_STATUS.md`](PROVIDER_STATUS.md).
 
