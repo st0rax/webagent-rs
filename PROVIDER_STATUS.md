@@ -1,39 +1,46 @@
 # Provider-Status (Live-Verifikation Rust-Port)
 
-> **Begriffsklärung:** Status bewertet **Provider-Integrationen** `webagent/<id>`,
-> nicht die KI-Entitäten dahinter.
+> **Begriffsklärung:** Diese Tabelle bewertet die **Provider-Integrationen**
+> `webagent/<id>` (Browser-Automatisierung gegen die jeweilige Web-Chat-Seite),
+> **nicht** die KI-Entitäten dahinter.
 
-**Backend:** Embedded WebView (`wry`/`tao`) v0.5.0  
-**Letzter Smoke:** 2026-07-14 — `delivery/provider_webview_smoke.ps1` (relay „OK“, `--headless`, Shared-Profil)
+> **Stack v0.5.0:** Embedded **WebView** (`wry`/`tao`), kein CDP. `--headless` =
+> Hidden Window (`with_visible(false)`).
 
-| `webagent/<id>` | WebView Smoke | Notiz |
-|---|---|---|
-| deepseek | 🟢 PASS | Antwort „OK“ |
-| kimi | 🟢 PASS | Antwort leer, exit 0 |
-| gemini | 🟢 PASS | „OK.“ |
-| qwen | 🟢 PASS | „OK.“ |
-| zai | 🟢 PASS | „OK“ |
-| chatgpt | 🔴 FAIL | `session_state=Cloudflare` (headless) |
-| claude | 🔴 FAIL | `session_state=Cloudflare` (headless) |
-| mistral | 🔴 FAIL | `session_state=Cloudflare` (headless) |
+## WebView-Smoke 2026-07-14
 
-**Zwischenstand: 5 von 8** auf WebView (headless). Cloudflare-Blocker bei chatgpt/claude/mistral — Retry mit sichtbarem Browser (`-Headed`).
+Methode: `delivery/provider_webview_smoke.ps1` — `relay --brain <id> --message "Antworte nur mit OK." --headless`
+mit `WEBAGENT_SHARED_BROWSER=1`, `WEBAGENT_PROFILE_DIR=<parent>/data/profiles/shared`.
 
-Evidence: `%TEMP%\grok-goal-*\implementer\provider-webview-smoke.log`
+Evidence: `{SCRATCH}/provider-webview-smoke.log` — **SUMMARY ok=5 fail=3 total=8**
 
-## Testkommando
+| `webagent/<id>` | CDP (Referenz) | WebView v0.5.0 (2026-07-14) | Anmerkung |
+|---|---|---|---|
+| `webagent/qwen` | 🟢 LÄUFT | 🟢 PASS | Antwort „OK.“ |
+| chatgpt | 🟢 LÄUFT | 🔴 Cloudflare | `session_state=Cloudflare` (headless) |
+| deepseek | 🟢 LÄUFT | 🟢 PASS | Antwort „OK“ |
+| kimi | 🟢 LÄUFT | 🟢 PASS | exit 0 |
+| claude | 🟢 LÄUFT | 🔴 Cloudflare | `session_state=Cloudflare` (headless) |
+| gemini | 🟢 LÄUFT | 🟢 PASS | Antwort „OK.“ |
+| mistral | 🟢 LÄUFT | 🔴 Cloudflare | `session_state=Cloudflare` (headless) |
+| zai | 🟢 LÄUFT | 🟢 PASS | Antwort „OK“ |
+
+Cloudflare-Fails betreffen headless Hidden-Window — gleiche Provider funktionieren
+in CDP-Ära mit sichtbarem Browser/Profil. Re-Test headed: `provider_webview_smoke.ps1 -Headed`.
+
+## Neu-Verifikation (WebView)
 
 ```powershell
-pwsh -File Desktop\webagent\delivery\provider_webview_smoke.ps1 -Headed
-# oder einzeln:
-$env:WEBAGENT_PROFILE_DIR = "Desktop\webagent\data\profiles\shared"
-$env:WEBAGENT_USE_SHARED_BROWSER = "1"
-webagent relay --brain gemini --message "Antworte nur OK"
+$env:WEBAGENT_SHARED_BROWSER = "1"
+$env:WEBAGENT_PROFILE_DIR = "$env:USERPROFILE\Desktop\webagent\data\profiles\shared"
+cargo run -- relay --brain <brain> --message "Antworte nur mit OK."
 ```
 
-## Bekannte Stabilitäts-Fixes
+Erwartung: `complete=true`, nicht abgeschnittene Antwort.
 
-1. `new_chat` vor frischem Run (Controller).
-2. Composer-Fokus + DOM-fill.
-3. Fenstergröße 1280×900.
-4. `BrowserPool` + `WEBAGENT_PERSIST_TABS` für Relay-Ketten.
+## Bekannte Stabilitäts-Fixes (weiter gültig)
+
+1. `new_chat` VOR jedem frischen Run (Controller) — baseline>0 vermeiden.
+2. Composer-Fokus + DOM-fill statt `.value`-Injection.
+3. Fenstergröße 1280×900 — kein Mobil-Layout.
+4. `js_scan`/`probe`: try/catch pro Selektor.
