@@ -22,9 +22,9 @@ fn token_regex() -> &'static Regex {
 }
 
 static STOP_WORDS: &[&str] = &[
-    "aber", "alle", "auch", "dass", "eine", "einen", "einer", "eines",
-    "fuer", "für", "haben", "hier", "nicht", "oder", "soll", "und", "von",
-    "werden", "with", "from", "that", "this", "the", "webagent",
+    "aber", "alle", "auch", "dass", "eine", "einen", "einer", "eines", "fuer", "für", "haben",
+    "hier", "nicht", "oder", "soll", "und", "von", "werden", "with", "from", "that", "this", "the",
+    "webagent",
 ];
 
 fn tokens(text: &str) -> HashSet<String> {
@@ -137,7 +137,7 @@ impl MemoryStore {
     /// Listet die neuesten Erinnerungen auf.
     pub fn list(&self, limit: usize) -> Result<Vec<MemoryEntry>, String> {
         let mut entries = self.load_all()?;
-        entries.sort_by(|a, b| b.id.cmp(&a.id));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.id));
         Ok(entries
             .into_iter()
             .take(limit.max(1))
@@ -246,8 +246,7 @@ impl MemoryStore {
         let line = serde_json::to_string(entry)
             .map_err(|e| format!("Fehler beim Serialisieren: {}", e))?;
 
-        writeln!(file, "{}", line)
-            .map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
+        writeln!(file, "{}", line).map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
 
         Ok(())
     }
@@ -286,13 +285,11 @@ impl MemoryStore {
             for entry in entries {
                 let line = serde_json::to_string(entry)
                     .map_err(|e| format!("Fehler beim Serialisieren: {}", e))?;
-                writeln!(file, "{}", line)
-                    .map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
+                writeln!(file, "{}", line).map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
             }
         }
 
-        fs::rename(&tmp_path, &self.path)
-            .map_err(|e| format!("Fehler beim Umbenennen: {}", e))?;
+        fs::rename(&tmp_path, &self.path).map_err(|e| format!("Fehler beim Umbenennen: {}", e))?;
 
         Ok(())
     }
@@ -360,8 +357,13 @@ mod tests {
             )
             .unwrap();
 
-        let result = store.search("Browserfenster minimiert", &["shared"], 8).unwrap();
-        assert_eq!(result.iter().map(|e| e.id).collect::<Vec<_>>(), vec![memory_id]);
+        let result = store
+            .search("Browserfenster minimiert", &["shared"], 8)
+            .unwrap();
+        assert_eq!(
+            result.iter().map(|e| e.id).collect::<Vec<_>>(),
+            vec![memory_id]
+        );
 
         assert!(store.delete(memory_id).unwrap());
         assert_eq!(store.list(20).unwrap().len(), 0);
@@ -393,7 +395,10 @@ mod tests {
             .unwrap();
 
         let result = store.search("DeepSeek Profil", &["shared"], 8).unwrap();
-        assert_eq!(result.iter().map(|e| e.id).collect::<Vec<_>>(), vec![wanted]);
+        assert_eq!(
+            result.iter().map(|e| e.id).collect::<Vec<_>>(),
+            vec![wanted]
+        );
     }
 
     #[test]
@@ -402,7 +407,10 @@ mod tests {
         let store = MemoryStore::new(tmp.join("memory.jsonl"));
 
         let mut actions = HashMap::new();
-        actions.insert("s".to_string(), "[Terminal-Ausgabe action_id=s]\nok".to_string());
+        actions.insert(
+            "s".to_string(),
+            "[Terminal-Ausgabe action_id=s]\nok".to_string(),
+        );
         actions.insert("m".to_string(), "Fertig".to_string());
 
         let meta = RunMeta {

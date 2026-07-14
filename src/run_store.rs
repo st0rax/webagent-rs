@@ -22,7 +22,7 @@ const NON_RUNNING_STATUSES: &[&str] = &[
 /// Erlaubte Status-Übergänge.
 fn allowed_status_transitions() -> HashMap<&'static str, HashSet<&'static str>> {
     let mut map = HashMap::new();
-    
+
     let mut running_next = HashSet::new();
     for s in TERMINAL_STATUSES {
         running_next.insert(*s);
@@ -31,39 +31,39 @@ fn allowed_status_transitions() -> HashMap<&'static str, HashSet<&'static str>> 
         running_next.insert(*s);
     }
     map.insert("running", running_next);
-    
+
     let mut brain_incomplete_next = HashSet::new();
     for s in TERMINAL_STATUSES {
         brain_incomplete_next.insert(*s);
     }
     brain_incomplete_next.insert("max_cycles");
     map.insert("brain_incomplete", brain_incomplete_next);
-    
+
     let mut max_cycles_next = HashSet::new();
     for s in TERMINAL_STATUSES {
         max_cycles_next.insert(*s);
     }
     max_cycles_next.insert("brain_incomplete");
     map.insert("max_cycles", max_cycles_next);
-    
+
     let mut login_required_next = HashSet::new();
     for s in TERMINAL_STATUSES {
         login_required_next.insert(*s);
     }
     map.insert("login_required", login_required_next);
-    
+
     let mut cloudflare_next = HashSet::new();
     for s in TERMINAL_STATUSES {
         cloudflare_next.insert(*s);
     }
     map.insert("cloudflare", cloudflare_next);
-    
+
     let mut error_next = HashSet::new();
     for s in TERMINAL_STATUSES {
         error_next.insert(*s);
     }
     map.insert("error", error_next);
-    
+
     map
 }
 
@@ -135,14 +135,14 @@ impl RunStore {
         let run_dir = meta.dir(&self.runs_dir);
         fs::create_dir_all(&run_dir)
             .map_err(|e| format!("Fehler beim Erstellen von {}: {}", run_dir.display(), e))?;
-        
+
         let log_dir = self.logs_dir.join(&run_id);
         fs::create_dir_all(&log_dir)
             .map_err(|e| format!("Fehler beim Erstellen von {}: {}", log_dir.display(), e))?;
 
         self.save_internal(&meta)?;
         self.append_event(&meta, "created", serde_json::json!({"status": meta.status}))?;
-        
+
         Ok(meta)
     }
 
@@ -151,24 +151,24 @@ impl RunStore {
         let path = self.runs_dir.join(run_id).join("meta.json");
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("Fehler beim Lesen von {}: {}", path.display(), e))?;
-        
+
         let meta: RunMeta = serde_json::from_str(&content)
             .map_err(|e| format!("Fehler beim Parsen von {}: {}", path.display(), e))?;
-        
+
         Ok(meta)
     }
 
     /// Speichert einen Run mit Validierung.
     pub fn save(&self, meta: &RunMeta) -> Result<(), String> {
         let previous = self.load_existing_meta(&meta.run_id);
-        
+
         if let Some(prev) = &previous {
             self.validate_status_transition(&prev.status, &meta.status)?;
         }
-        
+
         self.save_internal(meta)?;
         self.append_save_events(previous.as_ref(), meta)?;
-        
+
         Ok(())
     }
 
@@ -177,19 +177,25 @@ impl RunStore {
         let run_dir = meta.dir(&self.runs_dir);
         fs::create_dir_all(&run_dir)
             .map_err(|e| format!("Fehler beim Erstellen von {}: {}", run_dir.display(), e))?;
-        
+
         let path = run_dir.join("meta.json");
         let tmp_path = run_dir.join("meta.json.tmp");
-        
+
         let json = serde_json::to_string_pretty(meta)
             .map_err(|e| format!("Fehler beim Serialisieren: {}", e))?;
-        
+
         fs::write(&tmp_path, json)
             .map_err(|e| format!("Fehler beim Schreiben von {}: {}", tmp_path.display(), e))?;
-        
-        fs::rename(&tmp_path, &path)
-            .map_err(|e| format!("Fehler beim Umbenennen von {} nach {}: {}", tmp_path.display(), path.display(), e))?;
-        
+
+        fs::rename(&tmp_path, &path).map_err(|e| {
+            format!(
+                "Fehler beim Umbenennen von {} nach {}: {}",
+                tmp_path.display(),
+                path.display(),
+                e
+            )
+        })?;
+
         Ok(())
     }
 
@@ -199,7 +205,7 @@ impl RunStore {
         if !path.exists() {
             return None;
         }
-        
+
         let content = fs::read_to_string(&path).ok()?;
         serde_json::from_str(&content).ok()
     }
@@ -209,10 +215,10 @@ impl RunStore {
         if previous == next {
             return Ok(());
         }
-        
+
         let transitions = allowed_status_transitions();
         let allowed = transitions.get(previous);
-        
+
         match allowed {
             Some(set) if set.contains(next) => Ok(()),
             Some(_) => Err(format!(
@@ -231,7 +237,7 @@ impl RunStore {
         if previous.is_none() {
             return self.append_event(meta, "created", serde_json::json!({"status": &meta.status}));
         }
-        
+
         let prev = previous.unwrap();
         if prev.status != meta.status {
             self.append_event(
@@ -243,7 +249,11 @@ impl RunStore {
                 }),
             )
         } else {
-            self.append_event(meta, "meta_saved", serde_json::json!({"status": &meta.status}))
+            self.append_event(
+                meta,
+                "meta_saved",
+                serde_json::json!({"status": &meta.status}),
+            )
         }
     }
 
@@ -257,7 +267,7 @@ impl RunStore {
         let run_dir = meta.dir(&self.runs_dir);
         fs::create_dir_all(&run_dir)
             .map_err(|e| format!("Fehler beim Erstellen von {}: {}", run_dir.display(), e))?;
-        
+
         let path = run_dir.join("events.jsonl");
         let event = serde_json::json!({
             "timestamp": crate::now_rfc3339(),
@@ -265,26 +275,26 @@ impl RunStore {
             "type": event_type,
             "payload": payload,
         });
-        
+
         let line = serde_json::to_string(&event)
             .map_err(|e| format!("Fehler beim Serialisieren des Events: {}", e))?;
-        
+
         let mut file = fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&path)
             .map_err(|e| format!("Fehler beim Öffnen von {}: {}", path.display(), e))?;
-        
+
         writeln!(file, "{}", line)
             .map_err(|e| format!("Fehler beim Schreiben in {}: {}", path.display(), e))?;
-        
+
         Ok(())
     }
 
     /// Listet alle Runs auf (sortiert, neueste zuerst).
     pub fn list_runs(&self) -> Vec<String> {
         let mut runs = Vec::new();
-        
+
         if let Ok(entries) = fs::read_dir(&self.runs_dir) {
             for entry in entries.flatten() {
                 if entry.path().is_dir() {
@@ -294,7 +304,7 @@ impl RunStore {
                 }
             }
         }
-        
+
         runs.sort_by(|a, b| b.cmp(a)); // Neueste zuerst
         runs
     }
@@ -306,19 +316,19 @@ impl RunStore {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        
+
         for run_id in self.list_runs() {
             let meta = match self.load(&run_id) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
-            
+
             if meta.status != "running" {
                 continue;
             }
-            
+
             let owner_pid = meta.extra.get("owner_pid").and_then(|v| v.as_i64());
-            
+
             let stale = if let Some(pid) = owner_pid {
                 !crate::pid_alive(pid)
             } else {
@@ -331,11 +341,11 @@ impl RunStore {
                     None => true, // Ungültiger Zeitstempel → als stale behandeln
                 }
             };
-            
+
             if !stale {
                 continue;
             }
-            
+
             let mut updated = meta.clone();
             updated.status = "interrupted".to_string();
             updated.extra.insert(
@@ -346,12 +356,12 @@ impl RunStore {
                 "error".to_string(),
                 serde_json::Value::String("Prozess endete ohne finalen Run-Status.".to_string()),
             );
-            
+
             if self.save(&updated).is_ok() {
                 repaired.push(run_id);
             }
         }
-        
+
         repaired
     }
 }
@@ -361,9 +371,10 @@ impl RunStore {
 fn parse_rfc3339_to_unix(s: &str) -> Option<i64> {
     // Format: YYYY-MM-DDTHH:MM:SS[.ffffff](+00:00|Z)
     let re = regex::Regex::new(
-        r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|\+00:00)$"
-    ).ok()?;
-    
+        r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|\+00:00)$",
+    )
+    .ok()?;
+
     let caps = re.captures(s)?;
     let year: i32 = caps.get(1)?.as_str().parse().ok()?;
     let month: u32 = caps.get(2)?.as_str().parse().ok()?;
@@ -371,22 +382,26 @@ fn parse_rfc3339_to_unix(s: &str) -> Option<i64> {
     let hour: u32 = caps.get(4)?.as_str().parse().ok()?;
     let minute: u32 = caps.get(5)?.as_str().parse().ok()?;
     let second: u32 = caps.get(6)?.as_str().parse().ok()?;
-    
+
     // Umrechnung zu Unix-Timestamp (Tage seit Epoch + Tageszeit)
     // Vereinfachte Variante von civil_to_days (inverse von civil_utc in lib.rs)
     let y = year as i64;
     let m = month as i64;
     let d = day as i64;
-    
+
     let adj_year = if m <= 2 { y - 1 } else { y };
     let adj_month = if m <= 2 { m + 12 } else { m };
-    
-    let era = if adj_year >= 0 { adj_year } else { adj_year - 399 } / 400;
+
+    let era = if adj_year >= 0 {
+        adj_year
+    } else {
+        adj_year - 399
+    } / 400;
     let yoe = adj_year - era * 400;
     let doy = (153 * (adj_month - 3) + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     let days = era * 146_097 + doe - 719_468;
-    
+
     let secs = days * 86_400 + (hour as i64) * 3600 + (minute as i64) * 60 + (second as i64);
     Some(secs)
 }
@@ -416,17 +431,17 @@ mod tests {
         let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
-        
+
         let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
         let mut meta = store.create("mock", "stale").unwrap();
-        
+
         // Setze created_at auf 1 Stunde in der Vergangenheit (3600 Sekunden)
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
         let past_secs = now_secs - 3600;
-        
+
         // Konvertiere zu RFC3339 (nutzt civil_utc aus lib.rs)
         let (y, mo, d, h, mi, s) = crate::civil_utc(past_secs);
         meta.created_at = format!(
@@ -434,14 +449,14 @@ mod tests {
             y, mo, d, h, mi, s
         );
         store.save_internal(&meta).unwrap();
-        
+
         let repaired = store.reconcile_stale_runs(10.0);
         assert_eq!(repaired, vec![meta.run_id.clone()]);
-        
+
         let loaded = store.load(&meta.run_id).unwrap();
         assert_eq!(loaded.status, "interrupted");
         assert!(loaded.extra.contains_key("reconciled_at"));
-        
+
         // Cleanup
         fs::remove_dir_all(&tmp).ok();
     }
@@ -451,23 +466,23 @@ mod tests {
         let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
-        
+
         let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
         let mut meta = store.create("mock", "live").unwrap();
-        
+
         // Setze owner_pid auf aktuellen Prozess
         meta.extra.insert(
             "owner_pid".to_string(),
             serde_json::Value::Number(std::process::id().into()),
         );
         store.save(&meta).unwrap();
-        
+
         let repaired = store.reconcile_stale_runs(0.0);
         assert!(repaired.is_empty());
-        
+
         let loaded = store.load(&meta.run_id).unwrap();
         assert_eq!(loaded.status, "running");
-        
+
         // Cleanup
         fs::remove_dir_all(&tmp).ok();
     }
@@ -477,18 +492,18 @@ mod tests {
         let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
-        
+
         let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
         let mut meta = store.create("mock", "test").unwrap();
-        
+
         // Erlaubter Übergang: running -> done
         meta.status = "done".to_string();
         assert!(store.save(&meta).is_ok());
-        
+
         // Unerlaubter Übergang: done -> running
         meta.status = "running".to_string();
         assert!(store.save(&meta).is_err());
-        
+
         // Cleanup
         fs::remove_dir_all(&tmp).ok();
     }
@@ -498,19 +513,19 @@ mod tests {
         let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
-        
+
         let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
         let meta = store.create("test_brain", "test task").unwrap();
-        
+
         assert_eq!(meta.brain_id, "test_brain");
         assert_eq!(meta.task, "test task");
         assert_eq!(meta.status, "running");
         assert_eq!(meta.cycles, 0);
-        
+
         let loaded = store.load(&meta.run_id).unwrap();
         assert_eq!(loaded.run_id, meta.run_id);
         assert_eq!(loaded.brain_id, "test_brain");
-        
+
         // Cleanup
         fs::remove_dir_all(&tmp).ok();
     }
@@ -520,13 +535,13 @@ mod tests {
         let tmp = unique_tmp();
         let runs_dir = tmp.join("runs");
         let logs_dir = tmp.join("logs");
-        
+
         let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
-        
+
         let meta1 = store.create("brain1", "task1").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
         let meta2 = store.create("brain2", "task2").unwrap();
-        
+
         let runs = store.list_runs();
         assert_eq!(runs.len(), 2);
         // Beide Runs entstehen i.d.R. in derselben Sekunde; der Run-Stempel ist

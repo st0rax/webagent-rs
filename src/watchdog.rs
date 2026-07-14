@@ -72,9 +72,7 @@ impl WatchdogReport {
     }
 
     pub fn total_findings(&self) -> usize {
-        self.orphaned_runs.len()
-            + self.stale_bridge_locks.len()
-            + self.stale_profile_locks.len()
+        self.orphaned_runs.len() + self.stale_bridge_locks.len() + self.stale_profile_locks.len()
     }
 
     pub fn total_repaired(&self) -> usize {
@@ -105,7 +103,10 @@ fn pid_alive(pid: i64) -> bool {
     }
     #[cfg(not(windows))]
     {
-        match std::process::Command::new("kill").args(["-0", &pid.to_string()]).status() {
+        match std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+        {
             Ok(st) => st.success(),
             Err(_) => true,
         }
@@ -118,7 +119,9 @@ fn file_age_seconds(path: &str) -> f64 {
         Ok(meta) => match meta.modified() {
             Ok(modified) => match modified.duration_since(UNIX_EPOCH) {
                 Ok(dur) => {
-                    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default();
                     (now.as_secs_f64() - dur.as_secs_f64()).max(0.0)
                 }
                 Err(_) => -1.0,
@@ -151,10 +154,7 @@ pub fn scan_orphaned_runs(
             }
 
             let extra = meta.extra;
-            let owner_pid = extra
-                .get("owner_pid")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            let owner_pid = extra.get("owner_pid").and_then(|v| v.as_i64()).unwrap_or(0);
 
             let stale = if owner_pid > 0 {
                 !pid_alive(owner_pid)
@@ -224,10 +224,7 @@ pub fn scan_orphaned_runs(
         }
 
         let extra = meta.extra;
-        let owner_pid = extra
-            .get("owner_pid")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let owner_pid = extra.get("owner_pid").and_then(|v| v.as_i64()).unwrap_or(0);
 
         let stale = if owner_pid > 0 {
             !pid_alive(owner_pid)
@@ -268,10 +265,7 @@ pub fn scan_orphaned_runs(
 /// Scannt nach Bridge-Lock-Dateien, deren Holder-Prozess tot ist.
 /// Lock-Dateien heißen `.webagent-bridge-<agent>.lock` und enthalten
 /// `{"pid": <int>, "token": <str>}`.
-pub fn scan_bridge_locks(
-    bot2bot_root: &str,
-    grace_seconds: f64,
-) -> Vec<StaleBridgeLock> {
+pub fn scan_bridge_locks(bot2bot_root: &str, grace_seconds: f64) -> Vec<StaleBridgeLock> {
     let mut stale = Vec::new();
     if bot2bot_root.is_empty() || !Path::new(bot2bot_root).is_dir() {
         return stale;
@@ -345,8 +339,8 @@ pub fn scan_profile_locks(
             let base = Path::new(profile_dir).join("Default");
             let entry = rel
                 .split('/')
-                .last()
-                .or_else(|| rel.split('\\').last())
+                .next_back()
+                .or_else(|| rel.split('\\').next_back())
                 .unwrap_or(&rel);
             base.join(entry)
         } else {
@@ -461,7 +455,11 @@ pub fn repair_orphaned_runs(
                 meta.status = "interrupted".to_string();
                 meta.extra.insert(
                     "reconciled_at".to_string(),
-                    serde_json::Value::String(OffsetDateTime::now_utc().format(&Rfc3339).unwrap_or_default()),
+                    serde_json::Value::String(
+                        OffsetDateTime::now_utc()
+                            .format(&Rfc3339)
+                            .unwrap_or_default(),
+                    ),
                 );
                 meta.extra.insert(
                     "error".to_string(),
@@ -476,10 +474,9 @@ pub fn repair_orphaned_runs(
             }
         }
         // Fallback ohne RunStore wird übersprungen (braucht runs_dir-Kontext)
-        report.errors.push(format!(
-            "cannot repair {} without run_store",
-            orphan.run_id
-        ));
+        report
+            .errors
+            .push(format!("cannot repair {} without run_store", orphan.run_id));
     }
 }
 
@@ -494,7 +491,9 @@ pub fn repair_bridge_locks(report: &mut WatchdogReport) {
                 // bereits weg
             }
             Err(e) => {
-                report.errors.push(format!("repair bridge lock {}: {}", lock.path, e));
+                report
+                    .errors
+                    .push(format!("repair bridge lock {}: {}", lock.path, e));
             }
         }
     }
@@ -511,7 +510,9 @@ pub fn repair_profile_locks(report: &mut WatchdogReport) {
                 // bereits weg
             }
             Err(e) => {
-                report.errors.push(format!("repair profile lock {}: {}", lock.path, e));
+                report
+                    .errors
+                    .push(format!("repair profile lock {}: {}", lock.path, e));
             }
         }
     }
@@ -527,7 +528,9 @@ pub fn run_watchdog(
     chrome_running_fn: Option<fn(&str) -> bool>,
 ) -> WatchdogReport {
     let mut report = WatchdogReport {
-        timestamp: OffsetDateTime::now_utc().format(&Rfc3339).unwrap_or_default(),
+        timestamp: OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .unwrap_or_default(),
         ..Default::default()
     };
 
@@ -714,7 +717,6 @@ mod tests {
             false, // dry-run
             None,
         );
-
 
         assert_eq!(report.orphaned_runs.len(), 1);
         assert_eq!(report.stale_bridge_locks.len(), 1);

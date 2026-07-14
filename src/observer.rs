@@ -20,9 +20,7 @@ fn transient_status_regex() -> &'static Regex {
 /// Regex für reine Zeitanzeigen (z.B. "11:05").
 fn clock_only_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r"^\d{1,2}:\d{2}$").unwrap()
-    })
+    RE.get_or_init(|| Regex::new(r"^\d{1,2}:\d{2}$").unwrap())
 }
 
 /// Regex für Claude-Limit-Meldungen.
@@ -40,15 +38,15 @@ fn claude_limit_regex() -> &'static Regex {
 pub fn is_transient_response_text(text: &str) -> bool {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let normalized = normalized.trim();
-    
+
     if normalized.is_empty() {
         return true;
     }
-    
+
     if clock_only_regex().is_match(normalized) {
         return true;
     }
-    
+
     transient_status_regex().is_match(normalized)
 }
 
@@ -56,11 +54,11 @@ pub fn is_transient_response_text(text: &str) -> bool {
 pub fn is_claude_limit_response_text(text: &str) -> bool {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let normalized = normalized.trim();
-    
+
     if normalized.is_empty() {
         return false;
     }
-    
+
     claude_limit_regex().is_match(normalized)
 }
 
@@ -87,7 +85,7 @@ mod tests {
             "Thought Process",
             "thought process",
         ];
-        
+
         for text in cases {
             assert!(
                 is_transient_response_text(text),
@@ -105,7 +103,7 @@ mod tests {
             "Denke nach: Ergebnis liegt vor",
             "Eine normale Antwort",
         ];
-        
+
         for text in cases {
             assert!(
                 !is_transient_response_text(text),
@@ -123,7 +121,7 @@ mod tests {
             "Nachrichtenlimit erreicht",
             "Rate limit exceeded",
         ];
-        
+
         for text in cases {
             assert!(
                 is_claude_limit_response_text(text),
@@ -140,7 +138,7 @@ mod tests {
             "The counter is 8.",
             "Thinking\nHere is the actual answer",
         ];
-        
+
         for text in cases {
             assert!(
                 !is_claude_limit_response_text(text),

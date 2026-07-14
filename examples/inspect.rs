@@ -28,7 +28,14 @@ fn concise(v: &Value) -> String {
         .unwrap_or(&empty)
         .iter()
         .filter(|m| i64f(m, "tl") > 0)
-        .map(|m| format!("    [{}ch] .{} | \"{}\"", i64f(m, "tl"), s(m, "cls"), s(m, "tp")))
+        .map(|m| {
+            format!(
+                "    [{}ch] .{} | \"{}\"",
+                i64f(m, "tl"),
+                s(m, "cls"),
+                s(m, "tp")
+            )
+        })
         .collect();
 
     // Icon-/beschriftete Buttons (Stop-Button ist meist ein svg-Icon-Button).
@@ -56,7 +63,15 @@ fn concise(v: &Value) -> String {
         .and_then(|t| t.as_array())
         .unwrap_or(&empty)
         .iter()
-        .map(|t| format!("    [{}ch] {} .{} | \"{}\"", i64f(t, "tl"), s(t, "tag"), s(t, "cls"), s(t, "tp")))
+        .map(|t| {
+            format!(
+                "    [{}ch] {} .{} | \"{}\"",
+                i64f(t, "tl"),
+                s(t, "tag"),
+                s(t, "cls"),
+                s(t, "tp")
+            )
+        })
         .collect();
 
     format!(
@@ -67,7 +82,9 @@ fn concise(v: &Value) -> String {
 }
 
 fn main() {
-    let brain = std::env::args().nth(1).unwrap_or_else(|| "qwen".to_string());
+    let brain = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "qwen".to_string());
     let mut b = match WebBrainBackend::from_config(&brain) {
         Ok(b) => b,
         Err(e) => {
@@ -79,7 +96,9 @@ fn main() {
         eprintln!("start: {e}");
         std::process::exit(1);
     }
-    let st = b.ensure_ready(60.0).unwrap_or(webagent::brain::SessionState::Error);
+    let st = b
+        .ensure_ready(60.0)
+        .unwrap_or(webagent::brain::SessionState::Error);
     eprintln!("session_state={st:?}");
 
     match b.dom_report() {
