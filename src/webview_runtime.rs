@@ -22,6 +22,10 @@ use crate::page_driver::{PageDriver, PageDriverError, Result};
 
 pub(crate) type ViewId = u64;
 
+/// Position fuer "headless"-Fenster: weit ausserhalb jedes realen Desktops, aber
+/// fuer Chromium ein normales, fokussierbares Fenster (siehe `open_page`).
+const OFFSCREEN_POS: (f64, f64) = (-32000.0, -32000.0);
+
 /// Interne Befehle an den UI-Thread.
 enum RuntimeMessage {
     OpenPage {
@@ -334,10 +338,23 @@ fn open_page(
     let view_id = rt.next_id;
     rt.next_id += 1;
 
-    let window = WindowBuilder::new()
+    // "headless" heisst hier: fuer den Nutzer unsichtbar, fuer Chromium aber ein
+    // normales Fenster. `with_visible(false)` erfuellt nur die erste Haelfte: ein
+    // nie gezeigtes Fenster kann keinen Fokus bekommen, also landen Tastendruecke
+    // (press_enter) nirgends. Bei Brains ohne matchenden Send-Button ist Enter der
+    // einzige Absende-Weg — der Relay lief dadurch headless in jeden Timeout, waehrend
+    // er headed in Sekunden antwortete. Fenster off-screen statt versteckt.
+    let mut builder = WindowBuilder::new()
         .with_title(format!("webagent-{view_id}"))
         .with_inner_size(LogicalSize::new(1280.0, 900.0))
-        .with_visible(!headless)
+        .with_visible(true);
+    if headless {
+        builder = builder.with_position(tao::dpi::LogicalPosition::new(
+            OFFSCREEN_POS.0,
+            OFFSCREEN_POS.1,
+        ));
+    }
+    let window = builder
         .build(event_loop)
         .map_err(|e| PageDriverError::Launch(e.to_string()))?;
 
@@ -351,7 +368,7 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
 "#;
 
     let webview = WebViewBuilder::with_web_context(&mut web_context)
-        .with_visible(!headless)
+        .with_visible(true)
         .with_initialization_script(init_script)
         .with_url(url)
         .build(&window)

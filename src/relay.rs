@@ -44,7 +44,19 @@ pub fn relay_single_turn(
             "claude_rate_limited: Claude ist aktuell limitiert/nicht verfügbar".into(),
         ));
     }
-    Ok(response.text.trim().to_string())
+    // Ohne diese Pruefung meldet der Relay ein Timeout als Erfolg: wait_response
+    // liefert bei "kein Ergebnis" einen leeren Text mit generation_complete=false,
+    // und ein blosses Ok("") wird vom Aufrufer (und vom Smoke-Skript, das exit 0
+    // als PASS wertet) als gruener Lauf gezaehlt. Genau so entstand "5/8 PASS"
+    // ohne eine einzige echte Antwort.
+    let text = response.text.trim().to_string();
+    if text.is_empty() {
+        return Err(RelayError(format!(
+            "keine Antwort erhalten (backend_status={}, generation_complete={})",
+            response.backend_status, response.generation_complete
+        )));
+    }
+    Ok(text)
 }
 
 #[cfg(test)]

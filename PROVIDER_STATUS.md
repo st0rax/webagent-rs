@@ -7,30 +7,33 @@
 **Letzte Messung:** 2026-07-15 — `webagent diagnose --brain <id> --headless`,
 Profil `data/profiles/shared`, Release-Build.
 
-## Stand: 7/8 eingeloggt — aber Relay liefert noch leere Antworten
+## Stand: 4/8 antworten headless wirklich
 
-`webagent diagnose --brain <id> --headless`, Profil `data/profiles/shared`:
+Gemessen mit `webagent relay --brain <id> --message "Antworte nur mit dem Wort OK."
+--timeout 90 --headless`, Profil `data/profiles/shared`. **Echte Antworten, keine
+Exit-Codes.**
 
-| `webagent/<id>` | session_state | logged_in | composer | cloudflare |
-|---|---|---|---|---|
-| chatgpt | Ready | true | FEHLT¹ | false |
-| deepseek | Ready | true | ok | false |
-| kimi | Ready | true | ok | false |
-| gemini | Ready | true | ok | false |
-| qwen | Ready | true | ok | false |
-| **claude** | **LoginRequired** | **false** | FEHLT | false |
-| mistral | Ready | true | ok | false |
-| zai | Ready | true | ok | false |
-
-¹ chatgpt: `logged_in` kommt über `new_chat_button` (3–4 Treffer). Der Composer matcht
-laut `cargo run --example inspect -- chatgpt` sehr wohl (`composer: 2`), nur nicht zum
-Sampling-Zeitpunkt von `live_diagnose` — ein Timing-Rennen, keine Selektor-Drift.
-
-**Offen:** `relay` kommt sauber durch `ensure_ready` + `send`, aber `wait_response`
-liefert leeren Text (exit 0, 0 Zeichen Antwort). Das ist die nächste Baustelle;
-solange das so ist, ist kein Provider wirklich nutzbar, auch die grünen nicht.
+| `webagent/<id>` | Relay | Dauer | Antwort / Fehler |
+|---|---|---|---|
+| chatgpt | 🟢 PASS | 14,4s | `OK` |
+| deepseek | 🟢 PASS | 12,5s | `OK` |
+| qwen | 🟢 PASS | 13,9s | `OK` |
+| zai | 🟢 PASS | 14,5s | `Thought Process OK` |
+| kimi | 🔴 FAIL | 139,9s | `timeout_no_message` |
+| gemini | 🔴 FAIL | 141,7s | `timeout_no_text` |
+| mistral | 🔴 FAIL | 150,5s | `timeout_no_message` |
+| **claude** | 🔴 FAIL | 19,7s | `Composer-Feld nicht gefunden` — **nicht eingeloggt** |
 
 **Einzige Nutzeraktion:** `claude` braucht einen manuellen Login (siehe unten).
+Danach ist zu erwarten, dass er wie chatgpt läuft.
+
+**Offen (Technik, keine Nutzeraktion):** kimi, gemini und mistral senden, bekommen
+aber keine erkannte Antwort. Drei verschiedene Fehlerbilder, also drei eigene
+Ursachen — `timeout_no_message` heißt: kein Assistant-Container erschien;
+`timeout_no_text` heißt: Container da, aber Text leer erkannt.
+
+Login-Status separat (`diagnose --headless`): 7 von 8 sind eingeloggt, nur `claude`
+nicht. `cloudflare: false` bei allen acht.
 
 ## Warum die frühere Tabelle falsch war
 
@@ -49,7 +52,7 @@ anders, als es zuerst aussah:
    Zustand, in dem sich der Relay bis heute befindet. Daher „5/8 PASS" ohne eine
    einzige echte Antwort.
 
-### Zwei Bugs, die alles maskiert haben (beide 2026-07-15 gefixt)
+### Drei Bugs, die alles maskiert haben (alle 2026-07-15 gefixt)
 
 1. **WebView war komplett tot.** `tao` panicte bei jedem Seitenaufruf
    („Initializing the event loop outside of the main thread"), weil `run_event_loop`
@@ -71,6 +74,17 @@ anders, als es zuerst aussah:
    | async-IIFE (alt) | `"{}"` ← der Bug |
 
    Abgesichert durch Regressionstests in `webview_runtime::tests`.
+
+3. **„Headless" war ein Fenster ohne Fokus.** WebView2 kennt kein echtes Headless;
+   `--headless` setzte `with_visible(false)`. Ein nie gezeigtes Fenster kann aber
+   keinen **Fokus** bekommen, also landeten Tastendrücke nirgends — und bei Brains
+   ohne matchenden Send-Button (deepseek: `send_button: 0`) ist `press_enter()` der
+   einzige Absende-Weg. Messbar: derselbe Relay lief **headed in 9,5s mit Antwort
+   „OK", headless in 114s Timeout mit leerer Antwort**. Anti-Throttling-Flags
+   (`--disable-background-timer-throttling` etc.) halfen nicht — es lag nicht am
+   Drosseln, sondern am Fokus. Fix: Fenster **off-screen** (`-32000,-32000`) statt
+   versteckt; für Chromium ein normales, fokussierbares Fenster, für den Nutzer
+   unsichtbar. Danach: headless 9,6s, Antwort `OK`.
 
 ## Manueller Login (nur noch claude)
 
