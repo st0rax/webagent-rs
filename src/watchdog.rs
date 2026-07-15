@@ -82,10 +82,9 @@ impl WatchdogReport {
     }
 }
 
-// Beide waren hier zeichengleich nachgebaut, obwohl die Doc-Kommentare unten schon
-// behaupteten, doctors Version zu nutzen. Jetzt tun sie es auch.
+// Waren hier zeichengleich nachgebaut, obwohl der Doc-Kommentar unten schon
+// behauptete, doctors Version zu nutzen. Jetzt tut er es auch.
 use crate::doctor::find_lock_files;
-use crate::pid_alive;
 
 /// Alter einer Datei in Sekunden; -1.0 bei Fehler.
 fn file_age_seconds(path: &str) -> f64 {
@@ -115,6 +114,8 @@ pub fn scan_orphaned_runs(
     let mut orphans = Vec::new();
     let now = OffsetDateTime::now_utc();
     const LEGACY_AGE: f64 = 600.0;
+    // Lazy + genau einmal: kein tasklist-Spawn, wenn kein Run einen owner_pid hat.
+    let mut procs: Option<crate::ProcessSnapshot> = None;
 
     if let Some(store) = run_store {
         let run_ids = store.list_runs();
@@ -131,7 +132,7 @@ pub fn scan_orphaned_runs(
             let owner_pid = extra.get("owner_pid").and_then(|v| v.as_i64()).unwrap_or(0);
 
             let stale = if owner_pid > 0 {
-                !pid_alive(owner_pid)
+                !procs.get_or_insert_with(crate::ProcessSnapshot::capture).is_alive(owner_pid)
             } else if !meta.created_at.is_empty() {
                 if let Ok(created_dt) = OffsetDateTime::parse(&meta.created_at, &Rfc3339) {
                     let age = (now - created_dt).whole_seconds() as f64;
@@ -201,7 +202,7 @@ pub fn scan_orphaned_runs(
         let owner_pid = extra.get("owner_pid").and_then(|v| v.as_i64()).unwrap_or(0);
 
         let stale = if owner_pid > 0 {
-            !pid_alive(owner_pid)
+            !procs.get_or_insert_with(crate::ProcessSnapshot::capture).is_alive(owner_pid)
         } else if !meta.created_at.is_empty() {
             if let Ok(created_dt) = OffsetDateTime::parse(&meta.created_at, &Rfc3339) {
                 let age = (now - created_dt).whole_seconds() as f64;
@@ -249,6 +250,8 @@ pub fn scan_bridge_locks(bot2bot_root: &str, grace_seconds: f64) -> Vec<StaleBri
         Ok(e) => e,
         Err(_) => return stale,
     };
+    // Lazy + genau einmal: kein Spawn, wenn keine Lock-Datei einen Holder nennt.
+    let mut procs: Option<crate::ProcessSnapshot> = None;
 
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -268,7 +271,7 @@ pub fn scan_bridge_locks(bot2bot_root: &str, grace_seconds: f64) -> Vec<StaleBri
         }
 
         // Lebender Holder → nicht stale
-        if holder_pid > 0 && pid_alive(holder_pid) {
+        if holder_pid > 0 && procs.get_or_insert_with(crate::ProcessSnapshot::capture).is_alive(holder_pid) {
             continue;
         }
         // Toter/fehlender Holder, aber Datei noch sehr jung (Grace)

@@ -102,9 +102,90 @@ pub fn now_run_stamp() -> String {
     format!("{:04}{:02}{:02}_{:02}{:02}{:02}", y, mo, d, h, mi, s)
 }
 
+/// Momentaufnahme der laufenden PIDs — **ein** Prozess-Aufruf statt einer pro PID.
+///
+/// `pid_alive` spawnt pro Aufruf `tasklist` (gemessen ~154 ms; der `/FI`-Filter
+/// spart nichts, tasklist enumeriert intern ohnehin alles). Alle Aufrufer prüfen
+/// aber N Kandidaten in einer Schleife — `reconcile_stale_runs` sogar im Startup
+/// vor jedem Kommando. Damit kostete N Runs N × 154 ms blockierend.
+///
+/// `None` heißt "konnte nicht ermitteln"; [`Self::is_alive`] antwortet dann
+/// konservativ `true`, wie `pid_alive` es bei Shell-Ausfall schon tat — lieber
+/// nichts fälschlich als tot markieren.
+pub struct ProcessSnapshot(Option<std::collections::HashSet<i64>>);
+
+impl ProcessSnapshot {
+    /// Liest die Prozessliste einmal.
+    pub fn capture() -> Self {
+        Self(running_pids())
+    }
+
+    /// Aus einer bekannten PID-Menge (für Tests).
+    pub fn from_pids(pids: impl IntoIterator<Item = i64>) -> Self {
+        Self(Some(pids.into_iter().collect()))
+    }
+
+    /// Snapshot, der nichts weiß — jede PID gilt konservativ als lebend.
+    pub fn unknown() -> Self {
+        Self(None)
+    }
+
+    pub fn is_alive(&self, pid: i64) -> bool {
+        if pid <= 0 {
+            return false;
+        }
+        match &self.0 {
+            Some(set) => set.contains(&pid),
+            None => true,
+        }
+    }
+}
+
+/// Alle laufenden PIDs, oder `None` wenn die Abfrage fehlschlägt.
+fn running_pids() -> Option<std::collections::HashSet<i64>> {
+    #[cfg(windows)]
+    {
+        // Eine Abfrage ohne /FI: die Liste kommt ohnehin komplett, filtern spart nichts.
+        let out = std::process::Command::new("tasklist")
+            .args(["/NH", "/FO", "CSV"])
+            .output()
+            .ok()?;
+        Some(parse_tasklist_csv(&String::from_utf8_lossy(&out.stdout)))
+    }
+    #[cfg(not(windows))]
+    {
+        // `ps -e -o pid=` listet alle PIDs, eine pro Zeile.
+        let out = std::process::Command::new("ps")
+            .args(["-e", "-o", "pid="])
+            .output()
+            .ok()?;
+        Some(
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter_map(|l| l.trim().parse::<i64>().ok())
+                .collect(),
+        )
+    }
+}
+
+/// PIDs aus `tasklist /NH /FO CSV`: `"name","pid","session",...` — zweites Feld.
+#[cfg(any(windows, test))]
+fn parse_tasklist_csv(text: &str) -> std::collections::HashSet<i64> {
+    text.lines()
+        .filter_map(|line| {
+            line.split("\",\"")
+                .nth(1)
+                .and_then(|f| f.trim_matches('"').trim().parse::<i64>().ok())
+        })
+        .collect()
+}
+
 /// Prüft, ob ein Prozess mit gegebener PID lebt — plattformübergreifend ohne
 /// externe Crates (Shell-Ausfall wird als "lebt" gewertet, konservativ wie das
 /// Python-Original bei Unsicherheit lieber nicht fälschlich als tot markiert).
+///
+/// Für mehrere PIDs [`ProcessSnapshot`] nutzen — dieser Aufruf kostet einen
+/// eigenen Prozess-Spawn.
 pub fn pid_alive(pid: i64) -> bool {
     if pid <= 0 {
         return false;
@@ -165,5 +246,48 @@ mod tests {
         let ts = now_rfc3339();
         assert!(ts.ends_with("+00:00"), "ts={ts}");
         assert_eq!(ts.len(), "2026-07-12T10:00:00.000000+00:00".len());
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::{parse_tasklist_csv, ProcessSnapshot};
+
+    const SAMPLE: &str = "\"System Idle Process\",\"0\",\"Services\",\"0\",\"8 K\"\r\n\"webagent.exe\",\"29576\",\"Console\",\"1\",\"12.345 K\"\r\n\"pwsh.exe\",\"1234\",\"Console\",\"1\",\"98.765 K\"";
+
+    #[test]
+    fn parses_pids_from_tasklist_csv() {
+        let pids = parse_tasklist_csv(SAMPLE);
+        assert!(pids.contains(&29576), "webagent.exe PID fehlt: {pids:?}");
+        assert!(pids.contains(&1234), "pwsh.exe PID fehlt: {pids:?}");
+        assert_eq!(pids.len(), 3);
+    }
+
+    #[test]
+    fn parse_ignores_garbage_lines() {
+        assert!(parse_tasklist_csv("INFO: no tasks are running").is_empty());
+        assert!(parse_tasklist_csv("").is_empty());
+    }
+
+    #[test]
+    fn snapshot_answers_from_the_set() {
+        let s = ProcessSnapshot::from_pids([100, 200]);
+        assert!(s.is_alive(100));
+        assert!(!s.is_alive(300));
+    }
+
+    // Konservativ wie pid_alive: laesst sich die Liste nicht ermitteln, gilt jede
+    // PID als lebend — lieber keinen laufenden Run faelschlich als verwaist killen.
+    #[test]
+    fn unknown_snapshot_is_conservative() {
+        let s = ProcessSnapshot::unknown();
+        assert!(s.is_alive(12345));
+    }
+
+    #[test]
+    fn nonpositive_pid_is_never_alive() {
+        assert!(!ProcessSnapshot::unknown().is_alive(0));
+        assert!(!ProcessSnapshot::unknown().is_alive(-1));
+        assert!(!ProcessSnapshot::from_pids([0]).is_alive(0));
     }
 }

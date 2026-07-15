@@ -316,6 +316,9 @@ impl RunStore {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
+        // Lazy: diese Funktion laeuft im Startup vor jedem Kommando. Liegt kein
+        // "running"-Run vor (Normalfall), darf sie keinen Prozess-Spawn kosten.
+        let mut procs: Option<crate::ProcessSnapshot> = None;
 
         for run_id in self.list_runs() {
             let meta = match self.load(&run_id) {
@@ -330,7 +333,9 @@ impl RunStore {
             let owner_pid = meta.extra.get("owner_pid").and_then(|v| v.as_i64());
 
             let stale = if let Some(pid) = owner_pid {
-                !crate::pid_alive(pid)
+                !procs
+                    .get_or_insert_with(crate::ProcessSnapshot::capture)
+                    .is_alive(pid)
             } else {
                 // Legacy: kein owner_pid → Alter prüfen
                 match parse_rfc3339_to_unix(&meta.created_at) {
