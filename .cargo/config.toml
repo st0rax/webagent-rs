@@ -1,0 +1,8 @@
+# Die aktive Toolchain hier ist x86_64-pc-windows-gnu (rustup directory override).
+# Auf PATH liegt llvm-mingws gcc, das clang/lld als Linker-Treiber benutzt und statt
+# libgcc auf compiler-rt setzt — dadurch scheitert das Linken der Test-Targets an
+# "unable to find library -lgcc_eh". Rust liefert die passenden MinGW-Libs in
+# lib/rustlib/x86_64-pc-windows-gnu/lib/self-contained/ selbst mit; link-self-contained
+# weist den Linker dorthin. Ohne das linkt `cargo test` auf dieser Maschine nicht.
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-self-contained=yes"]
