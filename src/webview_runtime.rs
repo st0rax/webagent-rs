@@ -20,7 +20,7 @@ use wry::WebViewBuilder;
 
 use crate::page_driver::{PageDriver, PageDriverError, Result};
 
-type ViewId = u64;
+pub(crate) type ViewId = u64;
 
 /// Interne Befehle an den UI-Thread.
 enum RuntimeMessage {
@@ -38,7 +38,7 @@ enum RuntimeMessage {
 }
 
 /// Befehle eines einzelnen Tabs (vom Agenten-Thread).
-enum PageMessage {
+pub(crate) enum PageMessage {
     Evaluate {
         expression: String,
         respond: Sender<Result<Value>>,
@@ -166,8 +166,8 @@ impl Drop for WebViewRuntime {
 /// Konkreter Page-Driver über den WebView-Thread.
 #[derive(Clone)]
 pub struct WebViewPageDriver {
-    view_id: ViewId,
-    page_tx: Sender<PageMessage>,
+    pub(crate) view_id: ViewId,
+    pub(crate) page_tx: Sender<PageMessage>,
 }
 
 impl WebViewPageDriver {
@@ -228,12 +228,29 @@ impl PageDriver for WebViewPageDriver {
     }
 }
 
+/// Baut den EventLoop. Auf Windows verweigert tao `EventLoop::new()` ausserhalb des
+/// Main-Threads (panic in event_loop.rs) — dieser Loop laeuft aber bewusst im
+/// dedizierten `webagent-webview`-Thread, damit die PageDriver-API sync bleibt.
+/// `with_any_thread(true)` ist der von tao selbst genannte Weg dafuer.
+fn build_event_loop() -> EventLoop<()> {
+    #[cfg(windows)]
+    {
+        use tao::event_loop::EventLoopBuilder;
+        use tao::platform::windows::EventLoopBuilderExtWindows;
+        EventLoopBuilder::new().with_any_thread(true).build()
+    }
+    #[cfg(not(windows))]
+    {
+        EventLoop::new()
+    }
+}
+
 fn run_event_loop(
     cmd_rx: Receiver<RuntimeMessage>,
     _default_profile: PathBuf,
     _default_headless: bool,
 ) {
-    let mut event_loop: EventLoop<()> = EventLoop::new();
+    let mut event_loop: EventLoop<()> = build_event_loop();
 
     let mut rt = SharedRuntime {
         cmd_rx,
