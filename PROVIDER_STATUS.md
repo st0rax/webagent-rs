@@ -30,7 +30,30 @@ claude (manueller Login) und mistral (AGB bestätigt) sind seit 2026-07-15 grün
 einer direkten Wiederholung dann 3/3 grün (17,5s / 14,0s / 13,7s). Nicht
 reproduzierbar, aber bekannt — bei Rot einmal wiederholen, bevor man gräbt.
 
-### kimi — offen, aber **kein Login-Problem** (Korrektur 2026-07-15)
+### kimi — von „nie" auf „jedes zweite Mal" (Stand nach Selektor-Resolver)
+
+Seit `js_scan` auch `:has-text()`/`text=` auflöst, ist kimis `new_chat_button`
+(`button:has-text('New chat')`) nicht mehr tot — `new_chat()` klickt jetzt, statt
+auf `navigate(url)` zurückzufallen. Wirkung, 4 Läufe hintereinander:
+
+```
+Lauf 1: exit=0   12,7s  OK
+Lauf 2: exit=1  125,7s  timeout_no_message
+Lauf 3: exit=0   15,0s  OK
+Lauf 4: exit=1  127,1s  timeout_no_message
+```
+
+**Exakt abwechselnd.** Das ist kein Rauschen, sondern ein Zustands-Toggle: ein
+erfolgreicher Lauf hinterlässt eine Konversation, der nächste stolpert darüber,
+danach ist der Zustand wieder sauber. Verdacht: `new_chat()` klickt den Button,
+die neue Konversation ist aber noch nicht bereit, wenn `send()` losläuft — und
+`verify_submitted` wertet den (ohnehin leeren) Composer als „abgeschickt".
+Nächster Schritt: nach dem New-Chat-Klick auf Bereitschaft warten, statt sofort
+zu füllen.
+
+Vorher: kimi ging **nie** durch. Jetzt jedes zweite Mal. Fortschritt, nicht Fix.
+
+### Frühere Fehldiagnose zu kimi (Korrektur 2026-07-15)
 
 Frühere Einträge hier behaupteten, kimi sei nicht eingeloggt und das
 `.login-modal-content` im DOM blockiere den Versand. **Beides ist falsch.**
@@ -73,14 +96,33 @@ eine latente Maskierung, keinen aktuellen Fehler.
 
 **Der Relay bleibt die verlässliche Messung, nicht `diagnose`.**
 
-### Playwright-Reste in den Selektoren
+### Playwright-Selektoren: seit 2026-07-15 **lebendig** statt wirkungslos
 
-Quer durch `selectors/*.json` stehen `:has-text(…)` und `text=…` — Playwright-Syntax
-aus der Python-Referenz. `document.querySelector` wirft darauf; `js_scan` fängt das
-pro Selektor ab, sodass sie nur wirkungslos sind statt zu crashen. Betrifft u. a.
-`new_chat_button`, `login_button`, `consent_reject_button` und `dialog_dismiss_button`
-bei fast allen Brains. Aufräumen lohnt, ist aber nicht dringend, solange die
-CSS-Selektoren daneben greifen.
+**96 von 283** Einträgen in `selectors/*.json` waren `:has-text(…)` / `text=…` —
+Playwright-Syntax aus der Python-Referenz. `document.querySelector` wirft darauf,
+`js_scan` schluckte die Exception pro Selektor: sie waren stumm wirkungslos.
+**Acht Keys bestanden ausschließlich daraus**, ihr Feature konnte nie feuern:
+
+| Brain | Key | tot |
+|---|---|---|
+| gemini | `login_button` | 7/7 |
+| zai | `login_button` | 7/7 |
+| gemini | `response_preference_prompt` | 4/4 |
+| qwen | `login_button` | 4/4 |
+| deepseek | `login_button` | 3/3 |
+| qwen | `consent_reject_button` | 3/3 |
+| gemini | `consent_reject_button` | 2/2 |
+| gemini | `notice_close_button` | 2/2 |
+
+`js_scan` bringt jetzt ein Prelude mit: `Q(sel)`/`QA(sel)` verstehen `text=foo`,
+`text=/re/i` und `base:has-text('x')` und fallen sonst auf `querySelector*` zurück.
+Bei Textmatches werden nur die **innersten** Treffer geliefert (sonst matcht jeder
+Vorfahr bis `<body>`). Gegen ein bekanntes DOM verifiziert: 10/10 Proben, inkl.
+„normales CSS bleibt unverändert".
+
+Zwei Keys sind weiterhin **konfiguriert, aber vom Code nirgends gelesen**:
+`response_preference_prompt` (gemini) und `dialog_dismiss_button` (mistral) — tote
+Config, kein toter Selektor.
 
 ## Warum die frühere Tabelle falsch war
 

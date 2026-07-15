@@ -177,15 +177,47 @@ impl WebBrainBackend {
         Self::js_selectors(&sels)
     }
 
+    /// JS-Prelude fuer [`Self::js_scan`]: `Q(sel)` / `QA(sel)` loesen einen Selektor
+    /// auf und verstehen dabei **auch** die Playwright-Textformen, die querySelector
+    /// nicht kann:
+    ///
+    /// - `text=foo`            — beliebiges Element, dessen Text `foo` enthaelt
+    /// - `text=/re/i`          — dito per Regex
+    /// - `button:has-text('x')`— Elemente von `button`, deren Text `x` enthaelt
+    ///
+    /// Warum: 96 von 283 Eintraegen in `selectors/*.json` sind in dieser Syntax
+    /// geschrieben. `querySelector` wirft darauf, das try/catch schluckt es — sie
+    /// waren also stumm wirkungslos. Acht Keys bestehen *ausschliesslich* daraus
+    /// (u.a. `consent_reject_button` bei gemini/qwen), deren Feature konnte nie
+    /// feuern. Das handgeschriebene `dismiss_qwen_blocks` ist die Narbe davon.
+    ///
+    /// Bei Textmatches nur die **innersten** Treffer zurueckgeben — sonst matcht
+    /// jeder Vorfahr bis `<body>` mit.
+    const JS_SEL_PRELUDE: &'static str = r#"
+var __p=function(s){var m=/^text=\/(.*)\/([a-z]*)$/.exec(s);if(m)return{base:'*',re:new RegExp(m[1],m[2])};
+m=/^text=(.*)$/.exec(s);if(m)return{base:'*',txt:m[1]};
+m=/^(.*?):has-text\((['"])([\s\S]*?)\2\)$/.exec(s);if(m)return{base:m[1]||'*',txt:m[3]};return null;};
+var QA=function(s){var p=__p(s);if(!p)return document.querySelectorAll(s);
+var base=document.querySelectorAll(p.base),c=[];
+for(var k=0;k<base.length;k++){var e=base[k],t=(e.innerText||e.textContent||'');
+if(p.re?p.re.test(t):t.indexOf(p.txt)!==-1)c.push(e);}
+return c.filter(function(e){return !c.some(function(o){return o!==e&&e.contains(o);});});};
+var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
+"#;
+
     /// Baut ein IIFE, das die Selektorliste `list_js` durchläuft und `body` auf
     /// jeden Selektor `S[i]` anwendet; liefert `default`, wenn nichts matcht.
     ///
-    /// Jeder Selektor läuft in einem eigenen try/catch: ungültige (z.B.
-    /// Playwright-`:has-text()`) Selektoren werfen bei `querySelector*` und
-    /// dürfen NICHT die restliche Liste abbrechen — genau das hat frueher die
-    /// komplette Erkennung lahmgelegt.
+    /// Im `body` `Q(S[i])` / `QA(S[i])` statt `document.querySelector*` nutzen —
+    /// nur die verstehen die Textformen (siehe [`Self::JS_SEL_PRELUDE`]).
+    ///
+    /// Jeder Selektor läuft weiterhin in einem eigenen try/catch: ein kaputter
+    /// Selektor darf die restliche Liste nicht abbrechen.
     fn js_scan(list_js: &str, body: &str, default: &str) -> String {
-        format!("(function(){{var S={list_js};for(var i=0;i<S.length;i++){{try{{{body}}}catch(e){{}}}}return {default};}})()")
+        format!(
+            "(function(){{{prelude}var S={list_js};for(var i=0;i<S.length;i++){{try{{{body}}}catch(e){{}}}}return {default};}})()",
+            prelude = Self::JS_SEL_PRELUDE
+        )
     }
 
     /// Führt ein JS im Seitenkontext aus (mit ausgeliehenem Client).
@@ -220,7 +252,7 @@ impl WebBrainBackend {
         let list = self.sel_js("assistant_message", &["div.prose"]);
         let expr = Self::js_scan(
             &list,
-            "var n=document.querySelectorAll(S[i]).length;if(n>0)return n;",
+            "var n=QA(S[i]).length;if(n>0)return n;",
             "0",
         );
         self.eval_i64(&expr) as i32
@@ -230,7 +262,7 @@ impl WebBrainBackend {
     fn assistant_text(&self, index: i32) -> String {
         let list = self.sel_js("assistant_message", &["div.prose"]);
         let body = format!(
-            "var els=document.querySelectorAll(S[i]);if(els.length>{idx}){{return (els[{idx}].innerText||\"\").trim();}}",
+            "var els=QA(S[i]);if(els.length>{idx}){{return (els[{idx}].innerText||\"\").trim();}}",
             idx = index
         );
         self.eval_str(&Self::js_scan(&list, &body, "\"\""))
@@ -244,7 +276,7 @@ impl WebBrainBackend {
         }
         let expr = Self::js_scan(
             &Self::js_selectors(&sels),
-            "var el=document.querySelector(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}",
+            "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}",
             "false",
         );
         self.eval_bool(&expr)
@@ -258,7 +290,7 @@ impl WebBrainBackend {
         }
         let expr = Self::js_scan(
             &Self::js_selectors(&sels),
-            "var el=document.querySelector(S[i]);if(el){el.click();return true;}",
+            "var el=Q(S[i]);if(el){el.click();return true;}",
             "false",
         );
         self.eval_bool(&expr)
@@ -275,7 +307,7 @@ impl WebBrainBackend {
         if sels.is_empty() {
             return false;
         }
-        let coord_body = "var el=document.querySelector(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
         let coords = self
             .eval(&Self::js_scan(
                 &Self::js_selectors(&sels),
@@ -349,7 +381,7 @@ return {{count:count,text:text,stop:stop}};}})()"#,
         for k in keys {
             let list = Self::js_selectors(&self.sel(k));
             counts_js.push_str(&format!(
-                "counts[{k:?}]=(function(){{var S={list};var n=0;for(var i=0;i<S.length;i++){{try{{n+=document.querySelectorAll(S[i]).length;}}catch(e){{}}}}return n;}})();"
+                "counts[{k:?}]=(function(){{var S={list};var n=0;for(var i=0;i<S.length;i++){{try{{n+=QA(S[i]).length;}}catch(e){{}}}}return n;}})();"
             ));
         }
         let expr = format!(
@@ -407,7 +439,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
 
     /// Playwright-`fill()`-Äquivalent: DOM setzen + input/change-Events (Angular/React).
     fn fill_composer_dom_set(&self, composer_js: &str, text: &str) -> bool {
-        let coord_body = "var el=document.querySelector(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
         let coords = self
             .eval(&Self::js_scan(composer_js, coord_body, "null"))
             .unwrap_or(Value::Null);
@@ -427,7 +459,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         std::thread::sleep(Duration::from_millis(80));
         let t = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
         let set_body = format!(
-            "var el=document.querySelector(S[i]);if(!el)return false;el.focus();\
+            "var el=Q(S[i]);if(!el)return false;el.focus();\
             if(el.isContentEditable){{el.textContent={t};el.dispatchEvent(new InputEvent('input',{{bubbles:true,inputType:'insertText',data:{t}}}));}}\
             else if('value' in el){{el.value={t};el.dispatchEvent(new Event('input',{{bubbles:true}}));el.dispatchEvent(new Event('change',{{bubbles:true}}));}}\
             else return false;return true;"
@@ -471,7 +503,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     /// `input`). Gibt true, wenn ein Composer gefunden wurde.
     fn fill_composer(&self, composer_js: &str, text: &str) -> bool {
         // 1) Mittelpunkt-Koordinaten des Composers holen (nicht gefunden -> false).
-        let coord_body = "var el=document.querySelector(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
         let coords = self
             .eval(&Self::js_scan(composer_js, coord_body, "null"))
             .unwrap_or(Value::Null);
@@ -490,7 +522,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             }
         }
         std::thread::sleep(Duration::from_millis(80));
-        let clear_body = "var el=document.querySelector(S[i]);if(el){el.focus();try{if('value' in el){el.value='';}else{el.textContent='';}el.dispatchEvent(new InputEvent('input',{bubbles:true}));}catch(e){}return true;}";
+        let clear_body = "var el=Q(S[i]);if(el){el.focus();try{if('value' in el){el.value='';}else{el.textContent='';}el.dispatchEvent(new InputEvent('input',{bubbles:true}));}catch(e){}return true;}";
         let _ = self.eval_bool(&Self::js_scan(composer_js, clear_body, "false"));
         // 3) Echt tippen via PageDriver::insert_text.
         {
@@ -502,7 +534,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         // 4) Fallback: nur falls der Composer weiterhin leer ist, .value setzen.
         let t = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
         let set_body = format!(
-            "var el=document.querySelector(S[i]);if(el){{var cur=('value' in el)?(el.value||''):(el.textContent||'');if(cur.trim().length===0){{if('value' in el){{el.value={t};}}else{{el.textContent={t};}}el.dispatchEvent(new InputEvent('input',{{bubbles:true}}));}}return true;}}"
+            "var el=Q(S[i]);if(el){{var cur=('value' in el)?(el.value||''):(el.textContent||'');if(cur.trim().length===0){{if('value' in el){{el.value={t};}}else{{el.textContent={t};}}el.dispatchEvent(new InputEvent('input',{{bubbles:true}}));}}return true;}}"
         );
         self.eval_bool(&Self::js_scan(composer_js, &set_body, "false"))
     }
@@ -510,7 +542,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     /// True, wenn der Composer leer ist (Indiz, dass die Nachricht abgeschickt und
     /// das Feld geleert wurde). False auch, wenn kein Composer gefunden wird.
     fn composer_is_empty(&self, composer_js: &str) -> bool {
-        let body = "var el=document.querySelector(S[i]);if(el){var v=(el.value!==undefined&&el.value!==null?el.value:el.textContent)||'';return v.trim().length===0;}";
+        let body = "var el=Q(S[i]);if(el){var v=(el.value!==undefined&&el.value!==null?el.value:el.textContent)||'';return v.trim().length===0;}";
         self.eval_bool(&Self::js_scan(composer_js, body, "false"))
     }
 
