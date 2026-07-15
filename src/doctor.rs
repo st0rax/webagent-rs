@@ -523,12 +523,73 @@ pub fn run_doctor(
         brains: HashMap::new(),
     };
 
+    // Ohne das hier las jedes Brain die komplette runs-Dir zweimal neu ein
+    // (find_last_done_run + infer_login_state), jedes Mal inklusive Parsen jeder
+    // meta.json — bei 8 Brains und 250 Runs ~4.000 Reads statt 250. Die
+    // Injektionspunkte gab es bereits; main.rs übergab nur `None` und erzwang so
+    // den Fallback. Also einmal listen, jede meta.json höchstens einmal laden,
+    // und beides durchreichen. Injiziert der Aufrufer selbst etwas (Tests), hat
+    // das Vorrang und der Cache wird nicht angelegt.
+    let scanned: Vec<String> = if list_runs_fn.is_none() {
+        list_run_ids(runs_dir)
+    } else {
+        Vec::new()
+    };
+    let cache: std::cell::RefCell<HashMap<String, Option<RunMeta>>> =
+        std::cell::RefCell::new(HashMap::new());
+
+    let cached_list = || scanned.clone();
+    let cached_load = |run_id: &str| -> Option<RunMeta> {
+        if let Some(hit) = cache.borrow().get(run_id) {
+            return hit.clone();
+        }
+        let loaded = load_run_meta(runs_dir, run_id);
+        cache
+            .borrow_mut()
+            .insert(run_id.to_string(), loaded.clone());
+        loaded
+    };
+
+    let list_ref: &dyn Fn() -> Vec<String> = list_runs_fn.unwrap_or(&cached_list);
+    let load_ref: &RunMetaLoader<'_> = load_fn.unwrap_or(&cached_load);
+
     for bid in brain_list {
-        let check = check_brain(&bid, Some(config), runs_dir, "", list_runs_fn, load_fn);
+        let check = check_brain(
+            &bid,
+            Some(config),
+            runs_dir,
+            "",
+            Some(list_ref),
+            Some(load_ref),
+        );
         report.brains.insert(bid, check);
     }
 
     report
+}
+
+/// Run-IDs eines runs-Verzeichnisses, neueste zuerst.
+fn list_run_ids(runs_dir: &str) -> Vec<String> {
+    if runs_dir.is_empty() || !Path::new(runs_dir).is_dir() {
+        return Vec::new();
+    }
+    let mut runs: Vec<String> = match fs::read_dir(runs_dir) {
+        Ok(entries) => entries
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+            .collect(),
+        Err(_) => return Vec::new(),
+    };
+    runs.sort_by(|a, b| b.cmp(a)); // neueste zuerst
+    runs
+}
+
+/// `meta.json` eines Runs lesen und parsen.
+fn load_run_meta(runs_dir: &str, run_id: &str) -> Option<RunMeta> {
+    let path = Path::new(runs_dir).join(run_id).join("meta.json");
+    let content = fs::read_to_string(path).ok()?;
+    serde_json::from_str::<RunMeta>(&content).ok()
 }
 
 /// Alter eines RFC3339-Zeitstempels in Stunden; -1.0 wenn nicht parsbar.
