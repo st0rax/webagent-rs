@@ -49,7 +49,6 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     memory: MemoryStore,
     runs_dir: std::path::PathBuf,
     meta: Option<RunMeta>,
-    #[allow(dead_code)]
     comms: CommsStore,
     completed_actions: HashMap<String, String>,
     incomplete_retries: usize,
@@ -617,6 +616,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             serde_json::Value::Number(std::process::id().into()),
         );
         self.run_store.save(&meta).ok();
+
+        if let Ok(m) = self.comms.send(
+            "webagent-rs",
+            "self",
+            "run_started",
+            &format!("task for brain {}", brain_id),
+            None,
+        ) {
+            eprintln!("[comms] run_started id={}", &m.id[..8.min(m.id.len())]);
+        }
 
         // Start Brain + Executor (persistent shell session for the whole run)
         if !opts.skip_brain_start {
