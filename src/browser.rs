@@ -522,6 +522,33 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     /// Anmeldung macht der Nutzer selbst im Fenster; diese Methode pollt nur den
     /// Login-Zustand und schließt danach sauber (damit Chrome die Session ins
     /// persistente Profil schreibt). Gibt `true`, wenn Login erkannt wurde.
+    /// Oeffnet den sichtbaren Browser und haelt ihn offen, bis der Nutzer das Fenster
+    /// schliesst oder `timeout` ablaeuft — **ohne** Login-Erkennung.
+    ///
+    /// Noetig, weil `interactive_login` sofort mit "schon eingeloggt" abbricht, sobald
+    /// `is_logged_in()` true meldet, und das ist zu optimistisch: die Pruefung genuegt
+    /// sich mit einem sichtbaren Composer, den kimi und mistral auch anonym zeigen.
+    /// Der Nutzer kaeme dort nie zum Anmelden. Deckt ausserdem den Fall ab, dass gar
+    /// kein Login fehlt, sondern nur ein Dialog zu bestaetigen ist (mistral-AGB).
+    ///
+    /// Gibt das Tool selbst nichts ein — der Nutzer handelt, wir halten nur das Fenster.
+    pub fn hold_window_open(&mut self, timeout: Duration) -> Result<(), String> {
+        self.start(false)?; // headed
+        let start = Instant::now();
+        while start.elapsed() < timeout {
+            // Verschwindet der Tab (Nutzer hat das Fenster geschlossen), schlaegt der
+            // naechste Eval fehl — das ist unser Fertig-Signal.
+            if self.eval("1").is_err() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        // Kurz warten, damit die Session ins Profil geflusht wird.
+        std::thread::sleep(Duration::from_secs(2));
+        let _ = self.stop();
+        Ok(())
+    }
+
     pub fn interactive_login(&mut self, timeout: Duration) -> Result<bool, String> {
         self.start(false)?; // headed — Login erfordert Nutzerinteraktion
         let start = Instant::now();

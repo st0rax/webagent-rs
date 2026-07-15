@@ -7,50 +7,46 @@
 **Letzte Messung:** 2026-07-15 — `webagent diagnose --brain <id> --headless`,
 Profil `data/profiles/shared`, Release-Build.
 
-## Stand: 5/8 antworten headless — die 3 Fehlenden brauchen Storax
+## Stand: 7/8 antworten headless
 
 Gemessen mit `webagent relay --brain <id> --message "Antworte nur mit dem Wort OK."
---timeout 90 --headless`, Profil `data/profiles/shared`. **Echte Antworten, keine
+--timeout 60..90 --headless`, Profil `data/profiles/shared`. **Echte Antworten, keine
 Exit-Codes.**
 
 | `webagent/<id>` | Relay | Dauer | Antwort / Fehler |
 |---|---|---|---|
-| chatgpt | 🟢 PASS | 11,9s | `OK` |
-| deepseek | 🟢 PASS | 11,9s | `OK` |
-| gemini | 🟢 PASS | 11,2s | `OK` |
-| qwen | 🟢 PASS | 14,3s | `OK` |
+| chatgpt | 🟢 PASS | 11,3s | `OK` |
+| deepseek | 🟢 PASS | 9,1s | `OK` |
+| gemini | 🟢 PASS | 15,0s | `OK` |
+| qwen | 🟢 PASS | 13,7s | `OK` |
 | zai | 🟢 PASS | 15,9s | `Thought Process OK` |
-| kimi | 🔴 FAIL | 126,1s | `timeout_no_message` — **Login-Modal** |
-| claude | 🔴 FAIL | 93,2s | `session_state=LoginRequired` |
-| mistral | 🔴 FAIL | 14,7s | `Absenden fehlgeschlagen: Composer nicht geleert` — **AGB-Dialog** |
+| claude | 🟢 PASS | 15,7s | `Dachte 1 s nach OK` |
+| mistral | 🟢 PASS | 15,4s | `OK` |
+| **kimi** | 🔴 FAIL | 124,6s | `timeout_no_message` — Login |
+
+claude (manueller Login) und mistral (AGB bestätigt) sind seit 2026-07-15 grün.
 
 **Flakiness:** qwen fiel in einem von vier Läufen mit `timeout_no_text` durch, in
 einer direkten Wiederholung dann 3/3 grün (17,5s / 14,0s / 13,7s). Nicht
 reproduzierbar, aber bekannt — bei Rot einmal wiederholen, bevor man gräbt.
 
-### Die 3 Fehlenden sind keine Technik-Baustellen
+### kimi — offen
 
-Alle drei blockieren an etwas, das nur der Nutzer entscheiden kann:
-
-- **claude** — nicht eingeloggt. `webagent login --brain claude` (siehe unten).
-- **kimi** — nach dem Senden erscheint `.login-modal-content` („Continue with
-  Google" / `.phone-login`). Also **nicht eingeloggt**, obwohl `diagnose`
-  `logged_in: true` meldet: kimis `login_indicator` prüft `nav[class*='sidebar']`
-  und `div[class*='avatar']` — die Sidebar ist auch ohne Login da. **Falsch-Positiv
-  im Indikator**, siehe Notiz unten. Braucht `webagent login --brain kimi`.
-- **mistral** — eingeloggt, aber ein Dialog blockiert: „Sie müssen unsere
-  Nutzungsbedingungen und Datenschutzrichtlinie akzeptieren". Die konfigurierten
-  `consent_reject_button`/`dialog_dismiss_button`-Selektoren sind sämtlich
-  Playwright-Syntax (`:has-text()`) und damit totes CSS — sie können den Dialog nie
-  schließen. **Nutzungsbedingungen sind vom Nutzer zu akzeptieren, nicht vom Tool**;
-  einmal manuell im `login`-Fenster bestätigen, dann persistiert es im Profil.
+Nach dem Senden erscheint `.login-modal-content` („Continue with Google" /
+`.phone-login`), es kommt nie eine Antwort. Ein manueller Login-Versuch über
+`login --brain kimi --force` hat den Zustand nicht geändert; unklar, ob der Login
+nicht stattfand oder die Session nicht ins WebView2-Profil persistierte.
 
 ### Bekannte Ungenauigkeit: `logged_in` ist zu optimistisch
 
 `is_logged_in()` ist true, sobald **eines** von `login_indicator`, `composer` oder
-`new_chat_button` sichtbar ist. Bei kimi genügt dafür die anonyme Sidebar, bei
-chatgpt der New-Chat-Button. `diagnose` meldet deshalb 7/8 eingeloggt, real sind es
-6/8. Der Relay ist die verlässliche Messung, nicht `diagnose`.
+`new_chat_button` sichtbar ist. Bei kimi genügt dafür der **Composer** — der ist
+auch anonym sichtbar (gemessen: bei Leerlauf `composer: 1`, `login_indicator: 0`).
+Deshalb meldete `diagnose` kimi als eingeloggt, und deshalb brach
+`interactive_login` bei kimi und mistral sofort mit „schon eingeloggt" ab, statt
+dem Nutzer Zeit zum Anmelden zu geben — dafür gibt es jetzt `login --force`.
+
+**Der Relay ist die verlässliche Messung, nicht `diagnose`.**
 
 ### Playwright-Reste in den Selektoren
 

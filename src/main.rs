@@ -48,6 +48,12 @@ enum Commands {
         /// Maximale Wartezeit auf den Login in Sekunden
         #[arg(long, default_value = "300")]
         timeout: u64,
+
+        /// Fenster offen halten, auch wenn der Login-Check schon "eingeloggt" meldet.
+        /// Noetig, wo die Erkennung zu optimistisch ist (kimi, mistral: Composer ist
+        /// auch anonym sichtbar) oder wo nur ein Dialog zu bestaetigen ist (mistral-AGB).
+        #[arg(long)]
+        force: bool,
     },
 
     /// Live-Diagnose: echten Browser oeffnen und Login/Composer/Selektoren pruefen
@@ -191,7 +197,11 @@ fn dispatch(command: Commands) -> i32 {
             max_cycles,
         } => cmd_run(&brain, &task, resume.as_deref(), headless, max_cycles),
 
-        Commands::Login { brain, timeout } => cmd_login(&brain, timeout),
+        Commands::Login {
+            brain,
+            timeout,
+            force,
+        } => cmd_login(&brain, timeout, force),
 
         Commands::Diagnose { brain, headless } => cmd_diagnose(&brain, headless),
 
@@ -296,7 +306,7 @@ fn cmd_run(brain: &str, task: &str, resume: Option<&str>, headless: bool, max_cy
     }
 }
 
-fn cmd_login(brain: &str, timeout_secs: u64) -> i32 {
+fn cmd_login(brain: &str, timeout_secs: u64, force: bool) -> i32 {
     use std::time::Duration;
     use webagent::browser::WebBrainBackend;
 
@@ -307,14 +317,32 @@ fn cmd_login(brain: &str, timeout_secs: u64) -> i32 {
             return 2;
         }
     };
-    match backend.interactive_login(Duration::from_secs(timeout_secs)) {
+    let timeout = Duration::from_secs(timeout_secs);
+    if force {
+        eprintln!(
+            "[login] {brain}: --force — Fenster bleibt {timeout_secs}s offen, unabhaengig vom Login-Check. \
+             Fenster schliessen, sobald du fertig bist."
+        );
+        return match backend.hold_window_open(timeout) {
+            Ok(()) => {
+                println!("[login] {brain}: Fenster geschlossen, Profil geschrieben.");
+                0
+            }
+            Err(e) => {
+                eprintln!("[login] {brain}: Fehler: {e}");
+                1
+            }
+        };
+    }
+    match backend.interactive_login(timeout) {
         Ok(true) => {
             println!("[login] {brain}: Login erkannt und Session gespeichert.");
             0
         }
         Ok(false) => {
             eprintln!(
-                "[login] {brain}: kein Login innerhalb von {timeout_secs}s erkannt. Erneut versuchen mit --timeout."
+                "[login] {brain}: kein Login innerhalb von {timeout_secs}s erkannt. Erneut versuchen mit --timeout \
+                 oder --force (Erkennung ist bei manchen Brains zu optimistisch)."
             );
             1
         }
