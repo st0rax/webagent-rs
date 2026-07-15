@@ -592,7 +592,13 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             }
             let _ = self.fill_composer(&composer_js, text);
         }
-        Ok(baseline)
+        // Frueher: `Ok(baseline)`, auch wenn alle drei Versuche scheiterten. Der
+        // Aufrufer wartete dann bis zum Timeout auf eine Antwort, die nie kommen
+        // konnte, weil nichts abgeschickt wurde — bei mistral (Dialog blockiert den
+        // Composer) sind das 150s Stille statt einer klaren Fehlermeldung.
+        // verify_submitted prueft u.a., ob der Composer geleert wurde; steht der Text
+        // nach 3 Versuchen immer noch drin, ist er nicht raus.
+        Err("Absenden fehlgeschlagen: Composer nach 3 Versuchen nicht geleert (blockiert ein Dialog/Overlay?)".into())
     }
 
     fn send_gemini(&mut self, text: &str) -> Result<i32, String> {

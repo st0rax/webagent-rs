@@ -22,7 +22,11 @@ Exit-Codes.**
 | zai | 🟢 PASS | 15,9s | `Thought Process OK` |
 | kimi | 🔴 FAIL | 126,1s | `timeout_no_message` — **Login-Modal** |
 | claude | 🔴 FAIL | 93,2s | `session_state=LoginRequired` |
-| mistral | 🔴 FAIL | 153,0s | `timeout_no_message` — **AGB-Dialog** |
+| mistral | 🔴 FAIL | 14,7s | `Absenden fehlgeschlagen: Composer nicht geleert` — **AGB-Dialog** |
+
+**Flakiness:** qwen fiel in einem von vier Läufen mit `timeout_no_text` durch, in
+einer direkten Wiederholung dann 3/3 grün (17,5s / 14,0s / 13,7s). Nicht
+reproduzierbar, aber bekannt — bei Rot einmal wiederholen, bevor man gräbt.
 
 ### Die 3 Fehlenden sind keine Technik-Baustellen
 
