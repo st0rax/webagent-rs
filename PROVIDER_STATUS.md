@@ -7,7 +7,7 @@
 **Letzte Messung:** 2026-07-15 — `webagent diagnose --brain <id> --headless`,
 Profil `data/profiles/shared`, Release-Build.
 
-## Stand: 4/8 antworten headless wirklich
+## Stand: 5/8 antworten headless — die 3 Fehlenden brauchen Storax
 
 Gemessen mit `webagent relay --brain <id> --message "Antworte nur mit dem Wort OK."
 --timeout 90 --headless`, Profil `data/profiles/shared`. **Echte Antworten, keine
@@ -15,25 +15,47 @@ Exit-Codes.**
 
 | `webagent/<id>` | Relay | Dauer | Antwort / Fehler |
 |---|---|---|---|
-| chatgpt | 🟢 PASS | 14,4s | `OK` |
-| deepseek | 🟢 PASS | 12,5s | `OK` |
-| qwen | 🟢 PASS | 13,9s | `OK` |
-| zai | 🟢 PASS | 14,5s | `Thought Process OK` |
-| kimi | 🔴 FAIL | 139,9s | `timeout_no_message` |
-| gemini | 🔴 FAIL | 141,7s | `timeout_no_text` |
-| mistral | 🔴 FAIL | 150,5s | `timeout_no_message` |
-| **claude** | 🔴 FAIL | 19,7s | `Composer-Feld nicht gefunden` — **nicht eingeloggt** |
+| chatgpt | 🟢 PASS | 11,9s | `OK` |
+| deepseek | 🟢 PASS | 11,9s | `OK` |
+| gemini | 🟢 PASS | 11,2s | `OK` |
+| qwen | 🟢 PASS | 14,3s | `OK` |
+| zai | 🟢 PASS | 15,9s | `Thought Process OK` |
+| kimi | 🔴 FAIL | 126,1s | `timeout_no_message` — **Login-Modal** |
+| claude | 🔴 FAIL | 93,2s | `session_state=LoginRequired` |
+| mistral | 🔴 FAIL | 153,0s | `timeout_no_message` — **AGB-Dialog** |
 
-**Einzige Nutzeraktion:** `claude` braucht einen manuellen Login (siehe unten).
-Danach ist zu erwarten, dass er wie chatgpt läuft.
+### Die 3 Fehlenden sind keine Technik-Baustellen
 
-**Offen (Technik, keine Nutzeraktion):** kimi, gemini und mistral senden, bekommen
-aber keine erkannte Antwort. Drei verschiedene Fehlerbilder, also drei eigene
-Ursachen — `timeout_no_message` heißt: kein Assistant-Container erschien;
-`timeout_no_text` heißt: Container da, aber Text leer erkannt.
+Alle drei blockieren an etwas, das nur der Nutzer entscheiden kann:
 
-Login-Status separat (`diagnose --headless`): 7 von 8 sind eingeloggt, nur `claude`
-nicht. `cloudflare: false` bei allen acht.
+- **claude** — nicht eingeloggt. `webagent login --brain claude` (siehe unten).
+- **kimi** — nach dem Senden erscheint `.login-modal-content` („Continue with
+  Google" / `.phone-login`). Also **nicht eingeloggt**, obwohl `diagnose`
+  `logged_in: true` meldet: kimis `login_indicator` prüft `nav[class*='sidebar']`
+  und `div[class*='avatar']` — die Sidebar ist auch ohne Login da. **Falsch-Positiv
+  im Indikator**, siehe Notiz unten. Braucht `webagent login --brain kimi`.
+- **mistral** — eingeloggt, aber ein Dialog blockiert: „Sie müssen unsere
+  Nutzungsbedingungen und Datenschutzrichtlinie akzeptieren". Die konfigurierten
+  `consent_reject_button`/`dialog_dismiss_button`-Selektoren sind sämtlich
+  Playwright-Syntax (`:has-text()`) und damit totes CSS — sie können den Dialog nie
+  schließen. **Nutzungsbedingungen sind vom Nutzer zu akzeptieren, nicht vom Tool**;
+  einmal manuell im `login`-Fenster bestätigen, dann persistiert es im Profil.
+
+### Bekannte Ungenauigkeit: `logged_in` ist zu optimistisch
+
+`is_logged_in()` ist true, sobald **eines** von `login_indicator`, `composer` oder
+`new_chat_button` sichtbar ist. Bei kimi genügt dafür die anonyme Sidebar, bei
+chatgpt der New-Chat-Button. `diagnose` meldet deshalb 7/8 eingeloggt, real sind es
+6/8. Der Relay ist die verlässliche Messung, nicht `diagnose`.
+
+### Playwright-Reste in den Selektoren
+
+Quer durch `selectors/*.json` stehen `:has-text(…)` und `text=…` — Playwright-Syntax
+aus der Python-Referenz. `document.querySelector` wirft darauf; `js_scan` fängt das
+pro Selektor ab, sodass sie nur wirkungslos sind statt zu crashen. Betrifft u. a.
+`new_chat_button`, `login_button`, `consent_reject_button` und `dialog_dismiss_button`
+bei fast allen Brains. Aufräumen lohnt, ist aber nicht dringend, solange die
+CSS-Selektoren daneben greifen.
 
 ## Warum die frühere Tabelle falsch war
 
@@ -86,7 +108,27 @@ anders, als es zuerst aussah:
    versteckt; für Chromium ein normales, fokussierbares Fenster, für den Nutzer
    unsichtbar. Danach: headless 9,6s, Antwort `OK`.
 
-## Manueller Login (nur noch claude)
+### Gemini: echte Selektor-Drift (2026-07-15 gefixt)
+
+Gemessen pro Selektor, direkt nach einer Antwort:
+
+| Selektor | Treffer | Text |
+|---|---|---|
+| `message-content[class*='model-response-text']` | 0 | — |
+| `div[class*='model-response-text']` | 0 | — |
+| `div[class*='response-text']` | 0 | — |
+| `div.prose` | 0 | — |
+| **`div[class*='markdown']`** | **1** | **`Eins\nZwei\nDrei\nVier\nFünf`** |
+| `div[class*='message-content']` | 0 | — |
+| `div[class*='response']` | 12 | `[0,43,0,0,0,0,43,43,43,17,0,0]` — letztes leer |
+
+`probe_generation` nimmt den **ersten** Selektor mit Treffern und davon das **letzte**
+Element. Solange nur `div[class*='response']` matchte (12 Wrapper, letztes ohne Text),
+gab es `timeout_no_text`. Die kanonischen `model-response-text`-Selektoren treffen bei
+Gemini nichts mehr. Fix: `div[class*='markdown']` nach vorn, die zu breiten
+`div[class*='response']`/`div[class*='message-content']` raus. Danach: 11,2s → `OK`.
+
+## Manueller Login (claude, kimi, mistral)
 
 `webagent login` öffnet einen **sichtbaren** Browser und wartet auf den manuellen
 Login — **ohne Zugangsdaten-Eingabe durch das Tool**. Danach persistiert die Session
@@ -94,14 +136,16 @@ im WebView2-Profil (`EBWebView/` unterhalb von `WEBAGENT_PROFILE_DIR`).
 
 ```powershell
 $env:WEBAGENT_PROFILE_DIR = "C:\Users\storax\Desktop\webagent\data\profiles\shared"
-.\target\release\webagent.exe login --brain claude --timeout 540
+.\target\release\webagent.exe login --brain claude  --timeout 540
+.\target\release\webagent.exe login --brain kimi    --timeout 540
+.\target\release\webagent.exe login --brain mistral --timeout 540   # dabei AGB bestaetigen
 ```
 
-Das Fenster heißt `webagent-<n>` und kann hinter anderen Fenstern liegen.
-Danach verifizieren:
+Das Fenster heißt `webagent-<n>` und kann **hinter anderen Fenstern liegen** — per
+Alt+Tab nach vorn holen. Danach verifizieren (der Relay, nicht `diagnose`):
 
 ```powershell
-.\target\release\webagent.exe diagnose --brain claude --headless   # erwartet: logged_in true
+.\target\release\webagent.exe relay --brain claude --message "Antworte nur mit dem Wort OK." --timeout 90 --headless
 ```
 
 ## Bekannte Stolpersteine

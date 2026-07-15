@@ -48,10 +48,8 @@
     "message-content[class*='model-response-text']",
     "div[class*='model-response-text']",
     "div[class*='response-text']",
-    "div.prose",
     "div[class*='markdown']",
-    "div[class*='message-content']",
-    "div[class*='response']"
+    "div.prose"
   ],
   "new_chat_button": [
     "button[aria-label*='New chat' i]",
