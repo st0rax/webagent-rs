@@ -6,6 +6,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Terminal-Status, die nicht mehr geändert werden können.
 const TERMINAL_STATUSES: &[&str] = &["done", "failed", "interrupted"];
@@ -372,43 +373,17 @@ impl RunStore {
 }
 
 /// Parst RFC3339-Zeitstempel zu Unix-Sekunden (UTC).
-/// Vereinfachte Implementierung für ISO 8601 / RFC3339 wie `2024-01-15T10:30:45.123456+00:00`.
+///
+/// Hier stand eine handgerollte Regex plus eine Kopie von Howard Hinnants
+/// `days_from_civil` (~40 Zeilen) — obwohl `time` mit aktiviertem `parsing`-Feature
+/// schon direkte Dependency ist und `watchdog.rs` genau dieses Feld bereits so
+/// liest. Nebeneffekt der Vereinheitlichung: die alte Regex akzeptierte nur `Z`
+/// oder `+00:00` und lieferte fuer jeden anderen Offset `None` (= "stale"); `time`
+/// rechnet ihn korrekt um.
 fn parse_rfc3339_to_unix(s: &str) -> Option<i64> {
-    // Format: YYYY-MM-DDTHH:MM:SS[.ffffff](+00:00|Z)
-    let re = regex::Regex::new(
-        r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|\+00:00)$",
-    )
-    .ok()?;
-
-    let caps = re.captures(s)?;
-    let year: i32 = caps.get(1)?.as_str().parse().ok()?;
-    let month: u32 = caps.get(2)?.as_str().parse().ok()?;
-    let day: u32 = caps.get(3)?.as_str().parse().ok()?;
-    let hour: u32 = caps.get(4)?.as_str().parse().ok()?;
-    let minute: u32 = caps.get(5)?.as_str().parse().ok()?;
-    let second: u32 = caps.get(6)?.as_str().parse().ok()?;
-
-    // Umrechnung zu Unix-Timestamp (Tage seit Epoch + Tageszeit)
-    // Vereinfachte Variante von civil_to_days (inverse von civil_utc in lib.rs)
-    let y = year as i64;
-    let m = month as i64;
-    let d = day as i64;
-
-    let adj_year = if m <= 2 { y - 1 } else { y };
-    let adj_month = if m <= 2 { m + 12 } else { m };
-
-    let era = if adj_year >= 0 {
-        adj_year
-    } else {
-        adj_year - 399
-    } / 400;
-    let yoe = adj_year - era * 400;
-    let doy = (153 * (adj_month - 3) + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    let days = era * 146_097 + doe - 719_468;
-
-    let secs = days * 86_400 + (hour as i64) * 3600 + (minute as i64) * 60 + (second as i64);
-    Some(secs)
+    OffsetDateTime::parse(s, &Rfc3339)
+        .ok()
+        .map(|dt| dt.unix_timestamp())
 }
 
 #[cfg(test)]

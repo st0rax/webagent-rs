@@ -1,8 +1,9 @@
 //! WebAgent — lokaler, browserbasierter Agent (Rust-Port des Python-Originals).
 //!
 //! Plattformunabhängiger Kern: Windows, Linux, Android (Browser via Embedded WebView).
-//! Bewusst ohne schwere/plattformgebundene Dependencies — Zeitstempel und
-//! Prozess-Liveness liefert dieses Crate selbst, damit der Kern überall baut.
+//! Prozess-Liveness liefert dieses Crate selbst (siehe [`ProcessSnapshot`]), damit der
+//! Kern überall baut. Zeitstempel werden *formatiert* über [`civil_utc`] (Python-kompatibel,
+//! siehe dort) und *geparst* über `time` — das ist ohnehin Dependency.
 
 pub mod brain;
 pub mod brains_health;
@@ -64,6 +65,12 @@ fn unix_now() -> (i64, u32) {
 
 /// (Jahr, Monat, Tag, Stunde, Minute, Sekunde) aus Unix-Sekunden (UTC).
 /// Algorithmus nach Howard Hinnant (civil_from_days), gemeinfrei.
+///
+/// Bleibt handgerollt, obwohl `time` Dependency ist: die beiden Nutzer unten
+/// erzeugen **Python-kompatible** Stempel (`.%06d+00:00` bzw. `%Y%m%d_%H%M%S`),
+/// die so in `meta.json` und in Run-IDs landen. `time`s Rfc3339 formatiert
+/// Sub-Sekunden variabel — ein Wechsel waere ein Formatbruch, kein Aufraeumen.
+/// Die *Parser*-Richtung ist dagegen vereinheitlicht (siehe doctor/run_store).
 pub fn civil_utc(secs: i64) -> (i64, u32, u32, u32, u32, u32) {
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);

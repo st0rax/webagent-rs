@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::run_store::RunMeta;
 
@@ -530,56 +531,20 @@ pub fn run_doctor(
     report
 }
 
-/// Hilfsfunktion: Alter in Stunden berechnen.
+/// Alter eines RFC3339-Zeitstempels in Stunden; -1.0 wenn nicht parsbar.
+///
+/// Hier standen ein handgeklöppelter Splitter (auf `+`, `T`, `.`, `-`, `:`) und eine
+/// eigene Kopie von Howard Hinnants `days_from_civil`. Zusammen mit
+/// `run_store::parse_rfc3339_to_unix` und `lib::civil_utc` gab es damit **drei**
+/// Implementierungen derselben Kalenderrechnung — die sich obendrein uneinig waren,
+/// welche Eingaben sie akzeptieren, sodass dasselbe `meta.json` je nach Aufrufer
+/// unterschiedlich alt sein konnte. `time` ist mit `parsing` laengst Dependency und
+/// `watchdog.rs` liest genau dieses Feld schon so.
 fn calculate_age_hours(created_at: &str, now_secs: i64) -> f64 {
-    // ISO-8601 parsen
-    let created_str = if created_at.ends_with('Z') {
-        created_at.replace('Z', "+00:00")
-    } else {
-        created_at.to_string()
-    };
-
-    // Einfaches Parsing: YYYY-MM-DDTHH:MM:SS.ffffff+00:00
-    if let Some(dt_part) = created_str.split('+').next() {
-        if let Some(date_time) = dt_part.split('T').collect::<Vec<_>>().get(0..2) {
-            let date = date_time[0];
-            let time = date_time[1].split('.').next().unwrap_or(date_time[1]);
-
-            let date_parts: Vec<&str> = date.split('-').collect();
-            let time_parts: Vec<&str> = time.split(':').collect();
-
-            if date_parts.len() == 3 && time_parts.len() == 3 {
-                if let (Ok(y), Ok(mo), Ok(d), Ok(h), Ok(mi), Ok(s)) = (
-                    date_parts[0].parse::<i64>(),
-                    date_parts[1].parse::<u32>(),
-                    date_parts[2].parse::<u32>(),
-                    time_parts[0].parse::<u32>(),
-                    time_parts[1].parse::<u32>(),
-                    time_parts[2].parse::<u32>(),
-                ) {
-                    // Vereinfachte Umrechnung in Unix-Sekunden
-                    let created_secs = civil_to_unix(y, mo, d, h, mi, s);
-                    let age_secs = now_secs - created_secs;
-                    return age_secs as f64 / 3600.0;
-                }
-            }
-        }
+    match OffsetDateTime::parse(created_at, &Rfc3339) {
+        Ok(dt) => (now_secs - dt.unix_timestamp()) as f64 / 3600.0,
+        Err(_) => -1.0,
     }
-    -1.0
-}
-
-/// Umrechnung von civil time (UTC) zu Unix-Sekunden — exakte Umkehrung von
-/// `crate::civil_utc` nach Howard Hinnant (days_from_civil). `mo` ist 1-basiert.
-fn civil_to_unix(y: i64, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> i64 {
-    let m = mo as i64;
-    // Jan/Feb zählen zum Vorjahr (Schaltjahr-Randbehandlung).
-    let year = y - if m <= 2 { 1 } else { 0 };
-    let era = if year >= 0 { year } else { year - 399 } / 400;
-    let yoe = year - era * 400; // [0, 399]
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d as i64 - 1; // [0, 365]
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
-    let days = era * 146_097 + doe - 719_468;
-    days * 86_400 + h as i64 * 3600 + mi as i64 * 60 + s as i64
 }
 
 #[cfg(test)]
