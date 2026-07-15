@@ -20,8 +20,12 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # --no-default-features schaltet `webview` (wry/tao) ab. Ohne das zog der
+      # Build glib-sys herein und scheiterte auf ubuntu-latest an fehlenden
+      # GTK-Systembibliotheken — der Job pruefte also nie, was sein eigener Name
+      # sagt. Der Termux-Pfad baut denselben Kern ebenfalls ohne WebView.
       - name: Build (plattformneutraler Kern)
-        run: cargo build --release
+        run: cargo build --release --no-default-features
 
       - name: Test
-        run: cargo test --quiet
+        run: cargo test --quiet --no-default-features
