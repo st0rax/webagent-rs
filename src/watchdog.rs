@@ -132,7 +132,9 @@ pub fn scan_orphaned_runs(
             let owner_pid = extra.get("owner_pid").and_then(|v| v.as_i64()).unwrap_or(0);
 
             let stale = if owner_pid > 0 {
-                !procs.get_or_insert_with(crate::ProcessSnapshot::capture).is_alive(owner_pid)
+                !procs
+                    .get_or_insert_with(crate::ProcessSnapshot::capture)
+                    .is_alive(owner_pid)
             } else if !meta.created_at.is_empty() {
                 if let Ok(created_dt) = OffsetDateTime::parse(&meta.created_at, &Rfc3339) {
                     let age = (now - created_dt).whole_seconds() as f64;
@@ -202,7 +204,9 @@ pub fn scan_orphaned_runs(
         let owner_pid = extra.get("owner_pid").and_then(|v| v.as_i64()).unwrap_or(0);
 
         let stale = if owner_pid > 0 {
-            !procs.get_or_insert_with(crate::ProcessSnapshot::capture).is_alive(owner_pid)
+            !procs
+                .get_or_insert_with(crate::ProcessSnapshot::capture)
+                .is_alive(owner_pid)
         } else if !meta.created_at.is_empty() {
             if let Ok(created_dt) = OffsetDateTime::parse(&meta.created_at, &Rfc3339) {
                 let age = (now - created_dt).whole_seconds() as f64;
@@ -271,7 +275,11 @@ pub fn scan_bridge_locks(bot2bot_root: &str, grace_seconds: f64) -> Vec<StaleBri
         }
 
         // Lebender Holder → nicht stale
-        if holder_pid > 0 && procs.get_or_insert_with(crate::ProcessSnapshot::capture).is_alive(holder_pid) {
+        if holder_pid > 0
+            && procs
+                .get_or_insert_with(crate::ProcessSnapshot::capture)
+                .is_alive(holder_pid)
+        {
             continue;
         }
         // Toter/fehlender Holder, aber Datei noch sehr jung (Grace)

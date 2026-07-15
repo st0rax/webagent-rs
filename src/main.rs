@@ -173,7 +173,13 @@ fn main() {
         let _ = webagent::config::ensure_data_dirs();
         // Wire comms.rs into CLI entry path (exercisable, not dead code)
         let comms = webagent::comms::CommsStore::default_store();
-        let _ = comms.send("webagent-rs", "self", "startup", "comms wired from main/CLI", None);
+        let _ = comms.send(
+            "webagent-rs",
+            "self",
+            "startup",
+            "comms wired from main/CLI",
+            None,
+        );
         let repaired = startup_reconcile_runs();
         if !repaired.is_empty() {
             eprintln!(

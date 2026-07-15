@@ -250,11 +250,7 @@ var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
     /// Anzahl der Assistenten-Nachrichten (robust über die Selektorliste).
     fn assistant_count(&self) -> i32 {
         let list = self.sel_js("assistant_message", &["div.prose"]);
-        let expr = Self::js_scan(
-            &list,
-            "var n=QA(S[i]).length;if(n>0)return n;",
-            "0",
-        );
+        let expr = Self::js_scan(&list, "var n=QA(S[i]).length;if(n>0)return n;", "0");
         self.eval_i64(&expr) as i32
     }
 

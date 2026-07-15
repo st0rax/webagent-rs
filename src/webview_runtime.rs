@@ -636,7 +636,10 @@ mod tests {
     #[test]
     fn wrap_eval_is_sync_and_returns_object() {
         let js = wrap_eval("1+1");
-        assert!(!js.contains("async"), "async-IIFE liefert ein Promise: {js}");
+        assert!(
+            !js.contains("async"),
+            "async-IIFE liefert ein Promise: {js}"
+        );
         assert!(!js.contains("await"), "await erzwingt ein Promise: {js}");
         assert!(
             !js.contains("JSON.stringify"),
