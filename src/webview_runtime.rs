@@ -421,9 +421,20 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
     }
 }
 
+/// Verpackt einen JS-Ausdruck fuer `evaluate_script_with_callback`.
+///
+/// Zwei Fallen, beide gemessen (siehe Tests unten):
+/// - **Kein `async`/`await`.** WebView2 serialisiert das Ergebnis des Skripts; eine
+///   async-IIFE liefert ein Promise, und das serialisiert zu `{}`. Der frühere
+///   Wrapper tat genau das — jedes `evaluate` kam als `{}` zurueck, wodurch jede
+///   DOM-Abfrage (Login-Status, Composer, Antworten) leer aussah. `awaitPromise`
+///   gab es nur bei CDP; hier braucht es kein Ausdruck.
+/// - **Kein `JSON.stringify`.** Gibt das Skript einen String zurueck, kodiert
+///   WebView2 ihn ein zweites Mal (`"\"{\\\"ok\\\":true}\""`). Das Objekt direkt
+///   zurueckgeben liefert sauberes `{"ok":true,...}`.
 fn wrap_eval(expression: &str) -> String {
     format!(
-        r#"(async function(){{try{{var __v=await({expression});return JSON.stringify({{ok:true,value:__v}});}}catch(e){{return JSON.stringify({{ok:false,error:String(e)}});}}}})()"#
+        r#"(function(){{try{{return {{ok:true,value:({expression})}};}}catch(e){{return {{ok:false,error:String(e)}};}}}})()"#
     )
 }
 
@@ -581,4 +592,48 @@ return true;}})()"#
     );
     eval_js(webview, &js, event_loop)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_eval_result, wrap_eval};
+
+    // Regression: der Wrapper darf kein Promise und keinen String liefern.
+    // WebView2 serialisiert das Skript-Ergebnis; eine async-IIFE kommt als "{}"
+    // zurueck und JSON.stringify als doppelt kodierter String. Beides liess
+    // jede DOM-Abfrage leer aussehen (logged_in=false fuer alle Provider).
+    #[test]
+    fn wrap_eval_is_sync_and_returns_object() {
+        let js = wrap_eval("1+1");
+        assert!(!js.contains("async"), "async-IIFE liefert ein Promise: {js}");
+        assert!(!js.contains("await"), "await erzwingt ein Promise: {js}");
+        assert!(
+            !js.contains("JSON.stringify"),
+            "stringify erzeugt doppelt kodierten String: {js}"
+        );
+        assert!(js.contains("ok:true"), "Erfolgs-Huelle fehlt: {js}");
+        assert!(js.contains("(1+1)"), "Ausdruck nicht eingebettet: {js}");
+    }
+
+    #[test]
+    fn parse_eval_result_unwraps_ok_value() {
+        let v = parse_eval_result(r#"{"ok":true,"value":2}"#.to_string()).unwrap();
+        assert_eq!(v, serde_json::json!(2));
+    }
+
+    #[test]
+    fn parse_eval_result_maps_js_exception_to_err() {
+        let e = parse_eval_result(r#"{"ok":false,"error":"ReferenceError: x"}"#.to_string());
+        assert!(e.is_err(), "JS-Ausnahme muss Err werden");
+    }
+
+    // Das war das reale Symptom: der async-Wrapper lieferte wortwoertlich "{}".
+    #[test]
+    fn parse_eval_result_on_empty_object_yields_no_value() {
+        let v = parse_eval_result("{}".to_string()).unwrap();
+        assert!(
+            v.get("value").is_none(),
+            "leeres Objekt darf keinen Wert vortaeuschen"
+        );
+    }
 }

@@ -7,60 +7,87 @@
 **Letzte Messung:** 2026-07-15 — `webagent diagnose --brain <id> --headless`,
 Profil `data/profiles/shared`, Release-Build.
 
-## Stand: 0/8 eingeloggt — kein Provider nutzbar
+## Stand: 7/8 eingeloggt — aber Relay liefert noch leere Antworten
 
-| `webagent/<id>` | session_state | logged_in | cloudflare | Landet auf |
+`webagent diagnose --brain <id> --headless`, Profil `data/profiles/shared`:
+
+| `webagent/<id>` | session_state | logged_in | composer | cloudflare |
 |---|---|---|---|---|
-| chatgpt | LoginRequired | false | false | `chatgpt.com/` |
-| deepseek | LoginRequired | false | false | `chat.deepseek.com/sign_in` |
-| kimi | LoginRequired | false | false | `www.kimi.com/` |
-| gemini | LoginRequired | false | false | `gemini.google.com/app` |
-| qwen | LoginRequired | false | false | `chat.qwen.ai/` |
-| claude | LoginRequired | false | false | `claude.ai/logout` |
-| mistral | LoginRequired | false | false | `chat.mistral.ai/chat` |
-| zai | LoginRequired | false | false | `chat.z.ai/` |
+| chatgpt | Ready | true | FEHLT¹ | false |
+| deepseek | Ready | true | ok | false |
+| kimi | Ready | true | ok | false |
+| gemini | Ready | true | ok | false |
+| qwen | Ready | true | ok | false |
+| **claude** | **LoginRequired** | **false** | FEHLT | false |
+| mistral | Ready | true | ok | false |
+| zai | Ready | true | ok | false |
+
+¹ chatgpt: `logged_in` kommt über `new_chat_button` (3–4 Treffer). Der Composer matcht
+laut `cargo run --example inspect -- chatgpt` sehr wohl (`composer: 2`), nur nicht zum
+Sampling-Zeitpunkt von `live_diagnose` — ein Timing-Rennen, keine Selektor-Drift.
+
+**Offen:** `relay` kommt sauber durch `ensure_ready` + `send`, aber `wait_response`
+liefert leeren Text (exit 0, 0 Zeichen Antwort). Das ist die nächste Baustelle;
+solange das so ist, ist kein Provider wirklich nutzbar, auch die grünen nicht.
+
+**Einzige Nutzeraktion:** `claude` braucht einen manuellen Login (siehe unten).
 
 ## Warum die frühere Tabelle falsch war
 
 Der vorige Stand behauptete **5/8 headless PASS** (deepseek/kimi/gemini/qwen/zai) und
-für chatgpt/claude/mistral „Cloudflare blocks headless". Beides hält der Messung nicht
-stand:
+für chatgpt/claude/mistral „Cloudflare blocks headless". Beides ist falsch — aber
+anders, als es zuerst aussah:
 
-1. **`cloudflare: false` bei allen acht.** Es wird gar keine Cloudflare-Challenge
-   ausgelöst. Die „needs manual login (Cloudflare)"-Notiz war eine Fehldiagnose.
-2. **Auch die angeblich grünen fünf sind `LoginRequired`.** deepseek landet auf
-   `/sign_in`. Es gibt keinen eingeloggten Provider.
-3. **Ursache:** `data/profiles/shared` ist ein **Chrome**-Profil aus der Python/CDP-Ära
-   (`Default/Network/Cookies`, `Local State`). Der WebView2-Backend liest das nicht —
-   wry legt seinen eigenen Store unter `EBWebView/` im selben Verzeichnis an. Die
-   3,25 GB Chrome-Cookies sind für den Rust-Port wirkungslos. Im WebView2-Profil hat
-   sich schlicht nie jemand eingeloggt.
-4. Der Smoke (`delivery/provider_webview_smoke.ps1`) wertet
-   `$code -eq 0 -and ($out -match "OK|ok")` — ein Substring-Treffer auf „ok" in
-   beliebiger Ausgabe. Das erklärt „PASS" ohne echte Session.
+1. **`cloudflare: false` bei allen acht.** Es wird nie eine Cloudflare-Challenge
+   ausgelöst. Die „needs manual login (Cloudflare)"-Notiz war eine Fehldiagnose;
+   mistral und chatgpt sind eingeloggt und erreichbar.
+2. **Die Logins waren die ganze Zeit da.** Sie waren nur unsichtbar, weil jede
+   DOM-Abfrage leer zurückkam (siehe Bug 2).
+3. Der Smoke (`delivery/provider_webview_smoke.ps1`) wertet
+   `$code -eq 0 -and ($out -match "OK|ok")` und zählt zusätzlich jedes `exit 0` als
+   `PASS(exit0)`. Eine **leere Antwort mit exit 0 zählt damit als Erfolg** — genau der
+   Zustand, in dem sich der Relay bis heute befindet. Daher „5/8 PASS" ohne eine
+   einzige echte Antwort.
 
-Zusätzlich war der WebView-Backend bis `2026-07-15` **komplett funktionsunfähig**:
-`tao` panicte bei jedem Seitenaufruf („Initializing the event loop outside of the main
-thread"), weil `run_event_loop` im dedizierten `webagent-webview`-Thread läuft.
-Gefixt via `EventLoopBuilderExtWindows::with_any_thread(true)`. Vor diesem Fix konnte
-kein einziger Provider-Smoke echte Ergebnisse liefern.
+### Zwei Bugs, die alles maskiert haben (beide 2026-07-15 gefixt)
 
-## Weg zu 8/8 (manueller Login, einmalig pro Provider)
+1. **WebView war komplett tot.** `tao` panicte bei jedem Seitenaufruf
+   („Initializing the event loop outside of the main thread"), weil `run_event_loop`
+   bewusst im dedizierten `webagent-webview`-Thread läuft, aber `EventLoop::new()`
+   rief. Fix: `EventLoopBuilderExtWindows::with_any_thread(true)`.
+2. **Jedes `evaluate` lieferte `{}`.** Der JS-Wrapper war eine `async`-IIFE — die gibt
+   ein Promise zurück, und WebView2 serialisiert ein Promise zu `{}`. Damit sah jede
+   DOM-Abfrage leer aus: `logged_in=false`, `composer=FEHLT`, `assistant_msgs=0`, für
+   alle Provider. Das `await` stammte aus der CDP-Zeit (`Runtime.evaluate` hatte ein
+   `awaitPromise`-Flag; WebView2 nicht) — kein einziger Ausdruck im Code braucht es.
+   Fix: synchrone IIFE, die das Objekt **direkt** zurückgibt (kein `JSON.stringify` —
+   das erzeugt einen doppelt kodierten String). Gemessene Rohformen:
+
+   | Skript | Roh-Rückgabe |
+   |---|---|
+   | `1+1` | `"2"` |
+   | IIFE + `JSON.stringify` | `"\"{\\\"ok\\\":true}\""` (doppelt kodiert) |
+   | IIFE, Objekt direkt | `"{\"ok\":true,\"value\":2}"` ✅ |
+   | async-IIFE (alt) | `"{}"` ← der Bug |
+
+   Abgesichert durch Regressionstests in `webview_runtime::tests`.
+
+## Manueller Login (nur noch claude)
 
 `webagent login` öffnet einen **sichtbaren** Browser und wartet auf den manuellen
 Login — **ohne Zugangsdaten-Eingabe durch das Tool**. Danach persistiert die Session
-im WebView2-Profil und Headless-Läufe funktionieren.
+im WebView2-Profil (`EBWebView/` unterhalb von `WEBAGENT_PROFILE_DIR`).
 
 ```powershell
 $env:WEBAGENT_PROFILE_DIR = "C:\Users\storax\Desktop\webagent\data\profiles\shared"
-.\target\release\webagent.exe login --brain deepseek   # Fenster oeffnet sich, manuell einloggen
-# ... je Provider wiederholen
+.\target\release\webagent.exe login --brain claude --timeout 540
 ```
 
+Das Fenster heißt `webagent-<n>` und kann hinter anderen Fenstern liegen.
 Danach verifizieren:
 
 ```powershell
-.\target\release\webagent.exe diagnose --brain deepseek --headless   # erwartet: logged_in true
+.\target\release\webagent.exe diagnose --brain claude --headless   # erwartet: logged_in true
 ```
 
 ## Bekannte Stolpersteine
