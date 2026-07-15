@@ -30,23 +30,48 @@ claude (manueller Login) und mistral (AGB bestätigt) sind seit 2026-07-15 grün
 einer direkten Wiederholung dann 3/3 grün (17,5s / 14,0s / 13,7s). Nicht
 reproduzierbar, aber bekannt — bei Rot einmal wiederholen, bevor man gräbt.
 
-### kimi — offen
+### kimi — offen, aber **kein Login-Problem** (Korrektur 2026-07-15)
 
-Nach dem Senden erscheint `.login-modal-content` („Continue with Google" /
-`.phone-login`), es kommt nie eine Antwort. Ein manueller Login-Versuch über
-`login --brain kimi --force` hat den Zustand nicht geändert; unklar, ob der Login
-nicht stattfand oder die Session nicht ins WebView2-Profil persistierte.
+Frühere Einträge hier behaupteten, kimi sei nicht eingeloggt und das
+`.login-modal-content` im DOM blockiere den Versand. **Beides ist falsch.**
+Selektor-genau nachgemessen:
 
-### Bekannte Ungenauigkeit: `logged_in` ist zu optimistisch
+| kimi `login_indicator` | Treffer | sichtbar |
+|---|---|---|
+| `nav[class*='sidebar']` | **0** | 0 |
+| `div[class*='user-info']` | 1 | **1** |
+| `div[class*='avatar']` | 1 | **1** |
+| `button[class*='user' i]` | 3 | **3** |
+| `a[href*='/settings']` | 1 | 0 |
 
-`is_logged_in()` ist true, sobald **eines** von `login_indicator`, `composer` oder
-`new_chat_button` sichtbar ist. Bei kimi genügt dafür der **Composer** — der ist
-auch anonym sichtbar (gemessen: bei Leerlauf `composer: 1`, `login_indicator: 0`).
-Deshalb meldete `diagnose` kimi als eingeloggt, und deshalb brach
-`interactive_login` bei kimi und mistral sofort mit „schon eingeloggt" ab, statt
-dem Nutzer Zeit zum Anmelden zu geben — dafür gibt es jetzt `login --force`.
+Avatar und User-Info sind sichtbar — **kimi ist eingeloggt.** Das
+`.login-modal-content` ist ein verstecktes Overlay im DOM, kein aktiver Blocker.
+(`nav[class*='sidebar']`, das ich zuvor als Ursache benannt hatte, matcht
+überhaupt nicht.)
 
-**Der Relay ist die verlässliche Messung, nicht `diagnose`.**
+Und kimi **antwortet**: ein direkter `send()` über das Backend liefert sauber —
+`div.markdown`, der **erste** konfigurierte `assistant_message`-Selektor, trifft
+mit `n=1` und dem Text `1\n2\n3\n4\n5`.
+
+**Der Relay scheitert trotzdem** (`timeout_no_message`, ~125s). Der einzige
+Unterschied zum funktionierenden Direktpfad ist `new_chat()`: kimis
+`new_chat_button`-Selektoren sind sämtlich Playwright-Syntax und damit tot, also
+fällt `new_chat()` auf `navigate(url)` zurück — und danach findet `wait_response`
+nie eine Antwort, obwohl `send()` Erfolg meldet. Verdacht: `verify_submitted`
+wertet den geleerten Composer als „abgeschickt", obwohl nach dem Reload etwas
+den Versand abfängt. **Das ist die nächste Baustelle — Technik, nicht Nutzer.**
+
+### Bekannte Ungenauigkeit: `logged_in` war zu optimistisch
+
+`is_logged_in()` war true, sobald **eines** von `login_indicator`, `composer` oder
+`new_chat_button` sichtbar war — der Composer beweist aber nur „Seite geladen",
+nicht „angemeldet". Seit 2026-07-15 gilt: ist `login_indicator` konfiguriert,
+entscheidet **nur** der; Composer/New-Chat sind Fallback für Brains ohne den Key.
+Alle acht Brains konfigurieren ihn, daher ist die Änderung **heute
+verhaltensneutral** (vorher wie nachher: 8× `logged_in: true`) — sie beseitigt
+eine latente Maskierung, keinen aktuellen Fehler.
+
+**Der Relay bleibt die verlässliche Messung, nicht `diagnose`.**
 
 ### Playwright-Reste in den Selektoren
 

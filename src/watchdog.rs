@@ -82,36 +82,10 @@ impl WatchdogReport {
     }
 }
 
-/// Prüft, ob ein Prozess mit gegebener PID lebt (plattformübergreifend).
-fn pid_alive(pid: i64) -> bool {
-    if pid <= 0 {
-        return false;
-    }
-    #[cfg(windows)]
-    {
-        // tasklist liefert die Zeile nur, wenn der Prozess existiert.
-        let out = std::process::Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {}", pid), "/NH", "/FO", "CSV"])
-            .output();
-        match out {
-            Ok(o) => {
-                let text = String::from_utf8_lossy(&o.stdout);
-                text.contains(&format!("\"{}\"", pid))
-            }
-            Err(_) => true,
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        match std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .status()
-        {
-            Ok(st) => st.success(),
-            Err(_) => true,
-        }
-    }
-}
+// Beide waren hier zeichengleich nachgebaut, obwohl die Doc-Kommentare unten schon
+// behaupteten, doctors Version zu nutzen. Jetzt tun sie es auch.
+use crate::doctor::find_lock_files;
+use crate::pid_alive;
 
 /// Alter einer Datei in Sekunden; -1.0 bei Fehler.
 fn file_age_seconds(path: &str) -> f64 {
@@ -369,50 +343,6 @@ pub fn scan_profile_locks(
     stale
 }
 
-/// Findet Lock-Dateien in einem Chromium-Profil (portiert aus doctor.py).
-/// Gibt relative Pfade zurück: "SingletonLock", "Default/SingletonLock", etc.
-pub fn find_lock_files(profile_dir: &str) -> Vec<String> {
-    let mut locks = Vec::new();
-    if profile_dir.is_empty() || !Path::new(profile_dir).is_dir() {
-        return locks;
-    }
-
-    // Hauptverzeichnis prüfen
-    if let Ok(entries) = fs::read_dir(profile_dir) {
-        for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name == "SingletonLock"
-                    || name == "SingletonCookie"
-                    || name == "SingletonSocket"
-                    || name.starts_with(".org.chromium.Chromium.")
-                {
-                    locks.push(name.to_string());
-                }
-            }
-        }
-    }
-
-    // Default-Subdir prüfen
-    let default_dir = Path::new(profile_dir).join("Default");
-    if default_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&default_dir) {
-            for entry in entries.flatten() {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name == "SingletonLock"
-                        || name == "SingletonCookie"
-                        || name == "SingletonSocket"
-                        || name.starts_with(".org.chromium.Chromium.")
-                    {
-                        locks.push(format!("Default/{}", name));
-                    }
-                }
-            }
-        }
-    }
-
-    locks
-}
-
 /// Prüft, ob ein chrome.exe-Prozess mit diesem Profil aktiv ist.
 /// Konservativ: bei Fehler wird true angenommen (lieber nicht antasten).
 fn chrome_running_for_profile(profile_dir: &str) -> bool {
@@ -578,45 +508,10 @@ mod tests {
         ))
     }
 
-    #[test]
-    fn test_find_lock_files_empty() {
-        let tmp = unique_tmp();
-        fs::create_dir_all(&tmp).unwrap();
-        assert_eq!(find_lock_files(tmp.to_str().unwrap()), Vec::<String>::new());
-        fs::remove_dir_all(&tmp).ok();
-    }
-
-    #[test]
-    fn test_find_singleton_lock() {
-        let tmp = unique_tmp();
-        fs::create_dir_all(&tmp).unwrap();
-        fs::write(tmp.join("SingletonLock"), "").unwrap();
-        let result = find_lock_files(tmp.to_str().unwrap());
-        assert!(result.contains(&"SingletonLock".to_string()));
-        fs::remove_dir_all(&tmp).ok();
-    }
-
-    #[test]
-    fn test_find_locks_in_default_subdir() {
-        let tmp = unique_tmp();
-        fs::create_dir_all(&tmp).unwrap();
-        let default = tmp.join("Default");
-        fs::create_dir_all(&default).unwrap();
-        fs::write(default.join("SingletonLock"), "").unwrap();
-        let result = find_lock_files(tmp.to_str().unwrap());
-        assert!(result.iter().any(|l| l.contains("Default")));
-        fs::remove_dir_all(&tmp).ok();
-    }
-
-    #[test]
-    fn test_ignores_regular_files() {
-        let tmp = unique_tmp();
-        fs::create_dir_all(&tmp).unwrap();
-        fs::write(tmp.join("Preferences"), "").unwrap();
-        fs::write(tmp.join("test.json"), "").unwrap();
-        assert_eq!(find_lock_files(tmp.to_str().unwrap()), Vec::<String>::new());
-        fs::remove_dir_all(&tmp).ok();
-    }
+    // Die vier find_lock_files-Tests, die hier standen, sind entfallen: sie testeten
+    // die lokale Kopie, die jetzt doctors Version ist — und doctor::tests deckt
+    // dieselben Faelle plus SingletonCookie/-Socket, Chromium-Random-Socket und
+    // nicht existierendes Verzeichnis ab.
 
     #[test]
     fn test_scan_bridge_locks_no_dir() {

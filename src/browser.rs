@@ -4,7 +4,7 @@
 //! durch [`crate::page_driver::PageDriver`]. DOM-Operationen laufen über JS-Eval;
 //! Tastendrücke/Maus über WebView-Injection.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -102,7 +102,6 @@ pub struct WebBrainBackend {
     #[cfg(feature = "webview")]
     runtime: RefCell<Option<WebViewRuntime>>,
     driver: RefCell<Option<Box<dyn PageDriver>>>,
-    baseline_count: Cell<i32>,
     /// Text der letzten Assistenten-Nachricht VOR dem Senden — damit wait_response
     /// den Antwortbeginn auch dann erkennt, wenn der Nachrichtenzähler nicht
     /// inkrementiert (Container-Selektor / bestehende Konversation).
@@ -122,7 +121,6 @@ impl WebBrainBackend {
         {
             *self.runtime.borrow_mut() = None;
         }
-        self.baseline_count.set(0);
     }
 
     /// Erstellt ein Backend aus der zentralen Brain-Konfiguration.
@@ -143,7 +141,6 @@ impl WebBrainBackend {
             #[cfg(feature = "webview")]
             runtime: RefCell::new(None),
             driver: RefCell::new(None),
-            baseline_count: Cell::new(0),
             baseline_text: RefCell::new(String::new()),
         })
     }
@@ -682,7 +679,6 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
 
     fn prepare_send_baseline(&mut self) -> i32 {
         let baseline = self.assistant_count();
-        self.baseline_count.set(baseline);
         let bt = if baseline > 0 {
             self.assistant_text(baseline - 1)
         } else {
@@ -749,7 +745,6 @@ impl BrainBackend for WebBrainBackend {
                 .map_err(|e| e.to_string())?;
             *self.runtime.borrow_mut() = Some(runtime);
             *self.driver.borrow_mut() = Some(Box::new(driver));
-            self.baseline_count.set(0);
             Ok(())
         }
     }
@@ -826,7 +821,6 @@ impl BrainBackend for WebBrainBackend {
                 .navigate(&url, Duration::from_secs(30))
                 .map_err(|e| e.to_string())?;
         }
-        self.baseline_count.set(0);
         Ok(())
     }
 
@@ -943,15 +937,17 @@ impl BrainBackend for WebBrainBackend {
         if self.driver.borrow().is_none() {
             return false;
         }
-        // Positive Signale: Composer / New-Chat / Login-Indikator sichtbar.
-        if self.any_visible("login_indicator")
-            || self.any_visible("composer")
-            || self.any_visible("new_chat_button")
-        {
-            return true;
+        // Wenn ein Brain `login_indicator` konfiguriert, ist das die Antwort — sonst
+        // nichts. Frueher wurde `composer`/`new_chat_button` dazu-ODER-t, was die
+        // sorgfaeltig authorten Indikatoren aushebelte: kimi zeigt seinen Composer
+        // auch anonym, also galt jeder Besucher als eingeloggt. Der Composer ist ein
+        // Beweis fuer "Seite geladen", nicht fuer "angemeldet".
+        let indicator = self.sel("login_indicator");
+        if !indicator.is_empty() {
+            return self.any_visible("login_indicator");
         }
-        // Ohne positives Signal konservativ als nicht eingeloggt behandeln.
-        false
+        // Ohne konfigurierten Indikator: Composer/New-Chat als grobe Naeherung.
+        self.any_visible("composer") || self.any_visible("new_chat_button")
     }
 
     fn click_login(&mut self) -> Result<(), String> {
