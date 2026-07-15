@@ -75,7 +75,8 @@ pub(crate) enum PageMessage {
 
 struct PageSlot {
     page_rx: Receiver<PageMessage>,
-    #[allow(dead_code)]
+    /// Wird fuer die CloseRequested-Zuordnung ueber `window.id()` gelesen und haelt
+    /// das Fenster am Leben — faellt der Slot, schliesst sich das Fenster.
     window: tao::window::Window,
     webview: wry::WebView,
 }
@@ -267,16 +268,29 @@ fn run_event_loop(
     while !shutdown {
         shutdown = pump_runtime(&mut rt, &mut event_loop);
 
+        // CloseRequested muss den Tab wirklich abraeumen. Der Handler war frueher
+        // leer (nur ein Kommentar), wodurch das Fenster-X schlicht nichts tat: der
+        // Nutzer konnte ein `login`-Fenster nicht schliessen und musste den Prozess
+        // abschiessen. Die WindowId erst sammeln und nach `run_return` verarbeiten —
+        // in der Closure ist `rt` nicht erneut ausleihbar.
+        let mut to_close: Vec<tao::window::WindowId> = Vec::new();
         let _ = event_loop.run_return(|event, _, control_flow| {
             *control_flow = ControlFlow::Exit;
             if let Event::WindowEvent {
+                window_id,
                 event: WindowEvent::CloseRequested,
                 ..
             } = &event
             {
-                // Fenster-X schließt nur den Tab, nicht den ganzen Agenten-Loop.
+                to_close.push(*window_id);
             }
         });
+        for wid in to_close {
+            // PageSlot fallen lassen => Window + WebView werden zerstoert, und der
+            // page_rx verschwindet, sodass der wartende Agenten-Thread ein Err
+            // bekommt statt ewig zu blockieren.
+            rt.pages.retain(|_, slot| slot.window.id() != wid);
+        }
     }
 }
 
