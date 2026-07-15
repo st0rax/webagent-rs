@@ -85,6 +85,10 @@ fn main() {
     let brain = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "qwen".to_string());
+    // Optionales zweites Argument `--headless`: seit das Fenster off-screen statt
+    // unsichtbar laeuft, ist Headless voll funktionsfaehig (inkl. Fokus/Tasten) —
+    // praktisch, um zu inspizieren ohne Fenster auf den Desktop zu werfen.
+    let headless = std::env::args().any(|a| a == "--headless");
     let mut b = match WebBrainBackend::from_config(&brain) {
         Ok(b) => b,
         Err(e) => {
@@ -92,7 +96,7 @@ fn main() {
             std::process::exit(2);
         }
     };
-    if let Err(e) = b.start(false) {
+    if let Err(e) = b.start(headless) {
         eprintln!("start: {e}");
         std::process::exit(1);
     }
