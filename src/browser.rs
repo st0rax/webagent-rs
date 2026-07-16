@@ -1249,6 +1249,80 @@ impl BrainBackend for WebBrainBackend {
 mod tests {
     use super::*;
 
+    /// Rust-Port der drei Regexe aus `JS_SEL_PRELUDE` (`text=/re/i`, `text=foo`,
+    /// `sel:has-text('x')`). Kein JS-Interpreter im Testprozess verfuegbar, also
+    /// prueft dieser Port dieselbe Erkennungslogik ohne echten Browser -- Ziel ist
+    /// nicht "identisches Verhalten in jedem Detail", sondern "erkennt der Prelude-
+    /// Parser jede Textform, die tatsaechlich in `selectors/*.json` vorkommt".
+    /// Braucht `fancy-regex` statt `regex`: die `:has-text`-Form spiegelt JS'
+    /// Rueckreferenz `\2` (gleiches Anfuehrungszeichen schliesst), das die
+    /// linear-time `regex`-Crate nicht unterstuetzt.
+    fn parses_as_text_selector(s: &str) -> bool {
+        use fancy_regex::Regex as FancyRegex;
+        lazy_static::lazy_static! {
+            static ref RE_REGEX: FancyRegex = FancyRegex::new(r"^text=/(.*)/([a-z]*)$").unwrap();
+            static ref RE_PLAIN: FancyRegex = FancyRegex::new(r"^text=(.*)$").unwrap();
+            static ref RE_HAS_TEXT: FancyRegex =
+                FancyRegex::new(r#"^(.*?):has-text\((['"])([\s\S]*?)\2\)$"#).unwrap();
+        }
+        RE_REGEX.is_match(s).unwrap_or(false)
+            || RE_PLAIN.is_match(s).unwrap_or(false)
+            || RE_HAS_TEXT.is_match(s).unwrap_or(false)
+    }
+
+    /// Inventar-Test (A6): jeder Selektor in `selectors/*.json`, der wie eine
+    /// Playwright-Textform aussieht (enthaelt "text=" oder ":has-text"), muss vom
+    /// Prelude-Parser tatsaechlich erkannt werden -- sonst faellt er still auf
+    /// rohes `querySelector` zurueck, wo er nie matcht (die Ursache, warum acht
+    /// Keys wie `consent_reject_button` bei gemini/qwen frueher nie feuerten).
+    #[test]
+    fn all_text_form_selectors_are_recognized_by_prelude_parser() {
+        let dir = crate::config::selectors_dir();
+        let mut checked = 0usize;
+        let mut unrecognized = Vec::new();
+        for entry in std::fs::read_dir(&dir).expect("selectors dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path).expect("read selector file");
+            let json: Value = serde_json::from_str(&content).expect("valid json");
+            let Value::Object(map) = json else { continue };
+            for (_key, value) in map {
+                let Value::Array(items) = value else { continue };
+                for item in items {
+                    let Some(s) = item.as_str() else { continue };
+                    if !(s.contains("text=") || s.contains(":has-text")) {
+                        continue;
+                    }
+                    checked += 1;
+                    if !parses_as_text_selector(s) {
+                        unrecognized.push(format!("{}: {s}", path.display()));
+                    }
+                }
+            }
+        }
+        assert!(checked > 0, "erwartete Text-Selektoren in selectors/*.json zu finden");
+        assert!(
+            unrecognized.is_empty(),
+            "Selektoren, die der Prelude-Parser nicht erkennt (fallen still auf querySelector zurueck): {unrecognized:#?}"
+        );
+    }
+
+    #[test]
+    fn prelude_parser_recognizes_each_syntax_form() {
+        assert!(parses_as_text_selector("text=Anmelden"));
+        assert!(parses_as_text_selector("text=/Which response is better/i"));
+        assert!(parses_as_text_selector("button:has-text('Send')"));
+        assert!(parses_as_text_selector(
+            "div[role='dialog'][data-state='open'] button:has-text('Close')"
+        ));
+        // Plain CSS ist bewusst NICHT als Textform erkannt -- geht stattdessen den
+        // normalen querySelector-Pfad.
+        assert!(!parses_as_text_selector("div.prose"));
+        assert!(!parses_as_text_selector("button[aria-label*='Send' i]"));
+    }
+
     #[test]
     fn block_phrase_in_text_detects_qwen_limit() {
         let text = "Oops! There was an issue connecting to Qwen3.7-Plus.\n\
