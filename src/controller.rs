@@ -362,9 +362,20 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 }
                 protocol::ActionType::Shell => {
                     println!("[shell:{}] {}", action.id, action.command);
-                    let result = self
-                        .executor
-                        .execute(&action.command, action.timeout_seconds);
+                    let result = match crate::shell_policy::evaluate(&action.command) {
+                        crate::shell_policy::Decision::Deny(reason) => {
+                            crate::executor::ExecutionResult {
+                                stdout: String::new(),
+                                stderr: format!("[shell_policy] verweigert: {reason}"),
+                                exit_code: None,
+                                timed_out: false,
+                                error: Some(format!("shell_policy_denied: {reason}")),
+                            }
+                        }
+                        crate::shell_policy::Decision::Allow => {
+                            self.executor.execute(&action.command, action.timeout_seconds)
+                        }
+                    };
                     let observation = protocol::format_observation(
                         &action.id,
                         &result.stdout,
@@ -1093,6 +1104,31 @@ mod tests {
         assert_eq!(commands.borrow().len(), 1);
         assert_eq!(commands.borrow()[0], "Write-Output first");
         assert!(meta.completed_actions.contains_key("dup-1"));
+    }
+
+    #[test]
+    fn test_shell_policy_denies_destructive_command_without_executing() {
+        let brain = MockBrain::new().with_responses(
+            vec![
+                &shell_response("del-1", "Remove-Item C:\\data -Recurse -Force"),
+                &finish_response(),
+            ],
+            vec![true, true],
+        );
+        let executor = MockExecutor::new();
+        let commands = executor.commands.clone();
+
+        let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let meta = controller.run("Loesche alles", "mock", None, false).unwrap();
+
+        assert_eq!(meta.status, "done");
+        // Der Executor darf den destruktiven Befehl nie zu Gesicht bekommen.
+        assert!(commands.borrow().is_empty());
+        let observation = meta.completed_actions.get("del-1").expect("observation");
+        assert!(
+            observation.contains("shell_policy"),
+            "erwarte Policy-Hinweis in der Observation, war: {observation}"
+        );
     }
 
     #[test]
