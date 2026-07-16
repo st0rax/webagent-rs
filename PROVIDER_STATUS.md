@@ -7,6 +7,29 @@
 **Letzte Messung:** 2026-07-16 — `webagent relay --brain <id> --headless`,
 Profil `data/profiles/shared`, Release-Build.
 
+## Stabilität: 5 Runden × 8/8 in Folge (2026-07-16), dann qwen-Tageslimit
+
+Ziel war 8/8 in 10 Runden hintereinander. Erreicht wurden **zweimal 5 volle Runden
+8/8 = 40/40 Relays** mit strengem Kriterium (Antwort muss echt „OK" enthalten, nicht
+nur exit 0). Ab Runde 6 fiel **qwen** aus — nicht wegen eines Bugs, sondern weil
+sein **Account-Tageslimit** erreicht war (wörtliche Antwort: „You have reached the
+daily usage limit. Please wait 7 hours before trying again."). Die umfangreiche
+Messung des Tages (>100 qwen-Aufrufe) hat die Quote aufgebraucht; sie setzt sich
+nach ~7 h zurück. Die vollen 10 Runden 8/8 brauchen also entweder den Quoten-Reset
+oder einen ruhigeren Tag.
+
+Härtungen aus dieser Runde (v0.8.1), alle allgemein, kein Brain-Sonderfall:
+- **Bestätigtes Füllen:** `send_generic` sendet erst, wenn der Text nachweislich im
+  Editor steht (`composer_contains`) — nicht mehr blind.
+- **Voller Turn-Retry im Relay:** bis zu 3 Anläufe (new_chat + send + wait), deckt
+  auch die Antwort-Erkennungs-Flakiness ab, nicht nur das Submit. Rate-Limit
+  ausgenommen, Retries sichtbar auf stderr.
+- **Rate-Limit-Erkennung nur für claude:** `is_claude_limit_response_text` lief auf
+  allen acht Brains und meldete für qwens „…limit…"-Text fälschlich
+  `claude_rate_limited` (terminal, ohne Retry). Jetzt claude-spezifisch, per
+  Regressionstest festgenagelt. qwens echtes Limit wird nun ehrlich als seine
+  Antwort durchgereicht statt fehlattribuiert.
+
 ## Stand: 8/8 antworten headless
 
 Gemessen mit `webagent relay --brain <id> --message "Antworte nur mit dem Wort OK."

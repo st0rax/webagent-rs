@@ -32,60 +32,66 @@ pub fn relay_single_turn(
         let _ = backend.stop();
         return Err(RelayError(format!("session_state={state:?}")));
     }
-    // Bis zu zwei Sende-Anläufe: schlägt `send` fehl, wurde nachweislich **nichts**
-    // abgeschickt (send meldet nur bei bestätigtem Absende-Beweis Erfolg), also ist
-    // ein frischer new_chat + erneutes Senden gefahrlos — kein Doppel-Post. Das hebt
-    // Brains mit flakigem Editor-Submit (kimi) von ~75 % auf ~95 %. Nur der Sende-
-    // Schritt wird wiederholt, NICHT wait_response: dort könnte die Nachricht bereits
-    // draußen sein, und ein Retry würde doppelt posten.
-    let mut last_err = String::new();
-    let mut baseline = None;
-    for attempt in 0..2 {
-        if attempt > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(600));
+    // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
+    // sind unvermeidlich flakig: das Editor-Submit greift manchmal nicht (kimi),
+    // manchmal wird die Antwort nicht erkannt (qwen/zai). Jeder Turn startet mit
+    // einem frischen `new_chat`, also entsteht kein Doppel-Post im selben Thread —
+    // ein evtl. schon gesendeter, aber unerkannter Vorgaenger bleibt in seiner
+    // eigenen (verlassenen) Konversation. Rate-Limit wird NICHT wiederholt: das ist
+    // ein echtes "spaeter wieder", kein transienter Fehler. Retries gehen sichtbar
+    // nach stderr, werden also nicht versteckt.
+    const MAX_TURNS: usize = 3;
+    let mut last_err = format!("kein Versuch ausgefuehrt fuer {brain_id}");
+    let mut answer: Option<String> = None;
+    for turn in 0..MAX_TURNS {
+        if turn > 0 {
+            eprintln!("[relay] {brain_id}: Wiederholung {turn}/{}  (vorher: {last_err})", MAX_TURNS - 1);
+            std::thread::sleep(std::time::Duration::from_millis(700));
         }
         if let Err(e) = backend.new_chat() {
             last_err = e;
             continue;
         }
-        match backend.send(message) {
-            Ok(b) => {
-                baseline = Some(b);
-                break;
+        let baseline = match backend.send(message) {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = e;
+                continue;
             }
-            Err(e) => last_err = e,
-        }
-    }
-    let baseline = match baseline {
-        Some(b) => b,
-        None => {
+        };
+        let response = match backend.wait_response(baseline, wait_timeout) {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+        if response.backend_status == "rate_limit" {
             let _ = backend.stop();
-            return Err(RelayError(last_err));
+            return Err(RelayError(
+                "claude_rate_limited: Claude ist aktuell limitiert/nicht verfügbar".into(),
+            ));
         }
-    };
-    let response = backend
-        .wait_response(baseline, wait_timeout)
-        .map_err(RelayError)?;
+        // Leerer Text = Timeout ohne erkannte Antwort. wait_response gibt das als
+        // Ok mit leerem Text zurueck; ohne diese Pruefung zaehlte ein Timeout als
+        // Erfolg (so entstand frueher "5/8 PASS" ohne eine echte Antwort).
+        let text = response.text.trim().to_string();
+        if text.is_empty() {
+            last_err = format!(
+                "keine Antwort erhalten (backend_status={}, generation_complete={})",
+                response.backend_status, response.generation_complete
+            );
+            continue;
+        }
+        answer = Some(text);
+        break;
+    }
     // Shared-Pool: `stop` respektiert `persist_browser_tabs()` (Tab bleibt offen).
     let _ = backend.stop();
-    if response.backend_status == "rate_limit" {
-        return Err(RelayError(
-            "claude_rate_limited: Claude ist aktuell limitiert/nicht verfügbar".into(),
-        ));
+    match answer {
+        Some(text) => Ok(text),
+        None => Err(RelayError(last_err)),
     }
-    // Ohne diese Pruefung meldet der Relay ein Timeout als Erfolg: wait_response
-    // liefert bei "kein Ergebnis" einen leeren Text mit generation_complete=false,
-    // und ein blosses Ok("") wird vom Aufrufer (und vom Smoke-Skript, das exit 0
-    // als PASS wertet) als gruener Lauf gezaehlt. Genau so entstand "5/8 PASS"
-    // ohne eine einzige echte Antwort.
-    let text = response.text.trim().to_string();
-    if text.is_empty() {
-        return Err(RelayError(format!(
-            "keine Antwort erhalten (backend_status={}, generation_complete={})",
-            response.backend_status, response.generation_complete
-        )));
-    }
-    Ok(text)
 }
 
 #[cfg(test)]

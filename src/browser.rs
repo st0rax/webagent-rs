@@ -44,8 +44,13 @@ fn classify_completion(
     stop_seen_ever: bool,
     stop_visible: bool,
     stable_secs: f64,
+    rate_limit_aware: bool,
 ) -> Completion {
-    if is_claude_limit_response_text(text) {
+    // Die Rate-Limit-Erkennung ist Claude-spezifisch (`claude_rate_limited`) und wird
+    // NUR fuer claude angewandt. Sonst schlug sie fuer andere Brains fehl: qwens
+    // Ausgabe/UI-Chrome enthielt "…limit…", wurde faelschlich als Claude-Limit
+    // gewertet und der (terminale) Rate-Limit-Pfad brach den Lauf ohne Retry ab.
+    if rate_limit_aware && is_claude_limit_response_text(text) {
         return Completion::RateLimited;
     }
 
@@ -545,6 +550,19 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         self.eval_bool(&Self::js_scan(composer_js, &set_body, "false"))
     }
 
+    /// True, wenn der Composer sichtbar den Anfang von `text` enthaelt — also das
+    /// Fuellen **als der Editor es sieht** gegriffen hat. `fill_composer` allein meldet
+    /// nur, dass ein Feld existiert; bei kimis Lexical-Editor kann es leer bleiben. Nur
+    /// senden, wenn der Text wirklich drinsteht.
+    fn composer_contains(&self, composer_js: &str, text: &str) -> bool {
+        let needle = text.chars().take(8).collect::<String>();
+        let n = serde_json::to_string(&needle).unwrap_or_else(|_| "\"\"".into());
+        let body = format!(
+            "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');if(v.indexOf({n})!==-1)return true;}}"
+        );
+        self.eval_bool(&Self::js_scan(composer_js, &body, "false"))
+    }
+
     /// Öffnet ein **sichtbares** Chromium auf der Brain-URL und wartet, bis der
     /// Nutzer eingeloggt ist. Es werden **keine Zugangsdaten eingegeben** — die
     /// Anmeldung macht der Nutzer selbst im Fenster; diese Methode pollt nur den
@@ -632,7 +650,14 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         }
         let composer_js = self.sel_js("composer", &[]);
         let has_send_button = !self.sel("send_button").is_empty();
-        if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t)) {
+        // Fuellen und **bestaetigen**, dass der Text wirklich im Editor steht: bei
+        // kimis Lexical-Editor meldete fill_composer frueher Erfolg, obwohl das Feld
+        // leer blieb — dann ging Enter ins Leere und verify_submitted meldete
+        // faelschlich "abgeschickt".
+        if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
+            s.fill_composer(js, t);
+            s.composer_contains(js, t)
+        }) {
             return Err("Composer-Feld nicht gefunden (Timeout)".into());
         }
         std::thread::sleep(Duration::from_millis(150));
@@ -642,6 +667,10 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         // Erfolg gar nicht erst laeuft, hebt die Zuverlaessigkeit deutlich. Bei einem
         // wirklich blockierten Composer (mistral-Dialog) scheitern trotzdem alle.
         for attempt in 0..5 {
+            // Vor jedem Absende-Versuch sicherstellen, dass der Text (noch) drinsteht.
+            if !self.composer_contains(&composer_js, text) {
+                let _ = self.fill_composer(&composer_js, text);
+            }
             if attempt == 0 || !has_send_button {
                 self.press_enter().ok();
             } else if !self.click_visible_real("send_button") {
@@ -650,7 +679,6 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             if self.verify_submitted(baseline, url_before.as_deref()) {
                 return Ok(baseline);
             }
-            let _ = self.fill_composer(&composer_js, text);
         }
         // Frueher: `Ok(baseline)`, auch wenn jeder Versuch scheiterte — der Aufrufer
         // lief dann in den vollen wait_response-Timeout (150s Stille). Jetzt ehrlicher
@@ -949,6 +977,7 @@ impl BrainBackend for WebBrainBackend {
                 stop_seen_ever,
                 stop_visible,
                 stable_secs,
+                self.brain_id == "claude",
             ) {
                 Completion::RateLimited => return Ok(mk(current, target, false, "rate_limit")),
                 Completion::Complete => {
@@ -1090,14 +1119,14 @@ mod tests {
     #[test]
     fn complete_when_stop_button_disappears() {
         // Stop-Button war sichtbar, ist jetzt weg, Text steht.
-        let r = classify_completion("Antworttext ohne JSON", true, true, false, 0.2);
+        let r = classify_completion("Antworttext ohne JSON", true, true, false, 0.2, true);
         assert_eq!(r, Completion::Complete);
     }
 
     #[test]
     fn keep_waiting_while_stop_button_visible() {
         // Solange der Stop-Button sichtbar ist, weiter warten (kein Timeout im Stream).
-        let r = classify_completion("Teiltext, streamt noch", true, true, true, 5.0);
+        let r = classify_completion("Teiltext, streamt noch", true, true, true, 5.0, true);
         assert_eq!(r, Completion::Continue);
     }
 
@@ -1105,20 +1134,20 @@ mod tests {
     fn valid_protocol_json_completes_immediately() {
         // Vollständiges JSON gilt sofort als fertig, selbst wenn der Stop-Button
         // scheinbar noch sichtbar ist (Polling-Timing).
-        let r = classify_completion(VALID_JSON, true, true, true, 0.0);
+        let r = classify_completion(VALID_JSON, true, true, true, 0.0, true);
         assert_eq!(r, Completion::Complete);
     }
 
     #[test]
     fn truncated_json_keeps_waiting() {
         let partial = r#"{"protocol":"webagent/1","actions":[{"id":"a","type":"shell","command":"unterminated"#;
-        let r = classify_completion(partial, true, true, false, 5.0);
+        let r = classify_completion(partial, true, true, false, 5.0, true);
         assert_eq!(r, Completion::Continue);
     }
 
     #[test]
     fn transient_label_keeps_waiting() {
-        let r = classify_completion("Thinking…", true, false, true, 0.0);
+        let r = classify_completion("Thinking…", true, false, true, 0.0, true);
         assert_eq!(r, Completion::Continue);
     }
 
@@ -1130,14 +1159,31 @@ mod tests {
             true,
             false,
             0.0,
+            true,
         );
         assert_eq!(r, Completion::RateLimited);
+    }
+
+    // Regression: derselbe Limit-Text darf für Nicht-Claude-Brains NICHT als
+    // Rate-Limit gelten. qwens Ausgabe/UI enthielt "…usage limit…" und wurde sonst
+    // fälschlich als claude_rate_limited terminal abgebrochen.
+    #[test]
+    fn rate_limit_ignored_when_not_claude() {
+        let r = classify_completion(
+            "You have reached your usage limit for Claude.",
+            true,
+            true,
+            false,
+            0.0,
+            false, // rate_limit_aware=false (nicht claude)
+        );
+        assert_ne!(r, Completion::RateLimited);
     }
 
     #[test]
     fn no_stop_button_falls_back_to_stability() {
         // UI ohne Stop-Button: erst nach Stabilitätsfenster fertig.
-        let unstable = classify_completion("fertiger Text", false, false, false, 0.5);
+        let unstable = classify_completion("fertiger Text", false, false, false, 0.5, true);
         assert_eq!(unstable, Completion::Continue);
         let stable = classify_completion(
             "fertiger Text",
@@ -1145,6 +1191,7 @@ mod tests {
             false,
             false,
             STABILITY_SECONDS + 0.1,
+            true,
         );
         assert_eq!(stable, Completion::Complete);
     }
@@ -1176,6 +1223,7 @@ mod tests {
             false,
             false,
             STABILITY_SECONDS * 1.5 + 0.1,
+            true,
         );
         assert_eq!(r, Completion::Complete);
     }
