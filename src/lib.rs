@@ -9,6 +9,7 @@ pub mod brain;
 pub mod brains_health;
 pub mod browser;
 pub mod browser_pool;
+pub mod circuit_breaker;
 pub mod comms;
 pub mod config;
 pub mod controller;

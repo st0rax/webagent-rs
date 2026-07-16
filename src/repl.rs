@@ -467,13 +467,23 @@ impl ReplSession {
     /// → new_chat → send → wait_response → stop. Für den Swarm, wo jedes Brain der
     /// Reihe nach befragt wird (gemeinsames Profil ⇒ nur eine Session gleichzeitig).
     fn swarm_query(&self, brain_id: &str, prompt: &str) -> Result<String, String> {
+        // Wiederholt blockierte/fehlgeschlagene Brains werden fuer eine Cooldown-
+        // Zeit uebersprungen statt bei jedem Swarm erneut den vollen Timeout zu
+        // kosten (siehe circuit_breaker.rs).
+        if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
+            return Err(format!(
+                "circuit_open: uebersprungen, noch {remaining}s Cooldown"
+            ));
+        }
         let mut backend = WebBrainBackend::from_config(brain_id)?;
         backend.start(self.headless)?;
         let ready_to = resolve_timeout("ensure_ready", brain_id, "", None);
         let state = backend.ensure_ready(ready_to).unwrap_or(SessionState::Error);
         if state != SessionState::Ready {
             let _ = backend.stop();
-            return Err(Self::state_label(state).to_string());
+            let label = Self::state_label(state).to_string();
+            crate::circuit_breaker::record_failure(brain_id, &label);
+            return Err(label);
         }
         let _ = backend.new_chat();
         let baseline = backend.send(prompt).inspect_err(|_| {
@@ -492,6 +502,10 @@ impl ReplSession {
             Err(e) => Err(e),
         };
         let _ = backend.stop();
+        match &out {
+            Ok(_) => crate::circuit_breaker::record_success(brain_id),
+            Err(e) => crate::circuit_breaker::record_failure(brain_id, e),
+        }
         out
     }
 

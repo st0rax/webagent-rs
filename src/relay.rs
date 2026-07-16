@@ -20,6 +20,13 @@ pub fn relay_single_turn(
     headless: bool,
     timeout_override: Option<f64>,
 ) -> Result<String, RelayError> {
+    // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
+    // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
+    if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
+        return Err(RelayError(format!(
+            "circuit_open: {brain_id} uebersprungen, noch {remaining}s Cooldown"
+        )));
+    }
     let mut backend = WebBrainBackend::from_config(brain_id).map_err(RelayError)?;
     let ready_timeout = resolve_timeout("ensure_ready", brain_id, "", timeout_override);
     let wait_timeout = resolve_timeout("wait_response", brain_id, message, timeout_override);
@@ -30,6 +37,7 @@ pub fn relay_single_turn(
         .unwrap_or(SessionState::Error);
     if state != SessionState::Ready {
         let _ = backend.stop();
+        crate::circuit_breaker::record_failure(brain_id, &format!("session_state={state:?}"));
         return Err(RelayError(format!("session_state={state:?}")));
     }
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
@@ -68,6 +76,7 @@ pub fn relay_single_turn(
         };
         if response.backend_status == "rate_limit" {
             let _ = backend.stop();
+            crate::circuit_breaker::record_failure(brain_id, "rate_limit");
             return Err(RelayError(
                 "claude_rate_limited: Claude ist aktuell limitiert/nicht verfügbar".into(),
             ));
@@ -77,6 +86,7 @@ pub fn relay_single_turn(
         // Praefix, damit Messungen es flaggen statt als Tool-Defekt zu werten.
         if response.backend_status == "blocked" {
             let _ = backend.stop();
+            crate::circuit_breaker::record_failure(brain_id, "blocked");
             return Err(RelayError(format!(
                 "blocked: {brain_id}: {}",
                 response.text.trim()
@@ -99,8 +109,14 @@ pub fn relay_single_turn(
     // Shared-Pool: `stop` respektiert `persist_browser_tabs()` (Tab bleibt offen).
     let _ = backend.stop();
     match answer {
-        Some(text) => Ok(text),
-        None => Err(RelayError(last_err)),
+        Some(text) => {
+            crate::circuit_breaker::record_success(brain_id);
+            Ok(text)
+        }
+        None => {
+            crate::circuit_breaker::record_failure(brain_id, &last_err);
+            Err(RelayError(last_err))
+        }
     }
 }
 
