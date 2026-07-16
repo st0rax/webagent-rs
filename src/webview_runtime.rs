@@ -388,6 +388,16 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
         .build(&window)
         .map_err(|e| PageDriverError::Launch(e.to_string()))?;
 
+    // Native JS-Dialoge (alert/confirm/prompt/beforeunload) sind fuer einen
+    // Agenten-gesteuerten Tab reine Blocker: ohne Nutzer, der sie wegklickt,
+    // frieren sie die geteilte Event-Loop fuer ALLE Tabs ein (siehe run_event_loop
+    // -- eval_js pumpt dieselbe Loop, in der ein natives Modal haengen bleibt).
+    // Deaktivieren statt behandeln: das Skript bekommt sofort einen Default-Wert
+    // zurueck, es gibt gar nichts mehr zum Haengenbleiben.
+    if let Err(e) = disable_native_script_dialogs(&webview) {
+        eprintln!("[webview] Konnte native JS-Dialoge nicht deaktivieren: {e}");
+    }
+
     rt.web_context = Some(web_context);
 
     let (page_tx, page_rx) = mpsc::channel();
@@ -407,6 +417,23 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
 
 fn close_page(rt: &mut SharedRuntime, view_id: ViewId) -> Result<()> {
     rt.pages.remove(&view_id);
+    Ok(())
+}
+
+/// Schaltet `alert()`/`confirm()`/`prompt()`/`beforeunload` fuer diesen Tab ab.
+/// WebView2 liefert dann sofort einen Default-Wert statt eine native Modal zu
+/// zeigen -- ohne Nutzer da, um sie wegzuklicken, wuerde sie sonst die geteilte
+/// Event-Loop (ein Thread fuer alle Tabs) dauerhaft blockieren.
+fn disable_native_script_dialogs(webview: &wry::WebView) -> std::result::Result<(), String> {
+    use wry::WebViewExtWindows;
+    unsafe {
+        let controller = webview.controller();
+        let core = controller.CoreWebView2().map_err(|e| e.to_string())?;
+        let settings = core.Settings().map_err(|e| e.to_string())?;
+        settings
+            .SetAreDefaultScriptDialogsEnabled(false)
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

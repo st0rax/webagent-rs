@@ -2513,6 +2513,8 @@ dependencies = [
  "serde_json",
  "tao",
  "time",
+ "webview2-com",
+ "windows",
  "wry",
 ]
 

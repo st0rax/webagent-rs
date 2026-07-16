@@ -481,6 +481,12 @@ impl ReplSession {
         })?;
         let wait_to = resolve_timeout("wait_response", brain_id, prompt, None);
         let out = match backend.wait_response(baseline, wait_to) {
+            // Externe Blockierung (Tageslimit/Login/Cloudflare) ist kein Beitrag zur
+            // Zusammenführung -- sonst landet die Limit-Seite als vermeintliche
+            // "Antwort" im Battle-Royale-Ergebnis (siehe [[external-blocks-flag-not-fail]]).
+            Ok(resp) if resp.backend_status == "blocked" || resp.backend_status == "rate_limit" => {
+                Err(format!("blockiert: {}", resp.text.trim()))
+            }
             Ok(resp) if !resp.text.trim().is_empty() => Ok(resp.text.trim().to_string()),
             Ok(resp) => Err(format!("keine Antwort (status={})", resp.backend_status)),
             Err(e) => Err(e),

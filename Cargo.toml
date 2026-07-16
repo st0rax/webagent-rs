@@ -20,10 +20,14 @@ time = { version = "0.3", features = ["serde", "formatting", "parsing", "std"] }
 # Embedded WebView (wry/tao) — optional, damit der Kern ohne GUI-Deps in CI baut.
 wry = { version = "0.47", optional = true }
 tao = { version = "0.29", optional = true }
+# Direktzugriff auf ICoreWebView2Settings, um native JS-Dialoge (alert/confirm)
+# abzuschalten — die blockieren sonst die geteilte Event-Loop (siehe webview_runtime.rs).
+webview2-com = { version = "0.33", optional = true }
+windows = { version = "0.58", optional = true, features = ["Win32_Foundation"] }
 
 [features]
 default = ["webview"]
-webview = ["dep:wry", "dep:tao"]
+webview = ["dep:wry", "dep:tao", "dep:webview2-com", "dep:windows"]
 
 [lib]
 name = "webagent"
