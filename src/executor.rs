@@ -418,16 +418,31 @@ fn base64_encode(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::MutexGuard;
 
-    fn executor_with_session() -> PlatformShellExecutor {
+    // Jeder Test hier spawnt einen echten PowerShell/sh-Prozess und verlaesst
+    // sich auf enge Timing-Fenster (z.B. 0.8s Timeout gegen einen 3s Sleep).
+    // Liefen alle acht parallel (Standard-`cargo test`-Verhalten), kam es unter
+    // Systemlast reproduzierbar zu 1-7 Fehlschlaegen quer durch alle Tests --
+    // nicht nur die timing-kritischen, was fuer echte Prozess-Spawn-Kontention
+    // spricht (PowerShell-Start ist unter Last/AV-Scan langsam), nicht fuer
+    // einen Logik-Bug. Serialisiert per Lock statt die Zeitfenster aufzuweiten:
+    // die Fenster testen ein echtes Verhalten (kein Leak in die naechste Action),
+    // nicht Performance-Grenzwerte.
+    lazy_static::lazy_static! {
+        static ref SHELL_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    }
+
+    fn executor_with_session() -> (PlatformShellExecutor, MutexGuard<'static, ()>) {
+        let guard = SHELL_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let ex = PlatformShellExecutor::new();
         ex.start();
-        ex
+        (ex, guard)
     }
 
     #[test]
     fn test_simple_command() {
-        let executor = executor_with_session();
+        let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
         let result = executor.execute("Write-Output hello", 5.0);
@@ -443,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_timeout() {
-        let executor = executor_with_session();
+        let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
         let result = executor.execute("Start-Sleep -Seconds 10", 1.0);
@@ -457,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_nonzero_exit() {
-        let executor = executor_with_session();
+        let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
         let result = executor.execute("cmd /c exit 42", 5.0);
@@ -472,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_stale_lastexitcode_not_inherited() {
-        let executor = executor_with_session();
+        let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
         {
@@ -498,7 +513,7 @@ mod tests {
 
     #[test]
     fn test_timeout_no_leak_to_next_action() {
-        let executor = executor_with_session();
+        let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
         {
@@ -523,7 +538,7 @@ mod tests {
 
     #[test]
     fn test_fake_marker_does_not_complete_early() {
-        let executor = executor_with_session();
+        let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
         let result = executor.execute("Write-Output \"__W2T_DONE_fake__0__\"", 5.0);
@@ -537,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_cwd_persists_across_commands() {
-        let executor = executor_with_session();
+        let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
         {
@@ -561,7 +576,7 @@ mod tests {
 
     #[test]
     fn test_stderr_capture() {
-        let executor = executor_with_session();
+        let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
         let result = executor.execute("[Console]::Error.WriteLine('test error')", 5.0);
