@@ -32,6 +32,8 @@ pub enum SlashCommand {
     Chat { message: String },
     Whoami,
     Brains,
+    /// Leistungsindex-Tabelle (Reliability aus echten swarm/relay-Aufrufen).
+    Score,
     /// Stehendes Ziel setzen/anzeigen/löschen (fließt in autonome Aufgaben ein).
     Goal { arg: Option<String> },
     /// Multi-Brain-Swarm: alle antworten, dann führt ein Orchestrator zusammen.
@@ -137,6 +139,9 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     if trimmed == "/brains" || trimmed == "/modules" {
         return Some(SlashCommand::Brains);
     }
+    if trimmed == "/score" || trimmed == "/leaderboard" {
+        return Some(SlashCommand::Score);
+    }
     if let Some(rest) = trimmed.strip_prefix("/chat ") {
         return Some(SlashCommand::Chat {
             message: rest.trim().to_string(),
@@ -241,7 +246,7 @@ impl ReplSession {
             self.brain_id, state
         );
         println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>");
-        println!("           /new  /brains  /whoami  /memory  /login  /exit");
+        println!("           /new  /brains  /whoami  /score  /memory  /login  /exit");
         println!();
     }
 
@@ -263,6 +268,29 @@ impl ReplSession {
                 Self::state_label(state),
                 state
             ),
+        }
+    }
+
+    /// Leistungsindex-Tabelle ausgeben (`/score`) -- Reliability aus echten
+    /// swarm/relay-Aufrufen, nicht aus einem separaten Benchmark. Brains ohne
+    /// Ereignisse (noch nie ueber /swarm oder relay befragt) fehlen schlicht,
+    /// statt mit einer erfundenen 0 zu erscheinen.
+    fn print_score(&self) {
+        let board = crate::brain_score::leaderboard();
+        if board.is_empty() {
+            println!("[score] Noch keine Daten -- /swarm oder relay muessen erst laufen.");
+            return;
+        }
+        println!("[score] Leistungsindex (Reliability aus den letzten Aufrufen je Brain):");
+        for s in board {
+            let reason = s
+                .last_reason
+                .map(|r| format!("  letzter Fehlschlag: {r}"))
+                .unwrap_or_default();
+            println!(
+                "  {:<10} reliability={:.2}  {}/{} Erfolge  ⌀{}ms{reason}",
+                s.brain_id, s.reliability, s.window_successes, s.window_events, s.avg_latency_ms
+            );
         }
     }
 
@@ -401,6 +429,10 @@ impl ReplSession {
                 println!("[brains] Aktiv: {} (/switch <brain> zum Wechseln)", self.brain_id);
                 ReplAction::Continue
             }
+            SlashCommand::Score => {
+                self.print_score();
+                ReplAction::Continue
+            }
             SlashCommand::Goal { arg } => {
                 self.handle_goal(arg);
                 ReplAction::Continue
@@ -475,6 +507,8 @@ impl ReplSession {
                 "circuit_open: uebersprungen, noch {remaining}s Cooldown"
             ));
         }
+        let started = std::time::Instant::now();
+        let prompt_chars = prompt.chars().count();
         let mut backend = WebBrainBackend::from_config(brain_id)?;
         backend.start(self.headless)?;
         let ready_to = resolve_timeout("ensure_ready", brain_id, "", None);
@@ -483,6 +517,13 @@ impl ReplSession {
             let _ = backend.stop();
             let label = Self::state_label(state).to_string();
             crate::circuit_breaker::record_failure(brain_id, &label);
+            crate::brain_score::record_event(
+                brain_id,
+                false,
+                Some(&label),
+                started.elapsed().as_millis() as u64,
+                prompt_chars,
+            );
             return Err(label);
         }
         let _ = backend.new_chat();
@@ -502,9 +543,16 @@ impl ReplSession {
             Err(e) => Err(e),
         };
         let _ = backend.stop();
+        let latency_ms = started.elapsed().as_millis() as u64;
         match &out {
-            Ok(_) => crate::circuit_breaker::record_success(brain_id),
-            Err(e) => crate::circuit_breaker::record_failure(brain_id, e),
+            Ok(_) => {
+                crate::circuit_breaker::record_success(brain_id);
+                crate::brain_score::record_event(brain_id, true, None, latency_ms, prompt_chars);
+            }
+            Err(e) => {
+                crate::circuit_breaker::record_failure(brain_id, e);
+                crate::brain_score::record_event(brain_id, false, Some(e), latency_ms, prompt_chars);
+            }
         }
         out
     }
@@ -780,6 +828,12 @@ mod tests {
                 prompt: "42 Dinge".into()
             })
         );
+    }
+
+    #[test]
+    fn parse_score() {
+        assert_eq!(parse_slash_command("/score"), Some(SlashCommand::Score));
+        assert_eq!(parse_slash_command("/leaderboard"), Some(SlashCommand::Score));
     }
 
     #[test]

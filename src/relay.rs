@@ -1,5 +1,7 @@
 //! Single-turn relay (Python `relay_single_turn`) — send+wait, kein Controller/Shell.
 
+use std::time::Instant;
+
 use crate::brain::{BrainBackend, SessionState};
 use crate::browser::WebBrainBackend;
 use crate::timeouts::resolve_timeout;
@@ -27,6 +29,8 @@ pub fn relay_single_turn(
             "circuit_open: {brain_id} uebersprungen, noch {remaining}s Cooldown"
         )));
     }
+    let started = Instant::now();
+    let prompt_chars = message.chars().count();
     let mut backend = WebBrainBackend::from_config(brain_id).map_err(RelayError)?;
     let ready_timeout = resolve_timeout("ensure_ready", brain_id, "", timeout_override);
     let wait_timeout = resolve_timeout("wait_response", brain_id, message, timeout_override);
@@ -37,8 +41,16 @@ pub fn relay_single_turn(
         .unwrap_or(SessionState::Error);
     if state != SessionState::Ready {
         let _ = backend.stop();
-        crate::circuit_breaker::record_failure(brain_id, &format!("session_state={state:?}"));
-        return Err(RelayError(format!("session_state={state:?}")));
+        let reason = format!("session_state={state:?}");
+        crate::circuit_breaker::record_failure(brain_id, &reason);
+        crate::brain_score::record_event(
+            brain_id,
+            false,
+            Some(&reason),
+            started.elapsed().as_millis() as u64,
+            prompt_chars,
+        );
+        return Err(RelayError(reason));
     }
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
     // sind unvermeidlich flakig: das Editor-Submit greift manchmal nicht (kimi),
@@ -77,6 +89,13 @@ pub fn relay_single_turn(
         if response.backend_status == "rate_limit" {
             let _ = backend.stop();
             crate::circuit_breaker::record_failure(brain_id, "rate_limit");
+            crate::brain_score::record_event(
+                brain_id,
+                false,
+                Some("rate_limit"),
+                started.elapsed().as_millis() as u64,
+                prompt_chars,
+            );
             return Err(RelayError(
                 "claude_rate_limited: Claude ist aktuell limitiert/nicht verfügbar".into(),
             ));
@@ -87,6 +106,13 @@ pub fn relay_single_turn(
         if response.backend_status == "blocked" {
             let _ = backend.stop();
             crate::circuit_breaker::record_failure(brain_id, "blocked");
+            crate::brain_score::record_event(
+                brain_id,
+                false,
+                Some("blocked"),
+                started.elapsed().as_millis() as u64,
+                prompt_chars,
+            );
             return Err(RelayError(format!(
                 "blocked: {brain_id}: {}",
                 response.text.trim()
@@ -108,13 +134,16 @@ pub fn relay_single_turn(
     }
     // Shared-Pool: `stop` respektiert `persist_browser_tabs()` (Tab bleibt offen).
     let _ = backend.stop();
+    let latency_ms = started.elapsed().as_millis() as u64;
     match answer {
         Some(text) => {
             crate::circuit_breaker::record_success(brain_id);
+            crate::brain_score::record_event(brain_id, true, None, latency_ms, prompt_chars);
             Ok(text)
         }
         None => {
             crate::circuit_breaker::record_failure(brain_id, &last_err);
+            crate::brain_score::record_event(brain_id, false, Some(&last_err), latency_ms, prompt_chars);
             Err(RelayError(last_err))
         }
     }
