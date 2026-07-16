@@ -32,6 +32,14 @@ pub enum SlashCommand {
     Chat { message: String },
     Whoami,
     Brains,
+    /// Stehendes Ziel setzen/anzeigen/löschen (fließt in autonome Aufgaben ein).
+    Goal { arg: Option<String> },
+    /// Multi-Brain-Swarm: alle antworten, dann führt ein Orchestrator zusammen.
+    /// `orchestrator = Some(n)` wählt Brain n (1-basiert) fest; `None` = Konsens.
+    Swarm {
+        orchestrator: Option<usize>,
+        prompt: String,
+    },
     Unknown { raw: String },
 }
 
@@ -74,12 +82,50 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     if trimmed == "/forget" {
         return Some(SlashCommand::Forget { id: 0 });
     }
-    if trimmed == "/switch" {
+    // /switch und /model sind synonym — ein „Brain" ist das Modell/der Provider,
+    // wie der /model-Parameter bei anderen Agenten.
+    if trimmed == "/switch" || trimmed == "/model" {
         return Some(SlashCommand::Switch { target: None });
     }
-    if let Some(rest) = trimmed.strip_prefix("/switch ") {
+    if let Some(rest) = trimmed
+        .strip_prefix("/switch ")
+        .or_else(|| trimmed.strip_prefix("/model "))
+    {
         return Some(SlashCommand::Switch {
             target: Some(rest.trim().to_lowercase()),
+        });
+    }
+    if trimmed == "/goal" {
+        return Some(SlashCommand::Goal { arg: None });
+    }
+    if let Some(rest) = trimmed.strip_prefix("/goal ") {
+        return Some(SlashCommand::Goal {
+            arg: Some(rest.trim().to_string()),
+        });
+    }
+    if trimmed == "/swarm" {
+        return Some(SlashCommand::Swarm {
+            orchestrator: None,
+            prompt: String::new(),
+        });
+    }
+    if let Some(rest) = trimmed.strip_prefix("/swarm ") {
+        let rest = rest.trim();
+        // Optionaler Orchestrator-Index: „/swarm 3 <prompt>" (1-8). Nur wenn das
+        // erste Token eine Zahl 1-8 ist UND ein Prompt folgt — sonst ganzer Rest = Prompt.
+        if let Some((head, tail)) = rest.split_once(char::is_whitespace) {
+            if let Ok(n) = head.parse::<usize>() {
+                if (1..=8).contains(&n) && !tail.trim().is_empty() {
+                    return Some(SlashCommand::Swarm {
+                        orchestrator: Some(n),
+                        prompt: tail.trim().to_string(),
+                    });
+                }
+            }
+        }
+        return Some(SlashCommand::Swarm {
+            orchestrator: None,
+            prompt: rest.to_string(),
         });
     }
     if trimmed == "/login" {
@@ -108,6 +154,8 @@ struct ReplSession {
     resume: Option<String>,
     memory: MemoryStore,
     brain_open: bool,
+    /// Stehendes Ziel: wird jeder autonomen Aufgabe als Kontext vorangestellt.
+    goal: Option<String>,
 }
 
 impl ReplSession {
@@ -123,6 +171,7 @@ impl ReplSession {
             resume: None,
             memory: MemoryStore::new(memory_path),
             brain_open: false,
+            goal: None,
         })
     }
 
@@ -191,7 +240,8 @@ impl ReplSession {
             "  Aktiv:   \x1b[1;36m{}\x1b[0m — {who} — session: {:?}",
             self.brain_id, state
         );
-        println!("  Befehle: /switch <brain>  /chat <text>  /new  /brains  /whoami  /memory  /login  /exit");
+        println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>");
+        println!("           /new  /brains  /whoami  /memory  /login  /exit");
         println!();
     }
 
@@ -351,6 +401,17 @@ impl ReplSession {
                 println!("[brains] Aktiv: {} (/switch <brain> zum Wechseln)", self.brain_id);
                 ReplAction::Continue
             }
+            SlashCommand::Goal { arg } => {
+                self.handle_goal(arg);
+                ReplAction::Continue
+            }
+            SlashCommand::Swarm {
+                orchestrator,
+                prompt,
+            } => {
+                self.run_swarm(orchestrator, &prompt);
+                ReplAction::Continue
+            }
             SlashCommand::Chat { message } => {
                 if message.is_empty() {
                     println!("[system] Nutzung: /chat <nachricht>");
@@ -382,14 +443,177 @@ impl ReplSession {
         }
     }
 
+    /// `/goal` — stehendes Ziel setzen, anzeigen oder löschen.
+    fn handle_goal(&mut self, arg: Option<String>) {
+        match arg.as_deref().map(str::trim) {
+            None | Some("") => match &self.goal {
+                Some(g) => println!("[goal] Aktuelles Ziel: {g}"),
+                None => println!("[goal] Kein Ziel gesetzt. Nutzung: /goal <text>  ·  /goal clear"),
+            },
+            Some("clear") | Some("löschen") | Some("loeschen") => {
+                self.goal = None;
+                println!("[goal] Ziel gelöscht.");
+            }
+            Some(text) => {
+                self.goal = Some(text.to_string());
+                println!(
+                    "[goal] Ziel gesetzt: {text}\n[goal] Fließt ab jetzt als Kontext in jede autonome Aufgabe ein (/goal clear zum Entfernen)."
+                );
+            }
+        }
+    }
+
+    /// Ein voller Frage-Zyklus gegen ein frisches Brain-Backend: start → ensure_ready
+    /// → new_chat → send → wait_response → stop. Für den Swarm, wo jedes Brain der
+    /// Reihe nach befragt wird (gemeinsames Profil ⇒ nur eine Session gleichzeitig).
+    fn swarm_query(&self, brain_id: &str, prompt: &str) -> Result<String, String> {
+        let mut backend = WebBrainBackend::from_config(brain_id)?;
+        backend.start(self.headless)?;
+        let ready_to = resolve_timeout("ensure_ready", brain_id, "", None);
+        let state = backend.ensure_ready(ready_to).unwrap_or(SessionState::Error);
+        if state != SessionState::Ready {
+            let _ = backend.stop();
+            return Err(Self::state_label(state).to_string());
+        }
+        let _ = backend.new_chat();
+        let baseline = backend.send(prompt).inspect_err(|_| {
+            let _ = backend.stop();
+        })?;
+        let wait_to = resolve_timeout("wait_response", brain_id, prompt, None);
+        let out = match backend.wait_response(baseline, wait_to) {
+            Ok(resp) if !resp.text.trim().is_empty() => Ok(resp.text.trim().to_string()),
+            Ok(resp) => Err(format!("keine Antwort (status={})", resp.backend_status)),
+            Err(e) => Err(e),
+        };
+        let _ = backend.stop();
+        out
+    }
+
+    /// `/swarm [n] <prompt>` — Multi-Brain-Swarm.
+    ///
+    /// 1. **Battle Royale:** jedes Brain beantwortet den Prompt.
+    /// 2. **Orchestrator:** entweder fest gewählt (`n` = 1-8) oder per **Konsens** —
+    ///    jedes Brain nominiert eines, Mehrheit gewinnt.
+    /// 3. **Zusammenführung:** der Orchestrator verdichtet alle Antworten zu einer.
+    ///
+    /// Das aktive Brain wird pausiert (gemeinsames Profil) und danach wiederhergestellt.
+    fn run_swarm(&mut self, orchestrator: Option<usize>, prompt: &str) {
+        if prompt.trim().is_empty() {
+            println!("[swarm] Nutzung: /swarm <prompt>            — Orchestrator per Konsens");
+            println!("[swarm]         /swarm <1-8> <prompt>     — Orchestrator fest wählen");
+            return;
+        }
+        let targets = available_brain_ids();
+        if let Some(n) = orchestrator {
+            if !(1..=targets.len()).contains(&n) {
+                println!("[swarm] Ungültiger Orchestrator-Index {n} (1-{}).", targets.len());
+                return;
+            }
+        }
+        self.stop_brain(); // gemeinsames Profil freigeben
+
+        // ---- Phase 1: Battle Royale — jedes Brain antwortet ----
+        println!("[swarm] Phase 1 — {} Brains antworten…", targets.len());
+        let mut answers: Vec<(String, String)> = Vec::new();
+        for (i, tb) in targets.iter().enumerate() {
+            match self.swarm_query(tb, prompt) {
+                Ok(a) => {
+                    println!("[swarm {}/{}] \x1b[1m{tb}\x1b[0m: {a}", i + 1, targets.len());
+                    answers.push((tb.clone(), a));
+                }
+                Err(e) => println!("[swarm {}/{}] {tb}: — {e}", i + 1, targets.len()),
+            }
+        }
+        if answers.len() < 2 {
+            println!("[swarm] Zu wenige Antworten ({}) für eine Zusammenführung.", answers.len());
+            let _ = self.start_brain();
+            return;
+        }
+        let names: Vec<String> = answers.iter().map(|(b, _)| b.clone()).collect();
+
+        // ---- Phase 2: Orchestrator bestimmen ----
+        let orch = match orchestrator {
+            Some(n) => {
+                let chosen = targets[n - 1].clone();
+                if !names.contains(&chosen) {
+                    println!("[swarm] {chosen} hat nicht geantwortet — nehme {} als Orchestrator.", names[0]);
+                    names[0].clone()
+                } else {
+                    println!("[swarm] Phase 2 — Orchestrator (fest): \x1b[1m{chosen}\x1b[0m");
+                    chosen
+                }
+            }
+            None => {
+                println!("[swarm] Phase 2 — Konsens: Brains nominieren einen Orchestrator…");
+                let vote_prompt = format!(
+                    "Mehrere KI-Modelle haben diese Aufgabe beantwortet: «{prompt}».\n\
+                     Teilnehmer: {}.\n\
+                     Welches EINE Modell soll die Antworten zu einer finalen Antwort zusammenführen?\n\
+                     Antworte NUR mit genau einem Namen aus der Liste.",
+                    names.join(", ")
+                );
+                let mut votes: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
+                for voter in &names {
+                    if let Ok(v) = self.swarm_query(voter, &vote_prompt) {
+                        let low = v.to_lowercase();
+                        // Erste Nennung eines Teilnehmernamens zählt als Stimme.
+                        if let Some(pick) = names.iter().find(|n| low.contains(&n.to_lowercase())) {
+                            *votes.entry(pick.clone()).or_insert(0) += 1;
+                            println!("[swarm vote] {voter} → {pick}");
+                        } else {
+                            println!("[swarm vote] {voter} → (keine klare Nennung)");
+                        }
+                    }
+                }
+                // Gewinner: meiste Stimmen; bei Gleichstand die Reihenfolge in `names`.
+                let winner = names
+                    .iter()
+                    .max_by_key(|n| votes.get(*n).copied().unwrap_or(0))
+                    .cloned()
+                    .unwrap_or_else(|| names[0].clone());
+                let wv = votes.get(&winner).copied().unwrap_or(0);
+                println!("[swarm] Konsens: \x1b[1m{winner}\x1b[0m ({wv} Stimme(n))");
+                winner
+            }
+        };
+
+        // ---- Phase 3: Orchestrator führt zusammen ----
+        println!("[swarm] Phase 3 — {orch} führt zusammen…");
+        let joined: String = answers
+            .iter()
+            .map(|(b, a)| format!("### {b}\n{a}"))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let synth_prompt = format!(
+            "Aufgabe: «{prompt}».\n\nDie beteiligten Modelle haben so geantwortet:\n\n{joined}\n\n\
+             Führe diese Antworten zu einer einzigen, besten finalen Antwort zusammen. \
+             Nenne Widersprüche, wenn es welche gibt.",
+        );
+        match self.swarm_query(&orch, &synth_prompt) {
+            Ok(final_answer) => {
+                println!("\n[swarm ⇒ final via \x1b[1m{orch}\x1b[0m]\n{final_answer}\n");
+            }
+            Err(e) => println!("[swarm] Zusammenführung durch {orch} fehlgeschlagen: {e}"),
+        }
+
+        let _ = self.start_brain(); // aktives Brain wiederherstellen
+        println!("[swarm] fertig. Aktiv weiterhin: {}", self.brain_id);
+    }
+
     fn run_autonomous(&mut self, task: &str) {
         let _ = self.start_brain();
+        // Stehendes Ziel als Kontext voranstellen.
+        let effective = match &self.goal {
+            Some(g) => format!("Übergeordnetes Ziel: {g}\n\nAktuelle Aufgabe: {task}"),
+            None => task.to_string(),
+        };
         let opts = RunOptions {
             skip_brain_start: true,
             skip_brain_stop: true,
         };
         match self.controller.run_with_options(
-            task,
+            &effective,
             &self.brain_id,
             self.resume.as_deref(),
             self.headless,
@@ -485,6 +709,57 @@ mod tests {
             })
         );
         assert_eq!(parse_slash_command("run task"), None);
+    }
+
+    #[test]
+    fn parse_model_is_switch_alias() {
+        assert_eq!(
+            parse_slash_command("/model claude"),
+            Some(SlashCommand::Switch {
+                target: Some("claude".into())
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/model"),
+            Some(SlashCommand::Switch { target: None })
+        );
+    }
+
+    #[test]
+    fn parse_goal_and_swarm() {
+        assert_eq!(
+            parse_slash_command("/goal alles testen"),
+            Some(SlashCommand::Goal {
+                arg: Some("alles testen".into())
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/goal"),
+            Some(SlashCommand::Goal { arg: None })
+        );
+        assert_eq!(
+            parse_slash_command("/swarm Was ist 2+2?"),
+            Some(SlashCommand::Swarm {
+                orchestrator: None,
+                prompt: "Was ist 2+2?".into()
+            })
+        );
+        // Führender 1-8-Index wählt den Orchestrator fest.
+        assert_eq!(
+            parse_slash_command("/swarm 3 Fasse zusammen"),
+            Some(SlashCommand::Swarm {
+                orchestrator: Some(3),
+                prompt: "Fasse zusammen".into()
+            })
+        );
+        // Zahl außerhalb 1-8 ist Teil des Prompts, kein Orchestrator.
+        assert_eq!(
+            parse_slash_command("/swarm 42 Dinge"),
+            Some(SlashCommand::Swarm {
+                orchestrator: None,
+                prompt: "42 Dinge".into()
+            })
+        );
     }
 
     #[test]
