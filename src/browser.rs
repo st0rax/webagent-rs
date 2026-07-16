@@ -627,6 +627,45 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         Ok(())
     }
 
+    /// Liest den eingeloggten Account (E-Mail oder Anzeigename) aus der Seite —
+    /// fuer den REPL-Startbanner (pi.dev-Stil). Bevorzugt eine E-Mail; sonst den
+    /// Text/Titel eines User-/Account-/Avatar-Elements. `None`, wenn nichts Plausibles
+    /// gefunden wird (z.B. nicht eingeloggt). Erst ein optionaler per-Brain-`account`-
+    /// Selektor, dann generische Heuristik.
+    pub fn account_label(&self) -> Option<String> {
+        let account_sels = self.sel_js("account", &[]);
+        // Hohe Praezision statt Vollstaendigkeit: lieber `None` als ein Avatar-Alt-Text.
+        // (1) konfigurierter per-Brain-`account`-Selektor, (2) eine E-Mail irgendwo,
+        // (3) ein „angemeldet als X"/„signed in as X"-Muster. Sonst nichts.
+        let js = format!(
+            r#"(function(){{
+function clean(t){{return (t||'').replace(/\s+/g,' ').trim();}}
+var EMAIL=/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{{2,}}/i;
+var cfg={account_sels};
+for(var i=0;i<cfg.length;i++){{try{{var el=document.querySelector(cfg[i]);if(el){{var t=clean(el.getAttribute('title')||el.getAttribute('aria-label')||el.innerText||el.textContent);if(t)return t.slice(0,48);}}}}catch(e){{}}}}
+var body=clean(document.body?document.body.innerText:'');
+var m=body.match(EMAIL);
+if(m)return m[0];
+// E-Mail auch in Attributen (gemini: im aria-label des Konto-Links, nicht im Text).
+var attrEls=document.querySelectorAll('[aria-label],[title],[alt]');
+for(var a=0;a<attrEls.length;a++){{var s=(attrEls[a].getAttribute('aria-label')||'')+' '+(attrEls[a].getAttribute('title')||'')+' '+(attrEls[a].getAttribute('alt')||'');var mm=s.match(EMAIL);if(mm)return mm[0];}}
+var sa=body.match(/(?:signed in as|angemeldet als|logged in as|account:)\s*([^\s,;|]{{2,40}})/i);
+if(sa)return sa[1];
+return null;}})()"#
+        );
+        let raw = self
+            .eval(&js)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.trim().to_string()))
+            .filter(|s| !s.is_empty() && s != "null")?;
+        // Dedup doppelter Namen wie „storax storax" -> „storax".
+        let words: Vec<&str> = raw.split_whitespace().collect();
+        if words.len() == 2 && words[0].eq_ignore_ascii_case(words[1]) {
+            return Some(words[0].to_string());
+        }
+        Some(raw)
+    }
+
     pub fn interactive_login(&mut self, timeout: Duration) -> Result<bool, String> {
         self.start(false)?; // headed — Login erfordert Nutzerinteraktion
         let start = Instant::now();
@@ -1003,7 +1042,7 @@ impl BrainBackend for WebBrainBackend {
             // Frueh (statt erst beim Timeout) auf ein Block-Banner pruefen, damit ein
             // Rate-/Nachrichtenlimit nicht ~timeout Sekunden je Turn kostet. ~alle 2 s.
             block_polls += 1;
-            if block_polls % 7 == 0 {
+            if block_polls.is_multiple_of(7) {
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, -1, false, "blocked"));
                 }
@@ -1050,7 +1089,7 @@ impl BrainBackend for WebBrainBackend {
             // mistrals „Nachrichtenlimit erreicht" erscheint erst NACH dem Senden,
             // also bricht Phase 1 vorher ab und nur hier wird es rechtzeitig erkannt.
             p2_polls += 1;
-            if last_text.trim().is_empty() && p2_polls % 7 == 0 {
+            if last_text.trim().is_empty() && p2_polls.is_multiple_of(7) {
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, target, false, "blocked"));
                 }

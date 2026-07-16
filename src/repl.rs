@@ -30,6 +30,8 @@ pub enum SlashCommand {
     Switch { target: Option<String> },
     Login,
     Chat { message: String },
+    Whoami,
+    Brains,
     Unknown { raw: String },
 }
 
@@ -82,6 +84,12 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     }
     if trimmed == "/login" {
         return Some(SlashCommand::Login);
+    }
+    if trimmed == "/whoami" {
+        return Some(SlashCommand::Whoami);
+    }
+    if trimmed == "/brains" || trimmed == "/modules" {
+        return Some(SlashCommand::Brains);
     }
     if let Some(rest) = trimmed.strip_prefix("/chat ") {
         return Some(SlashCommand::Chat {
@@ -146,11 +154,66 @@ impl ReplSession {
         self.stop_brain();
     }
 
-    fn print_banner(&self, state: SessionState) {
+    /// Kurzbeschreibung des Login-/Session-Zustands eines Brains.
+    fn state_label(state: SessionState) -> &'static str {
+        match state {
+            SessionState::Ready => "angemeldet",
+            SessionState::LoginRequired => "Login nötig (/login)",
+            SessionState::Cloudflare => "Cloudflare-Prüfung",
+            SessionState::Error => "nicht erreichbar",
+        }
+    }
+
+    /// pi.dev-artiger Startbanner: verfügbare Module, aktives Brain, eingeloggter
+    /// Account und Session-Zustand.
+    fn print_banner(&mut self, state: SessionState) {
+        let brains = available_brain_ids();
+        let modules: String = brains
+            .iter()
+            .map(|id| {
+                if id == &self.brain_id {
+                    format!("\x1b[1;36m▸{id}\x1b[0m")
+                } else {
+                    format!(" {id}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let account = self.controller.brain().account_label();
+        let who = match &account {
+            Some(a) => format!("angemeldet als \x1b[1m{a}\x1b[0m"),
+            None => Self::state_label(state).to_string(),
+        };
+        println!();
+        println!("  \x1b[1mwebagent\x1b[0m · lokaler Browser-Agent ({} Module)", brains.len());
+        println!("  Module:  {modules}");
         println!(
-            "[repl] Brain={} session_state={:?}. Befehle: /memory /remember /forget /switch /login /chat /new /exit",
+            "  Aktiv:   \x1b[1;36m{}\x1b[0m — {who} — session: {:?}",
             self.brain_id, state
         );
+        println!("  Befehle: /switch <brain>  /chat <text>  /new  /brains  /whoami  /memory  /login  /exit");
+        println!();
+    }
+
+    /// Aktuellen Account + Zustand des aktiven Brains ausgeben (`/whoami`).
+    fn print_whoami(&mut self) {
+        let state = self
+            .brain_mut()
+            .ensure_ready(5.0)
+            .unwrap_or(SessionState::Error);
+        let account = self.controller.brain().account_label();
+        match account {
+            Some(a) => println!(
+                "[whoami] {}: angemeldet als {a} (session {:?})",
+                self.brain_id, state
+            ),
+            None => println!(
+                "[whoami] {}: {} (session {:?})",
+                self.brain_id,
+                Self::state_label(state),
+                state
+            ),
+        }
     }
 
     fn handle_line(&mut self, line: &str) -> ReplAction {
@@ -277,6 +340,15 @@ impl ReplSession {
                     Ok(()) => println!("[system] Anmelden geklickt."),
                     Err(e) => eprintln!("[system] Fehler: {e}"),
                 }
+                ReplAction::Continue
+            }
+            SlashCommand::Whoami => {
+                self.print_whoami();
+                ReplAction::Continue
+            }
+            SlashCommand::Brains => {
+                println!("[brains] Verfügbar: {}", available_brain_ids().join("  "));
+                println!("[brains] Aktiv: {} (/switch <brain> zum Wechseln)", self.brain_id);
                 ReplAction::Continue
             }
             SlashCommand::Chat { message } => {
