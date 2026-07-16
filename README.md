@@ -9,15 +9,15 @@ Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: plattformunabhä
 (Windows, Linux), ohne C-Toolchain für den Kern baubar, mit **Embedded WebView**
 (`wry`/`tao`) statt CDP/Playwright.
 
-> **Status (v0.7.0):** Kern vollständig portiert und getestet (`cargo test`
+> **Status (v0.8.0):** Kern vollständig portiert und getestet (`cargo test`
 > + `cargo clippy --all-targets -D warnings` grün, Linux-CI grün).
 > `comms.rs` (internes Messaging, ersetzt bot2bot für webagent-intern) in CLI/Controller verdrahtet.
 > Browser-Steuerung über Embedded WebView + `BrowserPool`; REPL hält die Session über Turns offen.
 >
-> **Provider: 7 von 8 antworten headless** — chatgpt, deepseek, gemini, qwen, claude,
-> mistral, zai. Gemessen per `relay` mit echten Antworten, nicht per Exit-Code.
-> Offen: kimi (geht jeder zweite Lauf durch, Zustands-Toggle in `new_chat()`).
-> Messwerte und Historie: [`PROVIDER_STATUS.md`](PROVIDER_STATUS.md).
+> **Provider: 8 von 8 antworten headless** — chatgpt, deepseek, kimi, gemini, qwen,
+> claude, mistral, zai. Gemessen per `relay` mit echten Antworten (nicht per
+> Exit-Code), zwei volle Runden 8/8. Messwerte und Historie:
+> [`PROVIDER_STATUS.md`](PROVIDER_STATUS.md).
 >
 > ⚠️ Die frühere Aussage „5/8 headless, chatgpt/claude/mistral scheitern an Cloudflare"
 > war **falsch**: `cloudflare: false` bei allen acht. Drei Bugs hatten alles maskiert

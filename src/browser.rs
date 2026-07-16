@@ -527,19 +527,22 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
                 let _ = driver.insert_text(text);
             }
         }
-        // 4) Fallback: nur falls der Composer weiterhin leer ist, .value setzen.
         let t = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
+        // 4) Falls der Composer weiterhin leer ist: execCommand('insertText'). Das
+        //    feuert beforeinput/input mit inputType 'insertText' — der Weg, den
+        //    Rich-Text-Editoren (Lexical bei kimi, ProseMirror bei mistral) als echte
+        //    Eingabe registrieren. Ein direktes textContent=… (Schritt 5) rendert zwar
+        //    sichtbar, aber Lexical verwirft es beim naechsten Reconcile, sodass Enter
+        //    nichts abschickt — genau das machte kimi frueher unzuverlaessig.
+        let exec_body = format!(
+            "var el=Q(S[i]);if(el){{var cur=('value' in el)?(el.value||''):(el.textContent||'');if(cur.trim().length===0){{el.focus();try{{document.execCommand('insertText',false,{t});}}catch(e){{}}}}return true;}}"
+        );
+        let _ = self.eval_bool(&Self::js_scan(composer_js, &exec_body, "false"));
+        // 5) Letzter Ausweg: nur falls immer noch leer, roh .value/.textContent setzen.
         let set_body = format!(
             "var el=Q(S[i]);if(el){{var cur=('value' in el)?(el.value||''):(el.textContent||'');if(cur.trim().length===0){{if('value' in el){{el.value={t};}}else{{el.textContent={t};}}el.dispatchEvent(new InputEvent('input',{{bubbles:true}}));}}return true;}}"
         );
         self.eval_bool(&Self::js_scan(composer_js, &set_body, "false"))
-    }
-
-    /// True, wenn der Composer leer ist (Indiz, dass die Nachricht abgeschickt und
-    /// das Feld geleert wurde). False auch, wenn kein Composer gefunden wird.
-    fn composer_is_empty(&self, composer_js: &str) -> bool {
-        let body = "var el=Q(S[i]);if(el){var v=(el.value!==undefined&&el.value!==null?el.value:el.textContent)||'';return v.trim().length===0;}";
-        self.eval_bool(&Self::js_scan(composer_js, body, "false"))
     }
 
     /// Öffnet ein **sichtbares** Chromium auf der Brain-URL und wartet, bis der
@@ -633,24 +636,27 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             return Err("Composer-Feld nicht gefunden (Timeout)".into());
         }
         std::thread::sleep(Duration::from_millis(150));
-        for attempt in 0..3 {
+        let url_before = self.get_conversation_ref();
+        // Fuenf Versuche statt drei: das Absenden in Lexical-/contenteditable-Editoren
+        // (kimi) greift pro Versuch nur ~zur Haelfte; jeder weitere Versuch, der bei
+        // Erfolg gar nicht erst laeuft, hebt die Zuverlaessigkeit deutlich. Bei einem
+        // wirklich blockierten Composer (mistral-Dialog) scheitern trotzdem alle.
+        for attempt in 0..5 {
             if attempt == 0 || !has_send_button {
                 self.press_enter().ok();
             } else if !self.click_visible_real("send_button") {
                 self.click_first("send_button");
             }
-            if self.verify_submitted(baseline, &composer_js) {
+            if self.verify_submitted(baseline, url_before.as_deref()) {
                 return Ok(baseline);
             }
             let _ = self.fill_composer(&composer_js, text);
         }
-        // Frueher: `Ok(baseline)`, auch wenn alle drei Versuche scheiterten. Der
-        // Aufrufer wartete dann bis zum Timeout auf eine Antwort, die nie kommen
-        // konnte, weil nichts abgeschickt wurde — bei mistral (Dialog blockiert den
-        // Composer) sind das 150s Stille statt einer klaren Fehlermeldung.
-        // verify_submitted prueft u.a., ob der Composer geleert wurde; steht der Text
-        // nach 3 Versuchen immer noch drin, ist er nicht raus.
-        Err("Absenden fehlgeschlagen: Composer nach 3 Versuchen nicht geleert (blockiert ein Dialog/Overlay?)".into())
+        // Frueher: `Ok(baseline)`, auch wenn jeder Versuch scheiterte — der Aufrufer
+        // lief dann in den vollen wait_response-Timeout (150s Stille). Jetzt ehrlicher
+        // Fehler: es kam kein Absende-Beweis (URL-Wechsel / Stop-Button / neue
+        // Antwort). Ursache ist meist ein blockierender Dialog/Overlay ueber dem Composer.
+        Err("Absenden fehlgeschlagen: kein Absende-Beweis nach 5 Versuchen (blockiert ein Dialog/Overlay den Composer?)".into())
     }
 
     fn send_gemini(&mut self, text: &str) -> Result<i32, String> {
@@ -665,11 +671,12 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             });
         }
         std::thread::sleep(Duration::from_millis(200));
+        let url_before = self.get_conversation_ref();
         for _ in 0..3 {
             if self.click_visible_real("send_button") || self.click_first("send_button") {
                 std::thread::sleep(Duration::from_millis(400));
             }
-            if self.verify_submitted(baseline, &composer_js) {
+            if self.verify_submitted(baseline, url_before.as_deref()) {
                 return Ok(baseline);
             }
             let _ = self.fill_composer_dom_set(&composer_js, text);
@@ -689,6 +696,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             return Err("Composer-Feld nicht gefunden (Timeout)".into());
         }
         std::thread::sleep(Duration::from_millis(300));
+        let url_before = self.get_conversation_ref();
         for attempt in 0..4 {
             if attempt % 2 == 0 {
                 if !self.click_visible_real("send_button") {
@@ -697,7 +705,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             } else {
                 self.press_enter().ok();
             }
-            if self.verify_submitted(baseline, &composer_js) {
+            if self.verify_submitted(baseline, url_before.as_deref()) {
                 return Ok(baseline);
             }
             let _ = self.fill_composer(&composer_js, text);
@@ -730,13 +738,24 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         false
     }
 
-    fn verify_submitted(&self, baseline: i32, composer_js: &str) -> bool {
-        for _ in 0..8 {
+    /// Wartet darauf, dass ein Absende-**Beweis** erscheint. `url_before` ist die URL
+    /// vor dem Absenden.
+    ///
+    /// Ein leerer Composer allein ist **kein** Beweis: das Fuellen von Lexical-/
+    /// contenteditable-Editoren (kimi) schlaegt manchmal still fehl, dann ist das Feld
+    /// leer, obwohl nie etwas raus ging — `verify_submitted` meldete dann faelschlich
+    /// Erfolg, und der Aufrufer lief in den vollen `wait_response`-Timeout. Echte
+    /// Signale: die Seite navigiert in einen Chat (URL-Wechsel), ein Stop-Button
+    /// erscheint, oder der Assistant-Zaehler waechst. Composer-leer zaehlt nur noch
+    /// **zusammen** mit einem dieser Signale (gegen Fehlalarm), nicht fuer sich.
+    fn verify_submitted(&self, baseline: i32, url_before: Option<&str>) -> bool {
+        for _ in 0..12 {
             std::thread::sleep(Duration::from_millis(250));
-            if self.assistant_count() > baseline
-                || self.any_visible("stop_button")
-                || self.composer_is_empty(composer_js)
-            {
+            let url_changed = match (url_before, self.get_conversation_ref()) {
+                (Some(before), Some(now)) => now != before,
+                _ => false,
+            };
+            if self.assistant_count() > baseline || self.any_visible("stop_button") || url_changed {
                 return true;
             }
         }

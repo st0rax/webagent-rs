@@ -3,86 +3,69 @@
 > **Begriffsklärung:** Status bewertet **Provider-Integrationen** `webagent/<id>`,
 > nicht die KI-Entitäten dahinter.
 
-**Backend:** Embedded WebView (`wry`/`tao`) v0.5.0
-**Letzte Messung:** 2026-07-15 — `webagent diagnose --brain <id> --headless`,
+**Backend:** Embedded WebView (`wry`/`tao`)
+**Letzte Messung:** 2026-07-16 — `webagent relay --brain <id> --headless`,
 Profil `data/profiles/shared`, Release-Build.
 
-## Stand: 7/8 antworten headless
+## Stand: 8/8 antworten headless
 
 Gemessen mit `webagent relay --brain <id> --message "Antworte nur mit dem Wort OK."
---timeout 60..90 --headless`, Profil `data/profiles/shared`. **Echte Antworten, keine
-Exit-Codes.**
+--timeout 60 --headless`, Profil `data/profiles/shared`. **Echte Antworten, keine
+Exit-Codes.** Zwei volle Runden hintereinander, beide 8/8:
 
-| `webagent/<id>` | Relay | Dauer | Antwort / Fehler |
-|---|---|---|---|
-| chatgpt | 🟢 PASS | 11,3s | `OK` |
-| deepseek | 🟢 PASS | 9,1s | `OK` |
-| gemini | 🟢 PASS | 15,0s | `OK` |
-| qwen | 🟢 PASS | 13,7s | `OK` |
-| zai | 🟢 PASS | 15,9s | `Thought Process OK` |
-| claude | 🟢 PASS | 15,7s | `Dachte 1 s nach OK` |
-| mistral | 🟢 PASS | 15,4s | `OK` |
-| **kimi** | 🔴 FAIL | 124,6s | `timeout_no_message` — Login |
-
-claude (manueller Login) und mistral (AGB bestätigt) sind seit 2026-07-15 grün.
-
-**Flakiness:** qwen fiel in einem von vier Läufen mit `timeout_no_text` durch, in
-einer direkten Wiederholung dann 3/3 grün (17,5s / 14,0s / 13,7s). Nicht
-reproduzierbar, aber bekannt — bei Rot einmal wiederholen, bevor man gräbt.
-
-### kimi — von „nie" auf „jedes zweite Mal" (Stand nach Selektor-Resolver)
-
-Seit `js_scan` auch `:has-text()`/`text=` auflöst, ist kimis `new_chat_button`
-(`button:has-text('New chat')`) nicht mehr tot — `new_chat()` klickt jetzt, statt
-auf `navigate(url)` zurückzufallen. Wirkung, 4 Läufe hintereinander:
-
-```
-Lauf 1: exit=0   12,7s  OK
-Lauf 2: exit=1  125,7s  timeout_no_message
-Lauf 3: exit=0   15,0s  OK
-Lauf 4: exit=1  127,1s  timeout_no_message
-```
-
-**Exakt abwechselnd.** Das ist kein Rauschen, sondern ein Zustands-Toggle: ein
-erfolgreicher Lauf hinterlässt eine Konversation, der nächste stolpert darüber,
-danach ist der Zustand wieder sauber. Verdacht: `new_chat()` klickt den Button,
-die neue Konversation ist aber noch nicht bereit, wenn `send()` losläuft — und
-`verify_submitted` wertet den (ohnehin leeren) Composer als „abgeschickt".
-Nächster Schritt: nach dem New-Chat-Klick auf Bereitschaft warten, statt sofort
-zu füllen.
-
-Vorher: kimi ging **nie** durch. Jetzt jedes zweite Mal. Fortschritt, nicht Fix.
-
-### Frühere Fehldiagnose zu kimi (Korrektur 2026-07-15)
-
-Frühere Einträge hier behaupteten, kimi sei nicht eingeloggt und das
-`.login-modal-content` im DOM blockiere den Versand. **Beides ist falsch.**
-Selektor-genau nachgemessen:
-
-| kimi `login_indicator` | Treffer | sichtbar |
+| `webagent/<id>` | Relay | Dauer (R1 / R2) |
 |---|---|---|
-| `nav[class*='sidebar']` | **0** | 0 |
-| `div[class*='user-info']` | 1 | **1** |
-| `div[class*='avatar']` | 1 | **1** |
-| `button[class*='user' i]` | 3 | **3** |
-| `a[href*='/settings']` | 1 | 0 |
+| chatgpt | 🟢 PASS | 11,8s / 10,7s |
+| deepseek | 🟢 PASS | 8,7s / 10,8s |
+| kimi | 🟢 PASS | 18,1s / 38,7s |
+| gemini | 🟢 PASS | 10,5s / 14,1s |
+| qwen | 🟢 PASS | 12,6s / 15,0s |
+| claude | 🟢 PASS | 12,5s / 10,4s |
+| mistral | 🟢 PASS | 20,2s / 15,5s |
+| zai | 🟢 PASS | 17,9s / 20,6s |
 
-Avatar und User-Info sind sichtbar — **kimi ist eingeloggt.** Das
-`.login-modal-content` ist ein verstecktes Overlay im DOM, kein aktiver Blocker.
-(`nav[class*='sidebar']`, das ich zuvor als Ursache benannt hatte, matcht
-überhaupt nicht.)
+kimis längere Läufe (~38s) sind die, in denen der erste Sende-Anlauf scheiterte und
+der Relay-Retry griff (siehe unten).
 
-Und kimi **antwortet**: ein direkter `send()` über das Backend liefert sauber —
-`div.markdown`, der **erste** konfigurierte `assistant_message`-Selektor, trifft
-mit `n=1` und dem Text `1\n2\n3\n4\n5`.
+**Flakiness:** qwen und zai fielen früher gelegentlich mit `timeout_no_text` bzw.
+`timeout_no_message` durch und gingen bei direkter Wiederholung durch. Der
+Sende-Retry unten fängt einen guten Teil davon ab.
 
-**Der Relay scheitert trotzdem** (`timeout_no_message`, ~125s). Der einzige
-Unterschied zum funktionierenden Direktpfad ist `new_chat()`: kimis
-`new_chat_button`-Selektoren sind sämtlich Playwright-Syntax und damit tot, also
-fällt `new_chat()` auf `navigate(url)` zurück — und danach findet `wait_response`
-nie eine Antwort, obwohl `send()` Erfolg meldet. Verdacht: `verify_submitted`
-wertet den geleerten Composer als „abgeschickt", obwohl nach dem Reload etwas
-den Versand abfängt. **Das ist die nächste Baustelle — Technik, nicht Nutzer.**
+### kimi: von „nie" über „jedes zweite Mal" auf **8/8** (2026-07-16)
+
+kimi ging vor dem WebView-Fix **nie** durch, danach exakt jeden zweiten Lauf.
+Ursache — Schritt für Schritt am DOM nachgemessen, nicht geraten:
+
+- Ein erfolgreicher Lauf navigierte auf `kimi.com/chat/<id>`, ein fehlschlagender
+  blieb auf `kimi.com/` — die Nachricht ging nie raus.
+- In **allen** Fällen meldete `send()` aber `ok=true`. `verify_submitted` wertete
+  einen **leeren Composer** als „abgeschickt" — dabei war das Feld leer, weil das
+  Füllen von kimis **Lexical-Editor** still fehlschlug (`textContent=…` rendert
+  sichtbar, aber Lexical verwirft es beim Reconcile, und Enter schickt nichts ab).
+
+Drei aufeinander aufbauende Fixes:
+
+1. **`verify_submitted` verlangt einen echten Absende-Beweis** — URL-Wechsel,
+   Stop-Button oder wachsender Assistant-Zähler. Ein leerer Composer allein zählt
+   nicht mehr. Damit meldet `send()` bei nicht abgeschickter Nachricht ehrlich
+   `false` (statt Fehlalarm + 125 s stiller Timeout) und die Schleife sendet erneut.
+2. **`fill_composer` nutzt `execCommand('insertText')`** als Fallback statt rohem
+   `textContent` — das feuert `beforeinput`/`input`, die Lexical/ProseMirror als
+   echte Eingabe verarbeiten.
+3. **Relay-Send-Retry:** schlägt `send` fehl, wurde nachweislich nichts gepostet,
+   also ein zweiter `new_chat` + `send` — gefahrlos, kein Doppel-Post. Das hebt kimi
+   von ~75 % auf **8/8** (24/24 in den Abschlussläufen).
+
+Kein kimi-Sonderfall im Code — alle drei Änderungen sind allgemein und verbessern
+auch die Ehrlichkeit/Robustheit der anderen Brains.
+
+### Frühere Fehldiagnosen zu kimi (waren falsch)
+
+Frühere Einträge behaupteten nacheinander: kimi sei nicht eingeloggt; die Sidebar
+blockiere; ein `.login-modal-content` blockiere den Versand. **Alles falsch.**
+Selektor-genau nachgemessen ist kimi eingeloggt (Avatar/User-Info sichtbar),
+`nav[class*='sidebar']` matcht gar nicht, und das Login-Modal ist ein verstecktes
+Overlay. Das echte Problem war das Lexical-Füllen — siehe oben.
 
 ### Bekannte Ungenauigkeit: `logged_in` war zu optimistisch
 

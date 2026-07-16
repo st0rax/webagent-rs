@@ -933,11 +933,21 @@ mod tests {
         let run_dir = runs_dir.join("20260714_080000_zzz");
         fs::create_dir_all(&run_dir).unwrap();
 
+        // Dynamischer, frischer Zeitstempel (1 h her) statt eines hartkodierten Datums:
+        // infer_login_state markiert alte Runs als "stale", also lieferte ein festes
+        // 2026-07-14 ab dem 16. "stale" statt des erwarteten "ready" (Datums-Rot).
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let (y, mo, d, h, mi, s) = crate::civil_utc(now - 3600);
+        let recent = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}+00:00");
+
         let meta = RunMeta {
             run_id: "20260714_080000_zzz".to_string(),
             brain_id: "chatgpt".to_string(),
             status: "brain_incomplete".to_string(),
-            created_at: "2026-07-14T08:00:00+00:00".to_string(),
+            created_at: recent,
             task: "test".to_string(),
             extra: HashMap::new(),
             completed_actions: HashMap::new(),

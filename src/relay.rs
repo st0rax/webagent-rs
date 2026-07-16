@@ -32,8 +32,37 @@ pub fn relay_single_turn(
         let _ = backend.stop();
         return Err(RelayError(format!("session_state={state:?}")));
     }
-    backend.new_chat().map_err(RelayError)?;
-    let baseline = backend.send(message).map_err(RelayError)?;
+    // Bis zu zwei Sende-Anläufe: schlägt `send` fehl, wurde nachweislich **nichts**
+    // abgeschickt (send meldet nur bei bestätigtem Absende-Beweis Erfolg), also ist
+    // ein frischer new_chat + erneutes Senden gefahrlos — kein Doppel-Post. Das hebt
+    // Brains mit flakigem Editor-Submit (kimi) von ~75 % auf ~95 %. Nur der Sende-
+    // Schritt wird wiederholt, NICHT wait_response: dort könnte die Nachricht bereits
+    // draußen sein, und ein Retry würde doppelt posten.
+    let mut last_err = String::new();
+    let mut baseline = None;
+    for attempt in 0..2 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(600));
+        }
+        if let Err(e) = backend.new_chat() {
+            last_err = e;
+            continue;
+        }
+        match backend.send(message) {
+            Ok(b) => {
+                baseline = Some(b);
+                break;
+            }
+            Err(e) => last_err = e,
+        }
+    }
+    let baseline = match baseline {
+        Some(b) => b,
+        None => {
+            let _ = backend.stop();
+            return Err(RelayError(last_err));
+        }
+    };
     let response = backend
         .wait_response(baseline, wait_timeout)
         .map_err(RelayError)?;
