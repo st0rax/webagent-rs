@@ -412,6 +412,13 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
 
     fn dismiss_consent(&self) -> bool {
         let mut dismissed = self.click_first("consent_reject_button");
+        // Konfigurierte Dialog-Schliesser (bisher tote Config — nie aufgerufen).
+        dismissed |= self.click_first("dialog_dismiss_button");
+        // Generischer Werbe-/Ankuendigungs-Modal-Schliesser. mistral warf z.B. ein
+        // "Mistral Vibe CLI"-Announcement ueber den Composer, das jede Eingabe
+        // blockierte — der Grund fuer konsistente mistral-Timeouts. Nur Buttons
+        // INNERHALB offener Dialoge/Overlays, damit nichts Legitimes getroffen wird.
+        dismissed |= self.dismiss_modal_buttons();
         if self.brain_id == "gemini" {
             dismissed |= self.click_first("notice_close_button");
         }
@@ -419,6 +426,31 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             dismissed |= self.dismiss_qwen_blocks();
         }
         dismissed
+    }
+
+    /// Schliesst Werbe-/Ankuendigungs-Modals: klickt einen „Spaeter/Later/Skip/Got
+    /// it"-artigen Button, aber NUR innerhalb eines offenen Dialogs/Overlays
+    /// (`[role=dialog]`, `[data-state=open]`, `*modal*`/`*overlay*`), damit auf der
+    /// normalen Seite nichts faelschlich geklickt wird.
+    fn dismiss_modal_buttons(&self) -> bool {
+        self.eval_bool(
+            r#"(function(){
+              var hit=false;
+              var scopes=document.querySelectorAll('[role=dialog],[data-state="open"],[class*="modal"],[class*="Modal"],[class*="overlay"],[class*="Overlay"]');
+              var words=['später','spater','later','not now','maybe later','skip','got it','no thanks','dismiss','verstanden','vielleicht später'];
+              for(var s=0;s<scopes.length;s++){
+                var btns=scopes[s].querySelectorAll('button,a,[role=button]');
+                for(var i=0;i<btns.length;i++){
+                  var t=(btns[i].innerText||btns[i].textContent||'').trim().toLowerCase();
+                  if(!t||t.length>24)continue;
+                  for(var w=0;w<words.length;w++){
+                    if(t.indexOf(words[w])>=0){try{btns[i].click();hit=true;}catch(e){}break;}
+                  }
+                }
+              }
+              return hit;
+            })()"#,
+        )
     }
 
     /// qwen: „App herunterladen / not supported"-Banner schließen.
@@ -648,13 +680,17 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         if self.sel("composer").is_empty() {
             return Err("Keine Composer-Selektoren konfiguriert".into());
         }
+        // Werbe-/Consent-Modals wegklicken, bevor gefuellt wird — sonst blockiert
+        // z.B. mistrals "Vibe CLI"-Announcement den Composer und jeder Versuch scheitert.
+        self.dismiss_consent();
         let composer_js = self.sel_js("composer", &[]);
         let has_send_button = !self.sel("send_button").is_empty();
         // Fuellen und **bestaetigen**, dass der Text wirklich im Editor steht: bei
         // kimis Lexical-Editor meldete fill_composer frueher Erfolg, obwohl das Feld
         // leer blieb — dann ging Enter ins Leere und verify_submitted meldete
-        // faelschlich "abgeschickt".
+        // faelschlich "abgeschickt". Vor jedem Fuell-Versuch nochmal Modals schliessen.
         if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
+            s.dismiss_consent();
             s.fill_composer(js, t);
             s.composer_contains(js, t)
         }) {
@@ -776,6 +812,31 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     /// Signale: die Seite navigiert in einen Chat (URL-Wechsel), ein Stop-Button
     /// erscheint, oder der Assistant-Zaehler waechst. Composer-leer zaehlt nur noch
     /// **zusammen** mit einem dieser Signale (gegen Fehlalarm), nicht fuer sich.
+    /// Sucht auf der Seite nach einem **Block-Banner** (Rate-/Nachrichten-/Tageslimit,
+    /// Login, Cloudflare) und gibt dessen Text zurueck. Nur aufrufen, wenn KEINE echte
+    /// Antwort erkannt wurde — dann ist so ein Banner ein starkes Block-Indiz, kein
+    /// False Positive. Diese Banner stehen auf der Seite (mistral:
+    /// „Nachrichtenlimit erreicht", qwen: „daily usage limit"), NICHT im Antworttext,
+    /// darum sieht sie eine reine Antwort-Text-Pruefung nicht.
+    fn detect_block_banner(&self) -> Option<String> {
+        let v = self
+            .eval(
+                r#"(function(){
+var b=(document.body?document.body.innerText:'').replace(/\s+/g,' ');
+var low=b.toLowerCase();
+var pats=['nachrichtenlimit','message limit','usage limit','rate limit','ratelimit',
+'daily limit','tageslimit','limit reached','limit erreicht','too many requests',
+'quota exceeded','you have reached','verify you are human','checking your browser',
+'cloudflare'];
+for(var i=0;i<pats.length;i++){var k=low.indexOf(pats[i]);if(k>=0){return b.slice(Math.max(0,k-20),k+120);}}
+return null;})()"#,
+            )
+            .ok()?;
+        v.as_str()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
     fn verify_submitted(&self, baseline: i32, url_before: Option<&str>) -> bool {
         for _ in 0..12 {
             std::thread::sleep(Duration::from_millis(250));
@@ -932,13 +993,25 @@ impl BrainBackend for WebBrainBackend {
         // (c) geänderten Text der letzten Nachricht — Trigger (c) fängt Brains ab,
         // deren Zähler nicht inkrementiert (Container-Selektor / bestehende Konversation).
         let baseline_text = self.baseline_text.borrow().clone();
+        let mut block_polls = 0u32;
         loop {
             let (count, text, stop) = self.probe_generation(&assistant_js, &stop_js, -1);
             let text_changed = !text.trim().is_empty() && text != baseline_text;
             if count > baseline_count || (has_stop && stop) || text_changed {
                 break;
             }
+            // Frueh (statt erst beim Timeout) auf ein Block-Banner pruefen, damit ein
+            // Rate-/Nachrichtenlimit nicht ~timeout Sekunden je Turn kostet. ~alle 2 s.
+            block_polls += 1;
+            if block_polls % 7 == 0 {
+                if let Some(banner) = self.detect_block_banner() {
+                    return Ok(mk(banner, -1, false, "blocked"));
+                }
+            }
             if start.elapsed().as_secs_f64() >= timeout {
+                if let Some(banner) = self.detect_block_banner() {
+                    return Ok(mk(banner, -1, false, "blocked"));
+                }
                 return Ok(mk(String::new(), -1, false, "timeout_no_message"));
             }
             std::thread::sleep(Duration::from_millis(300));
@@ -954,6 +1027,7 @@ impl BrainBackend for WebBrainBackend {
             .max(baseline_count)
             .max(0);
 
+        let mut p2_polls = 0u32;
         loop {
             // Provider-Unterbrechungen (z.B. Geminis Antwort-Vergleich) wegklicken,
             // sonst bleibt der Antwort-Container leer und die Erkennung timeoutet.
@@ -970,6 +1044,17 @@ impl BrainBackend for WebBrainBackend {
                 stable_since = Instant::now();
             }
             let stable_secs = stable_since.elapsed().as_secs_f64();
+
+            // Auch in Phase 2 frueh auf ein Block-Banner pruefen (~alle 2 s), solange
+            // noch kein echter Text steht — sonst kostet ein Limit den vollen Timeout.
+            // mistrals „Nachrichtenlimit erreicht" erscheint erst NACH dem Senden,
+            // also bricht Phase 1 vorher ab und nur hier wird es rechtzeitig erkannt.
+            p2_polls += 1;
+            if last_text.trim().is_empty() && p2_polls % 7 == 0 {
+                if let Some(banner) = self.detect_block_banner() {
+                    return Ok(mk(banner, target, false, "blocked"));
+                }
+            }
 
             match classify_completion(
                 &current,
@@ -996,6 +1081,13 @@ impl BrainBackend for WebBrainBackend {
             }
 
             if start.elapsed().as_secs_f64() >= timeout {
+                // Kam keine (stabile) Antwort, aber ein Limit-/Block-Banner steht auf
+                // der Seite (mistral: „Nachrichtenlimit erreicht") -> als Block melden.
+                if last_text.trim().is_empty() {
+                    if let Some(banner) = self.detect_block_banner() {
+                        return Ok(mk(banner, target, false, "blocked"));
+                    }
+                }
                 let status = if stop_visible {
                     "timeout_still_generating"
                 } else if last_text.trim().is_empty() {

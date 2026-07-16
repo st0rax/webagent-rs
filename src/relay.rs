@@ -72,6 +72,16 @@ pub fn relay_single_turn(
                 "claude_rate_limited: Claude ist aktuell limitiert/nicht verfügbar".into(),
             ));
         }
+        // Externe Blockierung (Rate-/Nachrichtenlimit, Login, Cloudflare) auf der
+        // Seite erkannt. Terminal — ein Retry hilft nicht. Distinkt mit "blocked:"-
+        // Praefix, damit Messungen es flaggen statt als Tool-Defekt zu werten.
+        if response.backend_status == "blocked" {
+            let _ = backend.stop();
+            return Err(RelayError(format!(
+                "blocked: {brain_id}: {}",
+                response.text.trim()
+            )));
+        }
         // Leerer Text = Timeout ohne erkannte Antwort. wait_response gibt das als
         // Ok mit leerem Text zurueck; ohne diese Pruefung zaehlte ein Timeout als
         // Erfolg (so entstand frueher "5/8 PASS" ohne eine echte Antwort).
