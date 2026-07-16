@@ -19,6 +19,39 @@ use crate::webview_runtime::WebViewRuntime;
 
 const STABILITY_SECONDS: f64 = 1.5;
 
+/// Phrasen, die auf eine externe Blockierung hindeuten (Tages-/Nachrichtenlimit,
+/// Login, Cloudflare) — DE+EN. Geteilt zwischen `detect_block_banner` (JS-Scan der
+/// ganzen Seite) und `block_phrase_in_text` (reine Rust-Pruefung des bereits
+/// gelesenen Antworttexts), damit beide dieselbe Liste verwenden.
+const BLOCK_PHRASES: &[&str] = &[
+    "nachrichtenlimit",
+    "message limit",
+    "usage limit",
+    "rate limit",
+    "ratelimit",
+    "daily limit",
+    "tageslimit",
+    "limit reached",
+    "limit erreicht",
+    "too many requests",
+    "quota exceeded",
+    "you have reached",
+    "verify you are human",
+    "checking your browser",
+    "cloudflare",
+];
+
+/// Prueft einen bereits gelesenen Antworttext (nicht die ganze Seite) auf eine
+/// Block-Phrase. Faengt Faelle wie qwen, wo das Limit-Banner NICHT separat auf der
+/// Seite steht, sondern als Text INNERHALB des Antwort-Containers erscheint — dort
+/// sah `wait_response` es vorher nicht, weil der periodische Banner-Scan nur laeuft,
+/// solange noch kein Text da ist, und ein bereits "vollstaendiger" Text-Block direkt
+/// als echte Antwort durchgereicht wurde.
+fn block_phrase_in_text(text: &str) -> Option<&'static str> {
+    let low = text.to_lowercase();
+    BLOCK_PHRASES.iter().copied().find(|p| low.contains(p))
+}
+
 /// Ergebnis der Vollständigkeitsprüfung einer laufenden Antwort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Completion {
@@ -858,19 +891,20 @@ return null;}})()"#
     /// „Nachrichtenlimit erreicht", qwen: „daily usage limit"), NICHT im Antworttext,
     /// darum sieht sie eine reine Antwort-Text-Pruefung nicht.
     fn detect_block_banner(&self) -> Option<String> {
-        let v = self
-            .eval(
-                r#"(function(){
+        let pats_js = BLOCK_PHRASES
+            .iter()
+            .map(|p| format!("'{p}'"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let js = format!(
+            r#"(function(){{
 var b=(document.body?document.body.innerText:'').replace(/\s+/g,' ');
 var low=b.toLowerCase();
-var pats=['nachrichtenlimit','message limit','usage limit','rate limit','ratelimit',
-'daily limit','tageslimit','limit reached','limit erreicht','too many requests',
-'quota exceeded','you have reached','verify you are human','checking your browser',
-'cloudflare'];
-for(var i=0;i<pats.length;i++){var k=low.indexOf(pats[i]);if(k>=0){return b.slice(Math.max(0,k-20),k+120);}}
-return null;})()"#,
-            )
-            .ok()?;
+var pats=[{pats_js}];
+for(var i=0;i<pats.length;i++){{var k=low.indexOf(pats[i]);if(k>=0){{return b.slice(Math.max(0,k-20),k+120);}}}}
+return null;}})()"#
+        );
+        let v = self.eval(&js).ok()?;
         v.as_str()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -1114,6 +1148,17 @@ impl BrainBackend for WebBrainBackend {
                     } else {
                         current
                     };
+                    // Manche Provider (qwen) rendern ihr Limit-/Fehler-Banner NICHT
+                    // separat auf der Seite, sondern als Text IM Antwort-Container --
+                    // das ist dann eine "vollstaendige, stabile" Antwort im Sinne von
+                    // classify_completion, obwohl es keine echte ist. Ohne diese
+                    // Pruefung landet der Limit-Text als vermeintlich echte Antwort
+                    // (siehe swarm-Test: qwens "daily usage limit" wurde als Antwort
+                    // gezaehlt statt als "blocked").
+                    if let Some(hit) = block_phrase_in_text(&text) {
+                        eprintln!("[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt", self.brain_id);
+                        return Ok(mk(text, target, false, "blocked"));
+                    }
                     return Ok(mk(text, target, true, "ok"));
                 }
                 Completion::Continue => {}
@@ -1203,6 +1248,26 @@ impl BrainBackend for WebBrainBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn block_phrase_in_text_detects_qwen_limit() {
+        let text = "Oops! There was an issue connecting to Qwen3.7-Plus.\n\
+                     You have reached the daily usage limit. Please wait 3 hours before trying again.";
+        assert_eq!(block_phrase_in_text(text), Some("usage limit"));
+    }
+
+    #[test]
+    fn block_phrase_in_text_detects_mistral_limit() {
+        assert_eq!(
+            block_phrase_in_text("Sie haben Ihr Nachrichtenlimit erreicht."),
+            Some("nachrichtenlimit")
+        );
+    }
+
+    #[test]
+    fn block_phrase_in_text_none_for_normal_answer() {
+        assert_eq!(block_phrase_in_text("Die Hauptstadt von Frankreich ist Paris."), None);
+    }
 
     #[test]
     fn from_config_loads_selectors_and_url() {
