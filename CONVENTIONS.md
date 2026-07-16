@@ -1,7 +1,16 @@
-# WebAgent Rust-Port — Konventionen für Aider
+# WebAgent Rust — Design- & Doku-Konventionen
 
-Du portierst den bestehenden Python-Agenten (`../src/webagent/`) sauber und
-plattformunabhängig nach Rust. Nicht 1:1 übersetzen, sondern idiomatisch.
+**Historischer Kontext (nicht mehr aktueller Auftrag):** dieses Dokument
+begann als Anleitung für Aider, den Python-Agenten (`../src/webagent/`)
+plattformunabhängig nach Rust zu portieren. Der Port ist inzwischen
+weitgehend abgeschlossen (8/8 Provider, siehe `START_HERE.md`) — die
+Portierungsregeln unten gelten weiter für Code, der noch aus der
+Python-Referenz übernommen wird, sind aber nicht mehr der Haupt-Auftrag.
+Aktueller Stand/Fokus: `START_HERE.md`, `MISSION.md`.
+
+⚠️ **Korrektur:** Ein früherer Satz hier sagte „Default-Impl später via
+CDP/WebSocket" — das ist überholt. Die Browser-Anbindung ist **Embedded
+WebView** (`wry`/`tao`), kein CDP. Siehe `PROVIDER_STATUS.md`.
 
 ## Ziel & Scope
 
@@ -12,7 +21,7 @@ plattformunabhängig nach Rust. Nicht 1:1 übersetzen, sondern idiomatisch.
   Run-Store, Transcript, Loop-Guard, Observer-Textheuristik, Doctor, Prompts,
   Controller-Zustandsmaschine) ist plattformrein und wird zuerst portiert und
   getestet. Die Browser-Anbindung ist eine austauschbare Trait-Grenze
-  (`brain::BrainBackend`), Default-Impl später via CDP/WebSocket.
+  (`brain::BrainBackend`), Impl via Embedded WebView (`wry`/`tao`).
 
 ## Architektur-Grenzen (Traits)
 
@@ -71,14 +80,65 @@ Jeder dortige Testfall bekommt ein Rust-Äquivalent in `#[cfg(test)]`.
 
 ## Tests
 
-- Jedes Modul hat `#[cfg(test)] mod tests`. Portiere die Python-Testfälle direkt.
-- Kein echter Browser, kein Netz, keine echten Logins in Tests — wie im Original.
-- `cargo test` muss grün sein, bevor ein Modul als fertig gilt.
+- Jedes Modul hat `#[cfg(test)] mod tests`. Bei Portierung aus Python: Testfälle
+  direkt übernehmen. Bei neuen (Rust-nativen) Features: Unit-Tests pro reiner
+  Funktion/Entscheidungslogik, plus mind. ein End-to-End-Test gegen echte
+  Brains vor dem ersten Commit (siehe „Design-Prinzipien" unten).
+- Kein echter Browser, kein Netz, keine echten Logins in Unit-Tests.
+- `cargo test` + `cargo clippy --all-targets -- -D warnings` müssen grün sein,
+  bevor ein Modul als fertig gilt. Bekannte Ausnahme: `executor::tests::*`
+  kann unter Voll-Parallel-Läufen vereinzelt flaken (Ursache: Prozess-Spawn-
+  Kontention, siehe Commit-Historie von `executor.rs`) — bei Zweifel isoliert
+  erneut laufen lassen (`cargo test --lib executor::`).
+
+## Design-Prinzipien (gilt für neue, Rust-native Features — nicht nur Portierung)
+
+- **Kein Allowlist-only, kein Sandbox-Anspruch.** Die Shell ist by Design offen
+  (Single-User-Local-Agent). Sicherheitsmaßnahmen (`shell_policy.rs`) sind ein
+  Netz gegen versehentlich Destruktives/Prompt-Injection, keine Sandbox.
+- **Extern Blockiertes flaggen, nicht als Fehler werten.** Tageslimit/Login/
+  Cloudflare sind externe Zustände, kein Tool-Defekt — sichtbar machen
+  (`backend_status="blocked"`), Lauf fortsetzen statt abbrechen.
+- **So testen, wie das Produkt benutzt wird.** Ein Kaltstart-Relay-Loop
+  (viele Sessions im Sekundentakt) erzeugt selbst künstliche Rate-Limits —
+  Stabilität/Reliability immer über eine gehaltene REPL-Session messen, nicht
+  über Kaltstart-Hämmern.
+- **Unsicherheit ehrlich darstellen statt raten.** Ein Wert ohne Daten ist
+  „unbekannt", nicht „schlecht" oder „gut" (siehe `brain_score.rs`s
+  Wilson-Score: 0 Ereignisse → 0.5, nicht 0.0).
+- **Vor größeren Refactors: echten Zustand nachmessen, nicht Doku-Zahlen
+  glauben.** Reviews/Pläne können stale sein (siehe `executor::tests`-Beispiel
+  oben) — vor „das ist kaputt, das muss ich fixen" erst selbst reproduzieren.
 
 ## Was NICHT tun
 
-- Keine `async`-Runtime einführen, solange der synchrone Kontrollfluss reicht
-  (das Python-Original ist synchron/blockierend). Erst bei der CDP-Anbindung
-  neu bewerten.
-- Keine spekulativen Features. Nur portieren, was in `../src/webagent/` existiert.
-- Profil-/Sicherheitslogik nicht „verbessern" — 1:1-Verhalten, dann später.
+- Keine `async`-Runtime einführen, solange der synchrone Kontrollfluss reicht.
+  Der Agent-Loop ist bewusst sequentiell; parallele Runs sind kein aktuelles
+  Ziel. Erst bei explizitem Multi-Run-Bedarf neu bewerten.
+- Keine spekulativen Features/Abstraktionen ohne konkreten Bedarf. Drei
+  ähnliche Zeilen sind besser als eine verfrühte Abstraktion.
+- Profil-/Sicherheitslogik nicht auf Verdacht „verbessern" — Bedarf erst
+  belegen (Test, Repro, Review-Fund), dann ändern.
+
+## Doku-Richtlinien
+
+- **`START_HERE.md`** — einziger Einstiegspunkt, Status + Architektur +
+  Build/Test + offene Punkte. Wird bei jeder strukturellen Änderung
+  aktualisiert (siehe Pflegepflicht dort).
+- **`MISSION.md`** — aktueller Arbeitsfokus/Auftrag, ändert sich häufiger als
+  `START_HERE.md`. Bei Themenwechsel aktualisieren, nicht anhäufen.
+- **`CONVENTIONS.md`** (diese Datei) — Design-Prinzipien + wie Dokumentation
+  organisiert wird. Ändert sich selten.
+- **`README.md`** — öffentliche/GitHub-Oberfläche, kurz, verkaufsorientierter
+  als `START_HERE.md`.
+- **`PROVIDER_STATUS.md`** — Provider-Messwerte mit Historie (append, nicht
+  überschreiben — alte Messungen sind Kontext für „warum haben wir das
+  geglaubt").
+- **`docs/*.md`** — abgeschlossene Konzept-/Planungsdokumente (z. B.
+  `AUTORESEARCH_PLAN.md`, `GENIUS_COUNCIL_CONCEPT.md`). Jedes trägt einen
+  Status-Banner oben (GEPLANT / DEFERRED / UMGESETZT).
+- **Kein neues Root-`.md` ohne Grund.** Bevor eine neue Datei entsteht: passt
+  der Inhalt in eine der obigen? Sprawl (siehe `bot2bot`s Review: 10+
+  Root-Docs, teils widersprüchlich) ist genau das Problem, das diese Struktur
+  vermeiden soll. Externe Reviews (`CODE_REVIEW.md`/`CLAUDE_PROPOSALS.md`)
+  sind die Ausnahme — die kommen von außen, nicht von uns benannt.
