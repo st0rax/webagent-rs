@@ -24,10 +24,15 @@ tao = { version = "0.29", optional = true }
 # abzuschalten — die blockieren sonst die geteilte Event-Loop (siehe webview_runtime.rs).
 webview2-com = { version = "0.33", optional = true }
 windows = { version = "0.58", optional = true, features = ["Win32_Foundation"] }
+# TUI: ratatui+crossterm (Policy: windows-sys wird von crossterm gezogen, aber
+# windows=0.58 ist bereits optional im Projekt; kein C-Toolchain nötig).
+ratatui = { version = "0.29", optional = true }
+crossterm = { version = "0.28", optional = true }
 
 [features]
 default = ["webview"]
 webview = ["dep:wry", "dep:tao", "dep:webview2-com", "dep:windows"]
+tui = ["dep:ratatui", "dep:crossterm"]
 
 [lib]
 name = "webagent"

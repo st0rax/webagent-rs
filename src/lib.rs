@@ -36,6 +36,10 @@ pub mod shell_policy;
 pub mod timeouts;
 pub mod transcript;
 pub mod watchdog;
+#[cfg(feature = "tui")]
+pub mod tui_state;
+#[cfg(feature = "tui")]
+pub mod tui_render;
 #[cfg(feature = "webview")]
 pub mod webview_runtime;
 
