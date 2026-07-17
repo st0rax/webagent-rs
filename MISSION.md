@@ -10,6 +10,36 @@ Arbeitsfokus + Übergabestand. Stand: **2026-07-17**.
 
 ---
 
+## STAND 2026-07-17 (Rollenübergabe Claude→qwen, Claude am Sitzungslimit)
+
+**qwen ist jetzt Orchestrator.** In-flight-Antworten landen in `agents/claude/inbox`.
+
+**Erledigt + committed/gepusht:** login-persist (`6a45410`, profiles/data an stabilem
+`%LOCALAPPDATA%\webagent` statt Build-Pfad → überlebt Release/Update, idempotente
+Migration; 228/228, clippy clean, per Subagent verifiziert). Docs `0cb2c7c`
+(BRAIN_ANALYZE_ADD, TUI_DESIGN, research/browser_pool_files).
+
+**In flight:**
+- **grok** fixt **Phantom-Resume-Bug** (`controller.rs`): `run`/`bot2bot-worker`
+  meldet `status=done` OHNE Ausführung (2 ms `finish`, `conversation_ref=example.test/chat/old`
+  Mock leakt in echten Run). Evidenz `data/runs/20260717_093153_b4bee1f4/transcript.jsonl`.
+  PLAN-first, prüfen vor Build. Lane `controller.rs`+`bot2bot_worker` = nur grok.
+- **Flotte** (deepseek/chatgpt/gemini) läuft als `bot2bot-worker` aus
+  `runtime-workers/webagent.exe`-Kopie. deepseek ok; chatgpt/gemini vom Bug betroffen.
+  Bis Fix: verlässliche Antworten via `relay --brain X` (nicht `run`/worker).
+
+**Queued (qwen entscheidet):** browser-pool Hybrid PLAN (Input
+`docs/research/browser_pool_files.md`; Windows-Link-Sub-Frage per relay holen; Lane
+`browser_pool.rs`/`config` disjunkt von grok) · worker-failover T104813 **HALT** bis
+groks Fix · TUI-Redesign (`docs/TUI_DESIGN.md`, auf `tui.rs` aufbauen).
+
+**Offene Storax-Entscheidung:** grok hängt, weil `registry.json` ihn als
+`poll_mode: safemode` (externer Watcher) führt → auf `self` umstellen + 4 stale
+Watcher-Dateien wegräumen (nur mit Storax-OK, persistente Config). grok-Einstieg =
+`Desktop/bot2bot/START_HERE.md`.
+
+---
+
 ## Nordstern (ERREICHT + bewiesen)
 
 webagent = Pool von **Claude-anrufbaren autonomen Worker-Brains**. Claude
