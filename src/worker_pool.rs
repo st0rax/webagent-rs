@@ -46,6 +46,11 @@ pub const STATUS_COOLDOWN: &str = "cooldown";
 /// ist die kanonische Default-Untergrenze (600 s = 10 min).
 pub const BLOCK_COOLDOWN_SECS: u64 = 600;
 
+/// Wie lange ein `unavailable` Brain wartet, bevor es automatisch wieder
+/// als `available` reflaggt wird (Default 120s). Ueberschreibbar via Env
+/// `config::retry_unavailable_secs()` (Env WEBAGENT_RETRY_UNAVAILABLE_S).
+pub const RETRY_UNAVAILABLE_AFTER_SECS: u64 = 120;
+
 /// Maximale Anzahl aufeinanderfolgend fehlgeschlagener Wiederherstellungen, bevor
 /// ein BLOCK-Brain als dauerhaft `unavailable` (Retired) markiert wird (kein Retry).
 const MAX_FAILED_RESTORES: u32 = 3;
@@ -499,6 +504,37 @@ impl WorkerPool {
         // Brains promoviert.
         let running: HashSet<String> = self.children.keys().cloned().collect();
         reset_orphaned_active(&mut state, &running);
+
+        // Auto-Recovery: unavailable Brains nach Ablauf der Retry-Frist
+        // wieder available setzen, damit der Promote-Loop sie neu startet.
+        {
+            let now_dt = OffsetDateTime::now_utc();
+            let retry_after =
+                Duration::from_secs(crate::config::retry_unavailable_secs());
+            let candidate_recovery: Vec<String> = state
+                .entries
+                .iter()
+                .filter(|(_, e)| e.status == STATUS_UNAVAILABLE)
+                .filter_map(|(b, e)| {
+                    let updated =
+                        OffsetDateTime::parse(e.updated_at.as_str(), &Rfc3339).ok()?;
+                    let elapsed = now_dt - updated;
+                    if elapsed > retry_after {
+                        Some(b.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for b in &candidate_recovery {
+                eprintln!(
+                    "[worker_pool] Auto-Recovery: {} wieder available (unavailable > {}s)",
+                    b,
+                    retry_after.as_secs()
+                );
+                state.set(b, STATUS_AVAILABLE, "auto-recovery after retry timeout");
+            }
+        }
 
         // Scale-down: zu viele laufende Worker sauber beenden (fuer TUI '-').
         while self.children.len() > self.active {

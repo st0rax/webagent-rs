@@ -135,6 +135,17 @@ pub fn block_cooldown_secs() -> u64 {
         .unwrap_or(600)
 }
 
+/// Retry-Verzoegerung (Sekunden) fuer `unavailable` Brains, bevor sie automatisch
+/// wieder als `available` reflaggt werden. Ueberschreibbar via
+/// WEBAGENT_RETRY_UNAVAILABLE_S (Default 120). Spiegelt
+/// `worker_pool::RETRY_UNAVAILABLE_AFTER_SECS` als kanonischen Default.
+pub fn retry_unavailable_secs() -> u64 {
+    env::var("WEBAGENT_RETRY_UNAVAILABLE_S")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(crate::worker_pool::RETRY_UNAVAILABLE_AFTER_SECS)
+}
+
 /// Maximales Alter eines Worker-Heartbeats (Sekunden), bevor der Supervisor den
 /// Worker als haengend (BLOCK) wertet. Ueberschreibbar via
 /// WEBAGENT_STALE_HEARTBEAT_S (Default 300 = 5 min).
