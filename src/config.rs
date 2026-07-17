@@ -124,6 +124,27 @@ pub fn use_sparse_profile_copy() -> bool {
     matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes")
 }
 
+/// Cooldown-Dauer (Sekunden) fuer ein als BLOCK erkanntes Brain, bevor es durch
+/// einen frischen Worker wiederhergestellt wird. Ueberschreibbar via
+/// WEBAGENT_BLOCK_COOLDOWN_S (Default 600 = 10 min). Spiegelt
+/// `worker_pool::BLOCK_COOLDOWN_SECS` als kanonische Untergrenze.
+pub fn block_cooldown_secs() -> u64 {
+    env::var("WEBAGENT_BLOCK_COOLDOWN_S")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(600)
+}
+
+/// Maximales Alter eines Worker-Heartbeats (Sekunden), bevor der Supervisor den
+/// Worker als haengend (BLOCK) wertet. Ueberschreibbar via
+/// WEBAGENT_STALE_HEARTBEAT_S (Default 300 = 5 min).
+pub fn stale_heartbeat_secs() -> u64 {
+    env::var("WEBAGENT_STALE_HEARTBEAT_S")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(300)
+}
+
 /// bot2bot/ — Legacy Agent-Messaging-Root for bridge/watchdog (Desktop-Sibling oder Override).
 /// Note: internal messaging uses comms.rs (data/comms/) — bot2bot_root kept for compat/bridge only.
 pub fn bot2bot_root() -> PathBuf {
