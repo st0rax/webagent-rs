@@ -467,15 +467,28 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 self.run_store.save(meta).ok();
             }
 
-            if failures >= 3 {
+            // B3: ein Repair, zweiter Fail → protocol_error (kein Endlos-Retry).
+            if protocol::should_abort_protocol_repair(failures) {
                 let _ = transcript.append(
                     "system",
-                    "protocol_repair_aborted after=3 consecutive errors",
+                    &format!(
+                        "protocol_repair_aborted after={} consecutive errors",
+                        failures
+                    ),
                     HashMap::new(),
                 );
+                if let Some(meta) = &mut self.meta {
+                    meta.status = "protocol_error".to_string();
+                    meta.extra.insert(
+                        "protocol_error".to_string(),
+                        serde_json::Value::String(detail),
+                    );
+                    self.run_store.save(meta).ok();
+                }
                 return (String::new(), false);
             }
 
+            debug_assert!(protocol::should_attempt_protocol_repair(failures));
             let turn = self.run_once(&protocol::format_protocol_error(&detail), Some(transcript));
             if !turn.complete {
                 return (String::new(), false);
@@ -776,7 +789,23 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             response_text = new_response;
             finished = new_finished;
 
+            // Protocol-Repair abgebrochen → Run terminal (kein incomplete-Recovery).
+            if self
+                .meta
+                .as_ref()
+                .is_some_and(|m| m.status == "protocol_error")
+            {
+                break;
+            }
+
             while response_text.is_empty() && !finished {
+                if self
+                    .meta
+                    .as_ref()
+                    .is_some_and(|m| m.status == "protocol_error")
+                {
+                    break;
+                }
                 if let Some(recovered) = self.recover_from_incomplete(&mut transcript, "cycle") {
                     if !recovered.complete {
                         let final_meta = self.finish_brain_incomplete(&mut meta, &mut transcript);
@@ -793,6 +822,14 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     return Ok(final_meta);
                 }
             }
+
+            if self
+                .meta
+                .as_ref()
+                .is_some_and(|m| m.status == "protocol_error")
+            {
+                break;
+            }
         }
 
         // Die Helfer (persist_conversation_ref, record_completed_action,
@@ -802,12 +839,18 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         if let Some(sm) = self.meta.take() {
             meta.conversation_ref = sm.conversation_ref;
             meta.completed_actions = sm.completed_actions;
+            // protocol_error / streak aus dem Helfer-Meta uebernehmen
+            if sm.status == "protocol_error" {
+                meta.status = sm.status.clone();
+            }
             for (k, v) in sm.extra {
-                meta.extra.entry(k).or_insert(v);
+                meta.extra.insert(k, v);
             }
         }
 
-        meta.status = if finished { "done" } else { "max_cycles" }.to_string();
+        if meta.status != "protocol_error" {
+            meta.status = if finished { "done" } else { "max_cycles" }.to_string();
+        }
 
         if finished {
             meta.extra.remove("pending_response");
@@ -1104,6 +1147,50 @@ mod tests {
         assert_eq!(commands.borrow().len(), 1);
         assert_eq!(commands.borrow()[0], "Write-Output first");
         assert!(meta.completed_actions.contains_key("dup-1"));
+    }
+
+    #[test]
+    fn test_protocol_repair_recovers_after_one_invalid_answer() {
+        let brain = MockBrain::new().with_responses(
+            vec!["das ist kein json", &finish_response()],
+            vec![true, true],
+        );
+        let executor = MockExecutor::new();
+        let messages = brain.messages.clone();
+        let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let meta = controller
+            .run("Repariere Protokoll", "mock", None, false)
+            .unwrap();
+        assert_eq!(meta.status, "done");
+        // Mindestens ein Repair-Prompt an das Brain
+        let sent = messages.borrow();
+        assert!(
+            sent.iter().any(|m| {
+                m.contains("NUR mit gültigem")
+                    || (m.contains("webagent/1") && m.contains("Ungültige"))
+            }),
+            "expected protocol repair prompt, got: {sent:?}"
+        );
+    }
+
+    #[test]
+    fn test_protocol_repair_aborts_as_protocol_error_after_second_fail() {
+        let brain = MockBrain::new().with_responses(
+            vec!["kaputt eins", "kaputt zwei", &finish_response()],
+            vec![true, true, true],
+        );
+        let executor = MockExecutor::new();
+        let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let meta = controller
+            .run("Zwei Parse-Fails", "mock", None, false)
+            .unwrap();
+        assert_eq!(meta.status, "protocol_error");
+        assert_eq!(
+            meta.extra
+                .get("protocol_error_streak")
+                .and_then(|v| v.as_str()),
+            Some("2")
+        );
     }
 
     #[test]

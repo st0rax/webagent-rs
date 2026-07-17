@@ -540,6 +540,21 @@ pub fn format_observation(
     parts.join("\n")
 }
 
+/// Nach wie vielen aufeinanderfolgenden Parse-Fails der Run als `protocol_error`
+/// endet. Ein Fail (streak==1) → genau **ein** Repair-Prompt; zweiter Fail → abort.
+pub const PROTOCOL_REPAIR_MAX_FAILURES: usize = 2;
+
+/// `true` solange noch genau ein Repair-Versuch erlaubt ist (erster Parse-Fail).
+pub fn should_attempt_protocol_repair(consecutive_failures: usize) -> bool {
+    consecutive_failures > 0 && consecutive_failures < PROTOCOL_REPAIR_MAX_FAILURES
+}
+
+/// `true` ab dem zweiten aufeinanderfolgenden Parse-Fail (kein weiterer Retry).
+pub fn should_abort_protocol_repair(consecutive_failures: usize) -> bool {
+    consecutive_failures >= PROTOCOL_REPAIR_MAX_FAILURES
+}
+
+/// Repair-Prompt nach ungueltigem Brain-Output (B3). Einmalig; dann `protocol_error`.
 pub fn format_protocol_error(detail: &str) -> String {
     let example = serde_json::json!({
         "protocol": PROTOCOL_VERSION,
@@ -554,12 +569,12 @@ pub fn format_protocol_error(detail: &str) -> String {
     });
 
     format!(
-        "[Controller] Ungültige Antwort. {} Antworte mit genau einem JSON-Dokument \
-        (optional in einem ```json```-Block), protocol=\"{}\", jede Action mit id. \
-        WICHTIG: Alle Anführungszeichen und Backslashes im 'command' String korrekt \
-        als \\\" bzw. \\\\ escapen, damit JSON valide bleibt.\nBeispiel:\n{}",
-        detail,
-        PROTOCOL_VERSION,
+        "[Controller] Ungültige Antwort. {detail} \
+         Antworte NUR mit gültigem {PROTOCOL_VERSION}-JSON \
+         (genau ein JSON-Dokument, optional in einem ```json```-Block). \
+         Keine Prosa davor/danach. Jede Action braucht id und type. \
+         WICHTIG: Anführungszeichen und Backslashes im 'command' als \\\" bzw. \\\\ escapen.\n\
+         Beispiel:\n{}",
         serde_json::to_string_pretty(&example).unwrap()
     )
 }
@@ -883,5 +898,39 @@ Write-Output $html
             let result = parse(&serde_json::to_string(&doc).unwrap());
             assert!(!result.valid, "should reject timeout {:?}", timeout);
         }
+    }
+
+    #[test]
+    fn test_parse_intentionally_broken_answers_are_invalid() {
+        for bad in &[
+            "",
+            "nur Prosa ohne JSON",
+            "{not json",
+            r#"{"protocol":"webagent/2","actions":[{"id":"x","type":"finish"}]}"#,
+            r#"{"protocol":"webagent/1","actions":[]}"#,
+            r#"{"actions":[{"id":"x","type":"finish"}]}"#,
+        ] {
+            assert!(!parse(bad).valid, "expected invalid for {:?}", bad);
+        }
+    }
+
+    #[test]
+    fn test_protocol_repair_policy_one_then_abort() {
+        assert!(!should_attempt_protocol_repair(0));
+        assert!(should_attempt_protocol_repair(1));
+        assert!(!should_attempt_protocol_repair(2));
+        assert!(!should_abort_protocol_repair(0));
+        assert!(!should_abort_protocol_repair(1));
+        assert!(should_abort_protocol_repair(2));
+        assert!(should_abort_protocol_repair(3));
+    }
+
+    #[test]
+    fn test_format_protocol_error_demands_valid_webagent_json_only() {
+        let msg = format_protocol_error("Ungültiges JSON: trailing comma");
+        assert!(msg.contains(PROTOCOL_VERSION));
+        assert!(msg.contains("NUR mit gültigem"));
+        assert!(msg.contains("Ungültiges JSON: trailing comma"));
+        assert!(msg.contains(r#""protocol""#));
     }
 }

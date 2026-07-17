@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Terminal-Status, die nicht mehr geändert werden können.
-const TERMINAL_STATUSES: &[&str] = &["done", "failed", "interrupted"];
+const TERMINAL_STATUSES: &[&str] = &["done", "failed", "interrupted", "protocol_error"];
 
 /// Nicht-laufende Status (außer Terminal).
 const NON_RUNNING_STATUSES: &[&str] = &[
@@ -18,6 +18,7 @@ const NON_RUNNING_STATUSES: &[&str] = &[
     "login_required",
     "cloudflare",
     "error",
+    "protocol_error",
 ];
 
 /// Erlaubte Status-Übergänge.
