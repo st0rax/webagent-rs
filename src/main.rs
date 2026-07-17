@@ -173,8 +173,9 @@ enum Commands {
     },
 
     /// Autonomer bot2bot-Worker: Inbox pollen, Task via Controller abarbeiten,
-    /// Ergebnis zurueck an Absender (grok-Aequivalent). Pro Prozess ein eigenes
-    /// WEBAGENT_PROFILE_DIR setzen, damit N Worker parallel laufen (SingletonLock).
+    /// Ergebnis zurueck an Absender (grok-Aequivalent). Jeder Prozess nutzt ein
+    /// eigenes isoliertes Profil (Q5-copy) -> N Worker laufen parallel.
+    #[command(name = "bot2bot-worker")]
     Bot2BotWorker {
         /// Brain-Backend (z.B. deepseek)
         #[arg(long)]

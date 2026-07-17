@@ -209,7 +209,7 @@ impl Bot2BotWorker {
 
     /// Ein Poll-Durchlauf: alle anstehenden Tasks abarbeiten. Gibt die Anzahl der
     /// verarbeiteten Tasks zurück.
-    pub fn poll_once(&self) -> usize {
+    pub fn poll_once(&self, profile: &Path) -> usize {
         let state_path = self.state_path();
         let mut state = WorkerState::load(&state_path);
         if state.name.is_empty() {
@@ -219,7 +219,7 @@ impl Bot2BotWorker {
         let pending = self.pending_tasks(&state);
         let count = pending.len();
         for (path, msg) in pending {
-            self.process_task(&path, &msg, &mut state);
+            self.process_task(&path, &msg, &mut state, profile);
         }
 
         if count > 0 {
@@ -233,14 +233,14 @@ impl Bot2BotWorker {
     /// Fehlerisolation: ein fehlgeschlagener Task wird trotzdem nach `_read/` verschoben
     /// und als `processed` markiert (mit `status=error` im Writeback) — die Schleife
     /// hängt nicht.
-    fn process_task(&self, path: &Path, msg: &Msg, state: &mut WorkerState) {
+    fn process_task(&self, path: &Path, msg: &Msg, state: &mut WorkerState, profile: &Path) {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
 
-        let run_result = self.run_controller(&msg.body);
+        let run_result = self.run_controller(&msg.body, profile);
 
         let (status, body) = match &run_result {
             Ok(meta) => (
@@ -277,12 +277,15 @@ impl Bot2BotWorker {
 
     /// Führt die Controller-Loop mit dem Task-Body aus — exakt wie `cmd_run`
     /// (Backend + Executor + Controller), kein eigener Controller-Code.
-    fn run_controller(&self, task: &str) -> Result<crate::run_store::RunMeta, String> {
+    /// `profile` ist das isolierte Laufzeit-Profil (Q5/Swarm-Mechanik), damit
+    /// mehrere Worker-Prozesse parallel ohne SingletonLock-Konflikt laufen.
+    fn run_controller(&self, task: &str, profile: &Path) -> Result<crate::run_store::RunMeta, String> {
         use crate::browser::WebBrainBackend;
         use crate::controller::AgentController;
         use crate::executor::PlatformShellExecutor;
 
-        let backend = WebBrainBackend::from_config(&self.brain_id)?;
+        let backend = WebBrainBackend::from_config(&self.brain_id)?
+            .with_profile_override(profile.to_path_buf());
         let executor = PlatformShellExecutor::new();
         let mut controller = AgentController::new(backend, executor, self.max_cycles);
         controller.run(task, &self.brain_id, None, self.headless)
@@ -325,14 +328,39 @@ impl Bot2BotWorker {
     /// Einstiegspunkt: `--once` = ein Durchlauf; sonst Poll-Loop mit `poll_secs`.
     /// Event-getrieben: nur bei neuen Tasks Aktion; bei leer still (kein Spam).
     pub fn run(&self) -> i32 {
+        // Isoliertes Laufzeit-Profil vorbereiten (Q5/Swarm-Mechanik), damit N
+        // Worker-Prozesse parallel ohne Chromium-SingletonLock-Konflikt laufen.
+        let run_id = format!(
+            "b2bw_{}_{}_{}",
+            self.brain_id,
+            std::process::id(),
+            crate::now_run_stamp()
+        );
+        let profile = crate::config::prepare_swarm_profile(&run_id, &self.brain_id);
+        let _guard = WorkerProfileGuard {
+            run_id: run_id.clone(),
+        };
+
         if self.once {
-            self.poll_once();
+            self.poll_once(&profile);
             return 0;
         }
         loop {
-            self.poll_once();
+            self.poll_once(&profile);
             thread::sleep(Duration::from_secs(self.poll_secs));
         }
+    }
+}
+
+/// Räumt das isolierte Worker-Profil beim Ende des Worker-Prozesses auf
+/// (Entspricht dem `SwarmCleanup`-Guard in `repl.rs`).
+struct WorkerProfileGuard {
+    run_id: String,
+}
+
+impl Drop for WorkerProfileGuard {
+    fn drop(&mut self) {
+        let _ = crate::config::cleanup_swarm_profiles(&self.run_id);
     }
 }
 
