@@ -2,7 +2,7 @@
 
 use crate::protocol::PROTOCOL_VERSION;
 
-/// Beispiel-JSON für die Prompt-Dokumentation.
+/// Beispiel-JSON für die Prompt-Dokumentation (eine shell-Action).
 fn example_json() -> String {
     format!(
         r#"{{
@@ -17,6 +17,62 @@ fn example_json() -> String {
   ]
 }}"#,
         PROTOCOL_VERSION
+    )
+}
+
+/// Few-shot: Runde 1 = shell, Runde 2 = finish (Web-Chats folgen Beispielen).
+fn few_shot_turns() -> String {
+    format!(
+        r#"
+=== FEW-SHOT (kopiere dieses Antwort-Muster exakt) ===
+
+Runde 1 — deine ERSTE Antwort auf die Aufgabe (genau EINE shell-Action, nichts sonst):
+```json
+{{
+  "protocol": "{ver}",
+  "actions": [
+    {{
+      "id": "step-1",
+      "type": "shell",
+      "command": "Get-Location",
+      "timeout_seconds": 30
+    }}
+  ]
+}}
+```
+
+Danach bekommst du eine Observation `[Terminal-Ausgabe action_id=step-1] …`.
+
+Runde 2 — Aufgabe erledigt, Run beenden (finish als EINZIGE Action):
+```json
+{{
+  "protocol": "{ver}",
+  "actions": [
+    {{
+      "id": "done-1",
+      "type": "finish"
+    }}
+  ]
+}}
+```
+
+Oder mit Nutzertext statt finish (message als EINZIGE Action):
+```json
+{{
+  "protocol": "{ver}",
+  "actions": [
+    {{
+      "id": "answer-1",
+      "type": "message",
+      "text": "Kurze nutzerlesbare Zusammenfassung des Ergebnisses."
+    }}
+  ]
+}}
+```
+
+FALSCH (wird abgelehnt): normaler Chat, Markdown-Dokument ohne JSON, "Thought Process", mehrere Typen gemischt, finish+shell in einer Antwort.
+"#,
+        ver = PROTOCOL_VERSION
     )
 }
 
@@ -103,9 +159,11 @@ Beispiele für gute finale "message"-Antworten (kopiere den Stil):
 - Immer strukturiert, mit Überschriften, Tabellen, Visuals (ASCII-Balken), konkreten Zahlen und Handlungsempfehlungen.
 - Am Ende: "Falls du das öfter brauchst, hier ein Skript: ..." und den Code in der message mitliefern.
 
+{}
 "#,
         example_json(),
-        PROTOCOL_VERSION
+        PROTOCOL_VERSION,
+        few_shot_turns()
     )
 }
 
@@ -205,6 +263,31 @@ mod tests {
         assert!(
             prompt.contains(PROTOCOL_VERSION),
             "Prompt muss Protokollversion enthalten"
+        );
+    }
+
+    #[test]
+    fn test_autonomous_task_prompt_contains_few_shot_shell_then_finish() {
+        let prompt = autonomous_task_prompt("Schreibe eine Notiz", "");
+        assert!(
+            prompt.contains("FEW-SHOT"),
+            "Prompt muss Few-Shot-Block enthalten"
+        );
+        assert!(
+            prompt.contains(r#""type": "shell""#) || prompt.contains("\"type\": \"shell\""),
+            "Few-Shot shell-Action fehlt"
+        );
+        assert!(
+            prompt.contains(r#""type": "finish""#) || prompt.contains("\"type\": \"finish\""),
+            "Few-Shot finish-Action fehlt"
+        );
+        assert!(
+            prompt.contains("Get-Location"),
+            "Few-Shot shell-Beispiel (Get-Location) fehlt"
+        );
+        assert!(
+            prompt.contains("FALSCH"),
+            "Negative Beispiele (FALSCH) fehlen"
         );
     }
 

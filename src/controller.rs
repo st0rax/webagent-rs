@@ -1174,22 +1174,27 @@ mod tests {
     }
 
     #[test]
-    fn test_protocol_repair_aborts_as_protocol_error_after_second_fail() {
+    fn test_protocol_repair_aborts_as_protocol_error_after_third_fail() {
         let brain = MockBrain::new().with_responses(
-            vec!["kaputt eins", "kaputt zwei", &finish_response()],
-            vec![true, true, true],
+            vec![
+                "kaputt eins",
+                "kaputt zwei",
+                "kaputt drei",
+                &finish_response(),
+            ],
+            vec![true, true, true, true],
         );
         let executor = MockExecutor::new();
         let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
         let meta = controller
-            .run("Zwei Parse-Fails", "mock", None, false)
+            .run("Drei Parse-Fails", "mock", None, false)
             .unwrap();
         assert_eq!(meta.status, "protocol_error");
         assert_eq!(
             meta.extra
                 .get("protocol_error_streak")
                 .and_then(|v| v.as_str()),
-            Some("2")
+            Some("3")
         );
     }
 
