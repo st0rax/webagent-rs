@@ -1,11 +1,17 @@
 {
   "composer": [
     "#chat-input",
-    "textarea#chat-input"
+    "textarea#chat-input",
+    "textarea",
+    "div[contenteditable='true']",
+    "div[role='textbox']"
   ],
   "send_button": [
     "#send-message-button",
-    "button#send-message-button"
+    "button#send-message-button",
+    "button[type='submit']",
+    "button[aria-label*='Send' i]",
+    "button:has-text('Send')"
   ],
   "stop_button": [
     "#stop-response-button",

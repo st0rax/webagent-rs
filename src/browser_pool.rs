@@ -1,6 +1,7 @@
 //! Shared browser pool — ein WebView-Runtime, ein Tab pro Brain (Python `browser_pool.py`).
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "webview")]
 use std::time::Duration;
@@ -54,10 +55,19 @@ impl BrowserPool {
     }
 
     /// Startet oder reaktiviert das Brain-Tab und hängt den Driver ans Backend.
-    pub fn start_brain(&mut self, backend: &WebBrainBackend, headless: bool) -> Result<(), String> {
+    ///
+    /// `profile_override` erlaubt es, statt des Shared-Profils ein isoliertes
+    /// Laufzeit-Profil zu nutzen (z.B. eine Swarm-Teilkopie aus
+    /// `config::prepare_swarm_profile`). `None` → `shared_profile_dir()`.
+    pub fn start_brain(
+        &mut self,
+        backend: &WebBrainBackend,
+        headless: bool,
+        profile_override: Option<PathBuf>,
+    ) -> Result<(), String> {
         #[cfg(not(feature = "webview"))]
         {
-            let _ = (backend, headless);
+            let _ = (backend, headless, profile_override);
             Err(crate::page_driver::webview_unavailable().to_string())
         }
         #[cfg(feature = "webview")]
@@ -80,7 +90,7 @@ impl BrowserPool {
                 return Ok(());
             }
 
-            let profile = shared_profile_dir();
+            let profile = profile_override.unwrap_or_else(shared_profile_dir);
             let mut driver = runtime
                 .open_page(&profile, backend.brain_url(), headless)
                 .map_err(|e| e.to_string())?;

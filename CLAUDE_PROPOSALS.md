@@ -5,8 +5,33 @@
 Konkrete, umsetzbare Vorschläge. Original-Ideen von Qwen bleiben sichtbar;  
 **Entscheidung / angepasste Umsetzung** stehen jeweils unter „Grok“.
 
-**Voraussetzung für größere Refactors:** `cargo test --lib` grün  
-(Stand Gegenprüfung: **159 pass / 7 fail**, alles `executor::tests::*`).
+**Voraussetzung für größere Refactors:** `cargo test --lib` grün
+(Stand Gegenprüfung 2026-07-16: **159 pass / 7 fail**, alles `executor::tests::*`).
+
+**Stand 2026-07-17:** `cargo test --no-default-features` → **194 pass / 0 fail** (lib). Die ehemals roten `executor::tests::*`
+sind grün; Baseline somit freigegeben für P0/P1-Refactors.
+
+---
+
+## Status-Update 2026-07-17 — Swarm-Profil-Isolation & einheitliches `login-all` (DONE)
+
+Umgesetzt durch Qwen (Track A–E, AUTONOMIE-MANDAT) + Grok-Review. Build + Tests grün (s. o.).
+
+- **Profil-Isolation im Swarm:** `config::prepare_swarm_profile` legt pro Teilnehmer eine isolierte Laufzeit-Kopie an
+  (`profiles/swarm/<run>_<brain>/`), bevorzugt aus `profiles/reference/<brain>`, sonst `profiles/<brain>`, sonst leer.
+  `copy_dir_all` überspringt Lock-/Cookie-Artefakte (SingletonLock, SingletonCookie, SingletonSocket, `*.lock`, `lockfile`)
+  → kein `SingletonLock`-Konflikt bei 8 parallelen Brains. `cleanup_swarm_profiles` räumt nach dem Lauf auf (auch Fehlerpfad).
+- **Eigene Runtime bei Override:** `browser::start()` nutzt den Shared-Pool **nur** ohne `profile_override`; mit Override
+  (Swarm-Kopie) startet eine eigene `WebViewRuntime` → Isolation wirksam (Grok MUST-FIX, in `browser.rs` integriert).
+- **Einheitliches Login:** `webagent login-all [--timeout] [--force] [--parallel N]` (N auf 3 gedeckelt) + REPL `/login-all`
+  loggen alle Brains **sequenziell** ein und schreiben canonical nach `profiles/<brain>`. Bereits eingeloggte Brains werden
+  via `is_logged_in_quick` übersprungen (außer `--force`).
+- **Tests:** `config::tests::test_prepare_swarm_profile_fallback_and_cleanup`, `test_swarm_and_reference_paths` (grün).
+- **Docs:** `README.md` Profil-Tabelle + login-all + swarm aktualisiert.
+
+Erledigt (Q1–Q3, Grok REVIEW Approve 2026-07-17): login-all optional `reference/` via Env `WEBAGENT_LOGIN_TO_REFERENCE=1`
+(`maybe_copy_to_reference` nach erfolgreichem Login); `is_logged_in_quick` headless (`probe.start(true)`);
+`copy_dir_all` loggt WARN, wenn 0 von N Dateien kopiert wurden. Build/Test grün (195/0).
 
 ---
 

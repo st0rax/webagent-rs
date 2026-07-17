@@ -58,7 +58,20 @@ jobs:
       - name: Build release
         run: cargo build ${{ matrix.build_flags }}
 
+      # Windows: WebView2Loader.dll neben die exe (sonst 0xC0000135 auf manchen PCs)
+      - name: Copy WebView2Loader.dll (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pwsh -File scripts/copy-webview2-loader.ps1 -Profile release
+
       - name: Attach binary to release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.artifact }}
+
+      - name: Attach WebView2Loader.dll (Windows)
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/WebView2Loader.dll
+        continue-on-error: true

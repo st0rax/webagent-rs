@@ -153,6 +153,11 @@ pub struct WebBrainBackend {
     selectors: Value,
     #[cfg_attr(not(feature = "webview"), allow(dead_code))]
     profile_dir: PathBuf,
+    /// Optionales isoliertes Laufzeit-Profil (z.B. Swarm-Teilkopie). Überschreibt
+    /// `profile_dir` in `start()`, sofern gesetzt. Wird nicht in `from_config`
+    /// befüllt — explizit via `with_profile_override` gesetzt.
+    #[cfg_attr(not(feature = "webview"), allow(dead_code))]
+    profile_override: Option<PathBuf>,
     #[cfg(feature = "webview")]
     runtime: RefCell<Option<WebViewRuntime>>,
     driver: RefCell<Option<Box<dyn PageDriver>>>,
@@ -192,11 +197,45 @@ impl WebBrainBackend {
             url,
             selectors,
             profile_dir,
+            profile_override: None,
             #[cfg(feature = "webview")]
             runtime: RefCell::new(None),
             driver: RefCell::new(None),
             baseline_text: RefCell::new(String::new()),
         })
+    }
+
+    /// Setzt ein isoliertes Laufzeit-Profil (z.B. eine Swarm-Teilkopie aus
+    /// `config::prepare_swarm_profile`). Überschreibt `profile_dir` in `start()`.
+    pub fn with_profile_override(mut self, profile: PathBuf) -> Self {
+        self.profile_override = Some(profile);
+        self
+    }
+
+    /// Kanonisches Profil-Verzeichnis dieses Backends (`profiles/<brain>` bzw. Override-Env).
+    pub fn profile_dir(&self) -> &PathBuf {
+        &self.profile_dir
+    }
+
+    /// Effektives Profil (Override falls gesetzt, sonst kanonisch).
+    pub fn effective_profile_dir(&self) -> &PathBuf {
+        self.profile_override
+            .as_ref()
+            .unwrap_or(&self.profile_dir)
+    }
+
+    /// Schneller Login-Check: Browser kurz starten, Zustand prüfen, stoppen.
+    /// Für `login-all` (bereits eingeloggte Brains überspringen).
+    /// Headless, damit der Skip-Check bei 8 Brains keine Fenster aufpoppen lässt.
+    pub fn is_logged_in_quick(&self) -> Result<bool, String> {
+        let mut probe = WebBrainBackend::from_config(&self.brain_id)?;
+        if let Some(p) = &self.profile_override {
+            probe = probe.with_profile_override(p.clone());
+        }
+        probe.start(true)?;
+        let logged = probe.is_logged_in();
+        let _ = probe.stop();
+        Ok(logged)
     }
 
     /// Selektor-Liste zu einem Schlüssel (leere Liste, wenn nicht vorhanden).
@@ -963,16 +1002,20 @@ impl BrainBackend for WebBrainBackend {
         }
         #[cfg(feature = "webview")]
         {
-            if crate::config::use_shared_browser() {
+            // Shared-Pool nur ohne Override. Mit profile_override (Swarm-Kopie)
+            // nie den Pool-Tab recyclen — sonst landet man wieder im Shared-
+            // Profil (SingletonLock / Session-Mix). Eigener Runtime-Pfad.
+            if crate::config::use_shared_browser() && self.profile_override.is_none() {
                 return crate::browser_pool::BrowserPool::global()
                     .lock()
                     .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
-                    .start_brain(self, headless);
+                    .start_brain(self, headless, None);
             }
+            let profile = self.effective_profile_dir().clone();
             let runtime =
-                WebViewRuntime::launch(&self.profile_dir, headless).map_err(|e| e.to_string())?;
+                WebViewRuntime::launch(&profile, headless).map_err(|e| e.to_string())?;
             let mut driver = runtime
-                .open_page(&self.profile_dir, &self.url, headless)
+                .open_page(&profile, &self.url, headless)
                 .map_err(|e| e.to_string())?;
             driver
                 .navigate(&self.url, Duration::from_secs(30))
@@ -991,7 +1034,10 @@ impl BrainBackend for WebBrainBackend {
         }
         #[cfg(feature = "webview")]
         {
-            if crate::config::use_shared_browser() {
+            // Mirror start(): Shared-Pool nur ohne Override. Mit profile_override
+            // (Swarm-Kopie) haben wir eine eigene Runtime — die muss hier fallen,
+            // sonst bleibt der WebView-Prozess hängen und Isolation bricht.
+            if crate::config::use_shared_browser() && self.profile_override.is_none() {
                 *self.driver.borrow_mut() = None;
                 return crate::browser_pool::BrowserPool::global()
                     .lock()

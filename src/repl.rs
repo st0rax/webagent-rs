@@ -34,6 +34,8 @@ pub enum SlashCommand {
     Brains,
     /// Leistungsindex-Tabelle (Reliability aus echten swarm/relay-Aufrufen).
     Score,
+    /// Einheitliches Login für alle Brains (sequenziell), schreibt profiles/<brain>.
+    LoginAll,
     /// Stehendes Ziel setzen/anzeigen/löschen (fließt in autonome Aufgaben ein).
     Goal { arg: Option<String> },
     /// Multi-Brain-Swarm: alle antworten, dann führt ein Orchestrator zusammen.
@@ -142,6 +144,9 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     if trimmed == "/score" || trimmed == "/leaderboard" {
         return Some(SlashCommand::Score);
     }
+    if trimmed == "/login-all" {
+        return Some(SlashCommand::LoginAll);
+    }
     if let Some(rest) = trimmed.strip_prefix("/chat ") {
         return Some(SlashCommand::Chat {
             message: rest.trim().to_string(),
@@ -246,7 +251,7 @@ impl ReplSession {
             self.brain_id, state
         );
         println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>");
-        println!("           /new  /brains  /whoami  /score  /memory  /login  /exit");
+        println!("           /new  /brains  /whoami  /score  /memory  /login  /login-all  /exit");
         println!();
     }
 
@@ -420,6 +425,34 @@ impl ReplSession {
                 }
                 ReplAction::Continue
             }
+            SlashCommand::LoginAll => {
+                // Pausiert die REPL-Session, loggt alle Brains sequenziell ein,
+                // startet das aktive Brain danach wieder.
+                self.stop_brain();
+                println!("[login-all] Sequentielles Login für alle Brains (profiles/<brain>)…");
+                let results = crate::login::login_all(
+                    std::time::Duration::from_secs(300),
+                    0,
+                    false,
+                );
+                let ok = results.iter().filter(|r| r.ok).count();
+                let skip = results.iter().filter(|r| r.skipped).count();
+                for r in &results {
+                    let tag = if r.skipped {
+                        "skip"
+                    } else if r.ok {
+                        "ok"
+                    } else {
+                        "FAIL"
+                    };
+                    println!("[login-all] [{tag}] {}: {}", r.brain_id, r.message);
+                }
+                println!("[login-all] fertig: {ok}/{} ok ({skip} übersprungen)", results.len());
+                if let Err(e) = self.start_brain() {
+                    eprintln!("[login-all] aktives Brain nicht neu gestartet: {e}");
+                }
+                ReplAction::Continue
+            }
             SlashCommand::Whoami => {
                 self.print_whoami();
                 ReplAction::Continue
@@ -497,8 +530,14 @@ impl ReplSession {
 
     /// Ein voller Frage-Zyklus gegen ein frisches Brain-Backend: start → ensure_ready
     /// → new_chat → send → wait_response → stop. Für den Swarm, wo jedes Brain der
-    /// Reihe nach befragt wird (gemeinsames Profil ⇒ nur eine Session gleichzeitig).
-    fn swarm_query(&self, brain_id: &str, prompt: &str) -> Result<String, String> {
+    /// Reihe nach befragt wird. `profile_override` erlaubt ein isoliertes
+    /// Laufzeit-Profil (Swarm-Teilkopie) statt des Shared-Profils.
+    fn swarm_query(
+        &self,
+        brain_id: &str,
+        prompt: &str,
+        profile_override: Option<std::path::PathBuf>,
+    ) -> Result<String, String> {
         // Wiederholt blockierte/fehlgeschlagene Brains werden fuer eine Cooldown-
         // Zeit uebersprungen statt bei jedem Swarm erneut den vollen Timeout zu
         // kosten (siehe circuit_breaker.rs).
@@ -510,6 +549,9 @@ impl ReplSession {
         let started = std::time::Instant::now();
         let prompt_chars = prompt.chars().count();
         let mut backend = WebBrainBackend::from_config(brain_id)?;
+        if let Some(p) = profile_override {
+            backend = backend.with_profile_override(p);
+        }
         backend.start(self.headless)?;
         let ready_to = resolve_timeout("ensure_ready", brain_id, "", None);
         let state = backend.ensure_ready(ready_to).unwrap_or(SessionState::Error);
@@ -557,18 +599,28 @@ impl ReplSession {
         out
     }
 
-    /// `/swarm [n] <prompt>` — Multi-Brain-Swarm.
+    /// `/swarm [n] <prompt>` — Multi-Brain-Swarm (schlüssiger Ablauf).
     ///
-    /// 1. **Battle Royale:** jedes Brain beantwortet den Prompt.
-    /// 2. **Orchestrator:** entweder fest gewählt (`n` = 1-8) oder per **Konsens** —
-    ///    jedes Brain nominiert eines, Mehrheit gewinnt.
-    /// 3. **Zusammenführung:** der Orchestrator verdichtet alle Antworten zu einer.
+    /// **Ablauf**
+    /// 1. **Antworten:** jedes verfügbare Brain bekommt denselben Prompt, jeweils
+    ///    in einem **isolierten** Profil (`prepare_swarm_profile` → Kopie aus
+    ///    `reference/<brain>` oder `profiles/<brain>`). Kein Shared-Pool.
+    /// 2. **Orchestrator wählen** (wer synthetisiert):
+    ///    - `/swarm N …` → Brain N (1-basiert), falls es in Phase 1 geantwortet hat
+    ///    - sonst: **Reliability** unter den Antwortenden (`brain_score`, kein
+    ///      zusätzlicher Browser-Roundtrip)
+    ///    - optional teuer: `WEBAGENT_SWARM_VOTE=1` → jedes antwortende Brain
+    ///      stimmt ab (sieht Antwort-Kurzfassungen im Prompt)
+    /// 3. **Synthese:** nur der Orchestrator bekommt alle Antworten und liefert final.
+    /// 4. Swarm-Profile aufräumen, REPL-Brain wieder starten.
     ///
-    /// Das aktive Brain wird pausiert (gemeinsames Profil) und danach wiederhergestellt.
+    /// Früher Phase-2-„Konsens“: jedes Brain nochmal voll befragen *ohne* die
+    /// Antworten zu sehen → teuer und inhaltlich blind. Default ist jetzt Score.
     fn run_swarm(&mut self, orchestrator: Option<usize>, prompt: &str) {
         if prompt.trim().is_empty() {
-            println!("[swarm] Nutzung: /swarm <prompt>            — Orchestrator per Konsens");
-            println!("[swarm]         /swarm <1-8> <prompt>     — Orchestrator fest wählen");
+            println!("[swarm] Nutzung: /swarm <prompt>         — Orchestrator per Reliability");
+            println!("[swarm]         /swarm <1-8> <prompt>  — Orchestrator fest");
+            println!("[swarm]         WEBAGENT_SWARM_VOTE=1  — teure Live-Abstimmung");
             return;
         }
         let targets = available_brain_ids();
@@ -578,76 +630,164 @@ impl ReplSession {
                 return;
             }
         }
-        self.stop_brain(); // gemeinsames Profil freigeben
+        self.stop_brain(); // aktives REPL-Brain pausieren
 
-        // ---- Phase 1: Battle Royale — jedes Brain antwortet ----
-        println!("[swarm] Phase 1 — {} Brains antworten…", targets.len());
+        let run_id = crate::now_run_stamp();
+        // Cleanup immer, auch bei early return (Drop-Guard über Scope-Ende).
+        struct SwarmCleanup {
+            run_id: String,
+        }
+        impl Drop for SwarmCleanup {
+            fn drop(&mut self) {
+                let _ = crate::config::cleanup_swarm_profiles(&self.run_id);
+            }
+        }
+        let _cleanup = SwarmCleanup {
+            run_id: run_id.clone(),
+        };
+
+        let profiles: Vec<(String, std::path::PathBuf)> = targets
+            .iter()
+            .map(|tb| {
+                let p = crate::config::prepare_swarm_profile(&run_id, tb);
+                (tb.clone(), p)
+            })
+            .collect();
+        let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
+            profiles
+                .iter()
+                .find(|(b, _)| b == brain)
+                .map(|(_, p)| p.clone())
+        };
+
+        // ---- Phase 1: Antworten (isoliert, sequenziell) ----
+        println!(
+            "[swarm] Phase 1/3 — {} Brains antworten (isolierte Profile)…",
+            targets.len()
+        );
         let mut answers: Vec<(String, String)> = Vec::new();
         for (i, tb) in targets.iter().enumerate() {
-            match self.swarm_query(tb, prompt) {
+            let prof = profile_of(tb);
+            match self.swarm_query(tb, prompt, prof) {
                 Ok(a) => {
-                    println!("[swarm {}/{}] \x1b[1m{tb}\x1b[0m: {a}", i + 1, targets.len());
+                    let preview: String = a.chars().take(200).collect();
+                    println!(
+                        "[swarm {}/{}] \x1b[1m{tb}\x1b[0m: {preview}{}",
+                        i + 1,
+                        targets.len(),
+                        if a.chars().count() > 200 { "…" } else { "" }
+                    );
                     answers.push((tb.clone(), a));
                 }
                 Err(e) => println!("[swarm {}/{}] {tb}: — {e}", i + 1, targets.len()),
             }
         }
-        if answers.len() < 2 {
-            println!("[swarm] Zu wenige Antworten ({}) für eine Zusammenführung.", answers.len());
+        if answers.is_empty() {
+            println!("[swarm] Keine Antworten — Abbruch.");
+            let _ = self.start_brain();
+            return;
+        }
+        if answers.len() == 1 {
+            println!(
+                "[swarm] Nur eine Antwort ({}) — überspringe Synthese.",
+                answers[0].0
+            );
+            println!("\n[swarm ⇒ final]\n{}\n", answers[0].1);
             let _ = self.start_brain();
             return;
         }
         let names: Vec<String> = answers.iter().map(|(b, _)| b.clone()).collect();
 
-        // ---- Phase 2: Orchestrator bestimmen ----
+        // ---- Phase 2: Orchestrator ----
+        let live_vote = matches!(
+            std::env::var("WEBAGENT_SWARM_VOTE")
+                .unwrap_or_default()
+                .to_lowercase()
+                .as_str(),
+            "1" | "true" | "yes" | "on"
+        );
         let orch = match orchestrator {
             Some(n) => {
                 let chosen = targets[n - 1].clone();
                 if !names.contains(&chosen) {
-                    println!("[swarm] {chosen} hat nicht geantwortet — nehme {} als Orchestrator.", names[0]);
+                    println!(
+                        "[swarm] Phase 2/3 — {chosen} hat nicht geantwortet → Fallback {}",
+                        names[0]
+                    );
                     names[0].clone()
                 } else {
-                    println!("[swarm] Phase 2 — Orchestrator (fest): \x1b[1m{chosen}\x1b[0m");
+                    println!("[swarm] Phase 2/3 — Orchestrator (fest): \x1b[1m{chosen}\x1b[0m");
                     chosen
                 }
             }
-            None => {
-                println!("[swarm] Phase 2 — Konsens: Brains nominieren einen Orchestrator…");
+            None if live_vote => {
+                // Teuer: jeder Antwortende stimmt ab — mit Kurzfassungen der Antworten.
+                println!("[swarm] Phase 2/3 — Live-Abstimmung (WEBAGENT_SWARM_VOTE=1)…");
+                let mut snippets = String::new();
+                for (b, a) in &answers {
+                    let snip: String = a.chars().take(280).collect();
+                    snippets.push_str(&format!("\n### {b}\n{snip}\n"));
+                }
                 let vote_prompt = format!(
-                    "Mehrere KI-Modelle haben diese Aufgabe beantwortet: «{prompt}».\n\
-                     Teilnehmer: {}.\n\
-                     Welches EINE Modell soll die Antworten zu einer finalen Antwort zusammenführen?\n\
+                    "Aufgabe: «{prompt}».\n\
+                     Folgende Modelle haben geantwortet (Kurzfassung):{snippets}\n\
+                     Welches EINE Modell aus der Liste [{list}] soll die finale Synthese machen?\n\
                      Antworte NUR mit genau einem Namen aus der Liste.",
-                    names.join(", ")
+                    list = names.join(", ")
                 );
                 let mut votes: std::collections::HashMap<String, usize> =
                     std::collections::HashMap::new();
                 for voter in &names {
-                    if let Ok(v) = self.swarm_query(voter, &vote_prompt) {
+                    let prof = profile_of(voter);
+                    if let Ok(v) = self.swarm_query(voter, &vote_prompt, prof) {
                         let low = v.to_lowercase();
-                        // Erste Nennung eines Teilnehmernamens zählt als Stimme.
                         if let Some(pick) = names.iter().find(|n| low.contains(&n.to_lowercase())) {
                             *votes.entry(pick.clone()).or_insert(0) += 1;
                             println!("[swarm vote] {voter} → {pick}");
                         } else {
-                            println!("[swarm vote] {voter} → (keine klare Nennung)");
+                            println!("[swarm vote] {voter} → (keine klare Nennung: {v})");
                         }
                     }
                 }
-                // Gewinner: meiste Stimmen; bei Gleichstand die Reihenfolge in `names`.
                 let winner = names
                     .iter()
                     .max_by_key(|n| votes.get(*n).copied().unwrap_or(0))
                     .cloned()
                     .unwrap_or_else(|| names[0].clone());
                 let wv = votes.get(&winner).copied().unwrap_or(0);
-                println!("[swarm] Konsens: \x1b[1m{winner}\x1b[0m ({wv} Stimme(n))");
+                println!("[swarm] Phase 2/3 — Abstimmung: \x1b[1m{winner}\x1b[0m ({wv} Stimme(n))");
+                winner
+            }
+            None => {
+                // Default: Reliability unter den Antwortenden — kein extra Browser-Round.
+                let board = crate::brain_score::leaderboard();
+                let score_of = |id: &str| -> f64 {
+                    board
+                        .iter()
+                        .find(|s| s.brain_id == id)
+                        .map(|s| s.reliability)
+                        .unwrap_or(0.5)
+                };
+                let winner = names
+                    .iter()
+                    .max_by(|a, b| {
+                        score_of(a)
+                            .partial_cmp(&score_of(b))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| names[0].clone());
+                let sc = score_of(&winner);
+                println!(
+                    "[swarm] Phase 2/3 — Orchestrator per Reliability: \x1b[1m{winner}\x1b[0m (score={sc:.2})"
+                );
+                println!("[swarm]         (Live-Vote: WEBAGENT_SWARM_VOTE=1)");
                 winner
             }
         };
 
-        // ---- Phase 3: Orchestrator führt zusammen ----
-        println!("[swarm] Phase 3 — {orch} führt zusammen…");
+        // ---- Phase 3: Synthese (nur Orchestrator) ----
+        println!("[swarm] Phase 3/3 — {orch} synthetisiert…");
         let joined: String = answers
             .iter()
             .map(|(b, a)| format!("### {b}\n{a}"))
@@ -656,16 +796,23 @@ impl ReplSession {
         let synth_prompt = format!(
             "Aufgabe: «{prompt}».\n\nDie beteiligten Modelle haben so geantwortet:\n\n{joined}\n\n\
              Führe diese Antworten zu einer einzigen, besten finalen Antwort zusammen. \
-             Nenne Widersprüche, wenn es welche gibt.",
+             Nenne Widersprüche, wenn es welche gibt. Du bist der Orchestrator ({orch}).",
         );
-        match self.swarm_query(&orch, &synth_prompt) {
+        match self.swarm_query(&orch, &synth_prompt, profile_of(&orch)) {
             Ok(final_answer) => {
                 println!("\n[swarm ⇒ final via \x1b[1m{orch}\x1b[0m]\n{final_answer}\n");
             }
-            Err(e) => println!("[swarm] Zusammenführung durch {orch} fehlgeschlagen: {e}"),
+            Err(e) => {
+                println!("[swarm] Synthese durch {orch} fehlgeschlagen: {e}");
+                // Fallback: längste/erste Antwort zeigen statt totaler Leere
+                if let Some((b, a)) = answers.first() {
+                    println!("[swarm] Fallback — erste Antwort ({b}):\n{a}\n");
+                }
+            }
         }
 
-        let _ = self.start_brain(); // aktives Brain wiederherstellen
+        // _cleanup Drop räumt Profile; REPL-Brain wieder
+        let _ = self.start_brain();
         println!("[swarm] fertig. Aktiv weiterhin: {}", self.brain_id);
     }
 
@@ -770,6 +917,10 @@ mod tests {
             })
         );
         assert_eq!(parse_slash_command("/login"), Some(SlashCommand::Login));
+        assert_eq!(
+            parse_slash_command("/login-all"),
+            Some(SlashCommand::LoginAll)
+        );
         assert_eq!(
             parse_slash_command("/chat hi"),
             Some(SlashCommand::Chat {

@@ -61,7 +61,11 @@ GNU-Toolchain (bringt ihren eigenen Linker mit):
 ```powershell
 rustup toolchain install stable-x86_64-pc-windows-gnu
 rustup override set stable-x86_64-pc-windows-gnu   # im Projektordner
-cargo build --release
+# Ein-Schritt Release inkl. WebView2Loader.dll (Windows)
+pwsh -File scripts/build-release.ps1
+# oder manuell:
+#   cargo build --release
+#   pwsh -File scripts/copy-webview2-loader.ps1 -Profile release
 cargo test --no-default-features   # CI-Parität (ohne WebView/GTK)
 cargo test                         # mit WebView-Feature (lokal)
 ```
@@ -72,7 +76,8 @@ WebView-Deps (`wry`, `tao`) sind optional (`--no-default-features` für headless
 ## Nutzung
 
 ```
-webagent login            --brain <id> [--timeout <sek>]
+webagent login            --brain <id> [--timeout <sek>] [--force]
+webagent login-all        [--timeout <sek>] [--force] [--parallel N]
 webagent run              --brain <id> --task "<aufgabe>" [--headless] [--max-cycles N] [--resume <run_id>]
 webagent repl             --brain <id> [--headless]
 webagent diagnose         --brain <id> [--headless]
@@ -86,8 +91,8 @@ webagent maintenance-check [--json]
 
 Verfügbare Brains: `chatgpt, deepseek, kimi, gemini, qwen, claude, mistral, zai`.
 
-Typischer Erstlauf: `webagent login --brain claude` (einloggen), dann
-`webagent diagnose --brain claude` (prüfen), dann `webagent run …`.
+Typischer Erstlauf: `webagent login-all` (oder `login --brain claude`), dann
+`webagent diagnose --brain claude` (prüfen), dann `webagent run …` bzw. REPL `/swarm`.
 
 Beispiel:
 
@@ -107,6 +112,31 @@ Login-Zustand. Danach nutzen `run`/`diagnose`/`relay` diese Session im
 persistente Profil (`profiles/<brain>/` oder Shared-Profil). Prüfen mit
 `webagent diagnose --brain <id>`.
 
+`webagent login-all` (REPL: `/login-all`) loggt **alle** Brains **nacheinander**
+ein (Default sequenziell; `--parallel N` max 3, experimentell). Schon eingeloggte
+Profile werden übersprungen (`--force` erzwingt erneut).
+
+### Profile (Swarm)
+
+| Pfad | Rolle |
+|---|---|
+| `profiles/<brain>/` | **Canonical Login** — von `login` / `login-all` geschrieben |
+| `profiles/reference/<brain>/` | Optional: goldene Vorlage (falls vorhanden, bevorzugte Swarm-Quelle) |
+| `profiles/swarm/<run>_<brain>/` | Laufzeit-**Kopie** pro Swarm-Teilnehmer (Lock-frei, wird aufgeräumt) |
+| Shared-Profil | Default für normalen `/chat` und `run` (kein Override) |
+
+`/swarm` Ablauf (REPL):
+
+1. Jedes Brain antwortet isoliert (Profil-Kopie, kein Shared-Pool).  
+2. Orchestrator: fest (`/swarm 3 …`), sonst **Reliability** der Antwortenden;  
+   teure Live-Abstimmung nur mit `WEBAGENT_SWARM_VOTE=1` (mit Antwort-Snippets).  
+3. Nur der Orchestrator synthetisiert; Swarm-Profile werden aufgeräumt.
+
+```powershell
+# optional: Live-Vote statt Score
+$env:WEBAGENT_SWARM_VOTE = "1"
+```
+
 ## Konfiguration (Umgebungsvariablen)
 
 | Variable | Wirkung |
@@ -114,6 +144,10 @@ persistente Profil (`profiles/<brain>/` oder Shared-Profil). Prüfen mit
 | `WEBAGENT_TIMEOUT_MULT` / `_MIN` / `_MAX` | Skalierung der dynamischen Timeouts |
 | `WEBAGENT_SHARED_BROWSER` | Gemeinsames Profil + `BrowserPool` aktivieren |
 | `WEBAGENT_PERSIST_TABS` | Tabs nach Relay/Run offen lassen (Pool) |
+| `WEBAGENT_SHELL_STRICT` | `1` = Shell nur risk-arme Prefixe + Denylist |
+| `WEBAGENT_LOGIN_TO_REFERENCE` | `1` = nach `login-all` Profil zusätzlich nach `profiles/reference/<brain>` spiegeln |
+| `WEBAGENT_SWARM_VOTE` | `1` = `/swarm` Phase-2 Live-Abstimmung (sonst Reliability-Score) |
+| `WEBAGENT_PROFILE_DIR` | Überschreibt das Profil-Root (sonst `…/profiles`) |
 
 ## Daten
 

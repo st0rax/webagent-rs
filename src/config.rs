@@ -160,6 +160,113 @@ pub fn brains() -> HashMap<String, HashMap<String, String>> {
     brains
 }
 
+/// profiles/reference/<brain_id> — kanonisches, vom Menschen gepflegtes
+/// Referenzprofil (Cookies/Storage eingeloggt). Wird NICHT von der Automation
+/// beschrieben; nur gelesen und als Vorlage für Laufzeit-Kopien genutzt.
+/// Existiert das Verzeichnis nicht, greift der Fallback auf `profiles/<brain_id>`
+/// bzw. das Shared-Profil zurück.
+pub fn reference_profile_dir(brain_id: &str) -> PathBuf {
+    profiles_dir().join("reference").join(brain_id)
+}
+
+/// profiles/swarm/<run_id>_<brain_id> — isolierte Laufzeit-Teilkopie eines
+/// Referenzprofils für einen einzelnen Swarm-Teilnehmer. Vermeidet den
+/// Chromium-`SingletonLock`-Konflikt, wenn mehrere Brains parallel im selben
+/// Profil starten würden.
+pub fn swarm_profile_dir(run_id: &str, brain_id: &str) -> PathBuf {
+    profiles_dir()
+        .join("swarm")
+        .join(format!("{}_{}", run_id, brain_id))
+}
+
+/// Kopiert ein Verzeichnis rekursiv (inkl. Unterverzeichnisse). Bricht nicht bei
+/// einzelnen nicht-kopierbaren Dateien (z.B. Lock-Files), sondern überspringt
+/// sie — für Profil-Kopien ausreichend und robuster als `fs::copy` im Loop.
+pub fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    let mut copied: u32 = 0;
+    let mut non_dir: u32 = 0;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let target = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&entry.path().to_path_buf(), &target)?;
+        } else {
+            non_dir += 1;
+            // Lock-Files u.ä. beim Kopieren ignorieren — sie werden neu erzeugt.
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            // Chromium/WebView2 Locks & PIDs — neu erzeugt, nicht kopieren.
+            if name.contains("lock")
+                || name == "singletoncookie"
+                || name == "singletonsocket"
+                || name.ends_with(".lock")
+                || name == "lockfile"
+            {
+                continue;
+            }
+            if std::fs::copy(entry.path(), &target).is_ok() {
+                copied += 1;
+            }
+        }
+    }
+    // Debug-Hinweis: Quelle hatte Dateien, aber keine wurde kopiert
+    // (z.B. alles Lock-Files, oder Lese-Fehler) — sonst silently leer.
+    if non_dir > 0 && copied == 0 {
+        eprintln!(
+            "[copy_dir_all] WARN: 0 von {non_dir} Dateien aus {:?} kopiert (alle uebersprungen oder Lese-Fehler)",
+            src
+        );
+    }
+    Ok(())
+}
+
+/// Bereitet das Profil für einen Swarm-Teilnehmer vor:
+/// 1. Falls `profiles/reference/<brain_id>` existiert → Teilkopie nach
+///    `profiles/swarm/<run_id>_<brain_id>`.
+/// 2. Sonst Fallback auf das bestehende `profiles/<brain_id>` (falls vorhanden).
+/// 3. Sonst leeres Verzeichnis (Neuanlage durch Browser).
+///
+/// Rückgabe: Pfad zum isolierten Profil für diesen Lauf.
+pub fn prepare_swarm_profile(run_id: &str, brain_id: &str) -> PathBuf {
+    let reference = reference_profile_dir(brain_id);
+    let default = profiles_dir().join(brain_id);
+    let dst = swarm_profile_dir(run_id, brain_id);
+
+    // Alte Kopie dieses Runs entfernen, falls vorhanden (idempotent).
+    if dst.exists() {
+        let _ = std::fs::remove_dir_all(&dst);
+    }
+
+    if reference.is_dir() {
+        let _ = copy_dir_all(&reference, &dst);
+        return dst;
+    }
+    if default.is_dir() {
+        let _ = copy_dir_all(&default, &dst);
+        return dst;
+    }
+    // Weder Referenz noch Default: leeres Verzeichnis anlegen.
+    let _ = std::fs::create_dir_all(&dst);
+    dst
+}
+
+/// Entfernt alle abgeschlossenen Swarm-Laufzeit-Profile (aufräumen nach einem Run).
+pub fn cleanup_swarm_profiles(run_id: &str) -> std::io::Result<()> {
+    let swarm_root = profiles_dir().join("swarm");
+    if !swarm_root.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(&swarm_root)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with(&format!("{}_", run_id)) {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+    Ok(())
+}
+
 /// Laedt die Selektor-JSON eines Brains (wie config.load_selectors in Python).
 pub fn load_selectors(brain_id: &str) -> std::io::Result<serde_json::Value> {
     let path = selectors_dir().join(format!("{brain_id}.json"));
@@ -293,5 +400,55 @@ mod tests {
         assert!(ensure_data_dirs().is_ok());
         assert!(data_dir().exists());
         assert!(runs_dir().exists());
+    }
+
+    #[test]
+    fn test_prepare_swarm_profile_fallback_and_cleanup() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let run_id = format!(
+            "testswarm_{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let brain = "chatgpt";
+        let default = profiles_dir().join(brain);
+        let marker_src = default.join("_grok_swarm_marker.txt");
+        let _ = fs::create_dir_all(&default);
+        fs::write(&marker_src, b"swarm-src").expect("write marker");
+        let _ = fs::write(default.join("SingletonLock"), b"pid");
+        let _ = fs::write(default.join("lockfile"), b"x");
+
+        let dst = prepare_swarm_profile(&run_id, brain);
+        assert!(dst.is_dir(), "swarm profile dir");
+        assert!(
+            dst.join("_grok_swarm_marker.txt").is_file(),
+            "marker copied from profiles/<brain>"
+        );
+        assert!(
+            !dst.join("SingletonLock").exists(),
+            "lock files must be skipped"
+        );
+        assert!(!dst.join("lockfile").exists());
+
+        cleanup_swarm_profiles(&run_id).expect("cleanup");
+        assert!(!dst.exists(), "cleaned after run");
+
+        let _ = fs::remove_file(&marker_src);
+        let _ = fs::remove_file(default.join("SingletonLock"));
+        let _ = fs::remove_file(default.join("lockfile"));
+    }
+
+    #[test]
+    fn test_swarm_and_reference_paths() {
+        let r = reference_profile_dir("claude");
+        assert!(r.ends_with(std::path::Path::new("reference").join("claude")));
+        let s = swarm_profile_dir("run1", "claude");
+        let lossy = s.to_string_lossy();
+        assert!(lossy.contains("swarm"));
+        assert!(lossy.contains("run1_claude"));
     }
 }

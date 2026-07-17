@@ -20,24 +20,6 @@
     "button:has-text('Schließen')",
     "button:has-text('Close')"
   ],
-  "response_preference_prompt": [
-    "text=/Welche Antwort (bevorzugst|gefällt dir besser)/i",
-    "text=/Für welche Antwort entscheidest du dich/i",
-    "text=/Which response do you prefer/i",
-    "text=/Which response is better/i"
-  ],
-  "response_preference_choice": [
-    "button[aria-label*='Antwort 1' i]",
-    "button[aria-label*='Response 1' i]",
-    "button[aria-label*='Antwort A' i]",
-    "button[aria-label*='Response A' i]",
-    "button:has-text('Antwort 1')",
-    "button:has-text('Response 1')",
-    "button:has-text('Antwort A')",
-    "button:has-text('Response A')",
-    "button:has-text('Diese Antwort')",
-    "button:has-text('This response')"
-  ],
   "stop_button": [
     "button[aria-label*='Stop' i]",
     "button[aria-label*='stop' i]",

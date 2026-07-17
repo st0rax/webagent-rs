@@ -56,6 +56,22 @@ enum Commands {
         force: bool,
     },
 
+    /// Alle Brains nacheinander einloggen (canonical profiles/<brain>).
+    /// Parallel nur opt-in und gedeckelt (siehe --parallel).
+    LoginAll {
+        /// Maximale Wartezeit pro Brain in Sekunden
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+
+        /// Auch bei positivem Login-Check erneut oeffnen
+        #[arg(long)]
+        force: bool,
+
+        /// Parallelitaet (0 = sequenziell/Default; max 3 experimentell)
+        #[arg(long, default_value = "0")]
+        parallel: usize,
+    },
+
     /// Live-Diagnose: echten Browser oeffnen und Login/Composer/Selektoren pruefen
     Diagnose {
         /// Brain-Backend (z.B. chatgpt, claude, deepseek)
@@ -209,6 +225,12 @@ fn dispatch(command: Commands) -> i32 {
             force,
         } => cmd_login(&brain, timeout, force),
 
+        Commands::LoginAll {
+            timeout,
+            force,
+            parallel,
+        } => cmd_login_all(timeout, force, parallel),
+
         Commands::Diagnose { brain, headless } => cmd_diagnose(&brain, headless),
 
         Commands::Repl { brain, headless } => webagent::repl::run_repl(&brain, headless),
@@ -309,6 +331,50 @@ fn cmd_run(brain: &str, task: &str, resume: Option<&str>, headless: bool, max_cy
             eprintln!("[run] Fehler: {e}");
             1
         }
+    }
+}
+
+fn cmd_login_all(timeout_secs: u64, force: bool, parallel: usize) -> i32 {
+    use std::time::Duration;
+
+    let parallel = if parallel > 3 {
+        eprintln!("[login-all] --parallel {parallel} gedeckelt auf 3");
+        3
+    } else {
+        parallel
+    };
+    if parallel == 0 {
+        eprintln!("[login-all] sequenziell, {timeout_secs}s pro Brain (profiles/<brain>)…");
+    } else {
+        eprintln!(
+            "[login-all] parallel={parallel} (experimentell), {timeout_secs}s pro Brain…"
+        );
+    }
+    let results =
+        webagent::login::login_all(Duration::from_secs(timeout_secs), parallel, force);
+    let mut fail = 0usize;
+    for r in &results {
+        let tag = if r.skipped {
+            "skip"
+        } else if r.ok {
+            "ok"
+        } else {
+            fail += 1;
+            "FAIL"
+        };
+        println!("[login-all] [{tag}] {}: {}", r.brain_id, r.message);
+    }
+    println!(
+        "[login-all] fertig: {}/{} ok, {} übersprungen, {} fail",
+        results.iter().filter(|r| r.ok).count(),
+        results.len(),
+        results.iter().filter(|r| r.skipped).count(),
+        fail
+    );
+    if fail > 0 {
+        1
+    } else {
+        0
     }
 }
 

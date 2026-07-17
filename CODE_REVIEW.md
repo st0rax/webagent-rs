@@ -18,6 +18,28 @@
 
 ---
 
+## Status-Update 2026-07-17 — Swarm-Profil-Isolation & einheitliches `login-all` (DONE)
+
+Build + Tests grün: `cargo build --no-default-features` + `cargo test --no-default-features` → **194 pass / 0 fail** (lib).
+Die ehemals roten `executor::tests::*` sind grün.
+
+- **Profil-Isolation im Swarm:** `config::prepare_swarm_profile` → isolierte Laufzeit-Kopie `profiles/swarm/<run>_<brain>/`
+  (Referenz `profiles/reference/<brain>` → `profiles/<brain>` → leer). `copy_dir_all` skippt Lock/Cookie-Artefakte
+  (SingletonLock, SingletonCookie, SingletonSocket, `*.lock`, `lockfile`) → kein `SingletonLock`-Konflikt bei 8 Brains.
+  `cleanup_swarm_profiles` räumt nach dem Lauf auf (auch Fehlerpfad).
+- **Eigene Runtime bei Override:** `browser::start()` Shared-Pool nur ohne `profile_override`; mit Override eigene
+  `WebViewRuntime` → Isolation wirksam (Grok MUST-FIX integriert).
+- **Einheitliches Login:** `webagent login-all` + REPL `/login-all`, sequenziell, schreibt canonical `profiles/<brain>`;
+  Skip via `is_logged_in_quick` (außer `--force`); `--parallel N` auf 3 gedeckelt.
+- **Tests:** `config::tests::test_prepare_swarm_profile_fallback_and_cleanup`, `test_swarm_and_reference_paths` (grün).
+- **Docs:** `README.md` Profil-Tabelle + login-all + swarm; `CLAUDE_PROPOSALS.md` Status-Sektion.
+
+Erledigt (Q1–Q3, Grok REVIEW Approve 2026-07-17): login-all optional `reference/` via Env `WEBAGENT_LOGIN_TO_REFERENCE=1`
+(`maybe_copy_to_reference` nach erfolgreichem Login); `is_logged_in_quick` headless (`probe.start(true)`);
+`copy_dir_all` loggt WARN, wenn 0 von N Dateien kopiert wurden. Build/Test grün (195/0).
+
+---
+
 ## 🎯 Stärken
 
 | Bereich | Details |
@@ -98,28 +120,28 @@
 | TOCTOU `RunStore::save` | load → validate → tmp+rename; kein Lock | **real, niedrig priorisieren** |
 | Allowlist als Default-Fix | Agent braucht generische Shell (by Design, Single-User) | **Allowlist-only = No-Go** |
 
-### Aktuelle Test-Baseline (Grok-Nachlauf)
+### Aktuelle Test-Baseline (Stand 2026-07-17)
 
 ```
-cargo test --lib
-→ 159 passed; 7 failed (executor::tests::*)
+cargo test --no-default-features
+→ 194 passed; 0 failed (lib, inkl. executor::tests — zuvor rot, jetzt grün)
 ```
 
-Bekannte rote Tests (Executor/Shell-Session):
+Bekannte rote Tests (Executor/Shell-Session) — **Stand 2026-07-17: alle grün**:
 
-- `test_simple_command`
-- `test_nonzero_exit`
-- `test_cwd_persists_across_commands`
-- `test_fake_marker_does_not_complete_early`
-- `test_stale_lastexitcode_not_inherited`
-- `test_stderr_capture`
-- `test_timeout_no_leak_to_next_action`
+- `test_simple_command` ✓
+- `test_nonzero_exit` ✓
+- `test_cwd_persists_across_commands` ✓
+- `test_fake_marker_does_not_complete_early` ✓
+- `test_stale_lastexitcode_not_inherited` ✓
+- `test_stderr_capture` ✓
+- `test_timeout_no_leak_to_next_action` ✓
 
-**Implikation:** Keine großen Refactors (Controller-Split, async) bevor Executor-Suite wieder grün ist.
+**Implikation:** Executor-Suite ist grün → P0/P1-Refactors (Controller-Split, async, Shell-Policy) freigegeben.
 
 ### Was der Original-Review nicht abdeckt
 
-1. Rote Executor-Tests als **aktueller Blocker**
+1. Rote Executor-Tests als **ehemaliger Blocker** (Stand 2026-07-17: grün, s. Status-Update)
 2. Größe von `doctor.rs` / `browser.rs`
 3. Produktkontext: Shell ist **gewollt** (Local Agent) — Security = Policy/Audit, nicht „kein Shell“
 4. Provider-/Relay-Stabilität (`PROVIDER_STATUS.md`) oft höherer User-Impact als Architektur-Purity
@@ -133,7 +155,7 @@ Bekannte rote Tests (Executor/Shell-Session):
 |-------|--------|---------|
 | Command Injection | ⚠️ **Medium–High** (Kontext: Local Agent) | Brain-Output → persistente Shell. Kein Remote-RCE-Modell, aber Prompt-Injection über Seite/Tool-Output möglich. **Policy-Layer nötig, kein reines Allowlist.** |
 | Path Traversal | ✅ Ok | `run_id` kontrolliert, `safe_id` alphanum-only |
-| Profile Isolation | ⚠️ Medium | Shared-Browser teilt Cookies/Storage zwischen Brains |
+| Profile Isolation | ⚠️ Medium (normaler /chat & run teilen Shared-Profil) | Shared-Browser teilt Cookies/Storage; **Swarm nutzt isolierte Laufzeit-Kopien** (s. Status-Update 2026-07-17) |
 | Secret Leakage | ✅ Ok | Keine API-Keys im Code; Profile user-scoped |
 | Input Parsing | ✅ Stark | `protocol.rs`: strikte Validierung, Windows-Path-Repair nur für `message` type |
 | CDP Exposure | ℹ️ Info | Port 9222 lokal erreichbar (`WEBAGENT_SHARED_DEBUG_PORT` überschreibbar) |
@@ -148,7 +170,7 @@ Bekannte rote Tests (Executor/Shell-Session):
 |--------|--------------------|--------------------|
 | LOC (src/) | ~12.000 | ~12.000 (plausibel) |
 | Unit-Tests gelistet | 168 | **166** (`cargo test --lib -- --list`) |
-| Unit-Tests grün | 168/168 | **159 pass / 7 fail** |
+| Unit-Tests grün | 168/168 | **194 pass / 0 fail (2026-07-17)** |
 | Integration-Tests | 0 | 0 |
 | Test-Dauer | ~20s | ~51s (bei Failures inkl. Timeouts) |
 | Unsafe Blocks | 0 | 0 (unverändert angenommen) |

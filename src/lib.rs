@@ -16,6 +16,7 @@ pub mod config;
 pub mod controller;
 pub mod doctor;
 pub mod executor;
+pub mod login;
 pub mod loop_guard;
 pub mod memory;
 pub mod mock_page;
