@@ -141,6 +141,55 @@ fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
     save(path, &state);
 }
 
+/// Telemetrie-Snapshot eines Brains fuer `/breaker` und externe Diagnose.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BreakerSnapshot {
+    pub brain_id: String,
+    /// `true` = Breaker offen, Brain wird uebersprungen.
+    pub open: bool,
+    pub consecutive_failures: u32,
+    /// Unix-Sekunden, bis der Breaker zu ist (`None` wenn nie geoeffnet).
+    pub open_until: Option<i64>,
+    /// Verbleibende Cooldown-Sekunden, falls noch offen.
+    pub remaining_secs: Option<i64>,
+    pub last_reason: Option<String>,
+}
+
+/// Lese-API: alle bekannten Brain-Zustaende (sortiert nach `brain_id`).
+/// Brains ohne Eintrag erscheinen nicht (analog zu `brain_score::leaderboard`).
+pub fn snapshots() -> Vec<BreakerSnapshot> {
+    snapshots_at(&state_path())
+}
+
+fn snapshots_at(path: &PathBuf) -> Vec<BreakerSnapshot> {
+    let _guard = WRITE_LOCK.lock();
+    let state = load(path);
+    let now = now_secs();
+    let mut out: Vec<BreakerSnapshot> = state
+        .into_iter()
+        .map(|(brain_id, entry)| {
+            let remaining = entry.open_until.and_then(|until| {
+                let r = until - now;
+                if r > 0 {
+                    Some(r)
+                } else {
+                    None
+                }
+            });
+            BreakerSnapshot {
+                brain_id,
+                open: remaining.is_some(),
+                consecutive_failures: entry.consecutive_failures,
+                open_until: entry.open_until,
+                remaining_secs: remaining,
+                last_reason: entry.last_reason,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| a.brain_id.cmp(&b.brain_id));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,5 +251,40 @@ mod tests {
         }
         assert!(check_at("qwen", &path).is_some());
         assert_eq!(check_at("kimi", &path), None);
+    }
+
+    #[test]
+    fn snapshots_report_open_and_partial_state() {
+        let path = unique_path();
+        // partial failures — closed breaker, but visible in telemetry
+        record_failure_at("zai", "timeout", &path);
+        record_failure_at("zai", "timeout", &path);
+        // trip open
+        for _ in 0..DEFAULT_MAX_FAILURES {
+            record_failure_at("qwen", "blocked", &path);
+        }
+        // success removes entry entirely
+        record_failure_at("kimi", "rate-limit", &path);
+        record_success_at("kimi", &path);
+
+        let snaps = snapshots_at(&path);
+        assert_eq!(snaps.len(), 2, "kimi reset should disappear; zai+qwen remain");
+
+        let zai = snaps.iter().find(|s| s.brain_id == "zai").expect("zai");
+        assert!(!zai.open);
+        assert_eq!(zai.consecutive_failures, 2);
+        assert!(zai.open_until.is_none());
+        assert_eq!(zai.remaining_secs, None);
+        assert_eq!(zai.last_reason.as_deref(), Some("timeout"));
+
+        let qwen = snaps.iter().find(|s| s.brain_id == "qwen").expect("qwen");
+        assert!(qwen.open);
+        assert_eq!(qwen.consecutive_failures, DEFAULT_MAX_FAILURES);
+        assert!(qwen.open_until.is_some());
+        assert!(qwen.remaining_secs.is_some_and(|r| r > 0 && r <= DEFAULT_COOLDOWN_SECS));
+        assert_eq!(qwen.last_reason.as_deref(), Some("blocked"));
+
+        // sorted by brain_id
+        assert!(snaps.windows(2).all(|w| w[0].brain_id <= w[1].brain_id));
     }
 }

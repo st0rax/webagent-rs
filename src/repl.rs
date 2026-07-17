@@ -660,6 +660,13 @@ impl ReplSession {
                 .map(|(_, p)| p.clone())
         };
 
+        // Stehendes /goal analog zu run_autonomous voranstellen (leer wenn keins).
+        let goal_ctx = match &self.goal {
+            Some(g) => format!("Übergeordnetes Ziel: {g}\n\n"),
+            None => String::new(),
+        };
+        let framed_prompt = format!("{goal_ctx}{prompt}");
+
         // ---- Phase 1: Antworten (isoliert, sequenziell) ----
         println!(
             "[swarm] Phase 1/3 — {} Brains antworten (isolierte Profile)…",
@@ -668,7 +675,7 @@ impl ReplSession {
         let mut answers: Vec<(String, String)> = Vec::new();
         for (i, tb) in targets.iter().enumerate() {
             let prof = profile_of(tb);
-            match self.swarm_query(tb, prompt, prof) {
+            match self.swarm_query(tb, &framed_prompt, prof) {
                 Ok(a) => {
                     let preview: String = a.chars().take(200).collect();
                     println!(
@@ -729,7 +736,7 @@ impl ReplSession {
                     snippets.push_str(&format!("\n### {b}\n{snip}\n"));
                 }
                 let vote_prompt = format!(
-                    "Aufgabe: «{prompt}».\n\
+                    "{goal_ctx}Aufgabe: «{prompt}».\n\
                      Folgende Modelle haben geantwortet (Kurzfassung):{snippets}\n\
                      Welches EINE Modell aus der Liste [{list}] soll die finale Synthese machen?\n\
                      Antworte NUR mit genau einem Namen aus der Liste.",
@@ -794,7 +801,7 @@ impl ReplSession {
             .collect::<Vec<_>>()
             .join("\n\n");
         let synth_prompt = format!(
-            "Aufgabe: «{prompt}».\n\nDie beteiligten Modelle haben so geantwortet:\n\n{joined}\n\n\
+            "{goal_ctx}Aufgabe: «{prompt}».\n\nDie beteiligten Modelle haben so geantwortet:\n\n{joined}\n\n\
              Führe diese Antworten zu einer einzigen, besten finalen Antwort zusammen. \
              Nenne Widersprüche, wenn es welche gibt. Du bist der Orchestrator ({orch}).",
         );

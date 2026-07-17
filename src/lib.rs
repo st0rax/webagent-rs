@@ -10,6 +10,7 @@ pub mod brain_score;
 pub mod brains_health;
 pub mod browser;
 pub mod browser_pool;
+pub mod canary;
 pub mod circuit_breaker;
 pub mod comms;
 pub mod config;
