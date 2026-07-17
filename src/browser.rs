@@ -38,6 +38,22 @@ const BLOCK_PHRASES: &[&str] = &[
     "you have reached",
     "verify you are human",
     "checking your browser",
+    // Kapazitaets-/Auslastungsmeldungen — anderes Muster als "Limit erreicht":
+    // kein persoenliches Kontingent, sondern "der Dienst ist gerade ueberlastet".
+    // Ausloeser fuer diese Ergaenzung: kimi zeigt unter Last einen Dialog/Overlay,
+    // der den Composer blockiert; der genaue Wortlaut war zum Zeitpunkt des Fixes
+    // nicht reproduzierbar (live_diagnose traf kimi im Ready-Zustand), daher eine
+    // Bandbreite plausibler Formulierungen statt einer einzelnen bestaetigten Phrase.
+    "too many users",
+    "too many people",
+    "high traffic",
+    "currently busy",
+    "server is busy",
+    "at capacity",
+    "zu viele nutzer",
+    "zu viele anfragen",
+    "überlastet",
+    "derzeit ausgelastet",
     "cloudflare",
 ];
 
@@ -791,8 +807,17 @@ return null;}})()"#
         // Frueher: `Ok(baseline)`, auch wenn jeder Versuch scheiterte — der Aufrufer
         // lief dann in den vollen wait_response-Timeout (150s Stille). Jetzt ehrlicher
         // Fehler: es kam kein Absende-Beweis (URL-Wechsel / Stop-Button / neue
-        // Antwort). Ursache ist meist ein blockierender Dialog/Overlay ueber dem Composer.
-        Err("Absenden fehlgeschlagen: kein Absende-Beweis nach 5 Versuchen (blockiert ein Dialog/Overlay den Composer?)".into())
+        // Antwort). Ursache ist meist ein blockierender Dialog/Overlay ueber dem
+        // Composer -- z.B. kimis "gerade zu viele Nutzer"-Kapazitaetsmeldung. Statt
+        // das nur zu vermuten: die Seite nach einem bekannten Block-Text absuchen und
+        // den tatsaechlichen Text melden, falls vorhanden, damit der naechste
+        // Auftritt im Log/`/score` diagnostizierbar ist statt ein Ratespiel zu bleiben.
+        if let Some(banner) = self.detect_block_banner() {
+            return Err(format!(
+                "blockiert: kein Absende-Beweis nach 5 Versuchen -- Seite zeigt: {banner}"
+            ));
+        }
+        Err("Absenden fehlgeschlagen: kein Absende-Beweis nach 5 Versuchen (blockiert ein Dialog/Overlay den Composer, dessen Text nicht in der bekannten Block-Phrasenliste steht)".into())
     }
 
     fn send_gemini(&mut self, text: &str) -> Result<i32, String> {
@@ -1335,6 +1360,18 @@ mod tests {
         assert_eq!(
             block_phrase_in_text("Sie haben Ihr Nachrichtenlimit erreicht."),
             Some("nachrichtenlimit")
+        );
+    }
+
+    #[test]
+    fn block_phrase_in_text_detects_capacity_message() {
+        assert_eq!(
+            block_phrase_in_text("Sorry, too many users are chatting with Kimi right now."),
+            Some("too many users")
+        );
+        assert_eq!(
+            block_phrase_in_text("Gerade zu viele Anfragen, bitte spaeter erneut versuchen."),
+            Some("zu viele anfragen")
         );
     }
 
