@@ -172,6 +172,27 @@ enum Commands {
         json: bool,
     },
 
+    /// Autonomer bot2bot-Worker: Inbox pollen, Task via Controller abarbeiten,
+    /// Ergebnis zurueck an Absender (grok-Aequivalent). Pro Prozess ein eigenes
+    /// WEBAGENT_PROFILE_DIR setzen, damit N Worker parallel laufen (SingletonLock).
+    Bot2BotWorker {
+        /// Brain-Backend (z.B. deepseek)
+        #[arg(long)]
+        brain: String,
+        /// Ein Durchlauf statt Endlos-Loop
+        #[arg(long)]
+        once: bool,
+        /// Poll-Intervall in Sekunden
+        #[arg(long, default_value = "30")]
+        poll_secs: u64,
+        /// Maximale Controller-Zyklen
+        #[arg(long, default_value = "100")]
+        max_cycles: u32,
+        /// Headless-Browser
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// First-run setup: Brain-Auswahl und optional Login-Hinweise
     Oobe {
         #[arg(long)]
@@ -293,6 +314,16 @@ fn dispatch(command: Commands) -> i32 {
             brains,
             json,
         } => cmd_swarm(&message, headless, timeout, &brains, json),
+
+        Commands::Bot2BotWorker {
+            brain,
+            once,
+            poll_secs,
+            max_cycles,
+            headless,
+        } => webagent::bot2bot_worker::run_bot2bot_worker(
+            &brain, poll_secs, once, max_cycles, headless,
+        ),
 
         Commands::Oobe {
             brains,
