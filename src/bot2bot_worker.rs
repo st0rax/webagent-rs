@@ -305,6 +305,9 @@ impl Bot2BotWorker {
             .with_profile_override(profile.to_path_buf());
         let executor = PlatformShellExecutor::new();
         let mut controller = AgentController::new(backend, executor, self.max_cycles);
+        // Inbox tasks MUST always be fresh runs: never pass resume_id.
+        // Resuming a prior run (or a mock conversation_ref) can yield a phantom
+        // finish with cycles=1 and no browser/file work.
         controller.run(task, &self.brain_id, None, self.headless)
     }
 

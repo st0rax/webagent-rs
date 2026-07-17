@@ -26,6 +26,83 @@ const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 const MEMORY_CONTEXT_LIMIT: usize = 5;
 const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
 
+/// Hosts that must never be treated as a live chat session for resume.
+/// Includes reserved/test TLDs and classic documentation placeholders so a
+/// leaked mock `conversation_ref` cannot short-circuit a real run (phantom finish).
+fn is_blocked_resume_host(host: &str) -> bool {
+    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if h.is_empty() {
+        return true;
+    }
+    // Explicit documentation / mock hosts seen in fixtures and failed runs.
+    if matches!(
+        h.as_str(),
+        "example.test"
+            | "example.com"
+            | "example.org"
+            | "example.net"
+            | "localhost"
+            | "127.0.0.1"
+            | "0.0.0.0"
+            | "::1"
+            | "[::1]"
+            | "test"
+            | "invalid"
+            | "local"
+    ) {
+        return true;
+    }
+    // RFC 2606 / special-use and common mock TLDs.
+    h.ends_with(".test")
+        || h.ends_with(".invalid")
+        || h.ends_with(".localhost")
+        || h.ends_with(".example")
+        || h.ends_with(".local")
+}
+
+/// Returns true only if `conversation_ref` looks like a real browser chat URL
+/// worth restoring. Invalid refs force the new_chat+transcript resume path.
+pub(crate) fn is_valid_resume_conversation_ref(reference: &str) -> bool {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return false;
+    }
+    let lower = reference.to_ascii_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("http://")) {
+        return false;
+    }
+    // Strip scheme, then take authority (before path/query/fragment).
+    let without_scheme = reference
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(reference);
+    let authority = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim();
+    if authority.is_empty() {
+        return false;
+    }
+    // Drop userinfo if present; host is before optional :port (IPv6 in []).
+    let hostport = authority.rsplit('@').next().unwrap_or(authority);
+    let host = if hostport.starts_with('[') {
+        hostport
+            .split(']')
+            .next()
+            .unwrap_or(hostport)
+            .trim_start_matches('[')
+    } else {
+        hostport.split(':').next().unwrap_or(hostport)
+    };
+    if host.is_empty() || is_blocked_resume_host(host) {
+        return false;
+    }
+    true
+}
+
+
+
 /// Ergebnis eines einzelnen Brain-Turns.
 #[derive(Debug, Clone)]
 pub struct BrainTurn {
@@ -540,7 +617,20 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         let mut restored = false;
 
         if let Some(cr) = conv_ref.as_ref() {
-            restored = self.brain.restore_conversation(cr).unwrap_or(false);
+            if !is_valid_resume_conversation_ref(cr) {
+                // Mock/placeholder refs (e.g. https://example.test/...) must not
+                // look like a successful restore — that produced phantom done runs.
+                let _ = transcript.append(
+                    "system",
+                    &format!(
+                        "resume_invalid_conversation_ref={}; forcing new_chat fallback",
+                        cr
+                    ),
+                    HashMap::new(),
+                );
+            } else {
+                restored = self.brain.restore_conversation(cr).unwrap_or(false);
+            }
         }
 
         let ready_timeout =
@@ -1225,14 +1315,14 @@ mod tests {
 
     #[test]
     fn test_resume_restores_conversation_when_possible() {
-        let data_dir = env::current_dir()
-            .unwrap_or_else(|_| env::temp_dir())
-            .join("data");
+        let data_dir = unique_data_dir();
         let runs_dir = data_dir.join("runs");
         let logs_dir = data_dir.join("logs");
         let store = RunStore::new(runs_dir, logs_dir);
         let mut meta = store.create("mock", "Fortsetzen").unwrap();
-        meta.conversation_ref = Some("https://example.test/chat/old".to_string());
+        // Production-like host (not example.test / reserved mock TLDs).
+        let live_ref = "https://chatgpt.com/c/old-session".to_string();
+        meta.conversation_ref = Some(live_ref.clone());
         meta.completed_actions.insert(
             "prev-1".to_string(),
             "[Terminal-Ausgabe action_id=prev-1]\nold".to_string(),
@@ -1244,25 +1334,74 @@ mod tests {
         let new_chat_calls = brain.new_chat_calls.clone();
 
         let executor = MockExecutor::new();
-        let mut controller = AgentController::new(brain, executor, 5);
+        let mut controller = AgentController::with_data_dir(brain, executor, 5, data_dir);
 
         let result = controller
             .run("ignored", "mock", Some(&meta.run_id), false)
             .unwrap();
 
         assert_eq!(result.status, "done");
-        assert_eq!(
-            restore_calls.borrow().as_slice(),
-            &["https://example.test/chat/old"]
-        );
+        assert_eq!(restore_calls.borrow().as_slice(), &[live_ref.as_str()]);
         assert_eq!(*new_chat_calls.borrow(), 0);
     }
 
     #[test]
+    fn test_resume_rejects_example_test_conversation_ref() {
+        let data_dir = unique_data_dir();
+        let runs_dir = data_dir.join("runs");
+        let logs_dir = data_dir.join("logs");
+        let store = RunStore::new(runs_dir, logs_dir);
+        let mut meta = store.create("mock", "Fortsetzen mit mock-ref").unwrap();
+        meta.conversation_ref = Some("https://example.test/chat/old".to_string());
+        store.save(&meta).ok();
+
+        // One response for the new_chat recovery path (restore must not succeed).
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let restore_calls = brain.restore_calls.clone();
+        let new_chat_calls = brain.new_chat_calls.clone();
+
+        let executor = MockExecutor::new();
+        let mut controller = AgentController::with_data_dir(brain, executor, 5, data_dir);
+
+        let result = controller
+            .run("ignored", "mock", Some(&meta.run_id), false)
+            .unwrap();
+
+        assert_eq!(result.status, "done");
+        assert!(
+            restore_calls.borrow().is_empty(),
+            "example.test must not call restore_conversation: {:?}",
+            restore_calls.borrow()
+        );
+        assert!(
+            *new_chat_calls.borrow() >= 1,
+            "invalid conversation_ref must force new_chat fallback"
+        );
+    }
+
+    #[test]
+    fn test_is_valid_resume_conversation_ref() {
+        assert!(!is_valid_resume_conversation_ref(""));
+        assert!(!is_valid_resume_conversation_ref("not-a-url"));
+        assert!(!is_valid_resume_conversation_ref("ftp://chatgpt.com/c/x"));
+        assert!(!is_valid_resume_conversation_ref("https://example.test/chat/old"));
+        assert!(!is_valid_resume_conversation_ref("https://example.com/x"));
+        assert!(!is_valid_resume_conversation_ref("http://localhost:9222/"));
+        assert!(!is_valid_resume_conversation_ref("https://foo.test/bar"));
+        assert!(is_valid_resume_conversation_ref(
+            "https://chatgpt.com/c/abc123"
+        ));
+        assert!(is_valid_resume_conversation_ref(
+            "https://gemini.google.com/app/xyz"
+        ));
+        assert!(is_valid_resume_conversation_ref(
+            "http://chat.deepseek.com/a/chat/s/1"
+        ));
+    }
+
+    #[test]
     fn test_resume_rejects_mismatched_brain_id() {
-        let data_dir = env::current_dir()
-            .unwrap_or_else(|_| env::temp_dir())
-            .join("data");
+        let data_dir = unique_data_dir();
         let runs_dir = data_dir.join("runs");
         let logs_dir = data_dir.join("logs");
         let store = RunStore::new(runs_dir, logs_dir);
@@ -1271,7 +1410,7 @@ mod tests {
 
         let brain = MockBrain::new();
         let executor = MockExecutor::new();
-        let mut controller = AgentController::new(brain, executor, 5);
+        let mut controller = AgentController::with_data_dir(brain, executor, 5, data_dir);
 
         let result = controller.run("x", "other", Some(&meta.run_id), false);
         assert!(result.is_err());
