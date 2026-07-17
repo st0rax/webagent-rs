@@ -506,10 +506,43 @@ fn migrate_legacy_dir(legacy: &Path, target: &Path) {
     }
 }
 
-/// Laedt die Selektor-JSON eines Brains (wie config.load_selectors in Python).
+/// In die Binary eingebettete Selektoren — Fallback, damit eine heruntergeladene
+/// `webagent.exe` OHNE mitgelieferten `selectors/`-Ordner sofort funktioniert.
+/// Die Platte (`selectors_dir()`) hat weiterhin Vorrang, damit Dev-Edits und
+/// selbst hinzugefuegte Brains greifen.
+const EMBEDDED_SELECTORS: &[(&str, &str)] = &[
+    ("chatgpt", include_str!("../selectors/chatgpt.json")),
+    ("deepseek", include_str!("../selectors/deepseek.json")),
+    ("kimi", include_str!("../selectors/kimi.json")),
+    ("gemini", include_str!("../selectors/gemini.json")),
+    ("qwen", include_str!("../selectors/qwen.json")),
+    ("claude", include_str!("../selectors/claude.json")),
+    ("mistral", include_str!("../selectors/mistral.json")),
+    ("zai", include_str!("../selectors/zai.json")),
+];
+
+/// Eingebettete Selektor-JSON eines Brains (falls vorhanden).
+pub fn embedded_selector(brain_id: &str) -> Option<&'static str> {
+    EMBEDDED_SELECTORS
+        .iter()
+        .find(|(id, _)| *id == brain_id)
+        .map(|(_, json)| *json)
+}
+
+/// Laedt die Selektor-JSON eines Brains. Zuerst von Platte (`selectors_dir()`),
+/// damit Dev-Edits und eigene Brains greifen; fehlt die Datei (z. B. bei einer
+/// heruntergeladenen exe ohne `selectors/`-Ordner), Fallback auf die in die
+/// Binary eingebetteten Selektoren.
 pub fn load_selectors(brain_id: &str) -> std::io::Result<serde_json::Value> {
     let path = selectors_dir().join(format!("{brain_id}.json"));
-    let content = std::fs::read_to_string(path)?;
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => match embedded_selector(brain_id) {
+            Some(json) => json.to_string(),
+            None => return Err(e),
+        },
+        Err(e) => return Err(e),
+    };
     serde_json::from_str(&content)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
 }
@@ -820,6 +853,27 @@ mod tests {
         let root = root_dir();
         assert!(root.exists(), "Root-Verzeichnis sollte existieren");
         assert!(root.is_dir(), "Root sollte ein Verzeichnis sein");
+    }
+
+    #[test]
+    fn test_embedded_selectors_cover_all_brains_and_parse() {
+        // Beweist Portabilitaet: jede heruntergeladene exe hat die Selektoren
+        // fuer alle BRAIN_TABLE-Brains eingebettet und sie sind gueltiges JSON.
+        for (id, _url) in BRAIN_TABLE {
+            let embedded = embedded_selector(id)
+                .unwrap_or_else(|| panic!("kein eingebetteter Selektor fuer Brain '{id}'"));
+            let parsed: serde_json::Value = serde_json::from_str(embedded)
+                .unwrap_or_else(|e| panic!("eingebetteter Selektor '{id}' ist kein JSON: {e}"));
+            assert!(
+                parsed.is_object(),
+                "eingebetteter Selektor '{id}' sollte ein JSON-Objekt sein"
+            );
+        }
+    }
+
+    #[test]
+    fn test_embedded_selector_unknown_brain_is_none() {
+        assert!(embedded_selector("does-not-exist").is_none());
     }
 
     #[test]
