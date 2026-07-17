@@ -10,6 +10,8 @@ pub mod brain_score;
 pub mod brains_health;
 pub mod bot2bot_worker;
 pub mod browser;
+pub mod worker_pool;
+pub mod tui;
 pub mod browser_pool;
 pub mod canary;
 pub mod circuit_breaker;

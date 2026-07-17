@@ -210,6 +210,23 @@ impl Bot2BotWorker {
     /// Ein Poll-Durchlauf: alle anstehenden Tasks abarbeiten. Gibt die Anzahl der
     /// verarbeiteten Tasks zurück.
     pub fn poll_once(&self, profile: &Path) -> usize {
+        // Heartbeat (v2): bei JEDEM Poll schreiben -> der Supervisor erkennt
+        // haengende Worker ueber das Datei-Aenderungsdatum (auch bei idle-
+        // Browser mit abgelaufener Session, die nie einen Task verarbeiten).
+        let hb = self
+            .bot2bot_root
+            .join("workers")
+            .join(format!("heartbeat_{}.json", self.brain_id));
+        if let Some(parent) = hb.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let beat = serde_json::json!({
+            "brain": self.brain_id,
+            "pid": std::process::id(),
+            "last_seen": crate::now_rfc3339(),
+        });
+        let _ = fs::write(&hb, serde_json::to_string(&beat).unwrap_or_default());
+
         let state_path = self.state_path();
         let mut state = WorkerState::load(&state_path);
         if state.name.is_empty() {

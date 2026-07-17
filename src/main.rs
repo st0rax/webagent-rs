@@ -11,7 +11,7 @@ use webagent::run_store::RunStore;
 #[command(about = "Gehirnunabhängiger lokaler Agent (Rust-Port)", long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -194,6 +194,51 @@ enum Commands {
         headless: bool,
     },
 
+    /// Worker-Pool-Manager (Teil 1): haelt N aktive bot2bot-Worker (je ein
+    /// eigener Kindprozess) am Leben, Failover bei Crash (Brain -> unavailable,
+    /// naechster Reserve-Brain promoviert). Status pro Brain in pool_state.json
+    /// (available/active/unavailable, extern re-flaggbar).
+    #[command(name = "workers")]
+    Workers {
+        /// Anzahl gleichzeitig aktiver Worker (Default 2 -> 6 Reserve bei 8 Brains)
+        #[arg(long, default_value = "2")]
+        active: usize,
+
+        /// Komma-getrennte Brain-IDs (leer = alle verfuegbaren mit Profil)
+        #[arg(long, default_value = "")]
+        brains: String,
+
+        /// Poll-Intervall der Supervisor-Schleife in Sekunden
+        #[arg(long, default_value = "10")]
+        poll_secs: u64,
+
+        /// Headless-Browser fuer die Worker-Kindprozesse
+        #[arg(long)]
+        headless: bool,
+    },
+
+    /// Terminal-UI (Default): steuert den Worker-Pool sichtbar im Terminal.
+    /// Ohne Subcommand = diese Ansicht; `webagent tui` ist identisch. Zeigt
+    /// Brain-Status + Live-Task-Board und routet Aufgaben an einzelne Worker.
+    #[command(name = "tui")]
+    Tui {
+        /// Zielanzahl gleichzeitig aktiver Worker (Default 2)
+        #[arg(long, default_value = "2")]
+        active: usize,
+
+        /// Komma-getrennte Brain-IDs (leer = alle verfuegbaren mit Profil)
+        #[arg(long, default_value = "")]
+        brains: String,
+
+        /// Poll-Intervall der Supervisor-Schleife in Sekunden
+        #[arg(long, default_value = "5")]
+        poll_secs: u64,
+
+        /// Headless-Browser fuer die Worker-Kindprozesse
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// First-run setup: Brain-Auswahl und optional Login-Hinweise
     Oobe {
         #[arg(long)]
@@ -229,9 +274,16 @@ pub fn startup_reconcile_runs() -> Vec<String> {
 
 fn main() {
     let cli = Cli::parse();
+    // Kein Subcommand -> TUI als Default (Teil 2).
+    let command = cli.command.unwrap_or(Commands::Tui {
+        active: 2,
+        brains: String::new(),
+        poll_secs: 5,
+        headless: false,
+    });
 
-    let exit_code = if matches!(cli.command, Commands::MaintenanceCheck { .. }) {
-        dispatch(cli.command)
+    let exit_code = if matches!(command, Commands::MaintenanceCheck { .. }) {
+        dispatch(command)
     } else {
         let _ = webagent::config::ensure_data_dirs();
         // Wire comms.rs into CLI entry path (exercisable, not dead code)
@@ -250,7 +302,7 @@ fn main() {
                 repaired.len()
             );
         }
-        dispatch(cli.command)
+        dispatch(command)
     };
 
     process::exit(exit_code);
@@ -325,6 +377,20 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::bot2bot_worker::run_bot2bot_worker(
             &brain, poll_secs, once, max_cycles, headless,
         ),
+
+        Commands::Workers {
+            active,
+            brains,
+            poll_secs,
+            headless,
+        } => webagent::worker_pool::run_worker_pool(active, &brains, poll_secs, headless),
+
+        Commands::Tui {
+            active,
+            brains,
+            poll_secs,
+            headless,
+        } => webagent::tui::run_tui(active, &brains, poll_secs, headless),
 
         Commands::Oobe {
             brains,
