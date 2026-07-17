@@ -34,6 +34,8 @@ pub enum SlashCommand {
     Brains,
     /// Leistungsindex-Tabelle (Reliability aus echten swarm/relay-Aufrufen).
     Score,
+    /// Canary-Health-Tabelle (`/canary`).
+    Canary,
     /// Einheitliches Login für alle Brains (sequenziell), schreibt profiles/<brain>.
     LoginAll,
     /// Stehendes Ziel setzen/anzeigen/löschen (fließt in autonome Aufgaben ein).
@@ -144,6 +146,9 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     if trimmed == "/score" || trimmed == "/leaderboard" {
         return Some(SlashCommand::Score);
     }
+    if trimmed == "/canary" {
+        return Some(SlashCommand::Canary);
+    }
     if trimmed == "/login-all" {
         return Some(SlashCommand::LoginAll);
     }
@@ -251,7 +256,7 @@ impl ReplSession {
             self.brain_id, state
         );
         println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>");
-        println!("           /new  /brains  /whoami  /score  /memory  /login  /login-all  /exit");
+        println!("           /new  /brains  /whoami  /score  /canary  /memory  /login  /login-all  /exit");
         println!();
     }
 
@@ -295,6 +300,23 @@ impl ReplSession {
             println!(
                 "  {:<10} reliability={:.2}  {}/{} Erfolge  ⌀{}ms{reason}",
                 s.brain_id, s.reliability, s.window_successes, s.window_events, s.avg_latency_ms
+            );
+        }
+    }
+
+    /// Canary-Tabelle ausgeben (`/canary`).
+    fn print_canary(&self) {
+        let results = crate::canary::run_canary();
+        if results.is_empty() {
+            println!("[canary] keine Brains registriert");
+            return;
+        }
+        println!("[canary] {} Brains:", results.len());
+        for r in results {
+            let status = if r.ok { "ok" } else { "FAIL" };
+            println!(
+                "  {:<10} {status:<4}  latency_ms={}  reason={}",
+                r.brain_id, r.latency_ms, r.reason
             );
         }
     }
@@ -464,6 +486,10 @@ impl ReplSession {
             }
             SlashCommand::Score => {
                 self.print_score();
+                ReplAction::Continue
+            }
+            SlashCommand::Canary => {
+                self.print_canary();
                 ReplAction::Continue
             }
             SlashCommand::Goal { arg } => {
@@ -992,6 +1018,11 @@ mod tests {
     fn parse_score() {
         assert_eq!(parse_slash_command("/score"), Some(SlashCommand::Score));
         assert_eq!(parse_slash_command("/leaderboard"), Some(SlashCommand::Score));
+    }
+
+    #[test]
+    fn parse_canary() {
+        assert_eq!(parse_slash_command("/canary"), Some(SlashCommand::Canary));
     }
 
     #[test]

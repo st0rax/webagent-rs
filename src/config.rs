@@ -48,6 +48,26 @@ pub const MAX_OBSERVATION_CHARS: usize = 12_000;
 pub const LOOP_GUARD_WARN_COUNT: usize = 3;
 pub const LOOP_GUARD_ABORT_COUNT: usize = 8;
 
+/// Whitelist login-relevanter Artefakte für die "sparse-copy" eines
+/// Referenzprofils (statt Vollkopie). Chromium hält Auth in Cookies,
+/// Local Storage, Preferences, Login Data, Web Data.
+pub const SPARSE_COPY_WHITELIST: &[&str] = &[
+    "Cookies",
+    "Login Data",
+    "Web Data",
+    "Preferences",
+    "Secure Preferences",
+    "Local Storage",
+    "Session Storage",
+];
+
+/// Aktiviert die sparsame Profil-Kopie (nur SPARSE_COPY_WHITELIST) statt der
+/// vollen Kopie. Default aus, um das Bestandsverhalten nicht zu ändern.
+pub fn use_sparse_profile_copy() -> bool {
+    let v = env::var("WEBAGENT_SPARSE_COPY").unwrap_or_default();
+    matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes")
+}
+
 /// bot2bot/ — Legacy Agent-Messaging-Root for bridge/watchdog (Desktop-Sibling oder Override).
 /// Note: internal messaging uses comms.rs (data/comms/) — bot2bot_root kept for compat/bridge only.
 pub fn bot2bot_root() -> PathBuf {
@@ -221,6 +241,57 @@ pub fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Kopiert nur die in SPARSE_COPY_WHITELIST gelisteten Dateien/Ordner aus `src`
+/// nach `dst` (rekursiv). Entspricht der "sparse-copy" eines Referenzprofils:
+/// nur login-relevante Artefakte statt der vollen Profilkopie. Lock-Files werden
+/// wie in copy_dir_all übersprungen.
+pub fn copy_dir_sparse(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    let mut copied: u32 = 0;
+    let mut non_dir: u32 = 0;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let target = dst.join(entry.file_name());
+        // Whitelist-Verzeichnisse vollstaendig kopieren (inkl. aller Dateien/Unterordner).
+        if ty.is_dir()
+            && SPARSE_COPY_WHITELIST
+                .iter()
+                .any(|w| w.eq_ignore_ascii_case(&name))
+        {
+            copy_dir_all(&entry.path().to_path_buf(), &target)?;
+        }
+        if ty.is_dir() {
+            continue;
+        }
+        non_dir += 1;
+        // Lock-Files u.ä. beim Kopieren ignorieren — sie werden neu erzeugt.
+        let lower = name.to_lowercase();
+        if lower.contains("lock")
+            || lower == "singletoncookie"
+            || lower == "singletonsocket"
+            || lower.ends_with(".lock")
+            || lower == "lockfile"
+        {
+            continue;
+        }
+        // Nur Whitelist-Dateien kopieren.
+        if SPARSE_COPY_WHITELIST.iter().any(|w| w.eq_ignore_ascii_case(&name))
+            && std::fs::copy(entry.path(), &target).is_ok()
+        {
+            copied += 1;
+        }
+    }
+    if non_dir > 0 && copied == 0 {
+        eprintln!(
+            "[copy_dir_sparse] WARN: 0 von {non_dir} Dateien aus {:?} kopiert (Whitelist traf nicht zu oder Lese-Fehler)",
+            src
+        );
+    }
+    Ok(())
+}
+
 /// Bereitet das Profil für einen Swarm-Teilnehmer vor:
 /// 1. Falls `profiles/reference/<brain_id>` existiert → Teilkopie nach
 ///    `profiles/swarm/<run_id>_<brain_id>`.
@@ -238,17 +309,27 @@ pub fn prepare_swarm_profile(run_id: &str, brain_id: &str) -> PathBuf {
         let _ = std::fs::remove_dir_all(&dst);
     }
 
+    let use_sparse = use_sparse_profile_copy();
     if reference.is_dir() {
-        let _ = copy_dir_all(&reference, &dst);
+        let _ = copy_profile(&reference, &dst, use_sparse);
         return dst;
     }
     if default.is_dir() {
-        let _ = copy_dir_all(&default, &dst);
+        let _ = copy_profile(&default, &dst, use_sparse);
         return dst;
     }
     // Weder Referenz noch Default: leeres Verzeichnis anlegen.
     let _ = std::fs::create_dir_all(&dst);
     dst
+}
+
+/// Kopiert ein Profil je nach Modus: sparse (nur Whitelist-Artefakte) oder voll.
+fn copy_profile(src: &PathBuf, dst: &PathBuf, sparse: bool) -> std::io::Result<()> {
+    if sparse {
+        copy_dir_sparse(src, dst)
+    } else {
+        copy_dir_all(src, dst)
+    }
 }
 
 /// Entfernt alle abgeschlossenen Swarm-Laufzeit-Profile (aufräumen nach einem Run).
@@ -450,5 +531,100 @@ mod tests {
         let lossy = s.to_string_lossy();
         assert!(lossy.contains("swarm"));
         assert!(lossy.contains("run1_claude"));
+    }
+
+    #[test]
+    fn test_copy_dir_sparse_keeps_only_whitelist() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let src = root_dir().join(format!("data/test_sparse_src_{}", stamp));
+        let dst = root_dir().join(format!("data/test_sparse_dst_{}", stamp));
+        let _ = fs::remove_dir_all(&src);
+        let _ = fs::remove_dir_all(&dst);
+        fs::create_dir_all(&src).unwrap();
+
+        // Whitelist-Dateien/Ordner
+        fs::write(src.join("Cookies"), b"cookies").unwrap();
+        fs::write(src.join("Login Data"), b"login").unwrap();
+        fs::write(src.join("Preferences"), b"prefs").unwrap();
+        fs::create_dir_all(src.join("Local Storage")).unwrap();
+        fs::write(src.join("Local Storage").join("x"), b"ls").unwrap();
+        // Nicht-Whitelist
+        fs::write(src.join("History"), b"history").unwrap();
+        fs::write(src.join("Bookmarks"), b"bm").unwrap();
+        // Lock-File
+        fs::write(src.join("SingletonLock"), b"pid").unwrap();
+
+        copy_dir_sparse(&src.to_path_buf(), &dst.to_path_buf()).unwrap();
+
+        assert!(dst.join("Cookies").is_file(), "Cookies (whitelist) kopiert");
+        assert!(dst.join("Login Data").is_file(), "Login Data (whitelist) kopiert");
+        assert!(
+            dst.join("Preferences").is_file(),
+            "Preferences (whitelist) kopiert"
+        );
+        assert!(
+            dst.join("Local Storage").join("x").is_file(),
+            "Local Storage (whitelist) kopiert"
+        );
+
+        assert!(
+            !dst.join("History").exists(),
+            "History (nicht whitelist) nicht kopiert"
+        );
+        assert!(
+            !dst.join("Bookmarks").exists(),
+            "Bookmarks (nicht whitelist) nicht kopiert"
+        );
+        assert!(!dst.join("SingletonLock").exists(), "Lock-File nicht kopiert");
+
+        let _ = fs::remove_dir_all(&src);
+        let _ = fs::remove_dir_all(&dst);
+    }
+
+    #[test]
+    fn test_prepare_swarm_profile_respects_sparse_env() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let key = "WEBAGENT_SPARSE_COPY";
+        let prev = env::var(key).ok();
+        env::set_var(key, "1");
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let run_id = format!("testsparse_{}", stamp);
+        let brain = "chatgpt";
+        let reference = reference_profile_dir(brain);
+        let _ = fs::create_dir_all(&reference);
+        fs::write(reference.join("Cookies"), b"c").unwrap();
+        fs::write(reference.join("History"), b"h").unwrap();
+        fs::write(reference.join("SingletonLock"), b"pid").unwrap();
+
+        let dst = prepare_swarm_profile(&run_id, brain);
+        assert!(dst.join("Cookies").is_file(), "sparse: Cookies kopiert");
+        assert!(
+            !dst.join("History").exists(),
+            "sparse: History nicht kopiert"
+        );
+        assert!(
+            !dst.join("SingletonLock").exists(),
+            "sparse: Lock nicht kopiert"
+        );
+
+        cleanup_swarm_profiles(&run_id).unwrap();
+        let _ = fs::remove_dir_all(&reference);
+
+        match prev {
+            Some(v) => env::set_var(key, v),
+            None => env::remove_var(key),
+        }
     }
 }

@@ -135,6 +135,9 @@ enum Commands {
         allow_empty_profile: bool,
     },
 
+    /// Live-Canary: alle Brains leicht pruefen (Latenz + pass/fail + reason)
+    Canary,
+
     /// Single send+wait turn (bot2bot bridge debugging)
     Relay {
         #[arg(long)]
@@ -251,6 +254,8 @@ fn dispatch(command: Commands) -> i32 {
             allow_empty_profile,
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
+        Commands::Canary => cmd_canary(),
+
         Commands::Relay {
             brain,
             message,
@@ -269,6 +274,33 @@ fn dispatch(command: Commands) -> i32 {
             pytest,
             pytest_timeout,
         } => cmd_maintenance_check(json, pytest, pytest_timeout),
+    }
+}
+
+fn cmd_canary() -> i32 {
+    let results = webagent::canary::run_canary();
+    if results.is_empty() {
+        println!("[canary] keine Brains registriert");
+        return 2;
+    }
+    println!("[canary] {} Brains:", results.len());
+    let mut fail = 0u32;
+    for r in &results {
+        let status = if r.ok { "ok" } else { "FAIL" };
+        if !r.ok {
+            fail += 1;
+        }
+        println!(
+            "  {:<10} {status:<4}  latency_ms={}  reason={}",
+            r.brain_id, r.latency_ms, r.reason
+        );
+    }
+    if fail > 0 {
+        println!("[canary] {fail}/{} failed", results.len());
+        1
+    } else {
+        println!("[canary] all ok");
+        0
     }
 }
 
