@@ -148,6 +148,28 @@ enum Commands {
         headless: bool,
         #[arg(long, default_value = "0")]
         timeout: f64,
+        /// Maschinenlesbare JSON-Ausgabe (brain/ok/answer/latency_ms/reason)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Multi-Brain-Swarm (Relay je Brain + Synthese). Default menschenlesbar; `--json` fuer CLI-Anbindung.
+    Swarm {
+        /// Aufgabe / Prompt an alle Brains
+        #[arg(long)]
+        message: String,
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+        /// Timeout pro Brain in Sekunden (0 = Default)
+        #[arg(long, default_value = "0")]
+        timeout: f64,
+        /// Komma-getrennte Brain-IDs (leer = alle verfuegbaren)
+        #[arg(long, default_value = "")]
+        brains: String,
+        /// Maschinenlesbares JSON (pro Brain + synthesis)
+        #[arg(long)]
+        json: bool,
     },
 
     /// First-run setup: Brain-Auswahl und optional Login-Hinweise
@@ -261,7 +283,16 @@ fn dispatch(command: Commands) -> i32 {
             message,
             headless,
             timeout,
-        } => cmd_relay(&brain, &message, headless, timeout),
+            json,
+        } => cmd_relay(&brain, &message, headless, timeout, json),
+
+        Commands::Swarm {
+            message,
+            headless,
+            timeout,
+            brains,
+            json,
+        } => cmd_swarm(&message, headless, timeout, &brains, json),
 
         Commands::Oobe {
             brains,
@@ -304,17 +335,212 @@ fn cmd_canary() -> i32 {
     }
 }
 
-fn cmd_relay(brain: &str, message: &str, headless: bool, timeout: f64) -> i32 {
+/// Ein Brain-Ergebnis fuer `--json` (relay + swarm).
+#[derive(Debug, Clone, serde::Serialize)]
+struct BrainIoResult {
+    brain: String,
+    ok: bool,
+    answer: String,
+    latency_ms: u64,
+    reason: String,
+}
+
+fn brain_io_json(r: &BrainIoResult) -> String {
+    serde_json::to_string(r).unwrap_or_else(|_| {
+        format!(
+            r#"{{"brain":"{}","ok":false,"answer":"","latency_ms":0,"reason":"json_serialize_failed"}}"#,
+            r.brain
+        )
+    })
+}
+
+fn cmd_relay(brain: &str, message: &str, headless: bool, timeout: f64, json: bool) -> i32 {
     let to = if timeout > 0.0 { Some(timeout) } else { None };
+    let started = std::time::Instant::now();
     match webagent::relay::relay_single_turn(brain, message, headless, to) {
         Ok(reply) => {
-            println!("{reply}");
+            let r = BrainIoResult {
+                brain: brain.to_string(),
+                ok: true,
+                answer: reply.clone(),
+                latency_ms: started.elapsed().as_millis() as u64,
+                reason: "ok".into(),
+            };
+            if json {
+                println!("{}", brain_io_json(&r));
+            } else {
+                println!("{reply}");
+            }
             0
         }
         Err(e) => {
-            eprintln!("[relay] error: {e}");
+            let r = BrainIoResult {
+                brain: brain.to_string(),
+                ok: false,
+                answer: String::new(),
+                latency_ms: started.elapsed().as_millis() as u64,
+                reason: e.to_string(),
+            };
+            if json {
+                println!("{}", brain_io_json(&r));
+            } else {
+                eprintln!("[relay] error: {e}");
+            }
             1
         }
+    }
+}
+
+fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json: bool) -> i32 {
+    let to = if timeout > 0.0 { Some(timeout) } else { None };
+    let targets: Vec<String> = {
+        let listed: Vec<String> = brains
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if listed.is_empty() {
+            webagent::config::available_brain_ids()
+        } else {
+            listed
+        }
+    };
+    if targets.is_empty() {
+        if json {
+            println!(
+                r#"{{"brains":[],"synthesis":null,"error":"no_brains"}}"#
+            );
+        } else {
+            eprintln!("[swarm] keine Brains");
+        }
+        return 2;
+    }
+
+    if !json {
+        println!("[swarm] Phase 1 — {} Brains…", targets.len());
+    }
+
+    let mut results: Vec<BrainIoResult> = Vec::new();
+    for brain in &targets {
+        let started = std::time::Instant::now();
+        let r = match webagent::relay::relay_single_turn(brain, message, headless, to) {
+            Ok(answer) => BrainIoResult {
+                brain: brain.clone(),
+                ok: true,
+                answer,
+                latency_ms: started.elapsed().as_millis() as u64,
+                reason: "ok".into(),
+            },
+            Err(e) => BrainIoResult {
+                brain: brain.clone(),
+                ok: false,
+                answer: String::new(),
+                latency_ms: started.elapsed().as_millis() as u64,
+                reason: e.to_string(),
+            },
+        };
+        if !json {
+            let status = if r.ok { "ok" } else { "FAIL" };
+            let preview: String = r.answer.chars().take(160).collect();
+            println!(
+                "  {:<10} {status:<4}  {}ms  {}{}",
+                r.brain,
+                r.latency_ms,
+                if r.ok { preview } else { r.reason.clone() },
+                if r.ok && r.answer.chars().count() > 160 {
+                    "…"
+                } else {
+                    ""
+                }
+            );
+        }
+        results.push(r);
+    }
+
+    let ok_brains: Vec<&BrainIoResult> = results.iter().filter(|r| r.ok).collect();
+    let synthesis = if ok_brains.is_empty() {
+        None
+    } else if ok_brains.len() == 1 {
+        Some(ok_brains[0].clone())
+    } else {
+        // Reliability-Orch (wie REPL-Default), Fallback: erstes ok
+        let board = webagent::brain_score::leaderboard();
+        let score_of = |id: &str| -> f64 {
+            board
+                .iter()
+                .find(|s| s.brain_id == id)
+                .map(|s| s.reliability)
+                .unwrap_or(0.0)
+        };
+        let orch = ok_brains
+            .iter()
+            .max_by(|a, b| {
+                score_of(&a.brain)
+                    .partial_cmp(&score_of(&b.brain))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|r| r.brain.as_str())
+            .unwrap_or(ok_brains[0].brain.as_str());
+
+        let joined: String = ok_brains
+            .iter()
+            .map(|r| format!("### {}\n{}", r.brain, r.answer))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let synth_prompt = format!(
+            "Aufgabe: «{message}».\n\nDie beteiligten Modelle haben so geantwortet:\n\n{joined}\n\n\
+             Führe diese Antworten zu einer einzigen, besten finalen Antwort zusammen. \
+             Nenne Widersprüche, wenn es welche gibt. Du bist der Orchestrator ({orch})."
+        );
+        if !json {
+            println!("[swarm] Phase 2/3 — Synthese via {orch}…");
+        }
+        let started = std::time::Instant::now();
+        match webagent::relay::relay_single_turn(orch, &synth_prompt, headless, to) {
+            Ok(answer) => Some(BrainIoResult {
+                brain: orch.to_string(),
+                ok: true,
+                answer,
+                latency_ms: started.elapsed().as_millis() as u64,
+                reason: "ok".into(),
+            }),
+            Err(e) => Some(BrainIoResult {
+                brain: orch.to_string(),
+                ok: false,
+                answer: String::new(),
+                latency_ms: started.elapsed().as_millis() as u64,
+                reason: e.to_string(),
+            }),
+        }
+    };
+
+    if json {
+        let payload = serde_json::json!({
+            "brains": results,
+            "synthesis": synthesis,
+        });
+        match serde_json::to_string(&payload) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("[swarm] json error: {e}");
+                return 1;
+            }
+        }
+    } else if let Some(s) = &synthesis {
+        if s.ok {
+            println!("\n[swarm ⇒ final via {}]\n{}\n", s.brain, s.answer);
+        } else {
+            println!("[swarm] Synthese fehlgeschlagen: {}", s.reason);
+        }
+    } else {
+        println!("[swarm] Keine Antworten — Abbruch.");
+    }
+
+    let any_ok = results.iter().any(|r| r.ok);
+    if any_ok {
+        0
+    } else {
+        1
     }
 }
 

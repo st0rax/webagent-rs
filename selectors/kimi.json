@@ -61,5 +61,14 @@
     "div[class*='avatar']",
     "button[class*='user' i]",
     "a[href*='/settings']"
+  ],
+  "google_sso_button": [
+    "button:has-text('Continue with Google')",
+    "button:has-text('Sign in with Google')",
+    "button:has-text('Continue to Google')",
+    "button:has-text('Mit Google fortfahren')",
+    "button:has-text('Weiter mit Google')",
+    "button:has-text('Anmelden mit Google')",
+    "button[aria-label*='Google' i]"
   ]
 }
