@@ -285,6 +285,7 @@ fn main() {
     let exit_code = if matches!(command, Commands::MaintenanceCheck { .. }) {
         dispatch(command)
     } else {
+        webagent::config::ensure_stable_layout();
         let _ = webagent::config::ensure_data_dirs();
         // Wire comms.rs into CLI entry path (exercisable, not dead code)
         let comms = webagent::comms::CommsStore::default_store();

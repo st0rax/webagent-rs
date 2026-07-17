@@ -4,12 +4,67 @@
 
 use std::collections::HashMap;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Root-Verzeichnis der WebAgent-Installation (Elternverzeichnis von src/).
+/// Compile-Zeit-Pfad (CARGO_MANIFEST_DIR) — nur für mitgelieferte Assets
+/// (selectors/) und als Legacy-Quelle der Migration. Nutzerdaten (Profile/Data)
+/// hängen NICHT daran, siehe `webagent_root_stable`.
 pub fn root_dir() -> PathBuf {
-    // Zur Compile-Zeit: CARGO_MANIFEST_DIR zeigt auf das Projekt-Root
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// Stabiler, install-/release-unabhängiger Basisort für nutzergeschriebene
+/// Daten (Profile + data). Überlebt ein In-Place-Update, weil er NICHT am
+/// Build-/Deploy-Pfad (CARGO_MANIFEST_DIR) hängt.
+///
+/// Auflösung (Priorität): WEBAGENT_ROOT (env) → install_webagent_root.txt
+/// (Marker neben der Executable) → %LOCALAPPDATA%\webagent (Windows) bzw.
+/// ~/webagent (Fallback) → CARGO_MANIFEST_DIR/webagent (allerletzter
+/// Dev-/Debug-Fallback).
+pub fn webagent_root_stable() -> PathBuf {
+    if let Ok(d) = env::var("WEBAGENT_ROOT") {
+        let s = d.trim();
+        if !s.is_empty() {
+            return PathBuf::from(s);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let marker = dir.join("install_webagent_root.txt");
+            if let Ok(c) = std::fs::read_to_string(&marker) {
+                let s = c.trim();
+                if !s.is_empty() {
+                    return PathBuf::from(s);
+                }
+            }
+        }
+    }
+    if let Ok(v) = env::var("LOCALAPPDATA") {
+        let s = v.trim();
+        if !s.is_empty() {
+            return PathBuf::from(s).join("webagent");
+        }
+    }
+    if let Ok(v) = env::var("USERPROFILE") {
+        let s = v.trim();
+        if !s.is_empty() {
+            return PathBuf::from(s).join("webagent");
+        }
+    }
+    if let Some(home) = dirs_home() {
+        return home.join("webagent");
+    }
+    root_dir().join("webagent")
+}
+
+/// ~/webagent ohne externes Crate (rein-Rust-Regel): nur via HOME-env.
+fn dirs_home() -> Option<PathBuf> {
+    env::var("HOME")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
 }
 
 /// src/-Verzeichnis
@@ -17,9 +72,9 @@ pub fn src_dir() -> PathBuf {
     root_dir().join("src")
 }
 
-/// data/-Verzeichnis für Runs, Memory, etc.
+/// data/-Verzeichnis für Runs, Memory, etc. (stabiler Ort).
 pub fn data_dir() -> PathBuf {
-    root_dir().join("data")
+    webagent_root_stable().join("data")
 }
 
 /// data/runs/ — Run-Metadaten und Transcripts
@@ -32,9 +87,10 @@ pub fn memory_dir() -> PathBuf {
     data_dir().join("memory")
 }
 
-/// profiles/ — Browser-Profile (shared + brain-spezifisch)
+/// profiles/ — Browser-Profile (shared + brain-spezifisch). Stabiler Ort, damit
+/// ein Login ein In-Place-Update überlebt (siehe webagent_root_stable).
 pub fn profiles_dir() -> PathBuf {
-    root_dir().join("profiles")
+    webagent_root_stable().join("profiles")
 }
 
 /// profiles/shared/ — Gemeinsames Browser-Profil (wenn shared_browser aktiviert)
@@ -186,7 +242,12 @@ pub fn brains() -> HashMap<String, HashMap<String, String>> {
 /// Existiert das Verzeichnis nicht, greift der Fallback auf `profiles/<brain_id>`
 /// bzw. das Shared-Profil zurück.
 pub fn reference_profile_dir(brain_id: &str) -> PathBuf {
-    profiles_dir().join("reference").join(brain_id)
+    reference_profile_dir_in(&profiles_dir(), brain_id)
+}
+
+/// Wie `reference_profile_dir`, aber mit expliziter Profil-Basis (für Tests).
+pub fn reference_profile_dir_in(base: &Path, brain_id: &str) -> PathBuf {
+    base.join("reference").join(brain_id)
 }
 
 /// profiles/swarm/<run_id>_<brain_id> — isolierte Laufzeit-Teilkopie eines
@@ -194,8 +255,12 @@ pub fn reference_profile_dir(brain_id: &str) -> PathBuf {
 /// Chromium-`SingletonLock`-Konflikt, wenn mehrere Brains parallel im selben
 /// Profil starten würden.
 pub fn swarm_profile_dir(run_id: &str, brain_id: &str) -> PathBuf {
-    profiles_dir()
-        .join("swarm")
+    swarm_profile_dir_in(&profiles_dir(), run_id, brain_id)
+}
+
+/// Wie `swarm_profile_dir`, aber mit expliziter Profil-Basis (für Tests).
+pub fn swarm_profile_dir_in(base: &Path, run_id: &str, brain_id: &str) -> PathBuf {
+    base.join("swarm")
         .join(format!("{}_{}", run_id, brain_id))
 }
 
@@ -300,22 +365,34 @@ pub fn copy_dir_sparse(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
 ///
 /// Rückgabe: Pfad zum isolierten Profil für diesen Lauf.
 pub fn prepare_swarm_profile(run_id: &str, brain_id: &str) -> PathBuf {
-    let reference = reference_profile_dir(brain_id);
-    let default = profiles_dir().join(brain_id);
-    let dst = swarm_profile_dir(run_id, brain_id);
+    prepare_swarm_profile_in(&profiles_dir(), run_id, brain_id, use_sparse_profile_copy())
+}
+
+/// Wie `prepare_swarm_profile`, aber mit expliziter Profil-Basis `base`
+/// (statt `profiles_dir()`) und explizitem `sparse`-Flag (statt der globalen
+/// WEBAGENT_SPARSE_COPY-Env). Ermöglicht isolierte, nebenläufige Tests ohne
+/// Manipulation einer prozess-globalen Env-Variable.
+pub fn prepare_swarm_profile_in(
+    base: &Path,
+    run_id: &str,
+    brain_id: &str,
+    sparse: bool,
+) -> PathBuf {
+    let reference = reference_profile_dir_in(base, brain_id);
+    let default = base.join(brain_id);
+    let dst = swarm_profile_dir_in(base, run_id, brain_id);
 
     // Alte Kopie dieses Runs entfernen, falls vorhanden (idempotent).
     if dst.exists() {
         let _ = std::fs::remove_dir_all(&dst);
     }
 
-    let use_sparse = use_sparse_profile_copy();
     if reference.is_dir() {
-        let _ = copy_profile(&reference, &dst, use_sparse);
+        let _ = copy_profile(&reference, &dst, sparse);
         return dst;
     }
     if default.is_dir() {
-        let _ = copy_profile(&default, &dst, use_sparse);
+        let _ = copy_profile(&default, &dst, sparse);
         return dst;
     }
     // Weder Referenz noch Default: leeres Verzeichnis anlegen.
@@ -334,7 +411,12 @@ fn copy_profile(src: &PathBuf, dst: &PathBuf, sparse: bool) -> std::io::Result<(
 
 /// Entfernt alle abgeschlossenen Swarm-Laufzeit-Profile (aufräumen nach einem Run).
 pub fn cleanup_swarm_profiles(run_id: &str) -> std::io::Result<()> {
-    let swarm_root = profiles_dir().join("swarm");
+    cleanup_swarm_profiles_in(&profiles_dir(), run_id)
+}
+
+/// Wie `cleanup_swarm_profiles`, aber mit expliziter Profil-Basis (für Tests).
+pub fn cleanup_swarm_profiles_in(base: &Path, run_id: &str) -> std::io::Result<()> {
+    let swarm_root = base.join("swarm");
     if !swarm_root.is_dir() {
         return Ok(());
     }
@@ -346,6 +428,50 @@ pub fn cleanup_swarm_profiles(run_id: &str) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Einmalige Migration der Legacy-Profile/Data (CARGO_MANIFEST_DIR) an den
+/// stabilen Ort. Idempotent + abort-sicher: pro Kindverzeichnis wird
+/// copy_dir_all aufgerufen und danach remove (NICHT rename — rename scheitert
+/// über Laufwerksgrenzen). Eine unterbrochene Migration ist beim nächsten Start
+/// reparierbar (die Quelle wird bei Erfolg entfernt, bei Fehlschlag belassen
+/// und erneut versucht).
+pub fn ensure_stable_layout() {
+    migrate_legacy_dir(&root_dir().join("profiles"), &profiles_dir());
+    migrate_legacy_dir(&root_dir().join("data"), &data_dir());
+}
+
+fn migrate_legacy_dir(legacy: &Path, target: &Path) {
+    if !legacy.is_dir() {
+        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(target) {
+        eprintln!("[migrate] Ziel {:?} nicht anlegbar: {e}", target);
+        return;
+    }
+    let entries = match std::fs::read_dir(legacy) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let src = entry.path();
+        if !src.is_dir() {
+            continue;
+        }
+        let name = match src.file_name() {
+            Some(n) => n.to_string_lossy().into_owned(),
+            None => continue,
+        };
+        let dst = target.join(&name);
+        if copy_dir_all(&src, &dst).is_ok() {
+            let _ = std::fs::remove_dir_all(&src);
+        } else {
+            eprintln!(
+                "[migrate] Kopie von {:?} fehlgeschlagen, naechster Start erneut",
+                src
+            );
+        }
+    }
 }
 
 /// Laedt die Selektor-JSON eines Brains (wie config.load_selectors in Python).
@@ -488,22 +614,22 @@ mod tests {
         use std::fs;
         use std::time::{SystemTime, UNIX_EPOCH};
 
-        let run_id = format!(
-            "testswarm_{}",
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        );
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_prep_{}", stamp));
+        let _ = fs::create_dir_all(&base);
+        let run_id = format!("testswarm_{}", stamp);
         let brain = "chatgpt";
-        let default = profiles_dir().join(brain);
+        let default = base.join(brain);
         let marker_src = default.join("_grok_swarm_marker.txt");
         let _ = fs::create_dir_all(&default);
         fs::write(&marker_src, b"swarm-src").expect("write marker");
         let _ = fs::write(default.join("SingletonLock"), b"pid");
         let _ = fs::write(default.join("lockfile"), b"x");
 
-        let dst = prepare_swarm_profile(&run_id, brain);
+        let dst = prepare_swarm_profile_in(&base, &run_id, brain, false);
         assert!(dst.is_dir(), "swarm profile dir");
         assert!(
             dst.join("_grok_swarm_marker.txt").is_file(),
@@ -515,12 +641,10 @@ mod tests {
         );
         assert!(!dst.join("lockfile").exists());
 
-        cleanup_swarm_profiles(&run_id).expect("cleanup");
+        cleanup_swarm_profiles_in(&base, &run_id).expect("cleanup");
         assert!(!dst.exists(), "cleaned after run");
 
-        let _ = fs::remove_file(&marker_src);
-        let _ = fs::remove_file(default.join("SingletonLock"));
-        let _ = fs::remove_file(default.join("lockfile"));
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
@@ -592,23 +716,22 @@ mod tests {
         use std::fs;
         use std::time::{SystemTime, UNIX_EPOCH};
 
-        let key = "WEBAGENT_SPARSE_COPY";
-        let prev = env::var(key).ok();
-        env::set_var(key, "1");
-
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_sparse_{}", stamp));
+        let _ = fs::create_dir_all(&base);
         let run_id = format!("testsparse_{}", stamp);
         let brain = "chatgpt";
-        let reference = reference_profile_dir(brain);
+        let reference = reference_profile_dir_in(&base, brain);
         let _ = fs::create_dir_all(&reference);
         fs::write(reference.join("Cookies"), b"c").unwrap();
         fs::write(reference.join("History"), b"h").unwrap();
         fs::write(reference.join("SingletonLock"), b"pid").unwrap();
 
-        let dst = prepare_swarm_profile(&run_id, brain);
+        // explizit sparse (kein globales Env -> nebenlaeufig sicher)
+        let dst = prepare_swarm_profile_in(&base, &run_id, brain, true);
         assert!(dst.join("Cookies").is_file(), "sparse: Cookies kopiert");
         assert!(
             !dst.join("History").exists(),
@@ -619,12 +742,7 @@ mod tests {
             "sparse: Lock nicht kopiert"
         );
 
-        cleanup_swarm_profiles(&run_id).unwrap();
-        let _ = fs::remove_dir_all(&reference);
-
-        match prev {
-            Some(v) => env::set_var(key, v),
-            None => env::remove_var(key),
-        }
+        cleanup_swarm_profiles_in(&base, &run_id).unwrap();
+        let _ = fs::remove_dir_all(&base);
     }
 }
