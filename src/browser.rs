@@ -1009,7 +1009,7 @@ impl BrainBackend for WebBrainBackend {
                 return crate::browser_pool::BrowserPool::global()
                     .lock()
                     .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
-                    .start_brain(self, headless, None);
+                    .start_brain_resilient(self, headless, None);
             }
             let profile = self.effective_profile_dir().clone();
             let runtime =

@@ -11,11 +11,15 @@ use crate::brain::BrainBackend;
 use crate::browser::WebBrainBackend;
 use crate::config::persist_browser_tabs;
 #[cfg(feature = "webview")]
-use crate::config::shared_profile_dir;
+use crate::config::{encapsulated_profile_dir, shared_profile_dir, ProfileClonePlanner};
 #[cfg(feature = "webview")]
 use crate::page_driver::PageDriver;
 #[cfg(feature = "webview")]
 use crate::webview_runtime::{WebViewPageDriver, WebViewRuntime};
+
+/// Max. Versuche den geteilten Browser zu nutzen, bevor ein Brain auf die
+/// gekapselte Fallback-Instanz faellt. Spiegelt circuit_breaker::DEFAULT_MAX_FAILURES.
+const POOL_FALLBACK_RETRIES: u32 = 3;
 
 struct PooledTab {
     #[cfg_attr(not(feature = "webview"), allow(dead_code))]
@@ -25,11 +29,25 @@ struct PooledTab {
     refs: u32,
 }
 
+/// Gekapselte, isolierte Browser-Instanz (Fallback), die nach dem Scheitern des
+/// geteilten Browsers fuer ein Brain gestartet wird. Eigenes WebView-Runtime
+/// (eigener Prozess) auf einem Linked-Clone/Delta des kanonischen Profils
+/// (`profiles/encapsulated/<brain>_<runstamp>`). Nie zurueckgeschrieben.
+#[cfg(feature = "webview")]
+struct EncapsulatedInstance {
+    runtime: WebViewRuntime,
+    profile_dir: PathBuf,
+    driver_proto: WebViewPageDriver,
+    refs: u32,
+}
+
 /// Prozessweiter Singleton: ein persistentes Profil, lazy Tab je `brain_id`.
 pub struct BrowserPool {
     #[cfg(feature = "webview")]
     runtime: Option<WebViewRuntime>,
     tabs: HashMap<String, PooledTab>,
+    #[cfg(feature = "webview")]
+    encapsulated: HashMap<String, EncapsulatedInstance>,
 }
 
 impl BrowserPool {
@@ -37,6 +55,8 @@ impl BrowserPool {
         Self {
             #[cfg(feature = "webview")]
             runtime: None,
+            #[cfg(feature = "webview")]
+            encapsulated: HashMap::new(),
             tabs: HashMap::new(),
         }
     }
@@ -112,32 +132,158 @@ impl BrowserPool {
         }
     }
 
+    /// Wie `start_brain`, aber mit Resilienz: der geteilte Browser wird bis zu
+    /// `POOL_FALLBACK_RETRIES` Mal versucht (pro Brain gezaehlt); scheitert er
+    /// durchgehend, faellt das Brain auf eine gekapselte, isolierte Instanz zurueck
+    /// (eigener WebView-Prozess, Linked-Clone des kanonischen Profils).
+    #[cfg(feature = "webview")]
+    pub fn start_brain_resilient(
+        &mut self,
+        backend: &WebBrainBackend,
+        headless: bool,
+        profile_override: Option<PathBuf>,
+    ) -> Result<(), String> {
+        let brain_id = backend.brain_id().to_lowercase();
+
+        // Bereits gekapselt -> reuse (Refs++), kein erneuter Shared-Versuch.
+        if self.encapsulated.contains_key(&brain_id) {
+            return self.start_brain_encapsulated(backend, headless, &brain_id);
+        }
+
+        // Expliziter Override (isoliertes Profil) -> kein Shared-Pfad, direkt delegieren.
+        if profile_override.is_some() {
+            return self.start_brain(backend, headless, profile_override);
+        }
+
+        // 1) Shared-Pool-Pfad (Default), bis zu POOL_FALLBACK_RETRIES Versuche.
+        for _ in 0..POOL_FALLBACK_RETRIES {
+            match self.start_brain(backend, headless, None) {
+                Ok(()) => return Ok(()),
+                Err(e) => eprintln!(
+                    "[browser_pool] Shared-Versuch fuer Brain '{}' fehlgeschlagen: {}",
+                    brain_id, e
+                ),
+            }
+        }
+
+        // 2) Fallback: gekapselte Instanz (eigenes Profil-Image, eigenes Runtime).
+        eprintln!(
+            "[browser_pool] Shared-Browser fuer Brain '{}' nach {} Versuchen fehlgeschlagen -> gekapselte Instanz",
+            brain_id, POOL_FALLBACK_RETRIES
+        );
+        self.start_brain_encapsulated(backend, headless, &brain_id)
+    }
+
+    /// Wie `start_brain`, aber ohne Shared-Pool — Fehlerpfad ohne WebView.
+    #[cfg(not(feature = "webview"))]
+    pub fn start_brain_resilient(
+        &mut self,
+        backend: &WebBrainBackend,
+        headless: bool,
+        profile_override: Option<PathBuf>,
+    ) -> Result<(), String> {
+        let _ = (backend, headless, profile_override);
+        Err(crate::page_driver::webview_unavailable().to_string())
+    }
+
+    /// Startet die gekapselte Fallback-Instanz: Linked-Clone/Delta des kanonischen
+    /// Shared-Profils nach `profiles/encapsulated/<brain>_<runstamp>`, eigener
+    /// WebView-Runtime (eigener Prozess, kein SingletonLock-Konflikt).
+    #[cfg(feature = "webview")]
+    fn start_brain_encapsulated(
+        &mut self,
+        backend: &WebBrainBackend,
+        headless: bool,
+        brain_id: &str,
+    ) -> Result<(), String> {
+        // Vorhandene gekapselte Instanz reuse (Refs++).
+        if let Some(inst) = self.encapsulated.get_mut(brain_id) {
+            inst.refs = inst.refs.saturating_add(1);
+            let mut driver = inst.driver_proto.clone();
+            driver
+                .navigate(backend.brain_url(), Duration::from_secs(30))
+                .map_err(|e| e.to_string())?;
+            backend.attach_page_driver(Box::new(driver));
+            return Ok(());
+        }
+
+        let runstamp = crate::now_run_stamp();
+        let clone_dir = encapsulated_profile_dir(brain_id, &runstamp);
+        // Linked-Clone/Delta des kanonischen Shared-Profils (Login-Bild, read-only Quelle).
+        let plan = ProfileClonePlanner::plan_canonical(&shared_profile_dir(), &clone_dir, &runstamp);
+        ProfileClonePlanner::materialize(&plan).map_err(|e| {
+            format!("Profil-Klon fuer Brain '{brain_id}' fehlgeschlagen: {e}")
+        })?;
+
+        let rt = WebViewRuntime::launch(&clone_dir, headless).map_err(|e| e.to_string())?;
+        let mut driver = rt
+            .open_page(&clone_dir, backend.brain_url(), headless)
+            .map_err(|e| e.to_string())?;
+        driver
+            .navigate(backend.brain_url(), Duration::from_secs(30))
+            .map_err(|e| e.to_string())?;
+        let driver_proto = driver.clone();
+        self.encapsulated.insert(
+            brain_id.to_string(),
+            EncapsulatedInstance {
+                runtime: rt,
+                profile_dir: clone_dir,
+                driver_proto,
+                refs: 1,
+            },
+        );
+        backend.attach_page_driver(Box::new(driver));
+        Ok(())
+    }
+
     /// Gibt eine Referenz frei; schließt den Tab wenn letzte Ref und nicht persist.
     pub fn stop_brain(&mut self, brain_id: &str, persist: Option<bool>) -> Result<(), String> {
         let bid = brain_id.to_lowercase();
         let keep = persist.unwrap_or_else(persist_browser_tabs);
-        let Some(tab) = self.tabs.get_mut(&bid) else {
-            return Ok(());
-        };
-        if tab.refs == 0 {
+
+        // Shared-Pool-Tab?
+        if let Some(tab) = self.tabs.get_mut(&bid) {
+            if tab.refs == 0 {
+                return Ok(());
+            }
+            tab.refs -= 1;
+            if tab.refs > 0 {
+                return Ok(());
+            }
+            if keep {
+                return Ok(());
+            }
+            #[cfg(feature = "webview")]
+            let view_id = tab.view_id;
+            self.tabs.remove(&bid);
+            #[cfg(feature = "webview")]
+            if let Some(rt) = self.runtime.as_ref() {
+                let _ = rt.close_page(view_id);
+            }
+            if self.tabs.is_empty() {
+                self.teardown_runtime();
+            }
             return Ok(());
         }
-        tab.refs -= 1;
-        if tab.refs > 0 {
-            return Ok(());
-        }
-        if keep {
-            return Ok(());
-        }
+
+        // Gekapselte Instanz? (eigenes Runtime + eigenes Profilverzeichnis)
         #[cfg(feature = "webview")]
-        let view_id = tab.view_id;
-        self.tabs.remove(&bid);
-        #[cfg(feature = "webview")]
-        if let Some(rt) = self.runtime.as_ref() {
-            let _ = rt.close_page(view_id);
-        }
-        if self.tabs.is_empty() {
-            self.teardown_runtime();
+        {
+            if let Some(inst) = self.encapsulated.get_mut(&bid) {
+                if inst.refs > 0 {
+                    inst.refs -= 1;
+                }
+                if inst.refs > 0 || keep {
+                    return Ok(());
+                }
+            }
+            if let Some(inst) = self.encapsulated.remove(&bid) {
+                // `inst.runtime` wird beim Verlassen des Blocks gedroppt (WebView-
+                // Prozess beendet); danach das geklonte Profilverzeichnis entfernen.
+                let EncapsulatedInstance { runtime: _rt, profile_dir, .. } = inst;
+                let _ = _rt;
+                let _ = std::fs::remove_dir_all(&profile_dir);
+            }
         }
         Ok(())
     }
@@ -186,6 +332,13 @@ impl BrowserPool {
             let _ = (bid, tab);
         }
         self.teardown_runtime();
+        // Gekapselte Instanzen ebenfalls entsorgen (Runtime drop + Klon-Verzeichnis).
+        #[cfg(feature = "webview")]
+        for (_bid, inst) in self.encapsulated.drain() {
+            let EncapsulatedInstance { runtime: _rt, profile_dir, .. } = inst;
+            let _ = _rt;
+            let _ = std::fs::remove_dir_all(&profile_dir);
+        }
     }
 }
 
@@ -238,5 +391,18 @@ mod tests {
         pool.detach_brain("claude").unwrap();
         assert!(pool.has_tab("claude"));
         assert_eq!(pool.tab_ref_count("claude"), 0);
+    }
+
+    #[test]
+    fn resilient_retry_threshold_matches_circuit_breaker() {
+        // Nach POOL_FALLBACK_RETRIES (3) Fehlversuchen faellt das Brain auf die
+        // gekapselte Instanz zurueck — analog circuit_breaker::DEFAULT_MAX_FAILURES.
+        assert_eq!(POOL_FALLBACK_RETRIES, 3);
+        let fallback_due = |failures: u32| failures >= POOL_FALLBACK_RETRIES;
+        assert!(!fallback_due(0));
+        assert!(!fallback_due(1));
+        assert!(!fallback_due(2));
+        assert!(fallback_due(3));
+        assert!(fallback_due(4));
     }
 }

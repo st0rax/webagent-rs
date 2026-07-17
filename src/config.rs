@@ -530,6 +530,276 @@ fn fnv1a(s: &str) -> u32 {
     h
 }
 
+/// profiles/encapsulated/<brain>_<runstamp> — gekapselte, isolierte Laufzeit-
+/// Instanz (Linked-Clone/Delta des kanonischen Shared-Profils) fuer den Fallback,
+/// wenn der geteilte Browser fuer ein Brain nicht startbar ist.
+pub fn encapsulated_profile_dir(brain_id: &str, runstamp: &str) -> PathBuf {
+    profiles_dir()
+        .join("encapsulated")
+        .join(format!("{brain_id}_{runstamp}"))
+}
+
+/// Klassifikation eines Profil-Eintrags fuer den Linked-Clone/Delta-Modus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CloneClass {
+    /// (A) Read-only: ueber Hardlink teilbar (same-volume) bzw. kopiert (cross-drive).
+    Link,
+    /// (B)-minimal: pro Instanz delta-kopiert (Login-relevant).
+    Copy,
+    /// Weglassen: Lockfiles oder login-irrelevante Mutable-Daten (neu erzeugt).
+    Skip,
+}
+
+/// Read-only-Verzeichnisse/Dateien, die (A) verlinkt werden duerfen.
+const READONLY_DIRS: &[&str] = &[
+    "extensions",
+    "pnacl",
+    "subresource filter",
+    "widevinecdm",
+    "meipreload",
+];
+
+/// (B)-minimal: login-relevante Artefakte, die pro Instanz kopiert werden.
+const MINIMAL_LOGIN_ARTIFACTS: &[&str] = &[
+    "cookies",
+    "login data",
+    "web data",
+    "local state",
+    "preferences",
+    "indexeddb",
+    "local storage",
+];
+
+/// Klassifiziert einen Profil-Eintragsnamen (gross-/kleinschreibungsneutral).
+fn classify(name: &str) -> CloneClass {
+    let lower = name.to_lowercase();
+    // Lockfiles IMMER weglassen — nie linken oder kopieren (neu erzeugt).
+    if is_lockfile(&lower) {
+        return CloneClass::Skip;
+    }
+    // (A) Read-only / linkbar
+    if READONLY_DIRS.iter().any(|d| d.eq_ignore_ascii_case(name)) {
+        return CloneClass::Link;
+    }
+    if lower.ends_with(".pak")
+        || matches!(
+            lower.as_str(),
+            "icudtl.dat" | "snapshot_blob.bin" | "v8_context_snapshot.bin"
+        )
+    {
+        return CloneClass::Link;
+    }
+    // (B)-minimal: Login-relevant -> kopieren
+    if MINIMAL_LOGIN_ARTIFACTS
+        .iter()
+        .any(|a| a.eq_ignore_ascii_case(name))
+    {
+        return CloneClass::Copy;
+    }
+    // Alles uebrige (Rest (B): Journals, Cache, Network, Service Worker,
+    // Session Storage, Secure Preferences, DataStore, History, ...) weglassen.
+    CloneClass::Skip
+}
+
+/// True fuer Chromium/WebView2 Lockfiles (nie linken/kopieren).
+fn is_lockfile(name: &str) -> bool {
+    name.contains("lock")
+        || name == "singletoncookie"
+        || name == "singletonsocket"
+        || name.ends_with(".lock")
+        || name == "lockfile"
+}
+
+/// Geplante Linked-Clone/Delta-Kopie eines kanonischen Profils.
+pub struct ProfileClonePlan {
+    /// Kanonische Basis (read-only Quelle, z.B. profiles/shared).
+    pub base: PathBuf,
+    /// Ziel-Verzeichnis der gekapselten Instanz.
+    pub dst: PathBuf,
+    /// (A) Read-only-Eintraege: ueber Hardlink (same-volume) teilbar.
+    pub links: Vec<PathBuf>,
+    /// (B)-minimal: login-relevant, delta-kopiert.
+    pub copies: Vec<PathBuf>,
+    /// True, wenn base und dst auf demselben Volume (Hardlink erlaubt).
+    pub same_volume: bool,
+}
+
+/// Eine klassifizierte Profil-Eintrags (Datei oder Verzeichnis).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloneEntry {
+    pub name: String,
+    pub is_dir: bool,
+}
+
+/// Ergebnis von `ProfileClonePlanner::dry_run` — reine Klassifikation,
+/// ohne das Dateisystem zu veraendern.
+#[derive(Debug, Clone, Default)]
+pub struct DryRunReport {
+    /// (A) Read-only-Eintraege (verlinkbar).
+    pub links: Vec<CloneEntry>,
+    /// (B)-minimal login-relevante Eintraege (kopiert).
+    pub copies: Vec<CloneEntry>,
+    /// Weggelassene Eintraege (Lockfiles, Rest (B), Unbekanntes).
+    pub skipped: Vec<CloneEntry>,
+}
+
+/// Plant und materialisiert Linked-Clone/Delta-Kopien kanonischer Profile.
+pub struct ProfileClonePlanner;
+
+impl ProfileClonePlanner {
+    /// Plant den Klon einer kanonischen Basis nach `dst`. Klassifiziert alle
+    /// Eintraege der Basis (ohne das Dateisystem zu veraendern) und berechnet
+    /// die Volume-Gleichheit (`same_volume`) fuer die Link-Entscheidung.
+    pub fn plan_canonical(base: &Path, dst: &Path, _runstamp: &str) -> ProfileClonePlan {
+        let mut links = Vec::new();
+        let mut copies = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(base) {
+            for entry in rd.flatten() {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                match classify(&name) {
+                    CloneClass::Link => links.push(path),
+                    CloneClass::Copy => copies.push(path),
+                    CloneClass::Skip => {}
+                }
+            }
+        }
+        let same_volume = same_volume(base, dst);
+        ProfileClonePlan {
+            base: base.to_path_buf(),
+            dst: dst.to_path_buf(),
+            links,
+            copies,
+            same_volume,
+        }
+    }
+
+    /// Fuehrt den Klon aus: (A) hard-link (mit Copy-Fallback) bzw. full-copy bei
+    /// cross-drive; (B)-minimal kopiert; Lockfiles/Rest werden weggelassen.
+    pub fn materialize(plan: &ProfileClonePlan) -> std::io::Result<()> {
+        std::fs::create_dir_all(&plan.dst)?;
+        // (A) Read-only: verlinken bzw. kopieren (rekursiv fuer Verzeichnisse).
+        for src in &plan.links {
+            let rel = src.strip_prefix(&plan.base).unwrap_or(src).to_path_buf();
+            let target = plan.dst.join(&rel);
+            if src.is_dir() {
+                link_or_copy_dir(src, &target, plan.same_volume)?;
+            } else {
+                link_or_copy_file(src, &target, plan.same_volume)?;
+            }
+        }
+        // (B)-minimal: delta-kopieren (Lockfiles innerhalb per copy_dir_all uebersprungen).
+        for src in &plan.copies {
+            let rel = src.strip_prefix(&plan.base).unwrap_or(src).to_path_buf();
+            let target = plan.dst.join(&rel);
+            if src.is_dir() {
+                copy_dir_all(&src.to_path_buf(), &target)?;
+            } else {
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::copy(src, &target)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Meldet die Klassifikation einer Basis OHNE das Dateisystem zu veraendern
+    /// (fuer Tests und Diagnose).
+    pub fn dry_run(base: &Path) -> DryRunReport {
+        let mut report = DryRunReport::default();
+        if let Ok(rd) = std::fs::read_dir(base) {
+            for entry in rd.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                let e = CloneEntry { name, is_dir };
+                match classify(&e.name) {
+                    CloneClass::Link => report.links.push(e),
+                    CloneClass::Copy => report.copies.push(e),
+                    CloneClass::Skip => report.skipped.push(e),
+                }
+            }
+        }
+        report
+    }
+}
+
+/// Verlinkt eine Datei (same-volume) bzw. kopiert sie (cross-drive oder
+/// Hardlink-Fehler). Hardlink ist der v1-Link-Mechanismus: kein Admin, same-volume.
+fn link_or_copy_file(src: &Path, dst: &Path, same_volume: bool) -> std::io::Result<()> {
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if same_volume {
+        // TODO: replace hard_link with ReFS/Dev-Drive CoW or junction once FS facts confirmed
+        if std::fs::hard_link(src, dst).is_err() {
+            std::fs::copy(src, dst)?;
+        }
+    } else {
+        std::fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
+/// Verlinkt/kopiert ein Verzeichnis rekursiv (jede Datei einzeln ueber
+/// `link_or_copy_file`, Unterverzeichnisse rekursiv).
+fn link_or_copy_dir(src: &Path, dst: &Path, same_volume: bool) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let target = dst.join(entry.file_name());
+        if ty.is_dir() {
+            link_or_copy_dir(&entry.path(), &target, same_volume)?;
+        } else {
+            link_or_copy_file(&entry.path(), &target, same_volume)?;
+        }
+    }
+    Ok(())
+}
+
+/// True, wenn `a` und `b` auf demselben Volume liegen (Hardlink erlaubt).
+/// Heuristik: kanonische Pfade vergleichen, Volume-Wurzel (Windows:
+/// Laufwerksbuchstabe, z.B. "C:") heranziehen. Bei Unsicherheit → cross-drive (Copy).
+fn same_volume(a: &Path, b: &Path) -> bool {
+    volume_root_of(a) == volume_root_of(b)
+}
+
+/// Liefert die Volume-Wurzel eines Pfads (Windows: Laufwerkskomponente).
+fn volume_root_of(path: &Path) -> PathBuf {
+    // Pfad existiert evtl. noch nicht (z.B. Ziel vor `materialize`): dann den
+    // naechsten existierenden Vorgänger kanonisieren, sonst unterscheiden sich
+    // kanonischer Prefix (\\?\C:...) und roher Pfad (C:...) und same_volume
+    // wuerde fälschlich false ergeben.
+    let canon = if path.exists() {
+        std::fs::canonicalize(path)
+    } else {
+        let mut p = path.to_path_buf();
+        while !p.as_os_str().is_empty() && !p.exists() {
+            match p.parent() {
+                Some(parent) => p = parent.to_path_buf(),
+                None => break,
+            }
+        }
+        std::fs::canonicalize(&p)
+    };
+    let canon = canon.unwrap_or_else(|_| path.to_path_buf());
+    volume_root(&canon)
+}
+
+#[cfg(windows)]
+fn volume_root(path: &Path) -> PathBuf {
+    if let Some(comp) = path.components().next() {
+        return PathBuf::from(comp.as_os_str());
+    }
+    PathBuf::new()
+}
+
+#[cfg(not(windows))]
+fn volume_root(_path: &Path) -> PathBuf {
+    PathBuf::from("/")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -765,5 +1035,239 @@ mod tests {
 
         cleanup_swarm_profiles_in(&base, &run_id).unwrap();
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_clone_planner_dry_run_classification() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_clone_{}", stamp));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+
+        // (A) Read-only -> link
+        fs::write(base.join("resources.pak"), b"pak").unwrap();
+        fs::write(base.join("chrome_100_percent.pak"), b"pak").unwrap();
+        fs::write(base.join("icudtl.dat"), b"dat").unwrap();
+        fs::write(base.join("snapshot_blob.bin"), b"bin").unwrap();
+        fs::write(base.join("v8_context_snapshot.bin"), b"bin").unwrap();
+        fs::create_dir_all(base.join("Extensions")).unwrap();
+        fs::write(base.join("Extensions").join("ext.pak"), b"e").unwrap();
+        fs::create_dir_all(base.join("pnacl")).unwrap();
+        fs::create_dir_all(base.join("Subresource Filter")).unwrap();
+        fs::create_dir_all(base.join("WidevineCdm")).unwrap();
+        fs::create_dir_all(base.join("MEIPreload")).unwrap();
+
+        // (B)-minimal -> copy
+        fs::write(base.join("Cookies"), b"c").unwrap();
+        fs::write(base.join("Login Data"), b"l").unwrap();
+        fs::write(base.join("Web Data"), b"w").unwrap();
+        fs::write(base.join("Local State"), b"s").unwrap();
+        fs::write(base.join("Preferences"), b"p").unwrap();
+        fs::create_dir_all(base.join("IndexedDB")).unwrap();
+        fs::create_dir_all(base.join("Local Storage")).unwrap();
+
+        // Rest (B) + Lockfiles -> skipped
+        fs::write(base.join("Cookies-journal"), b"cj").unwrap();
+        fs::write(base.join("Login Data-journal"), b"lj").unwrap();
+        fs::write(base.join("Web Data-journal"), b"wj").unwrap();
+        fs::write(base.join("Secure Preferences"), b"sp").unwrap();
+        fs::create_dir_all(base.join("Service Worker")).unwrap();
+        fs::create_dir_all(base.join("Cache")).unwrap();
+        fs::create_dir_all(base.join("Code Cache")).unwrap();
+        fs::create_dir_all(base.join("Session Storage")).unwrap();
+        fs::create_dir_all(base.join("Network")).unwrap();
+        fs::write(base.join("History"), b"h").unwrap();
+        fs::write(base.join("SingletonLock"), b"pid").unwrap();
+        fs::write(base.join("lockfile"), b"x").unwrap();
+
+        let report = ProfileClonePlanner::dry_run(&base);
+        let link_names: std::collections::HashSet<String> =
+            report.links.iter().map(|e| e.name.clone()).collect();
+        let copy_names: std::collections::HashSet<String> =
+            report.copies.iter().map(|e| e.name.clone()).collect();
+        let skip_names: std::collections::HashSet<String> =
+            report.skipped.iter().map(|e| e.name.clone()).collect();
+
+        // (A) -> links
+        for a in [
+            "resources.pak",
+            "chrome_100_percent.pak",
+            "icudtl.dat",
+            "snapshot_blob.bin",
+            "v8_context_snapshot.bin",
+            "Extensions",
+            "pnacl",
+            "Subresource Filter",
+            "WidevineCdm",
+            "MEIPreload",
+        ] {
+            assert!(link_names.contains(a), "(A) '{a}' sollte link sein");
+        }
+        // (B)-minimal -> copies
+        for b in [
+            "Cookies",
+            "Login Data",
+            "Web Data",
+            "Local State",
+            "Preferences",
+            "IndexedDB",
+            "Local Storage",
+        ] {
+            assert!(copy_names.contains(b), "(B)-minimal '{b}' sollte copy sein");
+        }
+        // Rest (B) + Unbekanntes -> skipped
+        for s in [
+            "Cookies-journal",
+            "Login Data-journal",
+            "Web Data-journal",
+            "Secure Preferences",
+            "Service Worker",
+            "Cache",
+            "Code Cache",
+            "Session Storage",
+            "Network",
+            "History",
+        ] {
+            assert!(skip_names.contains(s), "Rest( B) '{s}' sollte skipped sein");
+        }
+        // Lockfiles aus beiden (links UND copies) ausgelassen
+        assert!(
+            !link_names.contains("SingletonLock"),
+            "Lockfile darf nicht gelinkt werden"
+        );
+        assert!(
+            !copy_names.contains("SingletonLock"),
+            "Lockfile darf nicht kopiert werden"
+        );
+        assert!(skip_names.contains("SingletonLock"), "Lockfile skipped");
+        assert!(skip_names.contains("lockfile"), "lockfile skipped");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_clone_planner_materialize_links_and_omits_locks() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_mat_{}", stamp));
+        let dst = std::env::temp_dir().join(format!("webagent_mat_dst_{}", stamp));
+        let _ = fs::remove_dir_all(&base);
+        let _ = fs::remove_dir_all(&dst);
+        fs::create_dir_all(&base).unwrap();
+
+        // (A) Datei + (A) Verzeichnis
+        fs::write(base.join("resources.pak"), b"PAK-A").unwrap();
+        fs::create_dir_all(base.join("Extensions")).unwrap();
+        fs::write(base.join("Extensions").join("ext.pak"), b"PAK-B").unwrap();
+        // (B)-minimal Datei + Verzeichnis
+        fs::write(base.join("Cookies"), b"CK").unwrap();
+        fs::create_dir_all(base.join("Local Storage")).unwrap();
+        fs::write(base.join("Local Storage").join("ls.txt"), b"LS").unwrap();
+        // Lockfile + Rest
+        fs::write(base.join("SingletonLock"), b"pid").unwrap();
+        fs::write(base.join("Cookies-journal"), b"cj").unwrap();
+        fs::write(base.join("History"), b"h").unwrap();
+
+        let plan = ProfileClonePlanner::plan_canonical(&base, &dst, "run1");
+        ProfileClonePlanner::materialize(&plan).expect("materialize");
+
+        // (A) verlinkt/kopiert, (B)-minimal kopiert
+        assert!(dst.join("resources.pak").is_file(), "(A) Datei vorhanden");
+        assert!(
+            dst.join("Extensions").join("ext.pak").is_file(),
+            "(A) Verzeichnis rekursiv verarbeitet"
+        );
+        assert!(dst.join("Cookies").is_file(), "(B)-minimal Datei kopiert");
+        assert!(
+            dst.join("Local Storage").join("ls.txt").is_file(),
+            "(B)-minimal Verzeichnis kopiert"
+        );
+        // Lockfiles + Rest weggelassen
+        assert!(
+            !dst.join("SingletonLock").exists(),
+            "Lockfile nicht im Klon"
+        );
+        assert!(
+            !dst.join("Cookies-journal").exists(),
+            "Journal nicht im Klon"
+        );
+        assert!(!dst.join("History").exists(), "Rest( B) nicht im Klon");
+
+        // (A) wird auf same-volume ueber Hardlink geteilt: Mutation der Basis
+        // spiegelt sich im Klon (gleiche Inode).
+        assert!(plan.same_volume, "same-volume erkannt");
+        fs::write(base.join("resources.pak"), b"PAK-A-MUT").unwrap();
+        let linked = fs::read_to_string(dst.join("resources.pak")).unwrap();
+        assert_eq!(linked, "PAK-A-MUT", "(A) ist Hardlink (geteilt)");
+        fs::write(base.join("Extensions").join("ext.pak"), b"PAK-B-MUT").unwrap();
+        let linked2 = fs::read_to_string(dst.join("Extensions").join("ext.pak")).unwrap();
+        assert_eq!(linked2, "PAK-B-MUT", "(A) Verzeichnis-Datei ist Hardlink");
+
+        // (B)-minimal ist eine echte Kopie: Mutation der Basis aendert den Klon NICHT.
+        fs::write(base.join("Cookies"), b"CK-MUT").unwrap();
+        let copied = fs::read_to_string(dst.join("Cookies")).unwrap();
+        assert_eq!(copied, "CK", "(B)-minimal ist Kopie (nicht geteilt)");
+
+        let _ = fs::remove_dir_all(&base);
+        let _ = fs::remove_dir_all(&dst);
+    }
+
+    #[test]
+    fn test_clone_planner_cross_drive_copies() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_xd_{}", stamp));
+        let dst = std::env::temp_dir().join(format!("webagent_xd_dst_{}", stamp));
+        let _ = fs::remove_dir_all(&base);
+        let _ = fs::remove_dir_all(&dst);
+        fs::create_dir_all(&base).unwrap();
+
+        fs::write(base.join("resources.pak"), b"PAK-A").unwrap();
+        fs::write(base.join("Cookies"), b"CK").unwrap();
+        fs::write(base.join("SingletonLock"), b"pid").unwrap();
+
+        // Klassifikation uebernehmen, aber Volume-Gleichheit erzwingen=false
+        // (simuliert cross-drive: alles wird kopiert, nichts gelinkt).
+        let mut plan = ProfileClonePlanner::plan_canonical(&base, &dst, "run1");
+        plan.same_volume = false;
+        ProfileClonePlanner::materialize(&plan).expect("materialize");
+
+        assert!(dst.join("resources.pak").is_file(), "(A) kopiert cross-drive");
+        assert!(dst.join("Cookies").is_file(), "(B)-minimal kopiert");
+        assert!(!dst.join("SingletonLock").exists(), "Lock weggelassen");
+
+        // Copy, kein Hardlink: Mutation der Basis aendert den Klon nicht.
+        fs::write(base.join("resources.pak"), b"PAK-A-MUT").unwrap();
+        let content = fs::read_to_string(dst.join("resources.pak")).unwrap();
+        assert_eq!(
+            content, "PAK-A",
+            "cross-drive: (A) ist Kopie, keine geteilte Inode"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+        let _ = fs::remove_dir_all(&dst);
+    }
+
+    #[test]
+    fn test_encapsulated_profile_dir_path() {
+        let p = encapsulated_profile_dir("chatgpt", "run42");
+        assert!(p.to_string_lossy().contains("encapsulated"));
+        assert!(p.to_string_lossy().contains("chatgpt_run42"));
     }
 }
