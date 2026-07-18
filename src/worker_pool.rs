@@ -40,6 +40,17 @@ pub const STATUS_UNAVAILABLE: &str = "unavailable";
 /// das Original geht in den Cooldown und wird nach Ablauf frisch wiederhergestellt.
 pub const STATUS_COOLDOWN: &str = "cooldown";
 
+/// Status: Brain wurde nach `MAX_FAILED_RESTORES` fehlgeschlagenen Restores
+/// dauerhaft ausgemustert (Retired). Eigener Status statt `unavailable` +
+/// Reason-String, damit die Auto-Recovery (`select_auto_recovery`) das Brain
+/// NICHT nach Ablauf der Retry-Frist wiederbelebt — Retirement ist final und
+/// wird nur durch manuelles Reflag (pool_control `reflag`/`reflag_all`)
+/// aufgehoben. Serialisiert als gewoehnlicher Status-String in
+/// `pool_state.json` -> rueckwaertskompatibel (alte States kennen den Wert
+/// schlicht nicht; unbekannte Status werden ueberall wie "nicht available"
+/// behandelt).
+pub const STATUS_RETIRED: &str = "retired";
+
 /// Cooldown-Dauer (Sekunden) fuer ein als BLOCK erkanntes Brain, bevor es durch
 /// einen frischen Worker wiederhergestellt wird. Ueberschreibbar via
 /// `config::block_cooldown_secs()` (Env WEBAGENT_BLOCK_COOLDOWN_S); dieser const
@@ -52,7 +63,7 @@ pub const BLOCK_COOLDOWN_SECS: u64 = 600;
 pub const RETRY_UNAVAILABLE_AFTER_SECS: u64 = 120;
 
 /// Maximale Anzahl aufeinanderfolgend fehlgeschlagener Wiederherstellungen, bevor
-/// ein BLOCK-Brain als dauerhaft `unavailable` (Retired) markiert wird (kein Retry).
+/// ein BLOCK-Brain als dauerhaft `retired` markiert wird (kein Retry).
 const MAX_FAILED_RESTORES: u32 = 3;
 
 /// Health/Status-Eintrag pro Brain.
@@ -114,7 +125,7 @@ pub struct FailoverRecord {
     /// Grund der Block-Erkennung (Signal A: breaker open; Signal B: stale heartbeat).
     pub reason: String,
     /// Zaehler fehlgeschlagener Wiederherstellungen (Erreichen von
-    /// `MAX_FAILED_RESTORES` -> Brain wird unavailable/Retired).
+    /// `MAX_FAILED_RESTORES` -> Brain wird dauerhaft `retired`).
     pub failover_count: u32,
 }
 
@@ -136,7 +147,7 @@ pub struct RestoreActions {
     pub spawn: Vec<String>,
     /// Standby-Brains, die nach erfolgreichem Restore eingezogen werden (kill + available).
     pub retire: Vec<String>,
-    /// Brains, die nach K fehlgeschlagenen Restores als unavailable (Retired) enden.
+    /// Brains, die nach K fehlgeschlagenen Restores dauerhaft als `retired` enden.
     pub retired: Vec<String>,
 }
 
@@ -356,8 +367,8 @@ impl WorkerPool {
     /// - Spawn des Originals gelingt -> Original re-promoted (`active`), Standby
     ///   eingezogen (`available`), Eintrag entfernt (Restored -> Healthy).
     /// - Spawn fehlgeschlagen -> `failover_count` hochzaehlen; bei Erreichen von
-    ///   `max_retries` Original als `unavailable` (Retired) markieren (kein Retry);
-    ///   sonst Cooldown verlaengern und erneut versuchen.
+    ///   `max_retries` Original als `retired` markieren (dauerhaft, kein Retry,
+    ///   keine Auto-Recovery); sonst Cooldown verlaengern und erneut versuchen.
     pub fn compute_restore(
         now: SystemTime,
         failover: &mut HashMap<String, FailoverRecord>,
@@ -401,9 +412,12 @@ impl WorkerPool {
             } else {
                 rec.failover_count += 1;
                 if rec.failover_count >= max_retries {
+                    // Dauerhaft ausmustern: bewusst STATUS_RETIRED statt
+                    // STATUS_UNAVAILABLE, damit die Auto-Recovery in `tick()`
+                    // dieses Brain nicht nach der Retry-Frist wiederbelebt.
                     state.set(
                         &brain,
-                        STATUS_UNAVAILABLE,
+                        STATUS_RETIRED,
                         &format!("retired after {max_retries} failed restores"),
                     );
                     actions.retired.push(brain.clone());
@@ -505,27 +519,15 @@ impl WorkerPool {
         let running: HashSet<String> = self.children.keys().cloned().collect();
         reset_orphaned_active(&mut state, &running);
 
-        // Auto-Recovery: unavailable Brains nach Ablauf der Retry-Frist
-        // wieder available setzen, damit der Promote-Loop sie neu startet.
+        // Auto-Recovery: transient `unavailable` Brains nach Ablauf der
+        // Retry-Frist wieder available setzen, damit der Promote-Loop sie neu
+        // startet. Dauerhaft ausgemusterte Brains (`STATUS_RETIRED`) sind
+        // bewusst ausgeschlossen — siehe `select_auto_recovery`.
         {
-            let now_dt = OffsetDateTime::now_utc();
             let retry_after =
                 Duration::from_secs(crate::config::retry_unavailable_secs());
-            let candidate_recovery: Vec<String> = state
-                .entries
-                .iter()
-                .filter(|(_, e)| e.status == STATUS_UNAVAILABLE)
-                .filter_map(|(b, e)| {
-                    let updated =
-                        OffsetDateTime::parse(e.updated_at.as_str(), &Rfc3339).ok()?;
-                    let elapsed = now_dt - updated;
-                    if elapsed > retry_after {
-                        Some(b.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let candidate_recovery =
+                select_auto_recovery(&state, OffsetDateTime::now_utc(), retry_after);
             for b in &candidate_recovery {
                 eprintln!(
                     "[worker_pool] Auto-Recovery: {} wieder available (unavailable > {}s)",
@@ -745,6 +747,33 @@ fn format_rfc3339(t: SystemTime) -> Option<String> {
 fn parse_rfc3339(s: &str) -> Option<SystemTime> {
     let secs = OffsetDateTime::parse(s, &Rfc3339).ok()?.unix_timestamp();
     Some(SystemTime::UNIX_EPOCH + Duration::from_secs(secs.max(0) as u64))
+}
+
+/// Auto-Recovery-Auswahl (rein, browser-frei testbar): liefert die Brains, die
+/// von `unavailable` wieder auf `available` reflaggt werden sollen, weil seit
+/// `updated_at` mehr als `retry_after` vergangen ist. Filtert strikt auf
+/// `STATUS_UNAVAILABLE`: dauerhaft ausgemusterte Brains (`STATUS_RETIRED`,
+/// nach `MAX_FAILED_RESTORES` fehlgeschlagenen Restores) werden NIE
+/// wiederbelebt — Retirement ist final; nur manuelles Reflag via
+/// `pool_control.json` (`reflag`/`reflag_all`) hebt es auf.
+pub fn select_auto_recovery(
+    state: &PoolState,
+    now: OffsetDateTime,
+    retry_after: Duration,
+) -> Vec<String> {
+    state
+        .entries
+        .iter()
+        .filter(|(_, e)| e.status == STATUS_UNAVAILABLE)
+        .filter_map(|(b, e)| {
+            let updated = OffsetDateTime::parse(e.updated_at.as_str(), &Rfc3339).ok()?;
+            if now - updated > retry_after {
+                Some(b.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Setzt verwaiste `active`-Einträge (kein laufender Kindprozess in `running`)
@@ -1216,8 +1245,48 @@ mod tests {
         );
 
         assert_eq!(acts.retired, vec!["a".to_string()]);
-        assert_eq!(state.entries["a"].status, STATUS_UNAVAILABLE);
+        // Dauerhaft retired — NICHT unavailable, sonst wuerde die
+        // Auto-Recovery das Brain nach der Retry-Frist wiederbeleben.
+        assert_eq!(state.entries["a"].status, STATUS_RETIRED);
         assert!(!failover.contains_key("a"));
+    }
+
+    #[test]
+    fn auto_recovery_recovers_transient_unavailable_after_window() {
+        // (b) Ein transient `unavailable` Brain wird nach Ablauf der
+        // Retry-Frist wieder zur Recovery ausgewaehlt — vorher nicht.
+        let mut state = PoolState::default();
+        state.set("a", STATUS_UNAVAILABLE, "exit code 1");
+        let retry_after = Duration::from_secs(120);
+        let now = OffsetDateTime::now_utc();
+
+        // Frist noch nicht abgelaufen -> nichts.
+        assert!(select_auto_recovery(&state, now, retry_after).is_empty());
+
+        // Frist abgelaufen -> a wird wiederbelebt.
+        let later = now + Duration::from_secs(121);
+        assert_eq!(
+            select_auto_recovery(&state, later, retry_after),
+            vec!["a".to_string()]
+        );
+    }
+
+    #[test]
+    fn auto_recovery_never_resurrects_retired_brain() {
+        // (a) Regression: ein nach MAX_FAILED_RESTORES dauerhaft retired Brain
+        // darf auch lange nach Ablauf der Retry-Frist NICHT wiederbelebt
+        // werden — "permanent" muss permanent bleiben. Nur das transient
+        // unavailable Brain wird recovered.
+        let mut state = PoolState::default();
+        state.set("a", STATUS_RETIRED, "retired after 3 failed restores");
+        state.set("b", STATUS_UNAVAILABLE, "exit code 1");
+        let later = OffsetDateTime::now_utc() + Duration::from_secs(1_000_000);
+
+        let recovered = select_auto_recovery(&state, later, Duration::from_secs(120));
+
+        assert_eq!(recovered, vec!["b".to_string()]);
+        // Der State des retired Brains bleibt unangetastet.
+        assert_eq!(state.entries["a"].status, STATUS_RETIRED);
     }
 
     #[test]

@@ -49,6 +49,7 @@ fn status_color(status: &str) -> &'static str {
         STATUS_ACTIVE => "\x1b[32m",        // grün
         "available" => "\x1b[33m",           // gelb
         "unavailable" => "\x1b[31m",         // rot
+        "retired" => "\x1b[35m",             // magenta (dauerhaft ausgemustert)
         _ => "",
     }
 }
