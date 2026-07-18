@@ -461,7 +461,9 @@ pub fn check_brain(
 
     let mut check = BrainCheck {
         brain_id: brain_id.to_string(),
-        selectors_ok: !sel_path.is_empty() && Path::new(sel_path).is_file(),
+        // on-disk ODER in die Binary eingebettet (self-contained exe).
+        selectors_ok: (!sel_path.is_empty() && Path::new(sel_path).is_file())
+            || crate::config::embedded_selector(brain_id).is_some(),
         selectors_path: sel_path.to_string(),
         selectors_mtime: if !sel_path.is_empty() {
             stat_mtime(sel_path)
@@ -1194,21 +1196,42 @@ mod tests {
 
     #[test]
     fn test_missing_selector() {
+        // Genuine-Missing: ein Brain OHNE eingebetteten Selektor (kein
+        // BRAIN_TABLE-Eintrag) und ohne Datei on-disk -> selectors_ok=false.
         let tmp = unique_tmp();
         let mut brains_config = HashMap::new();
-        let mut chatgpt_spec = HashMap::new();
-        chatgpt_spec.insert("url".to_string(), "https://chatgpt.com/".to_string());
-        chatgpt_spec.insert(
+        let mut spec = HashMap::new();
+        spec.insert("url".to_string(), "https://example.test/".to_string());
+        spec.insert(
             "selectors".to_string(),
             tmp.join("nonexistent.json").to_str().unwrap().to_string(),
         );
-        chatgpt_spec.insert("profile".to_string(), "".to_string());
-        brains_config.insert("chatgpt".to_string(), chatgpt_spec);
+        spec.insert("profile".to_string(), "".to_string());
+        brains_config.insert("fantasybrain".to_string(), spec);
 
-        let result = check_brain("chatgpt", Some(&brains_config), "", "", None, None);
+        let result = check_brain("fantasybrain", Some(&brains_config), "", "", None, None);
         assert!(!result.healthy());
         assert!(!result.selectors_ok);
         assert!(result.recovery_hint.contains("Selektor"));
+    }
+
+    #[test]
+    fn test_embedded_selector_ok_without_disk_file() {
+        // Ein BRAIN_TABLE-Brain (chatgpt) hat eingebettete Selektoren -> auch
+        // ohne Datei on-disk ist selectors_ok=true (self-contained exe).
+        let tmp = unique_tmp();
+        let mut brains_config = HashMap::new();
+        let mut spec = HashMap::new();
+        spec.insert("url".to_string(), "https://chatgpt.com/".to_string());
+        spec.insert(
+            "selectors".to_string(),
+            tmp.join("nonexistent.json").to_str().unwrap().to_string(),
+        );
+        spec.insert("profile".to_string(), "".to_string());
+        brains_config.insert("chatgpt".to_string(), spec);
+
+        let result = check_brain("chatgpt", Some(&brains_config), "", "", None, None);
+        assert!(result.selectors_ok);
     }
 
     #[test]

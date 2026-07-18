@@ -49,7 +49,10 @@ pub fn run_brains_health(allow_empty_profile: bool) -> i32 {
     for id in available_brain_ids() {
         if let Some(spec) = brain_map.get(&id) {
             let sel = spec.get("selectors").map(String::as_str).unwrap_or("");
-            let sel_ok = Path::new(sel).is_file();
+            // Selektoren sind ok, wenn sie on-disk liegen ODER in die Binary
+            // eingebettet sind (self-contained exe ohne selectors/-Ordner).
+            let sel_ok =
+                Path::new(sel).is_file() || crate::config::embedded_selector(&id).is_some();
             let url = spec.get("url").map(String::as_str).unwrap_or("");
             println!(
                 "  {id}: selectors={} url={url}",
