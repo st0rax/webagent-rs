@@ -296,7 +296,11 @@ impl Bot2BotWorker {
     /// (Backend + Executor + Controller), kein eigener Controller-Code.
     /// `profile` ist das isolierte Laufzeit-Profil (Q5/Swarm-Mechanik), damit
     /// mehrere Worker-Prozesse parallel ohne SingletonLock-Konflikt laufen.
-    fn run_controller(&self, task: &str, profile: &Path) -> Result<crate::run_store::RunMeta, String> {
+    fn run_controller(
+        &self,
+        task: &str,
+        profile: &Path,
+    ) -> Result<crate::run_store::RunMeta, String> {
         use crate::browser::WebBrainBackend;
         use crate::controller::AgentController;
         use crate::executor::PlatformShellExecutor;
@@ -314,11 +318,7 @@ impl Bot2BotWorker {
     /// Schreibt das Ergebnis als Legacy-`msg.txt` in `agents/<from>/inbox/` plus
     /// append an `history.jsonl` (bot2bot send-Aequivalent).
     fn writeback(&self, from: &str, subject: &str, body: &str) {
-        let inbox = self
-            .bot2bot_root
-            .join("agents")
-            .join(from)
-            .join("inbox");
+        let inbox = self.bot2bot_root.join("agents").join(from).join("inbox");
         let _ = fs::create_dir_all(&inbox);
         let ts = crate::now_run_stamp();
         let file = inbox.join(format!("{ts}_to_{}.msg.txt", sanitize(from)));
@@ -450,7 +450,8 @@ mod tests {
         fs::write(dir.join(name), content).unwrap();
     }
 
-    const SAMPLE: &str = "From: claude\nTo: qwen\nTime: 2026-07-17T06:34:12+02:00\nSubject: GO x\n\nMach das.\n";
+    const SAMPLE: &str =
+        "From: claude\nTo: qwen\nTime: 2026-07-17T06:34:12+02:00\nSubject: GO x\n\nMach das.\n";
 
     #[test]
     fn parse_msg_basic() {
@@ -476,9 +477,7 @@ mod tests {
         write_msg(&root, "qwen", "20260717T010000_from_claude.msg.txt", SAMPLE);
         write_msg(&root, "qwen", "20260717T010001_from_grok.msg.txt", SAMPLE);
         // Datei in _read/ muss ignoriert werden.
-        let read = root
-            .join("agents/qwen/inbox/_read")
-            .join("old.msg.txt");
+        let read = root.join("agents/qwen/inbox/_read").join("old.msg.txt");
         fs::create_dir_all(read.parent().unwrap()).unwrap();
         fs::write(&read, SAMPLE).unwrap();
 
@@ -514,15 +513,9 @@ mod tests {
     #[test]
     fn move_to_read_and_state_recorded() {
         let root = tmp_root();
-        write_msg(
-            &root,
-            "qwen",
-            "20260717T010000_from_claude.msg.txt",
-            SAMPLE,
-        );
+        write_msg(&root, "qwen", "20260717T010000_from_claude.msg.txt", SAMPLE);
         let w = Bot2BotWorker::new("qwen".into(), root.clone(), 30, true, 5, true);
-        let path = root
-            .join("agents/qwen/inbox/20260717T010000_from_claude.msg.txt");
+        let path = root.join("agents/qwen/inbox/20260717T010000_from_claude.msg.txt");
         w.move_to_read(&path).unwrap();
         assert!(!path.exists());
         assert!(root
@@ -533,12 +526,7 @@ mod tests {
     #[test]
     fn poll_once_records_processed_and_lastseen() {
         let root = tmp_root();
-        write_msg(
-            &root,
-            "qwen",
-            "20260717T010000_from_claude.msg.txt",
-            SAMPLE,
-        );
+        write_msg(&root, "qwen", "20260717T010000_from_claude.msg.txt", SAMPLE);
         let w = Bot2BotWorker::new("qwen".into(), root.clone(), 30, true, 5, true);
 
         // Browser-freier Buchhaltungs-Pfad: State wie in `poll_once` aktualisieren.

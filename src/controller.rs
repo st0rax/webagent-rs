@@ -101,8 +101,6 @@ pub(crate) fn is_valid_resume_conversation_ref(reference: &str) -> bool {
     true
 }
 
-
-
 /// Ergebnis eines einzelnen Brain-Turns.
 #[derive(Debug, Clone)]
 pub struct BrainTurn {
@@ -449,9 +447,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                                 error: Some(format!("shell_policy_denied: {reason}")),
                             }
                         }
-                        crate::shell_policy::Decision::Allow => {
-                            self.executor.execute(&action.command, action.timeout_seconds)
-                        }
+                        crate::shell_policy::Decision::Allow => self
+                            .executor
+                            .execute(&action.command, action.timeout_seconds),
                     };
                     let observation = protocol::format_observation(
                         &action.id,
@@ -1301,7 +1299,9 @@ mod tests {
         let commands = executor.commands.clone();
 
         let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
-        let meta = controller.run("Loesche alles", "mock", None, false).unwrap();
+        let meta = controller
+            .run("Loesche alles", "mock", None, false)
+            .unwrap();
 
         assert_eq!(meta.status, "done");
         // Der Executor darf den destruktiven Befehl nie zu Gesicht bekommen.
@@ -1384,7 +1384,9 @@ mod tests {
         assert!(!is_valid_resume_conversation_ref(""));
         assert!(!is_valid_resume_conversation_ref("not-a-url"));
         assert!(!is_valid_resume_conversation_ref("ftp://chatgpt.com/c/x"));
-        assert!(!is_valid_resume_conversation_ref("https://example.test/chat/old"));
+        assert!(!is_valid_resume_conversation_ref(
+            "https://example.test/chat/old"
+        ));
         assert!(!is_valid_resume_conversation_ref("https://example.com/x"));
         assert!(!is_valid_resume_conversation_ref("http://localhost:9222/"));
         assert!(!is_valid_resume_conversation_ref("https://foo.test/bar"));

@@ -4,7 +4,7 @@
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    prelude::{Stylize},
+    prelude::Stylize,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
@@ -38,10 +38,7 @@ fn heartbeat_color(age_sec: u64) -> Color {
 pub fn ui(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(28),
-            Constraint::Percentage(72),
-        ])
+        .constraints([Constraint::Percentage(28), Constraint::Percentage(72)])
         .split(f.area());
 
     // Linke Seite: Agenten-Liste
@@ -100,7 +97,10 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
 
         vec![
             Line::from(Span::raw("")),
-            Line::from(Span::styled(format!("Brain: {}", a.brain), Style::default().bold())),
+            Line::from(Span::styled(
+                format!("Brain: {}", a.brain),
+                Style::default().bold(),
+            )),
             Line::from(Span::raw(format!("Status: {:?}", a.status))),
             Line::from(Span::raw(format!("PID: {:?}", a.pid))),
             Line::from(Span::raw("")),
@@ -116,7 +116,10 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
             Line::from(vec![
                 Span::raw(""),
                 Span::styled(
-                    format!("Gauge: {:.1}s remaining", 600.0 - a.heartbeat_age_sec as f64),
+                    format!(
+                        "Gauge: {:.1}s remaining",
+                        600.0 - a.heartbeat_age_sec as f64
+                    ),
                     Style::default().fg(hb_color),
                 ),
             ]),
@@ -125,8 +128,7 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
         vec![Line::from("Kein Agent ausgewählt")]
     };
 
-    let p = Paragraph::new(content)
-        .block(Block::default().borders(Borders::ALL).title("Status"));
+    let p = Paragraph::new(content).block(Block::default().borders(Borders::ALL).title("Status"));
 
     f.render_widget(p, area);
 }
@@ -160,22 +162,22 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
             Line::from(vec![
                 Span::raw(""),
                 Span::styled(
-                    format!("Tasks: {}/{} erledigt", a.tasks_done, a.tasks_pending + a.tasks_done),
+                    format!(
+                        "Tasks: {}/{} erledigt",
+                        a.tasks_done,
+                        a.tasks_pending + a.tasks_done
+                    ),
                     Style::default().fg(Color::Green),
                 ),
             ]),
             Line::from(Span::raw("")),
-            Line::from(Span::raw(format!(
-                " {} Inbox-Dateien",
-                a.tasks_pending
-            ))),
+            Line::from(Span::raw(format!(" {} Inbox-Dateien", a.tasks_pending))),
         ]
     } else {
         vec![Line::from("—")]
     };
 
-    let p = Paragraph::new(content)
-        .block(Block::default().borders(Borders::ALL).title("Tasks"));
+    let p = Paragraph::new(content).block(Block::default().borders(Borders::ALL).title("Tasks"));
 
     f.render_widget(p, area);
 }

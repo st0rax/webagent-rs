@@ -19,6 +19,8 @@ use crate::webview_runtime::{WebViewPageDriver, WebViewRuntime};
 
 /// Max. Versuche den geteilten Browser zu nutzen, bevor ein Brain auf die
 /// gekapselte Fallback-Instanz faellt. Spiegelt circuit_breaker::DEFAULT_MAX_FAILURES.
+/// Nur im `webview`-Pfad referenziert; ohne das Feature (CI-Kernbuild) ungenutzt.
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 const POOL_FALLBACK_RETRIES: u32 = 3;
 
 struct PooledTab {
@@ -210,10 +212,10 @@ impl BrowserPool {
         let runstamp = crate::now_run_stamp();
         let clone_dir = encapsulated_profile_dir(brain_id, &runstamp);
         // Linked-Clone/Delta des kanonischen Shared-Profils (Login-Bild, read-only Quelle).
-        let plan = ProfileClonePlanner::plan_canonical(&shared_profile_dir(), &clone_dir, &runstamp);
-        ProfileClonePlanner::materialize(&plan).map_err(|e| {
-            format!("Profil-Klon fuer Brain '{brain_id}' fehlgeschlagen: {e}")
-        })?;
+        let plan =
+            ProfileClonePlanner::plan_canonical(&shared_profile_dir(), &clone_dir, &runstamp);
+        ProfileClonePlanner::materialize(&plan)
+            .map_err(|e| format!("Profil-Klon fuer Brain '{brain_id}' fehlgeschlagen: {e}"))?;
 
         let rt = WebViewRuntime::launch(&clone_dir, headless).map_err(|e| e.to_string())?;
         let mut driver = rt
@@ -280,7 +282,11 @@ impl BrowserPool {
             if let Some(inst) = self.encapsulated.remove(&bid) {
                 // `inst.runtime` wird beim Verlassen des Blocks gedroppt (WebView-
                 // Prozess beendet); danach das geklonte Profilverzeichnis entfernen.
-                let EncapsulatedInstance { runtime: _rt, profile_dir, .. } = inst;
+                let EncapsulatedInstance {
+                    runtime: _rt,
+                    profile_dir,
+                    ..
+                } = inst;
                 let _ = _rt;
                 let _ = std::fs::remove_dir_all(&profile_dir);
             }
@@ -335,7 +341,11 @@ impl BrowserPool {
         // Gekapselte Instanzen ebenfalls entsorgen (Runtime drop + Klon-Verzeichnis).
         #[cfg(feature = "webview")]
         for (_bid, inst) in self.encapsulated.drain() {
-            let EncapsulatedInstance { runtime: _rt, profile_dir, .. } = inst;
+            let EncapsulatedInstance {
+                runtime: _rt,
+                profile_dir,
+                ..
+            } = inst;
             let _ = _rt;
             let _ = std::fs::remove_dir_all(&profile_dir);
         }

@@ -5,13 +5,11 @@
 //! Kern überall baut. Zeitstempel werden *formatiert* über [`civil_utc`] (Python-kompatibel,
 //! siehe dort) und *geparst* über `time` — das ist ohnehin Dependency.
 
+pub mod bot2bot_worker;
 pub mod brain;
 pub mod brain_score;
 pub mod brains_health;
-pub mod bot2bot_worker;
 pub mod browser;
-pub mod worker_pool;
-pub mod tui;
 pub mod browser_pool;
 pub mod canary;
 pub mod circuit_breaker;
@@ -35,13 +33,15 @@ pub mod run_store;
 pub mod shell_policy;
 pub mod timeouts;
 pub mod transcript;
-pub mod watchdog;
-#[cfg(feature = "tui")]
-pub mod tui_state;
+pub mod tui;
 #[cfg(feature = "tui")]
 pub mod tui_render;
+#[cfg(feature = "tui")]
+pub mod tui_state;
+pub mod watchdog;
 #[cfg(feature = "webview")]
 pub mod webview_runtime;
+pub mod worker_pool;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

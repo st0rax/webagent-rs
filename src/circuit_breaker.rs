@@ -268,7 +268,11 @@ mod tests {
         record_success_at("kimi", &path);
 
         let snaps = snapshots_at(&path);
-        assert_eq!(snaps.len(), 2, "kimi reset should disappear; zai+qwen remain");
+        assert_eq!(
+            snaps.len(),
+            2,
+            "kimi reset should disappear; zai+qwen remain"
+        );
 
         let zai = snaps.iter().find(|s| s.brain_id == "zai").expect("zai");
         assert!(!zai.open);
@@ -281,7 +285,9 @@ mod tests {
         assert!(qwen.open);
         assert_eq!(qwen.consecutive_failures, DEFAULT_MAX_FAILURES);
         assert!(qwen.open_until.is_some());
-        assert!(qwen.remaining_secs.is_some_and(|r| r > 0 && r <= DEFAULT_COOLDOWN_SECS));
+        assert!(qwen
+            .remaining_secs
+            .is_some_and(|r| r > 0 && r <= DEFAULT_COOLDOWN_SECS));
         assert_eq!(qwen.last_reason.as_deref(), Some("blocked"));
 
         // sorted by brain_id

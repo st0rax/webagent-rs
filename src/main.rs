@@ -506,9 +506,7 @@ fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json: bo
     };
     if targets.is_empty() {
         if json {
-            println!(
-                r#"{{"brains":[],"synthesis":null,"error":"no_brains"}}"#
-            );
+            println!(r#"{{"brains":[],"synthesis":null,"error":"no_brains"}}"#);
         } else {
             eprintln!("[swarm] keine Brains");
         }
@@ -703,12 +701,9 @@ fn cmd_login_all(timeout_secs: u64, force: bool, parallel: usize) -> i32 {
     if parallel == 0 {
         eprintln!("[login-all] sequenziell, {timeout_secs}s pro Brain (profiles/<brain>)…");
     } else {
-        eprintln!(
-            "[login-all] parallel={parallel} (experimentell), {timeout_secs}s pro Brain…"
-        );
+        eprintln!("[login-all] parallel={parallel} (experimentell), {timeout_secs}s pro Brain…");
     }
-    let results =
-        webagent::login::login_all(Duration::from_secs(timeout_secs), parallel, force);
+    let results = webagent::login::login_all(Duration::from_secs(timeout_secs), parallel, force);
     let mut fail = 0usize;
     for r in &results {
         let tag = if r.skipped {

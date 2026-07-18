@@ -524,8 +524,7 @@ impl WorkerPool {
         // startet. Dauerhaft ausgemusterte Brains (`STATUS_RETIRED`) sind
         // bewusst ausgeschlossen — siehe `select_auto_recovery`.
         {
-            let retry_after =
-                Duration::from_secs(crate::config::retry_unavailable_secs());
+            let retry_after = Duration::from_secs(crate::config::retry_unavailable_secs());
             let candidate_recovery =
                 select_auto_recovery(&state, OffsetDateTime::now_utc(), retry_after);
             for b in &candidate_recovery {
@@ -576,8 +575,11 @@ impl WorkerPool {
 
         let blocked = detect_blocked(&running_ages, &snaps, stale);
 
-        let running_pids: HashMap<String, u32> =
-            self.children.iter().map(|(b, c)| (b.clone(), c.id())).collect();
+        let running_pids: HashMap<String, u32> = self
+            .children
+            .iter()
+            .map(|(b, c)| (b.clone(), c.id()))
+            .collect();
 
         // 1) BLOCK-Erkennung -> Failover-Eintraege + Reserve-Promotion
         //    (Kill der geblockten Kinder erfolgt direkt danach).
@@ -823,7 +825,14 @@ pub fn run_worker_pool(active: usize, brains: &str, poll_secs: u64, headless: bo
     let root = crate::config::bot2bot_root();
     let state_path = root.join("workers").join("pool_state.json");
     let control_path = root.join("workers").join("pool_control.json");
-    let mut pool = WorkerPool::new(candidates, active, poll_secs, headless, state_path, control_path);
+    let mut pool = WorkerPool::new(
+        candidates,
+        active,
+        poll_secs,
+        headless,
+        state_path,
+        control_path,
+    );
     pool.run();
     0
 }
@@ -950,7 +959,8 @@ mod tests {
         // "has_profile" existiert, "no_profile" nicht.
         assert!(has_profile_in(&base, "has_profile"));
         assert!(!has_profile_in(&base, "no_profile"));
-        let filtered = candidates_with_profile_using(&base, &["has_profile".into(), "no_profile".into()]);
+        let filtered =
+            candidates_with_profile_using(&base, &["has_profile".into(), "no_profile".into()]);
         assert_eq!(filtered, vec!["has_profile".to_string()]);
     }
 
@@ -1023,7 +1033,11 @@ mod tests {
         fs::write(dir.join("heartbeat_a.json"), b"{}").unwrap();
         fs::write(dir.join("heartbeat_b.json"), b"{}").unwrap();
         // c hat keine Datei -> wird uebersprungen.
-        let ages = heartbeat_ages(&dir, &["a".into(), "b".into(), "c".into()], SystemTime::now());
+        let ages = heartbeat_ages(
+            &dir,
+            &["a".into(), "b".into(), "c".into()],
+            SystemTime::now(),
+        );
         let mut map: HashMap<String, Duration> = ages.into_iter().collect();
         assert_eq!(map.len(), 2);
         assert!(map.remove("a").unwrap() < Duration::from_secs(5));

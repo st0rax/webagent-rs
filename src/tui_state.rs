@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use crate::config::bot2bot_root;
-use crate::worker_pool::{PoolState};
+use crate::worker_pool::PoolState;
 
 /// Spinner-Frames für Animation (80ms Tick).
 const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -16,7 +16,7 @@ const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "�
 #[derive(Debug, Clone)]
 pub struct AgentView {
     pub brain: String,
-    pub status: String,         // available | active | unavailable | cooldown
+    pub status: String, // available | active | unavailable | cooldown
     pub pid: Option<u32>,
     pub heartbeat_age_sec: u64, // Sekunden seit letztem Heartbeat
     pub tasks_pending: usize,
@@ -132,15 +132,16 @@ fn fs_read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
 fn count_msgs(dir: &Path) -> usize {
     std::fs::read_dir(dir)
         .ok()
-        .map(|e| e.filter_map(|f| f.ok()).filter(|f| f.path().extension().map_or(false, |e| e == "txt")).count())
+        .map(|e| {
+            e.filter_map(|f| f.ok())
+                .filter(|f| f.path().extension().map_or(false, |e| e == "txt"))
+                .count()
+        })
         .unwrap_or(0)
 }
 
 fn latest_log_line(root: &Path, brain: &str) -> Option<String> {
-    let history = root
-        .join("agents")
-        .join(brain)
-        .join("history.jsonl");
+    let history = root.join("agents").join(brain).join("history.jsonl");
 
     std::fs::read_to_string(&history)
         .ok()?
@@ -150,7 +151,11 @@ fn latest_log_line(root: &Path, brain: &str) -> Option<String> {
             // Versuche JSON zu parsen für "body" oder "content"
             serde_json::from_str::<serde_json::Value>(l)
                 .ok()
-                .and_then(|v| v.get("body").or_else(|| v.get("content")).and_then(|x| x.as_str().map(String::from)))
+                .and_then(|v| {
+                    v.get("body")
+                        .or_else(|| v.get("content"))
+                        .and_then(|x| x.as_str().map(String::from))
+                })
                 .map(|s| s.chars().take(80).collect())
                 .unwrap_or_else(|| l.chars().take(80).collect())
         })

@@ -219,9 +219,7 @@ impl WebBrainBackend {
 
     /// Effektives Profil (Override falls gesetzt, sonst kanonisch).
     pub fn effective_profile_dir(&self) -> &PathBuf {
-        self.profile_override
-            .as_ref()
-            .unwrap_or(&self.profile_dir)
+        self.profile_override.as_ref().unwrap_or(&self.profile_dir)
     }
 
     /// Schneller Login-Check: Browser kurz starten, Zustand prüfen, stoppen.
@@ -1012,8 +1010,7 @@ impl BrainBackend for WebBrainBackend {
                     .start_brain_resilient(self, headless, None);
             }
             let profile = self.effective_profile_dir().clone();
-            let runtime =
-                WebViewRuntime::launch(&profile, headless).map_err(|e| e.to_string())?;
+            let runtime = WebViewRuntime::launch(&profile, headless).map_err(|e| e.to_string())?;
             let mut driver = runtime
                 .open_page(&profile, &self.url, headless)
                 .map_err(|e| e.to_string())?;
@@ -1227,7 +1224,10 @@ impl BrainBackend for WebBrainBackend {
                     // (siehe swarm-Test: qwens "daily usage limit" wurde als Antwort
                     // gezaehlt statt als "blocked").
                     if let Some(hit) = block_phrase_in_text(&text) {
-                        eprintln!("[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt", self.brain_id);
+                        eprintln!(
+                            "[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt",
+                            self.brain_id
+                        );
                         return Ok(mk(text, target, false, "blocked"));
                     }
                     return Ok(mk(text, target, true, "ok"));
@@ -1373,7 +1373,10 @@ mod tests {
                 }
             }
         }
-        assert!(checked > 0, "erwartete Text-Selektoren in selectors/*.json zu finden");
+        assert!(
+            checked > 0,
+            "erwartete Text-Selektoren in selectors/*.json zu finden"
+        );
         assert!(
             unrecognized.is_empty(),
             "Selektoren, die der Prelude-Parser nicht erkennt (fallen still auf querySelector zurueck): {unrecognized:#?}"
@@ -1423,7 +1426,10 @@ mod tests {
 
     #[test]
     fn block_phrase_in_text_none_for_normal_answer() {
-        assert_eq!(block_phrase_in_text("Die Hauptstadt von Frankreich ist Paris."), None);
+        assert_eq!(
+            block_phrase_in_text("Die Hauptstadt von Frankreich ist Paris."),
+            None
+        );
     }
 
     #[test]

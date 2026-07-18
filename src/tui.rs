@@ -24,9 +24,7 @@ use std::path::Path;
 use std::thread;
 
 use crate::config::{available_brain_ids, bot2bot_root};
-use crate::worker_pool::{
-    candidates_with_profile, PoolControl, WorkerPool,
-};
+use crate::worker_pool::{candidates_with_profile, PoolControl, WorkerPool};
 
 #[cfg(not(feature = "tui"))]
 use std::io::{BufRead, Write};
@@ -46,10 +44,10 @@ const RESET: &str = "\x1b[0m";
 #[cfg(not(feature = "tui"))]
 fn status_color(status: &str) -> &'static str {
     match status {
-        STATUS_ACTIVE => "\x1b[32m",        // grün
-        "available" => "\x1b[33m",           // gelb
-        "unavailable" => "\x1b[31m",         // rot
-        "retired" => "\x1b[35m",             // magenta (dauerhaft ausgemustert)
+        STATUS_ACTIVE => "\x1b[32m", // grün
+        "available" => "\x1b[33m",   // gelb
+        "unavailable" => "\x1b[31m", // rot
+        "retired" => "\x1b[35m",     // magenta (dauerhaft ausgemustert)
         _ => "",
     }
 }
@@ -101,10 +99,7 @@ fn send_task(root: &Path, brain: &str, from: &str, text: &str) -> std::io::Resul
     }
     let ts = file_stamp();
     let file = inbox.join(format!("{ts}_from_{from}.msg.txt"));
-    let content = format!(
-        "From: {from}\nTo: {brain}\nTime: {}\n\n{text}\n",
-        iso_now()
-    );
+    let content = format!("From: {from}\nTo: {brain}\nTime: {}\n\n{text}\n", iso_now());
     fs::write(file, content)
 }
 
@@ -253,9 +248,7 @@ fn render(
     }
 
     println!();
-    println!(
-        "Befehle:  + aktiver   - weniger   r alle verfuegbar   send <brain> <text>   q quit"
-    );
+    println!("Befehle:  + aktiver   - weniger   r alle verfuegbar   send <brain> <text>   q quit");
 }
 
 // ---------------------------------------------------------------------------
@@ -306,7 +299,13 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
     println!("{CLEAR}webagent TUI startet Worker-Pool … (q zum Beenden)");
     let mut target_active = active.min(candidates.len());
     loop {
-        render(&root, &state_path, &candidates, target_active, &control_path);
+        render(
+            &root,
+            &state_path,
+            &candidates,
+            target_active,
+            &control_path,
+        );
         print!("> ");
         io::stdout().flush().ok();
 
@@ -315,7 +314,10 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
             // Eingabe unterbrochen -> sauber beenden.
             write_control(
                 &control_path,
-                &PoolControl { stop: true, ..Default::default() },
+                &PoolControl {
+                    stop: true,
+                    ..Default::default()
+                },
             );
             break;
         }
@@ -326,7 +328,10 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
             "q" | "quit" => {
                 write_control(
                     &control_path,
-                    &PoolControl { stop: true, ..Default::default() },
+                    &PoolControl {
+                        stop: true,
+                        ..Default::default()
+                    },
                 );
                 break;
             }
@@ -334,20 +339,29 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
                 target_active = (target_active + 1).min(candidates.len());
                 write_control(
                     &control_path,
-                    &PoolControl { target_active, ..Default::default() },
+                    &PoolControl {
+                        target_active,
+                        ..Default::default()
+                    },
                 );
             }
             "-" => {
                 target_active = target_active.saturating_sub(1);
                 write_control(
                     &control_path,
-                    &PoolControl { target_active, ..Default::default() },
+                    &PoolControl {
+                        target_active,
+                        ..Default::default()
+                    },
                 );
             }
             "r" => {
                 write_control(
                     &control_path,
-                    &PoolControl { reflag_all: true, ..Default::default() },
+                    &PoolControl {
+                        reflag_all: true,
+                        ..Default::default()
+                    },
                 );
                 println!("→ alle Kandidaten auf 'available' zurückgesetzt (nächster Tick).");
             }
@@ -486,17 +500,14 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                 match app.input_mode {
                     InputMode::Normal => match key.code {
                         KeyCode::Up => {
-                            app.selected =
-                                select_wrap(app.selected, -1, app.agents.len());
+                            app.selected = select_wrap(app.selected, -1, app.agents.len());
                         }
                         KeyCode::Down => {
-                            app.selected =
-                                select_wrap(app.selected, 1, app.agents.len());
+                            app.selected = select_wrap(app.selected, 1, app.agents.len());
                         }
                         KeyCode::Char('q') => break 0,
                         KeyCode::Char('+') => {
-                            app.target_active =
-                                (app.target_active + 1).min(candidates.len());
+                            app.target_active = (app.target_active + 1).min(candidates.len());
                             write_control(
                                 &control_path,
                                 &PoolControl {
@@ -560,9 +571,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                     },
                     InputMode::ConfirmQuit => match key.code {
                         KeyCode::Char('y') | KeyCode::Enter => break 0,
-                        KeyCode::Char('n') | KeyCode::Esc => {
-                            app.input_mode = InputMode::Normal
-                        }
+                        KeyCode::Char('n') | KeyCode::Esc => app.input_mode = InputMode::Normal,
                         _ => {}
                     },
                 }
@@ -590,7 +599,10 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
     // --- Cleanup ---
     write_control(
         &control_path,
-        &PoolControl { stop: true, ..Default::default() },
+        &PoolControl {
+            stop: true,
+            ..Default::default()
+        },
     );
     let _ = handle.join();
     let _ = terminal::disable_raw_mode();

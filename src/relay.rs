@@ -65,7 +65,10 @@ pub fn relay_single_turn(
     let mut answer: Option<String> = None;
     for turn in 0..MAX_TURNS {
         if turn > 0 {
-            eprintln!("[relay] {brain_id}: Wiederholung {turn}/{}  (vorher: {last_err})", MAX_TURNS - 1);
+            eprintln!(
+                "[relay] {brain_id}: Wiederholung {turn}/{}  (vorher: {last_err})",
+                MAX_TURNS - 1
+            );
             std::thread::sleep(std::time::Duration::from_millis(700));
         }
         if let Err(e) = backend.new_chat() {
@@ -143,7 +146,13 @@ pub fn relay_single_turn(
         }
         None => {
             crate::circuit_breaker::record_failure(brain_id, &last_err);
-            crate::brain_score::record_event(brain_id, false, Some(&last_err), latency_ms, prompt_chars);
+            crate::brain_score::record_event(
+                brain_id,
+                false,
+                Some(&last_err),
+                latency_ms,
+                prompt_chars,
+            );
             Err(RelayError(last_err))
         }
     }

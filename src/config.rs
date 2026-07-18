@@ -292,8 +292,7 @@ pub fn swarm_profile_dir(run_id: &str, brain_id: &str) -> PathBuf {
 
 /// Wie `swarm_profile_dir`, aber mit expliziter Profil-Basis (für Tests).
 pub fn swarm_profile_dir_in(base: &Path, run_id: &str, brain_id: &str) -> PathBuf {
-    base.join("swarm")
-        .join(format!("{}_{}", run_id, brain_id))
+    base.join("swarm").join(format!("{}_{}", run_id, brain_id))
 }
 
 /// Kopiert ein Verzeichnis rekursiv (inkl. Unterverzeichnisse). Bricht nicht bei
@@ -374,7 +373,9 @@ pub fn copy_dir_sparse(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
             continue;
         }
         // Nur Whitelist-Dateien kopieren.
-        if SPARSE_COPY_WHITELIST.iter().any(|w| w.eq_ignore_ascii_case(&name))
+        if SPARSE_COPY_WHITELIST
+            .iter()
+            .any(|w| w.eq_ignore_ascii_case(&name))
             && std::fs::copy(entry.path(), &target).is_ok()
         {
             copied += 1;
@@ -1043,7 +1044,10 @@ mod tests {
         copy_dir_sparse(&src.to_path_buf(), &dst.to_path_buf()).unwrap();
 
         assert!(dst.join("Cookies").is_file(), "Cookies (whitelist) kopiert");
-        assert!(dst.join("Login Data").is_file(), "Login Data (whitelist) kopiert");
+        assert!(
+            dst.join("Login Data").is_file(),
+            "Login Data (whitelist) kopiert"
+        );
         assert!(
             dst.join("Preferences").is_file(),
             "Preferences (whitelist) kopiert"
@@ -1061,7 +1065,10 @@ mod tests {
             !dst.join("Bookmarks").exists(),
             "Bookmarks (nicht whitelist) nicht kopiert"
         );
-        assert!(!dst.join("SingletonLock").exists(), "Lock-File nicht kopiert");
+        assert!(
+            !dst.join("SingletonLock").exists(),
+            "Lock-File nicht kopiert"
+        );
 
         let _ = fs::remove_dir_all(&src);
         let _ = fs::remove_dir_all(&dst);
@@ -1313,7 +1320,10 @@ mod tests {
         plan.same_volume = false;
         ProfileClonePlanner::materialize(&plan).expect("materialize");
 
-        assert!(dst.join("resources.pak").is_file(), "(A) kopiert cross-drive");
+        assert!(
+            dst.join("resources.pak").is_file(),
+            "(A) kopiert cross-drive"
+        );
         assert!(dst.join("Cookies").is_file(), "(B)-minimal kopiert");
         assert!(!dst.join("SingletonLock").exists(), "Lock weggelassen");
 

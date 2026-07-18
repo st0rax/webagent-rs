@@ -137,10 +137,16 @@ mod tests {
 
     #[test]
     fn allows_ordinary_commands() {
-        assert_eq!(evaluate_with_mode("Get-ChildItem C:\\temp", false), Decision::Allow);
+        assert_eq!(
+            evaluate_with_mode("Get-ChildItem C:\\temp", false),
+            Decision::Allow
+        );
         assert_eq!(evaluate_with_mode("ls -la", false), Decision::Allow);
         assert_eq!(evaluate_with_mode("echo hello", false), Decision::Allow);
-        assert_eq!(evaluate_with_mode("cargo build --release", false), Decision::Allow);
+        assert_eq!(
+            evaluate_with_mode("cargo build --release", false),
+            Decision::Allow
+        );
     }
 
     #[test]
@@ -149,13 +155,22 @@ mod tests {
             evaluate_with_mode("Remove-Item C:\\data -Recurse -Force", false),
             Decision::Deny(_)
         ));
-        assert!(matches!(evaluate_with_mode("rm -rf /", false), Decision::Deny(_)));
-        assert!(matches!(evaluate_with_mode("rm -rf ~", false), Decision::Deny(_)));
+        assert!(matches!(
+            evaluate_with_mode("rm -rf /", false),
+            Decision::Deny(_)
+        ));
+        assert!(matches!(
+            evaluate_with_mode("rm -rf ~", false),
+            Decision::Deny(_)
+        ));
     }
 
     #[test]
     fn denies_format_and_mkfs() {
-        assert!(matches!(evaluate_with_mode("format C: /q", false), Decision::Deny(_)));
+        assert!(matches!(
+            evaluate_with_mode("format C: /q", false),
+            Decision::Deny(_)
+        ));
         assert!(matches!(
             evaluate_with_mode("mkfs.ext4 /dev/sda1", false),
             Decision::Deny(_)
@@ -172,7 +187,10 @@ mod tests {
 
     #[test]
     fn denies_fork_bomb() {
-        assert!(matches!(evaluate_with_mode(":(){ :|:& };:", false), Decision::Deny(_)));
+        assert!(matches!(
+            evaluate_with_mode(":(){ :|:& };:", false),
+            Decision::Deny(_)
+        ));
     }
 
     #[test]

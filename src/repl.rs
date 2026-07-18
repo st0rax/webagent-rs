@@ -24,12 +24,22 @@ pub enum ReplAction {
 pub enum SlashCommand {
     Exit,
     New,
-    Memory { query: Option<String> },
-    Remember { text: String },
-    Forget { id: u64 },
-    Switch { target: Option<String> },
+    Memory {
+        query: Option<String>,
+    },
+    Remember {
+        text: String,
+    },
+    Forget {
+        id: u64,
+    },
+    Switch {
+        target: Option<String>,
+    },
     Login,
-    Chat { message: String },
+    Chat {
+        message: String,
+    },
     Whoami,
     Brains,
     /// Leistungsindex-Tabelle (Reliability aus echten swarm/relay-Aufrufen).
@@ -39,14 +49,18 @@ pub enum SlashCommand {
     /// Einheitliches Login für alle Brains (sequenziell), schreibt profiles/<brain>.
     LoginAll,
     /// Stehendes Ziel setzen/anzeigen/löschen (fließt in autonome Aufgaben ein).
-    Goal { arg: Option<String> },
+    Goal {
+        arg: Option<String>,
+    },
     /// Multi-Brain-Swarm: alle antworten, dann führt ein Orchestrator zusammen.
     /// `orchestrator = Some(n)` wählt Brain n (1-basiert) fest; `None` = Konsens.
     Swarm {
         orchestrator: Option<usize>,
         prompt: String,
     },
-    Unknown { raw: String },
+    Unknown {
+        raw: String,
+    },
 }
 
 /// Parst eine REPL-Zeile in einen Slash-Befehl oder `None` (autonomer Task).
@@ -249,7 +263,10 @@ impl ReplSession {
             None => Self::state_label(state).to_string(),
         };
         println!();
-        println!("  \x1b[1mwebagent\x1b[0m · lokaler Browser-Agent ({} Module)", brains.len());
+        println!(
+            "  \x1b[1mwebagent\x1b[0m · lokaler Browser-Agent ({} Module)",
+            brains.len()
+        );
         println!("  Module:  {modules}");
         println!(
             "  Aktiv:   \x1b[1;36m{}\x1b[0m — {who} — session: {:?}",
@@ -452,11 +469,8 @@ impl ReplSession {
                 // startet das aktive Brain danach wieder.
                 self.stop_brain();
                 println!("[login-all] Sequentielles Login für alle Brains (profiles/<brain>)…");
-                let results = crate::login::login_all(
-                    std::time::Duration::from_secs(300),
-                    0,
-                    false,
-                );
+                let results =
+                    crate::login::login_all(std::time::Duration::from_secs(300), 0, false);
                 let ok = results.iter().filter(|r| r.ok).count();
                 let skip = results.iter().filter(|r| r.skipped).count();
                 for r in &results {
@@ -469,7 +483,10 @@ impl ReplSession {
                     };
                     println!("[login-all] [{tag}] {}: {}", r.brain_id, r.message);
                 }
-                println!("[login-all] fertig: {ok}/{} ok ({skip} übersprungen)", results.len());
+                println!(
+                    "[login-all] fertig: {ok}/{} ok ({skip} übersprungen)",
+                    results.len()
+                );
                 if let Err(e) = self.start_brain() {
                     eprintln!("[login-all] aktives Brain nicht neu gestartet: {e}");
                 }
@@ -481,7 +498,10 @@ impl ReplSession {
             }
             SlashCommand::Brains => {
                 println!("[brains] Verfügbar: {}", available_brain_ids().join("  "));
-                println!("[brains] Aktiv: {} (/switch <brain> zum Wechseln)", self.brain_id);
+                println!(
+                    "[brains] Aktiv: {} (/switch <brain> zum Wechseln)",
+                    self.brain_id
+                );
                 ReplAction::Continue
             }
             SlashCommand::Score => {
@@ -580,7 +600,9 @@ impl ReplSession {
         }
         backend.start(self.headless)?;
         let ready_to = resolve_timeout("ensure_ready", brain_id, "", None);
-        let state = backend.ensure_ready(ready_to).unwrap_or(SessionState::Error);
+        let state = backend
+            .ensure_ready(ready_to)
+            .unwrap_or(SessionState::Error);
         if state != SessionState::Ready {
             let _ = backend.stop();
             let label = Self::state_label(state).to_string();
@@ -619,7 +641,13 @@ impl ReplSession {
             }
             Err(e) => {
                 crate::circuit_breaker::record_failure(brain_id, e);
-                crate::brain_score::record_event(brain_id, false, Some(e), latency_ms, prompt_chars);
+                crate::brain_score::record_event(
+                    brain_id,
+                    false,
+                    Some(e),
+                    latency_ms,
+                    prompt_chars,
+                );
             }
         }
         out
@@ -652,7 +680,10 @@ impl ReplSession {
         let targets = available_brain_ids();
         if let Some(n) = orchestrator {
             if !(1..=targets.len()).contains(&n) {
-                println!("[swarm] Ungültiger Orchestrator-Index {n} (1-{}).", targets.len());
+                println!(
+                    "[swarm] Ungültiger Orchestrator-Index {n} (1-{}).",
+                    targets.len()
+                );
                 return;
             }
         }
@@ -1017,7 +1048,10 @@ mod tests {
     #[test]
     fn parse_score() {
         assert_eq!(parse_slash_command("/score"), Some(SlashCommand::Score));
-        assert_eq!(parse_slash_command("/leaderboard"), Some(SlashCommand::Score));
+        assert_eq!(
+            parse_slash_command("/leaderboard"),
+            Some(SlashCommand::Score)
+        );
     }
 
     #[test]

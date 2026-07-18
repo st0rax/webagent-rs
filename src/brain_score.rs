@@ -73,8 +73,21 @@ fn events_path() -> PathBuf {
 
 /// Ein Ereignis anhaengen (JSON-Lines, append-only -- volle Historie bleibt
 /// erhalten, auch wenn der Score nur das Fenster der letzten `WINDOW_SIZE` nutzt).
-pub fn record_event(brain_id: &str, success: bool, reason: Option<&str>, latency_ms: u64, prompt_chars: usize) {
-    record_event_at(brain_id, success, reason, latency_ms, prompt_chars, &events_path());
+pub fn record_event(
+    brain_id: &str,
+    success: bool,
+    reason: Option<&str>,
+    latency_ms: u64,
+    prompt_chars: usize,
+) {
+    record_event_at(
+        brain_id,
+        success,
+        reason,
+        latency_ms,
+        prompt_chars,
+        &events_path(),
+    );
 }
 
 fn record_event_at(
@@ -188,7 +201,11 @@ fn leaderboard_at(path: &PathBuf) -> Vec<BrainStats> {
         .keys()
         .filter_map(|id| stats_at(id, path))
         .collect();
-    result.sort_by(|a, b| b.reliability.partial_cmp(&a.reliability).unwrap_or(std::cmp::Ordering::Equal));
+    result.sort_by(|a, b| {
+        b.reliability
+            .partial_cmp(&a.reliability)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     result
 }
 
@@ -201,7 +218,10 @@ mod tests {
     fn unique_path() -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         std::env::temp_dir().join(format!("webagent_score_test_{nanos}_{n}.jsonl"))
     }
 
