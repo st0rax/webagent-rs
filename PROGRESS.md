@@ -1,6 +1,35 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-15 (MISSION execution)
+**Stand:** 2026-07-19 (Testsuite-Blocker behoben, siehe unten)
+
+## 2026-07-19 — Testsuite wieder voll lauffähig (beide Blocker von 2026-07-15 weg)
+
+Beide unten dokumentierten "Offene Baustellen an der Testsuite" sind nicht mehr
+reproduzierbar und damit erledigt:
+
+1. **`cargo test` linkt wieder.** Die aktive Default-Toolchain ist inzwischen
+   `stable-x86_64-pc-windows-msvc` (nicht mehr `-gnu`); das `-lgcc`-Linkproblem
+   entfällt damit komplett. Verifiziert: `cargo test --lib` → **250 passed, 0 failed**.
+2. **`--all-targets` compiliert.** Der E0451-Fehler (private Felder in
+   `WebViewPageDriver`/`PageMessage` aus `browser_pool.rs`-Tests) tritt nicht mehr
+   auf. Verifiziert: `cargo test --all-targets --no-run` → baut alle Targets;
+   `cargo clippy --all-targets -- -D warnings` → exit 0.
+
+Außerdem: `runtime-workers/webagent.exe` (Flotten-Kopie) war vom 2026-07-17 11:14
+und damit **älter als der Phantom-Resume-Fix e62f188 (12:14)** — die Flotte hätte
+noch mit dem Bug gearbeitet. Release neu gebaut von HEAD (719e6cc) und nach
+`runtime-workers/` kopiert (2026-07-19).
+
+**Stabilisierung dagegen (2026-07-19):**
+- `build.rs` bettet Git-Hash+Dirty-Flag ein; `webagent --version` →
+  `0.8.1 (719e6cc53+dirty)`. Damit ist jede deployte Kopie ihrem Commit zuordenbar.
+- Neuer Deploy-Flow im äußeren Repo: `delivery/deploy_webagent_rs.ps1`
+  (Build → Copy nach `runtime-workers/` → Check; verweigert bei laufender Flotte)
+  + `delivery/post_deploy_check.ps1` (Binary-Parität, Version-vs-HEAD,
+  Python-CLI-Import, Relay-Ping; externe Blocks = WARN). Beide Fehlerklassen
+  (stale Binary, CLI-Import-Bruch) per Negativtest verifiziert → FAIL/exit 1.
+- **Regel: `runtime-workers/` nie mehr von Hand bekopieren — immer über
+  `deploy_webagent_rs.ps1`.**
 
 ## DoD Status
 - [!] "cargo test --no-default-features (x2) + clippy -D warnings green (160+ tests, 0 fail)"

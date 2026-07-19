@@ -8,6 +8,7 @@ use webagent::run_store::RunStore;
 
 #[derive(Parser)]
 #[command(name = "webagent")]
+#[command(version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("WEBAGENT_GIT_HASH"), ")"))]
 #[command(about = "Gehirnunabhängiger lokaler Agent (Rust-Port)", long_about = None)]
 struct Cli {
     #[command(subcommand)]
