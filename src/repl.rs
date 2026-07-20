@@ -70,6 +70,12 @@ pub enum SlashCommand {
         eval_cmd: String,
         goal: String,
     },
+    /// Swarm-Selbstbewertung: `/autoresearch.self [N] [--top K]` — der Pool
+    /// bewertet die eigenen nächsten Verbesserungen. `None` = Default (N=10, K=10).
+    AutoresearchSelf {
+        suggestions: Option<usize>,
+        top: Option<usize>,
+    },
     /// Wiki-Memory: `/wiki` (Index), `/wiki <suchbegriff>` (Suche),
     /// `/wiki lint` (mechanischer Lint-Report).
     Wiki {
@@ -168,6 +174,25 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     if trimmed == "/diff" {
         return Some(SlashCommand::Diff);
     }
+    // WICHTIG: vor dem `/autoresearch`-Zweig prüfen, sonst schluckt der (bzw. der
+    // Unknown-Fallback) den `.self`-Befehl. Syntax: /autoresearch.self [N] [--top K].
+    if trimmed == "/autoresearch.self" || trimmed.starts_with("/autoresearch.self ") {
+        let rest = trimmed.strip_prefix("/autoresearch.self").unwrap_or("").trim();
+        let mut suggestions: Option<usize> = None;
+        let mut top: Option<usize> = None;
+        let mut it = rest.split_whitespace();
+        while let Some(tok) = it.next() {
+            if tok == "--top" {
+                top = it.next().and_then(|v| v.parse::<usize>().ok()).filter(|n| *n >= 1);
+            } else if let Some(v) = tok.strip_prefix("--top=") {
+                top = v.parse::<usize>().ok().filter(|n| *n >= 1);
+            } else if suggestions.is_none() {
+                // Erstes freies Token als N (Vorschläge je Brain), nur wenn Zahl >= 1.
+                suggestions = tok.parse::<usize>().ok().filter(|n| *n >= 1);
+            }
+        }
+        return Some(SlashCommand::AutoresearchSelf { suggestions, top });
+    }
     if trimmed == "/autoresearch" || trimmed.starts_with("/autoresearch ") {
         // Syntax: /autoresearch <eval-cmd> :: <goal> — der Trenner " :: " macht
         // Eval-Befehle mit Leerzeichen/Pipes eindeutig vom Ziel unterscheidbar.
@@ -232,6 +257,81 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     Some(SlashCommand::Unknown {
         raw: trimmed.to_string(),
     })
+}
+
+/// Ein voller Frage-Zyklus gegen ein frisches, isoliertes Brain-Backend:
+/// start → ensure_ready → new_chat → send → wait_response → stop. Für Swarm und
+/// Self-Research, wo jedes Brain der Reihe nach in einem eigenen Laufzeit-Profil
+/// (`profile_override`, Swarm-Teilkopie) befragt wird. Bucht Circuit-Breaker- und
+/// Reliability-Ereignisse; blockierte Antworten (Tageslimit/Login/Cloudflare)
+/// zählen als Fehler statt als Beitrag (siehe [[external-blocks-flag-not-fail]]).
+pub fn isolated_query(
+    brain_id: &str,
+    prompt: &str,
+    headless: bool,
+    profile_override: Option<std::path::PathBuf>,
+) -> Result<String, String> {
+    // Wiederholt blockierte/fehlgeschlagene Brains werden fuer eine Cooldown-
+    // Zeit uebersprungen statt bei jedem Aufruf erneut den vollen Timeout zu
+    // kosten (siehe circuit_breaker.rs).
+    if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
+        return Err(format!(
+            "circuit_open: uebersprungen, noch {remaining}s Cooldown"
+        ));
+    }
+    let started = std::time::Instant::now();
+    let prompt_chars = prompt.chars().count();
+    let mut backend = WebBrainBackend::from_config(brain_id)?;
+    if let Some(p) = profile_override {
+        backend = backend.with_profile_override(p);
+    }
+    backend.start(headless)?;
+    let ready_to = resolve_timeout("ensure_ready", brain_id, "", None);
+    let state = backend
+        .ensure_ready(ready_to)
+        .unwrap_or(SessionState::Error);
+    if state != SessionState::Ready {
+        let _ = backend.stop();
+        let label = ReplSession::state_label(state).to_string();
+        crate::circuit_breaker::record_failure(brain_id, &label);
+        crate::brain_score::record_event(
+            brain_id,
+            false,
+            Some(&label),
+            started.elapsed().as_millis() as u64,
+            prompt_chars,
+        );
+        return Err(label);
+    }
+    let _ = backend.new_chat();
+    let baseline = backend.send(prompt).inspect_err(|_| {
+        let _ = backend.stop();
+    })?;
+    let wait_to = resolve_timeout("wait_response", brain_id, prompt, None);
+    let out = match backend.wait_response(baseline, wait_to) {
+        // Externe Blockierung (Tageslimit/Login/Cloudflare) ist kein Beitrag zur
+        // Zusammenführung -- sonst landet die Limit-Seite als vermeintliche
+        // "Antwort" im Ergebnis (siehe [[external-blocks-flag-not-fail]]).
+        Ok(resp) if resp.backend_status == "blocked" || resp.backend_status == "rate_limit" => {
+            Err(format!("blockiert: {}", resp.text.trim()))
+        }
+        Ok(resp) if !resp.text.trim().is_empty() => Ok(resp.text.trim().to_string()),
+        Ok(resp) => Err(format!("keine Antwort (status={})", resp.backend_status)),
+        Err(e) => Err(e),
+    };
+    let _ = backend.stop();
+    let latency_ms = started.elapsed().as_millis() as u64;
+    match &out {
+        Ok(_) => {
+            crate::circuit_breaker::record_success(brain_id);
+            crate::brain_score::record_event(brain_id, true, None, latency_ms, prompt_chars);
+        }
+        Err(e) => {
+            crate::circuit_breaker::record_failure(brain_id, e);
+            crate::brain_score::record_event(brain_id, false, Some(e), latency_ms, prompt_chars);
+        }
+    }
+    out
 }
 
 /// Zähler für die Abschluss-Zusammenfassung (qwen-code-Vorbild). Web-Chats
@@ -419,7 +519,7 @@ impl ReplSession {
             self.brain_id, state
         );
         println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>  /pool [n]  /diff");
-        println!("           /autoresearch <eval-cmd> :: <goal>");
+        println!("           /autoresearch <eval-cmd> :: <goal>  /autoresearch.self [N] [--top K]");
         println!("           /wiki [suchbegriff|lint]");
         println!("           /new  /brains  /whoami  /score  /canary  /memory  /login  /login-all  /exit");
         println!();
@@ -684,6 +784,10 @@ impl ReplSession {
                 self.run_autoresearch(&eval_cmd, &goal);
                 ReplAction::Continue
             }
+            SlashCommand::AutoresearchSelf { suggestions, top } => {
+                self.run_self_research(suggestions, top);
+                ReplAction::Continue
+            }
             SlashCommand::Wiki { arg } => {
                 self.handle_wiki(arg.as_deref());
                 ReplAction::Continue
@@ -826,73 +930,7 @@ impl ReplSession {
         prompt: &str,
         profile_override: Option<std::path::PathBuf>,
     ) -> Result<String, String> {
-        // Wiederholt blockierte/fehlgeschlagene Brains werden fuer eine Cooldown-
-        // Zeit uebersprungen statt bei jedem Swarm erneut den vollen Timeout zu
-        // kosten (siehe circuit_breaker.rs).
-        if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
-            return Err(format!(
-                "circuit_open: uebersprungen, noch {remaining}s Cooldown"
-            ));
-        }
-        let started = std::time::Instant::now();
-        let prompt_chars = prompt.chars().count();
-        let mut backend = WebBrainBackend::from_config(brain_id)?;
-        if let Some(p) = profile_override {
-            backend = backend.with_profile_override(p);
-        }
-        backend.start(self.headless)?;
-        let ready_to = resolve_timeout("ensure_ready", brain_id, "", None);
-        let state = backend
-            .ensure_ready(ready_to)
-            .unwrap_or(SessionState::Error);
-        if state != SessionState::Ready {
-            let _ = backend.stop();
-            let label = Self::state_label(state).to_string();
-            crate::circuit_breaker::record_failure(brain_id, &label);
-            crate::brain_score::record_event(
-                brain_id,
-                false,
-                Some(&label),
-                started.elapsed().as_millis() as u64,
-                prompt_chars,
-            );
-            return Err(label);
-        }
-        let _ = backend.new_chat();
-        let baseline = backend.send(prompt).inspect_err(|_| {
-            let _ = backend.stop();
-        })?;
-        let wait_to = resolve_timeout("wait_response", brain_id, prompt, None);
-        let out = match backend.wait_response(baseline, wait_to) {
-            // Externe Blockierung (Tageslimit/Login/Cloudflare) ist kein Beitrag zur
-            // Zusammenführung -- sonst landet die Limit-Seite als vermeintliche
-            // "Antwort" im Battle-Royale-Ergebnis (siehe [[external-blocks-flag-not-fail]]).
-            Ok(resp) if resp.backend_status == "blocked" || resp.backend_status == "rate_limit" => {
-                Err(format!("blockiert: {}", resp.text.trim()))
-            }
-            Ok(resp) if !resp.text.trim().is_empty() => Ok(resp.text.trim().to_string()),
-            Ok(resp) => Err(format!("keine Antwort (status={})", resp.backend_status)),
-            Err(e) => Err(e),
-        };
-        let _ = backend.stop();
-        let latency_ms = started.elapsed().as_millis() as u64;
-        match &out {
-            Ok(_) => {
-                crate::circuit_breaker::record_success(brain_id);
-                crate::brain_score::record_event(brain_id, true, None, latency_ms, prompt_chars);
-            }
-            Err(e) => {
-                crate::circuit_breaker::record_failure(brain_id, e);
-                crate::brain_score::record_event(
-                    brain_id,
-                    false,
-                    Some(e),
-                    latency_ms,
-                    prompt_chars,
-                );
-            }
-        }
-        out
+        isolated_query(brain_id, prompt, self.headless, profile_override)
     }
 
     /// `/swarm [n] <prompt>` — Multi-Brain-Swarm (schlüssiger Ablauf).
@@ -1177,6 +1215,72 @@ impl ReplSession {
         }
     }
 
+    /// `/autoresearch.self [N] [--top K]` — Swarm-Selbstbewertung: der ganze Pool
+    /// bewertet in vier Phasen die wichtigsten nächsten Verbesserungen. Nutzt
+    /// isolierte Profile wie `/swarm` und legt das Ergebnis zusätzlich als
+    /// Wiki-Seite `self-research-<stamp>` ab.
+    fn run_self_research(&mut self, suggestions: Option<usize>, top: Option<usize>) {
+        let n = suggestions.unwrap_or(10);
+        let k = top.unwrap_or(10);
+        let targets = available_brain_ids();
+        if targets.is_empty() {
+            println!("[self-research] keine Brains registriert.");
+            return;
+        }
+        self.stats.swarms += 1;
+        self.stop_brain(); // aktives REPL-Brain pausieren
+
+        let run_id = crate::now_run_stamp();
+        // Profile immer aufräumen, auch bei early return.
+        struct SwarmCleanup {
+            run_id: String,
+        }
+        impl Drop for SwarmCleanup {
+            fn drop(&mut self) {
+                let _ = crate::config::cleanup_swarm_profiles(&self.run_id);
+            }
+        }
+        let _cleanup = SwarmCleanup {
+            run_id: run_id.clone(),
+        };
+        let profiles: Vec<(String, std::path::PathBuf)> = targets
+            .iter()
+            .map(|tb| (tb.clone(), crate::config::prepare_swarm_profile(&run_id, tb)))
+            .collect();
+        let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
+            profiles
+                .iter()
+                .find(|(b, _)| b == brain)
+                .map(|(_, p)| p.clone())
+        };
+
+        // Projektfakten aus dem Repo-Root (Fallback: aktuelles Verzeichnis).
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+        let root = crate::autoresearch::git_repo_root(&cwd).unwrap_or(cwd);
+        let facts = crate::self_research::gather_facts(&root, 1200);
+        let headless = self.headless;
+
+        let report = crate::self_research::run_self_research(&targets, &facts, n, k, |b, p| {
+            isolated_query(b, p, headless, profile_of(b))
+        });
+
+        // Ergebnis als Wiki-Seite ablegen (Dogfooding der Wiki-Memory).
+        if !report.catalog.is_empty() {
+            let wiki =
+                crate::wiki_memory::WikiMemory::new(data_dir().join("memory").join("wiki"));
+            let title = format!("self-research-{run_id}");
+            let body = crate::self_research::format_report(&report);
+            match wiki.write_page(&title, &body) {
+                Ok(slug) => println!("[self-research] Ergebnis abgelegt als [[{slug}]]."),
+                Err(e) => eprintln!("[self-research] Wiki-Ablage fehlgeschlagen: {e}"),
+            }
+        }
+
+        // _cleanup Drop räumt die Profile; REPL-Brain wieder starten.
+        let _ = self.start_brain();
+        println!("[self-research] fertig. Aktiv weiterhin: {}", self.brain_id);
+    }
+
     /// `/diff` — was hat sich im Arbeitsverzeichnis (git) geändert?
     fn print_diff(&self) {
         let run_git = |args: &[&str]| -> Option<String> {
@@ -1447,6 +1551,50 @@ mod tests {
             Some(SlashCommand::Autoresearch {
                 eval_cmd: String::new(),
                 goal: String::new()
+            })
+        );
+    }
+
+    #[test]
+    fn parse_autoresearch_self() {
+        // Ohne Argumente → Defaults (Handler nutzt N=10, K=10).
+        assert_eq!(
+            parse_slash_command("/autoresearch.self"),
+            Some(SlashCommand::AutoresearchSelf {
+                suggestions: None,
+                top: None
+            })
+        );
+        // Nur N.
+        assert_eq!(
+            parse_slash_command("/autoresearch.self 5"),
+            Some(SlashCommand::AutoresearchSelf {
+                suggestions: Some(5),
+                top: None
+            })
+        );
+        // N und --top K.
+        assert_eq!(
+            parse_slash_command("/autoresearch.self 8 --top 3"),
+            Some(SlashCommand::AutoresearchSelf {
+                suggestions: Some(8),
+                top: Some(3)
+            })
+        );
+        // --top=K-Schreibweise, N kann fehlen.
+        assert_eq!(
+            parse_slash_command("/autoresearch.self --top=4"),
+            Some(SlashCommand::AutoresearchSelf {
+                suggestions: None,
+                top: Some(4)
+            })
+        );
+        // Kollidiert NICHT mit dem metrik-getriebenen /autoresearch.
+        assert_eq!(
+            parse_slash_command("/autoresearch cargo test :: mehr grün"),
+            Some(SlashCommand::Autoresearch {
+                eval_cmd: "cargo test".into(),
+                goal: "mehr grün".into()
             })
         );
     }

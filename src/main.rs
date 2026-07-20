@@ -254,6 +254,27 @@ enum Commands {
     /// Git als Sicherheitsnetz, eigener Branch autoresearch/<timestamp>)
     Autoresearch(AutoresearchArgs),
 
+    /// Swarm-Selbstbewertung: der Brain-Pool sammelt/konsolidiert/abstimmt die
+    /// wichtigsten nächsten Verbesserungen (Prioritätsfindung, kein Modify-Loop).
+    #[command(name = "autoresearch-self")]
+    AutoresearchSelf {
+        /// Vorschläge je Brain (Phase 1)
+        #[arg(long, default_value = "10")]
+        suggestions: usize,
+
+        /// Größe der gerankten Top-Liste (Phase 4)
+        #[arg(long, default_value = "10")]
+        top: usize,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+
+        /// Projektfakten aus dieser Datei statt aus README/PROGRESS/src
+        #[arg(long)]
+        facts: Option<String>,
+    },
+
     /// Read-only gate for autonomous maintenance
     MaintenanceCheck {
         /// Maschinenlesbares JSON
@@ -446,6 +467,13 @@ fn dispatch(command: Commands) -> i32 {
 
         Commands::Autoresearch(args) => cmd_autoresearch(args),
 
+        Commands::AutoresearchSelf {
+            suggestions,
+            top,
+            headless,
+            facts,
+        } => cmd_autoresearch_self(suggestions, top, headless, facts),
+
         Commands::MaintenanceCheck {
             json,
             pytest,
@@ -511,6 +539,80 @@ fn cmd_autoresearch(args: AutoresearchArgs) -> i32 {
             eprintln!("[autoresearch] Fehler: {e}");
             1
         }
+    }
+}
+
+/// `webagent autoresearch-self` — dieselbe Kernfunktion wie die REPL, nur ohne
+/// gehaltene Session: isolierte Profile vorbereiten, Fakten sammeln (oder aus
+/// `--facts` laden), vier Phasen fahren, Ergebnis als Wiki-Seite ablegen.
+fn cmd_autoresearch_self(
+    suggestions: usize,
+    top: usize,
+    headless: bool,
+    facts_file: Option<String>,
+) -> i32 {
+    let targets = webagent::config::available_brain_ids();
+    if targets.is_empty() {
+        eprintln!("[self-research] keine Brains registriert.");
+        return 2;
+    }
+
+    let run_id = webagent::now_run_stamp();
+    let profiles: Vec<(String, std::path::PathBuf)> = targets
+        .iter()
+        .map(|tb| {
+            (
+                tb.clone(),
+                webagent::config::prepare_swarm_profile(&run_id, tb),
+            )
+        })
+        .collect();
+    let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
+        profiles
+            .iter()
+            .find(|(b, _)| b == brain)
+            .map(|(_, p)| p.clone())
+    };
+
+    // Fakten: --facts-Datei überschreibt, sonst aus dem Repo-Root sammeln.
+    let facts = match facts_file {
+        Some(path) => std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            eprintln!("[self-research] --facts {path} nicht lesbar ({e}) — nutze leere Fakten.");
+            String::new()
+        }),
+        None => {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+            let root = webagent::autoresearch::git_repo_root(&cwd).unwrap_or(cwd);
+            webagent::self_research::gather_facts(&root, 1200)
+        }
+    };
+
+    let report = webagent::self_research::run_self_research(
+        &targets,
+        &facts,
+        suggestions,
+        top,
+        |b, p| webagent::repl::isolated_query(b, p, headless, profile_of(b)),
+    );
+
+    let _ = webagent::config::cleanup_swarm_profiles(&run_id);
+
+    if !report.catalog.is_empty() {
+        let wiki = webagent::wiki_memory::WikiMemory::new(
+            webagent::config::data_dir().join("memory").join("wiki"),
+        );
+        let title = format!("self-research-{run_id}");
+        let body = webagent::self_research::format_report(&report);
+        match wiki.write_page(&title, &body) {
+            Ok(slug) => println!("[self-research] Ergebnis abgelegt als [[{slug}]]."),
+            Err(e) => eprintln!("[self-research] Wiki-Ablage fehlgeschlagen: {e}"),
+        }
+    }
+
+    if report.ranked.is_empty() {
+        1
+    } else {
+        0
     }
 }
 

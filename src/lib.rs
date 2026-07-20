@@ -32,6 +32,7 @@ pub mod protocol;
 pub mod relay;
 pub mod repl;
 pub mod run_store;
+pub mod self_research;
 pub mod shell_policy;
 pub mod timeouts;
 pub mod transcript;
