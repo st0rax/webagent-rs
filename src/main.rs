@@ -667,7 +667,9 @@ fn cmd_run(brain: &str, task: &str, resume: Option<&str>, headless: bool, max_cy
     let executor = PlatformShellExecutor::new();
     let mut controller = AgentController::new(backend, executor, max_cycles as usize);
 
-    eprintln!(
+    // Fortschritt auf stdout — auf stderr rendern PowerShell-Wrapper das als
+    // roten NativeCommandError-Block, obwohl nichts kaputt ist (Dogfood-Fund 2026-07-20).
+    println!(
         "[run] brain={} headless={} max_cycles={} — starte Embedded WebView…",
         brain, headless, max_cycles
     );

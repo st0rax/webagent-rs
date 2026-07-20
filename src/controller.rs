@@ -394,7 +394,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             if self.completed_actions.contains_key(&action.id) {
                 let stored = self.completed_actions[&action.id].clone();
                 match action.action_type {
-                    protocol::ActionType::Shell => {
+                    protocol::ActionType::Shell
+                    | protocol::ActionType::Edit
+                    | protocol::ActionType::Write => {
                         observations.push(format!(
                             "[Controller] action_id={} wurde bereits ausgefuehrt; \
                              gespeicherte Observation wird erneut geliefert. \
@@ -502,6 +504,35 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                             }
                         }
                     }
+                }
+                protocol::ActionType::Edit | protocol::ActionType::Write => {
+                    let is_edit = action.action_type == protocol::ActionType::Edit;
+                    let kind = if is_edit { "edit" } else { "write" };
+                    println!("[{kind}:{}] {}", action.id, action.path);
+                    let result = if is_edit {
+                        crate::file_actions::apply_edit(
+                            &action.path,
+                            &action.old_string,
+                            &action.new_string,
+                        )
+                    } else {
+                        crate::file_actions::apply_write(&action.path, &action.content)
+                    };
+                    let (stdout, stderr, exit_code) = match result {
+                        Ok(msg) => (msg, String::new(), Some(0)),
+                        Err(msg) => (String::new(), msg, Some(1)),
+                    };
+                    let observation = protocol::format_observation(
+                        &action.id,
+                        &stdout,
+                        &stderr,
+                        exit_code,
+                        false,
+                    );
+                    let observation = self.bounded_observation(&action.id, &observation);
+                    observations.push(observation.clone());
+                    self.record_completed_action(&action.id, &observation);
+                    self.track_observation_bytes(&observation);
                 }
             }
         }
@@ -831,10 +862,15 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             );
             self.run_store.save(&meta).ok();
 
-            self.run_once(
-                &autonomous_task_prompt(&task, &memory_context),
-                Some(&mut transcript),
-            )
+            // Repo-Kontext (Phase 2): begrenzter Dateibaum des Arbeitsverzeichnisses,
+            // damit das Brain nicht jede Struktur-Frage per Shell-Roundtrip klärt.
+            let mut prompt = autonomous_task_prompt(&task, &memory_context);
+            let tree = crate::file_actions::worktree_context(120);
+            if !tree.is_empty() {
+                prompt.push_str("\n\n");
+                prompt.push_str(&tree);
+            }
+            self.run_once(&prompt, Some(&mut transcript))
         };
 
         // Incomplete recovery initial

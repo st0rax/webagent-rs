@@ -18,6 +18,7 @@ pub mod config;
 pub mod controller;
 pub mod doctor;
 pub mod executor;
+pub mod file_actions;
 pub mod login;
 pub mod loop_guard;
 pub mod memory;

@@ -101,8 +101,20 @@ Write-Output $value
 
 Zulässige Action-Typen:
 - shell: uneingeschränkter PowerShell-Befehl (id + command + optional timeout_seconds)
+- edit: gezielte Änderung in einer BESTANDSDATEI (id + path + old_string + new_string).
+  old_string muss EXAKT und EINDEUTIG in der Datei vorkommen (inkl. Einrückung);
+  er wird genau einmal durch new_string ersetzt. new_string="" löscht den Anker.
+  Beispiel: {{"id": "fix-1", "type": "edit", "path": "C:/pfad/app.py",
+  "old_string": "return 1", "new_string": "return 2"}}
+- write: NEUE Datei anlegen (id + path + content). Schlägt fehl, wenn die Datei
+  existiert — Bestandsdateien immer mit edit ändern.
 - message: nur Transcript/Terminal (id + text)
 - finish: Run beenden (nur id + type)
+
+Für Dateiänderungen IMMER edit/write statt Set-Content/Out-File verwenden:
+kein Quoting/Escaping-Risiko, präzise Fehlermeldungen (Anker nicht gefunden /
+mehrdeutig), kein versehentliches Überschreiben. shell bleibt für Befehle,
+Builds, Tests und Abfragen.
 
 Regeln:
 - protocol muss "{}" sein
@@ -126,8 +138,8 @@ Regeln:
   Gutes Beispiel im command: Write-Output \"Hallo Welt\"
 - verwende in JSON-shell-Actions keine PowerShell-Here-Strings (`@'...'@` oder
   `@\"...\"@`); im `WEBAGENT/1 SHELL`-Rohskriptformat sind sie erlaubt
-- schreibe mehrzeilige Dateien oder komplexe Skripte robust als Array einzelner String-Zeilen,
-  verbunden mit `[Environment]::NewLine`, und danach mit `Set-Content -Path $temp.ps1`
+- mehrzeilige Dateien mit der write-Action anlegen (content mit \n-Zeilenumbrüchen),
+  NICHT über Set-Content-Konstruktionen
 - Bei komplizierten Befehlen mit vielen Anführungszeichen, HTML oder mehreren
   Zeilen MUSST du das oben beschriebene `WEBAGENT/1 SHELL`-Format verwenden.
   Es darf genau eine Shell-Action enthalten. Warte danach auf die Observation.

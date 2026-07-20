@@ -1,6 +1,39 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-20 (Default = Chat-REPL · /pool · Session-Zusammenfassung)
+**Stand:** 2026-07-20 (Coding-Agent-Ausbau: edit/write-Actions · Repo-Kontext · /diff)
+
+## 2026-07-20 (4) — Coding-Agent Phase 1–3
+
+Ziel (Storax): webagent soll als Coding-Agent durchgehen. Drei Lücken geschlossen:
+
+**Phase 1 — edit/write-Actions im webagent/1-Protokoll** (`protocol.rs`,
+`file_actions.rs` neu, `controller.rs`, `prompts.rs`):
+- `edit`: path + old_string/new_string; Anker muss exakt einmal matchen.
+  Fehler-Observations sind brain-lesbar (nicht gefunden / mehrdeutig mit
+  Trefferzahl); CRLF↔LF-Toleranz (Anker+Ersatz werden konsistent umkodiert);
+  new_string="" = Löschung. Ausführung nativ in Rust, nicht über PowerShell.
+- `write`: path + content, legt NEUE Dateien an (inkl. Parent-Dirs); existierende
+  Datei → Fehler mit Verweis auf edit (kein stilles Überschreiben).
+- Parse-Validierung: edit braucht path+old_string, old!=new; write braucht
+  path+content-Key. edit/write dürfen mit shell in einer Antwort gebatcht werden.
+- Prompt-Doku + Regel "für Dateiänderungen IMMER edit/write statt Set-Content".
+
+**Phase 2 — Repo-Kontext:** Initial-Prompt bekommt einen begrenzten Dateibaum
+des Arbeitsverzeichnisses (Tiefe<=3, max 120 Einträge, .git/target/venv/profiles
+u.ä. gefiltert; Kill-Switch WEBAGENT_NO_TREE=1) — spart Struktur-Erkundungs-
+Roundtrips über den Browser.
+
+**Phase 3 — `/diff` im REPL:** git status --short + git diff --stat des
+Arbeitsverzeichnisses nach Aufgaben.
+
+**Dogfooding:** Testfall-Ideen für edit kamen von webagent selbst (zai, run
+20260720_150236, 3 Zyklen) — 2 davon fehlten in der Suite (Umlaute,
+Anfang/Ende-Ersetzung) und wurden übernommen. Dabei gefundene Bugs/Findings:
+- webagent schreibt normale Fortschritts-Zeilen auf stderr → PowerShell-Wrapper
+  rendern sie als rote NativeCommandError-Blöcke (sieht nach Crash aus). TODO:
+  Fortschritt auf stdout, stderr nur für echte Fehler.
+- zai baute für eine simple Markdown-Datei erneut eine fragile einzeilige
+  Set-Content-Array-Konstruktion — bestätigt den Bedarf der write-Action.
 
 ## 2026-07-20 (2) — /pool + Session-Zusammenfassung beim Beenden
 

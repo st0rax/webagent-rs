@@ -62,6 +62,8 @@ pub enum SlashCommand {
     Pool {
         active: Option<usize>,
     },
+    /// Git-Änderungen im Arbeitsverzeichnis zeigen (`/diff`).
+    Diff,
     Unknown {
         raw: String,
     },
@@ -151,6 +153,9 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
             orchestrator: None,
             prompt: rest.to_string(),
         });
+    }
+    if trimmed == "/diff" {
+        return Some(SlashCommand::Diff);
     }
     if trimmed == "/pool" || trimmed == "/tui" || trimmed == "/workers" {
         return Some(SlashCommand::Pool { active: None });
@@ -375,7 +380,7 @@ impl ReplSession {
             "  Aktiv:   \x1b[1;36m{}\x1b[0m — {who} — session: {:?}",
             self.brain_id, state
         );
-        println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>  /pool [n]");
+        println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>  /pool [n]  /diff");
         println!("           /new  /brains  /whoami  /score  /canary  /memory  /login  /login-all  /exit");
         println!();
     }
@@ -629,6 +634,10 @@ impl ReplSession {
                     self.stats.chars_in += prompt.chars().count();
                 }
                 self.run_swarm(orchestrator, &prompt);
+                ReplAction::Continue
+            }
+            SlashCommand::Diff => {
+                self.print_diff();
                 ReplAction::Continue
             }
             SlashCommand::Pool { active } => {
@@ -1012,6 +1021,33 @@ impl ReplSession {
         // _cleanup Drop räumt Profile; REPL-Brain wieder
         let _ = self.start_brain();
         println!("[swarm] fertig. Aktiv weiterhin: {}", self.brain_id);
+    }
+
+    /// `/diff` — was hat sich im Arbeitsverzeichnis (git) geändert?
+    fn print_diff(&self) {
+        let run_git = |args: &[&str]| -> Option<String> {
+            std::process::Command::new("git")
+                .args(args)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string())
+        };
+        let Some(status) = run_git(&["status", "--short"]) else {
+            println!("[diff] Kein git-Repository im Arbeitsverzeichnis (oder git fehlt).");
+            return;
+        };
+        if status.is_empty() {
+            println!("[diff] Arbeitsverzeichnis sauber — keine Änderungen.");
+            return;
+        }
+        println!("[diff] git status --short:\n{status}");
+        if let Some(stat) = run_git(&["diff", "--stat"]) {
+            if !stat.is_empty() {
+                println!("\n[diff] git diff --stat:\n{stat}");
+            }
+        }
+        println!("\n[diff] Details: git diff <datei> im Terminal.");
     }
 
     fn run_autonomous(&mut self, task: &str) {

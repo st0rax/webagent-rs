@@ -14,6 +14,10 @@ pub enum ActionType {
     Shell,
     Message,
     Finish,
+    /// Eindeutiger Anker-Ersatz in einer Bestandsdatei (path/old_string/new_string).
+    Edit,
+    /// Neue Datei anlegen (path/content); existierende Dateien werden abgelehnt.
+    Write,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -27,6 +31,31 @@ pub struct Action {
     pub text: String,
     #[serde(default = "default_timeout")]
     pub timeout_seconds: f64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub old_string: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub new_string: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub content: String,
+}
+
+impl Action {
+    /// Basis-Action ohne typspezifische Felder — Konstruktor-Helfer.
+    fn base(id: String, action_type: ActionType) -> Self {
+        Self {
+            id,
+            action_type,
+            command: String::new(),
+            text: String::new(),
+            timeout_seconds: 30.0,
+            path: String::new(),
+            old_string: String::new(),
+            new_string: String::new(),
+            content: String::new(),
+        }
+    }
 }
 
 fn default_timeout() -> f64 {
@@ -223,7 +252,16 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
         "shell" => ActionType::Shell,
         "message" => ActionType::Message,
         "finish" => ActionType::Finish,
+        "edit" => ActionType::Edit,
+        "write" => ActionType::Write,
         _ => return Err(format!("unbekannter type: {:?}", action_type_str)),
+    };
+
+    let str_field = |key: &str| -> String {
+        obj.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
     };
 
     match action_type {
@@ -276,22 +314,16 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
                 }
                 let nested_command = caps[3].trim().to_string();
                 let nested_timeout: f64 = caps[2].parse().unwrap();
-                return Ok(Action {
-                    id: action_id,
-                    action_type: ActionType::Shell,
-                    command: nested_command,
-                    text: String::new(),
-                    timeout_seconds: nested_timeout,
-                });
+                let mut a = Action::base(action_id, ActionType::Shell);
+                a.command = nested_command;
+                a.timeout_seconds = nested_timeout;
+                return Ok(a);
             }
 
-            Ok(Action {
-                id: action_id,
-                action_type: ActionType::Shell,
-                command,
-                text: String::new(),
-                timeout_seconds: timeout,
-            })
+            let mut a = Action::base(action_id, ActionType::Shell);
+            a.command = command;
+            a.timeout_seconds = timeout;
+            Ok(a)
         }
         ActionType::Message => {
             let text = obj
@@ -305,21 +337,49 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
                 return Err(format!("message action {} braucht text", action_id));
             }
 
-            Ok(Action {
-                id: action_id,
-                action_type: ActionType::Message,
-                command: String::new(),
-                text,
-                timeout_seconds: 30.0,
-            })
+            let mut a = Action::base(action_id, ActionType::Message);
+            a.text = text;
+            Ok(a)
         }
-        ActionType::Finish => Ok(Action {
-            id: action_id,
-            action_type: ActionType::Finish,
-            command: String::new(),
-            text: String::new(),
-            timeout_seconds: 30.0,
-        }),
+        ActionType::Finish => Ok(Action::base(action_id, ActionType::Finish)),
+        ActionType::Edit => {
+            let path = str_field("path").trim().to_string();
+            let old_string = str_field("old_string");
+            let new_string = str_field("new_string");
+            if path.is_empty() {
+                return Err(format!("edit action {} braucht path", action_id));
+            }
+            if old_string.is_empty() {
+                return Err(format!(
+                    "edit action {} braucht old_string (exakter, eindeutiger Anker aus der Datei)",
+                    action_id
+                ));
+            }
+            if old_string == new_string {
+                return Err(format!(
+                    "edit action {}: old_string und new_string sind identisch",
+                    action_id
+                ));
+            }
+            let mut a = Action::base(action_id, ActionType::Edit);
+            a.path = path;
+            a.old_string = old_string;
+            a.new_string = new_string;
+            Ok(a)
+        }
+        ActionType::Write => {
+            let path = str_field("path").trim().to_string();
+            if path.is_empty() {
+                return Err(format!("write action {} braucht path", action_id));
+            }
+            if !obj.contains_key("content") {
+                return Err(format!("write action {} braucht content", action_id));
+            }
+            let mut a = Action::base(action_id, ActionType::Write);
+            a.path = path;
+            a.content = str_field("content");
+            Ok(a)
+        }
     }
 }
 
@@ -348,16 +408,10 @@ pub fn parse(response_text: &str) -> ParseResult {
                 text,
             );
         }
-        return ParseResult::valid(
-            vec![Action {
-                id: caps[1].to_string(),
-                action_type: ActionType::Shell,
-                command: caps[3].trim().to_string(),
-                text: String::new(),
-                timeout_seconds: timeout,
-            }],
-            text,
-        );
+        let mut a = Action::base(caps[1].to_string(), ActionType::Shell);
+        a.command = caps[3].trim().to_string();
+        a.timeout_seconds = timeout;
+        return ParseResult::valid(vec![a], text);
     }
 
     // Entferne gerenderte JSON-Labels
@@ -605,6 +659,70 @@ mod tests {
         assert_eq!(result.actions.len(), 1);
         assert_eq!(result.actions[0].id, "s1");
         assert_eq!(result.actions[0].command, "Get-Location");
+    }
+
+    #[test]
+    fn test_parse_edit_action() {
+        let env = json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "e1", "type": "edit", "path": "C:/tmp/a.txt",
+                 "old_string": "alt", "new_string": "neu"}
+            ]
+        });
+        let result = parse(&serde_json::to_string(&env).unwrap());
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions[0].action_type, ActionType::Edit);
+        assert_eq!(result.actions[0].path, "C:/tmp/a.txt");
+        assert_eq!(result.actions[0].old_string, "alt");
+        assert_eq!(result.actions[0].new_string, "neu");
+    }
+
+    #[test]
+    fn test_parse_edit_requires_fields() {
+        for bad in [
+            json!({"id": "e1", "type": "edit", "old_string": "a", "new_string": "b"}),
+            json!({"id": "e1", "type": "edit", "path": "x", "new_string": "b"}),
+            json!({"id": "e1", "type": "edit", "path": "x", "old_string": "a", "new_string": "a"}),
+        ] {
+            let env = json!({"protocol": "webagent/1", "actions": [bad]});
+            let result = parse(&serde_json::to_string(&env).unwrap());
+            assert!(!result.valid, "haette abgelehnt werden muessen: {env}");
+        }
+    }
+
+    #[test]
+    fn test_parse_write_action() {
+        let env = json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "w1", "type": "write", "path": "C:/tmp/neu.txt", "content": "zeile1\nzeile2\n"}
+            ]
+        });
+        let result = parse(&serde_json::to_string(&env).unwrap());
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions[0].action_type, ActionType::Write);
+        assert_eq!(result.actions[0].content, "zeile1\nzeile2\n");
+        // write ohne content wird abgelehnt (leerer content-String ist ok).
+        let env = json!({"protocol": "webagent/1", "actions": [
+            {"id": "w2", "type": "write", "path": "C:/tmp/neu.txt"}
+        ]});
+        assert!(!parse(&serde_json::to_string(&env).unwrap()).valid);
+    }
+
+    #[test]
+    fn test_edit_batches_with_shell() {
+        // edit/shell dürfen gemischt in einer Antwort stehen (seriell ausgeführt).
+        let env = json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "e1", "type": "edit", "path": "a.txt", "old_string": "x", "new_string": "y"},
+                {"id": "s1", "type": "shell", "command": "cargo test", "timeout_seconds": 600}
+            ]
+        });
+        let result = parse(&serde_json::to_string(&env).unwrap());
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions.len(), 2);
     }
 
     #[test]
