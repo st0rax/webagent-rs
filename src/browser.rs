@@ -63,7 +63,20 @@ const BLOCK_PHRASES: &[&str] = &[
 /// sah `wait_response` es vorher nicht, weil der periodische Banner-Scan nur laeuft,
 /// solange noch kein Text da ist, und ein bereits "vollstaendiger" Text-Block direkt
 /// als echte Antwort durchgereicht wurde.
+/// Obergrenze (Zeichen), bis zu der ein Text als Block-*Banner* gelten darf.
+/// Echte Limit-/Auslastungs-Banner sind kurz (ein bis zwei Sätze). Eine lange
+/// inhaltliche Antwort, die "rate limit"/"usage limit" nur ERWÄHNT (z.B. als
+/// Verbesserungsvorschlag), ist KEIN Block — genau dieser False-Positive trat
+/// im Swarm-Test "Verbesserungsvorschläge zu webagent-rs" auf: mistrals/
+/// deepseeks legitime Essays empfahlen Rate-Limiting und wurden als "blocked"
+/// verworfen.
+const BLOCK_BANNER_MAX_CHARS: usize = 400;
+
 fn block_phrase_in_text(text: &str) -> Option<&'static str> {
+    // Nur kurze Texte können ein Banner sein; in Fließtext ist die Phrase Inhalt.
+    if text.chars().count() > BLOCK_BANNER_MAX_CHARS {
+        return None;
+    }
     let low = text.to_lowercase();
     BLOCK_PHRASES.iter().copied().find(|p| low.contains(p))
 }
@@ -1422,6 +1435,21 @@ mod tests {
             block_phrase_in_text("Gerade zu viele Anfragen, bitte spaeter erneut versuchen."),
             Some("zu viele anfragen")
         );
+    }
+
+    #[test]
+    fn block_phrase_in_text_ignores_phrase_in_long_answer() {
+        // Swarm-Test-Fund 2026-07-20: eine lange, legitime Antwort, die
+        // "rate limit"/"usage limit" als Verbesserungsvorschlag ERWÄHNT, darf
+        // NICHT als Block gewertet werden.
+        let long = format!(
+            "Hier sind Verbesserungsvorschläge für webagent-rs: {} \
+             Ausserdem solltest du ein rate limit und quota exceeded handling \
+             einbauen, um usage limit-Fehler sauber abzufangen.",
+            "Die Architektur ist solide und modular aufgebaut. ".repeat(12)
+        );
+        assert!(long.chars().count() > BLOCK_BANNER_MAX_CHARS);
+        assert_eq!(block_phrase_in_text(&long), None);
     }
 
     #[test]

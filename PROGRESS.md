@@ -1,6 +1,27 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-20 (Swarm-Strukturevaluation · Brain-Name im Fenstertitel)
+**Stand:** 2026-07-20 (Block-False-Positive gefixt · headless ohne Taskleiste)
+
+## 2026-07-20 (7) — Swarm-GitHub-Feedback: Block-False-Positive + Grenzen
+
+Aus Storax' Swarm-Test "Verbesserungsvorschläge zu github.com/st0rax/
+webagent-rs" (nachgestellt):
+
+- **GEFIXT — False-Positive der Block-Erkennung:** `block_phrase_in_text`
+  scannte den GANZEN Antworttext; lange legitime Antworten, die "rate limit"/
+  "usage limit"/"quota exceeded" als VERBESSERUNG empfehlen (mistral, deepseek),
+  wurden als "blocked" verworfen. Fix: nur Texte < 400 Zeichen (BLOCK_BANNER_
+  MAX_CHARS) gelten als Banner — echte Limit-Banner sind kurz, in Fließtext ist
+  die Phrase Inhalt. Regressionstest ergänzt (324 Tests).
+- **headless-Fenster nicht mehr in der Taskleiste** (skip_taskbar, Windows) —
+  tote, nicht maximierbare Einträge waren die Beschwerde.
+- **Grenze (kein Bug):** Web-Chat-Brains können URLs nicht abrufen — Swarp auf
+  eine nackte GitHub-URL erzeugt ehrliches "kann nicht laden" oder
+  Halluzination aus Account-Gedächtnis (mistral leakte private Historie).
+  Für URL-Feedback erst Inhalt in den Prompt legen.
+- **Offen** (Wiki `swarm-github-feedback-limits`): gemini-Kurzantwort läuft in
+  Timeout → DOM-Banner-Scan flaggt fälschlich "blocked" (Completion-Problem);
+  deepseek liefert garbled cross-conversation-Fragmente.
 
 ## 2026-07-20 (6) — Swarm-Evaluation der Projektstruktur + Fenstertitel
 
