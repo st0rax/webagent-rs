@@ -43,6 +43,7 @@ pub mod tui_state;
 pub mod watchdog;
 #[cfg(feature = "webview")]
 pub mod webview_runtime;
+pub mod wiki_memory;
 pub mod worker_pool;
 
 use std::time::{SystemTime, UNIX_EPOCH};

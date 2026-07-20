@@ -1,6 +1,33 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-20 (Coding-Agent-Ausbau: edit/write-Actions · Repo-Kontext · /diff)
+**Stand:** 2026-07-20 (Autoresearch + Wiki-Memory delegiert gebaut)
+
+## 2026-07-20 (5) — Autoresearch + Wiki-Memory (delegierte Umsetzung)
+
+Beide Karpathy-Features sind drin, Umsetzung delegiert (Claude-Subagents für
+den Rust-Kern, webagent-Flotte für Vorarbeiten), vom Orchestrator verifiziert:
+
+- **Autoresearch** (`autoresearch.rs`, Commit 1148547): Modify→Verify→
+  Keep/Discard-Schleife nach docs/AUTORESEARCH_PLAN.md. CLI `webagent
+  autoresearch --brain --goal --eval …`, REPL `/autoresearch <eval> :: <goal>`.
+  Livetest: zai, Wegwerf-Repo, Metrik 10→11→12 via edit-Actions, Commits auf
+  autoresearch/-Branch.
+- **Wiki-Memory** (`wiki_memory.rs`): Karpathy-LLM-Wiki-Kern nach
+  docs/WIKI_MEMORY_PLAN.md — Markdown-Seiten + [[links]] + index.md unter
+  data/memory/wiki/, REPL `/wiki [suche|lint]`, Index fließt als Kontextblock
+  in autonome Runs (verifiziert im Transcript). slugify/extract_links kamen
+  von der webagent-Flotte (qwen, 16/16 Tests).
+- **Zwei dabei gefundene Bugs gefixt:** (1) `-`/`_` steckten in der Such-Token-
+  Klasse — "deploy" fand "Deploy-Regeln" nicht (fatal bei Kebab-Slugs); Tokens
+  werden jetzt zusätzlich an -/_ gesplittet. (2) `AgentController::new()` war
+  CWD-abhängig (./data) statt stabiler OS-Ort — run/bot2bot-worker und REPL
+  nutzten dadurch VERSCHIEDENE data/-Verzeichnisse (Runs, Memory, Wiki).
+- **Offene Flotten-Funde** (Dogfooding, noch zu fixen): kimi-Run hing 30+ min
+  ohne Start-Timeout; gemini lieferte False-Done (cycles=1, kein Artefakt,
+  fehlendes Run-Verzeichnis) — Pfad (c) "finish ohne Aktionen = verdächtig"
+  aus dem Phantom-Resume-Komplex bleibt offen. Einmalig beobachtet: leere
+  index.md nach Seeding (nicht reproduzierbar, beobachten).
+- Tests: 267 → **321**, clippy -D warnings clean.
 
 ## 2026-07-20 (4) — Coding-Agent Phase 1–3
 

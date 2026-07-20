@@ -70,6 +70,11 @@ pub enum SlashCommand {
         eval_cmd: String,
         goal: String,
     },
+    /// Wiki-Memory: `/wiki` (Index), `/wiki <suchbegriff>` (Suche),
+    /// `/wiki lint` (mechanischer Lint-Report).
+    Wiki {
+        arg: Option<String>,
+    },
     Unknown {
         raw: String,
     },
@@ -180,6 +185,14 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
         return Some(SlashCommand::Autoresearch {
             eval_cmd: String::new(),
             goal: String::new(),
+        });
+    }
+    if trimmed == "/wiki" {
+        return Some(SlashCommand::Wiki { arg: None });
+    }
+    if let Some(rest) = trimmed.strip_prefix("/wiki ") {
+        return Some(SlashCommand::Wiki {
+            arg: Some(rest.trim().to_string()),
         });
     }
     if trimmed == "/pool" || trimmed == "/tui" || trimmed == "/workers" {
@@ -407,6 +420,7 @@ impl ReplSession {
         );
         println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>  /pool [n]  /diff");
         println!("           /autoresearch <eval-cmd> :: <goal>");
+        println!("           /wiki [suchbegriff|lint]");
         println!("           /new  /brains  /whoami  /score  /canary  /memory  /login  /login-all  /exit");
         println!();
     }
@@ -670,6 +684,10 @@ impl ReplSession {
                 self.run_autoresearch(&eval_cmd, &goal);
                 ReplAction::Continue
             }
+            SlashCommand::Wiki { arg } => {
+                self.handle_wiki(arg.as_deref());
+                ReplAction::Continue
+            }
             SlashCommand::Pool { active } => {
                 // Pool übernimmt Terminal + Browser-Profile; eigenes Brain vorher
                 // freigeben, danach wieder starten.
@@ -722,6 +740,59 @@ impl ReplSession {
                 println!("[repl] Unbekannter Befehl: {raw}");
                 ReplAction::Continue
             }
+        }
+    }
+
+    /// `/wiki` — Index anzeigen, `/wiki <suchbegriff>` — Suche,
+    /// `/wiki lint` — mechanischer Lint-Report. Rein lokal, braucht kein Brain.
+    fn handle_wiki(&self, arg: Option<&str>) {
+        let wiki = crate::wiki_memory::WikiMemory::new(data_dir().join("memory").join("wiki"));
+        match arg.map(str::trim).filter(|s| !s.is_empty()) {
+            None => match wiki.context_block(usize::MAX) {
+                Ok(index) if index.trim().is_empty() => {
+                    println!(
+                        "[wiki] Wiki ist leer. Seiten liegen unter data/memory/wiki/<slug>.md \
+(erste Zeile '# Titel'); der Index wird von write_page gepflegt."
+                    );
+                }
+                Ok(index) => {
+                    println!("[wiki] Index (data/memory/wiki/index.md):");
+                    println!("{index}");
+                }
+                Err(e) => eprintln!("[wiki] Fehler: {e}"),
+            },
+            Some("lint") => match wiki.lint() {
+                Ok(report) if report.is_clean() => {
+                    println!("[wiki] Lint sauber — keine Befunde.");
+                }
+                Ok(report) => {
+                    for (page, target) in &report.broken_links {
+                        println!("[wiki] kaputter Link: [[{target}]] in Seite '{page}'");
+                    }
+                    for page in &report.orphan_pages {
+                        println!("[wiki] Orphan (nirgends verlinkt): '{page}'");
+                    }
+                    for page in &report.empty_pages {
+                        println!("[wiki] leere Seite (nur Titel): '{page}'");
+                    }
+                    for page in &report.index_missing {
+                        println!("[wiki] fehlt im index.md: '{page}'");
+                    }
+                }
+                Err(e) => eprintln!("[wiki] Lint-Fehler: {e}"),
+            },
+            Some(query) => match wiki.search(query, 10) {
+                Ok(hits) if hits.is_empty() => {
+                    println!("[wiki] Keine Treffer für '{query}'.");
+                }
+                Ok(hits) => {
+                    for page in hits {
+                        let first_line = page.body.lines().next().unwrap_or("").trim();
+                        println!("[wiki:{}] {} — {}", page.slug, page.title, first_line);
+                    }
+                }
+                Err(e) => eprintln!("[wiki] Such-Fehler: {e}"),
+            },
         }
     }
 
@@ -1377,6 +1448,34 @@ mod tests {
                 eval_cmd: String::new(),
                 goal: String::new()
             })
+        );
+    }
+
+    #[test]
+    fn parse_wiki() {
+        // Ohne Argument: Index anzeigen.
+        assert_eq!(
+            parse_slash_command("/wiki"),
+            Some(SlashCommand::Wiki { arg: None })
+        );
+        // Mit Suchbegriff (darf Leerzeichen enthalten).
+        assert_eq!(
+            parse_slash_command("/wiki deployment ablauf"),
+            Some(SlashCommand::Wiki {
+                arg: Some("deployment ablauf".into())
+            })
+        );
+        // "lint" ist ein reguläres Argument; der Handler unterscheidet.
+        assert_eq!(
+            parse_slash_command("/wiki lint"),
+            Some(SlashCommand::Wiki {
+                arg: Some("lint".into())
+            })
+        );
+        // Nur Whitespace hinter /wiki → leeres Argument (Handler zeigt Index).
+        assert_eq!(
+            parse_slash_command("/wiki   "),
+            Some(SlashCommand::Wiki { arg: None })
         );
     }
 

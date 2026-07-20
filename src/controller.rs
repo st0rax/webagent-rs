@@ -122,6 +122,8 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     max_cycles: usize,
     run_store: RunStore,
     memory: MemoryStore,
+    /// Markdown-Wiki (Langzeitwissen); Layout entsteht erst beim ersten Zugriff.
+    wiki: crate::wiki_memory::WikiMemory,
     runs_dir: std::path::PathBuf,
     meta: Option<RunMeta>,
     comms: CommsStore,
@@ -141,10 +143,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     }
 
     pub fn new(brain: B, executor: E, max_cycles: usize) -> Self {
-        let data_dir = env::current_dir()
-            .unwrap_or_else(|_| env::temp_dir())
-            .join("data");
-        Self::with_data_dir(brain, executor, max_cycles, data_dir)
+        // Stabiler OS-Ort statt CWD-abhängigem ./data: vorher landeten Runs/
+        // Memory/Wiki je nach Aufrufweg (run/bot2bot-worker vs. REPL) in
+        // verschiedenen Verzeichnissen — u.a. blieb dadurch der Wiki-Kontext
+        // bei `webagent run` leer, obwohl die REPL ihn sah (Fund 2026-07-20).
+        Self::with_data_dir(brain, executor, max_cycles, crate::config::data_dir())
     }
 
     /// Wie `new`, aber mit explizitem Daten-Verzeichnis. Ermöglicht Test-Isolation
@@ -165,6 +168,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             max_cycles,
             run_store: RunStore::new(runs_dir.clone(), logs_dir),
             memory: MemoryStore::new(memory_path),
+            // Wiki-Wurzel wie config::data_dir()/memory/wiki — hier über das
+            // uebergebene data_dir, damit Tests isoliert bleiben. Kein
+            // ensure_layout beim Konstruieren (erst beim ersten Zugriff).
+            wiki: crate::wiki_memory::WikiMemory::new(data_dir.join("memory").join("wiki")),
             runs_dir,
             meta: None,
             comms: CommsStore::new(data_dir.join("comms")),
@@ -849,11 +856,26 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 .memory
                 .search(&task, &["shared", brain_id], MEMORY_CONTEXT_LIMIT)
                 .unwrap_or_default();
-            let memory_context: String = memories
+            let mut memory_context: String = memories
                 .iter()
                 .map(|e| format!("- [memory:{} {}] {}", e.id, e.kind, e.content))
                 .collect::<Vec<_>>()
                 .join("\n");
+
+            // Wiki-Index als Langzeitwissen anhängen. Fehler (z.B. Verzeichnis
+            // nicht anlegbar) liefern einen leeren Block — sie dürfen den Run
+            // NIEMALS blockieren.
+            let wiki_block = self.wiki.context_block(1500).unwrap_or_default();
+            if !wiki_block.trim().is_empty() {
+                if !memory_context.is_empty() {
+                    memory_context.push_str("\n\n");
+                }
+                memory_context.push_str(
+                    "Wiki-Index (Langzeitwissen; Seiten unter data/memory/wiki/, \
+per edit/write-Action pflegbar):\n",
+                );
+                memory_context.push_str(&wiki_block);
+            }
 
             let memory_ids: Vec<u64> = memories.iter().map(|e| e.id).collect();
             meta.extra.insert(
