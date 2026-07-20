@@ -58,6 +58,10 @@ pub enum SlashCommand {
         orchestrator: Option<usize>,
         prompt: String,
     },
+    /// Worker-Pool-TUI aus dem Chat heraus starten (`/pool [n]`, n = active).
+    Pool {
+        active: Option<usize>,
+    },
     Unknown {
         raw: String,
     },
@@ -148,6 +152,17 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
             prompt: rest.to_string(),
         });
     }
+    if trimmed == "/pool" || trimmed == "/tui" || trimmed == "/workers" {
+        return Some(SlashCommand::Pool { active: None });
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("/pool ")
+        .or_else(|| trimmed.strip_prefix("/tui "))
+        .or_else(|| trimmed.strip_prefix("/workers "))
+    {
+        let active = rest.trim().parse::<usize>().ok().filter(|n| *n >= 1);
+        return Some(SlashCommand::Pool { active });
+    }
     if trimmed == "/login" {
         return Some(SlashCommand::Login);
     }
@@ -176,6 +191,49 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     })
 }
 
+/// Zähler für die Abschluss-Zusammenfassung (qwen-code-Vorbild). Web-Chats
+/// liefern keine echten Token-Zahlen, daher Schätzung über Zeichen/4.
+#[derive(Default)]
+struct SessionStats {
+    tasks: u32,
+    tasks_ok: u32,
+    tasks_failed: u32,
+    cycles: u32,
+    chats: u32,
+    swarms: u32,
+    chars_in: usize,
+    chars_out: usize,
+    brains_used: std::collections::BTreeSet<String>,
+}
+
+impl SessionStats {
+    fn requests(&self) -> u32 {
+        self.tasks + self.chats + self.swarms
+    }
+}
+
+/// Zeichenzahl → grobe Token-Schätzung (~4 Zeichen/Token), kompakt formatiert.
+fn fmt_est_tokens(chars: usize) -> String {
+    let tokens = chars / 4;
+    if tokens >= 1000 {
+        format!("≈{:.1}k", tokens as f64 / 1000.0)
+    } else {
+        format!("≈{tokens}")
+    }
+}
+
+/// Sekunden → "1h 02m 03s" / "4m 05s" / "12s".
+fn fmt_duration(total_secs: u64) -> String {
+    let (h, m, s) = (total_secs / 3600, (total_secs % 3600) / 60, total_secs % 60);
+    if h > 0 {
+        format!("{h}h {m:02}m {s:02}s")
+    } else if m > 0 {
+        format!("{m}m {s:02}s")
+    } else {
+        format!("{s}s")
+    }
+}
+
 struct ReplSession {
     brain_id: String,
     controller: AgentController<WebBrainBackend, PlatformShellExecutor>,
@@ -185,6 +243,8 @@ struct ReplSession {
     brain_open: bool,
     /// Stehendes Ziel: wird jeder autonomen Aufgabe als Kontext vorangestellt.
     goal: Option<String>,
+    /// Zähler für die Abschluss-Zusammenfassung beim Beenden.
+    stats: SessionStats,
 }
 
 impl ReplSession {
@@ -201,6 +261,7 @@ impl ReplSession {
             memory: MemoryStore::new(memory_path),
             brain_open: false,
             goal: None,
+            stats: SessionStats::default(),
         })
     }
 
@@ -272,7 +333,7 @@ impl ReplSession {
             "  Aktiv:   \x1b[1;36m{}\x1b[0m — {who} — session: {:?}",
             self.brain_id, state
         );
-        println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>");
+        println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>  /pool [n]");
         println!("           /new  /brains  /whoami  /score  /canary  /memory  /login  /login-all  /exit");
         println!();
     }
@@ -443,6 +504,7 @@ impl ReplSession {
                 match self.start_brain() {
                     Ok(state) => {
                         self.resume = None;
+                        self.stats.brains_used.insert(target.clone());
                         println!("[switch] Gehirn={target} session_state={state:?}");
                     }
                     Err(e) => {
@@ -520,7 +582,30 @@ impl ReplSession {
                 orchestrator,
                 prompt,
             } => {
+                if !prompt.trim().is_empty() {
+                    self.stats.swarms += 1;
+                    self.stats.chars_in += prompt.chars().count();
+                }
                 self.run_swarm(orchestrator, &prompt);
+                ReplAction::Continue
+            }
+            SlashCommand::Pool { active } => {
+                // Pool übernimmt Terminal + Browser-Profile; eigenes Brain vorher
+                // freigeben, danach wieder starten.
+                let n = active.unwrap_or(8);
+                println!("[pool] Starte Worker-Pool-TUI ({n} aktiv, headless) — 'q' kehrt zum Chat zurück.");
+                self.stop_brain();
+                let code = crate::tui::run_tui(n, "", 5, true);
+                if code != 0 {
+                    println!("[pool] TUI beendet mit Code {code}.");
+                }
+                match self.start_brain() {
+                    Ok(state) => println!(
+                        "[pool] Zurück im Chat. Aktiv: {} (session {state:?})",
+                        self.brain_id
+                    ),
+                    Err(e) => eprintln!("[pool] Brain-Neustart fehlgeschlagen: {e}"),
+                }
                 ReplAction::Continue
             }
             SlashCommand::Chat { message } => {
@@ -528,6 +613,9 @@ impl ReplSession {
                     println!("[system] Nutzung: /chat <nachricht>");
                     return ReplAction::Continue;
                 }
+                self.stats.chats += 1;
+                self.stats.chars_in += message.chars().count();
+                self.stats.brains_used.insert(self.brain_id.clone());
                 match self.brain_mut().send(&message) {
                     Ok(baseline) => {
                         println!("[brain] ...");
@@ -535,6 +623,7 @@ impl ReplSession {
                             resolve_timeout("wait_response", &self.brain_id, &message, None);
                         match self.brain_mut().wait_response(baseline, timeout) {
                             Ok(resp) => {
+                                self.stats.chars_out += resp.text.chars().count();
                                 println!("[brain] {}", resp.text);
                                 if !resp.generation_complete {
                                     println!("[brain] Hinweis: status={}", resp.backend_status);
@@ -864,6 +953,8 @@ impl ReplSession {
         );
         match self.swarm_query(&orch, &synth_prompt, profile_of(&orch)) {
             Ok(final_answer) => {
+                self.stats.chars_out += final_answer.chars().count();
+                self.stats.brains_used.insert(orch.clone());
                 println!("\n[swarm ⇒ final via \x1b[1m{orch}\x1b[0m]\n{final_answer}\n");
             }
             Err(e) => {
@@ -887,6 +978,9 @@ impl ReplSession {
             Some(g) => format!("Übergeordnetes Ziel: {g}\n\nAktuelle Aufgabe: {task}"),
             None => task.to_string(),
         };
+        self.stats.tasks += 1;
+        self.stats.chars_in += task.chars().count();
+        self.stats.brains_used.insert(self.brain_id.clone());
         let opts = RunOptions {
             skip_brain_start: true,
             skip_brain_stop: true,
@@ -900,18 +994,61 @@ impl ReplSession {
         ) {
             Ok(meta) => {
                 self.resume = Some(meta.run_id.clone());
+                if meta.status == "done" {
+                    self.stats.tasks_ok += 1;
+                } else {
+                    self.stats.tasks_failed += 1;
+                }
+                self.stats.cycles += meta.cycles;
                 println!(
                     "[repl] status={} run_id={} cycles={}",
                     meta.status, meta.run_id, meta.cycles
                 );
             }
-            Err(e) => eprintln!("[repl] Fehler: {e}"),
+            Err(e) => {
+                self.stats.tasks_failed += 1;
+                eprintln!("[repl] Fehler: {e}");
+            }
         }
+    }
+
+    /// Abschluss-Zusammenfassung der Session (qwen-code-Vorbild).
+    fn print_summary(&self, elapsed_secs: u64) {
+        let s = &self.stats;
+        println!();
+        println!("  \x1b[1m── Session-Zusammenfassung ──────────────────────\x1b[0m");
+        println!("  Dauer      {}", fmt_duration(elapsed_secs));
+        if s.requests() == 0 {
+            println!("  Anfragen   keine");
+            return;
+        }
+        println!(
+            "  Anfragen   {} gesamt · {} Aufgaben ({} ok, {} Fehler) · {} Chats · {} Swarms",
+            s.requests(),
+            s.tasks,
+            s.tasks_ok,
+            s.tasks_failed,
+            s.chats,
+            s.swarms
+        );
+        if s.cycles > 0 {
+            println!("  Zyklen     {} (Plan/Act/Observe)", s.cycles);
+        }
+        if !s.brains_used.is_empty() {
+            let brains: Vec<&str> = s.brains_used.iter().map(String::as_str).collect();
+            println!("  Brains     {}", brains.join(", "));
+        }
+        println!(
+            "  ~Tokens    {} rein · {} raus (Zeichen/4, Schätzung — Web-Chat liefert keine echten Zahlen)",
+            fmt_est_tokens(s.chars_in),
+            fmt_est_tokens(s.chars_out)
+        );
     }
 }
 
 /// Startet die REPL. Liest Aufgaben von stdin, bis `/exit` oder EOF.
 pub fn run_repl(brain_id: &str, headless: bool) -> i32 {
+    let session_start = std::time::Instant::now();
     let mut session = match ReplSession::new(brain_id, headless) {
         Ok(s) => s,
         Err(e) => {
@@ -945,6 +1082,7 @@ pub fn run_repl(brain_id: &str, headless: bool) -> i32 {
         }
     }
 
+    session.print_summary(session_start.elapsed().as_secs());
     session.shutdown();
     println!("[repl] beendet.");
     0
@@ -1062,5 +1200,37 @@ mod tests {
     #[test]
     fn repl_action_roundtrip() {
         assert_eq!(parse_slash_command("/quit"), Some(SlashCommand::Exit));
+        assert_eq!(
+            parse_slash_command("/pool"),
+            Some(SlashCommand::Pool { active: None })
+        );
+        assert_eq!(
+            parse_slash_command("/tui"),
+            Some(SlashCommand::Pool { active: None })
+        );
+        assert_eq!(
+            parse_slash_command("/pool 4"),
+            Some(SlashCommand::Pool { active: Some(4) })
+        );
+        assert_eq!(
+            parse_slash_command("/pool quatsch"),
+            Some(SlashCommand::Pool { active: None })
+        );
+    }
+
+    #[test]
+    fn session_summary_formatting() {
+        assert_eq!(fmt_duration(12), "12s");
+        assert_eq!(fmt_duration(245), "4m 05s");
+        assert_eq!(fmt_duration(3723), "1h 02m 03s");
+        assert_eq!(fmt_est_tokens(120), "≈30");
+        assert_eq!(fmt_est_tokens(8_400), "≈2.1k");
+
+        let mut s = SessionStats::default();
+        assert_eq!(s.requests(), 0);
+        s.tasks = 2;
+        s.chats = 3;
+        s.swarms = 1;
+        assert_eq!(s.requests(), 6);
     }
 }

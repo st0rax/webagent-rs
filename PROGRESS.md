@@ -1,6 +1,22 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-20 (Default = Chat-REPL)
+**Stand:** 2026-07-20 (Default = Chat-REPL · /pool · Session-Zusammenfassung)
+
+## 2026-07-20 (2) — /pool + Session-Zusammenfassung beim Beenden
+
+- **`/pool [n]`** (Aliase `/tui`, `/workers`) startet die Worker-Pool-TUI aus dem
+  Chat heraus (Default 8 aktiv, headless); `q` in der TUI kehrt in den Chat
+  zurück (REPL-Brain wird vorher gestoppt, danach neu gestartet).
+- **Session-Zusammenfassung** bei `/exit`/EOF (qwen-code-Vorbild): Dauer,
+  Anfragen (Aufgaben ok/Fehler, Chats, Swarms), Plan/Act/Observe-Zyklen,
+  benutzte Brains, Token-Schätzung (Zeichen/4 — Web-Chats liefern keine echten
+  Token-Zahlen).
+- Verifiziert: 251/251 Tests (neue Parser-/Format-Tests), clippy clean, e2e via
+  `repl --brain zai --headless`: Task→Datei real erstellt, /chat ok, Summary
+  korrekt (2 Anfragen, 2 Zyklen, ≈22/≈38 Tokens).
+- **Known Issue (klein):** nach einer autonomen Aufgabe antwortet `/chat` in
+  derselben Konversation im webagent/1-JSON-Format statt Klartext (Brain bleibt
+  im Protokoll-Modus). Workaround: `/new` vor dem Chatten.
 
 ## 2026-07-20 — `webagent` ohne Parameter startet jetzt die Chat-REPL
 
