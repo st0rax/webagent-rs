@@ -134,7 +134,7 @@ fn count_msgs(dir: &Path) -> usize {
         .ok()
         .map(|e| {
             e.filter_map(|f| f.ok())
-                .filter(|f| f.path().extension().map_or(false, |e| e == "txt"))
+                .filter(|f| f.path().extension().is_some_and(|e| e == "txt"))
                 .count()
         })
         .unwrap_or(0)

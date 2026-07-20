@@ -40,6 +40,12 @@ use crate::worker_pool::{PoolState, STATUS_ACTIVE};
 const CLEAR: &str = "\x1b[2J\x1b[H";
 #[cfg(not(feature = "tui"))]
 const RESET: &str = "\x1b[0m";
+#[cfg(not(feature = "tui"))]
+const BOLD: &str = "\x1b[1m";
+#[cfg(not(feature = "tui"))]
+const DIM: &str = "\x1b[2m";
+#[cfg(not(feature = "tui"))]
+const CYAN: &str = "\x1b[36m";
 
 #[cfg(not(feature = "tui"))]
 fn status_color(status: &str) -> &'static str {
@@ -49,6 +55,18 @@ fn status_color(status: &str) -> &'static str {
         "unavailable" => "\x1b[31m", // rot
         "retired" => "\x1b[35m",     // magenta (dauerhaft ausgemustert)
         _ => "",
+    }
+}
+
+/// Statuspunkt für die schnelle Erfassung in der ANSI-Tabelle.
+#[cfg(not(feature = "tui"))]
+fn status_glyph(status: &str) -> &'static str {
+    match status {
+        STATUS_ACTIVE => "●",
+        "available" => "○",
+        "unavailable" => "✕",
+        "retired" => "◌",
+        _ => "·",
     }
 }
 
@@ -200,18 +218,22 @@ fn render(
 ) {
     print!("{CLEAR}");
     let active = current_active(state_path);
-    println!("=== webagent Worker-Pool TUI ===");
+    let width = 74;
+
+    // Kopf: Titel + Kennzahlen, klar abgesetzt.
+    println!("{BOLD}{CYAN}  webagent · Worker-Pool{RESET}");
     println!(
-        "Ziel aktive Worker: {target_active}   Aktuell aktiv: {active}   Kandidaten: {}",
-        candidates.len()
+        "  {DIM}aktiv{RESET} {BOLD}{active}{RESET}{DIM}/{target_active} Ziel{RESET}   \
+         {DIM}Kandidaten{RESET} {BOLD}{}{RESET}   {DIM}IPC {}{RESET}",
+        candidates.len(),
+        control_path.display()
     );
-    println!("Steuer-IPC: {}", control_path.display());
-    println!();
+    println!("  {DIM}{}{RESET}", "─".repeat(width));
     println!(
-        "{:<10} {:<12} {:<14} Aktuelle Aufgabe",
+        "  {BOLD}{:<12}{:<10}{:<16}Aktuelle Aufgabe{RESET}",
         "Brain", "Status", "Fehler"
     );
-    println!("{}", "-".repeat(78));
+    println!("  {DIM}{}{RESET}", "─".repeat(width));
 
     let state = if let Ok(s) = fs::read_to_string(state_path) {
         serde_json::from_str::<PoolState>(&s).unwrap_or_default()
@@ -223,32 +245,44 @@ fn render(
         let inbox = root.join("agents").join(brain).join("inbox");
         let task = newest_msg(&inbox)
             .map(|(name, body, done)| {
-                let tag = if done { "✓ " } else { "• " };
+                let tag = if done { "✓" } else { "▸" };
                 if body.is_empty() {
-                    format!("{tag}{name}")
+                    format!("{tag} {name}")
                 } else {
-                    format!("{tag}{name}: \"{body}\"")
+                    format!("{tag} {body}")
                 }
             })
-            .unwrap_or_else(|| "—".to_string());
+            .unwrap_or_else(|| format!("{DIM}—{RESET}"));
 
         let (status, err) = match state.entries.get(brain) {
             Some(e) => (e.status.clone(), e.last_error.clone()),
             None => ("available".to_string(), String::new()),
         };
+        let col = status_color(&status);
+        let err_short: String = err.chars().take(14).collect();
+        let task_short: String = task.chars().take(34).collect();
+        // Statuspunkt + Name farbig, Rest ruhig — schnelle Zeilen-Erfassung.
         println!(
-            "{:<10} {}{:<12}{} {:<14} {}",
+            "  {col}{} {:<10}{RESET}{col}{:<10}{RESET}{DIM}{:<16}{RESET}{}",
+            status_glyph(&status),
             brain,
-            status_color(&status),
             status,
-            RESET,
-            err.chars().take(13).collect::<String>(),
-            task.chars().take(48).collect::<String>()
+            err_short,
+            task_short
         );
     }
 
-    println!();
-    println!("Befehle:  + aktiver   - weniger   r alle verfuegbar   send <brain> <text>   q quit");
+    println!("  {DIM}{}{RESET}", "─".repeat(width));
+    // Befehle: Tasten hervorgehoben, Beschriftung gedämpft.
+    let cmd = |k: &str, label: &str| format!("{BOLD}{CYAN}{k}{RESET}{DIM} {label}{RESET}");
+    println!(
+        "  {}   {}   {}   {}   {}",
+        cmd("+", "mehr"),
+        cmd("-", "weniger"),
+        cmd("r", "reflag"),
+        cmd("send <brain> <text>", ""),
+        cmd("q", "quit")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -584,7 +618,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
         frame_count += 1;
 
         // Periodischer State-Refresh
-        if frame_count % refresh_ticks.max(1) == 0 || frame_count == 1 {
+        if frame_count.is_multiple_of(refresh_ticks.max(1)) || frame_count == 1 {
             app.agents = load_state(false);
             app.selected = app.selected.min(app.agents.len().saturating_sub(1));
         }

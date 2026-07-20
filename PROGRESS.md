@@ -1,6 +1,25 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-21 (Top-Voted-Roadmap: Etappe 1+2 delegiert umgesetzt)
+**Stand:** 2026-07-21 (/autoresearch.self + TUI-Lesbarkeit)
+
+## 2026-07-21 (2) — /autoresearch.self + TUI-Lesbarkeit + Voting-Runde 2
+
+- **/autoresearch.self** (`self_research.rs` neu, delegiert; `docs/SELF_RESEARCH_PLAN.md`):
+  der manuelle Voting-Prozess als Befehl. 4 Phasen — je N Vorschläge sammeln,
+  ein Orchestrator-Brain konsolidiert (Fallback: exakter Dedup), alle stimmen
+  ab, Borda-Auszählung → gerankte Top-K, Ergebnis als Wiki-Seite. REPL
+  `/autoresearch.self [N] [--top K]`, CLI `autoresearch-self`. Projektfakten aus
+  README+PROGRESS+Modulliste. `swarm_query` → freie `isolated_query` extrahiert.
+- **TUI lesbarer**: WICHTIG — der Release baut mit Default-Features (`webview`),
+  also läuft die **ANSI-TUI** (`tui.rs` cfg(not(tui))), NICHT ratatui. Beide
+  verbessert: ANSI-Tabelle mit Statuspunkten, ausgerichteten Spalten, gedämpften
+  Trennern, hervorgehobenen Befehlstasten; ratatui (`tui_render.rs`, nur
+  `--features tui`) Status-/Task-Pane entrümpelt (Doppel-Label weg, Fortschritts-
+  balken, Heartbeat-Balken). `--features tui` ist jetzt ebenfalls clippy-clean.
+- **Voting-Runde 2** ([[verbesserungs-top10-runde2]]): nach Timeout+Schema-Fix
+  Verschiebung zu Sicherheit — Pfad-Validierung (#2) und Shell-Sandbox (#4) neu
+  einstimmig oben, thiserror (#1), Brain-Trait (#3), tracing (#5).
+- 343/343 Tests (default), beide Feature-Configs clippy-clean.
 
 ## 2026-07-21 — Swarm-Top-10-Roadmap, Etappe 1+2 (2 parallele Subagents)
 
