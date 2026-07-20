@@ -381,6 +381,15 @@ fn open_page(
             OFFSCREEN_POS.0,
             OFFSCREEN_POS.1,
         ));
+        // Off-Screen-Fenster nicht in der Taskleiste zeigen: dort ist es nur
+        // ein toter Eintrag, den man weder sinnvoll fokussieren noch
+        // maximieren kann (Storax-Beschwerde 2026-07-20). Fokussierbar fuer
+        // den Enter-Absendeweg bleibt das Fenster trotzdem.
+        #[cfg(windows)]
+        {
+            use tao::platform::windows::WindowBuilderExtWindows;
+            builder = builder.with_skip_taskbar(true);
+        }
     }
     let window = builder
         .build(event_loop)
