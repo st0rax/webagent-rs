@@ -212,6 +212,48 @@ impl SessionStats {
     }
 }
 
+/// Antworttext für die `/chat`-Anzeige aufbereiten: steckt das Brain nach einer
+/// autonomen Aufgabe noch im webagent/1-Protokoll-Modus, kommt die Chat-Antwort
+/// als JSON-Envelope zurück. Dann den Klartext der message-Actions zeigen statt
+/// des rohen JSON; alles andere unverändert durchreichen.
+fn display_chat_text(raw: &str) -> String {
+    let parsed = crate::protocol::parse(raw);
+    if parsed.valid {
+        let texts: Vec<&str> = parsed
+            .actions
+            .iter()
+            .filter(|a| {
+                a.action_type == crate::protocol::ActionType::Message && !a.text.trim().is_empty()
+            })
+            .map(|a| a.text.trim())
+            .collect();
+        if !texts.is_empty() {
+            return texts.join("\n");
+        }
+    }
+    // Fallback für Envelope-Varianten, die protocol::parse ablehnt (z.B. ohne
+    // "protocol"-Feld oder als einzelnes message-Objekt).
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw.trim()) {
+        let collect_msgs = |arr: &[serde_json::Value]| -> Vec<String> {
+            arr.iter()
+                .filter(|a| a.get("type").and_then(|t| t.as_str()) == Some("message"))
+                .filter_map(|a| a.get("text").and_then(|t| t.as_str()))
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect()
+        };
+        let msgs = match (&v, v.get("actions").and_then(|a| a.as_array())) {
+            (_, Some(actions)) => collect_msgs(actions),
+            (serde_json::Value::Object(_), None) => collect_msgs(std::slice::from_ref(&v)),
+            _ => Vec::new(),
+        };
+        if !msgs.is_empty() {
+            return msgs.join("\n");
+        }
+    }
+    raw.trim().to_string()
+}
+
 /// Zeichenzahl → grobe Token-Schätzung (~4 Zeichen/Token), kompakt formatiert.
 fn fmt_est_tokens(chars: usize) -> String {
     let tokens = chars / 4;
@@ -623,8 +665,9 @@ impl ReplSession {
                             resolve_timeout("wait_response", &self.brain_id, &message, None);
                         match self.brain_mut().wait_response(baseline, timeout) {
                             Ok(resp) => {
-                                self.stats.chars_out += resp.text.chars().count();
-                                println!("[brain] {}", resp.text);
+                                let display = display_chat_text(&resp.text);
+                                self.stats.chars_out += display.chars().count();
+                                println!("[brain] {display}");
                                 if !resp.generation_complete {
                                     println!("[brain] Hinweis: status={}", resp.backend_status);
                                 }
@@ -1216,6 +1259,26 @@ mod tests {
             parse_slash_command("/pool quatsch"),
             Some(SlashCommand::Pool { active: None })
         );
+    }
+
+    #[test]
+    fn chat_display_unwraps_protocol_json() {
+        // Volles webagent/1-Envelope -> nur der message-Text.
+        let envelope = r#"{"protocol":"webagent/1","actions":[{"id":"answer-1","type":"message","text":"pong"}]}"#;
+        assert_eq!(display_chat_text(envelope), "pong");
+        // Envelope ohne "protocol"-Feld (parse lehnt ab) -> Fallback greift.
+        let no_proto = r#"{"actions":[{"id":"a","type":"message","text":"hallo"}]}"#;
+        assert_eq!(display_chat_text(no_proto), "hallo");
+        // Einzelnes message-Objekt.
+        let single = r#"{"id":"answer-1","type":"message","text":"solo"}"#;
+        assert_eq!(display_chat_text(single), "solo");
+        // Mehrere messages -> zusammengefügt; finish wird ignoriert.
+        let multi = r#"{"protocol":"webagent/1","actions":[{"id":"1","type":"message","text":"a"},{"id":"2","type":"finish"},{"id":"3","type":"message","text":"b"}]}"#;
+        assert_eq!(display_chat_text(multi), "a\nb");
+        // Klartext bleibt unangetastet.
+        assert_eq!(display_chat_text("  ganz normal  "), "ganz normal");
+        // Kaputtes JSON -> Rohtext.
+        assert_eq!(display_chat_text("{nicht json"), "{nicht json");
     }
 
     #[test]

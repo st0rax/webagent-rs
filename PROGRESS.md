@@ -14,9 +14,11 @@
 - Verifiziert: 251/251 Tests (neue Parser-/Format-Tests), clippy clean, e2e via
   `repl --brain zai --headless`: Task→Datei real erstellt, /chat ok, Summary
   korrekt (2 Anfragen, 2 Zyklen, ≈22/≈38 Tokens).
-- **Known Issue (klein):** nach einer autonomen Aufgabe antwortet `/chat` in
-  derselben Konversation im webagent/1-JSON-Format statt Klartext (Brain bleibt
-  im Protokoll-Modus). Workaround: `/new` vor dem Chatten.
+- ~~Known Issue: `/chat` nach autonomer Aufgabe antwortet im JSON-Format~~ —
+  **behoben (2026-07-20, 3):** `display_chat_text()` in `repl.rs` erkennt
+  webagent/1-Envelopes (via `protocol::parse` + serde-Fallback für Varianten
+  ohne `protocol`-Feld) und zeigt den Klartext der message-Actions. e2e
+  verifiziert: Task → `/chat` → Antwort "pong" statt JSON-Envelope.
 
 ## 2026-07-20 — `webagent` ohne Parameter startet jetzt die Chat-REPL
 
