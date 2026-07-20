@@ -1,6 +1,20 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-19 (Testsuite-Blocker behoben, siehe unten)
+**Stand:** 2026-07-20 (Default = Chat-REPL)
+
+## 2026-07-20 — `webagent` ohne Parameter startet jetzt die Chat-REPL
+
+Storax-Wunsch: `webagent` ohne Subcommand soll einen Chat öffnen, der auch
+Aufgaben entgegennimmt (wie andere Coding-Agenten) — vorher startete die
+Worker-Pool-TUI, was beim Testen als "funktioniert nicht" ankam.
+
+- `main.rs`: Default-Dispatch `Tui` → `Repl { brain: "chatgpt", headless: false }`.
+  Die REPL konnte beides schon (Plain-Input = autonomer Task via Controller,
+  `/chat` = reiner Chat, `/model` zum Brain-Wechsel); es fehlte nur der Default.
+- TUI/Worker-Pool unverändert erreichbar: `webagent tui` bzw. `webagent workers`.
+- Verifiziert: 250/250 Tests, clippy `--all-targets -D warnings` clean; e2e-Smoke
+  via `repl --brain zai --headless` (gleicher Codepfad): Banner ok, `/whoami` ok,
+  Task "erstelle repl_smoke.txt" → Datei real erstellt, cycles=2, kein Phantom.
 
 ## 2026-07-19 — Testsuite wieder voll lauffähig (beide Blocker von 2026-07-15 weg)
 

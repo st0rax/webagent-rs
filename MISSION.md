@@ -64,7 +64,7 @@ davor brachen Brains bei nicht-trivialen `run`-Tasks am webagent/1-JSON.
 
 **qwen-code hat gebaut + verifiziert** (2026-07-17): Worker-Pool-Manager
 (`src/worker_pool.rs` + `pub mod worker_pool;` in `lib.rs`) **und** TUI-Default
-(`src/tui.rs` — `webagent` ohne Subcommand startet die TUI) **und** Heartbeat-
+(`src/tui.rs`; Default-ohne-Subcommand ist seit 2026-07-20 die Chat-REPL, TUI via `webagent tui`) **und** Heartbeat-
 Hang-Erkennung v2 (`bot2bot_worker.rs` schreibt `heartbeat_<brain>.json` pro Poll;
 Supervisor killt stale > 300 s und re-promotet). Alle drei verifiziert:
 `cargo test --lib worker_pool::` (8 passed), `cargo clippy --all-targets -- -D warnings`
@@ -76,7 +76,7 @@ respawned, Heartbeat erneuert, Status `active`.
 - `main.rs`-Wiring: `Workers`-Subcommand (`--active` default 2, `--brains`,
   `--poll-secs` default 10, `--headless`) → `run_worker_pool(...)`. Zusätzlich
   `Tui`-Subcommand (`--active` default 8, `--poll-secs` 5, `--headless`);
-  `webagent` ohne Subcommand startet die TUI (Default). clippy exit 0.
+  `webagent` ohne Subcommand startet seit 2026-07-20 die Chat-REPL (Storax-Wunsch); TUI weiter via `webagent tui`. clippy exit 0.
 - Pool **live** (sichtbares Terminal-Fenster "wtui3", headless): 8 active
   (alle Brains) + 0 reserve; `pool_state.json`/`pool_control.json` unter
   `bot2bot/workers/`. Start zwingend mit

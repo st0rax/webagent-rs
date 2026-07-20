@@ -275,11 +275,11 @@ pub fn startup_reconcile_runs() -> Vec<String> {
 
 fn main() {
     let cli = Cli::parse();
-    // Kein Subcommand -> TUI als Default (Teil 2).
-    let command = cli.command.unwrap_or(Commands::Tui {
-        active: 2,
-        brains: String::new(),
-        poll_secs: 5,
+    // Kein Subcommand -> Chat-REPL als Default: `webagent` startet einen Chat,
+    // der auch Aufgaben entgegennimmt (wie andere Coding-Agenten). Der
+    // Worker-Pool bleibt über `webagent tui` / `webagent workers` erreichbar.
+    let command = cli.command.unwrap_or(Commands::Repl {
+        brain: "chatgpt".to_string(),
         headless: false,
     });
 
