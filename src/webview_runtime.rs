@@ -32,6 +32,8 @@ enum RuntimeMessage {
         profile_dir: PathBuf,
         url: String,
         headless: bool,
+        /// Fenstertitel-Label (z.B. Brain-Name) — leer = generischer Titel.
+        title: String,
         respond: Sender<Result<(ViewId, WebViewPageDriver)>>,
     },
     ClosePage {
@@ -123,6 +125,7 @@ impl WebViewRuntime {
         profile_dir: &Path,
         url: &str,
         headless: bool,
+        title: &str,
     ) -> Result<WebViewPageDriver> {
         let (resp_tx, resp_rx) = mpsc::channel();
         self.tx
@@ -130,6 +133,7 @@ impl WebViewRuntime {
                 profile_dir: profile_dir.to_path_buf(),
                 url: url.to_string(),
                 headless,
+                title: title.to_string(),
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Launch("WebView-Thread beendet".into()))?;
@@ -302,9 +306,10 @@ fn pump_runtime(rt: &mut SharedRuntime, event_loop: &mut EventLoop<()>) -> bool 
                 profile_dir,
                 url,
                 headless,
+                title,
                 respond,
             } => {
-                let result = open_page(rt, event_loop, &profile_dir, &url, headless);
+                let result = open_page(rt, event_loop, &profile_dir, &url, headless, &title);
                 let _ = respond.send(result);
             }
             RuntimeMessage::ClosePage { view_id, respond } => {
@@ -341,6 +346,7 @@ fn open_page(
     profile_dir: &Path,
     url: &str,
     headless: bool,
+    title: &str,
 ) -> Result<(ViewId, WebViewPageDriver)> {
     std::fs::create_dir_all(profile_dir)
         .map_err(|e| PageDriverError::Launch(format!("Profilverzeichnis: {e}")))?;
@@ -358,8 +364,16 @@ fn open_page(
     // (press_enter) nirgends. Bei Brains ohne matchenden Send-Button ist Enter der
     // einzige Absende-Weg — der Relay lief dadurch headless in jeden Timeout, waehrend
     // er headed in Sekunden antwortete. Fenster off-screen statt versteckt.
+    // Brain-Name im Fenstertitel: bei mehreren (auch off-screen) Fenstern —
+    // Swarm, Worker-Pool — ist sonst im Task-Manager/Alt-Tab nicht erkennbar,
+    // welches Fenster zu welchem Brain gehört (Storax-Wunsch 2026-07-20).
+    let window_title = if title.trim().is_empty() {
+        format!("webagent-{view_id}")
+    } else {
+        format!("webagent · {} ({view_id})", title.trim())
+    };
     let mut builder = WindowBuilder::new()
-        .with_title(format!("webagent-{view_id}"))
+        .with_title(window_title)
         .with_inner_size(LogicalSize::new(1280.0, 900.0))
         .with_visible(true);
     if headless {

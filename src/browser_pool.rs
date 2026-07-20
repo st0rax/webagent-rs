@@ -114,7 +114,7 @@ impl BrowserPool {
 
             let profile = profile_override.unwrap_or_else(shared_profile_dir);
             let mut driver = runtime
-                .open_page(&profile, backend.brain_url(), headless)
+                .open_page(&profile, backend.brain_url(), headless, &brain_id)
                 .map_err(|e| e.to_string())?;
             driver
                 .navigate(backend.brain_url(), Duration::from_secs(30))
@@ -219,7 +219,7 @@ impl BrowserPool {
 
         let rt = WebViewRuntime::launch(&clone_dir, headless).map_err(|e| e.to_string())?;
         let mut driver = rt
-            .open_page(&clone_dir, backend.brain_url(), headless)
+            .open_page(&clone_dir, backend.brain_url(), headless, brain_id)
             .map_err(|e| e.to_string())?;
         driver
             .navigate(backend.brain_url(), Duration::from_secs(30))

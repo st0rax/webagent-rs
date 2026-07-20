@@ -1,6 +1,28 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-20 (Autoresearch + Wiki-Memory delegiert gebaut)
+**Stand:** 2026-07-20 (Swarm-Strukturevaluation · Brain-Name im Fenstertitel)
+
+## 2026-07-20 (6) — Swarm-Evaluation der Projektstruktur + Fenstertitel
+
+**Swarm-Urteil (6/8 Brains, Konsens-Note 4, einmal 5):** Das flache src/ mit
+39 Modulen / 21,6k Zeilen skaliert nicht — keine Domänengrenzen, fünf Module
+über 1300 Zeilen. Empfohlene Maßnahme mit bestem Aufwand/Nutzen: Domänen-
+Unterordner (mod-Hierarchie, z.B. brains/, protocol/, ops/, ui/) OHNE
+Workspace-Split, inkrementell. Volltext: Wiki-Seite
+`struktur-evaluation-2026-07` (data/memory/wiki/). Synthese-Schritt selbst
+scheiterte an page-timeout (Fix-Kandidat).
+
+**Fenstertitel = Brain-Name** (Storax-Wunsch): open_page trägt jetzt ein
+title-Label; Fenster heißen `webagent · <brain> (<view_id>)` — im
+Task-Manager/Alt-Tab ist erkennbar, welches (auch off-screen-)Fenster zu
+welchem Brain gehört. Live verifiziert (`webagent · zai (1)`).
+
+**Neue präzise Repro-Fälle aus der Evaluation:**
+- gemini liefert reproduzierbar (3×) dieselbe Stale-Antwort "gemini lebt um
+  11:19:06" — Konversation vergiftet, new_chat/Antworterkennung greift nicht.
+- kimi: Composer von unbekanntem Dialog/Overlay blockiert (nicht in der
+  Block-Phrasenliste) — erklärt auch den 30-min-Startphasen-Hänger.
+  Nächster Schritt: kimi einmal SICHTBAR öffnen und den Dialog ansehen.
 
 ## 2026-07-20 (5) — Autoresearch + Wiki-Memory (delegierte Umsetzung)
 

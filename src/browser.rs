@@ -1012,7 +1012,7 @@ impl BrainBackend for WebBrainBackend {
             let profile = self.effective_profile_dir().clone();
             let runtime = WebViewRuntime::launch(&profile, headless).map_err(|e| e.to_string())?;
             let mut driver = runtime
-                .open_page(&profile, &self.url, headless)
+                .open_page(&profile, &self.url, headless, &self.brain_id)
                 .map_err(|e| e.to_string())?;
             driver
                 .navigate(&self.url, Duration::from_secs(30))
