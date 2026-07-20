@@ -28,7 +28,7 @@ CDP/Playwright.
 Dieser Ordner (`webagent-rs/`) ist ein **eigenständiges Repo**
 (`github.com/st0rax/webagent-rs`). Er liegt aber typischerweise verschachtelt
 in einem **anderen, separaten** Repo (`Desktop\webagent\`, Remote
-`github.com/alexanderkrenz89-ctrl/webagent`, anderer Account) — der alten
+`github.com/st0rax/webagent`, anderer Account) — der alten
 Python-Referenzimplementierung. `webagent-rs` ist dort als Gitlink (Mode
 `160000`) eingetragen, aber **ohne `.gitmodules`** — ein behelfsmäßiger, kein
 echter Submodule-Verweis. Falls du im Elternordner landest und dich wunderst,
