@@ -862,12 +862,26 @@ return null;}})()"#
         // das nur zu vermuten: die Seite nach einem bekannten Block-Text absuchen und
         // den tatsaechlichen Text melden, falls vorhanden, damit der naechste
         // Auftritt im Log/`/score` diagnostizierbar ist statt ein Ratespiel zu bleiben.
+        Err(self.submit_failed_error(5))
+    }
+
+    /// Einheitlicher Fehler, wenn kein Absende-Beweis (URL-Wechsel / Stop-Button /
+    /// neue Antwort) zustande kam. WICHTIG: alle send_*-Funktionen MÜSSEN diesen
+    /// Fehler zurückgeben statt `Ok(baseline)`, sonst hält `wait_response` den
+    /// stehengebliebenen (oft STALE) Bildschirmtext für die Antwort — genau die
+    /// Konversations-Vergiftung, die gemini/deepseek im Swarm zeigten
+    /// ("gemini lebt um 11:19:06" aus einem alten Chat).
+    fn submit_failed_error(&self, attempts: u32) -> String {
         if let Some(banner) = self.detect_block_banner() {
-            return Err(format!(
-                "blockiert: kein Absende-Beweis nach 5 Versuchen -- Seite zeigt: {banner}"
-            ));
+            return format!(
+                "blockiert: kein Absende-Beweis nach {attempts} Versuchen -- Seite zeigt: {banner}"
+            );
         }
-        Err("Absenden fehlgeschlagen: kein Absende-Beweis nach 5 Versuchen (blockiert ein Dialog/Overlay den Composer, dessen Text nicht in der bekannten Block-Phrasenliste steht)".into())
+        format!(
+            "Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen \
+             (blockiert ein Dialog/Overlay den Composer, dessen Text nicht in der \
+             bekannten Block-Phrasenliste steht)"
+        )
     }
 
     fn send_gemini(&mut self, text: &str) -> Result<i32, String> {
@@ -892,7 +906,9 @@ return null;}})()"#
             }
             let _ = self.fill_composer_dom_set(&composer_js, text);
         }
-        Ok(baseline)
+        // Kein Ok(baseline) bei ausbleibendem Absende-Beweis (Vergiftungsquelle) —
+        // ehrlicher Fehler wie in send_generic.
+        Err(self.submit_failed_error(3))
     }
 
     fn send_qwen(&mut self, text: &str) -> Result<i32, String> {
@@ -921,7 +937,9 @@ return null;}})()"#
             }
             let _ = self.fill_composer(&composer_js, text);
         }
-        Ok(baseline)
+        // Kein Ok(baseline) bei ausbleibendem Absende-Beweis (Vergiftungsquelle) —
+        // ehrlicher Fehler wie in send_generic.
+        Err(self.submit_failed_error(4))
     }
 
     fn prepare_send_baseline(&mut self) -> i32 {

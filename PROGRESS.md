@@ -1,6 +1,22 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-20 (Block-False-Positive gefixt · headless ohne Taskleiste)
+**Stand:** 2026-07-20 (Konversations-Vergiftung an der Wurzel gefixt)
+
+## 2026-07-20 (8) — Stale-Answer-Wurzel: send_gemini/send_qwen härten
+
+Die Konversations-Vergiftung (gemini "gemini lebt um 11:19:06", deepseek
+garbled fragments) hatte eine konkrete Wurzel: `send_generic` gibt bei
+ausbleibendem Absende-Beweis längst einen ehrlichen Fehler zurück (schon
+gehärtet), aber `send_gemini` und `send_qwen` gaben nach ihrer Retry-Schleife
+bedingungslos `Ok(baseline)` zurück — auch wenn NIE abgesendet wurde. Dann las
+`wait_response` den stehengebliebenen (oft stale) Bildschirmtext als "Antwort".
+
+Fix: gemeinsamer `submit_failed_error()`-Helfer; alle drei send_*-Funktionen
+liefern jetzt bei fehlendem Absende-Beweis einen Fehler statt Ok. Damit kann
+kein Alt-Chat-Text mehr als frische Antwort durchrutschen.
+
+Verifiziert live gegen die zwei zuvor vergifteten Brains: gemini + deepseek
+antworten frisch ("Tokio") statt stale. 324/324 Tests, clippy clean.
 
 ## 2026-07-20 (7) — Swarm-GitHub-Feedback: Block-False-Positive + Grenzen
 
