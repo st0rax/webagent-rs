@@ -1,6 +1,6 @@
 //! WebAgent CLI-Einstiegspunkt mit clap-basierter Befehlsstruktur.
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use std::collections::HashMap;
 use std::process;
 
@@ -250,6 +250,10 @@ enum Commands {
         yes: bool,
     },
 
+    /// Autoresearch: messbare Metrik autonom verbessern (Modify→Verify→Keep/Discard,
+    /// Git als Sicherheitsnetz, eigener Branch autoresearch/<timestamp>)
+    Autoresearch(AutoresearchArgs),
+
     /// Read-only gate for autonomous maintenance
     MaintenanceCheck {
         /// Maschinenlesbares JSON
@@ -264,6 +268,46 @@ enum Commands {
         #[arg(long, default_value = "600")]
         pytest_timeout: f64,
     },
+}
+
+/// Argumente des `autoresearch`-Subcommands (Spec: docs/AUTORESEARCH_PLAN.md §6).
+#[derive(Args)]
+struct AutoresearchArgs {
+    /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+    #[arg(long)]
+    brain: String,
+
+    /// Messbares Ziel in Textform (fließt in den Modify-Prompt ein)
+    #[arg(long)]
+    goal: String,
+
+    /// Eval-Befehl — Vertrag: exit 0 + letzte stdout-Zeile ist eine Zahl
+    #[arg(long)]
+    eval: String,
+
+    /// Richtung der Verbesserung: higher|lower
+    #[arg(long, default_value = "higher")]
+    direction: String,
+
+    /// Maximale Anzahl Iterationen
+    #[arg(long, default_value = "10")]
+    max_iterations: usize,
+
+    /// Abbruch nach N Iterationen ohne Verbesserung in Folge
+    #[arg(long, default_value = "3")]
+    no_improve_abort: usize,
+
+    /// Headless-Browser (Standard: sichtbar)
+    #[arg(long)]
+    headless: bool,
+
+    /// Git-Repo-Root (Default: Repo-Root des aktuellen Verzeichnisses)
+    #[arg(long)]
+    workdir: Option<String>,
+
+    /// Timeout des Eval-Befehls in Sekunden
+    #[arg(long, default_value = "300")]
+    eval_timeout: u64,
 }
 
 /// Startup-Helfer: stale Runs reparieren (Python `main()` vor jedem Command außer maintenance-check).
@@ -400,11 +444,73 @@ fn dispatch(command: Commands) -> i32 {
             yes,
         } => cmd_oobe(&brains, skip_login, yes),
 
+        Commands::Autoresearch(args) => cmd_autoresearch(args),
+
         Commands::MaintenanceCheck {
             json,
             pytest,
             pytest_timeout,
         } => cmd_maintenance_check(json, pytest, pytest_timeout),
+    }
+}
+
+fn cmd_autoresearch(args: AutoresearchArgs) -> i32 {
+    use webagent::autoresearch::{self, AutoResearchConfig, Direction};
+
+    let direction: Direction = match args.direction.parse() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[autoresearch] {e}");
+            return 2;
+        }
+    };
+    let workdir = match args.workdir {
+        Some(p) => std::path::PathBuf::from(p),
+        None => {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+            match autoresearch::git_repo_root(&cwd) {
+                Ok(root) => root,
+                Err(e) => {
+                    eprintln!("[autoresearch] kein Git-Repo-Root gefunden: {e}");
+                    return 2;
+                }
+            }
+        }
+    };
+
+    let config = AutoResearchConfig {
+        brain_id: args.brain,
+        goal: args.goal,
+        eval_cmd: args.eval,
+        direction,
+        max_iterations: args.max_iterations,
+        no_improve_abort: args.no_improve_abort,
+        headless: args.headless,
+        workdir,
+        eval_timeout_secs: args.eval_timeout,
+    };
+
+    match autoresearch::run(config) {
+        Ok(report) => {
+            let kept = report.iterations.iter().filter(|i| i.kept).count();
+            println!(
+                "[autoresearch] fertig: branch={} stop={} iterationen={} behalten={} final_metric={}",
+                report.branch,
+                report.stopped_reason,
+                report.iterations.len(),
+                kept,
+                report.final_metric
+            );
+            println!(
+                "[autoresearch] Ergebnis liegt auf dem Branch {} — Merge bleibt manuell.",
+                report.branch
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("[autoresearch] Fehler: {e}");
+            1
+        }
     }
 }
 

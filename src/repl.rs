@@ -64,6 +64,12 @@ pub enum SlashCommand {
     },
     /// Git-Änderungen im Arbeitsverzeichnis zeigen (`/diff`).
     Diff,
+    /// Autoresearch mit dem aktiven Session-Brain: `/autoresearch <eval-cmd> :: <goal>`.
+    /// Leere Felder = fehlender ` :: `-Trenner → Usage-Hinweis im Handler.
+    Autoresearch {
+        eval_cmd: String,
+        goal: String,
+    },
     Unknown {
         raw: String,
     },
@@ -156,6 +162,25 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     }
     if trimmed == "/diff" {
         return Some(SlashCommand::Diff);
+    }
+    if trimmed == "/autoresearch" || trimmed.starts_with("/autoresearch ") {
+        // Syntax: /autoresearch <eval-cmd> :: <goal> — der Trenner " :: " macht
+        // Eval-Befehle mit Leerzeichen/Pipes eindeutig vom Ziel unterscheidbar.
+        let rest = trimmed.strip_prefix("/autoresearch").unwrap_or("").trim();
+        if let Some((cmd, goal)) = rest.split_once(" :: ") {
+            let (cmd, goal) = (cmd.trim(), goal.trim());
+            if !cmd.is_empty() && !goal.is_empty() {
+                return Some(SlashCommand::Autoresearch {
+                    eval_cmd: cmd.to_string(),
+                    goal: goal.to_string(),
+                });
+            }
+        }
+        // Fehlender Trenner oder leere Teile → Usage-Pfad.
+        return Some(SlashCommand::Autoresearch {
+            eval_cmd: String::new(),
+            goal: String::new(),
+        });
     }
     if trimmed == "/pool" || trimmed == "/tui" || trimmed == "/workers" {
         return Some(SlashCommand::Pool { active: None });
@@ -381,6 +406,7 @@ impl ReplSession {
             self.brain_id, state
         );
         println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>  /pool [n]  /diff");
+        println!("           /autoresearch <eval-cmd> :: <goal>");
         println!("           /new  /brains  /whoami  /score  /canary  /memory  /login  /login-all  /exit");
         println!();
     }
@@ -638,6 +664,10 @@ impl ReplSession {
             }
             SlashCommand::Diff => {
                 self.print_diff();
+                ReplAction::Continue
+            }
+            SlashCommand::Autoresearch { eval_cmd, goal } => {
+                self.run_autoresearch(&eval_cmd, &goal);
                 ReplAction::Continue
             }
             SlashCommand::Pool { active } => {
@@ -1023,6 +1053,59 @@ impl ReplSession {
         println!("[swarm] fertig. Aktiv weiterhin: {}", self.brain_id);
     }
 
+    /// `/autoresearch <eval-cmd> :: <goal>` — Autoresearch mit dem aktiven
+    /// Session-Brain und kleinen Defaults fürs interaktive Ausprobieren
+    /// (max_iterations=3). Fortschritt druckt die Kernschleife live:
+    /// `[autoresearch i/N] metrik X -> Y (behalten|verworfen)`.
+    fn run_autoresearch(&mut self, eval_cmd: &str, goal: &str) {
+        if eval_cmd.trim().is_empty() || goal.trim().is_empty() {
+            println!("[autoresearch] Nutzung: /autoresearch <eval-cmd> :: <goal>");
+            println!(
+                "[autoresearch] Beispiel: /autoresearch cargo build 2>&1 | grep -c warning :: Compiler-Warnings reduzieren"
+            );
+            return;
+        }
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+        let workdir = match crate::autoresearch::git_repo_root(&cwd) {
+            Ok(root) => root,
+            Err(e) => {
+                eprintln!("[autoresearch] kein Git-Repo-Root gefunden: {e}");
+                return;
+            }
+        };
+        // Der Modify-Schritt öffnet ein eigenes Backend auf demselben Profil —
+        // das Session-Brain vorher freigeben, danach wieder starten (wie /pool).
+        self.stop_brain();
+        let config = crate::autoresearch::AutoResearchConfig {
+            brain_id: self.brain_id.clone(),
+            goal: goal.to_string(),
+            eval_cmd: eval_cmd.to_string(),
+            direction: crate::autoresearch::Direction::HigherIsBetter,
+            max_iterations: 3,
+            no_improve_abort: 3,
+            headless: self.headless,
+            workdir,
+            eval_timeout_secs: 300,
+        };
+        match crate::autoresearch::run(config) {
+            Ok(report) => {
+                let kept = report.iterations.iter().filter(|i| i.kept).count();
+                println!(
+                    "[autoresearch] fertig: branch={} stop={} iterationen={} behalten={} final_metric={}",
+                    report.branch,
+                    report.stopped_reason,
+                    report.iterations.len(),
+                    kept,
+                    report.final_metric
+                );
+            }
+            Err(e) => eprintln!("[autoresearch] Fehler: {e}"),
+        }
+        if let Err(e) = self.start_brain() {
+            eprintln!("[autoresearch] Brain-Neustart fehlgeschlagen: {e}");
+        }
+    }
+
     /// `/diff` — was hat sich im Arbeitsverzeichnis (git) geändert?
     fn print_diff(&self) {
         let run_git = |args: &[&str]| -> Option<String> {
@@ -1258,6 +1341,41 @@ mod tests {
             Some(SlashCommand::Swarm {
                 orchestrator: None,
                 prompt: "42 Dinge".into()
+            })
+        );
+    }
+
+    #[test]
+    fn parse_autoresearch() {
+        // Regulärer Fall: Eval-Befehl (darf Leerzeichen/Pipes enthalten) :: Ziel.
+        assert_eq!(
+            parse_slash_command("/autoresearch cargo test --lib :: mehr Tests grün"),
+            Some(SlashCommand::Autoresearch {
+                eval_cmd: "cargo test --lib".into(),
+                goal: "mehr Tests grün".into()
+            })
+        );
+        // Fehlender " :: "-Trenner → leere Felder = Usage-Pfad.
+        assert_eq!(
+            parse_slash_command("/autoresearch nur text ohne trenner"),
+            Some(SlashCommand::Autoresearch {
+                eval_cmd: String::new(),
+                goal: String::new()
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/autoresearch"),
+            Some(SlashCommand::Autoresearch {
+                eval_cmd: String::new(),
+                goal: String::new()
+            })
+        );
+        // Leerer Goal-Teil zählt ebenfalls als Usage-Fall.
+        assert_eq!(
+            parse_slash_command("/autoresearch cargo test :: "),
+            Some(SlashCommand::Autoresearch {
+                eval_cmd: String::new(),
+                goal: String::new()
             })
         );
     }

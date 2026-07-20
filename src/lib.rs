@@ -5,6 +5,7 @@
 //! Kern überall baut. Zeitstempel werden *formatiert* über [`civil_utc`] (Python-kompatibel,
 //! siehe dort) und *geparst* über `time` — das ist ohnehin Dependency.
 
+pub mod autoresearch;
 pub mod bot2bot_worker;
 pub mod brain;
 pub mod brain_score;
