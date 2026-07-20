@@ -104,6 +104,32 @@ pub const MAX_OBSERVATION_CHARS: usize = 12_000;
 pub const LOOP_GUARD_WARN_COUNT: usize = 3;
 pub const LOOP_GUARD_ABORT_COUNT: usize = 8;
 
+/// Gesamte Wall-Clock-Obergrenze (Sekunden) für einen einzelnen Run. Fängt
+/// hängende Läufe ab, die weder max_cycles noch der Loop-Guard je erreichen,
+/// weil sie in der Warte-/Sendephase eines Brains klemmen (real beobachtet:
+/// kimi hing 30+ min). Default; via WEBAGENT_MAX_RUN_SECONDS überschreibbar.
+pub const MAX_RUN_WALL_SECONDS: u64 = 600;
+
+/// Aufgelöste Wall-Clock-Deadline (Sekunden) eines Runs: WEBAGENT_MAX_RUN_SECONDS
+/// falls gesetzt und sinnvoll, sonst MAX_RUN_WALL_SECONDS. Leer/„0"/ungültig →
+/// Default.
+pub fn max_run_wall_secs() -> u64 {
+    resolve_max_run_wall_secs(env::var("WEBAGENT_MAX_RUN_SECONDS").ok().as_deref())
+}
+
+/// Reine Auflösung der Wall-Clock-Deadline (ohne Env-Zugriff, für Tests).
+/// `None`/leer/„0"/nicht-parsebar → `MAX_RUN_WALL_SECONDS`; eine positive Zahl
+/// wird übernommen.
+pub fn resolve_max_run_wall_secs(raw: Option<&str>) -> u64 {
+    match raw.map(str::trim) {
+        Some(s) if !s.is_empty() => match s.parse::<u64>() {
+            Ok(0) | Err(_) => MAX_RUN_WALL_SECONDS,
+            Ok(n) => n,
+        },
+        _ => MAX_RUN_WALL_SECONDS,
+    }
+}
+
 /// Whitelist login-relevanter Artefakte für die "sparse-copy" eines
 /// Referenzprofils (statt Vollkopie). Chromium hält Auth in Cookies,
 /// Local Storage, Preferences, Login Data, Web Data.
@@ -921,6 +947,23 @@ mod tests {
         assert_eq!(MAX_OBSERVATION_CHARS, 12_000);
         assert_eq!(LOOP_GUARD_WARN_COUNT, 3);
         assert_eq!(LOOP_GUARD_ABORT_COUNT, 8);
+    }
+
+    #[test]
+    fn test_resolve_max_run_wall_secs_parsing() {
+        // Default-Fälle: None, leer, nur Whitespace, "0", Müll → Default.
+        assert_eq!(resolve_max_run_wall_secs(None), MAX_RUN_WALL_SECONDS);
+        assert_eq!(resolve_max_run_wall_secs(Some("")), MAX_RUN_WALL_SECONDS);
+        assert_eq!(resolve_max_run_wall_secs(Some("   ")), MAX_RUN_WALL_SECONDS);
+        assert_eq!(resolve_max_run_wall_secs(Some("0")), MAX_RUN_WALL_SECONDS);
+        assert_eq!(resolve_max_run_wall_secs(Some("abc")), MAX_RUN_WALL_SECONDS);
+        assert_eq!(resolve_max_run_wall_secs(Some("-5")), MAX_RUN_WALL_SECONDS);
+        assert_eq!(resolve_max_run_wall_secs(Some("12x")), MAX_RUN_WALL_SECONDS);
+        // Gültige positive Werte (auch mit umgebendem Whitespace) → übernommen.
+        assert_eq!(resolve_max_run_wall_secs(Some("900")), 900);
+        assert_eq!(resolve_max_run_wall_secs(Some("  900  ")), 900);
+        assert_eq!(resolve_max_run_wall_secs(Some("1")), 1);
+        assert_eq!(MAX_RUN_WALL_SECONDS, 600);
     }
 
     #[test]

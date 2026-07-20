@@ -26,6 +26,23 @@ const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 const MEMORY_CONTEXT_LIMIT: usize = 5;
 const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
 
+/// Exponential-Backoff-Basis/-Obergrenze zwischen incomplete-Retries.
+const INCOMPLETE_RETRY_BACKOFF_BASE_MS: u64 = 500;
+const INCOMPLETE_RETRY_BACKOFF_CAP_MS: u64 = 8_000;
+
+/// Backoff-Dauer vor dem `retry_index`-ten incomplete-Retry (1-basiert):
+/// `min(BASE * 2^(retry_index-1), CAP)`. Reine, überlauf­sichere Funktion, damit
+/// wiederholte incomplete-Antworten nicht sofort neu gefeuert werden. `retry_index`
+/// 0 wird wie 1 behandelt (BASE).
+fn incomplete_retry_backoff(retry_index: usize) -> Duration {
+    let exp = retry_index.saturating_sub(1).min(32) as u32;
+    let scaled = INCOMPLETE_RETRY_BACKOFF_BASE_MS
+        .checked_shl(exp)
+        .unwrap_or(INCOMPLETE_RETRY_BACKOFF_CAP_MS)
+        .min(INCOMPLETE_RETRY_BACKOFF_CAP_MS);
+    Duration::from_millis(scaled)
+}
+
 /// Hosts that must never be treated as a live chat session for resume.
 /// Includes reserved/test TLDs and classic documentation placeholders so a
 /// leaked mock `conversation_ref` cannot short-circuit a real run (phantom finish).
@@ -290,6 +307,50 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         meta.clone()
     }
 
+    /// Beendet Run mit wall_timeout Status (Gesamt-Deadline überschritten).
+    /// Spiegelt die im Loop akkumulierten Felder aus self.meta ins finale meta,
+    /// damit der Abbruch keine Fortschrittsdaten (completed_actions, extra) verliert.
+    fn finish_wall_timeout(
+        &mut self,
+        meta: &mut RunMeta,
+        transcript: &mut Transcript,
+        elapsed: Duration,
+        deadline: Duration,
+    ) -> RunMeta {
+        if let Some(sm) = self.meta.take() {
+            meta.conversation_ref = sm.conversation_ref;
+            meta.completed_actions = sm.completed_actions;
+            for (k, v) in sm.extra {
+                meta.extra.insert(k, v);
+            }
+        }
+        meta.status = "wall_timeout".to_string();
+        meta.extra.insert(
+            "wall_elapsed_s".to_string(),
+            serde_json::Value::String(format!("{:.1}", elapsed.as_secs_f64())),
+        );
+        meta.extra.insert(
+            "wall_deadline_s".to_string(),
+            serde_json::Value::Number(deadline.as_secs().into()),
+        );
+        meta.extra.insert(
+            "act_steps".to_string(),
+            serde_json::Value::Number(self.act_steps.into()),
+        );
+        let _ = self.run_store.save(meta);
+        let _ = transcript.append(
+            "system",
+            &format!(
+                "run_finished status={} wall_elapsed_s={:.1} deadline_s={}",
+                meta.status,
+                elapsed.as_secs_f64(),
+                deadline.as_secs()
+            ),
+            HashMap::new(),
+        );
+        meta.clone()
+    }
+
     /// Versucht Recovery nach incomplete Response.
     fn recover_from_incomplete(
         &mut self,
@@ -316,7 +377,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             return None;
         }
 
-        std::thread::sleep(Duration::from_secs(2));
+        // Exponential-Backoff (gedeckelt) statt sofortigem Neufeuern.
+        std::thread::sleep(incomplete_retry_backoff(self.incomplete_retries));
         Some(self.run_once(INCOMPLETE_RETRY_PROMPT, Some(transcript)))
     }
 
@@ -837,6 +899,14 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             return Ok(meta);
         }
 
+        // Gesamt-Wall-Clock-Deadline des Runs. Wird ab hier (nach Brain-Start /
+        // ensure_ready) gemessen und an allen Schleifenköpfen sowie in den
+        // Wait/Recover-Zweigen geprüft, damit ein in der Warte-/Sendephase
+        // hängendes Brain (kein Fortschritt für max_cycles/loop_guard) nicht
+        // endlos läuft. Abbruch ist sauber (Status wall_timeout), kein Panic.
+        let wall_started = Instant::now();
+        let wall_deadline = Duration::from_secs(crate::config::max_run_wall_secs());
+
         // Pending response oder Resume oder Initial
         let mut turn = if let Some(resume_id) = resume_id {
             if let Some(pending) = meta.extra.remove("pending_response") {
@@ -907,6 +977,16 @@ per edit/write-Action pflegbar):\n",
 
         // Incomplete recovery initial
         while !turn.complete {
+            if wall_started.elapsed() >= wall_deadline {
+                let final_meta = self.finish_wall_timeout(
+                    &mut meta,
+                    &mut transcript,
+                    wall_started.elapsed(),
+                    wall_deadline,
+                );
+                self.finish_run_cleanup(opts);
+                return Ok(final_meta);
+            }
             if let Some(recovered) = self.recover_from_incomplete(&mut transcript, "initial") {
                 turn = recovered;
             } else {
@@ -919,11 +999,24 @@ per edit/write-Action pflegbar):\n",
         let mut response_text = turn.text;
         let mut finished = false;
         let mut cycle = meta.cycles;
-        let loop_started = Instant::now();
+        // Heartbeat und Wall-Deadline teilen sich denselben Startzeitpunkt.
+        let loop_started = wall_started;
         let mut last_heartbeat = loop_started;
         let heartbeat_interval = Duration::from_secs_f64(CONTROLLER_HEARTBEAT_INTERVAL_SECONDS);
 
         while !finished && (cycle as usize) < self.max_cycles {
+            // Wall-Clock-Deadline am Schleifenkopf: greift auch, wenn interne
+            // Wait/Recover-Zweige lange klemmen (kein Panic, sauberes finish).
+            if wall_started.elapsed() >= wall_deadline {
+                let final_meta = self.finish_wall_timeout(
+                    &mut meta,
+                    &mut transcript,
+                    wall_started.elapsed(),
+                    wall_deadline,
+                );
+                self.finish_run_cleanup(opts);
+                return Ok(final_meta);
+            }
             cycle += 1;
             meta.cycles = cycle;
             self.run_store.save(&meta).ok();
@@ -955,6 +1048,16 @@ per edit/write-Action pflegbar):\n",
             }
 
             while response_text.is_empty() && !finished {
+                if wall_started.elapsed() >= wall_deadline {
+                    let final_meta = self.finish_wall_timeout(
+                        &mut meta,
+                        &mut transcript,
+                        wall_started.elapsed(),
+                        wall_deadline,
+                    );
+                    self.finish_run_cleanup(opts);
+                    return Ok(final_meta);
+                }
                 if self
                     .meta
                     .as_ref()
@@ -1099,6 +1202,12 @@ mod tests {
         new_chat_calls: Rc<RefCell<usize>>,
         started: Rc<RefCell<bool>>,
         response_index: Rc<RefCell<usize>>,
+        /// Künstliche Verzögerung je wait_response (Wall-Timeout-Test).
+        wait_sleep: Duration,
+        /// Wenn true: bei jedem Turn eine frische, gültige shell-Action mit
+        /// eindeutiger id liefern (nie abschließen) — simuliert einen Run, der
+        /// nur durch die Wall-Deadline gestoppt werden kann.
+        loop_shell: bool,
     }
 
     impl MockBrain {
@@ -1117,12 +1226,22 @@ mod tests {
                 new_chat_calls: Rc::new(RefCell::new(0)),
                 started: Rc::new(RefCell::new(false)),
                 response_index: Rc::new(RefCell::new(0)),
+                wait_sleep: Duration::ZERO,
+                loop_shell: false,
             }
         }
 
         fn with_responses(mut self, responses: Vec<&str>, complete: Vec<bool>) -> Self {
             self.responses = responses.iter().map(|s| s.to_string()).collect();
             self.complete_flags = complete;
+            self
+        }
+
+        /// Endloser Fortschritt mit Verzögerung: jeder Turn eine frische
+        /// shell-Action, `sleep` pro wait_response. Nur die Wall-Deadline stoppt.
+        fn with_wall_stall(mut self, sleep: Duration) -> Self {
+            self.wait_sleep = sleep;
+            self.loop_shell = true;
             self
         }
     }
@@ -1166,14 +1285,22 @@ mod tests {
             _baseline_count: i32,
             _timeout: f64,
         ) -> Result<BrainResponse, String> {
+            if !self.wait_sleep.is_zero() {
+                std::thread::sleep(self.wait_sleep);
+            }
             let idx = *self.response_index.borrow();
             *self.response_index.borrow_mut() = idx + 1;
-            let text = self
-                .responses
-                .get(idx)
-                .cloned()
-                .unwrap_or_else(|| "{}".to_string());
-            let complete = self.complete_flags.get(idx).copied().unwrap_or(true);
+            let (text, complete) = if self.loop_shell {
+                (shell_response(&format!("wall-{idx}"), "Write-Output tick"), true)
+            } else {
+                let text = self
+                    .responses
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or_else(|| "{}".to_string());
+                let complete = self.complete_flags.get(idx).copied().unwrap_or(true);
+                (text, complete)
+            };
             Ok(BrainResponse {
                 text,
                 message_index: idx as i32,
@@ -1538,5 +1665,51 @@ mod tests {
         let result = controller.run("x", "other", Some(&meta.run_id), false);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("brain_id"));
+    }
+
+    #[test]
+    fn test_incomplete_retry_backoff_doubles_and_caps() {
+        // 1-basiert: BASE * 2^(n-1), gedeckelt bei CAP=8s. retry 0 == retry 1.
+        assert_eq!(incomplete_retry_backoff(0), Duration::from_millis(500));
+        assert_eq!(incomplete_retry_backoff(1), Duration::from_millis(500));
+        assert_eq!(incomplete_retry_backoff(2), Duration::from_millis(1000));
+        assert_eq!(incomplete_retry_backoff(3), Duration::from_millis(2000));
+        assert_eq!(incomplete_retry_backoff(4), Duration::from_millis(4000));
+        assert_eq!(incomplete_retry_backoff(5), Duration::from_millis(8000));
+        // Cap eingehalten, kein Overflow bei großen retry-Indizes.
+        assert_eq!(incomplete_retry_backoff(6), Duration::from_millis(8000));
+        assert_eq!(incomplete_retry_backoff(50), Duration::from_millis(8000));
+        assert_eq!(incomplete_retry_backoff(usize::MAX), Duration::from_millis(8000));
+    }
+
+    #[test]
+    fn test_wall_timeout_aborts_runaway_loop() {
+        // Ein Run, der nie abschließt (endlose frische shell-Actions mit
+        // Verzögerung) und dessen max_cycles praktisch unerreichbar ist, muss
+        // durch die Wall-Deadline sauber als wall_timeout beendet werden.
+        let key = "WEBAGENT_MAX_RUN_SECONDS";
+        let prev = env::var(key).ok();
+        env::set_var(key, "1");
+
+        let brain = MockBrain::new().with_wall_stall(Duration::from_millis(300));
+        let executor = MockExecutor::new();
+        let mut controller =
+            AgentController::with_data_dir(brain, executor, 1_000_000, unique_data_dir());
+        let meta = controller.run("Endlosschleife", "mock", None, false).unwrap();
+
+        assert_eq!(meta.status, "wall_timeout");
+        assert_eq!(
+            meta.extra.get("wall_deadline_s"),
+            Some(&serde_json::Value::Number(1.into()))
+        );
+        assert!(
+            meta.extra.contains_key("wall_elapsed_s"),
+            "wall_elapsed_s sollte gesetzt sein"
+        );
+
+        match prev {
+            Some(v) => env::set_var(key, v),
+            None => env::remove_var(key),
+        }
     }
 }

@@ -1,6 +1,27 @@
 # PROGRESS — webagent-rs
 
-**Stand:** 2026-07-20 (Konversations-Vergiftung an der Wurzel gefixt)
+**Stand:** 2026-07-21 (Top-Voted-Roadmap: Etappe 1+2 delegiert umgesetzt)
+
+## 2026-07-21 — Swarm-Top-10-Roadmap, Etappe 1+2 (2 parallele Subagents)
+
+Aus der Swarm-Abstimmung ([[verbesserungs-top10-2026-07]]) die zwei
+file-disjunkten Top-Punkte parallel delegiert (Claude-Subagents), vom
+Orchestrator verifiziert — 332/332 Tests, clippy clean, realer write-Run ok:
+
+- **Etappe 1 (Platz 1) — Wall-Timeout + Backoff** (`controller.rs`, `config.rs`):
+  MAX_RUN_WALL_SECONDS (Default 600, Env WEBAGENT_MAX_RUN_SECONDS). Ein Run
+  bricht bei Überschreiten als `wall_timeout` sauber ab (kein Panic/Kill) —
+  fängt genau die kimi-30-Minuten-Hänger, die weder max_cycles noch Loop-Guard
+  erwischten. Plus Exponential-Backoff min(500ms·2^(n-1), 8s) zwischen
+  incomplete-Retries statt fixer 2s. Wall-Uhr deckt auch die frühe
+  Wait/Recover-Phase ab (3 Prüfstellen).
+- **Etappe 2 (Platz 4) — Protokoll-Schema strikt** (`protocol.rs`,
+  `docs/PROTOCOL_SCHEMA.md` neu): unbekannte Felder in einer Action → invalid
+  (Tippfehler `comand` fliegt jetzt auf statt als leerer Befehl durchzurutschen).
+  Erlaubte Felder je Typ dokumentiert, Schema-Referenz als Single Source of Truth.
+
+Offen aus der Top 5 (cross-cutting, sequenziell): thiserror-Fehlerhierarchie
+(Platz 2), Modul-Split der fünf >1300-Zeilen-Module (Platz 3), tracing (Platz 5).
 
 ## 2026-07-20 (8) — Stale-Answer-Wurzel: send_gemini/send_qwen härten
 

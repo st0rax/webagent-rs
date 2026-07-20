@@ -234,6 +234,46 @@ fn repair_message_windows_paths(json_text: &str) -> Option<String> {
     }
 }
 
+// ============================================================================
+// SCHEMA-REFERENZ webagent/1 (Single Source of Truth — spiegelt sich in
+// docs/PROTOCOL_SCHEMA.md, das aus diesem Block abgeleitet ist).
+//
+// Envelope (Wurzel-Objekt):
+//   protocol : String  == "webagent/1"           (Pflicht)
+//   actions  : Array   nicht-leer                 (Pflicht)
+//
+// Jede Action ist ein Objekt. Erlaubte Felder je type — KEINE anderen Felder
+// zugelassen (unbekannte Felder → invalid, damit Tippfehler wie "comand" statt
+// "command" nicht als leerer Befehl durchrutschen). Gemeinsam für alle: {id, type}.
+//
+//   type "shell"   +{command, timeout_seconds}
+//                    command: nicht-leer (getrimmt)
+//                    timeout_seconds: Zahl, 0 < x <= 3600 (Default 30)
+//   type "message" +{text}
+//                    text: nicht-leer (getrimmt)
+//   type "finish"   (nur id, type)
+//   type "edit"    +{path, old_string, new_string}
+//                    path: nicht-leer (getrimmt); old_string: nicht-leer,
+//                    old_string != new_string
+//   type "write"   +{path, content}
+//                    path: nicht-leer (getrimmt); content: Pflicht (auch "" ok)
+//
+// Zusatzregeln (in parse(), nicht pro Action): finish und message müssen jeweils
+// die EINZIGE Action der Antwort sein; Action-ids müssen eindeutig sein.
+// ============================================================================
+
+/// Erlaubte Feldnamen je Action-`type`, inklusive der gemeinsamen `id`/`type`.
+/// Grundlage der Strikt-Validierung gegen unbekannte Felder.
+fn allowed_fields(action_type: &ActionType) -> &'static [&'static str] {
+    match action_type {
+        ActionType::Shell => &["id", "type", "command", "timeout_seconds"],
+        ActionType::Message => &["id", "type", "text"],
+        ActionType::Finish => &["id", "type"],
+        ActionType::Edit => &["id", "type", "path", "old_string", "new_string"],
+        ActionType::Write => &["id", "type", "path", "content"],
+    }
+}
+
 fn action_from_value(val: &Value) -> Result<Action, String> {
     let obj = val.as_object().ok_or("jede Action muss ein Objekt sein")?;
 
@@ -256,6 +296,17 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
         "write" => ActionType::Write,
         _ => return Err(format!("unbekannter type: {:?}", action_type_str)),
     };
+
+    // Strikte Schema-Prüfung: keine unbekannten Felder je Action-type.
+    let allowed = allowed_fields(&action_type);
+    for key in obj.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(format!(
+                "Action {}: unbekanntes Feld {:?} für type {:?}; erlaubt sind {:?}",
+                action_id, key, action_type_str, allowed
+            ));
+        }
+    }
 
     let str_field = |key: &str| -> String {
         obj.get(key)
@@ -1044,6 +1095,86 @@ Write-Output $html
         assert!(!should_abort_protocol_repair(2));
         assert!(should_abort_protocol_repair(3));
         assert_eq!(PROTOCOL_REPAIR_MAX_FAILURES, 3);
+    }
+
+    #[test]
+    fn test_reject_unknown_field_per_action_type() {
+        // Je Action-type ein unbekanntes Feld → invalid.
+        let cases = [
+            json!({"id": "s1", "type": "shell", "command": "Get-Date", "foo": 1}),
+            json!({"id": "m1", "type": "message", "text": "hi", "foo": 1}),
+            json!({"id": "f1", "type": "finish", "foo": 1}),
+            json!({"id": "e1", "type": "edit", "path": "a.txt", "old_string": "x", "new_string": "y", "foo": 1}),
+            json!({"id": "w1", "type": "write", "path": "a.txt", "content": "c", "foo": 1}),
+        ];
+        for bad in cases {
+            let env = json!({"protocol": "webagent/1", "actions": [bad.clone()]});
+            let result = parse(&serde_json::to_string(&env).unwrap());
+            assert!(!result.valid, "haette abgelehnt werden muessen: {bad}");
+            assert!(
+                result.error.contains("unbekanntes Feld") && result.error.contains("foo"),
+                "unerwartete Fehlermeldung: {}",
+                result.error
+            );
+        }
+    }
+
+    #[test]
+    fn test_reject_typo_field_command() {
+        // Klassischer Tippfehler: "comand" statt "command" darf nicht als leerer
+        // Befehl durchrutschen, sondern muss als unbekanntes Feld auffliegen.
+        let env = json!({
+            "protocol": "webagent/1",
+            "actions": [{"id": "s1", "type": "shell", "comand": "Get-Date"}]
+        });
+        let result = parse(&serde_json::to_string(&env).unwrap());
+        assert!(!result.valid);
+        assert!(result.error.contains("comand"), "{}", result.error);
+    }
+
+    #[test]
+    fn test_reject_cross_type_field() {
+        // Feld existiert im Protokoll, aber nicht für diesen type (text bei shell,
+        // command bei message, path bei finish).
+        for bad in [
+            json!({"id": "s1", "type": "shell", "command": "Get-Date", "text": "x"}),
+            json!({"id": "m1", "type": "message", "text": "hi", "command": "Get-Date"}),
+            json!({"id": "f1", "type": "finish", "path": "a.txt"}),
+            json!({"id": "w1", "type": "write", "path": "a.txt", "content": "c", "old_string": "x"}),
+        ] {
+            let env = json!({"protocol": "webagent/1", "actions": [bad.clone()]});
+            let result = parse(&serde_json::to_string(&env).unwrap());
+            assert!(!result.valid, "haette abgelehnt werden muessen: {bad}");
+            assert!(result.error.contains("unbekanntes Feld"), "{}", result.error);
+        }
+    }
+
+    #[test]
+    fn test_reject_whitespace_only_path_edit_write() {
+        for bad in [
+            json!({"id": "e1", "type": "edit", "path": "   ", "old_string": "x", "new_string": "y"}),
+            json!({"id": "w1", "type": "write", "path": "  \t ", "content": "c"}),
+        ] {
+            let env = json!({"protocol": "webagent/1", "actions": [bad.clone()]});
+            let result = parse(&serde_json::to_string(&env).unwrap());
+            assert!(!result.valid, "leerer/whitespace path muss abgelehnt werden: {bad}");
+            assert!(result.error.contains("path"), "{}", result.error);
+        }
+    }
+
+    #[test]
+    fn test_allowed_fields_still_accepts_full_valid_actions() {
+        // Gegenprobe: alle erlaubten Felder je type werden weiterhin akzeptiert.
+        let env = json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "e1", "type": "edit", "path": "a.txt", "old_string": "x", "new_string": "y"},
+                {"id": "s1", "type": "shell", "command": "Get-Date", "timeout_seconds": 30}
+            ]
+        });
+        let result = parse(&serde_json::to_string(&env).unwrap());
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions.len(), 2);
     }
 
     #[test]
