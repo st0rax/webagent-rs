@@ -312,7 +312,32 @@ impl Bot2BotWorker {
         // Inbox tasks MUST always be fresh runs: never pass resume_id.
         // Resuming a prior run (or a mock conversation_ref) can yield a phantom
         // finish with cycles=1 and no browser/file work.
-        controller.run(task, &self.brain_id, None, self.headless)
+        let meta = controller.run(task, &self.brain_id, None, self.headless)?;
+
+        // Pfad c (Stale-/Phantom-Done): `done` ohne einen einzigen Act-Step
+        // heißt bei Inbox-Arbeitsaufträgen fast immer, dass eine alte
+        // Konversations-Antwort als Ergebnis durchgerutscht ist (gemini,
+        // 2026-07-20). Genau EIN Retry mit explizitem Hinweis und frischem Chat.
+        let suspect = meta.status == "done"
+            && meta
+                .extra
+                .get("suspect_no_actions")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+        if !suspect {
+            return Ok(meta);
+        }
+        eprintln!(
+            "[worker:{}] done ohne Aktionen — wiederhole Task einmal mit frischem Chat.",
+            self.brain_id
+        );
+        let retry_task = format!(
+            "{task}\n\nWICHTIG: Dein vorheriger Versuch endete sofort mit einer \
+             message, OHNE eine einzige shell/edit/write-Action auszuführen — \
+             vermutlich eine veraltete Antwort. Beginne frisch, führe die nötigen \
+             Actions wirklich aus und antworte erst danach."
+        );
+        controller.run(&retry_task, &self.brain_id, None, self.headless)
     }
 
     /// Schreibt das Ergebnis als Legacy-`msg.txt` in `agents/<from>/inbox/` plus

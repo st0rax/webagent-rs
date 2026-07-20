@@ -129,6 +129,11 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     comms: CommsStore,
     completed_actions: HashMap<String, String>,
     incomplete_retries: usize,
+    /// In DIESEM Run tatsächlich ausgeführte Arbeits-Actions (shell/edit/write).
+    /// `done` mit 0 Act-Steps ist verdächtig: gemini lieferte am 2026-07-20 eine
+    /// Stale-Antwort aus einer alten Konversation als sofortiges message-done,
+    /// ohne je gearbeitet zu haben (Pfad c des Phantom-Done-Komplexes).
+    act_steps: u32,
 }
 
 impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
@@ -177,6 +182,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             comms: CommsStore::new(data_dir.join("comms")),
             completed_actions: HashMap::new(),
             incomplete_retries: 0,
+            act_steps: 0,
         }
     }
 
@@ -471,6 +477,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     observations.push(observation.clone());
                     self.record_completed_action(&action.id, &observation);
                     self.track_observation_bytes(&observation);
+                    self.act_steps += 1;
 
                     // Loop-Guard
                     if let Some(meta) = &mut self.meta {
@@ -540,6 +547,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     observations.push(observation.clone());
                     self.record_completed_action(&action.id, &observation);
                     self.track_observation_bytes(&observation);
+                    self.act_steps += 1;
                 }
             }
         }
@@ -741,6 +749,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         opts: RunOptions,
     ) -> Result<RunMeta, String> {
         let runs_dir = self.runs_dir.clone();
+        // Zählt nur die Act-Steps DIESES Aufrufs (REPL-Sessions rufen mehrfach).
+        self.act_steps = 0;
 
         let (mut meta, mut transcript, task) = if let Some(rid) = resume_id {
             let meta = self.run_store.load(rid)?;
@@ -996,6 +1006,23 @@ per edit/write-Action pflegbar):\n",
 
         if meta.status != "protocol_error" {
             meta.status = if finished { "done" } else { "max_cycles" }.to_string();
+        }
+
+        // Beobachtbarkeit für Pfad c (Phantom-/Stale-Done): wie viel wurde
+        // wirklich gearbeitet? `done` ohne einen einzigen Act-Step ist bei
+        // Arbeitsaufträgen verdächtig (Stale-Antwort aus alter Konversation).
+        meta.extra.insert(
+            "act_steps".to_string(),
+            serde_json::Value::Number(self.act_steps.into()),
+        );
+        if meta.status == "done" && self.act_steps == 0 {
+            meta.extra
+                .insert("suspect_no_actions".to_string(), serde_json::Value::Bool(true));
+            println!(
+                "[warn] status=done ohne ausgeführte Aktionen (act_steps=0) — \
+                 Antwort könnte aus einer alten Konversation stammen. Bei \
+                 Arbeitsaufträgen Ergebnis-Artefakt prüfen."
+            );
         }
 
         if finished {
@@ -1271,6 +1298,42 @@ mod tests {
         assert_eq!(episodes[0].source, format!("run:{}", meta.run_id));
         let expected_id = serde_json::Value::Number(episodes[0].id.into());
         assert_eq!(meta.extra.get("episode_memory_id"), Some(&expected_id));
+    }
+
+    #[test]
+    fn test_done_without_actions_is_flagged_suspect() {
+        // Pfad c (gemini 2026-07-20): sofortiges finish ohne einen Act-Step →
+        // done bleibt done, aber act_steps=0 + suspect_no_actions=true.
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let executor = MockExecutor::new();
+        let mut controller = AgentController::with_data_dir(brain, executor, 5, unique_data_dir());
+        let meta = controller.run("Arbeite!", "mock", None, false).unwrap();
+        assert_eq!(meta.status, "done");
+        assert_eq!(
+            meta.extra.get("act_steps"),
+            Some(&serde_json::Value::Number(0.into()))
+        );
+        assert_eq!(
+            meta.extra.get("suspect_no_actions"),
+            Some(&serde_json::Value::Bool(true))
+        );
+    }
+
+    #[test]
+    fn test_done_with_actions_not_flagged() {
+        let brain = MockBrain::new().with_responses(
+            vec![&shell_response("s1", "Write-Output ok"), &finish_response()],
+            vec![true, true],
+        );
+        let executor = MockExecutor::new();
+        let mut controller = AgentController::with_data_dir(brain, executor, 5, unique_data_dir());
+        let meta = controller.run("Arbeite!", "mock", None, false).unwrap();
+        assert_eq!(meta.status, "done");
+        assert_eq!(
+            meta.extra.get("act_steps"),
+            Some(&serde_json::Value::Number(1.into()))
+        );
+        assert_eq!(meta.extra.get("suspect_no_actions"), None);
     }
 
     #[test]

@@ -75,11 +75,21 @@ WebView-Deps (`wry`, `tao`) sind optional (`--no-default-features` für headless
 
 ## Nutzung
 
+`webagent` **ohne Parameter startet den Chat** (REPL, Default-Brain chatgpt):
+normale Eingaben laufen als autonome Aufgabe (Plan/Act/Observe mit
+edit/write/shell-Actions), `/chat` für reine Konversation, `/model` wechselt
+das Brain, `/pool` öffnet die Worker-Pool-TUI, `/diff` zeigt git-Änderungen,
+`/wiki` das Langzeit-Wiki, `/autoresearch <eval> :: <goal>` die
+Metrik-Verbesserungsschleife. `/exit` druckt eine Session-Zusammenfassung
+(Anfragen, Zyklen, Brains, Token-Schätzung).
+
 ```
 webagent login            --brain <id> [--timeout <sek>] [--force]
 webagent login-all        [--timeout <sek>] [--force] [--parallel N]
 webagent run              --brain <id> --task "<aufgabe>" [--headless] [--max-cycles N] [--resume <run_id>]
 webagent repl             --brain <id> [--headless]
+webagent autoresearch     --brain <id> --goal "<text>" --eval "<cmd>" [--direction higher|lower]
+                          [--max-iterations N] [--no-improve-abort N] [--eval-timeout <sek>] [--workdir <pfad>]
 webagent diagnose         --brain <id> [--headless]
 webagent doctor           [--brain <id>]... [--json]
 webagent watchdog         [--repair] [--json]
@@ -88,6 +98,20 @@ webagent relay            --brain <id> --message "<text>" [--headless] [--timeou
 webagent oobe             [--brains <csv>] [--skip-login] [--yes]
 webagent maintenance-check [--json]
 ```
+
+**Datei-Aktionen im Protokoll:** Brains ändern Dateien über `edit`
+(path/old_string/new_string, Anker muss exakt einmal matchen) und `write`
+(neue Datei) — nativ ausgeführt, ohne Shell-Escaping-Risiko.
+
+**Autoresearch** (Karpathy-Muster): `--eval` muss als letzte stdout-Zeile eine
+Zahl liefern; verbesserte Iterationen werden auf einem `autoresearch/`-Branch
+committet, verschlechterte komplett revertet. Merge bleibt manuell.
+Log: `data/autoresearch/<run_id>/log.md`.
+
+**Wiki-Memory** (Karpathy-LLM-Wiki): Markdown-Seiten mit `[[links]]` und
+`index.md` unter `data/memory/wiki/`; der Index fließt automatisch als Kontext
+in autonome Runs, Brains pflegen Seiten per edit/write. REPL: `/wiki`,
+`/wiki <suche>`, `/wiki lint`.
 
 Verfügbare Brains: `chatgpt, deepseek, kimi, gemini, qwen, claude, mistral, zai`.
 
