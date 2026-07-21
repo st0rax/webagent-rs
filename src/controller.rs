@@ -155,10 +155,31 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// Pro Controller injizierbar — Tests duerfen KEINE prozessglobale
     /// Env-Variable setzen (das brach parallel laufende Tests, Fund 2026-07-21).
     wall_secs_override: Option<u64>,
+    /// Senke fuer „was tue ich gerade" — die mitlaufende Timer-Zeile.
+    progress: Option<crate::StageNote>,
+    /// Unterdrueckt die Schritt-fuer-Schritt-Ausgabe. Am Terminal wuerden diese
+    /// Zeilen die sich selbst aktualisierende Timer-Zeile zerschiessen; der
+    /// Inhalt steckt dann stattdessen IN der Timer-Zeile.
+    quiet: bool,
 }
 
 impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     pub const MAX_INCOMPLETE_RETRIES: usize = 5;
+
+    /// Haengt die Fortschrittsanzeige an eine mitlaufende Timer-Zeile und
+    /// schaltet die einzelnen Schritt-Zeilen ab (`quiet`), damit die Anzeige
+    /// nicht von fremder Ausgabe zerschnitten wird.
+    pub fn set_progress(&mut self, note: crate::StageNote, quiet: bool) {
+        self.progress = Some(note);
+        self.quiet = quiet;
+    }
+
+    /// Meldet den aktuellen Schritt an die Fortschritts-Senke (falls gesetzt).
+    fn report_step(&self, what: &str) {
+        if let Some(p) = &self.progress {
+            p.set(what);
+        }
+    }
 
     pub fn brain(&self) -> &B {
         &self.brain
@@ -205,6 +226,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             incomplete_retries: 0,
             act_steps: 0,
             wall_secs_override: None,
+            progress: None,
+            quiet: false,
         }
     }
 
@@ -519,13 +542,19 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         serde_json::Value::String(action.id.clone()),
                     );
                     let _ = transcript.append("message", &action.text, extra);
-                    println!("{}", action.text);
+                    self.report_step("Antwort");
+                    if !self.quiet {
+                        println!("{}", action.text);
+                    }
                     self.record_completed_action(&action.id, &action.text);
                     finished = true;
                     break;
                 }
                 protocol::ActionType::Shell => {
-                    println!("[shell:{}] {}", action.id, action.command);
+                    self.report_step(&format!("shell: {}", crate::char_prefix(&action.command, 70)));
+                    if !self.quiet {
+                        println!("[shell:{}] {}", action.id, action.command);
+                    }
                     let result = match crate::shell_policy::evaluate(&action.command) {
                         crate::shell_policy::Decision::Deny(reason) => {
                             crate::executor::ExecutionResult {
@@ -596,7 +625,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 protocol::ActionType::Edit | protocol::ActionType::Write => {
                     let is_edit = action.action_type == protocol::ActionType::Edit;
                     let kind = if is_edit { "edit" } else { "write" };
-                    println!("[{kind}:{}] {}", action.id, action.path);
+                    self.report_step(&format!("{kind}: {}", action.path));
+                    if !self.quiet {
+                        println!("[{kind}:{}] {}", action.id, action.path);
+                    }
                     let result = if is_edit {
                         crate::file_actions::apply_edit(
                             &action.path,

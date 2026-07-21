@@ -301,6 +301,17 @@ enum Commands {
         #[arg(long)]
         no_harvest: bool,
 
+        /// Ausklappen: jeden Schritt (Shell-Kommandos, Datei-Aktionen,
+        /// Brain-Antworten) als eigene Zeile zeigen, nicht nur den aktuellen
+        /// in der mitlaufenden Zeile
+        #[arg(long)]
+        verbose: bool,
+
+        /// Wie viele Brains beim Sammeln und Abstimmen gleichzeitig befragt
+        /// werden (Bauen bleibt sequenziell)
+        #[arg(long, default_value = "4")]
+        parallel: usize,
+
         /// Eval-Kommando „baut es?"
         #[arg(long, default_value = "cargo build --lib")]
         build_eval: String,
@@ -523,6 +534,8 @@ fn dispatch(command: Commands) -> i32 {
             suggestions,
             max_iterations,
             no_harvest,
+            verbose,
+            parallel,
             build_eval,
             test_eval,
             workdir,
@@ -533,6 +546,8 @@ fn dispatch(command: Commands) -> i32 {
             suggestions,
             max_iterations,
             no_harvest,
+            verbose,
+            parallel,
             build_eval,
             test_eval,
             workdir,
@@ -657,6 +672,7 @@ fn cmd_autoresearch_self(
         &facts,
         suggestions,
         top,
+        4,
         |b, p| webagent::repl::isolated_query(b, p, headless, profile_of(b)),
     );
 
@@ -691,6 +707,8 @@ fn cmd_benchmark(
     suggestions: usize,
     max_iterations: u32,
     no_harvest: bool,
+    verbose: bool,
+    parallel: usize,
     build_eval: String,
     test_eval: String,
     workdir: Option<String>,
@@ -744,6 +762,8 @@ fn cmd_benchmark(
         headless,
         max_iterations,
         harvest: !no_harvest,
+        verbose,
+        parallel,
     };
 
     let result = webagent::benchmark::run_benchmark(&config, |b, p| {

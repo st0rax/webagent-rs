@@ -77,6 +77,14 @@ pub struct BenchmarkConfig {
     /// Die Messung bleibt unberührt: jedes Brain startet weiterhin auf
     /// identischer Baseline, geerntet wird erst NACH dem letzten Brain.
     pub harvest: bool,
+    /// Ausklappen: die einzelnen Schritte (Shell-Kommandos, Datei-Aktionen,
+    /// Brain-Antworten) zusaetzlich als eigene Zeilen ausgeben. Ohne das steckt
+    /// nur der jeweils AKTUELLE Schritt in der mitlaufenden Timer-Zeile.
+    pub verbose: bool,
+    /// Wie viele Brains in den Lesephasen (Sammeln, Abstimmen) gleichzeitig
+    /// befragt werden. Bauen bleibt sequenziell — die Brains teilen sich EINEN
+    /// Git-Worktree, nebenlaeufige Edits wuerden einander ueberschreiben.
+    pub parallel: usize,
 }
 
 /// Ein bestandener Brain-Lauf, dessen Diff für die spätere Ernte aufbewahrt wird.
@@ -503,6 +511,8 @@ fn bench_run(
     brain_id: &str,
     task: &str,
     headless: bool,
+    note: Option<crate::StageNote>,
+    verbose: bool,
 ) -> Result<(String, u32), String> {
     use crate::browser::WebBrainBackend;
     use crate::controller::AgentController;
@@ -517,12 +527,23 @@ fn bench_run(
         crate::config::data_dir(),
     );
     controller.set_wall_timeout_secs(BENCH_WALL_SECS);
+    // Ohne --verbose wandern die Schritt-Zeilen IN die Timer-Zeile, statt sie
+    // zu zerschneiden; mit --verbose laeuft beides nebeneinander.
+    if let Some(n) = note {
+        controller.set_progress(n, !verbose);
+    }
     let meta = controller.run(task, brain_id, None, headless)?;
     Ok((meta.status, meta.cycles))
 }
 
 #[cfg(not(feature = "webview"))]
-fn bench_run(_brain_id: &str, _task: &str, _headless: bool) -> Result<(String, u32), String> {
+fn bench_run(
+    _brain_id: &str,
+    _task: &str,
+    _headless: bool,
+    _note: Option<crate::StageNote>,
+    _verbose: bool,
+) -> Result<(String, u32), String> {
     Err("webview-Feature nicht aktiv — kein Brain-Backend verfügbar".to_string())
 }
 
@@ -539,7 +560,7 @@ fn refine_one<Q>(
     query: &Q,
 ) -> String
 where
-    Q: Fn(&str, &str) -> Result<String, String>,
+    Q: Fn(&str, &str) -> Result<String, String> + Sync,
 {
     if refiner.is_empty() {
         return winner.to_string();
@@ -579,7 +600,7 @@ WICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es              
 /// Controller; getestet wird er e2e vom Orchestrator, nicht im Unit-Test.
 pub fn run_benchmark<Q>(config: &BenchmarkConfig, query: Q) -> Result<BenchmarkReport, String>
 where
-    Q: Fn(&str, &str) -> Result<String, String>,
+    Q: Fn(&str, &str) -> Result<String, String> + Sync,
 {
     // Sicherheitsmodell §5: nur auf sauberem Git-Tree starten.
     if !crate::autoresearch::git_status_clean(&config.workdir)? {
@@ -604,6 +625,7 @@ where
             &facts,
             config.suggestions,
             VOTE_TOP_K,
+            config.parallel,
             &query,
         );
         let ranked = ranked_from_report(&report);
@@ -688,7 +710,13 @@ where
             for iter in 1..=max_iter {
                 iterations = iter;
                 let t = crate::StageTimer::start(format!("{brain} Iteration {iter}/{max_iter}: Brain baut"));
-                match bench_run(brain, &attempt_task, config.headless) {
+                match bench_run(
+                    brain,
+                    &attempt_task,
+                    config.headless,
+                    Some(t.note_handle()),
+                    config.verbose,
+                ) {
                     Ok((_status, c)) => {
                         cycles += c;
                         t.finish(&format!("Brain fertig ({c} Zyklen)"));
@@ -1139,6 +1167,8 @@ mod tests {
             headless: true,
             max_iterations: 10,
             harvest: false,
+            verbose: false,
+            parallel: 4,
         }
     }
 

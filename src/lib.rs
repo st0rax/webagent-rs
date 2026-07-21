@@ -51,42 +51,127 @@ pub mod worker_pool;
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-/// Laufzeit-Anzeige fuer langlaufende Schritte: druckt beim Start eine Zeile und
-/// danach alle 20s "laeuft seit MM:SS", damit ein 3-Minuten-Brain-Run nicht wie
-/// ein Absturz aussieht (Storax-Wunsch 2026-07-21).
+/// Teilbarer Schreibgriff auf die Detailzeile eines [`StageTimer`].
+///
+/// `StageTimer` selbst ist an den Aufrufer gebunden; der Controller laeuft aber
+/// tief in `bench_run`. Der Griff ist `Clone + Send + Sync` und laesst sich
+/// dorthin durchreichen, ohne den Timer zu verschieben.
+#[derive(Clone)]
+pub struct StageNote(std::sync::Arc<std::sync::Mutex<String>>);
+
+impl StageNote {
+    /// Setzt den Text, den die mitlaufende Zeile hinter der Laufzeit zeigt.
+    pub fn set(&self, what: &str) {
+        if let Ok(mut g) = self.0.lock() {
+            *g = what.trim().replace('\n', " ");
+        }
+    }
+}
+
+/// Laufzeit-Anzeige fuer langlaufende Schritte.
+///
+/// Am Terminal aktualisiert sich EINE Zeile an Ort und Stelle (Wagenruecklauf)
+/// im Viertelsekundentakt und zeigt Stadium, Laufzeit und — via [`StageNote`] —
+/// den gerade laufenden Schritt. Geht stdout in eine Pipe, bleibt es beim
+/// Zeilenumbruch alle 20s, weil ein Wagenruecklauf in Logdateien nur Brei
+/// erzeugt.
 pub struct StageTimer {
     started: Instant,
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    detail: std::sync::Arc<std::sync::Mutex<String>>,
     handle: Option<std::thread::JoinHandle<()>>,
+}
+
+/// Breite, auf die die mitlaufende Zeile aufgefuellt wird, damit ein kuerzer
+/// gewordener Text keine Reste der vorherigen Ausgabe stehen laesst.
+const LIVE_LINE_WIDTH: usize = 110;
+
+/// `true`, wenn stdout an einem Terminal haengt.
+///
+/// Nur dann darf die Zeile per `\r` an Ort und Stelle aktualisiert werden. Geht
+/// stdout in eine Pipe (`Tee-Object`, Logdatei), erzeugt `\r` unlesbaren Brei —
+/// dort bleibt es beim periodischen Zeilenumbruch.
+fn stdout_is_tty() -> bool {
+    use std::io::IsTerminal;
+    std::io::stdout().is_terminal()
 }
 
 impl StageTimer {
     pub fn start(label: String) -> Self {
-        println!("[benchmark]   {label} …");
-        {
+        let tty = stdout_is_tty();
+        if !tty {
+            println!("[benchmark]   {label} …");
             use std::io::Write;
             let _ = std::io::stdout().flush();
         }
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let detail = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let s2 = stop.clone();
+        let d2 = detail.clone();
         let started = Instant::now();
         let handle = std::thread::spawn(move || {
+            use std::io::Write;
             let mut waited = 0u64;
-            while !s2.load(std::sync::atomic::Ordering::Relaxed) {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                waited += 500;
-                if waited.is_multiple_of(20_000) {
-                    let s = waited / 1000;
-                    println!("[benchmark]   … {label} laeuft seit {}:{:02}", s / 60, s % 60);
+            let tick = 250u64;
+            loop {
+                if s2.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(tick));
+                waited += tick;
+                let s = waited / 1000;
+                if tty {
+                    // In der laufenden Zeile aktualisieren. Fremde Ausgaben
+                    // (Controller, Shell-Echo) zerschiessen die Zeile kurz —
+                    // der naechste Tick malt sie 250 ms spaeter wieder sauber.
+                    let d = d2.lock().map(|g| g.clone()).unwrap_or_default();
+                    let suffix = if d.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" · {}", char_prefix(&d, 60))
+                    };
+                    let line = format!(
+                        "[benchmark]   {label} … {}:{:02}{suffix}",
+                        s / 60,
+                        s % 60
+                    );
+                    let pad = LIVE_LINE_WIDTH.saturating_sub(line.chars().count());
+                    print!("\r{line}{}", " ".repeat(pad));
+                    let _ = std::io::stdout().flush();
+                } else if waited.is_multiple_of(20_000) {
                     // Ohne Flush bleibt die Zeile in Rusts Blockpuffer haengen,
-                    // sobald stdout in eine Pipe geht (Tee-Object) — dann sieht
-                    // der Nutzer den Ticker nie.
-                    use std::io::Write;
+                    // sobald stdout in eine Pipe geht — dann sieht der Nutzer
+                    // den Ticker nie.
+                    let d = d2.lock().map(|g| g.clone()).unwrap_or_default();
+                    if d.is_empty() {
+                        println!("[benchmark]   … {label} laeuft seit {}:{:02}", s / 60, s % 60);
+                    } else {
+                        println!(
+                            "[benchmark]   … {label} laeuft seit {}:{:02} · {}",
+                            s / 60,
+                            s % 60,
+                            char_prefix(&d, 80)
+                        );
+                    }
                     let _ = std::io::stdout().flush();
                 }
             }
         });
-        Self { started, stop, handle: Some(handle) }
+        Self { started, stop, detail, handle: Some(handle) }
+    }
+
+    /// Teilbarer Griff auf die Detailzeile, zum Durchreichen in tiefere Ebenen.
+    pub fn note_handle(&self) -> StageNote {
+        StageNote(self.detail.clone())
+    }
+
+    /// Setzt den Zusatztext der mitlaufenden Zeile — was das Stadium GERADE tut
+    /// (aktuelles Shell-Kommando, Aktionstyp). Damit zeigt eine einzige Zeile
+    /// Stadium, Laufzeit und aktuellen Schritt, statt nur zu ticken.
+    pub fn note(&self, what: &str) {
+        if let Ok(mut g) = self.detail.lock() {
+            *g = what.trim().replace('\n', " ");
+        }
     }
 
     pub fn finish(mut self, result: &str) {
@@ -95,13 +180,18 @@ impl StageTimer {
             let _ = h.join();
         }
         let s = self.started.elapsed().as_secs();
-        println!("[benchmark]   -> {result} ({}:{:02})", s / 60, s % 60);
+        let line = format!("[benchmark]   -> {result} ({}:{:02})", s / 60, s % 60);
+        if stdout_is_tty() {
+            // Restzeichen der Live-Zeile ueberschreiben, dann fest umbrechen.
+            let pad = LIVE_LINE_WIDTH.saturating_sub(line.chars().count());
+            println!("\r{line}{}", " ".repeat(pad));
+        } else {
+            println!("{line}");
+        }
         use std::io::Write;
         let _ = std::io::stdout().flush();
     }
 }
-
-
 
 /// Zeichen-sichere Kürzung (Python-Slicing `s[:n]` arbeitet auf Zeichen, nicht Bytes).
 pub fn char_prefix(s: &str, n: usize) -> &str {

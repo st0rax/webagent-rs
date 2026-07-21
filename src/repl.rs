@@ -1260,7 +1260,7 @@ impl ReplSession {
         let facts = crate::self_research::gather_facts(&root, 1200);
         let headless = self.headless;
 
-        let report = crate::self_research::run_self_research(&targets, &facts, n, k, |b, p| {
+        let report = crate::self_research::run_self_research(&targets, &facts, n, k, 4, |b, p| {
             isolated_query(b, p, headless, profile_of(b))
         });
 

@@ -434,15 +434,78 @@ fn pick_orchestrator(answered: &[String]) -> String {
 /// Fährt die vier Phasen und liefert den [`SelfResearchReport`]. Der Browser-Teil
 /// steckt in `query(brain, prompt) -> Result<antwort, fehler>` — in REPL/CLI die
 /// isolierte Swarm-Abfrage (`repl::isolated_query`). Fortschritt druckt live.
+/// Befragt mehrere Brains NEBENLÄUFIG mit demselben Prompt, höchstens `limit`
+/// gleichzeitig. Ergebnisse kommen in Eingabereihenfolge zurück, unabhängig
+/// davon, wer zuerst fertig wird.
+///
+/// Sammeln und Abstimmen sind reine Lesephasen — die Brains teilen sich nichts
+/// als den Prompt, jede Abfrage bekommt ohnehin ihre eigene Browser-Profilkopie.
+/// Sequenziell summierte sich das auf `Anzahl Brains × Antwortzeit`, obwohl die
+/// Wartezeit fast vollständig aus dem Warten auf die Antwort besteht.
+///
+/// `limit` ist bewusst begrenzbar: jede Abfrage startet einen eigenen
+/// WebView2-Browser, acht davon gleichzeitig kosten spürbar RAM.
+pub fn query_parallel<Q>(
+    brains: &[String],
+    prompt: &str,
+    limit: usize,
+    on_done: &(dyn Fn(usize, usize) + Sync),
+    query: &Q,
+) -> Vec<(String, Result<String, String>)>
+where
+    Q: Fn(&str, &str) -> Result<String, String> + Sync,
+{
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    let total = brains.len();
+    let slots: Vec<Mutex<Option<Result<String, String>>>> =
+        (0..total).map(|_| Mutex::new(None)).collect();
+    let next = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
+    let workers = limit.clamp(1, total.max(1));
+
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= total {
+                    break;
+                }
+                let r = query(&brains[i], prompt);
+                if let Ok(mut g) = slots[i].lock() {
+                    *g = Some(r);
+                }
+                let d = done.fetch_add(1, Ordering::Relaxed) + 1;
+                on_done(d, total);
+            });
+        }
+    });
+
+    brains
+        .iter()
+        .zip(slots)
+        .map(|(b, slot)| {
+            let r = slot
+                .into_inner()
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| Err("kein Ergebnis".to_string()));
+            (b.clone(), r)
+        })
+        .collect()
+}
+
 pub fn run_self_research<Q>(
     brains: &[String],
     facts: &str,
     suggestions: usize,
     top: usize,
+    parallel: usize,
     query: Q,
 ) -> SelfResearchReport
 where
-    Q: Fn(&str, &str) -> Result<String, String>,
+    Q: Fn(&str, &str) -> Result<String, String> + Sync,
 {
     let n = suggestions.max(1);
     let k = top.max(1);
@@ -457,24 +520,29 @@ where
     );
     let mut pool: Vec<String> = Vec::new();
     let mut answered: Vec<String> = Vec::new();
-    for (i, b) in brains.iter().enumerate() {
-        let _t = crate::StageTimer::start(format!("sammeln {}/{total} — {b}", i + 1));
-        let __r = query(b, &collect_prompt);
-        _t.finish("Antwort da");
-        match __r {
-            Ok(resp) => {
-                let items = parse_suggestions(&resp);
-                println!(
-                    "[self-research] sammeln {}/{total} — {b}: {} Vorschläge",
-                    i + 1,
-                    items.len()
-                );
-                if !items.is_empty() {
-                    answered.push(b.clone());
-                    pool.extend(items);
+    {
+        let t = crate::StageTimer::start(format!("sammeln — {total} Brains, {parallel} parallel"));
+        let note = t.note_handle();
+        let results = query_parallel(
+            brains,
+            &collect_prompt,
+            parallel,
+            &|done, tot| note.set(&format!("{done}/{tot} geantwortet")),
+            &query,
+        );
+        t.finish(&format!("{total} Antworten"));
+        for (b, r) in results {
+            match r {
+                Ok(resp) => {
+                    let items = parse_suggestions(&resp);
+                    println!("[self-research] sammeln — {b}: {} Vorschläge", items.len());
+                    if !items.is_empty() {
+                        answered.push(b);
+                        pool.extend(items);
+                    }
                 }
+                Err(e) => println!("[self-research] sammeln — {b}: — {e}"),
             }
-            Err(e) => println!("[self-research] sammeln {}/{total} — {b}: — {e}", i + 1),
         }
     }
     if pool.is_empty() {
@@ -542,24 +610,29 @@ where
     );
     let mut ballots: Vec<Vec<usize>> = Vec::new();
     let mut voters = 0usize;
-    for (i, b) in brains.iter().enumerate() {
-        let _tv = crate::StageTimer::start(format!("abstimmen {}/{total} — {b}", i + 1));
-        let __rv = query(b, &vote_prompt);
-        _tv.finish("Antwort da");
-        match __rv {
-            Ok(resp) => {
-                let ballot = parse_vote_line(&resp, catalog.len());
-                if !ballot.is_empty() {
-                    voters += 1;
+    {
+        let t = crate::StageTimer::start(format!("abstimmen — {total} Brains, {parallel} parallel"));
+        let note = t.note_handle();
+        let results = query_parallel(
+            brains,
+            &vote_prompt,
+            parallel,
+            &|done, tot| note.set(&format!("{done}/{tot} abgestimmt")),
+            &query,
+        );
+        t.finish(&format!("{total} Stimmzettel"));
+        for (b, r) in results {
+            match r {
+                Ok(resp) => {
+                    let ballot = parse_vote_line(&resp, catalog.len());
+                    if !ballot.is_empty() {
+                        voters += 1;
+                    }
+                    println!("[self-research] abstimmen — {b}: {} Stimmen", ballot.len());
+                    ballots.push(ballot);
                 }
-                println!(
-                    "[self-research] abstimmen {}/{total} — {b}: {} Stimmen",
-                    i + 1,
-                    ballot.len()
-                );
-                ballots.push(ballot);
+                Err(e) => println!("[self-research] abstimmen — {b}: — {e}"),
             }
-            Err(e) => println!("[self-research] abstimmen {}/{total} — {b}: — {e}", i + 1),
         }
     }
 
@@ -818,7 +891,7 @@ mod tests {
                     .to_string())
             }
         };
-        let report = run_self_research(&brains, "# facts", 2, 3, query);
+        let report = run_self_research(&brains, "# facts", 2, 3, 1, query);
         assert_eq!(report.catalog, vec!["Fehlerhierarchie mit thiserror einfuehren", "Strukturiertes Logging via tracing ergaenzen", "Protokoll strikt validieren beim Parsen"]);
         assert_eq!(report.collected, 2);
         assert_eq!(report.voters, 2);
@@ -847,7 +920,7 @@ mod tests {
                     .to_string())
             }
         };
-        let report = run_self_research(&brains, "f", 2, 2, query);
+        let report = run_self_research(&brains, "f", 2, 2, 1, query);
         // Fallback greift: Katalog aus dedupe_pool (Case/Whitespace normalisiert).
         assert!(report.consolidated_by.is_none());
         assert_eq!(report.catalog, vec!["Fehlerhierarchie mit thiserror einfuehren"]);
@@ -859,7 +932,7 @@ mod tests {
     fn no_suggestions_aborts_cleanly() {
         let brains = vec!["a".to_string()];
         let query = |_b: &str, _p: &str| -> Result<String, String> { Err("blockiert".to_string()) };
-        let report = run_self_research(&brains, "f", 3, 3, query);
+        let report = run_self_research(&brains, "f", 3, 3, 1, query);
         assert!(report.catalog.is_empty());
         assert!(report.ranked.is_empty());
         assert_eq!(report.collected, 0);
@@ -903,5 +976,78 @@ mod tests {
         assert!(is_plausible_suggestion(
             "Rate-Limiting fuer die Brain-Abfragen einfuehren, damit Anbieter-Limits nicht gerissen werden"
         ));
+    }
+
+    #[test]
+    fn query_parallel_keeps_input_order_regardless_of_completion() {
+        // Die Reihenfolge der Ergebnisse muss der Eingabe folgen, nicht der
+        // Fertigstellung — sonst wandert eine Antwort dem falschen Brain zu.
+        let brains: Vec<String> = ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect();
+        let q = |b: &str, _p: &str| -> Result<String, String> {
+            // Frueh gestartete kuenstlich verlangsamen, damit die Fertigstellung
+            // garantiert von der Eingabereihenfolge abweicht.
+            let ms = match b {
+                "a" => 60,
+                "b" => 40,
+                "c" => 20,
+                _ => 0,
+            };
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+            Ok(format!("antwort-{b}"))
+        };
+        let got = query_parallel(&brains, "prompt", 4, &|_, _| {}, &q);
+        let names: Vec<&str> = got.iter().map(|(b, _)| b.as_str()).collect();
+        assert_eq!(names, vec!["a", "b", "c", "d"]);
+        assert_eq!(got[0].1.as_deref(), Ok("antwort-a"));
+        assert_eq!(got[3].1.as_deref(), Ok("antwort-d"));
+    }
+
+    #[test]
+    fn query_parallel_reports_progress_once_per_brain() {
+        let brains: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        let seen = std::sync::Mutex::new(Vec::<usize>::new());
+        let q = |_b: &str, _p: &str| -> Result<String, String> { Ok("x".to_string()) };
+        let _ = query_parallel(
+            &brains,
+            "p",
+            2,
+            &|done, total| {
+                assert_eq!(total, 3);
+                seen.lock().unwrap().push(done);
+            },
+            &q,
+        );
+        let mut v = seen.into_inner().unwrap();
+        v.sort_unstable();
+        assert_eq!(v, vec![1, 2, 3], "jeder Abschluss genau einmal gemeldet");
+    }
+
+    #[test]
+    fn query_parallel_keeps_errors_with_their_brain() {
+        let brains: Vec<String> = ["ok1", "boom", "ok2"].iter().map(|s| s.to_string()).collect();
+        let q = |b: &str, _p: &str| -> Result<String, String> {
+            if b == "boom" { Err("kaputt".to_string()) } else { Ok(b.to_string()) }
+        };
+        let got = query_parallel(&brains, "p", 3, &|_, _| {}, &q);
+        assert_eq!(got[1].0, "boom");
+        assert!(got[1].1.is_err());
+        assert!(got[0].1.is_ok() && got[2].1.is_ok());
+    }
+
+    #[test]
+    fn query_parallel_serialises_when_limit_is_one() {
+        let brains: Vec<String> = ["a", "b"].iter().map(|s| s.to_string()).collect();
+        let live = std::sync::atomic::AtomicUsize::new(0);
+        let peak = std::sync::atomic::AtomicUsize::new(0);
+        let q = |_b: &str, _p: &str| -> Result<String, String> {
+            use std::sync::atomic::Ordering;
+            let n = live.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(n, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            live.fetch_sub(1, Ordering::SeqCst);
+            Ok("x".to_string())
+        };
+        let _ = query_parallel(&brains, "p", 1, &|_, _| {}, &q);
+        assert_eq!(peak.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }
