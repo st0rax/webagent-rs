@@ -53,11 +53,64 @@ pub struct SelfResearchReport {
 /// Robust gegen Prosa drumherum (`«2) dann 5)»` → `[2, 5]`), Out-of-Range und
 /// leere Antworten (→ leerer Vektor).
 pub fn parse_vote_line(line: &str, catalog_len: usize) -> Vec<usize> {
+    // Zeilenbasiert statt Blob-Scan: Brains liefern oft eine Vorrede
+    // ("Thought Process", Begründungen) und erst am Ende die eigentliche
+    // Nummernzeile. Ein Scan über den ganzen Text zieht die Zahlen aus der
+    // Vorrede mit hinein und erzeugt einen verrauschten, zu kurzen Stimmzettel
+    // (real beobachtet 2026-07-21: Rangliste mit 3 statt 10 Einträgen).
+    // Deshalb: bevorzugt eine „reine" Nummernzeile verwenden, die letzte
+    // gewinnt (Modelle wiederholen die finale Antwort am Schluss).
+    let mut best: Option<Vec<usize>> = None;
+    for raw in line.lines() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Führendes Label abschneiden ("Meine Wahl: 4, 1, …"), damit kurze
+        // Nummernzeilen nicht am Wortanteil des Labels scheitern. Nur wenn der
+        // Teil vor dem ':' selbst ziffernfrei und kurz ist (echtes Label).
+        let trimmed = match trimmed.split_once(':') {
+            Some((head, tail))
+                if head.chars().count() <= 30
+                    && !head.chars().any(|c| c.is_ascii_digit())
+                    && !tail.trim().is_empty() =>
+            {
+                tail.trim()
+            }
+            _ => trimmed,
+        };
+        let nums = extract_numbers(trimmed, catalog_len);
+        if nums.len() < 3 {
+            continue;
+        }
+        // Anteil „Stimmzettel-Zeichen" (Ziffern + übliche Trenner) an der Zeile.
+        // Eine echte Nummernzeile besteht fast nur daraus; ein Listenpunkt wie
+        // „3. Sandbox einführen" besteht überwiegend aus Buchstaben.
+        let total = trimmed.chars().count().max(1);
+        let ballotish = trimmed
+            .chars()
+            .filter(|c| c.is_ascii_digit() || " ,;.:|-–—>[]()\t".contains(*c))
+            .count();
+        if ballotish * 10 >= total * 7 {
+            best = Some(nums);
+        }
+    }
+    if let Some(v) = best {
+        return v;
+    }
+    // Fallback: ganze Antwort scannen (altes Verhalten) — besser ein
+    // verrauschter Stimmzettel als gar keiner.
+    extract_numbers(line, catalog_len)
+}
+
+/// Alle gültigen Katalog-Nummern eines Textes in Vorkommensreihenfolge,
+/// dedupliziert (1..=`catalog_len`).
+fn extract_numbers(text: &str, catalog_len: usize) -> Vec<usize> {
     let mut out: Vec<usize> = Vec::new();
     let mut seen: HashSet<usize> = HashSet::new();
     let mut cur = String::new();
     // Ein abschließendes Nicht-Ziffer-Zeichen erzwingt den letzten Flush.
-    for ch in line.chars().chain(std::iter::once(' ')) {
+    for ch in text.chars().chain(std::iter::once(' ')) {
         if ch.is_ascii_digit() {
             cur.push(ch);
         } else if !cur.is_empty() {
@@ -487,6 +540,44 @@ mod tests {
         assert_eq!(parse_vote_line("Priorität: 2) dann 5) dann 2)", 8), vec![2, 5]);
         // catalog_len 0 akzeptiert nichts.
         assert_eq!(parse_vote_line("1 2 3", 0), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn parse_vote_line_prefers_pure_number_line_over_prose() {
+        // Realer Fehlerfall 2026-07-21: Vorrede + Begründungen mit Zahlen
+        // verrauschten den Stimmzettel. Die reine Nummernzeile muss gewinnen.
+        let answer = "Thought Process\n\
+                      Ich halte Punkt 9 fuer wichtig, ausserdem spricht 2026 dafuer.\n\
+                      Meine Wahl: 4, 1, 6, 10, 2, 16, 5, 8, 12, 7";
+        assert_eq!(
+            parse_vote_line(answer, 22),
+            vec![4, 1, 6, 10, 2, 16, 5, 8, 12, 7]
+        );
+    }
+
+    #[test]
+    fn parse_vote_line_ignores_markdown_enumeration_lines() {
+        // "3. Sandbox einfuehren" ist ein Listenpunkt, KEIN Stimmzettel:
+        // solche Zeilen duerfen die reine Nummernzeile nicht verdraengen.
+        let answer = "1. Sandbox fuer Shell-Aktionen einfuehren\n\
+                      2. Protokoll versionieren und validieren\n\
+                      3. Brain-Trait fuer Tests definieren\n\
+                      7, 3, 1";
+        assert_eq!(parse_vote_line(answer, 10), vec![7, 3, 1]);
+    }
+
+    #[test]
+    fn parse_vote_line_last_number_line_wins() {
+        // Modelle wiederholen die finale Antwort haeufig am Schluss.
+        let answer = "Entwurf: 1, 2, 3\nKorrigiert: 5, 6, 7";
+        assert_eq!(parse_vote_line(answer, 10), vec![5, 6, 7]);
+    }
+
+    #[test]
+    fn parse_vote_line_falls_back_when_no_clean_line() {
+        // Kein sauberer Stimmzettel vorhanden → altes Blob-Verhalten als
+        // Rueckfallebene (lieber verrauscht als gar nichts).
+        assert_eq!(parse_vote_line("ich nehme 4 und dann 9", 10), vec![4, 9]);
     }
 
     #[test]
