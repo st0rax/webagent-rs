@@ -376,6 +376,18 @@ pub fn is_improvement(best: Option<Progress>, now: Progress) -> bool {
     }
 }
 
+/// `true`, wenn der Run-Status eine EXTERNE Blockade meldet (Anbieter-Limit,
+/// Login, Cloudflare, Oberflaeche ohne Antwort) statt eines Fehlversuchs.
+///
+/// Solche Laeufe duerfen nicht in den Score: sonst faellt die Bewertung eines
+/// Brains mit der Auslastung seines Anbieters statt mit seiner Faehigkeit.
+pub fn is_external_block(status: &str) -> bool {
+    let low = status.to_lowercase();
+    ["brain_unavailable", "blocked", "login_required", "cloudflare", "rate_limit"]
+        .iter()
+        .any(|p| low.contains(p))
+}
+
 /// `true`, wenn ein Versuch objektiv besteht (geändert UND gebaut UND grün).
 pub fn is_pass(did_change: bool, compiled: bool, tests_passed: bool) -> bool {
     did_change && compiled && tests_passed
@@ -830,6 +842,9 @@ where
             let mut best: Option<Progress> = None;
             let mut stalls = 0u32;
             let mut stalled = false;
+            // Externe Blockade (Anbieter-Limit, Oberflaeche liefert nichts):
+            // zaehlt NICHT als Kompetenz-Fehlschlag.
+            let mut unavailable = false;
 
             for iter in 1..=max_iter {
                 iterations = iter;
@@ -841,8 +856,13 @@ where
                     Some(t.note_handle()),
                     config.verbose,
                 ) {
-                    Ok((_status, c)) => {
+                    Ok((status, c)) => {
                         cycles += c;
+                        if is_external_block(&status) {
+                            unavailable = true;
+                            t.finish("Brain nicht verfuegbar (extern)");
+                            break;
+                        }
                         t.finish(&format!("Brain fertig ({c} Zyklen)"));
                     }
                     Err(e) => {
@@ -947,6 +967,17 @@ where
                 }
             }
             let latency_ms = started.elapsed().as_millis() as u64;
+
+            if unavailable {
+                // Kein CodeEvent: ein ausgesperrtes Brain ist kein schlechtes
+                // Brain. Wuerde es als Fehlschlag zaehlen, saenke der Score mit
+                // der Anbieter-Auslastung statt mit der Faehigkeit.
+                println!(
+                    "[benchmark] {brain}: extern blockiert — nicht gewertet (kein Messpunkt)."
+                );
+                reset_repo(&config.workdir, &baseline)?;
+                continue;
+            }
 
             let event = CodeEvent {
                 brain_id: brain.clone(),
@@ -1508,5 +1539,20 @@ error: could not compile `webagent` (lib test)",
         let a = progress_after_tests("error[E0308]: mismatched types");
         let b = progress_after_tests("error[E0308]: mismatched types");
         assert!(!is_improvement(Some(a), b), "zweimal derselbe Fehler ist Stillstand");
+    }
+
+    #[test]
+    fn external_blocks_are_recognised_and_not_confused_with_failure() {
+        // Nur diese duerfen aus der Wertung fallen ...
+        assert!(is_external_block("brain_unavailable"));
+        assert!(is_external_block("blocked: Nachrichtenlimit erreicht"));
+        assert!(is_external_block("login_required"));
+        assert!(is_external_block("cloudflare"));
+        // ... echte Fehlversuche NICHT, sonst verschwindet Unfaehigkeit aus
+        // der Statistik und der Score wird bedeutungslos.
+        assert!(!is_external_block("protocol_error"));
+        assert!(!is_external_block("max_cycles"));
+        assert!(!is_external_block("brain_incomplete"));
+        assert!(!is_external_block("done"));
     }
 }

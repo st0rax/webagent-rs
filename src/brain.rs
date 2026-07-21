@@ -84,7 +84,38 @@ pub trait BrainBackend {
 /// Oberflächen. (Von gemini im Benchmark gebaut, Ernte 2026-07-21.)
 pub fn is_retryable_empty_response(response: &str) -> bool {
     let trimmed = response.trim();
-    trimmed.is_empty() || trimmed == "No response, Please try again later."
+    if trimmed.is_empty() {
+        return true;
+    }
+    // Besteht die Antwort AUSSCHLIESSLICH aus Ausfallmeldungen der Oberfläche,
+    // hat das Brain nie geantwortet — dann ist das kein Formatfehler, sondern
+    // ein Ausfall, und ein neuer Versuch ist das Richtige.
+    //
+    // Der Gleichheitsvergleich allein reichte nicht: zai lieferte am 2026-07-21
+    // ZWEI Zeilen („No response, Please try again later." plus einen
+    // SyntaxError der Weboberfläche), womit die exakte Prüfung ins Leere lief
+    // und der Controller 2,5 Minuten auf eine Reparatur wartete, die nicht
+    // kommen konnte.
+    trimmed.lines().filter(|l| !l.trim().is_empty()).all(is_ui_failure_line)
+}
+
+/// `true`, wenn eine Zeile eine Ausfallmeldung der Weboberfläche ist (und kein
+/// Inhalt des Modells).
+fn is_ui_failure_line(line: &str) -> bool {
+    let low = line.trim().to_lowercase();
+    const UI_FAILURES: &[&str] = &[
+        "no response",
+        "please try again",
+        "try again later",
+        "is not valid json",
+        "unexpected token",
+        "<!doctype",
+        "something went wrong",
+        "an error occurred",
+        "network error",
+        "failed to fetch",
+    ];
+    UI_FAILURES.iter().any(|p| low.contains(p))
 }
 
 #[cfg(test)]
@@ -97,7 +128,10 @@ mod tests {
         assert!(is_retryable_empty_response("   \n\t  "));
         assert!(is_retryable_empty_response("No response, Please try again later."));
         assert!(!is_retryable_empty_response("Die Aufgabe wurde abgeschlossen."));
-        assert!(!is_retryable_empty_response("SyntaxError: Unexpected token"));
+        // Eine Zeile, die NUR aus einer UI-Fehlermeldung besteht, ist jetzt
+        // ebenfalls "kein Inhalt" — geminis Originalfassung verneinte das,
+        // konnte damit aber den realen zai-Fall nicht fangen.
+        assert!(is_retryable_empty_response("SyntaxError: Unexpected token"));
     }
 
     /// Dummy-Backend für Kompilier-Tests.
@@ -214,5 +248,32 @@ mod tests {
         assert!(response.generation_complete);
         assert_eq!(response.backend_status, "ok");
         assert_eq!(response.raw_html, "");
+    }
+
+    #[test]
+    fn real_zai_ui_failure_is_recognised_as_retryable() {
+        // Wortlaut aus dem Lauf 20260721_173223 (zai, status brain_incomplete):
+        // zwei Zeilen, deshalb lief der reine Gleichheitsvergleich ins Leere.
+        let raw = "No response, Please try again later.
+                   SyntaxError: Unexpected token '<', \"<!doctypeh\"... is not valid JSON";
+        assert!(is_retryable_empty_response(raw));
+    }
+
+    #[test]
+    fn a_real_answer_is_never_treated_as_a_ui_failure() {
+        assert!(!is_retryable_empty_response(
+            "{\"protocol\":\"webagent/1\",\"actions\":[{\"id\":\"a\",\"type\":\"message\",\"text\":\"fertig\"}]}"
+        ));
+        assert!(!is_retryable_empty_response("Die Aufgabe wurde abgeschlossen."));
+    }
+
+    #[test]
+    fn a_mixed_answer_counts_as_content() {
+        // Enthaelt die Antwort NEBEN der Fehlermeldung echten Inhalt, ist sie
+        // kein Ausfall — sonst verwirft der Filter brauchbare Arbeit.
+        let mixed = "No response, Please try again later.
+                     WEBAGENT/1 EDIT
+                     path: src/brain.rs";
+        assert!(!is_retryable_empty_response(mixed));
     }
 }

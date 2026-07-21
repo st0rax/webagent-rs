@@ -667,6 +667,24 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         response_text: &str,
         transcript: &mut Transcript,
     ) -> (String, bool) {
+        // Ausfall der Weboberflaeche VOR der Protokollpruefung abfangen: dann
+        // hat das Brain nie geantwortet, und ein Repair-Prompt („antworte im
+        // richtigen Format") laeuft ins Leere. Real 2026-07-21: zai lieferte
+        // nur „No response, Please try again later." plus einen SyntaxError der
+        // Seite; der Controller wertete das als Formatfehler und wartete
+        // anschliessend 2,5 Minuten auf eine Korrektur, die nicht kommen konnte.
+        if crate::brain::is_retryable_empty_response(response_text) {
+            let _ = transcript.append(
+                "system",
+                &format!(
+                    "brain_unavailable: Oberflaeche lieferte keine Antwort — {}",
+                    crate::char_prefix(response_text.trim(), 120)
+                ),
+                HashMap::new(),
+            );
+            return ("brain_unavailable".to_string(), true);
+        }
+
         let parsed = protocol::parse(response_text);
 
         if !parsed.valid {
