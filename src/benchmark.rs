@@ -131,6 +131,36 @@ pub fn usable_refinement(text: &str) -> Option<String> {
     Some(t.to_string())
 }
 
+/// Extrahiert den vorgeschlagenen Funktionsnamen aus einer verfeinerten Aufgabe
+/// (erstes `pub fn NAME` bzw. `fn NAME`), um Neuheit prüfen zu können.
+pub fn proposed_fn_name(refined: &str) -> Option<String> {
+    for marker in ["pub fn ", "fn "] {
+        if let Some(idx) = refined.find(marker) {
+            let rest = &refined[idx + marker.len()..];
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if name.len() >= 3 {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
+/// `true`, wenn die Aufgabe etwas verlangt, das es SCHON GIBT — dann ist die
+/// Runde wertlos: das Brain meldet korrekt "ist bereits implementiert", ändert
+/// nichts und würde faelschlich als Fehlschlag gewertet (Storax-Beobachtung
+/// 2026-07-21: "einer der Kandidaten sagt immer wieder, alles sei schon sauber
+/// implementiert").
+pub fn task_is_redundant(refined: &str, existing_api: &[String]) -> bool {
+    match proposed_fn_name(refined) {
+        Some(name) => existing_api.iter().any(|e| e == &name),
+        None => false,
+    }
+}
+
 /// Platz-1-Vorschlag eines Self-Research-Reports (die Benchmark-Aufgabe), oder
 /// `None`, wenn niemand abgestimmt hat.
 pub fn winner_from_report(report: &SelfResearchReport) -> Option<String> {
@@ -329,14 +359,41 @@ where
         let refined = if refiner.is_empty() {
             None
         } else {
-            println!("[benchmark] verfeinern via {refiner}…");
-            match query(&refiner, &build_refine_prompt(&winner, &facts)) {
-                Ok(text) => usable_refinement(&text),
-                Err(e) => {
-                    println!("[benchmark] Verfeinerung fehlgeschlagen ({e}) — nutze Rohsieger.");
-                    None
+            // Bis zu 2 Versuche: verlangt die Aufgabe etwas bereits Vorhandenes,
+            // ist die Runde wertlos ("ist schon implementiert" -> keine Aenderung
+            // -> faelschlich FAIL). Dann gezielt nach etwas Neuem fragen.
+            let existing_api = crate::self_research::collect_public_api(&config.workdir.join("src"));
+            let mut chosen: Option<String> = None;
+            for attempt in 1..=2 {
+                println!("[benchmark] verfeinern via {refiner} (Versuch {attempt}/2)…");
+                let mut prompt = build_refine_prompt(&winner, &facts);
+                if attempt > 1 {
+                    prompt.push_str(
+                        "\n\nWICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es \
+                         BEREITS GIBT. Schlage etwas anderes vor, das noch NICHT existiert.",
+                    );
+                }
+                match query(&refiner, &prompt) {
+                    Ok(text) => match usable_refinement(&text) {
+                        Some(t) if task_is_redundant(&t, &existing_api) => {
+                            println!(
+                                "[benchmark] verworfen: verlangt bereits vorhandene Funktion ({:?})",
+                                proposed_fn_name(&t).unwrap_or_default()
+                            );
+                            continue;
+                        }
+                        other => {
+                            chosen = other;
+                            break;
+                        }
+                    },
+                    Err(e) => {
+                        println!("[benchmark] Verfeinerung fehlgeschlagen ({e}).");
+                        break;
+                    }
                 }
             }
+            chosen
         };
         let effective = refined.unwrap_or_else(|| winner.clone());
         if effective != winner {
@@ -459,6 +516,40 @@ mod refine_tests {
         assert!(p.contains("FAKTEN"), "Projektfakten muessen drinstehen");
         // Keine Architektur-Umbauten anfordern (sonst explorieren die Brains wieder).
         assert!(p.contains("KEINE Architektur-Umbauten"), "{p}");
+    }
+
+    #[test]
+    fn redundanz_erkennung_verhindert_wertlose_runden() {
+        // Storax-Beobachtung: Brains melden "ist bereits implementiert" und
+        // aendern nichts -> wuerde faelschlich als FAIL zaehlen.
+        let api = vec![
+            "error_code".to_string(),
+            "format_audit_line".to_string(),
+            "parse".to_string(),
+        ];
+        let redundant = "In src/protocol.rs: fuege pub fn error_code(error: &str) -> &'static str \
+                         hinzu, die Fehlermeldungen auf Slugs abbildet. Tests: a, b, c, d.";
+        assert!(task_is_redundant(redundant, &api));
+
+        let neu = "In src/protocol.rs: fuege pub fn action_summary(actions: &[Action]) -> String \
+                   hinzu, die eine Kurzfassung liefert. Tests: leer, eine, viele, gemischt.";
+        assert!(!task_is_redundant(neu, &api));
+
+        // Ohne erkennbare Signatur nicht faelschlich als redundant werten.
+        assert!(!task_is_redundant("Mach irgendwas mit Sicherheit.", &api));
+    }
+
+    #[test]
+    fn proposed_fn_name_extrahiert_signatur() {
+        assert_eq!(
+            proposed_fn_name("... pub fn foo_bar(x: u8) -> bool ..."),
+            Some("foo_bar".to_string())
+        );
+        assert_eq!(
+            proposed_fn_name("Signatur: fn helper_fn() -> ()"),
+            Some("helper_fn".to_string())
+        );
+        assert_eq!(proposed_fn_name("kein code hier"), None);
     }
 
     #[test]

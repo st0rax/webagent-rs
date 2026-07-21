@@ -299,7 +299,50 @@ pub fn gather_facts(root: &Path, max_chars: usize) -> String {
     let readme = std::fs::read_to_string(root.join("README.md")).unwrap_or_default();
     let progress = std::fs::read_to_string(root.join("PROGRESS.md")).unwrap_or_default();
     let modules = collect_modules(&root.join("src"));
-    build_facts(&readme, &progress, &modules, max_chars)
+    let mut facts = build_facts(&readme, &progress, &modules, max_chars);
+
+    // Vorhandene oeffentliche API anhaengen. Ohne sie schlug der Schwarm
+    // wiederholt Dinge vor, die es LAENGST gibt (striktes Schema, error_code,
+    // format_audit_line) — die Brains antworteten dann korrekt "ist bereits
+    // implementiert", taten nichts, und wurden als Fehlschlag gewertet
+    // (22/22 did_change=false, Messung 2026-07-21).
+    let api = collect_public_api(&root.join("src"));
+    if !api.is_empty() {
+        facts.push_str("\n\nBEREITS VORHANDENE oeffentliche Funktionen (NICHT erneut vorschlagen): ");
+        facts.push_str(crate::char_prefix(&api.join(", "), 900));
+    }
+    facts
+}
+
+/// Namen aller `pub fn` unter `src/` — sortiert und dedupliziert.
+/// Dient als "das gibt es schon"-Signal fuer Abstimmung und Verfeinerung.
+pub fn collect_public_api(src: &Path) -> Vec<String> {
+    let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let Ok(entries) = std::fs::read_dir(src) else {
+        return Vec::new();
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in text.lines() {
+            let t = line.trim_start();
+            if let Some(rest) = t.strip_prefix("pub fn ") {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    names.insert(name);
+                }
+            }
+        }
+    }
+    names.into_iter().collect()
 }
 
 /// Nummerierte Liste (`1. …`) für Prompts.
