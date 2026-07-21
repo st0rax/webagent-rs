@@ -129,6 +129,15 @@ enum Commands {
         json: bool,
     },
 
+    /// Fehlerursachen vergangener Laeufe klassifizieren: trennt Harness-Fehler
+    /// von echter Unfaehigkeit der Brains
+    #[command(name = "runs-report")]
+    RunsReport {
+        /// Wie viele der juengsten Laeufe betrachtet werden
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
+
     /// Pre-flight: Profile, Selektoren, Flags (ohne Browser)
     BrainsHealth {
         /// Leeres Shared-Profil akzeptieren (Exit 0)
@@ -573,6 +582,17 @@ fn dispatch(command: Commands) -> i32 {
             workdir,
             headless,
         ),
+
+        Commands::RunsReport { limit } => {
+            let dir = webagent::config::data_dir().join("runs");
+            let runs = webagent::runs_report::recent_runs(&dir, limit);
+            if runs.is_empty() {
+                println!("Keine Laeufe unter {}", dir.display());
+                return 0;
+            }
+            print!("{}", webagent::runs_report::format_report(&runs));
+            0
+        }
 
         Commands::MaintenanceCheck {
             json,
