@@ -72,6 +72,52 @@ const BLOCK_PHRASES: &[&str] = &[
 /// verworfen.
 const BLOCK_BANNER_MAX_CHARS: usize = 400;
 
+/// Normalisiert Text für den Echo-Vergleich: Kleinschreibung, Whitespace
+/// kollabiert — genau wie das JS die Seite einliest.
+fn normalize_for_echo(s: &str) -> String {
+    s.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// `true`, wenn der gefundene „Banner"-Ausschnitt in Wahrheit unsere eigene,
+/// gerade gesendete Frage ist.
+///
+/// `detect_block_banner` liest `document.body.innerText` — also die GANZE Seite
+/// samt der eben abgeschickten Nachricht. Enthält die Aufgabe selbst eines der
+/// Stichwörter („Nachrichtenlimit", „Login", „Cloudflare"), meldet die Erkennung
+/// jedes Brain als blockiert. Real passiert am 2026-07-21: eine Swarm-Frage, die
+/// eine Fehlerstatistik zitierte, ließ 4 von 8 Brains fälschlich als „blocked"
+/// gelten — die Blockade-Meldung enthielt wörtlich den Fragetext.
+///
+/// Der Ausschnitt ist ein Fenster um den Treffer (20 Zeichen davor, 120 danach)
+/// und daher meist an beiden Rändern angeschnitten. Verglichen wird deshalb der
+/// längste zusammenhängende Kern, nicht der Ausschnitt als Ganzes.
+fn banner_is_prompt_echo(banner: &str, prompt: &str) -> bool {
+    if prompt.trim().is_empty() {
+        return false;
+    }
+    let hay = normalize_for_echo(prompt);
+    let needle = normalize_for_echo(banner);
+    if needle.is_empty() {
+        return false;
+    }
+    if hay.contains(&needle) {
+        return true;
+    }
+    // Ränder abschneiden: an Wortgrenzen von beiden Seiten einkürzen, bis ein
+    // hinreichend langer Kern übrig ist, der im Prompt vorkommt.
+    let words: Vec<&str> = needle.split(' ').collect();
+    const MIN_CORE_WORDS: usize = 5;
+    for start in 0..words.len() {
+        for end in (start + MIN_CORE_WORDS..=words.len()).rev() {
+            let core = words[start..end].join(" ");
+            if core.chars().count() >= 25 && hay.contains(&core) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn block_phrase_in_text(text: &str) -> Option<&'static str> {
     // Nur kurze Texte können ein Banner sein; in Fließtext ist die Phrase Inhalt.
     if text.chars().count() > BLOCK_BANNER_MAX_CHARS {
@@ -178,6 +224,11 @@ pub struct WebBrainBackend {
     /// den Antwortbeginn auch dann erkennt, wenn der Nachrichtenzähler nicht
     /// inkrementiert (Container-Selektor / bestehende Konversation).
     baseline_text: RefCell<String>,
+    /// Zuletzt gesendeter Text. Die Blockade-Erkennung liest die ganze Seite,
+    /// auf der auch die eigene Frage steht — ohne diesen Vergleich meldet jede
+    /// Aufgabe, die „Nachrichtenlimit"/„Login"/„Cloudflare" erwaehnt, alle Brains
+    /// als blockiert (real passiert 2026-07-21).
+    last_sent: RefCell<String>,
 }
 
 impl WebBrainBackend {
@@ -215,6 +266,7 @@ impl WebBrainBackend {
             runtime: RefCell::new(None),
             driver: RefCell::new(None),
             baseline_text: RefCell::new(String::new()),
+            last_sent: RefCell::new(String::new()),
         })
     }
 
@@ -984,6 +1036,13 @@ return null;}})()"#
     /// „Nachrichtenlimit erreicht", qwen: „daily usage limit"), NICHT im Antworttext,
     /// darum sieht sie eine reine Antwort-Text-Pruefung nicht.
     fn detect_block_banner(&self) -> Option<String> {
+        let sent = self.last_sent.borrow().clone();
+        self.detect_block_banner_excluding(&sent)
+    }
+
+    /// Wie `detect_block_banner`, ignoriert aber Treffer, die nur das Echo der
+    /// gerade gesendeten Nachricht sind (siehe `banner_is_prompt_echo`).
+    fn detect_block_banner_excluding(&self, sent: &str) -> Option<String> {
         let pats_js = BLOCK_PHRASES
             .iter()
             .map(|p| format!("'{p}'"))
@@ -998,9 +1057,15 @@ for(var i=0;i<pats.length;i++){{var k=low.indexOf(pats[i]);if(k>=0){{return b.sl
 return null;}})()"#
         );
         let v = self.eval(&js).ok()?;
-        v.as_str()
+        let banner = v
+            .as_str()
             .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+            .filter(|s| !s.is_empty())?;
+        if banner_is_prompt_echo(&banner, sent) {
+            // Unsere eigene Frage, kein Banner des Anbieters.
+            return None;
+        }
+        Some(banner)
     }
 
     fn verify_submitted(&self, baseline: i32, url_before: Option<&str>) -> bool {
@@ -1133,6 +1198,7 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn send(&mut self, text: &str) -> Result<i32, String> {
+        *self.last_sent.borrow_mut() = text.to_string();
         match self.brain_id.as_str() {
             "gemini" => self.send_gemini(text),
             "qwen" => self.send_qwen(text),
@@ -1631,5 +1697,51 @@ mod tests {
             true,
         );
         assert_eq!(r, Completion::Complete);
+    }
+
+    #[test]
+    fn own_prompt_is_not_mistaken_for_a_block_banner() {
+        // Realfall 2026-07-21: eine Swarm-Frage zitierte eine Fehlerstatistik mit
+        // dem Wort "Nachrichtenlimit". detect_block_banner liest die ganze Seite
+        // — inklusive der eigenen Frage — und meldete 4 von 8 Brains als
+        // blockiert. Die Blockade-Meldung enthielt woertlich den Fragetext.
+        let prompt = "Messergebnis der letzten Runde: mistral brain_incomplete 0 Zyklen                       Anbieter-Nachrichtenlimit erreicht chatgpt running 0 Zyklen Run nie                       richtig angelaufen. Nenne 10 Verbesserungen.";
+        let banner = "0 Zyklen Anbieter-Nachrichtenlimit erreicht chatgpt running 0 Zyklen Run nie richtig";
+        assert!(banner_is_prompt_echo(banner, prompt));
+    }
+
+    #[test]
+    fn a_real_provider_banner_still_counts_as_blocked() {
+        // Gegenprobe: mistrals echtes Banner steht NICHT im Prompt und muss
+        // weiterhin als Blockade durchgehen.
+        let prompt = "Implementiere pub fn validate_brain_response in src/protocol.rs mit Tests.";
+        let banner = "Mehr erfahren Nachrichtenlimit erreicht Sie haben Ihr Nachrichtenlimit erreicht. Ihr Limit wird in 9 Minuten zurueckgesetzt. Upgrade";
+        assert!(!banner_is_prompt_echo(banner, prompt));
+    }
+
+    #[test]
+    fn echo_check_ignores_whitespace_and_case_differences() {
+        let prompt = "Zeile eins
+
+  Anbieter-Nachrichtenlimit   ERREICHT beim Brain
+";
+        let banner = "anbieter-nachrichtenlimit erreicht beim brain";
+        assert!(banner_is_prompt_echo(banner, prompt));
+    }
+
+    #[test]
+    fn echo_check_is_inert_without_a_prompt() {
+        // Ohne gesendeten Text (z.B. Vorab-Pruefung) darf nichts unterdrueckt
+        // werden — sonst verschluckt der Filter echte Banner.
+        assert!(!banner_is_prompt_echo("Nachrichtenlimit erreicht", ""));
+    }
+
+    #[test]
+    fn short_incidental_overlap_does_not_suppress_a_banner() {
+        // Ein einzelnes gemeinsames Wort darf nicht reichen, sonst wird jedes
+        // Banner wegfiltert, sobald der Prompt zufaellig "Login" enthaelt.
+        let prompt = "Bitte pruefe den Login-Flow in src/login.rs und ergaenze Tests.";
+        let banner = "Please sign in to continue. Login required to use this service.";
+        assert!(!banner_is_prompt_echo(banner, prompt));
     }
 }
