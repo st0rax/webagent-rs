@@ -91,6 +91,46 @@ pub fn build_task_prompt(winner: &str) -> String {
     )
 }
 
+/// Prompt, der einen VAGEN Abstimmungssieger in eine KONKRETE, bounded
+/// Coding-Aufgabe übersetzt (Phase A.5).
+///
+/// Ohne diesen Schritt bekamen alle Brains den rohen Architekturwunsch
+/// ("Sicherheitshärtung: Sandbox/Allowlist/Secret-Handling…") und explorierten
+/// 6–11 Zyklen lang, ohne eine Zeile zu ändern — 22 von 22 Versuchen endeten mit
+/// `did_change=false` (Messung 2026-07-21). Mit einer konkreten Vorgabe
+/// (exakte Signatur + Tests) lieferten dieselben Brains auf Anhieb.
+/// Der Schritt macht den Benchmark ausserdem FAIR: alle Brains bekommen exakt
+/// dieselbe präzise Aufgabe, gemessen wird Umsetzung statt Interpretation.
+pub fn build_refine_prompt(winner: &str, facts: &str) -> String {
+    format!(
+        "Du planst eine Coding-Aufgabe fuer das Rust-Projekt webagent-rs.\n\n\
+         Projektfakten:\n{facts}\n\n\
+         Zu konkretisierender Verbesserungsvorschlag:\n{winner}\n\n\
+         Uebersetze ihn in EINE kleine, in sich geschlossene Aufgabe, die ein \
+         Agent in wenigen Schritten umsetzen kann. Anforderungen an deine Antwort:\n\
+         - genau EINE Zieldatei unter src/ benennen (existierende Datei bevorzugt)\n\
+         - genau EINE neue oeffentliche Funktion mit EXAKTER Rust-Signatur angeben\n\
+         - das erwartete Verhalten in 2-4 Saetzen praezise beschreiben\n\
+         - mindestens 4 konkrete Testfaelle auflisten\n\
+         - nur std und bereits vorhandene Dependencies verwenden\n\
+         - KEINE Architektur-Umbauten, keine neuen Module, kein Refactoring\n\n\
+         Antworte AUSSCHLIESSLICH mit der Aufgabenbeschreibung als Fliesstext \
+         (kein JSON, keine Einleitung, kein Nachwort).",
+        facts = crate::char_prefix(facts, 900),
+        winner = winner.trim()
+    )
+}
+
+/// Nimmt die verfeinerte Aufgabe, wenn sie brauchbar aussieht, sonst `None`.
+/// Zu kurze oder leere Antworten fallen auf den Rohsieger zurück.
+pub fn usable_refinement(text: &str) -> Option<String> {
+    let t = text.trim();
+    if t.chars().count() < 80 {
+        return None;
+    }
+    Some(t.to_string())
+}
+
 /// Platz-1-Vorschlag eines Self-Research-Reports (die Benchmark-Aufgabe), oder
 /// `None`, wenn niemand abgestimmt hat.
 pub fn winner_from_report(report: &SelfResearchReport) -> Option<String> {
@@ -281,7 +321,32 @@ where
         println!("[benchmark] Sieger: {winner}");
         winners.push((round, winner.clone()));
 
-        let task = build_task_prompt(&winner);
+        // Phase A.5 — Verfeinerung: ein Brain uebersetzt den vagen Sieger in eine
+        // konkrete, bounded Aufgabe (exakte Signatur + Testfaelle). Ohne das
+        // explorieren die Brains ergebnislos (siehe build_refine_prompt).
+        // Faellt die Verfeinerung aus, wird der Rohsieger verwendet.
+        let refiner = config.brains.first().cloned().unwrap_or_default();
+        let refined = if refiner.is_empty() {
+            None
+        } else {
+            println!("[benchmark] verfeinern via {refiner}…");
+            match query(&refiner, &build_refine_prompt(&winner, &facts)) {
+                Ok(text) => usable_refinement(&text),
+                Err(e) => {
+                    println!("[benchmark] Verfeinerung fehlgeschlagen ({e}) — nutze Rohsieger.");
+                    None
+                }
+            }
+        };
+        let effective = refined.unwrap_or_else(|| winner.clone());
+        if effective != winner {
+            println!(
+                "[benchmark] Aufgabe: {}",
+                crate::char_prefix(&effective, 160)
+            );
+        }
+
+        let task = build_task_prompt(&effective);
         let tid = task_id(&winner);
 
         // Phase B — pro Brain sequenziell bauen + objektiv messen.
@@ -378,6 +443,34 @@ fn ok_x(b: bool) -> &'static str {
         "ok"
     } else {
         "x"
+    }
+}
+
+#[cfg(test)]
+mod refine_tests {
+    use super::*;
+
+    #[test]
+    fn refine_prompt_demands_concrete_signature_and_tests() {
+        let p = build_refine_prompt("Sicherheitshaertung: Sandbox fuer Shell-Actions", "FAKTEN");
+        assert!(p.contains("EXAKTER Rust-Signatur"), "{p}");
+        assert!(p.contains("Testfaelle"), "{p}");
+        assert!(p.contains("Sicherheitshaertung"), "Sieger muss drinstehen");
+        assert!(p.contains("FAKTEN"), "Projektfakten muessen drinstehen");
+        // Keine Architektur-Umbauten anfordern (sonst explorieren die Brains wieder).
+        assert!(p.contains("KEINE Architektur-Umbauten"), "{p}");
+    }
+
+    #[test]
+    fn usable_refinement_rejects_too_short_and_keeps_real_specs() {
+        assert_eq!(usable_refinement("   "), None);
+        assert_eq!(usable_refinement("zu kurz"), None);
+        let spec = "Datei src/foo.rs: fuege pub fn bar(x: &str) -> usize hinzu, die die \
+                    Zeichenzahl liefert. Tests: leer, ascii, umlaute, lang.";
+        assert_eq!(usable_refinement(spec), Some(spec.trim().to_string()));
+        // Whitespace wird getrimmt.
+        let padded = format!("   {spec}   ");
+        assert_eq!(usable_refinement(&padded), Some(spec.trim().to_string()));
     }
 }
 
