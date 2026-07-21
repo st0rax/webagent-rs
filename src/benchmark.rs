@@ -42,6 +42,46 @@ const VOTE_TOP_K: usize = 10;
 /// Zeichen-Cap der Projektfakten im Sammel-Prompt (wie autoresearch-self).
 const FACTS_MAX_CHARS: usize = 1200;
 
+
+/// Laufzeit-Anzeige fuer langlaufende Schritte: druckt beim Start eine Zeile und
+/// danach alle 20s "laeuft seit MM:SS", damit ein 3-Minuten-Brain-Run nicht wie
+/// ein Absturz aussieht (Storax-Wunsch 2026-07-21).
+struct StageTimer {
+    started: Instant,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl StageTimer {
+    fn start(label: String) -> Self {
+        println!("[benchmark]   {label} …");
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let s2 = stop.clone();
+        let started = Instant::now();
+        let handle = std::thread::spawn(move || {
+            let mut waited = 0u64;
+            while !s2.load(std::sync::atomic::Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                waited += 500;
+                if waited.is_multiple_of(20_000) {
+                    let s = waited / 1000;
+                    println!("[benchmark]   … {label} laeuft seit {}:{:02}", s / 60, s % 60);
+                }
+            }
+        });
+        Self { started, stop, handle: Some(handle) }
+    }
+
+    fn finish(mut self, result: &str) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+        let s = self.started.elapsed().as_secs();
+        println!("[benchmark]   -> {result} ({}:{:02})", s / 60, s % 60);
+    }
+}
+
 /// Konfiguration eines Benchmark-Laufs.
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
@@ -94,24 +134,42 @@ pub fn build_task_prompt(winner: &str) -> String {
     )
 }
 
+/// Zählt die bestandenen Tests aus einer `cargo test`-Ausgabe
+/// (`test result: ok. 387 passed; 0 failed; …`).
+///
+/// Anti-Schummel-Signal: ein Brain kann sonst eine VERWAISTE Datei anlegen
+/// (nicht im Modulbaum) — dann baut und testet alles grün, obwohl nichts
+/// integriert wurde. Real beobachtet 2026-07-21: claude und zai "bestanden"
+/// mit einer Datei unter dem erfundenen Pfad src/executor/…
+pub fn parse_test_count(output: &str) -> Option<u32> {
+    let mut total: Option<u32> = None;
+    for part in output.split_whitespace().collect::<Vec<_>>().windows(2) {
+        if part[1].starts_with("passed") {
+            if let Ok(n) = part[0].parse::<u32>() {
+                total = Some(total.unwrap_or(0) + n);
+            }
+        }
+    }
+    total
+}
+
 /// Prompt, der einen VAGEN Abstimmungssieger in eine KONKRETE, bounded
 /// Coding-Aufgabe übersetzt (Phase A.5).
 ///
-/// Ohne diesen Schritt bekamen alle Brains den rohen Architekturwunsch
-/// ("Sicherheitshärtung: Sandbox/Allowlist/Secret-Handling…") und explorierten
-/// 6–11 Zyklen lang, ohne eine Zeile zu ändern — 22 von 22 Versuchen endeten mit
-/// `did_change=false` (Messung 2026-07-21). Mit einer konkreten Vorgabe
-/// (exakte Signatur + Tests) lieferten dieselben Brains auf Anhieb.
-/// Der Schritt macht den Benchmark ausserdem FAIR: alle Brains bekommen exakt
-/// dieselbe präzise Aufgabe, gemessen wird Umsetzung statt Interpretation.
-pub fn build_refine_prompt(winner: &str, facts: &str) -> String {
+/// Ohne diesen Schritt bekamen alle Brains den rohen Architekturwunsch und
+/// explorierten ergebnislos (22/22 `did_change=false`, 2026-07-21). `files`
+/// erzwingt zusätzlich eine EXISTIERENDE Zieldatei — eine erfundene wie
+/// `src/executor/powershell.rs` führte zu verwaisten Dateien und damit zu
+/// falschen PASS-Wertungen.
+pub fn build_refine_prompt(winner: &str, facts: &str, files: &[String]) -> String {
     format!(
         "Du planst eine Coding-Aufgabe fuer das Rust-Projekt webagent-rs.\n\n\
          Projektfakten:\n{facts}\n\n\
          Zu konkretisierender Verbesserungsvorschlag:\n{winner}\n\n\
          Uebersetze ihn in EINE kleine, in sich geschlossene Aufgabe, die ein \
          Agent in wenigen Schritten umsetzen kann. Anforderungen an deine Antwort:\n\
-         - genau EINE Zieldatei unter src/ benennen (existierende Datei bevorzugt)\n\
+         - genau EINE Zieldatei benennen, und sie MUSS aus dieser Liste stammen \
+           (erfinde KEINE Pfade, lege KEINE neuen Dateien/Module an):\n           {files}\n\
          - genau EINE neue oeffentliche Funktion mit EXAKTER Rust-Signatur angeben\n\
          - das erwartete Verhalten in 2-4 Saetzen praezise beschreiben\n\
          - mindestens 4 konkrete Testfaelle auflisten\n\
@@ -120,7 +178,12 @@ pub fn build_refine_prompt(winner: &str, facts: &str) -> String {
          Antworte AUSSCHLIESSLICH mit der Aufgabenbeschreibung als Fliesstext \
          (kein JSON, keine Einleitung, kein Nachwort).",
         facts = crate::char_prefix(facts, 900),
-        winner = winner.trim()
+        winner = winner.trim(),
+        files = if files.is_empty() {
+            "src/protocol.rs, src/shell_policy.rs, src/file_actions.rs".to_string()
+        } else {
+            files.join(", ")
+        }
     )
 }
 
@@ -388,10 +451,14 @@ where
             // ist die Runde wertlos ("ist schon implementiert" -> keine Aenderung
             // -> faelschlich FAIL). Dann gezielt nach etwas Neuem fragen.
             let existing_api = crate::self_research::collect_public_api(&config.workdir.join("src"));
+            let src_files: Vec<String> = crate::self_research::collect_modules(&config.workdir.join("src"))
+                .into_iter()
+                .map(|(name, _lines)| format!("src/{name}"))
+                .collect();
             let mut chosen: Option<String> = None;
             for attempt in 1..=2 {
                 println!("[benchmark] verfeinern via {refiner} (Versuch {attempt}/2)…");
-                let mut prompt = build_refine_prompt(&winner, &facts);
+                let mut prompt = build_refine_prompt(&winner, &facts, &src_files);
                 if attempt > 1 {
                     prompt.push_str(
                         "\n\nWICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es \
@@ -430,6 +497,17 @@ where
 
         let task = build_task_prompt(&effective);
         let tid = task_id(&winner);
+
+        // Baseline-Testzahl auf sauberem Tree: ein PASS muss die Testzahl
+        // ERHOEHEN, sonst zaehlt eine verwaiste (nicht eingebundene) Datei als
+        // Erfolg — real beobachtet 2026-07-21.
+        let baseline_tests = {
+            let t = StageTimer::start("Baseline-Tests".to_string());
+            let (_ok, out) = run_eval_detail(&config.test_eval, &config.workdir);
+            let n = parse_test_count(&out);
+            t.finish(&format!("Baseline: {} Tests", n.unwrap_or(0)));
+            n.unwrap_or(0)
+        };
 
         // Phase B — pro Brain sequenziell bauen + objektiv messen.
         for brain in &config.brains {
@@ -480,7 +558,15 @@ where
                     break;
                 }
                 let (t_ok, t_out) = run_eval_detail(&config.test_eval, &config.workdir);
-                tests_passed = t_ok;
+                let after = parse_test_count(&t_out).unwrap_or(0);
+                // Gruen UND mehr Tests als vorher: nur dann ist der Code wirklich
+                // eingebunden und getestet (verwaiste Datei erhoeht die Zahl nicht).
+                tests_passed = t_ok && after > baseline_tests;
+                if t_ok && after <= baseline_tests {
+                    println!(
+                        "[benchmark]   Tests gruen, aber Testzahl unveraendert ({after} <= {baseline_tests}) — nicht eingebunden"
+                    );
+                }
                 if tests_passed {
                     println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — grün");
                     break;
@@ -569,13 +655,39 @@ mod refine_tests {
 
     #[test]
     fn refine_prompt_demands_concrete_signature_and_tests() {
-        let p = build_refine_prompt("Sicherheitshaertung: Sandbox fuer Shell-Actions", "FAKTEN");
+        let p = build_refine_prompt("Sicherheitshaertung: Sandbox fuer Shell-Actions", "FAKTEN", &[]);
         assert!(p.contains("EXAKTER Rust-Signatur"), "{p}");
         assert!(p.contains("Testfaelle"), "{p}");
         assert!(p.contains("Sicherheitshaertung"), "Sieger muss drinstehen");
         assert!(p.contains("FAKTEN"), "Projektfakten muessen drinstehen");
         // Keine Architektur-Umbauten anfordern (sonst explorieren die Brains wieder).
         assert!(p.contains("KEINE Architektur-Umbauten"), "{p}");
+    }
+
+    #[test]
+    fn test_count_gate_erkennt_verwaiste_datei() {
+        // Anti-Schummel: eine nicht eingebundene Datei laesst die Testzahl gleich.
+        let before = "test result: ok. 387 passed; 0 failed; 0 ignored";
+        let after_orphan = "test result: ok. 387 passed; 0 failed; 0 ignored";
+        let after_real = "test result: ok. 391 passed; 0 failed; 0 ignored";
+        assert_eq!(parse_test_count(before), Some(387));
+        assert_eq!(parse_test_count(after_orphan), Some(387));
+        assert_eq!(parse_test_count(after_real), Some(391));
+        // Mehrere Testbinaries werden summiert (lib + bin).
+        let multi = "test result: ok. 10 passed; 0 failed\ntest result: ok. 5 passed; 0 failed";
+        assert_eq!(parse_test_count(multi), Some(15));
+        assert_eq!(parse_test_count("kein testoutput"), None);
+    }
+
+    #[test]
+    fn refine_prompt_erzwingt_existierende_zieldatei() {
+        let files = vec!["src/protocol.rs".to_string(), "src/executor.rs".to_string()];
+        let p = build_refine_prompt("Sicherheit haerten", "FAKTEN", &files);
+        assert!(p.contains("src/protocol.rs"), "Dateiliste fehlt");
+        assert!(p.contains("erfinde KEINE Pfade"), "Verbot fehlt");
+        // Ohne Liste ein sinnvoller Default statt leerer Aufzaehlung.
+        let p2 = build_refine_prompt("x", "y", &[]);
+        assert!(p2.contains("src/protocol.rs"));
     }
 
     #[test]
