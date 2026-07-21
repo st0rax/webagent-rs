@@ -132,6 +132,33 @@ fn script_envelope_regex() -> &'static Regex {
     })
 }
 
+/// Rohformat für `write` — Dateiinhalt roh zwischen Markern, ohne JSON-Escaping.
+/// Löst den Fall, an dem Web-Brains mehrzeiligen Code mit Quotes nicht als
+/// JSON-String kodieren konnten (Fund 2026-07-21, autonomer Selbstbau-Versuch).
+/// caps: 1=id, 2=path, 3=content (darf leer sein).
+fn write_envelope_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?s)\AWEBAGENT/1 WRITE\r?\nid:\s*([A-Za-z0-9][A-Za-z0-9._-]{0,127})\r?\npath:\s*([^\r\n]+?)\r?\n---CONTENT---\r?\n([\s\S]*?)\r?\n---END CONTENT---\s*\z",
+        )
+        .unwrap()
+    })
+}
+
+/// Rohformat für `edit` — old/new roh zwischen Markern, ohne JSON-Escaping.
+/// caps: 1=id, 2=path, 3=old_string, 4=new_string. old/new werden NICHT getrimmt
+/// (Einrückung/Whitespace ist für den Anker signifikant).
+fn edit_envelope_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?s)\AWEBAGENT/1 EDIT\r?\nid:\s*([A-Za-z0-9][A-Za-z0-9._-]{0,127})\r?\npath:\s*([^\r\n]+?)\r?\n---OLD---\r?\n([\s\S]*?)\r?\n---NEW---\r?\n([\s\S]*?)\r?\n---END EDIT---\s*\z",
+        )
+        .unwrap()
+    })
+}
+
 fn strip_leading_prose(text: &str) -> &str {
     let lines: Vec<&str> = text.lines().collect();
     let mut index = 0;
@@ -465,6 +492,39 @@ pub fn parse(response_text: &str) -> ParseResult {
         return ParseResult::valid(vec![a], text);
     }
 
+    // WEBAGENT/1 WRITE Rohformat (Dateiinhalt ohne JSON-Escaping).
+    if let Some(caps) = write_envelope_regex().captures(&text) {
+        let path = caps[2].trim().to_string();
+        if path.is_empty() {
+            return ParseResult::invalid("write: path darf nicht leer sein", text);
+        }
+        let mut a = Action::base(caps[1].to_string(), ActionType::Write);
+        a.path = path;
+        a.content = caps[3].to_string();
+        return ParseResult::valid(vec![a], text);
+    }
+
+    // WEBAGENT/1 EDIT Rohformat (old/new ohne JSON-Escaping).
+    if let Some(caps) = edit_envelope_regex().captures(&text) {
+        let path = caps[2].trim().to_string();
+        let old_string = caps[3].to_string();
+        let new_string = caps[4].to_string();
+        if path.is_empty() {
+            return ParseResult::invalid("edit: path darf nicht leer sein", text);
+        }
+        if old_string.is_empty() {
+            return ParseResult::invalid("edit: old_string braucht einen Anker", text);
+        }
+        if old_string == new_string {
+            return ParseResult::invalid("edit: old_string und new_string sind identisch", text);
+        }
+        let mut a = Action::base(caps[1].to_string(), ActionType::Edit);
+        a.path = path;
+        a.old_string = old_string;
+        a.new_string = new_string;
+        return ParseResult::valid(vec![a], text);
+    }
+
     // Entferne gerenderte JSON-Labels
     let label_re = rendered_json_label_regex();
     let text = label_re.replace(&text, "").trim().to_string();
@@ -579,8 +639,13 @@ pub fn is_possibly_truncated(response_text: &str) -> bool {
     let text = strip_rendered_ui_controls(response_text);
 
     if text.starts_with("WEBAGENT/1 SHELL") {
-        let re = script_envelope_regex();
-        return !re.is_match(&text);
+        return !script_envelope_regex().is_match(&text);
+    }
+    if text.starts_with("WEBAGENT/1 WRITE") {
+        return !write_envelope_regex().is_match(&text);
+    }
+    if text.starts_with("WEBAGENT/1 EDIT") {
+        return !edit_envelope_regex().is_match(&text);
     }
 
     if !text.starts_with('{') {
@@ -759,6 +824,54 @@ mod tests {
             {"id": "w2", "type": "write", "path": "C:/tmp/neu.txt"}
         ]});
         assert!(!parse(&serde_json::to_string(&env).unwrap()).valid);
+    }
+
+    #[test]
+    fn test_raw_write_envelope() {
+        // Rohformat: mehrzeiliger Code MIT Quotes, ohne JSON-Escaping.
+        let text = "WEBAGENT/1 WRITE\nid: w-raw-1\npath: src/foo.rs\n---CONTENT---\n\
+                    fn main() {\n    println!(\"Hallo \\\"Welt\\\"\");\n}\n---END CONTENT---";
+        let result = parse(text);
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions.len(), 1);
+        assert_eq!(result.actions[0].action_type, ActionType::Write);
+        assert_eq!(result.actions[0].path, "src/foo.rs");
+        assert_eq!(
+            result.actions[0].content,
+            "fn main() {\n    println!(\"Hallo \\\"Welt\\\"\");\n}"
+        );
+    }
+
+    #[test]
+    fn test_raw_edit_envelope_preserves_whitespace() {
+        // Rohformat edit: Einrückung im Anker bleibt erhalten (nicht getrimmt).
+        // Kein Zeilenfortsetzungs-`\` verwenden — das würde die führenden Spaces fressen.
+        let text = "WEBAGENT/1 EDIT\nid: e-raw-1\npath: src/lib.rs\n---OLD---\n    return a * b;\n---NEW---\n    return a + b;\n---END EDIT---";
+        let result = parse(text);
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions[0].action_type, ActionType::Edit);
+        assert_eq!(result.actions[0].path, "src/lib.rs");
+        assert_eq!(result.actions[0].old_string, "    return a * b;");
+        assert_eq!(result.actions[0].new_string, "    return a + b;");
+    }
+
+    #[test]
+    fn test_raw_edit_rejects_identical_and_empty() {
+        let same = "WEBAGENT/1 EDIT\nid: e1\npath: a.rs\n---OLD---\nx\n---NEW---\nx\n---END EDIT---";
+        assert!(!parse(same).valid, "identisch muss abgelehnt werden");
+        let empty_path = "WEBAGENT/1 WRITE\nid: w1\npath:   \n---CONTENT---\nx\n---END CONTENT---";
+        // path nur Whitespace -> Regex matcht nicht (path braucht ein Nicht-WS-Zeichen);
+        // faellt auf JSON-Pfad zurueck und ist dort ungueltig.
+        assert!(!parse(empty_path).valid);
+    }
+
+    #[test]
+    fn test_raw_write_truncation_detected() {
+        // Abgeschnittene Roh-Hülle (kein ---END CONTENT---) gilt als unvollständig.
+        let partial = "WEBAGENT/1 WRITE\nid: w1\npath: a.rs\n---CONTENT---\nfn main() {";
+        assert!(is_possibly_truncated(partial), "unvollständig erwartet");
+        let complete = "WEBAGENT/1 WRITE\nid: w1\npath: a.rs\n---CONTENT---\nfn main() {}\n---END CONTENT---";
+        assert!(!is_possibly_truncated(complete));
     }
 
     #[test]

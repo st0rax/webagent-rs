@@ -116,6 +116,36 @@ kein Quoting/Escaping-Risiko, präzise Fehlermeldungen (Anker nicht gefunden /
 mehrdeutig), kein versehentliches Überschreiben. shell bleibt für Befehle,
 Builds, Tests und Abfragen.
 
+**WICHTIG bei mehrzeiligem Code / Quotes:** JSON-Strings mit Code sind fehler-
+anfällig (jeder Zeilenumbruch als \\n, jedes " als \\", sonst bricht das JSON).
+Nutze für edit/write mit Code deshalb das ROHFORMAT — der Inhalt steht dann roh
+zwischen Markern, KEIN Escaping nötig. Die ganze Antwort ist genau EINE solche
+Roh-Aktion (kein JSON drumherum):
+
+Neue Datei schreiben:
+WEBAGENT/1 WRITE
+id: eindeutige-id
+path: src/beispiel.rs
+---CONTENT---
+fn main() {{
+    println!("beliebiger Code mit \"Quotes\" und Zeilen");
+}}
+---END CONTENT---
+
+Bestandsdatei ändern (old_string muss EXAKT und EINDEUTIG vorkommen, inkl.
+Einrückung; wird NICHT getrimmt):
+WEBAGENT/1 EDIT
+id: eindeutige-id
+path: src/beispiel.rs
+---OLD---
+    return a * b;
+---NEW---
+    return a + b;
+---END EDIT---
+
+Für kurze, einfache Änderungen ohne Sonderzeichen ist die JSON-Form
+(type: edit/write) weiterhin ok. Bei Code IMMER das Rohformat.
+
 Regeln:
 - protocol muss "{}" sein
 - jede Action braucht eine eindeutige id
