@@ -502,6 +502,24 @@ fn run_eval_detail(cmd: &str, workdir: &Path) -> (bool, String) {
 /// Ohne diesen Schritt zählte ein Brain als Fehlschlag, obwohl es oft nur einen
 /// Tippfehler von grün entfernt war — echte Coding-Agenten lesen den
 /// Compilerfehler und korrigieren (Storax-Vorschlag 2026-07-21).
+/// Anstoss, wenn ein Brain „fertig" meldet, ohne eine Datei geändert zu haben.
+///
+/// Das trifft die Explore-and-give-up-Fälle: claude las die Zieldatei und
+/// verweigerte, kimi meldete per message-Action „Implementierung erfolgreich" —
+/// beide ohne einen einzigen Edit. Der Anstoss macht unmissverständlich, dass
+/// ein Edit die Aufgabe IST, nicht eine Meldung darüber.
+pub fn build_no_change_prompt(task: &str) -> String {
+    format!(
+        "{task}\n\n--- KEIN EDIT ERKANNT ---\n\
+         Du hast KEINE Datei geändert. Eine Nachricht oder Zusammenfassung zählt \
+         NICHT — die Aufgabe ist erst gelöst, wenn die Datei tatsächlich \
+         geändert ist. Gib JETZT genau eine Änderung im Rohformat aus \
+         (WEBAGENT/1 EDIT oder WEBAGENT/1 WRITE) und sonst nichts. Behaupte \
+         keinen Erfolg, ohne editiert zu haben.",
+        task = task.trim()
+    )
+}
+
 pub fn build_repair_prompt(task: &str, stage: &str, output: &str) -> String {
     format!(
         "{task}\n\n--- KORREKTUR NÖTIG ---\n\
@@ -873,9 +891,23 @@ where
 
                 did_change = tree_changed(&config.workdir);
                 if !did_change {
-                    // Nichts geändert -> Reparatur sinnlos, das Brain hat nicht gebaut.
-                    println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — keine Änderung");
-                    break;
+                    // Keine Änderung. Frueher hiess das sofort Abbruch — dabei
+                    // haben claude und kimi (2026-07-21) den Code erkundet und
+                    // dann „fertig" gemeldet, ohne je zu editieren (kimi sogar
+                    // per message-Action „Implementierung erfolgreich"). Ein
+                    // einziger Anstoss kann so ein Brain ueber die Linie bringen:
+                    // nachschieben, dass ein Edit PFLICHT ist, und als Stillstand
+                    // zaehlen (das stall_limit deckelt endloses Nicht-Editieren).
+                    stalls += 1;
+                    println!(
+                        "[benchmark] {brain}: Iteration {iter}/{max_iter} — keine Änderung, Anstoss ({stalls}/{stall_limit})"
+                    );
+                    if stalls >= stall_limit || iter >= max_iter {
+                        stalled = stalls >= stall_limit;
+                        break;
+                    }
+                    attempt_task = build_no_change_prompt(&task);
+                    continue;
                 }
                 let tb = crate::StageTimer::start(format!("{brain}: {}", config.build_eval));
                 let (b_ok, b_out) = run_eval_detail(&config.build_eval, &config.workdir);
@@ -1554,5 +1586,18 @@ error: could not compile `webagent` (lib test)",
         assert!(!is_external_block("max_cycles"));
         assert!(!is_external_block("brain_incomplete"));
         assert!(!is_external_block("done"));
+    }
+
+    #[test]
+    fn no_change_prompt_demands_a_real_edit() {
+        // Gegen das Phantom-Done: kimi meldete "Implementierung erfolgreich"
+        // per message, ohne zu editieren. Der Anstoss muss unmissverstaendlich
+        // einen echten Edit verlangen und Erfolgsmeldungen entwerten.
+        let p = build_no_change_prompt("Implementiere pub fn foo() in src/x.rs");
+        assert!(p.contains("KEINE Datei"));
+        assert!(p.contains("WEBAGENT/1 EDIT") || p.contains("WEBAGENT/1 WRITE"));
+        assert!(p.to_lowercase().contains("behaupte keinen erfolg"));
+        // Die urspruengliche Aufgabe bleibt erhalten.
+        assert!(p.contains("src/x.rs"));
     }
 }
