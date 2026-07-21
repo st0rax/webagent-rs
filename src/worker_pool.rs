@@ -82,6 +82,9 @@ pub struct PoolEntry {
     /// Brain, das dieses (Cooldown-)Brain im Failover ersetzt (Reserve).
     #[serde(default)]
     pub replaced_by: Option<String>,
+    /// Letzter Heartbeat-Zeitpunkt in Millisekunden seit Unix-Epoch.
+    #[serde(default)]
+    pub last_heartbeat_ms: Option<u64>,
 }
 
 impl PoolEntry {
@@ -93,6 +96,7 @@ impl PoolEntry {
             updated_at: crate::now_rfc3339(),
             cooldown_until: None,
             replaced_by: None,
+            last_heartbeat_ms: None,
         }
     }
 }
@@ -718,6 +722,16 @@ pub fn detect_blocked(
 /// `workers_dir`. Extrahiert aus der bestehenden Hang-Erkennung, damit die
 /// spaetere Browser-Pool-Arbeit das Alter teilen kann. `now` ist injizierbar
 /// (fuer Tests).
+/// Prueft, ob ein Worker basierend auf seinem letzten Heartbeat als veraltet (stale) gilt.
+/// Gibt `true` zurueck, wenn `now_ms - last_heartbeat_ms >= timeout_ms`, sonst `false`.
+/// Ungueltige Zeitabstaende (z.B. Heartbeat in der Zukunft) werden als aktiv behandelt.
+pub fn is_worker_stale(last_heartbeat_ms: u64, now_ms: u64, timeout_ms: u64) -> bool {
+    if now_ms < last_heartbeat_ms {
+        return false;
+    }
+    now_ms - last_heartbeat_ms >= timeout_ms
+}
+
 pub fn heartbeat_ages(
     workers_dir: &Path,
     brains: &[String],
@@ -1042,6 +1056,30 @@ mod tests {
         assert_eq!(map.len(), 2);
         assert!(map.remove("a").unwrap() < Duration::from_secs(5));
         assert!(map.remove("b").unwrap() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn is_worker_stale_returns_true_when_timeout_exceeded() {
+        // last_heartbeat_ms = 1000, now_ms = 5000, timeout_ms = 3000 -> true
+        assert!(is_worker_stale(1000, 5000, 3000));
+    }
+
+    #[test]
+    fn is_worker_stale_returns_false_when_timeout_not_exceeded() {
+        // last_heartbeat_ms = 3000, now_ms = 5000, timeout_ms = 3000 -> false
+        assert!(!is_worker_stale(3000, 5000, 3000));
+    }
+
+    #[test]
+    fn is_worker_stale_returns_false_when_heartbeat_exactly_now() {
+        // last_heartbeat_ms = 5000, now_ms = 5000, timeout_ms = 1000 -> false
+        assert!(!is_worker_stale(5000, 5000, 1000));
+    }
+
+    #[test]
+    fn is_worker_stale_returns_false_when_heartbeat_in_future() {
+        // last_heartbeat_ms = 9000, now_ms = 8000, timeout_ms = 1000 -> false
+        assert!(!is_worker_stale(9000, 8000, 1000));
     }
 
     #[test]
