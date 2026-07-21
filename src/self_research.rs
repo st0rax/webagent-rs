@@ -244,6 +244,48 @@ fn first_progress_section(progress: &str) -> String {
 
 /// Zerlegt eine Brain-Antwort in einzelne Vorschlags-Zeilen: nicht-leere Zeilen,
 /// ohne führenden Listen-Marker (`1.`, `2)`, `-`, `*`, `•`).
+/// `true`, wenn eine Zeile als echter Verbesserungsvorschlag durchgeht.
+///
+/// Filtert den Müll heraus, der sonst in den Katalog rutscht und sogar die
+/// Abstimmung gewinnen kann. Real beobachtet 2026-07-21: in zwei von drei
+/// Benchmark-Runden lautete der Sieger
+/// `SyntaxError: Unexpected token '<', "<!doctypeh"... is not valid JSON`
+/// — eine JavaScript-Fehlermeldung aus einer Brain-Oberfläche. Beide Runden
+/// waren dadurch wertlos. Ebenso landete „Thought Process" schon als Vorschlag
+/// auf Platz 9 einer Rangliste.
+pub fn is_plausible_suggestion(line: &str) -> bool {
+    let t = line.trim();
+    // Zu kurz für einen sinnvollen Vorschlag, oder absurd lang (Antwortblock).
+    let n = t.chars().count();
+    if !(20..=400).contains(&n) {
+        return false;
+    }
+    let low = t.to_lowercase();
+    // Technische Fehler-/UI-Artefakte statt Inhalt.
+    const JUNK: &[&str] = &[
+        "syntaxerror",
+        "typeerror",
+        "referenceerror",
+        "<!doctype",
+        "<html",
+        "is not valid json",
+        "unexpected token",
+        "stack trace",
+        "traceback",
+        "http error",
+        "err_",
+        "thought process",
+        "thinking…",
+        "reasoning:",
+    ];
+    if JUNK.iter().any(|j| low.contains(j)) {
+        return false;
+    }
+    // Muss überwiegend Fließtext sein (Fehlermeldungen/HTML sind zeichenlastig).
+    let letters = t.chars().filter(|c| c.is_alphabetic()).count();
+    letters * 10 >= n * 6
+}
+
 pub fn parse_suggestions(response: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for raw in response.lines() {
@@ -252,7 +294,7 @@ pub fn parse_suggestions(response: &str) -> Vec<String> {
             continue;
         }
         let cleaned = strip_list_marker(line);
-        if !cleaned.is_empty() {
+        if is_plausible_suggestion(cleaned) {
             out.push(cleaned.to_string());
         }
     }
@@ -667,11 +709,55 @@ mod tests {
     }
 
     #[test]
+    fn plausible_suggestion_filtert_muell() {
+        // Der reale Uebeltaeter: eine JS-Fehlermeldung gewann zwei Abstimmungen.
+        assert!(!is_plausible_suggestion(
+            "SyntaxError: Unexpected token '<', \"<!doctypeh\"... is not valid JSON"
+        ));
+        assert!(!is_plausible_suggestion("Thought Process"));
+        assert!(!is_plausible_suggestion("<html><body>Error 502</body></html>"));
+        assert!(!is_plausible_suggestion("kurz")); // zu kurz
+        assert!(!is_plausible_suggestion(&"x".repeat(500))); // absurd lang
+        // Echte Vorschlaege muessen durchkommen.
+        assert!(is_plausible_suggestion(
+            "Zentrale thiserror-Fehlerhierarchie einfuehren statt verstreuter String-Fehler"
+        ));
+        assert!(is_plausible_suggestion(
+            "stdout-Logs durch tracing mit strukturierten Spans pro Run ersetzen"
+        ));
+    }
+
+    #[test]
+    fn parse_suggestions_filtert_muell_aus_der_liste() {
+        let resp = "1. Zentrale Fehlerhierarchie mit thiserror einfuehren\n\
+                    2. SyntaxError: Unexpected token '<' is not valid JSON\n\
+                    3. Strukturiertes Logging via tracing-Crate ergaenzen\n\
+                    Thought Process";
+        let got = parse_suggestions(resp);
+        assert_eq!(got.len(), 2, "Muell muss raus: {got:?}");
+        assert!(got[0].contains("thiserror"));
+        assert!(got[1].contains("tracing"));
+    }
+
+    #[test]
     fn parse_suggestions_strips_markers() {
-        let resp = "1. Erstes\n2) Zweites\n- Drittes\n* Viertes\n• Fünftes\n\n   ";
+        // Realistische Laengen: parse_suggestions filtert seit 2026-07-21 auch
+        // Muell (zu kurz / Fehlermeldungen); Spielzeugstrings wie "Erstes" waeren
+        // kein plausibler Vorschlag mehr.
+        let resp = "1. Fehlerhierarchie mit thiserror einfuehren\n\
+                    2) Strukturiertes Logging via tracing ergaenzen\n\
+                    - Protokoll-Schema strikt validieren beim Parsen\n\
+                    * Worker-Pool um Prioritaets-Queue erweitern\n\
+                    • Wiki-Suche auf semantisches Retrieval umstellen\n\n   ";
         assert_eq!(
             parse_suggestions(resp),
-            vec!["Erstes", "Zweites", "Drittes", "Viertes", "Fünftes"]
+            vec![
+                "Fehlerhierarchie mit thiserror einfuehren",
+                "Strukturiertes Logging via tracing ergaenzen",
+                "Protokoll-Schema strikt validieren beim Parsen",
+                "Worker-Pool um Prioritaets-Queue erweitern",
+                "Wiki-Suche auf semantisches Retrieval umstellen"
+            ]
         );
     }
 
@@ -705,23 +791,30 @@ mod tests {
         // Kein echtes Brain: die Closure antwortet je nach Phase (am Prompt erkannt).
         let brains = vec!["a".to_string(), "b".to_string()];
         let query = |_b: &str, prompt: &str| -> Result<String, String> {
+            // Realistische Laengen: parse_suggestions filtert seit 2026-07-21
+            // implausible Zeilen (zu kurz / Fehlermeldungen) heraus.
             if prompt.contains("distinkte") {
-                Ok("1. Alpha\n2. Beta\n3. Gamma".to_string())
+                Ok("1. Fehlerhierarchie mit thiserror einfuehren\n\
+                    2. Strukturiertes Logging via tracing ergaenzen\n\
+                    3. Protokoll strikt validieren beim Parsen"
+                    .to_string())
             } else if prompt.contains("WICHTIGSTEN") {
                 Ok("2, 1, 3".to_string())
             } else {
-                Ok("1. Alpha\n2. Beta".to_string())
+                Ok("1. Fehlerhierarchie mit thiserror einfuehren\n\
+                    2. Strukturiertes Logging via tracing ergaenzen"
+                    .to_string())
             }
         };
         let report = run_self_research(&brains, "# facts", 2, 3, query);
-        assert_eq!(report.catalog, vec!["Alpha", "Beta", "Gamma"]);
+        assert_eq!(report.catalog, vec!["Fehlerhierarchie mit thiserror einfuehren", "Strukturiertes Logging via tracing ergaenzen", "Protokoll strikt validieren beim Parsen"]);
         assert_eq!(report.collected, 2);
         assert_eq!(report.voters, 2);
         assert!(report.consolidated_by.is_some());
         // Beide Stimmzettel [2,1,3], top_k=3: num2=3+3=6, num1=2+2=4, num3=1+1=2.
         assert_eq!(report.ranked[0].index, 2);
         assert_eq!(report.ranked[0].points, 6);
-        assert_eq!(report.ranked[0].text, "Beta");
+        assert_eq!(report.ranked[0].text, "Strukturiertes Logging via tracing ergaenzen");
         assert_eq!(report.ranked[1].index, 1);
         assert_eq!(report.ranked[2].index, 3);
     }
@@ -735,15 +828,19 @@ mod tests {
             } else if prompt.contains("WICHTIGSTEN") {
                 Ok("1".to_string())
             } else {
-                Ok("1. Same\n2. same  ".to_string()) // beide Brains identisch
+                // Identisch bis auf Case/Whitespace (dedupe_pool normalisiert),
+                // aber realistisch lang — sonst greift der Plausibilitaetsfilter.
+                Ok("1. Fehlerhierarchie mit thiserror einfuehren\n\
+                    2. fehlerhierarchie MIT thiserror einfuehren  "
+                    .to_string())
             }
         };
         let report = run_self_research(&brains, "f", 2, 2, query);
         // Fallback greift: Katalog aus dedupe_pool (Case/Whitespace normalisiert).
         assert!(report.consolidated_by.is_none());
-        assert_eq!(report.catalog, vec!["Same"]);
+        assert_eq!(report.catalog, vec!["Fehlerhierarchie mit thiserror einfuehren"]);
         assert_eq!(report.ranked[0].index, 1);
-        assert_eq!(report.ranked[0].text, "Same");
+        assert_eq!(report.ranked[0].text, "Fehlerhierarchie mit thiserror einfuehren");
     }
 
     #[test]
