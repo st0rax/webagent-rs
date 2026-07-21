@@ -141,6 +141,29 @@ pub const SPARSE_COPY_WHITELIST: &[&str] = &[
     "Secure Preferences",
     "Local Storage",
     "Session Storage",
+    // "Network" enthaelt bei aktuellem Chromium/WebView2 den Cookie-Jar
+    // (Default/Network/Cookies) — ohne das ist die Kopie ausgeloggt.
+    "Network",
+    // "Local State" haelt den DPAPI-verschluesselten Schluessel, mit dem die
+    // Cookies ueberhaupt erst entschluesselt werden. Fehlt er, sind die
+    // kopierten Cookies wertlos.
+    "Local State",
+];
+
+/// Verzeichnisse, die beim sparsamen Kopieren uebersprungen werden: reine
+/// Caches/Diagnose, gross und fuer den Login irrelevant.
+const SPARSE_SKIP_DIRS: &[&str] = &[
+    "Cache",
+    "Code Cache",
+    "GPUCache",
+    "GPUPersistentCache",
+    "GrShaderCache",
+    "ShaderCache",
+    "Crashpad",
+    "BrowserMetrics",
+    "EBWebViewMetrics",
+    "component_crx_cache",
+    "Service Worker",
 ];
 
 /// Aktiviert die sparsame Profil-Kopie (nur SPARSE_COPY_WHITELIST) statt der
@@ -371,23 +394,63 @@ pub fn copy_dir_sparse(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     let mut copied: u32 = 0;
     let mut non_dir: u32 = 0;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
+    // REKURSIV: WebView2 legt alles unter `EBWebView/Default/…` ab (Cookies
+    // sogar unter `Default/Network/Cookies`). Eine Suche nur auf der obersten
+    // Ebene traf die Whitelist deshalb NIE — die Kopie blieb leer und das Brain
+    // wirkte ausgeloggt (Fund 2026-07-21: 6 von 8 Swarm-Profilen waren leer).
+    copy_sparse_rec(src, dst, &mut copied, &mut non_dir, 0)?;
+    if non_dir > 0 && copied == 0 {
+        eprintln!(
+            "[copy_dir_sparse] WARN: 0 von {non_dir} Dateien aus {:?} kopiert (Whitelist traf nicht zu oder Lese-Fehler)",
+            src
+        );
+    }
+    Ok(())
+}
+
+/// Rekursiver Helfer für [`copy_dir_sparse`]: kopiert Whitelist-Treffer
+/// (Datei ODER Verzeichnis) an ihrer relativen Position und steigt in alle
+/// übrigen Verzeichnisse ab, um verschachtelte Artefakte zu finden.
+/// Cache-Verzeichnisse werden übersprungen, damit die Kopie sparsam bleibt.
+fn copy_sparse_rec(
+    src: &Path,
+    dst: &Path,
+    copied: &mut u32,
+    non_dir: &mut u32,
+    depth: usize,
+) -> std::io::Result<()> {
+    // Profile sind flach genug; die Grenze verhindert Endlosläufe bei Symlinks.
+    if depth > 6 {
+        return Ok(());
+    }
+    let entries = match std::fs::read_dir(src) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
+    for entry in entries.flatten() {
+        let Ok(ty) = entry.file_type() else { continue };
         let name = entry.file_name().to_string_lossy().to_string();
         let target = dst.join(entry.file_name());
-        // Whitelist-Verzeichnisse vollstaendig kopieren (inkl. aller Dateien/Unterordner).
-        if ty.is_dir()
-            && SPARSE_COPY_WHITELIST
-                .iter()
-                .any(|w| w.eq_ignore_ascii_case(&name))
-        {
-            copy_dir_all(&entry.path().to_path_buf(), &target)?;
-        }
+        let hit = SPARSE_COPY_WHITELIST
+            .iter()
+            .any(|w| w.eq_ignore_ascii_case(&name));
+
         if ty.is_dir() {
+            if SPARSE_SKIP_DIRS.iter().any(|s| s.eq_ignore_ascii_case(&name)) {
+                continue;
+            }
+            if hit {
+                // Whitelist-Verzeichnis vollständig übernehmen (z.B. Network/).
+                if copy_dir_all(&entry.path().to_path_buf(), &target).is_ok() {
+                    *copied += 1;
+                }
+            } else {
+                copy_sparse_rec(&entry.path(), &target, copied, non_dir, depth + 1)?;
+            }
             continue;
         }
-        non_dir += 1;
+
+        *non_dir += 1;
         // Lock-Files u.ä. beim Kopieren ignorieren — sie werden neu erzeugt.
         let lower = name.to_lowercase();
         if lower.contains("lock")
@@ -398,20 +461,15 @@ pub fn copy_dir_sparse(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
         {
             continue;
         }
-        // Nur Whitelist-Dateien kopieren.
-        if SPARSE_COPY_WHITELIST
-            .iter()
-            .any(|w| w.eq_ignore_ascii_case(&name))
-            && std::fs::copy(entry.path(), &target).is_ok()
-        {
-            copied += 1;
+        if hit {
+            // Zielverzeichnis erst anlegen, wenn wirklich etwas hineinkommt.
+            if let Some(parent) = target.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if std::fs::copy(entry.path(), &target).is_ok() {
+                *copied += 1;
+            }
         }
-    }
-    if non_dir > 0 && copied == 0 {
-        eprintln!(
-            "[copy_dir_sparse] WARN: 0 von {non_dir} Dateien aus {:?} kopiert (Whitelist traf nicht zu oder Lese-Fehler)",
-            src
-        );
     }
     Ok(())
 }
@@ -1055,6 +1113,65 @@ mod tests {
         let lossy = s.to_string_lossy();
         assert!(lossy.contains("swarm"));
         assert!(lossy.contains("run1_claude"));
+    }
+
+    #[test]
+    fn test_copy_dir_sparse_finds_nested_webview2_artifacts() {
+        // Regression fuer den Fund 2026-07-21: WebView2 legt alles unter
+        // EBWebView/Default/ ab (Cookies sogar unter Default/Network/Cookies).
+        // Die frueher nur oberflaechliche Suche traf die Whitelist NIE — die
+        // Swarm-Kopien waren leer und die Brains wirkten ausgeloggt.
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let src = root_dir().join(format!("data/test_sparse_nested_src_{}", stamp));
+        let dst = root_dir().join(format!("data/test_sparse_nested_dst_{}", stamp));
+        let _ = fs::remove_dir_all(&src);
+        let _ = fs::remove_dir_all(&dst);
+
+        let web = src.join("EBWebView");
+        let default = web.join("Default");
+        fs::create_dir_all(default.join("Network")).unwrap();
+        fs::create_dir_all(default.join("Local Storage")).unwrap();
+        fs::create_dir_all(web.join("Crashpad")).unwrap();
+        fs::create_dir_all(default.join("Cache")).unwrap();
+        // Auth-relevant, verschachtelt:
+        fs::write(default.join("Network").join("Cookies"), b"jar").unwrap();
+        fs::write(web.join("Local State"), b"key").unwrap();
+        fs::write(default.join("Preferences"), b"prefs").unwrap();
+        fs::write(default.join("Local Storage").join("leveldb"), b"ls").unwrap();
+        // Ballast, der NICHT mitkommen soll:
+        fs::write(web.join("Crashpad").join("dump"), b"x").unwrap();
+        fs::write(default.join("Cache").join("blob"), b"x").unwrap();
+        fs::write(default.join("History"), b"h").unwrap();
+
+        copy_dir_sparse(&src.to_path_buf(), &dst.to_path_buf()).unwrap();
+
+        let d_web = dst.join("EBWebView");
+        let d_def = d_web.join("Default");
+        assert!(
+            d_def.join("Network").join("Cookies").is_file(),
+            "Cookie-Jar (Default/Network/Cookies) muss mitkommen"
+        );
+        assert!(
+            d_web.join("Local State").is_file(),
+            "Local State (Entschluesselungs-Key) muss mitkommen"
+        );
+        assert!(d_def.join("Preferences").is_file(), "Preferences kopiert");
+        assert!(
+            d_def.join("Local Storage").join("leveldb").is_file(),
+            "Local Storage kopiert"
+        );
+        assert!(!d_def.join("History").exists(), "History bleibt weg");
+        assert!(!d_web.join("Crashpad").exists(), "Crashpad wird uebersprungen");
+        assert!(!d_def.join("Cache").exists(), "Cache wird uebersprungen");
+
+        let _ = fs::remove_dir_all(&src);
+        let _ = fs::remove_dir_all(&dst);
     }
 
     #[test]
