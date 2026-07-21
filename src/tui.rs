@@ -500,6 +500,8 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
         input_mode: InputMode::Normal,
         target_active,
         gauge_shown: 0.0,
+        expanded: std::collections::HashSet::new(),
+        detail_scroll: 0,
     };
 
     // --- Event-Loop ---
@@ -525,6 +527,17 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                             app.selected = select_wrap(app.selected, 1, app.agents.len());
                         }
                         KeyCode::Char('q') => break 0,
+                        // Ausklappen: Leertaste schaltet um, Pfeile sind
+                        // gerichtet (mehrfach rechts klappt nicht wieder zu).
+                        KeyCode::Char(' ') => app.toggle_expanded(),
+                        KeyCode::Right => app.expand_selected(),
+                        KeyCode::Left => app.collapse_selected(),
+                        KeyCode::Char('j') => {
+                            app.detail_scroll = app.detail_scroll.saturating_add(1);
+                        }
+                        KeyCode::Char('k') => {
+                            app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                        }
                         KeyCode::Char('+') => {
                             app.target_active = (app.target_active + 1).min(candidates.len());
                             write_control(
