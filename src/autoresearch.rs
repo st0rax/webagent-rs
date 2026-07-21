@@ -379,7 +379,7 @@ fn eval_command(cmd: &str) -> std::process::Command {
 /// Spawnt den Eval-Befehl, drainiert stdout in einem eigenen Thread (sonst
 /// blockiert ein voller Pipe-Puffer das `try_wait`-Polling) und killt den
 /// Prozess nach `timeout_secs`.
-fn run_eval_with_timeout(
+pub(crate) fn run_eval_with_timeout(
     cmd: &str,
     workdir: &Path,
     timeout_secs: u64,
@@ -473,12 +473,12 @@ fn git_ok(workdir: &Path, args: &[&str]) -> Result<String, String> {
 }
 
 /// `true`, wenn `git status --porcelain` leer ist (kein uncommitted Zustand).
-fn git_status_clean(workdir: &Path) -> Result<bool, String> {
+pub(crate) fn git_status_clean(workdir: &Path) -> Result<bool, String> {
     Ok(git_ok(workdir, &["status", "--porcelain"])?.is_empty())
 }
 
 /// SHA von HEAD.
-fn git_head_sha(workdir: &Path) -> Result<String, String> {
+pub(crate) fn git_head_sha(workdir: &Path) -> Result<String, String> {
     git_ok(workdir, &["rev-parse", "HEAD"])
 }
 
@@ -508,7 +508,7 @@ fn git_commit_all(workdir: &Path, message: &str) -> Result<String, String> {
 }
 
 /// Full-Reset auf `sha` (Revert einer verworfenen Iteration, §4/§8).
-fn git_reset_hard(workdir: &Path, sha: &str) -> Result<(), String> {
+pub(crate) fn git_reset_hard(workdir: &Path, sha: &str) -> Result<(), String> {
     git_ok(workdir, &["reset", "--hard", sha]).map(|_| ())
 }
 

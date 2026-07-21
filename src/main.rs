@@ -275,6 +275,39 @@ enum Commands {
         facts: Option<String>,
     },
 
+    /// Code-Benchmark: vote-driven objektiver Code-Kompetenz-Score. Der Schwarm
+    /// stimmt über den nächsten Verbesserungsschritt ab; jedes Brain baut den
+    /// Sieger sequenziell, gemessen wird hart (Compiler + Tests, kein Selbst-Report).
+    Benchmark {
+        /// Brains als CSV (Standard: alle registrierten)
+        #[arg(long)]
+        brains: Option<String>,
+
+        /// Anzahl Abstimm-/Bau-Runden
+        #[arg(long, default_value = "1")]
+        rounds: usize,
+
+        /// Vorschläge je Brain in der Sammelphase
+        #[arg(long, default_value = "10")]
+        suggestions: usize,
+
+        /// Eval-Kommando „baut es?"
+        #[arg(long, default_value = "cargo build --lib")]
+        build_eval: String,
+
+        /// Eval-Kommando „Tests grün?"
+        #[arg(long, default_value = "cargo test --lib")]
+        test_eval: String,
+
+        /// Arbeitsverzeichnis (Standard: Repo-Root)
+        #[arg(long)]
+        workdir: Option<String>,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// Read-only gate for autonomous maintenance
     MaintenanceCheck {
         /// Maschinenlesbares JSON
@@ -474,6 +507,24 @@ fn dispatch(command: Commands) -> i32 {
             facts,
         } => cmd_autoresearch_self(suggestions, top, headless, facts),
 
+        Commands::Benchmark {
+            brains,
+            rounds,
+            suggestions,
+            build_eval,
+            test_eval,
+            workdir,
+            headless,
+        } => cmd_benchmark(
+            brains,
+            rounds,
+            suggestions,
+            build_eval,
+            test_eval,
+            workdir,
+            headless,
+        ),
+
         Commands::MaintenanceCheck {
             json,
             pytest,
@@ -613,6 +664,88 @@ fn cmd_autoresearch_self(
         1
     } else {
         0
+    }
+}
+
+/// `webagent benchmark` — vote-driven Code-Kompetenz-Benchmark. Wie
+/// `autoresearch-self` bereitet es isolierte Profile vor und speist Phase A mit
+/// `repl::isolated_query`; Phase B baut/misst pro Brain über den Controller.
+#[allow(clippy::too_many_arguments)]
+fn cmd_benchmark(
+    brains: Option<String>,
+    rounds: usize,
+    suggestions: usize,
+    build_eval: String,
+    test_eval: String,
+    workdir: Option<String>,
+    headless: bool,
+) -> i32 {
+    let targets: Vec<String> = match brains {
+        Some(csv) => csv
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        None => webagent::config::available_brain_ids(),
+    };
+    if targets.is_empty() {
+        eprintln!("[benchmark] keine Brains registriert.");
+        return 2;
+    }
+
+    let workdir = match workdir {
+        Some(p) => std::path::PathBuf::from(p),
+        None => {
+            let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+            webagent::autoresearch::git_repo_root(&cwd).unwrap_or(cwd)
+        }
+    };
+
+    let run_id = webagent::now_run_stamp();
+    let profiles: Vec<(String, std::path::PathBuf)> = targets
+        .iter()
+        .map(|tb| {
+            (
+                tb.clone(),
+                webagent::config::prepare_swarm_profile(&run_id, tb),
+            )
+        })
+        .collect();
+    let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
+        profiles
+            .iter()
+            .find(|(b, _)| b == brain)
+            .map(|(_, p)| p.clone())
+    };
+
+    let config = webagent::benchmark::BenchmarkConfig {
+        brains: targets,
+        rounds,
+        suggestions,
+        build_eval,
+        test_eval,
+        workdir,
+        headless,
+    };
+
+    let result = webagent::benchmark::run_benchmark(&config, |b, p| {
+        webagent::repl::isolated_query(b, p, headless, profile_of(b))
+    });
+
+    let _ = webagent::config::cleanup_swarm_profiles(&run_id);
+
+    match result {
+        Ok(report) => {
+            if report.leaderboard.is_empty() {
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("[benchmark] Fehler: {e}");
+            1
+        }
     }
 }
 
