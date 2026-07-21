@@ -107,25 +107,66 @@ pub fn ui(f: &mut Frame, app: &App) {
     render_footer(f);
 }
 
+/// Wie viele Roh-Ereignisse ein aufgeklappter Agent höchstens zeigt.
+const DETAIL_MAX_ENTRIES: usize = 8;
+/// Wie viele Detailzeilen gleichzeitig sichtbar sind (Rest per j/k).
+const DETAIL_MAX_ROWS: usize = 12;
+
+/// Eine eingerückte Detailzeile im aufgeklappten Baum.
+fn detail_item(text: &str) -> ListItem<'static> {
+    ListItem::new(Line::from(vec![
+        Span::styled("   │ ", Style::default().fg(Color::DarkGray)),
+        Span::styled(text.to_string(), Style::default().fg(Color::Gray)),
+    ]))
+}
+
 /// Linke Pane: Agenten-Liste mit Auswahl-Highlight.
 fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
-    let items: Vec<ListItem> = app
-        .agents
-        .iter()
-        .map(|a| {
-            let color = status_color(&a.status);
-            // Nur aktive Agenten „drehen" (Spinner); der Rest bleibt ruhig lesbar.
-            let marker = if a.status == "active" {
-                app.spinner_frame()
-            } else {
-                status_glyph(&a.status)
-            };
-            ListItem::new(Line::from(vec![
-                Span::styled(format!(" {marker} "), Style::default().fg(color)),
-                Span::styled(a.brain.clone(), Style::default().fg(color)),
-            ]))
-        })
-        .collect();
+    // Innenbreite abzüglich Rahmen und Einrückung des Detailblocks.
+    let detail_width = (area.width as usize).saturating_sub(8);
+    let mut items: Vec<ListItem> = Vec::new();
+    for a in &app.agents {
+        let color = status_color(&a.status);
+        // Nur aktive Agenten „drehen" (Spinner); der Rest bleibt ruhig lesbar.
+        let marker = if a.status == "active" {
+            app.spinner_frame()
+        } else {
+            status_glyph(&a.status)
+        };
+        let open = app.is_expanded(&a.brain);
+        // Klapp-Pfeil nur, wo es auch etwas zu sehen gibt.
+        let arrow = if a.detail.is_empty() {
+            "  "
+        } else if open {
+            "▾ "
+        } else {
+            "▸ "
+        };
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(arrow.to_string(), Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{marker} "), Style::default().fg(color)),
+            Span::styled(a.brain.clone(), Style::default().fg(color)),
+        ])));
+
+        if !open {
+            continue;
+        }
+        let lines = crate::tui_state::build_detail_lines(&a.detail, DETAIL_MAX_ENTRIES, detail_width);
+        if lines.is_empty() {
+            items.push(detail_item("(noch nichts protokolliert)"));
+            continue;
+        }
+        let shown: Vec<&String> = lines.iter().skip(app.detail_scroll).collect();
+        for l in shown.iter().take(DETAIL_MAX_ROWS) {
+            items.push(detail_item(l));
+        }
+        // Ehrlich anzeigen, dass unten noch etwas liegt — sonst haelt man den
+        // abgeschnittenen Ausschnitt fuer das ganze Protokoll.
+        let rest = shown.len().saturating_sub(DETAIL_MAX_ROWS);
+        if rest > 0 {
+            items.push(detail_item(&format!("… {rest} weitere Zeile(n), j/k blättert")));
+        }
+    }
 
     let list = List::new(items)
         .block(titled_block("Agenten"))
@@ -136,8 +177,27 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         );
 
+    // Agenten-Index in Zeilen-Index umrechnen — aufgeklappte Details schieben
+    // die Zeilen, der Auswahlbalken traefe sonst die falsche.
+    let detail_rows: Vec<usize> = app
+        .agents
+        .iter()
+        .map(|a| {
+            if !app.is_expanded(&a.brain) {
+                return 0;
+            }
+            let lines =
+                crate::tui_state::build_detail_lines(&a.detail, DETAIL_MAX_ENTRIES, detail_width);
+            if lines.is_empty() {
+                return 1;
+            }
+            let shown = lines.len().saturating_sub(app.detail_scroll);
+            shown.min(DETAIL_MAX_ROWS) + usize::from(shown > DETAIL_MAX_ROWS)
+        })
+        .collect();
+
     let mut state = ListState::default();
-    state.select(Some(app.selected));
+    state.select(Some(crate::tui_state::selected_row(&detail_rows, app.selected)));
 
     f.render_stateful_widget(&list, area, &mut state);
 }
@@ -274,6 +334,8 @@ fn render_footer(f: &mut Frame) {
     let mut spans = vec![Span::raw(" ")];
     for (k, label) in [
         ("↑↓", "wechseln"),
+        ("␣/→←", "ausklappen"),
+        ("j/k", "blättern"),
         ("↵", "pinnen"),
         ("t", "task"),
         ("+/-", "target"),
