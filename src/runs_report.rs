@@ -157,7 +157,7 @@ pub fn recent_runs(runs_dir: &Path, limit: usize) -> Vec<(PathBuf, RunFacts)> {
             Some((m, e.path()))
         })
         .collect();
-    dirs.sort_by(|a, b| b.0.cmp(&a.0));
+    dirs.sort_by_key(|(t, _)| std::cmp::Reverse(*t));
     dirs.into_iter()
         .take(limit)
         .filter_map(|(_, p)| read_run(&p).map(|f| (p, f)))

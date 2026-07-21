@@ -155,6 +155,14 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// Pro Controller injizierbar — Tests duerfen KEINE prozessglobale
     /// Env-Variable setzen (das brach parallel laufende Tests, Fund 2026-07-21).
     wall_secs_override: Option<u64>,
+    /// Absolute Wall-Deadline des laufenden Runs, gesetzt beim Schleifenstart.
+    ///
+    /// `run_once` deckelt sein `wait_response`-Timeout auf die verbleibende
+    /// Zeit bis hierher. Ohne das wartet ein einzelner Turn sein volles
+    /// Per-Brain-Timeout (plus bis zu 3 Rereads) aus — real 2026-07-21 lief ein
+    /// haengendes mistral/gemini bis 409s, obwohl die Deadline 300s war, weil
+    /// die Wand nur ZWISCHEN Zyklen geprueft wurde, nicht waehrend des Wartens.
+    wall_deadline_at: Option<Instant>,
     /// Senke fuer „was tue ich gerade" — die mitlaufende Timer-Zeile.
     progress: Option<crate::StageNote>,
     /// Unterdrueckt die Schritt-fuer-Schritt-Ausgabe. Am Terminal wuerden diese
@@ -226,6 +234,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             incomplete_retries: 0,
             act_steps: 0,
             wall_secs_override: None,
+            wall_deadline_at: None,
             progress: None,
             quiet: false,
         }
@@ -249,6 +258,25 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     }
 
     /// Führt einen einzelnen Brain-Turn aus.
+    /// Deckelt ein Timeout auf die verbleibende Wall-Zeit (Sekunden).
+    ///
+    /// Ohne aktive Deadline (kein Run-Loop, z.B. im Unit-Test) bleibt der Wert
+    /// unveraendert. Mindestens 1s, damit ein knapp vor der Deadline gestarteter
+    /// Turn nicht mit 0s sofort scheitert — der naechste Schleifenkopf beendet
+    /// den Run dann regulaer mit wall_timeout.
+    fn cap_to_wall(&self, timeout: f64) -> f64 {
+        match self.wall_deadline_at {
+            Some(deadline) => {
+                let remaining = deadline
+                    .checked_duration_since(Instant::now())
+                    .map(|d| d.as_secs_f64())
+                    .unwrap_or(0.0);
+                timeout.min(remaining.max(1.0))
+            }
+            None => timeout,
+        }
+    }
+
     pub fn run_once(
         &mut self,
         message: &str,
@@ -265,6 +293,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // mehr Zeit; hartkodierte 60s waren die Haupt-Timeout-Ursache).
         let wait_timeout =
             crate::timeouts::resolve_timeout("wait_response", self.brain.brain_id(), message, None);
+        // Nie laenger warten als bis zur Wall-Deadline: ein einzelner haengender
+        // Turn darf die Gesamtfrist nicht ueberziehen (Fund 2026-07-21).
+        let wait_timeout = self.cap_to_wall(wait_timeout);
 
         let mut response = match self.brain.wait_response(baseline, wait_timeout) {
             Ok(r) => r,
@@ -293,7 +324,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     extra,
                 );
             }
-            response = match self.brain.wait_response(baseline, wait_timeout) {
+            let reread_timeout = self.cap_to_wall(wait_timeout);
+            response = match self.brain.wait_response(baseline, reread_timeout) {
                 Ok(r) => r,
                 Err(_) => break,
             };
@@ -971,6 +1003,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             .wall_secs_override
             .unwrap_or_else(crate::config::max_run_wall_secs);
         let wall_deadline = Duration::from_secs(wall_secs);
+        // run_once deckelt sein Warte-Timeout auf diese Deadline.
+        self.wall_deadline_at = Some(wall_started + wall_deadline);
 
         // Pending response oder Resume oder Initial
         let mut turn = if let Some(resume_id) = resume_id {
@@ -1772,6 +1806,49 @@ mod tests {
             "wall_elapsed_s sollte gesetzt sein"
         );
     }
+    #[test]
+    fn cap_to_wall_limits_wait_to_remaining_budget() {
+        // Der Kern des 409s-statt-300s-Bugs: ein Turn mit langem Per-Brain-
+        // Timeout darf die Gesamtfrist nicht ueberziehen.
+        let brain = MockBrain::new();
+        let executor = MockExecutor::new();
+        let mut controller =
+            AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+
+        // 2s Restbudget, aber ein Turn wollte 100s warten -> gedeckelt.
+        controller.wall_deadline_at = Some(Instant::now() + Duration::from_secs(2));
+        let capped = controller.cap_to_wall(100.0);
+        assert!(capped <= 2.0 && capped > 0.5, "erwartet ~2s, war {capped}");
+
+        // Kuerzer als das Restbudget bleibt unveraendert.
+        assert_eq!(controller.cap_to_wall(0.5), 0.5);
+    }
+
+    #[test]
+    fn cap_to_wall_is_inert_without_an_active_deadline() {
+        // Ausserhalb eines Run-Loops (z.B. direkter run_once-Aufruf) darf der
+        // Deckel nichts kappen, sonst verkuerzt er legitime Wartezeiten.
+        let brain = MockBrain::new();
+        let executor = MockExecutor::new();
+        let controller =
+            AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        assert_eq!(controller.wall_deadline_at, None);
+        assert_eq!(controller.cap_to_wall(100.0), 100.0);
+    }
+
+    #[test]
+    fn cap_to_wall_keeps_a_one_second_floor_past_the_deadline() {
+        // Schon ueberfaellig: nicht 0s zurueckgeben (sofortiger Fehlschlag),
+        // sondern 1s Restfrist — der naechste Schleifenkopf beendet den Run
+        // dann regulaer als wall_timeout.
+        let brain = MockBrain::new();
+        let executor = MockExecutor::new();
+        let mut controller =
+            AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        controller.wall_deadline_at = Some(Instant::now() - Duration::from_secs(5));
+        assert_eq!(controller.cap_to_wall(100.0), 1.0);
+    }
+
 }
 
 pub fn validate_action_plan(actions: &[crate::protocol::Action]) -> Result<(), String> {
