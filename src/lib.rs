@@ -49,7 +49,59 @@ pub mod webview_runtime;
 pub mod wiki_memory;
 pub mod worker_pool;
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+/// Laufzeit-Anzeige fuer langlaufende Schritte: druckt beim Start eine Zeile und
+/// danach alle 20s "laeuft seit MM:SS", damit ein 3-Minuten-Brain-Run nicht wie
+/// ein Absturz aussieht (Storax-Wunsch 2026-07-21).
+pub struct StageTimer {
+    started: Instant,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl StageTimer {
+    pub fn start(label: String) -> Self {
+        println!("[benchmark]   {label} …");
+        {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+        }
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let s2 = stop.clone();
+        let started = Instant::now();
+        let handle = std::thread::spawn(move || {
+            let mut waited = 0u64;
+            while !s2.load(std::sync::atomic::Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                waited += 500;
+                if waited.is_multiple_of(20_000) {
+                    let s = waited / 1000;
+                    println!("[benchmark]   … {label} laeuft seit {}:{:02}", s / 60, s % 60);
+                    // Ohne Flush bleibt die Zeile in Rusts Blockpuffer haengen,
+                    // sobald stdout in eine Pipe geht (Tee-Object) — dann sieht
+                    // der Nutzer den Ticker nie.
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
+                }
+            }
+        });
+        Self { started, stop, handle: Some(handle) }
+    }
+
+    pub fn finish(mut self, result: &str) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+        let s = self.started.elapsed().as_secs();
+        println!("[benchmark]   -> {result} ({}:{:02})", s / 60, s % 60);
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+    }
+}
+
+
 
 /// Zeichen-sichere Kürzung (Python-Slicing `s[:n]` arbeitet auf Zeichen, nicht Bytes).
 pub fn char_prefix(s: &str, n: usize) -> &str {

@@ -43,56 +43,6 @@ const VOTE_TOP_K: usize = 10;
 const FACTS_MAX_CHARS: usize = 1200;
 
 
-/// Laufzeit-Anzeige fuer langlaufende Schritte: druckt beim Start eine Zeile und
-/// danach alle 20s "laeuft seit MM:SS", damit ein 3-Minuten-Brain-Run nicht wie
-/// ein Absturz aussieht (Storax-Wunsch 2026-07-21).
-struct StageTimer {
-    started: Instant,
-    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    handle: Option<std::thread::JoinHandle<()>>,
-}
-
-impl StageTimer {
-    fn start(label: String) -> Self {
-        println!("[benchmark]   {label} …");
-        {
-            use std::io::Write;
-            let _ = std::io::stdout().flush();
-        }
-        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let s2 = stop.clone();
-        let started = Instant::now();
-        let handle = std::thread::spawn(move || {
-            let mut waited = 0u64;
-            while !s2.load(std::sync::atomic::Ordering::Relaxed) {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-                waited += 500;
-                if waited.is_multiple_of(20_000) {
-                    let s = waited / 1000;
-                    println!("[benchmark]   … {label} laeuft seit {}:{:02}", s / 60, s % 60);
-                    // Ohne Flush bleibt die Zeile in Rusts Blockpuffer haengen,
-                    // sobald stdout in eine Pipe geht (Tee-Object) — dann sieht
-                    // der Nutzer den Ticker nie.
-                    use std::io::Write;
-                    let _ = std::io::stdout().flush();
-                }
-            }
-        });
-        Self { started, stop, handle: Some(handle) }
-    }
-
-    fn finish(mut self, result: &str) {
-        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        if let Some(h) = self.handle.take() {
-            let _ = h.join();
-        }
-        let s = self.started.elapsed().as_secs();
-        println!("[benchmark]   -> {result} ({}:{:02})", s / 60, s % 60);
-        use std::io::Write;
-        let _ = std::io::stdout().flush();
-    }
-}
-
 /// Konfiguration eines Benchmark-Laufs.
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
@@ -513,7 +463,7 @@ where
         // ERHOEHEN, sonst zaehlt eine verwaiste (nicht eingebundene) Datei als
         // Erfolg — real beobachtet 2026-07-21.
         let baseline_tests = {
-            let t = StageTimer::start("Baseline-Tests".to_string());
+            let t = crate::StageTimer::start("Baseline-Tests".to_string());
             let (_ok, out) = run_eval_detail(&config.test_eval, &config.workdir);
             let n = parse_test_count(&out);
             t.finish(&format!("Baseline: {} Tests", n.unwrap_or(0)));
@@ -545,7 +495,7 @@ where
 
             for iter in 1..=max_iter {
                 iterations = iter;
-                let t = StageTimer::start(format!("{brain} Iteration {iter}/{max_iter}: Brain baut"));
+                let t = crate::StageTimer::start(format!("{brain} Iteration {iter}/{max_iter}: Brain baut"));
                 match bench_run(brain, &attempt_task, config.headless) {
                     Ok((_status, c)) => {
                         cycles += c;
@@ -563,7 +513,7 @@ where
                     println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — keine Änderung");
                     break;
                 }
-                let tb = StageTimer::start(format!("{brain}: {}", config.build_eval));
+                let tb = crate::StageTimer::start(format!("{brain}: {}", config.build_eval));
                 let (b_ok, b_out) = run_eval_detail(&config.build_eval, &config.workdir);
                 tb.finish(if b_ok { "Build ok" } else { "Build ROT" });
                 compiled = b_ok;
@@ -575,7 +525,7 @@ where
                     }
                     break;
                 }
-                let tt = StageTimer::start(format!("{brain}: {}", config.test_eval));
+                let tt = crate::StageTimer::start(format!("{brain}: {}", config.test_eval));
                 let (t_ok, t_out) = run_eval_detail(&config.test_eval, &config.workdir);
                 let after = parse_test_count(&t_out).unwrap_or(0);
                 tt.finish(&format!("Tests {} ({after} bestanden)", if t_ok { "ok" } else { "ROT" }));

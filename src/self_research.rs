@@ -404,7 +404,10 @@ where
     let mut pool: Vec<String> = Vec::new();
     let mut answered: Vec<String> = Vec::new();
     for (i, b) in brains.iter().enumerate() {
-        match query(b, &collect_prompt) {
+        let _t = crate::StageTimer::start(format!("sammeln {}/{total} — {b}", i + 1));
+        let __r = query(b, &collect_prompt);
+        _t.finish("Antwort da");
+        match __r {
             Ok(resp) => {
                 let items = parse_suggestions(&resp);
                 println!(
@@ -440,7 +443,10 @@ where
          formulierter Vorschläge (1. … pro Zeile). Keine Einleitung, kein Nachwort.",
         pool = number_list(&pool)
     );
-    let (catalog, consolidated_by) = match query(&orch, &consolidate_prompt) {
+    let _tc = crate::StageTimer::start(format!("konsolidieren via {orch}"));
+    let __rc = query(&orch, &consolidate_prompt);
+    _tc.finish("Antwort da");
+    let (catalog, consolidated_by) = match __rc {
         Ok(resp) => {
             let cat = parse_suggestions(&resp);
             if cat.is_empty() {
@@ -483,7 +489,10 @@ where
     let mut ballots: Vec<Vec<usize>> = Vec::new();
     let mut voters = 0usize;
     for (i, b) in brains.iter().enumerate() {
-        match query(b, &vote_prompt) {
+        let _tv = crate::StageTimer::start(format!("abstimmen {}/{total} — {b}", i + 1));
+        let __rv = query(b, &vote_prompt);
+        _tv.finish("Antwort da");
+        match __rv {
             Ok(resp) => {
                 let ballot = parse_vote_line(&resp, catalog.len());
                 if !ballot.is_empty() {
