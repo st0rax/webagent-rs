@@ -428,16 +428,27 @@ pub fn format_benchmark_report(winners: &[(usize, String)], board: &[CodeStats])
 /// Druckt die Code-Rangliste auf stdout (Live-Ausgabe am Ende, Spec §4).
 fn print_leaderboard(board: &[CodeStats]) {
     println!("[benchmark] Code-Rangliste:");
-    println!("  brain            attempts  change%  compile%  pass%   wilson_pass");
+    println!(
+        "  brain            attempts  change%  compile%  pass%   wilson_pass  schwer  rettung  aufgegeben"
+    );
     for s in board {
         println!(
-            "  {:<15}  {:>8}  {:>6.0}%  {:>7.0}%  {:>5.0}%   {:>0.3}",
+            "  {:<15}  {:>8}  {:>6.0}%  {:>7.0}%  {:>5.0}%   {:>11.3}  {:>6}  {:>7}  {:>10}",
             s.brain_id,
             s.attempts,
             s.change_rate * 100.0,
             s.compile_rate * 100.0,
             s.pass_rate * 100.0,
-            s.wilson_pass
+            s.wilson_pass,
+            s.hard_attempts,
+            s.rescues,
+            s.abandoned
+        );
+    }
+    let rescues: usize = board.iter().map(|s| s.rescues).sum();
+    if rescues > 0 {
+        println!(
+            "  ({rescues} Rettung(en): bestanden an Aufgaben, die ein anderes Brain aufgegeben hatte)"
         );
     }
 }
@@ -767,13 +778,17 @@ where
         // Phase B — Arbeitsschlange statt fester Liste: bleibt ein Brain stecken,
         // wandert SEINE Aufgabe an ein Brain, das sie noch nicht versucht hat.
         let mut harvest_pool: Vec<HarvestCandidate> = Vec::new();
-        let mut queue: std::collections::VecDeque<(String, String)> =
-            plan.iter().cloned().collect();
+        // Drittes Feld: welches Brain diese Aufgabe abgegeben hat (None = frisch).
+        let mut queue: std::collections::VecDeque<(String, String, Option<String>)> =
+            plan.iter().map(|(b, t)| (b.clone(), t.clone(), None)).collect();
         let mut tried: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
-        while let Some((brain_owned, effective_owned)) = queue.pop_front() {
+        while let Some((brain_owned, effective_owned, handoff_from)) = queue.pop_front() {
             let brain = &brain_owned;
             let effective = &effective_owned;
+            if let Some(prev) = &handoff_from {
+                println!("[benchmark] {brain} uebernimmt die Aufgabe von {prev}.");
+            }
             tried.entry(effective.clone()).or_default().push(brain.clone());
             let task = build_task_prompt(effective);
             let tid = task_id(effective);
@@ -912,7 +927,7 @@ where
                         println!(
                             "[benchmark] {brain}: {stall_limit}x kein Fortschritt — Aufgabe geht an {nb}."
                         );
-                        queue.push_back((nb.clone(), effective.clone()));
+                        queue.push_back((nb.clone(), effective.clone(), Some(brain.clone())));
                     }
                     None => println!(
                         "[benchmark] {brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
@@ -930,9 +945,16 @@ where
                 cycles,
                 iterations,
                 latency_ms,
+                handoff_from: handoff_from.clone(),
+                stalled,
                 ts: crate::now_rfc3339(),
             };
             crate::code_score::record(&event);
+            if is_pass(did_change, compiled, tests_passed) {
+                if let Some(prev) = &handoff_from {
+                    println!("[benchmark] RETTUNG: {brain} loest, woran {prev} gescheitert ist.");
+                }
+            }
 
             println!(
                 "[benchmark] {brain}: {iterations} Iteration(en), did_change={} build={} test={} -> {}",
@@ -1161,6 +1183,9 @@ mod tests {
 
     fn stats(brain: &str, attempts: usize, wilson: f64) -> CodeStats {
         CodeStats {
+            hard_attempts: 0,
+            rescues: 0,
+            abandoned: 0,
             brain_id: brain.to_string(),
             attempts,
             change_rate: 1.0,

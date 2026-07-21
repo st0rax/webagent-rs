@@ -49,6 +49,19 @@ pub struct CodeEvent {
     #[serde(default)]
     pub iterations: u32,
     pub latency_ms: u64,
+    /// Brain, das diese Aufgabe aufgegeben hat, falls sie weitergereicht wurde.
+    ///
+    /// Eine weitergereichte Aufgabe ist nachweislich schwerer: mindestens ein
+    /// Brain ist daran hängengeblieben. Ohne dieses Feld sieht ein PASS nach
+    /// Weitergabe in den Daten aus wie ein PASS im ersten Anlauf — der
+    /// Unterschied ist aber genau das aussagekräftigste Signal, das der
+    /// Benchmark erzeugt.
+    #[serde(default)]
+    pub handoff_from: Option<String>,
+    /// `true`, wenn dieser Versuch mangels Fortschritt abgebrochen wurde
+    /// (Stillstand), statt regulär an Build oder Tests zu scheitern.
+    #[serde(default)]
+    pub stalled: bool,
     /// `now_rfc3339()`-Zeitstempel.
     pub ts: String,
 }
@@ -75,6 +88,17 @@ pub struct CodeStats {
     /// Wilson-Lower-Bound der Pass-Quote — der eigentliche Score (mehr Evidenz
     /// bei gleicher Quote ⇒ höherer, belastbarerer Wert).
     pub wilson_pass: f64,
+    /// Versuche an Aufgaben, die ein anderes Brain vorher aufgegeben hat.
+    pub hard_attempts: usize,
+    /// Davon bestanden — „Rettungen".
+    ///
+    /// Das aussagekräftigste Einzelsignal des Benchmarks: die Aufgabe ist
+    /// nachweislich schwer (jemand ist daran hängengeblieben), und das Brain
+    /// startet trotzdem auf derselben frischen Baseline wie der Vorgänger. Ein
+    /// Vorteil aus dessen Vorarbeit besteht nicht — der Tree wurde zurückgesetzt.
+    pub rescues: usize,
+    /// Wie oft dieses Brain selbst mangels Fortschritt aufgegeben hat.
+    pub abandoned: usize,
 }
 
 fn events_path() -> PathBuf {
@@ -151,6 +175,12 @@ fn aggregate(events: &[CodeEvent]) -> Vec<CodeStats> {
                     c as f64 / attempts as f64
                 }
             };
+            let hard_attempts = evs.iter().filter(|e| e.handoff_from.is_some()).count();
+            let rescues = evs
+                .iter()
+                .filter(|e| e.handoff_from.is_some() && e.passed())
+                .count();
+            let abandoned = evs.iter().filter(|e| e.stalled).count();
             CodeStats {
                 brain_id,
                 attempts,
@@ -158,13 +188,27 @@ fn aggregate(events: &[CodeEvent]) -> Vec<CodeStats> {
                 compile_rate: rate(compiles),
                 pass_rate: rate(passes),
                 wilson_pass: wilson_lower_bound(passes, attempts),
+                hard_attempts,
+                rescues,
+                abandoned,
             }
         })
         .collect();
+    // Rangfolge weiterhin nach `wilson_pass`; Rettungen entscheiden nur bei
+    // Gleichstand.
+    //
+    // Sie werden BEWUSST nicht in die Wilson-Zahl eingerechnet: deren Aussage
+    // („untere Vertrauensgrenze der Erfolgsquote") gilt nur für ungewichtete
+    // Erfolge aus Versuchen. Zählte eine Rettung doppelt, wäre das Ergebnis
+    // keine Vertrauensgrenze mehr, sondern eine Punktzahl, die bloß so aussieht
+    // wie eine — und die Rangliste würde ihre Vergleichbarkeit verlieren.
+    // Schwierigkeit steht deshalb als eigene Spalte daneben.
     out.sort_by(|a, b| {
         b.wilson_pass
             .partial_cmp(&a.wilson_pass)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.rescues.cmp(&a.rescues))
+            .then(a.abandoned.cmp(&b.abandoned))
             .then(a.brain_id.cmp(&b.brain_id))
     });
     out
@@ -206,6 +250,8 @@ mod tests {
             cycles: 3,
             iterations: 1,
             latency_ms: 1234,
+            handoff_from: None,
+            stalled: false,
             ts: crate::now_rfc3339(),
         }
     }
@@ -294,5 +340,91 @@ mod tests {
         let loaded = load_events(&path);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0], event);
+    }
+
+    /// Wie `ev`, aber als weitergereichte Aufgabe (ein anderes Brain gab auf).
+    fn ev_handoff(brain: &str, from: &str, passed: bool) -> CodeEvent {
+        CodeEvent {
+            handoff_from: Some(from.to_string()),
+            ..ev(brain, true, true, passed)
+        }
+    }
+
+    #[test]
+    fn rescues_are_counted_separately_from_plain_passes() {
+        let path = unique_path();
+        record_at(&ev("deepseek", true, true, true), &path);
+        record_at(&ev_handoff("deepseek", "zai", true), &path);
+        record_at(&ev_handoff("deepseek", "zai", false), &path);
+        let board = leaderboard_at(&path);
+        let d = board.iter().find(|s| s.brain_id == "deepseek").unwrap();
+        assert_eq!(d.attempts, 3);
+        assert_eq!(d.hard_attempts, 2, "zwei weitergereichte Aufgaben");
+        assert_eq!(d.rescues, 1, "davon eine geloest");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rescues_do_not_inflate_the_wilson_score() {
+        // Bewusste Entscheidung: eine Rettung zaehlt in der Wilson-Zahl wie
+        // jeder andere Erfolg. Wuerde sie doppelt zaehlen, waere das Ergebnis
+        // keine Vertrauensgrenze mehr, sondern nur noch eine Punktzahl, die so
+        // aussieht wie eine.
+        let a = unique_path();
+        record_at(&ev("x", true, true, true), &a);
+        record_at(&ev("x", true, true, false), &a);
+        let b = unique_path();
+        record_at(&ev_handoff("y", "z", true), &b);
+        record_at(&ev("y", true, true, false), &b);
+        let sa = leaderboard_at(&a).into_iter().find(|s| s.brain_id == "x").unwrap();
+        let sb = leaderboard_at(&b).into_iter().find(|s| s.brain_id == "y").unwrap();
+        assert!((sa.wilson_pass - sb.wilson_pass).abs() < 1e-9);
+        assert_eq!(sa.rescues, 0);
+        assert_eq!(sb.rescues, 1);
+        let _ = std::fs::remove_file(&a);
+        let _ = std::fs::remove_file(&b);
+    }
+
+    #[test]
+    fn rescues_break_ties_in_the_ranking() {
+        // Gleiche Quote, gleiche Evidenz: dann entscheidet, wer an einer
+        // nachweislich schweren Aufgabe bestanden hat.
+        let path = unique_path();
+        record_at(&ev("aaa", true, true, true), &path);
+        record_at(&ev("aaa", true, true, false), &path);
+        record_at(&ev_handoff("bbb", "aaa", true), &path);
+        record_at(&ev("bbb", true, true, false), &path);
+        let board = leaderboard_at(&path);
+        assert_eq!(board[0].brain_id, "bbb", "Retter steht bei Gleichstand vorn");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn abandoned_counts_stalled_attempts() {
+        let path = unique_path();
+        record_at(&CodeEvent { stalled: true, ..ev("lahm", true, false, false) }, &path);
+        record_at(&ev("lahm", true, false, false), &path);
+        let s = leaderboard_at(&path).into_iter().find(|s| s.brain_id == "lahm").unwrap();
+        assert_eq!(s.abandoned, 1);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn old_events_without_the_new_fields_still_load() {
+        // Bestandsdaten stammen aus der Zeit vor der Weitergabe — sie duerfen
+        // die Rangliste nicht sprengen.
+        let path = unique_path();
+        std::fs::write(
+            &path,
+            "{\"brain_id\":\"alt\",\"task_id\":\"t\",\"did_change\":true,\"compiled\":true,             \"tests_passed\":true,\"cycles\":2,\"latency_ms\":10,\"ts\":\"2026-07-21T00:00:00Z\"}
+",
+        )
+        .unwrap();
+        let s = leaderboard_at(&path).into_iter().find(|s| s.brain_id == "alt").unwrap();
+        assert_eq!(s.attempts, 1);
+        assert_eq!(s.hard_attempts, 0);
+        assert_eq!(s.rescues, 0);
+        assert!(!s.wilson_pass.is_nan());
+        let _ = std::fs::remove_file(&path);
     }
 }
