@@ -44,6 +44,10 @@ pub struct CodeEvent {
     pub compiled: bool,
     pub tests_passed: bool,
     pub cycles: u32,
+    /// Wie viele Repair-Iterationen nötig waren (1 = auf Anhieb grün).
+    /// `default` haelt Events aus der Zeit vor dem Repair-Loop lesbar.
+    #[serde(default)]
+    pub iterations: u32,
     pub latency_ms: u64,
     /// `now_rfc3339()`-Zeitstempel.
     pub ts: String,
@@ -200,6 +204,7 @@ mod tests {
             compiled,
             tests_passed,
             cycles: 3,
+            iterations: 1,
             latency_ms: 1234,
             ts: crate::now_rfc3339(),
         }

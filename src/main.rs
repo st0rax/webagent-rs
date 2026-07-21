@@ -291,6 +291,11 @@ enum Commands {
         #[arg(long, default_value = "10")]
         suggestions: usize,
 
+        /// Maximale Repair-Iterationen je Brain: bei rotem Build/Test geht die
+        /// Fehlerausgabe als Kontext zurueck ans Brain (1 = kein Repair-Loop)
+        #[arg(long, default_value = "10")]
+        max_iterations: u32,
+
         /// Eval-Kommando „baut es?"
         #[arg(long, default_value = "cargo build --lib")]
         build_eval: String,
@@ -511,6 +516,7 @@ fn dispatch(command: Commands) -> i32 {
             brains,
             rounds,
             suggestions,
+            max_iterations,
             build_eval,
             test_eval,
             workdir,
@@ -519,6 +525,7 @@ fn dispatch(command: Commands) -> i32 {
             brains,
             rounds,
             suggestions,
+            max_iterations,
             build_eval,
             test_eval,
             workdir,
@@ -675,6 +682,7 @@ fn cmd_benchmark(
     brains: Option<String>,
     rounds: usize,
     suggestions: usize,
+    max_iterations: u32,
     build_eval: String,
     test_eval: String,
     workdir: Option<String>,
@@ -726,6 +734,7 @@ fn cmd_benchmark(
         test_eval,
         workdir,
         headless,
+        max_iterations,
     };
 
     let result = webagent::benchmark::run_benchmark(&config, |b, p| {

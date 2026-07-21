@@ -59,6 +59,9 @@ pub struct BenchmarkConfig {
     pub workdir: PathBuf,
     /// Headless-Browser für die Brain-Runs.
     pub headless: bool,
+    /// Maximale Repair-Iterationen je Brain: schlägt Build/Test fehl, geht die
+    /// Fehlerausgabe als Kontext zurück ans Brain (1 = kein Repair-Loop).
+    pub max_iterations: u32,
 }
 
 /// Endergebnis eines Benchmark-Laufs.
@@ -259,10 +262,32 @@ fn tree_changed(workdir: &Path) -> bool {
 
 /// Führt ein Eval-Kommando aus und wertet nur den Exit-Code (0 = ok) — nutzt den
 /// Kommando-Runner mit Timeout aus autoresearch.
-fn run_eval_ok(cmd: &str, workdir: &Path) -> bool {
-    matches!(
-        crate::autoresearch::run_eval_with_timeout(cmd, workdir, EVAL_TIMEOUT_SECS),
-        Ok((Some(0), _))
+/// Führt ein Eval-Kommando aus: `(exit==0, Ausgabe)`. Die Ausgabe geht als
+/// Kontext in den Repair-Versuch (Compiler-/Testfehler zurück ans Brain).
+fn run_eval_detail(cmd: &str, workdir: &Path) -> (bool, String) {
+    match crate::autoresearch::run_eval_with_timeout(cmd, workdir, EVAL_TIMEOUT_SECS) {
+        Ok((code, out)) => (code == Some(0), out),
+        Err(e) => (false, e),
+    }
+}
+
+/// Baut den Folgeauftrag nach einem fehlgeschlagenen Build/Test: die
+/// Original-Aufgabe plus die echte Fehlerausgabe als Kontext.
+///
+/// Ohne diesen Schritt zählte ein Brain als Fehlschlag, obwohl es oft nur einen
+/// Tippfehler von grün entfernt war — echte Coding-Agenten lesen den
+/// Compilerfehler und korrigieren (Storax-Vorschlag 2026-07-21).
+pub fn build_repair_prompt(task: &str, stage: &str, output: &str) -> String {
+    format!(
+        "{task}\n\n--- KORREKTUR NÖTIG ---\n\
+         Deine bisherige Änderung ist im Arbeitsverzeichnis vorhanden, aber \
+         `{stage}` schlägt fehl. Lies die Fehlerausgabe, finde die Ursache und \
+         korrigiere sie mit dem Rohformat (WEBAGENT/1 EDIT/WRITE). Fange NICHT \
+         von vorne an — repariere das Vorhandene.\n\n\
+         Fehlerausgabe (gekürzt):\n{out}",
+        task = task.trim(),
+        stage = stage,
+        out = crate::char_prefix(output.trim(), 2500)
     )
 }
 
@@ -417,20 +442,54 @@ where
             let baseline = crate::autoresearch::git_head_sha(&config.workdir)?;
             let started = Instant::now();
 
-            let (status, cycles) = match bench_run(brain, &task, config.headless) {
-                Ok(res) => res,
-                Err(e) => {
-                    println!("[benchmark] {brain}: run fehlgeschlagen — {e}");
-                    ("failed".to_string(), 0)
-                }
-            };
-            let _ = status;
+            // Repair-Loop: schlägt Build/Test fehl, geht die echte Fehlerausgabe
+            // als Kontext zurück ans Brain (bis zu max_iterations). Zwischen den
+            // Iterationen wird NICHT resettet — das Brain repariert sein eigenes
+            // Werk, wie ein echter Coding-Agent am Compilerfehler.
+            let max_iter = config.max_iterations.max(1);
+            let mut attempt_task = task.clone();
+            let mut cycles = 0u32;
+            let mut did_change = false;
+            let mut compiled = false;
+            let mut tests_passed = false;
+            let mut iterations = 0u32;
 
-            // Eval: did_change → build → test (jeweils nur wenn die Stufe davor
-            // greift; ein unveränderter Tree baut zwar, ist aber kein Erfolg).
-            let did_change = tree_changed(&config.workdir);
-            let compiled = did_change && run_eval_ok(&config.build_eval, &config.workdir);
-            let tests_passed = compiled && run_eval_ok(&config.test_eval, &config.workdir);
+            for iter in 1..=max_iter {
+                iterations = iter;
+                match bench_run(brain, &attempt_task, config.headless) {
+                    Ok((_status, c)) => cycles += c,
+                    Err(e) => {
+                        println!("[benchmark] {brain}: run fehlgeschlagen — {e}");
+                    }
+                }
+
+                did_change = tree_changed(&config.workdir);
+                if !did_change {
+                    // Nichts geändert -> Reparatur sinnlos, das Brain hat nicht gebaut.
+                    println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — keine Änderung");
+                    break;
+                }
+                let (b_ok, b_out) = run_eval_detail(&config.build_eval, &config.workdir);
+                compiled = b_ok;
+                if !compiled {
+                    println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — Build rot");
+                    if iter < max_iter {
+                        attempt_task = build_repair_prompt(&task, &config.build_eval, &b_out);
+                        continue;
+                    }
+                    break;
+                }
+                let (t_ok, t_out) = run_eval_detail(&config.test_eval, &config.workdir);
+                tests_passed = t_ok;
+                if tests_passed {
+                    println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — grün");
+                    break;
+                }
+                println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — Tests rot");
+                if iter < max_iter {
+                    attempt_task = build_repair_prompt(&task, &config.test_eval, &t_out);
+                }
+            }
             let latency_ms = started.elapsed().as_millis() as u64;
 
             let event = CodeEvent {
@@ -440,13 +499,14 @@ where
                 compiled,
                 tests_passed,
                 cycles,
+                iterations,
                 latency_ms,
                 ts: crate::now_rfc3339(),
             };
             crate::code_score::record(&event);
 
             println!(
-                "[benchmark] {brain}: run… did_change={} build={} test={} -> {}",
+                "[benchmark] {brain}: {iterations} Iteration(en), did_change={} build={} test={} -> {}",
                 yes_no(did_change),
                 ok_x(compiled),
                 ok_x(tests_passed),
@@ -516,6 +576,22 @@ mod refine_tests {
         assert!(p.contains("FAKTEN"), "Projektfakten muessen drinstehen");
         // Keine Architektur-Umbauten anfordern (sonst explorieren die Brains wieder).
         assert!(p.contains("KEINE Architektur-Umbauten"), "{p}");
+    }
+
+    #[test]
+    fn repair_prompt_enthaelt_fehlerausgabe_und_verbietet_neuanfang() {
+        let p = build_repair_prompt(
+            "Baue pub fn foo() -> u8",
+            "cargo build --lib",
+            "error[E0433]: failed to resolve: use of undeclared crate `serde_jsonx`",
+        );
+        assert!(p.contains("Baue pub fn foo"), "Original-Aufgabe fehlt");
+        assert!(p.contains("cargo build --lib"), "Stufe fehlt");
+        assert!(p.contains("E0433"), "Fehlerausgabe fehlt");
+        assert!(p.contains("NICHT von vorne"), "Neuanfang muss verboten sein");
+        // Sehr lange Ausgaben werden gekuerzt (Kontextbudget).
+        let long = "x".repeat(9000);
+        assert!(build_repair_prompt("t", "cargo test", &long).chars().count() < 3200);
     }
 
     #[test]
