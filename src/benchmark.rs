@@ -55,6 +55,10 @@ struct StageTimer {
 impl StageTimer {
     fn start(label: String) -> Self {
         println!("[benchmark]   {label} …");
+        {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+        }
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let s2 = stop.clone();
         let started = Instant::now();
@@ -66,6 +70,11 @@ impl StageTimer {
                 if waited.is_multiple_of(20_000) {
                     let s = waited / 1000;
                     println!("[benchmark]   … {label} laeuft seit {}:{:02}", s / 60, s % 60);
+                    // Ohne Flush bleibt die Zeile in Rusts Blockpuffer haengen,
+                    // sobald stdout in eine Pipe geht (Tee-Object) — dann sieht
+                    // der Nutzer den Ticker nie.
+                    use std::io::Write;
+                    let _ = std::io::stdout().flush();
                 }
             }
         });
@@ -79,6 +88,8 @@ impl StageTimer {
         }
         let s = self.started.elapsed().as_secs();
         println!("[benchmark]   -> {result} ({}:{:02})", s / 60, s % 60);
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
     }
 }
 
@@ -534,9 +545,14 @@ where
 
             for iter in 1..=max_iter {
                 iterations = iter;
+                let t = StageTimer::start(format!("{brain} Iteration {iter}/{max_iter}: Brain baut"));
                 match bench_run(brain, &attempt_task, config.headless) {
-                    Ok((_status, c)) => cycles += c,
+                    Ok((_status, c)) => {
+                        cycles += c;
+                        t.finish(&format!("Brain fertig ({c} Zyklen)"));
+                    }
                     Err(e) => {
+                        t.finish("Brain-Run fehlgeschlagen");
                         println!("[benchmark] {brain}: run fehlgeschlagen — {e}");
                     }
                 }
@@ -547,7 +563,9 @@ where
                     println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — keine Änderung");
                     break;
                 }
+                let tb = StageTimer::start(format!("{brain}: {}", config.build_eval));
                 let (b_ok, b_out) = run_eval_detail(&config.build_eval, &config.workdir);
+                tb.finish(if b_ok { "Build ok" } else { "Build ROT" });
                 compiled = b_ok;
                 if !compiled {
                     println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — Build rot");
@@ -557,8 +575,10 @@ where
                     }
                     break;
                 }
+                let tt = StageTimer::start(format!("{brain}: {}", config.test_eval));
                 let (t_ok, t_out) = run_eval_detail(&config.test_eval, &config.workdir);
                 let after = parse_test_count(&t_out).unwrap_or(0);
+                tt.finish(&format!("Tests {} ({after} bestanden)", if t_ok { "ok" } else { "ROT" }));
                 // Gruen UND mehr Tests als vorher: nur dann ist der Code wirklich
                 // eingebunden und getestet (verwaiste Datei erhoeht die Zahl nicht).
                 tests_passed = t_ok && after > baseline_tests;
