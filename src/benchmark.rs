@@ -722,7 +722,7 @@ where
                         "Ernte: {} wieder einspielen + nachpruefen",
                         cand.brain
                     ));
-                    match harvest_commit(cand, &effective, &config) {
+                    match harvest_commit(cand, &effective, config) {
                         Ok(()) => {
                             t.finish("geerntet und committet");
                             println!(
