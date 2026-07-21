@@ -79,8 +79,25 @@ pub trait BrainBackend {
     }
 }
 
+pub fn is_retryable_empty_response(response: &str) -> bool {
+let trimmed = response.trim();
+trimmed.is_empty() || trimmed == "No response, Please try again later."
+}
+
 #[cfg(test)]
 mod tests {
+use super::*;
+
+#[test]
+fn test_is_retryable_empty_response() {
+    assert!(is_retryable_empty_response(""));
+    assert!(is_retryable_empty_response("   \n\t  "));
+    assert!(is_retryable_empty_response("No response, Please try again later."));
+    assert!(!is_retryable_empty_response("Die Aufgabe wurde abgeschlossen."));
+    assert!(!is_retryable_empty_response("SyntaxError: Unexpected token"));
+}
+
+
     use super::*;
 
     /// Dummy-Backend für Kompilier-Tests.
