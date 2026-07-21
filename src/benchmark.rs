@@ -85,6 +85,13 @@ pub struct BenchmarkConfig {
     /// befragt werden. Bauen bleibt sequenziell — die Brains teilen sich EINEN
     /// Git-Worktree, nebenlaeufige Edits wuerden einander ueberschreiben.
     pub parallel: usize,
+    /// Nach wie vielen Iterationen OHNE Fortschritt ein Brain aufgibt und die
+    /// Aufgabe weitergereicht wird. `max_iterations` ist nur noch die harte
+    /// Obergrenze — wer vorankommt, darf sie ausschoepfen, wer sich im Kreis
+    /// dreht, wird frueher gestoppt.
+    pub stall_limit: u32,
+    /// Wie oft eine Aufgabe hoechstens an ein weiteres Brain weitergereicht wird.
+    pub max_handoffs: usize,
 }
 
 /// Ein bestandener Brain-Lauf, dessen Diff für die spätere Ernte aufbewahrt wird.
@@ -285,6 +292,61 @@ pub fn assign_tasks(brains: &[String], ranked: &[String], round: usize) -> Vec<(
             (b.clone(), ranked[idx].clone())
         })
         .collect()
+}
+
+/// Wie weit eine Iteration gekommen ist — die Grundlage dafür, ob sich
+/// Weitermachen lohnt.
+///
+/// `stage` ist die grobe Stufe, `errors` die Feinauflösung darin (Compilerfehler
+/// bzw. rote Tests). Zwölf Fehler auf elf zu drücken ist Fortschritt, auch wenn
+/// die Stufe gleich bleibt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    /// 0 = nichts geändert, 1 = Build rot, 2 = Tests rot, 3 = grün.
+    pub stage: u8,
+    /// Verbleibende Fehler auf dieser Stufe (kleiner ist besser).
+    pub errors: u32,
+}
+
+/// Zählt Compilerfehler in einer `cargo build`-Ausgabe.
+pub fn count_build_errors(output: &str) -> u32 {
+    output
+        .lines()
+        .filter(|l| {
+            let t = l.trim_start();
+            // `error[E0308]:` und `error:` — aber nicht die Schlusszeile
+            // "error: could not compile …", die nur den Sammelabbruch meldet.
+            (t.starts_with("error[") || t.starts_with("error:"))
+                && !t.contains("could not compile")
+        })
+        .count() as u32
+}
+
+/// Zählt fehlgeschlagene Tests aus einer `cargo test`-Ausgabe.
+pub fn count_failed_tests(output: &str) -> u32 {
+    let mut total = 0u32;
+    for part in output.split_whitespace().collect::<Vec<_>>().windows(2) {
+        if part[1].starts_with("failed") {
+            if let Ok(n) = part[0].parse::<u32>() {
+                total += n;
+            }
+        }
+    }
+    total
+}
+
+/// `true`, wenn `now` näher an grün ist als das bisher Beste.
+///
+/// Ohne dieses Maß entschied allein das Schleifenlimit über den Abbruch: ein
+/// Brain, das sich Iteration für Iteration von zwölf Fehlern auf zwei
+/// herunterarbeitet, wurde genauso hart gestoppt wie eines, das zehnmal
+/// dieselbe kaputte Zeile schreibt (Beobachtung Storax, deepseek lief
+/// regelmäßig ins Limit statt zu scheitern).
+pub fn is_improvement(best: Option<Progress>, now: Progress) -> bool {
+    match best {
+        None => now.stage > 0,
+        Some(b) => now.stage > b.stage || (now.stage == b.stage && now.errors < b.errors),
+    }
 }
 
 /// `true`, wenn ein Versuch objektiv besteht (geändert UND gebaut UND grün).
@@ -681,9 +743,17 @@ where
             n.unwrap_or(0)
         };
 
-        // Phase B — pro Brain sequenziell bauen + objektiv messen.
+        // Phase B — Arbeitsschlange statt fester Liste: bleibt ein Brain stecken,
+        // wandert SEINE Aufgabe an ein Brain, das sie noch nicht versucht hat.
         let mut harvest_pool: Vec<HarvestCandidate> = Vec::new();
-        for (brain, effective) in &plan {
+        let mut queue: std::collections::VecDeque<(String, String)> =
+            plan.iter().cloned().collect();
+        let mut tried: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        while let Some((brain_owned, effective_owned)) = queue.pop_front() {
+            let brain = &brain_owned;
+            let effective = &effective_owned;
+            tried.entry(effective.clone()).or_default().push(brain.clone());
             let task = build_task_prompt(effective);
             let tid = task_id(effective);
             if !crate::autoresearch::git_status_clean(&config.workdir)? {
@@ -700,12 +770,18 @@ where
             // Iterationen wird NICHT resettet — das Brain repariert sein eigenes
             // Werk, wie ein echter Coding-Agent am Compilerfehler.
             let max_iter = config.max_iterations.max(1);
+            let stall_limit = config.stall_limit.max(1);
             let mut attempt_task = task.clone();
             let mut cycles = 0u32;
             let mut did_change = false;
             let mut compiled = false;
             let mut tests_passed = false;
             let mut iterations = 0u32;
+            // Fortschritts-Gedaechtnis: bestes bisher erreichtes Stadium und wie
+            // viele Iterationen seither nichts besser wurde.
+            let mut best: Option<Progress> = None;
+            let mut stalls = 0u32;
+            let mut stalled = false;
 
             for iter in 1..=max_iter {
                 iterations = iter;
@@ -738,7 +814,25 @@ where
                 tb.finish(if b_ok { "Build ok" } else { "Build ROT" });
                 compiled = b_ok;
                 if !compiled {
-                    println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — Build rot");
+                    let now = Progress { stage: 1, errors: count_build_errors(&b_out) };
+                    if is_improvement(best, now) {
+                        println!(
+                            "[benchmark] {brain}: Iteration {iter}/{max_iter} — Build rot, aber naeher dran ({} Fehler)",
+                            now.errors
+                        );
+                        best = Some(now);
+                        stalls = 0;
+                    } else {
+                        stalls += 1;
+                        println!(
+                            "[benchmark] {brain}: Iteration {iter}/{max_iter} — Build rot, kein Fortschritt ({}/{stall_limit})",
+                            stalls
+                        );
+                    }
+                    if stalls >= stall_limit {
+                        stalled = true;
+                        break;
+                    }
                     if iter < max_iter {
                         attempt_task = build_repair_prompt(&task, &config.build_eval, &b_out);
                         continue;
@@ -761,9 +855,50 @@ where
                     println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — grün");
                     break;
                 }
-                println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — Tests rot");
+                // Build steht — das ist Stufe 2, unabhaengig davon wie viele
+                // Tests noch rot sind. Ein Brain, das den Compiler befriedigt
+                // hat, ist objektiv weiter als eines mit rotem Build.
+                let now = Progress { stage: 2, errors: count_failed_tests(&t_out) };
+                if is_improvement(best, now) {
+                    println!(
+                        "[benchmark] {brain}: Iteration {iter}/{max_iter} — Tests rot, aber naeher dran ({} rot)",
+                        now.errors
+                    );
+                    best = Some(now);
+                    stalls = 0;
+                } else {
+                    stalls += 1;
+                    println!(
+                        "[benchmark] {brain}: Iteration {iter}/{max_iter} — Tests rot, kein Fortschritt ({stalls}/{stall_limit})"
+                    );
+                }
+                if stalls >= stall_limit {
+                    stalled = true;
+                    break;
+                }
                 if iter < max_iter {
                     attempt_task = build_repair_prompt(&task, &config.test_eval, &t_out);
+                }
+            }
+            if stalled {
+                // Weitergeben an das erste Brain, das diese Aufgabe noch nicht
+                // hatte. Nicht endlos: sonst reicht ein unloesbarer Vorschlag
+                // die Runde durch alle acht Brains und frisst die Zeit auf.
+                let already = tried.get(effective).cloned().unwrap_or_default();
+                let next = config
+                    .brains
+                    .iter()
+                    .find(|b| !already.contains(b) && already.len() < config.max_handoffs.max(1) + 1);
+                match next {
+                    Some(nb) => {
+                        println!(
+                            "[benchmark] {brain}: {stall_limit}x kein Fortschritt — Aufgabe geht an {nb}."
+                        );
+                        queue.push_back((nb.clone(), effective.clone()));
+                    }
+                    None => println!(
+                        "[benchmark] {brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
+                    ),
                 }
             }
             let latency_ms = started.elapsed().as_millis() as u64;
@@ -1169,6 +1304,8 @@ mod tests {
             harvest: false,
             verbose: false,
             parallel: 4,
+            stall_limit: 3,
+            max_handoffs: 2,
         }
     }
 
@@ -1237,5 +1374,57 @@ mod tests {
             brains_total: 2,
         };
         assert_eq!(ranked_from_report(&report).len(), 1);
+    }
+
+    #[test]
+    fn fewer_compiler_errors_counts_as_progress() {
+        // Der eigentliche Punkt: wer sich von zwoelf Fehlern auf zwei
+        // herunterarbeitet, kommt voran — auch wenn der Build weiter rot ist.
+        let vorher = Progress { stage: 1, errors: 12 };
+        let nachher = Progress { stage: 1, errors: 2 };
+        assert!(is_improvement(Some(vorher), nachher));
+        assert!(!is_improvement(Some(nachher), vorher));
+    }
+
+    #[test]
+    fn same_errors_twice_is_no_progress() {
+        // Dieselbe kaputte Zeile nochmal schreiben zaehlt als Stillstand.
+        let p = Progress { stage: 1, errors: 5 };
+        assert!(!is_improvement(Some(p), p));
+    }
+
+    #[test]
+    fn reaching_the_next_stage_always_counts() {
+        // Build gruen (Stufe 2) schlaegt roten Build, selbst wenn danach mehr
+        // rote Tests offen sind als vorher Compilerfehler.
+        let build_rot = Progress { stage: 1, errors: 1 };
+        let tests_rot = Progress { stage: 2, errors: 40 };
+        assert!(is_improvement(Some(build_rot), tests_rot));
+    }
+
+    #[test]
+    fn first_change_is_progress_but_doing_nothing_is_not() {
+        assert!(is_improvement(None, Progress { stage: 1, errors: 9 }));
+        assert!(!is_improvement(None, Progress { stage: 0, errors: 0 }));
+    }
+
+    #[test]
+    fn build_errors_are_counted_without_the_summary_line() {
+        let out = "error[E0308]: mismatched types
+                   error[E0061]: wrong args
+                   error: could not compile `webagent` (lib) due to 2 previous errors
+";
+        // Die Schlusszeile meldet nur den Sammelabbruch — sie waere sonst ein
+        // Phantom-Fehler, der jeden Fortschritt um genau eins verwaessert.
+        assert_eq!(count_build_errors(out), 2);
+    }
+
+    #[test]
+    fn failed_tests_are_summed_across_targets() {
+        let out = "test result: FAILED. 380 passed; 3 failed; 0 ignored
+                   test result: FAILED. 12 passed; 1 failed; 0 ignored
+";
+        assert_eq!(count_failed_tests(out), 4);
+        assert_eq!(count_failed_tests("test result: ok. 400 passed; 0 failed"), 0);
     }
 }

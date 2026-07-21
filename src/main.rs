@@ -291,9 +291,9 @@ enum Commands {
         #[arg(long, default_value = "10")]
         suggestions: usize,
 
-        /// Maximale Repair-Iterationen je Brain: bei rotem Build/Test geht die
-        /// Fehlerausgabe als Kontext zurueck ans Brain (1 = kein Repair-Loop)
-        #[arg(long, default_value = "10")]
+        /// Harte Obergrenze der Repair-Iterationen je Brain. Frueher gestoppt
+        /// wird ueber --stall-limit, sobald kein Fortschritt mehr kommt
+        #[arg(long, default_value = "20")]
         max_iterations: u32,
 
         /// Reines Messgeraet: bestandenen Brain-Code verwerfen statt ihn
@@ -311,6 +311,15 @@ enum Commands {
         /// werden (Bauen bleibt sequenziell)
         #[arg(long, default_value = "4")]
         parallel: usize,
+
+        /// Nach wie vielen Iterationen ohne Fortschritt ein Brain aufgibt und
+        /// die Aufgabe an das naechste weitergereicht wird
+        #[arg(long, default_value = "3")]
+        stall_limit: u32,
+
+        /// Wie oft eine Aufgabe hoechstens weitergereicht wird
+        #[arg(long, default_value = "2")]
+        max_handoffs: usize,
 
         /// Eval-Kommando „baut es?"
         #[arg(long, default_value = "cargo build --lib")]
@@ -536,6 +545,8 @@ fn dispatch(command: Commands) -> i32 {
             no_harvest,
             verbose,
             parallel,
+            stall_limit,
+            max_handoffs,
             build_eval,
             test_eval,
             workdir,
@@ -548,6 +559,8 @@ fn dispatch(command: Commands) -> i32 {
             no_harvest,
             verbose,
             parallel,
+            stall_limit,
+            max_handoffs,
             build_eval,
             test_eval,
             workdir,
@@ -709,6 +722,8 @@ fn cmd_benchmark(
     no_harvest: bool,
     verbose: bool,
     parallel: usize,
+    stall_limit: u32,
+    max_handoffs: usize,
     build_eval: String,
     test_eval: String,
     workdir: Option<String>,
@@ -764,6 +779,8 @@ fn cmd_benchmark(
         harvest: !no_harvest,
         verbose,
         parallel,
+        stall_limit,
+        max_handoffs,
     };
 
     let result = webagent::benchmark::run_benchmark(&config, |b, p| {
