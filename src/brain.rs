@@ -87,23 +87,45 @@ pub fn is_retryable_empty_response(response: &str) -> bool {
     if trimmed.is_empty() {
         return true;
     }
-    // Besteht die Antwort AUSSCHLIESSLICH aus Ausfallmeldungen der Oberfläche,
-    // hat das Brain nie geantwortet — dann ist das kein Formatfehler, sondern
-    // ein Ausfall, und ein neuer Versuch ist das Richtige.
-    //
-    // Der Gleichheitsvergleich allein reichte nicht: zai lieferte am 2026-07-21
-    // ZWEI Zeilen („No response, Please try again later." plus einen
-    // SyntaxError der Weboberfläche), womit die exakte Prüfung ins Leere lief
-    // und der Controller 2,5 Minuten auf eine Reparatur wartete, die nicht
-    // kommen konnte.
-    trimmed.lines().filter(|l| !l.trim().is_empty()).all(is_ui_failure_line)
+    let low = trimmed.to_lowercase();
+
+    // Anbieter-Block: eine EINZIGE solche Phrase genuegt. „You have reached the
+    // daily usage limit" steht nie in einer echten Antwort — qwen lieferte am
+    // 2026-07-21 daneben noch „Oops! There was an issue connecting to …", also
+    // matchte nicht JEDE Zeile, und die Alles-oder-nichts-Pruefung liess den
+    // Block durch. Sechs Wiederholungen gegen ein Brain, das fuer 2h weg war.
+    if PROVIDER_BLOCK_PHRASES.iter().any(|p| low.contains(p)) {
+        return true;
+    }
+
+    // UI-Glitch: hier ist die Alles-oder-nichts-Pruefung bewusst streng. Eine
+    // Glitch-Phrase KANN neben echtem Inhalt stehen (zai: „No response …" plus
+    // ein SyntaxError — beide Glitch; aber „No response …" plus ein echtes
+    // WEBAGENT/1 EDIT ist Inhalt und darf nicht verworfen werden).
+    trimmed.lines().filter(|l| !l.trim().is_empty()).all(is_ui_glitch_line)
 }
 
-/// `true`, wenn eine Zeile eine Ausfallmeldung der Weboberfläche ist (und kein
-/// Inhalt des Modells).
-fn is_ui_failure_line(line: &str) -> bool {
+/// Phrasen, die eine Anbieter-Blockade signalisieren (Kontingent erschöpft,
+/// Dienst überlastet). Spiegelt `browser::BLOCK_PHRASES` (dort für den
+/// Seiten-Scan) — Änderungen hier und dort zusammen pflegen. Bewusst mehrwortig,
+/// damit ein Fachvorschlag über „Rate-Limiting" nicht anschlägt.
+const PROVIDER_BLOCK_PHRASES: &[&str] = &[
+    "usage limit",
+    "daily limit",
+    "message limit",
+    "limit reached",
+    "limit erreicht",
+    "too many requests",
+    "quota exceeded",
+    "you have reached",
+    "issue connecting",
+];
+
+/// `true`, wenn eine Zeile ein reiner UI-Glitch ist (leere/kaputte Antwort der
+/// Oberfläche, kein Inhalt des Modells).
+fn is_ui_glitch_line(line: &str) -> bool {
     let low = line.trim().to_lowercase();
-    const UI_FAILURES: &[&str] = &[
+    const UI_GLITCHES: &[&str] = &[
         "no response",
         "please try again",
         "try again later",
@@ -115,7 +137,7 @@ fn is_ui_failure_line(line: &str) -> bool {
         "network error",
         "failed to fetch",
     ];
-    UI_FAILURES.iter().any(|p| low.contains(p))
+    UI_GLITCHES.iter().any(|p| low.contains(p))
 }
 
 #[cfg(test)]
@@ -275,5 +297,37 @@ mod tests {
                      WEBAGENT/1 EDIT
                      path: src/brain.rs";
         assert!(!is_retryable_empty_response(mixed));
+    }
+
+    #[test]
+    fn qwens_daily_limit_is_recognised_as_unavailable() {
+        // Wortlaut aus Lauf 20260721_225309: qwen antwortete sechsmal so, der
+        // Controller wiederholte jedes Mal, und der Fehlschlag zaehlte gegen
+        // qwen — obwohl es schlicht fuer 2 Stunden gesperrt war.
+        let raw = "Oops! There was an issue connecting to Qwen3.7-Plus.
+                   You have reached the daily usage limit. Please wait 2 hours before trying again.";
+        assert!(is_retryable_empty_response(raw));
+        let frag = "e reached the daily usage limit. Please wait 2 hours before trying again.";
+        assert!(is_retryable_empty_response(frag));
+    }
+
+    #[test]
+    fn a_suggestion_about_rate_limiting_is_not_a_block() {
+        // Abgrenzung: "Rate-Limiting einfuehren" als Verbesserungsvorschlag
+        // darf NICHT als Anbieter-Block gelten, sonst filtert der Schutz echte
+        // Arbeit weg. (Die Blockphrasen sind bewusst mehrwortig.)
+        assert!(!is_retryable_empty_response(
+            "Rate-Limiting fuer die Brain-Abfragen einfuehren, damit Anbieter-Limits nicht gerissen werden"
+        ));
+        assert!(!is_retryable_empty_response(
+            "WEBAGENT/1 EDIT
+id: e1
+path: src/x.rs
+---OLD---
+a
+---NEW---
+b
+---END EDIT---"
+        ));
     }
 }

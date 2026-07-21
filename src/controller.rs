@@ -374,6 +374,30 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         meta.clone()
     }
 
+    /// Beendet den Run als `brain_unavailable` — das Brain ist extern blockiert
+    /// (Anbieter-Limit) oder die Oberfläche liefert keinen Inhalt. Kein
+    /// Kompetenz-Fehlschlag, deshalb ein eigener Status, den der Benchmark aus
+    /// der Wertung nimmt.
+    ///
+    /// Fängt qwens Tageslimit ab: ohne diesen Zweig wiederholte der Controller
+    /// sechsmal gegen ein Brain, das für zwei Stunden gesperrt war
+    /// (Lauf 20260721_225309).
+    fn finish_brain_unavailable(
+        &mut self,
+        meta: &mut RunMeta,
+        transcript: &mut Transcript,
+        reason: &str,
+    ) -> RunMeta {
+        meta.status = "brain_unavailable".to_string();
+        let _ = self.run_store.save(meta);
+        let _ = transcript.append(
+            "system",
+            &format!("run_finished status=brain_unavailable reason={}", crate::char_prefix(reason.trim(), 100)),
+            HashMap::new(),
+        );
+        meta.clone()
+    }
+
     /// Beendet Run mit wall_timeout Status (Gesamt-Deadline überschritten).
     /// Spiegelt die im Loop akkumulierten Felder aus self.meta ins finale meta,
     /// damit der Abbruch keine Fortschrittsdaten (completed_actions, extra) verliert.
@@ -1086,6 +1110,14 @@ per edit/write-Action pflegbar):\n",
                 self.finish_run_cleanup(opts);
                 return Ok(final_meta);
             }
+            if crate::brain::is_retryable_empty_response(&turn.text) {
+                // Anbieter-Block / kein Inhalt: Wiederholen ist zwecklos (qwen
+                // war 2h gesperrt) — sofort als brain_unavailable beenden.
+                let final_meta =
+                    self.finish_brain_unavailable(&mut meta, &mut transcript, &turn.text);
+                self.finish_run_cleanup(opts);
+                return Ok(final_meta);
+            }
             if let Some(recovered) = self.recover_from_incomplete(&mut transcript, "initial") {
                 turn = recovered;
             } else {
@@ -1342,6 +1374,12 @@ mod tests {
             self.wait_sleep = sleep;
             self.loop_shell = true;
             self
+        }
+
+        /// Wie oft `send` aufgerufen wurde — für Tests, die belegen wollen, dass
+        /// nicht sinnlos wiederholt wurde.
+        fn sent_message_count(&self) -> usize {
+            self.messages.borrow().len()
         }
     }
 
@@ -1847,6 +1885,29 @@ mod tests {
             AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
         controller.wall_deadline_at = Some(Instant::now() - Duration::from_secs(5));
         assert_eq!(controller.cap_to_wall(100.0), 1.0);
+    }
+
+    #[test]
+    fn provider_daily_limit_ends_as_unavailable_without_retrying() {
+        // qwen (Lauf 20260721_225309) antwortete mit dem Tageslimit und
+        // generation_complete=false, worauf der Controller sechsmal wiederholte
+        // und den Fehlschlag gegen qwen wertete. Jetzt: EIN Versuch, Status
+        // brain_unavailable, den der Benchmark aus der Wertung nimmt.
+        let block = "Oops! There was an issue connecting to Qwen3.7-Plus.
+                     You have reached the daily usage limit. Please wait 2 hours before trying again.";
+        let brain = MockBrain::new().with_responses(vec![block], vec![false]);
+        let executor = MockExecutor::new();
+        let mut controller =
+            AgentController::with_data_dir(brain, executor, 15, unique_data_dir());
+        let meta = controller.run("baue etwas", "qwen", None, false).unwrap();
+
+        assert_eq!(meta.status, "brain_unavailable");
+        assert!(
+            crate::benchmark::is_external_block(&meta.status),
+            "muss aus der Wertung fallen"
+        );
+        // Genau ein Sende-Versuch — keine sechs Wiederholungen.
+        assert_eq!(controller.brain().sent_message_count(), 1);
     }
 
 }
