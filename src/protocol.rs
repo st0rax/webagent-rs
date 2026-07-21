@@ -130,7 +130,14 @@ fn rendered_json_label_regex() -> &'static FancyRegex {
 fn ui_control_line_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"(?i)^(?:json|copy|kopieren|download|herunterladen|\d+)$").unwrap()
+        // "plain" fehlte: kimi lieferte am 2026-07-21 abwechselnd
+        // "JSON\nKopieren\n{...}" (ging durch) und "plain\nKopieren\n```json\n{...}"
+        // (scheiterte). Das Sprachlabel des gerenderten Code-Blocks variiert je
+        // nach Oberflaeche und Inhalt — deshalb die ueblichen mit aufnehmen.
+        Regex::new(
+            r"(?i)^(?:json|plain|plaintext|text|code|bash|sh|shell|powershell|ps1|rust|\d+|copy|kopieren|download|herunterladen)$",
+        )
+        .unwrap()
     })
 }
 
@@ -229,6 +236,54 @@ fn extract_first_protocol_json(text: &str) -> Option<String> {
     None
 }
 
+/// Schneidet eine Denk-/Prosa-Präambel vor einem Rohformat-Block weg.
+///
+/// Die Rohformat-Regexe sind mit `\A` verankert: die Antwort muss VOLLSTÄNDIG
+/// aus dem Block bestehen. claude stellte am 2026-07-21 seine Denk-Zeile voran
+/// („Architected adaptive brain weight function …", sogar doppelt) und schrieb
+/// darunter ein syntaktisch einwandfreies `WEBAGENT/1 EDIT`. Die Verankerung
+/// griff nicht, der Parser fiel auf JSON zurück und meldete „Ungültiges JSON" —
+/// ein korrekter Edit landete im Müll, und claude brach den Lauf ab.
+///
+/// Der Block muss weiterhin bis zum Ende der Nachricht reichen; nur der Vorspann
+/// darf weg. Damit bleibt das Format streng, ohne an Geschwätz zu scheitern.
+fn trim_to_raw_marker(text: &str) -> &str {
+    const MARKERS: [&str; 3] = ["WEBAGENT/1 SHELL", "WEBAGENT/1 WRITE", "WEBAGENT/1 EDIT"];
+    let mut best: Option<usize> = None;
+    for (offset, line) in line_offsets(text) {
+        let t = line.trim_start();
+        if MARKERS.iter().any(|m| t.starts_with(m)) {
+            let start = offset + (line.len() - t.len());
+            best = Some(best.map_or(start, |b: usize| b.min(start)));
+        }
+    }
+    match best {
+        Some(i) => &text[i..],
+        None => text,
+    }
+}
+
+/// `(Byte-Offset, Zeile)` für jede Zeile — `str::lines()` allein verliert die
+/// Position, die zum Zuschneiden nötig ist.
+fn line_offsets(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    let mut pos = 0usize;
+    text.split_inclusive('\n').map(move |raw| {
+        let start = pos;
+        pos += raw.len();
+        (start, raw.trim_end_matches(['\n', '\r']))
+    })
+}
+
+/// `true`, wenn die Zeile ein Sprachlabel eines gerenderten Code-Blocks ist
+/// (und kein Bedienelement wie „Kopieren").
+fn is_language_label(label: &str) -> bool {
+    const LANGS: &[&str] = &[
+        "json", "plain", "plaintext", "text", "code", "bash", "sh", "shell", "powershell",
+        "ps1", "rust",
+    ];
+    LANGS.iter().any(|l| label.eq_ignore_ascii_case(l))
+}
+
 fn strip_rendered_ui_controls(text: &str) -> String {
     let normalized = text
         .replace(['\u{00a0}', '\u{202f}'], " ")
@@ -237,9 +292,13 @@ fn strip_rendered_ui_controls(text: &str) -> String {
         .to_string();
 
     let normalized = strip_leading_prose(&normalized);
+    // Rohformat-Block freilegen: alles vor dem Marker faellt weg.
+    let normalized = trim_to_raw_marker(normalized);
     let lines: Vec<&str> = normalized.lines().collect();
     let mut index = 0;
-    let mut saw_json_label = false;
+    // Frueher wurde NUR ein "json"-Label als Startsignal akzeptiert; jede andere
+    // Sprachbezeichnung liess den Vorspann stehen und das JSON scheiterte.
+    let mut saw_language_label = false;
     let re = ui_control_line_regex();
 
     while index < lines.len() {
@@ -247,15 +306,15 @@ fn strip_rendered_ui_controls(text: &str) -> String {
         if !re.is_match(label) {
             break;
         }
-        if label.eq_ignore_ascii_case("json") {
-            saw_json_label = true;
-        } else if !saw_json_label {
+        if is_language_label(label) {
+            saw_language_label = true;
+        } else if !saw_language_label {
             break;
         }
         index += 1;
     }
 
-    if saw_json_label {
+    if saw_language_label {
         lines[index..].join("\n").trim().to_string()
     } else {
         normalized.to_string()
@@ -1363,5 +1422,81 @@ Write-Output $html
         assert_eq!(error_code("sonstiger fehler"), "invalid");
         assert_eq!(error_code(""), "invalid");
         assert_eq!(error_code("irgendwas ganz anderes"), "invalid");
+    }
+
+    #[test]
+    fn raw_edit_survives_a_reasoning_preamble() {
+        // Wortlaut aus claudes Lauf 20260721_200745: die Denk-Zeile stand
+        // (sogar doppelt) VOR einem syntaktisch einwandfreien EDIT. Die
+        // \A-Verankerung liess den Block durchfallen, der Parser meldete
+        // "Ungueltiges JSON" — ein korrekter Edit landete im Muell.
+        let raw = concat!(
+            "Architected adaptive brain weight function with multi-parameter normalization\n",
+            "Architected adaptive brain weight function with multi-parameter normalization\n",
+            "WEBAGENT/1 EDIT\n",
+            "id: edit-1\n",
+            "path: src/brain_score.rs\n",
+            "---OLD---\n",
+            "fn alt() {}\n",
+            "---NEW---\n",
+            "fn neu() {}\n",
+            "---END EDIT---"
+        );
+        let r = parse(raw);
+        assert!(r.valid, "sollte gueltig sein, war: {}", r.error);
+        assert_eq!(r.actions.len(), 1);
+        assert_eq!(r.actions[0].action_type, ActionType::Edit);
+        assert_eq!(r.actions[0].path, "src/brain_score.rs");
+    }
+
+    #[test]
+    fn raw_block_must_still_reach_the_end_of_the_message() {
+        // Der Vorspann darf weg — Nachgeplapper nicht. Sonst wuerde ein Brain,
+        // das das Format nur ZITIERT, versehentlich Aktionen ausloesen.
+        let raw = concat!(
+            "WEBAGENT/1 EDIT\n",
+            "id: e1\n",
+            "path: src/x.rs\n",
+            "---OLD---\n",
+            "a\n",
+            "---NEW---\n",
+            "b\n",
+            "---END EDIT---\n",
+            "Soll ich das so machen?"
+        );
+        assert!(!parse(raw).valid);
+    }
+
+    #[test]
+    fn rendered_code_block_with_plain_label_is_stripped() {
+        // kimi lieferte abwechselnd ein Label "JSON" (ging durch) und "plain"
+        // (scheiterte) — nur das Sprachlabel
+        // des gerenderten Code-Blocks wechselte.
+        let raw = concat!(
+            "plain\n",
+            "Kopieren\n",
+            r#"{"protocol":"webagent/1","actions":[{"id":"s1","type":"shell","command":"echo hi"}]}"#
+        );
+        let r = parse(raw);
+        assert!(r.valid, "sollte gueltig sein, war: {}", r.error);
+        assert_eq!(r.actions[0].id, "s1");
+    }
+
+    #[test]
+    fn the_previously_working_json_label_still_works() {
+        // Regressionsschutz: die Variante, die vorher schon durchging.
+        let raw = concat!(
+            "JSON\n",
+            "Kopieren\n",
+            r#"{"protocol":"webagent/1","actions":[{"id":"s2","type":"shell","command":"echo hi"}]}"#
+        );
+        assert!(parse(raw).valid);
+    }
+
+    #[test]
+    fn prose_alone_is_still_rejected() {
+        // Der Marker-Zuschnitt darf nicht dazu fuehren, dass Geschwaetz ohne
+        // Block ploetzlich als gueltig gilt.
+        assert!(!parse("Ich habe darueber nachgedacht und wuerde vorschlagen, die Datei zu aendern.").valid);
     }
 }
