@@ -445,9 +445,9 @@ mod tests {
         let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
-        let result = executor.execute("Write-Output hello", 5.0);
+        let result = executor.execute("Write-Output hello", TEST_CMD_TIMEOUT);
         #[cfg(unix)]
-        let result = executor.execute("echo hello", 5.0);
+        let result = executor.execute("echo hello", TEST_CMD_TIMEOUT);
 
         assert!(result.error.is_none());
         assert!(!result.timed_out);
@@ -470,15 +470,25 @@ mod tests {
         executor.stop();
     }
 
+    /// Timeout fuer Kommandos, die sofort fertig sein SOLLTEN.
+    ///
+    /// 5s reichten nicht: laeuft parallel ein Benchmark (PowerShell-Sessions,
+    /// cargo-Builds), braucht allein das Hochfahren der Shell-Session laenger,
+    /// und `test_nonzero_exit` schlug mit `timed_out` fehl — 3/3 gruen, sobald
+    /// die Maschine frei war. Der Wert prueft nichts, er wartet nur; die
+    /// eigentlichen Timeout-Tests arbeiten bewusst mit knappen Werten (0.8/1.0)
+    /// und bleiben davon unberuehrt.
+    const TEST_CMD_TIMEOUT: f64 = 30.0;
+
     #[test]
     fn test_nonzero_exit() {
         let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
-        let result = executor.execute("cmd /c exit 42", 5.0);
+        let result = executor.execute("cmd /c exit 42", TEST_CMD_TIMEOUT);
         #[cfg(unix)]
         // Child shell: plain `exit` würde die persistente bash-Session beenden.
-        let result = executor.execute("bash -c 'exit 42'", 5.0);
+        let result = executor.execute("bash -c 'exit 42'", TEST_CMD_TIMEOUT);
 
         assert!(!result.timed_out);
         assert_eq!(result.exit_code, Some(42));
@@ -491,20 +501,20 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let r1 = executor.execute("cmd /c exit 7", 5.0);
+            let r1 = executor.execute("cmd /c exit 7", TEST_CMD_TIMEOUT);
             assert_eq!(r1.exit_code, Some(7));
-            let r2 = executor.execute("$null = 1", 5.0);
+            let r2 = executor.execute("$null = 1", TEST_CMD_TIMEOUT);
             assert_eq!(r2.exit_code, Some(0));
-            let r3 = executor.execute("Write-Output ok", 5.0);
+            let r3 = executor.execute("Write-Output ok", TEST_CMD_TIMEOUT);
             assert_eq!(r3.exit_code, Some(0));
             assert!(r3.stdout.contains("ok"));
         }
 
         #[cfg(unix)]
         {
-            let r1 = executor.execute("false", 5.0);
+            let r1 = executor.execute("false", TEST_CMD_TIMEOUT);
             assert_eq!(r1.exit_code, Some(1));
-            let r2 = executor.execute("true", 5.0);
+            let r2 = executor.execute("true", TEST_CMD_TIMEOUT);
             assert_eq!(r2.exit_code, Some(0));
         }
 
@@ -519,7 +529,7 @@ mod tests {
         {
             let result = executor.execute("Start-Sleep 3; Write-Output late", 0.8);
             assert!(result.timed_out);
-            let result2 = executor.execute("Write-Output next", 5.0);
+            let result2 = executor.execute("Write-Output next", TEST_CMD_TIMEOUT);
             assert!(result2.stdout.contains("next"));
             assert!(!result2.stdout.contains("late"));
         }
@@ -528,7 +538,7 @@ mod tests {
         {
             let result = executor.execute("sleep 3; echo late", 0.8);
             assert!(result.timed_out);
-            let result2 = executor.execute("echo next", 5.0);
+            let result2 = executor.execute("echo next", TEST_CMD_TIMEOUT);
             assert!(result2.stdout.contains("next"));
             assert!(!result2.stdout.contains("late"));
         }
@@ -541,9 +551,9 @@ mod tests {
         let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
-        let result = executor.execute("Write-Output \"__W2T_DONE_fake__0__\"", 5.0);
+        let result = executor.execute("Write-Output \"__W2T_DONE_fake__0__\"", TEST_CMD_TIMEOUT);
         #[cfg(unix)]
-        let result = executor.execute("echo \"__W2T_DONE_fake__0__\"", 5.0);
+        let result = executor.execute("echo \"__W2T_DONE_fake__0__\"", TEST_CMD_TIMEOUT);
 
         assert_eq!(result.exit_code, Some(0));
         assert!(result.stdout.contains("__W2T_DONE_fake__0__"));
@@ -556,18 +566,18 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let r1 = executor.execute("Set-Location $env:TEMP", 5.0);
+            let r1 = executor.execute("Set-Location $env:TEMP", TEST_CMD_TIMEOUT);
             assert_eq!(r1.exit_code, Some(0));
-            let r2 = executor.execute("(Get-Location).Path", 5.0);
+            let r2 = executor.execute("(Get-Location).Path", TEST_CMD_TIMEOUT);
             let out = r2.stdout.to_lowercase();
             assert!(out.contains("temp"), "expected TEMP in {:?}", r2.stdout);
         }
 
         #[cfg(unix)]
         {
-            let r1 = executor.execute("cd /tmp", 5.0);
+            let r1 = executor.execute("cd /tmp", TEST_CMD_TIMEOUT);
             assert_eq!(r1.exit_code, Some(0));
-            let r2 = executor.execute("pwd", 5.0);
+            let r2 = executor.execute("pwd", TEST_CMD_TIMEOUT);
             assert!(r2.stdout.contains("/tmp"));
         }
 
@@ -579,9 +589,9 @@ mod tests {
         let (executor, _guard) = executor_with_session();
 
         #[cfg(windows)]
-        let result = executor.execute("[Console]::Error.WriteLine('test error')", 5.0);
+        let result = executor.execute("[Console]::Error.WriteLine('test error')", TEST_CMD_TIMEOUT);
         #[cfg(unix)]
-        let result = executor.execute("echo 'test error' >&2", 5.0);
+        let result = executor.execute("echo 'test error' >&2", TEST_CMD_TIMEOUT);
 
         // Persistent shell merges stderr into stdout (Python parity).
         assert!(result.stdout.contains("test error") || result.stderr.contains("test error"));
