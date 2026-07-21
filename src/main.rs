@@ -321,6 +321,11 @@ enum Commands {
         #[arg(long, default_value = "2")]
         max_handoffs: usize,
 
+        /// Lint-Tor fuer die Ernte: geernteter Code muss auch hier gruen sein
+        /// (leer = kein Lint-Gate)
+        #[arg(long, default_value = "cargo clippy --all-targets -- -D warnings")]
+        lint_eval: String,
+
         /// Eval-Kommando „baut es?"
         #[arg(long, default_value = "cargo build --lib")]
         build_eval: String,
@@ -547,6 +552,7 @@ fn dispatch(command: Commands) -> i32 {
             parallel,
             stall_limit,
             max_handoffs,
+            lint_eval,
             build_eval,
             test_eval,
             workdir,
@@ -561,6 +567,7 @@ fn dispatch(command: Commands) -> i32 {
             parallel,
             stall_limit,
             max_handoffs,
+            lint_eval,
             build_eval,
             test_eval,
             workdir,
@@ -724,6 +731,7 @@ fn cmd_benchmark(
     parallel: usize,
     stall_limit: u32,
     max_handoffs: usize,
+    lint_eval: String,
     build_eval: String,
     test_eval: String,
     workdir: Option<String>,
@@ -781,6 +789,7 @@ fn cmd_benchmark(
         parallel,
         stall_limit,
         max_handoffs,
+        lint_eval,
     };
 
     let result = webagent::benchmark::run_benchmark(&config, |b, p| {

@@ -92,6 +92,12 @@ pub struct BenchmarkConfig {
     pub stall_limit: u32,
     /// Wie oft eine Aufgabe hoechstens an ein weiteres Brain weitergereicht wird.
     pub max_handoffs: usize,
+    /// Lint-Kommando fuer das Ernte-Tor (leer = kein Lint-Gate).
+    ///
+    /// Build und Tests sagen "es laeuft", nicht "es ist sauber". geminis
+    /// geernteter Beitrag (2026-07-21) kompilierte und war gruen, brachte aber
+    /// eine doppelte `use super::*;` mit — die Ernte hatte dafuer kein Auge.
+    pub lint_eval: String,
 }
 
 /// Ein bestandener Brain-Lauf, dessen Diff für die spätere Ernte aufbewahrt wird.
@@ -570,6 +576,12 @@ fn harvest_commit(
     let (t_ok, _) = run_eval_detail(&config.test_eval, &config.workdir);
     if !t_ok {
         return Err(format!("Nachkontrolle: Tests rot — {} verworfen", cand.brain));
+    }
+    if !config.lint_eval.trim().is_empty() {
+        let (l_ok, _) = run_eval_detail(&config.lint_eval, &config.workdir);
+        if !l_ok {
+            return Err(format!("Nachkontrolle: Lint rot — {} verworfen", cand.brain));
+        }
     }
 
     let msg = format!(
@@ -1349,6 +1361,7 @@ mod tests {
             parallel: 4,
             stall_limit: 3,
             max_handoffs: 2,
+            lint_eval: String::new(),
         }
     }
 
