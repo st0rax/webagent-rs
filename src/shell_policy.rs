@@ -100,6 +100,18 @@ fn evaluate_with_mode(command: &str, strict: bool) -> Decision {
     Decision::Allow
 }
 
+/// Formatiert eine strukturierte Audit-Zeile für einen Shell-Befehl.
+/// Liefert eine JSON-Zeile mit den Feldern ts, allowed, command.
+/// Der command-Wert wird korrekt JSON-escaped (via serde_json).
+pub fn format_audit_line(command: &str, allowed: bool, ts: &str) -> String {
+    let obj = serde_json::json!({
+        "ts": ts,
+        "allowed": allowed,
+        "command": command,
+    });
+    obj.to_string()
+}
+
 /// Jede Entscheidung geht sichtbar nach stderr (nicht versteckt, siehe
 /// [[external-blocks-flag-not-fail]]-Philosophie: transparent statt still) und
 /// zusätzlich als JSON-Line ins Audit-Log, damit Deny-Faelle nachvollziehbar
@@ -225,5 +237,37 @@ mod tests {
     fn empty_command_is_allowed() {
         assert_eq!(evaluate_with_mode("", false), Decision::Allow);
         assert_eq!(evaluate_with_mode("   ", false), Decision::Allow);
+    }
+
+    #[test]
+    fn format_audit_line_allowed_true() {
+        let line = format_audit_line("Get-Location", true, "2026-07-21T00:00:00Z");
+        let parsed: serde_json::Value = serde_json::from_str(&line).expect("valid JSON");
+        assert_eq!(parsed["ts"], "2026-07-21T00:00:00Z");
+        assert_eq!(parsed["allowed"], true);
+        assert_eq!(parsed["command"], "Get-Location");
+    }
+
+    #[test]
+    fn format_audit_line_allowed_false() {
+        let line = format_audit_line("rm -rf /", false, "2026-07-21T00:00:00Z");
+        let parsed: serde_json::Value = serde_json::from_str(&line).expect("valid JSON");
+        assert_eq!(parsed["ts"], "2026-07-21T00:00:00Z");
+        assert_eq!(parsed["allowed"], false);
+        assert_eq!(parsed["command"], "rm -rf /");
+    }
+
+    #[test]
+    fn format_audit_line_escapes_quotes() {
+        let line = format_audit_line("Write-Output \"Hello World\"", true, "2026-07-21T00:00:00Z");
+        let parsed: serde_json::Value = serde_json::from_str(&line).expect("valid JSON");
+        assert_eq!(parsed["command"], "Write-Output \"Hello World\"");
+    }
+
+    #[test]
+    fn format_audit_line_empty_command() {
+        let line = format_audit_line("", true, "2026-07-21T00:00:00Z");
+        let parsed: serde_json::Value = serde_json::from_str(&line).expect("valid JSON");
+        assert_eq!(parsed["command"], "");
     }
 }
