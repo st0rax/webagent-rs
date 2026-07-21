@@ -63,6 +63,39 @@ pub struct BenchmarkConfig {
     /// Maximale Repair-Iterationen je Brain: schlägt Build/Test fehl, geht die
     /// Fehlerausgabe als Kontext zurück ans Brain (1 = kein Repair-Loop).
     pub max_iterations: u32,
+    /// Ernte-Modus: der Code des besten bestandenen Brains wird nach der Runde
+    /// wieder eingespielt und committet, statt verworfen zu werden.
+    ///
+    /// Ohne das ist der Benchmark ein reines Messgerät — deepseeks bestandene
+    /// Läufe (2/4 PASS, 2026-07-21) landeten vollständig im `git reset --hard`.
+    /// Die Messung bleibt unberührt: jedes Brain startet weiterhin auf
+    /// identischer Baseline, geerntet wird erst NACH dem letzten Brain.
+    pub harvest: bool,
+}
+
+/// Ein bestandener Brain-Lauf, dessen Diff für die spätere Ernte aufbewahrt wird.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HarvestCandidate {
+    /// Brain, das diesen Code gebaut hat.
+    pub brain: String,
+    /// Der komplette Diff gegen die Baseline (`git diff --cached`).
+    pub patch: String,
+    /// Benötigte Repair-Iterationen (weniger = souveräner gelöst).
+    pub iterations: u32,
+    /// Gesamtdauer des Brain-Laufs.
+    pub latency_ms: u64,
+}
+
+/// Wählt den zu erntenden Kandidaten: wenige Iterationen schlagen viele, bei
+/// Gleichstand entscheidet die kürzere Laufzeit.
+///
+/// „Beim ersten Versuch grün" ist das stärkere Signal als „nach neun Korrekturen
+/// grün" — beide bestehen, aber nur eines davon ist verlässliche Arbeit.
+pub fn pick_harvest(candidates: &[HarvestCandidate]) -> Option<&HarvestCandidate> {
+    candidates
+        .iter()
+        .filter(|c| !c.patch.trim().is_empty())
+        .min_by_key(|c| (c.iterations, c.latency_ms))
 }
 
 /// Endergebnis eines Benchmark-Laufs.
@@ -74,6 +107,9 @@ pub struct BenchmarkReport {
     pub leaderboard: Vec<CodeStats>,
     /// Slug der abgelegten Wiki-Seite, falls geschrieben.
     pub wiki_slug: Option<String>,
+    /// Tatsächlich geerntete Beiträge `(brain, aufgabe)` — das ist der Teil,
+    /// der als Code im Repo bleibt statt nur als Messpunkt.
+    pub harvested: Vec<(String, String)>,
 }
 
 /// Stabile, kurze Task-Kennung aus dem Sieger-Text (Hash) — gleiche Aufgabe ⇒
@@ -332,6 +368,89 @@ fn reset_repo(workdir: &Path, baseline: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Sichert die Arbeit des laufenden Brains als Patch, BEVOR `reset_repo` sie
+/// verwirft. `git add -A` davor, damit neue Dateien im Diff auftauchen.
+fn capture_patch(workdir: &Path) -> Result<String, String> {
+    let _ = std::process::Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(workdir)
+        .output();
+    let out = std::process::Command::new("git")
+        .args(["diff", "--cached", "--binary"])
+        .current_dir(workdir)
+        .output()
+        .map_err(|e| format!("git diff fehlgeschlagen: {e}"))?;
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// Spielt einen geernteten Patch wieder ein, verifiziert ihn erneut (Build +
+/// Tests) und committet ihn mit dem Brain als Autor.
+///
+/// Die Wiederholung von Build und Tests ist kein Ritual: der Patch wurde auf
+/// einem Tree gemessen, der seither zurückgesetzt wurde — erst der zweite grüne
+/// Durchlauf belegt, dass der Code auch eigenständig trägt.
+fn harvest_commit(
+    cand: &HarvestCandidate,
+    winner: &str,
+    config: &BenchmarkConfig,
+) -> Result<(), String> {
+    let patch_path = crate::config::data_dir()
+        .join("benchmark")
+        .join(format!("harvest_{}.patch", cand.brain));
+    if let Some(parent) = patch_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{e}"))?;
+    }
+    std::fs::write(&patch_path, &cand.patch).map_err(|e| format!("Patch schreiben: {e}"))?;
+
+    let apply = std::process::Command::new("git")
+        .args(["apply", "--index"])
+        .arg(&patch_path)
+        .current_dir(&config.workdir)
+        .output()
+        .map_err(|e| format!("git apply: {e}"))?;
+    if !apply.status.success() {
+        return Err(format!(
+            "Patch von {} liess sich nicht einspielen: {}",
+            cand.brain,
+            String::from_utf8_lossy(&apply.stderr).trim()
+        ));
+    }
+
+    let (b_ok, _) = run_eval_detail(&config.build_eval, &config.workdir);
+    if !b_ok {
+        return Err(format!("Nachkontrolle: Build rot — {} verworfen", cand.brain));
+    }
+    let (t_ok, _) = run_eval_detail(&config.test_eval, &config.workdir);
+    if !t_ok {
+        return Err(format!("Nachkontrolle: Tests rot — {} verworfen", cand.brain));
+    }
+
+    let msg = format!(
+        "feat(bench): {headline} — vom webagent gebaut ({brain})\n\n\
+         Abstimmungs-Sieger der Benchmark-Runde, umgesetzt von {brain} in \
+         {iters} Iteration(en). Nach dem Wiedereinspielen erneut verifiziert: \
+         `{build}` und `{test}` gruen.\n\n\
+         Authored-by: {brain} (webagent benchmark harvest)\n",
+        headline = crate::char_prefix(winner.trim(), 72),
+        brain = cand.brain,
+        iters = cand.iterations,
+        build = config.build_eval,
+        test = config.test_eval,
+    );
+    let commit = std::process::Command::new("git")
+        .args(["commit", "-m", &msg])
+        .current_dir(&config.workdir)
+        .output()
+        .map_err(|e| format!("git commit: {e}"))?;
+    if !commit.status.success() {
+        return Err(format!(
+            "Commit fehlgeschlagen: {}",
+            String::from_utf8_lossy(&commit.stderr).trim()
+        ));
+    }
+    Ok(())
+}
+
 /// Ein Brain baut die Aufgabe über den normalen Controller-Pfad (mit Wall-Timeout
 /// und kleinem `max_cycles`). Liefert `(status, cycles)`.
 #[cfg(feature = "webview")]
@@ -381,6 +500,7 @@ where
     let rounds = config.rounds.max(1);
     let facts = crate::self_research::gather_facts(&config.workdir, FACTS_MAX_CHARS);
     let mut winners: Vec<(usize, String)> = Vec::new();
+    let mut harvested: Vec<(String, String)> = Vec::new();
 
     for round in 1..=rounds {
         println!("[benchmark] runde {round}/{rounds} — abstimmen…");
@@ -471,6 +591,7 @@ where
         };
 
         // Phase B — pro Brain sequenziell bauen + objektiv messen.
+        let mut harvest_pool: Vec<HarvestCandidate> = Vec::new();
         for brain in &config.brains {
             if !crate::autoresearch::git_status_clean(&config.workdir)? {
                 return Err(format!(
@@ -569,8 +690,57 @@ where
                 outcome_label(did_change, compiled, tests_passed)
             );
 
+            // Bestandene Arbeit sichern, BEVOR der Reset sie verwirft.
+            if config.harvest && is_pass(did_change, compiled, tests_passed) {
+                match capture_patch(&config.workdir) {
+                    Ok(patch) if !patch.trim().is_empty() => {
+                        println!(
+                            "[benchmark]   {brain}: Patch gesichert ({} Zeilen) — Kandidat für die Ernte",
+                            patch.lines().count()
+                        );
+                        harvest_pool.push(HarvestCandidate {
+                            brain: brain.clone(),
+                            patch,
+                            iterations,
+                            latency_ms,
+                        });
+                    }
+                    Ok(_) => println!("[benchmark]   {brain}: leerer Patch — nichts zu ernten"),
+                    Err(e) => println!("[benchmark]   {brain}: Patch-Sicherung fehlgeschlagen — {e}"),
+                }
+            }
+
             // Reset: jedes Brain misst denselben Sieger unabhängig.
             reset_repo(&config.workdir, &baseline)?;
+        }
+
+        // Ernte: der beste bestandene Lauf wird wieder eingespielt und bleibt.
+        if config.harvest {
+            match pick_harvest(&harvest_pool) {
+                Some(cand) => {
+                    let t = crate::StageTimer::start(format!(
+                        "Ernte: {} wieder einspielen + nachpruefen",
+                        cand.brain
+                    ));
+                    match harvest_commit(cand, &effective, &config) {
+                        Ok(()) => {
+                            t.finish("geerntet und committet");
+                            println!(
+                                "[benchmark] GEERNTET: {} ({} Iteration(en)) — Code bleibt im Repo.",
+                                cand.brain, cand.iterations
+                            );
+                            harvested.push((cand.brain.clone(), effective.clone()));
+                        }
+                        Err(e) => {
+                            t.finish("Ernte fehlgeschlagen");
+                            println!("[benchmark] Ernte verworfen: {e}");
+                            let head = crate::autoresearch::git_head_sha(&config.workdir)?;
+                            reset_repo(&config.workdir, &head)?;
+                        }
+                    }
+                }
+                None => println!("[benchmark] Nichts zu ernten — kein Brain hat bestanden."),
+            }
         }
     }
 
@@ -600,6 +770,7 @@ where
         winners,
         leaderboard: board,
         wiki_slug,
+        harvested,
     })
 }
 
@@ -831,5 +1002,63 @@ mod tests {
         let body = format_benchmark_report(&[], &[]);
         assert!(body.contains("(keine — keine Stimmen gesammelt)"));
         assert!(body.contains("(keine Daten)"));
+    }
+
+    fn cand(brain: &str, iters: u32, ms: u64, patch: &str) -> HarvestCandidate {
+        HarvestCandidate {
+            brain: brain.to_string(),
+            patch: patch.to_string(),
+            iterations: iters,
+            latency_ms: ms,
+        }
+    }
+
+    #[test]
+    fn harvest_prefers_fewer_iterations() {
+        // Beim ersten Versuch gruen schlaegt "nach neun Korrekturen gruen" —
+        // beide bestehen, nur eines davon ist verlaessliche Arbeit.
+        let pool = vec![
+            cand("zai", 9, 1_000, "diff --git a/src/x.rs"),
+            cand("deepseek", 1, 90_000, "diff --git a/src/y.rs"),
+        ];
+        assert_eq!(pick_harvest(&pool).unwrap().brain, "deepseek");
+    }
+
+    #[test]
+    fn harvest_breaks_iteration_tie_by_latency() {
+        let pool = vec![
+            cand("kimi", 2, 80_000, "diff --git a/src/x.rs"),
+            cand("deepseek", 2, 20_000, "diff --git a/src/y.rs"),
+        ];
+        assert_eq!(pick_harvest(&pool).unwrap().brain, "deepseek");
+    }
+
+    #[test]
+    fn harvest_ignores_empty_patches_and_empty_pool() {
+        // Ein PASS ohne Diff waere nichts zum Einspielen — darf nicht gewinnen.
+        let pool = vec![cand("geist", 1, 10, "   
+  ")];
+        assert!(pick_harvest(&pool).is_none());
+        assert!(pick_harvest(&[]).is_none());
+    }
+
+    #[test]
+    fn harvest_flag_off_is_the_default_shape() {
+        // Ohne --harvest bleibt der Benchmark ein reines Messgeraet.
+        assert!(!bench_config_for_test().harvest);
+    }
+
+    fn bench_config_for_test() -> BenchmarkConfig {
+        BenchmarkConfig {
+            brains: vec!["deepseek".to_string()],
+            rounds: 1,
+            suggestions: 10,
+            build_eval: "cargo build --lib".to_string(),
+            test_eval: "cargo test --lib".to_string(),
+            workdir: PathBuf::from("."),
+            headless: true,
+            max_iterations: 10,
+            harvest: false,
+        }
     }
 }

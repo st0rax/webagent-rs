@@ -296,6 +296,11 @@ enum Commands {
         #[arg(long, default_value = "10")]
         max_iterations: u32,
 
+        /// Ernte-Modus: den Code des besten bestandenen Brains wieder
+        /// einspielen und committen, statt ihn zu verwerfen
+        #[arg(long)]
+        harvest: bool,
+
         /// Eval-Kommando „baut es?"
         #[arg(long, default_value = "cargo build --lib")]
         build_eval: String,
@@ -517,6 +522,7 @@ fn dispatch(command: Commands) -> i32 {
             rounds,
             suggestions,
             max_iterations,
+            harvest,
             build_eval,
             test_eval,
             workdir,
@@ -526,6 +532,7 @@ fn dispatch(command: Commands) -> i32 {
             rounds,
             suggestions,
             max_iterations,
+            harvest,
             build_eval,
             test_eval,
             workdir,
@@ -683,6 +690,7 @@ fn cmd_benchmark(
     rounds: usize,
     suggestions: usize,
     max_iterations: u32,
+    harvest: bool,
     build_eval: String,
     test_eval: String,
     workdir: Option<String>,
@@ -735,6 +743,7 @@ fn cmd_benchmark(
         workdir,
         headless,
         max_iterations,
+        harvest,
     };
 
     let result = webagent::benchmark::run_benchmark(&config, |b, p| {
