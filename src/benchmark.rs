@@ -8,11 +8,17 @@
 //!   Benchmark-Aufgabe ([`build_task_prompt`]).
 //! - **Phase B (Implementieren + Messen, pro Brain sequenziell):** sauberen
 //!   Git-Tree prüfen, Baseline-SHA merken, das Brain über den Controller (mit
-//!   Wall-Timeout + kleinem `max_cycles`) den Sieger bauen lassen, dann objektiv
-//!   evaluieren (`did_change` → `cargo build --lib` → `cargo test --lib`), das
+//!   Wall-Timeout + kleinem `max_cycles`) SEINE zugeteilte Aufgabe bauen lassen
+//!   ([`assign_tasks`]), dann objektiv evaluieren (`did_change` →
+//!   `cargo build --lib` → `cargo test --lib`), das
 //!   [`CodeEvent`](crate::code_score::CodeEvent) speichern und den Tree hart auf
 //!   die Baseline zurücksetzen (`git reset --hard` + `git clean -fd`). Jedes
-//!   Brain startet identisch; der Benchmark hinterlässt KEINE Änderung.
+//!   Brain startet identisch.
+//! - **Phase C (Ernten):** der Diff jedes BESTANDENEN Brains wird vor dem Reset
+//!   gesichert und danach wieder eingespielt, erneut gebaut/getestet und mit dem
+//!   Brain als Autor committet. Der Benchmark ist damit Fertigungsstraße UND
+//!   Messgerät: er misst objektiv und behält, was die Messung bestanden hat.
+//!   `--no-harvest` schaltet auf reines Messen zurück.
 //!
 //! `--rounds N` wiederholt Phase A+B N-mal (N Abstimmungen → N Sieger). Der Score
 //! aggregiert über alle Events (`code_score::leaderboard`).
@@ -78,6 +84,8 @@ pub struct BenchmarkConfig {
 pub struct HarvestCandidate {
     /// Brain, das diesen Code gebaut hat.
     pub brain: String,
+    /// Die Aufgabe, die dieses Brain zugeteilt bekam (fuer die Commit-Message).
+    pub task: String,
     /// Der komplette Diff gegen die Baseline (`git diff --cached`).
     pub patch: String,
     /// Benötigte Repair-Iterationen (weniger = souveräner gelöst).
@@ -232,6 +240,43 @@ pub fn winner_from_report(report: &SelfResearchReport) -> Option<String> {
         .first()
         .map(|r| r.text.trim().to_string())
         .filter(|t| !t.is_empty())
+}
+
+/// Alle gevoteten Vorschläge in Rangfolge (Platz 1 zuerst), leere verworfen.
+pub fn ranked_from_report(report: &SelfResearchReport) -> Vec<String> {
+    report
+        .ranked
+        .iter()
+        .map(|r| r.text.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// Verteilt die gevoteten Vorschläge auf die Brains — Fertigungsstraße statt
+/// Turnier: jedes Brain bekommt eine EIGENE Aufgabe, deshalb kann die Arbeit
+/// aller bestandenen Brains geerntet werden statt nur die des besten.
+///
+/// Bauen alle dasselbe, kollidieren die Patches im selben Code und sieben von
+/// acht Beiträgen sind zwangsläufig Ausschuss — die Messung war brauchbar, die
+/// Produktion nicht.
+///
+/// `round` rotiert die Zuteilung: Brain `i` baut Rang `(i + round) % k`. Über
+/// mehrere Runden sieht damit jedes Brain jeden Rang, sodass keines dauerhaft
+/// die leichteren oder schwereren Aufgaben zieht und der Score fair bleibt.
+/// Gibt es weniger Vorschläge als Brains, teilen sich mehrere Brains einen Rang
+/// (dann gewinnt beim Ernten der beste — wie im Turnier).
+pub fn assign_tasks(brains: &[String], ranked: &[String], round: usize) -> Vec<(String, String)> {
+    if ranked.is_empty() {
+        return Vec::new();
+    }
+    brains
+        .iter()
+        .enumerate()
+        .map(|(i, b)| {
+            let idx = (i + round) % ranked.len();
+            (b.clone(), ranked[idx].clone())
+        })
+        .collect()
 }
 
 /// `true`, wenn ein Versuch objektiv besteht (geändert UND gebaut UND grün).
@@ -481,6 +526,54 @@ fn bench_run(_brain_id: &str, _task: &str, _headless: bool) -> Result<(String, u
     Err("webview-Feature nicht aktiv — kein Brain-Backend verfügbar".to_string())
 }
 
+/// Übersetzt EINEN gevoteten Vorschlag in eine konkrete, bounded Coding-Aufgabe
+/// (Phase A.5). Zwei Versuche: verlangt die Aufgabe etwas bereits Vorhandenes,
+/// wäre der Bauauftrag wertlos ("ist schon implementiert" → keine Änderung →
+/// fälschlich FAIL). Fällt die Verfeinerung aus, trägt der Rohvorschlag.
+fn refine_one<Q>(
+    winner: &str,
+    facts: &str,
+    refiner: &str,
+    existing_api: &[String],
+    src_files: &[String],
+    query: &Q,
+) -> String
+where
+    Q: Fn(&str, &str) -> Result<String, String>,
+{
+    if refiner.is_empty() {
+        return winner.to_string();
+    }
+    for attempt in 1..=2 {
+        let mut prompt = build_refine_prompt(winner, facts, src_files);
+        if attempt > 1 {
+            prompt.push_str(
+                "
+
+WICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es                  BEREITS GIBT. Schlage etwas anderes vor, das noch NICHT existiert.",
+            );
+        }
+        match query(refiner, &prompt) {
+            Ok(text) => match usable_refinement(&text) {
+                Some(t) if task_is_redundant(&t, existing_api) => {
+                    println!(
+                        "[benchmark]   verworfen: verlangt bereits vorhandene Funktion ({:?})",
+                        proposed_fn_name(&t).unwrap_or_default()
+                    );
+                    continue;
+                }
+                Some(t) => return t,
+                None => break,
+            },
+            Err(e) => {
+                println!("[benchmark]   Verfeinerung fehlgeschlagen ({e}).");
+                break;
+            }
+        }
+    }
+    winner.to_string()
+}
+
 /// Fährt den vollen Benchmark: `query` speist Phase A (Swarm-Abstimmung, in
 /// CLI/REPL `repl::isolated_query`). Der Live-Teil (Phase B) läuft über den
 /// Controller; getestet wird er e2e vom Orchestrator, nicht im Unit-Test.
@@ -513,71 +606,47 @@ where
             VOTE_TOP_K,
             &query,
         );
-        let Some(winner) = winner_from_report(&report) else {
+        let ranked = ranked_from_report(&report);
+        if ranked.is_empty() {
             println!("[benchmark] runde {round}: kein Sieger (keine Stimmen) — überspringe.");
             continue;
-        };
+        }
+        let winner = ranked[0].clone();
         println!("[benchmark] Sieger: {winner}");
         winners.push((round, winner.clone()));
 
-        // Phase A.5 — Verfeinerung: ein Brain uebersetzt den vagen Sieger in eine
-        // konkrete, bounded Aufgabe (exakte Signatur + Testfaelle). Ohne das
-        // explorieren die Brains ergebnislos (siehe build_refine_prompt).
-        // Faellt die Verfeinerung aus, wird der Rohsieger verwendet.
-        let refiner = config.brains.first().cloned().unwrap_or_default();
-        let refined = if refiner.is_empty() {
-            None
-        } else {
-            // Bis zu 2 Versuche: verlangt die Aufgabe etwas bereits Vorhandenes,
-            // ist die Runde wertlos ("ist schon implementiert" -> keine Aenderung
-            // -> faelschlich FAIL). Dann gezielt nach etwas Neuem fragen.
-            let existing_api = crate::self_research::collect_public_api(&config.workdir.join("src"));
-            let src_files: Vec<String> = crate::self_research::collect_modules(&config.workdir.join("src"))
-                .into_iter()
-                .map(|(name, _lines)| format!("src/{name}"))
-                .collect();
-            let mut chosen: Option<String> = None;
-            for attempt in 1..=2 {
-                println!("[benchmark] verfeinern via {refiner} (Versuch {attempt}/2)…");
-                let mut prompt = build_refine_prompt(&winner, &facts, &src_files);
-                if attempt > 1 {
-                    prompt.push_str(
-                        "\n\nWICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es \
-                         BEREITS GIBT. Schlage etwas anderes vor, das noch NICHT existiert.",
-                    );
-                }
-                match query(&refiner, &prompt) {
-                    Ok(text) => match usable_refinement(&text) {
-                        Some(t) if task_is_redundant(&t, &existing_api) => {
-                            println!(
-                                "[benchmark] verworfen: verlangt bereits vorhandene Funktion ({:?})",
-                                proposed_fn_name(&t).unwrap_or_default()
-                            );
-                            continue;
-                        }
-                        other => {
-                            chosen = other;
-                            break;
-                        }
-                    },
-                    Err(e) => {
-                        println!("[benchmark] Verfeinerung fehlgeschlagen ({e}).");
-                        break;
-                    }
-                }
-            }
-            chosen
-        };
-        let effective = refined.unwrap_or_else(|| winner.clone());
-        if effective != winner {
-            println!(
-                "[benchmark] Aufgabe: {}",
-                crate::char_prefix(&effective, 160)
-            );
-        }
+        // Fertigungsstrasse: jedes Brain baut einen EIGENEN Rang der Rangliste,
+        // pro Runde rotiert. Damit kollidieren die Patches nicht und die Arbeit
+        // ALLER bestandenen Brains kann geerntet werden — nicht nur die des
+        // besten. Die Rotation haelt die Messung fair (jedes Brain sieht ueber
+        // die Runden jeden Rang).
+        let assignments = assign_tasks(&config.brains, &ranked, round);
 
-        let task = build_task_prompt(&effective);
-        let tid = task_id(&winner);
+        // Phase A.5 — jede zugeteilte Aufgabe konkretisieren. Gleiche Vorschlaege
+        // nur einmal verfeinern (bei weniger Vorschlaegen als Brains).
+        let refiner = config.brains.first().cloned().unwrap_or_default();
+        let existing_api = crate::self_research::collect_public_api(&config.workdir.join("src"));
+        let src_files: Vec<String> = crate::self_research::collect_modules(&config.workdir.join("src"))
+            .into_iter()
+            .map(|(name, _lines)| format!("src/{name}"))
+            .collect();
+        let mut refined_cache: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let mut plan: Vec<(String, String)> = Vec::new();
+        for (brain, raw) in &assignments {
+            let eff = match refined_cache.get(raw) {
+                Some(t) => t.clone(),
+                None => {
+                    let t = crate::StageTimer::start(format!("verfeinern fuer {brain} via {refiner}"));
+                    let e = refine_one(raw, &facts, &refiner, &existing_api, &src_files, &query);
+                    t.finish(crate::char_prefix(&e, 90));
+                    refined_cache.insert(raw.clone(), e.clone());
+                    e
+                }
+            };
+            println!("[benchmark] {brain} -> {}", crate::char_prefix(&eff, 120));
+            plan.push((brain.clone(), eff));
+        }
 
         // Baseline-Testzahl auf sauberem Tree: ein PASS muss die Testzahl
         // ERHOEHEN, sonst zaehlt eine verwaiste (nicht eingebundene) Datei als
@@ -592,7 +661,9 @@ where
 
         // Phase B — pro Brain sequenziell bauen + objektiv messen.
         let mut harvest_pool: Vec<HarvestCandidate> = Vec::new();
-        for brain in &config.brains {
+        for (brain, effective) in &plan {
+            let task = build_task_prompt(effective);
+            let tid = task_id(effective);
             if !crate::autoresearch::git_status_clean(&config.workdir)? {
                 return Err(format!(
                     "Working Tree in {} ist vor dem Run von {brain} nicht sauber — Abbruch.",
@@ -700,6 +771,7 @@ where
                         );
                         harvest_pool.push(HarvestCandidate {
                             brain: brain.clone(),
+                            task: effective.clone(),
                             patch,
                             iterations,
                             latency_ms,
@@ -714,32 +786,39 @@ where
             reset_repo(&config.workdir, &baseline)?;
         }
 
-        // Ernte: der beste bestandene Lauf wird wieder eingespielt und bleibt.
+        // Ernte: JEDER bestandene Lauf wird eingespielt — die Brains bauten
+        // verschiedene Aufgaben, also ist nichts davon Ausschuss. Reihenfolge:
+        // die souveraensten zuerst (wenige Iterationen), damit bei einem
+        // seltenen Konflikt der schwaechere Beitrag zurueckstecken muss.
         if config.harvest {
-            match pick_harvest(&harvest_pool) {
-                Some(cand) => {
-                    let t = crate::StageTimer::start(format!(
-                        "Ernte: {} wieder einspielen + nachpruefen",
-                        cand.brain
-                    ));
-                    match harvest_commit(cand, &effective, config) {
-                        Ok(()) => {
-                            t.finish("geerntet und committet");
-                            println!(
-                                "[benchmark] GEERNTET: {} ({} Iteration(en)) — Code bleibt im Repo.",
-                                cand.brain, cand.iterations
-                            );
-                            harvested.push((cand.brain.clone(), effective.clone()));
-                        }
-                        Err(e) => {
-                            t.finish("Ernte fehlgeschlagen");
-                            println!("[benchmark] Ernte verworfen: {e}");
-                            let head = crate::autoresearch::git_head_sha(&config.workdir)?;
-                            reset_repo(&config.workdir, &head)?;
-                        }
+            if harvest_pool.is_empty() {
+                println!("[benchmark] Nichts zu ernten — kein Brain hat bestanden.");
+            }
+            harvest_pool.sort_by_key(|c| (c.iterations, c.latency_ms));
+            for cand in &harvest_pool {
+                if cand.patch.trim().is_empty() {
+                    continue;
+                }
+                let t = crate::StageTimer::start(format!(
+                    "Ernte: {} einspielen + nachpruefen",
+                    cand.brain
+                ));
+                match harvest_commit(cand, &cand.task, config) {
+                    Ok(()) => {
+                        t.finish("geerntet und committet");
+                        println!(
+                            "[benchmark] GEERNTET: {} ({} Iteration(en)) — Code bleibt im Repo.",
+                            cand.brain, cand.iterations
+                        );
+                        harvested.push((cand.brain.clone(), cand.task.clone()));
+                    }
+                    Err(e) => {
+                        t.finish("Ernte fehlgeschlagen");
+                        println!("[benchmark] Ernte verworfen ({}): {e}", cand.brain);
+                        let head = crate::autoresearch::git_head_sha(&config.workdir)?;
+                        reset_repo(&config.workdir, &head)?;
                     }
                 }
-                None => println!("[benchmark] Nichts zu ernten — kein Brain hat bestanden."),
             }
         }
     }
@@ -1007,6 +1086,7 @@ mod tests {
     fn cand(brain: &str, iters: u32, ms: u64, patch: &str) -> HarvestCandidate {
         HarvestCandidate {
             brain: brain.to_string(),
+            task: "Testaufgabe".to_string(),
             patch: patch.to_string(),
             iterations: iters,
             latency_ms: ms,
@@ -1060,5 +1140,72 @@ mod tests {
             max_iterations: 10,
             harvest: false,
         }
+    }
+
+    #[test]
+    fn assign_gives_every_brain_its_own_task() {
+        // Fertigungsstrasse: acht Brains, acht verschiedene Raenge — sonst
+        // kollidieren die Patches und nur einer waere erntbar.
+        let brains: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        let ranked: Vec<String> = ["r1", "r2", "r3"].iter().map(|s| s.to_string()).collect();
+        let got = assign_tasks(&brains, &ranked, 0);
+        let tasks: std::collections::HashSet<&String> = got.iter().map(|(_, t)| t).collect();
+        assert_eq!(got.len(), 3);
+        assert_eq!(tasks.len(), 3, "jedes Brain braucht eine eigene Aufgabe");
+    }
+
+    #[test]
+    fn assign_rotates_across_rounds_so_scoring_stays_fair() {
+        // Ueber die Runden muss jedes Brain jeden Rang sehen, sonst zieht eines
+        // dauerhaft die leichteren Aufgaben und der Score waere verzerrt.
+        let brains: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        let ranked: Vec<String> = ["r1", "r2", "r3"].iter().map(|s| s.to_string()).collect();
+        let seen: std::collections::HashSet<String> = (0..3)
+            .flat_map(|round| assign_tasks(&brains, &ranked, round))
+            .filter(|(b, _)| b == "a")
+            .map(|(_, t)| t)
+            .collect();
+        assert_eq!(seen.len(), 3, "Brain a muss ueber 3 Runden alle 3 Raenge bauen");
+    }
+
+    #[test]
+    fn assign_shares_ranks_when_fewer_suggestions_than_brains() {
+        let brains: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        let ranked: Vec<String> = vec!["nur_einer".to_string()];
+        let got = assign_tasks(&brains, &ranked, 0);
+        assert_eq!(got.len(), 3);
+        assert!(got.iter().all(|(_, t)| t == "nur_einer"));
+    }
+
+    #[test]
+    fn assign_without_suggestions_is_empty() {
+        let brains: Vec<String> = vec!["a".to_string()];
+        assert!(assign_tasks(&brains, &[], 0).is_empty());
+    }
+
+    #[test]
+    fn ranked_from_report_drops_empty_entries() {
+        let report = SelfResearchReport {
+            catalog: Vec::new(),
+            ranked: vec![
+                crate::self_research::RankedSuggestion {
+                    index: 1,
+                    text: "Fehlerhierarchie mit thiserror einfuehren".to_string(),
+                    points: 10,
+                    approvals: 2,
+                },
+                crate::self_research::RankedSuggestion {
+                    index: 2,
+                    text: "   ".to_string(),
+                    points: 5,
+                    approvals: 1,
+                },
+            ],
+            consolidated_by: None,
+            collected: 2,
+            voters: 2,
+            brains_total: 2,
+        };
+        assert_eq!(ranked_from_report(&report).len(), 1);
     }
 }

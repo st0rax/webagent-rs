@@ -277,6 +277,18 @@ pub fn is_plausible_suggestion(line: &str) -> bool {
         "thought process",
         "thinking…",
         "reasoning:",
+        // Ausfall-/Wartemeldungen der Brain-Oberflaechen. "No response, Please
+        // try again later." gewann am 2026-07-21 eine echte Abstimmung: 38
+        // Zeichen, reiner Fliesstext — die Laengen- und Buchstabenpruefung
+        // laesst so etwas anstandslos durch, nur die Wortliste faengt es.
+        "no response",
+        "try again later",
+        "please try again",
+        "something went wrong",
+        "service unavailable",
+        "too many requests",
+        "failed to fetch",
+        "network error",
     ];
     if JUNK.iter().any(|j| low.contains(j)) {
         return false;
@@ -873,5 +885,23 @@ mod tests {
         assert!(body.contains("[6 Punkte, 2 Stimmen] Beta"));
         assert!(body.contains("## Katalog"));
         assert!(body.contains("2. Beta"));
+    }
+
+    #[test]
+    fn ui_failure_messages_are_not_suggestions() {
+        // Real beobachtet: "No response, Please try again later." gewann eine
+        // Abstimmung und machte die Runde wertlos.
+        assert!(!is_plausible_suggestion("No response, Please try again later."));
+        assert!(!is_plausible_suggestion("Something went wrong. Please try again."));
+        assert!(!is_plausible_suggestion("Too many requests - service unavailable"));
+    }
+
+    #[test]
+    fn rate_limiting_as_a_topic_stays_a_valid_suggestion() {
+        // Abgrenzung: "Rate-Limit" im Fachsinn darf NICHT als Ausfallmeldung
+        // gelten, sonst filtert der Schutz echte Vorschlaege weg.
+        assert!(is_plausible_suggestion(
+            "Rate-Limiting fuer die Brain-Abfragen einfuehren, damit Anbieter-Limits nicht gerissen werden"
+        ));
     }
 }
