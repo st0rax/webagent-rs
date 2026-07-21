@@ -151,6 +151,10 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// Stale-Antwort aus einer alten Konversation als sofortiges message-done,
     /// ohne je gearbeitet zu haben (Pfad c des Phantom-Done-Komplexes).
     act_steps: u32,
+    /// Optionale Wall-Deadline (Sekunden) statt `config::max_run_wall_secs()`.
+    /// Pro Controller injizierbar — Tests duerfen KEINE prozessglobale
+    /// Env-Variable setzen (das brach parallel laufende Tests, Fund 2026-07-21).
+    wall_secs_override: Option<u64>,
 }
 
 impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
@@ -200,7 +204,15 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             completed_actions: HashMap::new(),
             incomplete_retries: 0,
             act_steps: 0,
+            wall_secs_override: None,
         }
+    }
+
+    /// Setzt die Wall-Deadline dieses Runs (Sekunden) und uebersteuert damit
+    /// `config::max_run_wall_secs()` — fuer Tests und Aufrufer, die einen Run
+    /// enger begrenzen wollen, ohne die Umgebung des Prozesses zu veraendern.
+    pub fn set_wall_timeout_secs(&mut self, secs: u64) {
+        self.wall_secs_override = Some(secs);
     }
 
     /// Persistiert conversation_ref in RunMeta.
@@ -905,7 +917,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // hängendes Brain (kein Fortschritt für max_cycles/loop_guard) nicht
         // endlos läuft. Abbruch ist sauber (Status wall_timeout), kein Panic.
         let wall_started = Instant::now();
-        let wall_deadline = Duration::from_secs(crate::config::max_run_wall_secs());
+        let wall_secs = self
+            .wall_secs_override
+            .unwrap_or_else(crate::config::max_run_wall_secs);
+        let wall_deadline = Duration::from_secs(wall_secs);
 
         // Pending response oder Resume oder Initial
         let mut turn = if let Some(resume_id) = resume_id {
@@ -1687,14 +1702,14 @@ mod tests {
         // Ein Run, der nie abschließt (endlose frische shell-Actions mit
         // Verzögerung) und dessen max_cycles praktisch unerreichbar ist, muss
         // durch die Wall-Deadline sauber als wall_timeout beendet werden.
-        let key = "WEBAGENT_MAX_RUN_SECONDS";
-        let prev = env::var(key).ok();
-        env::set_var(key, "1");
-
+        // WICHTIG: keine prozessglobale Env-Variable setzen — das brach parallel
+        // laufende Tests (deren Runs liefen in diese 1s-Deadline und endeten als
+        // wall_timeout statt done). Deadline pro Controller injizieren.
         let brain = MockBrain::new().with_wall_stall(Duration::from_millis(300));
         let executor = MockExecutor::new();
         let mut controller =
             AgentController::with_data_dir(brain, executor, 1_000_000, unique_data_dir());
+        controller.set_wall_timeout_secs(1);
         let meta = controller.run("Endlosschleife", "mock", None, false).unwrap();
 
         assert_eq!(meta.status, "wall_timeout");
@@ -1706,10 +1721,5 @@ mod tests {
             meta.extra.contains_key("wall_elapsed_s"),
             "wall_elapsed_s sollte gesetzt sein"
         );
-
-        match prev {
-            Some(v) => env::set_var(key, v),
-            None => env::remove_var(key),
-        }
     }
 }

@@ -26,28 +26,20 @@ use std::thread;
 use crate::config::{available_brain_ids, bot2bot_root};
 use crate::worker_pool::{candidates_with_profile, PoolControl, WorkerPool};
 
-#[cfg(not(feature = "tui"))]
 use std::io::{BufRead, Write};
 
-#[cfg(not(feature = "tui"))]
 use crate::worker_pool::{PoolState, STATUS_ACTIVE};
 
 // ---------------------------------------------------------------------------
 // ANSI-TUI-Hilfsmittel (nur ohne ratatui benötigt)
 // ---------------------------------------------------------------------------
 
-#[cfg(not(feature = "tui"))]
 const CLEAR: &str = "\x1b[2J\x1b[H";
-#[cfg(not(feature = "tui"))]
 const RESET: &str = "\x1b[0m";
-#[cfg(not(feature = "tui"))]
 const BOLD: &str = "\x1b[1m";
-#[cfg(not(feature = "tui"))]
 const DIM: &str = "\x1b[2m";
-#[cfg(not(feature = "tui"))]
 const CYAN: &str = "\x1b[36m";
 
-#[cfg(not(feature = "tui"))]
 fn status_color(status: &str) -> &'static str {
     match status {
         STATUS_ACTIVE => "\x1b[32m", // grün
@@ -59,7 +51,6 @@ fn status_color(status: &str) -> &'static str {
 }
 
 /// Statuspunkt für die schnelle Erfassung in der ANSI-Tabelle.
-#[cfg(not(feature = "tui"))]
 fn status_glyph(status: &str) -> &'static str {
     match status {
         STATUS_ACTIVE => "●",
@@ -125,7 +116,6 @@ fn send_task(root: &Path, brain: &str, from: &str, text: &str) -> std::io::Resul
 // ANSI-TUI-Hilfsfunktionen (nur ohne ratatui)
 // ---------------------------------------------------------------------------
 
-#[cfg(not(feature = "tui"))]
 fn consider_dir(
     best: &mut Option<(std::time::SystemTime, String, String, bool)>,
     dir: &Path,
@@ -160,7 +150,6 @@ fn consider_dir(
     }
 }
 
-#[cfg(not(feature = "tui"))]
 fn newest_msg(inbox: &Path) -> Option<(String, String, bool)> {
     let read = inbox.join("_read");
     let mut best: Option<(std::time::SystemTime, String, String, bool)> = None;
@@ -170,7 +159,6 @@ fn newest_msg(inbox: &Path) -> Option<(String, String, bool)> {
 }
 
 /// Erste nicht-Header-Zeile einer Nachricht als Vorschau.
-#[cfg(not(feature = "tui"))]
 fn preview_body(path: &Path) -> String {
     if let Ok(s) = fs::read_to_string(path) {
         for line in s.lines() {
@@ -189,7 +177,6 @@ fn preview_body(path: &Path) -> String {
 }
 
 /// Aktuelle Anzahl aktiver Worker aus `pool_state.json`.
-#[cfg(not(feature = "tui"))]
 fn current_active(state_path: &Path) -> usize {
     if let Ok(s) = fs::read_to_string(state_path) {
         if let Ok(st) = serde_json::from_str::<PoolState>(&s) {
@@ -208,7 +195,6 @@ fn current_active(state_path: &Path) -> usize {
 // ---------------------------------------------------------------------------
 
 /// Rendert das Dashboard (Brains + Status + Task-Board) auf stdout.
-#[cfg(not(feature = "tui"))]
 fn render(
     root: &Path,
     state_path: &Path,
@@ -289,7 +275,6 @@ fn render(
 // ANSI-TUI (Fallback ohne ratatui)
 // ---------------------------------------------------------------------------
 
-#[cfg(not(feature = "tui"))]
 fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> i32 {
     let all = available_brain_ids();
     let selected: Vec<String> = if brains.trim().is_empty() {
@@ -652,10 +637,14 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
 pub fn run_tui(active: usize, brains: &str, poll_secs: u64, headless: bool) -> i32 {
     #[cfg(feature = "tui")]
     {
-        run_tui_ratatui(active, brains, poll_secs, headless)
+        // ratatui braucht ein echtes Terminal (raw mode + alternate screen).
+        // Bei umgeleiteter/detached Ausgabe schlaegt enable_raw_mode fehl — dann
+        // die ANSI-Variante fahren statt mit Fehler abzubrechen.
+        use std::io::IsTerminal;
+        if std::io::stdout().is_terminal() {
+            return run_tui_ratatui(active, brains, poll_secs, headless);
+        }
+        eprintln!("[tui] Kein interaktives Terminal (umgeleitet/detached) — ANSI-Fallback.");
     }
-    #[cfg(not(feature = "tui"))]
-    {
-        run_tui_ansi(active, brains, poll_secs, headless)
-    }
+    run_tui_ansi(active, brains, poll_secs, headless)
 }

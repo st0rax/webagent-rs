@@ -30,7 +30,7 @@ ratatui = { version = "0.29", optional = true }
 crossterm = { version = "0.28", optional = true }
 
 [features]
-default = ["webview"]
+default = ["webview", "tui"]
 webview = ["dep:wry", "dep:tao", "dep:webview2-com", "dep:windows"]
 tui = ["dep:ratatui", "dep:crossterm"]
 
