@@ -335,6 +335,27 @@ pub fn count_failed_tests(output: &str) -> u32 {
     total
 }
 
+/// Bewertet den Stand NACH dem Testlauf.
+///
+/// Der Fallstrick, den ein echter Lauf offengelegt hat (deepseek, 2026-07-21):
+/// `cargo build --lib` war grün, `cargo test --lib` meldete zehnmal in Folge
+/// „0 bestanden" — die Test-Binary ließ sich gar nicht erst übersetzen. Naiv
+/// gezählt sind das *null* fehlgeschlagene Tests, also scheinbar der beste
+/// denkbare Stand auf Stufe 2; ein Brain, das später wirklich Tests laufen
+/// lässt und drei davon rot sieht, hätte damit „schlechter" abgeschnitten.
+///
+/// Deshalb: laufen gar keine Tests, ist das kein Stufe-2-Ergebnis. Der
+/// Test-Build ist strenger als `build --lib` (er übersetzt auch die
+/// `#[cfg(test)]`-Module), also bleibt es Stufe 1.
+pub fn progress_after_tests(output: &str) -> Progress {
+    let ran = parse_test_count(output).is_some() || count_failed_tests(output) > 0;
+    if ran {
+        Progress { stage: 2, errors: count_failed_tests(output) }
+    } else {
+        Progress { stage: 1, errors: count_build_errors(output) }
+    }
+}
+
 /// `true`, wenn `now` näher an grün ist als das bisher Beste.
 ///
 /// Ohne dieses Maß entschied allein das Schleifenlimit über den Abbruch: ein
@@ -855,10 +876,7 @@ where
                     println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — grün");
                     break;
                 }
-                // Build steht — das ist Stufe 2, unabhaengig davon wie viele
-                // Tests noch rot sind. Ein Brain, das den Compiler befriedigt
-                // hat, ist objektiv weiter als eines mit rotem Build.
-                let now = Progress { stage: 2, errors: count_failed_tests(&t_out) };
+                let now = progress_after_tests(&t_out);
                 if is_improvement(best, now) {
                     println!(
                         "[benchmark] {brain}: Iteration {iter}/{max_iter} — Tests rot, aber naeher dran ({} rot)",
@@ -1426,5 +1444,31 @@ mod tests {
 ";
         assert_eq!(count_failed_tests(out), 4);
         assert_eq!(count_failed_tests("test result: ok. 400 passed; 0 failed"), 0);
+    }
+
+    #[test]
+    fn tests_that_never_ran_do_not_outrank_tests_that_ran_and_failed() {
+        // Realfall deepseek 2026-07-21: `cargo test` meldete zehnmal "0
+        // bestanden", weil die Test-Binary nicht uebersetzte. Naiv sind das
+        // null rote Tests — der scheinbar beste Stand ueberhaupt.
+        let nie_gelaufen = progress_after_tests(
+            "error[E0425]: cannot find value `foo`
+error: could not compile `webagent` (lib test)",
+        );
+        let gelaufen_rot = progress_after_tests("test result: FAILED. 380 passed; 3 failed; 0 ignored");
+        assert_eq!(nie_gelaufen.stage, 1, "nicht uebersetzte Tests sind kein Stufe-2-Ergebnis");
+        assert_eq!(gelaufen_rot.stage, 2);
+        assert!(
+            is_improvement(Some(nie_gelaufen), gelaufen_rot),
+            "Tests zum Laufen zu bringen muss als Fortschritt zaehlen"
+        );
+        assert!(!is_improvement(Some(gelaufen_rot), nie_gelaufen));
+    }
+
+    #[test]
+    fn repeated_uncompilable_tests_stall_instead_of_looking_perfect() {
+        let a = progress_after_tests("error[E0308]: mismatched types");
+        let b = progress_after_tests("error[E0308]: mismatched types");
+        assert!(!is_improvement(Some(a), b), "zweimal derselbe Fehler ist Stillstand");
     }
 }
