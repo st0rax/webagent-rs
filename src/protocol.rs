@@ -90,6 +90,28 @@ impl ParseResult {
     }
 }
 
+/// Bildet eine Fehlermeldung (die deutschen Strings aus ParseResult::invalid)
+/// auf einen stabilen, maschinenlesbaren Slug ab.
+/// Teilstring-Match case-insensitive, erste Regel gewinnt.
+pub fn error_code(error: &str) -> &'static str {
+    let lower = error.to_lowercase();
+    if lower.contains("unbekannt") {
+        "unknown_field"
+    } else if lower.contains("braucht") {
+        "missing_field"
+    } else if lower.contains("protocol muss") {
+        "protocol_mismatch"
+    } else if lower.contains("doppelte") {
+        "duplicate_id"
+    } else if lower.contains("leer") {
+        "empty"
+    } else if lower.contains("identisch") {
+        "identical_old_new"
+    } else {
+        "invalid"
+    }
+}
+
 fn json_block_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"```(?:json)?\s*(\{.*\})\s*```").unwrap())
@@ -1298,5 +1320,48 @@ Write-Output $html
         assert!(msg.contains("Ungültiges JSON: trailing comma"));
         assert!(msg.contains("repair-1"));
         assert!(msg.contains(r#""protocol""#));
+    }
+
+    #[test]
+    fn test_error_code_unknown_field() {
+        assert_eq!(error_code("unbekanntes Feld"), "unknown_field");
+        assert_eq!(error_code("Unbekannt"), "unknown_field");
+    }
+
+    #[test]
+    fn test_error_code_missing_field() {
+        assert_eq!(error_code("braucht ein Feld"), "missing_field");
+        assert_eq!(error_code("Braucht"), "missing_field");
+    }
+
+    #[test]
+    fn test_error_code_protocol_mismatch() {
+        assert_eq!(error_code("protocol muss webagent/1 sein"), "protocol_mismatch");
+        assert_eq!(error_code("Protocol muss"), "protocol_mismatch");
+    }
+
+    #[test]
+    fn test_error_code_duplicate_id() {
+        assert_eq!(error_code("doppelte id"), "duplicate_id");
+        assert_eq!(error_code("Doppelte"), "duplicate_id");
+    }
+
+    #[test]
+    fn test_error_code_empty() {
+        assert_eq!(error_code("leerer Wert"), "empty");
+        assert_eq!(error_code("Leer"), "empty");
+    }
+
+    #[test]
+    fn test_error_code_identical_old_new() {
+        assert_eq!(error_code("identisch"), "identical_old_new");
+        assert_eq!(error_code("alte und neue Werte sind identisch"), "identical_old_new");
+    }
+
+    #[test]
+    fn test_error_code_default_invalid() {
+        assert_eq!(error_code("sonstiger fehler"), "invalid");
+        assert_eq!(error_code(""), "invalid");
+        assert_eq!(error_code("irgendwas ganz anderes"), "invalid");
     }
 }
