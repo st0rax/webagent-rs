@@ -112,6 +112,65 @@ pub fn format_audit_line(command: &str, allowed: bool, ts: &str) -> String {
     obj.to_string()
 }
 
+/// Prüft, ob ein Pfad nach Kanonisierung innerhalb eines der erlaubten
+/// Basisverzeichnisse liegt und keine Traversal- oder Escape-Muster enthält.
+/// Symlinks werden aufgelöst, und alle Pfadkomponenten werden validiert.
+pub fn validate_path_allowlist_recursive(
+    path: &std::path::Path,
+    allowlist: &[&std::path::Path],
+) -> Result<(), String> {
+    // Kanonisiere den Pfad (inkl. Symlink-Auflösung)
+    let canonical = path.canonicalize().map_err(|e| {
+        format!(
+            "Pfad konnte nicht kanonisiert werden: {} ({})",
+            path.display(),
+            e
+        )
+    })?;
+
+    // Prüfe, ob der kanonisierte Pfad innerhalb eines erlaubten Basisverzeichnisses liegt
+    let mut is_allowed = false;
+    for base in allowlist {
+        let base_canonical = base.canonicalize().map_err(|e| {
+            format!(
+                "Allowlist-Eintrag konnte nicht kanonisiert werden: {} ({})",
+                base.display(),
+                e
+            )
+        })?;
+
+        // Prüfe, ob der Pfad mit dem Basisverzeichnis beginnt oder gleich ist
+        if canonical == base_canonical || canonical.starts_with(&base_canonical) {
+            is_allowed = true;
+            break;
+        }
+    }
+
+    if !is_allowed {
+        return Err(format!(
+            "Pfad liegt außerhalb aller erlaubten Basisverzeichnisse: {}",
+            canonical.display()
+        ));
+    }
+
+    // Explizite Blockliste: verbotene Muster im kanonisierten Pfad
+    let path_str = canonical.to_string_lossy();
+    if path_str.contains("..") {
+        return Err(format!(
+            "Pfad enthält verbotene Traversal-Muster (..): {}",
+            canonical.display()
+        ));
+    }
+
+    // Prüfe auf Root-Übergriffe (z.B. /etc/passwd außerhalb erlaubter Basis)
+    // Dies wird bereits durch die Allowlist-Prüfung abgedeckt, aber wir prüfen
+    // zusätzlich, ob der Pfad unter einem der erlaubten Basen liegt.
+    // Zusätzliche Sicherheit: Verhindere absolute Pfade, die nicht unter einer
+    // erlaubten Basis liegen (wurde bereits geprüft).
+
+    Ok(())
+}
+
 /// Jede Entscheidung geht sichtbar nach stderr (nicht versteckt, siehe
 /// [[external-blocks-flag-not-fail]]-Philosophie: transparent statt still) und
 /// zusätzlich als JSON-Line ins Audit-Log, damit Deny-Faelle nachvollziehbar
@@ -231,6 +290,49 @@ mod tests {
             Decision::Deny(_)
         ));
         assert_eq!(evaluate_with_mode("Get-ChildItem", true), Decision::Allow);
+    }
+
+    #[test]
+    fn validate_path_allowlist_recursive_works() {
+        use std::path::Path;
+
+        // Erstelle temporäres Verzeichnis für Tests
+        let temp_dir = std::env::temp_dir().join("webagent_test_allowlist");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let safe_dir = temp_dir.join("safe");
+        std::fs::create_dir_all(&safe_dir).unwrap();
+        let sub_dir = safe_dir.join("sub");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        let file_path = safe_dir.join("file.txt");
+        std::fs::write(&file_path, "test").unwrap();
+
+        let allowlist = vec![safe_dir.as_path()];
+
+        // Pfad innerhalb eines Allowlist-Basisverzeichnisses → Ok(())
+        assert!(validate_path_allowlist_recursive(&file_path, &allowlist).is_ok());
+
+        // Pfad exakt gleich einem Allowlist-Eintrag → Ok(())
+        assert!(validate_path_allowlist_recursive(&safe_dir, &allowlist).is_ok());
+
+        // Relativer Pfad, der nach Kanonisierung innerhalb Allowlist liegt → Ok(())
+        let relative_path = Path::new("safe/file.txt");
+        std::env::set_current_dir(&temp_dir).unwrap();
+        assert!(validate_path_allowlist_recursive(relative_path, &allowlist).is_ok());
+
+        // Pfad mit Traversal → Err
+        let traversal_path = safe_dir.join("../etc/passwd");
+        assert!(validate_path_allowlist_recursive(&traversal_path, &allowlist).is_err());
+
+        // Pfad außerhalb aller Allowlist-Basen → Err
+        let outside_path = temp_dir.join("outside");
+        std::fs::create_dir_all(&outside_path).unwrap();
+        assert!(validate_path_allowlist_recursive(&outside_path, &allowlist).is_err());
+
+        // Aufräumen
+        std::env::set_current_dir(std::env::current_dir().unwrap()).unwrap();
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
