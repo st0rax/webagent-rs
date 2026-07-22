@@ -49,6 +49,87 @@ pub struct App {
     pub expanded: std::collections::HashSet<String>,
     /// Scroll-Offset innerhalb des aufgeklappten Details.
     pub detail_scroll: usize,
+    /// Fokussiertes Panel (Tab wechselt) — Gewinner-Design des Swarm-Votes
+    /// 2026-07-22 (qwen: „Wechseln des UI-Fokus zwischen den drei Panels per
+    /// Tab").
+    pub focus: Panel,
+    /// Log-Filter (f schaltet um) — „Filtern des Logs mit f".
+    pub log_filter: LogFilter,
+}
+
+/// Die drei fokussierbaren Hauptpanels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Panel {
+    Agents,
+    Tasks,
+    Log,
+}
+
+impl Panel {
+    /// Nächstes Panel im Tab-Zyklus (Agents → Tasks → Log → Agents).
+    pub fn next(self) -> Panel {
+        match self {
+            Panel::Agents => Panel::Tasks,
+            Panel::Tasks => Panel::Log,
+            Panel::Log => Panel::Agents,
+        }
+    }
+}
+
+/// Log-Filterstufen, per `f` durchgeschaltet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogFilter {
+    /// Alle Zeilen.
+    All,
+    /// Nur Warnungen und Fehler.
+    Warnings,
+    /// Nur Fehler.
+    Errors,
+}
+
+impl LogFilter {
+    /// Nächste Stufe im Zyklus (All → Warnings → Errors → All).
+    pub fn next(self) -> LogFilter {
+        match self {
+            LogFilter::All => LogFilter::Warnings,
+            LogFilter::Warnings => LogFilter::Errors,
+            LogFilter::Errors => LogFilter::All,
+        }
+    }
+
+    /// Kurzlabel für die Panel-Überschrift.
+    pub fn label(self) -> &'static str {
+        match self {
+            LogFilter::All => "alle",
+            LogFilter::Warnings => "warn+",
+            LogFilter::Errors => "fehler",
+        }
+    }
+
+    /// `true`, wenn die Zeile bei dieser Stufe sichtbar ist. Severity wird
+    /// heuristisch am Text erkannt (die Logs sind Freitext, keine strukturierten
+    /// Level).
+    pub fn keeps(self, line: &str) -> bool {
+        match self {
+            LogFilter::All => true,
+            LogFilter::Warnings => line_is_warning(line) || line_is_error(line),
+            LogFilter::Errors => line_is_error(line),
+        }
+    }
+}
+
+fn line_is_error(line: &str) -> bool {
+    let l = line.to_lowercase();
+    ["error", "fehler", "panic", "fail", "fatal", "✕", "crash"]
+        .iter()
+        .any(|k| l.contains(k))
+}
+
+fn line_is_warning(line: &str) -> bool {
+    let l = line.to_lowercase();
+    ["warn", "warnung", "cooldown", "retry", "stall", "timeout"]
+        .iter()
+        .any(|k| l.contains(k))
 }
 
 /// Input-Modi der TUI.
@@ -329,6 +410,8 @@ mod tests {
             gauge_shown: 0.0,
             expanded: std::collections::HashSet::new(),
             detail_scroll: 0,
+            focus: Panel::Agents,
+            log_filter: LogFilter::All,
         }
     }
 

@@ -71,10 +71,22 @@ fn text_bar(fraction: f64, width: usize) -> String {
 
 /// Rahmen-Block mit etwas Luft um den Titel (einheitliche Optik).
 fn titled_block(title: &str) -> Block<'static> {
+    titled_block_focus(title, false)
+}
+
+/// Rahmen-Block, dessen Rand+Titel bei `focused` hervorgehoben werden — so ist
+/// das per Tab fokussierte Panel sichtbar (Gewinner-Design 2026-07-22).
+fn titled_block_focus(title: &str, focused: bool) -> Block<'static> {
+    let (border, marker) = if focused {
+        (Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD), "▸ ")
+    } else {
+        (Style::default().fg(Color::DarkGray), "")
+    };
     Block::default()
         .borders(Borders::ALL)
+        .border_style(border)
         .title(Span::styled(
-            format!(" {title} "),
+            format!(" {marker}{title} "),
             Style::default().add_modifier(Modifier::BOLD),
         ))
 }
@@ -168,12 +180,12 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
         } else if app.detail_scroll > 0 && !shown.is_empty() {
             // Wenn wir durch Scrollen nach oben in der History sind, zeigen wir
             // an, dass noch ältere Einträge vorhanden sind.
-            items.push(detail_item(&format!("… ältere Einträge oben (j/k blättert)")));
+            items.push(detail_item("… ältere Einträge oben (j/k blättert)"));
         }
     }
 
     let list = List::new(items)
-        .block(titled_block("Agenten"))
+        .block(titled_block_focus("Agenten", app.focus == crate::tui_state::Panel::Agents))
         .style(Style::default())
         .highlight_style(
             Style::default()
@@ -268,15 +280,47 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
 /// Log-Pane: Live-Log Stream.
 fn render_log(f: &mut Frame, app: &App, area: Rect) {
     let agent = app.agents.get(app.selected);
-    let text = agent
-        .and_then(|a| a.last_log_line.clone())
-        .unwrap_or_else(|| "Keine Log-Daten".to_string());
+    // Mehrzeiliges Log aus den jüngsten Ereignissen des gewählten Agenten;
+    // Fallback auf die einzelne letzte Zeile.
+    let raw: Vec<String> = match agent {
+        Some(a) if !a.detail.is_empty() => a.detail.clone(),
+        Some(a) => a.last_log_line.clone().into_iter().collect(),
+        None => Vec::new(),
+    };
 
-    let p = Paragraph::new(text)
-        .block(titled_block("Live Log"))
+    let filter = app.log_filter;
+    let mut lines: Vec<Line> = raw
+        .iter()
+        .filter(|l| filter.keeps(l))
+        .map(|l| Line::from(Span::styled(l.clone(), log_line_style(l))))
+        .collect();
+    if lines.is_empty() {
+        let hint = if raw.is_empty() {
+            "Keine Log-Daten".to_string()
+        } else {
+            format!("(keine Zeile im Filter '{}' — f schaltet um)", filter.label())
+        };
+        lines.push(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))));
+    }
+
+    let title = format!("Live Log [{}]", filter.label());
+    let p = Paragraph::new(lines)
+        .block(titled_block_focus(&title, app.focus == crate::tui_state::Panel::Log))
         .scroll((app.log_scroll, 0));
 
     f.render_widget(p, area);
+}
+
+/// Severity-Farbe einer Log-Zeile (rot=Fehler, gelb=Warnung, sonst gedimmt).
+fn log_line_style(line: &str) -> Style {
+    use crate::tui_state::LogFilter;
+    if !LogFilter::Errors.keeps(line) && LogFilter::Warnings.keeps(line) {
+        Style::default().fg(Color::Yellow)
+    } else if LogFilter::Errors.keeps(line) {
+        Style::default().fg(Color::Red)
+    } else {
+        Style::default().fg(Color::Gray)
+    }
 }
 
 /// Tasks-Pane: Offene/Erledigte Tasks.
@@ -324,7 +368,8 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
         ))]
     };
 
-    let p = Paragraph::new(content).block(titled_block("Tasks"));
+    let p = Paragraph::new(content)
+        .block(titled_block_focus("Tasks", app.focus == crate::tui_state::Panel::Tasks));
 
     f.render_widget(p, area);
 }
@@ -388,7 +433,49 @@ mod tests {
             gauge_shown: 0.5,
             expanded: std::collections::HashSet::new(),
             detail_scroll: 0,
+            focus: crate::tui_state::Panel::Agents,
+            log_filter: crate::tui_state::LogFilter::All,
         }
+    }
+
+    #[test]
+    fn tab_cycles_focus_through_all_three_panels() {
+        use crate::tui_state::Panel;
+        let mut app = test_app(vec![test_agent("a", "active", vec![])]);
+        assert_eq!(app.focus, Panel::Agents);
+        app.focus = app.focus.next();
+        assert_eq!(app.focus, Panel::Tasks);
+        app.focus = app.focus.next();
+        assert_eq!(app.focus, Panel::Log);
+        app.focus = app.focus.next();
+        assert_eq!(app.focus, Panel::Agents, "zyklisch zurueck");
+    }
+
+    #[test]
+    fn log_filter_cycles_and_keeps_by_severity() {
+        use crate::tui_state::LogFilter;
+        assert_eq!(LogFilter::All.next(), LogFilter::Warnings);
+        assert_eq!(LogFilter::Warnings.next(), LogFilter::Errors);
+        assert_eq!(LogFilter::Errors.next(), LogFilter::All);
+
+        // Alle zeigt jede Zeile.
+        assert!(LogFilter::All.keeps("ganz normale zeile"));
+        // Fehler zeigt nur Fehlerzeilen.
+        assert!(LogFilter::Errors.keeps("panic: index out of bounds"));
+        assert!(!LogFilter::Errors.keeps("ganz normale zeile"));
+        // Warn+ zeigt Warnungen UND Fehler, aber nicht Normales.
+        assert!(LogFilter::Warnings.keeps("cooldown fuer 900s"));
+        assert!(LogFilter::Warnings.keeps("error: kaputt"));
+        assert!(!LogFilter::Warnings.keeps("alles gut"));
+    }
+
+    #[test]
+    fn focused_block_uses_a_distinct_border() {
+        // Der fokussierte Rahmen muss sich sichtbar vom unfokussierten
+        // unterscheiden (sonst sieht man den Tab-Fokus nicht).
+        let focused = titled_block_focus("X", true);
+        let plain = titled_block_focus("X", false);
+        assert_ne!(format!("{focused:?}"), format!("{plain:?}"));
     }
 
     #[test]

@@ -429,7 +429,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
     use ratatui::Terminal;
 
     use crate::tui_render::ui;
-    use crate::tui_state::{load_state, select_wrap, App, InputMode};
+    use crate::tui_state::{load_state, select_wrap, App, InputMode, LogFilter, Panel};
 
     let all = available_brain_ids();
     let selected: Vec<String> = if brains.trim().is_empty() {
@@ -502,6 +502,8 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
         gauge_shown: 0.0,
         expanded: std::collections::HashSet::new(),
         detail_scroll: 0,
+        focus: Panel::Agents,
+        log_filter: LogFilter::All,
     };
 
     // --- Event-Loop ---
@@ -527,6 +529,10 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                             app.selected = select_wrap(app.selected, 1, app.agents.len());
                         }
                         KeyCode::Char('q') => break 0,
+                        // Gewinner-Design (qwen, 2026-07-22): Tab wechselt den
+                        // Panel-Fokus, f schaltet den Log-Filter durch.
+                        KeyCode::Tab => app.focus = app.focus.next(),
+                        KeyCode::Char('f') => app.log_filter = app.log_filter.next(),
                         // Ausklappen: Leertaste schaltet um, Pfeile sind
                         // gerichtet (mehrfach rechts klappt nicht wieder zu).
                         KeyCode::Char(' ') => app.toggle_expanded(),
