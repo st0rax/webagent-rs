@@ -23,6 +23,7 @@ pub enum ReplAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlashCommand {
     Exit,
+    Help,
     New,
     Memory {
         query: Option<String>,
@@ -91,6 +92,9 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     let trimmed = line.trim();
     if !trimmed.starts_with('/') {
         return None;
+    }
+    if trimmed == "/help" || trimmed == "/?" {
+        return Some(SlashCommand::Help);
     }
     if trimmed == "/exit" || trimmed == "/quit" {
         return Some(SlashCommand::Exit);
@@ -397,6 +401,43 @@ fn display_chat_text(raw: &str) -> String {
     raw.trim().to_string()
 }
 
+/// Sichtbare Breite eines Strings: ANSI-SGR-Sequenzen (`\x1b[…m`) zählen nicht,
+/// der Rest zeichenweise. Grundlage für die Box-Ausrichtung — ohne das wären
+/// gefärbte Zeilen scheinbar länger und der rechte Rahmen verrutschte.
+fn visible_width(s: &str) -> usize {
+    let mut width = 0usize;
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // ESC[ … <Buchstabe> überspringen.
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for e in chars.by_ref() {
+                    if e.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        width += 1;
+    }
+    width
+}
+
+/// Rahmt Inhaltszeilen in eine abgerundete Box fester Innenbreite. Jede Zeile
+/// wird anhand ihrer SICHTBAREN Breite rechts auf `inner` aufgefüllt.
+fn boxed(lines: &[String], inner: usize) -> Vec<String> {
+    let mut out = Vec::with_capacity(lines.len() + 2);
+    out.push(format!("╭{}╮", "─".repeat(inner + 2)));
+    for line in lines {
+        let pad = inner.saturating_sub(visible_width(line));
+        out.push(format!("│ {}{} │", line, " ".repeat(pad)));
+    }
+    out.push(format!("╰{}╯", "─".repeat(inner + 2)));
+    out
+}
+
 /// Zeichenzahl → grobe Token-Schätzung (~4 Zeichen/Token), kompakt formatiert.
 fn fmt_est_tokens(chars: usize) -> String {
     let tokens = chars / 4;
@@ -488,40 +529,75 @@ impl ReplSession {
         }
     }
 
-    /// pi.dev-artiger Startbanner: verfügbare Module, aktives Brain, eingeloggter
-    /// Account und Session-Zustand.
+    /// Willkommensbox à la grok CLI / pi.dev: Wortmarke, Brain-Roster mit
+    /// hervorgehobenem aktiven Modul, angemeldeter Account, stehendes Ziel und
+    /// ein Schnellstart-Hinweis. Der Befehlsindex folgt darunter, damit die Box
+    /// ruhig bleibt.
     fn print_banner(&mut self, state: SessionState) {
+        const INNER: usize = 72;
         let brains = available_brain_ids();
-        let modules: String = brains
+        let roster: String = brains
             .iter()
             .map(|id| {
                 if id == &self.brain_id {
                     format!("\x1b[1;36m▸{id}\x1b[0m")
                 } else {
-                    format!(" {id}")
+                    format!("\x1b[2m{id}\x1b[0m")
                 }
             })
             .collect::<Vec<_>>()
-            .join(" ");
+            .join("  ");
         let account = self.controller.brain().account_label();
         let who = match &account {
             Some(a) => format!("angemeldet als \x1b[1m{a}\x1b[0m"),
             None => Self::state_label(state).to_string(),
         };
+        let goal_line = match &self.goal {
+            Some(g) => format!("\x1b[2mZiel:\x1b[0m    {}", crate::char_prefix(g, 52)),
+            None => "\x1b[2mZiel:\x1b[0m    \x1b[2m—\x1b[0m".to_string(),
+        };
+
+        let content = vec![
+            "\x1b[1m▚▞ webagent\x1b[0m  \x1b[2mlokaler Browser-Agent — Chat & autonome Aufgaben\x1b[0m".to_string(),
+            String::new(),
+            format!("\x1b[2mBrains:\x1b[0m  {roster}"),
+            format!("\x1b[2mAktiv:\x1b[0m   \x1b[1;36m{}\x1b[0m — {who}", self.brain_id),
+            goal_line,
+            String::new(),
+            "\x1b[2mTippe eine Aufgabe — oder\x1b[0m /help \x1b[2mfür alle Befehle,\x1b[0m /pool \x1b[2mfür das Dashboard.\x1b[0m".to_string(),
+        ];
         println!();
-        println!(
-            "  \x1b[1mwebagent\x1b[0m · lokaler Browser-Agent ({} Module)",
-            brains.len()
-        );
-        println!("  Module:  {modules}");
-        println!(
-            "  Aktiv:   \x1b[1;36m{}\x1b[0m — {who} — session: {:?}",
-            self.brain_id, state
-        );
-        println!("  Befehle: /model <brain>  /chat <text>  /goal <text>  /swarm <text>  /pool [n]  /diff");
-        println!("           /autoresearch <eval-cmd> :: <goal>  /autoresearch.self [N] [--top K]");
-        println!("           /wiki [suchbegriff|lint]");
-        println!("           /new  /brains  /whoami  /score  /canary  /memory  /login  /login-all  /exit");
+        for line in boxed(&content, INNER) {
+            println!("  {line}");
+        }
+        println!();
+    }
+
+    /// Voller Befehlsindex (`/help`) — aus dem Banner ausgelagert, damit der
+    /// Start ruhig ist und die Referenz bei Bedarf komplett kommt.
+    fn print_help(&self) {
+        println!("\n  \x1b[1mBefehle\x1b[0m");
+        let rows = [
+            ("<Aufgabe>", "autonom bearbeiten (Plan/Act/Observe)"),
+            ("/chat <text>", "einmalige Frage ans aktive Brain"),
+            ("/model <brain>", "aktives Brain wechseln"),
+            ("/goal <text>", "stehendes Ziel setzen (Kontext jeder Aufgabe)"),
+            ("/swarm <text>", "alle Brains fragen + Synthese"),
+            ("/pool [n]", "Worker-Pool-Dashboard (TUI)"),
+            ("/diff", "Git-Änderungen im Arbeitsverzeichnis"),
+            ("/autoresearch.self [N]", "Swarm-Selbstbewertung (Prioritäten)"),
+            ("/wiki [suche|lint]", "Wiki-Gedächtnis"),
+            ("/score", "Leistungsindex je Brain"),
+            ("/canary", "alle Brains kurz anpingen"),
+            ("/brains  /whoami", "Roster · aktiver Account"),
+            ("/memory  /remember  /forget", "Erinnerungen"),
+            ("/new", "neue Konversation"),
+            ("/login  /login-all", "Login-Fenster öffnen"),
+            ("/help  /exit", "diese Hilfe · beenden"),
+        ];
+        for (cmd, desc) in rows {
+            println!("    \x1b[1;36m{cmd:<28}\x1b[0m \x1b[2m{desc}\x1b[0m");
+        }
         println!();
     }
 
@@ -601,6 +677,10 @@ impl ReplSession {
     fn handle_slash(&mut self, cmd: SlashCommand) -> ReplAction {
         match cmd {
             SlashCommand::Exit => ReplAction::Exit,
+            SlashCommand::Help => {
+                self.print_help();
+                ReplAction::Continue
+            }
             SlashCommand::New => {
                 if let Err(e) = self.brain_mut().new_chat() {
                     eprintln!("[repl] /new Fehler: {e}");
@@ -1351,35 +1431,47 @@ impl ReplSession {
 
     /// Abschluss-Zusammenfassung der Session (qwen-code-Vorbild).
     fn print_summary(&self, elapsed_secs: u64) {
+        const INNER: usize = 72;
         let s = &self.stats;
-        println!();
-        println!("  \x1b[1m── Session-Zusammenfassung ──────────────────────\x1b[0m");
-        println!("  Dauer      {}", fmt_duration(elapsed_secs));
+        let mut content = vec![
+            "\x1b[1m▚▞ Session-Zusammenfassung\x1b[0m".to_string(),
+            String::new(),
+            format!("\x1b[2mDauer\x1b[0m     {}", fmt_duration(elapsed_secs)),
+        ];
         if s.requests() == 0 {
-            println!("  Anfragen   keine");
-            return;
+            content.push("\x1b[2mAnfragen\x1b[0m  keine — bis zum nächsten Mal.".to_string());
+        } else {
+            content.push(format!(
+                "\x1b[2mAnfragen\x1b[0m  \x1b[1m{}\x1b[0m gesamt  ·  {} Aufgaben (\x1b[32m{} ok\x1b[0m, \x1b[31m{} Fehler\x1b[0m)",
+                s.requests(),
+                s.tasks,
+                s.tasks_ok,
+                s.tasks_failed,
+            ));
+            content.push(format!(
+                "\x1b[2m         \x1b[0m  {} Chats  ·  {} Swarms",
+                s.chats, s.swarms
+            ));
+            if s.cycles > 0 {
+                content.push(format!(
+                    "\x1b[2mZyklen\x1b[0m    {} \x1b[2m(Plan/Act/Observe)\x1b[0m",
+                    s.cycles
+                ));
+            }
+            content.push(format!(
+                "\x1b[2mTokens\x1b[0m    {} rein · {} raus \x1b[2m(≈ Zeichen/4)\x1b[0m",
+                fmt_est_tokens(s.chars_in),
+                fmt_est_tokens(s.chars_out)
+            ));
+            if !s.brains_used.is_empty() {
+                let brains: Vec<&str> = s.brains_used.iter().map(String::as_str).collect();
+                content.push(format!("\x1b[2mBrains\x1b[0m    {}", brains.join(", ")));
+            }
         }
-        println!(
-            "  Anfragen   {} gesamt · {} Aufgaben ({} ok, {} Fehler) · {} Chats · {} Swarms",
-            s.requests(),
-            s.tasks,
-            s.tasks_ok,
-            s.tasks_failed,
-            s.chats,
-            s.swarms
-        );
-        if s.cycles > 0 {
-            println!("  Zyklen     {} (Plan/Act/Observe)", s.cycles);
+        println!();
+        for line in boxed(&content, INNER) {
+            println!("  {line}");
         }
-        if !s.brains_used.is_empty() {
-            let brains: Vec<&str> = s.brains_used.iter().map(String::as_str).collect();
-            println!("  Brains     {}", brains.join(", "));
-        }
-        println!(
-            "  ~Tokens    {} rein · {} raus (Zeichen/4, Schätzung — Web-Chat liefert keine echten Zahlen)",
-            fmt_est_tokens(s.chars_in),
-            fmt_est_tokens(s.chars_out)
-        );
     }
 }
 
@@ -1432,6 +1524,8 @@ mod tests {
     #[test]
     fn parse_slash_commands() {
         assert_eq!(parse_slash_command("/exit"), Some(SlashCommand::Exit));
+        assert_eq!(parse_slash_command("/help"), Some(SlashCommand::Help));
+        assert_eq!(parse_slash_command("/?"), Some(SlashCommand::Help));
         assert_eq!(parse_slash_command("/new"), Some(SlashCommand::New));
         assert_eq!(
             parse_slash_command("/memory foo"),
@@ -1696,5 +1790,39 @@ mod tests {
         s.chats = 3;
         s.swarms = 1;
         assert_eq!(s.requests(), 6);
+    }
+
+    #[test]
+    fn visible_width_ignores_ansi_sequences() {
+        assert_eq!(visible_width("abc"), 3);
+        // Farbcodes zaehlen nicht zur sichtbaren Breite.
+        assert_eq!(visible_width("[1;36mabc[0m"), 3);
+        assert_eq!(visible_width("[2m—[0m"), 1);
+        // Reiner Reset ohne Text.
+        assert_eq!(visible_width("[0m"), 0);
+    }
+
+    #[test]
+    fn boxed_pads_by_visible_width_so_borders_align() {
+        // Zwei Zeilen unterschiedlicher ROH-Laenge, aber gleicher SICHTBARER
+        // Breite muessen zur gleichen Rahmenbreite fuehren.
+        let lines = vec![
+            "[1;36mhallo[0m".to_string(), // sichtbar 5
+            "welt!".to_string(),                    // sichtbar 5
+        ];
+        let out = boxed(&lines, 10);
+        assert_eq!(out.len(), 4, "oben + 2 Inhalt + unten");
+        let widths: Vec<usize> = out.iter().map(|l| visible_width(l)).collect();
+        assert!(widths.iter().all(|&w| w == widths[0]), "alle Rahmenzeilen gleich breit: {widths:?}");
+        assert!(out[0].starts_with('╭') && out[0].ends_with('╮'));
+        assert!(out[3].starts_with('╰') && out[3].ends_with('╯'));
+    }
+
+    #[test]
+    fn boxed_never_underflows_on_overlong_lines() {
+        // Eine Zeile laenger als die Innenbreite darf nicht panicken (saturating).
+        let lines = vec!["viel zu lange zeile fuer die schmale box".to_string()];
+        let out = boxed(&lines, 5);
+        assert_eq!(out.len(), 3);
     }
 }
