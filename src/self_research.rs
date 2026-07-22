@@ -699,8 +699,94 @@ pub fn format_report(report: &SelfResearchReport) -> String {
     out
 }
 
+pub fn borda_aggregate(phases: Vec<Vec<Vec<String>>>) -> Vec<(String, i64)> {
+use std::collections::HashMap;
+
+let mut scores: HashMap<String, i64> = HashMap::new();
+
+for phase in phases {
+    for ranking in phase {
+        let n = ranking.len() as i64;
+        for (rank_index, proposal) in ranking.into_iter().enumerate() {
+            let points = n - rank_index as i64;
+            *scores.entry(proposal).or_insert(0) += points;
+        }
+    }
+}
+
+let mut result: Vec<(String, i64)> = scores.into_iter().collect();
+result.sort_by(|a, b| {
+    b.1.cmp(&a.1)
+        .then_with(|| a.0.cmp(&b.0))
+});
+result
+
+}
+
 #[cfg(test)]
 mod tests {
+#[test]
+fn test_borda_aggregate_single_ranking() {
+let result = borda_aggregate(vec![vec![vec![
+"A".to_string(),
+"B".to_string(),
+"C".to_string(),
+]]]);
+assert_eq!(
+result,
+vec![
+("A".to_string(), 3),
+("B".to_string(), 2),
+("C".to_string(), 1)
+]
+);
+}
+
+#[test]
+fn test_borda_aggregate_tie_sorted_lexicographically() {
+    let result = borda_aggregate(vec![vec![
+        vec!["A".to_string(), "B".to_string()],
+        vec!["B".to_string(), "A".to_string()],
+    ]]);
+    assert_eq!(
+        result,
+        vec![("A".to_string(), 3), ("B".to_string(), 3)]
+    );
+}
+
+#[test]
+fn test_borda_aggregate_multiple_phases_sum_scores() {
+    let result = borda_aggregate(vec![
+        vec![vec!["A".to_string(), "B".to_string()]],
+        vec![vec!["B".to_string(), "A".to_string()]],
+    ]);
+    assert_eq!(
+        result,
+        vec![("A".to_string(), 3), ("B".to_string(), 3)]
+    );
+}
+
+#[test]
+fn test_borda_aggregate_different_ranking_lengths() {
+    let result = borda_aggregate(vec![vec![
+        vec![
+            "A".to_string(),
+            "B".to_string(),
+            "C".to_string(),
+        ],
+        vec!["A".to_string(), "B".to_string()],
+    ]]);
+    assert_eq!(result[0], ("A".to_string(), 5));
+    assert_eq!(result[1], ("B".to_string(), 3));
+    assert_eq!(result[2], ("C".to_string(), 1));
+}
+
+#[test]
+fn test_borda_aggregate_empty_input() {
+    let result = borda_aggregate(vec![vec![], vec![]]);
+    assert!(result.is_empty());
+}
+
     use super::*;
 
     #[test]
