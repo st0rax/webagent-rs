@@ -96,10 +96,10 @@ impl App {
         };
         if self.expanded.contains(&brain) {
             self.expanded.remove(&brain);
+            self.detail_scroll = 0;
         } else {
             self.expanded.insert(brain);
         }
-        self.detail_scroll = 0;
     }
 
     /// Klappt gezielt zu (Pfeil links) — ohne Umschalten, damit wiederholtes

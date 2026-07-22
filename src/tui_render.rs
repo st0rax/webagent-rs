@@ -165,6 +165,10 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
         let rest = shown.len().saturating_sub(DETAIL_MAX_ROWS);
         if rest > 0 {
             items.push(detail_item(&format!("… {rest} weitere Zeile(n), j/k blättert")));
+        } else if app.detail_scroll > 0 && !shown.is_empty() {
+            // Wenn wir durch Scrollen nach oben in der History sind, zeigen wir
+            // an, dass noch ältere Einträge vorhanden sind.
+            items.push(detail_item(&format!("… ältere Einträge oben (j/k blättert)")));
         }
     }
 
@@ -326,6 +330,9 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Footer: Keybindings — Tasten hervorgehoben, Beschriftung gedämpft.
+/// 
+/// Design-spezifische Tasten: j/k für Detail-Scroll, f für Log-Filter,
+/// Tab für Panel-Fokus, Space für Expand.
 fn render_footer(f: &mut Frame) {
     let key = Style::default()
         .fg(Color::Cyan)
@@ -333,14 +340,12 @@ fn render_footer(f: &mut Frame) {
     let dim = Style::default().fg(Color::DarkGray);
     let mut spans = vec![Span::raw(" ")];
     for (k, label) in [
-        ("↑↓", "wechseln"),
-        ("␣/→←", "ausklappen"),
-        ("j/k", "blättern"),
-        ("↵", "pinnen"),
-        ("t", "task"),
-        ("+/-", "target"),
-        ("r", "reflag"),
-        ("x", "abbrechen"),
+        ("↑↓/j/k", "navigieren"),
+        ("␣", "expand"),
+        ("→", "expand"),
+        ("←", "collapse"),
+        ("Tab", "fokus"),
+        ("f", "filter"),
         ("q", "quit"),
     ] {
         spans.push(Span::styled(k, key));
@@ -352,3 +357,109 @@ fn render_footer(f: &mut Frame) {
     let footer_area = Rect::new(area.x, area.bottom() - 1, area.width, 1);
     f.render_widget(footer, footer_area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui_state::{AgentView, App, InputMode};
+
+    fn test_agent(brain: &str, status: &str, detail: Vec<String>) -> AgentView {
+        AgentView {
+            brain: brain.to_string(),
+            status: status.to_string(),
+            pid: Some(1234),
+            heartbeat_age_sec: 30,
+            tasks_pending: 5,
+            tasks_done: 3,
+            last_log_line: Some("Test log".to_string()),
+            last_response: Some("Test response".to_string()),
+            detail,
+        }
+    }
+
+    fn test_app(agents: Vec<AgentView>) -> App {
+        App {
+            agents,
+            selected: 0,
+            tick: 0,
+            log_scroll: 0,
+            input_mode: InputMode::Normal,
+            target_active: 2,
+            gauge_shown: 0.5,
+            expanded: std::collections::HashSet::new(),
+            detail_scroll: 0,
+        }
+    }
+
+    #[test]
+    fn status_color_returns_correct_colors() {
+        assert_eq!(status_color("active"), Color::Green);
+        assert_eq!(status_color("available"), Color::Yellow);
+        assert_eq!(status_color("cooldown"), Color::Blue);
+        assert_eq!(status_color("unavailable"), Color::Red);
+        assert_eq!(status_color("unknown"), Color::Red);
+    }
+
+    #[test]
+    fn heartbeat_color_returns_correct_colors() {
+        assert_eq!(heartbeat_color(0), Color::Green);
+        assert_eq!(heartbeat_color(59), Color::Green);
+        assert_eq!(heartbeat_color(60), Color::Yellow);
+        assert_eq!(heartbeat_color(299), Color::Yellow);
+        assert_eq!(heartbeat_color(300), Color::Red);
+        assert_eq!(heartbeat_color(999), Color::Red);
+    }
+
+    #[test]
+    fn status_glyph_returns_correct_symbols() {
+        assert_eq!(status_glyph("active"), "●");
+        assert_eq!(status_glyph("available"), "○");
+        assert_eq!(status_glyph("cooldown"), "◐");
+        assert_eq!(status_glyph("unavailable"), "✕");
+        assert_eq!(status_glyph("unknown"), "✕");
+    }
+
+    #[test]
+    fn text_bar_returns_correct_length() {
+        // Test that the bar has the right length: [ + width + ]
+        // Note: Unicode characters like █ are 3 bytes in UTF-8, so len() returns bytes, not chars
+        let bar = text_bar(0.5, 10);
+        // Check char count instead of byte count
+        assert_eq!(bar.chars().count(), 12); // [ + 10 chars + ]
+        // When width is 10 and fraction 0.5, we get exactly 5 filled
+        assert_eq!(bar, "[█████░░░░░]");
+
+        let bar = text_bar(0.0, 10);
+        assert_eq!(bar, "[░░░░░░░░░░]");
+
+        let bar = text_bar(1.0, 10);
+        assert_eq!(bar, "[██████████]");
+
+        let bar = text_bar(1.5, 10);
+        assert_eq!(bar, "[██████████]");
+
+        let bar = text_bar(-0.5, 10);
+        assert_eq!(bar, "[░░░░░░░░░░]");
+    }
+
+    #[test]
+    fn kv_line_creates_formatted_line() {
+        let line = kv_line("Test", "Value", Style::default().fg(Color::Green));
+        assert_eq!(line.spans.len(), 2);
+        assert_eq!(line.spans[0].content, " Test      ");
+        assert_eq!(line.spans[1].content, "Value");
+    }
+
+    #[test]
+    fn detail_item_creates_indented_list_item() {
+        // Just test the function doesn't panic - we can't inspect private fields
+        let _item = detail_item("Test message");
+    }
+
+    #[test]
+    fn titled_block_creates_block_with_title() {
+        // Just test the function doesn't panic
+        let _block = titled_block("Test Title");
+    }
+}
+
