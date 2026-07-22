@@ -138,6 +138,31 @@ enum Commands {
         limit: usize,
     },
 
+    /// Swarm entwirft ein TUI-Design, stimmt im Ausscheidungsverfahren ab
+    /// (kick vote), der Gewinner wird von einem Brain umgesetzt
+    #[command(name = "design-vote")]
+    DesignVote {
+        /// Komma-getrennte Brain-IDs (leer = alle verfuegbaren)
+        #[arg(long, default_value = "")]
+        brains: String,
+
+        /// Worum es geht (Thema des Designs)
+        #[arg(long, default_value = "das Worker-Pool-Dashboard der webagent-TUI")]
+        topic: String,
+
+        /// Optionaler Kontext (aktuelles Layout, Randbedingungen)
+        #[arg(long, default_value = "")]
+        context: String,
+
+        /// Brain, das den Gewinner umsetzt (leer = nur abstimmen, nicht bauen)
+        #[arg(long, default_value = "")]
+        implement_brain: String,
+
+        /// Headless-Browser
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// Pre-flight: Profile, Selektoren, Flags (ohne Browser)
     BrainsHealth {
         /// Leeres Shared-Profil akzeptieren (Exit 0)
@@ -583,6 +608,14 @@ fn dispatch(command: Commands) -> i32 {
             headless,
         ),
 
+        Commands::DesignVote {
+            brains,
+            topic,
+            context,
+            implement_brain,
+            headless,
+        } => cmd_design_vote(brains, topic, context, implement_brain, headless),
+
         Commands::RunsReport { limit } => {
             let dir = webagent::config::data_dir().join("runs");
             let runs = webagent::runs_report::recent_runs(&dir, limit);
@@ -735,6 +768,120 @@ fn cmd_autoresearch_self(
     } else {
         0
     }
+}
+
+/// `webagent design-vote` — Swarm entwirft ein TUI-Design, scheidet im
+/// kick-vote aus, der Gewinner wird umgesetzt. Isolierte Profile wie beim
+/// Benchmark; die Ausscheidungslogik steckt in `design_vote`/`knockout`.
+fn cmd_design_vote(
+    brains: String,
+    topic: String,
+    context: String,
+    implement_brain: String,
+    headless: bool,
+) -> i32 {
+    let targets: Vec<String> = if brains.trim().is_empty() {
+        webagent::config::available_brain_ids()
+    } else {
+        brains
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    };
+    if targets.len() < 2 {
+        eprintln!("[design-vote] mindestens 2 Brains noetig (haben {}).", targets.len());
+        return 2;
+    }
+
+    let run_id = webagent::now_run_stamp();
+    let profiles: Vec<(String, std::path::PathBuf)> = targets
+        .iter()
+        .map(|tb| (tb.clone(), webagent::config::prepare_swarm_profile(&run_id, tb)))
+        .collect();
+    let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
+        profiles.iter().find(|(b, _)| b == brain).map(|(_, p)| p.clone())
+    };
+
+    let config = webagent::design_vote::DesignVoteConfig {
+        brains: targets,
+        topic: topic.clone(),
+        context,
+    };
+
+    let report = webagent::design_vote::run_design_vote(
+        &config,
+        &|msg| println!("[design-vote] {msg}"),
+        |b, p| webagent::repl::isolated_query(b, p, headless, profile_of(b)),
+    );
+
+    let _ = webagent::config::cleanup_swarm_profiles(&run_id);
+
+    println!("\n[design-vote] === Ergebnis ===");
+    println!("[design-vote] {} Entwuerfe gesammelt.", report.proposals.len());
+    let Some((author, design)) = report.winning_design() else {
+        eprintln!("[design-vote] Kein Gewinner (zu wenige verwertbare Entwuerfe).");
+        return 1;
+    };
+    println!("[design-vote] Gewinner: Entwurf von {author}\n");
+    println!("{design}\n");
+
+    if implement_brain.trim().is_empty() {
+        println!("[design-vote] Kein --implement-brain gesetzt — nur abgestimmt.");
+        return 0;
+    }
+
+    // Gewinner umsetzen — über denselben Controller-Pfad wie der Benchmark.
+    println!("[design-vote] {implement_brain} setzt den Gewinner um …");
+    let task = webagent::design_vote::build_implement_prompt(design);
+    let impl_profile = webagent::config::prepare_swarm_profile(&run_id, &implement_brain);
+    let code = run_implement(&implement_brain, &task, headless, Some(impl_profile));
+    let _ = webagent::config::cleanup_swarm_profiles(&run_id);
+    code
+}
+
+/// Lässt EIN Brain eine Aufgabe über den Controller umsetzen (edit/write + Git).
+#[cfg(feature = "webview")]
+fn run_implement(
+    brain_id: &str,
+    task: &str,
+    headless: bool,
+    profile: Option<std::path::PathBuf>,
+) -> i32 {
+    use webagent::browser::WebBrainBackend;
+    use webagent::controller::AgentController;
+    use webagent::executor::PlatformShellExecutor;
+
+    let backend = match WebBrainBackend::from_config(brain_id) {
+        Ok(mut b) => {
+            if let Some(p) = profile {
+                b = b.with_profile_override(p);
+            }
+            b
+        }
+        Err(e) => {
+            eprintln!("[design-vote] Backend {brain_id}: {e}");
+            return 1;
+        }
+    };
+    let mut controller =
+        AgentController::with_data_dir(backend, PlatformShellExecutor::new(), 30, webagent::config::data_dir());
+    match controller.run(task, brain_id, None, headless) {
+        Ok(meta) => {
+            println!("[design-vote] Umsetzung beendet: status={} cycles={}", meta.status, meta.cycles);
+            if meta.status == "done" { 0 } else { 1 }
+        }
+        Err(e) => {
+            eprintln!("[design-vote] Umsetzung fehlgeschlagen: {e}");
+            1
+        }
+    }
+}
+
+#[cfg(not(feature = "webview"))]
+fn run_implement(_b: &str, _t: &str, _h: bool, _p: Option<std::path::PathBuf>) -> i32 {
+    eprintln!("[design-vote] webview-Feature nicht aktiv.");
+    1
 }
 
 /// `webagent benchmark` — vote-driven Code-Kompetenz-Benchmark. Wie
