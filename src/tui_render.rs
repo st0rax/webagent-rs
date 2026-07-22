@@ -35,6 +35,21 @@ fn heartbeat_color(age_sec: u64) -> Color {
 
 /// Heartbeat gilt ab hier als tot (Supervisor killt stale Worker).
 const HEARTBEAT_TIMEOUT_SEC: u64 = 300;
+
+/// Kompakte Heartbeat-Anzeige: Puls-Symbol + Alter. Frisch grün, alt rot
+/// (Farbe kommt aus [`heartbeat_color`]). Zeigt auf einen Blick, ob ein Worker
+/// noch lebt.
+fn heartbeat_pip(age_sec: u64) -> String {
+    if age_sec == u64::MAX {
+        "· —".to_string()
+    } else if age_sec < 60 {
+        format!("♥ {age_sec}s")
+    } else if age_sec < 3600 {
+        format!("♡ {}m", age_sec / 60)
+    } else {
+        "♡ alt".to_string()
+    }
+}
 /// Breite der Label-Spalte für ausgerichtete Schlüssel/Wert-Zeilen.
 const LABEL_WIDTH: usize = 10;
 /// Breite der Text-Fortschrittsbalken.
@@ -93,30 +108,113 @@ fn titled_block_focus(title: &str, focused: bool) -> Block<'static> {
 
 /// Render-Top-Level: 3-Pane Layout.
 pub fn ui(f: &mut Frame, app: &App) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(28), Constraint::Percentage(72)])
-        .split(f.area());
-
-    // Linke Seite: Agenten-Liste
-    render_agent_list(f, app, chunks[0]);
-
-    // Rechte Seite: 3 vertikale Panes
-    let right_chunks = Layout::default()
+    // Vertikal: KPI-Kopfleiste (3) · Körper (Rest) · Footer (1).
+    let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(40), // Status
-            Constraint::Percentage(30), // Log
-            Constraint::Percentage(30), // Tasks
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
         ])
-        .split(chunks[1]);
+        .split(f.area());
 
-    render_status(f, app, right_chunks[0]);
-    render_log(f, app, right_chunks[1]);
-    render_tasks(f, app, right_chunks[2]);
+    render_header(f, app, outer[0]);
 
-    // Footer mit Keybindings
-    render_footer(f);
+    // Leerzustand: kein Worker-Pool aktiv -> einladender Hinweis statt toter Kästen.
+    if app.agents.is_empty() {
+        render_empty_state(f, outer[1]);
+        render_footer(f, outer[2]);
+        return;
+    }
+
+    let body = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(34), Constraint::Percentage(66)])
+        .split(outer[1]);
+
+    render_agent_list(f, app, body[0]);
+
+    let right = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(7), // kompakte Statuskarte
+            Constraint::Min(6),    // Live-Log (wächst)
+            Constraint::Length(6), // Tasks
+        ])
+        .split(body[1]);
+
+    render_status(f, app, right[0]);
+    render_log(f, app, right[1]);
+    render_tasks(f, app, right[2]);
+
+    render_footer(f, outer[2]);
+}
+
+/// KPI-Kopfleiste: Wortmarke + Live-Kennzahlen des Pools (aktiv/Ziel, bereit,
+/// erledigte Tasks, Brain-Zahl) mit einem lebenden Puls. Das prägnant „Neue"
+/// gegenüber der reinen 3-Panel-Liste.
+fn render_header(f: &mut Frame, app: &App, area: Rect) {
+    let active = app.agents.iter().filter(|a| a.status == "active").count();
+    let ready = app.agents.iter().filter(|a| a.status == "available").count();
+    let done: usize = app.agents.iter().map(|a| a.tasks_done).sum();
+    let pending: usize = app.agents.iter().map(|a| a.tasks_pending).sum();
+    let total = done + pending;
+
+    let accent = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+    let dim = Style::default().fg(Color::DarkGray);
+    let ok = Style::default().fg(Color::Green);
+    let warn = Style::default().fg(Color::Yellow);
+
+    // KPI-Chip: „Label Wert" kompakt.
+    let chip = |icon: &str, val: String, s: Style| -> Vec<Span<'static>> {
+        vec![
+            Span::styled(format!("{icon} "), s),
+            Span::styled(val, Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("   "),
+        ]
+    };
+
+    let mut line: Vec<Span> = vec![
+        Span::styled("▚▞ webagent ", accent),
+        Span::styled("Worker-Pool", dim),
+        Span::raw("     "),
+    ];
+    line.extend(chip("●", format!("{active}/{} aktiv", app.target_active), ok));
+    line.extend(chip("○", format!("{ready} bereit"), warn));
+    line.extend(chip("✓", format!("{done}/{total} Tasks"), ok));
+    line.extend(chip("◆", format!("{} Brains", app.agents.len()), accent));
+    line.push(Span::styled(app.spinner_frame().to_string(), accent));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    let p = Paragraph::new(Line::from(line)).block(block);
+    f.render_widget(p, area);
+}
+
+/// Einladender Leerzustand statt toter Panels, wenn kein Worker-Pool läuft.
+fn render_empty_state(f: &mut Frame, area: Rect) {
+    let dim = Style::default().fg(Color::DarkGray);
+    let accent = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+    let lines = vec![
+        Line::from(""),
+        Line::from(Span::styled("  Kein Worker-Pool aktiv.", accent)),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Drücke ", dim),
+            Span::styled("+", accent),
+            Span::styled(", um einen Worker zu starten — oder ", dim),
+            Span::styled("q", accent),
+            Span::styled(" zum Beenden.", dim),
+        ]),
+        Line::from(vec![
+            Span::styled("  Aufgaben verteilst du mit ", dim),
+            Span::styled("↵", accent),
+            Span::styled(" an den gewählten Brain.", dim),
+        ]),
+    ];
+    let p = Paragraph::new(lines).block(titled_block("Worker-Pool"));
+    f.render_widget(p, area);
 }
 
 /// Wie viele Roh-Ereignisse ein aufgeklappter Agent höchstens zeigt.
@@ -154,10 +252,24 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
         } else {
             "▸ "
         };
+        // Reiche Zeile: Pfeil · Status-Glyph · Name · Heartbeat-Frische ·
+        // Task-Balken · Live-Aktivität. Deutlich mehr als eine reine Namensliste.
+        let hb = heartbeat_pip(a.heartbeat_age_sec);
+        let total = a.tasks_pending + a.tasks_done;
+        let frac = if total > 0 { a.tasks_done as f64 / total as f64 } else { 0.0 };
+        let bar = text_bar(frac, 6);
+        let activity = a
+            .last_log_line
+            .as_deref()
+            .or_else(|| a.detail.last().map(String::as_str))
+            .unwrap_or("—");
         items.push(ListItem::new(Line::from(vec![
             Span::styled(arrow.to_string(), Style::default().fg(Color::DarkGray)),
             Span::styled(format!("{marker} "), Style::default().fg(color)),
-            Span::styled(a.brain.clone(), Style::default().fg(color)),
+            Span::styled(format!("{:<9}", crate::char_prefix(&a.brain, 9)), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {hb} "), Style::default().fg(heartbeat_color(a.heartbeat_age_sec))),
+            Span::styled(bar, Style::default().fg(Color::DarkGray)),
+            Span::styled(format!(" {}", crate::char_prefix(activity, 22)), Style::default().fg(Color::DarkGray)),
         ])));
 
         if !open {
@@ -378,29 +490,25 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
 /// 
 /// Design-spezifische Tasten: j/k für Detail-Scroll, f für Log-Filter,
 /// Tab für Panel-Fokus, Space für Expand.
-fn render_footer(f: &mut Frame) {
+fn render_footer(f: &mut Frame, area: Rect) {
     let key = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
     let dim = Style::default().fg(Color::DarkGray);
     let mut spans = vec![Span::raw(" ")];
     for (k, label) in [
-        ("↑↓/j/k", "navigieren"),
-        ("␣", "expand"),
-        ("→", "expand"),
-        ("←", "collapse"),
+        ("↑↓", "wählen"),
+        ("␣", "ausklappen"),
         ("Tab", "fokus"),
         ("f", "filter"),
+        ("+/-", "worker"),
+        ("↵", "task"),
         ("q", "quit"),
     ] {
         spans.push(Span::styled(k, key));
-        spans.push(Span::styled(format!(" {label}   "), dim));
+        spans.push(Span::styled(format!(" {label}  ", ), dim));
     }
-    let footer = Paragraph::new(Line::from(spans));
-
-    let area = f.area();
-    let footer_area = Rect::new(area.x, area.bottom() - 1, area.width, 1);
-    f.render_widget(footer, footer_area);
+    f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 #[cfg(test)]
@@ -547,6 +655,15 @@ mod tests {
     fn titled_block_creates_block_with_title() {
         // Just test the function doesn't panic
         let _block = titled_block("Test Title");
+    }
+
+    #[test]
+    fn heartbeat_pip_reflects_freshness_and_death() {
+        assert!(heartbeat_pip(3).contains("3s"));
+        assert!(heartbeat_pip(3).starts_with('♥'), "frisch = gefuellter Puls");
+        assert!(heartbeat_pip(120).contains("2m"));
+        assert!(heartbeat_pip(120).starts_with('♡'), "aelter = leerer Puls");
+        assert_eq!(heartbeat_pip(u64::MAX), "· —", "nie gesehen = kein Puls");
     }
 }
 
