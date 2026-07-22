@@ -34,13 +34,35 @@ pub fn apply_edit(path: &str, old: &str, new: &str) -> Result<String, String> {
                     new.replace('\n', "\r\n"),
                 )
             };
-            if alt_old == old {
-                return Err(anchor_not_found(path));
-            }
-            match content.matches(&alt_old).count() {
+            let crlf_hit = if alt_old == old {
+                0
+            } else {
+                content.matches(&alt_old).count()
+            };
+            match crlf_hit {
                 1 => (alt_old, alt_new, " (Zeilenenden-Toleranz CRLF/LF angewandt)"),
-                0 => return Err(anchor_not_found(path)),
-                n => return Err(anchor_ambiguous(path, n)),
+                n if n > 1 => return Err(anchor_ambiguous(path, n)),
+                // 0: letzter Fallback — whitespace-tolerantes Zeilen-Matching.
+                // LLMs reproduzieren exakte Einrückung oft nicht; kimi hex-dumpte
+                // am 2026-07-22 die Datei, um den Anker zu treffen. Wir matchen
+                // Zeile für Zeile mit getrimmtem Whitespace, aber NUR wenn
+                // eindeutig, und ersetzen den ECHTEN Datei-Span.
+                _ => match whitespace_tolerant_span(&content, old) {
+                    Ok((start, end)) => {
+                        let line = content[..start].matches('\n').count() + 1;
+                        let updated =
+                            format!("{}{}{}", &content[..start], new.trim_end_matches(['\r', '\n']), &content[end..]);
+                        fs::write(p, &updated).map_err(|e| {
+                            format!("edit fehlgeschlagen: {path} nicht schreibbar: {e}")
+                        })?;
+                        return Ok(format!(
+                            "edit ok: {path} — Ersetzung ab Zeile {line} (Whitespace-Toleranz angewandt). Datei jetzt {} Zeilen.",
+                            updated.lines().count()
+                        ));
+                    }
+                    Err(0) => return Err(anchor_not_found(path)),
+                    Err(n) => return Err(anchor_ambiguous(path, n)),
+                },
             }
         }
         n => return Err(anchor_ambiguous(path, n)),
@@ -54,6 +76,42 @@ pub fn apply_edit(path: &str, old: &str, new: &str) -> Result<String, String> {
         "edit ok: {path} — Ersetzung ab Zeile {line}{note}. Datei jetzt {} Zeilen.",
         updated.lines().count()
     ))
+}
+
+/// Findet den Byte-Bereich `(start, end)` in `content`, an dem `old` Zeile für
+/// Zeile matcht, wenn man führenden/nachlaufenden Whitespace je Zeile ignoriert.
+///
+/// Nur bei EINDEUTIGKEIT erfolgreich: `Err(0)` = kein Treffer, `Err(n>1)` =
+/// mehrdeutig. `end` zeigt hinter das Inhaltsende der letzten Ankerzeile (ohne
+/// deren Zeilenumbruch), damit die Ersetzung die Zeilenstruktur nicht zerstört.
+fn whitespace_tolerant_span(content: &str, old: &str) -> Result<(usize, usize), usize> {
+    let old_lines: Vec<&str> = old.lines().map(str::trim).collect();
+    if old_lines.is_empty() {
+        return Err(0);
+    }
+    // Zeilen des Inhalts mit Byte-Grenzen: (start, content_end ohne \r\n, trimmed).
+    let mut spans: Vec<(usize, usize, &str)> = Vec::new();
+    let mut pos = 0usize;
+    for raw in content.split_inclusive('\n') {
+        let start = pos;
+        pos += raw.len();
+        let trimmed_end = raw.trim_end_matches(['\r', '\n']);
+        spans.push((start, start + trimmed_end.len(), trimmed_end.trim()));
+    }
+    let k = old_lines.len();
+    if k > spans.len() {
+        return Err(0);
+    }
+    let mut hits: Vec<(usize, usize)> = Vec::new();
+    for i in 0..=spans.len() - k {
+        if (0..k).all(|j| spans[i + j].2 == old_lines[j]) {
+            hits.push((spans[i].0, spans[i + k - 1].1));
+        }
+    }
+    match hits.len() {
+        1 => Ok(hits[0]),
+        n => Err(n),
+    }
 }
 
 fn anchor_not_found(path: &str) -> String {
@@ -273,5 +331,71 @@ mod tests {
         if !ctx.is_empty() {
             assert!(ctx.lines().count() <= 13, "{ctx}");
         }
+    }
+
+    #[test]
+    fn whitespace_tolerant_match_rescues_wrong_indentation() {
+        // kimis reales Problem (2026-07-22): richtiger Code, falsche Einrueckung.
+        let dir = std::env::temp_dir().join(format!("wsedit_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("t1.rs");
+        std::fs::write(&f, "fn a() {
+        let x = 1;
+        return x;
+}
+").unwrap();
+        let r = apply_edit(
+            f.to_str().unwrap(),
+            "    let x = 1;
+    return x;",
+            "    let x = 42;
+    return x;",
+        );
+        assert!(r.is_ok(), "sollte per Whitespace-Toleranz greifen: {r:?}");
+        assert!(r.unwrap().contains("Whitespace-Toleranz"));
+        let after = std::fs::read_to_string(&f).unwrap();
+        assert!(after.contains("let x = 42;"), "Ersetzung angewandt: {after:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn whitespace_tolerant_match_refuses_when_ambiguous() {
+        let dir = std::env::temp_dir().join(format!("wsedit2_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("t2.rs");
+        std::fs::write(&f, "  let x = 1;
+    let x = 1;
+").unwrap();
+        let r = apply_edit(f.to_str().unwrap(), "let x = 1;", "let x = 2;");
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("mehrdeutig"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn whitespace_tolerant_match_still_fails_when_truly_absent() {
+        let dir = std::env::temp_dir().join(format!("wsedit3_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("t3.rs");
+        std::fs::write(&f, "fn a() {}
+").unwrap();
+        let r = apply_edit(f.to_str().unwrap(), "let y = nonexistent;", "x");
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("nicht gefunden"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn span_finder_is_unit_checkable() {
+        let content = "aaa
+    ziel eins
+    ziel zwei
+bbb
+";
+        let (start, end) = whitespace_tolerant_span(content, "ziel eins
+ziel zwei").unwrap();
+        assert_eq!(&content[start..end], "    ziel eins
+    ziel zwei");
+        assert_eq!(whitespace_tolerant_span(content, "gibts nicht"), Err(0));
     }
 }
