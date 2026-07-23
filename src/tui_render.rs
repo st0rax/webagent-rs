@@ -6,11 +6,16 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, BorderType, Borders, Gauge, List, ListItem, ListState, Paragraph, Sparkline},
     Frame,
 };
 
 use crate::tui_state::App;
+
+/// Akzentfarbe der Oberfläche (ein durchgängiger Ton statt bunt gemischt).
+const ACCENT: Color = Color::Rgb(94, 197, 214); // gedämpftes Cyan
+/// Gedämpfter Text (Labels, Rahmen).
+const MUTED: Color = Color::Rgb(110, 120, 130);
 
 /// Farben für Status.
 fn status_color(status: &str) -> Color {
@@ -93,16 +98,17 @@ fn titled_block(title: &str) -> Block<'static> {
 /// das per Tab fokussierte Panel sichtbar (Gewinner-Design 2026-07-22).
 fn titled_block_focus(title: &str, focused: bool) -> Block<'static> {
     let (border, marker) = if focused {
-        (Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD), "▸ ")
+        (Style::default().fg(ACCENT).add_modifier(Modifier::BOLD), "▸ ")
     } else {
-        (Style::default().fg(Color::DarkGray), "")
+        (Style::default().fg(MUTED), "")
     };
     Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(border)
         .title(Span::styled(
             format!(" {marker}{title} "),
-            Style::default().add_modifier(Modifier::BOLD),
+            Style::default().fg(if focused { ACCENT } else { Color::Gray }).add_modifier(Modifier::BOLD),
         ))
 }
 
@@ -112,7 +118,7 @@ pub fn ui(f: &mut Frame, app: &App) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(4),
             Constraint::Min(0),
             Constraint::Length(1),
         ])
@@ -160,36 +166,86 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let pending: usize = app.agents.iter().map(|a| a.tasks_pending).sum();
     let total = done + pending;
 
-    let accent = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
-    let dim = Style::default().fg(Color::DarkGray);
+    // Umrahmter Kopf; innen dreigeteilt: Wortmarke+KPIs · Auslastungs-Gauge ·
+    // Live-Puls-Sparkline.
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(ACCENT))
+        .title(Span::styled(
+            " ▚▞ webagent ",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(30),    // KPIs
+            Constraint::Length(22), // Gauge
+            Constraint::Length(18), // Sparkline
+        ])
+        .split(inner);
+
+    // --- KPI-Chips ---
     let ok = Style::default().fg(Color::Green);
     let warn = Style::default().fg(Color::Yellow);
-
-    // KPI-Chip: „Label Wert" kompakt.
     let chip = |icon: &str, val: String, s: Style| -> Vec<Span<'static>> {
         vec![
             Span::styled(format!("{icon} "), s),
-            Span::styled(val, Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(val, Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD)),
             Span::raw("   "),
         ]
     };
-
-    let mut line: Vec<Span> = vec![
-        Span::styled("▚▞ webagent ", accent),
-        Span::styled("Worker-Pool", dim),
-        Span::raw("     "),
+    let mut kpis: Vec<Span> = Vec::new();
+    kpis.extend(chip("●", format!("{active}/{} aktiv", app.target_active), ok));
+    kpis.extend(chip("○", format!("{ready} bereit"), warn));
+    kpis.extend(chip("✓", format!("{done}/{total} Tasks"), ok));
+    kpis.extend(chip("◆", format!("{} Brains", app.agents.len()), Style::default().fg(ACCENT)));
+    let kpi_rows = vec![
+        Line::from(Span::styled("Worker-Pool", Style::default().fg(MUTED))),
+        Line::from(kpis),
     ];
-    line.extend(chip("●", format!("{active}/{} aktiv", app.target_active), ok));
-    line.extend(chip("○", format!("{ready} bereit"), warn));
-    line.extend(chip("✓", format!("{done}/{total} Tasks"), ok));
-    line.extend(chip("◆", format!("{} Brains", app.agents.len()), accent));
-    line.push(Span::styled(app.spinner_frame().to_string(), accent));
+    f.render_widget(Paragraph::new(kpi_rows), cols[0]);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
-    let p = Paragraph::new(Line::from(line)).block(block);
-    f.render_widget(p, area);
+    // --- Auslastungs-Gauge (aktiv/Ziel) ---
+    let ratio = if app.target_active > 0 {
+        (active as f64 / app.target_active as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let gauge = Gauge::default()
+        .gauge_style(Style::default().fg(ACCENT).bg(Color::Rgb(30, 34, 40)))
+        .ratio(ratio)
+        .label(Span::styled(
+            format!("Auslastung {:.0}%", ratio * 100.0),
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        ));
+    // vertikal zentrieren (2 Zeilen innen -> Gauge in Zeile 2).
+    let grows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(cols[1]);
+    f.render_widget(gauge, grows[1]);
+
+    // --- Live-Puls-Sparkline ---
+    let samples = app.activity_samples();
+    let srows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(cols[2]);
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Puls ", Style::default().fg(MUTED)),
+            Span::styled(app.spinner_frame().to_string(), Style::default().fg(ACCENT)),
+        ])),
+        srows[0],
+    );
+    let spark = Sparkline::default()
+        .data(&samples)
+        .style(Style::default().fg(ACCENT));
+    f.render_widget(spark, srows[1]);
 }
 
 /// Einladender Leerzustand statt toter Panels, wenn kein Worker-Pool läuft.
@@ -543,6 +599,7 @@ mod tests {
             detail_scroll: 0,
             focus: crate::tui_state::Panel::Agents,
             log_filter: crate::tui_state::LogFilter::All,
+            activity_history: std::collections::VecDeque::new(),
         }
     }
 

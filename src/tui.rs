@@ -504,6 +504,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
         detail_scroll: 0,
         focus: Panel::Agents,
         log_filter: LogFilter::All,
+            activity_history: std::collections::VecDeque::new(),
     };
 
     // --- Event-Loop ---

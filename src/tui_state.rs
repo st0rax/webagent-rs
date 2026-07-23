@@ -55,7 +55,14 @@ pub struct App {
     pub focus: Panel,
     /// Log-Filter (f schaltet um) — „Filtern des Logs mit f".
     pub log_filter: LogFilter,
+    /// Ringpuffer des Pool-Pulses: je Tick die Zahl frisch pulsierender Worker
+    /// (Heartbeat < 10s). Speist die Live-Sparkline in der Kopfleiste — gibt der
+    /// TUI einen lebendigen, atmenden Verlauf statt statischer Zahlen.
+    pub activity_history: std::collections::VecDeque<u64>,
 }
+
+/// Wie viele Pulswerte die Sparkline vorhält (~Fensterbreite in Ticks).
+pub const ACTIVITY_HISTORY_LEN: usize = 60;
 
 /// Die drei fokussierbaren Hauptpanels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +170,21 @@ impl App {
         // Gedämpftes Gauge: shown += (target - shown) * 0.2
         self.gauge_shown += (target - self.gauge_shown) * 0.2;
         self.gauge_shown = self.gauge_shown.clamp(0.0, 1.0);
+        // Pool-Puls aufzeichnen: frisch pulsierende Worker (Heartbeat < 10s).
+        let beats = self
+            .agents
+            .iter()
+            .filter(|a| a.heartbeat_age_sec < 10)
+            .count() as u64;
+        self.activity_history.push_back(beats);
+        while self.activity_history.len() > ACTIVITY_HISTORY_LEN {
+            self.activity_history.pop_front();
+        }
+    }
+
+    /// Aktueller Sparkline-Datensatz (älteste zuerst) für die Kopfleiste.
+    pub fn activity_samples(&self) -> Vec<u64> {
+        self.activity_history.iter().copied().collect()
     }
 
     /// Spinner-Frame für aktuellen Tick.
@@ -412,6 +434,7 @@ mod tests {
             detail_scroll: 0,
             focus: Panel::Agents,
             log_filter: LogFilter::All,
+            activity_history: std::collections::VecDeque::new(),
         }
     }
 
@@ -501,5 +524,28 @@ mod tests {
         app.detail_scroll = 7;
         app.collapse_selected();
         assert_eq!(app.detail_scroll, 0, "sonst startet das naechste Aufklappen mitten drin");
+    }
+
+    #[test]
+    fn on_tick_records_pool_pulse_and_caps_history() {
+        // Der Puls-Ringpuffer speist die Live-Sparkline: je Tick die Zahl frisch
+        // pulsierender Worker (Heartbeat < 10s), gedeckelt auf ACTIVITY_HISTORY_LEN.
+        let mut app = app_with(vec![
+            view("a", vec![]),          // heartbeat 0s -> pulsiert
+            view("b", vec![]),          // heartbeat 0s -> pulsiert
+        ]);
+        app.on_tick(1.0);
+        assert_eq!(app.activity_samples().last().copied(), Some(2), "2 frische Worker");
+        for _ in 0..(ACTIVITY_HISTORY_LEN + 20) {
+            app.on_tick(1.0);
+        }
+        assert_eq!(app.activity_history.len(), ACTIVITY_HISTORY_LEN, "Ringpuffer gedeckelt");
+    }
+
+    #[test]
+    fn stale_workers_do_not_count_as_pulse() {
+        let mut app = app_with(vec![AgentView { heartbeat_age_sec: 999, ..view("z", vec![]) }]);
+        app.on_tick(1.0);
+        assert_eq!(app.activity_samples().last().copied(), Some(0), "toter Worker pulsiert nicht");
     }
 }
