@@ -565,10 +565,57 @@ fn append_to_file(path: &Path, text: &str) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Erzeugt aus einem frei wählbaren Präfix und einem Zeitstempel einen stabilen,
+/// für Git-Snapshot-Namen geeigneten Bezeichner. Ungültige oder problematische
+/// Zeichen werden durch sichere Zeichen ersetzt; leere Eingaben werden
+/// deterministisch behandelt.
+pub fn create_snapshot_name(prefix: &str, timestamp: &str) -> String {
+fn sanitize(s: &str) -> String {
+s.chars()
+.map(|c| {
+if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+c
+} else {
+'-'
+}
+})
+.collect::<String>()
+}
+
+fn collapse_hyphens(s: &str) -> String {
+let mut result = String::new();
+let mut prev_hyphen = false;
+for c in s.chars() {
+if c == '-' {
+if !prev_hyphen {
+result.push(c);
+prev_hyphen = true;
+}
+} else {
+result.push(c);
+prev_hyphen = false;
+}
+}
+// Entferne führende und abschließende Bindestriche
+let trimmed = result.trim_matches('-');
+if trimmed.is_empty() { return String::new(); }
+trimmed.to_string()
+}
+
+let safe_prefix = collapse_hyphens(&sanitize(prefix));
+let safe_ts = collapse_hyphens(&sanitize(timestamp));
+
+let p = if safe_prefix.is_empty() { "snapshot" } else { &safe_prefix };
+let t = if safe_ts.is_empty() { "untimed" } else { &safe_ts };
+
+format!("{p}_{t}")
+
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
+use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
 
     /// Eindeutiges Verzeichnis pro Testaufruf (Muster wie `unique_data_dir`
     /// in controller.rs — Tests laufen parallel).
@@ -1032,7 +1079,40 @@ mod tests {
         assert!(log_dir.join("log.md").exists());
         let jsonl = std::fs::read_to_string(log_dir.join("iterations.jsonl")).unwrap();
         let parsed: IterationLog = serde_json::from_str(jsonl.lines().next().unwrap()).unwrap();
-        assert_eq!(parsed.n, 1);
-        assert!(parsed.kept);
-    }
+assert_eq!(parsed.n, 1);
+assert!(parsed.kept);
+}
+
+// ── create_snapshot_name Tests ──────────────────────────────────────
+
+#[test]
+fn snapshot_name_normal_prefix_and_timestamp() {
+let name = create_snapshot_name("before-change", "20260721-120000");
+assert_eq!(name, "before-change_20260721-120000");
+}
+
+#[test]
+fn snapshot_name_sanitizes_spaces_and_special_chars() {
+let name = create_snapshot_name("test snapshot!", "20260721-120000");
+// ' ' → '-', '!' → '-', then collapsed: "test-snapshot_20260721-120000"
+assert_eq!(name, "test-snapshot_20260721-120000");
+}
+
+#[test]
+fn snapshot_name_empty_prefix_gives_deterministic_name() {
+let name = create_snapshot_name("", "20260721-120000");
+assert_eq!(name, "snapshot_20260721-120000");
+}
+
+#[test]
+fn snapshot_name_timestamp_with_special_chars_is_normalized() {
+let name1 = create_snapshot_name("fix", "2026/07/21 12:00:00");
+let name2 = create_snapshot_name("fix", "2026/07/21 12:00:00");
+assert_eq!(name1, name2, "identische Eingaben → identischer Output");
+// '/', ' ', ':' → '-', collapsed
+assert!(name1.contains("fix_"), "name={name1}");
+assert!(!name1.contains('/'), "keine Slashes");
+assert!(!name1.contains(':'), "keine Doppelpunkte");
+}
+
 }
