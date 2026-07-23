@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-07-23 09:41:29",
+  "label": "snapshot",
+  "files": [
+    {
+      "name": "C:\\Users\\storax\\Desktop\\webagent\\webagent-rs\\.aider.chat.history.md",
+      "modified": "2026-07-12T14:24:09.0783442+02:00",
+      "size": 663281
+    },
+    {
+      "name": "C:\\Users\\storax\\Desktop\\webagent\\webagent-rs\\.aider.input.history",
+      "modified": "2026-07-12T14:23:51.0649739+02:00",
+      "size": 81400
+    },
+    {
+      "name": "C:\\Users\\storax\\Desktop\\webagent\\webagent-rs\\.env",
+      "modified": "2026-07-12T13:05:57.4827985+02:00",
+      "size": 127
+    },
+    {
+      "name": "C:\\Users\\storax\\Desktop\\webagent\\webagent-rs\\.env.example",
+      "modified": "2026-07-14T05:02:19.1485682+02:00",
+      "size": 892
+    },
+    {
+      "name": "C:\\Users\\storax\\Desktop\\webagent\\webagent-rs\\.gitignore",
+      "modified": "2026-07-17T11:15:04.9045799+02:00",
+      "size": 245
+    }
+  ]
+}
