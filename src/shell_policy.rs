@@ -511,15 +511,66 @@ mod tests {
         assert!(msg.contains("not in allowlist"));
     }
 
-    #[test]
-    fn evaluate_command_policy_dry_run_never_allows_execution() {
-        let allowlist = vec!["echo"];
-        let denylist = vec!["format"];
-        let destructive = vec!["rm -rf"];
-        let (allowed, msg) =
-            evaluate_command_policy("echo hello", &allowlist, &denylist, &destructive, true, false);
-        assert!(!allowed);
-        assert!(msg.contains("dry-run"));
-        assert!(msg.contains("would be allowed"));
+#[test]
+fn evaluate_command_policy_dry_run_never_allows_execution() {
+let allowlist = vec!["echo"];
+let denylist = vec!["format"];
+let destructive = vec!["rm -rf"];
+let (allowed, msg) =
+evaluate_command_policy("echo hello", &allowlist, &denylist, &destructive, true, false);
+assert!(!allowed);
+assert!(msg.contains("dry-run"));
+assert!(msg.contains("would be allowed"));
+}
+
+pub fn assess_command_risk(cmd: &str) -> (bool, bool, &'static str) {
+    let lower = cmd.to_ascii_lowercase();
+
+    if lower.contains("curl")
+        || lower.contains("wget")
+        || lower.contains("invoke-webrequest")
+    {
+        return (true, true, "network");
     }
+
+    if lower.contains("invoke-expression") || lower.contains("iex ") {
+        return (true, true, "dynamic_exec");
+    }
+
+    if lower.contains("rm -rf /") || lower.contains("del /s /q") {
+        return (true, true, "destructive");
+    }
+
+    if lower.contains("&&") || lower.contains(';') {
+        return (true, true, "chained_command");
+    }
+
+    (false, false, "none")
+}
+
+#[test]
+fn assess_command_risk_examples() {
+    assert_eq!(assess_command_risk("ls -la"), (false, false, "none"));
+    assert_eq!(
+        assess_command_risk("curl http://example.com/file.sh"),
+        (true, true, "network")
+    );
+    assert_eq!(
+        assess_command_risk("Invoke-Expression 'Get-Process'"),
+        (true, true, "dynamic_exec")
+    );
+    assert_eq!(
+        assess_command_risk("rm -rf /"),
+        (true, true, "destructive")
+    );
+    assert_eq!(
+        assess_command_risk("echo test && del file.txt"),
+        (true, true, "chained_command")
+    );
+    assert_eq!(
+        assess_command_risk("Write-Host 'Hello World'"),
+        (false, false, "none")
+    );
+}
+
 }
