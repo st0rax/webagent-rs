@@ -1598,6 +1598,45 @@ error: could not compile `webagent` (lib test)",
         assert!(p.contains("WEBAGENT/1 EDIT") || p.contains("WEBAGENT/1 WRITE"));
         assert!(p.to_lowercase().contains("behaupte keinen erfolg"));
         // Die urspruengliche Aufgabe bleibt erhalten.
-        assert!(p.contains("src/x.rs"));
-    }
+assert!(p.contains("src/x.rs"));
+}
+}
+
+/// Erzeugt ein reproduzierbares, maschinenlesbares Ergebnisformat fuer Benchmark-Szenarien.
+pub fn format_benchmark_result(name: &str, value: u64, unit: &str) -> String {
+format!("{}={}{}", name, value, unit)
+}
+
+#[cfg(test)]
+mod format_benchmark_result_tests {
+use super::*;
+
+#[test]
+fn standard_format() {
+assert_eq!(format_benchmark_result("selector_drift", 12, "ms"), "selector_drift=12ms");
+}
+
+#[test]
+fn zero_value() {
+assert_eq!(format_benchmark_result("timeout", 0, "count"), "timeout=0count");
+}
+
+#[test]
+fn empty_name() {
+assert_eq!(format_benchmark_result("", 42, "bytes"), "=42bytes");
+}
+
+#[test]
+fn deterministic() {
+let a = format_benchmark_result("test", 100, "ops");
+let b = format_benchmark_result("test", 100, "ops");
+assert_eq!(a, b);
+}
+
+#[test]
+fn max_value() {
+let expected = format!("large_output={}bytes", u64::MAX);
+assert_eq!(format_benchmark_result("large_output", u64::MAX, "bytes"), expected);
+}
+
 }
