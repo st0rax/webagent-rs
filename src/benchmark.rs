@@ -750,6 +750,95 @@ WICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es              
     winner.to_string()
 }
 
+/// Arbeitsschlange der Phase B samt Handoff-Buchhaltung.
+///
+/// Steckt in einer eigenen Struct, weil genau hier der Endlos-Pingpong sass:
+/// `refined_cache` dedupliziert Aufgabentexte, deshalb tragen bei wenigen
+/// Vorschlaegen MEHRERE Plan-Eintraege dieselbe Aufgabe — und `tried` ist nach
+/// eben diesem Text gekeyt. Ohne Kill-Flag lief eine laengst ausgefallene
+/// Aufgabe fuer jeden weiteren Eintrag erneut durch einen vollen Brain-Run.
+/// Als reine Datenstruktur ist das ohne Netzwerk und ohne Brains testbar.
+pub(crate) struct HandoffQueue {
+    /// (Brain, Aufgabentext, abgebendes Brain — None = frischer Plan-Eintrag)
+    queue: std::collections::VecDeque<(String, String, Option<String>)>,
+    tried: std::collections::HashMap<String, Vec<String>>,
+    dropped: std::collections::HashSet<String>,
+    brains: Vec<String>,
+    max_handoffs: usize,
+}
+
+impl HandoffQueue {
+    pub(crate) fn new(plan: &[(String, String)], brains: &[String], max_handoffs: usize) -> Self {
+        Self {
+            queue: plan
+                .iter()
+                .map(|(b, t)| (b.clone(), t.clone(), None))
+                .collect(),
+            tried: std::collections::HashMap::new(),
+            dropped: std::collections::HashSet::new(),
+            brains: brains.to_vec(),
+            max_handoffs,
+        }
+    }
+
+    /// Naechster Auftrag. Ausgefallene Aufgaben werden hier verworfen, damit
+    /// sie keinen weiteren Brain-Run kosten.
+    pub(crate) fn next(&mut self) -> Option<(String, String, Option<String>)> {
+        while let Some((brain, effective, from)) = self.queue.pop_front() {
+            if self.dropped.contains(&effective) {
+                println!(
+                    "[benchmark] {effective} bereits ausgefallen — ueberspringe Eintrag fuer {brain}."
+                );
+                continue;
+            }
+            // Handoffs sind bereits beim Einreihen vermerkt; nur frische
+            // Plan-Eintraege muessen hier nachgetragen werden.
+            if from.is_none() {
+                self.tried
+                    .entry(effective.clone())
+                    .or_default()
+                    .push(brain.clone());
+            }
+            return Some((brain, effective, from));
+        }
+        None
+    }
+
+    /// Reicht eine steckengebliebene Aufgabe weiter. `Some(nb)` = uebernimmt
+    /// `nb`, `None` = niemand mehr uebrig, Aufgabe faellt endgueltig aus.
+    ///
+    /// Die Reservierung passiert BEIM EINREIHEN, nicht erst beim Poppen —
+    /// sonst waehlen zwei Stalls derselben Aufgabe dasselbe naechste Brain.
+    pub(crate) fn on_stall(&mut self, brain: &str, effective: &str) -> Option<String> {
+        let already = self.tried.entry(effective.to_string()).or_default();
+        let cap = self.max_handoffs.max(1) + 1;
+        let next = if already.len() < cap {
+            self.brains.iter().find(|b| !already.contains(b)).cloned()
+        } else {
+            None
+        };
+        match next {
+            Some(nb) => {
+                already.push(nb.clone());
+                self.queue
+                    .push_back((nb.clone(), effective.to_string(), Some(brain.to_string())));
+                Some(nb)
+            }
+            None => {
+                self.dropped.insert(effective.to_string());
+                None
+            }
+        }
+    }
+
+    /// Nur fuer Tests: der Produktionspfad fragt den Zustand nicht ab, weil
+    /// `next()` ausgefallene Aufgaben selbst wegwirft.
+    #[cfg(test)]
+    pub(crate) fn is_dropped(&self, effective: &str) -> bool {
+        self.dropped.contains(effective)
+    }
+}
+
 /// Fährt den vollen Benchmark: `query` speist Phase A (Swarm-Abstimmung, in
 /// CLI/REPL `repl::isolated_query`). Der Live-Teil (Phase B) läuft über den
 /// Controller; getestet wird er e2e vom Orchestrator, nicht im Unit-Test.
@@ -841,37 +930,13 @@ where
         // Phase B — Arbeitsschlange statt fester Liste: bleibt ein Brain stecken,
         // wandert SEINE Aufgabe an ein Brain, das sie noch nicht versucht hat.
         let mut harvest_pool: Vec<HarvestCandidate> = Vec::new();
-        // Drittes Feld: welches Brain diese Aufgabe abgegeben hat (None = frisch).
-        let mut queue: std::collections::VecDeque<(String, String, Option<String>)> = plan
-            .iter()
-            .map(|(b, t)| (b.clone(), t.clone(), None))
-            .collect();
-        // tried wird BEIM EINREIHEN gefuellt, nicht erst beim Poppen.
-        // Dadurch wird verhindert, dass zwei Stalls derselben Aufgabe dasselbe naechste Brain waehlen.
-        let mut tried: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        // dropped: Aufgaben, die bereits "faellt aus" gemeldet haben.
-        let mut dropped: std::collections::HashSet<String> = std::collections::HashSet::new();
-        while let Some((brain_owned, effective_owned, handoff_from)) = queue.pop_front() {
+        let mut hq = HandoffQueue::new(&plan, &config.brains, config.max_handoffs);
+        while let Some((brain_owned, effective_owned, handoff_from)) = hq.next() {
             let brain = &brain_owned;
             let effective = &effective_owned;
 
-            // Ueberspringe bereits ausgefallene Aufgaben sofort, ohne Brain-Run.
-            if dropped.contains(effective) {
-                println!("[benchmark] {effective} bereits ausgefallen — ueberspringe Eintrag fuer {brain}.");
-                continue;
-            }
-
             if let Some(prev) = &handoff_from {
                 println!("[benchmark] {brain} uebernimmt die Aufgabe von {prev}.");
-            }
-            // Bei frischen Plan-Eintraegen (kein Handoff) jetzt schon eintragen.
-            // Bei Handoffs wurde der Eintrag bereits beim Push vorgenommen.
-            if handoff_from.is_none() {
-                tried
-                    .entry(effective.clone())
-                    .or_default()
-                    .push(brain.clone());
             }
             let task = build_task_prompt(effective);
             let tid = task_id(effective);
@@ -1030,24 +1095,13 @@ where
                 // Weitergeben an das erste Brain, das diese Aufgabe noch nicht
                 // hatte. Nicht endlos: sonst reicht ein unloesbarer Vorschlag
                 // die Runde durch alle acht Brains und frisst die Zeit auf.
-                let already = tried.get(effective).cloned().unwrap_or_default();
-                let next = config.brains.iter().find(|b| {
-                    !already.contains(b) && already.len() < config.max_handoffs.max(1) + 1
-                });
-                match next {
-                    Some(nb) => {
-                        println!(
-                            "[benchmark] {brain}: {stall_limit}x kein Fortschritt — Aufgabe geht an {nb}."
-                        );
-                        tried.entry(effective.clone()).or_default().push(nb.clone());
-                        queue.push_back((nb.clone(), effective.clone(), Some(brain.clone())));
-                    }
-                    None => {
-                        println!(
-                            "[benchmark] {brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
-                        );
-                        dropped.insert(effective.clone());
-                    }
+                match hq.on_stall(brain, effective) {
+                    Some(nb) => println!(
+                        "[benchmark] {brain}: {stall_limit}x kein Fortschritt — Aufgabe geht an {nb}."
+                    ),
+                    None => println!(
+                        "[benchmark] {brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
+                    ),
                 }
             }
             let latency_ms = started.elapsed().as_millis() as u64;
@@ -1321,6 +1375,101 @@ mod refine_tests {
 mod tests {
     use super::*;
     use crate::self_research::RankedSuggestion;
+
+    // --- Handoff-Queue -----------------------------------------------------
+    // Der reale Ausloeser: alle acht Brains bekommen DIESELBE Aufgabe, weil
+    // `refined_cache` die Vorschlaege dedupliziert. Genau daran haing sich der
+    // Endlos-Pingpong auf.
+
+    fn acht_brains() -> Vec<String> {
+        (1..=8).map(|i| format!("b{i}")).collect()
+    }
+
+    /// Plan, in dem alle Brains an derselben Aufgabe "T" sitzen.
+    fn plan_alle_gleiche_aufgabe() -> Vec<(String, String)> {
+        acht_brains()
+            .into_iter()
+            .map(|b| (b, "T".to_string()))
+            .collect()
+    }
+
+    /// Faehrt die Queue leer und laesst JEDES gelieferte Brain sofort stallen.
+    /// Bricht hart ab, statt zu haengen — ein Regress muss FEHLSCHLAGEN.
+    fn leerfahren(q: &mut HandoffQueue) -> Vec<(String, String)> {
+        let mut gesehen = Vec::new();
+        let mut n = 0;
+        while let Some((brain, effective, _)) = q.next() {
+            n += 1;
+            assert!(n < 100, "Endlosschleife: {n} Durchlaeufe ohne Ende");
+            gesehen.push((brain.clone(), effective.clone()));
+            q.on_stall(&brain, &effective);
+        }
+        gesehen
+    }
+
+    #[test]
+    fn endlosschleife_ausgeschlossen() {
+        let mut q = HandoffQueue::new(&plan_alle_gleiche_aufgabe(), &acht_brains(), 3);
+        let gesehen = leerfahren(&mut q);
+        // Die Queue laeuft leer, und die unloesbare Aufgabe ist endgueltig raus.
+        assert!(q.is_dropped("T"));
+        // Der eigentliche Regress-Waechter: frueher lief JEDER der acht
+        // Plan-Eintraege plus jeder Handoff noch durch einen vollen Brain-Run,
+        // obwohl die Aufgabe laengst ausgefallen war — im Log das endlose
+        // "uebernimmt" -> "faellt aus" -> "uebernimmt". Nach dem Ausfall darf
+        // kein Brain die Aufgabe mehr sehen, also hoechstens max_handoffs+1.
+        assert!(
+            gesehen.len() <= 4,
+            "nach dem Ausfall liefen weitere Brain-Runs: {gesehen:?}"
+        );
+    }
+
+    #[test]
+    fn kein_brain_bekommt_aufgabe_zweimal() {
+        let mut q = HandoffQueue::new(&plan_alle_gleiche_aufgabe(), &acht_brains(), 3);
+        let gesehen = leerfahren(&mut q);
+        let eindeutig: std::collections::HashSet<_> = gesehen.iter().collect();
+        assert_eq!(
+            eindeutig.len(),
+            gesehen.len(),
+            "ein Brain hat dieselbe Aufgabe mehrfach bekommen: {gesehen:?}"
+        );
+    }
+
+    #[test]
+    fn ausgefallene_aufgabe_wird_nicht_neu_eingereiht() {
+        let mut q = HandoffQueue::new(&plan_alle_gleiche_aufgabe(), &acht_brains(), 3);
+        // Bis zum ersten endgueltigen Ausfall fahren.
+        let mut n = 0;
+        while let Some((brain, effective, _)) = q.next() {
+            n += 1;
+            assert!(n < 100, "Endlosschleife");
+            if q.on_stall(&brain, &effective).is_none() {
+                break;
+            }
+        }
+        assert!(q.is_dropped("T"));
+        // Danach darf "T" nicht noch einmal ausgegeben werden.
+        while let Some((_, effective, _)) = q.next() {
+            assert_ne!(effective, "T", "ausgefallene Aufgabe wurde neu eingereiht");
+        }
+    }
+
+    #[test]
+    fn max_handoffs_wird_eingehalten() {
+        let mut q = HandoffQueue::new(&plan_alle_gleiche_aufgabe(), &acht_brains(), 2);
+        let gesehen = leerfahren(&mut q);
+        let brains_fuer_t: std::collections::HashSet<_> = gesehen
+            .iter()
+            .filter(|(_, eff)| eff == "T")
+            .map(|(b, _)| b.clone())
+            .collect();
+        // max_handoffs=2 heisst: Erstzuteilung + 2 Weitergaben = 3 Brains.
+        assert!(
+            brains_fuer_t.len() <= 3,
+            "zu viele Brains an derselben Aufgabe: {brains_fuer_t:?}"
+        );
+    }
 
     fn stats(brain: &str, attempts: usize, wilson: f64) -> CodeStats {
         CodeStats {
