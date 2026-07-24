@@ -59,6 +59,40 @@ pub struct App {
     /// (Heartbeat < 10s). Speist die Live-Sparkline in der Kopfleiste — gibt der
     /// TUI einen lebendigen, atmenden Verlauf statt statischer Zahlen.
     pub activity_history: std::collections::VecDeque<u64>,
+    /// Welche Hauptansicht gerade gezeigt wird (`<>` bzw. `v` schaltet um).
+    ///
+    /// Bis 2026-07-24 lag das schoene ratatui-Dashboard in `webagent tui`,
+    /// waehrend die Benchmark-Ausgabe getrennter Plaintext war — zwei
+    /// Oberflaechen fuer dieselbe Arbeit. Jetzt ist es EINE TUI mit zwei
+    /// Ansichten auf denselben Zustand.
+    pub view: View,
+    /// Scroll-Offset der Benchmark-Ansicht (0 = am unteren Rand mitlaufen).
+    pub bench_scroll: usize,
+}
+
+/// Die umschaltbaren Hauptansichten.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    /// Worker-/Subagent-Dashboard (Agenten, Tasks, Log).
+    Workers,
+    /// Arbeits-/Benchmark-Ansicht: der Ereignisstrom des laufenden Laufs.
+    Bench,
+}
+
+impl View {
+    pub fn next(self) -> View {
+        match self {
+            View::Workers => View::Bench,
+            View::Bench => View::Workers,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            View::Workers => "Worker",
+            View::Bench => "Benchmark",
+        }
+    }
 }
 
 /// Wie viele Pulswerte die Sparkline vorhält (~Fensterbreite in Ticks).
@@ -441,6 +475,8 @@ mod tests {
             focus: Panel::Agents,
             log_filter: LogFilter::All,
             activity_history: std::collections::VecDeque::new(),
+            view: View::Workers,
+            bench_scroll: 0,
         }
     }
 

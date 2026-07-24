@@ -35,6 +35,19 @@ use std::time::Instant;
 use crate::code_score::{CodeEvent, CodeStats};
 use crate::self_research::SelfResearchReport;
 
+/// Meldet eine Zeile gleichzeitig an Konsole und Ereignisstrom.
+///
+/// EIN Aufrufpunkt fuer beides, damit die TUI und die Konsole nicht
+/// auseinanderlaufen — frueher war die Benchmark-Ausgabe reines `println!`
+/// und fuer [`crate::tui`] unsichtbar.
+macro_rules! bench_say {
+    ($level:expr, $brain:expr, $($arg:tt)*) => {{
+        let text = format!($($arg)*);
+        println!("[benchmark] {text}");
+        crate::bench_events::emit($level, $brain, &text);
+    }};
+}
+
 /// Wall-Timeout je Brain-Run in Sekunden (ein Benchmark-Run darf nicht ewig
 /// laufen — via `AgentController::set_wall_timeout_secs`).
 const BENCH_WALL_SECS: u64 = 300;
@@ -453,14 +466,18 @@ pub fn format_benchmark_report(winners: &[(usize, String)], board: &[CodeStats])
     out
 }
 
-/// Druckt die Code-Rangliste auf stdout (Live-Ausgabe am Ende, Spec §4).
+/// Druckt die Code-Rangliste auf stdout und Ereignisstrom (Live-Ausgabe am Ende, Spec §4).
 fn print_leaderboard(board: &[CodeStats]) {
-    println!("[benchmark] Code-Rangliste:");
-    println!(
+    bench_say!(crate::bench_events::Level::Info, None, "Code-Rangliste:");
+    bench_say!(
+        crate::bench_events::Level::Info,
+        None,
         "  brain            attempts  change%  compile%  pass%   wilson_pass  schwer  rettung  aufgegeben"
     );
     for s in board {
-        println!(
+        bench_say!(
+            crate::bench_events::Level::Info,
+            Some(&s.brain_id),
             "  {:<15}  {:>8}  {:>6.0}%  {:>7.0}%  {:>5.0}%   {:>11.3}  {:>6}  {:>7}  {:>10}",
             s.brain_id,
             s.attempts,
@@ -475,7 +492,9 @@ fn print_leaderboard(board: &[CodeStats]) {
     }
     let rescues: usize = board.iter().map(|s| s.rescues).sum();
     if rescues > 0 {
-        println!(
+        bench_say!(
+            crate::bench_events::Level::Info,
+            None,
             "  ({rescues} Rettung(en): bestanden an Aufgaben, die ein anderes Brain aufgegeben hatte)"
         );
     }
@@ -732,8 +751,10 @@ WICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es              
         match query(refiner, &prompt) {
             Ok(text) => match usable_refinement(&text) {
                 Some(t) if task_is_redundant(&t, existing_api) => {
-                    println!(
-                        "[benchmark]   verworfen: verlangt bereits vorhandene Funktion ({:?})",
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        None,
+                        "  verworfen: verlangt bereits vorhandene Funktion ({:?})",
                         proposed_fn_name(&t).unwrap_or_default()
                     );
                     continue;
@@ -742,7 +763,7 @@ WICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es              
                 None => break,
             },
             Err(e) => {
-                println!("[benchmark]   Verfeinerung fehlgeschlagen ({e}).");
+                bench_say!(crate::bench_events::Level::Fail, None, "  Verfeinerung fehlgeschlagen ({e}).");
                 break;
             }
         }
@@ -786,8 +807,10 @@ impl HandoffQueue {
     pub(crate) fn next(&mut self) -> Option<(String, String, Option<String>)> {
         while let Some((brain, effective, from)) = self.queue.pop_front() {
             if self.dropped.contains(&effective) {
-                println!(
-                    "[benchmark] {effective} bereits ausgefallen — ueberspringe Eintrag fuer {brain}."
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    Some(brain.as_str()),
+                    "{effective} bereits ausgefallen — ueberspringe Eintrag fuer {brain}."
                 );
                 continue;
             }
@@ -861,7 +884,11 @@ where
     let mut harvested: Vec<(String, String)> = Vec::new();
 
     for round in 1..=rounds {
-        println!("[benchmark] runde {round}/{rounds} — abstimmen…");
+        bench_say!(
+            crate::bench_events::Level::Info,
+            None,
+            "runde {round}/{rounds} — abstimmen…"
+        );
         // Phase A — Sammeln + Abstimmen. `&query` implementiert Fn ⇒ pro Runde
         // wiederverwendbar, ohne die Closure zu bewegen.
         let report = crate::self_research::run_self_research(
@@ -874,11 +901,15 @@ where
         );
         let ranked = ranked_from_report(&report);
         if ranked.is_empty() {
-            println!("[benchmark] runde {round}: kein Sieger (keine Stimmen) — überspringe.");
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "runde {round}: kein Sieger (keine Stimmen) — überspringe."
+            );
             continue;
         }
         let winner = ranked[0].clone();
-        println!("[benchmark] Sieger: {winner}");
+        bench_say!(crate::bench_events::Level::Pass, None, "Sieger: {winner}");
         winners.push((round, winner.clone()));
 
         // Fertigungsstrasse: jedes Brain baut einen EIGENEN Rang der Rangliste,
@@ -912,7 +943,12 @@ where
                     e
                 }
             };
-            println!("[benchmark] {brain} -> {}", crate::char_prefix(&eff, 120));
+            bench_say!(
+                crate::bench_events::Level::Info,
+                Some(brain),
+                "{brain} -> {}",
+                crate::char_prefix(&eff, 120)
+            );
             plan.push((brain.clone(), eff));
         }
 
@@ -936,7 +972,11 @@ where
             let effective = &effective_owned;
 
             if let Some(prev) = &handoff_from {
-                println!("[benchmark] {brain} uebernimmt die Aufgabe von {prev}.");
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    Some(brain),
+                    "{brain} uebernimmt die Aufgabe von {prev}."
+                );
             }
             let task = build_task_prompt(effective);
             let tid = task_id(effective);
@@ -993,7 +1033,11 @@ where
                     }
                     Err(e) => {
                         t.finish("Brain-Run fehlgeschlagen");
-                        println!("[benchmark] {brain}: run fehlgeschlagen — {e}");
+                        bench_say!(
+                            crate::bench_events::Level::Fail,
+                            Some(brain),
+                            "{brain}: run fehlgeschlagen — {e}"
+                        );
                     }
                 }
 
@@ -1007,8 +1051,10 @@ where
                     // nachschieben, dass ein Edit PFLICHT ist, und als Stillstand
                     // zaehlen (das stall_limit deckelt endloses Nicht-Editieren).
                     stalls += 1;
-                    println!(
-                        "[benchmark] {brain}: Iteration {iter}/{max_iter} — keine Änderung, Anstoss ({stalls}/{stall_limit})"
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: Iteration {iter}/{max_iter} — keine Änderung, Anstoss ({stalls}/{stall_limit})"
                     );
                     if stalls >= stall_limit || iter >= max_iter {
                         stalled = stalls >= stall_limit;
@@ -1027,16 +1073,20 @@ where
                         errors: count_build_errors(&b_out),
                     };
                     if is_improvement(best, now) {
-                        println!(
-                            "[benchmark] {brain}: Iteration {iter}/{max_iter} — Build rot, aber naeher dran ({} Fehler)",
+                        bench_say!(
+                            crate::bench_events::Level::Progress,
+                            Some(brain),
+                            "{brain}: Iteration {iter}/{max_iter} — Build rot, aber naeher dran ({} Fehler)",
                             now.errors
                         );
                         best = Some(now);
                         stalls = 0;
                     } else {
                         stalls += 1;
-                        println!(
-                            "[benchmark] {brain}: Iteration {iter}/{max_iter} — Build rot, kein Fortschritt ({}/{stall_limit})",
+                        bench_say!(
+                            crate::bench_events::Level::Warn,
+                            Some(brain),
+                            "{brain}: Iteration {iter}/{max_iter} — Build rot, kein Fortschritt ({}/{stall_limit})",
                             stalls
                         );
                     }
@@ -1061,26 +1111,36 @@ where
                 // eingebunden und getestet (verwaiste Datei erhoeht die Zahl nicht).
                 tests_passed = t_ok && after > baseline_tests;
                 if t_ok && after <= baseline_tests {
-                    println!(
-                        "[benchmark]   Tests gruen, aber Testzahl unveraendert ({after} <= {baseline_tests}) — nicht eingebunden"
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        None,
+                        "  Tests gruen, aber Testzahl unveraendert ({after} <= {baseline_tests}) — nicht eingebunden"
                     );
                 }
                 if tests_passed {
-                    println!("[benchmark] {brain}: Iteration {iter}/{max_iter} — grün");
+                    bench_say!(
+                        crate::bench_events::Level::Pass,
+                        Some(brain),
+                        "{brain}: Iteration {iter}/{max_iter} — grün"
+                    );
                     break;
                 }
                 let now = progress_after_tests(&t_out);
                 if is_improvement(best, now) {
-                    println!(
-                        "[benchmark] {brain}: Iteration {iter}/{max_iter} — Tests rot, aber naeher dran ({} rot)",
+                    bench_say!(
+                        crate::bench_events::Level::Progress,
+                        Some(brain),
+                        "{brain}: Iteration {iter}/{max_iter} — Tests rot, aber naeher dran ({} rot)",
                         now.errors
                     );
                     best = Some(now);
                     stalls = 0;
                 } else {
                     stalls += 1;
-                    println!(
-                        "[benchmark] {brain}: Iteration {iter}/{max_iter} — Tests rot, kein Fortschritt ({stalls}/{stall_limit})"
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: Iteration {iter}/{max_iter} — Tests rot, kein Fortschritt ({stalls}/{stall_limit})"
                     );
                 }
                 if stalls >= stall_limit {
@@ -1096,11 +1156,15 @@ where
                 // hatte. Nicht endlos: sonst reicht ein unloesbarer Vorschlag
                 // die Runde durch alle acht Brains und frisst die Zeit auf.
                 match hq.on_stall(brain, effective) {
-                    Some(nb) => println!(
-                        "[benchmark] {brain}: {stall_limit}x kein Fortschritt — Aufgabe geht an {nb}."
+                    Some(nb) => bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: {stall_limit}x kein Fortschritt — Aufgabe geht an {nb}."
                     ),
-                    None => println!(
-                        "[benchmark] {brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
+                    None => bench_say!(
+                        crate::bench_events::Level::Fail,
+                        Some(brain),
+                        "{brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
                     ),
                 }
             }
@@ -1110,8 +1174,10 @@ where
                 // Kein CodeEvent: ein ausgesperrtes Brain ist kein schlechtes
                 // Brain. Wuerde es als Fehlschlag zaehlen, saenke der Score mit
                 // der Anbieter-Auslastung statt mit der Faehigkeit.
-                println!(
-                    "[benchmark] {brain}: extern blockiert — nicht gewertet (kein Messpunkt)."
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    Some(brain),
+                    "{brain}: extern blockiert — nicht gewertet (kein Messpunkt)."
                 );
                 reset_repo(&config.workdir, &baseline)?;
                 continue;
@@ -1133,12 +1199,22 @@ where
             crate::code_score::record(&event);
             if is_pass(did_change, compiled, tests_passed) {
                 if let Some(prev) = &handoff_from {
-                    println!("[benchmark] RETTUNG: {brain} loest, woran {prev} gescheitert ist.");
+                    bench_say!(
+                        crate::bench_events::Level::Pass,
+                        Some(brain),
+                        "RETTUNG: {brain} loest, woran {prev} gescheitert ist."
+                    );
                 }
             }
 
-            println!(
-                "[benchmark] {brain}: {iterations} Iteration(en), did_change={} build={} test={} -> {}",
+            bench_say!(
+                if is_pass(did_change, compiled, tests_passed) {
+                    crate::bench_events::Level::Pass
+                } else {
+                    crate::bench_events::Level::Fail
+                },
+                Some(brain),
+                "{brain}: {iterations} Iteration(en), did_change={} build={} test={} -> {}",
                 yes_no(did_change),
                 ok_x(compiled),
                 ok_x(tests_passed),
@@ -1149,8 +1225,10 @@ where
             if config.harvest && is_pass(did_change, compiled, tests_passed) {
                 match capture_patch(&config.workdir) {
                     Ok(patch) if !patch.trim().is_empty() => {
-                        println!(
-                            "[benchmark]   {brain}: Patch gesichert ({} Zeilen) — Kandidat für die Ernte",
+                        bench_say!(
+                            crate::bench_events::Level::Pass,
+                            Some(brain),
+                            "  {brain}: Patch gesichert ({} Zeilen) — Kandidat für die Ernte",
                             patch.lines().count()
                         );
                         harvest_pool.push(HarvestCandidate {
@@ -1161,9 +1239,17 @@ where
                             latency_ms,
                         });
                     }
-                    Ok(_) => println!("[benchmark]   {brain}: leerer Patch — nichts zu ernten"),
+                    Ok(_) => bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "  {brain}: leerer Patch — nichts zu ernten"
+                    ),
                     Err(e) => {
-                        println!("[benchmark]   {brain}: Patch-Sicherung fehlgeschlagen — {e}")
+                        bench_say!(
+                            crate::bench_events::Level::Fail,
+                            Some(brain),
+                            "  {brain}: Patch-Sicherung fehlgeschlagen — {e}"
+                        )
                     }
                 }
             }
@@ -1178,7 +1264,11 @@ where
         // seltenen Konflikt der schwaechere Beitrag zurueckstecken muss.
         if config.harvest {
             if harvest_pool.is_empty() {
-                println!("[benchmark] Nichts zu ernten — kein Brain hat bestanden.");
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    None,
+                    "Nichts zu ernten — kein Brain hat bestanden."
+                );
             }
             harvest_pool.sort_by_key(|c| (c.iterations, c.latency_ms));
             for cand in &harvest_pool {
@@ -1192,15 +1282,22 @@ where
                 match harvest_commit(cand, &cand.task, config) {
                     Ok(()) => {
                         t.finish("geerntet und committet");
-                        println!(
-                            "[benchmark] GEERNTET: {} ({} Iteration(en)) — Code bleibt im Repo.",
+                        bench_say!(
+                            crate::bench_events::Level::Pass,
+                            Some(&cand.brain),
+                            "GEERNTET: {} ({} Iteration(en)) — Code bleibt im Repo.",
                             cand.brain, cand.iterations
                         );
                         harvested.push((cand.brain.clone(), cand.task.clone()));
                     }
                     Err(e) => {
                         t.finish("Ernte fehlgeschlagen");
-                        println!("[benchmark] Ernte verworfen ({}): {e}", cand.brain);
+                        bench_say!(
+                            crate::bench_events::Level::Fail,
+                            Some(&cand.brain),
+                            "Ernte verworfen ({}): {e}",
+                            cand.brain
+                        );
                         let head = crate::autoresearch::git_head_sha(&config.workdir)?;
                         reset_repo(&config.workdir, &head)?;
                     }
@@ -1221,11 +1318,11 @@ where
         let body = format_benchmark_report(&winners, &board);
         match wiki.write_page(&title, &body) {
             Ok(slug) => {
-                println!("[benchmark] Ergebnis abgelegt als [[{slug}]].");
+                bench_say!(crate::bench_events::Level::Info, None, "Ergebnis abgelegt als [[{slug}]].");
                 Some(slug)
             }
             Err(e) => {
-                eprintln!("[benchmark] Wiki-Ablage fehlgeschlagen: {e}");
+                bench_say!(crate::bench_events::Level::Fail, None, "Wiki-Ablage fehlgeschlagen: {e}");
                 None
             }
         }

@@ -7,6 +7,7 @@
 
 pub mod autoresearch;
 pub mod benchmark;
+pub mod bench_events;
 pub mod bot2bot_worker;
 pub mod brain;
 pub mod brain_score;
@@ -138,7 +139,7 @@ fn is_console_handle() -> bool {
 /// Laesst sich die Zeitzone nicht bestimmen (das passiert in Prozessen mit
 /// mehreren Threads, `time` verweigert dort die Offset-Abfrage), faellt es auf
 /// UTC zurueck — ein leicht falscher Stempel ist besser als kein Stempel.
-fn timestamp() -> String {
+pub(crate) fn timestamp() -> String {
     if let Ok(now) = time::OffsetDateTime::now_local() {
         return format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second());
     }

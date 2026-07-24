@@ -10,7 +10,8 @@ use ratatui::{
     Frame,
 };
 
-use crate::tui_state::App;
+use crate::bench_events::Level;
+use crate::tui_state::{App, View};
 
 /// Akzentfarbe der Oberfläche (ein durchgängiger Ton statt bunt gemischt).
 const ACCENT: Color = Color::Rgb(94, 197, 214); // gedämpftes Cyan
@@ -131,10 +132,18 @@ pub fn ui(f: &mut Frame, app: &App) {
 
     render_header(f, app, outer[0]);
 
+    // Benchmark-Ansicht: der Ereignisstrom fuellt den Koerper. Umschaltbar per
+    // `v` / `<>` — dieselbe TUI, andere Sicht auf denselben Lauf.
+    if app.view == View::Bench {
+        render_bench(f, app, outer[1]);
+        render_footer(f, app, outer[2]);
+        return;
+    }
+
     // Leerzustand: kein Worker-Pool aktiv -> einladender Hinweis statt toter Kästen.
     if app.agents.is_empty() {
         render_empty_state(f, outer[1]);
-        render_footer(f, outer[2]);
+        render_footer(f, app, outer[2]);
         return;
     }
 
@@ -158,7 +167,7 @@ pub fn ui(f: &mut Frame, app: &App) {
     render_log(f, app, right[1]);
     render_tasks(f, app, right[2]);
 
-    render_footer(f, outer[2]);
+    render_footer(f, app, outer[2]);
 }
 
 /// KPI-Kopfleiste: Wortmarke + Live-Kennzahlen des Pools (aktiv/Ziel, bereit,
@@ -175,14 +184,14 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let pending: usize = app.agents.iter().map(|a| a.tasks_pending).sum();
     let total = done + pending;
 
-    // Umrahmter Kopf; innen dreigeteilt: Wortmarke+KPIs · Auslastungs-Gauge ·
-    // Live-Puls-Sparkline.
+    // Umrahmter Kopf; Titel zeigt die aktive Ansicht. Benchmark-Modus
+    // tauscht die Worker-KPIs gegen Benchmark-Status aus.
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(ACCENT))
         .title(Span::styled(
-            " ▚▞ webagent ",
+            format!(" ▚▞ webagent · {} ", app.view.label()),
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ));
     let inner = block.inner(area);
@@ -191,13 +200,12 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let cols = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Min(30),    // KPIs
-            Constraint::Length(22), // Gauge
+            Constraint::Min(30),    // KPIs / Benchmark-Info
+            Constraint::Length(22), // Gauge (nur Worker-View)
             Constraint::Length(18), // Sparkline
         ])
         .split(inner);
 
-    // --- KPI-Chips ---
     let ok = Style::default().fg(Color::Green);
     let warn = Style::default().fg(Color::Yellow);
     let chip = |icon: &str, val: String, s: Style| -> Vec<Span<'static>> {
@@ -212,26 +220,50 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
             Span::raw("   "),
         ]
     };
-    let mut kpis: Vec<Span> = Vec::new();
-    kpis.extend(chip(
-        "●",
-        format!("{active}/{} aktiv", app.target_active),
-        ok,
-    ));
-    kpis.extend(chip("○", format!("{ready} bereit"), warn));
-    kpis.extend(chip("✓", format!("{done}/{total} Tasks"), ok));
-    kpis.extend(chip(
-        "◆",
-        format!("{} Brains", app.agents.len()),
-        Style::default().fg(ACCENT),
-    ));
-    let kpi_rows = vec![
-        Line::from(Span::styled("Worker-Pool", Style::default().fg(MUTED))),
-        Line::from(kpis),
-    ];
+
+    let kpi_rows: Vec<Line> = match app.view {
+        View::Workers => {
+            let mut kpis: Vec<Span> = Vec::new();
+            kpis.extend(chip(
+                "●",
+                format!("{active}/{} aktiv", app.target_active),
+                ok,
+            ));
+            kpis.extend(chip("○", format!("{ready} bereit"), warn));
+            kpis.extend(chip("✓", format!("{done}/{total} Tasks"), ok));
+            kpis.extend(chip(
+                "◆",
+                format!("{} Brains", app.agents.len()),
+                Style::default().fg(ACCENT),
+            ));
+            vec![
+                Line::from(Span::styled("Worker-Pool", Style::default().fg(MUTED))),
+                Line::from(kpis),
+            ]
+        }
+        View::Bench => {
+            let n = crate::bench_events::len();
+            vec![
+                Line::from(Span::styled("Benchmark", Style::default().fg(MUTED))),
+                Line::from(vec![
+                    Span::styled(
+                        format!("⚡ {n} Meldungen"),
+                        Style::default()
+                            .fg(Color::Gray)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("   "),
+                    Span::styled(
+                        if n > 0 { "aktiv" } else { "bereit" },
+                        if n > 0 { ok } else { warn },
+                    ),
+                ]),
+            ]
+        }
+    };
     f.render_widget(Paragraph::new(kpi_rows), cols[0]);
 
-    // --- Auslastungs-Gauge (aktiv/Ziel) ---
+    // --- Auslastungs-Gauge (nur Worker-View) ---
     let ratio = if app.target_active > 0 {
         (active as f64 / app.target_active as f64).clamp(0.0, 1.0)
     } else {
@@ -246,12 +278,13 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
                 .fg(Color::White)
                 .add_modifier(Modifier::BOLD),
         ));
-    // vertikal zentrieren (2 Zeilen innen -> Gauge in Zeile 2).
     let grows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Length(1)])
         .split(cols[1]);
-    f.render_widget(gauge, grows[1]);
+    if app.view == View::Workers {
+        f.render_widget(gauge, grows[1]);
+    }
 
     // --- Live-Puls-Sparkline ---
     let samples = app.activity_samples();
@@ -611,25 +644,111 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
 ///
 /// Design-spezifische Tasten: j/k für Detail-Scroll, f für Log-Filter,
 /// Tab für Panel-Fokus, Space für Expand.
-fn render_footer(f: &mut Frame, area: Rect) {
+fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     let key = Style::default()
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
     let dim = Style::default().fg(Color::DarkGray);
     let mut spans = vec![Span::raw(" ")];
-    for (k, label) in [
-        ("↑↓", "wählen"),
-        ("␣", "ausklappen"),
-        ("Tab", "fokus"),
-        ("f", "filter"),
-        ("+/-", "worker"),
-        ("↵", "task"),
-        ("q", "quit"),
-    ] {
-        spans.push(Span::styled(k, key));
-        spans.push(Span::styled(format!(" {label}  ",), dim));
+    // Die Tastenleiste haengt an der Ansicht — in der Benchmark-Ansicht sind
+    // Worker-Tasten (Tab/Filter/+/-) sinnlos.
+    let binds: &[(&str, &str)] = match app.view {
+        View::Workers => &[
+            ("v", "ansicht"),
+            ("↑↓", "wählen"),
+            ("␣", "ausklappen"),
+            ("Tab", "fokus"),
+            ("f", "filter"),
+            ("+/-", "worker"),
+            ("↵", "task"),
+            ("q", "quit"),
+        ],
+        View::Bench => &[
+            ("v", "ansicht"),
+            ("j/k", "scroll"),
+            ("g", "ans ende"),
+            ("q", "quit"),
+        ],
+    };
+    for (k, label) in binds {
+        spans.push(Span::styled(*k, key));
+        spans.push(Span::styled(format!(" {label}  "), dim));
     }
     f.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// Farbe je Schweregrad einer Benchmark-Meldung.
+fn level_color(level: Level) -> Color {
+    match level {
+        Level::Info => Color::Gray,
+        Level::Progress => ACCENT,
+        Level::Pass => Color::Green,
+        Level::Fail => Color::Red,
+        Level::Warn => Color::Yellow,
+    }
+}
+
+/// Arbeits-/Benchmark-Ansicht: der Ereignisstrom aus [`crate::bench_events`].
+///
+/// Zeigt die letzten Meldungen des laufenden Benchmarks — dieselbe Information
+/// wie die Konsolen-Ausgabe, nur eingebettet in die TUI. `bench_scroll`
+/// verschiebt das Fenster nach oben; 0 laesst es am unteren Rand mitlaufen.
+fn render_bench(f: &mut Frame, app: &App, area: Rect) {
+    let block = titled_block("Benchmark — Ereignisstrom");
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let events = crate::bench_events::snapshot();
+    if events.is_empty() {
+        let hint = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Noch kein Benchmark-Ereignis.",
+                Style::default().fg(MUTED),
+            )),
+            Line::from(Span::styled(
+                "  Starte `webagent benchmark …` — der Lauf meldet hierher.",
+                Style::default().fg(MUTED),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  v / < >  zurück zum Worker-Dashboard",
+                Style::default().fg(MUTED),
+            )),
+        ]);
+        f.render_widget(hint, inner);
+        return;
+    }
+
+    // Sichtbares Fenster: so viele Zeilen wie Platz ist, vom Ende her, um
+    // `bench_scroll` nach oben verschoben.
+    let rows = inner.height as usize;
+    let total = events.len();
+    let scroll = app.bench_scroll.min(total.saturating_sub(1));
+    let end = total.saturating_sub(scroll);
+    let start = end.saturating_sub(rows);
+    let lines: Vec<Line> = events[start..end]
+        .iter()
+        .map(|ev| {
+            let mut spans = vec![Span::styled(
+                format!("{} ", ev.ts),
+                Style::default().fg(Color::DarkGray),
+            )];
+            if let Some(b) = &ev.brain {
+                spans.push(Span::styled(
+                    format!("{b:<9} "),
+                    Style::default().fg(ACCENT),
+                ));
+            }
+            spans.push(Span::styled(
+                ev.text.clone(),
+                Style::default().fg(level_color(ev.level)),
+            ));
+            Line::from(spans)
+        })
+        .collect();
+
+    f.render_widget(Paragraph::new(lines), inner);
 }
 
 #[cfg(test)]
@@ -665,6 +784,8 @@ mod tests {
             focus: crate::tui_state::Panel::Agents,
             log_filter: crate::tui_state::LogFilter::All,
             activity_history: std::collections::VecDeque::new(),
+            view: crate::tui_state::View::Workers,
+            bench_scroll: 0,
         }
     }
 

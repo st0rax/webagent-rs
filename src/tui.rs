@@ -429,7 +429,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
     use ratatui::Terminal;
 
     use crate::tui_render::ui;
-    use crate::tui_state::{load_state, select_wrap, App, InputMode, LogFilter, Panel};
+    use crate::tui_state::{load_state, select_wrap, App, InputMode, LogFilter, Panel, View};
 
     let all = available_brain_ids();
     let selected: Vec<String> = if brains.trim().is_empty() {
@@ -505,6 +505,8 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
         focus: Panel::Agents,
         log_filter: LogFilter::All,
         activity_history: std::collections::VecDeque::new(),
+        view: View::Workers,
+        bench_scroll: 0,
     };
 
     // --- Event-Loop ---
@@ -530,6 +532,17 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                             app.selected = select_wrap(app.selected, 1, app.agents.len());
                         }
                         KeyCode::Char('q') => break 0,
+                        // Ansicht umschalten: Worker-Dashboard <-> Benchmark.
+                        // `v` wie „view", plus `<`/`>` als Griff aufs Eck-Symbol
+                        // in der Kopfzeile.
+                        KeyCode::Char('v') | KeyCode::Char('<') | KeyCode::Char('>') => {
+                            app.view = app.view.next();
+                        }
+                        // In der Benchmark-Ansicht scrollen j/k durch den
+                        // Ereignisstrom statt durch die Agenten-Details.
+                        KeyCode::Char('g') if app.view == View::Bench => {
+                            app.bench_scroll = 0;
+                        }
                         // Gewinner-Design (qwen, 2026-07-22): Tab wechselt den
                         // Panel-Fokus, f schaltet den Log-Filter durch.
                         KeyCode::Tab => app.focus = app.focus.next(),
