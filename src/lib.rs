@@ -75,19 +75,28 @@ impl StageNote {
 ///
 /// Am Terminal aktualisiert sich EINE Zeile an Ort und Stelle (Wagenruecklauf)
 /// im Viertelsekundentakt und zeigt Stadium, Laufzeit und — via [`StageNote`] —
-/// den gerade laufenden Schritt. Geht stdout in eine Pipe, bleibt es beim
-/// Zeilenumbruch alle 20s, weil ein Wagenruecklauf in Logdateien nur Brei
+/// den gerade laufenden Schritt. Jede Zeile traegt einen absoluten Zeitstempel.
+/// Geht stdout in eine Pipe, bleibt es beim Zeilenumbruch alle
+/// [`PIPE_TICKER_INTERVAL_MS`], weil ein Wagenruecklauf in Logdateien nur Brei
 /// erzeugt.
 pub struct StageTimer {
     started: Instant,
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     detail: std::sync::Arc<std::sync::Mutex<String>>,
     handle: Option<std::thread::JoinHandle<()>>,
+    is_tty: bool,
 }
 
 /// Breite, auf die die mitlaufende Zeile aufgefuellt wird, damit ein kuerzer
 /// gewordener Text keine Reste der vorherigen Ausgabe stehen laesst.
 const LIVE_LINE_WIDTH: usize = 110;
+
+/// Abstand der Ticker-Zeilen, wenn stdout NICHT an einer Konsole haengt.
+///
+/// Dort ist `\r` unbrauchbar, jede Meldung ist also eine neue Zeile. 20 s
+/// haben eine Logdatei zugemuellt (Beschwerde 2026-07-24: „Timer-Spam"),
+/// 60 s reichen, um zu sehen, dass noch etwas laeuft.
+const PIPE_TICKER_INTERVAL_MS: u64 = 60_000;
 
 /// `true`, wenn stdout an einem Terminal haengt.
 ///
@@ -99,11 +108,52 @@ fn stdout_is_tty() -> bool {
     std::io::stdout().is_terminal()
 }
 
+/// Prüft, ob stdout ein echtes Konsolen-Handle ist (Windows).
+/// Damit wird der TTY-Pfad auch in der Windows-Konsole aktiviert,
+/// nicht nur bei Unix-ttys.
+#[cfg(all(windows, feature = "webview"))]
+fn is_console_handle() -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::GetConsoleMode;
+    use windows::Win32::System::Console::CONSOLE_MODE;
+
+    let handle = HANDLE(std::io::stdout().as_raw_handle());
+    let mut mode = CONSOLE_MODE(0);
+    unsafe { GetConsoleMode(handle, &mut mode).is_ok() }
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+fn is_console_handle() -> bool {
+    false
+}
+
+/// Aktueller Zeitstempel als `HH:MM:SS` in ORTSZEIT.
+///
+/// Bewusst Ortszeit, nicht UTC: der Stempel steht in der Konsole vor dem
+/// Nutzer, der ihn mit seiner Uhr vergleicht — ein UTC-Stempel lag hier zwei
+/// Stunden daneben. Persistierte Zeitstempel (Transkript, `meta.json`) bleiben
+/// UTC ueber [`now_rfc3339`]; das hier ist reine Anzeige.
+///
+/// Laesst sich die Zeitzone nicht bestimmen (das passiert in Prozessen mit
+/// mehreren Threads, `time` verweigert dort die Offset-Abfrage), faellt es auf
+/// UTC zurueck — ein leicht falscher Stempel ist besser als kein Stempel.
+fn timestamp() -> String {
+    if let Ok(now) = time::OffsetDateTime::now_local() {
+        return format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second());
+    }
+    let (secs, _) = unix_now();
+    let (_, _, _, h, mi, s) = civil_utc(secs);
+    format!("{h:02}:{mi:02}:{s:02}")
+}
+
 impl StageTimer {
     pub fn start(label: String) -> Self {
-        let tty = stdout_is_tty();
-        if !tty {
-            println!("[benchmark]   {label} …");
+        let is_tty = stdout_is_tty() || is_console_handle();
+        let started = Instant::now();
+        if !is_tty {
+            let ts = timestamp();
+            println!("[{ts}] [benchmark]   {label} …");
             use std::io::Write;
             let _ = std::io::stdout().flush();
         }
@@ -111,10 +161,11 @@ impl StageTimer {
         let detail = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let s2 = stop.clone();
         let d2 = detail.clone();
-        let started = Instant::now();
         let handle = std::thread::spawn(move || {
             use std::io::Write;
             let mut waited = 0u64;
+            // Der Takt bleibt fein, damit finish() nicht auf einen langen
+            // Sleep warten muss — gedrosselt wird die AUSGABE, nicht der Loop.
             let tick = 250u64;
             loop {
                 if s2.load(std::sync::atomic::Ordering::Relaxed) {
@@ -123,7 +174,7 @@ impl StageTimer {
                 std::thread::sleep(std::time::Duration::from_millis(tick));
                 waited += tick;
                 let s = waited / 1000;
-                if tty {
+                if is_tty {
                     // In der laufenden Zeile aktualisieren. Fremde Ausgaben
                     // (Controller, Shell-Echo) zerschiessen die Zeile kurz —
                     // der naechste Tick malt sie 250 ms spaeter wieder sauber.
@@ -133,24 +184,31 @@ impl StageTimer {
                     } else {
                         format!(" · {}", char_prefix(&d, 60))
                     };
-                    let line = format!("[benchmark]   {label} … {}:{:02}{suffix}", s / 60, s % 60);
+                    let line = format!(
+                        "[{}] [benchmark]   {label} … {}:{:02}{suffix}",
+                        timestamp(),
+                        s / 60,
+                        s % 60
+                    );
                     let pad = LIVE_LINE_WIDTH.saturating_sub(line.chars().count());
                     print!("\r{line}{}", " ".repeat(pad));
                     let _ = std::io::stdout().flush();
-                } else if waited.is_multiple_of(20_000) {
+                } else if waited.is_multiple_of(PIPE_TICKER_INTERVAL_MS) {
                     // Ohne Flush bleibt die Zeile in Rusts Blockpuffer haengen,
                     // sobald stdout in eine Pipe geht — dann sieht der Nutzer
                     // den Ticker nie.
                     let d = d2.lock().map(|g| g.clone()).unwrap_or_default();
                     if d.is_empty() {
                         println!(
-                            "[benchmark]   … {label} laeuft seit {}:{:02}",
+                            "[{}] [benchmark]   … {label} laeuft seit {}:{:02}",
+                            timestamp(),
                             s / 60,
                             s % 60
                         );
                     } else {
                         println!(
-                            "[benchmark]   … {label} laeuft seit {}:{:02} · {}",
+                            "[{}] [benchmark]   … {label} laeuft seit {}:{:02} · {}",
+                            timestamp(),
                             s / 60,
                             s % 60,
                             char_prefix(&d, 80)
@@ -165,6 +223,7 @@ impl StageTimer {
             stop,
             detail,
             handle: Some(handle),
+            is_tty,
         }
     }
 
@@ -188,8 +247,13 @@ impl StageTimer {
             let _ = h.join();
         }
         let s = self.started.elapsed().as_secs();
-        let line = format!("[benchmark]   -> {result} ({}:{:02})", s / 60, s % 60);
-        if stdout_is_tty() {
+        let ts = timestamp();
+        let line = format!(
+            "[{ts}] [benchmark]   -> {result} ({}:{:02})",
+            s / 60,
+            s % 60
+        );
+        if self.is_tty {
             // Restzeichen der Live-Zeile ueberschreiben, dann fest umbrechen.
             let pad = LIVE_LINE_WIDTH.saturating_sub(line.chars().count());
             println!("\r{line}{}", " ".repeat(pad));

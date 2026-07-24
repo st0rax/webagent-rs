@@ -440,7 +440,30 @@ pub fn startup_reconcile_runs() -> Vec<String> {
     store.reconcile_stale_runs(600.0)
 }
 
+/// Stellt die Windows-Konsole auf UTF-8 (Codepage 65001).
+///
+/// Ohne das rendert die Konsole unsere Ausgabe in der ANSI-Codepage: der
+/// Spinner, „—" und jeder Umlaut werden zu Zeichenmuell wie „ÖÇª"
+/// (Beschwerde 2026-07-24). Fehler werden bewusst geschluckt — steht stdout
+/// nicht an einer Konsole (Pipe, Datei, Dienst), gibt es nichts umzustellen
+/// und der Start darf daran nicht scheitern.
+#[cfg(all(windows, feature = "webview"))]
+fn init_console_utf8() {
+    use windows::Win32::System::Console::{SetConsoleCP, SetConsoleOutputCP};
+    const UTF8: u32 = 65001;
+    unsafe {
+        let _ = SetConsoleOutputCP(UTF8);
+        let _ = SetConsoleCP(UTF8);
+    }
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+fn init_console_utf8() {}
+
 fn main() {
+    // Muss vor der ersten Ausgabe laufen, sonst ist die erste Zeile Mojibake.
+    init_console_utf8();
+
     let cli = Cli::parse();
     // Kein Subcommand -> Chat-REPL als Default: `webagent` startet einen Chat,
     // der auch Aufgaben entgegennimmt (wie andere Coding-Agenten). Der
