@@ -48,7 +48,6 @@ const VOTE_TOP_K: usize = 10;
 /// Zeichen-Cap der Projektfakten im Sammel-Prompt (wie autoresearch-self).
 const FACTS_MAX_CHARS: usize = 1200;
 
-
 /// Konfiguration eines Benchmark-Laufs.
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
@@ -322,8 +321,7 @@ pub fn count_build_errors(output: &str) -> u32 {
             let t = l.trim_start();
             // `error[E0308]:` und `error:` — aber nicht die Schlusszeile
             // "error: could not compile …", die nur den Sammelabbruch meldet.
-            (t.starts_with("error[") || t.starts_with("error:"))
-                && !t.contains("could not compile")
+            (t.starts_with("error[") || t.starts_with("error:")) && !t.contains("could not compile")
         })
         .count() as u32
 }
@@ -356,9 +354,15 @@ pub fn count_failed_tests(output: &str) -> u32 {
 pub fn progress_after_tests(output: &str) -> Progress {
     let ran = parse_test_count(output).is_some() || count_failed_tests(output) > 0;
     if ran {
-        Progress { stage: 2, errors: count_failed_tests(output) }
+        Progress {
+            stage: 2,
+            errors: count_failed_tests(output),
+        }
     } else {
-        Progress { stage: 1, errors: count_build_errors(output) }
+        Progress {
+            stage: 1,
+            errors: count_build_errors(output),
+        }
     }
 }
 
@@ -383,9 +387,15 @@ pub fn is_improvement(best: Option<Progress>, now: Progress) -> bool {
 /// Brains mit der Auslastung seines Anbieters statt mit seiner Faehigkeit.
 pub fn is_external_block(status: &str) -> bool {
     let low = status.to_lowercase();
-    ["brain_unavailable", "blocked", "login_required", "cloudflare", "rate_limit"]
-        .iter()
-        .any(|p| low.contains(p))
+    [
+        "brain_unavailable",
+        "blocked",
+        "login_required",
+        "cloudflare",
+        "rate_limit",
+    ]
+    .iter()
+    .any(|p| low.contains(p))
 }
 
 /// `true`, wenn ein Versuch objektiv besteht (geändert UND gebaut UND grün).
@@ -601,16 +611,25 @@ fn harvest_commit(
 
     let (b_ok, _) = run_eval_detail(&config.build_eval, &config.workdir);
     if !b_ok {
-        return Err(format!("Nachkontrolle: Build rot — {} verworfen", cand.brain));
+        return Err(format!(
+            "Nachkontrolle: Build rot — {} verworfen",
+            cand.brain
+        ));
     }
     let (t_ok, _) = run_eval_detail(&config.test_eval, &config.workdir);
     if !t_ok {
-        return Err(format!("Nachkontrolle: Tests rot — {} verworfen", cand.brain));
+        return Err(format!(
+            "Nachkontrolle: Tests rot — {} verworfen",
+            cand.brain
+        ));
     }
     if !config.lint_eval.trim().is_empty() {
         let (l_ok, _) = run_eval_detail(&config.lint_eval, &config.workdir);
         if !l_ok {
-            return Err(format!("Nachkontrolle: Lint rot — {} verworfen", cand.brain));
+            return Err(format!(
+                "Nachkontrolle: Lint rot — {} verworfen",
+                cand.brain
+            ));
         }
     }
 
@@ -784,10 +803,11 @@ where
         // nur einmal verfeinern (bei weniger Vorschlaegen als Brains).
         let refiner = config.brains.first().cloned().unwrap_or_default();
         let existing_api = crate::self_research::collect_public_api(&config.workdir.join("src"));
-        let src_files: Vec<String> = crate::self_research::collect_modules(&config.workdir.join("src"))
-            .into_iter()
-            .map(|(name, _lines)| format!("src/{name}"))
-            .collect();
+        let src_files: Vec<String> =
+            crate::self_research::collect_modules(&config.workdir.join("src"))
+                .into_iter()
+                .map(|(name, _lines)| format!("src/{name}"))
+                .collect();
         let mut refined_cache: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         let mut plan: Vec<(String, String)> = Vec::new();
@@ -795,7 +815,8 @@ where
             let eff = match refined_cache.get(raw) {
                 Some(t) => t.clone(),
                 None => {
-                    let t = crate::StageTimer::start(format!("verfeinern fuer {brain} via {refiner}"));
+                    let t =
+                        crate::StageTimer::start(format!("verfeinern fuer {brain} via {refiner}"));
                     let e = refine_one(raw, &facts, &refiner, &existing_api, &src_files, &query);
                     t.finish(crate::char_prefix(&e, 90));
                     refined_cache.insert(raw.clone(), e.clone());
@@ -821,17 +842,37 @@ where
         // wandert SEINE Aufgabe an ein Brain, das sie noch nicht versucht hat.
         let mut harvest_pool: Vec<HarvestCandidate> = Vec::new();
         // Drittes Feld: welches Brain diese Aufgabe abgegeben hat (None = frisch).
-        let mut queue: std::collections::VecDeque<(String, String, Option<String>)> =
-            plan.iter().map(|(b, t)| (b.clone(), t.clone(), None)).collect();
+        let mut queue: std::collections::VecDeque<(String, String, Option<String>)> = plan
+            .iter()
+            .map(|(b, t)| (b.clone(), t.clone(), None))
+            .collect();
+        // tried wird BEIM EINREIHEN gefuellt, nicht erst beim Poppen.
+        // Dadurch wird verhindert, dass zwei Stalls derselben Aufgabe dasselbe naechste Brain waehlen.
         let mut tried: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
+        // dropped: Aufgaben, die bereits "faellt aus" gemeldet haben.
+        let mut dropped: std::collections::HashSet<String> = std::collections::HashSet::new();
         while let Some((brain_owned, effective_owned, handoff_from)) = queue.pop_front() {
             let brain = &brain_owned;
             let effective = &effective_owned;
+
+            // Ueberspringe bereits ausgefallene Aufgaben sofort, ohne Brain-Run.
+            if dropped.contains(effective) {
+                println!("[benchmark] {effective} bereits ausgefallen — ueberspringe Eintrag fuer {brain}.");
+                continue;
+            }
+
             if let Some(prev) = &handoff_from {
                 println!("[benchmark] {brain} uebernimmt die Aufgabe von {prev}.");
             }
-            tried.entry(effective.clone()).or_default().push(brain.clone());
+            // Bei frischen Plan-Eintraegen (kein Handoff) jetzt schon eintragen.
+            // Bei Handoffs wurde der Eintrag bereits beim Push vorgenommen.
+            if handoff_from.is_none() {
+                tried
+                    .entry(effective.clone())
+                    .or_default()
+                    .push(brain.clone());
+            }
             let task = build_task_prompt(effective);
             let tid = task_id(effective);
             if !crate::autoresearch::git_status_clean(&config.workdir)? {
@@ -866,7 +907,9 @@ where
 
             for iter in 1..=max_iter {
                 iterations = iter;
-                let t = crate::StageTimer::start(format!("{brain} Iteration {iter}/{max_iter}: Brain baut"));
+                let t = crate::StageTimer::start(format!(
+                    "{brain} Iteration {iter}/{max_iter}: Brain baut"
+                ));
                 match bench_run(
                     brain,
                     &attempt_task,
@@ -914,7 +957,10 @@ where
                 tb.finish(if b_ok { "Build ok" } else { "Build ROT" });
                 compiled = b_ok;
                 if !compiled {
-                    let now = Progress { stage: 1, errors: count_build_errors(&b_out) };
+                    let now = Progress {
+                        stage: 1,
+                        errors: count_build_errors(&b_out),
+                    };
                     if is_improvement(best, now) {
                         println!(
                             "[benchmark] {brain}: Iteration {iter}/{max_iter} — Build rot, aber naeher dran ({} Fehler)",
@@ -942,7 +988,10 @@ where
                 let tt = crate::StageTimer::start(format!("{brain}: {}", config.test_eval));
                 let (t_ok, t_out) = run_eval_detail(&config.test_eval, &config.workdir);
                 let after = parse_test_count(&t_out).unwrap_or(0);
-                tt.finish(&format!("Tests {} ({after} bestanden)", if t_ok { "ok" } else { "ROT" }));
+                tt.finish(&format!(
+                    "Tests {} ({after} bestanden)",
+                    if t_ok { "ok" } else { "ROT" }
+                ));
                 // Gruen UND mehr Tests als vorher: nur dann ist der Code wirklich
                 // eingebunden und getestet (verwaiste Datei erhoeht die Zahl nicht).
                 tests_passed = t_ok && after > baseline_tests;
@@ -982,20 +1031,23 @@ where
                 // hatte. Nicht endlos: sonst reicht ein unloesbarer Vorschlag
                 // die Runde durch alle acht Brains und frisst die Zeit auf.
                 let already = tried.get(effective).cloned().unwrap_or_default();
-                let next = config
-                    .brains
-                    .iter()
-                    .find(|b| !already.contains(b) && already.len() < config.max_handoffs.max(1) + 1);
+                let next = config.brains.iter().find(|b| {
+                    !already.contains(b) && already.len() < config.max_handoffs.max(1) + 1
+                });
                 match next {
                     Some(nb) => {
                         println!(
                             "[benchmark] {brain}: {stall_limit}x kein Fortschritt — Aufgabe geht an {nb}."
                         );
+                        tried.entry(effective.clone()).or_default().push(nb.clone());
                         queue.push_back((nb.clone(), effective.clone(), Some(brain.clone())));
                     }
-                    None => println!(
-                        "[benchmark] {brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
-                    ),
+                    None => {
+                        println!(
+                            "[benchmark] {brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
+                        );
+                        dropped.insert(effective.clone());
+                    }
                 }
             }
             let latency_ms = started.elapsed().as_millis() as u64;
@@ -1056,7 +1108,9 @@ where
                         });
                     }
                     Ok(_) => println!("[benchmark]   {brain}: leerer Patch — nichts zu ernten"),
-                    Err(e) => println!("[benchmark]   {brain}: Patch-Sicherung fehlgeschlagen — {e}"),
+                    Err(e) => {
+                        println!("[benchmark]   {brain}: Patch-Sicherung fehlgeschlagen — {e}")
+                    }
                 }
             }
 
@@ -1153,7 +1207,11 @@ mod refine_tests {
 
     #[test]
     fn refine_prompt_demands_concrete_signature_and_tests() {
-        let p = build_refine_prompt("Sicherheitshaertung: Sandbox fuer Shell-Actions", "FAKTEN", &[]);
+        let p = build_refine_prompt(
+            "Sicherheitshaertung: Sandbox fuer Shell-Actions",
+            "FAKTEN",
+            &[],
+        );
         assert!(p.contains("EXAKTER Rust-Signatur"), "{p}");
         assert!(p.contains("Testfaelle"), "{p}");
         assert!(p.contains("Sicherheitshaertung"), "Sieger muss drinstehen");
@@ -1198,10 +1256,18 @@ mod refine_tests {
         assert!(p.contains("Baue pub fn foo"), "Original-Aufgabe fehlt");
         assert!(p.contains("cargo build --lib"), "Stufe fehlt");
         assert!(p.contains("E0433"), "Fehlerausgabe fehlt");
-        assert!(p.contains("NICHT von vorne"), "Neuanfang muss verboten sein");
+        assert!(
+            p.contains("NICHT von vorne"),
+            "Neuanfang muss verboten sein"
+        );
         // Sehr lange Ausgaben werden gekuerzt (Kontextbudget).
         let long = "x".repeat(9000);
-        assert!(build_repair_prompt("t", "cargo test", &long).chars().count() < 3200);
+        assert!(
+            build_repair_prompt("t", "cargo test", &long)
+                .chars()
+                .count()
+                < 3200
+        );
     }
 
     #[test]
@@ -1274,7 +1340,10 @@ mod tests {
     fn task_id_is_stable_and_distinct() {
         assert_eq!(task_id("Sandbox einführen"), task_id("Sandbox einführen"));
         // Whitespace-robust (getrimmt).
-        assert_eq!(task_id("  Sandbox einführen "), task_id("Sandbox einführen"));
+        assert_eq!(
+            task_id("  Sandbox einführen "),
+            task_id("Sandbox einführen")
+        );
         assert_ne!(task_id("Sandbox einführen"), task_id("Tests ergänzen"));
     }
 
@@ -1397,8 +1466,10 @@ mod tests {
     #[test]
     fn harvest_ignores_empty_patches_and_empty_pool() {
         // Ein PASS ohne Diff waere nichts zum Einspielen — darf nicht gewinnen.
-        let pool = vec![cand("geist", 1, 10, "   
-  ")];
+        let pool = vec![cand(
+            "geist", 1, 10, "   
+  ",
+        )];
         assert!(pick_harvest(&pool).is_none());
         assert!(pick_harvest(&[]).is_none());
     }
@@ -1451,7 +1522,11 @@ mod tests {
             .filter(|(b, _)| b == "a")
             .map(|(_, t)| t)
             .collect();
-        assert_eq!(seen.len(), 3, "Brain a muss ueber 3 Runden alle 3 Raenge bauen");
+        assert_eq!(
+            seen.len(),
+            3,
+            "Brain a muss ueber 3 Runden alle 3 Raenge bauen"
+        );
     }
 
     #[test]
@@ -1499,8 +1574,14 @@ mod tests {
     fn fewer_compiler_errors_counts_as_progress() {
         // Der eigentliche Punkt: wer sich von zwoelf Fehlern auf zwei
         // herunterarbeitet, kommt voran — auch wenn der Build weiter rot ist.
-        let vorher = Progress { stage: 1, errors: 12 };
-        let nachher = Progress { stage: 1, errors: 2 };
+        let vorher = Progress {
+            stage: 1,
+            errors: 12,
+        };
+        let nachher = Progress {
+            stage: 1,
+            errors: 2,
+        };
         assert!(is_improvement(Some(vorher), nachher));
         assert!(!is_improvement(Some(nachher), vorher));
     }
@@ -1508,7 +1589,10 @@ mod tests {
     #[test]
     fn same_errors_twice_is_no_progress() {
         // Dieselbe kaputte Zeile nochmal schreiben zaehlt als Stillstand.
-        let p = Progress { stage: 1, errors: 5 };
+        let p = Progress {
+            stage: 1,
+            errors: 5,
+        };
         assert!(!is_improvement(Some(p), p));
     }
 
@@ -1516,15 +1600,33 @@ mod tests {
     fn reaching_the_next_stage_always_counts() {
         // Build gruen (Stufe 2) schlaegt roten Build, selbst wenn danach mehr
         // rote Tests offen sind als vorher Compilerfehler.
-        let build_rot = Progress { stage: 1, errors: 1 };
-        let tests_rot = Progress { stage: 2, errors: 40 };
+        let build_rot = Progress {
+            stage: 1,
+            errors: 1,
+        };
+        let tests_rot = Progress {
+            stage: 2,
+            errors: 40,
+        };
         assert!(is_improvement(Some(build_rot), tests_rot));
     }
 
     #[test]
     fn first_change_is_progress_but_doing_nothing_is_not() {
-        assert!(is_improvement(None, Progress { stage: 1, errors: 9 }));
-        assert!(!is_improvement(None, Progress { stage: 0, errors: 0 }));
+        assert!(is_improvement(
+            None,
+            Progress {
+                stage: 1,
+                errors: 9
+            }
+        ));
+        assert!(!is_improvement(
+            None,
+            Progress {
+                stage: 0,
+                errors: 0
+            }
+        ));
     }
 
     #[test]
@@ -1544,7 +1646,10 @@ mod tests {
                    test result: FAILED. 12 passed; 1 failed; 0 ignored
 ";
         assert_eq!(count_failed_tests(out), 4);
-        assert_eq!(count_failed_tests("test result: ok. 400 passed; 0 failed"), 0);
+        assert_eq!(
+            count_failed_tests("test result: ok. 400 passed; 0 failed"),
+            0
+        );
     }
 
     #[test]
@@ -1556,8 +1661,12 @@ mod tests {
             "error[E0425]: cannot find value `foo`
 error: could not compile `webagent` (lib test)",
         );
-        let gelaufen_rot = progress_after_tests("test result: FAILED. 380 passed; 3 failed; 0 ignored");
-        assert_eq!(nie_gelaufen.stage, 1, "nicht uebersetzte Tests sind kein Stufe-2-Ergebnis");
+        let gelaufen_rot =
+            progress_after_tests("test result: FAILED. 380 passed; 3 failed; 0 ignored");
+        assert_eq!(
+            nie_gelaufen.stage, 1,
+            "nicht uebersetzte Tests sind kein Stufe-2-Ergebnis"
+        );
         assert_eq!(gelaufen_rot.stage, 2);
         assert!(
             is_improvement(Some(nie_gelaufen), gelaufen_rot),
@@ -1570,7 +1679,10 @@ error: could not compile `webagent` (lib test)",
     fn repeated_uncompilable_tests_stall_instead_of_looking_perfect() {
         let a = progress_after_tests("error[E0308]: mismatched types");
         let b = progress_after_tests("error[E0308]: mismatched types");
-        assert!(!is_improvement(Some(a), b), "zweimal derselbe Fehler ist Stillstand");
+        assert!(
+            !is_improvement(Some(a), b),
+            "zweimal derselbe Fehler ist Stillstand"
+        );
     }
 
     #[test]
@@ -1598,45 +1710,53 @@ error: could not compile `webagent` (lib test)",
         assert!(p.contains("WEBAGENT/1 EDIT") || p.contains("WEBAGENT/1 WRITE"));
         assert!(p.to_lowercase().contains("behaupte keinen erfolg"));
         // Die urspruengliche Aufgabe bleibt erhalten.
-assert!(p.contains("src/x.rs"));
-}
+        assert!(p.contains("src/x.rs"));
+    }
 }
 
 /// Erzeugt ein reproduzierbares, maschinenlesbares Ergebnisformat fuer Benchmark-Szenarien.
 pub fn format_benchmark_result(name: &str, value: u64, unit: &str) -> String {
-format!("{}={}{}", name, value, unit)
+    format!("{}={}{}", name, value, unit)
 }
 
 #[cfg(test)]
 mod format_benchmark_result_tests {
-use super::*;
+    use super::*;
 
-#[test]
-fn standard_format() {
-assert_eq!(format_benchmark_result("selector_drift", 12, "ms"), "selector_drift=12ms");
-}
+    #[test]
+    fn standard_format() {
+        assert_eq!(
+            format_benchmark_result("selector_drift", 12, "ms"),
+            "selector_drift=12ms"
+        );
+    }
 
-#[test]
-fn zero_value() {
-assert_eq!(format_benchmark_result("timeout", 0, "count"), "timeout=0count");
-}
+    #[test]
+    fn zero_value() {
+        assert_eq!(
+            format_benchmark_result("timeout", 0, "count"),
+            "timeout=0count"
+        );
+    }
 
-#[test]
-fn empty_name() {
-assert_eq!(format_benchmark_result("", 42, "bytes"), "=42bytes");
-}
+    #[test]
+    fn empty_name() {
+        assert_eq!(format_benchmark_result("", 42, "bytes"), "=42bytes");
+    }
 
-#[test]
-fn deterministic() {
-let a = format_benchmark_result("test", 100, "ops");
-let b = format_benchmark_result("test", 100, "ops");
-assert_eq!(a, b);
-}
+    #[test]
+    fn deterministic() {
+        let a = format_benchmark_result("test", 100, "ops");
+        let b = format_benchmark_result("test", 100, "ops");
+        assert_eq!(a, b);
+    }
 
-#[test]
-fn max_value() {
-let expected = format!("large_output={}bytes", u64::MAX);
-assert_eq!(format_benchmark_result("large_output", u64::MAX, "bytes"), expected);
-}
-
+    #[test]
+    fn max_value() {
+        let expected = format!("large_output={}bytes", u64::MAX);
+        assert_eq!(
+            format_benchmark_result("large_output", u64::MAX, "bytes"),
+            expected
+        );
+    }
 }

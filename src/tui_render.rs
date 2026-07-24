@@ -98,7 +98,10 @@ fn titled_block(title: &str) -> Block<'static> {
 /// das per Tab fokussierte Panel sichtbar (Gewinner-Design 2026-07-22).
 fn titled_block_focus(title: &str, focused: bool) -> Block<'static> {
     let (border, marker) = if focused {
-        (Style::default().fg(ACCENT).add_modifier(Modifier::BOLD), "▸ ")
+        (
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            "▸ ",
+        )
     } else {
         (Style::default().fg(MUTED), "")
     };
@@ -108,7 +111,9 @@ fn titled_block_focus(title: &str, focused: bool) -> Block<'static> {
         .border_style(border)
         .title(Span::styled(
             format!(" {marker}{title} "),
-            Style::default().fg(if focused { ACCENT } else { Color::Gray }).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(if focused { ACCENT } else { Color::Gray })
+                .add_modifier(Modifier::BOLD),
         ))
 }
 
@@ -161,7 +166,11 @@ pub fn ui(f: &mut Frame, app: &App) {
 /// gegenüber der reinen 3-Panel-Liste.
 fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let active = app.agents.iter().filter(|a| a.status == "active").count();
-    let ready = app.agents.iter().filter(|a| a.status == "available").count();
+    let ready = app
+        .agents
+        .iter()
+        .filter(|a| a.status == "available")
+        .count();
     let done: usize = app.agents.iter().map(|a| a.tasks_done).sum();
     let pending: usize = app.agents.iter().map(|a| a.tasks_pending).sum();
     let total = done + pending;
@@ -194,15 +203,28 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     let chip = |icon: &str, val: String, s: Style| -> Vec<Span<'static>> {
         vec![
             Span::styled(format!("{icon} "), s),
-            Span::styled(val, Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                val,
+                Style::default()
+                    .fg(Color::Gray)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw("   "),
         ]
     };
     let mut kpis: Vec<Span> = Vec::new();
-    kpis.extend(chip("●", format!("{active}/{} aktiv", app.target_active), ok));
+    kpis.extend(chip(
+        "●",
+        format!("{active}/{} aktiv", app.target_active),
+        ok,
+    ));
     kpis.extend(chip("○", format!("{ready} bereit"), warn));
     kpis.extend(chip("✓", format!("{done}/{total} Tasks"), ok));
-    kpis.extend(chip("◆", format!("{} Brains", app.agents.len()), Style::default().fg(ACCENT)));
+    kpis.extend(chip(
+        "◆",
+        format!("{} Brains", app.agents.len()),
+        Style::default().fg(ACCENT),
+    ));
     let kpi_rows = vec![
         Line::from(Span::styled("Worker-Pool", Style::default().fg(MUTED))),
         Line::from(kpis),
@@ -220,7 +242,9 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         .ratio(ratio)
         .label(Span::styled(
             format!("Auslastung {:.0}%", ratio * 100.0),
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
         ));
     // vertikal zentrieren (2 Zeilen innen -> Gauge in Zeile 2).
     let grows = Layout::default()
@@ -251,7 +275,9 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
 /// Einladender Leerzustand statt toter Panels, wenn kein Worker-Pool läuft.
 fn render_empty_state(f: &mut Frame, area: Rect) {
     let dim = Style::default().fg(Color::DarkGray);
-    let accent = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+    let accent = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
     let lines = vec![
         Line::from(""),
         Line::from(Span::styled("  Kein Worker-Pool aktiv.", accent)),
@@ -312,7 +338,11 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
         // Task-Balken · Live-Aktivität. Deutlich mehr als eine reine Namensliste.
         let hb = heartbeat_pip(a.heartbeat_age_sec);
         let total = a.tasks_pending + a.tasks_done;
-        let frac = if total > 0 { a.tasks_done as f64 / total as f64 } else { 0.0 };
+        let frac = if total > 0 {
+            a.tasks_done as f64 / total as f64
+        } else {
+            0.0
+        };
         let bar = text_bar(frac, 6);
         let activity = a
             .last_log_line
@@ -322,16 +352,26 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
         items.push(ListItem::new(Line::from(vec![
             Span::styled(arrow.to_string(), Style::default().fg(Color::DarkGray)),
             Span::styled(format!("{marker} "), Style::default().fg(color)),
-            Span::styled(format!("{:<9}", crate::char_prefix(&a.brain, 9)), Style::default().fg(color).add_modifier(Modifier::BOLD)),
-            Span::styled(format!(" {hb} "), Style::default().fg(heartbeat_color(a.heartbeat_age_sec))),
+            Span::styled(
+                format!("{:<9}", crate::char_prefix(&a.brain, 9)),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" {hb} "),
+                Style::default().fg(heartbeat_color(a.heartbeat_age_sec)),
+            ),
             Span::styled(bar, Style::default().fg(Color::DarkGray)),
-            Span::styled(format!(" {}", crate::char_prefix(activity, 22)), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!(" {}", crate::char_prefix(activity, 22)),
+                Style::default().fg(Color::DarkGray),
+            ),
         ])));
 
         if !open {
             continue;
         }
-        let lines = crate::tui_state::build_detail_lines(&a.detail, DETAIL_MAX_ENTRIES, detail_width);
+        let lines =
+            crate::tui_state::build_detail_lines(&a.detail, DETAIL_MAX_ENTRIES, detail_width);
         if lines.is_empty() {
             items.push(detail_item("(noch nichts protokolliert)"));
             continue;
@@ -344,7 +384,9 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
         // abgeschnittenen Ausschnitt fuer das ganze Protokoll.
         let rest = shown.len().saturating_sub(DETAIL_MAX_ROWS);
         if rest > 0 {
-            items.push(detail_item(&format!("… {rest} weitere Zeile(n), j/k blättert")));
+            items.push(detail_item(&format!(
+                "… {rest} weitere Zeile(n), j/k blättert"
+            )));
         } else if app.detail_scroll > 0 && !shown.is_empty() {
             // Wenn wir durch Scrollen nach oben in der History sind, zeigen wir
             // an, dass noch ältere Einträge vorhanden sind.
@@ -353,7 +395,10 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let list = List::new(items)
-        .block(titled_block_focus("Agenten", app.focus == crate::tui_state::Panel::Agents))
+        .block(titled_block_focus(
+            "Agenten",
+            app.focus == crate::tui_state::Panel::Agents,
+        ))
         .style(Style::default())
         .highlight_style(
             Style::default()
@@ -381,7 +426,10 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     let mut state = ListState::default();
-    state.select(Some(crate::tui_state::selected_row(&detail_rows, app.selected)));
+    state.select(Some(crate::tui_state::selected_row(
+        &detail_rows,
+        app.selected,
+    )));
 
     f.render_stateful_widget(&list, area, &mut state);
 }
@@ -430,7 +478,10 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
                     Style::default().fg(Color::DarkGray),
                 ),
                 Span::styled(bar, Style::default().fg(hb_color)),
-                Span::styled(format!("  {remaining}s bis Timeout"), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("  {remaining}s bis Timeout"),
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]),
         ]
     } else {
@@ -466,14 +517,23 @@ fn render_log(f: &mut Frame, app: &App, area: Rect) {
         let hint = if raw.is_empty() {
             "Keine Log-Daten".to_string()
         } else {
-            format!("(keine Zeile im Filter '{}' — f schaltet um)", filter.label())
+            format!(
+                "(keine Zeile im Filter '{}' — f schaltet um)",
+                filter.label()
+            )
         };
-        lines.push(Line::from(Span::styled(hint, Style::default().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            hint,
+            Style::default().fg(Color::DarkGray),
+        )));
     }
 
     let title = format!("Live Log [{}]", filter.label());
     let p = Paragraph::new(lines)
-        .block(titled_block_focus(&title, app.focus == crate::tui_state::Panel::Log))
+        .block(titled_block_focus(
+            &title,
+            app.focus == crate::tui_state::Panel::Log,
+        ))
         .scroll((app.log_scroll, 0));
 
     f.render_widget(p, area);
@@ -516,7 +576,10 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
                     format!(" {:<LABEL_WIDTH$}", ""),
                     Style::default().fg(Color::DarkGray),
                 ),
-                Span::styled(text_bar(fraction, BAR_WIDTH), Style::default().fg(Color::Green)),
+                Span::styled(
+                    text_bar(fraction, BAR_WIDTH),
+                    Style::default().fg(Color::Green),
+                ),
                 Span::styled(format!("  {pct}%"), Style::default().fg(Color::DarkGray)),
             ]),
             kv_line(
@@ -536,14 +599,16 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
         ))]
     };
 
-    let p = Paragraph::new(content)
-        .block(titled_block_focus("Tasks", app.focus == crate::tui_state::Panel::Tasks));
+    let p = Paragraph::new(content).block(titled_block_focus(
+        "Tasks",
+        app.focus == crate::tui_state::Panel::Tasks,
+    ));
 
     f.render_widget(p, area);
 }
 
 /// Footer: Keybindings — Tasten hervorgehoben, Beschriftung gedämpft.
-/// 
+///
 /// Design-spezifische Tasten: j/k für Detail-Scroll, f für Log-Filter,
 /// Tab für Panel-Fokus, Space für Expand.
 fn render_footer(f: &mut Frame, area: Rect) {
@@ -562,7 +627,7 @@ fn render_footer(f: &mut Frame, area: Rect) {
         ("q", "quit"),
     ] {
         spans.push(Span::styled(k, key));
-        spans.push(Span::styled(format!(" {label}  ", ), dim));
+        spans.push(Span::styled(format!(" {label}  ",), dim));
     }
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
@@ -678,7 +743,7 @@ mod tests {
         let bar = text_bar(0.5, 10);
         // Check char count instead of byte count
         assert_eq!(bar.chars().count(), 12); // [ + 10 chars + ]
-        // When width is 10 and fraction 0.5, we get exactly 5 filled
+                                             // When width is 10 and fraction 0.5, we get exactly 5 filled
         assert_eq!(bar, "[█████░░░░░]");
 
         let bar = text_bar(0.0, 10);
@@ -717,10 +782,12 @@ mod tests {
     #[test]
     fn heartbeat_pip_reflects_freshness_and_death() {
         assert!(heartbeat_pip(3).contains("3s"));
-        assert!(heartbeat_pip(3).starts_with('♥'), "frisch = gefuellter Puls");
+        assert!(
+            heartbeat_pip(3).starts_with('♥'),
+            "frisch = gefuellter Puls"
+        );
         assert!(heartbeat_pip(120).contains("2m"));
         assert!(heartbeat_pip(120).starts_with('♡'), "aelter = leerer Puls");
         assert_eq!(heartbeat_pip(u64::MAX), "· —", "nie gesehen = kein Puls");
     }
 }
-

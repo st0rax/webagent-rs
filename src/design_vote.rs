@@ -63,7 +63,11 @@ pub fn build_collect_prompt(topic: &str, context: &str) -> String {
 pub fn build_kick_prompt(topic: &str, alive: &[(usize, &str)]) -> String {
     let mut list = String::new();
     for (display_nr, (_orig, text)) in alive.iter().enumerate() {
-        list.push_str(&format!("{}. {}\n\n", display_nr + 1, crate::char_prefix(text, 600)));
+        list.push_str(&format!(
+            "{}. {}\n\n",
+            display_nr + 1,
+            crate::char_prefix(text, 600)
+        ));
     }
     format!(
         "Ausscheidungsrunde fuer das beste TUI-Design ({topic}). Verbleibende \
@@ -94,13 +98,21 @@ where
     Q: Fn(&str, &str) -> Result<String, String>,
 {
     // ---- Sammeln ----
-    on_round(&format!("Sammeln: {} Brains entwerfen", config.brains.len()));
+    on_round(&format!(
+        "Sammeln: {} Brains entwerfen",
+        config.brains.len()
+    ));
     let collect = build_collect_prompt(&config.topic, &config.context);
     let mut proposals: Vec<(String, String)> = Vec::new();
     for b in &config.brains {
         match query(b, &collect) {
-            Ok(text) if !text.trim().is_empty() && !crate::brain::is_retryable_empty_response(&text) => {
-                on_round(&format!("  {b}: Entwurf ({} Zeichen)", text.trim().chars().count()));
+            Ok(text)
+                if !text.trim().is_empty() && !crate::brain::is_retryable_empty_response(&text) =>
+            {
+                on_round(&format!(
+                    "  {b}: Entwurf ({} Zeichen)",
+                    text.trim().chars().count()
+                ));
                 proposals.push((b.clone(), text.trim().to_string()));
             }
             Ok(_) => on_round(&format!("  {b}: kein verwertbarer Entwurf")),
@@ -110,7 +122,11 @@ where
 
     if proposals.len() <= 1 {
         let winner = if proposals.is_empty() { None } else { Some(0) };
-        return DesignVoteReport { proposals, eliminated: Vec::new(), winner };
+        return DesignVoteReport {
+            proposals,
+            eliminated: Vec::new(),
+            winner,
+        };
     }
 
     // ---- Ausscheiden ----
@@ -154,7 +170,9 @@ where
                 // Keine gültige Stimme — Patt. Um nicht endlos zu drehen, den
                 // Kandidaten mit dem höchsten Original-Index entfernen (stabil).
                 if let Some(&last) = alive_orig.last() {
-                    on_round(&format!("  keine gueltige Stimme — entferne #{last} (Patt)"));
+                    on_round(&format!(
+                        "  keine gueltige Stimme — entferne #{last} (Patt)"
+                    ));
                     let _ = bracket.eliminate(&[last]);
                     eliminated.push((last, round));
                 } else {
@@ -165,7 +183,11 @@ where
     }
 
     let winner = bracket.winner();
-    DesignVoteReport { proposals, eliminated, winner }
+    DesignVoteReport {
+        proposals,
+        eliminated,
+        winner,
+    }
 }
 
 #[cfg(test)]
@@ -188,7 +210,10 @@ mod tests {
         let alive = [(0usize, "Design A"), (3usize, "Design B")];
         let p = build_kick_prompt("die TUI", &alive);
         assert!(p.contains("1. Design A"));
-        assert!(p.contains("2. Design B"), "Anzeige-Nummern, nicht Original-Indizes");
+        assert!(
+            p.contains("2. Design B"),
+            "Anzeige-Nummern, nicht Original-Indizes"
+        );
     }
 
     #[test]
@@ -201,7 +226,9 @@ mod tests {
                 // Sammelphase: jedes Brain ein unterscheidbares Design.
                 let n = *calls.borrow();
                 *calls.borrow_mut() += 1;
-                Ok(format!("Design Nummer {n} mit Panels und Farben und Tasten fuer die TUI"))
+                Ok(format!(
+                    "Design Nummer {n} mit Panels und Farben und Tasten fuer die TUI"
+                ))
             } else {
                 // Kick-Phase: alle kicken die Anzeige-Nummer 1 (das jeweils
                 // erste lebende Design) -> die kleineren Original-Indizes fallen
@@ -221,7 +248,11 @@ mod tests {
         assert_eq!(report.proposals.len(), 3);
         assert_eq!(report.eliminated.len(), 2, "n-1 Ausscheidungen");
         assert_eq!(report.winner, Some(2));
-        assert!(report.winning_design().unwrap().1.contains("Design Nummer 2"));
+        assert!(report
+            .winning_design()
+            .unwrap()
+            .1
+            .contains("Design Nummer 2"));
     }
 
     #[test]
@@ -229,7 +260,10 @@ mod tests {
         let brains = vec!["a".to_string(), "b".to_string()];
         let query = |b: &str, _p: &str| -> Result<String, String> {
             if b == "a" {
-                Ok("Ein vollstaendiges Design mit Layout, Panels, Farben und Tastenbindungen".to_string())
+                Ok(
+                    "Ein vollstaendiges Design mit Layout, Panels, Farben und Tastenbindungen"
+                        .to_string(),
+                )
             } else {
                 // b liefert nur eine UI-Ausfallmeldung -> zaehlt nicht.
                 Ok("No response, Please try again later.".to_string())

@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn eliminates_the_most_kicked_each_round() {
         let mut b = Bracket::new(4); // Kandidaten 0,1,2,3
-        // Runde 1: 2 wird am häufigsten gekickt.
+                                     // Runde 1: 2 wird am häufigsten gekickt.
         assert_eq!(b.eliminate(&[2, 2, 0, 2, 1]), Some(2));
         assert_eq!(b.alive(), &[0, 1, 3]);
         // Runde 2: 3 raus.
@@ -165,7 +165,10 @@ mod tests {
     #[test]
     fn parse_kick_takes_the_first_valid_number() {
         // 1-basiert rein, 0-basiert raus.
-        assert_eq!(parse_kick("Ich kicke Nummer 3, weil das Layout ueberladen ist.", 5), Some(2));
+        assert_eq!(
+            parse_kick("Ich kicke Nummer 3, weil das Layout ueberladen ist.", 5),
+            Some(2)
+        );
         assert_eq!(parse_kick("3", 5), Some(2));
         // Ausserhalb des Bereichs wird uebersprungen, die naechste gueltige zaehlt.
         assert_eq!(parse_kick("Vorschlag 99 ist raus — also 2.", 5), Some(1));

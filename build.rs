@@ -15,7 +15,9 @@ fn git(args: &[&str]) -> Option<String> {
 
 fn main() {
     let hash = git(&["rev-parse", "--short=9", "HEAD"]).unwrap_or_else(|| "unknown".into());
-    let dirty = git(&["status", "--porcelain"]).map(|s| !s.is_empty()).unwrap_or(false);
+    let dirty = git(&["status", "--porcelain"])
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
     let stamp = if dirty { format!("{hash}+dirty") } else { hash };
     println!("cargo:rustc-env=WEBAGENT_GIT_HASH={stamp}");
     // Neu bauen, wenn sich der Commit-Stand ändert (nicht bei jedem Build).

@@ -72,7 +72,11 @@ pub fn webview_unavailable() -> PageDriverError {
 /// in order and returns the first successful match. If no exact match is found, it applies a
 /// simple drift heuristic: if any selector appears as a substring in the DOM (e.g., class name
 /// without prefix), it returns that selector as a drift hit. Returns `None` if no selector matches.
-pub fn select_with_fallback(primary: &str, secondary: &[&str], dom_snapshot: &str) -> Option<String> {
+pub fn select_with_fallback(
+    primary: &str,
+    secondary: &[&str],
+    dom_snapshot: &str,
+) -> Option<String> {
     // Helper: check if a selector (exact match) appears in the DOM
     fn selector_matches_exact(selector: &str, html: &str) -> bool {
         html.contains(selector)

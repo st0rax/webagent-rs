@@ -278,8 +278,17 @@ fn line_offsets(text: &str) -> impl Iterator<Item = (usize, &str)> {
 /// (und kein Bedienelement wie „Kopieren").
 fn is_language_label(label: &str) -> bool {
     const LANGS: &[&str] = &[
-        "json", "plain", "plaintext", "text", "code", "bash", "sh", "shell", "powershell",
-        "ps1", "rust",
+        "json",
+        "plain",
+        "plaintext",
+        "text",
+        "code",
+        "bash",
+        "sh",
+        "shell",
+        "powershell",
+        "ps1",
+        "rust",
     ];
     LANGS.iter().any(|l| label.eq_ignore_ascii_case(l))
 }
@@ -938,7 +947,8 @@ mod tests {
 
     #[test]
     fn test_raw_edit_rejects_identical_and_empty() {
-        let same = "WEBAGENT/1 EDIT\nid: e1\npath: a.rs\n---OLD---\nx\n---NEW---\nx\n---END EDIT---";
+        let same =
+            "WEBAGENT/1 EDIT\nid: e1\npath: a.rs\n---OLD---\nx\n---NEW---\nx\n---END EDIT---";
         assert!(!parse(same).valid, "identisch muss abgelehnt werden");
         let empty_path = "WEBAGENT/1 WRITE\nid: w1\npath:   \n---CONTENT---\nx\n---END CONTENT---";
         // path nur Whitespace -> Regex matcht nicht (path braucht ein Nicht-WS-Zeichen);
@@ -951,7 +961,8 @@ mod tests {
         // Abgeschnittene Roh-Hülle (kein ---END CONTENT---) gilt als unvollständig.
         let partial = "WEBAGENT/1 WRITE\nid: w1\npath: a.rs\n---CONTENT---\nfn main() {";
         assert!(is_possibly_truncated(partial), "unvollständig erwartet");
-        let complete = "WEBAGENT/1 WRITE\nid: w1\npath: a.rs\n---CONTENT---\nfn main() {}\n---END CONTENT---";
+        let complete =
+            "WEBAGENT/1 WRITE\nid: w1\npath: a.rs\n---CONTENT---\nfn main() {}\n---END CONTENT---";
         assert!(!is_possibly_truncated(complete));
     }
 
@@ -1339,7 +1350,11 @@ Write-Output $html
             let env = json!({"protocol": "webagent/1", "actions": [bad.clone()]});
             let result = parse(&serde_json::to_string(&env).unwrap());
             assert!(!result.valid, "haette abgelehnt werden muessen: {bad}");
-            assert!(result.error.contains("unbekanntes Feld"), "{}", result.error);
+            assert!(
+                result.error.contains("unbekanntes Feld"),
+                "{}",
+                result.error
+            );
         }
     }
 
@@ -1351,7 +1366,10 @@ Write-Output $html
         ] {
             let env = json!({"protocol": "webagent/1", "actions": [bad.clone()]});
             let result = parse(&serde_json::to_string(&env).unwrap());
-            assert!(!result.valid, "leerer/whitespace path muss abgelehnt werden: {bad}");
+            assert!(
+                !result.valid,
+                "leerer/whitespace path muss abgelehnt werden: {bad}"
+            );
             assert!(result.error.contains("path"), "{}", result.error);
         }
     }
@@ -1395,7 +1413,10 @@ Write-Output $html
 
     #[test]
     fn test_error_code_protocol_mismatch() {
-        assert_eq!(error_code("protocol muss webagent/1 sein"), "protocol_mismatch");
+        assert_eq!(
+            error_code("protocol muss webagent/1 sein"),
+            "protocol_mismatch"
+        );
         assert_eq!(error_code("Protocol muss"), "protocol_mismatch");
     }
 
@@ -1414,7 +1435,10 @@ Write-Output $html
     #[test]
     fn test_error_code_identical_old_new() {
         assert_eq!(error_code("identisch"), "identical_old_new");
-        assert_eq!(error_code("alte und neue Werte sind identisch"), "identical_old_new");
+        assert_eq!(
+            error_code("alte und neue Werte sind identisch"),
+            "identical_old_new"
+        );
     }
 
     #[test]
@@ -1497,6 +1521,9 @@ Write-Output $html
     fn prose_alone_is_still_rejected() {
         // Der Marker-Zuschnitt darf nicht dazu fuehren, dass Geschwaetz ohne
         // Block ploetzlich als gueltig gilt.
-        assert!(!parse("Ich habe darueber nachgedacht und wuerde vorschlagen, die Datei zu aendern.").valid);
+        assert!(
+            !parse("Ich habe darueber nachgedacht und wuerde vorschlagen, die Datei zu aendern.")
+                .valid
+        );
     }
 }

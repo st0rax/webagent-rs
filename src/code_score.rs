@@ -376,8 +376,14 @@ mod tests {
         let b = unique_path();
         record_at(&ev_handoff("y", "z", true), &b);
         record_at(&ev("y", true, true, false), &b);
-        let sa = leaderboard_at(&a).into_iter().find(|s| s.brain_id == "x").unwrap();
-        let sb = leaderboard_at(&b).into_iter().find(|s| s.brain_id == "y").unwrap();
+        let sa = leaderboard_at(&a)
+            .into_iter()
+            .find(|s| s.brain_id == "x")
+            .unwrap();
+        let sb = leaderboard_at(&b)
+            .into_iter()
+            .find(|s| s.brain_id == "y")
+            .unwrap();
         assert!((sa.wilson_pass - sb.wilson_pass).abs() < 1e-9);
         assert_eq!(sa.rescues, 0);
         assert_eq!(sb.rescues, 1);
@@ -395,16 +401,28 @@ mod tests {
         record_at(&ev_handoff("bbb", "aaa", true), &path);
         record_at(&ev("bbb", true, true, false), &path);
         let board = leaderboard_at(&path);
-        assert_eq!(board[0].brain_id, "bbb", "Retter steht bei Gleichstand vorn");
+        assert_eq!(
+            board[0].brain_id, "bbb",
+            "Retter steht bei Gleichstand vorn"
+        );
         let _ = std::fs::remove_file(&path);
     }
 
     #[test]
     fn abandoned_counts_stalled_attempts() {
         let path = unique_path();
-        record_at(&CodeEvent { stalled: true, ..ev("lahm", true, false, false) }, &path);
+        record_at(
+            &CodeEvent {
+                stalled: true,
+                ..ev("lahm", true, false, false)
+            },
+            &path,
+        );
         record_at(&ev("lahm", true, false, false), &path);
-        let s = leaderboard_at(&path).into_iter().find(|s| s.brain_id == "lahm").unwrap();
+        let s = leaderboard_at(&path)
+            .into_iter()
+            .find(|s| s.brain_id == "lahm")
+            .unwrap();
         assert_eq!(s.abandoned, 1);
         let _ = std::fs::remove_file(&path);
     }
@@ -420,7 +438,10 @@ mod tests {
 ",
         )
         .unwrap();
-        let s = leaderboard_at(&path).into_iter().find(|s| s.brain_id == "alt").unwrap();
+        let s = leaderboard_at(&path)
+            .into_iter()
+            .find(|s| s.brain_id == "alt")
+            .unwrap();
         assert_eq!(s.attempts, 1);
         assert_eq!(s.hard_attempts, 0);
         assert_eq!(s.rescues, 0);

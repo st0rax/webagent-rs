@@ -392,7 +392,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         let _ = self.run_store.save(meta);
         let _ = transcript.append(
             "system",
-            &format!("run_finished status=brain_unavailable reason={}", crate::char_prefix(reason.trim(), 100)),
+            &format!(
+                "run_finished status=brain_unavailable reason={}",
+                crate::char_prefix(reason.trim(), 100)
+            ),
             HashMap::new(),
         );
         meta.clone()
@@ -607,7 +610,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     break;
                 }
                 protocol::ActionType::Shell => {
-                    self.report_step(&format!("shell: {}", crate::char_prefix(&action.command, 70)));
+                    self.report_step(&format!(
+                        "shell: {}",
+                        crate::char_prefix(&action.command, 70)
+                    ));
                     if !self.quiet {
                         println!("[shell:{}] {}", action.id, action.command);
                     }
@@ -699,11 +705,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         Err(msg) => (String::new(), msg, Some(1)),
                     };
                     let observation = protocol::format_observation(
-                        &action.id,
-                        &stdout,
-                        &stderr,
-                        exit_code,
-                        false,
+                        &action.id, &stdout, &stderr, exit_code, false,
                     );
                     let observation = self.bounded_observation(&action.id, &observation);
                     observations.push(observation.clone());
@@ -1250,8 +1252,10 @@ per edit/write-Action pflegbar):\n",
             serde_json::Value::Number(self.act_steps.into()),
         );
         if meta.status == "done" && self.act_steps == 0 {
-            meta.extra
-                .insert("suspect_no_actions".to_string(), serde_json::Value::Bool(true));
+            meta.extra.insert(
+                "suspect_no_actions".to_string(),
+                serde_json::Value::Bool(true),
+            );
             println!(
                 "[warn] status=done ohne ausgeführte Aktionen (act_steps=0) — \
                  Antwort könnte aus einer alten Konversation stammen. Bei \
@@ -1428,7 +1432,10 @@ mod tests {
             let idx = *self.response_index.borrow();
             *self.response_index.borrow_mut() = idx + 1;
             let (text, complete) = if self.loop_shell {
-                (shell_response(&format!("wall-{idx}"), "Write-Output tick"), true)
+                (
+                    shell_response(&format!("wall-{idx}"), "Write-Output tick"),
+                    true,
+                )
             } else {
                 let text = self
                     .responses
@@ -1816,7 +1823,10 @@ mod tests {
         // Cap eingehalten, kein Overflow bei großen retry-Indizes.
         assert_eq!(incomplete_retry_backoff(6), Duration::from_millis(8000));
         assert_eq!(incomplete_retry_backoff(50), Duration::from_millis(8000));
-        assert_eq!(incomplete_retry_backoff(usize::MAX), Duration::from_millis(8000));
+        assert_eq!(
+            incomplete_retry_backoff(usize::MAX),
+            Duration::from_millis(8000)
+        );
     }
 
     #[test]
@@ -1832,7 +1842,9 @@ mod tests {
         let mut controller =
             AgentController::with_data_dir(brain, executor, 1_000_000, unique_data_dir());
         controller.set_wall_timeout_secs(1);
-        let meta = controller.run("Endlosschleife", "mock", None, false).unwrap();
+        let meta = controller
+            .run("Endlosschleife", "mock", None, false)
+            .unwrap();
 
         assert_eq!(meta.status, "wall_timeout");
         assert_eq!(
@@ -1850,8 +1862,7 @@ mod tests {
         // Timeout darf die Gesamtfrist nicht ueberziehen.
         let brain = MockBrain::new();
         let executor = MockExecutor::new();
-        let mut controller =
-            AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
 
         // 2s Restbudget, aber ein Turn wollte 100s warten -> gedeckelt.
         controller.wall_deadline_at = Some(Instant::now() + Duration::from_secs(2));
@@ -1868,8 +1879,7 @@ mod tests {
         // Deckel nichts kappen, sonst verkuerzt er legitime Wartezeiten.
         let brain = MockBrain::new();
         let executor = MockExecutor::new();
-        let controller =
-            AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
         assert_eq!(controller.wall_deadline_at, None);
         assert_eq!(controller.cap_to_wall(100.0), 100.0);
     }
@@ -1881,8 +1891,7 @@ mod tests {
         // dann regulaer als wall_timeout.
         let brain = MockBrain::new();
         let executor = MockExecutor::new();
-        let mut controller =
-            AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
         controller.wall_deadline_at = Some(Instant::now() - Duration::from_secs(5));
         assert_eq!(controller.cap_to_wall(100.0), 1.0);
     }
@@ -1897,8 +1906,7 @@ mod tests {
                      You have reached the daily usage limit. Please wait 2 hours before trying again.";
         let brain = MockBrain::new().with_responses(vec![block], vec![false]);
         let executor = MockExecutor::new();
-        let mut controller =
-            AgentController::with_data_dir(brain, executor, 15, unique_data_dir());
+        let mut controller = AgentController::with_data_dir(brain, executor, 15, unique_data_dir());
         let meta = controller.run("baue etwas", "qwen", None, false).unwrap();
 
         assert_eq!(meta.status, "brain_unavailable");
@@ -1909,117 +1917,124 @@ mod tests {
         // Genau ein Sende-Versuch — keine sechs Wiederholungen.
         assert_eq!(controller.brain().sent_message_count(), 1);
     }
-
 }
 
 pub fn validate_action_plan(actions: &[crate::protocol::Action]) -> Result<(), String> {
-if actions.is_empty() {
-return Err("Aktionsplan ist leer".to_string());
-}
-
-for (idx, action) in actions.iter().enumerate() {
-    if action.id.trim().is_empty() {
-        return Err(format!("Action an Position {} hat keine ID", idx));
+    if actions.is_empty() {
+        return Err("Aktionsplan ist leer".to_string());
     }
 
-    match action.action_type {
-        crate::protocol::ActionType::Shell => {
-            if action.command.trim().is_empty() {
-                return Err(format!("Shell-Action '{}' hat keinen Befehl (command)", action.id));
-            }
+    for (idx, action) in actions.iter().enumerate() {
+        if action.id.trim().is_empty() {
+            return Err(format!("Action an Position {} hat keine ID", idx));
         }
-        crate::protocol::ActionType::Message => {
-            if action.text.trim().is_empty() {
-                return Err(format!("Message-Action '{}' hat keinen Text (text)", action.id));
+
+        match action.action_type {
+            crate::protocol::ActionType::Shell => {
+                if action.command.trim().is_empty() {
+                    return Err(format!(
+                        "Shell-Action '{}' hat keinen Befehl (command)",
+                        action.id
+                    ));
+                }
             }
-        }
-        crate::protocol::ActionType::Finish => {}
-        crate::protocol::ActionType::Edit => {
-            if action.path.trim().is_empty() {
-                return Err(format!("Edit-Action '{}' hat keinen Pfad (path)", action.id));
+            crate::protocol::ActionType::Message => {
+                if action.text.trim().is_empty() {
+                    return Err(format!(
+                        "Message-Action '{}' hat keinen Text (text)",
+                        action.id
+                    ));
+                }
             }
-        }
-        crate::protocol::ActionType::Write => {
-            if action.path.trim().is_empty() {
-                return Err(format!("Write-Action '{}' hat keinen Pfad (path)", action.id));
+            crate::protocol::ActionType::Finish => {}
+            crate::protocol::ActionType::Edit => {
+                if action.path.trim().is_empty() {
+                    return Err(format!(
+                        "Edit-Action '{}' hat keinen Pfad (path)",
+                        action.id
+                    ));
+                }
+            }
+            crate::protocol::ActionType::Write => {
+                if action.path.trim().is_empty() {
+                    return Err(format!(
+                        "Write-Action '{}' hat keinen Pfad (path)",
+                        action.id
+                    ));
+                }
             }
         }
     }
-}
 
-Ok(())
-
-
+    Ok(())
 }
 
 #[cfg(test)]
 mod validate_action_plan_tests {
-use super::*;
-use crate::protocol::{Action, ActionType};
+    use super::*;
+    use crate::protocol::{Action, ActionType};
 
-#[test]
-fn test_empty_plan_rejected() {
-    let plan: Vec<Action> = vec![];
-    assert!(validate_action_plan(&plan).is_err());
-}
+    #[test]
+    fn test_empty_plan_rejected() {
+        let plan: Vec<Action> = vec![];
+        assert!(validate_action_plan(&plan).is_err());
+    }
 
-#[test]
-fn test_valid_shell_and_file_actions_accepted() {
-    let plan = vec![
-        Action {
+    #[test]
+    fn test_valid_shell_and_file_actions_accepted() {
+        let plan = vec![
+            Action {
+                id: "step-1".to_string(),
+                action_type: ActionType::Shell,
+                command: "Get-Location".to_string(),
+                text: "".to_string(),
+                timeout_seconds: 30.0,
+                path: "".to_string(),
+                old_string: "".to_string(),
+                new_string: "".to_string(),
+                content: "".to_string(),
+            },
+            Action {
+                id: "write-1".to_string(),
+                action_type: ActionType::Write,
+                command: "".to_string(),
+                text: "".to_string(),
+                timeout_seconds: 30.0,
+                path: "src/test.txt".to_string(),
+                old_string: "".to_string(),
+                new_string: "".to_string(),
+                content: "hello".to_string(),
+            },
+        ];
+        assert!(validate_action_plan(&plan).is_ok());
+    }
+
+    #[test]
+    fn test_missing_required_fields_rejected() {
+        let plan_missing_cmd = vec![Action {
             id: "step-1".to_string(),
             action_type: ActionType::Shell,
-            command: "Get-Location".to_string(),
+            command: "   ".to_string(),
             text: "".to_string(),
             timeout_seconds: 30.0,
             path: "".to_string(),
             old_string: "".to_string(),
             new_string: "".to_string(),
             content: "".to_string(),
-        },
-        Action {
-            id: "write-1".to_string(),
+        }];
+        assert!(validate_action_plan(&plan_missing_cmd).is_err());
+
+        let plan_missing_path = vec![Action {
+            id: "step-2".to_string(),
             action_type: ActionType::Write,
             command: "".to_string(),
             text: "".to_string(),
             timeout_seconds: 30.0,
-            path: "src/test.txt".to_string(),
+            path: "".to_string(),
             old_string: "".to_string(),
             new_string: "".to_string(),
             content: "hello".to_string(),
-        },
-    ];
-    assert!(validate_action_plan(&plan).is_ok());
-}
-
-#[test]
-fn test_missing_required_fields_rejected() {
-    let plan_missing_cmd = vec![Action {
-        id: "step-1".to_string(),
-        action_type: ActionType::Shell,
-        command: "   ".to_string(),
-        text: "".to_string(),
-        timeout_seconds: 30.0,
-        path: "".to_string(),
-        old_string: "".to_string(),
-        new_string: "".to_string(),
-        content: "".to_string(),
-    }];
-    assert!(validate_action_plan(&plan_missing_cmd).is_err());
-
-    let plan_missing_path = vec![Action {
-        id: "step-2".to_string(),
-        action_type: ActionType::Write,
-        command: "".to_string(),
-        text: "".to_string(),
-        timeout_seconds: 30.0,
-        path: "".to_string(),
-        old_string: "".to_string(),
-        new_string: "".to_string(),
-        content: "hello".to_string(),
-    }];
-    assert!(validate_action_plan(&plan_missing_path).is_err());
-}
-
-
+        }];
+        assert!(validate_action_plan(&plan_missing_path).is_err());
+    }
 }

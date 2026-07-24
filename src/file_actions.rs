@@ -29,10 +29,7 @@ pub fn apply_edit(path: &str, old: &str, new: &str) -> Result<String, String> {
             let (alt_old, alt_new) = if old.contains("\r\n") {
                 (old.replace("\r\n", "\n"), new.replace("\r\n", "\n"))
             } else {
-                (
-                    old.replace('\n', "\r\n"),
-                    new.replace('\n', "\r\n"),
-                )
+                (old.replace('\n', "\r\n"), new.replace('\n', "\r\n"))
             };
             let crlf_hit = if alt_old == old {
                 0
@@ -40,7 +37,11 @@ pub fn apply_edit(path: &str, old: &str, new: &str) -> Result<String, String> {
                 content.matches(&alt_old).count()
             };
             match crlf_hit {
-                1 => (alt_old, alt_new, " (Zeilenenden-Toleranz CRLF/LF angewandt)"),
+                1 => (
+                    alt_old,
+                    alt_new,
+                    " (Zeilenenden-Toleranz CRLF/LF angewandt)",
+                ),
                 n if n > 1 => return Err(anchor_ambiguous(path, n)),
                 // 0: letzter Fallback — whitespace-tolerantes Zeilen-Matching.
                 // LLMs reproduzieren exakte Einrückung oft nicht; kimi hex-dumpte
@@ -50,8 +51,12 @@ pub fn apply_edit(path: &str, old: &str, new: &str) -> Result<String, String> {
                 _ => match whitespace_tolerant_span(&content, old) {
                     Ok((start, end)) => {
                         let line = content[..start].matches('\n').count() + 1;
-                        let updated =
-                            format!("{}{}{}", &content[..start], new.trim_end_matches(['\r', '\n']), &content[end..]);
+                        let updated = format!(
+                            "{}{}{}",
+                            &content[..start],
+                            new.trim_end_matches(['\r', '\n']),
+                            &content[end..]
+                        );
                         fs::write(p, &updated).map_err(|e| {
                             format!("edit fehlgeschlagen: {path} nicht schreibbar: {e}")
                         })?;
@@ -71,7 +76,8 @@ pub fn apply_edit(path: &str, old: &str, new: &str) -> Result<String, String> {
     let idx = content.find(&old_eff).expect("Match wurde soeben gezaehlt");
     let line = content[..idx].matches('\n').count() + 1;
     let updated = content.replacen(&old_eff, &new_eff, 1);
-    fs::write(p, &updated).map_err(|e| format!("edit fehlgeschlagen: {path} nicht schreibbar: {e}"))?;
+    fs::write(p, &updated)
+        .map_err(|e| format!("edit fehlgeschlagen: {path} nicht schreibbar: {e}"))?;
     Ok(format!(
         "edit ok: {path} — Ersetzung ab Zeile {line}{note}. Datei jetzt {} Zeilen.",
         updated.lines().count()
@@ -140,8 +146,12 @@ pub fn apply_write(path: &str, content: &str) -> Result<String, String> {
     }
     if let Some(parent) = p.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("write fehlgeschlagen: Verzeichnis {} nicht anlegbar: {e}", parent.display()))?;
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "write fehlgeschlagen: Verzeichnis {} nicht anlegbar: {e}",
+                    parent.display()
+                )
+            })?;
         }
     }
     fs::write(p, content)
@@ -158,7 +168,10 @@ pub fn apply_write(path: &str, content: &str) -> Result<String, String> {
 /// Zeilen, Build-/VCS-/Profil-Verzeichnisse übersprungen.
 pub fn worktree_context(max_entries: usize) -> String {
     // Kill-Switch, z.B. für Worker in riesigen Arbeitsverzeichnissen.
-    if std::env::var("WEBAGENT_NO_TREE").map(|v| v == "1").unwrap_or(false) {
+    if std::env::var("WEBAGENT_NO_TREE")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
         return String::new();
     }
     let cwd = match std::env::current_dir() {
@@ -221,7 +234,14 @@ fn collect_tree(
                 continue;
             }
             out.push(format!("{prefix}{name}/"));
-            collect_tree(&path, &format!("{prefix}  "), depth + 1, max_depth, max_entries, out);
+            collect_tree(
+                &path,
+                &format!("{prefix}  "),
+                depth + 1,
+                max_depth,
+                max_entries,
+                out,
+            );
         } else {
             out.push(format!("{prefix}{name}"));
         }
@@ -339,11 +359,15 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("wsedit_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("t1.rs");
-        std::fs::write(&f, "fn a() {
+        std::fs::write(
+            &f,
+            "fn a() {
         let x = 1;
         return x;
 }
-").unwrap();
+",
+        )
+        .unwrap();
         let r = apply_edit(
             f.to_str().unwrap(),
             "    let x = 1;
@@ -354,7 +378,10 @@ mod tests {
         assert!(r.is_ok(), "sollte per Whitespace-Toleranz greifen: {r:?}");
         assert!(r.unwrap().contains("Whitespace-Toleranz"));
         let after = std::fs::read_to_string(&f).unwrap();
-        assert!(after.contains("let x = 42;"), "Ersetzung angewandt: {after:?}");
+        assert!(
+            after.contains("let x = 42;"),
+            "Ersetzung angewandt: {after:?}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -363,9 +390,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("wsedit2_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("t2.rs");
-        std::fs::write(&f, "  let x = 1;
+        std::fs::write(
+            &f,
+            "  let x = 1;
     let x = 1;
-").unwrap();
+",
+        )
+        .unwrap();
         let r = apply_edit(f.to_str().unwrap(), "let x = 1;", "let x = 2;");
         assert!(r.is_err());
         assert!(r.unwrap_err().contains("mehrdeutig"));
@@ -377,8 +408,12 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("wsedit3_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("t3.rs");
-        std::fs::write(&f, "fn a() {}
-").unwrap();
+        std::fs::write(
+            &f,
+            "fn a() {}
+",
+        )
+        .unwrap();
         let r = apply_edit(f.to_str().unwrap(), "let y = nonexistent;", "x");
         assert!(r.is_err());
         assert!(r.unwrap_err().contains("nicht gefunden"));
@@ -392,10 +427,17 @@ mod tests {
     ziel zwei
 bbb
 ";
-        let (start, end) = whitespace_tolerant_span(content, "ziel eins
-ziel zwei").unwrap();
-        assert_eq!(&content[start..end], "    ziel eins
-    ziel zwei");
+        let (start, end) = whitespace_tolerant_span(
+            content,
+            "ziel eins
+ziel zwei",
+        )
+        .unwrap();
+        assert_eq!(
+            &content[start..end],
+            "    ziel eins
+    ziel zwei"
+        );
         assert_eq!(whitespace_tolerant_span(content, "gibts nicht"), Err(0));
     }
 }

@@ -160,7 +160,11 @@ pub fn dedupe_pool(lines: &[String]) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<String> = Vec::new();
     for line in lines {
-        let norm = line.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+        let norm = line
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase();
         if norm.is_empty() {
             continue;
         }
@@ -337,7 +341,11 @@ pub fn collect_modules(src_dir: &Path) -> Vec<(String, usize)> {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("rs") {
                 if let Ok(text) = std::fs::read_to_string(&path) {
-                    let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
                     mods.push((name, text.lines().count()));
                 }
             }
@@ -362,7 +370,9 @@ pub fn gather_facts(root: &Path, max_chars: usize) -> String {
     // (22/22 did_change=false, Messung 2026-07-21).
     let api = collect_public_api(&root.join("src"));
     if !api.is_empty() {
-        facts.push_str("\n\nBEREITS VORHANDENE oeffentliche Funktionen (NICHT erneut vorschlagen): ");
+        facts.push_str(
+            "\n\nBEREITS VORHANDENE oeffentliche Funktionen (NICHT erneut vorschlagen): ",
+        );
         facts.push_str(crate::char_prefix(&api.join(", "), 900));
     }
     facts
@@ -601,7 +611,10 @@ where
     }
 
     // ---- Phase 3: Abstimmen ----
-    println!("[self-research] Phase 3/4 — {total} Brains stimmen ab (Katalog: {} Einträge)…", catalog.len());
+    println!(
+        "[self-research] Phase 3/4 — {total} Brains stimmen ab (Katalog: {} Einträge)…",
+        catalog.len()
+    );
     let vote_prompt = format!(
         "Katalog von Verbesserungsvorschlägen:\n\n{cat}\n\n\
          Wähle die {k} WICHTIGSTEN. Antworte NUR mit den Nummern in absteigender \
@@ -611,7 +624,8 @@ where
     let mut ballots: Vec<Vec<usize>> = Vec::new();
     let mut voters = 0usize;
     {
-        let t = crate::StageTimer::start(format!("abstimmen — {total} Brains, {parallel} parallel"));
+        let t =
+            crate::StageTimer::start(format!("abstimmen — {total} Brains, {parallel} parallel"));
         let note = t.note_handle();
         let results = query_parallel(
             brains,
@@ -647,7 +661,10 @@ where
             approvals: appr,
         })
         .collect();
-    println!("[self-research] Phase 4/4 — Rangliste (Top {}):", ranked.len());
+    println!(
+        "[self-research] Phase 4/4 — Rangliste (Top {}):",
+        ranked.len()
+    );
     for (rank, r) in ranked.iter().enumerate() {
         println!(
             "   {}. {} Pkt · {} Stimmen — {}",
@@ -700,92 +717,78 @@ pub fn format_report(report: &SelfResearchReport) -> String {
 }
 
 pub fn borda_aggregate(phases: Vec<Vec<Vec<String>>>) -> Vec<(String, i64)> {
-use std::collections::HashMap;
+    use std::collections::HashMap;
 
-let mut scores: HashMap<String, i64> = HashMap::new();
+    let mut scores: HashMap<String, i64> = HashMap::new();
 
-for phase in phases {
-    for ranking in phase {
-        let n = ranking.len() as i64;
-        for (rank_index, proposal) in ranking.into_iter().enumerate() {
-            let points = n - rank_index as i64;
-            *scores.entry(proposal).or_insert(0) += points;
+    for phase in phases {
+        for ranking in phase {
+            let n = ranking.len() as i64;
+            for (rank_index, proposal) in ranking.into_iter().enumerate() {
+                let points = n - rank_index as i64;
+                *scores.entry(proposal).or_insert(0) += points;
+            }
         }
     }
-}
 
-let mut result: Vec<(String, i64)> = scores.into_iter().collect();
-result.sort_by(|a, b| {
-    b.1.cmp(&a.1)
-        .then_with(|| a.0.cmp(&b.0))
-});
-result
-
+    let mut result: Vec<(String, i64)> = scores.into_iter().collect();
+    result.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    result
 }
 
 #[cfg(test)]
 mod tests {
-#[test]
-fn test_borda_aggregate_single_ranking() {
-let result = borda_aggregate(vec![vec![vec![
-"A".to_string(),
-"B".to_string(),
-"C".to_string(),
-]]]);
-assert_eq!(
-result,
-vec![
-("A".to_string(), 3),
-("B".to_string(), 2),
-("C".to_string(), 1)
-]
-);
-}
-
-#[test]
-fn test_borda_aggregate_tie_sorted_lexicographically() {
-    let result = borda_aggregate(vec![vec![
-        vec!["A".to_string(), "B".to_string()],
-        vec!["B".to_string(), "A".to_string()],
-    ]]);
-    assert_eq!(
-        result,
-        vec![("A".to_string(), 3), ("B".to_string(), 3)]
-    );
-}
-
-#[test]
-fn test_borda_aggregate_multiple_phases_sum_scores() {
-    let result = borda_aggregate(vec![
-        vec![vec!["A".to_string(), "B".to_string()]],
-        vec![vec!["B".to_string(), "A".to_string()]],
-    ]);
-    assert_eq!(
-        result,
-        vec![("A".to_string(), 3), ("B".to_string(), 3)]
-    );
-}
-
-#[test]
-fn test_borda_aggregate_different_ranking_lengths() {
-    let result = borda_aggregate(vec![vec![
-        vec![
+    #[test]
+    fn test_borda_aggregate_single_ranking() {
+        let result = borda_aggregate(vec![vec![vec![
             "A".to_string(),
             "B".to_string(),
             "C".to_string(),
-        ],
-        vec!["A".to_string(), "B".to_string()],
-    ]]);
-    assert_eq!(result[0], ("A".to_string(), 5));
-    assert_eq!(result[1], ("B".to_string(), 3));
-    assert_eq!(result[2], ("C".to_string(), 1));
-}
+        ]]]);
+        assert_eq!(
+            result,
+            vec![
+                ("A".to_string(), 3),
+                ("B".to_string(), 2),
+                ("C".to_string(), 1)
+            ]
+        );
+    }
 
-#[test]
-fn test_borda_aggregate_empty_input() {
-    let result = borda_aggregate(vec![vec![], vec![]]);
-    assert!(result.is_empty());
-}
+    #[test]
+    fn test_borda_aggregate_tie_sorted_lexicographically() {
+        let result = borda_aggregate(vec![vec![
+            vec!["A".to_string(), "B".to_string()],
+            vec!["B".to_string(), "A".to_string()],
+        ]]);
+        assert_eq!(result, vec![("A".to_string(), 3), ("B".to_string(), 3)]);
+    }
+
+    #[test]
+    fn test_borda_aggregate_multiple_phases_sum_scores() {
+        let result = borda_aggregate(vec![
+            vec![vec!["A".to_string(), "B".to_string()]],
+            vec![vec!["B".to_string(), "A".to_string()]],
+        ]);
+        assert_eq!(result, vec![("A".to_string(), 3), ("B".to_string(), 3)]);
+    }
+
+    #[test]
+    fn test_borda_aggregate_different_ranking_lengths() {
+        let result = borda_aggregate(vec![vec![
+            vec!["A".to_string(), "B".to_string(), "C".to_string()],
+            vec!["A".to_string(), "B".to_string()],
+        ]]);
+        assert_eq!(result[0], ("A".to_string(), 5));
+        assert_eq!(result[1], ("B".to_string(), 3));
+        assert_eq!(result[2], ("C".to_string(), 1));
+    }
+
+    #[test]
+    fn test_borda_aggregate_empty_input() {
+        let result = borda_aggregate(vec![vec![], vec![]]);
+        assert!(result.is_empty());
+    }
 
     use super::*;
 
@@ -802,7 +805,10 @@ fn test_borda_aggregate_empty_input() {
         // Leere Antwort → leer.
         assert_eq!(parse_vote_line("", 5), Vec::<usize>::new());
         // Klammer-Marker und Prosa drumherum.
-        assert_eq!(parse_vote_line("Priorität: 2) dann 5) dann 2)", 8), vec![2, 5]);
+        assert_eq!(
+            parse_vote_line("Priorität: 2) dann 5) dann 2)", 8),
+            vec![2, 5]
+        );
         // catalog_len 0 akzeptiert nichts.
         assert_eq!(parse_vote_line("1 2 3", 0), Vec::<usize>::new());
     }
@@ -886,10 +892,12 @@ fn test_borda_aggregate_empty_input() {
             "SyntaxError: Unexpected token '<', \"<!doctypeh\"... is not valid JSON"
         ));
         assert!(!is_plausible_suggestion("Thought Process"));
-        assert!(!is_plausible_suggestion("<html><body>Error 502</body></html>"));
+        assert!(!is_plausible_suggestion(
+            "<html><body>Error 502</body></html>"
+        ));
         assert!(!is_plausible_suggestion("kurz")); // zu kurz
         assert!(!is_plausible_suggestion(&"x".repeat(500))); // absurd lang
-        // Echte Vorschlaege muessen durchkommen.
+                                                             // Echte Vorschlaege muessen durchkommen.
         assert!(is_plausible_suggestion(
             "Zentrale thiserror-Fehlerhierarchie einfuehren statt verstreuter String-Fehler"
         ));
@@ -978,14 +986,24 @@ fn test_borda_aggregate_empty_input() {
             }
         };
         let report = run_self_research(&brains, "# facts", 2, 3, 1, query);
-        assert_eq!(report.catalog, vec!["Fehlerhierarchie mit thiserror einfuehren", "Strukturiertes Logging via tracing ergaenzen", "Protokoll strikt validieren beim Parsen"]);
+        assert_eq!(
+            report.catalog,
+            vec![
+                "Fehlerhierarchie mit thiserror einfuehren",
+                "Strukturiertes Logging via tracing ergaenzen",
+                "Protokoll strikt validieren beim Parsen"
+            ]
+        );
         assert_eq!(report.collected, 2);
         assert_eq!(report.voters, 2);
         assert!(report.consolidated_by.is_some());
         // Beide Stimmzettel [2,1,3], top_k=3: num2=3+3=6, num1=2+2=4, num3=1+1=2.
         assert_eq!(report.ranked[0].index, 2);
         assert_eq!(report.ranked[0].points, 6);
-        assert_eq!(report.ranked[0].text, "Strukturiertes Logging via tracing ergaenzen");
+        assert_eq!(
+            report.ranked[0].text,
+            "Strukturiertes Logging via tracing ergaenzen"
+        );
         assert_eq!(report.ranked[1].index, 1);
         assert_eq!(report.ranked[2].index, 3);
     }
@@ -1009,9 +1027,15 @@ fn test_borda_aggregate_empty_input() {
         let report = run_self_research(&brains, "f", 2, 2, 1, query);
         // Fallback greift: Katalog aus dedupe_pool (Case/Whitespace normalisiert).
         assert!(report.consolidated_by.is_none());
-        assert_eq!(report.catalog, vec!["Fehlerhierarchie mit thiserror einfuehren"]);
+        assert_eq!(
+            report.catalog,
+            vec!["Fehlerhierarchie mit thiserror einfuehren"]
+        );
         assert_eq!(report.ranked[0].index, 1);
-        assert_eq!(report.ranked[0].text, "Fehlerhierarchie mit thiserror einfuehren");
+        assert_eq!(
+            report.ranked[0].text,
+            "Fehlerhierarchie mit thiserror einfuehren"
+        );
     }
 
     #[test]
@@ -1050,9 +1074,15 @@ fn test_borda_aggregate_empty_input() {
     fn ui_failure_messages_are_not_suggestions() {
         // Real beobachtet: "No response, Please try again later." gewann eine
         // Abstimmung und machte die Runde wertlos.
-        assert!(!is_plausible_suggestion("No response, Please try again later."));
-        assert!(!is_plausible_suggestion("Something went wrong. Please try again."));
-        assert!(!is_plausible_suggestion("Too many requests - service unavailable"));
+        assert!(!is_plausible_suggestion(
+            "No response, Please try again later."
+        ));
+        assert!(!is_plausible_suggestion(
+            "Something went wrong. Please try again."
+        ));
+        assert!(!is_plausible_suggestion(
+            "Too many requests - service unavailable"
+        ));
     }
 
     #[test]
@@ -1110,9 +1140,16 @@ fn test_borda_aggregate_empty_input() {
 
     #[test]
     fn query_parallel_keeps_errors_with_their_brain() {
-        let brains: Vec<String> = ["ok1", "boom", "ok2"].iter().map(|s| s.to_string()).collect();
+        let brains: Vec<String> = ["ok1", "boom", "ok2"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let q = |b: &str, _p: &str| -> Result<String, String> {
-            if b == "boom" { Err("kaputt".to_string()) } else { Ok(b.to_string()) }
+            if b == "boom" {
+                Err("kaputt".to_string())
+            } else {
+                Ok(b.to_string())
+            }
         };
         let got = query_parallel(&brains, "p", 3, &|_, _| {}, &q);
         assert_eq!(got[1].0, "boom");

@@ -102,7 +102,10 @@ pub fn is_retryable_empty_response(response: &str) -> bool {
     // Glitch-Phrase KANN neben echtem Inhalt stehen (zai: „No response …" plus
     // ein SyntaxError — beide Glitch; aber „No response …" plus ein echtes
     // WEBAGENT/1 EDIT ist Inhalt und darf nicht verworfen werden).
-    trimmed.lines().filter(|l| !l.trim().is_empty()).all(is_ui_glitch_line)
+    trimmed
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .all(is_ui_glitch_line)
 }
 
 /// Phrasen, die eine Anbieter-Blockade signalisieren (Kontingent erschöpft,
@@ -148,8 +151,12 @@ mod tests {
     fn test_is_retryable_empty_response() {
         assert!(is_retryable_empty_response(""));
         assert!(is_retryable_empty_response("   \n\t  "));
-        assert!(is_retryable_empty_response("No response, Please try again later."));
-        assert!(!is_retryable_empty_response("Die Aufgabe wurde abgeschlossen."));
+        assert!(is_retryable_empty_response(
+            "No response, Please try again later."
+        ));
+        assert!(!is_retryable_empty_response(
+            "Die Aufgabe wurde abgeschlossen."
+        ));
         // Eine Zeile, die NUR aus einer UI-Fehlermeldung besteht, ist jetzt
         // ebenfalls "kein Inhalt" — geminis Originalfassung verneinte das,
         // konnte damit aber den realen zai-Fall nicht fangen.
@@ -286,7 +293,9 @@ mod tests {
         assert!(!is_retryable_empty_response(
             "{\"protocol\":\"webagent/1\",\"actions\":[{\"id\":\"a\",\"type\":\"message\",\"text\":\"fertig\"}]}"
         ));
-        assert!(!is_retryable_empty_response("Die Aufgabe wurde abgeschlossen."));
+        assert!(!is_retryable_empty_response(
+            "Die Aufgabe wurde abgeschlossen."
+        ));
     }
 
     #[test]

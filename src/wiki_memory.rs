@@ -445,7 +445,10 @@ mod tests {
 
     #[test]
     fn test_extract_links_ueber_zeilengrenze() {
-        assert_eq!(extract_links("[[link\nüber\nzeilen]]"), Vec::<String>::new());
+        assert_eq!(
+            extract_links("[[link\nüber\nzeilen]]"),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -504,7 +507,10 @@ mod tests {
             index.contains("- [[aepfel-birnen]] — Obst-Notizen."),
             "Index-Zeile fehlt: {index}"
         );
-        assert_eq!(wiki.list_pages().unwrap(), vec!["aepfel-birnen".to_string()]);
+        assert_eq!(
+            wiki.list_pages().unwrap(),
+            vec!["aepfel-birnen".to_string()]
+        );
     }
 
     #[test]
@@ -607,7 +613,11 @@ mod tests {
         wiki.write_page("Deploy-Regeln", "Flotten-Kopie nur via Skript.")
             .unwrap();
         let hits = wiki.search("deploy", 10).unwrap();
-        assert_eq!(hits.len(), 1, "Teilwort eines Bindestrich-Titels muss treffen");
+        assert_eq!(
+            hits.len(),
+            1,
+            "Teilwort eines Bindestrich-Titels muss treffen"
+        );
         assert_eq!(hits[0].slug, "deploy-regeln");
         // Der volle Kebab-Begriff trifft weiterhin.
         assert_eq!(wiki.search("deploy-regeln", 10).unwrap().len(), 1);

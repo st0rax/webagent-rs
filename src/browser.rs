@@ -75,7 +75,10 @@ const BLOCK_BANNER_MAX_CHARS: usize = 400;
 /// Normalisiert Text für den Echo-Vergleich: Kleinschreibung, Whitespace
 /// kollabiert — genau wie das JS die Seite einliest.
 fn normalize_for_echo(s: &str) -> String {
-    s.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
+    s.to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// `true`, wenn der gefundene „Banner"-Ausschnitt in Wahrheit unsere eigene,
@@ -1706,7 +1709,8 @@ mod tests {
         // — inklusive der eigenen Frage — und meldete 4 von 8 Brains als
         // blockiert. Die Blockade-Meldung enthielt woertlich den Fragetext.
         let prompt = "Messergebnis der letzten Runde: mistral brain_incomplete 0 Zyklen                       Anbieter-Nachrichtenlimit erreicht chatgpt running 0 Zyklen Run nie                       richtig angelaufen. Nenne 10 Verbesserungen.";
-        let banner = "0 Zyklen Anbieter-Nachrichtenlimit erreicht chatgpt running 0 Zyklen Run nie richtig";
+        let banner =
+            "0 Zyklen Anbieter-Nachrichtenlimit erreicht chatgpt running 0 Zyklen Run nie richtig";
         assert!(banner_is_prompt_echo(banner, prompt));
     }
 

@@ -358,7 +358,13 @@ fn recent_log_lines(root: &Path, brain: &str, n: usize) -> Vec<String> {
                     v.get("body")
                         .or_else(|| v.get("content"))
                         .and_then(|x| x.as_str())
-                        .map(|b| if kind.is_empty() { b.to_string() } else { format!("[{kind}] {b}") })
+                        .map(|b| {
+                            if kind.is_empty() {
+                                b.to_string()
+                            } else {
+                                format!("[{kind}] {b}")
+                            }
+                        })
                 })
                 .unwrap_or_else(|| (*l).to_string())
         })
@@ -445,7 +451,11 @@ mod tests {
         assert_eq!(selected_row(&[0, 0, 0], 2), 2, "alles zu: Index = Zeile");
         assert_eq!(selected_row(&[4, 0, 0], 2), 6);
         assert_eq!(selected_row(&[4, 3, 0], 2), 9);
-        assert_eq!(selected_row(&[4, 3, 0], 0), 0, "erster Agent bleibt Zeile 0");
+        assert_eq!(
+            selected_row(&[4, 3, 0], 0),
+            0,
+            "erster Agent bleibt Zeile 0"
+        );
     }
 
     #[test]
@@ -487,7 +497,11 @@ mod tests {
         // oder Muell erzeugen.
         assert_eq!(wrap_text("äöüäöüäöü", 3), vec!["äöü", "äöü", "äöü"]);
         assert_eq!(wrap_text("", 5), Vec::<String>::new());
-        assert_eq!(wrap_text("abc", 0), vec!["a", "b", "c"], "Breite 0 darf nicht endlos schleifen");
+        assert_eq!(
+            wrap_text("abc", 0),
+            vec!["a", "b", "c"],
+            "Breite 0 darf nicht endlos schleifen"
+        );
     }
 
     #[test]
@@ -523,7 +537,10 @@ mod tests {
         app.expand_selected();
         app.detail_scroll = 7;
         app.collapse_selected();
-        assert_eq!(app.detail_scroll, 0, "sonst startet das naechste Aufklappen mitten drin");
+        assert_eq!(
+            app.detail_scroll, 0,
+            "sonst startet das naechste Aufklappen mitten drin"
+        );
     }
 
     #[test]
@@ -531,21 +548,36 @@ mod tests {
         // Der Puls-Ringpuffer speist die Live-Sparkline: je Tick die Zahl frisch
         // pulsierender Worker (Heartbeat < 10s), gedeckelt auf ACTIVITY_HISTORY_LEN.
         let mut app = app_with(vec![
-            view("a", vec![]),          // heartbeat 0s -> pulsiert
-            view("b", vec![]),          // heartbeat 0s -> pulsiert
+            view("a", vec![]), // heartbeat 0s -> pulsiert
+            view("b", vec![]), // heartbeat 0s -> pulsiert
         ]);
         app.on_tick(1.0);
-        assert_eq!(app.activity_samples().last().copied(), Some(2), "2 frische Worker");
+        assert_eq!(
+            app.activity_samples().last().copied(),
+            Some(2),
+            "2 frische Worker"
+        );
         for _ in 0..(ACTIVITY_HISTORY_LEN + 20) {
             app.on_tick(1.0);
         }
-        assert_eq!(app.activity_history.len(), ACTIVITY_HISTORY_LEN, "Ringpuffer gedeckelt");
+        assert_eq!(
+            app.activity_history.len(),
+            ACTIVITY_HISTORY_LEN,
+            "Ringpuffer gedeckelt"
+        );
     }
 
     #[test]
     fn stale_workers_do_not_count_as_pulse() {
-        let mut app = app_with(vec![AgentView { heartbeat_age_sec: 999, ..view("z", vec![]) }]);
+        let mut app = app_with(vec![AgentView {
+            heartbeat_age_sec: 999,
+            ..view("z", vec![])
+        }]);
         app.on_tick(1.0);
-        assert_eq!(app.activity_samples().last().copied(), Some(0), "toter Worker pulsiert nicht");
+        assert_eq!(
+            app.activity_samples().last().copied(),
+            Some(0),
+            "toter Worker pulsiert nicht"
+        );
     }
 }

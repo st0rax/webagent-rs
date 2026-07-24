@@ -790,17 +790,28 @@ fn cmd_design_vote(
             .collect()
     };
     if targets.len() < 2 {
-        eprintln!("[design-vote] mindestens 2 Brains noetig (haben {}).", targets.len());
+        eprintln!(
+            "[design-vote] mindestens 2 Brains noetig (haben {}).",
+            targets.len()
+        );
         return 2;
     }
 
     let run_id = webagent::now_run_stamp();
     let profiles: Vec<(String, std::path::PathBuf)> = targets
         .iter()
-        .map(|tb| (tb.clone(), webagent::config::prepare_swarm_profile(&run_id, tb)))
+        .map(|tb| {
+            (
+                tb.clone(),
+                webagent::config::prepare_swarm_profile(&run_id, tb),
+            )
+        })
         .collect();
     let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
-        profiles.iter().find(|(b, _)| b == brain).map(|(_, p)| p.clone())
+        profiles
+            .iter()
+            .find(|(b, _)| b == brain)
+            .map(|(_, p)| p.clone())
     };
 
     let config = webagent::design_vote::DesignVoteConfig {
@@ -818,7 +829,10 @@ fn cmd_design_vote(
     let _ = webagent::config::cleanup_swarm_profiles(&run_id);
 
     println!("\n[design-vote] === Ergebnis ===");
-    println!("[design-vote] {} Entwuerfe gesammelt.", report.proposals.len());
+    println!(
+        "[design-vote] {} Entwuerfe gesammelt.",
+        report.proposals.len()
+    );
     let Some((author, design)) = report.winning_design() else {
         eprintln!("[design-vote] Kein Gewinner (zu wenige verwertbare Entwuerfe).");
         return 1;
@@ -864,12 +878,23 @@ fn run_implement(
             return 1;
         }
     };
-    let mut controller =
-        AgentController::with_data_dir(backend, PlatformShellExecutor::new(), 30, webagent::config::data_dir());
+    let mut controller = AgentController::with_data_dir(
+        backend,
+        PlatformShellExecutor::new(),
+        30,
+        webagent::config::data_dir(),
+    );
     match controller.run(task, brain_id, None, headless) {
         Ok(meta) => {
-            println!("[design-vote] Umsetzung beendet: status={} cycles={}", meta.status, meta.cycles);
-            if meta.status == "done" { 0 } else { 1 }
+            println!(
+                "[design-vote] Umsetzung beendet: status={} cycles={}",
+                meta.status, meta.cycles
+            );
+            if meta.status == "done" {
+                0
+            } else {
+                1
+            }
         }
         Err(e) => {
             eprintln!("[design-vote] Umsetzung fehlgeschlagen: {e}");

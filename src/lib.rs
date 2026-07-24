@@ -23,9 +23,9 @@ pub mod design_vote;
 pub mod doctor;
 pub mod executor;
 pub mod file_actions;
+pub mod knockout;
 pub mod login;
 pub mod loop_guard;
-pub mod knockout;
 pub mod memory;
 pub mod mock_page;
 pub mod observer;
@@ -133,11 +133,7 @@ impl StageTimer {
                     } else {
                         format!(" · {}", char_prefix(&d, 60))
                     };
-                    let line = format!(
-                        "[benchmark]   {label} … {}:{:02}{suffix}",
-                        s / 60,
-                        s % 60
-                    );
+                    let line = format!("[benchmark]   {label} … {}:{:02}{suffix}", s / 60, s % 60);
                     let pad = LIVE_LINE_WIDTH.saturating_sub(line.chars().count());
                     print!("\r{line}{}", " ".repeat(pad));
                     let _ = std::io::stdout().flush();
@@ -147,7 +143,11 @@ impl StageTimer {
                     // den Ticker nie.
                     let d = d2.lock().map(|g| g.clone()).unwrap_or_default();
                     if d.is_empty() {
-                        println!("[benchmark]   … {label} laeuft seit {}:{:02}", s / 60, s % 60);
+                        println!(
+                            "[benchmark]   … {label} laeuft seit {}:{:02}",
+                            s / 60,
+                            s % 60
+                        );
                     } else {
                         println!(
                             "[benchmark]   … {label} laeuft seit {}:{:02} · {}",
@@ -160,7 +160,12 @@ impl StageTimer {
                 }
             }
         });
-        Self { started, stop, detail, handle: Some(handle) }
+        Self {
+            started,
+            stop,
+            detail,
+            handle: Some(handle),
+        }
     }
 
     /// Teilbarer Griff auf die Detailzeile, zum Durchreichen in tiefere Ebenen.

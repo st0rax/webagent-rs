@@ -93,7 +93,10 @@ pub fn looks_like_protocol_json(text: &str) -> bool {
 pub fn classify_run(facts: &RunFacts) -> FailureClass {
     let all = facts.brain_texts.join("\n");
 
-    if facts.brain_texts.iter().any(|t| crate::brain::is_retryable_empty_response(t))
+    if facts
+        .brain_texts
+        .iter()
+        .any(|t| crate::brain::is_retryable_empty_response(t))
         || crate::benchmark::is_external_block(&facts.status)
     {
         return FailureClass::ExternalBlock;
@@ -136,8 +139,16 @@ pub fn read_run(dir: &Path) -> Option<RunFacts> {
         }
     }
     Some(RunFacts {
-        brain: meta.get("brain_id").and_then(|x| x.as_str()).unwrap_or("?").to_string(),
-        status: meta.get("status").and_then(|x| x.as_str()).unwrap_or("?").to_string(),
+        brain: meta
+            .get("brain_id")
+            .and_then(|x| x.as_str())
+            .unwrap_or("?")
+            .to_string(),
+        status: meta
+            .get("status")
+            .and_then(|x| x.as_str())
+            .unwrap_or("?")
+            .to_string(),
         cycles: meta.get("cycles").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
         brain_texts,
         protocol_errors,
@@ -245,14 +256,22 @@ mod tests {
         // Prosa ohne jedes erkennbare Format: hier hat das Brain wirklich
         // danebengelegen. Wuerde das als Harness-Bug durchgehen, verschwaende
         // die Klassifikation ihren Zweck.
-        let f = facts("protocol_error", &["Ich wuerde vorschlagen, die Datei anzupassen."], 2);
+        let f = facts(
+            "protocol_error",
+            &["Ich wuerde vorschlagen, die Datei anzupassen."],
+            2,
+        );
         assert_eq!(classify_run(&f), FailureClass::ProtocolViolation);
         assert!(classify_run(&f).blames_brain());
     }
 
     #[test]
     fn max_cycles_without_parse_errors_is_a_budget_problem() {
-        let f = facts("max_cycles", &["{\"protocol\":\"webagent/1\",\"actions\":[]}"], 0);
+        let f = facts(
+            "max_cycles",
+            &["{\"protocol\":\"webagent/1\",\"actions\":[]}"],
+            0,
+        );
         assert_eq!(classify_run(&f), FailureClass::CycleBudget);
         assert!(classify_run(&f).blames_brain());
     }
@@ -267,13 +286,19 @@ mod tests {
     fn external_block_beats_everything_else() {
         // Auch mit Parse-Fehlern: wer nie geantwortet hat, hat nichts falsch
         // gemacht.
-        let f = facts("protocol_error", &["No response, Please try again later."], 3);
+        let f = facts(
+            "protocol_error",
+            &["No response, Please try again later."],
+            3,
+        );
         assert_eq!(classify_run(&f), FailureClass::ExternalBlock);
     }
 
     #[test]
     fn json_protocol_is_recognised_as_an_attempt() {
-        assert!(looks_like_protocol_json(r#"{"protocol": "webagent/1", "actions": []}"#));
+        assert!(looks_like_protocol_json(
+            r#"{"protocol": "webagent/1", "actions": []}"#
+        ));
         assert!(!looks_like_protocol_json("nur prosa"));
         assert!(has_raw_marker("bla\nWEBAGENT/1 WRITE\nid: x"));
         assert!(!has_raw_marker("bla blubb"));

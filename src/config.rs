@@ -436,7 +436,10 @@ fn copy_sparse_rec(
             .any(|w| w.eq_ignore_ascii_case(&name));
 
         if ty.is_dir() {
-            if SPARSE_SKIP_DIRS.iter().any(|s| s.eq_ignore_ascii_case(&name)) {
+            if SPARSE_SKIP_DIRS
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case(&name))
+            {
                 continue;
             }
             if hit {
@@ -1167,7 +1170,10 @@ mod tests {
             "Local Storage kopiert"
         );
         assert!(!d_def.join("History").exists(), "History bleibt weg");
-        assert!(!d_web.join("Crashpad").exists(), "Crashpad wird uebersprungen");
+        assert!(
+            !d_web.join("Crashpad").exists(),
+            "Crashpad wird uebersprungen"
+        );
         assert!(!d_def.join("Cache").exists(), "Cache wird uebersprungen");
 
         let _ = fs::remove_dir_all(&src);

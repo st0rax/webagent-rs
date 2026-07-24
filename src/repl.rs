@@ -181,13 +181,19 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     // WICHTIG: vor dem `/autoresearch`-Zweig prüfen, sonst schluckt der (bzw. der
     // Unknown-Fallback) den `.self`-Befehl. Syntax: /autoresearch.self [N] [--top K].
     if trimmed == "/autoresearch.self" || trimmed.starts_with("/autoresearch.self ") {
-        let rest = trimmed.strip_prefix("/autoresearch.self").unwrap_or("").trim();
+        let rest = trimmed
+            .strip_prefix("/autoresearch.self")
+            .unwrap_or("")
+            .trim();
         let mut suggestions: Option<usize> = None;
         let mut top: Option<usize> = None;
         let mut it = rest.split_whitespace();
         while let Some(tok) = it.next() {
             if tok == "--top" {
-                top = it.next().and_then(|v| v.parse::<usize>().ok()).filter(|n| *n >= 1);
+                top = it
+                    .next()
+                    .and_then(|v| v.parse::<usize>().ok())
+                    .filter(|n| *n >= 1);
             } else if let Some(v) = tok.strip_prefix("--top=") {
                 top = v.parse::<usize>().ok().filter(|n| *n >= 1);
             } else if suggestions.is_none() {
@@ -581,11 +587,17 @@ impl ReplSession {
             ("<Aufgabe>", "autonom bearbeiten (Plan/Act/Observe)"),
             ("/chat <text>", "einmalige Frage ans aktive Brain"),
             ("/model <brain>", "aktives Brain wechseln"),
-            ("/goal <text>", "stehendes Ziel setzen (Kontext jeder Aufgabe)"),
+            (
+                "/goal <text>",
+                "stehendes Ziel setzen (Kontext jeder Aufgabe)",
+            ),
             ("/swarm <text>", "alle Brains fragen + Synthese"),
             ("/pool [n]", "Worker-Pool-Dashboard (TUI)"),
             ("/diff", "Git-Änderungen im Arbeitsverzeichnis"),
-            ("/autoresearch.self [N]", "Swarm-Selbstbewertung (Prioritäten)"),
+            (
+                "/autoresearch.self [N]",
+                "Swarm-Selbstbewertung (Prioritäten)",
+            ),
             ("/wiki [suche|lint]", "Wiki-Gedächtnis"),
             ("/score", "Leistungsindex je Brain"),
             ("/canary", "alle Brains kurz anpingen"),
@@ -1325,7 +1337,12 @@ impl ReplSession {
         };
         let profiles: Vec<(String, std::path::PathBuf)> = targets
             .iter()
-            .map(|tb| (tb.clone(), crate::config::prepare_swarm_profile(&run_id, tb)))
+            .map(|tb| {
+                (
+                    tb.clone(),
+                    crate::config::prepare_swarm_profile(&run_id, tb),
+                )
+            })
             .collect();
         let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
             profiles
@@ -1346,8 +1363,7 @@ impl ReplSession {
 
         // Ergebnis als Wiki-Seite ablegen (Dogfooding der Wiki-Memory).
         if !report.catalog.is_empty() {
-            let wiki =
-                crate::wiki_memory::WikiMemory::new(data_dir().join("memory").join("wiki"));
+            let wiki = crate::wiki_memory::WikiMemory::new(data_dir().join("memory").join("wiki"));
             let title = format!("self-research-{run_id}");
             let body = crate::self_research::format_report(&report);
             match wiki.write_page(&title, &body) {
@@ -1808,12 +1824,15 @@ mod tests {
         // Breite muessen zur gleichen Rahmenbreite fuehren.
         let lines = vec![
             "[1;36mhallo[0m".to_string(), // sichtbar 5
-            "welt!".to_string(),                    // sichtbar 5
+            "welt!".to_string(),            // sichtbar 5
         ];
         let out = boxed(&lines, 10);
         assert_eq!(out.len(), 4, "oben + 2 Inhalt + unten");
         let widths: Vec<usize> = out.iter().map(|l| visible_width(l)).collect();
-        assert!(widths.iter().all(|&w| w == widths[0]), "alle Rahmenzeilen gleich breit: {widths:?}");
+        assert!(
+            widths.iter().all(|&w| w == widths[0]),
+            "alle Rahmenzeilen gleich breit: {widths:?}"
+        );
         assert!(out[0].starts_with('╭') && out[0].ends_with('╮'));
         assert!(out[3].starts_with('╰') && out[3].ends_with('╯'));
     }
