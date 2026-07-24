@@ -33,6 +33,9 @@ pub enum FailureClass {
     CycleBudget,
     /// Wall-Timeout.
     Timeout,
+    /// Das Brain meldete fertig, obwohl JEDER Edit-Versuch fehlschlug — die
+    /// Erfolgsmeldung ist nicht durch eine Datei-Aenderung gedeckt.
+    FalseDone,
     /// Alles andere.
     Other,
 }
@@ -44,6 +47,7 @@ impl FailureClass {
             FailureClass::ExternalBlock => "extern blockiert",
             FailureClass::HarnessParseBug => "HARNESS-BUG",
             FailureClass::ProtocolViolation => "Protokollverstoss",
+            FailureClass::FalseDone => "Falschmeldung (kein Edit)",
             FailureClass::CycleBudget => "Zyklenbudget",
             FailureClass::Timeout => "Timeout",
             FailureClass::Other => "sonstiges",
@@ -54,7 +58,12 @@ impl FailureClass {
     pub fn blames_brain(&self) -> bool {
         matches!(
             self,
-            FailureClass::ProtocolViolation | FailureClass::CycleBudget | FailureClass::Timeout
+            FailureClass::ProtocolViolation
+                | FailureClass::CycleBudget
+                | FailureClass::Timeout
+                // Erfolg behaupten, ohne editiert zu haben, ist Brain-Verhalten
+                // — der Harness hat die Fehler sauber zurueckgemeldet.
+                | FailureClass::FalseDone
         )
     }
 }
@@ -110,6 +119,7 @@ pub fn classify_run(facts: &RunFacts) -> FailureClass {
 
     match facts.status.as_str() {
         "done" => FailureClass::Passed,
+        "false_done" => FailureClass::FalseDone,
         "max_cycles" => FailureClass::CycleBudget,
         "wall_timeout" => FailureClass::Timeout,
         "protocol_error" => FailureClass::ProtocolViolation,
@@ -280,6 +290,16 @@ mod tests {
     fn a_clean_run_passes() {
         let f = facts("done", &["{\"protocol\":\"webagent/1\",\"actions\":[]}"], 0);
         assert_eq!(classify_run(&f), FailureClass::Passed);
+    }
+
+    /// Eine Fertig-Meldung ohne gedeckte Datei-Aenderung darf nicht als
+    /// bestanden und nicht als diffuses "sonstiges" durchgehen.
+    #[test]
+    fn false_done_is_blamed_on_the_brain_not_the_harness() {
+        let f = facts("false_done", &["Fertig, alle Tests gruen."], 0);
+        assert_eq!(classify_run(&f), FailureClass::FalseDone);
+        assert!(classify_run(&f).blames_brain());
+        assert_ne!(classify_run(&f), FailureClass::Passed);
     }
 
     #[test]

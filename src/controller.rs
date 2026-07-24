@@ -26,6 +26,11 @@ const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 const MEMORY_CONTEXT_LIMIT: usize = 5;
 const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
 
+/// Wie oft bei „fertig ohne durchgelaufenen Edit" nachgehakt wird, bevor der
+/// Run als `false_done` endet. Zwei Versuche reichen: wer den Anker nach dem
+/// zweiten Hinweis nicht trifft, trifft ihn auch beim fuenften nicht.
+const MAX_NO_CHANGE_NUDGES: u32 = 2;
+
 /// Exponential-Backoff-Basis/-Obergrenze zwischen incomplete-Retries.
 const INCOMPLETE_RETRY_BACKOFF_BASE_MS: u64 = 500;
 const INCOMPLETE_RETRY_BACKOFF_CAP_MS: u64 = 8_000;
@@ -151,6 +156,18 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// Stale-Antwort aus einer alten Konversation als sofortiges message-done,
     /// ohne je gearbeitet zu haben (Pfad c des Phantom-Done-Komplexes).
     act_steps: u32,
+    /// Versuchte edit/write-Actions in DIESEM Run.
+    file_actions_tried: u32,
+    /// Davon mit exit 0 durchgelaufen.
+    ///
+    /// Deckt den Fall ab, den `act_steps` NICHT sieht: das Brain arbeitet
+    /// sichtbar (Shell-Reads, Edit-Versuche), aber jeder Edit scheitert am
+    /// Anker (`old_string nicht gefunden`) — und es meldet trotzdem „fertig"
+    /// samt erfundenem Testergebnis. Real 2026-07-24, vier Laeufe in Folge.
+    file_writes_ok: u32,
+    /// Wie oft schon wegen „fertig ohne Edit" nachgehakt wurde (Deckel gegen
+    /// Endlos-Nachhaken bei einem Brain, das partout nicht editiert).
+    no_change_nudges: u32,
     /// Optionale Wall-Deadline (Sekunden) statt `config::max_run_wall_secs()`.
     /// Pro Controller injizierbar — Tests duerfen KEINE prozessglobale
     /// Env-Variable setzen (das brach parallel laufende Tests, Fund 2026-07-21).
@@ -233,6 +250,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             completed_actions: HashMap::new(),
             incomplete_retries: 0,
             act_steps: 0,
+            file_actions_tried: 0,
+            file_writes_ok: 0,
+            no_change_nudges: 0,
             wall_secs_override: None,
             wall_deadline_at: None,
             progress: None,
@@ -509,6 +529,44 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         }
     }
 
+    /// Hakt nach, wenn das Brain „fertig" meldet, obwohl jeder Edit-Versuch
+    /// gescheitert ist.
+    ///
+    /// Den Anstoss gab es bisher nur im Benchmark; `webagent run` — also genau
+    /// der Delegationspfad — nahm die Falschmeldung ungeprueft an. Deckel bei
+    /// [`MAX_NO_CHANGE_NUDGES`], damit ein Brain, das partout nicht editiert,
+    /// den Run nicht endlos verlaengert.
+    ///
+    /// `None` = kein Anlass zum Nachhaken (oder Deckel erreicht), der Run darf
+    /// enden.
+    fn no_change_nudge(&mut self) -> Option<String> {
+        if self.file_actions_tried == 0 || self.file_writes_ok > 0 {
+            return None;
+        }
+        if self.no_change_nudges >= MAX_NO_CHANGE_NUDGES {
+            return None;
+        }
+        self.no_change_nudges += 1;
+        if !self.quiet {
+            println!(
+                "[warn] fertig gemeldet, aber kein Edit ist durchgelaufen — \
+                 Anstoss {}/{MAX_NO_CHANGE_NUDGES}.",
+                self.no_change_nudges
+            );
+        }
+        Some(
+            "[Controller] KEIN EDIT ERKANNT — du meldest fertig, aber JEDER \
+             deiner Edit-/Write-Versuche ist fehlgeschlagen (siehe die \
+             exit_code-1-Observations oben). Die Datei ist unveraendert. Eine \
+             Zusammenfassung oder ein behauptetes Testergebnis zaehlt NICHT. \
+             Lies den Ist-Stand der Zieldatei neu ein und kopiere den \
+             old_string EXAKT daraus (inkl. Einrueckung), dann gib die \
+             Aenderung erneut aus. Behaupte keinen Erfolg, ohne editiert zu \
+             haben."
+                .to_string(),
+        )
+    }
+
     /// Begrenzt Observation auf MAX_OBSERVATION_CHARS und archiviert vollständige Ausgabe.
     fn bounded_observation(&mut self, action_id: &str, observation: &str) -> String {
         if observation.len() <= MAX_OBSERVATION_CHARS || self.meta.is_none() {
@@ -584,6 +642,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
             match action.action_type {
                 protocol::ActionType::Finish => {
+                    if let Some(nudge) = self.no_change_nudge() {
+                        observations.push(nudge);
+                        continue;
+                    }
                     finished = true;
                     let mut extra = HashMap::new();
                     extra.insert(
@@ -606,6 +668,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         println!("{}", action.text);
                     }
                     self.record_completed_action(&action.id, &action.text);
+                    if let Some(nudge) = self.no_change_nudge() {
+                        observations.push(nudge);
+                        continue;
+                    }
                     finished = true;
                     break;
                 }
@@ -700,8 +766,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     } else {
                         crate::file_actions::apply_write(&action.path, &action.content)
                     };
+                    self.file_actions_tried += 1;
                     let (stdout, stderr, exit_code) = match result {
-                        Ok(msg) => (msg, String::new(), Some(0)),
+                        Ok(msg) => {
+                            self.file_writes_ok += 1;
+                            (msg, String::new(), Some(0))
+                        }
                         Err(msg) => (String::new(), msg, Some(1)),
                     };
                     let observation = protocol::format_observation(
@@ -933,6 +1003,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         let runs_dir = self.runs_dir.clone();
         // Zählt nur die Act-Steps DIESES Aufrufs (REPL-Sessions rufen mehrfach).
         self.act_steps = 0;
+        self.file_actions_tried = 0;
+        self.file_writes_ok = 0;
+        self.no_change_nudges = 0;
 
         let (mut meta, mut transcript, task) = if let Some(rid) = resume_id {
             let meta = self.run_store.load(rid)?;
@@ -1244,6 +1317,33 @@ per edit/write-Action pflegbar):\n",
             meta.status = if finished { "done" } else { "max_cycles" }.to_string();
         }
 
+        // „fertig", obwohl JEDER Edit-Versuch gescheitert ist, ist keine
+        // Erledigung, sondern eine Falschmeldung — real 2026-07-24: alle
+        // edit-Actions liefen auf `old_string nicht gefunden` (exit 1), das
+        // Brain meldete trotzdem fertig samt erfundener Testzahl. Das darf
+        // nicht als `done` durchgehen, sonst vertraut der Orchestrator einem
+        // leeren Diff.
+        if meta.status == "done" && self.file_actions_tried > 0 && self.file_writes_ok == 0 {
+            meta.status = "false_done".to_string();
+            meta.extra.insert(
+                "suspect_no_file_change".to_string(),
+                serde_json::Value::Bool(true),
+            );
+            println!(
+                "[warn] status=false_done: {} Edit/Write-Versuch(e), aber KEINER \
+                 erfolgreich — die Fertig-Meldung ist nicht gedeckt. Diff pruefen.",
+                self.file_actions_tried
+            );
+        }
+        meta.extra.insert(
+            "file_actions_tried".to_string(),
+            serde_json::Value::Number(self.file_actions_tried.into()),
+        );
+        meta.extra.insert(
+            "file_writes_ok".to_string(),
+            serde_json::Value::Number(self.file_writes_ok.into()),
+        );
+
         // Beobachtbarkeit für Pfad c (Phantom-/Stale-Done): wie viel wurde
         // wirklich gearbeitet? `done` ohne einen einzigen Act-Step ist bei
         // Arbeitsaufträgen verdächtig (Stale-Antwort aus alter Konversation).
@@ -1512,6 +1612,22 @@ mod tests {
         .to_string()
     }
 
+    /// Edit-Action auf eine Datei, deren `old_string` garantiert NICHT
+    /// vorkommt — bildet den realen Fall nach: Anker daneben, exit 1.
+    fn failing_edit_response(action_id: &str, path: &str) -> String {
+        serde_json::json!({
+            "protocol": "webagent/1",
+            "actions": [{
+                "id": action_id,
+                "type": "edit",
+                "path": path,
+                "old_string": "diesen-anker-gibt-es-nicht",
+                "new_string": "egal"
+            }]
+        })
+        .to_string()
+    }
+
     fn shell_response(action_id: &str, command: &str) -> String {
         serde_json::json!({
             "protocol": "webagent/1",
@@ -1523,6 +1639,97 @@ mod tests {
             }]
         })
         .to_string()
+    }
+
+    /// Legt eine Datei an, deren Inhalt den Test-Anker garantiert nicht enthaelt.
+    fn datei_ohne_anker(data_dir: &std::path::Path) -> String {
+        let p = data_dir.join("ziel.txt");
+        std::fs::create_dir_all(data_dir).ok();
+        std::fs::write(&p, "unveraenderter inhalt\n").unwrap();
+        p.to_string_lossy().to_string()
+    }
+
+    /// Der reale Fall vom 2026-07-24: jeder Edit scheitert am Anker, das Brain
+    /// meldet trotzdem fertig. Das darf nicht als `done` durchgehen.
+    #[test]
+    fn fertig_trotz_gescheiterter_edits_ist_false_done() {
+        let data_dir = unique_data_dir();
+        let ziel = datei_ohne_anker(&data_dir);
+        let edit = failing_edit_response("e-1", &ziel);
+        // Genug Finish-Antworten, um beide Anstoesse abzuarbeiten.
+        let brain = MockBrain::new().with_responses(
+            vec![
+                &edit,
+                &finish_response(),
+                &finish_response(),
+                &finish_response(),
+            ],
+            vec![true, true, true, true],
+        );
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 10, data_dir.clone());
+
+        let meta = controller
+            .run("Aendere die Datei", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "false_done", "meta.extra={:?}", meta.extra);
+        assert_eq!(
+            meta.extra.get("suspect_no_file_change"),
+            Some(&serde_json::Value::Bool(true))
+        );
+        assert_eq!(
+            meta.extra.get("file_writes_ok"),
+            Some(&serde_json::Value::Number(0.into()))
+        );
+        // Die Datei ist wirklich unangetastet.
+        assert_eq!(
+            std::fs::read_to_string(&ziel).unwrap(),
+            "unveraenderter inhalt\n"
+        );
+    }
+
+    /// Der Anstoss darf nicht endlos nachhaken — sonst haengt ein Brain, das
+    /// partout nicht editiert, den Run bis zum Wall-Timeout auf.
+    #[test]
+    fn anstoss_bei_fertig_ohne_edit_ist_gedeckelt() {
+        let data_dir = unique_data_dir();
+        let ziel = datei_ohne_anker(&data_dir);
+        let edit = failing_edit_response("e-1", &ziel);
+        let brain = MockBrain::new().with_responses(
+            vec![
+                &edit,
+                &finish_response(),
+                &finish_response(),
+                &finish_response(),
+                &finish_response(),
+            ],
+            vec![true, true, true, true, true],
+        );
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 20, data_dir.clone());
+
+        let meta = controller
+            .run("Aendere die Datei", "mock", None, false)
+            .unwrap();
+
+        // Der Run endet (kein Endlos-Nachhaken) und ist als Falschmeldung markiert.
+        assert_eq!(meta.status, "false_done");
+    }
+
+    /// Gegenprobe: ein Run ohne jeden Datei-Versuch (reine Frage) bleibt `done`.
+    /// Der Waechter darf nur bei GESCHEITERTEN Edits zuschlagen.
+    #[test]
+    fn reine_antwort_ohne_dateiaktion_bleibt_done() {
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, unique_data_dir());
+
+        let meta = controller
+            .run("Nur eine Frage", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "done");
     }
 
     #[test]
