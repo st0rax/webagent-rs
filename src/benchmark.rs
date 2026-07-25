@@ -411,6 +411,7 @@ pub fn is_external_block(status: &str) -> bool {
         "brain_unavailable",
         "blocked",
         "login_required",
+        "loginrequired",
         "cloudflare",
         "rate_limit",
     ]
@@ -425,6 +426,17 @@ pub fn is_external_block(status: &str) -> bool {
 pub fn is_protocol_fault(status: &str) -> bool {
     let low = status.to_lowercase();
     low.contains("protocol_error") || low.contains("protocol_invalid")
+}
+
+/// Diese Status werden nicht im selben Brain erneut versucht: der Controller
+/// hat bereits terminal abgebrochen. Sie bleiben im Score sichtbar, aber der
+/// nächste geplante Kandidat übernimmt auf frischer Basis.
+pub fn is_nonretryable_run_fault(status: &str) -> bool {
+    let low = status.to_lowercase();
+    is_protocol_fault(&low)
+        || low.contains("wall_timeout")
+        || low.contains("false_done")
+        || low.contains("max_cycles")
 }
 
 /// `true`, wenn ein Versuch objektiv besteht (geändert UND gebaut UND grün).
@@ -1146,14 +1158,14 @@ where
                             t.finish("Brain nicht verfuegbar (extern)");
                             break;
                         }
-                        if is_protocol_fault(&status) {
-                            protocol_fault = true;
+                        if is_nonretryable_run_fault(&status) {
+                            protocol_fault = is_protocol_fault(&status);
                             stalled = true;
-                            t.finish("Protokollfehler — Brain für diese Aufgabe beendet");
+                            t.finish("Terminaler Run-Fehler — Brain für diese Aufgabe beendet");
                             bench_say!(
                                 crate::bench_events::Level::Fail,
                                 Some(brain),
-                                "{brain}: Protokollfehler — keine weiteren Retries für diese Aufgabe."
+                                "{brain}: terminaler Run-Status `{status}` — keine weiteren Retries für diese Aufgabe."
                             );
                             break;
                         }
@@ -1291,7 +1303,7 @@ where
                     if protocol_fault {
                         "Protokollfehler"
                     } else {
-                        "kein Fortschritt"
+                        "terminaler Fehler oder kein Fortschritt"
                     }
                 );
             }
@@ -2203,6 +2215,7 @@ error: could not compile `webagent` (lib test)",
         assert!(is_external_block("brain_unavailable"));
         assert!(is_external_block("blocked: Nachrichtenlimit erreicht"));
         assert!(is_external_block("login_required"));
+        assert!(is_external_block("loginrequired"));
         assert!(is_external_block("cloudflare"));
         // ... echte Fehlversuche NICHT, sonst verschwindet Unfaehigkeit aus
         // der Statistik und der Score wird bedeutungslos.
@@ -2218,6 +2231,15 @@ error: could not compile `webagent` (lib test)",
         assert!(is_protocol_fault("Protocol_Invalid"));
         assert!(!is_protocol_fault("rate_limit"));
         assert!(!is_protocol_fault("done"));
+    }
+
+    #[test]
+    fn terminal_run_faults_are_not_retried() {
+        assert!(is_nonretryable_run_fault("protocol_error"));
+        assert!(is_nonretryable_run_fault("wall_timeout"));
+        assert!(is_nonretryable_run_fault("false_done"));
+        assert!(is_nonretryable_run_fault("max_cycles"));
+        assert!(!is_nonretryable_run_fault("done"));
     }
 
     #[test]
