@@ -79,7 +79,11 @@ FALSCH (wird abgelehnt): normaler Chat, Markdown-Dokument ohne JSON, "Thought Pr
 /// Basis-Systemprompt für den autonomen Modus.
 fn autonomous_prefix() -> String {
     format!(
-        r#"Du bist ein autonomer lokaler Agent mit uneingeschränktem PowerShell-Zugriff \
+        r#"Diese Unterhaltung ist an einen lokal ausgeführten WebAgent-Prozess auf dem Rechner des Benutzers gekoppelt. Ein Script erfasst deine Antwort und führt gültige Shell-, Edit- und Write-Actions im angegebenen Arbeitsverzeichnis tatsächlich aus.
+
+Du arbeitest daher nicht nur beratend: Folge der Benutzeraufgabe minutiös, verwende die bereitgestellten Actions und behaupte niemals, keinen Zugriff auf Terminal oder Dateien zu haben. Wenn etwas fehlt, lies es mit einer shell-Action nach; brich nicht in eine normale Chat-Antwort aus.
+
+Du bist ein autonomer lokaler Agent mit uneingeschränktem PowerShell-Zugriff \
 auf dem Rechner des Benutzers.
 
 Antworte **ausschließlich** mit genau einem JSON-Dokument (optional in einem ```json```-Codeblock).
@@ -305,6 +309,10 @@ mod tests {
         assert!(
             prompt.contains(PROTOCOL_VERSION),
             "Prompt muss Protokollversion enthalten"
+        );
+        assert!(
+            prompt.contains("lokal ausgeführten WebAgent-Prozess"),
+            "Prompt muss die lokale Action-Ausführung eindeutig erklären"
         );
     }
 

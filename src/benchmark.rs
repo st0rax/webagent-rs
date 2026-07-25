@@ -60,6 +60,10 @@ const EVAL_TIMEOUT_SECS: u64 = 300;
 const VOTE_TOP_K: usize = 10;
 /// Zeichen-Cap der Projektfakten im Sammel-Prompt (wie autoresearch-self).
 const FACTS_MAX_CHARS: usize = 1200;
+/// Zwei komplette Runden ohne einen bestandenen Kandidaten sind ein
+/// Fehlermuster, kein Erkenntnisgewinn. Der Supervisor beendet dann den
+/// Benchmark statt Kontingent mit derselben Sackgasse zu verbrennen.
+const MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS: usize = 2;
 
 /// Konfiguration eines Benchmark-Laufs.
 #[derive(Debug, Clone)]
@@ -412,6 +416,15 @@ pub fn is_external_block(status: &str) -> bool {
     ]
     .iter()
     .any(|p| low.contains(p))
+}
+
+/// Ein Protokollfehler ist weder ein Provider-Limit noch ein sinnvoller
+/// Reparaturfall: derselbe Browser-Run hat die Antwort bereits mehrfach
+/// zurückgewiesen. Für diese Aufgabe wird das Brain sofort als Fehlversuch
+/// gewertet; der nächste geplante Kandidat bekommt eine frische Chance.
+pub fn is_protocol_fault(status: &str) -> bool {
+    let low = status.to_lowercase();
+    low.contains("protocol_error") || low.contains("protocol_invalid")
 }
 
 /// `true`, wenn ein Versuch objektiv besteht (geändert UND gebaut UND grün).
@@ -868,7 +881,9 @@ pub(crate) struct HandoffQueue {
     queue: std::collections::VecDeque<(String, String, Option<String>)>,
     tried: std::collections::HashMap<String, Vec<String>>,
     dropped: std::collections::HashSet<String>,
+    #[allow(dead_code)]
     brains: Vec<String>,
+    #[allow(dead_code)]
     max_handoffs: usize,
 }
 
@@ -901,10 +916,16 @@ impl HandoffQueue {
             // Handoffs sind bereits beim Einreihen vermerkt; nur frische
             // Plan-Eintraege muessen hier nachgetragen werden.
             if from.is_none() {
-                self.tried
-                    .entry(effective.clone())
-                    .or_default()
-                    .push(brain.clone());
+                let tried = self.tried.entry(effective.clone()).or_default();
+                if tried.contains(&brain) {
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain.as_str()),
+                        "{brain}: bereits für diese Aufgabe reserviert — Doppelstart übersprungen."
+                    );
+                    continue;
+                }
+                tried.push(brain.clone());
             }
             return Some((brain, effective, from));
         }
@@ -916,6 +937,7 @@ impl HandoffQueue {
     ///
     /// Die Reservierung passiert BEIM EINREIHEN, nicht erst beim Poppen —
     /// sonst waehlen zwei Stalls derselben Aufgabe dasselbe naechste Brain.
+    #[allow(dead_code)]
     pub(crate) fn on_stall(&mut self, brain: &str, effective: &str) -> Option<String> {
         let already = self.tried.entry(effective.to_string()).or_default();
         let cap = self.max_handoffs.max(1) + 1;
@@ -966,6 +988,7 @@ where
     let facts = crate::self_research::gather_facts(&config.workdir, FACTS_MAX_CHARS);
     let mut winners: Vec<(usize, String)> = Vec::new();
     let mut harvested: Vec<(String, String)> = Vec::new();
+    let mut unproductive_rounds = 0usize;
 
     let mut round = 0usize;
     loop {
@@ -1102,6 +1125,7 @@ where
             // Externe Blockade (Anbieter-Limit, Oberflaeche liefert nichts):
             // zaehlt NICHT als Kompetenz-Fehlschlag.
             let mut unavailable = false;
+            let mut protocol_fault = false;
 
             for iter in 1..=max_iter {
                 iterations = iter;
@@ -1120,6 +1144,17 @@ where
                         if is_external_block(&status) {
                             unavailable = true;
                             t.finish("Brain nicht verfuegbar (extern)");
+                            break;
+                        }
+                        if is_protocol_fault(&status) {
+                            protocol_fault = true;
+                            stalled = true;
+                            t.finish("Protokollfehler — Brain für diese Aufgabe beendet");
+                            bench_say!(
+                                crate::bench_events::Level::Fail,
+                                Some(brain),
+                                "{brain}: Protokollfehler — keine weiteren Retries für diese Aufgabe."
+                            );
                             break;
                         }
                         t.finish(&format!("Brain fertig ({c} Zyklen)"));
@@ -1245,21 +1280,20 @@ where
                 }
             }
             if stalled {
-                // Weitergeben an das erste Brain, das diese Aufgabe noch nicht
-                // hatte. Nicht endlos: sonst reicht ein unloesbarer Vorschlag
-                // die Runde durch alle acht Brains und frisst die Zeit auf.
-                match hq.on_stall(brain, effective) {
-                    Some(nb) => bench_say!(
-                        crate::bench_events::Level::Warn,
-                        Some(brain),
-                        "{brain}: {stall_limit}x kein Fortschritt — Aufgabe geht an {nb}."
-                    ),
-                    None => bench_say!(
-                        crate::bench_events::Level::Fail,
-                        Some(brain),
-                        "{brain}: {stall_limit}x kein Fortschritt — niemand mehr uebrig, Aufgabe faellt aus."
-                    ),
-                }
+                // Im Turnier hat jedes Brain den Sieger bereits als eigenen
+                // Plan-Eintrag. Ein zusätzlicher Handoff würde denselben
+                // Kandidaten doppelt starten; deshalb nur protokollieren und
+                // den nächsten regulär geplanten Kandidaten abwarten.
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    Some(brain),
+                    "{brain}: {} — nächster regulärer Kandidat übernimmt einmalig.",
+                    if protocol_fault {
+                        "Protokollfehler"
+                    } else {
+                        "kein Fortschritt"
+                    }
+                );
             }
             let latency_ms = started.elapsed().as_millis() as u64;
 
@@ -1434,6 +1468,7 @@ where
         // Ernte: genau EIN Patch gewinnt das Turnier. Mehrere Kandidaten
         // hintereinander einzuspielen lässt eine Runde unvorhersehbar wachsen
         // und war die Ursache für fachfremde Nebenänderungen.
+        let harvest_count_before = harvested.len();
         if config.harvest {
             if harvest_pool.is_empty() {
                 bench_say!(
@@ -1471,6 +1506,19 @@ where
                         reset_repo(&config.workdir, &head)?;
                     }
                 }
+            }
+        }
+
+        // Ein Harvest in dieser Runde setzt die Produktivitätsuhr zurück;
+        // andernfalls beendet der autonome Loop sich nach zwei Sackgassen.
+        if harvested.len() > harvest_count_before {
+            unproductive_rounds = 0;
+        } else {
+            unproductive_rounds += 1;
+            if unproductive_rounds >= MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS {
+                return Err(format!(
+                    "Benchmark nach {unproductive_rounds} unproduktiven Runden angehalten — kein Kandidat bestand Build/Test/Scope-Gates."
+                ));
             }
         }
     }
@@ -2162,6 +2210,14 @@ error: could not compile `webagent` (lib test)",
         assert!(!is_external_block("max_cycles"));
         assert!(!is_external_block("brain_incomplete"));
         assert!(!is_external_block("done"));
+    }
+
+    #[test]
+    fn protocol_faults_stop_retries_without_becoming_external_blocks() {
+        assert!(is_protocol_fault("protocol_error"));
+        assert!(is_protocol_fault("Protocol_Invalid"));
+        assert!(!is_protocol_fault("rate_limit"));
+        assert!(!is_protocol_fault("done"));
     }
 
     #[test]
