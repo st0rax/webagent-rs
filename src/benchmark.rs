@@ -635,6 +635,38 @@ pub fn validate_harvest_patch(patch: &str) -> Result<Vec<String>, String> {
     Ok(paths)
 }
 
+/// Prüft zusätzlich zum Datei-Scope den fachlichen Auftrag. Private Helfer und
+/// Testfunktionen sind normal; eine neue öffentliche API ist dagegen nur dann
+/// im Scope, wenn die verfeinerte Aufgabe genau diese Funktion verlangt.
+pub fn validate_task_scope(patch: &str, task: &str) -> Result<Vec<String>, String> {
+    let paths = validate_harvest_patch(patch)?;
+    let expected = proposed_fn_name(task);
+    let added_public: Vec<String> = patch
+        .lines()
+        .filter_map(|line| line.strip_prefix("+pub fn "))
+        .map(|rest| {
+            rest.chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect::<String>()
+        })
+        .filter(|name| !name.is_empty())
+        .collect();
+    if !added_public.is_empty() {
+        let unexpected: Vec<String> = added_public
+            .iter()
+            .filter(|name| expected.as_deref() != Some(name.as_str()))
+            .cloned()
+            .collect();
+        if !unexpected.is_empty() {
+            return Err(format!(
+                "neue öffentliche Funktion(en) außerhalb des Auftrags: {}",
+                unexpected.join(", ")
+            ));
+        }
+    }
+    Ok(paths)
+}
+
 /// Zahl der zusätzlichen positiven Score-Ereignisse für einen Scope-Verstoß.
 /// Ein Verstoß startet immer mit einem Malus. Liefert der Patch aber einen
 /// vollständigen, objektiv nachgewiesenen Nutzen (Build, zusätzliche Tests und
@@ -1259,7 +1291,7 @@ where
             let scope_error = patch_scope.as_ref().and_then(|(patch, capture_error)| {
                 capture_error
                     .clone()
-                    .or_else(|| validate_harvest_patch(patch).err())
+                    .or_else(|| validate_task_scope(patch, effective).err())
             });
             let scope_lint_ok =
                 if scope_error.is_some() && is_pass(did_change, compiled, tests_passed) {
@@ -1347,7 +1379,7 @@ where
             if config.harvest && is_pass(did_change, compiled, tests_passed) {
                 match patch_scope {
                     Some((patch, None)) if !patch.trim().is_empty() => {
-                        match validate_harvest_patch(&patch) {
+                        match validate_task_scope(&patch, effective) {
                             Ok(paths) => {
                                 bench_say!(
                                 crate::bench_events::Level::Pass,
@@ -1880,6 +1912,22 @@ mod tests {
         assert!(validate_harvest_patch(patch)
             .unwrap_err()
             .contains("gesperrten Pfad"));
+    }
+
+    #[test]
+    fn task_scope_rejects_unrequested_public_api() {
+        let patch = "diff --git a/src/benchmark.rs b/src/benchmark.rs\n--- a/src/benchmark.rs\n+++ b/src/benchmark.rs\n@@ -1 +1 @@\n+pub fn surprise_feature() {}\n";
+        let task = "Ändere genau eine Funktion: pub fn requested_feature() -> bool";
+        assert!(validate_task_scope(patch, task)
+            .unwrap_err()
+            .contains("surprise_feature"));
+    }
+
+    #[test]
+    fn task_scope_allows_requested_public_api_and_private_helper() {
+        let patch = "diff --git a/src/benchmark.rs b/src/benchmark.rs\n--- a/src/benchmark.rs\n+++ b/src/benchmark.rs\n@@ -1 +1 @@\n+pub fn requested_feature() -> bool { helper() }\n+fn helper() -> bool { true }\n";
+        let task = "Implementiere pub fn requested_feature() -> bool";
+        assert!(validate_task_scope(patch, task).is_ok());
     }
 
     #[test]
