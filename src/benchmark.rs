@@ -43,7 +43,7 @@ use crate::self_research::SelfResearchReport;
 macro_rules! bench_say {
     ($level:expr, $brain:expr, $($arg:tt)*) => {{
         let text = format!($($arg)*);
-        println!("[benchmark] {text}");
+        crate::bench_events::print_line(&format!("[benchmark] {text}"));
         crate::bench_events::emit($level, $brain, &text);
     }};
 }

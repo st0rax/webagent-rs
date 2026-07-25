@@ -476,6 +476,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
             return 1;
         }
     };
+    crate::bench_events::set_console_output(false);
 
     // --- Worker-Pool im Hintergrund-Thread ---
     let mut pool = WorkerPool::new(
@@ -687,6 +688,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
     let _ = handle.join();
     let _ = terminal::disable_raw_mode();
     let _ = io::stdout().execute(LeaveAlternateScreen);
+    crate::bench_events::set_console_output(true);
     exit_code
 }
 

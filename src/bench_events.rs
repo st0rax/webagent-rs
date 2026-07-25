@@ -11,13 +11,42 @@
 //! oder Meldungen verloren gehen.
 
 use std::collections::VecDeque;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex, OnceLock,
+};
 
 /// Wie viele Meldungen vorgehalten werden.
 ///
 /// Ein langer Lauf produziert Zehntausende Zeilen; der Puffer deckelt das,
 /// damit ein Nachtlauf nicht den Speicher frisst. Aeltestes faellt raus.
 pub const CAPACITY: usize = 2000;
+
+/// Die Ratatui-Ansicht besitzt den Terminal-Renderer. Direkte stdout/stderr-
+/// Zeilen würden ihren Alternate Screen zerreißen, daher werden sie während
+/// dieser Ansicht zentral unterdrückt. Die strukturierten Ereignisse bleiben
+/// davon unberührt und sind weiter im Dashboard sichtbar.
+static CONSOLE_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(true);
+
+pub fn set_console_output(enabled: bool) {
+    CONSOLE_OUTPUT_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+pub fn console_output_enabled() -> bool {
+    CONSOLE_OUTPUT_ENABLED.load(Ordering::Relaxed)
+}
+
+pub fn print_line(text: &str) {
+    if console_output_enabled() {
+        println!("{text}");
+    }
+}
+
+pub fn eprint_line(text: &str) {
+    if console_output_enabled() {
+        eprintln!("{text}");
+    }
+}
 
 /// Schweregrad einer Meldung — die TUI faerbt danach ein.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

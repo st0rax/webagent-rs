@@ -17,10 +17,10 @@
 //! wiederverwendet (kein Duplikat).
 
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -355,10 +355,10 @@ impl WorkerPool {
                 reason: "blocked: stale heartbeat or breaker open".to_string(),
                 failover_count: 0,
             };
-            eprintln!(
+            crate::bench_events::eprint_line(&format!(
                 "[worker_pool] BLOCK {} (pid {:?}, run_id {:?}) -> Cooldown bis {}; Reserve {} promoted. reason={}; phase={:?}",
                 brain, rec.original_pid, rec.run_id, cooldown_until, rec.standby.as_deref().unwrap_or("-"), rec.reason, rec.phase
-            );
+            ));
             failover.insert(brain.clone(), rec);
         }
 
@@ -409,10 +409,10 @@ impl WorkerPool {
                 }
                 state.set(&brain, STATUS_ACTIVE, "restored after cooldown");
                 actions.spawn.push(brain.clone());
-                eprintln!(
+                crate::bench_events::eprint_line(&format!(
                     "[worker_pool] RESTORE {} nach Cooldown (Standby {:?} eingezogen)",
                     brain, rec.standby
-                );
+                ));
             } else {
                 rec.failover_count += 1;
                 if rec.failover_count >= max_retries {
@@ -425,10 +425,10 @@ impl WorkerPool {
                         &format!("retired after {max_retries} failed restores"),
                     );
                     actions.retired.push(brain.clone());
-                    eprintln!(
+                    crate::bench_events::eprint_line(&format!(
                         "[worker_pool] RETIRE {} nach {} fehlgeschlagenen Restores (pid {:?})",
                         brain, rec.failover_count, rec.original_pid
-                    );
+                    ));
                 } else {
                     // Cooldown verlaengern, erneut versuchen.
                     let next = format_rfc3339(now + cooldown).unwrap_or_default();
@@ -448,12 +448,21 @@ impl WorkerPool {
     /// dem `bot2bot-worker`-Subcommand).
     fn spawn_worker(brain: &str, poll_secs: u64, headless: bool) -> std::io::Result<Child> {
         let exe = std::env::current_exe()?;
+        let log_dir = crate::config::data_dir().join("logs");
+        fs::create_dir_all(&log_dir)?;
+        let log = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_dir.join(format!("worker_{brain}.log")))?;
+        let stderr = log.try_clone()?;
         let mut cmd = Command::new(exe);
         cmd.arg("bot2bot-worker")
             .arg("--brain")
             .arg(brain)
             .arg("--poll-secs")
-            .arg(poll_secs.to_string());
+            .arg(poll_secs.to_string())
+            .stdout(Stdio::from(log))
+            .stderr(Stdio::from(stderr));
         if headless {
             cmd.arg("--headless");
         }
@@ -532,11 +541,11 @@ impl WorkerPool {
             let candidate_recovery =
                 select_auto_recovery(&state, OffsetDateTime::now_utc(), retry_after);
             for b in &candidate_recovery {
-                eprintln!(
+                crate::bench_events::eprint_line(&format!(
                     "[worker_pool] Auto-Recovery: {} wieder available (unavailable > {}s)",
                     b,
                     retry_after.as_secs()
-                );
+                ));
                 state.set(b, STATUS_AVAILABLE, "auto-recovery after retry timeout");
             }
         }

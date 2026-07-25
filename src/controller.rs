@@ -548,11 +548,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         }
         self.no_change_nudges += 1;
         if !self.quiet {
-            println!(
+            crate::bench_events::print_line(&format!(
                 "[warn] fertig gemeldet, aber kein Edit ist durchgelaufen — \
                  Anstoss {}/{MAX_NO_CHANGE_NUDGES}.",
                 self.no_change_nudges
-            );
+            ));
         }
         Some(
             "[Controller] KEIN EDIT ERKANNT — du meldest fertig, aber JEDER \
@@ -665,7 +665,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     let _ = transcript.append("message", &action.text, extra);
                     self.report_step("Antwort");
                     if !self.quiet {
-                        println!("{}", action.text);
+                        crate::bench_events::print_line(&action.text);
                     }
                     self.record_completed_action(&action.id, &action.text);
                     if let Some(nudge) = self.no_change_nudge() {
@@ -681,7 +681,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         crate::char_prefix(&action.command, 70)
                     ));
                     if !self.quiet {
-                        println!("[shell:{}] {}", action.id, action.command);
+                        crate::bench_events::print_line(&format!(
+                            "[shell:{}] {}",
+                            action.id, action.command
+                        ));
                     }
                     let result = match crate::shell_policy::evaluate(&action.command) {
                         crate::shell_policy::Decision::Deny(reason) => {
@@ -755,7 +758,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     let kind = if is_edit { "edit" } else { "write" };
                     self.report_step(&format!("{kind}: {}", action.path));
                     if !self.quiet {
-                        println!("[{kind}:{}] {}", action.id, action.path);
+                        crate::bench_events::print_line(&format!(
+                            "[{kind}:{}] {}",
+                            action.id, action.path
+                        ));
                     }
                     let result = if is_edit {
                         crate::file_actions::apply_edit(
@@ -1329,11 +1335,11 @@ per edit/write-Action pflegbar):\n",
                 "suspect_no_file_change".to_string(),
                 serde_json::Value::Bool(true),
             );
-            println!(
+            crate::bench_events::print_line(&format!(
                 "[warn] status=false_done: {} Edit/Write-Versuch(e), aber KEINER \
                  erfolgreich — die Fertig-Meldung ist nicht gedeckt. Diff pruefen.",
                 self.file_actions_tried
-            );
+            ));
         }
         meta.extra.insert(
             "file_actions_tried".to_string(),
@@ -1356,10 +1362,10 @@ per edit/write-Action pflegbar):\n",
                 "suspect_no_actions".to_string(),
                 serde_json::Value::Bool(true),
             );
-            println!(
+            crate::bench_events::print_line(
                 "[warn] status=done ohne ausgeführte Aktionen (act_steps=0) — \
                  Antwort könnte aus einer alten Konversation stammen. Bei \
-                 Arbeitsaufträgen Ergebnis-Artefakt prüfen."
+                 Arbeitsaufträgen Ergebnis-Artefakt prüfen.",
             );
         }
 
