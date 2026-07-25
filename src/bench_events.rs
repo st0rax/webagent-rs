@@ -134,7 +134,11 @@ mod tests {
         }
         assert_eq!(len(), CAPACITY, "Ringpuffer haelt den Deckel nicht ein");
         let snap = snapshot();
-        assert_eq!(snap.first().unwrap().text, "e50", "Aeltestes nicht verworfen");
+        assert_eq!(
+            snap.first().unwrap().text,
+            "e50",
+            "Aeltestes nicht verworfen"
+        );
         assert_eq!(snap.last().unwrap().text, format!("e{}", CAPACITY + 49));
 
         clear();

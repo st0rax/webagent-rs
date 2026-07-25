@@ -7,16 +7,16 @@
 //!   eine Rangliste; der Platz-1-Vorschlag ([`winner_from_report`]) wird zur
 //!   Benchmark-Aufgabe ([`build_task_prompt`]).
 //! - **Phase B (Implementieren + Messen, pro Brain sequenziell):** sauberen
-//!   Git-Tree prüfen, Baseline-SHA merken, das Brain über den Controller (mit
-//!   Wall-Timeout + kleinem `max_cycles`) SEINE zugeteilte Aufgabe bauen lassen
-//!   ([`assign_tasks`]), dann objektiv evaluieren (`did_change` →
+//!   Git-Tree prüfen, Baseline-SHA merken, mehrere Brains über den Controller
+//!   (mit Wall-Timeout + kleinem `max_cycles`) DENSELBEN Abstimmungssieger bauen
+//!   lassen, dann objektiv evaluieren (`did_change` →
 //!   `cargo build --lib` → `cargo test --lib`), das
 //!   [`CodeEvent`](crate::code_score::CodeEvent) speichern und den Tree hart auf
 //!   die Baseline zurücksetzen (`git reset --hard` + `git clean -fd`). Jedes
 //!   Brain startet identisch.
-//! - **Phase C (Ernten):** der Diff jedes BESTANDENEN Brains wird vor dem Reset
-//!   gesichert und danach wieder eingespielt, erneut gebaut/getestet und mit dem
-//!   Brain als Autor committet. Der Benchmark ist damit Fertigungsstraße UND
+//! - **Phase C (Ernten):** der beste Diff eines BESTANDENEN Brains wird vor dem
+//!   Reset gesichert und danach wieder eingespielt, erneut gebaut/getestet und
+//!   mit dem Brain als Autor committet. Der Benchmark ist damit Fertigungsstraße UND
 //!   Messgerät: er misst objektiv und behält, was die Messung bestanden hat.
 //!   `--no-harvest` schaltet auf reines Messen zurück.
 //!
@@ -169,7 +169,8 @@ pub fn build_task_prompt(winner: &str) -> String {
         "Implementiere folgenden Verbesserungsvorschlag im Rust-Projekt webagent-rs \
          (aktuelles Verzeichnis) mit dem Rohformat (WEBAGENT/1 EDIT/WRITE). Ergänze \
          Tests. `cargo test --lib` muss grün bleiben. Mache genau diese eine \
-         Änderung, nichts darüber hinaus.\n\nVorschlag: {winner}",
+         Änderung, nichts darüber hinaus. Ändere weder Cargo.toml noch Cargo.lock, \
+         füge keine Dependencies hinzu und bearbeite keine Build-/CI-Skripte.\n\nVorschlag: {winner}",
         winner = winner.trim()
     )
 }
@@ -597,6 +598,51 @@ fn capture_patch(workdir: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
+/// Schutzgitter für autonom geernteten Code. Ein Benchmark darf kleine,
+/// nachvollziehbare Rust-Änderungen verbessern, aber weder Dependencies noch
+/// Build-/CI-Konfiguration umformen. Solche Eingriffe brauchen eine bewusste
+/// menschliche Entscheidung und werden deshalb nie automatisch geerntet.
+pub fn validate_harvest_patch(patch: &str) -> Result<Vec<String>, String> {
+    let mut paths = Vec::new();
+    for line in patch.lines() {
+        let Some(path) = line.strip_prefix("+++ b/") else {
+            continue;
+        };
+        if path == "/dev/null" {
+            continue;
+        }
+        paths.push(path.to_string());
+    }
+    paths.sort();
+    paths.dedup();
+    if paths.is_empty() {
+        return Err("Patch enthält keine nachvollziehbaren Dateien".to_string());
+    }
+    if paths.len() > 4 {
+        return Err(format!(
+            "Patch berührt {} Dateien (Maximum: 4)",
+            paths.len()
+        ));
+    }
+    for path in &paths {
+        let allowed = path.starts_with("src/") && path.ends_with(".rs");
+        if !allowed {
+            return Err(format!(
+                "Patch berührt gesperrten Pfad `{path}` (nur bestehende Rust-Dateien unter src/ sind automatisch erntbar)"
+            ));
+        }
+    }
+    Ok(paths)
+}
+
+/// Zahl der zusätzlichen positiven Score-Ereignisse für einen Scope-Verstoß.
+/// Ein Verstoß startet immer mit einem Malus. Liefert der Patch aber einen
+/// vollständigen, objektiv nachgewiesenen Nutzen (Build, zusätzliche Tests und
+/// Lint), dürfen zwei positive Evidenzpunkte diesen Malus überkompensieren.
+pub fn scope_compensation_count(technical_pass: bool, lint_passed: bool) -> usize {
+    usize::from(technical_pass && lint_passed) * 2
+}
+
 /// Spielt einen geernteten Patch wieder ein, verifiziert ihn erneut (Build +
 /// Tests) und committet ihn mit dem Brain als Autor.
 ///
@@ -765,7 +811,11 @@ WICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es              
                 None => break,
             },
             Err(e) => {
-                bench_say!(crate::bench_events::Level::Fail, None, "  Verfeinerung fehlgeschlagen ({e}).");
+                bench_say!(
+                    crate::bench_events::Level::Fail,
+                    None,
+                    "  Verfeinerung fehlgeschlagen ({e})."
+                );
                 break;
             }
         }
@@ -925,12 +975,10 @@ where
         bench_say!(crate::bench_events::Level::Pass, None, "Sieger: {winner}");
         winners.push((round, winner.clone()));
 
-        // Fertigungsstrasse: jedes Brain baut einen EIGENEN Rang der Rangliste,
-        // pro Runde rotiert. Damit kollidieren die Patches nicht und die Arbeit
-        // ALLER bestandenen Brains kann geerntet werden — nicht nur die des
-        // besten. Die Rotation haelt die Messung fair (jedes Brain sieht ueber
-        // die Runden jeden Rang).
-        let assignments = assign_tasks(&config.brains, &ranked, round);
+        // Turnier statt Mischmasch: jedes Brain bearbeitet exakt den gewählten
+        // Sieger. Damit misst der Score die Qualität der Umsetzung und nicht,
+        // ob ein zufällig zugeteilter Neben-Vorschlag leichter war.
+        let assignments = assign_tasks(&config.brains, std::slice::from_ref(&winner), round);
 
         // Phase A.5 — jede zugeteilte Aufgabe konkretisieren. Gleiche Vorschlaege
         // nur einmal verfeinern (bei weniger Vorschlaegen als Brains).
@@ -1196,6 +1244,35 @@ where
                 continue;
             }
 
+            // Der Diff wird für JEDEN echten Edit geprüft, nicht erst für
+            // grüne Kandidaten. So erscheinen Scope-Verstöße auch dann im
+            // Leistungsindex, wenn der Build ohnehin rot ist.
+            let patch_scope = if did_change {
+                match capture_patch(&config.workdir) {
+                    Ok(patch) if !patch.trim().is_empty() => Some((patch, None)),
+                    Ok(_) => None,
+                    Err(e) => Some((String::new(), Some(e))),
+                }
+            } else {
+                None
+            };
+            let scope_error = patch_scope.as_ref().and_then(|(patch, capture_error)| {
+                capture_error
+                    .clone()
+                    .or_else(|| validate_harvest_patch(patch).err())
+            });
+            let scope_lint_ok =
+                if scope_error.is_some() && is_pass(did_change, compiled, tests_passed) {
+                    if config.lint_eval.trim().is_empty() {
+                        true
+                    } else {
+                        let (ok, _) = run_eval_detail(&config.lint_eval, &config.workdir);
+                        ok
+                    }
+                } else {
+                    false
+                };
+
             let event = CodeEvent {
                 brain_id: brain.clone(),
                 task_id: tid.clone(),
@@ -1210,6 +1287,38 @@ where
                 ts: crate::now_rfc3339(),
             };
             crate::code_score::record(&event);
+            if let Some(error) = &scope_error {
+                // Erst der Malus: Scope-Verstöße sind ein Risikosignal und
+                // dürfen nicht in der normalen technischen Messung verschwinden.
+                let mut policy_event = event.clone();
+                policy_event.task_id = format!("{}:scope-violation", tid);
+                policy_event.did_change = false;
+                policy_event.compiled = false;
+                policy_event.tests_passed = false;
+                crate::code_score::record(&policy_event);
+                let compensation = scope_compensation_count(
+                    is_pass(did_change, compiled, tests_passed),
+                    scope_lint_ok,
+                );
+                for n in 0..compensation {
+                    let mut benefit_event = event.clone();
+                    benefit_event.task_id = format!("{}:scope-benefit-{}", tid, n + 1);
+                    crate::code_score::record(&benefit_event);
+                }
+                if compensation > 0 {
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: Scope-Verstoss mit {compensation}x Qualitätsausgleich bewertet — {error}"
+                    );
+                } else {
+                    bench_say!(
+                        crate::bench_events::Level::Fail,
+                        Some(brain),
+                        "{brain}: Scope-Verstoss mit Malus bewertet (kein nachgewiesener Qualitätsausgleich) — {error}"
+                    );
+                }
+            }
             if is_pass(did_change, compiled, tests_passed) {
                 if let Some(prev) = &handoff_from {
                     bench_say!(
@@ -1236,28 +1345,47 @@ where
 
             // Bestandene Arbeit sichern, BEVOR der Reset sie verwirft.
             if config.harvest && is_pass(did_change, compiled, tests_passed) {
-                match capture_patch(&config.workdir) {
-                    Ok(patch) if !patch.trim().is_empty() => {
-                        bench_say!(
-                            crate::bench_events::Level::Pass,
-                            Some(brain),
-                            "  {brain}: Patch gesichert ({} Zeilen) — Kandidat für die Ernte",
-                            patch.lines().count()
-                        );
-                        harvest_pool.push(HarvestCandidate {
-                            brain: brain.clone(),
-                            task: effective.clone(),
-                            patch,
-                            iterations,
-                            latency_ms,
-                        });
+                match patch_scope {
+                    Some((patch, None)) if !patch.trim().is_empty() => {
+                        match validate_harvest_patch(&patch) {
+                            Ok(paths) => {
+                                bench_say!(
+                                crate::bench_events::Level::Pass,
+                                Some(brain),
+                                "  {brain}: Patch gesichert ({} Dateien, {} Zeilen) — Kandidat für die Ernte",
+                                paths.len(), patch.lines().count()
+                            );
+                                harvest_pool.push(HarvestCandidate {
+                                    brain: brain.clone(),
+                                    task: effective.clone(),
+                                    patch,
+                                    iterations,
+                                    latency_ms,
+                                });
+                            }
+                            Err(e) => bench_say!(
+                                crate::bench_events::Level::Fail,
+                                Some(brain),
+                                "  {brain}: Patch ausserhalb des sicheren Rahmens — verworfen: {e}"
+                            ),
+                        }
                     }
-                    Ok(_) => bench_say!(
+                    Some((patch, None)) if patch.trim().is_empty() => bench_say!(
                         crate::bench_events::Level::Warn,
                         Some(brain),
                         "  {brain}: leerer Patch — nichts zu ernten"
                     ),
-                    Err(e) => {
+                    Some((_patch, None)) => bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "  {brain}: Patch konnte nicht validiert werden — nichts zu ernten"
+                    ),
+                    None => bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "  {brain}: kein Patch — nichts zu ernten"
+                    ),
+                    Some((_patch, Some(e))) => {
                         bench_say!(
                             crate::bench_events::Level::Fail,
                             Some(brain),
@@ -1271,10 +1399,9 @@ where
             reset_repo(&config.workdir, &baseline)?;
         }
 
-        // Ernte: JEDER bestandene Lauf wird eingespielt — die Brains bauten
-        // verschiedene Aufgaben, also ist nichts davon Ausschuss. Reihenfolge:
-        // die souveraensten zuerst (wenige Iterationen), damit bei einem
-        // seltenen Konflikt der schwaechere Beitrag zurueckstecken muss.
+        // Ernte: genau EIN Patch gewinnt das Turnier. Mehrere Kandidaten
+        // hintereinander einzuspielen lässt eine Runde unvorhersehbar wachsen
+        // und war die Ursache für fachfremde Nebenänderungen.
         if config.harvest {
             if harvest_pool.is_empty() {
                 bench_say!(
@@ -1283,11 +1410,7 @@ where
                     "Nichts zu ernten — kein Brain hat bestanden."
                 );
             }
-            harvest_pool.sort_by_key(|c| (c.iterations, c.latency_ms));
-            for cand in &harvest_pool {
-                if cand.patch.trim().is_empty() {
-                    continue;
-                }
+            if let Some(cand) = pick_harvest(&harvest_pool) {
                 let t = crate::StageTimer::start(format!(
                     "Ernte: {} einspielen + nachpruefen",
                     cand.brain
@@ -1299,7 +1422,8 @@ where
                             crate::bench_events::Level::Pass,
                             Some(&cand.brain),
                             "GEERNTET: {} ({} Iteration(en)) — Code bleibt im Repo.",
-                            cand.brain, cand.iterations
+                            cand.brain,
+                            cand.iterations
                         );
                         harvested.push((cand.brain.clone(), cand.task.clone()));
                     }
@@ -1331,11 +1455,19 @@ where
         let body = format_benchmark_report(&winners, &board);
         match wiki.write_page(&title, &body) {
             Ok(slug) => {
-                bench_say!(crate::bench_events::Level::Info, None, "Ergebnis abgelegt als [[{slug}]].");
+                bench_say!(
+                    crate::bench_events::Level::Info,
+                    None,
+                    "Ergebnis abgelegt als [[{slug}]]."
+                );
                 Some(slug)
             }
             Err(e) => {
-                bench_say!(crate::bench_events::Level::Fail, None, "Wiki-Ablage fehlgeschlagen: {e}");
+                bench_say!(
+                    crate::bench_events::Level::Fail,
+                    None,
+                    "Wiki-Ablage fehlgeschlagen: {e}"
+                );
                 None
             }
         }
@@ -1731,6 +1863,30 @@ mod tests {
         )];
         assert!(pick_harvest(&pool).is_none());
         assert!(pick_harvest(&[]).is_none());
+    }
+
+    #[test]
+    fn harvest_scope_allows_small_rust_only_patch() {
+        let patch = "diff --git a/src/benchmark.rs b/src/benchmark.rs\n--- a/src/benchmark.rs\n+++ b/src/benchmark.rs\n@@ -1 +1 @@\n-old\n+new\n";
+        assert_eq!(
+            validate_harvest_patch(patch).unwrap(),
+            vec!["src/benchmark.rs".to_string()]
+        );
+    }
+
+    #[test]
+    fn harvest_scope_rejects_dependency_change() {
+        let patch = "diff --git a/Cargo.toml b/Cargo.toml\n--- a/Cargo.toml\n+++ b/Cargo.toml\n@@ -1 +1 @@\n-old\n+new\n";
+        assert!(validate_harvest_patch(patch)
+            .unwrap_err()
+            .contains("gesperrten Pfad"));
+    }
+
+    #[test]
+    fn scope_malus_is_only_offset_by_complete_quality_evidence() {
+        assert_eq!(scope_compensation_count(false, true), 0);
+        assert_eq!(scope_compensation_count(true, false), 0);
+        assert_eq!(scope_compensation_count(true, true), 2);
     }
 
     #[test]

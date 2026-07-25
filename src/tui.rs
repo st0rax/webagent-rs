@@ -709,9 +709,28 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String], default_headless: 
     let mut i = 0;
     while i < parts.len() {
         match parts[i] {
-            "--brains" => { i += 1; if i < parts.len() { brains = parts[i].split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(); } }
-            "--rounds" => { i += 1; if i < parts.len() { rounds = parts[i].parse().unwrap_or(1); } }
-            "--suggestions" => { i += 1; if i < parts.len() { suggestions = parts[i].parse().unwrap_or(3); } }
+            "--brains" => {
+                i += 1;
+                if i < parts.len() {
+                    brains = parts[i]
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                }
+            }
+            "--rounds" => {
+                i += 1;
+                if i < parts.len() {
+                    rounds = parts[i].parse().unwrap_or(1);
+                }
+            }
+            "--suggestions" => {
+                i += 1;
+                if i < parts.len() {
+                    suggestions = parts[i].parse().unwrap_or(3);
+                }
+            }
             "--loop" => loop_forever = true,
             "--headless" => headless = true,
             "--no-harvest" => harvest = false,
@@ -719,28 +738,52 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String], default_headless: 
         }
         i += 1;
     }
-    if brains.iter().all(|b| b == "all") { brains = candidates.to_vec(); }
+    if brains.iter().all(|b| b == "all") {
+        brains = candidates.to_vec();
+    }
 
     let workdir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
-    crate::bench_events::emit(crate::bench_events::Level::Info, None, &format!(
-        "Benchmark startet: {} Brain(s), {rounds} Runde(n), loop={loop_forever}", brains.len()
-    ));
+    crate::bench_events::emit(
+        crate::bench_events::Level::Info,
+        None,
+        &format!(
+            "Benchmark startet: {} Brain(s), {rounds} Runde(n), loop={loop_forever}",
+            brains.len()
+        ),
+    );
 
     std::thread::spawn(move || {
         let config = crate::benchmark::BenchmarkConfig {
-            brains: brains.clone(), rounds, suggestions,
+            brains: brains.clone(),
+            rounds,
+            suggestions,
             build_eval: "cargo build --lib".to_string(),
             test_eval: "cargo test --lib".to_string(),
-            workdir: workdir.clone(), headless, max_iterations: 20,
-            harvest, verbose: false, parallel: 4, stall_limit: 3,
-            max_handoffs: 2, lint_eval: String::new(), loop_forever,
+            workdir: workdir.clone(),
+            headless,
+            max_iterations: 20,
+            harvest,
+            verbose: false,
+            parallel: 4,
+            stall_limit: 3,
+            max_handoffs: 2,
+            lint_eval: String::new(),
+            loop_forever,
         };
         match crate::benchmark::run_benchmark(&config, |b, p| {
             crate::repl::isolated_query(b, p, headless, None)
         }) {
-            Ok(_) => crate::bench_events::emit(crate::bench_events::Level::Pass, None, "Durchlauf abgeschlossen."),
-            Err(e) => crate::bench_events::emit(crate::bench_events::Level::Fail, None, &format!("Fehler: {e}")),
+            Ok(_) => crate::bench_events::emit(
+                crate::bench_events::Level::Pass,
+                None,
+                "Durchlauf abgeschlossen.",
+            ),
+            Err(e) => crate::bench_events::emit(
+                crate::bench_events::Level::Fail,
+                None,
+                &format!("Fehler: {e}"),
+            ),
         }
     });
 }

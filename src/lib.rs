@@ -6,8 +6,8 @@
 //! siehe dort) und *geparst* über `time` — das ist ohnehin Dependency.
 
 pub mod autoresearch;
-pub mod benchmark;
 pub mod bench_events;
+pub mod benchmark;
 pub mod bot2bot_worker;
 pub mod brain;
 pub mod brain_score;

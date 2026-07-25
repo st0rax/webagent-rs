@@ -319,7 +319,8 @@ pub fn load_state(_force: bool) -> Vec<AgentView> {
     // Heartbeat-Directory
     let heartbeat_dir = root.join("workers");
 
-    let mut agents: Vec<AgentView> = pool.entries
+    let mut agents: Vec<AgentView> = pool
+        .entries
         .iter()
         .map(|(brain, entry)| {
             let hb_path = heartbeat_dir.join(format!("heartbeat_{}.json", brain));
