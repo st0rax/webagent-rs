@@ -418,7 +418,9 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
     // Deaktivieren statt behandeln: das Skript bekommt sofort einen Default-Wert
     // zurueck, es gibt gar nichts mehr zum Haengenbleiben.
     if let Err(e) = disable_native_script_dialogs(&webview) {
-        eprintln!("[webview] Konnte native JS-Dialoge nicht deaktivieren: {e}");
+        crate::bench_events::eprint_line(&format!(
+            "[webview] Konnte native JS-Dialoge nicht deaktivieren: {e}"
+        ));
     }
 
     rt.web_context = Some(web_context);

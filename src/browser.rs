@@ -828,10 +828,10 @@ return null;}})()"#
             let _ = self.stop();
             return Ok(true);
         }
-        eprintln!(
+        crate::bench_events::eprint_line(&format!(
             "[login] Browser geöffnet — bitte im Fenster bei '{}' anmelden. Warte auf Login…",
             self.brain_id
-        );
+        ));
         loop {
             self.dismiss_consent();
             if self.is_logged_in() {
@@ -1324,10 +1324,10 @@ impl BrainBackend for WebBrainBackend {
                     // (siehe swarm-Test: qwens "daily usage limit" wurde als Antwort
                     // gezaehlt statt als "blocked").
                     if let Some(hit) = block_phrase_in_text(&text) {
-                        eprintln!(
+                        crate::bench_events::eprint_line(&format!(
                             "[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt",
                             self.brain_id
-                        );
+                        ));
                         return Ok(mk(text, target, false, "blocked"));
                     }
                     return Ok(mk(text, target, true, "ok"));

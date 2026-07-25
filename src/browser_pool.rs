@@ -161,18 +161,18 @@ impl BrowserPool {
         for _ in 0..POOL_FALLBACK_RETRIES {
             match self.start_brain(backend, headless, None) {
                 Ok(()) => return Ok(()),
-                Err(e) => eprintln!(
+                Err(e) => crate::bench_events::eprint_line(&format!(
                     "[browser_pool] Shared-Versuch fuer Brain '{}' fehlgeschlagen: {}",
                     brain_id, e
-                ),
+                )),
             }
         }
 
         // 2) Fallback: gekapselte Instanz (eigenes Profil-Image, eigenes Runtime).
-        eprintln!(
+        crate::bench_events::eprint_line(&format!(
             "[browser_pool] Shared-Browser fuer Brain '{}' nach {} Versuchen fehlgeschlagen -> gekapselte Instanz",
             brain_id, POOL_FALLBACK_RETRIES
-        );
+        ));
         self.start_brain_encapsulated(backend, headless, &brain_id)
     }
 

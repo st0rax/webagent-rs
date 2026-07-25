@@ -1045,7 +1045,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             &format!("task for brain {}", brain_id),
             None,
         ) {
-            eprintln!("[comms] run_started id={}", &m.id[..8.min(m.id.len())]);
+            crate::bench_events::eprint_line(&format!(
+                "[comms] run_started id={}",
+                &m.id[..8.min(m.id.len())]
+            ));
         }
 
         // Start Brain + Executor (persistent shell session for the whole run)

@@ -132,11 +132,11 @@ fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
     entry.last_reason = Some(reason.to_string());
     if entry.consecutive_failures >= max_failures() {
         entry.open_until = Some(now_secs() + cooldown_secs());
-        eprintln!(
+        crate::bench_events::eprint_line(&format!(
             "[circuit_breaker] {brain_id}: offen fuer {}s nach {} Fehlschlaegen ({reason})",
             cooldown_secs(),
             entry.consecutive_failures
-        );
+        ));
     }
     save(path, &state);
 }

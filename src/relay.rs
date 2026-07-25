@@ -65,10 +65,10 @@ pub fn relay_single_turn(
     let mut answer: Option<String> = None;
     for turn in 0..MAX_TURNS {
         if turn > 0 {
-            eprintln!(
+            crate::bench_events::eprint_line(&format!(
                 "[relay] {brain_id}: Wiederholung {turn}/{}  (vorher: {last_err})",
                 MAX_TURNS - 1
-            );
+            ));
             std::thread::sleep(std::time::Duration::from_millis(700));
         }
         if let Err(e) = backend.new_chat() {

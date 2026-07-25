@@ -92,7 +92,7 @@ impl ShellSession {
             return;
         }
         if let Err(e) = self.launch() {
-            eprintln!("executor: shell start failed: {e}");
+            crate::bench_events::eprint_line(&format!("executor: shell start failed: {e}"));
         }
     }
 
