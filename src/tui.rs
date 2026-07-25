@@ -636,7 +636,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                         KeyCode::Enter => {
                             let cmd = app.command_input.trim().to_string();
                             if cmd.starts_with("/benchmark") {
-                                spawn_benchmark_from_tui(&cmd, &candidates);
+                                spawn_benchmark_from_tui(&cmd, &candidates, headless);
                             }
                             app.input_mode = InputMode::Normal;
                             app.command_input.clear();
@@ -696,13 +696,13 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
 
 /// Parst `/benchmark --brains a,b --rounds 5 --loop` und startet den Benchmark
 /// in einem Hintergrund-Thread im GLEICHEN Prozess.
-fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
+fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String], default_headless: bool) {
     use std::path::PathBuf;
     let mut brains: Vec<String> = candidates.to_vec();
     let mut rounds = 1usize;
     let mut suggestions = 3usize;
     let mut loop_forever = false;
-    let mut headless = true;
+    let mut headless = default_headless;
     let mut harvest = true;
 
     let parts: Vec<&str> = cmd.split_whitespace().skip(1).collect();
