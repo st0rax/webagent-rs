@@ -649,6 +649,18 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
         .fg(Color::Cyan)
         .add_modifier(Modifier::BOLD);
     let dim = Style::default().fg(Color::DarkGray);
+    if app.input_mode == crate::tui_state::InputMode::CommandInput {
+        let prompt = format!(" {}█", app.command_input);
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                prompt,
+                Style::default().fg(Color::Cyan),
+            ))),
+            area,
+        );
+        return;
+    }
+
     let mut spans = vec![Span::raw(" ")];
     // Die Tastenleiste haengt an der Ansicht — in der Benchmark-Ansicht sind
     // Worker-Tasten (Tab/Filter/+/-) sinnlos.
@@ -661,6 +673,7 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
             ("f", "filter"),
             ("+/-", "worker"),
             ("↵", "task"),
+            ("/", "kommando"),
             ("q", "quit"),
         ],
         View::Bench => &[
@@ -786,6 +799,7 @@ mod tests {
             activity_history: std::collections::VecDeque::new(),
             view: crate::tui_state::View::Workers,
             bench_scroll: 0,
+            command_input: String::new(),
         }
     }
 

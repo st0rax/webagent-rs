@@ -110,6 +110,8 @@ pub struct BenchmarkConfig {
     /// geernteter Beitrag (2026-07-21) kompilierte und war gruen, brachte aber
     /// eine doppelte `use super::*;` mit — die Ernte hatte dafuer kein Auge.
     pub lint_eval: String,
+    /// Endlos-Schleife: nach der letzten Runde sofort wieder von vorne.
+    pub loop_forever: bool,
 }
 
 /// Ein bestandener Brain-Lauf, dessen Diff für die spätere Ernte aufbewahrt wird.
@@ -883,11 +885,22 @@ where
     let mut winners: Vec<(usize, String)> = Vec::new();
     let mut harvested: Vec<(String, String)> = Vec::new();
 
-    for round in 1..=rounds {
+    let mut round = 0usize;
+    loop {
+        round += 1;
+        if !config.loop_forever && round > rounds {
+            break;
+        }
+
+        let total = if config.loop_forever {
+            "∞".to_owned()
+        } else {
+            rounds.to_string()
+        };
         bench_say!(
             crate::bench_events::Level::Info,
             None,
-            "runde {round}/{rounds} — abstimmen…"
+            "runde {round}/{total} — abstimmen…"
         );
         // Phase A — Sammeln + Abstimmen. `&query` implementiert Fn ⇒ pro Runde
         // wiederverwendbar, ohne die Closure zu bewegen.
@@ -1742,6 +1755,7 @@ mod tests {
             stall_limit: 3,
             max_handoffs: 2,
             lint_eval: String::new(),
+            loop_forever: false,
         }
     }
 

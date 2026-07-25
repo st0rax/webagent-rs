@@ -68,6 +68,8 @@ pub struct App {
     pub view: View,
     /// Scroll-Offset der Benchmark-Ansicht (0 = am unteren Rand mitlaufen).
     pub bench_scroll: usize,
+    /// Eingabepuffer für die Kommandozeile (/).
+    pub command_input: String,
 }
 
 /// Die umschaltbaren Hauptansichten.
@@ -178,8 +180,10 @@ fn line_is_warning(line: &str) -> bool {
 pub enum InputMode {
     /// Normal-Modus, Keys werden interpretiert.
     Normal,
-    /// Task-Eingabe (t-Taste gedrückt).
+    /// Task-Eingabe (Enter-Taste gedrückt).
     TaskInput,
+    /// Kommando-Eingabe (/ getippt).
+    CommandInput,
     /// Quit bestätigen.
     ConfirmQuit,
 }
@@ -315,7 +319,7 @@ pub fn load_state(_force: bool) -> Vec<AgentView> {
     // Heartbeat-Directory
     let heartbeat_dir = root.join("workers");
 
-    pool.entries
+    let mut agents: Vec<AgentView> = pool.entries
         .iter()
         .map(|(brain, entry)| {
             let hb_path = heartbeat_dir.join(format!("heartbeat_{}.json", brain));
@@ -348,7 +352,11 @@ pub fn load_state(_force: bool) -> Vec<AgentView> {
                 detail: recent_log_lines(&root, brain, DETAIL_HISTORY),
             }
         })
-        .collect()
+        .collect();
+    // Feste alphabetische Reihenfolge — sonst springt der Fokus bei jedem
+    // Reload, weil die HashMap-Iteration nicht-deterministisch ist.
+    agents.sort_by(|a, b| a.brain.cmp(&b.brain));
+    agents
 }
 
 fn fs_read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
@@ -477,6 +485,7 @@ mod tests {
             activity_history: std::collections::VecDeque::new(),
             view: View::Workers,
             bench_scroll: 0,
+            command_input: String::new(),
         }
     }
 

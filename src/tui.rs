@@ -507,6 +507,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
         activity_history: std::collections::VecDeque::new(),
         view: View::Workers,
         bench_scroll: 0,
+        command_input: String::new(),
     };
 
     // --- Event-Loop ---
@@ -587,6 +588,12 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                                 },
                             );
                         }
+                        // Kommandozeile: / startet Eingabe fuer /benchmark etc.
+                        KeyCode::Char('/') => {
+                            app.input_mode = InputMode::CommandInput;
+                            app.command_input.clear();
+                            app.command_input.push('/');
+                        }
                         KeyCode::Enter => {
                             app.input_mode = InputMode::TaskInput;
                             task_input.clear();
@@ -618,6 +625,27 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                         }
                         KeyCode::Char(c) => {
                             task_input.push(c);
+                        }
+                        _ => {}
+                    },
+                    InputMode::CommandInput => match key.code {
+                        KeyCode::Esc => {
+                            app.input_mode = InputMode::Normal;
+                            app.command_input.clear();
+                        }
+                        KeyCode::Enter => {
+                            let cmd = app.command_input.trim().to_string();
+                            if cmd.starts_with("/benchmark") {
+                                spawn_benchmark_from_tui(&cmd, &candidates);
+                            }
+                            app.input_mode = InputMode::Normal;
+                            app.command_input.clear();
+                        }
+                        KeyCode::Backspace => {
+                            app.command_input.pop();
+                        }
+                        KeyCode::Char(c) => {
+                            app.command_input.push(c);
                         }
                         _ => {}
                     },
@@ -660,6 +688,61 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
     let _ = terminal::disable_raw_mode();
     let _ = io::stdout().execute(LeaveAlternateScreen);
     exit_code
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark-Spawner (aus der TUI-Kommandozeile via /benchmark)
+// ---------------------------------------------------------------------------
+
+/// Parst `/benchmark --brains a,b --rounds 5 --loop` und startet den Benchmark
+/// in einem Hintergrund-Thread im GLEICHEN Prozess.
+fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
+    use std::path::PathBuf;
+    let mut brains: Vec<String> = candidates.to_vec();
+    let mut rounds = 1usize;
+    let mut suggestions = 3usize;
+    let mut loop_forever = false;
+    let mut headless = true;
+    let mut harvest = true;
+
+    let parts: Vec<&str> = cmd.split_whitespace().skip(1).collect();
+    let mut i = 0;
+    while i < parts.len() {
+        match parts[i] {
+            "--brains" => { i += 1; if i < parts.len() { brains = parts[i].split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(); } }
+            "--rounds" => { i += 1; if i < parts.len() { rounds = parts[i].parse().unwrap_or(1); } }
+            "--suggestions" => { i += 1; if i < parts.len() { suggestions = parts[i].parse().unwrap_or(3); } }
+            "--loop" => loop_forever = true,
+            "--headless" => headless = true,
+            "--no-harvest" => harvest = false,
+            _ => {}
+        }
+        i += 1;
+    }
+    if brains.iter().all(|b| b == "all") { brains = candidates.to_vec(); }
+
+    let workdir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+    crate::bench_events::emit(crate::bench_events::Level::Info, None, &format!(
+        "Benchmark startet: {} Brain(s), {rounds} Runde(n), loop={loop_forever}", brains.len()
+    ));
+
+    std::thread::spawn(move || {
+        let config = crate::benchmark::BenchmarkConfig {
+            brains: brains.clone(), rounds, suggestions,
+            build_eval: "cargo build --lib".to_string(),
+            test_eval: "cargo test --lib".to_string(),
+            workdir: workdir.clone(), headless, max_iterations: 20,
+            harvest, verbose: false, parallel: 4, stall_limit: 3,
+            max_handoffs: 2, lint_eval: String::new(), loop_forever,
+        };
+        match crate::benchmark::run_benchmark(&config, |b, p| {
+            crate::repl::isolated_query(b, p, headless, None)
+        }) {
+            Ok(_) => crate::bench_events::emit(crate::bench_events::Level::Pass, None, "Durchlauf abgeschlossen."),
+            Err(e) => crate::bench_events::emit(crate::bench_events::Level::Fail, None, &format!("Fehler: {e}")),
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------

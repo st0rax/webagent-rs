@@ -375,6 +375,10 @@ enum Commands {
         /// Headless-Browser (Standard: sichtbar)
         #[arg(long)]
         headless: bool,
+
+        /// Endlos-Schleife: nach der letzten Runde sofort neu starten
+        #[arg(long)]
+        loop_forever: bool,
     },
 
     /// Read-only gate for autonomous maintenance
@@ -614,6 +618,7 @@ fn dispatch(command: Commands) -> i32 {
             test_eval,
             workdir,
             headless,
+            loop_forever,
         } => cmd_benchmark(
             brains,
             rounds,
@@ -629,6 +634,7 @@ fn dispatch(command: Commands) -> i32 {
             test_eval,
             workdir,
             headless,
+            loop_forever,
         ),
 
         Commands::DesignVote {
@@ -951,6 +957,7 @@ fn cmd_benchmark(
     test_eval: String,
     workdir: Option<String>,
     headless: bool,
+    loop_forever: bool,
 ) -> i32 {
     let targets: Vec<String> = match brains {
         Some(csv) => csv
@@ -1005,6 +1012,7 @@ fn cmd_benchmark(
         stall_limit,
         max_handoffs,
         lint_eval,
+        loop_forever,
     };
 
     let result = webagent::benchmark::run_benchmark(&config, |b, p| {
