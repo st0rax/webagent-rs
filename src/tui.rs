@@ -637,7 +637,7 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
                         KeyCode::Enter => {
                             let cmd = app.command_input.trim().to_string();
                             if cmd.starts_with("/benchmark") {
-                                spawn_benchmark_from_tui(&cmd, &candidates, headless);
+                                spawn_benchmark_from_tui(&cmd, &candidates);
                             }
                             app.input_mode = InputMode::Normal;
                             app.command_input.clear();
@@ -697,14 +697,16 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
 // ---------------------------------------------------------------------------
 
 /// Parst `/benchmark --brains a,b --rounds 5 --loop` und startet den Benchmark
-/// in einem Hintergrund-Thread im GLEICHEN Prozess.
-fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String], default_headless: bool) {
+/// in einem Hintergrund-Thread im GLEICHEN Prozess. Browser bleiben dabei
+/// standardmäßig außerhalb des sichtbaren Desktops; `--headed` ist die
+/// bewusste Ausnahme für eine sichtbare Diagnose.
+fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
     use std::path::PathBuf;
     let mut brains: Vec<String> = candidates.to_vec();
     let mut rounds = 1usize;
     let mut suggestions = 3usize;
     let mut loop_forever = false;
-    let mut headless = default_headless;
+    let mut headless = true;
     let mut harvest = true;
 
     let parts: Vec<&str> = cmd.split_whitespace().skip(1).collect();
@@ -735,6 +737,7 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String], default_headless: 
             }
             "--loop" => loop_forever = true,
             "--headless" => headless = true,
+            "--headed" => headless = false,
             "--no-harvest" => harvest = false,
             _ => {}
         }
