@@ -152,7 +152,7 @@ impl StageTimer {
     pub fn start(label: String) -> Self {
         let is_tty = stdout_is_tty() || is_console_handle();
         let started = Instant::now();
-        if !is_tty {
+        if !is_tty && crate::bench_events::console_output_enabled() {
             let ts = timestamp();
             println!("[{ts}] [benchmark]   {label} …");
             use std::io::Write;
@@ -175,7 +175,7 @@ impl StageTimer {
                 std::thread::sleep(std::time::Duration::from_millis(tick));
                 waited += tick;
                 let s = waited / 1000;
-                if is_tty {
+                if is_tty && crate::bench_events::console_output_enabled() {
                     // In der laufenden Zeile aktualisieren. Fremde Ausgaben
                     // (Controller, Shell-Echo) zerschiessen die Zeile kurz —
                     // der naechste Tick malt sie 250 ms spaeter wieder sauber.
@@ -194,7 +194,9 @@ impl StageTimer {
                     let pad = LIVE_LINE_WIDTH.saturating_sub(line.chars().count());
                     print!("\r{line}{}", " ".repeat(pad));
                     let _ = std::io::stdout().flush();
-                } else if waited.is_multiple_of(PIPE_TICKER_INTERVAL_MS) {
+                } else if crate::bench_events::console_output_enabled()
+                    && waited.is_multiple_of(PIPE_TICKER_INTERVAL_MS)
+                {
                     // Ohne Flush bleibt die Zeile in Rusts Blockpuffer haengen,
                     // sobald stdout in eine Pipe geht — dann sieht der Nutzer
                     // den Ticker nie.
@@ -254,6 +256,9 @@ impl StageTimer {
             s / 60,
             s % 60
         );
+        if !crate::bench_events::console_output_enabled() {
+            return;
+        }
         if self.is_tty {
             // Restzeichen der Live-Zeile ueberschreiben, dann fest umbrechen.
             let pad = LIVE_LINE_WIDTH.saturating_sub(line.chars().count());
