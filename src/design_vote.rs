@@ -137,7 +137,7 @@ pub fn run_design_vote<Q>(
     query: Q,
 ) -> DesignVoteReport
 where
-    Q: Fn(&str, &str) -> Result<String, String>,
+    Q: Fn(&str, &str) -> Result<String, String> + Send + Sync,
 {
     // ---- Sammeln ----
     on_round(&format!(
@@ -148,9 +148,25 @@ where
         VoteMode::Design => build_collect_prompt(&config.topic, &config.context),
         VoteMode::ImplementationPlan => build_plan_collect_prompt(&config.topic, &config.context),
     };
+    // Alle Entwuerfe sind voneinander unabhaengig. Parallel abfragen spart
+    // Wartezeit, aber die Auswertung bleibt in Brain-Reihenfolge stabil.
+    let collected: Vec<(&String, Result<String, String>)> = std::thread::scope(|scope| {
+        let query_ref = &query;
+        let jobs: Vec<_> = config
+            .brains
+            .iter()
+            .map(|brain| {
+                let prompt = &collect;
+                scope.spawn(move || (brain, query_ref(brain, prompt)))
+            })
+            .collect();
+        jobs.into_iter()
+            .map(|job| job.join().expect("Design-Vote-Worker panicked"))
+            .collect()
+    });
     let mut proposals: Vec<(String, String)> = Vec::new();
-    for b in &config.brains {
-        match query(b, &collect) {
+    for (b, response) in collected {
+        match response {
             Ok(text)
                 if !text.trim().is_empty() && !crate::brain::is_retryable_empty_response(&text) =>
             {
@@ -196,9 +212,25 @@ where
             VoteMode::ImplementationPlan => build_plan_kick_prompt(&config.topic, &alive_view),
         };
 
+        // Jede Stimme bezieht sich auf denselben unveraenderlichen Katalog;
+        // deshalb sind auch die Kick-Abfragen sicher parallelisierbar.
+        let responses: Vec<Result<String, String>> = std::thread::scope(|scope| {
+            let query_ref = &query;
+            let jobs: Vec<_> = config
+                .brains
+                .iter()
+                .map(|brain| {
+                    let ballot = &prompt;
+                    scope.spawn(move || query_ref(brain, ballot))
+                })
+                .collect();
+            jobs.into_iter()
+                .map(|job| job.join().expect("Design-Vote-Worker panicked"))
+                .collect()
+        });
         let mut kicks: Vec<usize> = Vec::new();
-        for b in &config.brains {
-            if let Ok(resp) = query(b, &prompt) {
+        for resp in responses {
+            if let Ok(resp) = resp {
                 // Anzeige-Nummer (1-basiert über die lebende Liste) → Original-Index.
                 if let Some(display_idx) = parse_kick(&resp, alive_orig.len()) {
                     kicks.push(alive_orig[display_idx]);
@@ -243,7 +275,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn collect_prompt_includes_topic_and_optional_context() {
@@ -270,12 +302,11 @@ mod tests {
     fn full_vote_eliminates_down_to_one_winner() {
         // 3 Brains, jedes liefert ein Design; dann kicken sie bis einer bleibt.
         let brains = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let calls = RefCell::new(0usize);
+        let calls = AtomicUsize::new(0usize);
         let query = |_b: &str, prompt: &str| -> Result<String, String> {
             if prompt.contains("Entwirf EIN") {
                 // Sammelphase: jedes Brain ein unterscheidbares Design.
-                let n = *calls.borrow();
-                *calls.borrow_mut() += 1;
+                let n = calls.fetch_add(1, Ordering::SeqCst);
                 Ok(format!(
                     "Design Nummer {n} mit Panels und Farben und Tasten fuer die TUI"
                 ))
@@ -299,11 +330,7 @@ mod tests {
         assert_eq!(report.proposals.len(), 3);
         assert_eq!(report.eliminated.len(), 2, "n-1 Ausscheidungen");
         assert_eq!(report.winner, Some(2));
-        assert!(report
-            .winning_design()
-            .unwrap()
-            .1
-            .contains("Design Nummer 2"));
+        assert_eq!(report.winning_design().unwrap().0, "c");
     }
 
     #[test]
