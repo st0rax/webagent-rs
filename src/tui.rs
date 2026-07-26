@@ -708,6 +708,7 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
     let mut loop_forever = false;
     let mut headless = true;
     let mut harvest = true;
+    let mut vetoes: Vec<String> = Vec::new();
 
     let parts: Vec<&str> = cmd.split_whitespace().skip(1).collect();
     let mut i = 0;
@@ -739,6 +740,12 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
             "--headless" => headless = true,
             "--headed" => headless = false,
             "--no-harvest" => harvest = false,
+            "--veto" => {
+                i += 1;
+                if i < parts.len() && !parts[i].trim().is_empty() {
+                    vetoes.push(parts[i].trim().to_string());
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -774,6 +781,7 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
             stall_limit: 3,
             max_handoffs: 2,
             lint_eval: String::new(),
+            vetoes,
             loop_forever,
         };
         match crate::benchmark::run_benchmark(&config, |b, p| {

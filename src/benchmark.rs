@@ -114,6 +114,9 @@ pub struct BenchmarkConfig {
     /// geernteter Beitrag (2026-07-21) kompilierte und war gruen, brachte aber
     /// eine doppelte `use super::*;` mit — die Ernte hatte dafuer kein Auge.
     pub lint_eval: String,
+    /// Menschlich gesperrte Begriffe. Treffer werden weder Gewinner noch
+    /// Bauauftrag; ein Veto ist keine negative Brain-Wertung.
+    pub vetoes: Vec<String>,
     /// Endlos-Schleife: nach der letzten Runde sofort wieder von vorne.
     pub loop_forever: bool,
 }
@@ -1048,10 +1051,18 @@ where
             None,
             "runde {round}/{total} — abstimmen…"
         );
+        let veto_context = if config.vetoes.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\n\nMENSCHLICHE VETOS: Vorschläge mit diesen Begriffen dürfen nicht gewählt oder geplant werden: {}.",
+                config.vetoes.join(", ")
+            )
+        };
         let round_facts = match &repair_focus {
             Some(focus) => format!("{facts}\n\n{focus}"),
             None => facts.clone(),
-        };
+        } + &veto_context;
         if repair_focus.is_some() {
             bench_say!(
                 crate::bench_events::Level::Warn,
@@ -1069,7 +1080,16 @@ where
             config.parallel,
             &query,
         );
-        let ranked = ranked_from_report(&report);
+        let ranked: Vec<String> = ranked_from_report(&report)
+            .into_iter()
+            .filter(|candidate| {
+                let lower = candidate.to_lowercase();
+                !config
+                    .vetoes
+                    .iter()
+                    .any(|veto| !veto.trim().is_empty() && lower.contains(&veto.to_lowercase()))
+            })
+            .collect();
         if ranked.is_empty() {
             bench_say!(
                 crate::bench_events::Level::Warn,
@@ -2158,6 +2178,7 @@ mod tests {
             stall_limit: 3,
             max_handoffs: 2,
             lint_eval: String::new(),
+            vetoes: Vec::new(),
             loop_forever: false,
         }
     }

@@ -1018,6 +1018,7 @@ fn cmd_benchmark(
         stall_limit,
         max_handoffs,
         lint_eval,
+        vetoes: Vec::new(),
         loop_forever,
     };
 
