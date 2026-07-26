@@ -788,7 +788,10 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
             max_iterations: 20,
             harvest,
             verbose: false,
-            parallel: 4,
+            // Lesephasen haben keinen gemeinsamen Worktree und dürfen alle
+            // verfügbaren Brains gleichzeitig auslasten. Nur das spätere
+            // Implementieren bleibt im Benchmark bewusst sequenziell.
+            parallel: brains.len().max(1),
             stall_limit: 3,
             max_handoffs: 2,
             lint_eval: String::new(),

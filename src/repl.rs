@@ -291,6 +291,11 @@ pub fn isolated_query(
     }
     let started = std::time::Instant::now();
     let prompt_chars = prompt.chars().count();
+    crate::bench_events::emit(
+        crate::bench_events::Level::Progress,
+        Some(brain_id),
+        "Browser wird gestartet und Sitzung geprüft…",
+    );
     let mut backend = WebBrainBackend::from_config(brain_id)?;
     if let Some(p) = profile_override {
         backend = backend.with_profile_override(p);
@@ -313,11 +318,21 @@ pub fn isolated_query(
         );
         return Err(label);
     }
+    crate::bench_events::emit(
+        crate::bench_events::Level::Progress,
+        Some(brain_id),
+        "Sitzung bereit; Eingabe wird gesendet…",
+    );
     let _ = backend.new_chat();
     let baseline = backend.send(prompt).inspect_err(|_| {
         let _ = backend.stop();
     })?;
     let wait_to = resolve_timeout("wait_response", brain_id, prompt, None);
+    crate::bench_events::emit(
+        crate::bench_events::Level::Progress,
+        Some(brain_id),
+        "Antwort wird abgewartet…",
+    );
     let out = match backend.wait_response(baseline, wait_to) {
         // Externe Blockierung (Tageslimit/Login/Cloudflare) ist kein Beitrag zur
         // Zusammenführung -- sonst landet die Limit-Seite als vermeintliche
