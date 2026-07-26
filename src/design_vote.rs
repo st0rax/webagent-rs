@@ -209,7 +209,8 @@ where
         match bracket.eliminate(&kicks) {
             Some(loser) => {
                 on_round(&format!(
-                    "  ausgeschieden: #{loser} ({})",
+                    "  ausgeschieden: #{loser} ({}, {})",
+                    proposals[loser].0,
                     crate::char_prefix(&proposals[loser].1, 60)
                 ));
                 eliminated.push((loser, round));
@@ -219,7 +220,8 @@ where
                 // Kandidaten mit dem höchsten Original-Index entfernen (stabil).
                 if let Some(&last) = alive_orig.last() {
                     on_round(&format!(
-                        "  keine gueltige Stimme — entferne #{last} (Patt)"
+                        "  keine gueltige Stimme — entferne #{last} ({}, Patt)",
+                        proposals[last].0
                     ));
                     let _ = bracket.eliminate(&[last]);
                     eliminated.push((last, round));
