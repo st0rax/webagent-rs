@@ -798,9 +798,8 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
             vetoes,
             loop_forever,
         };
-        match crate::benchmark::run_benchmark(&config, |b, p| {
-            crate::repl::isolated_query(b, p, headless, None)
-        }) {
+        let queries = crate::repl::PersistentQueryPool::new(&brains, headless);
+        match crate::benchmark::run_benchmark(&config, |b, p| queries.query(b, p)) {
             Ok(_) => crate::bench_events::emit(
                 crate::bench_events::Level::Pass,
                 None,
