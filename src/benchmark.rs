@@ -1028,8 +1028,9 @@ where
     }
 
     let rounds = config.rounds.max(1);
-    let facts = crate::self_research::gather_facts(&config.workdir, FACTS_MAX_CHARS);
     let mut repair_focus: Option<String> = None;
+    let mut candidate_backlog = std::collections::VecDeque::<String>::new();
+    let mut attempted_candidates = std::collections::HashSet::<String>::new();
     let mut winners: Vec<(usize, String)> = Vec::new();
     let mut harvested: Vec<(String, String)> = Vec::new();
     let mut unproductive_rounds = 0usize;
@@ -1051,6 +1052,9 @@ where
             None,
             "runde {round}/{total} — abstimmen…"
         );
+        // Projektfakten sind lokal und günstig; nach einem Harvest müssen sie
+        // aktuell sein, ohne dafür die Brains erneut befragen zu müssen.
+        let facts = crate::self_research::gather_facts(&config.workdir, FACTS_MAX_CHARS);
         let veto_context = if config.vetoes.is_empty() {
             String::new()
         } else {
@@ -1070,35 +1074,52 @@ where
                 "runde {round}: Reparaturfokus aus gescheiterten Gates wird priorisiert."
             );
         }
-        // Phase A — Sammeln + Abstimmen. `&query` implementiert Fn ⇒ pro Runde
-        // wiederverwendbar, ohne die Closure zu bewegen.
-        let report = crate::self_research::run_self_research(
-            &config.brains,
-            &round_facts,
-            config.suggestions,
-            VOTE_TOP_K,
-            config.parallel,
-            &query,
-        );
-        let ranked: Vec<String> = ranked_from_report(&report)
-            .into_iter()
-            .filter(|candidate| {
+        // Ideen werden als Arbeitsvorrat gesammelt. Eine neue Schwarmrecherche
+        // ist nur nötig, wenn der Vorrat leer ist oder ein fehlgeschlagenes Gate
+        // gezielt eine Reparaturpriorität erzeugt hat.
+        if candidate_backlog.is_empty() || repair_focus.is_some() {
+            let report = crate::self_research::run_self_research(
+                &config.brains,
+                &round_facts,
+                config.suggestions,
+                VOTE_TOP_K,
+                config.parallel,
+                &query,
+            );
+            let ranked = ranked_from_report(&report).into_iter().filter(|candidate| {
                 let lower = candidate.to_lowercase();
-                !config
-                    .vetoes
-                    .iter()
-                    .any(|veto| !veto.trim().is_empty() && lower.contains(&veto.to_lowercase()))
-            })
-            .collect();
-        if ranked.is_empty() {
+                !attempted_candidates.contains(candidate)
+                    && !config
+                        .vetoes
+                        .iter()
+                        .any(|veto| !veto.trim().is_empty() && lower.contains(&veto.to_lowercase()))
+            });
+            for candidate in ranked {
+                candidate_backlog.push_back(candidate);
+            }
+            bench_say!(
+                crate::bench_events::Level::Info,
+                None,
+                "Arbeitsvorrat aktualisiert: {} offene Vorschläge.",
+                candidate_backlog.len()
+            );
+        } else {
+            bench_say!(
+                crate::bench_events::Level::Info,
+                None,
+                "Arbeitsvorrat: {} offene Vorschläge — keine neue Sammlung nötig.",
+                candidate_backlog.len()
+            );
+        }
+        let Some(winner) = candidate_backlog.pop_front() else {
             bench_say!(
                 crate::bench_events::Level::Warn,
                 None,
-                "runde {round}: kein Sieger (keine Stimmen) — überspringe."
+                "runde {round}: Arbeitsvorrat leer — keine verwertbaren Vorschläge."
             );
             continue;
-        }
-        let winner = ranked[0].clone();
+        };
+        attempted_candidates.insert(winner.clone());
         bench_say!(crate::bench_events::Level::Pass, None, "Sieger: {winner}");
         winners.push((round, winner.clone()));
 
