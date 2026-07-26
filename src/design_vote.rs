@@ -370,8 +370,8 @@ where
             }
         }
         let mut kicks: Vec<usize> = Vec::new();
-        for resp in responses {
-            if let Ok(resp) = resp {
+        for resp in responses.into_iter().flatten() {
+            {
                 // Anzeige-Nummer (1-basiert über die lebende Liste) → Original-Index.
                 if let Some(display_idx) = parse_kick(&resp, alive_orig.len()) {
                     kicks.push(alive_orig[display_idx]);
@@ -427,10 +427,7 @@ where
             let jobs: Vec<_> = config
                 .brains
                 .iter()
-                .map(|brain| {
-                    let prompt = prompt;
-                    scope.spawn(move || (brain.clone(), query_ref(brain, prompt)))
-                })
+                .map(|brain| scope.spawn(move || (brain.clone(), query_ref(brain, prompt))))
                 .collect();
             jobs.into_iter()
                 .map(|job| job.join().expect("Ratifikations-Worker panicked"))
