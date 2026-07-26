@@ -254,7 +254,7 @@ mod tests {
     fn stays_closed_below_threshold() {
         let path = unique_path();
         for _ in 0..(DEFAULT_MAX_FAILURES - 1) {
-            record_failure_at("mistral", "blocked", &path);
+            record_failure_at("mistral", "timeout_no_text", &path);
         }
         assert_eq!(check_at("mistral", &path), None);
     }

@@ -27,36 +27,59 @@ pub fn resolve_timeout(
     message: &str,
     override_timeout: Option<f64>,
 ) -> f64 {
-    resolve_with(
+    resolve_from(
         operation,
+        brain_id,
         message,
         override_timeout,
-        measured_or_static(operation, brain_id),
+        measured_p95_cached(operation, brain_id),
     )
 }
 
-/// Brain-Anteil: gemessene p95 falls vorhanden, sonst der Kaltstart-Schaetzwert.
+/// Kern der Berechnung mit EXPLIZIT uebergebenem Messwert.
 ///
-/// Liefert die *Basiszeit in Sekunden* fuer diese Operation, nicht mehr einen
-/// dimensionslosen Faktor — die Messung ist eine Zeit, und eine Zeit soll auch
-/// eine bleiben statt in einen Faktor zurueckgerechnet zu werden.
-fn measured_or_static(operation: &str, brain_id: &str) -> f64 {
-    let statisch = static_base(operation, brain_id);
+/// Getrennt, damit Tests nicht von der Ereignisdatei der jeweiligen Maschine
+/// abhaengen — genau das machte `resolve_timeout` sonst umgebungsabhaengig und
+/// die Testaussage wertlos.
+pub(crate) fn resolve_from(
+    operation: &str,
+    brain_id: &str,
+    message: &str,
+    override_timeout: Option<f64>,
+    p95: Option<f64>,
+) -> f64 {
+    let base = match p95 {
+        Some(p) => (p * env_float("WEBAGENT_TIMEOUT_P95_FACTOR", 1.6))
+            .max(env_float("WEBAGENT_TIMEOUT_MEASURED_FLOOR", 30.0)),
+        None => static_base(operation, brain_id),
+    };
+    resolve_with(operation, message, override_timeout, base)
+}
+
+/// p95 aus `brain_score`, einmal je Prozess eingelesen.
+///
+/// Ohne Cache laege bei JEDEM Timeout-Aufruf ein vollstaendiger Durchlauf der
+/// Ereignisdatei (hier: 2435 Zeilen) — die Datei aendert sich waehrend eines
+/// Laufs kaum, ein Snapshot beim ersten Zugriff genuegt.
+fn measured_p95_cached(operation: &str, brain_id: &str) -> Option<f64> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
     // `login` ist Wartezeit auf einen MENSCHEN, keine Modellantwort — die
     // Antwortlatenz sagt darueber nichts aus.
     if operation == "login" {
-        return statisch;
+        return None;
+    }
+    static CACHE: OnceLock<Mutex<HashMap<String, Option<f64>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = brain_id.to_lowercase();
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(v) = guard.get(&key) {
+        return *v;
     }
     let min_samples = env_float("WEBAGENT_TIMEOUT_MIN_SAMPLES", 20.0).max(1.0) as usize;
-    match crate::brain_score::latency_p95_secs(&brain_id.to_lowercase(), min_samples) {
-        Some(p95) => {
-            // Sicherheitsaufschlag auf die p95: die restlichen 5 Prozent
-            // duerfen nicht systematisch abgeschnitten werden.
-            let faktor = env_float("WEBAGENT_TIMEOUT_P95_FACTOR", 1.6);
-            (p95 * faktor).max(env_float("WEBAGENT_TIMEOUT_MEASURED_FLOOR", 30.0))
-        }
-        None => statisch,
-    }
+    let v = crate::brain_score::latency_p95_secs(&key, min_samples);
+    guard.insert(key, v);
+    v
 }
 
 fn resolve_with(
@@ -145,12 +168,31 @@ mod tests {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Kaltstart (keine Messwerte): die statische Tabelle gilt, dort ist
+    /// claude langsamer hinterlegt.
     #[test]
-    fn test_chatgpt_shorter_than_claude() {
+    fn kaltstart_nutzt_die_statische_tabelle() {
         let _g = env_guard();
-        let chatgpt = resolve_timeout("wait_response", "chatgpt", "hi", None);
-        let claude = resolve_timeout("wait_response", "claude", "hi", None);
-        assert!(claude > chatgpt);
+        let chatgpt = resolve_from("wait_response", "chatgpt", "hi", None, None);
+        let claude = resolve_from("wait_response", "claude", "hi", None, None);
+        assert!(claude > chatgpt, "statische Tabelle nicht angewandt");
+    }
+
+    /// Sobald Messwerte vorliegen, schlagen sie die Schaetzung — auch wenn sie
+    /// ihr widersprechen. Genau das war der Befund: claude ist entgegen der
+    /// Tabelle (1.8) nicht langsamer als chatgpt.
+    #[test]
+    fn messwerte_schlagen_die_schaetztabelle() {
+        let _g = env_guard();
+        let geschaetzt = resolve_from("wait_response", "claude", "hi", None, None);
+        let gemessen = resolve_from("wait_response", "claude", "hi", None, Some(20.0));
+        assert!(
+            gemessen < geschaetzt,
+            "Messwert wurde ignoriert: gemessen={gemessen} geschaetzt={geschaetzt}"
+        );
+        // Der Aufschlag auf die p95 muss drauf sein (20s * 1.6 = 32s),
+        // aber der Boden von 30s darf nicht unterschritten werden.
+        assert!(gemessen >= 30.0, "Untergrenze verletzt: {gemessen}");
     }
 
     #[test]
