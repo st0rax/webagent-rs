@@ -1,4 +1,16 @@
-//! Dynamic timeout policy — replaces flat 120s defaults.
+//! Timeout-Politik: bevorzugt GEMESSEN, nur notfalls geschaetzt.
+//!
+//! Die frueheren Werte waren durchweg Schaetzungen — feste Basiszeiten je
+//! Operation und eine handgepflegte Multiplikatoren-Tabelle je Brain. Eine
+//! Messung ueber 2072 Erfolgslaeufe (2026-07-26) zeigte, dass diese Tabelle in
+//! BEIDE Richtungen danebenlag: claude war mit 1.8 hinterlegt, gemessen 0.9;
+//! kimi mit 1.3, gemessen 2.2. Folge: bei den einen liefen Fehlschlaege
+//! minutenlang aus, die anderen wurden mitten in der Arbeit abgeschnitten.
+//!
+//! Deshalb kommt der Brain-Anteil jetzt aus der tatsaechlichen p95-Latenz
+//! erfolgreicher Aufrufe (`brain_score`). Die statische Tabelle dient nur noch
+//! als Kaltstart, solange zu wenig Messwerte vorliegen. Jede Konstante ist per
+//! Umgebungsvariable ueberschreibbar — nichts hier ist unveraenderlich.
 
 use std::collections::HashMap;
 
@@ -15,15 +27,44 @@ pub fn resolve_timeout(
     message: &str,
     override_timeout: Option<f64>,
 ) -> f64 {
-    let operation_base = get_operation_base();
-    let brain_multipliers = get_brain_multipliers();
+    resolve_with(
+        operation,
+        message,
+        override_timeout,
+        measured_or_static(operation, brain_id),
+    )
+}
 
-    let base = operation_base.get(operation).copied().unwrap_or(90.0);
-    let mult = brain_multipliers
-        .get(&brain_id.to_lowercase())
-        .copied()
-        .unwrap_or(1.0);
+/// Brain-Anteil: gemessene p95 falls vorhanden, sonst der Kaltstart-Schaetzwert.
+///
+/// Liefert die *Basiszeit in Sekunden* fuer diese Operation, nicht mehr einen
+/// dimensionslosen Faktor — die Messung ist eine Zeit, und eine Zeit soll auch
+/// eine bleiben statt in einen Faktor zurueckgerechnet zu werden.
+fn measured_or_static(operation: &str, brain_id: &str) -> f64 {
+    let statisch = static_base(operation, brain_id);
+    // `login` ist Wartezeit auf einen MENSCHEN, keine Modellantwort — die
+    // Antwortlatenz sagt darueber nichts aus.
+    if operation == "login" {
+        return statisch;
+    }
+    let min_samples = env_float("WEBAGENT_TIMEOUT_MIN_SAMPLES", 20.0).max(1.0) as usize;
+    match crate::brain_score::latency_p95_secs(&brain_id.to_lowercase(), min_samples) {
+        Some(p95) => {
+            // Sicherheitsaufschlag auf die p95: die restlichen 5 Prozent
+            // duerfen nicht systematisch abgeschnitten werden.
+            let faktor = env_float("WEBAGENT_TIMEOUT_P95_FACTOR", 1.6);
+            (p95 * faktor).max(env_float("WEBAGENT_TIMEOUT_MEASURED_FLOOR", 30.0))
+        }
+        None => statisch,
+    }
+}
 
+fn resolve_with(
+    _operation: &str,
+    message: &str,
+    override_timeout: Option<f64>,
+    base: f64,
+) -> f64 {
     let msg_extra = if message.is_empty() {
         0.0
     } else {
@@ -31,7 +72,7 @@ pub fn resolve_timeout(
         (blocks * SECONDS_PER_BLOCK).min(MAX_MESSAGE_EXTRA)
     };
 
-    let mut computed = (base + msg_extra) * mult;
+    let mut computed = base + msg_extra;
     computed *= env_float("WEBAGENT_TIMEOUT_MULT", 1.0);
 
     let min_t = env_float("WEBAGENT_TIMEOUT_MIN", 30.0);
@@ -46,12 +87,27 @@ pub fn resolve_timeout(
     computed
 }
 
+/// Kaltstart-Schaetzung: Operationsbasis x Brain-Faktor. Nur noch gueltig,
+/// solange fuer das Brain zu wenige Messwerte vorliegen.
+fn static_base(operation: &str, brain_id: &str) -> f64 {
+    let base = get_operation_base()
+        .get(operation)
+        .copied()
+        .unwrap_or_else(|| env_float("WEBAGENT_TIMEOUT_BASE_DEFAULT", 90.0));
+    let mult = get_brain_multipliers()
+        .get(&brain_id.to_lowercase())
+        .copied()
+        .unwrap_or(1.0);
+    base * mult
+}
+
 fn get_operation_base() -> HashMap<&'static str, f64> {
     let mut map = HashMap::new();
-    map.insert("ensure_ready", 45.0);
-    map.insert("wait_response", 90.0);
-    map.insert("relay", 90.0);
-    map.insert("login", 300.0);
+    // Startwerte, jeweils per Env ueberschreibbar — keine Zahl hier ist fix.
+    map.insert("ensure_ready", env_float("WEBAGENT_TIMEOUT_ENSURE_READY", 45.0));
+    map.insert("wait_response", env_float("WEBAGENT_TIMEOUT_WAIT_RESPONSE", 90.0));
+    map.insert("relay", env_float("WEBAGENT_TIMEOUT_RELAY", 90.0));
+    map.insert("login", env_float("WEBAGENT_TIMEOUT_LOGIN", 300.0));
     map
 }
 

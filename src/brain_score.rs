@@ -150,6 +150,36 @@ fn wilson_lower_bound(successes: usize, n: usize) -> f64 {
 
 /// Statistik fuer ein Brain aus dem rollierenden Fenster der letzten
 /// `WINDOW_SIZE` Ereignisse. `None`, wenn noch keine Ereignisse vorliegen.
+/// p95 der Latenz ERFOLGREICHER Aufrufe eines Brains, in Sekunden.
+///
+/// Grundlage fuer datenbasierte Timeouts: die fest verdrahtete
+/// Multiplikatoren-Tabelle in [`crate::timeouts`] war nachweislich in beide
+/// Richtungen falsch (Messung 2026-07-26 ueber 2072 Erfolgslaeufe: claude 1.8
+/// verdrahtet vs. 0.9 gemessen, kimi 1.3 vs. 2.2). Fehlschlaege bleiben
+/// draussen — deren Dauer ist ein Timeout, kein Antwortverhalten, und wuerde
+/// die Schaetzung nach oben ziehen.
+///
+/// `None`, wenn weniger als `min_samples` Erfolge vorliegen; der Aufrufer
+/// faellt dann auf seine Startwerte zurueck.
+pub fn latency_p95_secs(brain_id: &str, min_samples: usize) -> Option<f64> {
+    latency_p95_at(brain_id, min_samples, &events_path())
+}
+
+fn latency_p95_at(brain_id: &str, min_samples: usize, path: &PathBuf) -> Option<f64> {
+    let all = load_events(path);
+    let mut lat: Vec<f64> = all
+        .iter()
+        .filter(|e| e.brain_id == brain_id && e.success && e.latency_ms > 0)
+        .map(|e| e.latency_ms as f64 / 1000.0)
+        .collect();
+    if lat.len() < min_samples.max(1) {
+        return None;
+    }
+    lat.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = ((lat.len() as f64 * 0.95).ceil() as usize).saturating_sub(1);
+    lat.get(idx).copied()
+}
+
 pub fn stats(brain_id: &str) -> Option<BrainStats> {
     stats_at(brain_id, &events_path())
 }
