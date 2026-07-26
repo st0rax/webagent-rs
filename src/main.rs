@@ -471,11 +471,26 @@ pub fn startup_reconcile_runs() -> Vec<String> {
 /// und der Start darf daran nicht scheitern.
 #[cfg(all(windows, feature = "webview"))]
 fn init_console_utf8() {
-    use windows::Win32::System::Console::{SetConsoleCP, SetConsoleOutputCP};
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{
+        GetConsoleMode, SetConsoleCP, SetConsoleMode, SetConsoleOutputCP, CONSOLE_MODE,
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    };
     const UTF8: u32 = 65001;
     unsafe {
         let _ = SetConsoleOutputCP(UTF8);
         let _ = SetConsoleCP(UTF8);
+        // Ohne VT-Verarbeitung faellt crossterm auf die ALTE Konsolen-API
+        // zurueck. Die kennt nur 16 Attribute — unsere Rgb-Palette (ACCENT,
+        // MUTED und die Level-Farben) ist dort nicht darstellbar und landet
+        // auf Default-Weiss: die TUI sah komplett monochrom aus, obwohl
+        // tui_render 58 Farben setzt (beobachtet 2026-07-26).
+        let handle = HANDLE(std::io::stdout().as_raw_handle());
+        let mut mode = CONSOLE_MODE(0);
+        if GetConsoleMode(handle, &mut mode).is_ok() {
+            let _ = SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        }
     }
 }
 
