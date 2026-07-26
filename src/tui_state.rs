@@ -356,8 +356,110 @@ pub fn load_state(_force: bool) -> Vec<AgentView> {
         .collect();
     // Feste alphabetische Reihenfolge — sonst springt der Fokus bei jedem
     // Reload, weil die HashMap-Iteration nicht-deterministisch ist.
+    overlay_bench_activity(&mut agents);
     agents.sort_by(|a, b| a.brain.cmp(&b.brain));
     agents
+}
+
+/// Sekunden seit Mitternacht aus einem `HH:MM:SS`-Stempel.
+fn seconds_of_day(hhmmss: &str) -> Option<u64> {
+    let mut it = hhmmss.split(':');
+    let h: u64 = it.next()?.parse().ok()?;
+    let m: u64 = it.next()?.parse().ok()?;
+    let s: u64 = it.next()?.parse().ok()?;
+    Some(h * 3600 + m * 60 + s)
+}
+
+/// Alter eines `HH:MM:SS`-Stempels in Sekunden gegen die Ortszeit.
+/// Die Ereignisse tragen kein Datum — daher der Tagesumbruch.
+fn age_of_stamp(hhmmss: &str) -> Option<u64> {
+    let then = seconds_of_day(hhmmss)?;
+    let now = seconds_of_day(&crate::timestamp())?;
+    Some(if now >= then { now - then } else { now + 86_400 - then })
+}
+
+/// Blendet die Aktivitaet des laufenden Benchmarks ueber die Pool-Daten.
+///
+/// Der Benchmark fasst den bot2bot-Worker-Pool NIE an (`benchmark.rs` kennt
+/// `worker_pool` nicht einmal). Ohne diesen Abgleich zeigt das Dashboard
+/// waehrend eines Laufs nur Altbestand — Zeilen in `cooldown`, Heartbeats
+/// stundenalt — obwohl die Benchmark-Ansicht daneben mitloggt (Beschwerde
+/// 2026-07-26). Uebernommen wird nur ehrlich Ableitbares; `pid` bleibt
+/// unbekannt, weil der Ereignisstrom keine Prozesse kennt.
+fn overlay_bench_activity(agents: &mut Vec<AgentView>) {
+    use std::collections::HashMap;
+    let events = crate::bench_events::snapshot();
+    if events.is_empty() {
+        return;
+    }
+    let mut seen: Vec<String> = Vec::new();
+    let mut last: HashMap<String, (String, u64)> = HashMap::new();
+    let mut passes: HashMap<String, usize> = HashMap::new();
+    let mut detail: HashMap<String, Vec<String>> = HashMap::new();
+
+    for ev in &events {
+        let Some(brain) = ev.brain.as_deref() else { continue };
+        if !seen.iter().any(|b| b == brain) {
+            seen.push(brain.to_string());
+        }
+        if let Some(age) = age_of_stamp(&ev.ts) {
+            last.insert(brain.to_string(), (ev.text.clone(), age));
+        }
+        if ev.level == crate::bench_events::Level::Pass {
+            *passes.entry(brain.to_string()).or_default() += 1;
+        }
+        let d = detail.entry(brain.to_string()).or_default();
+        d.push(format!("{} {}", ev.ts, ev.text));
+        if d.len() > DETAIL_HISTORY {
+            d.remove(0);
+        }
+    }
+
+    let apply = |a: &mut AgentView| {
+        if let Some((text, age)) = last.get(&a.brain) {
+            a.heartbeat_age_sec = *age;
+            a.last_log_line = Some(text.clone());
+            // Frisch gemeldet = arbeitet gerade. Der Pool-Status stammt aus
+            // einem anderen Subsystem und waere hier irrefuehrend.
+            a.status = if *age < 60 {
+                "active".to_string()
+            } else if *age < 600 {
+                "available".to_string()
+            } else {
+                "cooldown".to_string()
+            };
+        }
+        if let Some(n) = passes.get(&a.brain) {
+            a.tasks_done = *n;
+        }
+        if let Some(d) = detail.get(&a.brain) {
+            a.detail = d.clone();
+        }
+    };
+
+    for a in agents.iter_mut() {
+        apply(a);
+    }
+    // Brains ohne Pool-Eintrag ergaenzen — sonst fehlt genau das Brain, das
+    // gerade arbeitet.
+    for brain in seen {
+        if agents.iter().any(|a| a.brain == brain) {
+            continue;
+        }
+        let mut a = AgentView {
+            brain,
+            status: "available".to_string(),
+            pid: None,
+            heartbeat_age_sec: u64::MAX,
+            tasks_pending: 0,
+            tasks_done: 0,
+            last_log_line: None,
+            last_response: None,
+            detail: Vec::new(),
+        };
+        apply(&mut a);
+        agents.push(a);
+    }
 }
 
 fn fs_read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
@@ -438,6 +540,71 @@ fn latest_log_line(root: &Path, brain: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn benchmark_aktivitaet_erreicht_das_worker_dashboard() {
+        crate::bench_events::clear();
+        let mut agents = vec![AgentView {
+            brain: "deepseek".to_string(),
+            status: "cooldown".to_string(),
+            pid: None,
+            heartbeat_age_sec: u64::MAX,
+            tasks_pending: 0,
+            tasks_done: 0,
+            last_log_line: None,
+            last_response: None,
+            detail: Vec::new(),
+        }];
+        crate::bench_events::emit(
+            crate::bench_events::Level::Pass,
+            Some("deepseek"),
+            "deepseek: Tests gruen",
+        );
+        crate::bench_events::emit(
+            crate::bench_events::Level::Progress,
+            Some("zai"),
+            "zai: Iteration 1",
+        );
+
+        overlay_bench_activity(&mut agents);
+
+        let ds = agents.iter().find(|a| a.brain == "deepseek").unwrap();
+        assert_eq!(ds.status, "active");
+        assert!(ds.heartbeat_age_sec < 60, "Heartbeat blieb alt");
+        assert_eq!(ds.last_log_line.as_deref(), Some("deepseek: Tests gruen"));
+        assert_eq!(ds.tasks_done, 1);
+        assert!(!ds.detail.is_empty());
+        assert!(
+            agents.iter().any(|a| a.brain == "zai"),
+            "arbeitendes Brain ohne Pool-Eintrag fehlt"
+        );
+
+        // Gegenprobe: ohne Ereignisse bleibt der Pool-Zustand unangetastet.
+        crate::bench_events::clear();
+        let mut u = vec![AgentView {
+            brain: "kimi".to_string(),
+            status: "cooldown".to_string(),
+            pid: None,
+            heartbeat_age_sec: 999,
+            tasks_pending: 3,
+            tasks_done: 7,
+            last_log_line: None,
+            last_response: None,
+            detail: Vec::new(),
+        }];
+        overlay_bench_activity(&mut u);
+        assert_eq!(u[0].status, "cooldown");
+        assert_eq!(u[0].tasks_done, 7);
+        assert_eq!(u.len(), 1);
+        crate::bench_events::clear();
+    }
+
+    #[test]
+    fn stempel_alter_ueberlebt_den_tageswechsel() {
+        assert_eq!(seconds_of_day("01:02:03"), Some(3723));
+        assert!(seconds_of_day("kaputt").is_none());
+        assert!(age_of_stamp(&crate::timestamp()).unwrap() < 5);
+    }
 
     #[test]
     fn test_select_wrap_forward() {
