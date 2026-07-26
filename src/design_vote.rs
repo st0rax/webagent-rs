@@ -23,6 +23,15 @@ pub struct DesignVoteConfig {
     pub topic: String,
     /// Optionaler Kontext (aktuelles Layout, Randbedingungen).
     pub context: String,
+    /// Art des Konsenses: TUI-Entwurf oder Bauplan fuer den Benchmark.
+    pub mode: VoteMode,
+}
+
+/// Was die Brains vor der Abstimmung einreichen sollen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoteMode {
+    Design,
+    ImplementationPlan,
 }
 
 /// Ergebnis eines Design-Votes.
@@ -59,6 +68,21 @@ pub fn build_collect_prompt(topic: &str, context: &str) -> String {
     )
 }
 
+/// Prompt fuer die Planungsphase des Benchmarks.
+pub fn build_plan_collect_prompt(topic: &str, context: &str) -> String {
+    let ctx = if context.trim().is_empty() {
+        String::new()
+    } else {
+        format!("\n\nKontext:\n{}", context.trim())
+    };
+    format!(
+        "Erstelle EINEN konkreten, begrenzten Implementierungsplan fuer {topic}.{ctx}\n\n\
+         Nenne genau EINE Zieldatei aus der erlaubten Liste, die exakte Änderung/API, \
+         die nötigen Tests und Risiken fuer Scope oder Kompatibilitaet. KEIN Code, \
+         keine Einleitung, keine Architektur-Erweiterung — nur den umsetzbaren Plan."
+    )
+}
+
 /// Prompt für eine Ausscheidungsrunde über die noch lebenden Designs.
 pub fn build_kick_prompt(topic: &str, alive: &[(usize, &str)]) -> String {
     let mut list = String::new();
@@ -70,9 +94,27 @@ pub fn build_kick_prompt(topic: &str, alive: &[(usize, &str)]) -> String {
         ));
     }
     format!(
-        "Ausscheidungsrunde fuer das beste TUI-Design ({topic}). Verbleibende \
-         Entwuerfe:\n\n{list}\nNenne die EINE Nummer, die AUSSCHEIDEN soll (das \
-         schwaechste Design), und begruende kurz. Antworte mit der Nummer zuerst, \
+        "Ausscheidungsrunde fuer den besten Implementierungsplan ({topic}). Verbleibende \
+         Pläne:\n\n{list}\nNenne die EINE Nummer, die AUSSCHEIDEN soll (der \
+         schwächste Plan), und begruende kurz. Antworte mit der Nummer zuerst, \
+         z.B. '3 - zu ueberladen, ...'."
+    )
+}
+
+/// Prompt fuer eine Ausscheidungsrunde über konkrete Implementierungspläne.
+pub fn build_plan_kick_prompt(topic: &str, alive: &[(usize, &str)]) -> String {
+    let mut list = String::new();
+    for (display_nr, (_orig, text)) in alive.iter().enumerate() {
+        list.push_str(&format!(
+            "{}. {}\n\n",
+            display_nr + 1,
+            crate::char_prefix(text, 600)
+        ));
+    }
+    format!(
+        "Ausscheidungsrunde fuer den besten Implementierungsplan ({topic}). Verbleibende \
+         Plaene:\n\n{list}\nNenne die EINE Nummer, die AUSSCHEIDEN soll (der \
+         schwaechste Plan), und begruende kurz. Antworte mit der Nummer zuerst, \
          z.B. '3 - zu ueberladen, ...'."
     )
 }
@@ -102,7 +144,10 @@ where
         "Sammeln: {} Brains entwerfen",
         config.brains.len()
     ));
-    let collect = build_collect_prompt(&config.topic, &config.context);
+    let collect = match config.mode {
+        VoteMode::Design => build_collect_prompt(&config.topic, &config.context),
+        VoteMode::ImplementationPlan => build_plan_collect_prompt(&config.topic, &config.context),
+    };
     let mut proposals: Vec<(String, String)> = Vec::new();
     for b in &config.brains {
         match query(b, &collect) {
@@ -146,7 +191,10 @@ where
             alive_orig.len(),
             config.brains.len()
         ));
-        let prompt = build_kick_prompt(&config.topic, &alive_view);
+        let prompt = match config.mode {
+            VoteMode::Design => build_kick_prompt(&config.topic, &alive_view),
+            VoteMode::ImplementationPlan => build_plan_kick_prompt(&config.topic, &alive_view),
+        };
 
         let mut kicks: Vec<usize> = Vec::new();
         for b in &config.brains {
@@ -241,6 +289,7 @@ mod tests {
                 brains,
                 topic: "die TUI".to_string(),
                 context: String::new(),
+                mode: VoteMode::Design,
             },
             &|_| {},
             query,
@@ -274,6 +323,7 @@ mod tests {
                 brains,
                 topic: "x".to_string(),
                 context: String::new(),
+                mode: VoteMode::Design,
             },
             &|_| {},
             query,
@@ -292,6 +342,7 @@ mod tests {
                 brains,
                 topic: "x".to_string(),
                 context: String::new(),
+                mode: VoteMode::Design,
             },
             &|_| {},
             query,

@@ -1042,6 +1042,51 @@ where
         bench_say!(crate::bench_events::Level::Pass, None, "Sieger: {winner}");
         winners.push((round, winner.clone()));
 
+        // Phase A.5: Alle Brains planen den Sieger; der Konsensplan wird erst
+        // danach zum verbindlichen Bauauftrag. Ein einzelner Erst-Refiner wäre
+        // hier ein unnötiger, unbeobachteter Engpass.
+        let existing_api = crate::self_research::collect_public_api(&config.workdir.join("src"));
+        let src_files: Vec<String> =
+            crate::self_research::collect_modules(&config.workdir.join("src"))
+                .into_iter()
+                .map(|(name, _lines)| format!("src/{name}"))
+                .collect();
+        let plan_context = format!(
+            "Projektfakten:\n{}\n\nErlaubte Zieldateien: {}\n\nBestehende öffentliche APIs: {}\n\nDer Plan muss genau eine kleine Änderung beschreiben.",
+            crate::char_prefix(&facts, 900), src_files.join(", "), existing_api.join(", ")
+        );
+        bench_say!(
+            crate::bench_events::Level::Info,
+            None,
+            "Sieger wird gemeinschaftlich geplant…"
+        );
+        let plan_vote = crate::design_vote::run_design_vote(
+            &crate::design_vote::DesignVoteConfig {
+                brains: config.brains.clone(),
+                topic: winner.clone(),
+                context: plan_context,
+                mode: crate::design_vote::VoteMode::ImplementationPlan,
+            },
+            &|msg| {
+                crate::bench_events::emit(
+                    crate::bench_events::Level::Progress,
+                    None,
+                    &format!("Plan-Konsens: {msg}"),
+                )
+            },
+            |b, p| query(b, p),
+        );
+        let consensus_plan = plan_vote
+            .winning_design()
+            .map(|(_, plan)| plan.clone())
+            .unwrap_or_else(|| winner.clone());
+        bench_say!(
+            crate::bench_events::Level::Pass,
+            None,
+            "Plan-Konsens: {}",
+            crate::char_prefix(&consensus_plan, 140)
+        );
+
         // Turnier statt Mischmasch: jedes Brain bearbeitet exakt den gewählten
         // Sieger. Damit misst der Score die Qualität der Umsetzung und nicht,
         // ob ein zufällig zugeteilter Neben-Vorschlag leichter war.
@@ -1050,12 +1095,6 @@ where
         // Phase A.5 — jede zugeteilte Aufgabe konkretisieren. Gleiche Vorschlaege
         // nur einmal verfeinern (bei weniger Vorschlaegen als Brains).
         let refiner = config.brains.first().cloned().unwrap_or_default();
-        let existing_api = crate::self_research::collect_public_api(&config.workdir.join("src"));
-        let src_files: Vec<String> =
-            crate::self_research::collect_modules(&config.workdir.join("src"))
-                .into_iter()
-                .map(|(name, _lines)| format!("src/{name}"))
-                .collect();
         let mut refined_cache: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         let mut plan: Vec<(String, String)> = Vec::new();
@@ -1065,7 +1104,14 @@ where
                 None => {
                     let t =
                         crate::StageTimer::start(format!("verfeinern fuer {brain} via {refiner}"));
-                    let e = refine_one(raw, &facts, &refiner, &existing_api, &src_files, &query);
+                    let e = refine_one(
+                        &consensus_plan,
+                        &facts,
+                        &refiner,
+                        &existing_api,
+                        &src_files,
+                        &query,
+                    );
                     t.finish(crate::char_prefix(&e, 90));
                     refined_cache.insert(raw.clone(), e.clone());
                     e

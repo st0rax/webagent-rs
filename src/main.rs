@@ -847,6 +847,7 @@ fn cmd_design_vote(
         brains: targets,
         topic: topic.clone(),
         context,
+        mode: webagent::design_vote::VoteMode::Design,
     };
 
     let report = webagent::design_vote::run_design_vote(
