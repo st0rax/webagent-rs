@@ -558,14 +558,6 @@ pub fn parse(response_text: &str) -> ParseResult {
         return ParseResult::invalid("Leere Antwort.", text);
     }
 
-    // Graceful handling für Model capacity / rate limit
-    let capacity_re =
-        Regex::new(r"(?i)(Höchstgrenze|Kapazität|capacity|rate limit|zu viele|erneut versuchen)")
-            .unwrap();
-    if capacity_re.is_match(&text) {
-        return ParseResult::invalid("Model capacity / rate limit.", text);
-    }
-
     // WEBAGENT/1 SHELL Rohskript-Format
     let script_re = script_envelope_regex();
     if let Some(caps) = script_re.captures(&text) {
@@ -648,6 +640,13 @@ pub fn parse(response_text: &str) -> ParseResult {
     let doc = match serde_json::from_str::<Value>(&json_str) {
         Ok(v) => v,
         Err(exc) => {
+            // Provider-Hinweise erst dann klassifizieren, wenn die Antwort kein
+            // gueltiges WebAgent-Protokoll ist. Andernfalls wuerden legitime
+            // Actions wie `rg "rate limit" src` allein wegen ihres Inhalts
+            // faelschlich als Provider-Sperre verworfen.
+            if looks_like_capacity_notice(&text) {
+                return ParseResult::invalid("Model capacity / rate limit.", text);
+            }
             // Versuche Windows-Path-Reparatur
             if let Some(repaired) = repair_message_windows_paths(&json_str) {
                 match serde_json::from_str::<Value>(&repaired) {
@@ -723,6 +722,18 @@ pub fn parse(response_text: &str) -> ParseResult {
     }
 
     ParseResult::valid(actions, text)
+}
+
+fn looks_like_capacity_notice(text: &str) -> bool {
+    static CAPACITY_RE: OnceLock<Regex> = OnceLock::new();
+    CAPACITY_RE
+        .get_or_init(|| {
+            Regex::new(
+                r"(?i)(Höchstgrenze|Kapazität|capacity|rate limit|zu viele|erneut versuchen)",
+            )
+            .expect("capacity regex")
+        })
+        .is_match(text)
 }
 
 pub fn is_possibly_truncated(response_text: &str) -> bool {
@@ -865,6 +876,28 @@ mod tests {
         assert_eq!(result.actions.len(), 1);
         assert_eq!(result.actions[0].id, "s1");
         assert_eq!(result.actions[0].command, "Get-Location");
+    }
+
+    #[test]
+    fn valid_protocol_may_discuss_rate_limits() {
+        let env = serde_json::json!({
+            "protocol": "webagent/1",
+            "actions": [{
+                "id": "search-rate-limit",
+                "type": "shell",
+                "command": "rg \"rate limit\" src"
+            }]
+        });
+        let result = parse(&serde_json::to_string(&env).unwrap());
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions[0].command, "rg \"rate limit\" src");
+    }
+
+    #[test]
+    fn plain_capacity_notice_is_still_classified() {
+        let result = parse("Rate limit erreicht. Bitte erneut versuchen.");
+        assert!(!result.valid);
+        assert_eq!(result.error, "Model capacity / rate limit.");
     }
 
     #[test]

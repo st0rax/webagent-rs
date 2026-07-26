@@ -18,9 +18,10 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
@@ -200,23 +201,21 @@ impl PoolState {
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
         let s = serde_json::to_string_pretty(self)
             .map_err(|e| std::io::Error::new(ErrorKind::InvalidData, e.to_string()))?;
-        fs::write(path, s)
+        atomic_write(path, s.as_bytes())
     }
 }
 
 /// Steuerbefehle für den laufenden Supervisor (Datei-IPC, siehe
-/// `PoolControl::load`). Die TUI (Teil 2) schreibt `pool_control.json`;
+/// `PoolControl::take`). Die TUI (Teil 2) schreibt `pool_control.json`;
 /// der Supervisor liest es pro Tick und wendet target_active / reflag / stop an.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PoolControl {
-    /// Gewünschte Anzahl aktiver Worker (überschreibt `active`). 0 = nicht ändern.
+    /// Gewünschte Anzahl aktiver Worker (überschreibt `active`).
+    /// `None` = nicht ändern, `Some(0)` = alle Worker stoppen.
     #[serde(default)]
-    pub target_active: usize,
+    pub target_active: Option<usize>,
     /// Alle Kandidaten auf `available` zurücksetzen (nach Fix).
     #[serde(default)]
     pub reflag_all: bool,
@@ -229,15 +228,119 @@ pub struct PoolControl {
 }
 
 impl PoolControl {
-    /// Lädt `pool_control.json`; fehlt die Datei, wird Default (kein Eingriff)
-    /// geliefert. Ungültiges/leeres JSON ebenfalls als Default behandelt.
-    pub fn load(path: &Path) -> PoolControl {
-        if let Ok(s) = fs::read_to_string(path) {
-            if let Ok(c) = serde_json::from_str::<PoolControl>(&s) {
-                return c;
+    /// Übernimmt `pool_control.json` per atomarem Rename und lädt den Inhalt.
+    ///
+    /// Ein paralleler Schreiber kann sofort die nächste Steuerdatei publizieren,
+    /// ohne dass der Supervisor sie nachträglich versehentlich löscht. Ungültiges
+    /// JSON bleibt als `*.invalid-*` neben der Control-Datei zur Diagnose liegen.
+    pub fn take(path: &Path) -> std::io::Result<Option<PoolControl>> {
+        let claimed = sibling_temp_path(path, "processing");
+        match fs::rename(path, &claimed) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e),
+        }
+
+        let parsed = fs::read_to_string(&claimed).and_then(|s| {
+            serde_json::from_str::<PoolControl>(&s)
+                .map_err(|e| std::io::Error::new(ErrorKind::InvalidData, e.to_string()))
+        });
+
+        match parsed {
+            Ok(control) => {
+                if let Err(e) = fs::remove_file(&claimed) {
+                    crate::bench_events::eprint_line(&format!(
+                        "[worker_pool] konsumierte Control-Datei konnte nicht entfernt werden \
+                         ({}): {e}",
+                        claimed.display()
+                    ));
+                }
+                Ok(Some(control))
+            }
+            Err(e) => {
+                let invalid = sibling_temp_path(path, "invalid");
+                let retained = match fs::rename(&claimed, &invalid) {
+                    Ok(()) => invalid,
+                    Err(_) => claimed,
+                };
+                Err(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "{}; ungültige Control-Datei behalten: {}",
+                        e,
+                        retained.display()
+                    ),
+                ))
             }
         }
-        PoolControl::default()
+    }
+}
+
+/// Schreibt eine Datei vollständig in eine gleichgeordnete temporäre Datei und
+/// veröffentlicht sie anschließend per atomarem Replace.
+pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+
+    let tmp = sibling_temp_path(path, "tmp");
+    let result = (|| {
+        let mut file = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+        drop(file);
+        atomic_replace(&tmp, path)
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
+fn sibling_temp_path(path: &Path, purpose: &str) -> PathBuf {
+    static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+    let seq = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("pool");
+    path.with_file_name(format!(".{name}.{purpose}-{}-{seq}", std::process::id()))
+}
+
+#[cfg(not(windows))]
+fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::rename(from, to)
+}
+
+#[cfg(windows)]
+fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "Kernel32")]
+    extern "system" {
+        fn MoveFileExW(
+            existing_file_name: *const u16,
+            new_file_name: *const u16,
+            flags: u32,
+        ) -> i32;
+    }
+
+    const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
+    const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+
+    let from_wide: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
+    let to_wide: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
+    let ok = unsafe {
+        MoveFileExW(
+            from_wide.as_ptr(),
+            to_wide.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
     }
 }
 
@@ -505,8 +608,8 @@ impl WorkerPool {
     /// keine Schleife (wird von `run()` oder der TUI getaktet).
     pub fn tick(&mut self, control: &PoolControl) {
         // Steuerbefehle anwenden.
-        if control.target_active > 0 {
-            self.active = control.target_active;
+        if let Some(target_active) = control.target_active {
+            self.active = target_active;
         }
 
         let mut state = PoolState::load_or_init(&self.state_path, &self.candidates);
@@ -668,12 +771,11 @@ impl WorkerPool {
             }
         }
 
-        let _ = state.save(&self.state_path);
-        // Steuerbefehl konsumieren (One-Shot): nach Anwendung loeschen, damit
-        // z.B. `stop` nicht ueber einen Relaunch hinweg persistiert und `reflag`
-        // nicht jeden Tick wiederholt. `target_active == 0` (kein Eingriff)
-        // haelt den Wert ueber Ticks via `self.active`.
-        let _ = fs::remove_file(&self.control_path);
+        if let Err(e) = state.save(&self.state_path) {
+            crate::bench_events::eprint_line(&format!(
+                "[worker_pool] Pool-State konnte nicht gespeichert werden: {e}"
+            ));
+        }
     }
 
     /// Beendet alle laufenden Kindprozesse sofort (Failover-Loop verlässt danach).
@@ -693,7 +795,16 @@ impl WorkerPool {
     /// Supervisor prüft das Alter und markiert stale Worker als `unavailable`).
     pub fn run(&mut self) {
         loop {
-            let control = PoolControl::load(&self.control_path);
+            let control = match PoolControl::take(&self.control_path) {
+                Ok(Some(control)) => control,
+                Ok(None) => PoolControl::default(),
+                Err(e) => {
+                    crate::bench_events::eprint_line(&format!(
+                        "[worker_pool] Control-Datei nicht anwendbar: {e}"
+                    ));
+                    PoolControl::default()
+                }
+            };
             self.tick(&control);
             if control.stop {
                 self.kill_all();
@@ -889,6 +1000,85 @@ mod tests {
         assert_eq!(loaded.entries["deepseek"].status, STATUS_ACTIVE);
         assert_eq!(loaded.entries["chatgpt"].status, STATUS_UNAVAILABLE);
         assert_eq!(loaded.entries["chatgpt"].last_error, "exit code 1");
+    }
+
+    #[test]
+    fn pool_state_save_atomically_replaces_existing_file() {
+        let dir = tmp_dir();
+        let path = dir.join("pool_state.json");
+        let mut st = PoolState::default();
+        st.set("first", STATUS_ACTIVE, "");
+        st.save(&path).unwrap();
+        st.entries.clear();
+        st.set("second", STATUS_AVAILABLE, "");
+        st.save(&path).unwrap();
+
+        let loaded = PoolState::load(&path);
+        assert!(!loaded.entries.contains_key("first"));
+        assert_eq!(loaded.entries["second"].status, STATUS_AVAILABLE);
+        let leftovers: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".tmp-"))
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "temporary files leaked: {leftovers:?}"
+        );
+    }
+
+    #[test]
+    fn pool_control_take_distinguishes_zero_from_no_change() {
+        let dir = tmp_dir();
+        let path = dir.join("pool_control.json");
+        let control = PoolControl {
+            target_active: Some(0),
+            ..Default::default()
+        };
+        let json = serde_json::to_vec(&control).unwrap();
+        atomic_write(&path, &json).unwrap();
+
+        let loaded = PoolControl::take(&path).unwrap().unwrap();
+        assert_eq!(loaded.target_active, Some(0));
+        assert!(!path.exists());
+        assert!(PoolControl::take(&path).unwrap().is_none());
+    }
+
+    #[test]
+    fn invalid_pool_control_is_retained_for_diagnosis() {
+        let dir = tmp_dir();
+        let path = dir.join("pool_control.json");
+        atomic_write(&path, b"{not json").unwrap();
+
+        let err = PoolControl::take(&path).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+        let retained: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().contains(".invalid-"))
+            .collect();
+        assert_eq!(retained.len(), 1);
+        assert_eq!(fs::read_to_string(retained[0].path()).unwrap(), "{not json");
+    }
+
+    #[test]
+    fn worker_pool_applies_explicit_scale_to_zero() {
+        let dir = tmp_dir();
+        let mut pool = WorkerPool::new(
+            Vec::new(),
+            3,
+            1,
+            true,
+            dir.join("pool_state.json"),
+            dir.join("pool_control.json"),
+        );
+
+        pool.tick(&PoolControl {
+            target_active: Some(0),
+            ..Default::default()
+        });
+
+        assert_eq!(pool.active, 0);
     }
 
     #[test]

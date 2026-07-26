@@ -40,8 +40,14 @@ pub struct PlatformShellExecutor {
 struct ShellSession {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
-    output_rx: Receiver<String>,
+    output_rx: Receiver<OutputLine>,
     generation: u64,
+}
+
+#[derive(Debug)]
+enum OutputLine {
+    Stdout(String),
+    Stderr(String),
 }
 
 impl PlatformShellExecutor {
@@ -139,8 +145,8 @@ impl ShellSession {
             .ok_or_else(|| "Shell stdin nicht verfügbar".to_string())?;
 
         let (tx, rx) = mpsc::channel();
-        spawn_line_reader(BufReader::new(stdout), tx.clone());
-        spawn_line_reader(BufReader::new(stderr), tx);
+        spawn_line_reader(BufReader::new(stdout), tx.clone(), OutputLine::Stdout);
+        spawn_line_reader(BufReader::new(stderr), tx, OutputLine::Stderr);
 
         self.child = Some(child);
         self.stdin = Some(stdin);
@@ -223,7 +229,8 @@ impl ShellSession {
 
         let timeout = Duration::from_secs_f64(timeout_seconds.max(0.1));
         let start = Instant::now();
-        let mut collected = Vec::new();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
         let mut exit_code: Option<i32> = None;
         let mut timed_out = false;
         let mut shell_died = false;
@@ -235,13 +242,16 @@ impl ShellSession {
             }
 
             match self.output_rx.recv_timeout(Duration::from_millis(200)) {
-                Ok(line) => {
+                Ok(OutputLine::Stdout(line)) => {
                     let trimmed = line.trim_end_matches(['\r', '\n']);
                     if let Some(cap) = marker_re.captures(trimmed) {
                         exit_code = cap[1].parse().ok();
                         break;
                     }
-                    collected.push(line);
+                    stdout.push(line);
+                }
+                Ok(OutputLine::Stderr(line)) => {
+                    stderr.push(line);
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -257,8 +267,8 @@ impl ShellSession {
         }
 
         ExecutionResult {
-            stdout: collected.join(""),
-            stderr: String::new(),
+            stdout: stdout.join(""),
+            stderr: stderr.join(""),
             exit_code,
             timed_out,
             error: None,
@@ -266,13 +276,17 @@ impl ShellSession {
     }
 }
 
-fn spawn_line_reader<R: BufRead + Send + 'static>(reader: R, tx: Sender<String>) {
+fn spawn_line_reader<R, F>(reader: R, tx: Sender<OutputLine>, wrap: F)
+where
+    R: BufRead + Send + 'static,
+    F: Fn(String) -> OutputLine + Send + 'static,
+{
     thread::spawn(move || {
         let reader = reader;
         for line in reader.lines() {
             match line {
                 Ok(l) => {
-                    if tx.send(format!("{l}\n")).is_err() {
+                    if tx.send(wrap(format!("{l}\n"))).is_err() {
                         break;
                     }
                 }
@@ -593,8 +607,35 @@ mod tests {
         #[cfg(unix)]
         let result = executor.execute("echo 'test error' >&2", TEST_CMD_TIMEOUT);
 
-        // Persistent shell merges stderr into stdout (Python parity).
-        assert!(result.stdout.contains("test error") || result.stderr.contains("test error"));
+        assert!(
+            result.stderr.contains("test error"),
+            "stderr was not captured separately: {result:?}"
+        );
+        assert!(
+            !result.stdout.contains("test error"),
+            "stderr leaked into stdout: {result:?}"
+        );
+        executor.stop();
+    }
+
+    #[test]
+    fn test_marker_on_stderr_does_not_complete_command() {
+        let (executor, _guard) = executor_with_session();
+
+        #[cfg(windows)]
+        let result = executor.execute(
+            "[Console]::Error.WriteLine('__W2T_DONE_fake__0__'); Write-Output after",
+            TEST_CMD_TIMEOUT,
+        );
+        #[cfg(unix)]
+        let result = executor.execute(
+            "echo '__W2T_DONE_fake__0__' >&2; echo after",
+            TEST_CMD_TIMEOUT,
+        );
+
+        assert_eq!(result.exit_code, Some(0));
+        assert!(result.stderr.contains("__W2T_DONE_fake__0__"));
+        assert!(result.stdout.contains("after"));
         executor.stop();
     }
 }

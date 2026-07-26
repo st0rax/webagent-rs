@@ -138,13 +138,19 @@ fn run_core(
         ));
     }
 
-    let branch = format!("autoresearch/{}", crate::now_run_stamp());
-    git_create_branch(&config.workdir, &branch)?;
-
+    // Baseline VOR dem Branchwechsel messen. Frueher wurde erst der Branch
+    // angelegt und dann evaluiert: schlug die erste Eval fehl, kehrte die
+    // Funktion mit `eval_failed_at_start` zurueck, waehrend das Repo auf dem
+    // frisch erzeugten `autoresearch/<stamp>` stehenblieb. Jeder Fehlversuch
+    // hinterliess so einen leeren Branch und einen verschobenen HEAD. Die
+    // Messung braucht den Branch ohnehin nicht — sie misst den Ist-Zustand.
     let mut baseline = match eval() {
         Ok(v) => v,
         Err(e) => return Err(format!("eval_failed_at_start: {e}")),
     };
+
+    let branch = format!("autoresearch/{}", crate::now_run_stamp());
+    git_create_branch(&config.workdir, &branch)?;
     println!("[autoresearch] branch={branch} baseline={baseline}");
 
     let mut history: Vec<IterationLog> = Vec::new();
@@ -375,6 +381,29 @@ fn eval_command(cmd: &str) -> std::process::Command {
 /// Spawnt den Eval-Befehl, drainiert stdout in einem eigenen Thread (sonst
 /// blockiert ein voller Pipe-Puffer das `try_wait`-Polling) und killt den
 /// Prozess nach `timeout_secs`.
+/// Beendet den Eval-Prozess samt Nachkommen.
+///
+/// `Child::kill` trifft nur den direkten Kindprozess — das ist hier die
+/// `powershell.exe`-Huelle. Der eigentliche Eval-Befehl (typischerweise
+/// `cargo test`) laeuft als Enkel weiter: er rechnet zu Ende, haelt den
+/// `target`-Lock und macht den Timeout wirkungslos. `taskkill /T` erwischt
+/// den ganzen Baum.
+fn kill_eval_tree(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &child.id().to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    // Auch nach taskkill aufrufen: raeumt den Eintrag im Prozess-Handle auf.
+    // Auf Nicht-Windows bleibt es beim direkten Kind — Enkel ueberleben dort
+    // weiterhin (waere nur ueber Prozessgruppen loesbar, braucht libc).
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 pub(crate) fn run_eval_with_timeout(
     cmd: &str,
     workdir: &Path,
@@ -405,15 +434,14 @@ pub(crate) fn run_eval_with_timeout(
             Ok(Some(status)) => break status,
             Ok(None) => {
                 if start.elapsed() >= limit {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    kill_eval_tree(&mut child);
                     let _ = reader.join();
                     return Err(format!("eval_cmd timeout nach {}s", limit.as_secs()));
                 }
                 std::thread::sleep(Duration::from_millis(200));
             }
             Err(e) => {
-                let _ = child.kill();
+                kill_eval_tree(&mut child);
                 let _ = reader.join();
                 return Err(format!("eval_cmd wait fehlgeschlagen: {e}"));
             }

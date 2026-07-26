@@ -624,53 +624,129 @@ pub fn build_repair_prompt(task: &str, stage: &str, output: &str) -> String {
 
 /// Setzt den Working Tree hart auf `baseline` zurück und entfernt untracked
 /// Dateien — jeder Brain-Run startet identisch, der Benchmark hinterlässt nichts.
+/// Fuehrt ein Git-Kommando aus und macht einen Fehlschlag sichtbar.
+///
+/// Frueher wurden diese Aufrufe mit `let _ = ...` verworfen. Das ist genau
+/// dort gefaehrlich, wo der Aufraeumschritt scheitert: ein misslungenes
+/// `git clean` laesst Dateien des vorigen Brains stehen, das naechste Brain
+/// startet auf einem verschmutzten Tree und seine Messung ist wertlos —
+/// ohne dass irgendwo ein Hinweis auftaucht.
+fn git_checked(workdir: &Path, args: &[&str]) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(workdir)
+        .output()
+        .map_err(|e| format!("git {} nicht startbar: {e}", args.join(" ")))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {} fehlgeschlagen (Code {}): {}",
+            args.join(" "),
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
 fn reset_repo(workdir: &Path, baseline: &str) -> Result<(), String> {
     // `git add -A` davor, damit auch neu angelegte (untracked) Dateien vom
     // Full-Reset erfasst werden; `git clean -fd` fegt den Rest weg.
-    let _ = std::process::Command::new("git")
-        .args(["add", "-A"])
-        .current_dir(workdir)
-        .output();
+    git_checked(workdir, &["add", "-A"])?;
     crate::autoresearch::git_reset_hard(workdir, baseline)?;
-    let _ = std::process::Command::new("git")
-        .args(["clean", "-fd"])
-        .current_dir(workdir)
-        .output();
+    git_checked(workdir, &["clean", "-fd"])?;
     Ok(())
 }
 
 /// Sichert die Arbeit des laufenden Brains als Patch, BEVOR `reset_repo` sie
 /// verwirft. `git add -A` davor, damit neue Dateien im Diff auftauchen.
 fn capture_patch(workdir: &Path) -> Result<String, String> {
-    let _ = std::process::Command::new("git")
-        .args(["add", "-A"])
-        .current_dir(workdir)
-        .output();
-    let out = std::process::Command::new("git")
-        .args(["diff", "--cached", "--binary"])
-        .current_dir(workdir)
-        .output()
-        .map_err(|e| format!("git diff fehlgeschlagen: {e}"))?;
-    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    git_checked(workdir, &["add", "-A"])?;
+    // `--no-renames`: eine Umbenennung soll als Loeschung PLUS Neuanlage im
+    // Patch stehen. Sonst verdichtet git sie zu `rename from/to` ohne
+    // `+++ b/`-Zeile — beide betroffenen Pfade waeren fuer die Validierung
+    // unsichtbar. Die Erkennung in `validate_harvest_patch` faengt die
+    // Rename-Form zusaetzlich ab, falls die Option einmal wegfaellt.
+    git_checked(workdir, &["diff", "--cached", "--binary", "--no-renames"])
 }
 
 /// Schutzgitter für autonom geernteten Code. Ein Benchmark darf kleine,
 /// nachvollziehbare Rust-Änderungen verbessern, aber weder Dependencies noch
 /// Build-/CI-Konfiguration umformen. Solche Eingriffe brauchen eine bewusste
 /// menschliche Entscheidung und werden deshalb nie automatisch geerntet.
-pub fn validate_harvest_patch(patch: &str) -> Result<Vec<String>, String> {
+/// Loest die Pfadangabe einer Diff-Kopfzeile auf.
+///
+/// git zitiert Pfade mit Sonderzeichen (`--- "a/mit leerzeichen.rs"`); ohne
+/// Beruecksichtigung rutschte so ein Pfad ungeprueft durch.
+fn diff_path(rest: &str, prefix: char) -> Option<String> {
+    let rest = rest.trim();
+    let unquoted = rest
+        .strip_prefix('"')
+        .and_then(|r| r.strip_suffix('"'))
+        .unwrap_or(rest);
+    if unquoted == "/dev/null" {
+        return None;
+    }
+    let mut want = String::from(prefix);
+    want.push('/');
+    unquoted.strip_prefix(&want).map(|p| p.to_string())
+}
+
+/// Sammelt JEDEN vom Patch beruehrten Pfad — Aenderung, Neuanlage, Loeschung
+/// und Umbenennung.
+///
+/// Frueher wurden nur `+++ b/`-Zeilen gelesen. Eine Loeschung traegt dort aber
+/// `/dev/null`, ihr echter Pfad steht ausschliesslich in `--- a/`; eine
+/// Umbenennung erscheint als `rename from/to` ganz ohne `+++`-Zeile. Beide
+/// waren damit fuer das Schutzgitter unsichtbar: ein Patch durfte eine
+/// erlaubte Datei aendern und nebenbei `Cargo.toml` loeschen.
+pub(crate) fn patch_touched_paths(patch: &str) -> (Vec<String>, Vec<String>) {
     let mut paths = Vec::new();
+    let mut deleted = Vec::new();
+    let mut pending_old: Option<String> = None;
     for line in patch.lines() {
-        let Some(path) = line.strip_prefix("+++ b/") else {
-            continue;
-        };
-        if path == "/dev/null" {
-            continue;
+        if let Some(rest) = line.strip_prefix("--- ") {
+            pending_old = diff_path(rest, 'a');
+            if let Some(p) = &pending_old {
+                paths.push(p.clone());
+            }
+        } else if let Some(rest) = line.strip_prefix("+++ ") {
+            match diff_path(rest, 'b') {
+                Some(p) => paths.push(p),
+                // `+++ /dev/null` = die Datei aus der `--- a/`-Zeile davor
+                // wird geloescht.
+                None => {
+                    if let Some(p) = pending_old.take() {
+                        deleted.push(p);
+                    }
+                }
+            }
+            pending_old = None;
+        } else if let Some(rest) = line.strip_prefix("rename from ") {
+            let p = rest.trim().to_string();
+            paths.push(p.clone());
+            deleted.push(p);
+        } else if let Some(rest) = line.strip_prefix("rename to ") {
+            paths.push(rest.trim().to_string());
         }
-        paths.push(path.to_string());
     }
     paths.sort();
     paths.dedup();
+    deleted.sort();
+    deleted.dedup();
+    (paths, deleted)
+}
+
+pub fn validate_harvest_patch(patch: &str) -> Result<Vec<String>, String> {
+    let (paths, deleted) = patch_touched_paths(patch);
+    // Eine Datei zu entfernen ist nicht "verbessern". Das ist ein Eingriff mit
+    // Datenverlust und gehoert vor eine menschliche Entscheidung, nicht in
+    // eine automatische Ernte.
+    if !deleted.is_empty() {
+        return Err(format!(
+            "Patch loescht Datei(en) `{}` — Loeschungen werden nie automatisch geerntet",
+            deleted.join(", ")
+        ));
+    }
     if paths.is_empty() {
         return Err("Patch enthält keine nachvollziehbaren Dateien".to_string());
     }
@@ -1873,6 +1949,110 @@ mod refine_tests {
 mod tests {
     use super::*;
     use crate::self_research::RankedSuggestion;
+
+    // --- Harvest-Schutzgitter -------------------------------------------
+    // Vorher wurden ausschliesslich `+++ b/`-Zeilen gelesen. Eine Loeschung
+    // traegt dort `/dev/null`, ihr echter Pfad steht nur in `--- a/` — ein
+    // Patch durfte damit eine erlaubte Datei aendern UND nebenbei eine
+    // gesperrte loeschen, ohne dass das Gitter es sah.
+
+    /// Baut einen Patch aus Einzelzeilen. Mehrzeilige String-Literale sind
+    /// hier untauglich: `cargo fmt` ruecht sie ein und schiebt damit
+    /// Leerzeichen vor `--- `/`+++ `, was den Parser scheitern laesst.
+    fn patch_aus(zeilen: &[&str]) -> String {
+        format!(
+            "{}
+",
+            zeilen.join(
+                "
+"
+            )
+        )
+    }
+
+    #[test]
+    fn loeschung_wird_erkannt_und_abgelehnt() {
+        let patch = patch_aus(&[
+            "diff --git a/Cargo.toml b/Cargo.toml",
+            "deleted file mode 100644",
+            "--- a/Cargo.toml",
+            "+++ /dev/null",
+            "@@ -1,2 +0,0 @@",
+            "-[package]",
+        ]);
+        let (paths, deleted) = patch_touched_paths(&patch);
+        assert!(
+            paths.contains(&"Cargo.toml".to_string()),
+            "Pfad unsichtbar: {paths:?}"
+        );
+        assert_eq!(deleted, vec!["Cargo.toml".to_string()]);
+        let err = validate_harvest_patch(&patch).unwrap_err();
+        assert!(err.contains("loescht"), "unerwartete Meldung: {err}");
+    }
+
+    /// Der eigentliche Angriffsfall: erlaubte Aenderung als Tarnung, daneben
+    /// eine Loeschung ausserhalb von src/.
+    #[test]
+    fn getarnte_loeschung_neben_erlaubter_aenderung_faellt_auf() {
+        let patch = patch_aus(&[
+            "diff --git a/src/ok.rs b/src/ok.rs",
+            "--- a/src/ok.rs",
+            "+++ b/src/ok.rs",
+            "@@ -1 +1,2 @@",
+            "+// harmlos",
+            "diff --git a/Cargo.toml b/Cargo.toml",
+            "deleted file mode 100644",
+            "--- a/Cargo.toml",
+            "+++ /dev/null",
+        ]);
+        let err = validate_harvest_patch(&patch)
+            .expect_err("getarnte Loeschung kam durch das Schutzgitter");
+        assert!(err.contains("Cargo.toml"), "falscher Grund: {err}");
+    }
+
+    #[test]
+    fn umbenennung_zeigt_beide_pfade() {
+        let patch = patch_aus(&[
+            "diff --git a/src/alt.rs b/src/neu.rs",
+            "similarity index 100%",
+            "rename from src/alt.rs",
+            "rename to src/neu.rs",
+        ]);
+        let (paths, deleted) = patch_touched_paths(&patch);
+        assert!(
+            paths.contains(&"src/alt.rs".to_string()),
+            "Quelle fehlt: {paths:?}"
+        );
+        assert!(
+            paths.contains(&"src/neu.rs".to_string()),
+            "Ziel fehlt: {paths:?}"
+        );
+        assert_eq!(deleted, vec!["src/alt.rs".to_string()]);
+    }
+
+    #[test]
+    fn quotierte_pfade_werden_entpackt() {
+        let patch = patch_aus(&[
+            "diff --git \"a/src/mit leerzeichen.rs\" \"b/src/mit leerzeichen.rs\"",
+            "--- \"a/src/mit leerzeichen.rs\"",
+            "+++ \"b/src/mit leerzeichen.rs\"",
+        ]);
+        let (paths, _) = patch_touched_paths(&patch);
+        assert_eq!(paths, vec!["src/mit leerzeichen.rs".to_string()]);
+    }
+
+    #[test]
+    fn gewoehnliche_aenderung_bleibt_erntbar() {
+        let patch = patch_aus(&[
+            "diff --git a/src/benchmark.rs b/src/benchmark.rs",
+            "--- a/src/benchmark.rs",
+            "+++ b/src/benchmark.rs",
+            "@@ -1 +1,2 @@",
+            "+// noch eine Zeile",
+        ]);
+        let paths = validate_harvest_patch(&patch).expect("legitimer Patch abgelehnt");
+        assert_eq!(paths, vec!["src/benchmark.rs".to_string()]);
+    }
 
     // --- Handoff-Queue -----------------------------------------------------
     // Der reale Ausloeser: alle acht Brains bekommen DIESELBE Aufgabe, weil

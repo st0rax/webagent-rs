@@ -47,13 +47,17 @@ lazy_static! {
         (Regex::new(r"(?i)(curl|wget)\s+.*\|\s*(sh|bash)\b").unwrap(), "Download-Cradle (curl/wget | sh)"),
         (Regex::new(r"(?i)(invoke-webrequest|iwr|irm)\s+.*\|\s*(iex|invoke-expression)\b").unwrap(), "Download-Cradle (irm | iex)"),
     ];
-    /// Nur im Strict-Modus (`WEBAGENT_SHELL_STRICT=1`) relevant: Prefixe, die als
-    /// risikoarm gelten (lesende/diagnostische Befehle). Alles andere wird dort
-    /// verweigert statt nur denylist-geprüft.
-    static ref STRICT_SAFE_PREFIXES: Vec<&'static str> = vec![
-        "get-", "ls", "dir", "cat", "type", "echo", "pwd", "cd ", "cd\t",
-        "set-location", "test-path", "find ", "where", "which", "grep",
-        "select-string", "wc", "head", "tail",
+    /// Nur im Strict-Modus (`WEBAGENT_SHELL_STRICT=1`) relevant: vollstaendige
+    /// Kommandonamen, die als risikoarm gelten (lesend/diagnostisch). Alles
+    /// andere wird dort verweigert statt nur denylist-geprueft.
+    static ref STRICT_SAFE_COMMANDS: Vec<&'static str> = vec![
+        "get-childitem", "get-content", "get-location", "get-item",
+        "get-itemproperty", "get-process", "get-service", "get-command",
+        "get-help", "get-date", "get-member", "get-variable", "get-ciminstance",
+        "get-wmiobject", "get-filehash", "get-acl", "get-history", "get-host",
+        "ls", "dir", "cat", "type", "echo", "pwd", "cd", "set-location",
+        "test-path", "where", "which", "grep", "select-string", "wc",
+        "head", "tail",
     ];
 }
 
@@ -90,7 +94,13 @@ fn evaluate_with_mode(command: &str, strict: bool) -> Decision {
     }
     if strict {
         let low = trimmed.to_lowercase();
-        let allowed = STRICT_SAFE_PREFIXES.iter().any(|p| low.starts_with(p));
+        if let Some(reason) = strict_syntax_violation(&low) {
+            return Decision::Deny(format!(
+                "WEBAGENT_SHELL_STRICT=1: verschachtelte/verkettete Shell-Syntax blockiert ({reason})"
+            ));
+        }
+        let first_token = low.split_whitespace().next().unwrap_or("");
+        let allowed = STRICT_SAFE_COMMANDS.contains(&first_token);
         if !allowed {
             return Decision::Deny(
                 "WEBAGENT_SHELL_STRICT=1: nur lesende/diagnostische Befehle erlaubt".to_string(),
@@ -98,6 +108,35 @@ fn evaluate_with_mode(command: &str, strict: bool) -> Decision {
         }
     }
     Decision::Allow
+}
+
+/// Strict ist absichtlich konservativ: Eine Allowlist fuer das erste Kommando
+/// darf nicht durch Shell-Operatoren, Subexpressions oder mehrzeilige Eingaben
+/// zu einem zweiten Kommando erweitert werden. Die Zeichen werden auch in
+/// Quotes blockiert, weil insbesondere PowerShell und POSIX-Double-Quotes
+/// weiterhin Substitutionen auswerten koennen.
+fn strict_syntax_violation(command: &str) -> Option<&'static str> {
+    for (needle, label) in [
+        ("\r", "Zeilenumbruch"),
+        ("\n", "Zeilenumbruch"),
+        ("\0", "NUL-Byte"),
+        (";", "Semikolon"),
+        ("|", "Pipe/OR-Operator"),
+        ("&", "Ampersand/Call-Operator"),
+        (">", "Ausgabeumleitung"),
+        ("<", "Eingabe-/Prozessumleitung"),
+        ("`", "Backtick/Substitution"),
+        ("(", "Subexpression/Gruppierung"),
+        (")", "Subexpression/Gruppierung"),
+        ("{", "Scriptblock"),
+        ("}", "Scriptblock"),
+        ("^", "cmd-Escape"),
+    ] {
+        if command.contains(needle) {
+            return Some(label);
+        }
+    }
+    None
 }
 
 /// Formatiert eine strukturierte Audit-Zeile für einen Shell-Befehl.
@@ -367,6 +406,53 @@ mod tests {
             Decision::Deny(_)
         ));
         assert_eq!(evaluate_with_mode("Get-ChildItem", true), Decision::Allow);
+    }
+
+    #[test]
+    fn strict_mode_rejects_chained_commands_after_safe_command() {
+        for command in [
+            "echo ok; Remove-Item important.txt",
+            "echo ok && Remove-Item important.txt",
+            "Get-ChildItem | Remove-Item",
+            "Get-ChildItem\nRemove-Item important.txt",
+            "echo ok > important.txt",
+        ] {
+            assert!(
+                matches!(evaluate_with_mode(command, true), Decision::Deny(_)),
+                "Strict muss Verkettung blockieren: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_mode_rejects_nested_execution_after_safe_command() {
+        for command in [
+            "echo $(Remove-Item important.txt)",
+            "echo (Remove-Item important.txt)",
+            "echo `whoami`",
+            "echo ${env:COMSPEC}",
+            "echo ok & Remove-Item important.txt",
+        ] {
+            assert!(
+                matches!(evaluate_with_mode(command, true), Decision::Deny(_)),
+                "Strict muss Verschachtelung blockieren: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_mode_requires_a_complete_safe_command_name() {
+        for command in [
+            "echoevil payload",
+            "directory-malware",
+            "get-malware",
+            "find . -delete",
+        ] {
+            assert!(
+                matches!(evaluate_with_mode(command, true), Decision::Deny(_)),
+                "Prefix-Smuggling muss blockiert werden: {command}"
+            );
+        }
     }
 
     #[test]

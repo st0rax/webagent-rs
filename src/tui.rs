@@ -21,10 +21,11 @@
 use std::fs;
 use std::io::{self};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 
 use crate::config::{available_brain_ids, bot2bot_root};
-use crate::worker_pool::{candidates_with_profile, PoolControl, WorkerPool};
+use crate::worker_pool::{atomic_write, candidates_with_profile, PoolControl, WorkerPool};
 
 use std::io::{BufRead, Write};
 
@@ -88,17 +89,35 @@ fn iso_now() -> String {
 
 /// Schreibt einen Steuerbefehl nach `pool_control.json`.
 fn write_control(path: &Path, control: &PoolControl) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+    let result = serde_json::to_vec_pretty(control)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+        .and_then(|json| atomic_write(path, &json));
+    if let Err(e) = result {
+        crate::bench_events::emit(
+            crate::bench_events::Level::Fail,
+            None,
+            &format!("Pool-Steuerung konnte nicht gespeichert werden: {e}"),
+        );
+        crate::bench_events::eprint_line(&format!(
+            "[tui] Pool-Steuerung konnte nicht gespeichert werden: {e}"
+        ));
     }
-    if let Ok(s) = serde_json::to_string_pretty(control) {
-        let _ = fs::write(path, s);
+}
+
+fn discard_stale_control(path: &Path) {
+    match PoolControl::take(path) {
+        Ok(Some(_)) | Ok(None) => {}
+        Err(e) => crate::bench_events::eprint_line(&format!(
+            "[tui] Stale Control-Datei konnte nicht verworfen werden: {e}"
+        )),
     }
 }
 
 /// Legt eine Aufgabe im Inbox-Format von `send.ps1` ab -> Worker holt sie ab.
 /// Liefert `Err`, wenn der Ziel-Agent keine Inbox hat (nicht registriert).
 fn send_task(root: &Path, brain: &str, from: &str, text: &str) -> std::io::Result<()> {
+    static NEXT_MESSAGE: AtomicU64 = AtomicU64::new(0);
+
     let inbox = root.join("agents").join(brain).join("inbox");
     if !inbox.is_dir() {
         return Err(std::io::Error::new(
@@ -107,9 +126,15 @@ fn send_task(root: &Path, brain: &str, from: &str, text: &str) -> std::io::Resul
         ));
     }
     let ts = file_stamp();
-    let file = inbox.join(format!("{ts}_from_{from}.msg.txt"));
+    let now_ns = time::OffsetDateTime::now_utc().unix_timestamp_nanos();
+    let seq = NEXT_MESSAGE.fetch_add(1, Ordering::Relaxed);
+    let file = inbox.join(format!(
+        "{ts}_{now_ns}_{}_{}_from_{from}.msg.txt",
+        std::process::id(),
+        seq
+    ));
     let content = format!("From: {from}\nTo: {brain}\nTime: {}\n\n{text}\n", iso_now());
-    fs::write(file, content)
+    atomic_write(&file, content.as_bytes())
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +317,7 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
     let control_path = root.join("workers").join("pool_control.json");
     // Stale Steuerdatei vom vorigen Lauf verwerfen (z.B. stop:true), damit ein
     // Relaunch nicht sofort wieder beendet.
-    let _ = fs::remove_file(&control_path);
+    discard_stale_control(&control_path);
 
     if candidates.is_empty() {
         eprintln!(
@@ -359,7 +384,7 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
                 write_control(
                     &control_path,
                     &PoolControl {
-                        target_active,
+                        target_active: Some(target_active),
                         ..Default::default()
                     },
                 );
@@ -369,7 +394,7 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
                 write_control(
                     &control_path,
                     &PoolControl {
-                        target_active,
+                        target_active: Some(target_active),
                         ..Default::default()
                     },
                 );
@@ -436,7 +461,9 @@ fn run_tui_ratatui(
     use ratatui::Terminal;
 
     use crate::tui_render::ui;
-    use crate::tui_state::{parse_view, load_state, select_wrap, App, InputMode, LogFilter, Panel, View};
+    use crate::tui_state::{
+        load_state, parse_view, select_wrap, App, InputMode, LogFilter, Panel, View,
+    };
 
     let all = available_brain_ids();
     let selected: Vec<String> = if brains.trim().is_empty() {
@@ -453,7 +480,7 @@ fn run_tui_ratatui(
     let state_path = root.join("workers").join("pool_state.json");
     let control_path = root.join("workers").join("pool_control.json");
     // Stale Steuerdatei vom vorigen Lauf verwerfen.
-    let _ = fs::remove_file(&control_path);
+    discard_stale_control(&control_path);
 
     if candidates.is_empty() {
         eprintln!(
@@ -582,7 +609,7 @@ fn run_tui_ratatui(
                             write_control(
                                 &control_path,
                                 &PoolControl {
-                                    target_active: app.target_active,
+                                    target_active: Some(app.target_active),
                                     ..Default::default()
                                 },
                             );
@@ -592,7 +619,7 @@ fn run_tui_ratatui(
                             write_control(
                                 &control_path,
                                 &PoolControl {
-                                    target_active: app.target_active,
+                                    target_active: Some(app.target_active),
                                     ..Default::default()
                                 },
                             );
@@ -632,7 +659,23 @@ fn run_tui_ratatui(
                                     && !text.is_empty()
                                     && candidates.iter().any(|c| c == brain)
                                 {
-                                    let _ = send_task(&root, brain, "tui", text);
+                                    match send_task(&root, brain, "tui", text) {
+                                        Ok(()) => crate::bench_events::emit(
+                                            crate::bench_events::Level::Pass,
+                                            Some(brain),
+                                            "Aufgabe in die Inbox gestellt.",
+                                        ),
+                                        Err(e) => {
+                                            crate::bench_events::emit(
+                                                crate::bench_events::Level::Fail,
+                                                Some(brain),
+                                                &format!("Inbox-Fehler: {e}"),
+                                            );
+                                            // Die Benchmark-Ansicht zeigt den
+                                            // Ereignisstrom unmittelbar sichtbar.
+                                            app.view = View::Bench;
+                                        }
+                                    }
                                 }
                             }
                             app.input_mode = InputMode::Normal;
@@ -840,9 +883,64 @@ pub fn run_tui(
         // die ANSI-Variante fahren statt mit Fehler abzubrechen.
         use std::io::IsTerminal;
         if std::io::stdout().is_terminal() {
-            return run_tui_ratatui(active, brains, poll_secs, headless, startup_benchmark, startup_view);
+            return run_tui_ratatui(
+                active,
+                brains,
+                poll_secs,
+                headless,
+                startup_benchmark,
+                startup_view,
+            );
         }
         eprintln!("[tui] Kein interaktives Terminal (umgeleitet/detached) — ANSI-Fallback.");
     }
     run_tui_ansi(active, brains, poll_secs, headless)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn temp_root() -> PathBuf {
+        static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+        let seq = NEXT_DIR.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "webagent_tui_{}_{}_{}",
+            std::process::id(),
+            crate::now_run_stamp(),
+            seq
+        ))
+    }
+
+    #[test]
+    fn rapid_tasks_get_distinct_complete_inbox_files() {
+        let root = temp_root();
+        let inbox = root.join("agents").join("claude").join("inbox");
+        fs::create_dir_all(&inbox).unwrap();
+
+        send_task(&root, "claude", "tui", "first").unwrap();
+        send_task(&root, "claude", "tui", "second").unwrap();
+
+        let mut messages: Vec<_> = fs::read_dir(&inbox)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".msg.txt"))
+            .collect();
+        messages.sort_by_key(|entry| entry.file_name());
+        assert_eq!(messages.len(), 2);
+        let contents: Vec<_> = messages
+            .iter()
+            .map(|entry| fs::read_to_string(entry.path()).unwrap())
+            .collect();
+        assert!(contents.iter().any(|content| content.contains("first")));
+        assert!(contents.iter().any(|content| content.contains("second")));
+        assert!(
+            fs::read_dir(&inbox)
+                .unwrap()
+                .flatten()
+                .all(|entry| !entry.file_name().to_string_lossy().contains(".tmp-")),
+            "temporary inbox file leaked"
+        );
+    }
 }

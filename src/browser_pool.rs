@@ -103,11 +103,15 @@ impl BrowserPool {
                 .ok_or("Shared-WebView nicht gestartet")?;
 
             if let Some(tab) = self.tabs.get_mut(&brain_id) {
-                tab.refs = tab.refs.saturating_add(1);
                 let mut driver = tab.driver_proto.clone();
+                // Refcount ERST nach erfolgreicher Navigation erhoehen: sonst
+                // bleibt er bei einem Navigationsfehler dauerhaft erhoeht und
+                // der Tab wird nie wieder geschlossen (stop_brain zaehlt nur
+                // bis auf den geleakten Wert herunter).
                 driver
                     .navigate(backend.brain_url(), Duration::from_secs(30))
                     .map_err(|e| e.to_string())?;
+                tab.refs = tab.refs.saturating_add(1);
                 backend.attach_page_driver(Box::new(driver));
                 return Ok(());
             }
@@ -116,9 +120,13 @@ impl BrowserPool {
             let mut driver = runtime
                 .open_page(&profile, backend.brain_url(), headless, &brain_id)
                 .map_err(|e| e.to_string())?;
-            driver
-                .navigate(backend.brain_url(), Duration::from_secs(30))
-                .map_err(|e| e.to_string())?;
+            // Der Tab ist offen, aber noch nirgends registriert. Scheitert die
+            // Navigation, faende ihn kein `stop_brain` je wieder — er bliebe
+            // als Waise im Runtime stehen und haielte sein Profil belegt.
+            if let Err(e) = driver.navigate(backend.brain_url(), Duration::from_secs(30)) {
+                let _ = runtime.close_page(driver.view_id());
+                return Err(e.to_string());
+            }
             let view_id = driver.view_id();
             let driver_proto = driver.clone();
             self.tabs.insert(
@@ -200,11 +208,12 @@ impl BrowserPool {
     ) -> Result<(), String> {
         // Vorhandene gekapselte Instanz reuse (Refs++).
         if let Some(inst) = self.encapsulated.get_mut(brain_id) {
-            inst.refs = inst.refs.saturating_add(1);
             let mut driver = inst.driver_proto.clone();
+            // Refcount erst nach erfolgreicher Navigation (siehe start_brain).
             driver
                 .navigate(backend.brain_url(), Duration::from_secs(30))
                 .map_err(|e| e.to_string())?;
+            inst.refs = inst.refs.saturating_add(1);
             backend.attach_page_driver(Box::new(driver));
             return Ok(());
         }
@@ -217,13 +226,31 @@ impl BrowserPool {
         ProfileClonePlanner::materialize(&plan)
             .map_err(|e| format!("Profil-Klon fuer Brain '{brain_id}' fehlgeschlagen: {e}"))?;
 
-        let rt = WebViewRuntime::launch(&clone_dir, headless).map_err(|e| e.to_string())?;
-        let mut driver = rt
-            .open_page(&clone_dir, backend.brain_url(), headless, brain_id)
-            .map_err(|e| e.to_string())?;
-        driver
-            .navigate(backend.brain_url(), Duration::from_secs(30))
-            .map_err(|e| e.to_string())?;
+        // Ab hier liegt ein Profil-Klon auf der Platte. Jeder Fehlerpfad muss
+        // ihn wieder entfernen — sonst waechst bei jedem Fehlversuch eine
+        // weitere verwaiste Profilkopie (Linked-Clone des kanonischen
+        // Profils) im Datenverzeichnis an, die niemand mehr aufraeumt.
+        let rt = match WebViewRuntime::launch(&clone_dir, headless) {
+            Ok(rt) => rt,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&clone_dir);
+                return Err(e.to_string());
+            }
+        };
+        let mut driver = match rt.open_page(&clone_dir, backend.brain_url(), headless, brain_id) {
+            Ok(d) => d,
+            Err(e) => {
+                drop(rt);
+                let _ = std::fs::remove_dir_all(&clone_dir);
+                return Err(e.to_string());
+            }
+        };
+        if let Err(e) = driver.navigate(backend.brain_url(), Duration::from_secs(30)) {
+            let _ = rt.close_page(driver.view_id());
+            drop(rt);
+            let _ = std::fs::remove_dir_all(&clone_dir);
+            return Err(e.to_string());
+        }
         let driver_proto = driver.clone();
         self.encapsulated.insert(
             brain_id.to_string(),
