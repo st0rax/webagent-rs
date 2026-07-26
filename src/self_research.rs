@@ -522,7 +522,9 @@ where
     let total = brains.len();
 
     // ---- Phase 1: Sammeln ----
-    println!("[self-research] Phase 1/4 — {total} Brains sammeln je {n} Vorschläge…");
+    crate::bench_events::print_line(&format!(
+        "[self-research] Phase 1/4 — {total} Brains sammeln je {n} Vorschläge…"
+    ));
     let collect_prompt = format!(
         "{facts}\n\nBewerte das Projekt oben. Nenne GENAU {n} konkrete, umsetzbare \
          Verbesserungen für den nächsten Schritt — als nummerierte Liste (1. … {n}. …), \
@@ -545,18 +547,23 @@ where
             match r {
                 Ok(resp) => {
                     let items = parse_suggestions(&resp);
-                    println!("[self-research] sammeln — {b}: {} Vorschläge", items.len());
+                    crate::bench_events::print_line(&format!(
+                        "[self-research] sammeln — {b}: {} Vorschläge",
+                        items.len()
+                    ));
                     if !items.is_empty() {
                         answered.push(b);
                         pool.extend(items);
                     }
                 }
-                Err(e) => println!("[self-research] sammeln — {b}: — {e}"),
+                Err(e) => crate::bench_events::print_line(&format!(
+                    "[self-research] sammeln — {b}: — {e}"
+                )),
             }
         }
     }
     if pool.is_empty() {
-        println!("[self-research] keine Vorschläge gesammelt — Abbruch.");
+        crate::bench_events::print_line("[self-research] keine Vorschläge gesammelt — Abbruch.");
         return SelfResearchReport {
             catalog: Vec::new(),
             ranked: Vec::new(),
@@ -582,20 +589,22 @@ where
         Ok(resp) => {
             let cat = parse_suggestions(&resp);
             if cat.is_empty() {
-                println!("[self-research] Konsolidierung via {orch} leer → roher Pool (dedupe).");
+                crate::bench_events::print_line(&format!(
+                    "[self-research] Konsolidierung via {orch} leer → roher Pool (dedupe)."
+                ));
                 (dedupe_pool(&pool), None)
             } else {
-                println!(
+                crate::bench_events::print_line(&format!(
                     "[self-research] konsolidieren via {orch} … {} distinkte Vorschläge",
                     cat.len()
-                );
+                ));
                 (cat, Some(orch.clone()))
             }
         }
         Err(e) => {
-            println!(
+            crate::bench_events::print_line(&format!(
                 "[self-research] Konsolidierung via {orch} fehlgeschlagen ({e}) → roher Pool (dedupe)."
-            );
+            ));
             (dedupe_pool(&pool), None)
         }
     };
@@ -611,10 +620,10 @@ where
     }
 
     // ---- Phase 3: Abstimmen ----
-    println!(
+    crate::bench_events::print_line(&format!(
         "[self-research] Phase 3/4 — {total} Brains stimmen ab (Katalog: {} Einträge)…",
         catalog.len()
-    );
+    ));
     let vote_prompt = format!(
         "Katalog von Verbesserungsvorschlägen:\n\n{cat}\n\n\
          Wähle die {k} WICHTIGSTEN. Antworte NUR mit den Nummern in absteigender \
@@ -642,10 +651,15 @@ where
                     if !ballot.is_empty() {
                         voters += 1;
                     }
-                    println!("[self-research] abstimmen — {b}: {} Stimmen", ballot.len());
+                    crate::bench_events::print_line(&format!(
+                        "[self-research] abstimmen — {b}: {} Stimmen",
+                        ballot.len()
+                    ));
                     ballots.push(ballot);
                 }
-                Err(e) => println!("[self-research] abstimmen — {b}: — {e}"),
+                Err(e) => crate::bench_events::print_line(&format!(
+                    "[self-research] abstimmen — {b}: — {e}"
+                )),
             }
         }
     }
@@ -661,18 +675,18 @@ where
             approvals: appr,
         })
         .collect();
-    println!(
+    crate::bench_events::print_line(&format!(
         "[self-research] Phase 4/4 — Rangliste (Top {}):",
         ranked.len()
-    );
+    ));
     for (rank, r) in ranked.iter().enumerate() {
-        println!(
+        crate::bench_events::print_line(&format!(
             "   {}. {} Pkt · {} Stimmen — {}",
             rank + 1,
             r.points,
             r.approvals,
             r.text
-        );
+        ));
     }
 
     SelfResearchReport {
