@@ -385,7 +385,11 @@ fn seconds_of_day(hhmmss: &str) -> Option<u64> {
 fn age_of_stamp(hhmmss: &str) -> Option<u64> {
     let then = seconds_of_day(hhmmss)?;
     let now = seconds_of_day(&crate::timestamp())?;
-    Some(if now >= then { now - then } else { now + 86_400 - then })
+    Some(if now >= then {
+        now - then
+    } else {
+        now + 86_400 - then
+    })
 }
 
 /// Blendet die Aktivitaet des laufenden Benchmarks ueber die Pool-Daten.
@@ -408,7 +412,9 @@ fn overlay_bench_activity(agents: &mut Vec<AgentView>) {
     let mut detail: HashMap<String, Vec<String>> = HashMap::new();
 
     for ev in &events {
-        let Some(brain) = ev.brain.as_deref() else { continue };
+        let Some(brain) = ev.brain.as_deref() else {
+            continue;
+        };
         if !seen.iter().any(|b| b == brain) {
             seen.push(brain.to_string());
         }

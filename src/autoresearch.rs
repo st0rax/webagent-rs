@@ -397,9 +397,19 @@ fn kill_eval_tree(child: &mut std::process::Child) {
             .stderr(std::process::Stdio::null())
             .status();
     }
-    // Auch nach taskkill aufrufen: raeumt den Eintrag im Prozess-Handle auf.
-    // Auf Nicht-Windows bleibt es beim direkten Kind — Enkel ueberleben dort
-    // weiterhin (waere nur ueber Prozessgruppen loesbar, braucht libc).
+    #[cfg(unix)]
+    {
+        // Der Eval-Shell wird unten in eine eigene Prozessgruppe gesetzt.
+        // Eine negative PID adressiert bei POSIX die gesamte Gruppe.
+        let process_group = format!("-{}", child.id());
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", "--", &process_group])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    // Auch nach dem Tree-Kill aufrufen: raeumt das Prozess-Handle auf und
+    // bleibt der Fallback auf Plattformen ohne eigene Implementierung.
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -409,11 +419,18 @@ pub(crate) fn run_eval_with_timeout(
     workdir: &Path,
     timeout_secs: u64,
 ) -> Result<(Option<i32>, String), String> {
-    let mut child = eval_command(cmd)
+    let mut command = eval_command(cmd);
+    command
         .current_dir(workdir)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let mut child = command
         .spawn()
         .map_err(|e| format!("eval_cmd konnte nicht gestartet werden: {e}"))?;
 

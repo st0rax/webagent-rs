@@ -82,12 +82,7 @@ fn measured_p95_cached(operation: &str, brain_id: &str) -> Option<f64> {
     v
 }
 
-fn resolve_with(
-    _operation: &str,
-    message: &str,
-    override_timeout: Option<f64>,
-    base: f64,
-) -> f64 {
+fn resolve_with(_operation: &str, message: &str, override_timeout: Option<f64>, base: f64) -> f64 {
     let msg_extra = if message.is_empty() {
         0.0
     } else {
@@ -127,8 +122,14 @@ fn static_base(operation: &str, brain_id: &str) -> f64 {
 fn get_operation_base() -> HashMap<&'static str, f64> {
     let mut map = HashMap::new();
     // Startwerte, jeweils per Env ueberschreibbar — keine Zahl hier ist fix.
-    map.insert("ensure_ready", env_float("WEBAGENT_TIMEOUT_ENSURE_READY", 45.0));
-    map.insert("wait_response", env_float("WEBAGENT_TIMEOUT_WAIT_RESPONSE", 90.0));
+    map.insert(
+        "ensure_ready",
+        env_float("WEBAGENT_TIMEOUT_ENSURE_READY", 45.0),
+    );
+    map.insert(
+        "wait_response",
+        env_float("WEBAGENT_TIMEOUT_WAIT_RESPONSE", 90.0),
+    );
     map.insert("relay", env_float("WEBAGENT_TIMEOUT_RELAY", 90.0));
     map.insert("login", env_float("WEBAGENT_TIMEOUT_LOGIN", 300.0));
     map
