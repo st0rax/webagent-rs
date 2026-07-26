@@ -254,7 +254,7 @@ pub fn evaluate_command_policy(
 /// bleiben, ohne den Run selbst zu unterbrechen.
 fn audit(command: &str, decision: &Decision) {
     if let Decision::Deny(reason) = decision {
-        eprintln!("[shell_policy] DENY ({reason}): {command}");
+        crate::bench_events::eprint_line(&format!("[shell_policy] DENY ({reason}): {command}"));
     }
     let _guard = WRITE_LOCK.lock();
     let path = data_dir().join("audit").join("shell.jsonl");

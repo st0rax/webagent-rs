@@ -378,10 +378,10 @@ pub fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
     // Debug-Hinweis: Quelle hatte Dateien, aber keine wurde kopiert
     // (z.B. alles Lock-Files, oder Lese-Fehler) — sonst silently leer.
     if non_dir > 0 && copied == 0 {
-        eprintln!(
+        crate::bench_events::eprint_line(&format!(
             "[copy_dir_all] WARN: 0 von {non_dir} Dateien aus {:?} kopiert (alle uebersprungen oder Lese-Fehler)",
             src
-        );
+        ));
     }
     Ok(())
 }
@@ -400,10 +400,10 @@ pub fn copy_dir_sparse(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
     // wirkte ausgeloggt (Fund 2026-07-21: 6 von 8 Swarm-Profilen waren leer).
     copy_sparse_rec(src, dst, &mut copied, &mut non_dir, 0)?;
     if non_dir > 0 && copied == 0 {
-        eprintln!(
+        crate::bench_events::eprint_line(&format!(
             "[copy_dir_sparse] WARN: 0 von {non_dir} Dateien aus {:?} kopiert (Whitelist traf nicht zu oder Lese-Fehler)",
             src
-        );
+        ));
     }
     Ok(())
 }
@@ -566,7 +566,10 @@ fn migrate_legacy_dir(legacy: &Path, target: &Path) {
         return;
     }
     if let Err(e) = std::fs::create_dir_all(target) {
-        eprintln!("[migrate] Ziel {:?} nicht anlegbar: {e}", target);
+        crate::bench_events::eprint_line(&format!(
+            "[migrate] Ziel {:?} nicht anlegbar: {e}",
+            target
+        ));
         return;
     }
     let entries = match std::fs::read_dir(legacy) {
@@ -586,10 +589,10 @@ fn migrate_legacy_dir(legacy: &Path, target: &Path) {
         if copy_dir_all(&src, &dst).is_ok() {
             let _ = std::fs::remove_dir_all(&src);
         } else {
-            eprintln!(
+            crate::bench_events::eprint_line(&format!(
                 "[migrate] Kopie von {:?} fehlgeschlagen, naechster Start erneut",
                 src
-            );
+            ));
         }
     }
 }
