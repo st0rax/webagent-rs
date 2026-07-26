@@ -129,6 +129,37 @@ pub fn build_plan_kick_prompt(topic: &str, alive: &[(usize, &str)]) -> String {
     )
 }
 
+/// Eine Rangwahl ersetzt beim Implementierungsplan mehrere teure Browser-Wellen.
+/// Die Nummern werden vom schwächsten zum stärksten Plan angegeben.
+fn build_plan_rank_prompt(topic: &str, alive: &[(usize, &str)]) -> String {
+    let mut list = String::new();
+    for (display_nr, (_orig, text)) in alive.iter().enumerate() {
+        list.push_str(&format!(
+            "{}. {}\n\n",
+            display_nr + 1,
+            crate::char_prefix(text, 600)
+        ));
+    }
+    format!(
+        "Schnelle Rangwahl für den besten Implementierungsplan ({topic}). Pläne:\n\n{list}\n\
+         Antworte ausschließlich mit ALLEN Nummern, vom schwächsten zum stärksten, \
+         durch Kommas getrennt. Beispiel für drei Pläne: `3,1,2`."
+    )
+}
+
+fn parse_ranking(response: &str, count: usize) -> Vec<usize> {
+    let mut ranking = Vec::new();
+    for token in response.split(|ch: char| !ch.is_ascii_digit()) {
+        let Ok(number) = token.parse::<usize>() else {
+            continue;
+        };
+        if (1..=count).contains(&number) && !ranking.contains(&(number - 1)) {
+            ranking.push(number - 1);
+        }
+    }
+    ranking
+}
+
 fn build_ratify_prompt(topic: &str, proposal: &str) -> String {
     format!(
         "Ratifikation des letzten Konsensvorschlags für {topic}:\n\n{proposal}\n\n\
@@ -284,7 +315,7 @@ where
         ));
         let prompt = match config.mode {
             VoteMode::Design => build_kick_prompt(&config.topic, &alive_view),
-            VoteMode::ImplementationPlan => build_plan_kick_prompt(&config.topic, &alive_view),
+            VoteMode::ImplementationPlan => build_plan_rank_prompt(&config.topic, &alive_view),
         };
 
         // Jede Stimme bezieht sich auf denselben unveraenderlichen Katalog;
@@ -303,6 +334,41 @@ where
                 .map(|job| job.join().expect("Design-Vote-Worker panicked"))
                 .collect()
         });
+        if config.mode == VoteMode::ImplementationPlan {
+            // Borda-Auswertung der vollständigen Ranglisten. Wir entfernen etwa
+            // die schwächere Hälfte pro Welle – 7 Pläne brauchen so drei statt
+            // sechs Browser-Abstimmungen, ohne eine lokale Bauchentscheidung.
+            let mut scores = vec![0usize; alive_orig.len()];
+            let mut valid_rankings = 0usize;
+            for response in responses
+                .iter()
+                .filter_map(|response| response.as_ref().ok())
+            {
+                let ranking = parse_ranking(response, alive_orig.len());
+                if ranking.len() < 2 {
+                    continue;
+                }
+                valid_rankings += 1;
+                for (position, display_idx) in ranking.into_iter().enumerate() {
+                    scores[display_idx] += position;
+                }
+            }
+            if valid_rankings > 0 {
+                let remove_count = (alive_orig.len() - 1).div_ceil(2);
+                let mut order: Vec<usize> = (0..alive_orig.len()).collect();
+                order.sort_by_key(|&display_idx| (scores[display_idx], alive_orig[display_idx]));
+                for display_idx in order.into_iter().take(remove_count) {
+                    let loser = alive_orig[display_idx];
+                    let _ = bracket.eliminate(&[loser]);
+                    on_round(&format!(
+                        "  ausgeschieden: #{loser} ({}, Rangwahl)",
+                        proposals[loser].0
+                    ));
+                    eliminated.push((loser, round));
+                }
+                continue;
+            }
+        }
         let mut kicks: Vec<usize> = Vec::new();
         for resp in responses {
             if let Ok(resp) = resp {
@@ -508,6 +574,11 @@ mod tests {
             p.contains("2. Design B"),
             "Anzeige-Nummern, nicht Original-Indizes"
         );
+    }
+
+    #[test]
+    fn ranking_parser_keeps_unique_valid_numbers_in_order() {
+        assert_eq!(parse_ranking("3, 1, 3, 9, 2", 3), vec![2, 0, 1]);
     }
 
     #[test]
