@@ -501,6 +501,15 @@ fn run_tui_ratatui(
         eprintln!("[tui] Konnte alternate screen nicht aktivieren: {e}");
         return 1;
     }
+    // VT-Verarbeitung ERNEUT setzen: `enable_raw_mode` und
+    // `EnterAlternateScreen` schreiben den Konsolenmodus neu und koennen das
+    // in `main()` gesetzte ENABLE_VIRTUAL_TERMINAL_PROCESSING dabei wieder
+    // loeschen. Ohne das Flag faellt crossterm auf die alte Konsolen-API
+    // zurueck, die unsere Rgb-Palette nicht darstellen kann — die TUI wirkt
+    // dann monochrom, obwohl tui_render 58 Farben setzt (beobachtet
+    // 2026-07-26: Helligkeitsunterschiede kamen durch, Farbtoene nicht).
+    enable_vt_processing();
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = match Terminal::new(backend) {
         Ok(t) => t,
@@ -866,6 +875,26 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
 // ---------------------------------------------------------------------------
 // Öffentlicher Einstiegspunkt (dispatcht je nach Feature)
 // ---------------------------------------------------------------------------
+
+/// Schaltet die VT-Verarbeitung der Windows-Konsole ein (idempotent).
+#[cfg(all(windows, feature = "webview"))]
+fn enable_vt_processing() {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{
+        GetConsoleMode, SetConsoleMode, CONSOLE_MODE, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    };
+    let handle = HANDLE(std::io::stdout().as_raw_handle());
+    let mut mode = CONSOLE_MODE(0);
+    unsafe {
+        if GetConsoleMode(handle, &mut mode).is_ok() {
+            let _ = SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        }
+    }
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+fn enable_vt_processing() {}
 
 /// Einstiegspunkt der TUI (Default, wenn `webagent` ohne Subcommand läuft).
 pub fn run_tui(
