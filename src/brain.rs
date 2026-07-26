@@ -122,6 +122,10 @@ const PROVIDER_BLOCK_PHRASES: &[&str] = &[
     "quota exceeded",
     "you have reached",
     "issue connecting",
+    // ChatGPT-Weboberfläche bei temporärer Provider-Auslastung. Der zweite
+    // Buttontext („Erneut versuchen") ist kein Modellinhalt und darf den
+    // externen Block nicht zu einem Protokollfehler umdeuten.
+    "if this issue persists please contact us through our help center",
 ];
 
 /// `true`, wenn eine Zeile ein reiner UI-Glitch ist (leere/kaputte Antwort der
@@ -318,6 +322,12 @@ mod tests {
         assert!(is_retryable_empty_response(raw));
         let frag = "e reached the daily usage limit. Please wait 2 hours before trying again.";
         assert!(is_retryable_empty_response(frag));
+    }
+
+    #[test]
+    fn chatgpt_capacity_banner_is_recognised_as_unavailable() {
+        let raw = "Something went wrong. If this issue persists please contact us through our help center at help.openai.com.\n\nErneut versuchen";
+        assert!(is_retryable_empty_response(raw));
     }
 
     #[test]
