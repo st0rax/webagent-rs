@@ -421,7 +421,13 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "tui")]
-fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) -> i32 {
+fn run_tui_ratatui(
+    active: usize,
+    brains: &str,
+    poll_secs: u64,
+    headless: bool,
+    startup_benchmark: Option<&str>,
+) -> i32 {
     use crossterm::event::{self, Event, KeyCode, KeyEventKind};
     use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
     use crossterm::ExecutableCommand;
@@ -510,6 +516,11 @@ fn run_tui_ratatui(active: usize, brains: &str, poll_secs: u64, headless: bool) 
         bench_scroll: 0,
         command_input: String::new(),
     };
+    if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
+        let command = format!("/benchmark {arguments}");
+        spawn_benchmark_from_tui(&command, &candidates);
+        app.view = View::Bench;
+    }
 
     // --- Event-Loop ---
     let tick_rate = std::time::Duration::from_millis(80);
@@ -806,7 +817,13 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
 // ---------------------------------------------------------------------------
 
 /// Einstiegspunkt der TUI (Default, wenn `webagent` ohne Subcommand läuft).
-pub fn run_tui(active: usize, brains: &str, poll_secs: u64, headless: bool) -> i32 {
+pub fn run_tui(
+    active: usize,
+    brains: &str,
+    poll_secs: u64,
+    headless: bool,
+    startup_benchmark: Option<&str>,
+) -> i32 {
     #[cfg(feature = "tui")]
     {
         // ratatui braucht ein echtes Terminal (raw mode + alternate screen).
@@ -814,7 +831,7 @@ pub fn run_tui(active: usize, brains: &str, poll_secs: u64, headless: bool) -> i
         // die ANSI-Variante fahren statt mit Fehler abzubrechen.
         use std::io::IsTerminal;
         if std::io::stdout().is_terminal() {
-            return run_tui_ratatui(active, brains, poll_secs, headless);
+            return run_tui_ratatui(active, brains, poll_secs, headless, startup_benchmark);
         }
         eprintln!("[tui] Kein interaktives Terminal (umgeleitet/detached) — ANSI-Fallback.");
     }

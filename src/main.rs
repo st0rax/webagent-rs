@@ -272,6 +272,11 @@ enum Commands {
         /// Headless-Browser fuer die Worker-Kindprozesse
         #[arg(long)]
         headless: bool,
+
+        /// Startet beim Öffnen der TUI sofort diesen Benchmark-Argumentstring,
+        /// z.B. "--rounds 1 --suggestions 3 --loop --veto sandbox".
+        #[arg(long)]
+        benchmark: Option<String>,
     },
 
     /// First-run setup: Brain-Auswahl und optional Login-Hinweise
@@ -586,7 +591,8 @@ fn dispatch(command: Commands) -> i32 {
             brains,
             poll_secs,
             headless,
-        } => webagent::tui::run_tui(active, &brains, poll_secs, headless),
+            benchmark,
+        } => webagent::tui::run_tui(active, &brains, poll_secs, headless, benchmark.as_deref()),
 
         Commands::Oobe {
             brains,
