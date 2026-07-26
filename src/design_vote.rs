@@ -157,6 +157,34 @@ fn build_revision_prompt(
     )
 }
 
+fn build_leader_decision_prompt(
+    topic: &str,
+    proposal: &str,
+    remaining_amendments: &[(String, String)],
+) -> String {
+    let wishes = remaining_amendments
+        .iter()
+        .map(|(brain, wish)| format!("- {brain}: {}", crate::char_prefix(wish, 300)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "Du bist aufgrund des objektiven Code-Scoreboards der Tie-Breaker für {topic}.\n\n\
+         Der Schwarm erreichte nach begrenzten, nachvollziehbaren Revisionen keine Einstimmigkeit.\n\n\
+         Aktueller Plan:\n{proposal}\n\n\
+         Noch offene Änderungswünsche:\n{wishes}\n\n\
+         Entscheide jetzt verbindlich: Liefere ausschließlich einen vollständigen, kleinen und \
+         umsetzbaren Endplan. Berücksichtige nur kompatible Wünsche; erweitere den Scope nicht."
+    )
+}
+
+/// Führender, aktuell teilnehmender Brain nach objektivem Code-Score.
+fn scoreboard_leader(brains: &[String]) -> Option<String> {
+    crate::code_score::leaderboard()
+        .into_iter()
+        .find(|stats| brains.iter().any(|brain| brain == &stats.brain_id))
+        .map(|stats| stats.brain_id)
+}
+
 fn is_yes(response: &str) -> bool {
     matches!(
         response.trim().to_uppercase().as_str(),
@@ -365,6 +393,7 @@ where
     let mut revision = 0usize;
     let mut revision_limit = BASE_REVISIONS;
     let mut previous_amendment_count = None;
+    let mut remaining_amendments = Vec::new();
     loop {
         on_round(if revision == 0 {
             "Ratifikation: alle Brains stimmen zu oder nennen einen Änderungswunsch"
@@ -374,10 +403,11 @@ where
         let round_amendments = collect_amendments(&build_ratify_prompt(&config.topic, &proposal));
         if round_amendments.is_empty() {
             on_round("Ratifikation: einstimmig bestätigt");
-            approved = Some(proposal);
+            approved = Some(proposal.clone());
             break;
         }
         amendments.extend(round_amendments.iter().cloned());
+        remaining_amendments = round_amendments.clone();
         let amendment_count = round_amendments.len();
         if previous_amendment_count.is_some_and(|previous| amendment_count < previous)
             && revision_limit < MAX_REVISIONS
@@ -415,6 +445,34 @@ where
                 on_round("Ratifikation: Planautor lieferte keine Revision — Runde wird beendet");
                 break;
             }
+        }
+    }
+    if approved.is_none() {
+        if let Some(leader) = scoreboard_leader(&config.brains) {
+            on_round(&format!(
+                "Ratifikation: keine Einstimmigkeit — Scoreboard-Leader {leader} entscheidet verbindlich"
+            ));
+            let prompt =
+                build_leader_decision_prompt(&config.topic, &proposal, &remaining_amendments);
+            match query(&leader, &prompt)
+                .ok()
+                .filter(|decision| !decision.trim().is_empty())
+                .map(|decision| decision.trim().to_string())
+            {
+                Some(decision) => {
+                    on_round(&format!(
+                        "Ratifikation: verbindlicher Endplan von Scoreboard-Leader {leader}"
+                    ));
+                    approved = Some(decision);
+                }
+                None => on_round(&format!(
+                    "Ratifikation: Scoreboard-Leader {leader} nicht verfügbar — keine automatische Umsetzung"
+                )),
+            }
+        } else {
+            on_round(
+                "Ratifikation: kein teilnehmender Scoreboard-Leader — keine automatische Umsetzung",
+            );
         }
     }
     DesignVoteReport {

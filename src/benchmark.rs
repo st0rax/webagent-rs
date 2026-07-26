@@ -1143,7 +1143,7 @@ where
                 "Plan-Konsens nicht einstimmig ratifiziert — keine neue Umfrage, Benchmark wird kontrolliert angehalten."
             );
             return Err(
-                "Plan-Konsens nach drei begrenzten Überarbeitungen nicht einstimmig; keine neue Vorschlagsrunde gestartet."
+                "Plan-Konsens nicht ratifiziert und kein verfügbarer Scoreboard-Leader konnte entscheiden; keine neue Vorschlagsrunde gestartet."
                     .to_string(),
             );
         };
