@@ -1097,7 +1097,7 @@ impl ReplSession {
                 let n = active.unwrap_or(8);
                 println!("[pool] Starte Worker-Pool-TUI ({n} aktiv, headless) — 'q' kehrt zum Chat zurück.");
                 self.stop_brain();
-                let code = crate::tui::run_tui(n, "", 5, true, None);
+                let code = crate::tui::run_tui(n, "", 5, true, None, None);
                 if code != 0 {
                     println!("[pool] TUI beendet mit Code {code}.");
                 }
