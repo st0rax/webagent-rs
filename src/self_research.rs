@@ -522,7 +522,7 @@ where
     let total = brains.len();
 
     // ---- Phase 1: Sammeln ----
-    crate::bench_events::print_line(&format!(
+    crate::bench_events::info_line(&format!(
         "[self-research] Phase 1/4 — {total} Brains sammeln je {n} Vorschläge…"
     ));
     let collect_prompt = format!(
@@ -547,7 +547,7 @@ where
             match r {
                 Ok(resp) => {
                     let items = parse_suggestions(&resp);
-                    crate::bench_events::print_line(&format!(
+                    crate::bench_events::info_line(&format!(
                         "[self-research] sammeln — {b}: {} Vorschläge",
                         items.len()
                     ));
@@ -556,14 +556,14 @@ where
                         pool.extend(items);
                     }
                 }
-                Err(e) => crate::bench_events::print_line(&format!(
-                    "[self-research] sammeln — {b}: — {e}"
-                )),
+                Err(e) => {
+                    crate::bench_events::info_line(&format!("[self-research] sammeln — {b}: — {e}"))
+                }
             }
         }
     }
     if pool.is_empty() {
-        crate::bench_events::print_line("[self-research] keine Vorschläge gesammelt — Abbruch.");
+        crate::bench_events::info_line("[self-research] keine Vorschläge gesammelt — Abbruch.");
         return SelfResearchReport {
             catalog: Vec::new(),
             ranked: Vec::new(),
@@ -589,12 +589,12 @@ where
         Ok(resp) => {
             let cat = parse_suggestions(&resp);
             if cat.is_empty() {
-                crate::bench_events::print_line(&format!(
+                crate::bench_events::info_line(&format!(
                     "[self-research] Konsolidierung via {orch} leer → roher Pool (dedupe)."
                 ));
                 (dedupe_pool(&pool), None)
             } else {
-                crate::bench_events::print_line(&format!(
+                crate::bench_events::info_line(&format!(
                     "[self-research] konsolidieren via {orch} … {} distinkte Vorschläge",
                     cat.len()
                 ));
@@ -602,7 +602,7 @@ where
             }
         }
         Err(e) => {
-            crate::bench_events::print_line(&format!(
+            crate::bench_events::info_line(&format!(
                 "[self-research] Konsolidierung via {orch} fehlgeschlagen ({e}) → roher Pool (dedupe)."
             ));
             (dedupe_pool(&pool), None)
@@ -620,7 +620,7 @@ where
     }
 
     // ---- Phase 3: Abstimmen ----
-    crate::bench_events::print_line(&format!(
+    crate::bench_events::info_line(&format!(
         "[self-research] Phase 3/4 — {total} Brains stimmen ab (Katalog: {} Einträge)…",
         catalog.len()
     ));
@@ -651,13 +651,13 @@ where
                     if !ballot.is_empty() {
                         voters += 1;
                     }
-                    crate::bench_events::print_line(&format!(
+                    crate::bench_events::info_line(&format!(
                         "[self-research] abstimmen — {b}: {} Stimmen",
                         ballot.len()
                     ));
                     ballots.push(ballot);
                 }
-                Err(e) => crate::bench_events::print_line(&format!(
+                Err(e) => crate::bench_events::info_line(&format!(
                     "[self-research] abstimmen — {b}: — {e}"
                 )),
             }
@@ -675,12 +675,12 @@ where
             approvals: appr,
         })
         .collect();
-    crate::bench_events::print_line(&format!(
+    crate::bench_events::info_line(&format!(
         "[self-research] Phase 4/4 — Rangliste (Top {}):",
         ranked.len()
     ));
     for (rank, r) in ranked.iter().enumerate() {
-        crate::bench_events::print_line(&format!(
+        crate::bench_events::info_line(&format!(
             "   {}. {} Pkt · {} Stimmen — {}",
             rank + 1,
             r.points,

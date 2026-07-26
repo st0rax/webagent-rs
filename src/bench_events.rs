@@ -42,6 +42,13 @@ pub fn print_line(text: &str) {
     }
 }
 
+/// Meldet einen fachlichen Fortschritt sowohl strukturiert an die TUI als auch
+/// an die normale Konsole. Für längere Phasen gedacht, nicht für Ticker.
+pub fn info_line(text: &str) {
+    emit(Level::Info, None, text);
+    print_line(text);
+}
+
 pub fn eprint_line(text: &str) {
     if console_output_enabled() {
         eprintln!("{text}");
