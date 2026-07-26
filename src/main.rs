@@ -870,6 +870,11 @@ fn cmd_design_vote(
     println!("[design-vote] Gewinner: Entwurf von {author}\n");
     println!("{design}\n");
 
+    let Some(approved) = report.approved_text() else {
+        eprintln!("[design-vote] Kein einstimmig ratifizierter Endentwurf — keine automatische Umsetzung.");
+        return 1;
+    };
+
     if implement_brain.trim().is_empty() {
         println!("[design-vote] Kein --implement-brain gesetzt — nur abgestimmt.");
         return 0;
@@ -877,7 +882,7 @@ fn cmd_design_vote(
 
     // Gewinner umsetzen — über denselben Controller-Pfad wie der Benchmark.
     println!("[design-vote] {implement_brain} setzt den Gewinner um …");
-    let task = webagent::design_vote::build_implement_prompt(design);
+    let task = webagent::design_vote::build_implement_prompt(approved);
     let impl_profile = webagent::config::prepare_swarm_profile(&run_id, &implement_brain);
     let code = run_implement(&implement_brain, &task, headless, Some(impl_profile));
     let _ = webagent::config::cleanup_swarm_profiles(&run_id);

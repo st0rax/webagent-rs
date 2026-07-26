@@ -457,6 +457,34 @@ pub fn outcome_label(did_change: bool, compiled: bool, tests_passed: bool) -> &'
     }
 }
 
+/// Verdichtet echte, interne Gate-Befunde zu einem begrenzten Reparaturfokus
+/// für die Folgerunde. Provider-/Login-Blockaden gelangen nicht hierher.
+pub fn repair_focus_from_failures(failures: &[String]) -> Option<String> {
+    let mut unique = Vec::<String>::new();
+    for failure in failures {
+        let compact = crate::char_prefix(failure.trim(), 700).to_string();
+        if !compact.is_empty() && !unique.iter().any(|seen| seen == &compact) {
+            unique.push(compact);
+        }
+        if unique.len() == 3 {
+            break;
+        }
+    }
+    (!unique.is_empty()).then(|| {
+        format!(
+            "REPARATURPRIORITÄT aus der vorherigen Benchmark-Runde:\n{}\n\n\
+             Wähle und plane ausschließlich eine kleine Änderung, die einen dieser \n\
+             reproduzierten Gate-Befunde behebt. Keine neue Nebenfunktion.",
+            unique
+                .iter()
+                .enumerate()
+                .map(|(i, item)| format!("{}. {item}", i + 1))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    })
+}
+
 /// Markdown-Body für die Wiki-Ablage (`code-benchmark-<stamp>`): welche Sieger je
 /// Runde gebaut werden sollten + die aktuelle Code-Rangliste.
 pub fn format_benchmark_report(winners: &[(usize, String)], board: &[CodeStats]) -> String {
@@ -998,6 +1026,7 @@ where
 
     let rounds = config.rounds.max(1);
     let facts = crate::self_research::gather_facts(&config.workdir, FACTS_MAX_CHARS);
+    let mut repair_focus: Option<String> = None;
     let mut winners: Vec<(usize, String)> = Vec::new();
     let mut harvested: Vec<(String, String)> = Vec::new();
     let mut unproductive_rounds = 0usize;
@@ -1019,11 +1048,22 @@ where
             None,
             "runde {round}/{total} — abstimmen…"
         );
+        let round_facts = match &repair_focus {
+            Some(focus) => format!("{facts}\n\n{focus}"),
+            None => facts.clone(),
+        };
+        if repair_focus.is_some() {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "runde {round}: Reparaturfokus aus gescheiterten Gates wird priorisiert."
+            );
+        }
         // Phase A — Sammeln + Abstimmen. `&query` implementiert Fn ⇒ pro Runde
         // wiederverwendbar, ohne die Closure zu bewegen.
         let report = crate::self_research::run_self_research(
             &config.brains,
-            &facts,
+            &round_facts,
             config.suggestions,
             VOTE_TOP_K,
             config.parallel,
@@ -1053,7 +1093,7 @@ where
                 .collect();
         let plan_context = format!(
             "Projektfakten:\n{}\n\nErlaubte Zieldateien: {}\n\nBestehende öffentliche APIs: {}\n\nDer Plan muss genau eine kleine Änderung beschreiben.",
-            crate::char_prefix(&facts, 900), src_files.join(", "), existing_api.join(", ")
+            crate::char_prefix(&round_facts, 1200), src_files.join(", "), existing_api.join(", ")
         );
         bench_say!(
             crate::bench_events::Level::Info,
@@ -1076,10 +1116,20 @@ where
             },
             |b, p| query(b, p),
         );
-        let consensus_plan = plan_vote
-            .winning_design()
-            .map(|(_, plan)| plan.clone())
-            .unwrap_or_else(|| winner.clone());
+        let Some(consensus_plan) = plan_vote.approved_text().map(str::to_owned) else {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "Plan-Konsens nicht einstimmig ratifiziert — keine automatische Umsetzung in dieser Runde."
+            );
+            unproductive_rounds += 1;
+            if unproductive_rounds >= MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS {
+                return Err(format!(
+                    "Benchmark nach {unproductive_rounds} nicht ratifizierten/unproduktiven Runden angehalten."
+                ));
+            }
+            continue;
+        };
         bench_say!(
             crate::bench_events::Level::Pass,
             None,
@@ -1106,7 +1156,7 @@ where
                         crate::StageTimer::start(format!("verfeinern fuer {brain} via {refiner}"));
                     let e = refine_one(
                         &consensus_plan,
-                        &facts,
+                        &round_facts,
                         &refiner,
                         &existing_api,
                         &src_files,
@@ -1140,6 +1190,7 @@ where
         // Phase B — Arbeitsschlange statt fester Liste: bleibt ein Brain stecken,
         // wandert SEINE Aufgabe an ein Brain, das sie noch nicht versucht hat.
         let mut harvest_pool: Vec<HarvestCandidate> = Vec::new();
+        let mut round_failures: Vec<String> = Vec::new();
         let mut hq = HandoffQueue::new(&plan, &config.brains, config.max_handoffs);
         while let Some((brain_owned, effective_owned, handoff_from)) = hq.next() {
             let brain = &brain_owned;
@@ -1184,6 +1235,7 @@ where
             // zaehlt NICHT als Kompetenz-Fehlschlag.
             let mut unavailable = false;
             let mut protocol_fault = false;
+            let mut last_gate_failure: Option<String> = None;
 
             for iter in 1..=max_iter {
                 iterations = iter;
@@ -1218,6 +1270,7 @@ where
                         t.finish(&format!("Brain fertig ({c} Zyklen)"));
                     }
                     Err(e) => {
+                        last_gate_failure = Some(format!("Runner-Fehler bei {brain}: {e}"));
                         t.finish("Brain-Run fehlgeschlagen");
                         bench_say!(
                             crate::bench_events::Level::Fail,
@@ -1237,6 +1290,9 @@ where
                     // nachschieben, dass ein Edit PFLICHT ist, und als Stillstand
                     // zaehlen (das stall_limit deckelt endloses Nicht-Editieren).
                     stalls += 1;
+                    last_gate_failure = Some(format!(
+                        "Kein-Edit-Gate bei {brain}: Aufgabe wurde nach Iteration {iter} nicht verändert."
+                    ));
                     bench_say!(
                         crate::bench_events::Level::Warn,
                         Some(brain),
@@ -1254,6 +1310,10 @@ where
                 tb.finish(if b_ok { "Build ok" } else { "Build ROT" });
                 compiled = b_ok;
                 if !compiled {
+                    last_gate_failure = Some(format!(
+                        "Build-Gate bei {brain}: {}",
+                        crate::char_prefix(&b_out, 700)
+                    ));
                     let now = Progress {
                         stage: 1,
                         errors: count_build_errors(&b_out),
@@ -1311,6 +1371,10 @@ where
                     );
                     break;
                 }
+                last_gate_failure = Some(format!(
+                    "Test-Gate bei {brain}: {}",
+                    crate::char_prefix(&t_out, 700)
+                ));
                 let now = progress_after_tests(&t_out);
                 if is_improvement(best, now) {
                     bench_say!(
@@ -1366,6 +1430,12 @@ where
                 );
                 reset_repo(&config.workdir, &baseline)?;
                 continue;
+            }
+
+            if !is_pass(did_change, compiled, tests_passed) {
+                if let Some(failure) = last_gate_failure {
+                    round_failures.push(failure);
+                }
             }
 
             // Der Diff wird für JEDEN echten Edit geprüft, nicht erst für
@@ -1571,7 +1641,17 @@ where
         // andernfalls beendet der autonome Loop sich nach zwei Sackgassen.
         if harvested.len() > harvest_count_before {
             unproductive_rounds = 0;
+            repair_focus = None;
         } else {
+            repair_focus = repair_focus_from_failures(&round_failures);
+            if let Some(focus) = &repair_focus {
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    None,
+                    "Kein Harvest — Folgerunde wird als gezielter Reparaturauftrag geplant: {}",
+                    crate::char_prefix(focus, 160)
+                );
+            }
             unproductive_rounds += 1;
             if unproductive_rounds >= MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS {
                 return Err(format!(
@@ -1938,6 +2018,19 @@ mod tests {
         assert_eq!(outcome_label(true, false, false), "FAIL (build)");
         assert_eq!(outcome_label(true, true, false), "FAIL (test)");
         assert_eq!(outcome_label(true, true, true), "PASS");
+    }
+
+    #[test]
+    fn repair_focus_keeps_internal_failures_and_bounds_noise() {
+        let focus = repair_focus_from_failures(&[
+            "Build-Gate bei a: cannot find value x".to_string(),
+            "Build-Gate bei a: cannot find value x".to_string(),
+            "Test-Gate bei b: assertion failed".to_string(),
+        ])
+        .expect("interne Befunde ergeben einen Reparaturfokus");
+        assert!(focus.contains("REPARATURPRIORITÄT"));
+        assert!(focus.contains("cannot find value x"));
+        assert_eq!(focus.matches("cannot find value x").count(), 1);
     }
 
     #[test]

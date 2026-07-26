@@ -43,12 +43,22 @@ pub struct DesignVoteReport {
     pub eliminated: Vec<(usize, usize)>,
     /// Gewinner-Index in `proposals`, falls einer feststeht.
     pub winner: Option<usize>,
+    /// Einstimmig ratifizierter Endtext. Ohne ihn darf der Benchmark den
+    /// Kick-Vote-Gewinner nicht automatisch umsetzen.
+    pub approved: Option<String>,
+    /// Konkrete Änderungswünsche aus der ersten Ratifikationsrunde.
+    pub amendments: Vec<(String, String)>,
 }
 
 impl DesignVoteReport {
     /// Gewinner als `(brain, design)`.
     pub fn winning_design(&self) -> Option<&(String, String)> {
         self.winner.and_then(|i| self.proposals.get(i))
+    }
+
+    /// Nur ein einstimmig bestätigter Entwurf ist ein automatischer Bauauftrag.
+    pub fn approved_text(&self) -> Option<&str> {
+        self.approved.as_deref()
     }
 }
 
@@ -116,6 +126,43 @@ pub fn build_plan_kick_prompt(topic: &str, alive: &[(usize, &str)]) -> String {
          Plaene:\n\n{list}\nNenne die EINE Nummer, die AUSSCHEIDEN soll (der \
          schwaechste Plan), und begruende kurz. Antworte mit der Nummer zuerst, \
          z.B. '3 - zu ueberladen, ...'."
+    )
+}
+
+fn build_ratify_prompt(topic: &str, proposal: &str) -> String {
+    format!(
+        "Ratifikation des letzten Konsensvorschlags für {topic}:\n\n{proposal}\n\n\
+         Antworte exakt mit `JA`, wenn du zustimmst. Andernfalls nenne genau \
+         EINEN konkreten, begrenzten Änderungswunsch. Keine Diskussion."
+    )
+}
+
+fn build_revision_prompt(topic: &str, proposal: &str, amendments: &[(String, String)]) -> String {
+    let wishes = amendments
+        .iter()
+        .map(|(brain, wish)| format!("- {brain}: {}", crate::char_prefix(wish, 300)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "Überarbeite diesen Konsensvorschlag für {topic} einmalig:\n\n{proposal}\n\n\
+         Geprüfte Änderungswünsche:\n{wishes}\n\n\
+         Liefere nur den vollständigen, weiterhin begrenzten Endvorschlag. \
+         Übernimm nur Wünsche, die Scope und Kompatibilität nicht verletzen."
+    )
+}
+
+fn build_final_ratify_prompt(topic: &str, proposal: &str) -> String {
+    format!(
+        "Letzte, bindende Ratifikation für {topic}:\n\n{proposal}\n\n\
+         Antworte ausschließlich `JA` bei Zustimmung, sonst `NEIN`. Diese \
+         Abstimmung löst keine weitere Änderungsrunde aus."
+    )
+}
+
+fn is_yes(response: &str) -> bool {
+    matches!(
+        response.trim().to_uppercase().as_str(),
+        "JA" | "YES" | "ZUSTIMMUNG"
     )
 }
 
@@ -187,6 +234,8 @@ where
             proposals,
             eliminated: Vec::new(),
             winner,
+            approved: None,
+            amendments: Vec::new(),
         };
     }
 
@@ -265,10 +314,102 @@ where
     }
 
     let winner = bracket.winner();
+    let Some(winner_index) = winner else {
+        return DesignVoteReport {
+            proposals,
+            eliminated,
+            winner: None,
+            approved: None,
+            amendments: Vec::new(),
+        };
+    };
+
+    // ---- Begrenzte Ratifikation ----
+    let winning = proposals[winner_index].1.clone();
+    on_round("Ratifikation: alle Brains stimmen zu oder nennen einen Änderungswunsch");
+    let ratify_prompt = build_ratify_prompt(&config.topic, &winning);
+    let ratify: Vec<(String, Result<String, String>)> = std::thread::scope(|scope| {
+        let query_ref = &query;
+        let jobs: Vec<_> = config
+            .brains
+            .iter()
+            .map(|brain| {
+                let prompt = &ratify_prompt;
+                scope.spawn(move || (brain.clone(), query_ref(brain, prompt)))
+            })
+            .collect();
+        jobs.into_iter()
+            .map(|job| job.join().expect("Ratifikations-Worker panicked"))
+            .collect()
+    });
+    let amendments: Vec<(String, String)> = ratify
+        .into_iter()
+        .filter_map(|(brain, response)| match response {
+            Ok(text) if is_yes(&text) => None,
+            Ok(text)
+                if !text.trim().is_empty() && !crate::brain::is_retryable_empty_response(&text) =>
+            {
+                Some((brain, text.trim().to_string()))
+            }
+            // Ausgefallene Provider sind weder Zustimmung noch Veto. Sie
+            // werden wie im Benchmark nicht als Kompetenz-/Konsensfehler
+            // verrechnet.
+            _ => None,
+        })
+        .collect();
+
+    let approved = if amendments.is_empty() {
+        on_round("Ratifikation: einstimmig bestätigt");
+        Some(winning)
+    } else {
+        on_round(&format!(
+            "Ratifikation: {} Änderungswunsch/-wünsche — einmalige Überarbeitung",
+            amendments.len()
+        ));
+        let revision_prompt = build_revision_prompt(&config.topic, &winning, &amendments);
+        let revised = query(&proposals[winner_index].0, &revision_prompt)
+            .ok()
+            .filter(|text| !text.trim().is_empty())
+            .map(|text| text.trim().to_string());
+        revised.and_then(|proposal| {
+            let final_prompt = build_final_ratify_prompt(&config.topic, &proposal);
+            let responses: Vec<Result<String, String>> = std::thread::scope(|scope| {
+                let query_ref = &query;
+                let jobs: Vec<_> = config
+                    .brains
+                    .iter()
+                    .map(|brain| {
+                        let prompt = &final_prompt;
+                        scope.spawn(move || query_ref(brain, prompt))
+                    })
+                    .collect();
+                jobs.into_iter()
+                    .map(|job| job.join().expect("Finale Ratifikations-Worker panicked"))
+                    .collect()
+            });
+            let valid_votes: Vec<&str> = responses
+                .iter()
+                .filter_map(|response| response.as_deref().ok())
+                .filter(|response| {
+                    !response.trim().is_empty()
+                        && !crate::brain::is_retryable_empty_response(response)
+                })
+                .collect();
+            if !valid_votes.is_empty() && valid_votes.iter().all(|response| is_yes(response)) {
+                on_round("Ratifikation: überarbeiteter Vorschlag einstimmig bestätigt");
+                Some(proposal)
+            } else {
+                on_round("Ratifikation: keine Einstimmigkeit — keine automatische Umsetzung");
+                None
+            }
+        })
+    };
     DesignVoteReport {
         proposals,
         eliminated,
-        winner,
+        winner: Some(winner_index),
+        approved,
+        amendments,
     }
 }
 
