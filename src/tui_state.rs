@@ -97,6 +97,16 @@ impl View {
     }
 }
 
+/// Uebersetzt den `--view`-Wert in eine Ansicht. `None` = unbekannter Wert,
+/// der Aufrufer behaelt dann seine Vorauswahl.
+pub fn parse_view(raw: &str) -> Option<View> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "workers" | "worker" | "pool" => Some(View::Workers),
+        "bench" | "benchmark" => Some(View::Bench),
+        _ => None,
+    }
+}
+
 /// Wie viele Pulswerte die Sparkline vorhält (~Fensterbreite in Ticks).
 pub const ACTIVITY_HISTORY_LEN: usize = 60;
 
@@ -540,6 +550,16 @@ fn latest_log_line(root: &Path, brain: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn view_parameter_waehlt_die_startansicht() {
+        assert_eq!(parse_view("workers"), Some(View::Workers));
+        assert_eq!(parse_view("Worker"), Some(View::Workers));
+        assert_eq!(parse_view("bench"), Some(View::Bench));
+        assert_eq!(parse_view(" BENCHMARK "), Some(View::Bench));
+        // Unbekanntes bleibt None, damit der Aufrufer seine Wahl behaelt.
+        assert_eq!(parse_view("quatsch"), None);
+    }
 
     #[test]
     fn benchmark_aktivitaet_erreicht_das_worker_dashboard() {

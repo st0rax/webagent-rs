@@ -273,10 +273,23 @@ enum Commands {
         #[arg(long)]
         headless: bool,
 
-        /// Startet beim Öffnen der TUI sofort diesen Benchmark-Argumentstring,
-        /// z.B. "--rounds 1 --suggestions 3 --loop --veto sandbox".
+        /// Startet beim Öffnen der TUI sofort diesen Benchmark-Argumentstring.
+        ///
+        /// Der Wert beginnt selbst mit `--`, deshalb MUSS die Gleichheitszeichen-
+        /// Form benutzt werden — mit Leerzeichen haelt clap den Wert fuer ein
+        /// weiteres Argument und bricht ab:
+        /// `--benchmark="--rounds 1 --suggestions 3 --harvest"`
         #[arg(long)]
         benchmark: Option<String>,
+
+        /// Ansicht, mit der die TUI startet: `workers` oder `bench`.
+        ///
+        /// Ohne Angabe entscheidet der Kontext (mit `--benchmark` startet sie
+        /// im Ereignisstrom, sonst im Worker-Dashboard). Explizit gesetzt,
+        /// laesst sich jede Ansicht ohne Tastendruck oeffnen — noetig fuer
+        /// automatisierte Abnahme per Screenshot.
+        #[arg(long, value_parser = ["workers", "bench"])]
+        view: Option<String>,
     },
 
     /// First-run setup: Brain-Auswahl und optional Login-Hinweise
@@ -592,7 +605,15 @@ fn dispatch(command: Commands) -> i32 {
             poll_secs,
             headless,
             benchmark,
-        } => webagent::tui::run_tui(active, &brains, poll_secs, headless, benchmark.as_deref()),
+            view,
+        } => webagent::tui::run_tui(
+            active,
+            &brains,
+            poll_secs,
+            headless,
+            benchmark.as_deref(),
+            view.as_deref(),
+        ),
 
         Commands::Oobe {
             brains,

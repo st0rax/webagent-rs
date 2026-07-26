@@ -427,6 +427,7 @@ fn run_tui_ratatui(
     poll_secs: u64,
     headless: bool,
     startup_benchmark: Option<&str>,
+    startup_view: Option<&str>,
 ) -> i32 {
     use crossterm::event::{self, Event, KeyCode, KeyEventKind};
     use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
@@ -435,7 +436,7 @@ fn run_tui_ratatui(
     use ratatui::Terminal;
 
     use crate::tui_render::ui;
-    use crate::tui_state::{load_state, select_wrap, App, InputMode, LogFilter, Panel, View};
+    use crate::tui_state::{parse_view, load_state, select_wrap, App, InputMode, LogFilter, Panel, View};
 
     let all = available_brain_ids();
     let selected: Vec<String> = if brains.trim().is_empty() {
@@ -520,6 +521,11 @@ fn run_tui_ratatui(
         let command = format!("/benchmark {arguments}");
         spawn_benchmark_from_tui(&command, &candidates);
         app.view = View::Bench;
+    }
+    // Explizite Wahl schlaegt die Kontext-Heuristik: so laesst sich jede
+    // Ansicht ohne Tastendruck oeffnen (automatisierte Abnahme).
+    if let Some(v) = startup_view {
+        app.view = parse_view(v).unwrap_or(app.view);
     }
 
     // --- Event-Loop ---
@@ -825,6 +831,7 @@ pub fn run_tui(
     poll_secs: u64,
     headless: bool,
     startup_benchmark: Option<&str>,
+    startup_view: Option<&str>,
 ) -> i32 {
     #[cfg(feature = "tui")]
     {
@@ -833,7 +840,7 @@ pub fn run_tui(
         // die ANSI-Variante fahren statt mit Fehler abzubrechen.
         use std::io::IsTerminal;
         if std::io::stdout().is_terminal() {
-            return run_tui_ratatui(active, brains, poll_secs, headless, startup_benchmark);
+            return run_tui_ratatui(active, brains, poll_secs, headless, startup_benchmark, startup_view);
         }
         eprintln!("[tui] Kein interaktives Terminal (umgeleitet/detached) — ANSI-Fallback.");
     }
