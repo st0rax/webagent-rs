@@ -1140,15 +1140,12 @@ where
             bench_say!(
                 crate::bench_events::Level::Warn,
                 None,
-                "Plan-Konsens nicht einstimmig ratifiziert — keine automatische Umsetzung in dieser Runde."
+                "Plan-Konsens nicht einstimmig ratifiziert — keine neue Umfrage, Benchmark wird kontrolliert angehalten."
             );
-            unproductive_rounds += 1;
-            if unproductive_rounds >= MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS {
-                return Err(format!(
-                    "Benchmark nach {unproductive_rounds} nicht ratifizierten/unproduktiven Runden angehalten."
-                ));
-            }
-            continue;
+            return Err(
+                "Plan-Konsens nach drei begrenzten Überarbeitungen nicht einstimmig; keine neue Vorschlagsrunde gestartet."
+                    .to_string(),
+            );
         };
         bench_say!(
             crate::bench_events::Level::Pass,
