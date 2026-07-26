@@ -547,6 +547,33 @@ where
             match r {
                 Ok(resp) => {
                     let items = parse_suggestions(&resp);
+                    let count_ok = items.len() == n;
+                    let compliance = if count_ok {
+                        format!("Vorschlagsanzahl erfüllt ({}/{n})", items.len())
+                    } else {
+                        format!("Vorschlagsanzahl abweichend: {}/{}", items.len(), n)
+                    };
+                    // Die verlangte Anzahl ist ein klarer, günstiger Test für
+                    // Instruktionsbefolgung. Als einzelnes Reliability-Event
+                    // wirkt die Abweichung nur leicht, bleibt aber dauerhaft
+                    // nachvollziehbar und kann technische Qualität nicht
+                    // überstimmen.
+                    crate::brain_score::record_event(
+                        &b,
+                        count_ok,
+                        Some(&format!("self_research: {compliance}")),
+                        0,
+                        resp.len(),
+                    );
+                    crate::bench_events::emit(
+                        if count_ok {
+                            crate::bench_events::Level::Pass
+                        } else {
+                            crate::bench_events::Level::Warn
+                        },
+                        Some(&b),
+                        &compliance,
+                    );
                     crate::bench_events::info_line(&format!(
                         "[self-research] sammeln — {b}: {} Vorschläge",
                         items.len()
