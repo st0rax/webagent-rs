@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Terminal-Status, die nicht mehr geändert werden können.
@@ -312,8 +312,75 @@ impl RunStore {
     }
 
     /// Markiert verwaiste `running`-Runs als `interrupted`.
+    /// Zeitstempel des letzten vollstaendigen Abgleichs.
+    fn reconcile_marker(&self) -> PathBuf {
+        self.runs_dir.join(".last_reconcile")
+    }
+
+    /// Zeitpunkt des letzten Abgleichs, abzueglich einer Sicherheitsspanne.
+    ///
+    /// `None` = noch nie abgeglichen, dann wird alles angesehen.
+    fn last_reconcile(&self) -> Option<SystemTime> {
+        let modified = fs::metadata(self.reconcile_marker())
+            .ok()
+            .and_then(|m| m.modified().ok())?;
+        // Eine Minute Spanne, damit ein Lauf, der waehrend des vorigen
+        // Abgleichs geschrieben wurde, nicht durchrutscht.
+        Some(modified - Duration::from_secs(60))
+    }
+
+    /// Laeufe, die beim letzten Abgleich noch liefen — unabhaengig von ihrer
+    /// Schreibzeit erneut anzusehen.
+    fn watched_running(&self) -> HashSet<String> {
+        fs::read_to_string(self.reconcile_marker())
+            .map(|t| {
+                t.lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Muss dieser Lauf angesehen werden?
+    ///
+    /// Die Schreibzeit allein genuegt NICHT: ein alter Lauf, dessen Prozess
+    /// beim letzten Abgleich noch lebte, wird spaeter nie wieder angefasst,
+    /// wenn sein Prozess ohne Schreibzugriff stirbt — er bliebe fuer immer
+    /// auf `running` stehen (Fall von codex, 2026-07-27). Deshalb werden die
+    /// zuletzt laufenden IDs zusaetzlich vorgemerkt und immer geprueft.
+    fn should_inspect(
+        run_id: &str,
+        meta_modified: Option<SystemTime>,
+        since: Option<SystemTime>,
+        watched: &HashSet<String>,
+    ) -> bool {
+        if watched.contains(run_id) {
+            return true;
+        }
+        let (Some(since), Some(modified)) = (since, meta_modified) else {
+            return true;
+        };
+        modified >= since
+    }
+
+    /// Prueft alle nicht abgeschlossenen Laeufe und repariert verwaiste.
+    ///
+    /// Angesehen werden nur Laeufe, die SEIT dem letzten Abgleich geschrieben
+    /// wurden. Ohne diese Eingrenzung parst jeder Programmstart jede einzelne
+    /// `meta.json`: bei 1642 Laeufen sind das 8,3 Sekunden vor der ersten
+    /// Bildschirmausgabe — und zwar typischerweise umsonst, weil gar kein Lauf
+    /// auf `running` steht (gemessen 2026-07-27: 0 von 1642). Ein reines
+    /// Altersfenster waere unsauber, weil ein lange liegengebliebener Lauf nie
+    /// wieder geprueft wuerde; der Marker schliesst diese Luecke, denn nach
+    /// einer Reparatur wird `meta.json` neu geschrieben und faellt damit
+    /// wieder ins Fenster.
     pub fn reconcile_stale_runs(&self, legacy_age_seconds: f64) -> Vec<String> {
         let mut repaired = Vec::new();
+        let since = self.last_reconcile();
+        let watched = self.watched_running();
+        let mut still_running: Vec<String> = Vec::new();
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -323,6 +390,13 @@ impl RunStore {
         let mut procs: Option<crate::ProcessSnapshot> = None;
 
         for run_id in self.list_runs() {
+            // Billiger Dateisystem-Blick statt teurem JSON-Parse.
+            let meta_modified = fs::metadata(self.runs_dir.join(&run_id).join("meta.json"))
+                .and_then(|m| m.modified())
+                .ok();
+            if !Self::should_inspect(&run_id, meta_modified, since, &watched) {
+                continue;
+            }
             let meta = match self.load(&run_id) {
                 Ok(m) => m,
                 Err(_) => continue,
@@ -350,6 +424,10 @@ impl RunStore {
             };
 
             if !stale {
+                // Laeuft noch: fuer den naechsten Abgleich vormerken, sonst
+                // ginge er verloren, falls sein Prozess ohne Schreibzugriff
+                // endet.
+                still_running.push(run_id.clone());
                 continue;
             }
 
@@ -369,6 +447,18 @@ impl RunStore {
             }
         }
 
+        // Marker NACH dem Durchlauf setzen: faellt der Abgleich vorher aus,
+        // wird beim naechsten Start derselbe Bereich erneut geprueft statt
+        // uebersprungen. Inhalt sind die noch laufenden IDs; sie werden beim
+        // naechsten Mal unabhaengig von ihrer Schreibzeit geprueft.
+        let _ = fs::create_dir_all(&self.runs_dir);
+        let _ = fs::write(
+            self.reconcile_marker(),
+            still_running.join(
+                "
+",
+            ),
+        );
         repaired
     }
 }
@@ -391,6 +481,106 @@ fn parse_rfc3339_to_unix(s: &str) -> Option<i64> {
 mod tests {
     use super::*;
     use std::env;
+
+    // --- Inkrementeller Abgleich ----------------------------------------
+    // Der Marker darf Tempo bringen, ohne Laeufe zu verlieren. Der kritische
+    // Fall (gefunden von codex, 2026-07-27): ein alter Lauf lebt beim ersten
+    // Scan noch, sein Prozess stirbt danach OHNE meta.json anzufassen. Ohne
+    // Vormerkung wuerde er wegen zu alter Schreibzeit nie wieder angesehen
+    // und bliebe fuer immer auf "running".
+
+    fn vorgemerkt(ids: &[&str]) -> std::collections::HashSet<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn alter_lauf_wird_uebersprungen_wenn_nicht_vorgemerkt() {
+        let jetzt = SystemTime::now();
+        let alt = jetzt - Duration::from_secs(86_400);
+        assert!(
+            !RunStore::should_inspect("alt-1", Some(alt), Some(jetzt), &vorgemerkt(&[])),
+            "alter, unbeteiligter Lauf haette uebersprungen werden muessen"
+        );
+    }
+
+    #[test]
+    fn vorgemerkter_lauf_wird_trotz_alter_schreibzeit_geprueft() {
+        let jetzt = SystemTime::now();
+        let alt = jetzt - Duration::from_secs(86_400);
+        assert!(
+            RunStore::should_inspect("laeuft-1", Some(alt), Some(jetzt), &vorgemerkt(&["laeuft-1"])),
+            "vorgemerkter Lauf ging verloren — genau der Fall, der ihn fuer              immer auf running stehen liesse"
+        );
+    }
+
+    #[test]
+    fn frisch_geschriebener_lauf_wird_geprueft() {
+        let jetzt = SystemTime::now();
+        let seit = jetzt - Duration::from_secs(600);
+        assert!(RunStore::should_inspect(
+            "neu-1",
+            Some(jetzt),
+            Some(seit),
+            &vorgemerkt(&[])
+        ));
+    }
+
+    #[test]
+    fn ohne_marker_wird_alles_geprueft() {
+        assert!(RunStore::should_inspect("x", None, None, &vorgemerkt(&[])));
+        let jetzt = SystemTime::now();
+        assert!(
+            RunStore::should_inspect("x", None, Some(jetzt), &vorgemerkt(&[])),
+            "ohne lesbare Schreibzeit muss im Zweifel geprueft werden"
+        );
+    }
+
+    /// Ende-zu-Ende: ein laufender Lauf mit lebender PID bleibt stehen UND
+    /// landet im Marker; danach wird er trotz unveraenderter meta.json erneut
+    /// angesehen und repariert, sobald die PID tot ist.
+    #[test]
+    fn laufender_lauf_wird_vorgemerkt_und_spaeter_repariert() {
+        let tmp = unique_tmp();
+        let dir = tmp.join("runs");
+        let store = RunStore::new(dir.clone(), tmp.join("logs"));
+        let mut meta = store.create("mock", "laeuft-noch").unwrap();
+        let run_id = meta.run_id.clone();
+        meta.status = "running".to_string();
+        meta.extra.insert(
+            "owner_pid".to_string(),
+            serde_json::Value::Number(std::process::id().into()),
+        );
+        store.save_internal(&meta).unwrap();
+
+        let repariert = store.reconcile_stale_runs(600.0);
+        assert!(
+            repariert.is_empty(),
+            "lebender Lauf wurde faelschlich repariert"
+        );
+        let marker = std::fs::read_to_string(dir.join(".last_reconcile")).unwrap_or_default();
+        assert!(
+            marker.contains(&run_id),
+            "lebender Lauf wurde nicht vorgemerkt, Marker={marker:?}"
+        );
+
+        // PID auf einen mit Sicherheit toten Wert setzen, meta.json bleibt
+        // ansonsten unveraendert.
+        let mut tot = store.load(&run_id).unwrap();
+        tot.extra.insert(
+            "owner_pid".to_string(),
+            serde_json::Value::Number(0x7FFF_FFFEu32.into()),
+        );
+        store.save_internal(&tot).unwrap();
+
+        let repariert = store.reconcile_stale_runs(600.0);
+        assert_eq!(
+            repariert,
+            vec![run_id.clone()],
+            "toter Lauf blieb auf running"
+        );
+        assert_eq!(store.load(&run_id).unwrap().status, "interrupted");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 
     /// Eindeutiges Temp-Verzeichnis pro Testaufruf. `now_run_stamp()` ist nur
     /// sekundengenau; da Rust Tests parallel ausführt, würden mehrere Tests
