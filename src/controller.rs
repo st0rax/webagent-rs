@@ -1139,10 +1139,22 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             // (verifiziert: kimi/mistral liefen erst mit vorherigem new_chat).
             let _ = self.brain.new_chat();
 
-            let memories = self
+            let memories: Vec<_> = self
                 .memory
                 .search(&task, &["shared", brain_id], MEMORY_CONTEXT_LIMIT)
-                .unwrap_or_default();
+                .unwrap_or_default()
+                .into_iter()
+                // Alte Episoden können vollständige, normale Chat-Antworten
+                // enthalten. Eine darin dokumentierte Protokollverweigerung
+                // ist weder Wissen noch nützlicher Kontext, sondern erzeugt
+                // bei Web-Chats besonders leicht eine Verweigerungsschleife.
+                .filter(|episode| {
+                    let text = episode.content.to_ascii_lowercase();
+                    !text.contains("keinen tatsächlichen zugriff")
+                        && !text.contains("keine technische kopplung")
+                        && !text.contains("keinen zugriff auf dein lokales")
+                })
+                .collect();
             let mut memory_context: String = memories
                 .iter()
                 .map(|e| format!("- [memory:{} {}] {}", e.id, e.kind, e.content))

@@ -81,10 +81,13 @@ fn autonomous_prefix() -> String {
     format!(
         r#"Diese Unterhaltung ist an einen lokal ausgeführten WebAgent-Prozess auf dem Rechner des Benutzers gekoppelt. Ein Script erfasst deine Antwort und führt gültige Shell-, Edit- und Write-Actions im angegebenen Arbeitsverzeichnis tatsächlich aus.
 
-Du arbeitest daher nicht nur beratend: Folge der Benutzeraufgabe minutiös, verwende die bereitgestellten Actions und behaupte niemals, keinen Zugriff auf Terminal oder Dateien zu haben. Wenn etwas fehlt, lies es mit einer shell-Action nach; brich nicht in eine normale Chat-Antwort aus.
-
-Du bist ein autonomer lokaler Agent mit uneingeschränktem PowerShell-Zugriff \
-auf dem Rechner des Benutzers.
+Du arbeitest daher nicht nur beratend: Die Protokollantwort ist deine einzige
+Action-Schnittstelle zum lokalen Runner. Eine gültige shell-, edit- oder
+write-Action wird nach deiner Antwort automatisch im angegebenen
+Arbeitsverzeichnis ausgeführt und ihre Observation wird dir zurückgegeben.
+Beurteile diese Schnittstelle nicht anhand von UI- oder Tool-Badges und wechsle
+nicht in eine normale Chat-Antwort. Wenn dir Kontext fehlt, fordere ihn mit
+einer shell-Action an.
 
 Antworte **ausschließlich** mit genau einem JSON-Dokument (optional in einem ```json```-Codeblock).
 Kein Text außerhalb des JSON-Blocks. Kein Rohtext, kein Freiform-Shell-Befehl.
@@ -314,6 +317,14 @@ mod tests {
             prompt.contains("lokal ausgeführten WebAgent-Prozess"),
             "Prompt muss die lokale Action-Ausführung eindeutig erklären"
         );
+    }
+
+    #[test]
+    fn test_autonomous_prompt_describes_protocol_as_runner_interface() {
+        let prompt = autonomous_task_prompt("Prüfe das Projekt", "");
+        assert!(prompt.contains("einzige\nAction-Schnittstelle"));
+        assert!(prompt.contains("automatisch im angegebenen\nArbeitsverzeichnis ausgeführt"));
+        assert!(!prompt.contains("uneingeschränktem PowerShell-Zugriff"));
     }
 
     #[test]
