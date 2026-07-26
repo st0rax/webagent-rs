@@ -142,6 +142,7 @@ fn build_revision_prompt(
     proposal: &str,
     amendments: &[(String, String)],
     revision: usize,
+    maximum_revisions: usize,
 ) -> String {
     let wishes = amendments
         .iter()
@@ -149,7 +150,7 @@ fn build_revision_prompt(
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "Überarbeite diesen Konsensvorschlag für {topic} (Revision {revision} von 3):\n\n{proposal}\n\n\
+        "Überarbeite diesen Konsensvorschlag für {topic} (Revision {revision} von maximal {maximum_revisions}):\n\n{proposal}\n\n\
          Geprüfte Änderungswünsche:\n{wishes}\n\n\
          Liefere nur den vollständigen, weiterhin begrenzten Endvorschlag. \
          Übernimm nur Wünsche, die Scope und Kompatibilität nicht verletzen."
@@ -323,8 +324,9 @@ where
 
     // ---- Begrenzte Ratifikation ----
     // Ein nicht einstimmiger Plan startet ausdrücklich keinen neuen Kick-Vote:
-    // derselbe Gewinner wird mit den konkreten Einwänden höchstens dreimal
-    // überarbeitet. Erst danach ist die Runde entschieden.
+    // derselbe Gewinner wird mit den konkreten Einwänden weiter verfeinert.
+    // Sichtbarer Konsensfortschritt (weniger offene Wünsche) erweitert das
+    // Budget, aber eine harte Obergrenze verhindert Endlosschleifen.
     let collect_amendments = |prompt: &str| -> Vec<(String, String)> {
         let query_ref = &query;
         let ratify: Vec<(String, Result<String, String>)> = std::thread::scope(|scope| {
@@ -358,7 +360,12 @@ where
     let mut proposal = proposals[winner_index].1.clone();
     let mut amendments = Vec::new();
     let mut approved = None;
-    for revision in 0..=3 {
+    const BASE_REVISIONS: usize = 3;
+    const MAX_REVISIONS: usize = 6;
+    let mut revision = 0usize;
+    let mut revision_limit = BASE_REVISIONS;
+    let mut previous_amendment_count = None;
+    loop {
         on_round(if revision == 0 {
             "Ratifikation: alle Brains stimmen zu oder nennen einen Änderungswunsch"
         } else {
@@ -371,19 +378,33 @@ where
             break;
         }
         amendments.extend(round_amendments.iter().cloned());
-        if revision == 3 {
-            on_round(
-                "Ratifikation: nach 3 Überarbeitungen keine Einstimmigkeit — Runde wird beendet",
-            );
+        let amendment_count = round_amendments.len();
+        if previous_amendment_count.is_some_and(|previous| amendment_count < previous)
+            && revision_limit < MAX_REVISIONS
+        {
+            revision_limit += 1;
+            on_round(&format!(
+                "Ratifikation: offene Wünsche sinken auf {amendment_count} — Budget auf {revision_limit} Revisionen erweitert"
+            ));
+        }
+        previous_amendment_count = Some(amendment_count);
+        if revision >= revision_limit {
+            on_round(&format!(
+                "Ratifikation: nach {revision_limit} Revisionen keine Einstimmigkeit — Runde wird beendet"
+            ));
             break;
         }
+        revision += 1;
         on_round(&format!(
-            "Ratifikation: {} Änderungswunsch/-wünsche — Revision {} von 3",
-            round_amendments.len(),
-            revision + 1
+            "Ratifikation: {amendment_count} Änderungswunsch/-wünsche — Revision {revision} von maximal {revision_limit}",
         ));
-        let revision_prompt =
-            build_revision_prompt(&config.topic, &proposal, &round_amendments, revision + 1);
+        let revision_prompt = build_revision_prompt(
+            &config.topic,
+            &proposal,
+            &round_amendments,
+            revision,
+            revision_limit,
+        );
         match query(&proposals[winner_index].0, &revision_prompt)
             .ok()
             .filter(|text| !text.trim().is_empty())
