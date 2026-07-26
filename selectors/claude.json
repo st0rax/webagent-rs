@@ -29,7 +29,6 @@
   ],
   "assistant_message": [
     "div[data-testid='assistant-message']",
-    "div[data-is-streaming='true']",
     "div.font-claude-response",
     "div[class*='font-claude-response']"
   ],

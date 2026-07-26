@@ -939,6 +939,33 @@ fn volume_root(_path: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
+    /// `assistant_message` darf NIE den laufenden Streaming-Container treffen.
+    ///
+    /// Real 2026-07-26: claudes Liste enthielt `div[data-is-streaming='true']`.
+    /// Der Scraper las damit die Denk-Anzeige ("Crystallizing" samt
+    /// Private-Use-Glyph) als fertige Antwort. Auswertung ueber 176 Laeufe:
+    /// mit Denk-Glyph im Transkript 67% protocol_error, ohne 3% — Faktor 22,
+    /// und 73 der 75 Protokollfehler hatten den Glyph. Schlimmer als die
+    /// verfaelschte Messung: der Harness feuerte daraufhin identische
+    /// Reparatur-Prompts, bis die Gegenseite das Gespraech beendete.
+    #[test]
+    fn assistant_message_trifft_nie_den_streaming_container() {
+        for (brain, json_text) in EMBEDDED_SELECTORS {
+            let v: serde_json::Value =
+                serde_json::from_str(json_text).unwrap_or_else(|e| panic!("{brain}: {e}"));
+            let Some(list) = v.get("assistant_message").and_then(|x| x.as_array()) else {
+                continue;
+            };
+            for sel in list {
+                let sel = sel.as_str().unwrap_or_default();
+                assert!(
+                    !sel.contains("data-is-streaming"),
+                    "{brain}: assistant_message enthaelt den Streaming-Container `{sel}`                      — der Scraper liest damit die Denk-Anzeige als Antwort"
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_root_dir_exists() {
         let root = root_dir();
