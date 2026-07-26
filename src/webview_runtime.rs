@@ -22,10 +22,6 @@ use crate::page_driver::{PageDriver, PageDriverError, Result};
 
 pub(crate) type ViewId = u64;
 
-/// Position fuer "headless"-Fenster: weit ausserhalb jedes realen Desktops, aber
-/// fuer Chromium ein normales, fokussierbares Fenster (siehe `open_page`).
-const OFFSCREEN_POS: (f64, f64) = (-32000.0, -32000.0);
-
 /// Interne Befehle an den UI-Thread.
 enum RuntimeMessage {
     OpenPage {
@@ -358,12 +354,10 @@ fn open_page(
     let view_id = rt.next_id;
     rt.next_id += 1;
 
-    // "headless" heisst hier: fuer den Nutzer unsichtbar, fuer Chromium aber ein
-    // normales Fenster. `with_visible(false)` erfuellt nur die erste Haelfte: ein
-    // nie gezeigtes Fenster kann keinen Fokus bekommen, also landen Tastendruecke
-    // (press_enter) nirgends. Bei Brains ohne matchenden Send-Button ist Enter der
-    // einzige Absende-Weg — der Relay lief dadurch headless in jeden Timeout, waehrend
-    // er headed in Sekunden antwortete. Fenster off-screen statt versteckt.
+    // Headless bedeutet hier minimiert, nicht unsichtbar/off-screen: der Lauf bleibt
+    // unaufdringlich, aber das Browserfenster kann bei einem auffälligen Run gezielt
+    // untersucht werden. Ein echtes Fenster erhält zudem zuverlässiger Fokus für den
+    // Enter-Absendeweg als ein nie gezeigtes WebView.
     // Brain-Name im Fenstertitel: bei mehreren (auch off-screen) Fenstern —
     // Swarm, Worker-Pool — ist sonst im Task-Manager/Alt-Tab nicht erkennbar,
     // welches Fenster zu welchem Brain gehört (Storax-Wunsch 2026-07-20).
@@ -372,28 +366,16 @@ fn open_page(
     } else {
         format!("webagent · {} ({view_id})", title.trim())
     };
-    let mut builder = WindowBuilder::new()
+    let builder = WindowBuilder::new()
         .with_title(window_title)
         .with_inner_size(LogicalSize::new(1280.0, 900.0))
         .with_visible(true);
-    if headless {
-        builder = builder.with_position(tao::dpi::LogicalPosition::new(
-            OFFSCREEN_POS.0,
-            OFFSCREEN_POS.1,
-        ));
-        // Off-Screen-Fenster nicht in der Taskleiste zeigen: dort ist es nur
-        // ein toter Eintrag, den man weder sinnvoll fokussieren noch
-        // maximieren kann (Storax-Beschwerde 2026-07-20). Fokussierbar fuer
-        // den Enter-Absendeweg bleibt das Fenster trotzdem.
-        #[cfg(windows)]
-        {
-            use tao::platform::windows::WindowBuilderExtWindows;
-            builder = builder.with_skip_taskbar(true);
-        }
-    }
     let window = builder
         .build(event_loop)
         .map_err(|e| PageDriverError::Launch(e.to_string()))?;
+    if headless {
+        let _ = window.set_minimized(true);
+    }
 
     let mut web_context = rt
         .web_context
