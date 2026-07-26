@@ -306,7 +306,18 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             let _ = t.append("user", message, HashMap::new());
         }
 
+        let brain_id = self.brain.brain_id().to_string();
+        crate::bench_events::emit(
+            crate::bench_events::Level::Progress,
+            Some(&brain_id),
+            "Browser: Auftrag wird gesendet",
+        );
         let baseline = self.brain.send(message).unwrap_or_default();
+        crate::bench_events::emit(
+            crate::bench_events::Level::Progress,
+            Some(&brain_id),
+            "Browser: warte auf Modellantwort",
+        );
 
         // Dynamisches Timeout je Brain-Geschwindigkeit und Nachrichtengröße,
         // statt eines pauschalen Werts (langsame Brains wie claude/gemini brauchen
@@ -368,6 +379,15 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         if response.generation_complete {
             self.persist_conversation_ref();
         }
+        crate::bench_events::emit(
+            if response.generation_complete {
+                crate::bench_events::Level::Pass
+            } else {
+                crate::bench_events::Level::Warn
+            },
+            Some(&brain_id),
+            &format!("Browser: Antwort empfangen ({})", response.backend_status),
+        );
 
         BrainTurn {
             text: response.text,
@@ -1079,6 +1099,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         let ready_timeout =
             crate::timeouts::resolve_timeout("ensure_ready", self.brain.brain_id(), "", None);
+        crate::bench_events::emit(
+            crate::bench_events::Level::Progress,
+            Some(brain_id),
+            "Browser: Sitzung wird geprüft",
+        );
         let state = self
             .brain
             .ensure_ready(ready_timeout)
@@ -1087,6 +1112,15 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             "system",
             &format!("session_state={:?}", state),
             HashMap::new(),
+        );
+        crate::bench_events::emit(
+            if state == crate::brain::SessionState::Ready {
+                crate::bench_events::Level::Pass
+            } else {
+                crate::bench_events::Level::Warn
+            },
+            Some(brain_id),
+            &format!("Browser: Sitzung {state:?}"),
         );
 
         if state != crate::brain::SessionState::Ready {
