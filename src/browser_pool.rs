@@ -1,7 +1,7 @@
 //! Shared browser pool — ein WebView-Runtime, ein Tab pro Brain (Python `browser_pool.py`).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "webview")]
 use std::time::Duration;
@@ -50,6 +50,63 @@ pub struct BrowserPool {
     tabs: HashMap<String, PooledTab>,
     #[cfg(feature = "webview")]
     encapsulated: HashMap<String, EncapsulatedInstance>,
+}
+
+/// Buchhaltung nach einem Navigationsversuch auf einer BESTEHENDEN Instanz.
+///
+/// Der Refcount darf erst nach ERFOLGREICHER Navigation steigen. Vorher wurde
+/// er davor erhoeht; schlug die Navigation fehl, blieb er dauerhaft zu hoch
+/// und der Tab wurde nie geschlossen, weil `stop_brain` nur bis auf den
+/// geleakten Wert herunterzaehlt.
+///
+/// Bewusst eine freie Funktion ueber `&mut u32` statt einer Methode auf
+/// `PooledTab`: dessen `driver_proto` haengt an `feature = "webview"`, eine
+/// Methode waere ohne echten Browser nicht pruefbar. So laeuft im Test
+/// GENAU der Code, den auch der Produktionspfad aufruft.
+pub(crate) fn note_navigation(refs: &mut u32, navigated: Result<(), String>) -> Result<(), String> {
+    navigated?;
+    *refs = refs.saturating_add(1);
+    Ok(())
+}
+
+/// Besitzt ein frisch angelegtes Profil-Klon-Verzeichnis und entfernt es
+/// wieder, solange es nicht per [`CloneGuard::keep`] uebernommen wurde.
+///
+/// Vorher raeumte jeder Fehlerpfad einzeln auf (`remove_dir_all` an drei
+/// Stellen). Das ist Symptomkur: der naechste hinzugefuegte Fehlerpfad
+/// vergisst es wieder, und jeder Fehlversuch laesst dann eine weitere
+/// verwaiste Profilkopie im Datenverzeichnis zurueck. Mit Drop-Semantik kann
+/// das Aufraeumen nicht mehr vergessen werden — es passiert beim Verlassen
+/// des Gueltigkeitsbereichs, auch bei frueher Rueckkehr oder Panic.
+///
+/// Bewusst NICHT hinter `#[cfg(feature = "webview")]`: so ist die Invariante
+/// ohne echten Browser pruefbar.
+pub(crate) struct CloneGuard {
+    dir: Option<PathBuf>,
+}
+
+impl CloneGuard {
+    pub(crate) fn new(dir: PathBuf) -> Self {
+        Self { dir: Some(dir) }
+    }
+
+    /// Pfad zum Lesen, ohne den Besitz abzugeben.
+    pub(crate) fn path(&self) -> &Path {
+        self.dir.as_deref().unwrap_or(Path::new(""))
+    }
+
+    /// Uebernimmt den Klon endgueltig: ab hier wird NICHT mehr geloescht.
+    pub(crate) fn keep(mut self) -> PathBuf {
+        self.dir.take().unwrap_or_default()
+    }
+}
+
+impl Drop for CloneGuard {
+    fn drop(&mut self) {
+        if let Some(dir) = self.dir.take() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
 }
 
 impl BrowserPool {
@@ -104,14 +161,10 @@ impl BrowserPool {
 
             if let Some(tab) = self.tabs.get_mut(&brain_id) {
                 let mut driver = tab.driver_proto.clone();
-                // Refcount ERST nach erfolgreicher Navigation erhoehen: sonst
-                // bleibt er bei einem Navigationsfehler dauerhaft erhoeht und
-                // der Tab wird nie wieder geschlossen (stop_brain zaehlt nur
-                // bis auf den geleakten Wert herunter).
-                driver
+                let navigated = driver
                     .navigate(backend.brain_url(), Duration::from_secs(30))
-                    .map_err(|e| e.to_string())?;
-                tab.refs = tab.refs.saturating_add(1);
+                    .map_err(|e| e.to_string());
+                note_navigation(&mut tab.refs, navigated)?;
                 backend.attach_page_driver(Box::new(driver));
                 return Ok(());
             }
@@ -209,11 +262,10 @@ impl BrowserPool {
         // Vorhandene gekapselte Instanz reuse (Refs++).
         if let Some(inst) = self.encapsulated.get_mut(brain_id) {
             let mut driver = inst.driver_proto.clone();
-            // Refcount erst nach erfolgreicher Navigation (siehe start_brain).
-            driver
+            let navigated = driver
                 .navigate(backend.brain_url(), Duration::from_secs(30))
-                .map_err(|e| e.to_string())?;
-            inst.refs = inst.refs.saturating_add(1);
+                .map_err(|e| e.to_string());
+            note_navigation(&mut inst.refs, navigated)?;
             backend.attach_page_driver(Box::new(driver));
             return Ok(());
         }
@@ -226,29 +278,15 @@ impl BrowserPool {
         ProfileClonePlanner::materialize(&plan)
             .map_err(|e| format!("Profil-Klon fuer Brain '{brain_id}' fehlgeschlagen: {e}"))?;
 
-        // Ab hier liegt ein Profil-Klon auf der Platte. Jeder Fehlerpfad muss
-        // ihn wieder entfernen — sonst waechst bei jedem Fehlversuch eine
-        // weitere verwaiste Profilkopie (Linked-Clone des kanonischen
-        // Profils) im Datenverzeichnis an, die niemand mehr aufraeumt.
-        let rt = match WebViewRuntime::launch(&clone_dir, headless) {
-            Ok(rt) => rt,
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&clone_dir);
-                return Err(e.to_string());
-            }
-        };
-        let mut driver = match rt.open_page(&clone_dir, backend.brain_url(), headless, brain_id) {
-            Ok(d) => d,
-            Err(e) => {
-                drop(rt);
-                let _ = std::fs::remove_dir_all(&clone_dir);
-                return Err(e.to_string());
-            }
-        };
+        // Ab hier liegt ein Profil-Klon auf der Platte. Der Guard entfernt ihn
+        // auf JEDEM Rueckkehrpfad; nur der Erfolgsfall gibt ihn per keep() frei.
+        let guard = CloneGuard::new(clone_dir);
+        let rt = WebViewRuntime::launch(guard.path(), headless).map_err(|e| e.to_string())?;
+        let mut driver = rt
+            .open_page(guard.path(), backend.brain_url(), headless, brain_id)
+            .map_err(|e| e.to_string())?;
         if let Err(e) = driver.navigate(backend.brain_url(), Duration::from_secs(30)) {
             let _ = rt.close_page(driver.view_id());
-            drop(rt);
-            let _ = std::fs::remove_dir_all(&clone_dir);
             return Err(e.to_string());
         }
         let driver_proto = driver.clone();
@@ -256,7 +294,7 @@ impl BrowserPool {
             brain_id.to_string(),
             EncapsulatedInstance {
                 runtime: rt,
-                profile_dir: clone_dir,
+                profile_dir: guard.keep(),
                 driver_proto,
                 refs: 1,
             },
@@ -382,6 +420,86 @@ impl BrowserPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- Invarianten ohne echten WebView --------------------------------
+    // Diese Tests rufen GENAU die Funktionen auf, die auch der
+    // Produktionspfad benutzt (note_navigation, CloneGuard) — kein Nachbau
+    // der Struktur, sondern der echte Code.
+
+    #[test]
+    fn refcount_steigt_nur_nach_erfolgreicher_navigation() {
+        let mut refs = 1u32;
+        let err = note_navigation(&mut refs, Err("navigate fehlgeschlagen".into()));
+        assert!(err.is_err(), "Fehler wurde verschluckt");
+        assert_eq!(refs, 1, "Refcount stieg trotz gescheiterter Navigation");
+
+        note_navigation(&mut refs, Ok(())).expect("Erfolg darf nicht scheitern");
+        assert_eq!(refs, 2, "Refcount stieg nach Erfolg nicht");
+    }
+
+    #[test]
+    fn refcount_laeuft_nicht_ueber() {
+        let mut refs = u32::MAX;
+        note_navigation(&mut refs, Ok(())).unwrap();
+        assert_eq!(refs, u32::MAX, "saturating_add verletzt");
+    }
+
+    fn temp_klon() -> std::path::PathBuf {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let d = std::env::temp_dir().join(format!("webagent_cloneguard_{n}"));
+        std::fs::create_dir_all(d.join("Default")).unwrap();
+        std::fs::write(d.join("Default").join("Cookies"), b"x").unwrap();
+        d
+    }
+
+    #[test]
+    fn cloneguard_raeumt_den_klon_beim_verlassen_weg() {
+        let dir = temp_klon();
+        assert!(dir.exists());
+        {
+            let _g = CloneGuard::new(dir.clone());
+        } // Fehlerpfad: Guard faellt, ohne dass keep() aufgerufen wurde
+        assert!(
+            !dir.exists(),
+            "verwaister Profil-Klon blieb liegen: {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn cloneguard_behaelt_den_klon_nach_keep() {
+        let dir = temp_klon();
+        let behalten = {
+            let g = CloneGuard::new(dir.clone());
+            g.keep()
+        };
+        assert_eq!(behalten, dir);
+        assert!(
+            dir.exists(),
+            "uebernommener Klon wurde faelschlich geloescht"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Der Guard muss auch bei einem Panic aufraeumen — genau dafuer ist
+    /// Drop-Semantik der manuellen Bereinigung ueberlegen.
+    #[test]
+    fn cloneguard_raeumt_auch_bei_panic_weg() {
+        let dir = temp_klon();
+        let d2 = dir.clone();
+        let _ = std::panic::catch_unwind(move || {
+            let _g = CloneGuard::new(d2);
+            panic!("simulierter Abbruch mitten im Aufbau");
+        });
+        assert!(
+            !dir.exists(),
+            "Klon ueberlebte einen Panic: {}",
+            dir.display()
+        );
+    }
 
     #[test]
     fn pool_refcount_without_webview() {
