@@ -124,18 +124,47 @@ pub fn record_failure(brain_id: &str, reason: &str) {
     record_failure_at(brain_id, reason, &state_path());
 }
 
+/// Deterministische Sperre: loest sich innerhalb eines Laufs NICHT von selbst.
+///
+/// Ein fehlender Login oder ein erschoepftes Tageslimit bleibt bestehen, egal
+/// wie oft wir es erneut versuchen — jeder weitere Anlauf kostet einen vollen
+/// `ensure_ready`-Timeout. Beobachtet 2026-07-26: gemini meldete „Login noetig",
+/// der Breaker oeffnete aber erst nach `max_failures` (Default 3) Anlaeufen und
+/// blaehte damit Phase A auf.
+pub(crate) fn is_hard_block(reason: &str) -> bool {
+    let low = reason.to_lowercase();
+    [
+        "login",
+        "quota",
+        "rate_limit",
+        "rate limit",
+        "tageslimit",
+        "daily limit",
+        "cloudflare",
+        "captcha",
+        "blocked",
+    ]
+    .iter()
+    .any(|p| low.contains(p))
+}
+
 fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
     let _guard = WRITE_LOCK.lock();
     let mut state = load(path);
+    let hard = is_hard_block(reason);
     let entry = state.entry(brain_id.to_string()).or_default();
     entry.consecutive_failures += 1;
     entry.last_reason = Some(reason.to_string());
-    if entry.consecutive_failures >= max_failures() {
+    if hard || entry.consecutive_failures >= max_failures() {
         entry.open_until = Some(now_secs() + cooldown_secs());
+        let wie = if hard {
+            "sofort (deterministische Sperre)".to_string()
+        } else {
+            format!("nach {} Fehlschlaegen", entry.consecutive_failures)
+        };
         crate::bench_events::eprint_line(&format!(
-            "[circuit_breaker] {brain_id}: offen fuer {}s nach {} Fehlschlaegen ({reason})",
-            cooldown_secs(),
-            entry.consecutive_failures
+            "[circuit_breaker] {brain_id}: offen fuer {}s {wie} ({reason})",
+            cooldown_secs()
         ));
     }
     save(path, &state);
@@ -292,5 +321,47 @@ mod tests {
 
         // sorted by brain_id
         assert!(snaps.windows(2).all(|w| w[0].brain_id <= w[1].brain_id));
+    }
+    #[test]
+    fn deterministische_sperre_oeffnet_den_breaker_sofort() {
+        let path = unique_path();
+        // Das echte Label aus repl.rs — frueher griff keine Klassifikation.
+        record_failure_at("gemini", "Login nötig (/login)", &path);
+        let state = load(&path);
+        let e = state.get("gemini").expect("Eintrag fehlt");
+        assert_eq!(e.consecutive_failures, 1);
+        assert!(
+            e.open_until.is_some(),
+            "Breaker blieb nach deterministischer Sperre zu"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn gewoehnlicher_fehlschlag_braucht_weiterhin_mehrere_anlaeufe() {
+        let path = unique_path();
+        record_failure_at("deepseek", "timeout_no_text", &path);
+        let state = load(&path);
+        assert!(
+            state.get("deepseek").unwrap().open_until.is_none(),
+            "ein einzelner Timeout darf den Breaker nicht oeffnen"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn harte_sperren_werden_von_gewoehnlichen_fehlern_unterschieden() {
+        for r in [
+            "Login nötig (/login)",
+            "rate_limit",
+            "Tageslimit erreicht",
+            "cloudflare challenge",
+            "blocked: reserve promoted",
+        ] {
+            assert!(is_hard_block(r), "nicht als harte Sperre erkannt: {r}");
+        }
+        for r in ["timeout_no_text", "protocol_error", "wall_timeout", ""] {
+            assert!(!is_hard_block(r), "faelschlich als harte Sperre: {r}");
+        }
     }
 }
