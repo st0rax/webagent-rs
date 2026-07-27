@@ -1835,6 +1835,7 @@ fn cmd_diagnose(brain: &str, headless: bool) -> i32 {
             println!("[diagnose] {}", d.brain_id);
             println!("    session_state:  {:?}", d.session_state);
             println!("    logged_in:      {}", d.logged_in);
+            println!("    login_button:   {}", d.login_button_visible);
             println!("    composer:       {}", ok(d.composer_found));
             println!("    assistant_msgs: {}", d.assistant_count);
             println!("    cloudflare:     {}", d.cloudflare);

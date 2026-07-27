@@ -204,6 +204,11 @@ pub struct LiveDiagnosis {
     pub url: String,
     pub cloudflare: bool,
     pub logged_in: bool,
+    /// Ist ein Anmelden-Knopf sichtbar? Getrennt ausgewiesen, weil genau diese
+    /// Kombination den Fehler entlarvt: `logged_in=true` bei sichtbarem
+    /// Anmelden-Knopf heisst, der Indikator matcht etwas, das auch anonym da
+    /// ist (gemini: der Composer der Startseite).
+    pub login_button_visible: bool,
     pub composer_found: bool,
     pub assistant_count: i32,
     pub session_state: SessionState,
@@ -949,6 +954,7 @@ return null;}})()"#
             url: self.get_conversation_ref().unwrap_or_default(),
             cloudflare: self.is_cloudflare_blocked(),
             logged_in: self.is_logged_in(),
+            login_button_visible: self.any_visible("login_button"),
             composer_found: self.any_visible("composer"),
             assistant_count: self.assistant_count(),
             session_state,
@@ -1454,6 +1460,19 @@ impl BrainBackend for WebBrainBackend {
         // sorgfaeltig authorten Indikatoren aushebelte: kimi zeigt seinen Composer
         // auch anonym, also galt jeder Besucher als eingeloggt. Der Composer ist ein
         // Beweis fuer "Seite geladen", nicht fuer "angemeldet".
+        // Ein sichtbarer Anmelden-Knopf schlaegt JEDEN positiven Indikator.
+        // Ohne diese Sperre haengt die Erkennung daran, dass der Indikator
+        // sorgfaeltig gewaehlt wurde — und genau das ging schief: geminis
+        // `login_indicator` war `div[contenteditable='true']`, also der
+        // Composer. Geminis ausgeloggte Startseite hat aber ebenfalls einen
+        // ("Frag Gemini"), weshalb `diagnose` am 2026-07-28 `logged_in: true`
+        // meldete, waehrend der Screenshot klar "Anmelden" zeigte. Ein
+        // ausgeloggtes Brain, das als gesund gilt, bekommt Auftraege und
+        // liefert nie. Der Anmelden-Knopf ist das verlaesslichere Signal:
+        // eingeloggt zeigt ihn keine Oberflaeche.
+        if self.any_visible("login_button") {
+            return false;
+        }
         let indicator = self.sel("login_indicator");
         if !indicator.is_empty() {
             return self.any_visible("login_indicator");
@@ -1642,6 +1661,24 @@ mod tests {
         assert_eq!(backend.brain_id(), "chatgpt");
         assert_eq!(backend.url, "https://chatgpt.com/");
         assert!(!backend.sel("composer").is_empty());
+    }
+
+    #[test]
+    fn every_brain_can_veto_a_false_login() {
+        // `is_logged_in` verwirft einen positiven Indikator, sobald ein
+        // Anmelden-Knopf sichtbar ist. Diese Sperre wirkt nur, wenn das Brain
+        // ueberhaupt `login_button`-Selektoren hat — fehlen sie, faellt die
+        // Erkennung still auf den Indikator zurueck. Genau daran haette es
+        // gelegen: geminis Indikator war der Composer, den auch die
+        // ausgeloggte Startseite zeigt.
+        for (id, _url) in crate::config::BRAIN_TABLE {
+            let backend = WebBrainBackend::from_config(id).unwrap_or_else(|e| panic!("{id}: {e}"));
+            assert!(
+                !backend.sel("login_button").is_empty(),
+                "{id}: ohne login_button-Selektoren kann ein falsch positiver \
+                 Login nicht widerlegt werden"
+            );
+        }
     }
 
     #[test]
