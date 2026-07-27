@@ -420,7 +420,11 @@ var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
             "var els=QA(S[i]);if(els.length>{idx}){{return (els[{idx}].innerText||\"\").trim();}}",
             idx = index
         );
-        self.eval_str(&Self::js_scan(&list, &body, "\"\""))
+        // Claude rendert seine Denk-Zusammenfassung in denselben Container und
+        // das DOM liefert sie doppelt — sie gehoert nicht in die Antwort.
+        crate::observer::strip_repeated_lead_line(
+            &self.eval_str(&Self::js_scan(&list, &body, "\"\"")),
+        )
     }
 
     /// Ist mindestens ein Selektor aus der Liste im DOM sichtbar?

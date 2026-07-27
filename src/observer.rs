@@ -77,6 +77,47 @@ fn has_private_use_glyph(normalized: &str) -> bool {
         })
 }
 
+/// Entfernt eine doppelt vorangestellte Kopfzeile aus dem Antworttext.
+///
+/// Claude rendert die Zusammenfassung seines Denkvorgangs in denselben
+/// Container wie die Antwort, und das DOM liefert sie doppelt:
+///
+/// ```text
+/// Synthesized technical criteria for resilient selectors
+///
+/// Synthesized technical criteria for resilient selectors
+/// Robuste Web-Automatisierung braucht ...
+/// ```
+///
+/// Die unmittelbare Wiederholung ist das Erkennungsmerkmal — ein echter Text
+/// beginnt nicht mit derselben Zeile zweimal. Beide Kopien fallen weg, denn
+/// die Zeile gehört zum Denkvorgang, nicht zur Antwort. Bleibt danach nichts
+/// übrig, wird nichts entfernt: lieber verunreinigt als leer.
+pub fn strip_repeated_lead_line(text: &str) -> String {
+    let mut lines = text.lines();
+    let head = match lines.by_ref().find(|l| !l.trim().is_empty()) {
+        Some(h) => h.trim(),
+        None => return text.to_string(),
+    };
+    // Kopfzeilen sind kurz; ein wiederholter Absatz waere Inhalt.
+    if head.chars().count() > 120 {
+        return text.to_string();
+    }
+    let rest: Vec<&str> = lines.collect();
+    let next_idx = match rest.iter().position(|l| !l.trim().is_empty()) {
+        Some(i) => i,
+        None => return text.to_string(),
+    };
+    if rest[next_idx].trim() != head {
+        return text.to_string();
+    }
+    let tail = rest[next_idx + 1..].join("\n");
+    if tail.trim().is_empty() {
+        return text.to_string();
+    }
+    tail.trim_start_matches('\n').to_string()
+}
+
 /// True für UI-Fortschritts-Labels, die keine echten Modellantworten sind.
 pub fn is_transient_response_text(text: &str) -> bool {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -116,6 +157,37 @@ pub fn is_claude_limit_response_text(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn duplicated_thinking_headline_is_stripped_from_answer() {
+        // Real beobachtet am 2026-07-27 nach dem Warte-Fix: die Antwort kam,
+        // trug aber Claudes Denk-Ueberschrift doppelt vor sich her.
+        let raw = "Synthesized technical criteria for resilient selectors\n\nSynthesized technical criteria for resilient selectors\nRobuste Selektoren brauchen drei Dinge.";
+        assert_eq!(
+            strip_repeated_lead_line(raw),
+            "Robuste Selektoren brauchen drei Dinge."
+        );
+    }
+
+    #[test]
+    fn strip_repeated_lead_line_leaves_normal_text_alone() {
+        for s in [
+            "Robuste Selektoren brauchen drei Dinge.",
+            "Erste Zeile\nZweite Zeile\nErste Zeile",   // Wiederholung nicht unmittelbar
+            "",
+            "Nur eine Zeile",
+        ] {
+            assert_eq!(strip_repeated_lead_line(s), s, "unveraendert erwartet: {s:?}");
+        }
+    }
+
+    #[test]
+    fn strip_repeated_lead_line_never_empties_the_answer() {
+        // Wenn nach dem Abschneiden nichts bliebe, ist die Wiederholung der
+        // Inhalt — dann lieber verunreinigt als leer zurueckgeben.
+        let raw = "Ja\n\nJa";
+        assert_eq!(strip_repeated_lead_line(raw), raw);
+    }
 
     #[test]
     fn claude_rotating_thinking_labels_are_transient() {
