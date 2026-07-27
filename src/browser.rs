@@ -550,7 +550,20 @@ return {{count:count,text:text,stop:stop}};}})()"#,
 {prelude}
 {counts_js}
 // innerText haengt am Layout und ist headless haeufig leer — textContent nicht.
-function inf(el){{var t=((el.innerText||el.textContent||'')+'').replace(/\s+/g,' ').trim();return {{tag:el.tagName,cls:(el.className||'').toString().slice(0,90),al:el.getAttribute('aria-label')||'',ti:el.getAttribute('title')||'',dt:el.getAttribute('data-testid')||'',svg:!!el.querySelector('svg'),tl:t.length,tp:t.slice(0,50)}};}}
+// Icon-only-Knoepfe (deepseek: div.ds-button--icon, svg, kein Text, kein
+// aria-label) tragen ihren Namen anderswo: im <title>/<desc> des SVG, in der
+// id, in data-*-Attributen oder am Elternelement. `ex` sammelt genau das,
+// sonst ist so ein Knopf nicht identifizierbar.
+function nm(el){{if(!el)return '';return ((el.getAttribute('aria-label')||'')+' '+(el.getAttribute('title')||'')+' '+(el.getAttribute('id')||'')).trim();}}
+function inf(el){{
+  var t=((el.innerText||el.textContent||'')+'').replace(/\s+/g,' ').trim();
+  var ex=[];
+  try{{var st=el.querySelector('svg title,svg desc');if(st)ex.push((st.textContent||'').trim());}}catch(e){{}}
+  try{{var u=el.querySelector('svg use');if(u)ex.push(u.getAttribute('href')||u.getAttribute('xlink:href')||'');}}catch(e){{}}
+  try{{for(var a=0;a<el.attributes.length;a++){{var at=el.attributes[a];if(at.name.indexOf('data-')===0)ex.push(at.name+'='+at.value);}}}}catch(e){{}}
+  ex.push(el.getAttribute('id')||'');
+  ex.push(nm(el.parentElement));
+  return {{tag:el.tagName,cls:(el.className||'').toString().slice(0,90),al:el.getAttribute('aria-label')||'',ti:el.getAttribute('title')||'',dt:el.getAttribute('data-testid')||'',ex:ex.filter(function(s){{return s&&s.length;}}).join(' ').slice(0,160),svg:!!el.querySelector('svg'),tl:t.length,tp:t.slice(0,50)}};}}
 var btns=[],seen=[];
 ['button','[role=button]','[role=switch]','[role=checkbox]','[role=menuitem]','[role=tab]','label','input[type=file]','[aria-label]','[data-testid]'].forEach(function(s){{
   try{{document.querySelectorAll(s).forEach(function(b){{

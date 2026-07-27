@@ -142,6 +142,18 @@ const MATCHERS: &[(&str, &[&str])] = &[
 
 /// Ordnet die Schaltflächen eines DOM-Berichts den bekannten Fähigkeiten zu.
 ///
+/// # Grenze der Methode
+///
+/// Sie findet nur, was im DOM einen Namen trägt. Am 2026-07-27 gemessen:
+/// deepseek rendert 107 Bedienelemente als `div.ds-button--icon` mit SVG —
+/// ohne aria-label, title, id, `data-*`, Text oder Eltern-Label. Dort ist
+/// nichts zu holen; solche Oberflächen brauchen Icon- oder Positionsanalyse.
+///
+/// Deshalb sind die Ergebnisse **Untergrenzen** und werden nicht automatisch
+/// als `ui_options` festgeschrieben. Wer es besser weiß, trägt sie von Hand in
+/// `<stable_root>/selectors/<brain>.json` ein — diese Datei schlägt die
+/// mitgelieferte (siehe `config::resolve_selectors_path`).
+///
 /// `buttons` ist die `buttons`-Liste aus `WebBrainBackend::dom_report` — je
 /// Eintrag die Felder `al` (aria-label), `ti` (title), `dt` (data-testid) und
 /// `tp` (Textanfang). `chat` ist immer dabei: wer ein Eingabefeld hat, kann
@@ -157,7 +169,10 @@ pub fn detect_ui_options(buttons: &[serde_json::Value], has_composer: bool) -> V
             // `cls` mitlesen: manche Oberflaechen (deepseek) rendern reine
             // Icon-Divs ohne aria-label, title oder Text — dort ist der
             // Klassenname der einzige Anhaltspunkt.
-            ["al", "ti", "dt", "tp", "cls"]
+            // `ex` traegt die Ersatzquellen fuer Icon-only-Knoepfe (SVG-title,
+            // id, data-*, Eltern-Label), `cls` den Klassennamen — bei manchen
+            // Oberflaechen der einzige Anhaltspunkt.
+            ["al", "ti", "dt", "tp", "cls", "ex"]
                 .iter()
                 .filter_map(|k| b.get(*k).and_then(|v| v.as_str()))
                 .collect::<Vec<_>>()
