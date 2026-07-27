@@ -183,6 +183,10 @@ enum Commands {
         /// Ergebnis in die Nutzer-Selektordatei schreiben statt nur anzeigen
         #[arg(long)]
         write: bool,
+        /// Rohe Beschriftungen aller gefundenen Bedienelemente ausgeben
+        #[arg(long)]
+        dump: bool,
+
         /// Sichtbar statt headless
         #[arg(long)]
         visible: bool,
@@ -614,8 +618,9 @@ fn dispatch(command: Commands) -> i32 {
         Commands::Survey {
             brain,
             write,
+            dump,
             visible,
-        } => cmd_survey(brain.as_deref(), write, !visible),
+        } => cmd_survey(brain.as_deref(), write, !visible, dump),
 
         Commands::Quests { json } => cmd_quests(json),
 
@@ -1160,7 +1165,7 @@ fn write_ui_options(brain: &str, options: &[String]) -> Result<std::path::PathBu
     Ok(path)
 }
 
-fn cmd_survey(brain: Option<&str>, write: bool, headless: bool) -> i32 {
+fn cmd_survey(brain: Option<&str>, write: bool, headless: bool, dump: bool) -> i32 {
     use webagent::browser::WebBrainBackend;
 
     let targets: Vec<String> = match brain {
@@ -1198,6 +1203,33 @@ fn cmd_survey(brain: Option<&str>, write: bool, headless: bool) -> i32 {
             .unwrap_or(0)
             > 0;
         let options = webagent::capability::detect_ui_options(&buttons, has_composer);
+
+        if dump {
+            // Rohe Beschriftungen zeigen, damit die Stichwortlisten an echten
+            // Texten wachsen statt an geratenen.
+            let mut seen: Vec<String> = Vec::new();
+            for b in &buttons {
+                let label = ["al", "ti", "dt", "tp"]
+                    .iter()
+                    .filter_map(|k| b.get(*k).and_then(|v| v.as_str()))
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                if !label.is_empty() && !seen.contains(&label) {
+                    seen.push(label);
+                }
+            }
+            println!("  --- {id}: ROH (erste 5) ---");
+            for b in buttons.iter().take(5) {
+                println!("      {b}");
+            }
+            println!("  --- {id}: counts = {} ---", report.get("counts").map(|c| c.to_string()).unwrap_or_default());
+            println!("  --- {id}: {} beschriftete Elemente ---", seen.len());
+            for l in seen.iter().take(60) {
+                println!("      {l}");
+            }
+        }
 
         if options.is_empty() {
             // Kein Fund ist ein Messfehler, kein Ergebnis — sonst schriebe man

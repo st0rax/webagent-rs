@@ -547,14 +547,28 @@ return {{count:count,text:text,stop:stop}};}})()"#,
         }
         let expr = format!(
             r#"(function(){{
+{prelude}
 {counts_js}
-function inf(el){{var t=(el.innerText||'').trim();return {{tag:el.tagName,cls:(el.className||'').toString().slice(0,90),al:el.getAttribute('aria-label')||'',ti:el.getAttribute('title')||'',dt:el.getAttribute('data-testid')||'',svg:!!el.querySelector('svg'),tl:t.length,tp:t.slice(0,50)}};}}
-var btns=[];document.querySelectorAll('button').forEach(function(b){{btns.push(inf(b));}});
+// innerText haengt am Layout und ist headless haeufig leer — textContent nicht.
+function inf(el){{var t=((el.innerText||el.textContent||'')+'').replace(/\s+/g,' ').trim();return {{tag:el.tagName,cls:(el.className||'').toString().slice(0,90),al:el.getAttribute('aria-label')||'',ti:el.getAttribute('title')||'',dt:el.getAttribute('data-testid')||'',svg:!!el.querySelector('svg'),tl:t.length,tp:t.slice(0,50)}};}}
+var btns=[],seen=[];
+['button','[role=button]','[role=switch]','[role=checkbox]','[role=menuitem]','[role=tab]','label','input[type=file]','[aria-label]','[data-testid]'].forEach(function(s){{
+  try{{document.querySelectorAll(s).forEach(function(b){{
+    if(seen.indexOf(b)>=0)return;
+    // Verlaufseintraege der Seitenleiste sind keine Bedienelemente: sie tragen
+    // frei getexteten Gespraechstitel und keinerlei Steuer-Attribut.
+    var lab=(b.getAttribute('aria-label')||'')+(b.getAttribute('title')||'')+(b.getAttribute('data-testid')||'');
+    var txt=((b.innerText||b.textContent||'')+'').replace(/\s+/g,' ').trim();
+    if(!lab&&txt.length>28)return;
+    seen.push(b);btns.push(inf(b));
+  }});}}catch(e){{}}
+}});
 var msgs=[];document.querySelectorAll('[class*=message]').forEach(function(m){{msgs.push(inf(m));}});
 var cand=[];['[data-message-author-role]','[data-testid]','.markdown','[class*=markdown]','[class*=message]','[class*=assistant]','[class*=chat]','div.prose','[class*=answer]','[class*=response]','[class*=bubble]'].forEach(function(s){{try{{var n=document.querySelectorAll(s).length;if(n>0)cand.push({{sel:s,n:n}});}}catch(e){{}}}});
 var tb=[];document.querySelectorAll('div,p,article,section,li').forEach(function(e){{var t=(e.innerText||'').trim();if(t.length<40)return;var cm=0;for(var k=0;k<e.children.length;k++){{var ct=(e.children[k].innerText||'').length;if(ct>cm)cm=ct;}}if(cm<t.length*0.75){{tb.push(inf(e));}}}});tb.sort(function(a,b){{return b.tl-a.tl;}});
-return {{url:location.href,title:document.title,w:window.innerWidth,h:window.innerHeight,wd:navigator.webdriver,ua:(navigator.userAgent||'').slice(0,90),counts:counts,buttons:btns.slice(0,60),messages:msgs.slice(0,20),candidates:cand,textblocks:tb.slice(0,8)}};
-}})()"#
+return {{url:location.href,title:document.title,w:window.innerWidth,h:window.innerHeight,wd:navigator.webdriver,ua:(navigator.userAgent||'').slice(0,90),counts:counts,buttons:btns.slice(0,200),messages:msgs.slice(0,20),candidates:cand,textblocks:tb.slice(0,8)}};
+}})()"#,
+            prelude = Self::JS_SEL_PRELUDE
         );
         self.eval(&expr)
     }
@@ -872,7 +886,13 @@ return null;}})()"#
         // noch kurz, weil Menueleisten oft zuletzt nachrutschen.
         let deadline = Instant::now() + Duration::from_secs(30);
         while Instant::now() < deadline {
-            if self.eval_i64("document.querySelectorAll('button').length") >= 3 {
+            // Auf BESCHRIFTETE Bedienelemente warten, nicht auf irgendwelche:
+            // ein Lade-Skelett bringt sofort Dutzende leerer Platzhalter mit,
+            // und ein Scan darauf sah 107 Elemente ohne einen einzigen Namen.
+            let labeled = self.eval_i64(
+                "(function(){var n=0;document.querySelectorAll('button,[role=button],[aria-label],[data-testid]').forEach(function(e){var t=((e.innerText||e.textContent||'')+'').trim();if(e.getAttribute('aria-label')||e.getAttribute('title')||t)n++;});return n;})()",
+            );
+            if labeled >= 5 {
                 std::thread::sleep(Duration::from_millis(1500));
                 break;
             }

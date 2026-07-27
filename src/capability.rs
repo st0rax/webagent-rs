@@ -154,7 +154,10 @@ pub fn detect_ui_options(buttons: &[serde_json::Value], has_composer: bool) -> V
     let haystacks: Vec<String> = buttons
         .iter()
         .map(|b| {
-            ["al", "ti", "dt", "tp"]
+            // `cls` mitlesen: manche Oberflaechen (deepseek) rendern reine
+            // Icon-Divs ohne aria-label, title oder Text — dort ist der
+            // Klassenname der einzige Anhaltspunkt.
+            ["al", "ti", "dt", "tp", "cls"]
                 .iter()
                 .filter_map(|k| b.get(*k).and_then(|v| v.as_str()))
                 .collect::<Vec<_>>()
