@@ -34,6 +34,49 @@ fn claude_limit_regex() -> &'static Regex {
     })
 }
 
+/// Obergrenze, bis zu der ein Text überhaupt ein Statuslabel sein kann.
+/// Fließtext dieser Länge gibt es praktisch nicht; alles Längere ist Inhalt.
+const STATUS_LABEL_MAX_CHARS: usize = 60;
+
+/// True, wenn der Text aus **einem einzigen, mehrfach wiederholten** Wort
+/// besteht, das wie ein Gerundium aussieht ("Weighing Weighing").
+///
+/// Claudes Denk-Anzeige rotiert durch einen offenen Wortschatz — real
+/// beobachtet: Crystallizing, Triangulating, Weighing. Eine feste Vokabelliste
+/// (wie [`transient_status_regex`]) holt das nie ein; deshalb prüft diese
+/// Funktion die **Form** statt der Vokabel. Das DOM liefert das Label doppelt
+/// (Label + aria-Kopie), und genau diese Wiederholung ist das verlässliche
+/// Signal: eine echte Antwort besteht nie aus demselben Wort zweimal.
+/// Ein einzelnes Wort bleibt bewusst erlaubt, damit eine legitime
+/// Einwortantwort ("Running") nicht verschluckt wird.
+fn is_repeated_gerund_label(normalized: &str) -> bool {
+    if normalized.chars().count() > STATUS_LABEL_MAX_CHARS {
+        return false;
+    }
+    let tokens: Vec<&str> = normalized.split_whitespace().collect();
+    if tokens.len() < 2 || tokens.len() > 4 {
+        return false;
+    }
+    let first = tokens[0];
+    if first.chars().count() < 5 || !first.chars().all(|c| c.is_alphabetic()) {
+        return false;
+    }
+    if !first.to_ascii_lowercase().ends_with("ing") {
+        return false;
+    }
+    tokens.iter().all(|t| t.eq_ignore_ascii_case(first))
+}
+
+/// True, wenn ein kurzer Text ein Zeichen aus der Unicode-Private-Use-Area
+/// enthält. Solche Glyphen stammen aus Icon-Fonts der Oberfläche (Claudes
+/// Denk-Anzeige trug U+E027) und kommen in echtem Antworttext nicht vor.
+fn has_private_use_glyph(normalized: &str) -> bool {
+    normalized.chars().count() <= STATUS_LABEL_MAX_CHARS
+        && normalized.chars().any(|c| {
+            matches!(c as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
+        })
+}
+
 /// True für UI-Fortschritts-Labels, die keine echten Modellantworten sind.
 pub fn is_transient_response_text(text: &str) -> bool {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -44,6 +87,14 @@ pub fn is_transient_response_text(text: &str) -> bool {
     }
 
     if clock_only_regex().is_match(normalized) {
+        return true;
+    }
+
+    if has_private_use_glyph(normalized) {
+        return true;
+    }
+
+    if is_repeated_gerund_label(normalized) {
         return true;
     }
 
@@ -65,6 +116,51 @@ pub fn is_claude_limit_response_text(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_rotating_thinking_labels_are_transient() {
+        // Real am 2026-07-27 ueber `relay --brain claude` beobachtet: der
+        // Harness lieferte diese als fertige Antwort mit ok=true zurueck.
+        // Eine Vokabelliste haette sie nie gefangen — das Wort rotiert.
+        for s in [
+            "Weighing\n\nWeighing",
+            "Crystallizing\n\nCrystallizing",
+            "Triangulating\n\nTriangulating",
+            "Pondering Pondering",
+        ] {
+            assert!(
+                is_transient_response_text(s),
+                "Denk-Anzeige als Antwort durchgelassen: {s:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn real_answers_are_not_mistaken_for_thinking_labels() {
+        for s in [
+            "Testwort",
+            "Running",                       // Einwort-Gerundium bleibt gueltig
+            "Running the tests now",         // verschiedene Woerter
+            "Ja",
+            "Weighing the options carefully against each other",
+            "42",
+        ] {
+            assert!(
+                !is_transient_response_text(s),
+                "echte Antwort faelschlich als Denk-Anzeige verworfen: {s:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn private_use_glyphs_mark_ui_chrome_not_content() {
+        // Claudes Denk-Anzeige trug U+E027 aus einer Icon-Font.
+        assert!(is_transient_response_text("\u{E027} Crystallizing"));
+        assert!(is_transient_response_text("\u{E027}"));
+        // In langem Fliesstext ist ein solches Zeichen kein Statuslabel.
+        let long = format!("{} {}", "wort ".repeat(40), "\u{E027}");
+        assert!(!is_transient_response_text(&long));
+    }
 
     #[test]
     fn test_transient_progress_labels_are_not_final_responses() {
