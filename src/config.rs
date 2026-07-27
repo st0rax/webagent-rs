@@ -550,44 +550,51 @@ pub fn cleanup_swarm_profiles_in(base: &Path, run_id: &str) -> std::io::Result<(
     Ok(())
 }
 
-/// Ein Swarm-Profil, das älter als das hier ist, kann keinem laufenden Run mehr
-/// gehören — ein Swarm-Turn dauert Minuten, nicht Stunden.
-const STALE_SWARM_PROFILE_SECS: u64 = 12 * 60 * 60;
+/// Ein Wegwerf-Profil, das älter als das hier ist, kann keinem laufenden Run
+/// mehr gehören — ein Swarm-Turn dauert Minuten, nicht Stunden.
+const STALE_RUNTIME_PROFILE_SECS: u64 = 12 * 60 * 60;
 
-/// Entfernt Swarm-Profile verwaister Runs. `cleanup_swarm_profiles` greift nur
-/// über den `Drop`-Guard des eigenen Runs — bei Absturz, Kill oder Stromausfall
-/// läuft der Guard nie, und das Profil (~200 MB) bleibt für immer liegen.
-/// Dieser Sweep beim Start ist das Netz darunter. Gibt die Anzahl der
-/// entfernten Profile zurück.
-pub fn sweep_stale_swarm_profiles() -> usize {
-    sweep_stale_swarm_profiles_in(&profiles_dir(), STALE_SWARM_PROFILE_SECS)
+/// Profil-Unterverzeichnisse, die ausschliesslich Wegwerf-Laufzeitkopien
+/// enthalten. Beide werden im Normalfall von einem `Drop`-Guard aufgeräumt
+/// (`cleanup_swarm_profiles` bzw. `CloneGuard`/`stop_brain`) — und beide
+/// lecken bei Absturz, Kill oder Stromausfall, weil der Guard dann nie läuft.
+/// Kanonische Profile (`shared`, `<brain>`, `reference`) stehen bewusst NICHT
+/// hier: dort liegen die Logins.
+const DISPOSABLE_PROFILE_ROOTS: [&str; 2] = ["swarm", "encapsulated"];
+
+/// Entfernt Wegwerf-Profile verwaister Runs. Netz unter den `Drop`-Guards, die
+/// bei Absturz oder Kill nicht laufen — real hatten sich so 161 Profile /
+/// 33,6 GB angesammelt. Gibt die Anzahl der entfernten Profile zurück.
+pub fn sweep_stale_runtime_profiles() -> usize {
+    sweep_stale_runtime_profiles_in(&profiles_dir(), STALE_RUNTIME_PROFILE_SECS)
 }
 
-/// Wie `sweep_stale_swarm_profiles`, aber mit expliziter Profil-Basis und
+/// Wie `sweep_stale_runtime_profiles`, aber mit expliziter Profil-Basis und
 /// Altersgrenze (für Tests).
-pub fn sweep_stale_swarm_profiles_in(base: &Path, max_age_secs: u64) -> usize {
-    let swarm_root = base.join("swarm");
-    let entries = match std::fs::read_dir(&swarm_root) {
-        Ok(e) => e,
-        Err(_) => return 0,
-    };
-    let cutoff = std::time::SystemTime::now()
-        .checked_sub(std::time::Duration::from_secs(max_age_secs));
-    let cutoff = match cutoff {
+pub fn sweep_stale_runtime_profiles_in(base: &Path, max_age_secs: u64) -> usize {
+    let cutoff = match std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(max_age_secs))
+    {
         Some(c) => c,
         None => return 0,
     };
     let mut removed = 0;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
-        // Ohne lesbare mtime lieber stehen lassen als fremde Daten löschen.
-        if let Some(m) = modified {
-            if m < cutoff && std::fs::remove_dir_all(&path).is_ok() {
-                removed += 1;
+    for root in DISPOSABLE_PROFILE_ROOTS {
+        let entries = match std::fs::read_dir(base.join(root)) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
+            // Ohne lesbare mtime lieber stehen lassen als fremde Daten löschen.
+            if let Some(m) = modified {
+                if m < cutoff && std::fs::remove_dir_all(&path).is_ok() {
+                    removed += 1;
+                }
             }
         }
     }
@@ -1183,7 +1190,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sweep_stale_swarm_profiles_spares_fresh() {
+    fn test_sweep_stale_runtime_profiles_spares_fresh_and_logins() {
         use std::fs;
         use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1192,25 +1199,32 @@ mod tests {
             .unwrap()
             .as_nanos();
         let base = std::env::temp_dir().join(format!("webagent_sweep_{}", stamp));
-        let swarm = base.join("swarm");
-        let orphan = swarm.join("deadrun_chatgpt");
-        let fresh = swarm.join("liverun_chatgpt");
-        fs::create_dir_all(&orphan).expect("orphan");
-        fs::create_dir_all(&fresh).expect("fresh");
-        fs::write(orphan.join("x"), b"1").expect("write");
+        let swarm_orphan = base.join("swarm").join("deadrun_chatgpt");
+        let enc_orphan = base.join("encapsulated").join("chatgpt_deadstamp");
+        // Kanonische Profile — hier liegen die Logins, die darf der Sweep nie anfassen.
+        let login_shared = base.join("shared");
+        let login_brain = base.join("chatgpt");
+        for d in [&swarm_orphan, &enc_orphan, &login_shared, &login_brain] {
+            fs::create_dir_all(d).expect("mkdir");
+            fs::write(d.join("marker"), b"x").expect("write");
+        }
 
-        // max_age = 0 -> alles ist "alt": beide fliegen raus.
-        assert_eq!(sweep_stale_swarm_profiles_in(&base, 0), 2);
-        assert!(!orphan.exists());
+        // max_age = 0 -> jedes Wegwerf-Profil gilt als alt. Beide Wurzeln werden
+        // erfasst, die Login-Profile aber nicht.
+        assert_eq!(sweep_stale_runtime_profiles_in(&base, 0), 2);
+        assert!(!swarm_orphan.exists(), "swarm-Waise entfernt");
+        assert!(!enc_orphan.exists(), "encapsulated-Waise entfernt");
+        assert!(login_shared.is_dir(), "shared-Login unangetastet");
+        assert!(login_brain.is_dir(), "Brain-Login unangetastet");
 
-        // Frisch angelegt + realistische Grenze -> nichts wird angefasst.
-        fs::create_dir_all(&fresh).expect("recreate");
-        assert_eq!(sweep_stale_swarm_profiles_in(&base, 12 * 60 * 60), 0);
-        assert!(fresh.is_dir(), "laufender Run darf nicht geloescht werden");
+        // Frisch + realistische Grenze -> ein laufender Run bleibt stehen.
+        fs::create_dir_all(&swarm_orphan).expect("recreate");
+        assert_eq!(sweep_stale_runtime_profiles_in(&base, 12 * 60 * 60), 0);
+        assert!(swarm_orphan.is_dir(), "laufender Run darf nicht weg");
 
-        // Fehlendes swarm/-Verzeichnis ist kein Fehler.
+        // Fehlende Wurzeln sind kein Fehler.
         let _ = fs::remove_dir_all(&base);
-        assert_eq!(sweep_stale_swarm_profiles_in(&base, 0), 0);
+        assert_eq!(sweep_stale_runtime_profiles_in(&base, 0), 0);
     }
 
     #[test]

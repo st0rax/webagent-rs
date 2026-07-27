@@ -516,10 +516,10 @@ fn main() {
     } else {
         webagent::config::ensure_stable_layout();
         let _ = webagent::config::ensure_data_dirs();
-        let swept = webagent::config::sweep_stale_swarm_profiles();
+        let swept = webagent::config::sweep_stale_runtime_profiles();
         if swept > 0 {
             webagent::bench_events::eprint_line(&format!(
-                "[cleanup] {} verwaiste Swarm-Profile entfernt",
+                "[cleanup] {} verwaiste Laufzeit-Profile entfernt",
                 swept
             ));
         }
