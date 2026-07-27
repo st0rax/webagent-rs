@@ -653,6 +653,20 @@ impl WorkerPool {
             }
         }
 
+        // Abgelaufene Cooldowns freigeben. Ohne das ist der Cooldown eine
+        // Einbahnstrasse und eine Failover-Kaskade legt den Pool dauerhaft
+        // stillt — siehe `select_expired_cooldowns`.
+        for b in select_expired_cooldowns(&state, OffsetDateTime::now_utc()) {
+            crate::bench_events::eprint_line(&format!(
+                "[worker_pool] Cooldown abgelaufen: {b} wieder available"
+            ));
+            state.set(&b, STATUS_AVAILABLE, "cooldown expired");
+            if let Some(e) = state.entries.get_mut(&b) {
+                e.cooldown_until = None;
+                e.replaced_by = None;
+            }
+        }
+
         // Scale-down: zu viele laufende Worker sauber beenden (fuer TUI '-').
         while self.children.len() > self.active {
             if let Some((b, mut c)) = self.children.drain().next() {
@@ -912,6 +926,38 @@ pub fn select_auto_recovery(
         .collect()
 }
 
+/// Liefert die Brains, deren Cooldown abgelaufen ist und die zurück auf
+/// `available` gehören.
+///
+/// Ohne diesen Schritt ist der Cooldown eine Einbahnstraße: `select_auto_recovery`
+/// filtert strikt auf `unavailable`, `reset_orphaned_active` nur auf `active` —
+/// ein Brain im Cooldown wird von keinem Pfad je wieder freigegeben. Real am
+/// 2026-07-27 beobachtet: eine Failover-Kaskade am 25./26.07. hatte ALLE acht
+/// Brains nacheinander in den Cooldown geschickt ("blocked: reserve promoted"),
+/// die Sperren waren seit über zwei Tagen abgelaufen, und der Pool stand
+/// trotzdem still — es gab kein `available` mehr, aus dem er hätte starten
+/// können. Ein Deadlock, den nur manuelles Reflag aufgelöst hätte.
+///
+/// `retired` bleibt bewusst unangetastet: Ausmusterung ist final.
+pub fn select_expired_cooldowns(state: &PoolState, now: OffsetDateTime) -> Vec<String> {
+    state
+        .entries
+        .iter()
+        .filter(|(_, e)| e.status == STATUS_COOLDOWN)
+        .filter_map(|(b, e)| {
+            match e.cooldown_until.as_deref() {
+                // Cooldown ohne Ablaufzeitpunkt kann nie ablaufen — das ist ein
+                // kaputter Eintrag, keine gültige Sperre. Freigeben.
+                None => Some(b.clone()),
+                Some(until) => {
+                    let t = OffsetDateTime::parse(until, &Rfc3339).ok()?;
+                    (now >= t).then(|| b.clone())
+                }
+            }
+        })
+        .collect()
+}
+
 /// Setzt verwaiste `active`-Einträge (kein laufender Kindprozess in `running`)
 /// auf `available` zurück. Wird pro Tick angewandt, damit der Pool nach einem
 /// Supervisor-Restart nicht leer bleibt (alte `pool_state` listet Brains als
@@ -1079,6 +1125,58 @@ mod tests {
         });
 
         assert_eq!(pool.active, 0);
+    }
+
+    #[test]
+    fn expired_cooldown_is_released_but_retired_stays_retired() {
+        use time::macros::datetime;
+        let now = datetime!(2026-07-27 12:00:00 UTC);
+        let mut state = PoolState::default();
+
+        state.set("abgelaufen", STATUS_COOLDOWN, "blocked");
+        state.entries.get_mut("abgelaufen").unwrap().cooldown_until =
+            Some("2026-07-26T01:07:41Z".to_string());
+
+        state.set("laeuft_noch", STATUS_COOLDOWN, "blocked");
+        state.entries.get_mut("laeuft_noch").unwrap().cooldown_until =
+            Some("2026-07-27T12:30:00Z".to_string());
+
+        // Cooldown ohne Ablaufzeitpunkt kann nie ablaufen -> kaputt, freigeben.
+        state.set("ohne_frist", STATUS_COOLDOWN, "blocked");
+
+        state.set("ausgemustert", STATUS_RETIRED, "3 restores failed");
+        state.set("laeuft", STATUS_ACTIVE, "");
+
+        let mut got = select_expired_cooldowns(&state, now);
+        got.sort();
+        assert_eq!(got, vec!["abgelaufen".to_string(), "ohne_frist".to_string()]);
+    }
+
+    #[test]
+    fn full_cooldown_cascade_does_not_deadlock_the_pool() {
+        // Genau der Zustand vom 2026-07-27: ALLE Brains im Cooldown, alle
+        // Sperren abgelaufen. Vorher gab es kein `available` mehr und der Pool
+        // stand still, bis jemand von Hand reflaggte.
+        use time::macros::datetime;
+        let now = datetime!(2026-07-27 12:00:00 UTC);
+        let brains = ["chatgpt", "claude", "deepseek", "gemini"];
+        let mut state = PoolState::default();
+        for b in brains {
+            state.set(b, STATUS_COOLDOWN, "blocked: reserve promoted");
+            state.entries.get_mut(b).unwrap().cooldown_until =
+                Some("2026-07-25T22:35:09Z".to_string());
+        }
+        let released = select_expired_cooldowns(&state, now);
+        assert_eq!(released.len(), brains.len(), "alle vier muessen zurueck");
+
+        for b in &released {
+            state.set(b, STATUS_AVAILABLE, "cooldown expired");
+        }
+        let candidates: Vec<String> = brains.iter().map(|s| s.to_string()).collect();
+        assert!(
+            WorkerPool::select_to_promote(&candidates, &state, &HashSet::new()).is_some(),
+            "nach Freigabe muss wieder ein Brain promotierbar sein"
+        );
     }
 
     #[test]
