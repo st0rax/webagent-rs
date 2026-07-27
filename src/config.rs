@@ -550,6 +550,50 @@ pub fn cleanup_swarm_profiles_in(base: &Path, run_id: &str) -> std::io::Result<(
     Ok(())
 }
 
+/// Ein Swarm-Profil, das älter als das hier ist, kann keinem laufenden Run mehr
+/// gehören — ein Swarm-Turn dauert Minuten, nicht Stunden.
+const STALE_SWARM_PROFILE_SECS: u64 = 12 * 60 * 60;
+
+/// Entfernt Swarm-Profile verwaister Runs. `cleanup_swarm_profiles` greift nur
+/// über den `Drop`-Guard des eigenen Runs — bei Absturz, Kill oder Stromausfall
+/// läuft der Guard nie, und das Profil (~200 MB) bleibt für immer liegen.
+/// Dieser Sweep beim Start ist das Netz darunter. Gibt die Anzahl der
+/// entfernten Profile zurück.
+pub fn sweep_stale_swarm_profiles() -> usize {
+    sweep_stale_swarm_profiles_in(&profiles_dir(), STALE_SWARM_PROFILE_SECS)
+}
+
+/// Wie `sweep_stale_swarm_profiles`, aber mit expliziter Profil-Basis und
+/// Altersgrenze (für Tests).
+pub fn sweep_stale_swarm_profiles_in(base: &Path, max_age_secs: u64) -> usize {
+    let swarm_root = base.join("swarm");
+    let entries = match std::fs::read_dir(&swarm_root) {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(max_age_secs));
+    let cutoff = match cutoff {
+        Some(c) => c,
+        None => return 0,
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
+        // Ohne lesbare mtime lieber stehen lassen als fremde Daten löschen.
+        if let Some(m) = modified {
+            if m < cutoff && std::fs::remove_dir_all(&path).is_ok() {
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
 /// Einmalige Migration der Legacy-Profile/Data (CARGO_MANIFEST_DIR) an den
 /// stabilen Ort. Idempotent + abort-sicher: pro Kindverzeichnis wird
 /// copy_dir_all aufgerufen und danach remove (NICHT rename — rename scheitert
@@ -1136,6 +1180,37 @@ mod tests {
         assert!(!dst.exists(), "cleaned after run");
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_sweep_stale_swarm_profiles_spares_fresh() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_sweep_{}", stamp));
+        let swarm = base.join("swarm");
+        let orphan = swarm.join("deadrun_chatgpt");
+        let fresh = swarm.join("liverun_chatgpt");
+        fs::create_dir_all(&orphan).expect("orphan");
+        fs::create_dir_all(&fresh).expect("fresh");
+        fs::write(orphan.join("x"), b"1").expect("write");
+
+        // max_age = 0 -> alles ist "alt": beide fliegen raus.
+        assert_eq!(sweep_stale_swarm_profiles_in(&base, 0), 2);
+        assert!(!orphan.exists());
+
+        // Frisch angelegt + realistische Grenze -> nichts wird angefasst.
+        fs::create_dir_all(&fresh).expect("recreate");
+        assert_eq!(sweep_stale_swarm_profiles_in(&base, 12 * 60 * 60), 0);
+        assert!(fresh.is_dir(), "laufender Run darf nicht geloescht werden");
+
+        // Fehlendes swarm/-Verzeichnis ist kein Fehler.
+        let _ = fs::remove_dir_all(&base);
+        assert_eq!(sweep_stale_swarm_profiles_in(&base, 0), 0);
     }
 
     #[test]
