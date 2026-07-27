@@ -54,8 +54,12 @@ pub fn run_brains_health(allow_empty_profile: bool) -> i32 {
             let sel_ok =
                 Path::new(sel).is_file() || crate::config::embedded_selector(&id).is_some();
             let url = spec.get("url").map(String::as_str).unwrap_or("");
+            // Level = fahrbare Webchat-Optionen. Zeigt die Luecke zwischen
+            // "Text rein/raus" und dem, was die Oberflaeche per Maus hergibt.
+            let lvl = crate::capability::level_of(&id);
             println!(
-                "  {id}: selectors={} url={url}",
+                "  {}: selectors={} url={url}",
+                lvl.label(),
                 if sel_ok { "ok" } else { "MISSING" }
             );
         }

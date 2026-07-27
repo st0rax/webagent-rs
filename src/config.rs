@@ -291,8 +291,120 @@ pub const BRAIN_TABLE: &[(&str, &str)] = &[
 /// Portiert aus BRAINS-Dict in config.py. Selektoren liegen unter
 /// ROOT/selectors/<brain>.json; jedes Brain erhaelt ein eigenes Profil unter
 /// profiles/<brain> (Referenzprofil-Ansatz), das doctor prueft.
+/// Nutzer-Selektoren am stabilen Ort: `<stable_root>/selectors/<brain>.json`.
+///
+/// `selectors_dir()` zeigt auf CARGO_MANIFEST_DIR, also den Build-Pfad — dort
+/// liegen die mitgelieferten Selektoren, und dorthin darf zur Laufzeit nichts
+/// geschrieben werden (ein deploytes Binary hat den Quellbaum evtl. gar nicht).
+/// Dieses Verzeichnis ist das schreibbare Gegenstück und hat Vorrang: bricht
+/// ein Anbieter sein HTML, ist der Brain hier reparierbar — ohne Neubau.
+pub fn user_selectors_dir() -> PathBuf {
+    webagent_root_stable().join("selectors")
+}
+
+/// Selbst hinzugefügte Brains: `<stable_root>/data/custom_brains.json`.
+pub fn custom_brains_path() -> PathBuf {
+    data_dir().join("custom_brains.json")
+}
+
+/// Brain-IDs werden zu Dateinamen und Profilverzeichnissen — nur harmlose
+/// Zeichen zulassen, damit ein Eintrag in custom_brains.json nicht aus dem
+/// Datenverzeichnis ausbrechen kann.
+pub fn sanitize_brain_id(s: &str) -> String {
+    s.trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
+}
+
+/// Selektor-Datei eines Brains: Nutzer-Version schlägt mitgelieferte Version.
+pub fn resolve_selectors_path(brain_id: &str) -> PathBuf {
+    let user = user_selectors_dir().join(format!("{brain_id}.json"));
+    if user.is_file() {
+        return user;
+    }
+    selectors_dir().join(format!("{brain_id}.json"))
+}
+
+/// Selbst hinzugefügte Brains von der Platte lesen: `[{"id":..,"url":..}, ..]`.
+/// Fehlende oder kaputte Datei = keine Custom-Brains (nie ein harter Fehler,
+/// sonst legt eine verunglückte Datei den ganzen Agenten lahm).
+pub fn load_custom_brains() -> Vec<(String, String)> {
+    match std::fs::read_to_string(custom_brains_path()) {
+        Ok(raw) => parse_custom_brains(&raw),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Reine Parse-/Filterlogik von [`load_custom_brains`] (ohne Dateizugriff).
+pub fn parse_custom_brains(raw: &str) -> Vec<(String, String)> {
+    let parsed: Vec<serde_json::Value> = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let builtin: Vec<&str> = BRAIN_TABLE.iter().map(|(id, _)| *id).collect();
+    let mut out: Vec<(String, String)> = Vec::new();
+    for entry in parsed {
+        let id = sanitize_brain_id(entry.get("id").and_then(|v| v.as_str()).unwrap_or(""));
+        let url = entry
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if id.is_empty() || url.is_empty() {
+            continue;
+        }
+        // Eingebaute Brains nicht überschreibbar machen, sonst kann ein Tippfehler
+        // in der Datei ein funktionierendes Brain auf eine falsche URL umbiegen.
+        if builtin.contains(&id.as_str()) || out.iter().any(|(i, _)| i == &id) {
+            continue;
+        }
+        out.push((id, url));
+    }
+    out
+}
+
+/// Ein selbst hinzugefügtes Brain eintragen (idempotent). Gibt `false` zurück,
+/// wenn die ID bereits vergeben ist (eingebaut oder custom).
+pub fn register_custom_brain(brain_id: &str, url: &str) -> std::io::Result<bool> {
+    let id = sanitize_brain_id(brain_id);
+    let url = url.trim().to_string();
+    if id.is_empty() || url.is_empty() {
+        return Ok(false);
+    }
+    if BRAIN_TABLE.iter().any(|(b, _)| *b == id) {
+        return Ok(false);
+    }
+    let mut existing = load_custom_brains();
+    if existing.iter().any(|(i, _)| i == &id) {
+        return Ok(false);
+    }
+    existing.push((id, url));
+    let list: Vec<serde_json::Value> = existing
+        .into_iter()
+        .map(|(i, u)| serde_json::json!({"id": i, "url": u}))
+        .collect();
+    let path = custom_brains_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let body = serde_json::to_string_pretty(&list)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+    crate::worker_pool::atomic_write(&path, body.as_bytes())?;
+    Ok(true)
+}
+
 pub fn brains() -> HashMap<String, HashMap<String, String>> {
-    let sel = selectors_dir();
     let profiles = profiles_dir();
     // Optionaler Override: alle Brains dasselbe Profil nutzen lassen (z.B. das
     // eingeloggte Shared-Profil des Python-webagent) via WEBAGENT_PROFILE_DIR.
@@ -301,18 +413,19 @@ pub fn brains() -> HashMap<String, HashMap<String, String>> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let mut brains = HashMap::new();
-    for (id, url) in BRAIN_TABLE {
+    let builtin = BRAIN_TABLE.iter().map(|(i, u)| (i.to_string(), u.to_string()));
+    for (id, url) in builtin.chain(load_custom_brains()) {
         let mut b = HashMap::new();
-        b.insert("url".to_string(), url.to_string());
+        b.insert("url".to_string(), url);
         b.insert(
             "selectors".to_string(),
-            sel.join(format!("{id}.json")).to_string_lossy().to_string(),
+            resolve_selectors_path(&id).to_string_lossy().to_string(),
         );
         let profile_dir = profile_override
             .clone()
-            .unwrap_or_else(|| profiles.join(id).to_string_lossy().to_string());
+            .unwrap_or_else(|| profiles.join(&id).to_string_lossy().to_string());
         b.insert("profile_dir".to_string(), profile_dir);
-        brains.insert(id.to_string(), b);
+        brains.insert(id, b);
     }
     brains
 }
@@ -676,7 +789,10 @@ pub fn embedded_selector(brain_id: &str) -> Option<&'static str> {
 /// heruntergeladenen exe ohne `selectors/`-Ordner), Fallback auf die in die
 /// Binary eingebetteten Selektoren.
 pub fn load_selectors(brain_id: &str) -> std::io::Result<serde_json::Value> {
-    let path = selectors_dir().join(format!("{brain_id}.json"));
+    // resolve_selectors_path: Nutzer-Kopie unter <stable_root>/selectors schlaegt
+    // die mitgelieferte Datei — so ist ein gebrochener Selektor reparierbar,
+    // ohne den Quellbaum zu haben oder neu zu bauen.
+    let path = resolve_selectors_path(brain_id);
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => match embedded_selector(brain_id) {
@@ -1225,6 +1341,58 @@ mod tests {
         // Fehlende Wurzeln sind kein Fehler.
         let _ = fs::remove_dir_all(&base);
         assert_eq!(sweep_stale_runtime_profiles_in(&base, 0), 0);
+    }
+
+    #[test]
+    fn test_sanitize_brain_id_blocks_path_escape() {
+        assert_eq!(sanitize_brain_id("  MyBrain  "), "mybrain");
+        assert_eq!(sanitize_brain_id("chat.z.ai"), "chat-z-ai");
+        // Ein Eintrag in custom_brains.json darf nicht aus dem Datenverzeichnis ausbrechen.
+        assert_eq!(sanitize_brain_id("../../etc/passwd"), "etc-passwd");
+        assert_eq!(sanitize_brain_id("a/b\\c"), "a-b-c");
+        assert!(!sanitize_brain_id("../x").contains(".."));
+        assert_eq!(sanitize_brain_id("---"), "");
+        assert_eq!(sanitize_brain_id(""), "");
+    }
+
+    #[test]
+    fn test_load_custom_brains_skips_junk_and_builtin_shadowing() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("webagent_custom_{}", stamp));
+        fs::create_dir_all(&dir).expect("mkdir");
+        let path = dir.join("custom_brains.json");
+
+        // Kaputtes JSON darf den Agenten nicht lahmlegen -> leere Liste, kein Panic.
+        fs::write(&path, b"{ not json").expect("write");
+        assert!(parse_custom_brains(&fs::read_to_string(&path).unwrap()).is_empty());
+
+        let raw = r#"[
+            {"id": "Grok", "url": "https://grok.com/"},
+            {"id": "chatgpt", "url": "https://evil.example/"},
+            {"id": "grok", "url": "https://dup.example/"},
+            {"id": "", "url": "https://nada/"},
+            {"id": "leer-url", "url": "  "}
+        ]"#;
+        let got = parse_custom_brains(raw);
+        assert_eq!(
+            got,
+            vec![("grok".to_string(), "https://grok.com/".to_string())],
+            "eingebautes chatgpt nicht ueberschreibbar, Dubletten und Luecken raus"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_resolve_selectors_prefers_user_copy() {
+        // Ohne Nutzer-Datei muss der mitgelieferte Pfad herauskommen.
+        let p = resolve_selectors_path("chatgpt");
+        assert!(p.to_string_lossy().ends_with("chatgpt.json"));
     }
 
     #[test]

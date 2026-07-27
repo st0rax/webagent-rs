@@ -174,6 +174,14 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Questlog: Level je Brain und was noch fehlt, um die Optionen des
+    /// jeweiligen Webchats auszureizen
+    Quests {
+        /// Maschinenlesbar statt Konsolenansicht
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Single send+wait turn (bot2bot bridge debugging)
     Relay {
         #[arg(long)]
@@ -588,6 +596,8 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
         Commands::Canary => cmd_canary(),
+
+        Commands::Quests { json } => cmd_quests(json),
 
         Commands::Relay {
             brain,
@@ -1091,6 +1101,114 @@ fn cmd_benchmark(
             1
         }
     }
+}
+
+/// Balken der Breite `width` fuer `have/max`. Bei `max == 0` bewusst leer:
+/// ein Brain ohne bekanntes Angebot soll nicht wie ein volles aussehen.
+fn level_bar(have: usize, max: usize, width: usize) -> String {
+    if max == 0 {
+        return "·".repeat(width);
+    }
+    let filled = (have * width).div_ceil(max).min(width);
+    format!("{}{}", "▓".repeat(filled), "░".repeat(width - filled))
+}
+
+fn cmd_quests(json: bool) -> i32 {
+    let levels = webagent::capability::levels_all();
+    if levels.is_empty() {
+        println!("[quests] keine Brains registriert");
+        return 2;
+    }
+
+    if json {
+        let payload: Vec<_> = levels
+            .iter()
+            .map(|l| {
+                serde_json::json!({
+                    "brain_id": l.brain_id,
+                    "level": l.level(),
+                    // null = unvermessen; bewusst kein geratener Zahlenwert.
+                    "max_level": l.max_level(),
+                    "surveyed": l.surveyed,
+                    "rank": l.rank(),
+                    "have": l.have,
+                    "quests": l.quests.iter().map(|q| serde_json::json!({
+                        "key": q.key,
+                        "label": q.label,
+                        "blocker": q.blocker.as_str(),
+                    })).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        match serde_json::to_string_pretty(&payload) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("[quests] JSON-Fehler: {e}");
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    println!();
+    println!("      GREETINGS PROFESSOR.");
+    println!("      SHALL WE PLAY A GAME?");
+    println!();
+
+    let total: usize = levels.iter().map(|l| l.level()).sum();
+    let total_max: usize = levels.iter().filter_map(|l| l.max_level()).sum();
+
+    println!("  ── POKIDEX ────────────────────────────────────────────");
+    for l in &levels {
+        println!(
+            "   {:<12} {:<8} {}  {:<14} {}",
+            l.brain_id,
+            l.label()
+                .rsplit_once('[')
+                .map(|(_, r)| format!("[{r}"))
+                .unwrap_or_default(),
+            level_bar(l.level(), l.max_level().unwrap_or(0), 8),
+            l.rank(),
+            if l.maxed() { "ausgereizt" } else { "" }
+        );
+    }
+    println!();
+    let unsurveyed = levels.iter().filter(|l| !l.surveyed).count();
+    if unsurveyed > 0 {
+        println!(
+            "  GESAMT {total}/?  —  {unsurveyed} von {} Eintraegen noch nicht vermessen.",
+            levels.len()
+        );
+        println!("  Ohne Zaehlung der Oberflaeche ist kein Maximum bekannt (nicht geraten).");
+    } else {
+        println!(
+            "  GESAMT {total}/{total_max}  {}",
+            level_bar(total, total_max, 20)
+        );
+    }
+    println!();
+
+    let log = webagent::capability::quest_log();
+    if log.is_empty() {
+        println!("  KEINE OFFENEN QUESTS. A STRANGE GAME.");
+        return 0;
+    }
+
+    println!("  ── OFFENE QUESTS ──────────────────────────────────────");
+    println!("  (nach Reichweite: oben bringt eine Umsetzung die meisten Level)");
+    println!();
+    for (key, quests) in &log {
+        let label = webagent::capability::capability(key)
+            .map(|c| c.label)
+            .unwrap_or(key.as_str());
+        println!("   {label}  (+{} Level)", quests.len());
+        for q in quests {
+            println!("      {:<10} {}", q.brain_id, q.blocker.as_str());
+        }
+        println!();
+    }
+    println!("  THE ONLY WINNING MOVE IS TO IMPLEMENT.");
+    0
 }
 
 fn cmd_canary() -> i32 {

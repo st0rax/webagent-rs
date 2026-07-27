@@ -15,6 +15,7 @@ pub mod brains_health;
 pub mod browser;
 pub mod browser_pool;
 pub mod canary;
+pub mod capability;
 pub mod circuit_breaker;
 pub mod code_score;
 pub mod comms;
