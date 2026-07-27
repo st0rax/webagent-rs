@@ -82,12 +82,24 @@ fn kv_line(label: &str, value: impl Into<String>, value_style: Style) -> Line<'s
     ])
 }
 
-/// Text-Fortschrittsbalken `[████░░░░]` aus einem Anteil 0.0..=1.0.
-fn text_bar(fraction: f64, width: usize) -> String {
+/// Balken als ZWEI Spans: gefuellter Teil in `fg`, leerer Teil gedaempft.
+///
+/// Frueher wurde der komplette Balken einfarbig gerendert — dadurch sahen
+/// auch die leeren `░`-Zeichen wie Fuellung aus und ein Balken bei 0% wirkte
+/// vollstaendig gefuellt (beobachtet 2026-07-27 im Tasks-Panel: "Erledigt
+/// 0/0" mit durchgehend gruenem Balken und "0%" daneben).
+fn bar_spans(fraction: f64, width: usize, fg: Color) -> Vec<Span<'static>> {
     let f = fraction.clamp(0.0, 1.0);
-    let filled = (f * width as f64).round() as usize;
-    let filled = filled.min(width);
-    format!("[{}{}]", "█".repeat(filled), "░".repeat(width - filled))
+    let filled = ((f * width as f64).round() as usize).min(width);
+    vec![
+        Span::styled("[", Style::default().fg(MUTED)),
+        Span::styled("█".repeat(filled), Style::default().fg(fg)),
+        Span::styled(
+            "░".repeat(width - filled),
+            Style::default().fg(Color::Rgb(58, 64, 72)),
+        ),
+        Span::styled("]", Style::default().fg(MUTED)),
+    ]
 }
 
 /// Rahmen-Block mit etwas Luft um den Titel (einheitliche Optik).
@@ -236,21 +248,96 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
                 format!("{} Brains", app.agents.len()),
                 Style::default().fg(ACCENT),
             ));
+            let stale = app
+                .agents
+                .iter()
+                .filter(|a| a.heartbeat_age_sec >= 300)
+                .count();
             vec![
-                Line::from(Span::styled("Worker-Pool", Style::default().fg(MUTED))),
+                Line::from(vec![
+                    Span::styled("Ziel ", Style::default().fg(MUTED)),
+                    Span::styled(
+                        format!("{} aktiv", app.target_active),
+                        Style::default().fg(Color::Gray),
+                    ),
+                    Span::raw("   "),
+                    Span::styled(
+                        format!("{stale} ohne frischen Puls"),
+                        if stale > 0 {
+                            Style::default().fg(Color::Red)
+                        } else {
+                            Style::default().fg(MUTED)
+                        },
+                    ),
+                ]),
                 Line::from(kpis),
             ]
         }
         View::Bench => {
-            let n = crate::bench_events::len();
+            // Kennzahlen aus dem Ereignisstrom ableiten statt nur die Zahl der
+            // Meldungen zu zeigen. Die Zeile "Benchmark" entfaellt — sie
+            // wiederholte nur den Rahmentitel.
+            let evs = crate::bench_events::snapshot();
+            let n = evs.len();
+            let phase = evs
+                .iter()
+                .rev()
+                .find_map(|e| {
+                    e.text.find("Phase ").map(|i| {
+                        e.text[i..]
+                            .chars()
+                            .take_while(|c| !c.is_whitespace() || *c == ' ')
+                            .take(10)
+                            .collect::<String>()
+                            .trim()
+                            .to_string()
+                    })
+                })
+                .unwrap_or_else(|| "—".to_string());
+            let pass = evs.iter().filter(|e| e.level == Level::Pass).count();
+            let fail = evs.iter().filter(|e| e.level == Level::Fail).count();
+            // "Zuletzt gehoert von": die Brains der juengsten Meldungen.
+            let mut aktiv: Vec<&str> = Vec::new();
+            for e in evs.iter().rev().take(25) {
+                if let Some(b) = e.brain.as_deref() {
+                    if !aktiv.contains(&b) {
+                        aktiv.push(b);
+                    }
+                }
+            }
+            let seit = evs
+                .first()
+                .map(|e| e.ts.clone())
+                .unwrap_or_else(|| "—".to_string());
             vec![
-                Line::from(Span::styled("Benchmark", Style::default().fg(MUTED))),
+                Line::from(vec![
+                    Span::styled(format!("◇ {phase}"), Style::default().fg(ACCENT)),
+                    Span::raw("   "),
+                    Span::styled("seit ", Style::default().fg(MUTED)),
+                    Span::styled(seit, Style::default().fg(Color::Gray)),
+                    Span::raw("   "),
+                    Span::styled(
+                        format!("{} Brains gemeldet", aktiv.len()),
+                        Style::default().fg(MUTED),
+                    ),
+                ]),
                 Line::from(vec![
                     Span::styled(
                         format!("⚡ {n} Meldungen"),
                         Style::default()
                             .fg(Color::Gray)
                             .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("   "),
+                    Span::styled(format!("✓ {pass}"), ok),
+                    Span::raw("  "),
+                    Span::styled(
+                        format!("✕ {fail}"),
+                        if fail > 0 {
+                            Style::default().fg(Color::Red)
+                        } else {
+                            Style::default().fg(MUTED)
+                        },
                     ),
                     Span::raw("   "),
                     Span::styled(
@@ -376,29 +463,32 @@ fn render_agent_list(f: &mut Frame, app: &App, area: Rect) {
         } else {
             0.0
         };
-        let bar = text_bar(frac, 6);
+        let bar_mini = bar_spans(frac, 6, ACCENT);
         let activity = a
             .last_log_line
             .as_deref()
             .or_else(|| a.detail.last().map(String::as_str))
             .unwrap_or("—");
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(arrow.to_string(), Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{marker} "), Style::default().fg(color)),
-            Span::styled(
-                format!("{:<9}", crate::char_prefix(&a.brain, 9)),
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!(" {hb} "),
-                Style::default().fg(heartbeat_color(a.heartbeat_age_sec)),
-            ),
-            Span::styled(bar, Style::default().fg(Color::DarkGray)),
-            Span::styled(
+        items.push(ListItem::new(Line::from({
+            let mut spans = vec![
+                Span::styled(arrow.to_string(), Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{marker} "), Style::default().fg(color)),
+                Span::styled(
+                    format!("{:<9}", crate::char_prefix(&a.brain, 9)),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(" {hb} "),
+                    Style::default().fg(heartbeat_color(a.heartbeat_age_sec)),
+                ),
+            ];
+            spans.extend(bar_mini);
+            spans.push(Span::styled(
                 format!(" {}", crate::char_prefix(activity, 22)),
                 Style::default().fg(Color::DarkGray),
-            ),
-        ])));
+            ));
+            spans
+        })));
 
         if !open {
             continue;
@@ -484,7 +574,7 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
         // Heartbeat-Frische als Balken: voll = frisch (0s), leer = Timeout (300s).
         let remaining = HEARTBEAT_TIMEOUT_SEC.saturating_sub(a.heartbeat_age_sec);
         let fraction = remaining as f64 / HEARTBEAT_TIMEOUT_SEC as f64;
-        let bar = text_bar(fraction, BAR_WIDTH);
+        let bar_frische = bar_spans(fraction, BAR_WIDTH, heartbeat_color(a.heartbeat_age_sec));
 
         vec![
             Line::from(Span::raw("")),
@@ -505,17 +595,19 @@ fn render_status(f: &mut Frame, app: &App, area: Rect) {
                 format!("{}s {}", a.heartbeat_age_sec, app.spinner_frame()),
                 Style::default().fg(hb_color),
             ),
-            Line::from(vec![
-                Span::styled(
+            Line::from({
+                let mut spans = vec![Span::styled(
                     format!(" {:<LABEL_WIDTH$}", ""),
                     Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(bar, Style::default().fg(hb_color)),
-                Span::styled(
+                )];
+                spans.extend(bar_frische.clone());
+                spans.push(Span::styled(
                     format!("  {remaining}s bis Timeout"),
                     Style::default().fg(Color::DarkGray),
-                ),
-            ]),
+                ));
+                spans
+            }),
+            Line::from(vec![Span::raw("")]),
         ]
     } else {
         vec![Line::from(Span::styled(
@@ -604,17 +696,18 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
                 format!("{}/{}", a.tasks_done, total),
                 Style::default().fg(Color::Green),
             ),
-            Line::from(vec![
-                Span::styled(
+            Line::from({
+                let mut spans = vec![Span::styled(
                     format!(" {:<LABEL_WIDTH$}", ""),
                     Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(
-                    text_bar(fraction, BAR_WIDTH),
-                    Style::default().fg(Color::Green),
-                ),
-                Span::styled(format!("  {pct}%"), Style::default().fg(Color::DarkGray)),
-            ]),
+                )];
+                spans.extend(bar_spans(fraction, BAR_WIDTH, Color::Green));
+                spans.push(Span::styled(
+                    format!("  {pct}%"),
+                    Style::default().fg(Color::DarkGray),
+                ));
+                spans
+            }),
             kv_line(
                 "Offen",
                 a.tasks_pending.to_string(),
@@ -872,26 +965,33 @@ mod tests {
     }
 
     #[test]
-    fn text_bar_returns_correct_length() {
-        // Test that the bar has the right length: [ + width + ]
-        // Note: Unicode characters like █ are 3 bytes in UTF-8, so len() returns bytes, not chars
-        let bar = text_bar(0.5, 10);
-        // Check char count instead of byte count
-        assert_eq!(bar.chars().count(), 12); // [ + 10 chars + ]
-                                             // When width is 10 and fraction 0.5, we get exactly 5 filled
-        assert_eq!(bar, "[█████░░░░░]");
+    fn balken_faerbt_nur_den_gefuellten_teil() {
+        // Regression: frueher wurde der GANZE Balken einfarbig gerendert,
+        // wodurch die leeren Zeichen wie Fuellung aussahen — ein Balken bei
+        // 0% wirkte komplett gefuellt.
+        let spans = bar_spans(0.0, 10, Color::Green);
+        let gefuellt: String = spans[1].content.to_string();
+        let leer: String = spans[2].content.to_string();
+        assert!(gefuellt.is_empty(), "bei 0% darf nichts gefuellt sein");
+        assert_eq!(leer.chars().count(), 10);
+        assert_ne!(
+            spans[1].style.fg, spans[2].style.fg,
+            "gefuellt und leer muessen unterscheidbar sein"
+        );
+    }
 
-        let bar = text_bar(0.0, 10);
-        assert_eq!(bar, "[░░░░░░░░░░]");
-
-        let bar = text_bar(1.0, 10);
-        assert_eq!(bar, "[██████████]");
-
-        let bar = text_bar(1.5, 10);
-        assert_eq!(bar, "[██████████]");
-
-        let bar = text_bar(-0.5, 10);
-        assert_eq!(bar, "[░░░░░░░░░░]");
+    #[test]
+    fn balken_haelt_breite_und_grenzen_ein() {
+        for (frac, erwartet_gefuellt) in [(0.5, 5usize), (1.0, 10), (1.5, 10), (-0.5, 0)] {
+            let spans = bar_spans(frac, 10, Color::Green);
+            let g = spans[1].content.chars().count();
+            let l = spans[2].content.chars().count();
+            assert_eq!(g, erwartet_gefuellt, "frac={frac}");
+            assert_eq!(g + l, 10, "Gesamtbreite verletzt bei frac={frac}");
+        }
+        let spans = bar_spans(0.5, 10, Color::Green);
+        assert_eq!(spans[0].content.as_ref(), "[");
+        assert_eq!(spans[3].content.as_ref(), "]");
     }
 
     #[test]
