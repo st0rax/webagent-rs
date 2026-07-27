@@ -170,7 +170,8 @@ enum Commands {
         allow_empty_profile: bool,
     },
 
-    /// Live-Canary: alle Brains leicht pruefen (Latenz + pass/fail + reason)
+    /// Offline-Canary: prueft je Brain nur, ob Spec und Selektor-Datei da sind
+    /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
     /// Single send+wait turn (bot2bot bridge debugging)
