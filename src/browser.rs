@@ -857,6 +857,32 @@ return null;}})()"#
     /// Live-Diagnose: startet den Browser, prüft am echten DOM Login-Zustand,
     /// Composer-/Assistant-Selektoren und Cloudflare, und schließt wieder. Deckt
     /// Selektor-Drift auf, die `doctor` (read-only) nicht sehen kann.
+    /// Öffnet die Seite und gibt den rohen DOM-Bericht zurück (Buttons samt
+    /// aria-label/title/data-testid). Grundlage der Fähigkeits-Vermessung:
+    /// Selbstauskunft der Brains ist dafür unbrauchbar — real getestet am
+    /// 2026-07-27 gab deepseek die komplette abgefragte Liste zurück,
+    /// inklusive Optionen, die seine Oberfläche gar nicht hat.
+    pub fn live_survey(&mut self, headless: bool) -> Result<Value, String> {
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+        // Der Titel steht, lange bevor die SPA ihren DOM aufgebaut hat: ein
+        // sofortiger Scan sah 0 Buttons auf einer korrekt geladenen Seite.
+        // Deshalb warten, bis ueberhaupt Schaltflaechen da sind — und danach
+        // noch kurz, weil Menueleisten oft zuletzt nachrutschen.
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            if self.eval_i64("document.querySelectorAll('button').length") >= 3 {
+                std::thread::sleep(Duration::from_millis(1500));
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        let report = self.dom_report();
+        let _ = self.stop();
+        report
+    }
+
     pub fn live_diagnose(&mut self, headless: bool) -> Result<LiveDiagnosis, String> {
         self.start(headless)?;
         self.dismiss_consent();

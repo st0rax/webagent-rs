@@ -174,6 +174,20 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Vermisst die Oberflaeche eines Brains im echten DOM und traegt die
+    /// gefundenen Optionen als `ui_options` ein (der Nenner des Levels)
+    Survey {
+        /// Brain-ID; ohne Angabe werden alle vermessen
+        #[arg(long)]
+        brain: Option<String>,
+        /// Ergebnis in die Nutzer-Selektordatei schreiben statt nur anzeigen
+        #[arg(long)]
+        write: bool,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
     /// Questlog: Level je Brain und was noch fehlt, um die Optionen des
     /// jeweiligen Webchats auszureizen
     Quests {
@@ -596,6 +610,12 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
         Commands::Canary => cmd_canary(),
+
+        Commands::Survey {
+            brain,
+            write,
+            visible,
+        } => cmd_survey(brain.as_deref(), write, !visible),
 
         Commands::Quests { json } => cmd_quests(json),
 
@@ -1111,6 +1131,118 @@ fn level_bar(have: usize, max: usize, width: usize) -> String {
     }
     let filled = (have * width).div_ceil(max).min(width);
     format!("{}{}", "▓".repeat(filled), "░".repeat(width - filled))
+}
+
+/// Schreibt die gefundenen `ui_options` in die Nutzer-Selektordatei.
+/// Bewusst die Nutzer-Kopie unter `<stable_root>/selectors`: der Quellbaum ist
+/// bei einer deployten exe evtl. gar nicht da, und mitgelieferte Dateien
+/// sollen von der Automatik nicht ueberschrieben werden.
+fn write_ui_options(brain: &str, options: &[String]) -> Result<std::path::PathBuf, String> {
+    let mut sel = webagent::config::load_selectors(brain)
+        .map_err(|e| format!("Selektoren nicht lesbar: {e}"))?;
+    let obj = sel
+        .as_object_mut()
+        .ok_or_else(|| "Selektordatei ist kein JSON-Objekt".to_string())?;
+    obj.insert(
+        "ui_options".to_string(),
+        serde_json::Value::Array(
+            options
+                .iter()
+                .map(|o| serde_json::Value::String(o.clone()))
+                .collect(),
+        ),
+    );
+    let dir = webagent::config::user_selectors_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{e}"))?;
+    let path = dir.join(format!("{brain}.json"));
+    let body = serde_json::to_string_pretty(&sel).map_err(|e| format!("{e}"))?;
+    std::fs::write(&path, body).map_err(|e| format!("{e}"))?;
+    Ok(path)
+}
+
+fn cmd_survey(brain: Option<&str>, write: bool, headless: bool) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let targets: Vec<String> = match brain {
+        Some(b) => vec![b.to_string()],
+        None => webagent::config::available_brain_ids(),
+    };
+    let mut failures = 0;
+    for id in &targets {
+        let mut backend = match WebBrainBackend::from_config(id) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[survey] {id}: {e}");
+                failures += 1;
+                continue;
+            }
+        };
+        eprintln!("[survey] {id}: oeffne Oberflaeche (headless={headless})…");
+        let report = match backend.live_survey(headless) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[survey] {id}: Fehler: {e}");
+                failures += 1;
+                continue;
+            }
+        };
+        let buttons = report
+            .get("buttons")
+            .and_then(|b| b.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let has_composer = report
+            .get("counts")
+            .and_then(|c| c.get("composer"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0)
+            > 0;
+        let options = webagent::capability::detect_ui_options(&buttons, has_composer);
+
+        if options.is_empty() {
+            // Kein Fund ist ein Messfehler, kein Ergebnis — sonst schriebe man
+            // eine leere Wahrheit fest und das Brain stuende dauerhaft auf [n/0].
+            eprintln!(
+                "[survey] {id}: nichts erkannt ({} Buttons, composer={}) — nicht geschrieben",
+                buttons.len(),
+                has_composer
+            );
+            eprintln!(
+                "[survey] {id}: url={} title={:?}",
+                report
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("<keine>"),
+                report.get("title").and_then(|v| v.as_str()).unwrap_or("")
+            );
+            failures += 1;
+            continue;
+        }
+
+        println!(
+            "  {:<10} {} Optionen aus {} Buttons: {}",
+            id,
+            options.len(),
+            buttons.len(),
+            options.join(", ")
+        );
+
+        if write {
+            match write_ui_options(id, &options) {
+                Ok(p) => println!("             geschrieben nach {}", p.display()),
+                Err(e) => {
+                    eprintln!("[survey] {id}: Schreiben fehlgeschlagen: {e}");
+                    failures += 1;
+                }
+            }
+        }
+    }
+    if failures > 0 {
+        eprintln!("[survey] {failures}/{} fehlgeschlagen", targets.len());
+        1
+    } else {
+        0
+    }
 }
 
 fn cmd_quests(json: bool) -> i32 {

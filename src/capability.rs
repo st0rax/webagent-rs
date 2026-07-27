@@ -115,6 +115,69 @@ pub const CATALOG: &[Capability] = &[
     },
 ];
 
+/// Stichworte, an denen eine Schaltfläche einer Fähigkeit zugeordnet wird.
+/// Geprüft wird gegen aria-label, title, data-testid und Beschriftung.
+///
+/// Bewusst eng gehalten: ein falsch erkannter Knopf blaeht den Nenner auf und
+/// erzeugt eine Quest, die es nicht gibt. Lieber eine Option uebersehen (sie
+/// faellt beim naechsten Durchgang auf) als eine erfinden.
+const MATCHERS: &[(&str, &[&str])] = &[
+    (
+        "reasoning_toggle",
+        &["deepthink", "deep think", "extended thinking", "reasoning", "think longer"],
+    ),
+    (
+        "web_search",
+        &["web search", "search the web", "websuche", "im web suchen"],
+    ),
+    ("model_switch", &["choose model", "model selector", "modell wählen", "switch model"]),
+    ("deep_research", &["deep research", "tiefenrecherche"]),
+    ("file_attach", &["attach", "upload file", "datei anhängen", "hochladen"]),
+    ("canvas", &["canvas", "artifact", "artefakt"]),
+    ("regenerate", &["regenerate", "neu generieren", "erneut generieren"]),
+    ("temporary_chat", &["temporary chat", "temporärer chat", "incognito"]),
+    ("new_chat", &["new chat", "neuer chat", "neuen chat"]),
+    ("stop_generation", &["stop response", "stop generating", "antwort stoppen"]),
+];
+
+/// Ordnet die Schaltflächen eines DOM-Berichts den bekannten Fähigkeiten zu.
+///
+/// `buttons` ist die `buttons`-Liste aus `WebBrainBackend::dom_report` — je
+/// Eintrag die Felder `al` (aria-label), `ti` (title), `dt` (data-testid) und
+/// `tp` (Textanfang). `chat` ist immer dabei: wer ein Eingabefeld hat, kann
+/// chatten, und genau das prueft `dom_report` ueber `counts`.
+pub fn detect_ui_options(buttons: &[serde_json::Value], has_composer: bool) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    if has_composer {
+        found.push("chat".to_string());
+    }
+    let haystacks: Vec<String> = buttons
+        .iter()
+        .map(|b| {
+            ["al", "ti", "dt", "tp"]
+                .iter()
+                .filter_map(|k| b.get(*k).and_then(|v| v.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_lowercase()
+        })
+        .collect();
+    for (key, needles) in MATCHERS {
+        if haystacks
+            .iter()
+            .any(|h| needles.iter().any(|n| h.contains(n)))
+        {
+            found.push((*key).to_string());
+        }
+    }
+    // Katalogreihenfolge, keine Dubletten.
+    CATALOG
+        .iter()
+        .filter(|c| found.iter().any(|f| f == c.key))
+        .map(|c| c.key.to_string())
+        .collect()
+}
+
 /// Katalogeintrag zu einem Schlüssel.
 pub fn capability(key: &str) -> Option<&'static Capability> {
     CATALOG.iter().find(|c| c.key == key)
@@ -354,6 +417,36 @@ mod tests {
             "send_button": ["#y"],
             "assistant_message": ["#z"],
         })
+    }
+
+    #[test]
+    fn detect_ui_options_reads_buttons_not_self_report() {
+        let buttons = vec![
+            json!({"al": "DeepThink (R1)", "ti": "", "dt": "", "tp": "DeepThink"}),
+            json!({"al": "Search the web", "ti": "", "dt": "", "tp": ""}),
+            json!({"al": "", "ti": "", "dt": "new-chat-button", "tp": "Neuer Chat"}),
+            json!({"al": "Kontoeinstellungen", "ti": "", "dt": "", "tp": ""}),
+        ];
+        let got = detect_ui_options(&buttons, true);
+        assert_eq!(got, vec!["chat", "new_chat", "reasoning_toggle", "web_search"]);
+        // Nicht erkannt heisst nicht erfunden: canvas taucht nirgends auf.
+        assert!(!got.contains(&"canvas".to_string()));
+    }
+
+    #[test]
+    fn detect_ui_options_without_composer_has_no_chat() {
+        let got = detect_ui_options(&[json!({"al": "Canvas"})], false);
+        assert_eq!(got, vec!["canvas"]);
+    }
+
+    #[test]
+    fn detect_ui_options_ignores_unrelated_buttons() {
+        let buttons = vec![
+            json!({"al": "Einstellungen"}),
+            json!({"al": "Abmelden"}),
+            json!({"al": "Feedback geben"}),
+        ];
+        assert!(detect_ui_options(&buttons, false).is_empty());
     }
 
     #[test]
