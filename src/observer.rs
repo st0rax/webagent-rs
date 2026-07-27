@@ -94,9 +94,23 @@ fn has_private_use_glyph(normalized: &str) -> bool {
 /// die Zeile gehört zum Denkvorgang, nicht zur Antwort. Bleibt danach nichts
 /// übrig, wird nichts entfernt: lieber verunreinigt als leer.
 pub fn strip_repeated_lead_line(text: &str) -> String {
+    // Glyph-bereinigt vergleichen: die Oberflaeche haengt an die erste Kopie
+    // ein Icon-Zeichen aus der Private-Use-Area (real: U+E027), an die zweite
+    // nicht. Ein roher Vergleich haelt die beiden dann faelschlich fuer
+    // verschieden und laesst die Kopfzeile stehen.
+    let key = |l: &str| -> String {
+        l.chars()
+            .filter(|c| {
+                !matches!(*c as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
+            })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
     let mut lines = text.lines();
-    let head = match lines.by_ref().find(|l| !l.trim().is_empty()) {
-        Some(h) => h.trim(),
+    let head = match lines.by_ref().find(|l| !key(l).is_empty()) {
+        Some(h) => key(h),
         None => return text.to_string(),
     };
     // Kopfzeilen sind kurz; ein wiederholter Absatz waere Inhalt.
@@ -104,11 +118,11 @@ pub fn strip_repeated_lead_line(text: &str) -> String {
         return text.to_string();
     }
     let rest: Vec<&str> = lines.collect();
-    let next_idx = match rest.iter().position(|l| !l.trim().is_empty()) {
+    let next_idx = match rest.iter().position(|l| !key(l).is_empty()) {
         Some(i) => i,
         None => return text.to_string(),
     };
-    if rest[next_idx].trim() != head {
+    if key(rest[next_idx]) != head {
         return text.to_string();
     }
     let tail = rest[next_idx + 1..].join("\n");
@@ -167,6 +181,22 @@ mod tests {
             strip_repeated_lead_line(raw),
             "Robuste Selektoren brauchen drei Dinge."
         );
+    }
+
+    #[test]
+    fn strips_exact_string_observed_from_claude() {
+        // 1:1 aus der relay-Ausgabe vom 2026-07-27 (Leerzeile auch NACH dem Paar).
+        let raw = "Synthesized drei Robustheitskriterien für Web-Selektoren\n\nSynthesized drei Robustheitskriterien für Web-Selektoren\n\nAntwortsprache: Deutsch.";
+        assert_eq!(strip_repeated_lead_line(raw), "Antwortsprache: Deutsch.");
+    }
+
+    #[test]
+    fn strips_pair_even_when_only_one_copy_carries_the_icon_glyph() {
+        // Die Oberflaeche haengt den Icon-Glyph nur an die erste Kopie. Roh
+        // verglichen sind die Zeilen dann verschieden — und die Kopfzeile blieb
+        // stehen, obwohl beide Auslesepfade schon bereinigt waren.
+        let raw = "\u{E027}Synthesized drei Kriterien\n\nSynthesized drei Kriterien\n\nAntwort hier.";
+        assert_eq!(strip_repeated_lead_line(raw), "Antwort hier.");
     }
 
     #[test]

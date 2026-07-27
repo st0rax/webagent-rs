@@ -513,10 +513,12 @@ return {{count:count,text:text,stop:stop}};}})()"#,
         match self.eval(&expr) {
             Ok(v) => (
                 v.get("count").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
-                v.get("text")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("")
-                    .to_string(),
+                // Gleiche Bereinigung wie in `assistant_text` — dies ist der
+                // zweite Auslesepfad (Warteschleife), und sein Text ist der,
+                // der am Ende zurueckgegeben wird.
+                crate::observer::strip_repeated_lead_line(
+                    v.get("text").and_then(|x| x.as_str()).unwrap_or(""),
+                ),
                 v.get("stop").and_then(|x| x.as_bool()).unwrap_or(false),
             ),
             Err(_) => (0, String::new(), false),
