@@ -174,6 +174,20 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Nimmt die Oberflaeche eines Brains als PNG auf (Vorlage fuer die
+    /// Faehigkeits-Vermessung: was im DOM keinen Namen hat, ist im Bild sichtbar)
+    Shot {
+        /// Brain-ID; ohne Angabe werden alle aufgenommen
+        #[arg(long)]
+        brain: Option<String>,
+        /// Zielverzeichnis (Default: <stable_root>/data/shots)
+        #[arg(long)]
+        out: Option<String>,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
     /// Vermisst die Oberflaeche eines Brains im echten DOM und traegt die
     /// gefundenen Optionen als `ui_options` ein (der Nenner des Levels)
     Survey {
@@ -614,6 +628,12 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
         Commands::Canary => cmd_canary(),
+
+        Commands::Shot {
+            brain,
+            out,
+            visible,
+        } => cmd_shot(brain.as_deref(), out.as_deref(), !visible),
 
         Commands::Survey {
             brain,
@@ -1163,6 +1183,57 @@ fn write_ui_options(brain: &str, options: &[String]) -> Result<std::path::PathBu
     let body = serde_json::to_string_pretty(&sel).map_err(|e| format!("{e}"))?;
     std::fs::write(&path, body).map_err(|e| format!("{e}"))?;
     Ok(path)
+}
+
+fn cmd_shot(brain: Option<&str>, out: Option<&str>, headless: bool) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let dir = match out {
+        Some(o) => std::path::PathBuf::from(o),
+        None => webagent::config::data_dir().join("shots"),
+    };
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("[shot] Zielverzeichnis nicht anlegbar: {e}");
+        return 2;
+    }
+    let targets: Vec<String> = match brain {
+        Some(b) => vec![b.to_string()],
+        None => webagent::config::available_brain_ids(),
+    };
+    let mut failures = 0;
+    for id in &targets {
+        let mut backend = match WebBrainBackend::from_config(id) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[shot] {id}: {e}");
+                failures += 1;
+                continue;
+            }
+        };
+        eprintln!("[shot] {id}: nehme Oberflaeche auf (headless={headless})…");
+        match backend.live_screenshot(headless) {
+            Ok(png) => {
+                let path = dir.join(format!("{id}.png"));
+                match std::fs::write(&path, &png) {
+                    Ok(()) => println!("  {:<10} {} KB -> {}", id, png.len() / 1024, path.display()),
+                    Err(e) => {
+                        eprintln!("[shot] {id}: Schreiben fehlgeschlagen: {e}");
+                        failures += 1;
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[shot] {id}: Fehler: {e}");
+                failures += 1;
+            }
+        }
+    }
+    if failures > 0 {
+        eprintln!("[shot] {failures}/{} fehlgeschlagen", targets.len());
+        1
+    } else {
+        0
+    }
 }
 
 fn cmd_survey(brain: Option<&str>, write: bool, headless: bool, dump: bool) -> i32 {

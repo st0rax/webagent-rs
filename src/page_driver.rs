@@ -56,6 +56,20 @@ pub trait PageDriver: Send {
 
     /// Linksklick an Viewport-Koordinaten.
     fn click_at(&mut self, x: f64, y: f64) -> Result<()>;
+
+    /// Nimmt den sichtbaren Seiteninhalt als PNG auf.
+    ///
+    /// Warum das hier gebraucht wird: die Fähigkeits-Vermessung über das DOM
+    /// findet nur, was einen Namen trägt. Real gemessen am 2026-07-27 rendert
+    /// deepseek 107 Bedienelemente als anonyme Icon-Divs — kein aria-label,
+    /// kein title, kein Text. Auf einem Bild sind dieselben Knöpfe sofort
+    /// erkennbar. Ein Treiber ohne Bildunterstützung meldet das ehrlich,
+    /// statt ein leeres Bild zu liefern.
+    fn capture_png(&mut self) -> Result<Vec<u8>> {
+        Err(PageDriverError::NotAvailable(
+            "Dieser PageDriver kann keine Screenshots aufnehmen".into(),
+        ))
+    }
 }
 
 /// Hilfsfunktion wenn das `webview`-Feature nicht kompiliert ist.

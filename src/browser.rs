@@ -889,28 +889,52 @@ return null;}})()"#
     /// Selbstauskunft der Brains ist dafür unbrauchbar — real getestet am
     /// 2026-07-27 gab deepseek die komplette abgefragte Liste zurück,
     /// inklusive Optionen, die seine Oberfläche gar nicht hat.
+    /// Öffnet die Oberfläche und nimmt sie als PNG auf.
+    ///
+    /// Der Gegenentwurf zur DOM-Vermessung: was keinen Namen im DOM hat, hat
+    /// trotzdem ein Bild. Gedacht als Vorlage für ein sehendes Brain — damit
+    /// der Schwarm Oberflächen selbst vermisst, statt dass jemand die Optionen
+    /// von Hand einträgt.
+    pub fn live_screenshot(&mut self, headless: bool) -> Result<Vec<u8>, String> {
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+        self.wait_for_labeled_controls();
+        let shot = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            driver.capture_png().map_err(|e| e.to_string())
+        };
+        let _ = self.stop();
+        shot
+    }
+
+    /// Wartet, bis die Oberflaeche beschriftete Bedienelemente zeigt.
+    /// Ein Lade-Skelett bringt sofort Dutzende leerer Platzhalter mit; ein Scan
+    /// darauf sah real 107 Elemente ohne einen einzigen Namen.
+    fn wait_for_labeled_controls(&self) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            let labeled = self.eval_i64(
+                "(function(){var n=0;document.querySelectorAll('button,[role=button],[aria-label],[data-testid]').forEach(function(e){var t=((e.innerText||e.textContent||'')+'').trim();if(e.getAttribute('aria-label')||e.getAttribute('title')||t)n++;});return n;})()",
+            );
+            if labeled >= 5 {
+                std::thread::sleep(Duration::from_millis(1500));
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+
     pub fn live_survey(&mut self, headless: bool) -> Result<Value, String> {
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
         // Der Titel steht, lange bevor die SPA ihren DOM aufgebaut hat: ein
         // sofortiger Scan sah 0 Buttons auf einer korrekt geladenen Seite.
-        // Deshalb warten, bis ueberhaupt Schaltflaechen da sind — und danach
-        // noch kurz, weil Menueleisten oft zuletzt nachrutschen.
-        let deadline = Instant::now() + Duration::from_secs(30);
-        while Instant::now() < deadline {
-            // Auf BESCHRIFTETE Bedienelemente warten, nicht auf irgendwelche:
-            // ein Lade-Skelett bringt sofort Dutzende leerer Platzhalter mit,
-            // und ein Scan darauf sah 107 Elemente ohne einen einzigen Namen.
-            let labeled = self.eval_i64(
-                "(function(){var n=0;document.querySelectorAll('button,[role=button],[aria-label],[data-testid]').forEach(function(e){var t=((e.innerText||e.textContent||'')+'').trim();if(e.getAttribute('aria-label')||e.getAttribute('title')||t)n++;});return n;})()",
-            );
-            if labeled >= 5 {
-                std::thread::sleep(Duration::from_millis(1500));
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(500));
-        }
+        self.wait_for_labeled_controls();
         let report = self.dom_report();
         let _ = self.stop();
         report

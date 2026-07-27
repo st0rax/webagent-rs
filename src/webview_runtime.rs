@@ -73,6 +73,9 @@ pub(crate) enum PageMessage {
         y: f64,
         respond: Sender<Result<()>>,
     },
+    CapturePng {
+        respond: Sender<Result<Vec<u8>>>,
+    },
 }
 
 struct PageSlot {
@@ -234,6 +237,10 @@ impl PageDriver for WebViewPageDriver {
 
     fn click_at(&mut self, x: f64, y: f64) -> Result<()> {
         self.call(|respond| PageMessage::ClickAt { x, y, respond })
+    }
+
+    fn capture_png(&mut self) -> Result<Vec<u8>> {
+        self.call(|respond| PageMessage::CapturePng { respond })
     }
 }
 
@@ -501,6 +508,89 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
             let r = click_at_js(&slot.webview, x, y, event_loop);
             let _ = respond.send(r);
         }
+        PageMessage::CapturePng { respond } => {
+            let r = capture_png(&slot.webview, event_loop);
+            let _ = respond.send(r);
+        }
+    }
+}
+
+/// Nimmt den Seiteninhalt als PNG auf (`ICoreWebView2::CapturePreview`).
+///
+/// Bewusst der WebView2-eigene Weg statt eines Fenster-Screenshots per GDI:
+/// er braucht kein sichtbares, unverdecktes Fenster und liefert genau den
+/// Seiteninhalt ohne Fensterrahmen — headless nutzbar, also auch aus einem
+/// Automationslauf heraus.
+fn capture_png(webview: &wry::WebView, event_loop: &mut EventLoop<()>) -> Result<Vec<u8>> {
+    use std::sync::mpsc;
+    use webview2_com::CapturePreviewCompletedHandler;
+    use windows::Win32::System::Com::StructuredStorage::CreateStreamOnHGlobal;
+    use windows::Win32::System::Com::STREAM_SEEK_SET;
+    use wry::WebViewExtWindows;
+
+    let proto = |e: String| PageDriverError::Protocol(e);
+    unsafe {
+        let core = webview
+            .controller()
+            .CoreWebView2()
+            .map_err(|e| proto(e.to_string()))?;
+        // `true` = der Stream gibt seinen Speicher beim Freigeben selbst zurueck.
+        let stream = CreateStreamOnHGlobal(None, true).map_err(|e| proto(e.to_string()))?;
+
+        let (tx, rx) = mpsc::channel();
+        let handler = CapturePreviewCompletedHandler::create(Box::new(move |hr| {
+            let _ = tx.send(hr);
+            Ok(())
+        }));
+        core.CapturePreview(
+            webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+            &stream,
+            &handler,
+        )
+        .map_err(|e| proto(e.to_string()))?;
+
+        // Wie bei `eval_js`: die Event-Loop muss weiterlaufen, sonst feuert der
+        // Completion-Handler nie und wir warten auf uns selbst.
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            match rx.try_recv() {
+                Ok(hr) => {
+                    hr.map_err(|e| proto(e.to_string()))?;
+                    break;
+                }
+                Err(_) if Instant::now() >= deadline => {
+                    return Err(PageDriverError::Timeout("CapturePreview timeout".into()));
+                }
+                Err(_) => {}
+            }
+            pump_once(event_loop);
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        stream
+            .Seek(0, STREAM_SEEK_SET, None)
+            .map_err(|e| proto(e.to_string()))?;
+        let mut out = Vec::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let mut got: u32 = 0;
+            stream
+                .Read(
+                    buf.as_mut_ptr() as *mut core::ffi::c_void,
+                    buf.len() as u32,
+                    Some(&mut got),
+                )
+                .ok()
+                .map_err(|e| proto(e.to_string()))?;
+            if got == 0 {
+                break;
+            }
+            out.extend_from_slice(&buf[..got as usize]);
+        }
+        if out.is_empty() {
+            return Err(proto("CapturePreview lieferte 0 Bytes".into()));
+        }
+        Ok(out)
     }
 }
 
