@@ -1150,6 +1150,17 @@ return null;}})()"#
                  Zustandswechsel feststellbar (weiterhin '{after}')"
             ));
         }
+        // Ein leerer Zustand danach heisst: das Element ist weg, nicht dass es
+        // eingeschaltet waere. Real bei kimi gesehen — die Chip-Leiste rendert
+        // nach dem Klick neu, der Selektor findet nichts mehr, und der blosse
+        // Unterschied vorher/nachher haette das als Erfolg durchgehen lassen.
+        // Verschwinden ist kein Beleg fuer Wirkung.
+        if after.trim().is_empty() && !before.trim().is_empty() {
+            return Err(format!(
+                "'{key}' angeklickt, aber das Element ist danach nicht mehr \
+                 auffindbar (vorher '{before}') — Verschwinden ist kein Beleg"
+            ));
+        }
         Ok((before, after))
     }
 
