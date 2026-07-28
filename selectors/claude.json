@@ -98,5 +98,11 @@
     "text=Projects",
     "a:has-text('Projekte')",
     "a:has-text('Projects')"
+  ],
+  "reasoning_effort_menu": [
+    "button[data-testid='model-selector-dropdown']",
+    "[data-testid='model-selector-dropdown']",
+    "button[aria-label^='Modell:']",
+    "button[aria-label^='Model:']"
   ]
 }

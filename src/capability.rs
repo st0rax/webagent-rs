@@ -203,7 +203,11 @@ pub const CATALOG: &[Capability] = &[
         key: "reasoning_effort",
         label: "Denkstufe waehlen",
         needs: &["reasoning_effort_menu"],
-        driveable: false,
+        // Seit 2026-07-28 fahrbar (`select_in_menu_path`), live belegt an claude:
+        // "Sonnet 5 Mittel" -> "Sonnet 5 Hoch" -> zurueck. Die Stufe liegt in
+        // einem Untermenue ("Aufwand > Hoch"), ein einstufiger Klick erreicht
+        // sie nicht; der Beleg bleibt die Beschriftung des Menuebuttons.
+        driveable: true,
         attainable: true,
     },
     // Projekte sind persistenter Kontext ueber Chats hinweg. Fuer webagent
@@ -623,36 +627,40 @@ mod tests {
         let buttons = vec![
             json!({"al": "Mikrofon", "ti": "", "dt": "", "tp": ""}),
             json!({"al": "", "ti": "Sprachmodus", "dt": "", "tp": ""}),
-            json!({"al": "", "ti": "", "dt": "", "tp": "Denkstufe: Mittel"}),
+            json!({"al": "Canvas", "ti": "", "dt": "", "tp": ""}),
             json!({"al": "Projekte", "ti": "", "dt": "", "tp": ""}),
         ];
         let got = detect_ui_options(&buttons, true);
         assert_eq!(
             got,
-            vec!["chat", "voice_input", "voice_mode", "reasoning_effort", "projects"]
+            vec!["chat", "canvas", "voice_input", "voice_mode", "projects"]
         );
 
         let sel = json!({
             "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
             "voice_input_button": ["#mic"],
             "voice_mode_button": ["#vm"],
-            "reasoning_effort_menu": ["#eff"],
-            "projects_button": ["#pr"],
+            "canvas_button": ["#cv"],
+                        "projects_button": ["#pr"],
             "ui_options": got,
         });
         let lvl = level_from_selectors("claude", &sel);
-        // Mikrofon und Sprachdialog sind angeboten, aber nicht nachweisbar
-        // fahrbar (attainable: false) — sie fallen aus dem Nenner und stehen
-        // stattdessen in `out_of_reach`. Bliebe ein unerreichbarer Eintrag im
+        // Mikrofon und Sprachdialog sind angeboten, aber nicht
+        // nachweisbar fahrbar (attainable: false) — sie fallen aus dem Nenner
+        // und stehen in `out_of_reach`. Bliebe ein unerreichbarer Eintrag im
         // Nenner, koennte kein Brain je "ausgereizt" werden.
         //
-        // `projects` wurde am 2026-07-28 fahrbar (open_section, URL-Beleg) und
-        // zaehlt deshalb zum Zaehler statt zur Quest — der Test wandert mit
-        // dem Code, seine Aussage bleibt: Selektor OHNE Code ist kein Koennen.
+        // Als Beispiel fuer "Selektor ohne Code" dient jetzt `canvas`: der Test
+        // stand nacheinander auf reasoning_toggle, projects und
+        // reasoning_effort — alle drei wurden am 2026-07-28 fahrbar. Er wandert
+        // mit dem Code; seine Aussage bleibt unveraendert.
         assert_eq!(lvl.label(), "claude [2/3]", "chat und projects sind fahrbar");
-        assert_eq!(lvl.out_of_reach, vec!["voice_input", "voice_mode"]);
-        assert_eq!(lvl.quests.len(), 1, "nur die Denkstufe fehlt noch");
-        assert_eq!(lvl.quests[0].key, "reasoning_effort");
+        assert_eq!(
+            lvl.out_of_reach,
+            vec!["voice_input", "voice_mode"]
+        );
+        assert_eq!(lvl.quests.len(), 1, "nur canvas fehlt noch");
+        assert_eq!(lvl.quests[0].key, "canvas");
         assert_eq!(lvl.quests[0].blocker, QuestBlocker::NeedsCode);
     }
 

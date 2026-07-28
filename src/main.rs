@@ -1499,6 +1499,21 @@ fn cmd_menu(brain: &str, key: &str, options: &str, set: Option<&str>, headless: 
                 }
             }
         }
+        Some(want) if want.contains('>') => {
+            // Pfad durch Untermenues: "Aufwand > Hoch". Claude legt die
+            // Denkstufe eine Ebene tiefer als das Modell.
+            let path: Vec<&str> = want.split('>').map(str::trim).filter(|s| !s.is_empty()).collect();
+            match backend.select_in_menu_path(key, options, &path) {
+                Ok(now) => {
+                    println!("[menu] {brain}/{key}: ''{now}''");
+                    0
+                }
+                Err(e) => {
+                    eprintln!("[menu] {brain}/{key}: {e}");
+                    1
+                }
+            }
+        }
         Some(want) => match backend.select_in_menu(key, options, want) {
             Ok(now) => {
                 println!("[menu] {brain}/{key}: ''{now}''");

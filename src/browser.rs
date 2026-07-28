@@ -918,6 +918,54 @@ return null;}})()"#
         self.eval_str(&expr)
     }
 
+    /// Waehlt ueber mehrere Menuestufen, z.B. `["Aufwand", "Hoch"]`.
+    ///
+    /// Claude legt die Denkstufe in ein Untermenue des Modellmenues
+    /// ("Aufwand › Mittel"). Ein einstufiger Klick erreicht sie nicht, und der
+    /// Beleg bleibt derselbe: die Beschriftung des Menuebuttons muss
+    /// anschliessend den letzten Pfadschritt tragen.
+    pub fn select_in_menu_path(
+        &mut self,
+        menu_key: &str,
+        option_key: &str,
+        path: &[&str],
+    ) -> Result<String, String> {
+        let Some(last) = path.last() else {
+            return Err("leerer Pfad".into());
+        };
+        let last_l = last.trim().to_lowercase();
+        let before = self.menu_label(menu_key);
+        if before.to_lowercase().contains(&last_l) {
+            return Ok(format!("{before} (bereits aktiv, kein Wechsel noetig)"));
+        }
+        if !self.open_menu(menu_key) {
+            return Err(format!("'{menu_key}' nicht anklickbar"));
+        }
+        for step in path {
+            let step_l = step.trim().to_lowercase();
+            let list = Self::js_selectors(&self.sel(option_key));
+            let needle = serde_json::to_string(&step_l).unwrap_or_else(|_| "\"\"".into());
+            let expr = format!(
+                "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var e=els[k].closest('button,[role=menuitem],[role=option],[class*=item]')||els[k];e.click();return true;}}}}}}catch(e){{}}}}return false;}})()",
+                prelude = Self::JS_SEL_PRELUDE,
+                list = list,
+                needle = needle
+            );
+            if !self.eval_bool(&expr) {
+                let _ = self.press_key_escape();
+                return Err(format!("Pfadschritt '{step}' nicht im Menue gefunden"));
+            }
+            std::thread::sleep(Duration::from_millis(1000));
+        }
+        let after = self.menu_label(menu_key);
+        if after.to_lowercase().contains(&last_l) {
+            return Ok(after);
+        }
+        Err(format!(
+            "Pfad {path:?} geklickt, aber Beschriftung zeigt weiterhin '{after}' (vorher '{before}')"
+        ))
+    }
+
     /// Oeffnet einen Bereich der Oberflaeche (Projekte, Bibliothek, …) und
     /// belegt den Wechsel ueber die URL.
     ///
