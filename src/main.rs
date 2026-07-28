@@ -174,6 +174,23 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Segmentleiste umschalten (alle Stellungen sichtbar, z.B. deepseeks
+    /// Instant/Expert/Vision)
+    Mode {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Zu waehlende Stellung (Teilstring)
+        #[arg(long)]
+        set: String,
+        /// Selektor-Schluessel der Stellungen
+        #[arg(long, default_value = "mode_option")]
+        options: String,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
     /// Beliebiges Aufklappmenue lesen oder waehlen (z.B. Denkstufe)
     Menu {
         /// Brain-ID
@@ -697,6 +714,13 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
         Commands::Canary => cmd_canary(),
+
+        Commands::Mode {
+            brain,
+            set,
+            options,
+            visible,
+        } => cmd_mode(&brain, &set, &options, !visible),
 
         Commands::Menu {
             brain,
@@ -1363,6 +1387,34 @@ fn cmd_wall(interval: u64, once: bool, only: &[String]) -> i32 {
         }
         std::thread::sleep(std::time::Duration::from_secs(interval.max(5)));
     }
+}
+
+fn cmd_mode(brain: &str, set: &str, options: &str, headless: bool) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let mut backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[mode] {brain}: {e}");
+            return 2;
+        }
+    };
+    if let Err(e) = backend.open_for_ui(headless) {
+        eprintln!("[mode] {brain}: {e}");
+        return 2;
+    }
+    let code = match backend.select_segment(options, set) {
+        Ok(state) => {
+            println!("[mode] {brain}: ''{set}'' aktiv ({state})");
+            0
+        }
+        Err(e) => {
+            eprintln!("[mode] {brain}: {e}");
+            1
+        }
+    };
+    let _ = backend.close_ui();
+    code
 }
 
 fn cmd_menu(brain: &str, key: &str, options: &str, set: Option<&str>, headless: bool) -> i32 {

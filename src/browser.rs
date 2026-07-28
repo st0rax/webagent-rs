@@ -918,6 +918,58 @@ return null;}})()"#
         self.eval_str(&expr)
     }
 
+    /// Waehlt einen Eintrag einer Segmentleiste (alle Optionen dauerhaft
+    /// sichtbar, kein Aufklappen) und belegt, dass er danach aktiv ist.
+    ///
+    /// Deepseeks `Instant | Expert | Vision` ist so gebaut: es gibt kein Menue
+    /// zum Oeffnen und keine gemeinsame Beschriftung, die man gegenlesen
+    /// koennte. Der Beleg ist deshalb der Zustand des GEWAEHLTEN Eintrags —
+    /// er muss nach dem Klick als ausgewaehlt markiert sein, vorher nicht.
+    pub fn select_segment(&mut self, option_key: &str, want: &str) -> Result<String, String> {
+        let want_l = want.trim().to_lowercase();
+        if want_l.is_empty() {
+            return Err("kein Zielwert angegeben".into());
+        }
+        if self.sel(option_key).is_empty() {
+            return Err(format!("kein '{option_key}' konfiguriert"));
+        }
+        let state = |s: &Self| -> String {
+            let list = Self::js_selectors(&s.sel(option_key));
+            let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
+            let expr = format!(
+                "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var e=els[k].closest('button,[role=button],[role=tab],[class*=button],[class*=btn],[class*=tab]')||els[k];return (e.getAttribute('aria-selected')||'')+'|'+(e.getAttribute('aria-pressed')||'')+'|'+(e.getAttribute('data-state')||'')+'|'+((e.className||'')+'');}}}}}}catch(e){{}}}}return '';}})()",
+                prelude = Self::JS_SEL_PRELUDE,
+                list = list,
+                needle = needle
+            );
+            s.eval_str(&expr)
+        };
+        let before = state(self);
+        if before.is_empty() {
+            return Err(format!("'{want}' nicht in '{option_key}' gefunden"));
+        }
+        // Klick auf genau diesen Eintrag (synthetisch, dann echt).
+        let list = Self::js_selectors(&self.sel(option_key));
+        let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
+        let click_expr = format!(
+            "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var e=els[k].closest('button,[role=button],[role=tab],[class*=button],[class*=btn],[class*=tab]')||els[k];e.click();return true;}}}}}}catch(e){{}}}}return false;}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            list = list,
+            needle = needle
+        );
+        if !self.eval_bool(&click_expr) {
+            return Err(format!("'{want}' nicht anklickbar"));
+        }
+        std::thread::sleep(Duration::from_millis(1000));
+        let after = state(self);
+        if after == before {
+            return Err(format!(
+                "'{want}' angeklickt, aber kein Zustandswechsel feststellbar (weiterhin '{after}')"
+            ));
+        }
+        Ok(after)
+    }
+
     /// Oeffnet ein Aufklappmenue und wartet, bis es wirklich offen ist.
     ///
     /// Erst synthetisch, dann per echtem Mausklick — qwens Denkstufen-Menue

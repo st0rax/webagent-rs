@@ -93,6 +93,25 @@ pub const CATALOG: &[Capability] = &[
         needs: &["model_menu", "model_option"],
         driveable: true,
     },
+    // Getrennt von `model_switch`: eine Segmentleiste, in der alle Stellungen
+    // dauerhaft sichtbar sind (deepseek: Instant | Expert | Vision). Es gibt
+    // kein Menue zum Aufklappen und keine gemeinsame Beschriftung, an der man
+    // den Wechsel gegenlesen koennte.
+    //
+    // Der Antrieb (`select_segment`) steht, bleibt aber driveable: false —
+    // am 2026-07-28 gemessen tragen deepseeks Segmente auf dem klickbaren
+    // Vorfahren KEINE Auswahlmarkierung: weder aria-selected/-pressed noch
+    // data-state noch eine Klasse. Der Zustandsstring kam leer zurueck, und
+    // der Rueckweg auf "Instant" meldete korrekt "kein Zustandswechsel
+    // feststellbar". Ein Klick, dessen Wirkung man nicht nachweisen kann, ist
+    // kein Koennen — sonst zaehlt das Level Absichten. Sobald ein belastbarer
+    // Marker gefunden ist (z.B. am Elternelement statt am Knopf), kippt das.
+    Capability {
+        key: "mode_switch",
+        label: "Modus umschalten (Segmentleiste)",
+        needs: &["mode_option"],
+        driveable: false,
+    },
     Capability {
         key: "deep_research",
         label: "Deep Research starten",

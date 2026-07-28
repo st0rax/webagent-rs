@@ -48,7 +48,8 @@
     "reasoning_toggle",
     "web_search",
     "model_switch",
-    "file_attach"
+    "file_attach",
+    "mode_switch"
   ],
   "reasoning_toggle": [
     "text=DeepThink",
@@ -59,5 +60,10 @@
     "text=Search",
     "div:has-text('Search')",
     "span:has-text('Search')"
+  ],
+  "mode_option": [
+    "text=Instant",
+    "text=Expert",
+    "text=Vision"
   ]
 }
