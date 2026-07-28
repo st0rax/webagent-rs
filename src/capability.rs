@@ -43,6 +43,15 @@ pub struct Capability {
     /// Ob der Agent die Fähigkeit heute bedienen kann. `false` = Katalogeintrag
     /// ohne Code; zählt nie zum Level, erscheint aber als Quest.
     pub driveable: bool,
+    /// Ob die Fähigkeit für diesen Harness überhaupt erreichbar ist.
+    ///
+    /// `false` heißt: nicht „noch nicht gebaut", sondern „mit den Mitteln
+    /// dieses Agenten nicht nachweisbar fahrbar". Solche Einträge fallen aus
+    /// dem Nenner heraus, statt als ewige Quest zu stehen — ein Maximum, das
+    /// niemand erreichen kann, ist kein Maßstab, sondern eine Schikane.
+    /// Sie bleiben im Katalog, damit die Begründung nicht verlorengeht und
+    /// jemand sie widerlegen kann.
+    pub attainable: bool,
 }
 
 /// Katalog aller bekannten Optionen. Neue Entdeckungen kommen hier dazu.
@@ -52,18 +61,21 @@ pub const CATALOG: &[Capability] = &[
         label: "Text senden und Antwort lesen",
         needs: &["composer", "send_button", "assistant_message"],
         driveable: true,
+        attainable: true,
     },
     Capability {
         key: "new_chat",
         label: "Neuen Chat beginnen",
         needs: &["new_chat_button"],
         driveable: true,
+        attainable: true,
     },
     Capability {
         key: "stop_generation",
         label: "Laufende Antwort abbrechen",
         needs: &["stop_button"],
         driveable: true,
+        attainable: true,
     },
     // Seit 2026-07-28 fahrbar (`WebBrainBackend::toggle_option`), live belegt
     // an deepseek: DeepThink aria-pressed false->true, Websuche true->false,
@@ -73,12 +85,14 @@ pub const CATALOG: &[Capability] = &[
         label: "Reasoning/Thinking umschalten",
         needs: &["reasoning_toggle"],
         driveable: true,
+        attainable: true,
     },
     Capability {
         key: "web_search",
         label: "Websuche zuschalten",
         needs: &["web_search_toggle"],
         driveable: true,
+        attainable: true,
     },
     // Seit 2026-07-28 fahrbar (`WebBrainBackend::switch_model`), live belegt an
     // claude (Sonnet 5 -> Haiku 4.5), zai (GLM-5.1 -> GLM-5-Turbo) und qwen
@@ -92,6 +106,7 @@ pub const CATALOG: &[Capability] = &[
         label: "Modell wechseln",
         needs: &["model_menu", "model_option"],
         driveable: true,
+        attainable: true,
     },
     // Getrennt von `model_switch`: eine Segmentleiste, in der alle Stellungen
     // dauerhaft sichtbar sind (deepseek: Instant | Expert | Vision). Es gibt
@@ -111,36 +126,47 @@ pub const CATALOG: &[Capability] = &[
         label: "Modus umschalten (Segmentleiste)",
         needs: &["mode_option"],
         driveable: false,
+        attainable: true,
     },
     Capability {
         key: "deep_research",
         label: "Deep Research starten",
         needs: &["deep_research_toggle"],
         driveable: false,
+        attainable: true,
     },
     Capability {
         key: "file_attach",
         label: "Datei anhängen",
         needs: &["attach_button"],
         driveable: false,
+        // Nicht erreichbar, nicht bloss ungebaut: der Knopf oeffnet einen
+        // Dateidialog des Betriebssystems. JavaScript kann keine File-Objekte
+        // erzeugen, und ohne CDP gibt es keinen Weg, einem input[type=file]
+        // eine Datei unterzuschieben. Als ewige Quest wuerde das jeden Nenner
+        // dauerhaft unerreichbar machen.
+        attainable: false,
     },
     Capability {
         key: "canvas",
         label: "Canvas/Artifact öffnen",
         needs: &["canvas_button"],
         driveable: false,
+        attainable: true,
     },
     Capability {
         key: "regenerate",
         label: "Antwort neu erzeugen",
         needs: &["regenerate_button"],
         driveable: false,
+        attainable: true,
     },
     Capability {
         key: "temporary_chat",
         label: "Temporären Chat nutzen",
         needs: &["temporary_chat_button"],
         driveable: false,
+        attainable: true,
     },
     // Am 2026-07-27 auf Screenshots der acht Oberflächen gesichtet, aber vom
     // Katalog bis dahin nicht gekannt. Ein nicht gekannter Knopf faellt aus dem
@@ -151,6 +177,11 @@ pub const CATALOG: &[Capability] = &[
         label: "Spracheingabe per Mikrofon",
         needs: &["voice_input_button"],
         driveable: false,
+        // Anklickbar, aber nicht belegbar: ein laufendes Mikrofon aendert
+        // keinen pruefbaren Zustand. Nach dem eigenen Massstab — kein Beleg,
+        // kein Level — darf es nicht zaehlen; dann gehoert es auch nicht in
+        // den Nenner.
+        attainable: false,
     },
     // Bewusst getrennt von `voice_input`: das Mikrofon diktiert in den Composer,
     // der Sprachdialog uebernimmt die ganze Unterhaltung. Wer beides in einen
@@ -160,6 +191,9 @@ pub const CATALOG: &[Capability] = &[
         label: "Sprachdialog-Modus",
         needs: &["voice_mode_button"],
         driveable: false,
+        // Wie voice_input: der Sprachdialog laesst sich starten, sein
+        // Gelingen aber nicht aus dem DOM ablesen.
+        attainable: false,
     },
     // Nicht dasselbe wie `reasoning_toggle`: Claude zeigt neben dem Modell
     // ("Sonnet 5") einen zweiten Waehler ("Mittel"). Der schaltet Reasoning
@@ -170,6 +204,7 @@ pub const CATALOG: &[Capability] = &[
         label: "Denkstufe waehlen",
         needs: &["reasoning_effort_menu"],
         driveable: false,
+        attainable: true,
     },
     // Projekte sind persistenter Kontext ueber Chats hinweg. Fuer webagent
     // interessant, weil sich damit Dauerauftraege ablegen liessen, statt jeden
@@ -179,6 +214,7 @@ pub const CATALOG: &[Capability] = &[
         label: "Projekte/Arbeitsbereiche",
         needs: &["projects_button"],
         driveable: false,
+        attainable: true,
     },
 ];
 
@@ -329,6 +365,10 @@ pub struct BrainLevel {
     pub have: Vec<String>,
     /// Der Rest, als Aufgaben.
     pub quests: Vec<Quest>,
+    /// Vom Brain angeboten, aber fuer diesen Harness prinzipiell nicht
+    /// nachweisbar fahrbar — bewusst aus dem Nenner genommen und hier
+    /// sichtbar gehalten.
+    pub out_of_reach: Vec<String>,
 }
 
 impl BrainLevel {
@@ -415,12 +455,32 @@ pub fn available_options(sel: &serde_json::Value) -> Option<Vec<String>> {
 }
 
 /// Stand eines Brains aus seiner bereits geladenen Selektor-JSON bestimmen.
+/// Optionen, die das Brain zwar anbietet, die dieser Harness aber prinzipiell
+/// nicht nachweisbar fahren kann. Werden getrennt ausgewiesen statt still
+/// verschwiegen — sonst sieht es aus, als gaebe es sie nicht.
+pub fn out_of_reach(available: &[String]) -> Vec<String> {
+    available
+        .iter()
+        .filter(|k| capability(k).map(|c| !c.attainable).unwrap_or(false))
+        .cloned()
+        .collect()
+}
+
 pub fn level_from_selectors(brain_id: &str, sel: &serde_json::Value) -> BrainLevel {
     // Kein `ui_options` = niemand hat die Oberfläche je durchgezählt. Dann ist
     // der Nenner unbekannt, NICHT "das, wofür zufällig Selektoren da sind" —
     // sonst meldet jedes Brain "ausgereizt", obwohl nur Text funktioniert.
     let surveyed = available_options(sel);
-    let available = surveyed.clone().unwrap_or_default();
+    let offered = surveyed.clone().unwrap_or_default();
+    let unreachable = out_of_reach(&offered);
+    // Der Nenner enthaelt nur, was dieser Harness ueberhaupt nachweisbar
+    // fahren KANN. Ein Maximum, das niemand erreichen kann, ist kein Massstab.
+    // Die ausgeschlossenen bleiben in `out_of_reach` sichtbar.
+    let available: Vec<String> = offered
+        .iter()
+        .filter(|k| !unreachable.contains(k))
+        .cloned()
+        .collect();
     let mut have = Vec::new();
     let mut quests = Vec::new();
     for key in &available {
@@ -456,6 +516,7 @@ pub fn level_from_selectors(brain_id: &str, sel: &serde_json::Value) -> BrainLev
         brain_id: brain_id.to_string(),
         surveyed: surveyed.is_some(),
         available,
+        out_of_reach: unreachable,
         have,
         quests,
     }
@@ -471,6 +532,7 @@ pub fn level_of(brain_id: &str) -> BrainLevel {
             brain_id: brain_id.to_string(),
             surveyed: false,
             available: Vec::new(),
+            out_of_reach: Vec::new(),
             have: Vec::new(),
             quests: Vec::new(),
         },
@@ -576,11 +638,36 @@ mod tests {
             "ui_options": got,
         });
         let lvl = level_from_selectors("claude", &sel);
-        assert_eq!(lvl.label(), "claude [1/5]", "nur chat ist fahrbar");
-        assert_eq!(lvl.quests.len(), 4);
+        // Mikrofon und Sprachdialog sind angeboten, aber nicht nachweisbar
+        // fahrbar (attainable: false) — sie fallen aus dem Nenner und stehen
+        // stattdessen in `out_of_reach`. Bliebe ein unerreichbarer Eintrag im
+        // Nenner, koennte kein Brain je "ausgereizt" werden.
+        assert_eq!(lvl.label(), "claude [1/3]", "nur chat ist fahrbar");
+        assert_eq!(lvl.out_of_reach, vec!["voice_input", "voice_mode"]);
+        assert_eq!(lvl.quests.len(), 2);
         for q in &lvl.quests {
             assert_eq!(q.blocker, QuestBlocker::NeedsCode, "{}", q.key);
         }
+    }
+
+    #[test]
+    fn unreachable_options_leave_the_denominator_but_stay_visible() {
+        // Dateianhang oeffnet einen Dialog des Betriebssystems; JavaScript kann
+        // keine File-Objekte erzeugen. Als ewige Quest haette das jeden Nenner
+        // dauerhaft unerreichbar gemacht.
+        let sel = json!({
+            "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
+            "attach_button": ["#a"],
+            "ui_options": ["chat", "file_attach"],
+        });
+        let lvl = level_from_selectors("t", &sel);
+        assert_eq!(lvl.label(), "t [1/1]");
+        assert!(lvl.maxed(), "ohne den unerreichbaren Posten ist das ausgereizt");
+        assert_eq!(lvl.out_of_reach, vec!["file_attach"]);
+        assert!(
+            lvl.quests.is_empty(),
+            "unerreichbar ist keine Aufgabe, sondern eine Grenze"
+        );
     }
 
     #[test]
@@ -615,7 +702,7 @@ mod tests {
         // Reiches UI, gleicher Code-Stand -> gleicher Zaehler, groesserer Nenner.
         let reich = json!({
             "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
-            "ui_options": ["chat", "reasoning_toggle", "web_search", "file_attach", "canvas"],
+            "ui_options": ["chat", "reasoning_toggle", "web_search", "canvas", "regenerate"],
         });
         let lvl2 = level_from_selectors("chatgpt", &reich);
         assert_eq!(lvl2.label(), "chatgpt [1/5]");

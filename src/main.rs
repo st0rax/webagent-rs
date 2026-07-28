@@ -1753,6 +1753,7 @@ fn cmd_quests(json: bool) -> i32 {
     let total: usize = levels.iter().map(|l| l.level()).sum();
     let total_max: usize = levels.iter().filter_map(|l| l.max_level()).sum();
 
+    let unreachable: usize = levels.iter().map(|l| l.out_of_reach.len()).sum();
     println!("  ── POKIDEX ────────────────────────────────────────────");
     for l in &levels {
         println!(
@@ -1781,7 +1782,14 @@ fn cmd_quests(json: bool) -> i32 {
             level_bar(total, total_max, 20)
         );
     }
-    println!();
+    if unreachable > 0 {
+        // Sichtbar halten statt verschweigen: sonst sieht es aus, als gaebe es
+        // diese Optionen nicht — dabei gibt es sie, nur nicht fuer uns.
+        println!(
+            "  ({unreachable} angebotene Optionen sind fuer diesen Agenten prinzipiell\n   nicht nachweisbar fahrbar und stehen deshalb nicht im Nenner.)"
+        );
+        println!();
+    }
 
     let log = webagent::capability::quest_log();
     if log.is_empty() {
