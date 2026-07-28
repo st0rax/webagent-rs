@@ -1019,7 +1019,7 @@ return null;}})()"#
             let list = Self::js_selectors(&s.sel(option_key));
             let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
             let expr = format!(
-                "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var e=els[k].closest('button,[role=button],[role=tab],[class*=button],[class*=btn],[class*=tab]')||els[k];return (e.getAttribute('aria-selected')||'')+'|'+(e.getAttribute('aria-pressed')||'')+'|'+(e.getAttribute('data-state')||'')+'|'+((e.className||'')+'');}}}}}}catch(e){{}}}}return '';}})()",
+                "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var e=els[k].closest('button,[role=button],[role=tab],[class*=button],[class*=btn],[class*=tab],[class]')||els[k];var d=[];for(var a=0;a<e.attributes.length;a++){{var at=e.attributes[a];if(at.name.indexOf('data-')===0||at.name.indexOf('aria-')===0)d.push(at.name+'='+at.value);}}d.sort();return d.join(';')+'|'+((e.className||'')+'');}}}}}}catch(e){{}}}}return '';}})()",
                 prelude = Self::JS_SEL_PRELUDE,
                 list = list,
                 needle = needle
@@ -1034,7 +1034,7 @@ return null;}})()"#
         let list = Self::js_selectors(&self.sel(option_key));
         let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
         let click_expr = format!(
-            "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var e=els[k].closest('button,[role=button],[role=tab],[class*=button],[class*=btn],[class*=tab]')||els[k];e.click();return true;}}}}}}catch(e){{}}}}return false;}})()",
+            "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var e=els[k].closest('button,[role=button],[role=tab],[class*=button],[class*=btn],[class*=tab],[class]')||els[k];e.click();return true;}}}}}}catch(e){{}}}}return false;}})()",
             prelude = Self::JS_SEL_PRELUDE,
             list = list,
             needle = needle
