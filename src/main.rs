@@ -174,6 +174,20 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Eine Option umschalten (z.B. reasoning_toggle, web_search_toggle) und
+    /// belegen, dass sich der Zustand wirklich geaendert hat
+    Toggle {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Selektor-Schluessel der Option
+        #[arg(long)]
+        option: String,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
     /// Bilderwand: alle Brains nebeneinander in einem Fenster, wie mehrere
     /// TV-Kanaele gleichzeitig
     Wall {
@@ -664,6 +678,12 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
         Commands::Canary => cmd_canary(),
+
+        Commands::Toggle {
+            brain,
+            option,
+            visible,
+        } => cmd_toggle(&brain, &option, !visible),
 
         Commands::Wall {
             interval,
@@ -1316,6 +1336,34 @@ fn cmd_wall(interval: u64, once: bool, only: &[String]) -> i32 {
         }
         std::thread::sleep(std::time::Duration::from_secs(interval.max(5)));
     }
+}
+
+fn cmd_toggle(brain: &str, option: &str, headless: bool) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let mut backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[toggle] {brain}: {e}");
+            return 2;
+        }
+    };
+    if let Err(e) = backend.open_for_ui(headless) {
+        eprintln!("[toggle] {brain}: {e}");
+        return 2;
+    }
+    let code = match backend.toggle_option(option) {
+        Ok((before, after)) => {
+            println!("[toggle] {brain}/{option}: '{before}' -> '{after}'");
+            0
+        }
+        Err(e) => {
+            eprintln!("[toggle] {brain}/{option}: {e}");
+            1
+        }
+    };
+    let _ = backend.close_ui();
+    code
 }
 
 fn cmd_model(brain: &str, set: Option<&str>, headless: bool) -> i32 {

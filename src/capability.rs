@@ -65,17 +65,20 @@ pub const CATALOG: &[Capability] = &[
         needs: &["stop_button"],
         driveable: true,
     },
+    // Seit 2026-07-28 fahrbar (`WebBrainBackend::toggle_option`), live belegt
+    // an deepseek: DeepThink aria-pressed false->true, Websuche true->false,
+    // jeweils mit Zustandsvergleich vorher/nachher.
     Capability {
         key: "reasoning_toggle",
         label: "Reasoning/Thinking umschalten",
         needs: &["reasoning_toggle"],
-        driveable: false,
+        driveable: true,
     },
     Capability {
         key: "web_search",
         label: "Websuche zuschalten",
         needs: &["web_search_toggle"],
-        driveable: false,
+        driveable: true,
     },
     // Seit 2026-07-28 fahrbar (`WebBrainBackend::switch_model`), live belegt an
     // claude (Sonnet 5 -> Haiku 4.5), zai (GLM-5.1 -> GLM-5-Turbo) und qwen
@@ -603,15 +606,19 @@ mod tests {
 
     #[test]
     fn declared_selector_without_code_is_a_quest_not_a_level() {
+        // Beispiel bewusst `canvas`: der Test stand frueher auf
+        // `reasoning_toggle`, das am 2026-07-28 fahrbar wurde — und faellt
+        // damit als Beispiel fuer "Selektor ohne Code" aus. Die Aussage bleibt
+        // dieselbe, sie braucht nur einen Eintrag, den noch kein Code bedient.
         let sel = json!({
             "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
-            "reasoning_toggle": ["#r"],
-            "ui_options": ["chat", "reasoning_toggle"],
+            "canvas_button": ["#c"],
+            "ui_options": ["chat", "canvas"],
         });
         let lvl = level_from_selectors("t", &sel);
         assert_eq!(lvl.level(), 1, "Selektor ohne Code ist kein Koennen");
         assert_eq!(lvl.quests.len(), 1);
-        assert_eq!(lvl.quests[0].key, "reasoning_toggle");
+        assert_eq!(lvl.quests[0].key, "canvas");
         assert_eq!(lvl.quests[0].blocker, QuestBlocker::NeedsCode);
     }
 

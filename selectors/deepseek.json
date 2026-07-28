@@ -49,5 +49,15 @@
     "web_search",
     "model_switch",
     "file_attach"
+  ],
+  "reasoning_toggle": [
+    "text=DeepThink",
+    "div:has-text('DeepThink')",
+    "span:has-text('DeepThink')"
+  ],
+  "web_search_toggle": [
+    "text=Search",
+    "div:has-text('Search')",
+    "span:has-text('Search')"
   ]
 }

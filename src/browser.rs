@@ -894,6 +894,65 @@ return null;}})()"#
     /// Selbstauskunft der Brains ist dafür unbrauchbar — real getestet am
     /// 2026-07-27 gab deepseek die komplette abgefragte Liste zurück,
     /// inklusive Optionen, die seine Oberfläche gar nicht hat.
+    /// Zustand eines Umschalters als Zeichenkette: `aria-pressed`,
+    /// `aria-checked`, `data-state` oder — als letzter Ausweg — die
+    /// Klassenliste. Leer, wenn nichts matcht.
+    ///
+    /// Warum die Klassenliste mitzaehlt: viele Oberflaechen markieren einen
+    /// aktiven Umschalter nur ueber eine CSS-Klasse. Ohne sie waere bei
+    /// solchen Knoepfen kein Vorher/Nachher feststellbar — und ein Klick ohne
+    /// feststellbare Wirkung ist von einem Klick ins Leere nicht zu
+    /// unterscheiden.
+    fn toggle_state(&self, key: &str) -> String {
+        let list = Self::js_selectors(&self.sel(key));
+        // `Q` liefert den INNERSTEN Treffer — bei `text=DeepThink` also den
+        // Textknoten, nicht die schaltbare Pille. Dessen Klassen aendern sich
+        // beim Umschalten nicht; real gemessen blieb der Zustand konstant,
+        // obwohl der Klick ankam. Deshalb zum klickbaren Vorfahren hochlaufen
+        // und dessen Zustand lesen.
+        let expr = Self::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;return (t.getAttribute('aria-pressed')||'')+'|'+(t.getAttribute('aria-checked')||'')+'|'+(t.getAttribute('data-state')||'')+'|'+((t.className||'')+'');}",
+            "\"\"",
+        );
+        self.eval_str(&expr)
+    }
+
+    /// Klickt den schaltbaren Vorfahren des Treffers (siehe `toggle_state`).
+    fn click_toggle(&self, key: &str) -> bool {
+        let list = Self::js_selectors(&self.sel(key));
+        let expr = Self::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;t.click();return true;}",
+            "false",
+        );
+        self.eval_bool(&expr)
+    }
+
+    /// Schaltet eine Option um und belegt, dass sich dabei wirklich etwas
+    /// geaendert hat. Gibt (vorher, nachher) zurueck.
+    ///
+    /// Ohne den Zustandsvergleich waere jeder Klick ein "Erfolg": die Seite
+    /// meldet nichts, wenn ins Leere geklickt wurde. Genau daran ist der
+    /// Modellwechsel bei chatgpt zunaechst vorbeigelaufen.
+    pub fn toggle_option(&mut self, key: &str) -> Result<(String, String), String> {
+        if self.sel(key).is_empty() {
+            return Err(format!("kein '{key}' konfiguriert"));
+        }
+        let before = self.toggle_state(key);
+        if !self.click_toggle(key) {
+            return Err(format!("'{key}' nicht anklickbar"));
+        }
+        std::thread::sleep(Duration::from_millis(900));
+        let after = self.toggle_state(key);
+        if before == after {
+            return Err(format!(
+                "'{key}' angeklickt, aber kein Zustandswechsel feststellbar (weiterhin '{after}')"
+            ));
+        }
+        Ok((before, after))
+    }
+
     /// Öffnet die Oberfläche für interaktive Bedienung (Modellwahl u.ä.) und
     /// wartet, bis die Bedienelemente wirklich da sind. Gegenstück: `close_ui`.
     pub fn open_for_ui(&mut self, headless: bool) -> Result<(), String> {
