@@ -645,12 +645,15 @@ mod tests {
         // fahrbar (attainable: false) — sie fallen aus dem Nenner und stehen
         // stattdessen in `out_of_reach`. Bliebe ein unerreichbarer Eintrag im
         // Nenner, koennte kein Brain je "ausgereizt" werden.
-        assert_eq!(lvl.label(), "claude [1/3]", "nur chat ist fahrbar");
+        //
+        // `projects` wurde am 2026-07-28 fahrbar (open_section, URL-Beleg) und
+        // zaehlt deshalb zum Zaehler statt zur Quest — der Test wandert mit
+        // dem Code, seine Aussage bleibt: Selektor OHNE Code ist kein Koennen.
+        assert_eq!(lvl.label(), "claude [2/3]", "chat und projects sind fahrbar");
         assert_eq!(lvl.out_of_reach, vec!["voice_input", "voice_mode"]);
-        assert_eq!(lvl.quests.len(), 2);
-        for q in &lvl.quests {
-            assert_eq!(q.blocker, QuestBlocker::NeedsCode, "{}", q.key);
-        }
+        assert_eq!(lvl.quests.len(), 1, "nur die Denkstufe fehlt noch");
+        assert_eq!(lvl.quests[0].key, "reasoning_effort");
+        assert_eq!(lvl.quests[0].blocker, QuestBlocker::NeedsCode);
     }
 
     #[test]
