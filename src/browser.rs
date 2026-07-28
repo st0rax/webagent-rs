@@ -986,14 +986,19 @@ return null;}})()"#
     /// DOM) und schließt es danach per Escape wieder, damit die Seite im
     /// selben Zustand zurückbleibt wie vorher.
     pub fn list_models(&mut self) -> Result<Vec<String>, String> {
-        if self.sel("model_menu").is_empty() {
-            return Err("kein model_menu konfiguriert".into());
+        self.list_menu("model_menu", "model_option")
+    }
+
+    /// Wie `list_models`, aber fuer ein beliebiges Menue.
+    pub fn list_menu(&mut self, menu_key: &str, option_key: &str) -> Result<Vec<String>, String> {
+        if self.sel(menu_key).is_empty() {
+            return Err(format!("kein '{menu_key}' konfiguriert"));
         }
-        if !self.click_first("model_menu") {
-            return Err("Modell-Menue nicht anklickbar".into());
+        if !self.click_toggle(menu_key) {
+            return Err(format!("'{menu_key}' nicht anklickbar"));
         }
         std::thread::sleep(Duration::from_millis(900));
-        let list = Self::js_selectors(&self.sel("model_option"));
+        let list = Self::js_selectors(&self.sel(option_key));
         let expr = format!(
             "(function(){{{prelude}var S={list};var out=[];for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').replace(/\\s+/g,' ').trim();if(t&&out.indexOf(t)<0)out.push(t);}}if(out.length)break;}}catch(e){{}}}}return out;}})()",
             prelude = Self::JS_SEL_PRELUDE,
@@ -1024,11 +1029,37 @@ return null;}})()"#
     /// Wechsel nur als gelungen, wenn die Beschriftung danach den gewünschten
     /// Namen trägt.
     pub fn switch_model(&mut self, want: &str) -> Result<String, String> {
+        self.select_in_menu("model_menu", "model_option", want)
+    }
+
+    /// Beschriftung eines Menue-Knopfs (= aktuell gewaehlter Eintrag).
+    pub fn menu_label(&self, menu_key: &str) -> String {
+        let list = Self::js_selectors(&self.sel(menu_key));
+        let expr = Self::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){var t=((el.innerText||el.textContent||'')+'').replace(/\\s+/g,' ').trim();if(t)return t;}",
+            "\"\"",
+        );
+        self.eval_str(&expr)
+    }
+
+    /// Waehlt einen Eintrag aus einem Aufklappmenue und prueft nach.
+    ///
+    /// Verallgemeinerung von `switch_model`: Modellwahl, Denkstufe und jedes
+    /// weitere Menue funktionieren gleich — aufklappen, Eintrag per Text
+    /// treffen, Beschriftung gegenlesen. Ein Klick ins Leere hinterlaesst
+    /// keine Spur, deshalb entscheidet allein die Beschriftung danach.
+    pub fn select_in_menu(
+        &mut self,
+        menu_key: &str,
+        option_key: &str,
+        want: &str,
+    ) -> Result<String, String> {
         let want_l = want.trim().to_lowercase();
         if want_l.is_empty() {
-            return Err("kein Modellname angegeben".into());
+            return Err("kein Zielwert angegeben".into());
         }
-        let before = self.current_model();
+        let before = self.menu_label(menu_key);
         // Steht das Ziel schon, ist JEDE Nachpruefung trivial erfuellt — auch
         // wenn der Klick ins Leere ging. Real gesehen: chatgpt meldete
         // "umgestellt auf 'ChatGPT'", obwohl nichts passiert war, weil der
@@ -1037,15 +1068,15 @@ return null;}})()"#
         if before.to_lowercase().contains(&want_l) {
             return Ok(format!("{before} (bereits aktiv, kein Wechsel noetig)"));
         }
-        if self.sel("model_menu").is_empty() {
-            return Err("kein model_menu konfiguriert".into());
+        if self.sel(menu_key).is_empty() {
+            return Err(format!("kein '{menu_key}' konfiguriert"));
         }
-        if !self.click_first("model_menu") {
-            return Err("Modell-Menue nicht anklickbar".into());
+        if !self.click_toggle(menu_key) {
+            return Err(format!("'{menu_key}' nicht anklickbar"));
         }
         std::thread::sleep(Duration::from_millis(900));
 
-        let list = Self::js_selectors(&self.sel("model_option"));
+        let list = Self::js_selectors(&self.sel(option_key));
         let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
         let expr = format!(
             "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{els[k].click();return true;}}}}}}catch(e){{}}}}return false;}})()",
@@ -1056,7 +1087,7 @@ return null;}})()"#
         let clicked = self.eval_bool(&expr);
         if !clicked {
             let _ = self.press_key_escape();
-            return Err(format!("Modell '{want}' steht nicht im Menue"));
+            return Err(format!("'{want}' steht nicht im Menue '{option_key}'"));
         }
         std::thread::sleep(Duration::from_millis(1200));
 

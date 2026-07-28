@@ -174,6 +174,25 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Beliebiges Aufklappmenue lesen oder waehlen (z.B. Denkstufe)
+    Menu {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Selektor-Schluessel des Menuebuttons, z.B. reasoning_effort_menu
+        #[arg(long)]
+        key: String,
+        /// Selektor-Schluessel der Eintraege (Default: model_option)
+        #[arg(long, default_value = "model_option")]
+        options: String,
+        /// Zu waehlender Eintrag (Teilstring); ohne Angabe wird nur gelistet
+        #[arg(long)]
+        set: Option<String>,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
     /// Eine Option umschalten (z.B. reasoning_toggle, web_search_toggle) und
     /// belegen, dass sich der Zustand wirklich geaendert hat
     Toggle {
@@ -678,6 +697,14 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
         Commands::Canary => cmd_canary(),
+
+        Commands::Menu {
+            brain,
+            key,
+            options,
+            set,
+            visible,
+        } => cmd_menu(&brain, &key, &options, set.as_deref(), !visible),
 
         Commands::Toggle {
             brain,
@@ -1336,6 +1363,55 @@ fn cmd_wall(interval: u64, once: bool, only: &[String]) -> i32 {
         }
         std::thread::sleep(std::time::Duration::from_secs(interval.max(5)));
     }
+}
+
+fn cmd_menu(brain: &str, key: &str, options: &str, set: Option<&str>, headless: bool) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let mut backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[menu] {brain}: {e}");
+            return 2;
+        }
+    };
+    if let Err(e) = backend.open_for_ui(headless) {
+        eprintln!("[menu] {brain}: {e}");
+        return 2;
+    }
+    let code = match set {
+        None => {
+            println!("[menu] {brain}/{key}: aktuell ''{}''", backend.menu_label(key));
+            match backend.list_menu(key, options) {
+                Ok(list) if !list.is_empty() => {
+                    for m in &list {
+                        println!("    {m}");
+                    }
+                    0
+                }
+                Ok(_) => {
+                    eprintln!("[menu] {brain}/{key}: Menue lieferte keine Eintraege");
+                    1
+                }
+                Err(e) => {
+                    eprintln!("[menu] {brain}/{key}: {e}");
+                    1
+                }
+            }
+        }
+        Some(want) => match backend.select_in_menu(key, options, want) {
+            Ok(now) => {
+                println!("[menu] {brain}/{key}: ''{now}''");
+                0
+            }
+            Err(e) => {
+                eprintln!("[menu] {brain}/{key}: {e}");
+                1
+            }
+        },
+    };
+    let _ = backend.close_ui();
+    code
 }
 
 fn cmd_toggle(brain: &str, option: &str, headless: bool) -> i32 {

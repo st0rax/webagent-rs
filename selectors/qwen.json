@@ -72,8 +72,8 @@
     "li[role=option]"
   ],
   "reasoning_effort_menu": [
-    "button[aria-label='Thinking']",
-    "button[aria-label*='Thinking' i]"
+    "[aria-label='Thinking']",
+    "[aria-label*='Thinking' i]"
   ],
   "ui_options": [
     "chat",
@@ -84,6 +84,23 @@
     "voice_input",
     "voice_mode",
     "projects",
-    "stop_generation"
+    "stop_generation",
+    "temporary_chat"
+  ],
+  "attach_button": [
+    "[aria-label='Upload files']",
+    "[aria-label*='Upload' i]"
+  ],
+  "voice_input_button": [
+    "[aria-label='Voice Input']",
+    "[aria-label*='Voice Input' i]"
+  ],
+  "voice_mode_button": [
+    "[aria-label='Voice mode']",
+    "[aria-label*='Voice mode' i]"
+  ],
+  "temporary_chat_button": [
+    "[aria-label='Temporary Chat']",
+    "[aria-label*='Temporary Chat' i]"
   ]
 }
