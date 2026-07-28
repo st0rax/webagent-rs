@@ -79,5 +79,9 @@
     "[aria-label^='Deep think'] button",
     "[aria-label^='Deep think'] [role=button]",
     "[aria-label^='Deep think']"
+  ],
+  "web_search_toggle": [
+    "[data-active][class*='p-1.5']",
+    "button[data-active]:not([id*='sidebar'])"
   ]
 }
