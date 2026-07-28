@@ -1715,7 +1715,7 @@ fn cmd_survey(brain: Option<&str>, write: bool, headless: bool, dump: bool, open
                 }
             }
             println!("  --- {id}: ROH (erste 5) ---");
-            for b in buttons.iter().take(5) {
+            for b in buttons.iter().take(40) {
                 println!("      {b}");
             }
             println!("  --- {id}: counts = {} ---", report.get("counts").map(|c| c.to_string()).unwrap_or_default());

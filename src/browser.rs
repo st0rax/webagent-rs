@@ -565,12 +565,12 @@ function inf(el){{
   var ex=[];
   try{{var st=el.querySelector('svg title,svg desc');if(st)ex.push((st.textContent||'').trim());}}catch(e){{}}
   try{{var u=el.querySelector('svg use');if(u)ex.push(u.getAttribute('href')||u.getAttribute('xlink:href')||'');}}catch(e){{}}
-  try{{for(var a=0;a<el.attributes.length;a++){{var at=el.attributes[a];if(at.name.indexOf('data-')===0)ex.push(at.name+'='+at.value);}}}}catch(e){{}}
+  try{{for(var a=0;a<el.attributes.length;a++){{var at=el.attributes[a];if(at.name.indexOf('data-')===0||at.name.indexOf('aria-')===0)ex.push(at.name+'='+at.value);}}}}catch(e){{}}
   ex.push(el.getAttribute('id')||'');
   ex.push(nm(el.parentElement));
   return {{tag:el.tagName,cls:(el.className||'').toString().slice(0,90),al:el.getAttribute('aria-label')||'',ti:el.getAttribute('title')||'',dt:el.getAttribute('data-testid')||'',ex:ex.filter(function(s){{return s&&s.length;}}).join(' ').slice(0,160),svg:!!el.querySelector('svg'),tl:t.length,tp:t.slice(0,50)}};}}
 var btns=[],seen=[];
-['button','[role=button]','[role=switch]','[role=checkbox]','[role=menuitem]','[role=tab]','label','input[type=file]','[aria-label]','[data-testid]'].forEach(function(s){{
+['button','[role=button]','[role=switch]','[role=checkbox]','[role=menuitem]','[role=tab]','label','input[type=file]','[aria-label]','[data-testid]','[aria-pressed]','[aria-checked]','[aria-expanded]'].forEach(function(s){{
   try{{document.querySelectorAll(s).forEach(function(b){{
     if(seen.indexOf(b)>=0)return;
     // Verlaufseintraege der Seitenleiste sind keine Bedienelemente: sie tragen
@@ -912,7 +912,12 @@ return null;}})()"#
         // und dessen Zustand lesen.
         let expr = Self::js_scan(
             &list,
-            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;return (t.getAttribute('aria-pressed')||'')+'|'+(t.getAttribute('aria-checked')||'')+'|'+(t.getAttribute('data-state')||'')+'|'+((t.className||'')+'');}",
+            // ALLE data-*-Attribute lesen, nicht nur `data-state`: zais
+            // Deep-Think-Knopf haelt seinen Zustand in `data-autoThink`, und
+            // seine Klassenliste aendert sich dabei nicht (Tailwind-Varianten
+            // `data-[autoThink=true]:` sind statisch im class-Attribut). Mit
+            // einer festen Attributliste bliebe der Wechsel unsichtbar.
+            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;var d=[];for(var a=0;a<t.attributes.length;a++){var at=t.attributes[a];if(at.name.indexOf('data-')===0||at.name.indexOf('aria-')===0)d.push(at.name+'='+at.value);}d.sort();return d.join(';')+'|'+((t.className||'')+'');}",
             "\"\"",
         );
         self.eval_str(&expr)
