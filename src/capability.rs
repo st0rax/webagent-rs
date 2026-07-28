@@ -77,11 +77,18 @@ pub const CATALOG: &[Capability] = &[
         needs: &["web_search_toggle"],
         driveable: false,
     },
+    // Seit 2026-07-28 fahrbar (`WebBrainBackend::switch_model`), live belegt an
+    // claude (Sonnet 5 -> Haiku 4.5), zai (GLM-5.1 -> GLM-5-Turbo) und qwen
+    // (Plus -> Max), jeweils mit Nachpruefung der Menue-Beschriftung.
+    //
+    // Der Wechsel haelt nur INNERHALB einer Sitzung: jeder neue Browserstart
+    // faellt auf das Standardmodell zurueck. Er muss also in derselben Sitzung
+    // passieren wie die Frage — nicht vorab einmal gesetzt werden.
     Capability {
         key: "model_switch",
         label: "Modell wechseln",
         needs: &["model_menu", "model_option"],
-        driveable: false,
+        driveable: true,
     },
     Capability {
         key: "deep_research",

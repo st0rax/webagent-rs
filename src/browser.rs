@@ -970,6 +970,14 @@ return null;}})()"#
             return Err("kein Modellname angegeben".into());
         }
         let before = self.current_model();
+        // Steht das Ziel schon, ist JEDE Nachpruefung trivial erfuellt — auch
+        // wenn der Klick ins Leere ging. Real gesehen: chatgpt meldete
+        // "umgestellt auf 'ChatGPT'", obwohl nichts passiert war, weil der
+        // Name vorher schon dastand. Deshalb hier abbiegen und ehrlich
+        // "bereits aktiv" melden, statt einen Wechsel zu behaupten.
+        if before.to_lowercase().contains(&want_l) {
+            return Ok(format!("{before} (bereits aktiv, kein Wechsel noetig)"));
+        }
         if self.sel("model_menu").is_empty() {
             return Err("kein model_menu konfiguriert".into());
         }
@@ -1075,12 +1083,29 @@ return null;}})()"#
     }
 
     pub fn live_survey(&mut self, headless: bool) -> Result<Value, String> {
+        self.live_survey_with(headless, None)
+    }
+
+    /// Wie `live_survey`, oeffnet vorher optional ein Menue — sonst fehlen
+    /// dessen Eintraege im DOM und man raet ihre Selektoren.
+    pub fn live_survey_with(
+        &mut self,
+        headless: bool,
+        open_key: Option<&str>,
+    ) -> Result<Value, String> {
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
         // Der Titel steht, lange bevor die SPA ihren DOM aufgebaut hat: ein
         // sofortiger Scan sah 0 Buttons auf einer korrekt geladenen Seite.
         self.wait_for_labeled_controls();
+        if let Some(key) = open_key {
+            if !self.click_first(key) {
+                let _ = self.stop();
+                return Err(format!("'{key}' nicht anklickbar"));
+            }
+            std::thread::sleep(Duration::from_millis(1200));
+        }
         let report = self.dom_report();
         let _ = self.stop();
         report

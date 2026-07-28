@@ -229,6 +229,10 @@ enum Commands {
         /// Ergebnis in die Nutzer-Selektordatei schreiben statt nur anzeigen
         #[arg(long)]
         write: bool,
+        /// Vor der Vermessung diesen Selektor-Schluessel anklicken (z.B. model_menu)
+        #[arg(long)]
+        open: Option<String>,
+
         /// Rohe Beschriftungen aller gefundenen Bedienelemente ausgeben
         #[arg(long)]
         dump: bool,
@@ -683,9 +687,10 @@ fn dispatch(command: Commands) -> i32 {
         Commands::Survey {
             brain,
             write,
+            open,
             dump,
             visible,
-        } => cmd_survey(brain.as_deref(), write, !visible, dump),
+        } => cmd_survey(brain.as_deref(), write, !visible, dump, open.as_deref()),
 
         Commands::Quests { json } => cmd_quests(json),
 
@@ -1415,7 +1420,7 @@ fn cmd_shot(brain: Option<&str>, out: Option<&str>, open: Option<&str>, headless
     }
 }
 
-fn cmd_survey(brain: Option<&str>, write: bool, headless: bool, dump: bool) -> i32 {
+fn cmd_survey(brain: Option<&str>, write: bool, headless: bool, dump: bool, open: Option<&str>) -> i32 {
     use webagent::browser::WebBrainBackend;
 
     let targets: Vec<String> = match brain {
@@ -1433,7 +1438,7 @@ fn cmd_survey(brain: Option<&str>, write: bool, headless: bool, dump: bool) -> i
             }
         };
         eprintln!("[survey] {id}: oeffne Oberflaeche (headless={headless})…");
-        let report = match backend.live_survey(headless) {
+        let report = match backend.live_survey_with(headless, open) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("[survey] {id}: Fehler: {e}");

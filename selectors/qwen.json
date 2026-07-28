@@ -61,8 +61,9 @@
     "button[aria-label*='Google' i]"
   ],
   "model_menu": [
-    "button[aria-label='Select Model']",
-    "button[aria-label*='Select Model' i]"
+    "[aria-label='Select Model']",
+    "[aria-label*='Select Model' i]",
+    "button[aria-label='Select Model']"
   ],
   "model_option": [
     "[role=menuitem]",

@@ -58,10 +58,13 @@
     "button[aria-label*='Select a model' i]"
   ],
   "model_option": [
+    "[data-testid='model-item']",
+    "[title='model-item']",
+    "[aria-label='model-item']",
+    "[class*='model-item']",
+    "[id*='model-item']",
     "[role=menuitem]",
-    "[role=menuitemradio]",
-    "[role=option]",
-    "li[role=option]"
+    "[role=option]"
   ],
   "ui_options": [
     "chat",
