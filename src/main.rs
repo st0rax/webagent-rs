@@ -174,6 +174,20 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Modelle eines Brains auflisten oder umschalten (mit Nachpruefung, dass
+    /// der Wechsel wirklich griff)
+    Model {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Zu waehlendes Modell (Teilstring genuegt); ohne Angabe wird nur gelistet
+        #[arg(long)]
+        set: Option<String>,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
     /// Nimmt die Oberflaeche eines Brains als PNG auf (Vorlage fuer die
     /// Faehigkeits-Vermessung: was im DOM keinen Namen hat, ist im Bild sichtbar)
     Shot {
@@ -628,6 +642,12 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
         Commands::Canary => cmd_canary(),
+
+        Commands::Model {
+            brain,
+            set,
+            visible,
+        } => cmd_model(&brain, set.as_deref(), !visible),
 
         Commands::Shot {
             brain,
@@ -1183,6 +1203,57 @@ fn write_ui_options(brain: &str, options: &[String]) -> Result<std::path::PathBu
     let body = serde_json::to_string_pretty(&sel).map_err(|e| format!("{e}"))?;
     std::fs::write(&path, body).map_err(|e| format!("{e}"))?;
     Ok(path)
+}
+
+fn cmd_model(brain: &str, set: Option<&str>, headless: bool) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let mut backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[model] {brain}: {e}");
+            return 2;
+        }
+    };
+    if let Err(e) = backend.open_for_ui(headless) {
+        eprintln!("[model] {brain}: {e}");
+        return 2;
+    }
+    let code = match set {
+        None => {
+            println!("[model] {brain}: aktuell '{}'", backend.current_model());
+            match backend.list_models() {
+                Ok(list) if !list.is_empty() => {
+                    for m in &list {
+                        println!("    {m}");
+                    }
+                    0
+                }
+                Ok(_) => {
+                    // Leeres Menue ist ein Messfehler, kein Ergebnis: entweder
+                    // greift model_option nicht oder das Menue ging nicht auf.
+                    eprintln!("[model] {brain}: Menue lieferte keine Eintraege");
+                    1
+                }
+                Err(e) => {
+                    eprintln!("[model] {brain}: {e}");
+                    1
+                }
+            }
+        }
+        Some(want) => match backend.switch_model(want) {
+            Ok(now) => {
+                println!("[model] {brain}: umgestellt auf '{now}'");
+                0
+            }
+            Err(e) => {
+                eprintln!("[model] {brain}: {e}");
+                1
+            }
+        },
+    };
+    let _ = backend.close_ui();
+    code
 }
 
 fn cmd_shot(brain: Option<&str>, out: Option<&str>, headless: bool) -> i32 {

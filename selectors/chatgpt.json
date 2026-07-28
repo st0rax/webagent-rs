@@ -41,6 +41,19 @@
     "button:has-text('Anmelden mit Google')",
     "button[aria-label*='Google' i]"
   ],
+  "model_menu": [
+    "button[data-testid='model-switcher-dropdown-button']",
+    "[data-testid='model-switcher-dropdown-button']",
+    "button[aria-label='Modellauswaehler']",
+    "button[aria-label='Modellauswähler']",
+    "button[aria-label*='Modellausw' i]"
+  ],
+  "model_option": [
+    "[role=menuitem]",
+    "[role=menuitemradio]",
+    "[role=option]",
+    "li[role=option]"
+  ],
   "ui_options": [
     "chat",
     "new_chat",

@@ -894,6 +894,126 @@ return null;}})()"#
     /// Selbstauskunft der Brains ist dafür unbrauchbar — real getestet am
     /// 2026-07-27 gab deepseek die komplette abgefragte Liste zurück,
     /// inklusive Optionen, die seine Oberfläche gar nicht hat.
+    /// Öffnet die Oberfläche für interaktive Bedienung (Modellwahl u.ä.) und
+    /// wartet, bis die Bedienelemente wirklich da sind. Gegenstück: `close_ui`.
+    pub fn open_for_ui(&mut self, headless: bool) -> Result<(), String> {
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+        self.wait_for_labeled_controls();
+        Ok(())
+    }
+
+    /// Schliesst die mit `open_for_ui` geoeffnete Oberflaeche.
+    pub fn close_ui(&mut self) -> Result<(), String> {
+        self.stop()
+    }
+
+    /// Beschriftung des Modell-Menüs (= aktuell gewähltes Modell), leer wenn
+    /// kein `model_menu` konfiguriert ist oder nichts sichtbar.
+    pub fn current_model(&self) -> String {
+        let list = Self::js_selectors(&self.sel("model_menu"));
+        let expr = Self::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){var t=((el.innerText||el.textContent||'')+'').replace(/\\s+/g,' ').trim();if(t)return t;}",
+            "\"\"",
+        );
+        self.eval_str(&expr)
+    }
+
+    /// Öffnet das Modell-Menü und liest die wählbaren Einträge.
+    ///
+    /// Öffnet das Menü wirklich (ein geschlossenes Menü hat keine Einträge im
+    /// DOM) und schließt es danach per Escape wieder, damit die Seite im
+    /// selben Zustand zurückbleibt wie vorher.
+    pub fn list_models(&mut self) -> Result<Vec<String>, String> {
+        if self.sel("model_menu").is_empty() {
+            return Err("kein model_menu konfiguriert".into());
+        }
+        if !self.click_first("model_menu") {
+            return Err("Modell-Menue nicht anklickbar".into());
+        }
+        std::thread::sleep(Duration::from_millis(900));
+        let list = Self::js_selectors(&self.sel("model_option"));
+        let expr = format!(
+            "(function(){{{prelude}var S={list};var out=[];for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').replace(/\\s+/g,' ').trim();if(t&&out.indexOf(t)<0)out.push(t);}}if(out.length)break;}}catch(e){{}}}}return out;}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            list = list
+        );
+        let models = self
+            .eval(&expr)
+            .ok()
+            .and_then(|v| {
+                v.as_array().map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .unwrap_or_default();
+        let _ = self.press_key_escape();
+        Ok(models)
+    }
+
+    /// Wählt ein Modell und **prüft nach**, dass die Auswahl wirklich griff.
+    ///
+    /// Die Prüfung ist der eigentliche Kern: ein Klick, der ins Leere geht,
+    /// hinterlässt keine Fehlermeldung — die Seite sieht danach exakt so aus
+    /// wie vorher. Ohne Nachlesen der Menü-Beschriftung würde webagent einen
+    /// Fehlschlag als Erfolg verbuchen und anschließend mit dem falschen
+    /// Modell weiterarbeiten, ohne dass es jemand merkt. Deshalb gilt der
+    /// Wechsel nur als gelungen, wenn die Beschriftung danach den gewünschten
+    /// Namen trägt.
+    pub fn switch_model(&mut self, want: &str) -> Result<String, String> {
+        let want_l = want.trim().to_lowercase();
+        if want_l.is_empty() {
+            return Err("kein Modellname angegeben".into());
+        }
+        let before = self.current_model();
+        if self.sel("model_menu").is_empty() {
+            return Err("kein model_menu konfiguriert".into());
+        }
+        if !self.click_first("model_menu") {
+            return Err("Modell-Menue nicht anklickbar".into());
+        }
+        std::thread::sleep(Duration::from_millis(900));
+
+        let list = Self::js_selectors(&self.sel("model_option"));
+        let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
+        let expr = format!(
+            "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{els[k].click();return true;}}}}}}catch(e){{}}}}return false;}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            list = list,
+            needle = needle
+        );
+        let clicked = self.eval_bool(&expr);
+        if !clicked {
+            let _ = self.press_key_escape();
+            return Err(format!("Modell '{want}' steht nicht im Menue"));
+        }
+        std::thread::sleep(Duration::from_millis(1200));
+
+        let after = self.current_model();
+        if after.to_lowercase().contains(&want_l) {
+            return Ok(after);
+        }
+        Err(format!(
+            "Wechsel nicht bestaetigt: Menue zeigt weiterhin '{}' (vorher '{}'), erwartet '{}'",
+            after, before, want
+        ))
+    }
+
+    /// Escape ans Dokument — schliesst offene Menues.
+    fn press_key_escape(&self) -> Result<(), String> {
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard
+            .as_mut()
+            .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+        driver
+            .press_key("Escape", "Escape", 27, "")
+            .map_err(|e| e.to_string())
+    }
+
     /// Öffnet die Oberfläche und nimmt sie als PNG auf.
     ///
     /// Der Gegenentwurf zur DOM-Vermessung: was keinen Namen im DOM hat, hat
