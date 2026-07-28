@@ -113,6 +113,44 @@ pub const CATALOG: &[Capability] = &[
         needs: &["temporary_chat_button"],
         driveable: false,
     },
+    // Am 2026-07-27 auf Screenshots der acht Oberflächen gesichtet, aber vom
+    // Katalog bis dahin nicht gekannt. Ein nicht gekannter Knopf faellt aus dem
+    // Nenner heraus und laesst ein Brain reicher aussehen als es ist — deshalb
+    // stehen sie hier, obwohl noch kein Code sie faehrt.
+    Capability {
+        key: "voice_input",
+        label: "Spracheingabe per Mikrofon",
+        needs: &["voice_input_button"],
+        driveable: false,
+    },
+    // Bewusst getrennt von `voice_input`: das Mikrofon diktiert in den Composer,
+    // der Sprachdialog uebernimmt die ganze Unterhaltung. Wer beides in einen
+    // Eintrag wirft, kann spaeter nicht sagen, was ein Brain wirklich anbietet.
+    Capability {
+        key: "voice_mode",
+        label: "Sprachdialog-Modus",
+        needs: &["voice_mode_button"],
+        driveable: false,
+    },
+    // Nicht dasselbe wie `reasoning_toggle`: Claude zeigt neben dem Modell
+    // ("Sonnet 5") einen zweiten Waehler ("Mittel"). Der schaltet Reasoning
+    // nicht an oder aus, sondern dosiert die Denktiefe — eine eigene Fähigkeit
+    // mit eigenem Menue.
+    Capability {
+        key: "reasoning_effort",
+        label: "Denkstufe waehlen",
+        needs: &["reasoning_effort_menu"],
+        driveable: false,
+    },
+    // Projekte sind persistenter Kontext ueber Chats hinweg. Fuer webagent
+    // interessant, weil sich damit Dauerauftraege ablegen liessen, statt jeden
+    // Chat bei null zu beginnen.
+    Capability {
+        key: "projects",
+        label: "Projekte/Arbeitsbereiche",
+        needs: &["projects_button"],
+        driveable: false,
+    },
 ];
 
 /// Stichworte, an denen eine Schaltfläche einer Fähigkeit zugeordnet wird.
@@ -138,6 +176,23 @@ const MATCHERS: &[(&str, &[&str])] = &[
     ("temporary_chat", &["temporary chat", "temporärer chat", "incognito"]),
     ("new_chat", &["new chat", "neuer chat", "neuen chat"]),
     ("stop_generation", &["stop response", "stop generating", "antwort stoppen"]),
+    // "voice" allein waere zu weit: es steckt auch in Beschriftungen, die den
+    // Sprachdialog meinen. Deshalb nur Wortpaare bzw. das eindeutige Mikrofon.
+    (
+        "voice_input",
+        &["mikrofon", "microphone", "spracheingabe", "voice input"],
+    ),
+    (
+        "voice_mode",
+        &["sprachmodus", "voice mode", "sprachdialog", "sprachmodus starten"],
+    ),
+    // Bewusst ohne das nackte "reasoning": das gehoert dem An/Aus-Schalter.
+    // Hier zaehlt nur, was eine Stufe benennt.
+    (
+        "reasoning_effort",
+        &["reasoning effort", "denkstufe", "denktiefe", "thinking effort"],
+    ),
+    ("projects", &["projekte", "projects", "new project", "neues projekt"]),
 ];
 
 /// Ordnet die Schaltflächen eines DOM-Berichts den bekannten Fähigkeiten zu.
@@ -465,6 +520,47 @@ mod tests {
             json!({"al": "Feedback geben"}),
         ];
         assert!(detect_ui_options(&buttons, false).is_empty());
+    }
+
+    #[test]
+    fn newly_catalogued_options_are_quests_not_levels() {
+        // Frisch aufgenommene Fund-Optionen haben Selektoren, aber keinen Code.
+        // Sie muessen den Nenner heben und im Questlog stehen — nie den Zaehler.
+        let buttons = vec![
+            json!({"al": "Mikrofon", "ti": "", "dt": "", "tp": ""}),
+            json!({"al": "", "ti": "Sprachmodus", "dt": "", "tp": ""}),
+            json!({"al": "", "ti": "", "dt": "", "tp": "Denkstufe: Mittel"}),
+            json!({"al": "Projekte", "ti": "", "dt": "", "tp": ""}),
+        ];
+        let got = detect_ui_options(&buttons, true);
+        assert_eq!(
+            got,
+            vec!["chat", "voice_input", "voice_mode", "reasoning_effort", "projects"]
+        );
+
+        let sel = json!({
+            "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
+            "voice_input_button": ["#mic"],
+            "voice_mode_button": ["#vm"],
+            "reasoning_effort_menu": ["#eff"],
+            "projects_button": ["#pr"],
+            "ui_options": got,
+        });
+        let lvl = level_from_selectors("claude", &sel);
+        assert_eq!(lvl.label(), "claude [1/5]", "nur chat ist fahrbar");
+        assert_eq!(lvl.quests.len(), 4);
+        for q in &lvl.quests {
+            assert_eq!(q.blocker, QuestBlocker::NeedsCode, "{}", q.key);
+        }
+    }
+
+    #[test]
+    fn reasoning_effort_is_not_the_reasoning_toggle() {
+        // Claude zeigt beides: den An/Aus-Schalter und den Stufen-Waehler.
+        // Wuerden sie zusammenfallen, verschwaende eine Fähigkeit im Nenner.
+        let got = detect_ui_options(&[json!({"al": "Denkstufe"})], false);
+        assert_eq!(got, vec!["reasoning_effort"]);
+        assert!(!got.contains(&"reasoning_toggle".to_string()));
     }
 
     #[test]
