@@ -358,6 +358,10 @@ fn open_page(
     std::fs::create_dir_all(profile_dir)
         .map_err(|e| PageDriverError::Launch(format!("Profilverzeichnis: {e}")))?;
 
+    // Muss VOR dem Anlegen des WebContext stehen: WebView2 liest die Variable
+    // beim Erzeugen der Umgebung, spaetere Aenderungen wirken nicht mehr.
+    apply_fake_audio_args();
+
     if rt.web_context.is_none() {
         rt.web_context = Some(wry::WebContext::new(Some(profile_dir.to_path_buf())));
     }
@@ -513,6 +517,51 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
             let _ = respond.send(r);
         }
     }
+}
+
+/// Speist eine WAV-Datei als Mikrofon ein, wenn `WEBAGENT_FAKE_AUDIO` gesetzt
+/// ist.
+///
+/// Damit wird Spracheingabe ueberhaupt erst **belegbar**: bisher galt sie als
+/// nicht nachweisbar fahrbar, weil ein laufendes Mikrofon keinen pruefbaren
+/// Zustand aendert. Mit einer bekannten Aufnahme als Quelle landet die
+/// Transkription im Eingabefeld — und dessen Inhalt laesst sich vorher/nachher
+/// vergleichen wie jeder andere Beleg auch.
+///
+/// Bewusst opt-in: `--use-fake-ui-for-media-stream` erteilt die
+/// Mikrofon-Freigabe ohne Rueckfrage. Das ist fuer einen Automationslauf mit
+/// bekannter Audiodatei richtig, waere als Dauerzustand aber eine stille
+/// Absenkung der Browser-Sicherheit. Ohne die Variable bleibt alles wie zuvor.
+fn apply_fake_audio_args() {
+    let Ok(path) = std::env::var("WEBAGENT_FAKE_AUDIO") else {
+        return;
+    };
+    let path = path.trim().to_string();
+    if path.is_empty() {
+        return;
+    }
+    if !std::path::Path::new(&path).is_file() {
+        crate::bench_events::eprint_line(&format!(
+            "[webview] WEBAGENT_FAKE_AUDIO zeigt auf keine Datei: {path} — ignoriert"
+        ));
+        return;
+    }
+    // Vorhandene Argumente nicht ueberschreiben, sondern ergaenzen.
+    let mut args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+    for a in [
+        "--use-fake-ui-for-media-stream".to_string(),
+        "--use-fake-device-for-media-stream".to_string(),
+        format!("--use-file-for-fake-audio-capture={path}"),
+    ] {
+        if !args.contains(&a) {
+            if !args.is_empty() {
+                args.push(' ');
+            }
+            args.push_str(&a);
+        }
+    }
+    crate::bench_events::eprint_line(&format!("[webview] Mikrofon wird aus {path} gespeist"));
+    std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args);
 }
 
 /// Nimmt den Seiteninhalt als PNG auf (`ICoreWebView2::CapturePreview`).
