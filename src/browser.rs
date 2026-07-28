@@ -918,6 +918,35 @@ return null;}})()"#
         self.eval_str(&expr)
     }
 
+    /// Oeffnet einen Bereich der Oberflaeche (Projekte, Bibliothek, …) und
+    /// belegt den Wechsel ueber die URL.
+    ///
+    /// Anders als bei Umschaltern gibt es hier keinen Zustand am Knopf — der
+    /// Beleg ist, dass die Seite anschliessend woanders steht. Bleibt die URL
+    /// gleich, ist der Klick verpufft, und das wird als Fehler gemeldet statt
+    /// als Erfolg verbucht.
+    pub fn open_section(&mut self, key: &str) -> Result<(String, String), String> {
+        if self.sel(key).is_empty() {
+            return Err(format!("kein '{key}' konfiguriert"));
+        }
+        let before = self.get_conversation_ref().unwrap_or_default();
+        if !self.click_toggle(key) {
+            return Err(format!("'{key}' nicht anklickbar"));
+        }
+        std::thread::sleep(Duration::from_millis(1500));
+        let mut after = self.get_conversation_ref().unwrap_or_default();
+        if after == before && self.click_real(key) {
+            std::thread::sleep(Duration::from_millis(1500));
+            after = self.get_conversation_ref().unwrap_or_default();
+        }
+        if after == before {
+            return Err(format!(
+                "'{key}' angeklickt, aber die Seite steht weiterhin auf '{after}'"
+            ));
+        }
+        Ok((before, after))
+    }
+
     /// Waehlt einen Eintrag einer Segmentleiste (alle Optionen dauerhaft
     /// sichtbar, kein Aufklappen) und belegt, dass er danach aktiv ist.
     ///

@@ -213,7 +213,10 @@ pub const CATALOG: &[Capability] = &[
         key: "projects",
         label: "Projekte/Arbeitsbereiche",
         needs: &["projects_button"],
-        driveable: false,
+        // Seit 2026-07-28 fahrbar (`open_section`), live belegt: chatgpt
+        // navigiert nach /projects, claude nach claude.ai/projects. Der Beleg
+        // ist die URL — am Knopf selbst gibt es keinen Zustand.
+        driveable: true,
         attainable: true,
     },
 ];

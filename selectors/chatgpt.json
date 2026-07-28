@@ -62,5 +62,11 @@
     "voice_mode",
     "projects",
     "stop_generation"
+  ],
+  "projects_button": [
+    "text=Projekte",
+    "text=Projects",
+    "a:has-text('Projekte')",
+    "a:has-text('Projects')"
   ]
 }

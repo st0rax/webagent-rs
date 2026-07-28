@@ -174,6 +174,20 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Einen Bereich der Oberflaeche oeffnen (z.B. projects_button) und den
+    /// Wechsel ueber die URL belegen
+    Section {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Selektor-Schluessel des Bereichs
+        #[arg(long)]
+        key: String,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
     /// Segmentleiste umschalten (alle Stellungen sichtbar, z.B. deepseeks
     /// Instant/Expert/Vision)
     Mode {
@@ -714,6 +728,12 @@ fn dispatch(command: Commands) -> i32 {
         } => webagent::brains_health::run_brains_health(allow_empty_profile),
 
         Commands::Canary => cmd_canary(),
+
+        Commands::Section {
+            brain,
+            key,
+            visible,
+        } => cmd_section(&brain, &key, !visible),
 
         Commands::Mode {
             brain,
@@ -1387,6 +1407,34 @@ fn cmd_wall(interval: u64, once: bool, only: &[String]) -> i32 {
         }
         std::thread::sleep(std::time::Duration::from_secs(interval.max(5)));
     }
+}
+
+fn cmd_section(brain: &str, key: &str, headless: bool) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let mut backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[section] {brain}: {e}");
+            return 2;
+        }
+    };
+    if let Err(e) = backend.open_for_ui(headless) {
+        eprintln!("[section] {brain}: {e}");
+        return 2;
+    }
+    let code = match backend.open_section(key) {
+        Ok((before, after)) => {
+            println!("[section] {brain}/{key}: ''{before}'' -> ''{after}''");
+            0
+        }
+        Err(e) => {
+            eprintln!("[section] {brain}/{key}: {e}");
+            1
+        }
+    };
+    let _ = backend.close_ui();
+    code
 }
 
 fn cmd_mode(brain: &str, set: &str, options: &str, headless: bool) -> i32 {
