@@ -1015,6 +1015,24 @@ return null;}})()"#
         if self.sel(option_key).is_empty() {
             return Err(format!("kein '{option_key}' konfiguriert"));
         }
+        // Signatur ALLER Stellungen statt nur der gewaehlten.
+        //
+        // Deepseeks Segmente tragen weder am Knopf noch am naechsten Vorfahren
+        // mit Klasse ein Auswahl-Attribut — vor wie nach dem Klick identisch.
+        // Die Markierung sitzt also woanders: an einem Container oder einem
+        // verschobenen Indikator. Wandert die Auswahl, aendert sich aber die
+        // Gesamtsignatur der Leiste, ganz gleich wo der Marker haengt. Der
+        // Beleg wird damit unabhaengig davon, wie die Oberflaeche ihre Auswahl
+        // ausdrueckt.
+        let strip_state = |s: &Self| -> String {
+            let list = Self::js_selectors(&s.sel(option_key));
+            let expr = format!(
+                "(function(){{{prelude}var S={list};var out=[];for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var e=els[k].closest('button,[role=button],[role=tab],[class]')||els[k];var d=[];for(var a=0;a<e.attributes.length;a++){{var at=e.attributes[a];if(at.name.indexOf('data-')===0||at.name.indexOf('aria-')===0)d.push(at.name+'='+at.value);}}d.sort();var p=e.parentElement;var pc=p?((p.className||'')+''):'';out.push(((e.innerText||e.textContent||'')+'').trim().slice(0,20)+'{{'+d.join(';')+'|'+((e.className||'')+'')+'|'+pc+'}}');}}}}catch(e){{}}}}out.sort();return out.join('~');}})()",
+                prelude = Self::JS_SEL_PRELUDE,
+                list = list
+            );
+            s.eval_str(&expr)
+        };
         let state = |s: &Self| -> String {
             let list = Self::js_selectors(&s.sel(option_key));
             let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
@@ -1030,6 +1048,7 @@ return null;}})()"#
         if before.is_empty() {
             return Err(format!("'{want}' nicht in '{option_key}' gefunden"));
         }
+        let strip_before = strip_state(self);
         // Klick auf genau diesen Eintrag (synthetisch, dann echt).
         let list = Self::js_selectors(&self.sel(option_key));
         let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
@@ -1044,12 +1063,20 @@ return null;}})()"#
         }
         std::thread::sleep(Duration::from_millis(1000));
         let after = state(self);
-        if after == before {
-            return Err(format!(
-                "'{want}' angeklickt, aber kein Zustandswechsel feststellbar (weiterhin '{after}')"
-            ));
+        if after != before {
+            return Ok(after);
         }
-        Ok(after)
+        // Der gewaehlte Eintrag selbst zeigt nichts — dann muss die Leiste als
+        // Ganzes den Wechsel verraten. Tut sie es auch nicht, ist der Klick
+        // nicht nachweisbar angekommen.
+        let strip_after = strip_state(self);
+        if strip_after != strip_before {
+            return Ok(format!("{after} (Wechsel an der Leiste belegt)"));
+        }
+        Err(format!(
+            "'{want}' angeklickt, aber weder am Eintrag noch an der Leiste ein \
+             Wechsel feststellbar (weiterhin '{after}')"
+        ))
     }
 
     /// Oeffnet ein Aufklappmenue und wartet, bis es wirklich offen ist.
