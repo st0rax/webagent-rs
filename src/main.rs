@@ -174,6 +174,20 @@ enum Commands {
     /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
     Canary,
 
+    /// Bilderwand: alle Brains nebeneinander in einem Fenster, wie mehrere
+    /// TV-Kanaele gleichzeitig
+    Wall {
+        /// Sekunden zwischen zwei Aufnahmerunden
+        #[arg(long, default_value_t = 30)]
+        interval: u64,
+        /// Nur eine Runde aufnehmen und beenden
+        #[arg(long)]
+        once: bool,
+        /// Nur diese Brains (mehrfach angebbar); ohne Angabe alle
+        #[arg(long)]
+        brain: Vec<String>,
+    },
+
     /// Modelle eines Brains auflisten oder umschalten (mit Nachpruefung, dass
     /// der Wechsel wirklich griff)
     Model {
@@ -197,6 +211,10 @@ enum Commands {
         /// Zielverzeichnis (Default: <stable_root>/data/shots)
         #[arg(long)]
         out: Option<String>,
+        /// Vor der Aufnahme diesen Selektor-Schluessel anklicken, z.B.
+        /// `model_menu` — ein geschlossenes Menue zeigt seine Eintraege nicht
+        #[arg(long)]
+        open: Option<String>,
         /// Sichtbar statt headless
         #[arg(long)]
         visible: bool,
@@ -643,6 +661,12 @@ fn dispatch(command: Commands) -> i32 {
 
         Commands::Canary => cmd_canary(),
 
+        Commands::Wall {
+            interval,
+            once,
+            brain,
+        } => cmd_wall(interval, once, &brain),
+
         Commands::Model {
             brain,
             set,
@@ -652,8 +676,9 @@ fn dispatch(command: Commands) -> i32 {
         Commands::Shot {
             brain,
             out,
+            open,
             visible,
-        } => cmd_shot(brain.as_deref(), out.as_deref(), !visible),
+        } => cmd_shot(brain.as_deref(), out.as_deref(), open.as_deref(), !visible),
 
         Commands::Survey {
             brain,
@@ -1205,6 +1230,89 @@ fn write_ui_options(brain: &str, options: &[String]) -> Result<std::path::PathBu
     Ok(path)
 }
 
+/// Kachelseite schreiben. Die Seite laedt sich selbst neu, damit ein einmal
+/// geoeffnetes Fenster aktuell bleibt, ohne dass jemand F5 drueckt.
+fn write_wall_html(dir: &std::path::Path, brains: &[String], interval: u64, round: u64) -> std::io::Result<std::path::PathBuf> {
+    let mut tiles = String::new();
+    for b in brains {
+        // Cache-Buster: ohne ihn zeigt der Browser nach dem Neuladen weiter
+        // das alte Bild, und die Wand waere still eingefroren.
+        tiles.push_str(&format!(
+            "<figure><img src=\"{b}.png?r={round}\" alt=\"{b}\" loading=\"lazy\"><figcaption>{b}</figcaption></figure>\n"
+        ));
+    }
+    let html = format!(
+        "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\">\
+<meta http-equiv=\"refresh\" content=\"{interval}\">\
+<title>webagent · Bilderwand</title><style>\
+body{{margin:0;background:#111;color:#ddd;font:13px system-ui,sans-serif}}\
+h1{{font-size:14px;font-weight:600;margin:10px 12px;color:#888}}\
+.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 12px 12px}}\
+figure{{margin:0;background:#000;border:1px solid #333;border-radius:6px;overflow:hidden}}\
+img{{width:100%;display:block;aspect-ratio:1280/900;object-fit:cover;object-position:top left}}\
+figcaption{{padding:4px 8px;color:#9ab;font-weight:600}}\
+@media(max-width:1100px){{.grid{{grid-template-columns:repeat(2,1fr)}}}}\
+</style></head><body><h1>webagent · {n} Brains · Runde {round} · alle {interval}s</h1>\
+<div class=\"grid\">{tiles}</div></body></html>",
+        n = brains.len()
+    );
+    let path = dir.join("wall.html");
+    std::fs::write(&path, html)?;
+    Ok(path)
+}
+
+fn cmd_wall(interval: u64, once: bool, only: &[String]) -> i32 {
+    use webagent::browser::WebBrainBackend;
+
+    let dir = webagent::config::data_dir().join("shots");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("[wall] Zielverzeichnis nicht anlegbar: {e}");
+        return 2;
+    }
+    let brains: Vec<String> = if only.is_empty() {
+        webagent::config::available_brain_ids()
+    } else {
+        only.to_vec()
+    };
+    if brains.is_empty() {
+        eprintln!("[wall] keine Brains");
+        return 2;
+    }
+
+    let mut round: u64 = 0;
+    loop {
+        round += 1;
+        let mut ok = 0usize;
+        for id in &brains {
+            match WebBrainBackend::from_config(id).and_then(|mut b| b.live_screenshot(true)) {
+                Ok(png) => match std::fs::write(dir.join(format!("{id}.png")), &png) {
+                    Ok(()) => ok += 1,
+                    Err(e) => eprintln!("[wall] {id}: schreiben fehlgeschlagen: {e}"),
+                },
+                // Ein Brain, das gerade nicht will, darf die Wand nicht
+                // aufhalten — die alte Kachel bleibt dann einfach stehen.
+                Err(e) => eprintln!("[wall] {id}: {e}"),
+            }
+        }
+        match write_wall_html(&dir, &brains, interval, round) {
+            Ok(path) => {
+                println!("[wall] Runde {round}: {ok}/{} aufgenommen -> {}", brains.len(), path.display());
+                if round == 1 {
+                    println!("[wall] im Browser oeffnen: {}", path.display());
+                }
+            }
+            Err(e) => {
+                eprintln!("[wall] wall.html nicht schreibbar: {e}");
+                return 1;
+            }
+        }
+        if once {
+            return 0;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(interval.max(5)));
+    }
+}
+
 fn cmd_model(brain: &str, set: Option<&str>, headless: bool) -> i32 {
     use webagent::browser::WebBrainBackend;
 
@@ -1256,7 +1364,7 @@ fn cmd_model(brain: &str, set: Option<&str>, headless: bool) -> i32 {
     code
 }
 
-fn cmd_shot(brain: Option<&str>, out: Option<&str>, headless: bool) -> i32 {
+fn cmd_shot(brain: Option<&str>, out: Option<&str>, open: Option<&str>, headless: bool) -> i32 {
     use webagent::browser::WebBrainBackend;
 
     let dir = match out {
@@ -1282,7 +1390,7 @@ fn cmd_shot(brain: Option<&str>, out: Option<&str>, headless: bool) -> i32 {
             }
         };
         eprintln!("[shot] {id}: nehme Oberflaeche auf (headless={headless})…");
-        match backend.live_screenshot(headless) {
+        match backend.live_screenshot_with(headless, open) {
             Ok(png) => {
                 let path = dir.join(format!("{id}.png"));
                 match std::fs::write(&path, &png) {

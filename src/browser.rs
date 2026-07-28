@@ -1021,10 +1021,31 @@ return null;}})()"#
     /// der Schwarm Oberflächen selbst vermisst, statt dass jemand die Optionen
     /// von Hand einträgt.
     pub fn live_screenshot(&mut self, headless: bool) -> Result<Vec<u8>, String> {
+        self.live_screenshot_with(headless, None)
+    }
+
+    /// Wie `live_screenshot`, oeffnet vorher optional ein Menue.
+    ///
+    /// Ein geschlossenes Menue hat keine Eintraege im DOM — und auf einem
+    /// Screenshot des Startbildschirms sieht man sie ebenso wenig. Wer wissen
+    /// will, was hinter `model_menu` steckt, muss es aufklappen und DANN
+    /// aufnehmen, statt Rollen-Selektoren zu raten.
+    pub fn live_screenshot_with(
+        &mut self,
+        headless: bool,
+        open_key: Option<&str>,
+    ) -> Result<Vec<u8>, String> {
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
         self.wait_for_labeled_controls();
+        if let Some(key) = open_key {
+            if !self.click_first(key) {
+                let _ = self.stop();
+                return Err(format!("'{key}' nicht anklickbar"));
+            }
+            std::thread::sleep(Duration::from_millis(1200));
+        }
         let shot = {
             let mut guard = self.driver.borrow_mut();
             let driver = guard
