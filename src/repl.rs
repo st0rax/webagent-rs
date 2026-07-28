@@ -1473,11 +1473,10 @@ impl ReplSession {
             );
             return;
         }
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
-        let workdir = match crate::autoresearch::git_repo_root(&cwd) {
+        let workdir = match crate::autoresearch::resolve_project_root() {
             Ok(root) => root,
             Err(e) => {
-                eprintln!("[autoresearch] kein Git-Repo-Root gefunden: {e}");
+                eprintln!("[autoresearch] {e}");
                 return;
             }
         };

@@ -528,6 +528,98 @@ pub fn git_repo_root(start: &Path) -> Result<PathBuf, String> {
     git_ok(start, &["rev-parse", "--show-toplevel"]).map(PathBuf::from)
 }
 
+/// Sucht ab `dir` bis `depth` Ebenen abwärts ein Rust-Repo (`.git` **und**
+/// `Cargo.toml`). Bewusst beides: `.git` allein trifft auch das Super-Repo
+/// daneben, in dem gar kein Rust liegt.
+fn find_rust_repo(dir: &Path, depth: usize) -> Option<PathBuf> {
+    if depth == 0 {
+        return None;
+    }
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+    for e in entries.flatten() {
+        let p = e.path();
+        if !p.is_dir() {
+            continue;
+        }
+        // Verstecktes und Buildartefakte gar nicht erst betreten — sonst
+        // laeuft die Suche in target/ und node_modules fest.
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || name == "target" || name == "node_modules" {
+            continue;
+        }
+        if p.join(".git").exists() && p.join("Cargo.toml").exists() {
+            return Some(p);
+        }
+        subdirs.push(p);
+    }
+    subdirs.into_iter().find_map(|p| find_rust_repo(&p, depth - 1))
+}
+
+/// Repo-Root des Projekts, unabhängig davon, von wo die exe gestartet wurde.
+///
+/// Warum das nötig ist: `benchmark` und `autoresearch` liefen bisher gegen
+/// `current_dir()`. Die deployte exe liegt aber auf dem Desktop, und ein
+/// Doppelklick startet sie genau dort — kein Git-Repo. Der Aufruf schlug
+/// deshalb mit „not a git repository" fehl, und zwar reproduzierbar bei jedem
+/// Versuch: es lag nie am Nutzer, sondern daran, dass der Standardwert vom
+/// Startort abhing statt vom Projekt.
+///
+/// Reihenfolge:
+/// 1. `WEBAGENT_PROJECT_ROOT` (ausdrücklich gesetzt gewinnt immer)
+/// 2. Repo-Root des aktuellen Verzeichnisses (Aufruf aus dem Projekt heraus)
+/// 3. Aufwärtssuche ab dem Verzeichnis der Executable — trifft die Kopie unter
+///    `webagent-rs/runtime-workers/`, die im Repo liegt
+///
+/// Schlägt alles fehl, sagt der Fehlertext, was zu tun ist, statt nur „kein
+/// Repo".
+pub fn resolve_project_root() -> Result<PathBuf, String> {
+    if let Ok(p) = std::env::var("WEBAGENT_PROJECT_ROOT") {
+        let p = PathBuf::from(p.trim());
+        if p.join(".git").exists() {
+            return Ok(p);
+        }
+        if !p.as_os_str().is_empty() {
+            return Err(format!(
+                "WEBAGENT_PROJECT_ROOT zeigt auf kein Git-Repo: {}",
+                p.display()
+            ));
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Ok(root) = git_repo_root(&cwd) {
+            return Ok(root);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        let exe_dir = exe.parent().map(Path::to_path_buf);
+        // Aufwaerts: trifft die Kopie unter `webagent-rs/runtime-workers/`.
+        let mut dir = exe_dir.clone();
+        while let Some(d) = dir {
+            if d.join(".git").exists() && d.join("Cargo.toml").exists() {
+                return Ok(d);
+            }
+            dir = d.parent().map(Path::to_path_buf);
+        }
+        // Abwaerts: die deployte exe liegt auf dem Desktop, das Repo darunter
+        // (`Desktop/webagent/webagent-rs`). Ohne diesen Schritt findet die
+        // Aufwaertssuche nichts, und genau daran scheiterte jeder Aufruf per
+        // Doppelklick. Gesucht wird ein Verzeichnis mit `.git` UND
+        // `Cargo.toml` — das unterscheidet das Rust-Repo vom Super-Repo
+        // daneben, ohne Namen fest zu verdrahten.
+        if let Some(start) = exe_dir {
+            if let Some(found) = find_rust_repo(&start, 3) {
+                return Ok(found);
+            }
+        }
+    }
+    Err(
+        "Kein Projekt-Repo gefunden. Entweder aus dem Projektverzeichnis starten, \
+         --workdir angeben oder WEBAGENT_PROJECT_ROOT setzen."
+            .to_string(),
+    )
+}
+
 /// Neuen Branch anlegen und auschecken.
 fn git_create_branch(workdir: &Path, name: &str) -> Result<(), String> {
     git_ok(workdir, &["checkout", "-b", name]).map(|_| ())

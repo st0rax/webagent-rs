@@ -923,11 +923,10 @@ fn cmd_autoresearch(args: AutoresearchArgs) -> i32 {
     let workdir = match args.workdir {
         Some(p) => std::path::PathBuf::from(p),
         None => {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
-            match autoresearch::git_repo_root(&cwd) {
+            match autoresearch::resolve_project_root() {
                 Ok(root) => root,
                 Err(e) => {
-                    eprintln!("[autoresearch] kein Git-Repo-Root gefunden: {e}");
+                    eprintln!("[autoresearch] {e}");
                     return 2;
                 }
             }
@@ -1009,8 +1008,7 @@ fn cmd_autoresearch_self(
             String::new()
         }),
         None => {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
-            let root = webagent::autoresearch::git_repo_root(&cwd).unwrap_or(cwd);
+            let root = webagent::autoresearch::resolve_project_root().unwrap_or_else(|_| std::env::temp_dir());
             webagent::self_research::gather_facts(&root, 1200)
         }
     };
@@ -1227,8 +1225,7 @@ fn cmd_benchmark(
     let workdir = match workdir {
         Some(p) => std::path::PathBuf::from(p),
         None => {
-            let cwd = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
-            webagent::autoresearch::git_repo_root(&cwd).unwrap_or(cwd)
+            webagent::autoresearch::resolve_project_root().unwrap_or_else(|_| std::env::temp_dir())
         }
     };
 
