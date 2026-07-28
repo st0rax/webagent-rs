@@ -918,6 +918,62 @@ return null;}})()"#
         self.eval_str(&expr)
     }
 
+    /// Oeffnet ein Aufklappmenue und wartet, bis es wirklich offen ist.
+    ///
+    /// Erst synthetisch, dann per echtem Mausklick — qwens Denkstufen-Menue
+    /// blieb auf `element.click()` zu (Screenshot danach unveraendert), weil
+    /// die Oberflaeche auf pointerdown lauscht. Ob das Menue offen ist, misst
+    /// `aria-expanded`; fehlt das Attribut, bleibt es beim ersten Versuch.
+    fn open_menu(&self, menu_key: &str) -> bool {
+        let expanded = |s: &Self| -> String {
+            let list = Self::js_selectors(&s.sel(menu_key));
+            let expr = Self::js_scan(
+                &list,
+                "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[aria-expanded]')||el;return (t.getAttribute('aria-expanded')||'');}",
+                "\"\"",
+            );
+            s.eval_str(&expr)
+        };
+        if !self.click_toggle(menu_key) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(900));
+        if expanded(self) == "false" && self.click_real(menu_key) {
+            std::thread::sleep(Duration::from_millis(900));
+        }
+        true
+    }
+
+    /// Mittelpunkt des klickbaren Vorfahren im Viewport, oder `None`.
+    fn click_point(&self, key: &str) -> Option<(f64, f64)> {
+        let list = Self::js_selectors(&self.sel(key));
+        let expr = Self::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;var r=t.getBoundingClientRect();if(r.width>0&&r.height>0)return {x:r.left+r.width/2,y:r.top+r.height/2};}",
+            "null",
+        );
+        let v = self.eval(&expr).ok()?;
+        Some((v.get("x")?.as_f64()?, v.get("y")?.as_f64()?))
+    }
+
+    /// Echter Mausklick auf den klickbaren Vorfahren.
+    ///
+    /// `element.click()` loest nur ein synthetisches `click`-Ereignis aus.
+    /// Oberflaechen, die auf `pointerdown`/`mousedown` lauschen, reagieren
+    /// darauf nicht — real gesehen an qwens Denkstufen-Menue, das nach dem
+    /// Klick unveraendert blieb. Ein Klick an den Koordinaten geht den
+    /// vollstaendigen Ereignisweg und erreicht auch diese.
+    fn click_real(&self, key: &str) -> bool {
+        let Some((x, y)) = self.click_point(key) else {
+            return false;
+        };
+        let mut guard = self.driver.borrow_mut();
+        let Some(driver) = guard.as_mut() else {
+            return false;
+        };
+        driver.click_at(x, y).is_ok()
+    }
+
     /// Klickt den schaltbaren Vorfahren des Treffers (siehe `toggle_state`).
     fn click_toggle(&self, key: &str) -> bool {
         let list = Self::js_selectors(&self.sel(key));
@@ -944,10 +1000,20 @@ return null;}})()"#
             return Err(format!("'{key}' nicht anklickbar"));
         }
         std::thread::sleep(Duration::from_millis(900));
-        let after = self.toggle_state(key);
+        let mut after = self.toggle_state(key);
+        if before == after {
+            // Zweiter Anlauf mit echtem Mausklick: manche Oberflaechen
+            // ignorieren das synthetische `element.click()` und lauschen nur
+            // auf pointerdown/mousedown.
+            if self.click_real(key) {
+                std::thread::sleep(Duration::from_millis(900));
+                after = self.toggle_state(key);
+            }
+        }
         if before == after {
             return Err(format!(
-                "'{key}' angeklickt, aber kein Zustandswechsel feststellbar (weiterhin '{after}')"
+                "'{key}' angeklickt (synthetisch und per Maus), aber kein \
+                 Zustandswechsel feststellbar (weiterhin '{after}')"
             ));
         }
         Ok((before, after))
@@ -994,10 +1060,9 @@ return null;}})()"#
         if self.sel(menu_key).is_empty() {
             return Err(format!("kein '{menu_key}' konfiguriert"));
         }
-        if !self.click_toggle(menu_key) {
+        if !self.open_menu(menu_key) {
             return Err(format!("'{menu_key}' nicht anklickbar"));
         }
-        std::thread::sleep(Duration::from_millis(900));
         let list = Self::js_selectors(&self.sel(option_key));
         let expr = format!(
             "(function(){{{prelude}var S={list};var out=[];for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').replace(/\\s+/g,' ').trim();if(t&&out.indexOf(t)<0)out.push(t);}}if(out.length)break;}}catch(e){{}}}}return out;}})()",
@@ -1071,10 +1136,9 @@ return null;}})()"#
         if self.sel(menu_key).is_empty() {
             return Err(format!("kein '{menu_key}' konfiguriert"));
         }
-        if !self.click_toggle(menu_key) {
+        if !self.open_menu(menu_key) {
             return Err(format!("'{menu_key}' nicht anklickbar"));
         }
-        std::thread::sleep(Duration::from_millis(900));
 
         let list = Self::js_selectors(&self.sel(option_key));
         let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
