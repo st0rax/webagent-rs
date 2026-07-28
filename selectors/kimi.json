@@ -70,5 +70,13 @@
     "button:has-text('Weiter mit Google')",
     "button:has-text('Anmelden mit Google')",
     "button[aria-label*='Google' i]"
+  ],
+  "ui_options": [
+    "chat",
+    "model_switch",
+    "deep_research",
+    "file_attach",
+    "stop_generation",
+    "new_chat"
   ]
 }
