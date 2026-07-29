@@ -145,7 +145,97 @@ pub fn pick_harvest(candidates: &[HarvestCandidate]) -> Option<&HarvestCandidate
     candidates
         .iter()
         .filter(|c| !c.patch.trim().is_empty())
+        .filter(|c| harvest_rejection(&c.patch).is_none())
         .min_by_key(|c| (c.iterations, c.latency_ms))
+}
+
+/// Prüft einen Kandidaten-Diff auf die zwei Wege, das Erntekriterium zu
+/// erfüllen, ohne etwas zu verbessern. Gibt den Grund zurück, wenn verworfen.
+///
+/// Hintergrund, real am 2026-07-29: der Benchmark erntete drei Beiträge, die
+/// alle „kompiliert + Tests grün" erfüllten und trotzdem nichts brachten —
+/// jeweils eine neue öffentliche Funktion samt eigener Tests, die nirgends
+/// aufgerufen wird (`normalize_research_suggestion`, `is_command_allowed`,
+/// `map_protocol_error_code`). Einer der Beiträge löschte dafür einen
+/// bestehenden Test.
+///
+/// Das ist kein Fehlverhalten der Brains, sondern die logische Antwort auf ein
+/// Kriterium, das Ballast nicht von Verbesserung unterscheidet. Also muss das
+/// Kriterium schärfer werden, nicht der Prompt frommer.
+pub fn harvest_rejection(patch: &str) -> Option<String> {
+    let removed = count_marker(patch, '-', "#[test]");
+    let added = count_marker(patch, '+', "#[test]");
+    if removed > added {
+        return Some(format!(
+            "entfernt {} Test(s) mehr als er hinzufügt — weniger Tests machen den Build grün",
+            removed - added
+        ));
+    }
+    let new_fns = added_public_fns(patch);
+    if !new_fns.is_empty() && !patch_uses_any(patch, &new_fns) {
+        return Some(format!(
+            "fügt {} an: nirgends aufgerufen (toter Code)",
+            new_fns.join(", ")
+        ));
+    }
+    None
+}
+
+/// Zählt Diff-Zeilen mit gegebenem Vorzeichen, die `needle` enthalten.
+fn count_marker(patch: &str, sign: char, needle: &str) -> usize {
+    patch
+        .lines()
+        .filter(|l| l.starts_with(sign) && !l.starts_with("+++") && !l.starts_with("---"))
+        .filter(|l| l.contains(needle))
+        .count()
+}
+
+/// Namen der im Diff neu hinzugefügten öffentlichen Funktionen.
+pub fn added_public_fns(patch: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in patch.lines() {
+        if !line.starts_with('+') || line.starts_with("+++") {
+            continue;
+        }
+        let t = line.trim_start_matches('+').trim();
+        let Some(rest) = t.strip_prefix("pub fn ") else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() && !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// True, wenn mindestens einer der Namen im Diff auch AUFGERUFEN wird — also
+/// in einer hinzugefügten Zeile vorkommt, die weder die Definition noch eine
+/// Testzeile ist.
+///
+/// Bewusst grob: der Diff allein verrät nicht, ob der Aufruf im Testmodul
+/// steht. Deshalb zählt eine Zeile nur, wenn sie den Namen mit `(` enthält und
+/// nicht selbst die `pub fn`-Zeile ist — und Zeilen innerhalb erkennbarer
+/// Testblöcke (`assert`, `#[test]`) werden ausgeschlossen. Lieber einmal zu
+/// streng: ein faelschlich verworfener Beitrag kostet eine Runde, ein
+/// faelschlich geernteter bleibt für immer im Repo.
+fn patch_uses_any(patch: &str, names: &[String]) -> bool {
+    for line in patch.lines() {
+        if !line.starts_with('+') || line.starts_with("+++") {
+            continue;
+        }
+        let t = line.trim_start_matches('+').trim();
+        if t.starts_with("pub fn ") || t.starts_with("#[test]") || t.contains("assert") {
+            continue;
+        }
+        if names.iter().any(|n| t.contains(&format!("{n}("))) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Endergebnis eines Benchmark-Laufs.
@@ -1947,7 +2037,31 @@ mod refine_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
+    #[test]
+    fn harvest_rejects_dead_code_and_test_deletions() {
+        // Beide Muster stammen aus echten Ernten vom 2026-07-29.
+        let dead = "+++ b/src/x.rs\n+pub fn normalize_research_suggestion(input: &str) -> String {\n+    input.trim().to_string()\n+}\n+    #[test]\n+    fn t() {\n+        assert_eq!(normalize_research_suggestion(\" a \"), \"a\");\n+    }\n";
+        let reason = harvest_rejection(dead).expect("toter Code muss verworfen werden");
+        assert!(reason.contains("normalize_research_suggestion"), "{reason}");
+
+        let deletes = "+++ b/src/x.rs\n-    #[test]\n-    fn assess_command_risk_examples() {}\n+fn helper() {}\n";
+        let reason = harvest_rejection(deletes).expect("Testloeschung muss verworfen werden");
+        assert!(reason.contains("Test"), "{reason}");
+    }
+
+    #[test]
+    fn harvest_accepts_a_function_that_is_actually_used() {
+        // Neue Funktion MIT Aufrufer im Produktivcode: das ist Verbesserung.
+        let good = "+++ b/src/x.rs\n+pub fn parse_limit(s: &str) -> u32 { 0 }\n+    let n = parse_limit(raw);\n";
+        assert!(harvest_rejection(good).is_none());
+    }
+
+    #[test]
+    fn harvest_accepts_pure_refactoring_without_new_public_fns() {
+        let refactor = "+++ b/src/x.rs\n-    let a = 1 + 1;\n+    let a = 2;\n";
+        assert!(harvest_rejection(refactor).is_none());
+    }    use super::*;
     use crate::self_research::RankedSuggestion;
 
     // --- Harvest-Schutzgitter -------------------------------------------
