@@ -1968,6 +1968,20 @@ impl BrainBackend for WebBrainBackend {
                     // Pruefung landet der Limit-Text als vermeintlich echte Antwort
                     // (siehe swarm-Test: qwens "daily usage limit" wurde als Antwort
                     // gezaehlt statt als "blocked").
+                    // Ein Stop-Selektor, der eine ganze Antwort lang nie
+                    // gegriffen hat, ist Dekoration: das autoritative
+                    // Fertigsignal fehlt und die Erkennung haengt am
+                    // Stabilitaetsfenster. Genau daran wurde bei kimi mitten im
+                    // Stream Reasoning-Prosa geerntet. „Selektor vorhanden" ist
+                    // nicht „Selektor funktioniert" — also sagen wir es laut,
+                    // statt es still zu kompensieren.
+                    if has_stop && !stop_seen_ever {
+                        crate::bench_events::eprint_line(&format!(
+                            "[browser] {}: stop_button-Selektor hat nie gegriffen — \
+                             Fertigsignal kommt nur aus Textstabilitaet (Selektoren pruefen)",
+                            self.brain_id
+                        ));
+                    }
                     if let Some(hit) = block_phrase_in_text(&text) {
                         crate::bench_events::eprint_line(&format!(
                             "[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt",
