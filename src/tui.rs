@@ -770,7 +770,6 @@ fn run_tui_ratatui(
 /// standardmäßig außerhalb des sichtbaren Desktops; `--headed` ist die
 /// bewusste Ausnahme für eine sichtbare Diagnose.
 fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
-    use std::path::PathBuf;
     let mut brains: Vec<String> = candidates.to_vec();
     let mut rounds = 1usize;
     let mut suggestions = 3usize;
@@ -823,7 +822,23 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
         brains = candidates.to_vec();
     }
 
-    let workdir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    // Nicht `current_dir()`: die TUI wird per Doppelklick vom Desktop
+    // gestartet, und der ist kein Git-Repo — der Benchmark brach dort sofort
+    // mit "not a git repository" ab. Derselbe Fehler war in cmd_benchmark
+    // bereits behoben; dieser zweite Pfad blieb stehen und lief weiter ins
+    // Leere. (Zwillingssuche: ein Fix greift nie, solange die Kopie daneben
+    // unangetastet bleibt.)
+    let workdir = match crate::autoresearch::resolve_project_root() {
+        Ok(p) => p,
+        Err(e) => {
+            crate::bench_events::emit(
+                crate::bench_events::Level::Fail,
+                                None,
+                                &format!("Benchmark nicht startbar: {e}"),
+            );
+            return;
+        }
+    };
 
     crate::bench_events::emit(
         crate::bench_events::Level::Info,
@@ -928,8 +943,8 @@ pub fn run_tui(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::path::PathBuf;
+    use super::*;
 
     fn temp_root() -> PathBuf {
         static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
