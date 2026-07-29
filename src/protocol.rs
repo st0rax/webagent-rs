@@ -112,6 +112,17 @@ pub fn error_code(error: &str) -> &'static str {
     }
 }
 
+/// Mappt einen Protokoll-Fehlernamen auf einen deterministischen u16-Fehlercode.
+pub fn map_protocol_error_code(error: &str) -> u16 {
+    match error {
+        "ControllerFault" => 1001,
+        "BrainUnavailable" => 1002,
+        "IoFailure" => 1003,
+        "DedupMalformed" => 1004,
+        _ => 0,
+    }
+}
+
 fn json_block_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"```(?:json)?\s*(\{.*\})\s*```").unwrap())
@@ -1558,5 +1569,35 @@ Write-Output $html
             !parse("Ich habe darueber nachgedacht und wuerde vorschlagen, die Datei zu aendern.")
                 .valid
         );
+    }
+
+    #[test]
+    fn test_map_protocol_error_code_controller_fault() {
+        assert_eq!(map_protocol_error_code("ControllerFault"), 1001);
+    }
+
+    #[test]
+    fn test_map_protocol_error_code_brain_unavailable() {
+        assert_eq!(map_protocol_error_code("BrainUnavailable"), 1002);
+    }
+
+    #[test]
+    fn test_map_protocol_error_code_io_failure() {
+        assert_eq!(map_protocol_error_code("IoFailure"), 1003);
+    }
+
+    #[test]
+    fn test_map_protocol_error_code_dedup_malformed() {
+        assert_eq!(map_protocol_error_code("DedupMalformed"), 1004);
+    }
+
+    #[test]
+    fn test_map_protocol_error_code_empty_string() {
+        assert_eq!(map_protocol_error_code(""), 0);
+    }
+
+    #[test]
+    fn test_map_protocol_error_code_unknown_error() {
+        assert_eq!(map_protocol_error_code("UnknownError"), 0);
     }
 }
