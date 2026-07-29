@@ -25,6 +25,8 @@ pub struct BrainStatus {
     pub reachable: bool,
     /// Angemeldet? `None`, wenn die Prüfung selbst fehlschlug.
     pub logged_in: Option<bool>,
+    /// Ohne Anmeldung benutzbar? Live mit frischem Profil gemessen.
+    pub anonymous_ok: bool,
     /// Ist ein Anmelden-Knopf sichtbar? Zusammen mit `logged_in` entlarvt das
     /// falsch positive Erkennungen.
     pub login_visible: bool,
@@ -41,6 +43,7 @@ impl BrainStatus {
         let status = match (self.reachable, self.logged_in) {
             (false, _) => "nicht erreichbar",
             (true, Some(true)) => "bereit",
+            (true, Some(false)) if self.anonymous_ok => "bereit (anonym)",
             (true, Some(false)) => "nicht angemeldet",
             (true, None) => "unklar",
         };
@@ -59,10 +62,43 @@ impl BrainStatus {
         )
     }
 
-    /// Einsatzbereit heißt: erreichbar UND angemeldet.
+    /// Einsatzbereit heißt: benutzbar — angemeldet ODER anonym nutzbar.
+    ///
+    /// Mehrere Oberflächen lassen sich ohne Konto bedienen. Ein fehlender
+    /// Login ist bei denen kein Grund, das Brain aus dem Pool zu nehmen; wer
+    /// nur auf `logged_in` schaut, verschenkt sie.
     pub fn ready(&self) -> bool {
-        self.reachable && self.logged_in == Some(true)
+        self.reachable && (self.logged_in == Some(true) || self.anonymous_ok)
     }
+}
+
+/// Prüft, ob ein Brain **ohne Anmeldung** benutzbar ist.
+///
+/// Gemessen, nicht vermutet: dafür wird ein frisches, leeres Profil benutzt.
+/// Mit dem normalen Profil wäre die Frage nicht beantwortbar — dort liegt die
+/// Sitzung, und jede Antwort hieße „ja, angemeldet geht es".
+///
+/// Kriterium bewusst streng: Eingabefeld sichtbar UND kein Anmelden-Knopf.
+/// Ein Composer allein genügt nicht — geminis ausgeloggte Startseite hat einen
+/// und ist trotzdem nicht benutzbar.
+pub fn probe_anonymous(brain_id: &str) -> bool {
+    let tmp = std::env::temp_dir().join(format!(
+        "webagent_anon_{}_{}",
+        brain_id,
+        std::process::id()
+    ));
+    if std::fs::create_dir_all(&tmp).is_err() {
+        return false;
+    }
+    let result = crate::browser::WebBrainBackend::from_config(brain_id)
+        .map(|b| b.with_profile_override(tmp.clone()))
+        .and_then(|mut b| b.live_diagnose(true))
+        .map(|d| d.composer_found && !d.login_button_visible && !d.cloudflare)
+        .unwrap_or(false);
+    // Wegwerfprofil sofort entfernen — sonst sammelt sich derselbe Muell an,
+    // den `sweep_stale_runtime_profiles` schon einmal aufraeumen musste.
+    let _ = std::fs::remove_dir_all(&tmp);
+    result
 }
 
 /// Prüft ein Brain live (Browser auf, Zustand lesen, zu).
@@ -73,6 +109,7 @@ fn probe(brain_id: &str, headless: bool) -> BrainStatus {
         reachable: false,
         logged_in: None,
         login_visible: false,
+        anonymous_ok: false,
         level: lvl.level(),
         max_level: lvl.max_level(),
         note: String::new(),
@@ -89,8 +126,15 @@ fn probe(brain_id: &str, headless: bool) -> BrainStatus {
             st.reachable = true;
             st.logged_in = Some(d.logged_in);
             st.login_visible = d.login_button_visible;
+            // Nur messen, wenn noetig: der Anonym-Check kostet einen zweiten
+            // Browserstart. Wer angemeldet ist, braucht ihn nicht.
+            if !d.logged_in {
+                st.anonymous_ok = probe_anonymous(brain_id);
+            }
             if d.cloudflare {
                 st.note = "Cloudflare-Prüfung".into();
+            } else if !d.logged_in && st.anonymous_ok {
+                st.note = "ohne Anmeldung nutzbar".into();
             } else if !d.logged_in {
                 st.note = "webagent login --brain ".to_string() + brain_id;
             }
@@ -184,6 +228,7 @@ mod tests {
             reachable,
             logged_in: logged,
             login_visible,
+            anonymous_ok: false,
             level: 3,
             max_level: Some(6),
             note: String::new(),
@@ -198,6 +243,21 @@ mod tests {
         // Unklarer Zustand gilt NICHT als bereit: im Zweifel lieber ein Brain
         // zu wenig als eines, das im Betrieb ausfaellt.
         assert!(!st("d", true, None, false).ready());
+    }
+
+    #[test]
+    fn anonymously_usable_counts_as_ready_without_login() {
+        // Mehrere Oberflaechen lassen sich ohne Konto bedienen. Wer nur auf
+        // `logged_in` schaut, nimmt sie grundlos aus dem Pool.
+        let mut s = st("deepseek", true, Some(false), false);
+        s.anonymous_ok = true;
+        assert!(s.ready(), "ohne Anmeldung nutzbar ist einsatzbereit");
+        assert!(s.line().contains("bereit (anonym)"), "{}", s.line());
+
+        // Aber nicht, wenn die Oberflaeche gar nicht erreichbar war.
+        let mut tot = st("x", false, None, false);
+        tot.anonymous_ok = true;
+        assert!(!tot.ready());
     }
 
     #[test]
