@@ -198,6 +198,32 @@ const SPARSE_SKIP_DIRS: &[&str] = &[
     "Service Worker",
 ];
 
+/// Verzeichnisse, die auch bei der VOLLEN Profil-Kopie uebersprungen werden:
+/// reine, jederzeit neu erzeugbare Caches ohne jeden Anmeldebezug.
+///
+/// Gemessen am 30.07.2026 an `profiles\kimi`: 459 MB gesamt, davon 312 MB
+/// `Code Cache`, 77 MB `Cache` und 17 MB `component_crx_cache` — **88 % reiner
+/// Cache**. Der Benchmark kopiert vor jedem Start acht solche Profile, also
+/// ~3,6 GB, und zwar bevor die erste Logzeile erscheint: rund acht Minuten
+/// stiller Startvorlauf pro Runde. Weil ein Kill den Aufraeum-Guard umgeht,
+/// lagen am 30.07.2026 real 84 Kopien mit 37 GB unter `profiles\swarm`.
+///
+/// `Service Worker` steht bewusst NICHT hier: er ist kein reiner Cache und war
+/// in der Messung ohnehin winzig. Wo Anmeldedaten liegen (Cookies, Local
+/// Storage, IndexedDB), wird unveraendert vollstaendig kopiert.
+const FULL_COPY_SKIP_DIRS: &[&str] = &[
+    "Cache",
+    "Code Cache",
+    "GPUCache",
+    "GPUPersistentCache",
+    "GrShaderCache",
+    "ShaderCache",
+    "Crashpad",
+    "BrowserMetrics",
+    "EBWebViewMetrics",
+    "component_crx_cache",
+];
+
 /// Aktiviert die sparsame Profil-Kopie (nur SPARSE_COPY_WHITELIST) statt der
 /// vollen Kopie. Default aus, um das Bestandsverhalten nicht zu ändern.
 pub fn use_sparse_profile_copy() -> bool {
@@ -668,12 +694,47 @@ pub fn prepare_swarm_profile_in(
 }
 
 /// Kopiert ein Profil je nach Modus: sparse (nur Whitelist-Artefakte) oder voll.
+/// „Voll" heisst vollstaendig bis auf reine Caches — siehe
+/// [`FULL_COPY_SKIP_DIRS`].
 fn copy_profile(src: &PathBuf, dst: &PathBuf, sparse: bool) -> std::io::Result<()> {
     if sparse {
         copy_dir_sparse(src, dst)
     } else {
-        copy_dir_all(src, dst)
+        copy_dir_without_caches(src, dst)
     }
+}
+
+/// Wie [`copy_dir_all`], laesst aber die Verzeichnisse aus
+/// [`FULL_COPY_SKIP_DIRS`] weg. Bewusst eine eigene Funktion: `copy_dir_all`
+/// bleibt der wortwoertliche Kopierer fuer alle anderen Aufrufer.
+pub fn copy_dir_without_caches(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)?.flatten() {
+        let Ok(ty) = entry.file_type() else { continue };
+        let name = entry.file_name().to_string_lossy().to_string();
+        let target = dst.join(entry.file_name());
+        if ty.is_dir() {
+            if FULL_COPY_SKIP_DIRS
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case(&name))
+            {
+                continue;
+            }
+            copy_dir_without_caches(&entry.path(), &target)?;
+        } else {
+            // Lock-/PID-Dateien werden neu erzeugt (wie in copy_dir_all).
+            let low = name.to_lowercase();
+            if low.contains("lock")
+                || low == "singletoncookie"
+                || low == "singletonsocket"
+                || low == "lockfile"
+            {
+                continue;
+            }
+            let _ = std::fs::copy(entry.path(), &target);
+        }
+    }
+    Ok(())
 }
 
 /// Entfernt alle abgeschlossenen Swarm-Laufzeit-Profile (aufräumen nach einem Run).
@@ -1375,6 +1436,55 @@ mod tests {
         // Fehlende Wurzeln sind kein Fehler.
         let _ = fs::remove_dir_all(&base);
         assert_eq!(sweep_stale_runtime_profiles_in(&base, 0), 0);
+    }
+
+    #[test]
+    fn volle_profilkopie_laesst_caches_weg_aber_keine_logins() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_cachecopy_{stamp}"));
+        let src = base.join("src");
+        let dst = base.join("dst");
+
+        // Anmeldebezogenes ...
+        let net = src.join("EBWebView").join("Default").join("Network");
+        fs::create_dir_all(&net).expect("mkdir");
+        fs::write(net.join("Cookies"), b"keks").expect("write");
+        let ls = src.join("EBWebView").join("Default").join("Local Storage");
+        fs::create_dir_all(&ls).expect("mkdir");
+        fs::write(ls.join("leveldb.log"), b"token").expect("write");
+
+        // ... und reiner Cache, der 88 % des Volumens ausmacht.
+        let cc = src.join("EBWebView").join("Default").join("Code Cache");
+        fs::create_dir_all(&cc).expect("mkdir");
+        fs::write(cc.join("gross.bin"), vec![0u8; 4096]).expect("write");
+        let crx = src.join("EBWebView").join("component_crx_cache");
+        fs::create_dir_all(&crx).expect("mkdir");
+        fs::write(crx.join("x.crx"), b"crx").expect("write");
+
+        copy_dir_without_caches(&src, &dst).expect("copy");
+
+        let d = dst.join("EBWebView").join("Default");
+        assert!(
+            d.join("Network").join("Cookies").is_file(),
+            "Cookies fehlen"
+        );
+        assert!(
+            d.join("Local Storage").join("leveldb.log").is_file(),
+            "Local Storage fehlt"
+        );
+        assert!(!d.join("Code Cache").exists(), "Code Cache mitkopiert");
+        assert!(
+            !dst.join("EBWebView").join("component_crx_cache").exists(),
+            "crx-Cache mitkopiert"
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
