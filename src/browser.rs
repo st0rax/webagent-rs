@@ -538,19 +538,19 @@ var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
         stop_js: &str,
         target: i32,
     ) -> (i32, String, bool) {
-        let expr = format!(
-            r#"(function(){{
-var A={assistant_js};var count=0,els=null;
-for(var i=0;i<A.length;i++){{try{{var e=document.querySelectorAll(A[i]);if(e.length>0){{count=e.length;els=e;break;}}}}catch(x){{}}}}
-var ti={target};if(ti<0)ti=count-1;
-var text="";if(els&&ti>=0&&els.length>ti){{text=(els[ti].innerText||"").trim();}}
-var stop=false;var S={stop_js};
-for(var j=0;j<S.length;j++){{try{{var el=document.querySelector(S[j]);if(el){{var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){{stop=true;break;}}}}}}catch(x){{}}}}
-return {{count:count,text:text,stop:stop}};}})()"#,
-            assistant_js = assistant_js,
-            stop_js = stop_js,
-            target = target
-        );
+        // MUSS das Prelude benutzen (`QA`/`Q`, nicht `document.querySelector*`):
+        // 96 von 283 Eintraegen in `selectors/*.json` sind in Playwright-
+        // Textsyntax geschrieben (`button:has-text('Stop')`). Rohes
+        // `querySelector` wirft darauf, der try/catch schluckt es — die Eintraege
+        // waren hier stumm wirkungslos.
+        //
+        // Genau das war der Grund, warum am 29./30.07.2026 fuer kimi, deepseek
+        // und claude NIE ein Stop-Button erkannt wurde: ihre `aria-label`-Muster
+        // matchen diese Oberflaechen nicht, und die `:has-text`-Eintraege, die es
+        // taeten, flogen in den catch. Ohne Stop-Signal haengt die Fertig-
+        // Erkennung am Stabilitaetsfenster — daran wurde mitten im Stream
+        // Reasoning-Prosa als Antwort geerntet.
+        let expr = Self::probe_generation_js(assistant_js, stop_js, target);
         match self.eval(&expr) {
             Ok(v) => (
                 v.get("count").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
@@ -564,6 +564,26 @@ return {{count:count,text:text,stop:stop}};}})()"#,
             ),
             Err(_) => (0, String::new(), false),
         }
+    }
+
+    /// Baut das JS für [`Self::probe_generation`] — getrennt, damit prüfbar ist,
+    /// dass es das Prelude mitbringt (siehe Test
+    /// `jeder_selektor_auswertende_pfad_bringt_das_prelude_mit`).
+    fn probe_generation_js(assistant_js: &str, stop_js: &str, target: i32) -> String {
+        format!(
+            r#"(function(){{{prelude}
+var A={assistant_js};var count=0,els=null;
+for(var i=0;i<A.length;i++){{try{{var e=QA(A[i]);if(e.length>0){{count=e.length;els=e;break;}}}}catch(x){{}}}}
+var ti={target};if(ti<0)ti=count-1;
+var text="";if(els&&ti>=0&&els.length>ti){{text=(els[ti].innerText||"").trim();}}
+var stop=false;var S={stop_js};
+for(var j=0;j<S.length;j++){{try{{var el=Q(S[j]);if(el){{var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){{stop=true;break;}}}}}}catch(x){{}}}}
+return {{count:count,text:text,stop:stop}};}})()"#,
+            prelude = Self::JS_SEL_PRELUDE,
+            assistant_js = assistant_js,
+            stop_js = stop_js,
+            target = target
+        )
     }
 
     /// Diagnose des echten DOM: wie viele Elemente matchen die konfigurierten
@@ -861,26 +881,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     /// gefunden wird (z.B. nicht eingeloggt). Erst ein optionaler per-Brain-`account`-
     /// Selektor, dann generische Heuristik.
     pub fn account_label(&self) -> Option<String> {
-        let account_sels = self.sel_js("account", &[]);
-        // Hohe Praezision statt Vollstaendigkeit: lieber `None` als ein Avatar-Alt-Text.
-        // (1) konfigurierter per-Brain-`account`-Selektor, (2) eine E-Mail irgendwo,
-        // (3) ein „angemeldet als X"/„signed in as X"-Muster. Sonst nichts.
-        let js = format!(
-            r#"(function(){{
-function clean(t){{return (t||'').replace(/\s+/g,' ').trim();}}
-var EMAIL=/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{{2,}}/i;
-var cfg={account_sels};
-for(var i=0;i<cfg.length;i++){{try{{var el=document.querySelector(cfg[i]);if(el){{var t=clean(el.getAttribute('title')||el.getAttribute('aria-label')||el.innerText||el.textContent);if(t)return t.slice(0,48);}}}}catch(e){{}}}}
-var body=clean(document.body?document.body.innerText:'');
-var m=body.match(EMAIL);
-if(m)return m[0];
-// E-Mail auch in Attributen (gemini: im aria-label des Konto-Links, nicht im Text).
-var attrEls=document.querySelectorAll('[aria-label],[title],[alt]');
-for(var a=0;a<attrEls.length;a++){{var s=(attrEls[a].getAttribute('aria-label')||'')+' '+(attrEls[a].getAttribute('title')||'')+' '+(attrEls[a].getAttribute('alt')||'');var mm=s.match(EMAIL);if(mm)return mm[0];}}
-var sa=body.match(/(?:signed in as|angemeldet als|logged in as|account:)\s*([^\s,;|]{{2,40}})/i);
-if(sa)return sa[1];
-return null;}})()"#
-        );
+        let js = self.account_label_js();
         let raw = self
             .eval(&js)
             .ok()
@@ -892,6 +893,35 @@ return null;}})()"#
             return Some(words[0].to_string());
         }
         Some(raw)
+    }
+
+    /// Baut das JS für [`Self::account_label`] — getrennt, damit prüfbar ist,
+    /// dass es das Prelude mitbringt.
+    ///
+    /// Hohe Praezision statt Vollstaendigkeit: lieber `None` als ein
+    /// Avatar-Alt-Text. (1) konfigurierter per-Brain-`account`-Selektor, (2) eine
+    /// E-Mail irgendwo, (3) ein „angemeldet als X"/„signed in as X"-Muster.
+    /// Sonst nichts.
+    fn account_label_js(&self) -> String {
+        let account_sels = self.sel_js("account", &[]);
+        format!(
+            r#"(function(){{{prelude}
+function clean(t){{return (t||'').replace(/\s+/g,' ').trim();}}
+var EMAIL=/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{{2,}}/i;
+var cfg={account_sels};
+for(var i=0;i<cfg.length;i++){{try{{var el=Q(cfg[i]);if(el){{var t=clean(el.getAttribute('title')||el.getAttribute('aria-label')||el.innerText||el.textContent);if(t)return t.slice(0,48);}}}}catch(e){{}}}}
+var body=clean(document.body?document.body.innerText:'');
+var m=body.match(EMAIL);
+if(m)return m[0];
+// E-Mail auch in Attributen (gemini: im aria-label des Konto-Links, nicht im Text).
+var attrEls=document.querySelectorAll('[aria-label],[title],[alt]');
+for(var a=0;a<attrEls.length;a++){{var s=(attrEls[a].getAttribute('aria-label')||'')+' '+(attrEls[a].getAttribute('title')||'')+' '+(attrEls[a].getAttribute('alt')||'');var mm=s.match(EMAIL);if(mm)return mm[0];}}
+var sa=body.match(/(?:signed in as|angemeldet als|logged in as|account:)\s*([^\s,;|]{{2,40}})/i);
+if(sa)return sa[1];
+return null;}})()"#,
+            prelude = Self::JS_SEL_PRELUDE,
+            account_sels = account_sels
+        )
     }
 
     pub fn interactive_login(&mut self, timeout: Duration) -> Result<bool, String> {
@@ -2366,6 +2396,47 @@ mod tests {
             true,
         );
         assert_eq!(stable, Completion::Complete);
+    }
+
+    #[test]
+    fn jeder_selektor_auswertende_pfad_bringt_das_prelude_mit() {
+        // Regression 30.07.2026: `probe_generation` und `account_label` bauten
+        // ihr JS selbst und werteten konfigurierte Selektoren mit rohem
+        // `document.querySelector` aus. 96 von 283 Eintraegen in
+        // `selectors/*.json` stehen aber in Playwright-Textsyntax
+        // (`button:has-text('Stop')`); darauf wirft querySelector, der
+        // try/catch schluckt es, der Eintrag ist stumm wirkungslos.
+        //
+        // Folge: fuer kimi, deepseek, claude und zai wurde NIE ein Stop-Button
+        // erkannt — das autoritative Fertigsignal fehlte komplett.
+        let b = WebBrainBackend::from_config("kimi").expect("kimi-Konfig");
+        let stop = b.sel_js("stop_button", &[]);
+        assert!(
+            stop.contains(":has-text"),
+            "Testvoraussetzung: kimi hat has-text-Selektoren — {stop}"
+        );
+
+        let assistant = b.sel_js("assistant_message", &[]);
+        for (name, js) in [
+            (
+                "probe_generation",
+                WebBrainBackend::probe_generation_js(&assistant, &stop, 0),
+            ),
+            ("account_label", b.account_label_js()),
+        ] {
+            assert!(
+                js.contains("var QA=function"),
+                "{name}: Prelude fehlt — has-text-Selektoren wirken dort nicht"
+            );
+            assert!(
+                !js.contains("document.querySelector(S["),
+                "{name}: wertet Selektoren roh aus statt via Q()"
+            );
+            assert!(
+                !js.contains("document.querySelectorAll(A["),
+                "{name}: wertet Selektoren roh aus statt via QA()"
+            );
+        }
     }
 
     #[test]
