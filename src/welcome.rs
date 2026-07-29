@@ -179,6 +179,54 @@ pub fn probe_all(brains: &[String], headless: bool, parallel: usize) -> Vec<Brai
     out
 }
 
+/// Öffnet ein Anmeldefenster — aber **nur**, wenn gar kein Brain mehr
+/// benutzbar ist.
+///
+/// Reihenfolge mit Absicht: solange irgendein Brain angemeldet oder anonym
+/// nutzbar ist, arbeitet der Pool damit weiter und niemand wird unterbrochen.
+/// Ein Fenster, das bei jedem fehlenden Login aufpoppt, wäre in einem
+/// Achter-Pool ständig im Weg — Failover ist der Normalfall, Anmelden die
+/// Ausnahme.
+///
+/// Das Fenster bleibt offen, bis die Anmeldung erkannt wird **oder** es
+/// geschlossen wird. Kein stiller Abbruch nach wenigen Sekunden: wer sich
+/// anmeldet, braucht manchmal Zwei-Faktor, ein Passwortfeld aus dem Manager
+/// oder einen zweiten Anlauf.
+///
+/// Gibt das Brain zurück, für das ein Fenster geöffnet wurde.
+pub fn login_if_nothing_usable(
+    statuses: &[BrainStatus],
+    max_wait: std::time::Duration,
+) -> Option<String> {
+    if statuses.iter().any(|s| s.ready()) {
+        return None;
+    }
+    // Erreichbar, aber nicht angemeldet ist der aussichtsreichste Kandidat:
+    // dort fehlt nur die Sitzung. Ein nicht erreichbares Brain hat ein anderes
+    // Problem, das ein Anmeldefenster nicht loest.
+    let ziel = statuses
+        .iter()
+        .find(|s| s.reachable && s.logged_in == Some(false))
+        .or_else(|| statuses.first())?;
+
+    println!(
+        "\n  Kein einziges Brain ist benutzbar — öffne Anmeldung für '{}'.",
+        ziel.brain_id
+    );
+    println!("  Fenster bleibt offen, bis die Anmeldung erkannt wird oder du es schließt.");
+
+    let mut backend = crate::browser::WebBrainBackend::from_config(&ziel.brain_id).ok()?;
+    match backend.interactive_login(max_wait) {
+        Ok(true) => println!("  '{}' angemeldet.", ziel.brain_id),
+        Ok(false) => println!(
+            "  '{}': keine Anmeldung erkannt — Fenster geschlossen oder Zeit abgelaufen.",
+            ziel.brain_id
+        ),
+        Err(e) => println!("  '{}': {e}", ziel.brain_id),
+    }
+    Some(ziel.brain_id.clone())
+}
+
 /// Formatiert den Init-Bericht.
 pub fn render(statuses: &[BrainStatus], measured_at: &str) -> String {
     let ready = statuses.iter().filter(|s| s.ready()).count();
@@ -243,6 +291,26 @@ mod tests {
         // Unklarer Zustand gilt NICHT als bereit: im Zweifel lieber ein Brain
         // zu wenig als eines, das im Betrieb ausfaellt.
         assert!(!st("d", true, None, false).ready());
+    }
+
+    #[test]
+    fn login_window_only_opens_when_nothing_is_usable() {
+        use std::time::Duration;
+        // Solange EIN Brain benutzbar ist, wird niemand unterbrochen —
+        // Failover ist der Normalfall, Anmelden die Ausnahme.
+        let mit_einem = vec![
+            st("a", true, Some(true), false),
+            st("b", true, Some(false), true),
+        ];
+        assert_eq!(login_if_nothing_usable(&mit_einem, Duration::from_secs(1)), None);
+
+        // Auch ein anonym nutzbares Brain reicht.
+        let mut anon = st("c", true, Some(false), false);
+        anon.anonymous_ok = true;
+        assert_eq!(
+            login_if_nothing_usable(&[anon], Duration::from_secs(1)),
+            None
+        );
     }
 
     #[test]
