@@ -16,40 +16,16 @@
 //! nach dem anderen ist robust und für den einmaligen Setup-Schritt schnell
 //! genug. Parallelität ist opt-in via `--parallel N` (max 2–3, nie Default).
 //!
-//! Google-SSO-Brains (siehe `GOOGLE_SSO_BRAINS`) teilen sich EIN gemeinsames
-//! Profil, damit die Google-Session physisch im selben Profil liegt: der
-//! ERSTE Brain macht das echte Google-Login (Passwort einmal), danach
-//! completet jeder weitere Brain den OAuth mit einem „Continue with Google"-
-//! Durchklick (kein Passwort). Cross-Origin-Cookie-Kopie auf Geschwister-
-//! Brains ist bewusst ausgeschlossen — sie funktioniert bei unabhängigen
-//! Diensten nicht.
-
+//! **Ein Login-Weg, ein Profil-Ort.** `login-all` tut pro Brain exakt das, was
+//! `login` tut. Frueher lenkte es die Google-SSO-Brains auf ein geteiltes
+//! `profiles/google-sso`, damit das Passwort nur einmal faellig wird — der
+//! Betrieb liest aber `profiles/<brain>`. Dadurch gab es zwei Profil-Layouts,
+//! und eine Anmeldung war je nach benutztem Befehl vorhanden oder unsichtbar.
 use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::browser::WebBrainBackend;
 use crate::config::available_brain_ids;
-
-/// Google-SSO-Brains teilen EIN gemeinsames Profil (`profiles/google-sso`),
-/// damit die Google-Session physisch im selben Profil liegt: der ERSTE Brain
-/// macht das echte Google-Login (Passwort einmal), danach completet jeder
-/// weitere Brain den OAuth mit einem „Continue with Google"-Durchklick (kein
-/// Passwort). Cross-Origin-Cookie-Kopie auf Geschwister-Brains ist bewusst
-/// ausgeschlossen — sie funktioniert bei unabhängigen Diensten nicht.
-const GOOGLE_SSO_BRAINS: &[&str] = &[
-    "chatgpt", "deepseek", "kimi", "gemini", "qwen", "claude", "mistral", "zai",
-];
-
-/// Liefert `true`, wenn das Brain über Google-SSO angemeldet werden kann und
-/// daher das gemeinsame SSO-Profil nutzen soll.
-fn is_google_sso(brain_id: &str) -> bool {
-    GOOGLE_SSO_BRAINS.contains(&brain_id)
-}
-
-/// Gemeinsames Profil für die Google-SSO-Brains (physisch geteilte Session).
-fn shared_sso_profile_dir() -> PathBuf {
-    crate::config::profiles_dir().join("google-sso")
-}
 
 /// Ergebnis eines einzelnen Login-Versuchs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,8 +37,7 @@ pub struct LoginResult {
 }
 
 /// Öffnet für jedes Brain nacheinander einen Browser, wartet auf Login.
-/// Das Profil landet in `profiles/<brain>` (canonical Quelle), bzw. im
-/// gemeinsamen SSO-Profil für Google-SSO-Brains.
+/// Das Profil landet in `profiles/<brain>` — der einzigen canonical Quelle.
 ///
 /// `timeout_per_brain` gilt pro Brain (nicht gesamt).
 /// `parallel` (0 = sequenziell, sonst max 2–3) ist experimentell.
@@ -81,19 +56,25 @@ pub fn login_all(timeout_per_brain: Duration, parallel: usize, force: bool) -> V
 }
 
 fn login_all_sequential(brains: &[String], timeout: Duration, force: bool) -> Vec<LoginResult> {
-    // Google-SSO-Brains teilen ein physisches Profil, damit die Google-Session
-    // über den ersten Login hinaus für die nachfolgenden Brains sichtbar bleibt.
-    let sso_profile = shared_sso_profile_dir();
-    let mut results = Vec::new();
-    for brain in brains {
-        let override_dir = if is_google_sso(brain) {
-            Some(sso_profile.clone())
-        } else {
-            None
-        };
-        results.push(login_one(brain, timeout, force, override_dir));
-    }
-    results
+    // KEIN Profil-Override mehr: `login-all` tut pro Brain exakt das, was
+    // `login` tut — Anmeldung landet in `profiles/<brain>`.
+    //
+    // Vorher lenkte diese Funktion die Google-SSO-Brains auf ein geteiltes
+    // `profiles/google-sso`, damit das Google-Passwort nur einmal fällig wird.
+    // Der Betrieb liest aber `profiles/<brain>` (siehe `config::brains`). Damit
+    // gab es ZWEI Profil-Layouts, je nachdem welcher Befehl geschrieben hatte:
+    // nach `login-all` war die Sitzung physisch da, für relay/benchmark/doctor
+    // aber unsichtbar. Real am 2026-07-29: gemini meldete direkt nach dem
+    // Anmelden wieder `logged_in: false` — die Anmeldung war nicht weg, sie
+    // lag nur am anderen Ort.
+    //
+    // Ein Login-Weg, ein Profil-Ort. Der Preis ist, dass das Google-Passwort
+    // pro Brain einmal fällig wird; das ist die richtige Seite des Tauschs
+    // gegenüber Anmeldungen, die stillschweigend ins Leere gehen.
+    brains
+        .iter()
+        .map(|brain| login_one(brain, timeout, force, None))
+        .collect()
 }
 
 /// Optionale Spiegelung des frisch eingeloggten Profils nach
@@ -123,8 +104,8 @@ fn maybe_copy_to_reference(brain_id: &str) {
 /// Kopie nötig. Bei bereits eingeloggtem Profil (detectbar) wird übersprungen,
 /// sofern `force` nicht gesetzt ist.
 ///
-/// `profile_override` lenkt das Brain auf ein geteiltes Profil (genutzt für die
-/// Google-SSO-Gruppe), statt auf sein eigenes `profiles/<brain>`.
+/// `profile_override` bleibt fuer Sonderfaelle erhalten (z.B. Tests), wird im
+/// normalen Login-Weg aber NICHT mehr gesetzt — siehe `login_all_sequential`.
 fn login_one(
     brain_id: &str,
     timeout: Duration,
@@ -223,20 +204,20 @@ mod tests {
     }
 
     #[test]
-    fn test_google_sso_grouping() {
-        // Storax-Entscheidung (Claude 061522): ALLE 8 Brains nutzen Google-SSO
-        // und teilen das gemeinsame Profil.
-        for b in [
-            "chatgpt", "deepseek", "kimi", "gemini", "qwen", "claude", "mistral", "zai",
-        ] {
-            assert!(is_google_sso(b), "{b} sollte Google-SSO nutzen");
+    fn login_all_writes_to_the_same_place_as_login() {
+        // Der Kern des Fixes vom 2026-07-29: es darf nur EINEN Profil-Ort
+        // geben. `login-all` setzte fuer Google-SSO-Brains einen Override auf
+        // `profiles/google-sso`, waehrend der Betrieb `profiles/<brain>` liest
+        // (config::brains). Eine Anmeldung war dadurch je nach benutztem
+        // Befehl vorhanden oder unsichtbar — gemini meldete direkt nach dem
+        // Einloggen wieder `logged_in: false`.
+        for brain in ["gemini", "chatgpt", "deepseek", "claude"] {
+            let backend = WebBrainBackend::from_config(brain).expect("config");
+            let erwartet = crate::config::profiles_dir().join(brain);
+            assert_eq!(
+                backend.effective_profile_dir(),
+                &erwartet,
+                "{brain}: Betrieb muss profiles/<brain> nutzen"
+            );
         }
-    }
-
-    #[test]
-    fn test_shared_sso_profile_dir_under_profiles() {
-        let p = shared_sso_profile_dir();
-        assert!(p.ends_with("google-sso"));
-        assert_eq!(crate::config::profiles_dir().join("google-sso"), p);
-    }
-}
+    }}
