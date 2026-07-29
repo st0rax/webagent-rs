@@ -287,6 +287,52 @@ pub fn evaluate_command_policy(
     (true, format!("allowed: {trimmed}"))
 }
 
+/// Shell-Sicherheitsprüfung mit Whitelist und Regex-Blacklist.
+///
+/// Prüft zuerst den Basisbefehl (erstes Token) gegen die kombinierte Whitelist
+/// aus Standard- und Benutzerbefehlen. Ist der Befehl nicht gelistet, wird er
+/// abgelehnt (Ok(false)). Ist er erlaubt, wird anschließend die optionale
+/// Regex-Blacklist auf den vollständigen Befehl angewandt; ein Treffer blockiert
+/// die Ausführung (Ok(false)), andernfalls wird der Befehl erlaubt (Ok(true)).
+/// Eine ungültige Regex liefert Err(...).
+pub fn is_command_allowed(
+command: &str,
+default_whitelist: &[String],
+custom_whitelist: &[String],
+blacklist_regex: &[String],
+) -> Result<bool, String> {
+let trimmed = command.trim();
+let first_token = trimmed
+.split_whitespace()
+.next()
+.unwrap_or("")
+.to_lowercase();
+
+// Basisbefehl gegen kombinierte Whitelist prüfen
+let in_default = default_whitelist
+.iter()
+.any(|entry| entry.to_lowercase() == first_token);
+let in_custom = custom_whitelist
+.iter()
+.any(|entry| entry.to_lowercase() == first_token);
+
+if !in_default && !in_custom {
+return Ok(false);
+}
+
+// Befehl ist erlaubt — jetzt Regex-Blacklist auf den vollständigen Befehl anwenden
+for pattern_str in blacklist_regex {
+let regex = Regex::new(pattern_str)
+.map_err(|e| format!("Ungültige Regex in Blacklist: '{pattern_str}': {e}"))?;
+if regex.is_match(trimmed) {
+return Ok(false);
+}
+}
+
+Ok(true)
+
+}
+
 /// Jede Entscheidung geht sichtbar nach stderr (nicht versteckt, siehe
 /// [[external-blocks-flag-not-fail]]-Philosophie: transparent statt still) und
 /// zusätzlich als JSON-Line ins Audit-Log, damit Deny-Faelle nachvollziehbar
@@ -655,25 +701,71 @@ mod tests {
         (false, false, "none")
     }
 
-    #[test]
-    fn assess_command_risk_examples() {
-        assert_eq!(assess_command_risk("ls -la"), (false, false, "none"));
-        assert_eq!(
-            assess_command_risk("curl http://example.com/file.sh"),
-            (true, true, "network")
-        );
-        assert_eq!(
-            assess_command_risk("Invoke-Expression 'Get-Process'"),
-            (true, true, "dynamic_exec")
-        );
-        assert_eq!(assess_command_risk("rm -rf /"), (true, true, "destructive"));
-        assert_eq!(
-            assess_command_risk("echo test && del file.txt"),
-            (true, true, "chained_command")
-        );
-        assert_eq!(
-            assess_command_risk("Write-Host 'Hello World'"),
-            (false, false, "none")
-        );
-    }
+#[test]
+fn assess_command_risk_examples() {
+assert_eq!(assess_command_risk("ls -la"), (false, false, "none"));
+assert_eq!(
+assess_command_risk("curl http://example.com/file.sh"),
+(true, true, "network")
+);
+assert_eq!(
+assess_command_risk("Invoke-Expression 'Get-Process'"),
+(true, true, "dynamic_exec")
+);
+assert_eq!(assess_command_risk("rm -rf /"), (true, true, "destructive"));
+assert_eq!(
+assess_command_risk("echo test && del file.txt"),
+(true, true, "chained_command")
+);
+assert_eq!(
+assess_command_risk("Write-Host 'Hello World'"),
+(false, false, "none")
+);
+}
+
+#[test]
+fn test_is_command_allowed_whitelisted_command() {
+let default_wl = vec!["ls".to_string()];
+let custom_wl = vec![];
+let blacklist: Vec<String> = vec![];
+let result = is_command_allowed("ls -l", &default_wl, &custom_wl, &blacklist);
+assert_eq!(result, Ok(true));
+}
+
+#[test]
+fn test_is_command_allowed_not_whitelisted() {
+let default_wl = vec!["ls".to_string()];
+let custom_wl = vec![];
+let blacklist: Vec<String> = vec![];
+let result = is_command_allowed("rm -rf test", &default_wl, &custom_wl, &blacklist);
+assert_eq!(result, Ok(false));
+}
+
+#[test]
+fn test_is_command_allowed_blacklist_regex_blocks() {
+let default_wl = vec!["ls".to_string()];
+let custom_wl = vec![];
+let blacklist = vec!["^ls\\s+-l".to_string()];
+let result = is_command_allowed("ls -l", &default_wl, &custom_wl, &blacklist);
+assert_eq!(result, Ok(false));
+}
+
+#[test]
+fn test_is_command_allowed_no_blacklist_match() {
+let default_wl = vec!["cat".to_string()];
+let custom_wl = vec![];
+let blacklist = vec!["^rm\\s+-rf".to_string()];
+let result = is_command_allowed("cat file.txt", &default_wl, &custom_wl, &blacklist);
+assert_eq!(result, Ok(true));
+}
+
+#[test]
+fn test_is_command_allowed_invalid_regex() {
+let default_wl = vec!["ls".to_string()];
+let custom_wl = vec![];
+let blacklist = vec!["[".to_string()];
+let result = is_command_allowed("ls -l", &default_wl, &custom_wl, &blacklist);
+assert!(result.is_err());
+}
+
 }
