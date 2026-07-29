@@ -73,8 +73,40 @@ pub fn src_dir() -> PathBuf {
 }
 
 /// data/-Verzeichnis für Runs, Memory, etc. (stabiler Ort).
+///
+/// Unter `cargo test` wird bewusst ein eigener Ort benutzt. Sonst schreiben
+/// Testläufe in dieselben Dateien wie der Betrieb: im Score-Log standen real
+/// Einträge mit `brain_id: "a"` und `"b"` neben den echten Brains und
+/// verfälschten das Leaderboard. Ein Test, der Produktivdaten verändert, ist
+/// kein Test mehr, sondern ein Nebeneffekt.
 pub fn data_dir() -> PathBuf {
+    if is_test_run() {
+        return env::temp_dir().join("webagent_test_data");
+    }
     webagent_root_stable().join("data")
+}
+
+/// Läuft der Prozess unter `cargo test`?
+///
+/// Cargo setzt beim Testlauf keine eindeutige Variable, aber die Testbinary
+/// liegt immer unter `target/…/deps/`. Das ist das verlässlichste Signal ohne
+/// zusätzliche Verdrahtung; wer es überstimmen muss, setzt
+/// `WEBAGENT_FORCE_REAL_DATA=1`.
+fn is_test_run() -> bool {
+    if env::var("WEBAGENT_FORCE_REAL_DATA")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    std::env::current_exe()
+        .map(|p| {
+            p.parent()
+                .and_then(|d| d.file_name())
+                .map(|n| n == "deps")
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
 }
 
 /// data/runs/ — Run-Metadaten und Transcripts
@@ -1341,6 +1373,22 @@ mod tests {
         // Fehlende Wurzeln sind kein Fehler.
         let _ = fs::remove_dir_all(&base);
         assert_eq!(sweep_stale_runtime_profiles_in(&base, 0), 0);
+    }
+
+    #[test]
+    fn tests_never_write_into_the_production_data_dir() {
+        // Real beobachtet: im Score-Log standen Eintraege mit brain_id "a" und
+        // "b" neben den echten Brains — aus Testlaeufen, die in dieselbe Datei
+        // schrieben wie der Betrieb. Das verfaelscht das Leaderboard.
+        let d = data_dir();
+        assert!(
+            d.starts_with(std::env::temp_dir()),
+            "unter cargo test muss data_dir im Temp liegen, ist aber {d:?}"
+        );
+        assert!(
+            !d.starts_with(webagent_root_stable()),
+            "darf nicht auf den Produktivort zeigen"
+        );
     }
 
     #[test]
