@@ -223,12 +223,38 @@ pub fn added_public_fns(patch: &str) -> Vec<String> {
 /// streng: ein faelschlich verworfener Beitrag kostet eine Runde, ein
 /// faelschlich geernteter bleibt für immer im Repo.
 fn patch_uses_any(patch: &str, names: &[String]) -> bool {
+    // Klammertiefe ab dem `#[test]`-Marker mitzaehlen, um Testrumpfe zu
+    // ueberspringen.
+    //
+    // Der erste Entwurf schloss nur Zeilen mit `assert` oder `#[test]` aus —
+    // und fiel sofort herein: ein geernteter Beitrag (608d599) legte eine tote
+    // `Observer`-Struktur an und rief sie in fuenf mitgelieferten Tests auf.
+    // Damit galt sie als "benutzt". Ein Brain muss also nur seine eigene tote
+    // Funktion selbst testen, und die Pruefung ist zufrieden.
+    //
+    // Ein Aufruf zaehlt nur noch, wenn er AUSSERHALB eines Testrumpfs steht —
+    // also echten Produktivcode erreicht.
+    let mut in_test = false;
+    let mut depth: i32 = 0;
     for line in patch.lines() {
         if !line.starts_with('+') || line.starts_with("+++") {
             continue;
         }
         let t = line.trim_start_matches('+').trim();
-        if t.starts_with("pub fn ") || t.starts_with("#[test]") || t.contains("assert") {
+        if t.starts_with("#[test]") || t.starts_with("#[cfg(test)]") {
+            in_test = true;
+            depth = 0;
+            continue;
+        }
+        if in_test {
+            depth += t.matches('{').count() as i32;
+            depth -= t.matches('}').count() as i32;
+            if depth <= 0 && t.contains('}') {
+                in_test = false;
+            }
+            continue;
+        }
+        if t.starts_with("pub fn ") || t.starts_with("fn ") {
             continue;
         }
         if names.iter().any(|n| t.contains(&format!("{n}("))) {
@@ -2048,6 +2074,27 @@ mod tests {
         let deletes = "+++ b/src/x.rs\n-    #[test]\n-    fn assess_command_risk_examples() {}\n+fn helper() {}\n";
         let reason = harvest_rejection(deletes).expect("Testloeschung muss verworfen werden");
         assert!(reason.contains("Test"), "{reason}");
+    }
+
+    #[test]
+    fn harvest_rejects_a_function_that_only_its_own_tests_call() {
+        // Real geerntet als 608d599: tote Observer-Struktur, in fuenf
+        // mitgelieferten Tests aufgerufen. Der erste Filterentwurf hielt das
+        // fuer "wird benutzt" und liess es durch.
+        let selbsttest = concat!(
+            "+++ b/src/observer.rs\n",
+            "+pub fn set_expected_action_id(&mut self, id: u64) {\n",
+            "+    self.expected_action_id = Some(id);\n",
+            "+}\n",
+            "+    #[test]\n",
+            "+    fn t1() {\n",
+            "+        let mut o = Observer::default();\n",
+            "+        o.set_expected_action_id(7);\n",
+            "+    }\n"
+        );
+        let reason = harvest_rejection(selbsttest)
+            .expect("nur von eigenen Tests aufgerufen ist kein Aufrufer");
+        assert!(reason.contains("set_expected_action_id"), "{reason}");
     }
 
     #[test]
