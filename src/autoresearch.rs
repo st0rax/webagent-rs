@@ -19,11 +19,6 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-pub fn normalize_research_suggestion(input: &str) -> String {
-    input.split_whitespace().collect::<Vec<&str>>().join(" ")
-}
-
-
 /// Controller-Zyklen pro Modify-Schritt: klein gehalten, damit der Brain bei
 /// "einer fokussierten Änderung" bleibt statt einer offenen Aufgabe (§10).
 const MODIFY_MAX_CYCLES: usize = 5;
@@ -1254,40 +1249,5 @@ mod tests {
         assert!(name1.contains("fix_"), "name={name1}");
         assert!(!name1.contains('/'), "keine Slashes");
         assert!(!name1.contains(':'), "keine Doppelpunkte");
-    }
-
-    #[test]
-    fn test_normalize_trims_whitespace() {
-        let input = "  hello world  ";
-        let result = normalize_research_suggestion(input);
-        assert_eq!(result, "hello world");
-    }
-
-    #[test]
-    fn test_normalize_collapses_multiple_spaces_and_newlines() {
-        let input = "hello   world\n\nthis is a test";
-        let result = normalize_research_suggestion(input);
-        assert_eq!(result, "hello world this is a test");
-    }
-
-    #[test]
-    fn test_normalize_empty_string() {
-        let input = "";
-        let result = normalize_research_suggestion(input);
-        assert_eq!(result, "");
-    }
-
-    #[test]
-    fn test_normalize_only_whitespace_returns_empty() {
-        let input = "   \n\t  ";
-        let result = normalize_research_suggestion(input);
-        assert_eq!(result, "");
-    }
-
-    #[test]
-    fn test_normalize_already_normalized_unchanged() {
-        let input = "already normalized text";
-        let result = normalize_research_suggestion(input);
-        assert_eq!(result, "already normalized text");
     }
 }
