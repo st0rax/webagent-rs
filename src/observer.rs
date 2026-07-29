@@ -6,6 +6,19 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
+pub struct Observer {
+pub expected_action_id: Option<u64>,
+pub replay_counter: u64,
+pub internal_buffer: Vec<String>,
+}
+
+impl Observer {
+pub fn set_expected_action_id(&mut self, id: u64) {
+self.expected_action_id = Some(id);
+self.replay_counter = 0;
+}
+}
+
 /// Regex für transiente UI-Status-Labels (Denke nach, Thinking, etc.).
 fn transient_status_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -337,12 +350,83 @@ mod tests {
             "Thinking\nHere is the actual answer",
         ];
 
-        for text in cases {
-            assert!(
-                !is_claude_limit_response_text(text),
-                "Expected '{}' to NOT be a Claude limit message",
-                text
-            );
-        }
-    }
+for text in cases {
+assert!(
+!is_claude_limit_response_text(text),
+"Expected '{}' to NOT be a Claude limit message",
+text
+);
+}
+}
+
+#[test]
+fn reset_on_new_id() {
+let mut obs = Observer {
+expected_action_id: Some(5),
+replay_counter: 3,
+internal_buffer: vec![],
+};
+obs.set_expected_action_id(6);
+assert_eq!(obs.expected_action_id, Some(6));
+assert_eq!(obs.replay_counter, 0);
+}
+
+#[test]
+fn reset_on_same_id() {
+let mut obs = Observer {
+expected_action_id: Some(5),
+replay_counter: 2,
+internal_buffer: vec![],
+};
+obs.set_expected_action_id(5);
+assert_eq!(obs.expected_action_id, Some(5));
+assert_eq!(obs.replay_counter, 0);
+}
+
+#[test]
+fn initial_set() {
+let mut obs = Observer {
+expected_action_id: None,
+replay_counter: 0,
+internal_buffer: vec![],
+};
+obs.set_expected_action_id(1);
+assert_eq!(obs.expected_action_id, Some(1));
+assert_eq!(obs.replay_counter, 0);
+}
+
+#[test]
+fn multiple_transitions() {
+let mut obs = Observer {
+expected_action_id: None,
+replay_counter: 0,
+internal_buffer: vec![],
+};
+obs.set_expected_action_id(1);
+assert_eq!(obs.expected_action_id, Some(1));
+assert_eq!(obs.replay_counter, 0);
+obs.replay_counter = 5;
+obs.set_expected_action_id(2);
+assert_eq!(obs.expected_action_id, Some(2));
+assert_eq!(obs.replay_counter, 0);
+obs.replay_counter = 10;
+obs.set_expected_action_id(3);
+assert_eq!(obs.expected_action_id, Some(3));
+assert_eq!(obs.replay_counter, 0);
+}
+
+#[test]
+fn no_buffer_side_effects() {
+let buf = vec!["test1".to_string(), "test2".to_string()];
+let mut obs = Observer {
+expected_action_id: Some(5),
+replay_counter: 2,
+internal_buffer: buf.clone(),
+};
+obs.set_expected_action_id(6);
+assert_eq!(obs.expected_action_id, Some(6));
+assert_eq!(obs.replay_counter, 0);
+assert_eq!(obs.internal_buffer, buf);
+}
+
 }
