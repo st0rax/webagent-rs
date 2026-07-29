@@ -1705,7 +1705,10 @@ impl ReplSession {
 /// Überspringbar mit `WEBAGENT_NO_WELCOME=1`; acht Browserstarts dauern, und
 /// wer nur schnell etwas fragen will, braucht den Bericht nicht jedes Mal.
 fn show_welcome() {
-    if std::env::var("WEBAGENT_NO_WELCOME").map(|v| v == "1").unwrap_or(false) {
+    if std::env::var("WEBAGENT_NO_WELCOME")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
         return;
     }
     let brains = crate::config::available_brain_ids();
@@ -1715,7 +1718,10 @@ fn show_welcome() {
     println!("\n  webagent — prüfe {} Brains live…", brains.len());
     let shots = crate::config::data_dir().join("shots");
     let statuses = crate::welcome::probe_all_with_shots(&brains, true, 4, Some(&shots));
-    print!("{}", crate::welcome::render(&statuses, &crate::now_rfc3339()));
+    print!(
+        "{}",
+        crate::welcome::render(&statuses, &crate::now_rfc3339())
+    );
     // Failover zuerst: nur wenn KEIN Brain benutzbar ist, wird angemeldet.
     // Solange eins laeuft, arbeitet der Pool damit weiter und niemand wird
     // unterbrochen.

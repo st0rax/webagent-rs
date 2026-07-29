@@ -445,7 +445,9 @@ pub fn brains() -> HashMap<String, HashMap<String, String>> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let mut brains = HashMap::new();
-    let builtin = BRAIN_TABLE.iter().map(|(i, u)| (i.to_string(), u.to_string()));
+    let builtin = BRAIN_TABLE
+        .iter()
+        .map(|(i, u)| (i.to_string(), u.to_string()));
     for (id, url) in builtin.chain(load_custom_brains()) {
         let mut b = HashMap::new();
         b.insert("url".to_string(), url);

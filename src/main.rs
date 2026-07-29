@@ -922,15 +922,13 @@ fn cmd_autoresearch(args: AutoresearchArgs) -> i32 {
     };
     let workdir = match args.workdir {
         Some(p) => std::path::PathBuf::from(p),
-        None => {
-            match autoresearch::resolve_project_root() {
-                Ok(root) => root,
-                Err(e) => {
-                    eprintln!("[autoresearch] {e}");
-                    return 2;
-                }
+        None => match autoresearch::resolve_project_root() {
+            Ok(root) => root,
+            Err(e) => {
+                eprintln!("[autoresearch] {e}");
+                return 2;
             }
-        }
+        },
     };
 
     let config = AutoResearchConfig {
@@ -1008,7 +1006,8 @@ fn cmd_autoresearch_self(
             String::new()
         }),
         None => {
-            let root = webagent::autoresearch::resolve_project_root().unwrap_or_else(|_| std::env::temp_dir());
+            let root = webagent::autoresearch::resolve_project_root()
+                .unwrap_or_else(|_| std::env::temp_dir());
             webagent::self_research::gather_facts(&root, 1200)
         }
     };
@@ -1358,7 +1357,11 @@ fn cmd_wall(interval: u64, once: bool, only: &[String]) -> i32 {
         }
         match webagent::welcome::write_wall_html(&dir, &brains, interval, round) {
             Ok(path) => {
-                println!("[wall] Runde {round}: {ok}/{} aufgenommen -> {}", brains.len(), path.display());
+                println!(
+                    "[wall] Runde {round}: {ok}/{} aufgenommen -> {}",
+                    brains.len(),
+                    path.display()
+                );
                 if round == 1 {
                     println!("[wall] im Browser oeffnen: {}", path.display());
                 }
@@ -1447,7 +1450,10 @@ fn cmd_menu(brain: &str, key: &str, options: &str, set: Option<&str>, headless: 
     }
     let code = match set {
         None => {
-            println!("[menu] {brain}/{key}: aktuell ''{}''", backend.menu_label(key));
+            println!(
+                "[menu] {brain}/{key}: aktuell ''{}''",
+                backend.menu_label(key)
+            );
             match backend.list_menu(key, options) {
                 Ok(list) if !list.is_empty() => {
                     for m in &list {
@@ -1468,7 +1474,11 @@ fn cmd_menu(brain: &str, key: &str, options: &str, set: Option<&str>, headless: 
         Some(want) if want.contains('>') => {
             // Pfad durch Untermenues: "Aufwand > Hoch". Claude legt die
             // Denkstufe eine Ebene tiefer als das Modell.
-            let path: Vec<&str> = want.split('>').map(str::trim).filter(|s| !s.is_empty()).collect();
+            let path: Vec<&str> = want
+                .split('>')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
             match backend.select_in_menu_path(key, options, &path) {
                 Ok(now) => {
                     println!("[menu] {brain}/{key}: ''{now}''");
@@ -1604,7 +1614,9 @@ fn cmd_shot(brain: Option<&str>, out: Option<&str>, open: Option<&str>, headless
             Ok(png) => {
                 let path = dir.join(format!("{id}.png"));
                 match std::fs::write(&path, &png) {
-                    Ok(()) => println!("  {:<10} {} KB -> {}", id, png.len() / 1024, path.display()),
+                    Ok(()) => {
+                        println!("  {:<10} {} KB -> {}", id, png.len() / 1024, path.display())
+                    }
                     Err(e) => {
                         eprintln!("[shot] {id}: Schreiben fehlgeschlagen: {e}");
                         failures += 1;
@@ -1625,7 +1637,13 @@ fn cmd_shot(brain: Option<&str>, out: Option<&str>, open: Option<&str>, headless
     }
 }
 
-fn cmd_survey(brain: Option<&str>, write: bool, headless: bool, dump: bool, open: Option<&str>) -> i32 {
+fn cmd_survey(
+    brain: Option<&str>,
+    write: bool,
+    headless: bool,
+    dump: bool,
+    open: Option<&str>,
+) -> i32 {
     use webagent::browser::WebBrainBackend;
 
     let targets: Vec<String> = match brain {
@@ -1684,7 +1702,13 @@ fn cmd_survey(brain: Option<&str>, write: bool, headless: bool, dump: bool, open
             for b in buttons.iter().take(40) {
                 println!("      {b}");
             }
-            println!("  --- {id}: counts = {} ---", report.get("counts").map(|c| c.to_string()).unwrap_or_default());
+            println!(
+                "  --- {id}: counts = {} ---",
+                report
+                    .get("counts")
+                    .map(|c| c.to_string())
+                    .unwrap_or_default()
+            );
             println!("  --- {id}: {} beschriftete Elemente ---", seen.len());
             for l in seen.iter().take(60) {
                 println!("      {l}");

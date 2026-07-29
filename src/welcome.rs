@@ -56,10 +56,7 @@ impl BrainStatus {
         } else {
             format!("  ({})", self.note)
         };
-        format!(
-            "  {:<10} {:<16} {:<8}{}",
-            self.brain_id, status, lvl, note
-        )
+        format!("  {:<10} {:<16} {:<8}{}", self.brain_id, status, lvl, note)
     }
 
     /// Einsatzbereit heißt: benutzbar — angemeldet ODER anonym nutzbar.
@@ -82,11 +79,8 @@ impl BrainStatus {
 /// Ein Composer allein genügt nicht — geminis ausgeloggte Startseite hat einen
 /// und ist trotzdem nicht benutzbar.
 pub fn probe_anonymous(brain_id: &str) -> bool {
-    let tmp = std::env::temp_dir().join(format!(
-        "webagent_anon_{}_{}",
-        brain_id,
-        std::process::id()
-    ));
+    let tmp =
+        std::env::temp_dir().join(format!("webagent_anon_{}_{}", brain_id, std::process::id()));
     if std::fs::create_dir_all(&tmp).is_err() {
         return false;
     }
@@ -106,7 +100,11 @@ pub fn probe_anonymous(brain_id: &str) -> bool {
 ///
 /// Ein Browserstart statt zwei: Startuebersicht und Bilderwand lesen denselben
 /// Zustand derselben Seite.
-fn probe_with_shot(brain_id: &str, headless: bool, shots_dir: Option<&std::path::Path>) -> BrainStatus {
+fn probe_with_shot(
+    brain_id: &str,
+    headless: bool,
+    shots_dir: Option<&std::path::Path>,
+) -> BrainStatus {
     let lvl = level_of(brain_id);
     let mut st = BrainStatus {
         brain_id: brain_id.to_string(),
@@ -366,7 +364,10 @@ mod tests {
             st("a", true, Some(true), false),
             st("b", true, Some(false), true),
         ];
-        assert_eq!(login_if_nothing_usable(&mit_einem, Duration::from_secs(1)), None);
+        assert_eq!(
+            login_if_nothing_usable(&mit_einem, Duration::from_secs(1)),
+            None
+        );
 
         // Auch ein anonym nutzbares Brain reicht.
         let mut anon = st("c", true, Some(false), false);

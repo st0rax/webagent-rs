@@ -234,20 +234,46 @@ pub const CATALOG: &[Capability] = &[
 const MATCHERS: &[(&str, &[&str])] = &[
     (
         "reasoning_toggle",
-        &["deepthink", "deep think", "extended thinking", "reasoning", "think longer"],
+        &[
+            "deepthink",
+            "deep think",
+            "extended thinking",
+            "reasoning",
+            "think longer",
+        ],
     ),
     (
         "web_search",
         &["web search", "search the web", "websuche", "im web suchen"],
     ),
-    ("model_switch", &["choose model", "model selector", "modell wählen", "switch model"]),
+    (
+        "model_switch",
+        &[
+            "choose model",
+            "model selector",
+            "modell wählen",
+            "switch model",
+        ],
+    ),
     ("deep_research", &["deep research", "tiefenrecherche"]),
-    ("file_attach", &["attach", "upload file", "datei anhängen", "hochladen"]),
+    (
+        "file_attach",
+        &["attach", "upload file", "datei anhängen", "hochladen"],
+    ),
     ("canvas", &["canvas", "artifact", "artefakt"]),
-    ("regenerate", &["regenerate", "neu generieren", "erneut generieren"]),
-    ("temporary_chat", &["temporary chat", "temporärer chat", "incognito"]),
+    (
+        "regenerate",
+        &["regenerate", "neu generieren", "erneut generieren"],
+    ),
+    (
+        "temporary_chat",
+        &["temporary chat", "temporärer chat", "incognito"],
+    ),
     ("new_chat", &["new chat", "neuer chat", "neuen chat"]),
-    ("stop_generation", &["stop response", "stop generating", "antwort stoppen"]),
+    (
+        "stop_generation",
+        &["stop response", "stop generating", "antwort stoppen"],
+    ),
     // "voice" allein waere zu weit: es steckt auch in Beschriftungen, die den
     // Sprachdialog meinen. Deshalb nur Wortpaare bzw. das eindeutige Mikrofon.
     (
@@ -256,15 +282,28 @@ const MATCHERS: &[(&str, &[&str])] = &[
     ),
     (
         "voice_mode",
-        &["sprachmodus", "voice mode", "sprachdialog", "sprachmodus starten"],
+        &[
+            "sprachmodus",
+            "voice mode",
+            "sprachdialog",
+            "sprachmodus starten",
+        ],
     ),
     // Bewusst ohne das nackte "reasoning": das gehoert dem An/Aus-Schalter.
     // Hier zaehlt nur, was eine Stufe benennt.
     (
         "reasoning_effort",
-        &["reasoning effort", "denkstufe", "denktiefe", "thinking effort"],
+        &[
+            "reasoning effort",
+            "denkstufe",
+            "denktiefe",
+            "thinking effort",
+        ],
     ),
-    ("projects", &["projekte", "projects", "new project", "neues projekt"]),
+    (
+        "projects",
+        &["projekte", "projects", "new project", "neues projekt"],
+    ),
 ];
 
 /// Ordnet die Schaltflächen eines DOM-Berichts den bekannten Fähigkeiten zu.
@@ -569,11 +608,7 @@ pub fn quest_log() -> Vec<(String, Vec<Quest>)> {
             }
         }
     }
-    grouped.sort_by(|a, b| {
-        b.1.len()
-            .cmp(&a.1.len())
-            .then_with(|| a.0.cmp(&b.0))
-    });
+    grouped.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
     grouped
 }
 
@@ -599,7 +634,10 @@ mod tests {
             json!({"al": "Kontoeinstellungen", "ti": "", "dt": "", "tp": ""}),
         ];
         let got = detect_ui_options(&buttons, true);
-        assert_eq!(got, vec!["chat", "new_chat", "reasoning_toggle", "web_search"]);
+        assert_eq!(
+            got,
+            vec!["chat", "new_chat", "reasoning_toggle", "web_search"]
+        );
         // Nicht erkannt heisst nicht erfunden: canvas taucht nirgends auf.
         assert!(!got.contains(&"canvas".to_string()));
     }
@@ -654,11 +692,12 @@ mod tests {
         // stand nacheinander auf reasoning_toggle, projects und
         // reasoning_effort — alle drei wurden am 2026-07-28 fahrbar. Er wandert
         // mit dem Code; seine Aussage bleibt unveraendert.
-        assert_eq!(lvl.label(), "claude [2/3]", "chat und projects sind fahrbar");
         assert_eq!(
-            lvl.out_of_reach,
-            vec!["voice_input", "voice_mode"]
+            lvl.label(),
+            "claude [2/3]",
+            "chat und projects sind fahrbar"
         );
+        assert_eq!(lvl.out_of_reach, vec!["voice_input", "voice_mode"]);
         assert_eq!(lvl.quests.len(), 1, "nur canvas fehlt noch");
         assert_eq!(lvl.quests[0].key, "canvas");
         assert_eq!(lvl.quests[0].blocker, QuestBlocker::NeedsCode);
@@ -676,7 +715,10 @@ mod tests {
         });
         let lvl = level_from_selectors("t", &sel);
         assert_eq!(lvl.label(), "t [1/1]");
-        assert!(lvl.maxed(), "ohne den unerreichbaren Posten ist das ausgereizt");
+        assert!(
+            lvl.maxed(),
+            "ohne den unerreichbaren Posten ist das ausgereizt"
+        );
         assert_eq!(lvl.out_of_reach, vec!["file_attach"]);
         assert!(
             lvl.quests.is_empty(),
@@ -720,7 +762,11 @@ mod tests {
         });
         let lvl2 = level_from_selectors("chatgpt", &reich);
         assert_eq!(lvl2.label(), "chatgpt [1/5]");
-        assert_eq!(lvl.level(), lvl2.level(), "gleicher Stand, anderer Anspruch");
+        assert_eq!(
+            lvl.level(),
+            lvl2.level(),
+            "gleicher Stand, anderer Anspruch"
+        );
         assert!(lvl.max_level() < lvl2.max_level());
     }
 
@@ -824,7 +870,10 @@ mod tests {
         // bringt eine Implementierung den groessten Hebel.
         let log = quest_log();
         for w in log.windows(2) {
-            assert!(w[0].1.len() >= w[1].1.len(), "Questlog nicht nach Reichweite sortiert");
+            assert!(
+                w[0].1.len() >= w[1].1.len(),
+                "Questlog nicht nach Reichweite sortiert"
+            );
         }
     }
 }

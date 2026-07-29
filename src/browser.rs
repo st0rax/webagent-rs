@@ -19,6 +19,12 @@ use crate::webview_runtime::WebViewRuntime;
 
 const STABILITY_SECONDS: f64 = 1.5;
 
+/// Stabilitätsfenster für Text, der noch keine Protokoll-Nutzlast enthält.
+/// Deutlich länger als `STABILITY_SECONDS`, weil ein Reasoning-Block zwischen
+/// Denk- und Antwortphase sekundenlang stillstehen kann. Siehe
+/// `classify_completion`.
+const PROSE_STABILITY_SECONDS: f64 = 8.0;
+
 /// Phrasen, die auf eine externe Blockierung hindeuten (Tages-/Nachrichtenlimit,
 /// Login, Cloudflare) — DE+EN. Geteilt zwischen `detect_block_banner` (JS-Scan der
 /// ganzen Seite) und `block_phrase_in_text` (reine Rust-Pruefung des bereits
@@ -178,6 +184,26 @@ fn classify_completion(
         return Completion::Complete;
     }
 
+    // Antwort ohne jede Protokoll-Nutzlast braucht ein deutlich längeres
+    // Stabilitätsfenster.
+    //
+    // Grund (gemessen am 29.07.2026): kimis `stop_button`-Selektoren sind
+    // geratene `aria-label*='Stop'`-Muster und greifen nie. Damit fiel die
+    // Entscheidung auf das kurze Stabilitätsfenster zurück — und das war
+    // erreicht, sobald der Reasoning-Block fertig war und der eigentliche
+    // Antwort-Block noch nicht begonnen hatte. Ergebnis: mitten im Stream
+    // geerntete Prosa (186–292 Zeichen, mitten im Wort abgebrochen), die als
+    // `protocol_invalid` verworfen wurde und einen Repair-Roundtrip kostete.
+    // Über alle 108 Läufe des Tages waren so 145 von ~500 Brain-Turns (29 %)
+    // reine Verschwendung — der größte Produktivitätsverlust im Dauerlauf.
+    //
+    // Im Protokollmodus ist Text ohne Nutzlast entweder Zwischenstand oder
+    // Regelbruch. Beides verträgt ein paar Sekunden Warten; ein
+    // Repair-Roundtrip kostet 10–35 s.
+    if !has_protocol_payload(text) && stable_secs < PROSE_STABILITY_SECONDS {
+        return Completion::Continue;
+    }
+
     if has_stop_selectors {
         if stop_seen_ever && !stop_visible {
             // Generierung war aktiv und ist nun beendet.
@@ -194,6 +220,16 @@ fn classify_completion(
     } else {
         Completion::Continue
     }
+}
+
+/// Enthält der Text überhaupt etwas, das eine Protokoll-Antwort sein könnte?
+///
+/// Bewusst grob: ein `{` oder ein `WEBAGENT/1`-Umschlag genügt. Es geht nicht
+/// darum, ob das Protokoll gültig ist (das prüft `protocol::parse`), sondern ob
+/// das Brain überhaupt angefangen hat zu antworten statt nur zu denken.
+fn has_protocol_payload(text: &str) -> bool {
+    let t = text.trim();
+    t.contains('{') || t.contains("WEBAGENT/1")
 }
 
 /// Web-Chat-Backend für einen Provider (chatgpt, claude, …).
@@ -1438,7 +1474,8 @@ return null;}})()"#
     }
 
     pub fn live_diagnose(&mut self, headless: bool) -> Result<LiveDiagnosis, String> {
-        self.live_diagnose_with_shot(headless, false).map(|(d, _)| d)
+        self.live_diagnose_with_shot(headless, false)
+            .map(|(d, _)| d)
     }
 
     /// Diagnose und optional ein Bildschirmfoto in **einer** Sitzung.
@@ -2232,7 +2269,15 @@ mod tests {
     #[test]
     fn complete_when_stop_button_disappears() {
         // Stop-Button war sichtbar, ist jetzt weg, Text steht.
-        let r = classify_completion("Antworttext ohne JSON", true, true, false, 0.2, true);
+        // Nutzlastfreier Text braucht zusätzlich das Prosa-Fenster.
+        let r = classify_completion(
+            "Antworttext ohne JSON",
+            true,
+            true,
+            false,
+            PROSE_STABILITY_SECONDS + 0.1,
+            true,
+        );
         assert_eq!(r, Completion::Complete);
     }
 
@@ -2296,10 +2341,10 @@ mod tests {
     #[test]
     fn no_stop_button_falls_back_to_stability() {
         // UI ohne Stop-Button: erst nach Stabilitätsfenster fertig.
-        let unstable = classify_completion("fertiger Text", false, false, false, 0.5, true);
+        let unstable = classify_completion("{\"a\":1}", false, false, false, 0.5, true);
         assert_eq!(unstable, Completion::Continue);
         let stable = classify_completion(
-            "fertiger Text",
+            "{\"a\":1}",
             false,
             false,
             false,
@@ -2331,7 +2376,7 @@ mod tests {
         // Stop-Button nie erfasst (sehr schnelle Antwort): nach 1.5×-Fenster fertig,
         // statt dauerhaft zu blockieren.
         let r = classify_completion(
-            "kurze Antwort",
+            "{\"kurze\":\"Antwort\"}",
             true,
             false,
             false,
@@ -2339,6 +2384,34 @@ mod tests {
             true,
         );
         assert_eq!(r, Completion::Complete);
+    }
+
+    // Regression 2026-07-29: kimis Reasoning-Block stand still, der Stop-Button
+    // wurde nie erfasst — und die halbfertige Denk-Prosa wurde als Antwort
+    // geerntet. Wörtlicher Text aus Run 20260729_212023_dabfadbc.
+    #[test]
+    fn mid_stream_reasoning_prose_is_not_a_finished_answer() {
+        let prosa = "Der Benutzer hat keine neue Aufgabe gestellt, sondern den \
+                     WebAgent-Runner gestartet. Ich muss zuerst den aktuellen Zustand \
+                     des Projekts erfassen, um zu verstehen, welche der offenen Tasks \
+                     machbar sind. Die Langzeiterinnerungen zeigen drei offene";
+        // Stop-Button nie gesehen, kurzes Fenster erreicht: früher Complete.
+        let fruch = classify_completion(prosa, true, false, false, 3.0, true);
+        assert_eq!(fruch, Completion::Continue, "Prosa zu früh als fertig");
+        // Auch die Stop-Button-Transition darf nutzlastfreien Text nicht
+        // vorzeitig abschließen.
+        let transition = classify_completion(prosa, true, true, false, 3.0, true);
+        assert_eq!(transition, Completion::Continue);
+        // Nach dem Prosa-Fenster ist es ein echter Regelbruch — dann Repair.
+        let spaet = classify_completion(
+            prosa,
+            true,
+            true,
+            false,
+            PROSE_STABILITY_SECONDS + 0.1,
+            true,
+        );
+        assert_eq!(spaet, Completion::Complete);
     }
 
     #[test]

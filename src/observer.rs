@@ -72,9 +72,9 @@ fn is_repeated_gerund_label(normalized: &str) -> bool {
 /// Denk-Anzeige trug U+E027) und kommen in echtem Antworttext nicht vor.
 fn has_private_use_glyph(normalized: &str) -> bool {
     normalized.chars().count() <= STATUS_LABEL_MAX_CHARS
-        && normalized.chars().any(|c| {
-            matches!(c as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
-        })
+        && normalized
+            .chars()
+            .any(|c| matches!(c as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD))
 }
 
 /// Entfernt eine doppelt vorangestellte Kopfzeile aus dem Antworttext.
@@ -100,9 +100,9 @@ pub fn strip_repeated_lead_line(text: &str) -> String {
     // verschieden und laesst die Kopfzeile stehen.
     let key = |l: &str| -> String {
         l.chars()
-            .filter(|c| {
-                !matches!(*c as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
-            })
+            .filter(
+                |c| !matches!(*c as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD),
+            )
             .collect::<String>()
             .split_whitespace()
             .collect::<Vec<_>>()
@@ -195,7 +195,8 @@ mod tests {
         // Die Oberflaeche haengt den Icon-Glyph nur an die erste Kopie. Roh
         // verglichen sind die Zeilen dann verschieden — und die Kopfzeile blieb
         // stehen, obwohl beide Auslesepfade schon bereinigt waren.
-        let raw = "\u{E027}Synthesized drei Kriterien\n\nSynthesized drei Kriterien\n\nAntwort hier.";
+        let raw =
+            "\u{E027}Synthesized drei Kriterien\n\nSynthesized drei Kriterien\n\nAntwort hier.";
         assert_eq!(strip_repeated_lead_line(raw), "Antwort hier.");
     }
 
@@ -203,11 +204,15 @@ mod tests {
     fn strip_repeated_lead_line_leaves_normal_text_alone() {
         for s in [
             "Robuste Selektoren brauchen drei Dinge.",
-            "Erste Zeile\nZweite Zeile\nErste Zeile",   // Wiederholung nicht unmittelbar
+            "Erste Zeile\nZweite Zeile\nErste Zeile", // Wiederholung nicht unmittelbar
             "",
             "Nur eine Zeile",
         ] {
-            assert_eq!(strip_repeated_lead_line(s), s, "unveraendert erwartet: {s:?}");
+            assert_eq!(
+                strip_repeated_lead_line(s),
+                s,
+                "unveraendert erwartet: {s:?}"
+            );
         }
     }
 
@@ -241,8 +246,8 @@ mod tests {
     fn real_answers_are_not_mistaken_for_thinking_labels() {
         for s in [
             "Testwort",
-            "Running",                       // Einwort-Gerundium bleibt gueltig
-            "Running the tests now",         // verschiedene Woerter
+            "Running",               // Einwort-Gerundium bleibt gueltig
+            "Running the tests now", // verschiedene Woerter
             "Ja",
             "Weighing the options carefully against each other",
             "42",

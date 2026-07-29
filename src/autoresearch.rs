@@ -553,7 +553,9 @@ fn find_rust_repo(dir: &Path, depth: usize) -> Option<PathBuf> {
         }
         subdirs.push(p);
     }
-    subdirs.into_iter().find_map(|p| find_rust_repo(&p, depth - 1))
+    subdirs
+        .into_iter()
+        .find_map(|p| find_rust_repo(&p, depth - 1))
 }
 
 /// Repo-Root des Projekts, unabhängig davon, von wo die exe gestartet wurde.

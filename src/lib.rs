@@ -48,10 +48,10 @@ pub mod tui;
 pub mod tui_render;
 #[cfg(feature = "tui")]
 pub mod tui_state;
-pub mod welcome;
 pub mod watchdog;
 #[cfg(feature = "webview")]
 pub mod webview_runtime;
+pub mod welcome;
 pub mod wiki_memory;
 pub mod worker_pool;
 

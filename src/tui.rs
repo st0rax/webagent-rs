@@ -833,8 +833,8 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
         Err(e) => {
             crate::bench_events::emit(
                 crate::bench_events::Level::Fail,
-                                None,
-                                &format!("Benchmark nicht startbar: {e}"),
+                None,
+                &format!("Benchmark nicht startbar: {e}"),
             );
             return;
         }
@@ -943,8 +943,8 @@ pub fn run_tui(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use super::*;
+    use std::path::PathBuf;
 
     fn temp_root() -> PathBuf {
         static NEXT_DIR: AtomicU64 = AtomicU64::new(0);

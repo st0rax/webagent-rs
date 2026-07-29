@@ -1054,7 +1054,7 @@ fn kill_on_exit_job() -> Option<windows::Win32::Foundation::HANDLE> {
     use std::sync::OnceLock;
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::JobObjects::{
-        CreateJobObjectW, SetInformationJobObject, JobObjectExtendedLimitInformation,
+        CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
 
@@ -1250,7 +1250,10 @@ mod tests {
 
         let mut got = select_expired_cooldowns(&state, now);
         got.sort();
-        assert_eq!(got, vec!["abgelaufen".to_string(), "ohne_frist".to_string()]);
+        assert_eq!(
+            got,
+            vec!["abgelaufen".to_string(), "ohne_frist".to_string()]
+        );
     }
 
     #[test]

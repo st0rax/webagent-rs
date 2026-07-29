@@ -220,4 +220,5 @@ mod tests {
                 "{brain}: Betrieb muss profiles/<brain> nutzen"
             );
         }
-    }}
+    }
+}

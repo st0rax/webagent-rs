@@ -2108,7 +2108,8 @@ mod tests {
     fn harvest_accepts_pure_refactoring_without_new_public_fns() {
         let refactor = "+++ b/src/x.rs\n-    let a = 1 + 1;\n+    let a = 2;\n";
         assert!(harvest_rejection(refactor).is_none());
-    }    use super::*;
+    }
+    use super::*;
     use crate::self_research::RankedSuggestion;
 
     // --- Harvest-Schutzgitter -------------------------------------------

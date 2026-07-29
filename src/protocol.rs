@@ -330,6 +330,110 @@ fn strip_rendered_ui_controls(text: &str) -> String {
     }
 }
 
+/// Repariert die zwei Defekte, mit denen Brains reihenweise gültiges Protokoll
+/// zerschießen, sobald ein Shell-Befehl selbst Anführungszeichen enthält.
+///
+/// Gemessen am 29.07.2026: Läufe wie `20260729_205525_94d2066c` bestanden aus
+/// drei Brain-Turns, alle drei `protocol_invalid` — und nach dem Repair-Prompt
+/// schickte das Brain **denselben** Befehl erneut (`step-2` → `repair-1` →
+/// `step-3`). Der Roundtrip half also nie, der Lauf lief in den Stall. Beispiel:
+///
+/// ```text
+/// {"…","command":"Select-String -Pattern "a|b" -Context 2,4","…":30}]}
+/// ```
+///
+/// Zwei Ursachen, beide im String-Wert:
+/// 1. **Unescaptes `"`** mitten im Wert. Erkennbar daran, dass nach dem
+///    Anführungszeichen (ohne Leerraum) kein struktureller Folger `, } ] :`
+///    kommt — dann ist es Inhalt und kein String-Ende.
+/// 2. **Regex-Escapes** wie `\[cfg\(test\)\]`. JSON kennt nur
+///    `" \ / b f n r t u` — `\[` ist also kein Escape, sondern ein literaler
+///    Backslash.
+///
+/// Absichtlich **nicht** repariert werden Backslashes vor Buchstaben (`\U` in
+/// `C:\Users`, `\d`, `\w`). Dort ist die Absicht mehrdeutig, und
+/// `test_never_repair_unescaped_windows_path_for_shell` hält das bewusst offen:
+/// ein Shell-Befehl darf nicht stillschweigend umgedeutet werden. Repariert wird
+/// nur Regex-Interpunktion, die weder in JSON noch in PowerShell ein Escape ist
+/// — da gibt es keine zweite Lesart.
+///
+/// Rein syntaktisch, ein einziger Durchlauf mit mitgeführtem String-Zustand.
+/// `None`, wenn nichts zu reparieren war.
+fn repair_unescaped_quotes_in_strings(json_text: &str) -> Option<String> {
+    let chars: Vec<char> = json_text.chars().collect();
+    let mut out = String::with_capacity(json_text.len() + 16);
+    let mut in_string = false;
+    let mut changed = false;
+    let mut i = 0;
+
+    while i < chars.len() {
+        let c = chars[i];
+
+        if !in_string {
+            if c == '"' {
+                in_string = true;
+            }
+            out.push(c);
+            i += 1;
+            continue;
+        }
+
+        // Ab hier: innerhalb eines String-Werts.
+        if c == '\\' {
+            match chars.get(i + 1).copied() {
+                // Gültige JSON-Escapes unverändert übernehmen.
+                Some(n @ ('"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | 'u')) => {
+                    out.push(c);
+                    out.push(n);
+                    i += 2;
+                }
+                // Regex-Interpunktion: eindeutig ein literaler Backslash.
+                Some(
+                    '[' | ']' | '(' | ')' | '{' | '}' | '.' | '+' | '*' | '?' | '|' | '^' | '$'
+                    | '-' | '#',
+                ) => {
+                    out.push_str("\\\\");
+                    changed = true;
+                    i += 1;
+                }
+                // Alles andere (insbesondere `\U`, `\d`) bleibt mehrdeutig und
+                // wird nicht angetastet — siehe Doc-Kommentar.
+                _ => {
+                    out.push(c);
+                    i += 1;
+                }
+            }
+            continue;
+        }
+
+        if c == '"' {
+            let mut j = i + 1;
+            while j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            // Struktureller Folger → echtes String-Ende.
+            if matches!(chars.get(j), Some(',' | '}' | ']' | ':') | None) {
+                in_string = false;
+                out.push(c);
+            } else {
+                out.push_str("\\\"");
+                changed = true;
+            }
+            i += 1;
+            continue;
+        }
+
+        out.push(c);
+        i += 1;
+    }
+
+    if changed {
+        Some(out)
+    } else {
+        None
+    }
+}
+
 fn repair_message_windows_paths(json_text: &str) -> Option<String> {
     // Nur reparieren wenn alle Actions vom Typ "message" sind
     if !json_text.contains(r#""type""#) || !json_text.contains(r#""message""#) {
@@ -647,8 +751,17 @@ pub fn parse(response_text: &str) -> ParseResult {
             if looks_like_capacity_notice(&text) {
                 return ParseResult::invalid("Model capacity / rate limit.", text);
             }
+            // Anführungszeichen/Escapes im String-Wert reparieren (häufigster
+            // Fall: ein Shell-Befehl mit eigenen Quotes oder Regex-Escapes).
+            if let Some(repaired) = repair_unescaped_quotes_in_strings(&json_str) {
+                if let Ok(v) = serde_json::from_str::<Value>(&repaired) {
+                    v
+                } else {
+                    return ParseResult::invalid(format!("Ungültiges JSON: {}", exc), text);
+                }
+            }
             // Versuche Windows-Path-Reparatur
-            if let Some(repaired) = repair_message_windows_paths(&json_str) {
+            else if let Some(repaired) = repair_message_windows_paths(&json_str) {
                 match serde_json::from_str::<Value>(&repaired) {
                     Ok(v) => v,
                     Err(_) => {
@@ -1420,6 +1533,50 @@ Write-Output $html
         let result = parse(&serde_json::to_string(&env).unwrap());
         assert!(result.valid, "{}", result.error);
         assert_eq!(result.actions.len(), 2);
+    }
+
+    #[test]
+    fn shell_befehl_mit_eigenen_quotes_wird_repariert_statt_verworfen() {
+        // Regression 2026-07-29: wörtliche Antworten aus den Läufen
+        // 20260729_205020_936b8bb0 und 20260729_205525_94d2066c. Beide waren
+        // strukturell vollständig, wurden aber wegen innerer Anführungszeichen
+        // und Regex-Escapes als `protocol_invalid` verworfen — und das Brain
+        // wiederholte danach denselben Befehl, bis der Lauf stallte.
+        let faelle = [
+            r#"{"protocol":"webagent/1","actions":[{"id":"step-2","type":"shell","command":"Select-String -Path src/self_research.rs -Pattern "isolated_query|assess_command_risk|#\[cfg\(test\)\]" -Context 2,4","timeout_seconds":30}]}"#,
+            r#"{"protocol":"webagent/1","actions":[{"id":"step-3","type":"shell","command":"Select-String -Path src/self_research.rs -Pattern "isolated_query|mod tests|fn test"","timeout_seconds":30}]}"#,
+        ];
+        for roh in faelle {
+            let r = parse(roh);
+            assert!(r.valid, "nicht geparst: {roh}\n → {:?}", r.error);
+            assert_eq!(r.actions.len(), 1);
+            let cmd = &r.actions[0].command;
+            assert!(
+                cmd.starts_with("Select-String -Path src/self_research.rs -Pattern "),
+                "cmd={cmd}"
+            );
+            assert!(cmd.contains("isolated_query"), "cmd={cmd}");
+        }
+    }
+
+    #[test]
+    fn quote_repair_laesst_gueltiges_json_unangetastet() {
+        assert_eq!(
+            repair_unescaped_quotes_in_strings(
+                r#"{"protocol":"webagent/1","actions":[{"id":"a","type":"finish"}]}"#
+            ),
+            None
+        );
+        // Leerer String-Wert ist ein echtes String-Ende, kein Inhalt.
+        assert_eq!(
+            repair_unescaped_quotes_in_strings(r#"{"a":"","b":1}"#),
+            None
+        );
+        // Schon korrekt escapte Quotes bleiben, wie sie sind.
+        assert_eq!(
+            repair_unescaped_quotes_in_strings(r#"{"a":"sagt \"hallo\"","b":1}"#),
+            None
+        );
     }
 
     #[test]
