@@ -1698,7 +1698,30 @@ impl ReplSession {
 }
 
 /// Startet die REPL. Liest Aufgaben von stdin, bis `/exit` oder EOF.
+/// Startübersicht vor der ersten Eingabe: welche Brains da sind, welche
+/// wirklich einsatzbereit sind und was sie können — live geprüft, nicht aus
+/// der Konfiguration gelesen.
+///
+/// Überspringbar mit `WEBAGENT_NO_WELCOME=1`; acht Browserstarts dauern, und
+/// wer nur schnell etwas fragen will, braucht den Bericht nicht jedes Mal.
+fn show_welcome() {
+    if std::env::var("WEBAGENT_NO_WELCOME").map(|v| v == "1").unwrap_or(false) {
+        return;
+    }
+    let brains = crate::config::available_brain_ids();
+    if brains.is_empty() {
+        return;
+    }
+    println!("\n  webagent — prüfe {} Brains live…", brains.len());
+    let statuses = crate::welcome::probe_all(&brains, true, 4);
+    print!("{}", crate::welcome::render(&statuses, &crate::now_rfc3339()));
+    println!("\n  [Enter] weiter zur Eingabe");
+    let mut buf = String::new();
+    let _ = io::stdin().read_line(&mut buf);
+}
+
 pub fn run_repl(brain_id: &str, headless: bool) -> i32 {
+    show_welcome();
     let session_start = std::time::Instant::now();
     let mut session = match ReplSession::new(brain_id, headless) {
         Ok(s) => s,
