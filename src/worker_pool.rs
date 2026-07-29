@@ -549,6 +549,24 @@ impl WorkerPool {
 
     /// Startet einen Kindprozess pro Worker (re-exec des eigenen Binaries mit
     /// dem `bot2bot-worker`-Subcommand).
+    /// Beendet alle laufenden Kindprozesse.
+    ///
+    /// Wird sowohl beim geordneten Herunterfahren als auch aus `Drop` gerufen,
+    /// damit kein Weg am Aufräumen vorbeiführt.
+    pub fn kill_all_children(&mut self) -> usize {
+        let mut n = 0;
+        for (brain, mut child) in self.children.drain() {
+            if child.kill().is_ok() {
+                n += 1;
+                crate::bench_events::eprint_line(&format!(
+                    "[worker_pool] Worker '{brain}' beendet"
+                ));
+            }
+            let _ = child.wait();
+        }
+        n
+    }
+
     fn spawn_worker(brain: &str, poll_secs: u64, headless: bool) -> std::io::Result<Child> {
         let exe = std::env::current_exe()?;
         let log_dir = crate::config::data_dir().join("logs");
@@ -569,7 +587,9 @@ impl WorkerPool {
         if headless {
             cmd.arg("--headless");
         }
-        cmd.spawn()
+        let child = cmd.spawn()?;
+        assign_to_kill_on_exit_job(&child);
+        Ok(child)
     }
 
     /// Erntet tote Kindprozesse: beendete Worker werden aus `children` entfernt
@@ -1017,6 +1037,87 @@ pub fn run_worker_pool(active: usize, brains: &str, poll_secs: u64, headless: bo
     0
 }
 
+/// Windows-Job, der alle zugewiesenen Prozesse mitnimmt, sobald das letzte
+/// Handle darauf schliesst — also spaetestens wenn webagent endet.
+///
+/// Warum ueberhaupt: `Drop` deckt nur das geordnete Ende ab. Wird das
+/// Terminalfenster geschlossen, der Prozess per taskkill beendet oder stuerzt
+/// er ab, laeuft kein Rust-Code mehr — die gespawnten Worker (jeder mit
+/// eigenem Browser) blieben zurueck und hielten Profile und Speicher. Genau
+/// solche Waisen mussten hier schon einmal von Hand eingesammelt werden.
+///
+/// Ein Job-Objekt mit `KILL_ON_JOB_CLOSE` loest das im Betriebssystem: das
+/// Aufraeumen haengt nicht mehr daran, dass der Agent noch zum Aufraeumen
+/// kommt.
+#[cfg(all(windows, feature = "webview"))]
+fn kill_on_exit_job() -> Option<windows::Win32::Foundation::HANDLE> {
+    use std::sync::OnceLock;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::JobObjects::{
+        CreateJobObjectW, SetInformationJobObject, JobObjectExtendedLimitInformation,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+
+    struct JobHandle(HANDLE);
+    // HANDLE ist ein rohes Betriebssystem-Handle; der Job lebt bis Prozessende.
+    unsafe impl Send for JobHandle {}
+    unsafe impl Sync for JobHandle {}
+
+    static JOB: OnceLock<Option<JobHandle>> = OnceLock::new();
+    JOB.get_or_init(|| unsafe {
+        let job = CreateJobObjectW(None, None).ok()?;
+        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let ok = SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        )
+        .is_ok();
+        if ok {
+            Some(JobHandle(job))
+        } else {
+            None
+        }
+    })
+    .as_ref()
+    .map(|h| h.0)
+}
+
+/// Haengt einen frisch gestarteten Kindprozess in den Kill-on-Exit-Job.
+#[cfg(all(windows, feature = "webview"))]
+fn assign_to_kill_on_exit_job(child: &Child) {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::JobObjects::AssignProcessToJobObject;
+
+    let Some(job) = kill_on_exit_job() else {
+        return;
+    };
+    unsafe {
+        let _ = AssignProcessToJobObject(job, HANDLE(child.as_raw_handle()));
+    }
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+fn assign_to_kill_on_exit_job(_child: &Child) {}
+/// Beim Verlassen alle Worker mitnehmen.
+///
+/// Der Job (`kill_on_exit_job`) faengt den harten Fall ab — Fenster zu,
+/// taskkill, Absturz. `Drop` deckt den geordneten ab und beendet sauber statt
+/// abrupt, damit die Worker ihren Zustand noch schreiben koennen.
+impl Drop for WorkerPool {
+    fn drop(&mut self) {
+        let n = self.kill_all_children();
+        if n > 0 {
+            crate::bench_events::eprint_line(&format!(
+                "[worker_pool] {n} Worker beim Beenden gestoppt"
+            ));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1177,6 +1278,23 @@ mod tests {
             WorkerPool::select_to_promote(&candidates, &state, &HashSet::new()).is_some(),
             "nach Freigabe muss wieder ein Brain promotierbar sein"
         );
+    }
+
+    #[test]
+    fn kill_all_children_is_idempotent_and_empties_the_pool() {
+        // Ohne laufende Kinder darf das Aufraeumen weder zaehlen noch panicken —
+        // `Drop` ruft es auf JEDEM Pfad, auch bei nie gestartetem Pool.
+        let dir = tmp_dir();
+        let mut pool = WorkerPool::new(
+            vec!["a".into()],
+            0,
+            1,
+            true,
+            dir.join("pool_state.json"),
+            dir.join("pool_control.json"),
+        );
+        assert_eq!(pool.kill_all_children(), 0);
+        assert_eq!(pool.kill_all_children(), 0, "zweiter Aufruf bleibt harmlos");
     }
 
     #[test]
