@@ -102,7 +102,11 @@ pub fn probe_anonymous(brain_id: &str) -> bool {
 }
 
 /// Prüft ein Brain live (Browser auf, Zustand lesen, zu).
-fn probe(brain_id: &str, headless: bool) -> BrainStatus {
+/// Wie `probe`, schreibt bei gesetztem `shots_dir` zusaetzlich das Bild.
+///
+/// Ein Browserstart statt zwei: Startuebersicht und Bilderwand lesen denselben
+/// Zustand derselben Seite.
+fn probe_with_shot(brain_id: &str, headless: bool, shots_dir: Option<&std::path::Path>) -> BrainStatus {
     let lvl = level_of(brain_id);
     let mut st = BrainStatus {
         brain_id: brain_id.to_string(),
@@ -121,8 +125,12 @@ fn probe(brain_id: &str, headless: bool) -> BrainStatus {
             return st;
         }
     };
-    match backend.live_diagnose(headless) {
-        Ok(d) => {
+    match backend.live_diagnose_with_shot(headless, shots_dir.is_some()) {
+        Ok((d, shot)) => {
+            if let (Some(dir), Some(png)) = (shots_dir, shot) {
+                let _ = std::fs::create_dir_all(dir);
+                let _ = std::fs::write(dir.join(format!("{brain_id}.png")), &png);
+            }
             st.reachable = true;
             st.logged_in = Some(d.logged_in);
             st.login_visible = d.login_button_visible;
@@ -154,6 +162,17 @@ fn probe(brain_id: &str, headless: bool) -> BrainStatus {
 /// speicherhungrig und provozieren genau die Zeitüberschreitungen, die der
 /// Bericht eigentlich melden soll.
 pub fn probe_all(brains: &[String], headless: bool, parallel: usize) -> Vec<BrainStatus> {
+    probe_all_with_shots(brains, headless, parallel, None)
+}
+
+/// Wie `probe_all`, schreibt bei gesetztem `shots_dir` zusaetzlich die Bilder
+/// fuer die Kachelseite — im selben Durchgang.
+pub fn probe_all_with_shots(
+    brains: &[String],
+    headless: bool,
+    parallel: usize,
+    shots_dir: Option<&std::path::Path>,
+) -> Vec<BrainStatus> {
     let parallel = parallel.clamp(1, 4);
     let mut out: Vec<BrainStatus> = Vec::new();
     for chunk in brains.chunks(parallel) {
@@ -162,8 +181,9 @@ pub fn probe_all(brains: &[String], headless: bool, parallel: usize) -> Vec<Brai
         for b in chunk {
             let tx = tx.clone();
             let b = b.clone();
+            let dir = shots_dir.map(|p| p.to_path_buf());
             handles.push(std::thread::spawn(move || {
-                let _ = tx.send(probe(&b, headless));
+                let _ = tx.send(probe_with_shot(&b, headless, dir.as_deref()));
             }));
         }
         drop(tx);
@@ -264,6 +284,50 @@ pub fn render(statuses: &[BrainStatus], measured_at: &str) -> String {
         ));
     }
     s
+}
+
+/// Schreibt die Kachelseite fuer die Bilderwand.
+///
+/// Liegt bewusst in der Bibliothek, nicht im CLI-Modul: sowohl `webagent wall`
+/// als auch die Startuebersicht erzeugen sie. Zwei Fassungen desselben HTML
+/// waeren genau die Doppelung, die in diesem Projekt schon mehrfach dazu
+/// gefuehrt hat, dass ein Fix nur an einer Stelle ankam.
+pub fn write_wall_html(
+    dir: &std::path::Path,
+    brains: &[String],
+    interval: u64,
+    round: u64,
+) -> std::io::Result<std::path::PathBuf> {
+    let mut tiles = String::new();
+    for b in brains {
+        // Cache-Buster: ohne ihn zeigt der Browser nach dem Neuladen weiter
+        // das alte Bild, und die Wand waere still eingefroren.
+        tiles.push_str(&format!(
+            "<figure><img src=\"{b}.png?r={round}\" alt=\"{b}\" loading=\"lazy\"><figcaption>{b}</figcaption></figure>\n"
+        ));
+    }
+    let refresh = if interval > 0 {
+        format!("<meta http-equiv=\"refresh\" content=\"{interval}\">")
+    } else {
+        String::new()
+    };
+    let html = format!(
+        "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\">{refresh}\
+<title>webagent · Bilderwand</title><style>\
+body{{margin:0;background:#111;color:#ddd;font:13px system-ui,sans-serif}}\
+h1{{font-size:14px;font-weight:600;margin:10px 12px;color:#888}}\
+.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 12px 12px}}\
+figure{{margin:0;background:#000;border:1px solid #333;border-radius:6px;overflow:hidden}}\
+img{{width:100%;display:block;aspect-ratio:1280/900;object-fit:cover;object-position:top left}}\
+figcaption{{padding:4px 8px;color:#9ab;font-weight:600}}\
+@media(max-width:1100px){{.grid{{grid-template-columns:repeat(2,1fr)}}}}\
+</style></head><body><h1>webagent · {n} Brains · Runde {round}</h1>\
+<div class=\"grid\">{tiles}</div></body></html>",
+        n = brains.len()
+    );
+    let path = dir.join("wall.html");
+    std::fs::write(&path, html)?;
+    Ok(path)
 }
 
 #[cfg(test)]

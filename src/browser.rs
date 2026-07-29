@@ -1438,6 +1438,19 @@ return null;}})()"#
     }
 
     pub fn live_diagnose(&mut self, headless: bool) -> Result<LiveDiagnosis, String> {
+        self.live_diagnose_with_shot(headless, false).map(|(d, _)| d)
+    }
+
+    /// Diagnose und optional ein Bildschirmfoto in **einer** Sitzung.
+    ///
+    /// Vorher brauchte die Startübersicht einen Browserstart und die
+    /// Bilderwand einen zweiten — bei acht Brains also sechzehn. Beides liest
+    /// denselben Zustand derselben Seite; es einmal zu öffnen genügt.
+    pub fn live_diagnose_with_shot(
+        &mut self,
+        headless: bool,
+        with_shot: bool,
+    ) -> Result<(LiveDiagnosis, Option<Vec<u8>>), String> {
         self.start(headless)?;
         self.dismiss_consent();
         let session_state = self.ensure_ready(15.0).unwrap_or(SessionState::Error);
@@ -1451,8 +1464,16 @@ return null;}})()"#
             assistant_count: self.assistant_count(),
             session_state,
         };
+        let shot = if with_shot {
+            // Fehlschlaege beim Bild duerfen die Diagnose nicht wegwerfen —
+            // der Zustand ist die wichtigere Information.
+            let mut guard = self.driver.borrow_mut();
+            guard.as_mut().and_then(|d| d.capture_png().ok())
+        } else {
+            None
+        };
         let _ = self.stop();
-        Ok(diag)
+        Ok((diag, shot))
     }
 
     fn send_generic(&mut self, text: &str) -> Result<i32, String> {

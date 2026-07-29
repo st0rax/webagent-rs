@@ -1323,37 +1323,6 @@ fn write_ui_options(brain: &str, options: &[String]) -> Result<std::path::PathBu
     Ok(path)
 }
 
-/// Kachelseite schreiben. Die Seite laedt sich selbst neu, damit ein einmal
-/// geoeffnetes Fenster aktuell bleibt, ohne dass jemand F5 drueckt.
-fn write_wall_html(dir: &std::path::Path, brains: &[String], interval: u64, round: u64) -> std::io::Result<std::path::PathBuf> {
-    let mut tiles = String::new();
-    for b in brains {
-        // Cache-Buster: ohne ihn zeigt der Browser nach dem Neuladen weiter
-        // das alte Bild, und die Wand waere still eingefroren.
-        tiles.push_str(&format!(
-            "<figure><img src=\"{b}.png?r={round}\" alt=\"{b}\" loading=\"lazy\"><figcaption>{b}</figcaption></figure>\n"
-        ));
-    }
-    let html = format!(
-        "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\">\
-<meta http-equiv=\"refresh\" content=\"{interval}\">\
-<title>webagent · Bilderwand</title><style>\
-body{{margin:0;background:#111;color:#ddd;font:13px system-ui,sans-serif}}\
-h1{{font-size:14px;font-weight:600;margin:10px 12px;color:#888}}\
-.grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 12px 12px}}\
-figure{{margin:0;background:#000;border:1px solid #333;border-radius:6px;overflow:hidden}}\
-img{{width:100%;display:block;aspect-ratio:1280/900;object-fit:cover;object-position:top left}}\
-figcaption{{padding:4px 8px;color:#9ab;font-weight:600}}\
-@media(max-width:1100px){{.grid{{grid-template-columns:repeat(2,1fr)}}}}\
-</style></head><body><h1>webagent · {n} Brains · Runde {round} · alle {interval}s</h1>\
-<div class=\"grid\">{tiles}</div></body></html>",
-        n = brains.len()
-    );
-    let path = dir.join("wall.html");
-    std::fs::write(&path, html)?;
-    Ok(path)
-}
-
 fn cmd_wall(interval: u64, once: bool, only: &[String]) -> i32 {
     use webagent::browser::WebBrainBackend;
 
@@ -1387,7 +1356,7 @@ fn cmd_wall(interval: u64, once: bool, only: &[String]) -> i32 {
                 Err(e) => eprintln!("[wall] {id}: {e}"),
             }
         }
-        match write_wall_html(&dir, &brains, interval, round) {
+        match webagent::welcome::write_wall_html(&dir, &brains, interval, round) {
             Ok(path) => {
                 println!("[wall] Runde {round}: {ok}/{} aufgenommen -> {}", brains.len(), path.display());
                 if round == 1 {

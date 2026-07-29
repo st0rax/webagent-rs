@@ -1713,12 +1713,16 @@ fn show_welcome() {
         return;
     }
     println!("\n  webagent — prüfe {} Brains live…", brains.len());
-    let statuses = crate::welcome::probe_all(&brains, true, 4);
+    let shots = crate::config::data_dir().join("shots");
+    let statuses = crate::welcome::probe_all_with_shots(&brains, true, 4, Some(&shots));
     print!("{}", crate::welcome::render(&statuses, &crate::now_rfc3339()));
     // Failover zuerst: nur wenn KEIN Brain benutzbar ist, wird angemeldet.
     // Solange eins laeuft, arbeitet der Pool damit weiter und niemand wird
     // unterbrochen.
     let _ = crate::welcome::login_if_nothing_usable(&statuses, std::time::Duration::from_secs(600));
+    // Kachelseite gleich mitschreiben: die Bilder liegen ja schon da.
+    let _ = crate::welcome::write_wall_html(&shots, &brains, 0, 1);
+    println!("\n  Bilderwand: {}", shots.join("wall.html").display());
     println!("\n  [Enter] weiter zur Eingabe");
     let mut buf = String::new();
     let _ = io::stdin().read_line(&mut buf);
