@@ -64,6 +64,11 @@ const FACTS_MAX_CHARS: usize = 1200;
 /// Fehlermuster, kein Erkenntnisgewinn. Der Supervisor beendet dann den
 /// Benchmark statt Kontingent mit derselben Sackgasse zu verbrennen.
 const MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS: usize = 2;
+/// Wartezeit, wenn in einer ganzen Runde kein einziges Brain erreichbar war.
+/// Etwas kuerzer als das Circuit-Breaker-Fenster (900s), damit der Dauerlauf
+/// zuegig weitermacht, sobald ein Anbieter wieder aufmacht — aber lang genug,
+/// dass er nicht heiss gegen die Sperre laeuft.
+const OUTAGE_COOLDOWN_SECS: u64 = 300;
 
 /// Konfiguration eines Benchmark-Laufs.
 #[derive(Debug, Clone)]
@@ -517,6 +522,17 @@ pub fn is_improvement(best: Option<Progress>, now: Progress) -> bool {
         None => now.stage > 0,
         Some(b) => now.stage > b.stage || (now.stage == b.stage && now.errors < b.errors),
     }
+}
+
+/// War eine harvest-lose Runde eine Verfuegbarkeitsstoerung statt einer
+/// Sackgasse im Code?
+///
+/// Genau dann, wenn kein einziges Brain zum Messen kam: dann gibt es weder
+/// bestandene noch gescheiterte Gates, die Runde sagt ueber den Code nichts aus
+/// und darf das Abbruchbudget nicht verbrauchen. Kam mindestens ein Brain dran,
+/// ist die Runde eine echte Aussage — auch wenn alle anderen gesperrt waren.
+pub fn is_availability_outage(attempted: usize, failures: &[String]) -> bool {
+    attempted == 0 && failures.is_empty()
 }
 
 /// `true`, wenn der Run-Status eine EXTERNE Blockade meldet (Anbieter-Limit,
@@ -1421,6 +1437,9 @@ where
         // wandert SEINE Aufgabe an ein Brain, das sie noch nicht versucht hat.
         let mut harvest_pool: Vec<HarvestCandidate> = Vec::new();
         let mut round_failures: Vec<String> = Vec::new();
+        // Wie viele Brains in dieser Runde ueberhaupt zum Messen kamen (also
+        // NICHT extern blockiert waren). Siehe Auswertung am Rundenende.
+        let mut round_attempted = 0usize;
         let mut hq = HandoffQueue::new(&plan, &config.brains, config.max_handoffs);
         while let Some((brain_owned, effective_owned, handoff_from)) = hq.next() {
             let brain = &brain_owned;
@@ -1662,6 +1681,8 @@ where
                 continue;
             }
 
+            round_attempted += 1;
+
             if !is_pass(did_change, compiled, tests_passed) {
                 if let Some(failure) = last_gate_failure {
                     round_failures.push(failure);
@@ -1867,6 +1888,34 @@ where
             }
         }
 
+        // Harness-Gesundheit der Runde melden.
+        //
+        // `runs_report` konnte diesen Fall schon immer benennen ("das ist der
+        // Harness, nicht das Brain") — es rief ihn nur niemand auf, weil er an
+        // einem manuellen Unterbefehl hing. Deshalb blieb am 29.07.2026 ein
+        // Leck von 145 verworfenen Brain-Turns (29 % aller Turns) einen ganzen
+        // Tag unbemerkt. Eine Messung, die niemand sieht, ist keine Messung.
+        {
+            let runs_dir = crate::config::data_dir().join("runs");
+            let letzte = crate::runs_report::recent_runs(&runs_dir, config.brains.len());
+            let harness = letzte
+                .iter()
+                .filter(|(_, f)| {
+                    crate::runs_report::classify_run(f)
+                        == crate::runs_report::FailureClass::HarnessParseBug
+                })
+                .count();
+            let p_err: usize = letzte.iter().map(|(_, f)| f.protocol_errors).sum();
+            if harness > 0 || p_err > 0 {
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    None,
+                    "runde {round}: {p_err} verworfene Brain-Antwort(en), davon {harness} \
+                     mit erkennbarem Format — das ist der Harness, nicht das Brain."
+                );
+            }
+        }
+
         // Ein Harvest in dieser Runde setzt die Produktivitätsuhr zurück;
         // andernfalls beendet der autonome Loop sich nach zwei Sackgassen.
         if harvested.len() > harvest_count_before {
@@ -1882,6 +1931,30 @@ where
                     crate::char_prefix(focus, 160)
                 );
             }
+            // Eine Runde, in der KEIN Brain zum Messen kam, ist eine
+            // Verfuegbarkeitsstoerung — keine Sackgasse im Code. Sie darf das
+            // Abbruchbudget nicht verbrauchen.
+            //
+            // Sonst beendet ein Anbieter-Limit den ganzen Nachtlauf: am
+            // 29.07.2026 waren drei von acht Brains gleichzeitig gesperrt
+            // (mistral/qwen Nachrichtenlimit, gemini Login). Zwei solche Runden
+            // und `run_benchmark` gab einen Fehler zurueck — der Dauerlauf stand
+            // still, obwohl am Code nie etwas gescheitert war. Die
+            // Unterscheidung existiert bereits in `is_external_block` und wird
+            // fuer den Score genauso gezogen: ein ausgesperrtes Brain ist kein
+            // schlechtes Brain.
+            if is_availability_outage(round_attempted, &round_failures) {
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    None,
+                    "runde {round}: kein Brain war erreichbar — Verfuegbarkeitsstoerung, \
+                     zaehlt nicht als unproduktiv. Warte {}s auf Entsperrung.",
+                    OUTAGE_COOLDOWN_SECS
+                );
+                std::thread::sleep(std::time::Duration::from_secs(OUTAGE_COOLDOWN_SECS));
+                continue;
+            }
+
             unproductive_rounds += 1;
             if unproductive_rounds >= MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS {
                 return Err(format!(
@@ -2411,6 +2484,20 @@ mod tests {
         assert!(focus.contains("REPARATURPRIORITÄT"));
         assert!(focus.contains("cannot find value x"));
         assert_eq!(focus.matches("cannot find value x").count(), 1);
+    }
+
+    #[test]
+    fn verfuegbarkeitsstoerung_verbraucht_kein_abbruchbudget() {
+        // Realfall 29.07.2026, 23:44: mistral und qwen im Nachrichtenlimit,
+        // gemini ausgeloggt. Kein Brain kam zum Messen — die Runde sagt ueber
+        // den Code nichts aus und darf den Dauerlauf nicht beenden.
+        assert!(is_availability_outage(0, &[]));
+
+        // Gegenprobe: kam mindestens ein Brain dran, ist die Runde eine echte
+        // Aussage, auch wenn der Rest gesperrt war.
+        assert!(!is_availability_outage(1, &[]));
+        assert!(!is_availability_outage(0, &["cargo test rot".to_string()]));
+        assert!(!is_availability_outage(3, &["build rot".to_string()]));
     }
 
     #[test]
