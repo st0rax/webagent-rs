@@ -612,6 +612,11 @@ return {{count:count,text:text,stop:stop}};}})()"#,
     /// Selektoren, welche Buttons/Kandidaten-Container gibt es? Deckt Selektor-Drift
     /// auf (der Hauptgrund, warum die Antworterkennung eine fertige Nachricht
     /// "nicht sieht").
+    ///
+    /// Grundlage der Fähigkeits-Vermessung, und zwar notgedrungen: Selbstauskunft
+    /// der Brains ist dafür unbrauchbar — real getestet am 2026-07-27 gab
+    /// deepseek die komplette abgefragte Liste zurück, inklusive Optionen, die
+    /// seine Oberfläche gar nicht hat.
     pub fn dom_report(&self) -> Result<Value, String> {
         let keys = [
             "composer",
@@ -1030,14 +1035,6 @@ return null;}})()"#,
         }
     }
 
-    /// Live-Diagnose: startet den Browser, prüft am echten DOM Login-Zustand,
-    /// Composer-/Assistant-Selektoren und Cloudflare, und schließt wieder. Deckt
-    /// Selektor-Drift auf, die `doctor` (read-only) nicht sehen kann.
-    /// Öffnet die Seite und gibt den rohen DOM-Bericht zurück (Buttons samt
-    /// aria-label/title/data-testid). Grundlage der Fähigkeits-Vermessung:
-    /// Selbstauskunft der Brains ist dafür unbrauchbar — real getestet am
-    /// 2026-07-27 gab deepseek die komplette abgefragte Liste zurück,
-    /// inklusive Optionen, die seine Oberfläche gar nicht hat.
     /// Zustand eines Umschalters als Zeichenkette: `aria-pressed`,
     /// `aria-checked`, `data-state` oder — als letzter Ausweg — die
     /// Klassenliste. Leer, wenn nichts matcht.
@@ -1581,6 +1578,9 @@ return null;}})()"#,
         report
     }
 
+    /// Live-Diagnose: startet den Browser, prüft am echten DOM Login-Zustand,
+    /// Composer-/Assistant-Selektoren und Cloudflare, und schließt wieder. Deckt
+    /// Selektor-Drift auf, die `doctor` (read-only) nicht sehen kann.
     pub fn live_diagnose(&mut self, headless: bool) -> Result<LiveDiagnosis, String> {
         self.live_diagnose_with_shot(headless, false)
             .map(|(d, _)| d)
