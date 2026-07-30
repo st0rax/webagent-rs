@@ -2103,10 +2103,23 @@ impl BrainBackend for WebBrainBackend {
                     // Stream Reasoning-Prosa geerntet. „Selektor vorhanden" ist
                     // nicht „Selektor funktioniert" — also sagen wir es laut,
                     // statt es still zu kompensieren.
+                    //
+                    // Die Meldung sagt bewusst NICHT mehr „Selektoren pruefen".
+                    // Am 30.07.2026 hat die Bestandsaufnahme fuer deepseek und
+                    // zai gezeigt, dass ihr Stop-Knopf DASSELBE Element ist wie
+                    // der Senden-Knopf (`ds-button--primary ds-button--filled
+                    // ds-button--circle` bzw. `p-2 bg-black rounded-full`), nur
+                    // mit anderem Icon — kein Attribut unterscheidet die beiden.
+                    // Ein Selektor darauf waere aktiv schaedlich: der Stop-Knopf
+                    // gaelte dauerhaft als sichtbar, und weil auf „war da, ist
+                    // jetzt weg" gewartet wird, liefe JEDER Lauf ins Timeout.
+                    // Fuer diese Brains ist das Stabilitaetsfenster nicht die
+                    // Kruecke, sondern der einzige korrekte Mechanismus.
                     if has_stop && !stop_seen_ever {
                         crate::bench_events::eprint_line(&format!(
-                            "[browser] {}: stop_button-Selektor hat nie gegriffen — \
-                             Fertigsignal kommt nur aus Textstabilitaet (Selektoren pruefen)",
+                            "[browser] {}: kein Stop-Knopf erkannt — Fertigsignal kommt aus \
+                             Textstabilitaet. Bestandsaufnahme im Log zeigt, ob ein \
+                             unterscheidbarer Knopf ueberhaupt existiert",
                             self.brain_id
                         ));
                     }
