@@ -895,6 +895,38 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         Some(raw)
     }
 
+    /// Kurze Liste der sichtbaren Bedienelemente — als Beweismittel, wenn kein
+    /// Stop-Button erkannt wurde.
+    ///
+    /// Erfasst bewusst auch Knoepfe ohne Text: der Stop-Knopf ist in diesen
+    /// Oberflaechen meist ein reiner Icon-Button. Sein Name steckt dann im
+    /// `<title>`/`<desc>` des SVG, in `id`, `data-testid` oder `aria-label` —
+    /// deshalb werden genau diese Merkmale ausgegeben und nicht der Text.
+    fn visible_button_inventory(&self) -> String {
+        let js = r#"(function(){
+var out=[],seen=[];
+['button','[role=button]'].forEach(function(s){try{
+document.querySelectorAll(s).forEach(function(b){
+  if(seen.indexOf(b)>=0)return;seen.push(b);
+  var r=b.getBoundingClientRect();if(r.width<=0||r.height<=0)return;
+  var svgt='';try{var st=b.querySelector('svg title,svg desc');if(st)svgt=(st.textContent||'').trim();}catch(e){}
+  var id=b.getAttribute('id')||'',al=b.getAttribute('aria-label')||'',
+      dt=b.getAttribute('data-testid')||'',
+      cls=(b.className||'').toString().slice(0,40),
+      t=((b.innerText||b.textContent||'')+'').replace(/\s+/g,' ').trim().slice(0,24);
+  var parts=[];
+  if(al)parts.push('aria='+al);
+  if(dt)parts.push('testid='+dt);
+  if(id)parts.push('id='+id);
+  if(svgt)parts.push('svg='+svgt);
+  if(t)parts.push('txt='+t);
+  if(!parts.length&&cls)parts.push('cls='+cls);
+  if(parts.length)out.push('{'+parts.join(' ')+'}');
+});}catch(e){}});
+return out.slice(0,14).join(' ');})()"#;
+        self.eval_str(js)
+    }
+
     /// Baut das JS für [`Self::account_label`] — getrennt, damit prüfbar ist,
     /// dass es das Prelude mitbringt.
     ///
@@ -1939,6 +1971,7 @@ impl BrainBackend for WebBrainBackend {
         let mut last_text = String::new();
         let mut stable_since = Instant::now();
         let mut stop_seen_ever = false;
+        let mut stop_inventory_done = false;
         let mut target = (self.probe_generation(&assistant_js, &stop_js, -1).0 - 1)
             .max(baseline_count)
             .max(0);
@@ -1956,6 +1989,25 @@ impl BrainBackend for WebBrainBackend {
             stop_seen_ever |= stop_visible;
 
             if current != last_text {
+                // Der Text waechst gerade, also generiert die Oberflaeche
+                // gerade — und trotzdem kennt kein Selektor den Stop-Button.
+                // JETZT ist der einzige Moment, in dem er im DOM steht: die
+                // Warnung nach Antwortende kommt zu spaet, da ist er weg.
+                //
+                // Also einmal je Prozess und Brain aufschreiben, welche
+                // Bedienelemente stattdessen sichtbar sind. Damit liefert der
+                // Dauerlauf die Beweise fuer korrekte Selektoren selbst, statt
+                // dass ich sie in einer Extra-Sitzung von Hand suchen muesste.
+                if has_stop && !stop_seen_ever && !stop_inventory_done {
+                    stop_inventory_done = true;
+                    let inventar = self.visible_button_inventory();
+                    if !inventar.is_empty() {
+                        crate::bench_events::eprint_line(&format!(
+                            "[browser] {}: kein Stop-Button erkannt, sichtbare Bedienelemente waehrend der Generierung: {inventar}",
+                            self.brain_id
+                        ));
+                    }
+                }
                 last_text = current.clone();
                 stable_since = Instant::now();
             }
