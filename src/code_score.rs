@@ -62,6 +62,19 @@ pub struct CodeEvent {
     /// (Stillstand), statt regulär an Build oder Tests zu scheitern.
     #[serde(default)]
     pub stalled: bool,
+    /// Wie viele Brains in der Runde dieses Versuchs überhaupt im Feld standen
+    /// (also erreichbar und nicht gesperrt waren).
+    ///
+    /// Die Aussagekraft eines Messpunkts hängt daran: Aufgabe und Plan
+    /// entstehen aus der Abstimmung des Feldes, und ein Ergebnis aus einem Feld
+    /// von zwei ist schwächer belegt als eines aus einem Feld von acht. Ohne
+    /// dieses Feld lässt sich das im Nachhinein nicht mehr rekonstruieren —
+    /// gesperrte Brains hinterlassen bewusst keinen Messpunkt.
+    ///
+    /// `0` bedeutet „unbekannt" und steht für Altdaten aus der Zeit vor dieser
+    /// Erfassung; solche Events zählen bei der Gewichtung neutral.
+    #[serde(default)]
+    pub field_size: usize,
     /// `now_rfc3339()`-Zeitstempel.
     pub ts: String,
 }
@@ -99,6 +112,22 @@ pub struct CodeStats {
     pub rescues: usize,
     /// Wie oft dieses Brain selbst mangels Fortschritt aufgegeben hat.
     pub abandoned: usize,
+    /// Durchschnittliche Feldgrösse der Versuche mit bekannter Feldgrösse.
+    /// `0.0`, wenn zu keinem Versuch eine Feldgrösse erfasst ist.
+    pub avg_field: f64,
+    /// Relative Aussagekraft der Messreihe, 0..1.
+    ///
+    /// Zwei Faktoren, beide relativ zum bestmöglichen Fall: wie viel Evidenz
+    /// vorliegt (`wilson_pass` trägt das bereits in sich) und in wie starkem
+    /// Feld sie entstanden ist. Hier steht nur der zweite Teil — bewusst
+    /// getrennt vom Score, damit die Zahl nicht heimlich die Bewertung
+    /// verschiebt, sondern danebensteht und sagt, wie belastbar sie ist.
+    ///
+    /// Bezugsgrösse ist das grösste Feld, das in der Messreihe je zustande kam:
+    /// so ist die Aussage relativ („diese Reihe entstand in halb so starkem
+    /// Feld wie möglich") statt an einer festen Brain-Zahl zu hängen, die sich
+    /// mit jedem neuen Brain ändern würde.
+    pub significance: f64,
 }
 
 fn events_path() -> PathBuf {
@@ -181,6 +210,18 @@ fn aggregate(events: &[CodeEvent]) -> Vec<CodeStats> {
                 .filter(|e| e.handoff_from.is_some() && e.passed())
                 .count();
             let abandoned = evs.iter().filter(|e| e.stalled).count();
+            // Nur Versuche mit erfasster Feldgrösse; Altdaten (0) zählen neutral,
+            // statt den Schnitt nach unten zu ziehen.
+            let felder: Vec<usize> = evs
+                .iter()
+                .map(|e| e.field_size)
+                .filter(|&f| f > 0)
+                .collect();
+            let avg_field = if felder.is_empty() {
+                0.0
+            } else {
+                felder.iter().sum::<usize>() as f64 / felder.len() as f64
+            };
             CodeStats {
                 brain_id,
                 attempts,
@@ -191,9 +232,25 @@ fn aggregate(events: &[CodeEvent]) -> Vec<CodeStats> {
                 hard_attempts,
                 rescues,
                 abandoned,
+                avg_field,
+                // Bezugsgrösse wird erst unten gesetzt, wenn alle Brains
+                // ausgewertet sind — sie ist relativ zum stärksten je
+                // erreichten Feld, nicht zu einer festen Zahl.
+                significance: 0.0,
             }
         })
         .collect();
+
+    // Relative Aussagekraft: das grösste je zustande gekommene Feld ist 1,0.
+    let max_field = out
+        .iter()
+        .map(|s| s.avg_field)
+        .fold(0.0_f64, |a, b| if b > a { b } else { a });
+    if max_field > 0.0 {
+        for s in &mut out {
+            s.significance = s.avg_field / max_field;
+        }
+    }
     // Rangfolge weiterhin nach `wilson_pass`; Rettungen entscheiden nur bei
     // Gleichstand.
     //
@@ -252,6 +309,9 @@ mod tests {
             latency_ms: 1234,
             handoff_from: None,
             stalled: false,
+            // Standard 0 = „nicht erfasst", wie bei Altdaten. Tests, die die
+            // Feldgroesse brauchen, setzen sie ausdruecklich.
+            field_size: 0,
             ts: crate::now_rfc3339(),
         }
     }
@@ -324,6 +384,66 @@ mod tests {
         assert_eq!(board[1].brain_id, "qwen");
         assert_eq!(board[1].pass_rate, 0.0);
         assert!(board[0].wilson_pass > board[1].wilson_pass);
+    }
+
+    #[test]
+    fn aussagekraft_ist_relativ_zum_staerksten_feld() {
+        // Storax' Vorgabe: gesperrte Brains werden ausgeklammert, und die
+        // dadurch geringere Aussagekraft muss RELATIV erfasst werden.
+        let path = unique_path();
+        // deepseek misst im vollen Feld von acht ...
+        for _ in 0..2 {
+            record_at(
+                &CodeEvent {
+                    field_size: 8,
+                    ..ev("deepseek", true, true, true)
+                },
+                &path,
+            );
+        }
+        // ... zai nur im Notbetrieb mit zwei erreichbaren Brains.
+        for _ in 0..2 {
+            record_at(
+                &CodeEvent {
+                    field_size: 2,
+                    ..ev("zai", true, true, true)
+                },
+                &path,
+            );
+        }
+        let board = leaderboard_at(&path);
+        let d = board.iter().find(|s| s.brain_id == "deepseek").unwrap();
+        let z = board.iter().find(|s| s.brain_id == "zai").unwrap();
+
+        assert_eq!(d.avg_field, 8.0);
+        assert_eq!(z.avg_field, 2.0);
+        // Das staerkste je erreichte Feld ist die Bezugsgroesse, nicht eine
+        // feste Brain-Zahl: sonst verschoebe jedes neue Brain alle Altwerte.
+        assert!((d.significance - 1.0).abs() < 1e-9, "{}", d.significance);
+        assert!((z.significance - 0.25).abs() < 1e-9, "{}", z.significance);
+
+        // Der Score selbst bleibt unberuehrt — die Aussagekraft steht daneben
+        // und verschiebt die Bewertung nicht heimlich.
+        assert_eq!(d.wilson_pass, z.wilson_pass);
+    }
+
+    #[test]
+    fn altdaten_ohne_feldgroesse_zaehlen_neutral() {
+        // Events aus der Zeit vor der Erfassung haben field_size 0. Sie duerfen
+        // den Schnitt nicht nach unten ziehen, sonst saehe jede lange Historie
+        // kuenstlich unbelastbar aus.
+        let path = unique_path();
+        record_at(&ev("kimi", true, true, true), &path); // field_size: 0
+        record_at(
+            &CodeEvent {
+                field_size: 6,
+                ..ev("kimi", true, true, true)
+            },
+            &path,
+        );
+        let board = leaderboard_at(&path);
+        let k = board.iter().find(|s| s.brain_id == "kimi").unwrap();
+        assert_eq!(k.avg_field, 6.0, "nur erfasste Felder zaehlen");
     }
 
     #[test]

@@ -663,13 +663,13 @@ fn print_leaderboard(board: &[CodeStats]) {
     bench_say!(
         crate::bench_events::Level::Info,
         None,
-        "  brain            attempts  change%  compile%  pass%   wilson_pass  schwer  rettung  aufgegeben"
+        "  brain            attempts  change%  compile%  pass%   wilson_pass  schwer  rettung  aufgegeben  feld  aussagekraft"
     );
     for s in board {
         bench_say!(
             crate::bench_events::Level::Info,
             Some(&s.brain_id),
-            "  {:<15}  {:>8}  {:>6.0}%  {:>7.0}%  {:>5.0}%   {:>11.3}  {:>6}  {:>7}  {:>10}",
+            "  {:<15}  {:>8}  {:>6.0}%  {:>7.0}%  {:>5.0}%   {:>11.3}  {:>6}  {:>7}  {:>10}  {:>4.1}  {:>11.0}%",
             s.brain_id,
             s.attempts,
             s.change_rate * 100.0,
@@ -678,7 +678,9 @@ fn print_leaderboard(board: &[CodeStats]) {
             s.wilson_pass,
             s.hard_attempts,
             s.rescues,
-            s.abandoned
+            s.abandoned,
+            s.avg_field,
+            s.significance * 100.0
         );
     }
     let rescues: usize = board.iter().map(|s| s.rescues).sum();
@@ -1255,10 +1257,59 @@ where
         } else {
             rounds.to_string()
         };
+        // Gesperrte Brains gehoeren nicht in die Runde.
+        //
+        // Bisher liefen sie in jeder Sammel-, Abstimm- und Planungswelle mit und
+        // zogen jede einzelne bis in ihren Timeout — bei drei gesperrten von
+        // acht war das der groesste Zeitposten der Runde, ohne einen einzigen
+        // verwertbaren Beitrag. Die Sperre ist ohnehin schon bekannt
+        // (`circuit_breaker::check`), sie wurde nur nicht benutzt, um die
+        // Teilnehmerliste zu bilden.
+        let (round_brains, gesperrt): (Vec<String>, Vec<(String, i64)>) = {
+            let mut aktiv = Vec::new();
+            let mut blockiert = Vec::new();
+            for b in &config.brains {
+                match crate::circuit_breaker::check(b) {
+                    Some(rest) => blockiert.push((b.clone(), rest)),
+                    None => aktiv.push(b.clone()),
+                }
+            }
+            (aktiv, blockiert)
+        };
+        if !gesperrt.is_empty() {
+            let liste = gesperrt
+                .iter()
+                .map(|(b, rest)| format!("{b} ({rest}s)"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "runde {round}: {} von {} Brains gesperrt und ausgeklammert: {liste}",
+                gesperrt.len(),
+                config.brains.len()
+            );
+        }
+        if round_brains.is_empty() {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "runde {round}: alle Brains gesperrt — warte {OUTAGE_COOLDOWN_SECS}s."
+            );
+            std::thread::sleep(std::time::Duration::from_secs(OUTAGE_COOLDOWN_SECS));
+            continue;
+        }
+        // Aussagekraft der Runde: wie viele Brains standen im Feld? Ein Ergebnis
+        // aus einem Feld von zwei sagt weniger als eines aus einem Feld von
+        // acht — das wird an jedem Messpunkt mitgeschrieben, statt es spaeter
+        // rekonstruieren zu muessen.
+        let field_size = round_brains.len();
+
         bench_say!(
             crate::bench_events::Level::Info,
             None,
-            "runde {round}/{total} — abstimmen…"
+            "runde {round}/{total} — abstimmen… ({field_size} von {} Brains im Feld)",
+            config.brains.len()
         );
         // Projektfakten sind lokal und günstig; nach einem Harvest müssen sie
         // aktuell sein, ohne dafür die Brains erneut befragen zu müssen.
@@ -1287,7 +1338,7 @@ where
         // gezielt eine Reparaturpriorität erzeugt hat.
         if candidate_backlog.is_empty() || repair_focus.is_some() {
             let report = crate::self_research::run_self_research(
-                &config.brains,
+                &round_brains,
                 &round_facts,
                 config.suggestions,
                 VOTE_TOP_K,
@@ -1351,7 +1402,7 @@ where
         );
         let plan_vote = crate::design_vote::run_design_vote(
             &crate::design_vote::DesignVoteConfig {
-                brains: config.brains.clone(),
+                brains: round_brains.clone(),
                 topic: winner.clone(),
                 context: plan_context,
                 mode: crate::design_vote::VoteMode::ImplementationPlan,
@@ -1395,11 +1446,11 @@ where
         // Turnier statt Mischmasch: jedes Brain bearbeitet exakt den gewählten
         // Sieger. Damit misst der Score die Qualität der Umsetzung und nicht,
         // ob ein zufällig zugeteilter Neben-Vorschlag leichter war.
-        let assignments = assign_tasks(&config.brains, std::slice::from_ref(&winner), round);
+        let assignments = assign_tasks(&round_brains, std::slice::from_ref(&winner), round);
 
         // Phase A.5 — jede zugeteilte Aufgabe konkretisieren. Gleiche Vorschlaege
         // nur einmal verfeinern (bei weniger Vorschlaegen als Brains).
-        let refiner = config.brains.first().cloned().unwrap_or_default();
+        let refiner = round_brains.first().cloned().unwrap_or_default();
         let mut refined_cache: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         let mut plan: Vec<(String, String)> = Vec::new();
@@ -1449,7 +1500,7 @@ where
         // Wie viele Brains in dieser Runde ueberhaupt zum Messen kamen (also
         // NICHT extern blockiert waren). Siehe Auswertung am Rundenende.
         let mut round_attempted = 0usize;
-        let mut hq = HandoffQueue::new(&plan, &config.brains, config.max_handoffs);
+        let mut hq = HandoffQueue::new(&plan, &round_brains, config.max_handoffs);
         while let Some((brain_owned, effective_owned, handoff_from)) = hq.next() {
             let brain = &brain_owned;
             let effective = &effective_owned;
@@ -1738,6 +1789,7 @@ where
                 latency_ms,
                 handoff_from: handoff_from.clone(),
                 stalled,
+                field_size,
                 ts: crate::now_rfc3339(),
             };
             crate::code_score::record(&event);
@@ -2404,6 +2456,8 @@ mod tests {
             compile_rate: 1.0,
             pass_rate: 1.0,
             wilson_pass: wilson,
+            avg_field: 0.0,
+            significance: 0.0,
         }
     }
 
