@@ -88,10 +88,31 @@ pub fn has_raw_marker(text: &str) -> bool {
         .any(|m| text.contains(m))
 }
 
-/// `true`, wenn der Text ein webagent/1-JSON-Objekt zu enthalten scheint.
+/// `true`, wenn der Text ein webagent/1-JSON-Objekt zu enthalten scheint —
+/// also erkennbar dem Protokoll folgen WOLLTE.
+///
+/// Die Erwähnung allein genügt nicht. Vorher reichte `"protocol"` irgendwo im
+/// Text; damit galt am 30.07.2026 claudes Weigerung als Harness-Fehler, denn
+/// sie erklärt woertlich:
+///
+/// > Wenn ich hier {"protocol": "webagent/1", ...} ausgebe, passiert nichts
+/// > weiter, als dass du reinen Text siehst
+///
+/// Das ist ein Satz ueber das Format, kein Versuch, es zu benutzen — und die
+/// Rundenmeldung schob den Fehlschlag faelschlich dem Harness zu.
+///
+/// Deshalb muss das Objekt eine Zeile BEGINNEN. Ein Brain, das antwortet,
+/// stellt sein JSON an den Zeilenanfang (ggf. nach Codefence oder Label); wer
+/// darueber redet, tut das mitten im Satz.
 pub fn looks_like_protocol_json(text: &str) -> bool {
-    let low = text.to_lowercase();
-    low.contains("\"protocol\"") && low.contains("webagent/1")
+    text.lines().any(|line| {
+        let t = line.trim_start().trim_start_matches("```json").trim_start();
+        if !t.starts_with('{') {
+            return false;
+        }
+        let low = t.to_lowercase();
+        low.contains("\"protocol\"") && low.contains("webagent/1")
+    })
 }
 
 /// Ordnet einem Lauf seine Fehlerursache zu.
@@ -320,6 +341,27 @@ mod tests {
             r#"{"protocol": "webagent/1", "actions": []}"#
         ));
         assert!(!looks_like_protocol_json("nur prosa"));
+        // Auch mit Codefence und Einrueckung bleibt es ein Versuch.
+        assert!(looks_like_protocol_json(
+            "Hier:\n```json\n  {\"protocol\":\"webagent/1\",\"actions\":[]}\n```"
+        ));
+
+        // Regression 30.07.2026: claudes woertliche Weigerung. Sie ERWAEHNT das
+        // Format mitten im Satz, versucht es aber nicht — und wurde deshalb
+        // faelschlich als Harness-Fehler gemeldet.
+        let weigerung = "Ich bleibe dabei: Ich kann hier keine echte Shell-Action \
+             auf deinem Rechner ausloesen. Wenn ich hier {\"protocol\": \"webagent/1\", ...} \
+             ausgebe, passiert nichts weiter, als dass du reinen Text siehst.";
+        assert!(
+            !looks_like_protocol_json(weigerung),
+            "Reden ueber das Format ist kein Formatversuch"
+        );
+        let facts = facts("protocol_error", &[weigerung], 3);
+        assert_ne!(
+            classify_run(&facts),
+            FailureClass::HarnessParseBug,
+            "eine Weigerung darf nicht dem Harness angelastet werden"
+        );
         assert!(has_raw_marker("bla\nWEBAGENT/1 WRITE\nid: x"));
         assert!(!has_raw_marker("bla blubb"));
     }
