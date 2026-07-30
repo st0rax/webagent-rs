@@ -63,6 +63,7 @@ pub struct BrowserPool {
 /// `PooledTab`: dessen `driver_proto` haengt an `feature = "webview"`, eine
 /// Methode waere ohne echten Browser nicht pruefbar. So laeuft im Test
 /// GENAU der Code, den auch der Produktionspfad aufruft.
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 pub(crate) fn note_navigation(refs: &mut u32, navigated: Result<(), String>) -> Result<(), String> {
     navigated?;
     *refs = refs.saturating_add(1);
@@ -81,10 +82,12 @@ pub(crate) fn note_navigation(refs: &mut u32, navigated: Result<(), String>) -> 
 ///
 /// Bewusst NICHT hinter `#[cfg(feature = "webview")]`: so ist die Invariante
 /// ohne echten Browser pruefbar.
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 pub(crate) struct CloneGuard {
     dir: Option<PathBuf>,
 }
 
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 impl CloneGuard {
     pub(crate) fn new(dir: PathBuf) -> Self {
         Self { dir: Some(dir) }

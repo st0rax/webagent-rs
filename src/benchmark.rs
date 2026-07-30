@@ -50,9 +50,11 @@ macro_rules! bench_say {
 
 /// Wall-Timeout je Brain-Run in Sekunden (ein Benchmark-Run darf nicht ewig
 /// laufen — via `AgentController::set_wall_timeout_secs`).
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 const BENCH_WALL_SECS: u64 = 300;
 /// Controller-Zyklen je Brain-Run: klein, damit das Brain fokussiert am Sieger
 /// baut statt an einer offenen Aufgabe.
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 const BENCH_MAX_CYCLES: usize = 15;
 /// Timeout je Eval-Kommando (`cargo build`/`cargo test`) in Sekunden.
 const EVAL_TIMEOUT_SECS: u64 = 300;

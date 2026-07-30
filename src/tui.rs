@@ -769,6 +769,7 @@ fn run_tui_ratatui(
 /// in einem Hintergrund-Thread im GLEICHEN Prozess. Browser bleiben dabei
 /// standardmäßig außerhalb des sichtbaren Desktops; `--headed` ist die
 /// bewusste Ausnahme für eine sichtbare Diagnose.
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
     let mut brains: Vec<String> = candidates.to_vec();
     let mut rounds = 1usize;
@@ -908,10 +909,15 @@ fn enable_vt_processing() {
     }
 }
 
+// Ohne `tui`-Feature wird der Rumpf von `run_tui` nicht uebersetzt; die
+// Funktion bleibt aber Teil der oeffentlichen Schnittstelle. Damit ist sie
+// hier ungenutzt — erwartet, kein Hinweis auf toten Code.
 #[cfg(not(all(windows, feature = "webview")))]
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
 fn enable_vt_processing() {}
 
 /// Einstiegspunkt der TUI (Default, wenn `webagent` ohne Subcommand läuft).
+#[cfg_attr(not(feature = "tui"), allow(unused_variables))]
 pub fn run_tui(
     active: usize,
     brains: &str,

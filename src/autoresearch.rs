@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 
 /// Controller-Zyklen pro Modify-Schritt: klein gehalten, damit der Brain bei
 /// "einer fokussierten Änderung" bleibt statt einer offenen Aufgabe (§10).
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 const MODIFY_MAX_CYCLES: usize = 5;
 /// Wie viele vergangene Iterationen der Modify-Prompt zusammenfasst.
 const PROMPT_HISTORY_LIMIT: usize = 3;
@@ -290,6 +291,7 @@ fn controller_modify(_config: &AutoResearchConfig, _prompt: &str) -> Result<Stri
 /// vorhanden) der Text der abschließenden message-Action. Shell-Observations
 /// beginnen mit "[Terminal-Ausgabe" (siehe protocol::format_observation) und
 /// werden ausgefiltert; "finish" ist der Marker der finish-Action.
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
 fn summarize_run(status: &str, completed_actions: &HashMap<String, String>) -> String {
     let message = completed_actions
         .values()
