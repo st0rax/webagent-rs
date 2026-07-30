@@ -286,12 +286,22 @@ where
     }
 
     if proposals.len() <= 1 {
+        // Ein einziger Entwurf ist nichts zum Abstimmen — aber ein Ergebnis.
+        //
+        // Vorher lief auch dieser Fall auf `approved: None` und beendete den
+        // Benchmark mit Fehler. Real passiert das regelmaessig: sind sieben von
+        // acht Brains gesperrt (Nachrichtenlimit, Login), liefert nur eines
+        // einen Entwurf — und dessen Arbeit wurde verworfen, statt sie zu bauen.
         let winner = if proposals.is_empty() { None } else { Some(0) };
+        let approved = proposals.first().map(|(_, text)| text.clone());
+        if approved.is_some() {
+            on_round("Nur ein Entwurf verfuegbar — er gilt ohne Abstimmung als Plan");
+        }
         return DesignVoteReport {
             proposals,
             eliminated: Vec::new(),
             winner,
-            approved: None,
+            approved,
             amendments: Vec::new(),
         };
     }
@@ -529,14 +539,33 @@ where
                     approved = Some(decision);
                 }
                 None => on_round(&format!(
-                    "Ratifikation: Scoreboard-Leader {leader} nicht verfügbar — keine automatische Umsetzung"
+                    "Ratifikation: Scoreboard-Leader {leader} nicht verfügbar"
                 )),
             }
         } else {
-            on_round(
-                "Ratifikation: kein teilnehmender Scoreboard-Leader — keine automatische Umsetzung",
-            );
+            on_round("Ratifikation: kein teilnehmender Scoreboard-Leader");
         }
+    }
+
+    // Letzte Instanz: der Turniersieger IST das Ergebnis.
+    //
+    // Vorher endete jeder dieser Wege mit `approved: None`, der Benchmark gab
+    // einen Fehler zurueck und die ganze Runde war verloren — obwohl an dieser
+    // Stelle ein fertiger, ueber bis zu sechs Revisionen verfeinerter Plan
+    // vorliegt. Am 30.07.2026 hat eine Planungsphase 57 Minuten und acht Brains
+    // gekostet; sie wegzuwerfen, weil niemand sie abgestempelt hat, macht die
+    // Zeit umsonst.
+    //
+    // Das Verfahren bleibt unveraendert gruendlich: alle Ausscheidungswellen,
+    // alle Revisionen, Einstimmigkeit wird ernsthaft versucht, danach der
+    // Scoreboard-Leader. Nur das Alles-oder-nichts-Ende faellt weg. Dass der
+    // Plan nicht ratifiziert ist, bleibt an `amendments` ablesbar.
+    if approved.is_none() {
+        on_round(
+            "Ratifikation: keine Einstimmigkeit und kein Leader-Entscheid — \
+             Turniersieger wird als Plan uebernommen (Einwaende bleiben vermerkt)",
+        );
+        approved = Some(proposal.clone());
     }
     DesignVoteReport {
         proposals,
@@ -640,6 +669,65 @@ mod tests {
         assert_eq!(report.proposals.len(), 1, "Ausfallmeldung ausgefiltert");
         assert_eq!(report.winner, Some(0));
         assert!(report.eliminated.is_empty());
+        // Der eine Entwurf muss auch nutzbar sein: vorher stand hier
+        // `approved: None`, der Benchmark brach ab und die Arbeit des einzigen
+        // erreichbaren Brains war verloren.
+        assert!(
+            report.approved_text().is_some(),
+            "einziger Entwurf muss als Plan gelten"
+        );
+    }
+
+    #[test]
+    fn abstimmung_endet_nie_ergebnislos_wenn_ein_plan_vorliegt() {
+        // Storax' Bedingung zum gruendlichen Verfahren: die Zeit darf nicht
+        // umsonst sein. Hier verweigert JEDES Brain dauerhaft die Zustimmung
+        // (immer ein Aenderungswunsch) und der Planautor liefert keine Revision
+        // — also weder Einstimmigkeit noch Leader-Entscheid. Trotzdem muss ein
+        // Plan herauskommen, sonst waren Ausscheidung und Revisionen umsonst.
+        let brains = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let calls = AtomicUsize::new(0usize);
+        let query = |_b: &str, prompt: &str| -> Result<String, String> {
+            if prompt.contains("Entwirf EIN") {
+                let n = calls.fetch_add(1, Ordering::SeqCst);
+                return Ok(format!(
+                    "Entwurf Nummer {n} mit Panels und Farben und Tasten fuer die Oberflaeche"
+                ));
+            }
+            if prompt.contains("Änderungswunsch") || prompt.contains("Aenderungswunsch") {
+                // Niemand stimmt je zu — immer ein Einwand.
+                return Ok("EINWAND: bitte noch einen Test ergaenzen".to_string());
+            }
+            if prompt.contains("schwaechste") || prompt.contains("schwächste") {
+                return Ok("1 — schwaechstes".to_string());
+            }
+            // Revision und Leader-Entscheid schlagen fehl.
+            Err("nicht verfuegbar".to_string())
+        };
+        let report = run_design_vote(
+            &DesignVoteConfig {
+                brains,
+                topic: "irgendein Ziel".to_string(),
+                context: String::new(),
+                mode: VoteMode::Design,
+            },
+            &|_| {},
+            query,
+        );
+        // Beweis, dass wirklich der Rueckfallweg lief und nicht der
+        // Einzelentwurf-Kurzschluss: es gab mehrere Entwuerfe, es wurde
+        // ausgeschieden, und Einwaende sind vermerkt.
+        assert_eq!(report.proposals.len(), 3, "drei Entwuerfe gesammelt");
+        assert!(
+            !report.eliminated.is_empty(),
+            "Ausscheidung hat stattgefunden"
+        );
+        assert!(!report.amendments.is_empty(), "Einwaende bleiben vermerkt");
+        assert!(report.winner.is_some(), "ein Sieger muss feststehen");
+        assert!(
+            report.approved_text().is_some(),
+            "ohne Einstimmigkeit MUSS der Turniersieger uebernommen werden"
+        );
     }
 
     #[test]

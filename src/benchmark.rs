@@ -1356,25 +1356,34 @@ where
                 context: plan_context,
                 mode: crate::design_vote::VoteMode::ImplementationPlan,
             },
+            // `bench_say!` statt `bench_events::emit`: `emit` schreibt NUR in den
+            // Ringpuffer, den allein die TUI liest. Im CLI-Dauerlauf ging der
+            // gesamte Fortschritt dieser Phase damit an niemanden — am
+            // 30.07.2026 stand die Planung 57 Minuten ohne ein einziges
+            // Lebenszeichen da und sah wie ein Haenger aus.
             &|msg| {
-                crate::bench_events::emit(
+                bench_say!(
                     crate::bench_events::Level::Progress,
                     None,
-                    &format!("Plan-Konsens: {msg}"),
+                    "Plan-Konsens: {msg}"
                 )
             },
             |b, p| query(b, p),
         );
+        // Seit `design_vote` den Turniersieger notfalls selbst uebernimmt, bleibt
+        // hier nur noch ein Fall uebrig: es kam ueberhaupt kein Entwurf zurueck,
+        // weil kein Brain erreichbar war. Das ist eine Verfuegbarkeitsstoerung
+        // wie jede andere — kein Grund, den Dauerlauf zu beenden.
         let Some(consensus_plan) = plan_vote.approved_text().map(str::to_owned) else {
             bench_say!(
                 crate::bench_events::Level::Warn,
                 None,
-                "Plan-Konsens nicht einstimmig ratifiziert — keine neue Umfrage, Benchmark wird kontrolliert angehalten."
+                "runde {round}: kein einziger Planentwurf — kein Brain erreichbar. \
+                 Warte {}s und versuche es erneut.",
+                OUTAGE_COOLDOWN_SECS
             );
-            return Err(
-                "Plan-Konsens nicht ratifiziert und kein verfügbarer Scoreboard-Leader konnte entscheiden; keine neue Vorschlagsrunde gestartet."
-                    .to_string(),
-            );
+            std::thread::sleep(std::time::Duration::from_secs(OUTAGE_COOLDOWN_SECS));
+            continue;
         };
         bench_say!(
             crate::bench_events::Level::Pass,
