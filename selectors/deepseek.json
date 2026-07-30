@@ -10,6 +10,7 @@
     "button:has(svg)"
   ],
   "stop_button": [
+    "button[aria-label*='stoppen' i]",
     "button[aria-label*='Stop']",
     "button:has-text('Stop')"
   ],

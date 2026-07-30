@@ -21,6 +21,8 @@
     "button[type='submit']"
   ],
   "stop_button": [
+    "button[aria-label='Antwort stoppen']",
+    "button[aria-label*='stoppen' i]",
     "button[aria-label='Stop response']",
     "button[aria-label='Stop Response']",
     "button[aria-label='Stop generating']",

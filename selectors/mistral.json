@@ -26,6 +26,7 @@
     "button:has-text('Tout refuser')"
   ],
   "stop_button": [
+    "button[aria-label*='stoppen' i]",
     "button[data-testid='stop-button']",
     "button[aria-label='Stop generating']",
     "button[aria-label='Stop generation']"

@@ -956,7 +956,7 @@ document.querySelectorAll(s).forEach(function(b){
   var svgt='';try{var st=b.querySelector('svg title,svg desc');if(st)svgt=(st.textContent||'').trim();}catch(e){}
   var id=b.getAttribute('id')||'',al=b.getAttribute('aria-label')||'',
       dt=b.getAttribute('data-testid')||'',
-      cls=(b.className||'').toString().slice(0,60),
+      cls=(b.className||'').toString().slice(0,160),
       t=((b.innerText||b.textContent||'')+'').replace(/\s+/g,' ').trim().slice(0,24);
   var parts=[];
   if(al)parts.push('aria='+al);
