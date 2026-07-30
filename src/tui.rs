@@ -805,7 +805,11 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
                     suggestions = parts[i].parse().unwrap_or(3);
                 }
             }
-            "--loop" => loop_forever = true,
+            // Beide Schreibweisen: die CLI heisst `--loop-forever`, die TUI hiess
+            // nur `--loop`. Ein unbekanntes Flag wurde hier stillschweigend
+            // verschluckt — am 30.07.2026 lief der Dauerlauf deshalb genau EINE
+            // Runde und beendete sich, ohne dass irgendwo ein Hinweis stand.
+            "--loop" | "--loop-forever" => loop_forever = true,
             "--headless" => headless = true,
             "--headed" => headless = false,
             "--no-harvest" => harvest = false,
@@ -814,6 +818,15 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
                 if i < parts.len() && !parts[i].trim().is_empty() {
                     vetoes.push(parts[i].trim().to_string());
                 }
+            }
+            // Unbekannte Flags nicht verschlucken: ein Tippfehler oder eine
+            // Schreibweise, die es nur in der CLI gibt, aendert sonst lautlos
+            // nichts — genau so lief der Dauerlauf am 30.07.2026 eine Runde
+            // statt endlos.
+            unbekannt if unbekannt.starts_with("--") => {
+                crate::bench_events::eprint_line(&format!(
+                    "[tui] unbekanntes Benchmark-Flag ignoriert: {unbekannt}"
+                ));
             }
             _ => {}
         }
