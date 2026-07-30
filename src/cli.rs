@@ -318,8 +318,16 @@ pub enum Commands {
     Relay {
         #[arg(long)]
         brain: String,
-        #[arg(long)]
+        #[arg(long, default_value = "")]
         message: String,
+        /// Nachricht aus einer Datei lesen statt aus dem Argument.
+        ///
+        /// Windows kappt die Kommandozeile bei rund 32.000 Zeichen. Ohne diese
+        /// Option laesst sich gar nicht messen, wie lange Eingaben eine
+        /// Oberflaeche annimmt — der Start scheitert vorher mit
+        /// "Der Dateiname oder die Erweiterung ist zu lang".
+        #[arg(long)]
+        message_file: Option<String>,
         #[arg(long)]
         headless: bool,
         #[arg(long, default_value = "0")]

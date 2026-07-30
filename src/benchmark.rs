@@ -28,6 +28,7 @@
 //! der Live-Teil (echtes Brain + `cargo` + Git) wird vom Orchestrator end-to-end
 //! geprüft, nicht im Unit-Test.
 
+use regex::Regex;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -295,14 +296,36 @@ pub fn task_id(winner: &str) -> String {
 
 /// Baut den Aufgaben-Prompt aus dem gevoteten Sieger (Spec §2, Phase A).
 pub fn build_task_prompt(winner: &str) -> String {
-    format!(
+    build_task_prompt_in(winner, &crate::config::root_dir())
+}
+
+/// Wie [`build_task_prompt`], aber mit explizitem Projektwurzel-Pfad, damit die
+/// Gliederung der Zieldatei ohne Prozess-CWD testbar ist.
+///
+/// Nennt der Plan eine Zieldatei, haengt ihre Gliederung an. Ohne sie liest sich
+/// ein Brain scheibchenweise durch die Datei und verbraucht dabei sein
+/// Zyklenbudget — siehe [`file_outline`].
+pub fn build_task_prompt_in(winner: &str, root: &Path) -> String {
+    let basis = format!(
         "Implementiere folgenden Verbesserungsvorschlag im Rust-Projekt webagent-rs \
          (aktuelles Verzeichnis) mit dem Rohformat (WEBAGENT/1 EDIT/WRITE). Ergänze \
          Tests. `cargo test --lib` muss grün bleiben. Mache genau diese eine \
          Änderung, nichts darüber hinaus. Ändere weder Cargo.toml noch Cargo.lock, \
          füge keine Dependencies hinzu und bearbeite keine Build-/CI-Skripte.\n\nVorschlag: {winner}",
         winner = winner.trim()
-    )
+    );
+    match target_file_of(winner).and_then(|rel| file_outline(&root.join(&rel), 120)) {
+        Some(gliederung) => format!("{basis}\n\n{gliederung}"),
+        None => basis,
+    }
+}
+
+/// Zieht die vom Plan genannte Zieldatei heraus (`Zieldatei: src/foo.rs`).
+pub fn target_file_of(text: &str) -> Option<String> {
+    let re = Regex::new(r"(?i)zieldatei:\s*([A-Za-z0-9_./-]+\.rs)").ok()?;
+    re.captures(text)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
 }
 
 /// Zählt die bestandenen Tests aus einer `cargo test`-Ausgabe
@@ -524,6 +547,58 @@ pub fn is_improvement(best: Option<Progress>, now: Progress) -> bool {
         None => now.stage > 0,
         Some(b) => now.stage > b.stage || (now.stage == b.stage && now.errors < b.errors),
     }
+}
+
+/// Kompakte Gliederung einer Rust-Datei: Signaturen mit Zeilennummern.
+///
+/// Warum das in den Aufgabentext gehoert, statt die Brains die Datei lesen zu
+/// lassen: `src/protocol.rs` hat 62.276 Zeichen und 1567 Zeilen, aber nur 34
+/// Signaturen. Wer dort eine Funktion ergaenzen soll, braucht die Fundstelle
+/// und genug Umgebung fuer einen eindeutigen Anker — nicht die ganze Datei.
+///
+/// Ohne Gliederung liest sich ein Brain scheibchenweise durch: zai verbrauchte
+/// am 30.07.2026 alle 15 Zyklen einer Runde mit `Get-Content` und
+/// `Select-String` auf derselben Datei und kam nie zum Editieren; neun Laeufe
+/// derselben Runde erzeugten NULL Datei-Aktionen.
+///
+/// Rund 2.000 Zeichen statt 62.000 — und danach kann gezielt gelesen werden.
+pub fn file_outline(path: &Path, max_entries: usize) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut zeilen = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let t = line.trim_start();
+        let ist_signatur = t.starts_with("pub fn ")
+            || t.starts_with("fn ")
+            || t.starts_with("pub struct ")
+            || t.starts_with("struct ")
+            || t.starts_with("pub enum ")
+            || t.starts_with("enum ")
+            || t.starts_with("pub trait ")
+            || t.starts_with("impl ")
+            || t.starts_with("pub const ")
+            || t.starts_with("const ")
+            || t.starts_with("#[cfg(test)]");
+        if !ist_signatur {
+            continue;
+        }
+        // Nur der Kopf, nicht der Rumpf: alles ab `{` faellt weg.
+        let kopf = t.split('{').next().unwrap_or(t).trim_end();
+        zeilen.push(format!("{:>5}  {}", i + 1, crate::char_prefix(kopf, 110)));
+        if zeilen.len() >= max_entries {
+            zeilen.push("      … (gekuerzt)".to_string());
+            break;
+        }
+    }
+    if zeilen.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "GLIEDERUNG von {} ({} Zeilen). Lies gezielt mit \
+         `Get-Content <datei> | Select-Object -Skip N -First M` statt die ganze Datei:\n{}",
+        path.display(),
+        text.lines().count(),
+        zeilen.join("\n")
+    ))
 }
 
 /// War eine harvest-lose Runde eine Verfuegbarkeitsstoerung statt einer
@@ -2606,6 +2681,35 @@ mod tests {
         assert!(focus.contains("REPARATURPRIORITÄT"));
         assert!(focus.contains("cannot find value x"));
         assert_eq!(focus.matches("cannot find value x").count(), 1);
+    }
+
+    #[test]
+    fn gliederung_ersetzt_das_scheibchenweise_lesen() {
+        // Belegt den Groessenunterschied, um den es geht: die Gliederung von
+        // protocol.rs ist ein Bruchteil der Datei. Am 30.07.2026 verbrauchte
+        // zai alle 15 Zyklen einer Runde mit Lesen und kam nie zum Editieren.
+        let datei = crate::config::root_dir().join("src/protocol.rs");
+        if !datei.is_file() {
+            return; // im Zweifel nicht raten: Datei kann umbenannt worden sein
+        }
+        let voll = std::fs::read_to_string(&datei).expect("lesbar");
+        let gliederung = file_outline(&datei, 120).expect("Signaturen vorhanden");
+        assert!(
+            gliederung.len() * 5 < voll.len(),
+            "Gliederung ({} Zeichen) muss deutlich kleiner sein als die Datei ({})",
+            gliederung.len(),
+            voll.len()
+        );
+        assert!(gliederung.contains("GLIEDERUNG"));
+
+        // Und sie landet im Aufgabentext, sobald der Plan eine Zieldatei nennt.
+        let plan = "Zieldatei: src/protocol.rs. Implementiere dort eine Funktion.";
+        assert_eq!(target_file_of(plan).as_deref(), Some("src/protocol.rs"));
+        let prompt = build_task_prompt_in(plan, &crate::config::root_dir());
+        assert!(prompt.contains("GLIEDERUNG"), "Gliederung fehlt im Prompt");
+
+        // Ohne Zieldatei bleibt der Prompt unveraendert kurz.
+        assert!(target_file_of("irgendein Vorschlag ohne Datei").is_none());
     }
 
     #[test]

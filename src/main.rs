@@ -195,10 +195,18 @@ fn dispatch(command: Commands) -> i32 {
         Commands::Relay {
             brain,
             message,
+            message_file,
             headless,
             timeout,
             json,
-        } => cmd_relay(&brain, &message, headless, timeout, json),
+        } => cmd_relay(
+            &brain,
+            &message,
+            message_file.as_deref(),
+            headless,
+            timeout,
+            json,
+        ),
 
         Commands::Swarm {
             message,

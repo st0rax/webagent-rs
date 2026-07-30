@@ -58,7 +58,29 @@ pub fn brain_io_json(r: &BrainIoResult) -> String {
     })
 }
 
-pub fn cmd_relay(brain: &str, message: &str, headless: bool, timeout: f64, json: bool) -> i32 {
+pub fn cmd_relay(
+    brain: &str,
+    message: &str,
+    message_file: Option<&str>,
+    headless: bool,
+    timeout: f64,
+    json: bool,
+) -> i32 {
+    let text = match message_file {
+        Some(p) => match std::fs::read_to_string(p) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[relay] {p} nicht lesbar: {e}");
+                return 2;
+            }
+        },
+        None => message.to_string(),
+    };
+    if text.trim().is_empty() {
+        eprintln!("[relay] leere Nachricht — --message oder --message-file angeben");
+        return 2;
+    }
+    let message = text.as_str();
     let to = if timeout > 0.0 { Some(timeout) } else { None };
     let started = std::time::Instant::now();
     match webagent::relay::relay_single_turn(brain, message, headless, to) {

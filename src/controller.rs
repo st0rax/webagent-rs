@@ -21,7 +21,7 @@ const INCOMPLETE_RETRY_PROMPT: &str =
      Wenn die Aufgabe abgeschlossen ist, sende eine message-Action.";
 
 // Konfigurationskonstanten (aus CONVENTIONS.md: keine externe config-Crate)
-use crate::config::{LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT, MAX_OBSERVATION_CHARS};
+use crate::config::{max_observation_chars, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT};
 const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 const MEMORY_CONTEXT_LIMIT: usize = 5;
 const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
@@ -587,9 +587,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         )
     }
 
-    /// Begrenzt Observation auf MAX_OBSERVATION_CHARS und archiviert vollständige Ausgabe.
+    /// Begrenzt Observation auf `config::max_observation_chars()` und
+    /// archiviert die vollständige Ausgabe.
     fn bounded_observation(&mut self, action_id: &str, observation: &str) -> String {
-        if observation.len() <= MAX_OBSERVATION_CHARS || self.meta.is_none() {
+        let cap = max_observation_chars();
+        if observation.len() <= cap || self.meta.is_none() {
             return observation.to_string();
         }
 
@@ -615,8 +617,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         std::fs::write(&artifact, observation).ok();
 
-        let head_size = (MAX_OBSERVATION_CHARS as f64 * 0.65) as usize;
-        let tail_size = MAX_OBSERVATION_CHARS - head_size;
+        let head_size = (cap as f64 * 0.65) as usize;
+        let tail_size = cap - head_size;
         let omitted = observation.len() - head_size - tail_size;
 
         format!(

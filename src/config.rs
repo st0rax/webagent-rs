@@ -130,8 +130,36 @@ pub fn shared_profile_dir() -> PathBuf {
     profiles_dir().join("shared")
 }
 
-/// Maximale Observation-Länge (Zeichen) — Python `MAX_OBSERVATION_CHARS`.
-pub const MAX_OBSERVATION_CHARS: usize = 12_000;
+/// Voreingestellte maximale Observation-Länge in Zeichen.
+///
+/// Bleibt bei 12.000. Ich hatte den Wert am 30.07.2026 auf 40.000 angehoben,
+/// weil Brains sich durch Dateien *lesen* statt sie zu bearbeiten — und das
+/// wieder zurückgenommen: der Wert war geraten, nicht gemessen, und er behebt
+/// die Ursache nicht.
+///
+/// `src/protocol.rs` hat 62.276 Zeichen, aber nur 34 Signaturen. Ein Brain, das
+/// eine Funktion ergänzen soll, braucht die Fundstelle und genug Umgebung für
+/// einen eindeutigen Anker — ein paar Dutzend Zeilen, nicht 1567. Ein höheres
+/// Limit macht dieselbe Verschwendung nur teurer: dieselbe Datei, jetzt in
+/// einem Rutsch, und das in jedem Turn des Verlaufs erneut.
+///
+/// Der Hebel ist stattdessen die Gliederung im Aufgabentext (siehe
+/// `benchmark::file_outline`): Signaturen mit Zeilennummern, rund 2.000 statt
+/// 62.000 Zeichen, danach liest das Brain gezielt.
+pub const DEFAULT_MAX_OBSERVATION_CHARS: usize = 12_000;
+
+/// Maximale Observation-Länge, per `WEBAGENT_MAX_OBSERVATION_CHARS` änderbar.
+///
+/// Zickt eine Oberfläche (abgeschnittene Eingabe, Senden schlägt fehl), lässt
+/// sich der Wert ohne Neubau senken — und erhöhen, sobald gemessen ist, was ein
+/// Anbieter wirklich annimmt.
+pub fn max_observation_chars() -> usize {
+    env::var("WEBAGENT_MAX_OBSERVATION_CHARS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n >= 1_000)
+        .unwrap_or(DEFAULT_MAX_OBSERVATION_CHARS)
+}
 /// Loop-Guard Warn-/Abort-Schwellen — Python `LOOP_GUARD_*`.
 pub const LOOP_GUARD_WARN_COUNT: usize = 3;
 pub const LOOP_GUARD_ABORT_COUNT: usize = 8;
@@ -1297,7 +1325,9 @@ mod tests {
 
     #[test]
     fn test_parity_constants() {
-        assert_eq!(MAX_OBSERVATION_CHARS, 12_000);
+        assert_eq!(DEFAULT_MAX_OBSERVATION_CHARS, 12_000);
+        // Ohne Env-Ueberschreibung gilt der Standard.
+        assert!(max_observation_chars() >= 1_000);
         assert_eq!(LOOP_GUARD_WARN_COUNT, 3);
         assert_eq!(LOOP_GUARD_ABORT_COUNT, 8);
     }
