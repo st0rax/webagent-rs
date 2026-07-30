@@ -697,14 +697,59 @@ fn print_leaderboard(board: &[CodeStats]) {
 /// untracked Dateien — `git diff --quiet` allein übersähe die von write-Actions
 /// erzeugten neuen Dateien; deshalb `git status --porcelain`).
 fn tree_changed(workdir: &Path) -> bool {
-    match std::process::Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(workdir)
-        .output()
-    {
-        Ok(out) => !String::from_utf8_lossy(&out.stdout).trim().is_empty(),
-        Err(_) => false,
+    // Ein fehlgeschlagenes `git status` darf NICHT als „nichts geaendert"
+    // durchgehen.
+    //
+    // Vorher stand hier `Err(_) => false`. Damit loescht ein einziger
+    // transienter Git-Fehler — etwa eine `index.lock`-Kollision mit den
+    // parallel laufenden Eval-Kommandos — die gesamte Arbeit eines Brains aus
+    // der Messung. Und weil `is_pass` zwingend `did_change` verlangt, kann in
+    // diesem Fall nie eine Ernte entstehen.
+    //
+    // Real beobachtet am 30.07.2026, Lauf 20260730_024130_167ab580 (deepseek):
+    // der Executor meldete „edit ok: src/protocol.rs — Ersetzung ab Zeile 971.
+    // Datei jetzt 1767 Zeilen", HEAD hatte 1567 — die Aenderung war also echt.
+    // Gewertet wurde „did_change=nein build=x test=x -> SKIP (keine
+    // Aenderung)".
+    //
+    // Also: einmal wiederholen (Lock-Kollisionen sind kurz), und wenn es dann
+    // immer noch nicht geht, laut sagen statt still falsch zu messen. Im
+    // Zweifel `true`: eine faelschlich gemeldete Aenderung faellt sofort im
+    // Build- oder Test-Tor auf, eine faelschlich verschwiegene ist unsichtbar.
+    for versuch in 1..=2 {
+        match std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(workdir)
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                return !String::from_utf8_lossy(&out.stdout).trim().is_empty();
+            }
+            Ok(out) => {
+                let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                if versuch == 2 {
+                    crate::bench_events::eprint_line(&format!(
+                        "[benchmark] WARNUNG: `git status` in {} scheiterte ({err}) — \
+                         Aenderung wird vorsichtshalber als vorhanden gewertet",
+                        workdir.display()
+                    ));
+                    return true;
+                }
+            }
+            Err(e) => {
+                if versuch == 2 {
+                    crate::bench_events::eprint_line(&format!(
+                        "[benchmark] WARNUNG: `git` nicht ausfuehrbar in {} ({e}) — \
+                         Aenderung wird vorsichtshalber als vorhanden gewertet",
+                        workdir.display()
+                    ));
+                    return true;
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(400));
     }
+    true
 }
 
 /// Führt ein Eval-Kommando aus und wertet nur den Exit-Code (0 = ok) — nutzt den
@@ -2547,6 +2592,24 @@ mod tests {
         assert!(focus.contains("REPARATURPRIORITÄT"));
         assert!(focus.contains("cannot find value x"));
         assert_eq!(focus.matches("cannot find value x").count(), 1);
+    }
+
+    #[test]
+    fn gescheitertes_git_status_gilt_nicht_als_unveraendert() {
+        // Regression 30.07.2026: `Err(_) => false` machte aus „git ging nicht"
+        // ein „nichts geaendert". Ein transienter Git-Fehler loescht damit die
+        // Arbeit eines Brains aus der Messung, und weil `is_pass` zwingend
+        // `did_change` verlangt, ist danach keine Ernte mehr moeglich.
+        //
+        // Ein Verzeichnis ohne Git-Repo erzwingt den Fehlerfall.
+        let stamp = std::process::id();
+        let dir = std::env::temp_dir().join(format!("webagent_kein_repo_{stamp}"));
+        let _ = std::fs::create_dir_all(&dir);
+        assert!(
+            tree_changed(&dir),
+            "gescheitertes git status muss als Aenderung gelten, nicht als sauber"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
