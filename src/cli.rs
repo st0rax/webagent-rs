@@ -314,6 +314,18 @@ pub enum Commands {
         json: bool,
     },
 
+    /// Misst je Brain die zulaessige Eingabelaenge und merkt sie sich dauerhaft
+    MeasureLimits {
+        /// Brains als CSV (leer = alle verfuegbaren)
+        #[arg(long, default_value = "")]
+        brains: String,
+        #[arg(long)]
+        headless: bool,
+        /// Auch bereits gemessene Brains erneut messen
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Single send+wait turn (bot2bot bridge debugging)
     Relay {
         #[arg(long)]

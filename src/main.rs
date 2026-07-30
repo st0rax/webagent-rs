@@ -192,6 +192,12 @@ fn dispatch(command: Commands) -> i32 {
 
         Commands::Quests { json } => cmd_quests(json),
 
+        Commands::MeasureLimits {
+            brains,
+            headless,
+            force,
+        } => cmd_measure_limits(&brains, headless, force),
+
         Commands::Relay {
             brain,
             message,

@@ -148,11 +148,35 @@ pub fn shared_profile_dir() -> PathBuf {
 /// 62.000 Zeichen, danach liest das Brain gezielt.
 pub const DEFAULT_MAX_OBSERVATION_CHARS: usize = 12_000;
 
-/// Maximale Observation-Länge, per `WEBAGENT_MAX_OBSERVATION_CHARS` änderbar.
+/// Observation-Kappung für ein bestimmtes Brain — aus der Messung abgeleitet.
 ///
-/// Zickt eine Oberfläche (abgeschnittene Eingabe, Senden schlägt fehl), lässt
-/// sich der Wert ohne Neubau senken — und erhöhen, sobald gemessen ist, was ein
-/// Anbieter wirklich annimmt.
+/// Am 30.07.2026 mit `webagent measure-limits` gemessen: chatgpt, deepseek,
+/// kimi und zai nahmen jeweils **100.000 Zeichen** an, alle beim ersten
+/// Versuch. Das ist die oberste Sprosse der Probenleiter, also eine untere
+/// Schranke — nach oben ist offen. Der bisherige Wert von 12.000 war damit rund
+/// achtmal zu vorsichtig; er stammte aus der Python-Portierung und war nie
+/// nachgeprüft worden.
+///
+/// Genutzt wird die **Hälfte** des gemessenen Werts: die Messung gilt für eine
+/// ganze Nachricht, unsere besteht aber aus Aufgabentext, Verlauf UND
+/// Observation. Die Hälfte lässt Luft für den Rest, damit kein Turn an einer
+/// Ablehnung verlorengeht.
+///
+/// Ohne Messwert bleibt der konservative Standard — bewusst klein, bis gemessen
+/// wurde, statt zu raten.
+pub fn max_observation_chars_for(brain_id: &str) -> usize {
+    if let Ok(v) = env::var("WEBAGENT_MAX_OBSERVATION_CHARS") {
+        if let Some(n) = v.trim().parse::<usize>().ok().filter(|n| *n >= 1_000) {
+            return n;
+        }
+    }
+    match crate::brain_limits::accepted_chars(brain_id) {
+        Some(gemessen) => (gemessen / 2).max(DEFAULT_MAX_OBSERVATION_CHARS),
+        None => DEFAULT_MAX_OBSERVATION_CHARS,
+    }
+}
+
+/// Maximale Observation-Länge ohne Brain-Bezug (Fallback).
 pub fn max_observation_chars() -> usize {
     env::var("WEBAGENT_MAX_OBSERVATION_CHARS")
         .ok()

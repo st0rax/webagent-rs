@@ -21,7 +21,7 @@ const INCOMPLETE_RETRY_PROMPT: &str =
      Wenn die Aufgabe abgeschlossen ist, sende eine message-Action.";
 
 // Konfigurationskonstanten (aus CONVENTIONS.md: keine externe config-Crate)
-use crate::config::{max_observation_chars, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT};
+use crate::config::{max_observation_chars_for, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT};
 const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 const MEMORY_CONTEXT_LIMIT: usize = 5;
 const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
@@ -590,7 +590,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     /// Begrenzt Observation auf `config::max_observation_chars()` und
     /// archiviert die vollständige Ausgabe.
     fn bounded_observation(&mut self, action_id: &str, observation: &str) -> String {
-        let cap = max_observation_chars();
+        // Kappung nach dem GEMESSENEN Limit dieses Brains, nicht nach einem
+        // globalen Schaetzwert — siehe `config::max_observation_chars_for`.
+        let cap = max_observation_chars_for(self.brain.brain_id());
         if observation.len() <= cap || self.meta.is_none() {
             return observation.to_string();
         }
