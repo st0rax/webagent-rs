@@ -2012,12 +2012,24 @@ where
                 })
                 .count();
             let p_err: usize = letzte.iter().map(|(_, f)| f.protocol_errors).sum();
-            if harness > 0 || p_err > 0 {
+            // Die Zuordnung muss stimmen, sonst ist der Melder selbst
+            // irrefuehrend: am 30.07.2026 stand „0 mit erkennbarem Format — das
+            // ist der Harness, nicht das Brain" im Log, obwohl die drei
+            // Verwerfungen claudes begruendete Weigerung waren und mit dem
+            // Harness nichts zu tun hatten.
+            if harness > 0 {
                 bench_say!(
                     crate::bench_events::Level::Warn,
                     None,
                     "runde {round}: {p_err} verworfene Brain-Antwort(en), davon {harness} \
-                     mit erkennbarem Format — das ist der Harness, nicht das Brain."
+                     mit erkennbarem Format — DAS ist der Harness, nicht das Brain."
+                );
+            } else if p_err > 0 {
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    None,
+                    "runde {round}: {p_err} verworfene Brain-Antwort(en), keine davon mit \
+                     erkennbarem Format — der Harness ist hier nicht die Ursache."
                 );
             }
         }
