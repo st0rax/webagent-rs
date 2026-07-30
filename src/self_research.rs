@@ -525,10 +525,29 @@ where
     crate::bench_events::info_line(&format!(
         "[self-research] Phase 1/4 — {total} Brains sammeln je {n} Vorschläge…"
     ));
+    // Zuschnitt der Vorschläge: klein genug, um sie auch zu BAUEN.
+    //
+    // Gemessen am 30.07.2026: der Schwarm wählte Brocken wie „zentraler
+    // JSON-Sanitizer mit Codefence-Strip, BOM-Check, UTF-8-Recovery,
+    // Truncation-Guard, Rohantwort-Logging und strukturiertem Fehlertyp" in
+    // einer Datei mit 1567 Zeilen. In neun Läufen gab es daraufhin NULL
+    // Datei-Aktionen: zai verbrauchte alle 15 Zyklen damit, die Datei
+    // scheibchenweise zu lesen (`Get-Content`/`Select-String`, Schritt 1 bis 8),
+    // und kam nie zum Editieren.
+    //
+    // Die Planungsphase verlangt längst „genau EINE Zieldatei"; der Brocken
+    // entsteht also früher, hier. Ein Vorschlag, der nicht in wenige Schritte
+    // passt, ist im Benchmark kein Vorschlag, sondern eine Sackgasse — er kostet
+    // eine ganze Runde und liefert keinen Messpunkt.
     let collect_prompt = format!(
         "{facts}\n\nBewerte das Projekt oben. Nenne GENAU {n} konkrete, umsetzbare \
          Verbesserungen für den nächsten Schritt — als nummerierte Liste (1. … {n}. …), \
-         ein Vorschlag pro Zeile, knapp und konkret. Keine Einleitung, kein Nachwort."
+         ein Vorschlag pro Zeile, knapp und konkret. Keine Einleitung, kein Nachwort.\n\n\
+         ZUSCHNITT (wichtig): Jeder Vorschlag muss in EINER Datei umsetzbar sein und \
+         in wenigen Schritten fertig werden — eine Funktion, ein Gate, ein Test, eine \
+         Fehlermeldung. KEINE Sammelpakete (A, B, C und D in einem Zug), keine Umbauten \
+         quer über mehrere Module, keine neuen Subsysteme. Wer mehr will, nennt den \
+         kleinsten Teilschritt, der für sich allein baut und testbar ist."
     );
     let mut pool: Vec<String> = Vec::new();
     let mut answered: Vec<String> = Vec::new();
