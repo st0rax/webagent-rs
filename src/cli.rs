@@ -1,0 +1,597 @@
+//! CLI-Oberflaeche: Befehlsstruktur und Argumente.
+//!
+//! Bewusst getrennt von `main.rs`: dort standen 2577 Zeilen Code gegen 18
+//! Zeilen Test, und ueber 580 davon waren reine clap-Deklarationen. Wer den
+//! Ablauf verstehen will, musste sie erst ueberspringen — und ein Brain, das
+//! im Benchmark an `main.rs` arbeitet, liest sie jedes Mal mit.
+
+use clap::{Args, Parser, Subcommand};
+#[derive(Parser)]
+#[command(name = "webagent")]
+#[command(version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("WEBAGENT_GIT_HASH"), ")"))]
+#[command(about = "Gehirnunabhängiger lokaler Agent (Rust-Port)", long_about = None)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Autonomen Run starten
+    Run {
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+        #[arg(long, default_value = "chatgpt")]
+        brain: String,
+
+        /// Benutzeraufgabe
+        #[arg(long)]
+        task: String,
+
+        /// Run-ID fortsetzen
+        #[arg(long)]
+        resume: Option<String>,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+
+        /// Maximale Anzahl an Zyklen
+        #[arg(long, default_value = "100")]
+        max_cycles: u32,
+    },
+
+    /// Sichtbaren Browser oeffnen und auf manuellen Login warten (keine Zugangsdaten-Eingabe)
+    Login {
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+        #[arg(long)]
+        brain: String,
+
+        /// Maximale Wartezeit auf den Login in Sekunden
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+
+        /// Fenster offen halten, auch wenn der Login-Check schon "eingeloggt" meldet.
+        /// Noetig, wo die Erkennung zu optimistisch ist (kimi, mistral: Composer ist
+        /// auch anonym sichtbar) oder wo nur ein Dialog zu bestaetigen ist (mistral-AGB).
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Alle Brains nacheinander einloggen (canonical profiles/<brain>).
+    /// Parallel nur opt-in und gedeckelt (siehe --parallel).
+    LoginAll {
+        /// Maximale Wartezeit pro Brain in Sekunden
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+
+        /// Auch bei positivem Login-Check erneut oeffnen
+        #[arg(long)]
+        force: bool,
+
+        /// Parallelitaet (0 = sequenziell/Default; max 3 experimentell)
+        #[arg(long, default_value = "0")]
+        parallel: usize,
+    },
+
+    /// Live-Diagnose: echten Browser oeffnen und Login/Composer/Selektoren pruefen
+    Diagnose {
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+        #[arg(long)]
+        brain: String,
+
+        /// Headless statt sichtbar (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+    },
+
+    /// Interaktive REPL: mehrere Aufgaben nacheinander gegen dasselbe Brain
+    Repl {
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+        #[arg(long, default_value = "chatgpt")]
+        brain: String,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+    },
+
+    /// Pro-Brain Diagnose: Selektoren, Profil-Lock, letzte Antwort, Recovery
+    Doctor {
+        /// Nur diese Gehirne prüfen (leer = alle)
+        #[arg(long)]
+        brain: Vec<String>,
+
+        /// Maschinenlesbares JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Watchdog: Scannt verwaiste Runs, Bridge-Locks, Profil-Locks (Dry-Run/Repair)
+    Watchdog {
+        /// Bridge-Lock-Root (bot2bot Verzeichnis)
+        #[arg(long)]
+        bot2bot_root: Option<String>,
+
+        /// Profil-Verzeichnis
+        #[arg(long)]
+        profile_dir: Option<String>,
+
+        /// Runs-Verzeichnis (Fallback wenn kein RunStore)
+        #[arg(long)]
+        runs_dir: Option<String>,
+
+        /// Reparieren (Standard: Dry-Run)
+        #[arg(long)]
+        repair: bool,
+
+        /// Maschinenlesbares JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Fehlerursachen vergangener Laeufe klassifizieren: trennt Harness-Fehler
+    /// von echter Unfaehigkeit der Brains
+    #[command(name = "runs-report")]
+    RunsReport {
+        /// Wie viele der juengsten Laeufe betrachtet werden
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
+
+    /// Swarm entwirft ein TUI-Design, stimmt im Ausscheidungsverfahren ab
+    /// (kick vote), der Gewinner wird von einem Brain umgesetzt
+    #[command(name = "design-vote")]
+    DesignVote {
+        /// Komma-getrennte Brain-IDs (leer = alle verfuegbaren)
+        #[arg(long, default_value = "")]
+        brains: String,
+
+        /// Worum es geht (Thema des Designs)
+        #[arg(long, default_value = "das Worker-Pool-Dashboard der webagent-TUI")]
+        topic: String,
+
+        /// Optionaler Kontext (aktuelles Layout, Randbedingungen)
+        #[arg(long, default_value = "")]
+        context: String,
+
+        /// Brain, das den Gewinner umsetzt (leer = nur abstimmen, nicht bauen)
+        #[arg(long, default_value = "")]
+        implement_brain: String,
+
+        /// Headless-Browser
+        #[arg(long)]
+        headless: bool,
+    },
+
+    /// Pre-flight: Profile, Selektoren, Flags (ohne Browser)
+    BrainsHealth {
+        /// Leeres Shared-Profil akzeptieren (Exit 0)
+        #[arg(long)]
+        allow_empty_profile: bool,
+    },
+
+    /// Offline-Canary: prueft je Brain nur, ob Spec und Selektor-Datei da sind
+    /// (kein Browser, kein Login, kein Netz — dafuer `diagnose`)
+    Canary,
+
+    /// Einen Bereich der Oberflaeche oeffnen (z.B. projects_button) und den
+    /// Wechsel ueber die URL belegen
+    Section {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Selektor-Schluessel des Bereichs
+        #[arg(long)]
+        key: String,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
+    /// Segmentleiste umschalten (alle Stellungen sichtbar, z.B. deepseeks
+    /// Instant/Expert/Vision)
+    Mode {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Zu waehlende Stellung (Teilstring)
+        #[arg(long)]
+        set: String,
+        /// Selektor-Schluessel der Stellungen
+        #[arg(long, default_value = "mode_option")]
+        options: String,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
+    /// Beliebiges Aufklappmenue lesen oder waehlen (z.B. Denkstufe)
+    Menu {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Selektor-Schluessel des Menuebuttons, z.B. reasoning_effort_menu
+        #[arg(long)]
+        key: String,
+        /// Selektor-Schluessel der Eintraege (Default: model_option)
+        #[arg(long, default_value = "model_option")]
+        options: String,
+        /// Zu waehlender Eintrag (Teilstring); ohne Angabe wird nur gelistet
+        #[arg(long)]
+        set: Option<String>,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
+    /// Eine Option umschalten (z.B. reasoning_toggle, web_search_toggle) und
+    /// belegen, dass sich der Zustand wirklich geaendert hat
+    Toggle {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Selektor-Schluessel der Option
+        #[arg(long)]
+        option: String,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
+    /// Bilderwand: alle Brains nebeneinander in einem Fenster, wie mehrere
+    /// TV-Kanaele gleichzeitig
+    Wall {
+        /// Sekunden zwischen zwei Aufnahmerunden
+        #[arg(long, default_value_t = 30)]
+        interval: u64,
+        /// Nur eine Runde aufnehmen und beenden
+        #[arg(long)]
+        once: bool,
+        /// Nur diese Brains (mehrfach angebbar); ohne Angabe alle
+        #[arg(long)]
+        brain: Vec<String>,
+    },
+
+    /// Modelle eines Brains auflisten oder umschalten (mit Nachpruefung, dass
+    /// der Wechsel wirklich griff)
+    Model {
+        /// Brain-ID
+        #[arg(long)]
+        brain: String,
+        /// Zu waehlendes Modell (Teilstring genuegt); ohne Angabe wird nur gelistet
+        #[arg(long)]
+        set: Option<String>,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
+    /// Nimmt die Oberflaeche eines Brains als PNG auf (Vorlage fuer die
+    /// Faehigkeits-Vermessung: was im DOM keinen Namen hat, ist im Bild sichtbar)
+    Shot {
+        /// Brain-ID; ohne Angabe werden alle aufgenommen
+        #[arg(long)]
+        brain: Option<String>,
+        /// Zielverzeichnis (Default: <stable_root>/data/shots)
+        #[arg(long)]
+        out: Option<String>,
+        /// Vor der Aufnahme diesen Selektor-Schluessel anklicken, z.B.
+        /// `model_menu` — ein geschlossenes Menue zeigt seine Eintraege nicht
+        #[arg(long)]
+        open: Option<String>,
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
+    /// Vermisst die Oberflaeche eines Brains im echten DOM und traegt die
+    /// gefundenen Optionen als `ui_options` ein (der Nenner des Levels)
+    Survey {
+        /// Brain-ID; ohne Angabe werden alle vermessen
+        #[arg(long)]
+        brain: Option<String>,
+        /// Ergebnis in die Nutzer-Selektordatei schreiben statt nur anzeigen
+        #[arg(long)]
+        write: bool,
+        /// Vor der Vermessung diesen Selektor-Schluessel anklicken (z.B. model_menu)
+        #[arg(long)]
+        open: Option<String>,
+
+        /// Rohe Beschriftungen aller gefundenen Bedienelemente ausgeben
+        #[arg(long)]
+        dump: bool,
+
+        /// Sichtbar statt headless
+        #[arg(long)]
+        visible: bool,
+    },
+
+    /// Questlog: Level je Brain und was noch fehlt, um die Optionen des
+    /// jeweiligen Webchats auszureizen
+    Quests {
+        /// Maschinenlesbar statt Konsolenansicht
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Single send+wait turn (bot2bot bridge debugging)
+    Relay {
+        #[arg(long)]
+        brain: String,
+        #[arg(long)]
+        message: String,
+        #[arg(long)]
+        headless: bool,
+        #[arg(long, default_value = "0")]
+        timeout: f64,
+        /// Maschinenlesbare JSON-Ausgabe (brain/ok/answer/latency_ms/reason)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Multi-Brain-Swarm (Relay je Brain + Synthese). Default menschenlesbar; `--json` fuer CLI-Anbindung.
+    Swarm {
+        /// Aufgabe / Prompt an alle Brains
+        #[arg(long)]
+        message: String,
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+        /// Timeout pro Brain in Sekunden (0 = Default)
+        #[arg(long, default_value = "0")]
+        timeout: f64,
+        /// Komma-getrennte Brain-IDs (leer = alle verfuegbaren)
+        #[arg(long, default_value = "")]
+        brains: String,
+        /// Maschinenlesbares JSON (pro Brain + synthesis)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Autonomer bot2bot-Worker: Inbox pollen, Task via Controller abarbeiten,
+    /// Ergebnis zurueck an Absender (grok-Aequivalent). Jeder Prozess nutzt ein
+    /// eigenes isoliertes Profil (Q5-copy) -> N Worker laufen parallel.
+    #[command(name = "bot2bot-worker")]
+    Bot2BotWorker {
+        /// Brain-Backend (z.B. deepseek)
+        #[arg(long)]
+        brain: String,
+        /// Ein Durchlauf statt Endlos-Loop
+        #[arg(long)]
+        once: bool,
+        /// Poll-Intervall in Sekunden
+        #[arg(long, default_value = "30")]
+        poll_secs: u64,
+        /// Maximale Controller-Zyklen
+        #[arg(long, default_value = "100")]
+        max_cycles: u32,
+        /// Headless-Browser
+        #[arg(long)]
+        headless: bool,
+    },
+
+    /// Worker-Pool-Manager (Teil 1): haelt N aktive bot2bot-Worker (je ein
+    /// eigener Kindprozess) am Leben, Failover bei Crash (Brain -> unavailable,
+    /// naechster Reserve-Brain promoviert). Status pro Brain in pool_state.json
+    /// (available/active/unavailable, extern re-flaggbar).
+    #[command(name = "workers")]
+    Workers {
+        /// Anzahl gleichzeitig aktiver Worker (Default 2 -> 6 Reserve bei 8 Brains)
+        #[arg(long, default_value = "2")]
+        active: usize,
+
+        /// Komma-getrennte Brain-IDs (leer = alle verfuegbaren mit Profil)
+        #[arg(long, default_value = "")]
+        brains: String,
+
+        /// Poll-Intervall der Supervisor-Schleife in Sekunden
+        #[arg(long, default_value = "10")]
+        poll_secs: u64,
+
+        /// Headless-Browser fuer die Worker-Kindprozesse
+        #[arg(long)]
+        headless: bool,
+    },
+
+    /// Terminal-UI (Default): steuert den Worker-Pool sichtbar im Terminal.
+    /// Ohne Subcommand = diese Ansicht; `webagent tui` ist identisch. Zeigt
+    /// Brain-Status + Live-Task-Board und routet Aufgaben an einzelne Worker.
+    #[command(name = "tui")]
+    Tui {
+        /// Zielanzahl gleichzeitig aktiver Worker (Default 2)
+        #[arg(long, default_value = "2")]
+        active: usize,
+
+        /// Komma-getrennte Brain-IDs (leer = alle verfuegbaren mit Profil)
+        #[arg(long, default_value = "")]
+        brains: String,
+
+        /// Poll-Intervall der Supervisor-Schleife in Sekunden
+        #[arg(long, default_value = "5")]
+        poll_secs: u64,
+
+        /// Headless-Browser fuer die Worker-Kindprozesse
+        #[arg(long)]
+        headless: bool,
+
+        /// Startet beim Öffnen der TUI sofort diesen Benchmark-Argumentstring.
+        ///
+        /// Der Wert beginnt selbst mit `--`, deshalb MUSS die Gleichheitszeichen-
+        /// Form benutzt werden — mit Leerzeichen haelt clap den Wert fuer ein
+        /// weiteres Argument und bricht ab:
+        /// `--benchmark="--rounds 1 --suggestions 3 --harvest"`
+        #[arg(long)]
+        benchmark: Option<String>,
+
+        /// Ansicht, mit der die TUI startet: `workers` oder `bench`.
+        ///
+        /// Ohne Angabe entscheidet der Kontext (mit `--benchmark` startet sie
+        /// im Ereignisstrom, sonst im Worker-Dashboard). Explizit gesetzt,
+        /// laesst sich jede Ansicht ohne Tastendruck oeffnen — noetig fuer
+        /// automatisierte Abnahme per Screenshot.
+        #[arg(long, value_parser = ["workers", "bench"])]
+        view: Option<String>,
+    },
+
+    /// First-run setup: Brain-Auswahl und optional Login-Hinweise
+    Oobe {
+        #[arg(long)]
+        brains: String,
+        #[arg(long)]
+        skip_login: bool,
+        #[arg(long)]
+        yes: bool,
+    },
+
+    /// Autoresearch: messbare Metrik autonom verbessern (Modify→Verify→Keep/Discard,
+    /// Git als Sicherheitsnetz, eigener Branch autoresearch/<timestamp>)
+    Autoresearch(AutoresearchArgs),
+
+    /// Swarm-Selbstbewertung: der Brain-Pool sammelt/konsolidiert/abstimmt die
+    /// wichtigsten nächsten Verbesserungen (Prioritätsfindung, kein Modify-Loop).
+    #[command(name = "autoresearch-self")]
+    AutoresearchSelf {
+        /// Vorschläge je Brain (Phase 1)
+        #[arg(long, default_value = "10")]
+        suggestions: usize,
+
+        /// Größe der gerankten Top-Liste (Phase 4)
+        #[arg(long, default_value = "10")]
+        top: usize,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+
+        /// Projektfakten aus dieser Datei statt aus README/PROGRESS/src
+        #[arg(long)]
+        facts: Option<String>,
+    },
+
+    /// Code-Benchmark: vote-driven objektiver Code-Kompetenz-Score. Der Schwarm
+    /// stimmt über den nächsten Verbesserungsschritt ab; jedes Brain baut den
+    /// Sieger sequenziell, gemessen wird hart (Compiler + Tests, kein Selbst-Report).
+    Benchmark {
+        /// Brains als CSV (Standard: alle registrierten)
+        #[arg(long)]
+        brains: Option<String>,
+
+        /// Anzahl Abstimm-/Bau-Runden
+        #[arg(long, default_value = "1")]
+        rounds: usize,
+
+        /// Vorschläge je Brain in der Sammelphase
+        #[arg(long, default_value = "10")]
+        suggestions: usize,
+
+        /// Harte Obergrenze der Repair-Iterationen je Brain. Frueher gestoppt
+        /// wird ueber --stall-limit, sobald kein Fortschritt mehr kommt
+        #[arg(long, default_value = "20")]
+        max_iterations: u32,
+
+        /// Reines Messgeraet: bestandenen Brain-Code verwerfen statt ihn
+        /// einzuspielen und zu committen (Standard ist ernten)
+        #[arg(long)]
+        no_harvest: bool,
+
+        /// Ausklappen: jeden Schritt (Shell-Kommandos, Datei-Aktionen,
+        /// Brain-Antworten) als eigene Zeile zeigen, nicht nur den aktuellen
+        /// in der mitlaufenden Zeile
+        #[arg(long)]
+        verbose: bool,
+
+        /// Wie viele Brains beim Sammeln und Abstimmen gleichzeitig befragt
+        /// werden (Bauen bleibt sequenziell)
+        #[arg(long, default_value = "4")]
+        parallel: usize,
+
+        /// Nach wie vielen Iterationen ohne Fortschritt ein Brain aufgibt und
+        /// die Aufgabe an das naechste weitergereicht wird
+        #[arg(long, default_value = "3")]
+        stall_limit: u32,
+
+        /// Wie oft eine Aufgabe hoechstens weitergereicht wird
+        #[arg(long, default_value = "2")]
+        max_handoffs: usize,
+
+        /// Lint-Tor fuer die Ernte: geernteter Code muss auch hier gruen sein
+        /// (leer = kein Lint-Gate)
+        #[arg(long, default_value = "cargo clippy --all-targets -- -D warnings")]
+        lint_eval: String,
+
+        /// Eval-Kommando „baut es?"
+        #[arg(long, default_value = "cargo build --lib")]
+        build_eval: String,
+
+        /// Eval-Kommando „Tests grün?"
+        #[arg(long, default_value = "cargo test --lib")]
+        test_eval: String,
+
+        /// Arbeitsverzeichnis (Standard: Repo-Root)
+        #[arg(long)]
+        workdir: Option<String>,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+
+        /// Endlos-Schleife: nach der letzten Runde sofort neu starten
+        #[arg(long)]
+        loop_forever: bool,
+    },
+
+    /// Read-only gate for autonomous maintenance
+    MaintenanceCheck {
+        /// Maschinenlesbares JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Zusätzlich vollständige Test-Suite ausführen
+        #[arg(long)]
+        pytest: bool,
+
+        /// Maximale Testlaufzeit in Sekunden
+        #[arg(long, default_value = "600")]
+        pytest_timeout: f64,
+    },
+}
+
+/// Argumente des `autoresearch`-Subcommands (Spec: docs/AUTORESEARCH_PLAN.md §6).
+#[derive(Args)]
+pub struct AutoresearchArgs {
+    /// Brain-Backend (z.B. chatgpt, claude, deepseek)
+    #[arg(long)]
+    pub brain: String,
+
+    /// Messbares Ziel in Textform (fließt in den Modify-Prompt ein)
+    #[arg(long)]
+    pub goal: String,
+
+    /// Eval-Befehl — Vertrag: exit 0 + letzte stdout-Zeile ist eine Zahl
+    #[arg(long)]
+    pub eval: String,
+
+    /// Richtung der Verbesserung: higher|lower
+    #[arg(long, default_value = "higher")]
+    pub direction: String,
+
+    /// Maximale Anzahl Iterationen
+    #[arg(long, default_value = "10")]
+    pub max_iterations: usize,
+
+    /// Abbruch nach N Iterationen ohne Verbesserung in Folge
+    #[arg(long, default_value = "3")]
+    pub no_improve_abort: usize,
+
+    /// Headless-Browser (Standard: sichtbar)
+    #[arg(long)]
+    pub headless: bool,
+
+    /// Git-Repo-Root (Default: Repo-Root des aktuellen Verzeichnisses)
+    #[arg(long)]
+    pub workdir: Option<String>,
+
+    /// Timeout des Eval-Befehls in Sekunden
+    #[arg(long, default_value = "300")]
+    pub eval_timeout: u64,
+}
