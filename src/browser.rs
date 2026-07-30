@@ -903,16 +903,38 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     /// `<title>`/`<desc>` des SVG, in `id`, `data-testid` oder `aria-label` —
     /// deshalb werden genau diese Merkmale ausgegeben und nicht der Text.
     fn visible_button_inventory(&self) -> String {
+        // Reihenfolge ist hier alles.
+        //
+        // Erster Versuch nahm die ersten 14 Knoepfe in DOM-Reihenfolge — und die
+        // Seitenleiste steht im DOM vorn. Ergebnis waren fuenf Listen voller
+        // "Suchen", "Seitenleiste schliessen" und "Weitere Optionen fuer
+        // <Chattitel>", bei kimi elfmal "Mehr". Kein einziges Element aus dem
+        // Eingabebereich, wo der Stop-Knopf sitzt: die Messung war wertlos.
+        //
+        // Der Stop-Knopf sitzt in allen diesen Oberflaechen unten am Composer.
+        // Deshalb von unten nach oben, und Navigations-/Seitenleisten-Container
+        // fliegen raus. Das ist generisch statt pro Anbieter geraten.
         let js = r#"(function(){
-var out=[],seen=[];
+var cand=[],seen=[];
+function imSeitenband(el){
+  for(var p=el;p;p=p.parentElement){
+    var tag=(p.tagName||'').toLowerCase();
+    if(tag==='nav'||tag==='aside')return true;
+    var c=((p.className||'')+'').toLowerCase();
+    if(c.indexOf('sidebar')>=0||c.indexOf('side-bar')>=0||c.indexOf('history')>=0)return true;
+    if((p.getAttribute&&(p.getAttribute('id')||'').toLowerCase().indexOf('sidebar')>=0))return true;
+  }
+  return false;
+}
 ['button','[role=button]'].forEach(function(s){try{
 document.querySelectorAll(s).forEach(function(b){
   if(seen.indexOf(b)>=0)return;seen.push(b);
   var r=b.getBoundingClientRect();if(r.width<=0||r.height<=0)return;
+  if(imSeitenband(b))return;
   var svgt='';try{var st=b.querySelector('svg title,svg desc');if(st)svgt=(st.textContent||'').trim();}catch(e){}
   var id=b.getAttribute('id')||'',al=b.getAttribute('aria-label')||'',
       dt=b.getAttribute('data-testid')||'',
-      cls=(b.className||'').toString().slice(0,40),
+      cls=(b.className||'').toString().slice(0,60),
       t=((b.innerText||b.textContent||'')+'').replace(/\s+/g,' ').trim().slice(0,24);
   var parts=[];
   if(al)parts.push('aria='+al);
@@ -920,10 +942,12 @@ document.querySelectorAll(s).forEach(function(b){
   if(id)parts.push('id='+id);
   if(svgt)parts.push('svg='+svgt);
   if(t)parts.push('txt='+t);
-  if(!parts.length&&cls)parts.push('cls='+cls);
-  if(parts.length)out.push('{'+parts.join(' ')+'}');
+  if(cls)parts.push('cls='+cls);
+  if(parts.length)cand.push({y:r.top,s:'{'+parts.join(' ')+'}'});
 });}catch(e){}});
-return out.slice(0,14).join(' ');})()"#;
+// Unterste zuerst: der Composer und sein Stop-Knopf sitzen am Fuss der Seite.
+cand.sort(function(a,b){return b.y-a.y;});
+return cand.slice(0,12).map(function(c){return c.s;}).join(' ');})()"#;
         self.eval_str(js)
     }
 
