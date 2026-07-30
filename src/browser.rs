@@ -403,6 +403,14 @@ for(var k=0;k<base.length;k++){var e=base[k],t=(e.innerText||e.textContent||'');
 if(p.re?p.re.test(t):t.indexOf(p.txt)!==-1)c.push(e);}
 return c.filter(function(e){return !c.some(function(o){return o!==e&&e.contains(o);});});};
 var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
+var TX=function(el){if(!el)return '';
+if(!el.querySelector||!el.querySelector('.katex'))return (el.innerText||el.textContent||'');
+var c=el.cloneNode(true);
+var ks=c.querySelectorAll('.katex');
+for(var i=0;i<ks.length;i++){var a=ks[i].querySelector('annotation[encoding="application/x-tex"]');
+var src=a?(a.textContent||''):'';
+ks[i].parentNode.replaceChild(document.createTextNode(src),ks[i]);}
+return (c.innerText||c.textContent||'');};
 "#;
 
     /// Baut ein IIFE, das die Selektorliste `list_js` durchläuft und `body` auf
@@ -454,11 +462,25 @@ var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
         self.eval_i64(&expr) as i32
     }
 
-    /// innerText der n-ten Assistenten-Nachricht.
+    /// Text der n-ten Assistenten-Nachricht, mit zurueckgewonnener Mathe-Quelle.
+    ///
+    /// Liest ueber `TX` statt `innerText`: deepseeks Oberflaeche schickt jeden
+    /// PowerShell-Befehl mit `$`-Variablen durch KaTeX. Am 30.07.2026 wurde aus
+    /// `$lines=Get-Content src/controller.rs$` im `innerText` ein Zeichen pro
+    /// Zeile in mathematischer Kursivschrift, `|` wurde zu `∣`, `-` zu `−`, und
+    /// der Inhalt stand doppelt da (Formel + Annotation). Der Befehl des Brains
+    /// war korrekt — unser Auslesen hat ihn zerstoert, und der Lauf verlor die
+    /// Runde an einen `protocol_invalid`.
+    ///
+    /// Zurueckrechnen aus den Glyphen waere Raten. KaTeX legt die Originalquelle
+    /// aber selbst im DOM ab (`annotation[encoding="application/x-tex"]`) — die
+    /// wird gelesen. `TX` steht bewusst im gemeinsamen Prelude: es gibt zwei
+    /// Auslesepfade (hier und `probe_generation`), und ein Fix in nur einem
+    /// waere wirkungslos geblieben.
     fn assistant_text(&self, index: i32) -> String {
         let list = self.sel_js("assistant_message", &["div.prose"]);
         let body = format!(
-            "var els=QA(S[i]);if(els.length>{idx}){{return (els[{idx}].innerText||\"\").trim();}}",
+            "var els=QA(S[i]);if(els.length>{idx}){{return TX(els[{idx}]).trim();}}",
             idx = index
         );
         // Claude rendert seine Denk-Zusammenfassung in denselben Container und
@@ -575,7 +597,7 @@ var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
 var A={assistant_js};var count=0,els=null;
 for(var i=0;i<A.length;i++){{try{{var e=QA(A[i]);if(e.length>0){{count=e.length;els=e;break;}}}}catch(x){{}}}}
 var ti={target};if(ti<0)ti=count-1;
-var text="";if(els&&ti>=0&&els.length>ti){{text=(els[ti].innerText||"").trim();}}
+var text="";if(els&&ti>=0&&els.length>ti){{text=TX(els[ti]).trim();}}
 var stop=false;var S={stop_js};
 for(var j=0;j<S.length;j++){{try{{var el=Q(S[j]);if(el){{var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){{stop=true;break;}}}}}}catch(x){{}}}}
 return {{count:count,text:text,stop:stop}};}})()"#,
@@ -2472,6 +2494,35 @@ mod tests {
             true,
         );
         assert_eq!(stable, Completion::Complete);
+    }
+
+    #[test]
+    fn beide_auslesepfade_gewinnen_die_mathe_quelle_zurueck() {
+        // Regression 30.07.2026: deepseeks Oberflaeche schickt PowerShell mit
+        // `$`-Variablen durch KaTeX. `innerText` liefert dann ein Zeichen pro
+        // Zeile in mathematischer Kursivschrift statt des Befehls. Es gibt zwei
+        // Auslesepfade — ein Fix in nur einem waere wirkungslos.
+        let b = WebBrainBackend::from_config("deepseek").expect("deepseek-Konfig");
+        let assistant = b.sel_js("assistant_message", &[]);
+        let stop = b.sel_js("stop_button", &[]);
+
+        let probe = WebBrainBackend::probe_generation_js(&assistant, &stop, 0);
+        assert!(
+            probe.contains("TX(els[") && !probe.contains("els[ti].innerText"),
+            "probe_generation liest noch roh: {probe}"
+        );
+
+        let body = "var els=QA(S[i]);if(els.length>0){return TX(els[0]).trim();}";
+        let scan = WebBrainBackend::js_scan(&assistant, body, "\"\"");
+        assert!(
+            scan.contains("var TX=function"),
+            "Prelude ohne TX — die Mathe-Quelle bliebe unerreichbar"
+        );
+        assert!(
+            scan.contains("annotation[encoding=\\\"application/x-tex\\\"]")
+                || scan.contains("annotation[encoding=\"application/x-tex\"]"),
+            "TX liest die KaTeX-Originalquelle nicht"
+        );
     }
 
     #[test]
