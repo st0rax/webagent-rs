@@ -28,3 +28,40 @@ jobs:
       - name: Test
         run: cargo test --no-default-features --verbose
         # Kern-Unit-Tests ohne Embedded WebView (kein GTK/WebView2 in CI).
+
+  windows:
+    name: build & test (Windows, volle Features)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      # Warum dieser Job existiert:
+      #
+      # Der Linux-Job baut mit `--no-default-features`, also OHNE `webview` und
+      # `tui`. Damit blieb der gesamte Windows-Pfad — WebView2, Job-Objekte,
+      # Konsolen-Setup, die TUI — von jeder Pipeline ungeprueft; er lief nur auf
+      # Storax' Rechner. Genau in dieser Luecke steckte am 30.07.2026 ein Fehler,
+      # den niemand sah: `time` war ohne das `macros`-Feature deklariert und der
+      # lokale Build nur deshalb gruen, weil `wry`/`tao` es transitiv mitzogen.
+      # Umgekehrt kann jetzt auch der Windows-Pfad brechen, ohne dass es
+      # auffaellt — dieser Job schliesst die andere Haelfte.
+      #
+      # `windows-latest` hat WebView2 vorinstalliert; die Tests brauchen keinen
+      # echten Browserstart, sie pruefen Logik und Selektor-Aufloesung.
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Clippy (volle Features)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Build (volle Features)
+        run: cargo build --verbose
+      - name: Test (volle Features)
+        run: cargo test --lib --verbose
