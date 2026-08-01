@@ -57,6 +57,7 @@ pub enum SlashCommand {
     },
     /// Git-Änderungen im Arbeitsverzeichnis zeigen (`/diff`).
     Diff,
+    Facts,
     /// Autoresearch mit dem aktiven Session-Brain: `/autoresearch <eval-cmd> :: <goal>`.
     /// Leere Felder = fehlender ` :: `-Trenner → Usage-Hinweis im Handler.
     Autoresearch {
@@ -170,6 +171,9 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     if trimmed == "/diff" {
         return Some(SlashCommand::Diff);
     }
+    if trimmed == "/facts" {
+        return Some(SlashCommand::Facts);
+    }
     // WICHTIG: vor dem `/autoresearch`-Zweig prüfen, sonst schluckt der (bzw. der
     // Unknown-Fallback) den `.self`-Befehl. Syntax: /autoresearch.self [N] [--top K].
     if trimmed == "/autoresearch.self" || trimmed.starts_with("/autoresearch.self ") {
@@ -259,4 +263,14 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     Some(SlashCommand::Unknown {
         raw: trimmed.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_facts_command() {
+        assert!(matches!(parse_slash_command("/facts"), Some(SlashCommand::Facts)));
+    }
 }

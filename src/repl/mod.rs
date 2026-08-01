@@ -4,6 +4,24 @@
 
 pub mod commands;
 
+fn get_facts_string() -> String {
+    let readme = std::fs::read_to_string("README.md").unwrap_or_else(|_| "README nicht gefunden".to_string());
+    let progress = std::fs::read_to_string("PROGRESS.md").unwrap_or_else(|_| "PROGRESS nicht gefunden".to_string());
+    let mut modules = Vec::new();
+    if let Ok(entries) = std::fs::read_dir("src") {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.extension().map(|s| s == "rs").unwrap_or(false) {
+                if let Some(name) = path.file_name().and_then(|s| s.to_str()).map(|s| s.to_string()) {
+                    let size = std::fs::metadata(&path).map(|m| m.len() as usize).unwrap_or(0);
+                    modules.push((name, size));
+                }
+            }
+        }
+    }
+    crate::self_research::build_facts(&readme, &progress, &modules, 2000)
+}
+
 pub use commands::parse_slash_command;
 pub use commands::{ReplAction, SlashCommand};
 
@@ -823,10 +841,15 @@ impl ReplSession {
                 self.run_swarm(orchestrator, &prompt);
                 ReplAction::Continue
             }
-            SlashCommand::Diff => {
-                self.print_diff();
-                ReplAction::Continue
-            }
+SlashCommand::Diff => {
+self.print_diff();
+ReplAction::Continue
+}
+SlashCommand::Facts => {
+let facts = get_facts_string();
+println!("{}", facts);
+ReplAction::Continue
+}
             SlashCommand::Autoresearch { eval_cmd, goal } => {
                 self.run_autoresearch(&eval_cmd, &goal);
                 ReplAction::Continue
@@ -1828,11 +1851,26 @@ mod tests {
         assert!(out[3].starts_with('╰') && out[3].ends_with('╯'));
     }
 
-    #[test]
-    fn boxed_never_underflows_on_overlong_lines() {
-        // Eine Zeile laenger als die Innenbreite darf nicht panicken (saturating).
-        let lines = vec!["viel zu lange zeile fuer die schmale box".to_string()];
-        let out = boxed(&lines, 5);
-        assert_eq!(out.len(), 3);
-    }
+#[test]
+fn dispatch_facts_command() {
+if let Some(SlashCommand::Facts) = parse_slash_command("/facts") {
+let facts = super::get_facts_string();
+assert!(!facts.is_empty(), "Facts string should not be empty");
+assert!(
+facts.contains("README") || facts.contains("Fortschritt"),
+"Facts should contain 'README' or 'Fortschritt', got: {}",
+facts
+);
+} else {
+panic!("/facts should parse to SlashCommand::Facts");
+}
+}
+
+#[test]
+fn boxed_never_underflows_on_overlong_lines() {
+// Eine Zeile laenger als die Innenbreite darf nicht panicken (saturating).
+let lines = vec!["viel zu lange zeile fuer die schmale box".to_string()];
+let out = boxed(&lines, 5);
+assert_eq!(out.len(), 3);
+}
 }
