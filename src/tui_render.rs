@@ -796,11 +796,14 @@ fn level_color(level: Level) -> Color {
 
 /// Arbeits-/Benchmark-Ansicht: der Ereignisstrom aus [`crate::bench_events`].
 ///
-/// Zeigt die letzten Meldungen des laufenden Benchmarks — dieselbe Information
-/// wie die Konsolen-Ausgabe, nur eingebettet in die TUI. `bench_scroll`
-/// verschiebt das Fenster nach oben; 0 laesst es am unteren Rand mitlaufen.
+/// Gerendert als ausklappbarer Baum: Jedes Ereignis ist ein Knoten, dessen
+/// Detailblock (Terminal-Ausgabe, Edit-Ergebnis, Antworttext, Log-Payload) per
+/// Space/Rechts eingerueckt unter ihm aufklappt. Navigation: Up/Down oder j/k
+/// bewegen den Cursor, `g` springt ans untere Ende des frischen Stroms.
 fn render_bench(f: &mut Frame, app: &App, area: Rect) {
-    let block = titled_block("Benchmark — Ereignisstrom");
+    let block = titled_block(
+        "Benchmark — Ereignisbaum (▸/▾: Space, aufklappen: →, zuklappen: ←, Ende: g)",
+    );
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -826,35 +829,57 @@ fn render_bench(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Sichtbares Fenster: so viele Zeilen wie Platz ist, vom Ende her, um
-    // `bench_scroll` nach oben verschoben.
+    // Baum falten und das Fenster um den Cursor legen. `bench_scroll` ist
+    // abgelegt: der Cursor ist jetzt der Anker (er bleibt im oberen Drittel,
+    // damit unter ihm Platz fuer aufgeklappte Details bleibt).
+    let lines = crate::tui_state::fold_bench_events(&events, &app.bench_expanded);
     let rows = inner.height as usize;
-    let total = events.len();
-    let scroll = app.bench_scroll.min(total.saturating_sub(1));
-    let end = total.saturating_sub(scroll);
-    let start = end.saturating_sub(rows);
-    let lines: Vec<Line> = events[start..end]
-        .iter()
-        .map(|ev| {
-            let mut spans = vec![Span::styled(
-                format!("{} ", ev.ts),
-                Style::default().fg(Color::DarkGray),
-            )];
-            if let Some(b) = &ev.brain {
-                spans.push(Span::styled(
-                    format!("{b:<9} "),
-                    Style::default().fg(ACCENT),
-                ));
-            }
-            spans.push(Span::styled(
-                ev.text.clone(),
-                Style::default().fg(level_color(ev.level)),
-            ));
-            Line::from(spans)
-        })
-        .collect();
+    let total = lines.len();
+    if total == 0 {
+        return;
+    }
+    let sel = app.bench_selected.min(total - 1);
+    let keep = rows.saturating_div(3).max(1);
+    let max_start = total.saturating_sub(rows);
+    let start = sel.saturating_sub(keep).min(max_start);
+    let end = (start + rows).min(total);
 
-    f.render_widget(Paragraph::new(lines), inner);
+    let mut out: Vec<Line> = Vec::with_capacity(end - start);
+    for (i, ln) in lines[start..end].iter().enumerate() {
+        let abs = start + i;
+        let selected = abs == sel;
+        let base = if selected {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default()
+        };
+        let mut spans: Vec<Span> = Vec::new();
+        if ln.depth > 0 {
+            spans.push(Span::styled("   │ ", base.fg(Color::DarkGray)));
+        }
+        if ln.is_node {
+            let marker = if ln.has_children {
+                if app.is_bench_expanded(ln.id) {
+                    "▾ "
+                } else {
+                    "▸ "
+                }
+            } else {
+                "  "
+            };
+            spans.push(Span::styled(marker, base.fg(Color::DarkGray)));
+            spans.push(Span::styled(format!("{} ", ln.ts), base.fg(Color::DarkGray)));
+            if let Some(b) = &ln.brain {
+                spans.push(Span::styled(format!("{b:<9} "), base.fg(ACCENT)));
+            }
+            spans.push(Span::styled(ln.text.clone(), base.fg(level_color(ln.level))));
+        } else {
+            spans.push(Span::styled(ln.text.clone(), base.fg(Color::DarkGray)));
+        }
+        out.push(Line::from(spans));
+    }
+
+    f.render_widget(Paragraph::new(out), inner);
 }
 
 #[cfg(test)]
@@ -892,6 +917,8 @@ mod tests {
             activity_history: std::collections::VecDeque::new(),
             view: crate::tui_state::View::Workers,
             bench_scroll: 0,
+            bench_expanded: std::collections::HashSet::new(),
+            bench_selected: 0,
             command_input: String::new(),
         }
     }

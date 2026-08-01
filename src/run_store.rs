@@ -290,6 +290,23 @@ impl RunStore {
         writeln!(file, "{}", line)
             .map_err(|e| format!("Fehler beim Schreiben in {}: {}", path.display(), e))?;
 
+        // Storax-Vorgabe (2026-08-01): die Run-Events (meta_saved,
+        // status_changed) spiegeln in den TUI-Baum, damit der Lebenszyklus
+        // eines Phase-B-Runs dort mitläuft.
+        if crate::bench_events::echo_bus_enabled() {
+            let level = if event_type == "status_changed" {
+                crate::bench_events::Level::Progress
+            } else {
+                crate::bench_events::Level::Info
+            };
+            crate::bench_events::emit_detailed(
+                level,
+                None,
+                &format!("[run:{}] {}", &meta.run_id, event_type),
+                Some(&payload.to_string()),
+            );
+        }
+
         Ok(())
     }
 

@@ -551,6 +551,8 @@ fn run_tui_ratatui(
         activity_history: std::collections::VecDeque::new(),
         view: View::Workers,
         bench_scroll: 0,
+        bench_expanded: std::collections::HashSet::new(),
+        bench_selected: 0,
         command_input: String::new(),
     };
     if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
@@ -562,6 +564,36 @@ fn run_tui_ratatui(
     // Ansicht ohne Tastendruck oeffnen (automatisierte Abnahme).
     if let Some(v) = startup_view {
         app.view = parse_view(v).unwrap_or(app.view);
+    }
+
+    /// Gefaltete Baum-Zeilenliste der Benchmark-Ansicht — dieselbe, die der
+    /// Renderer zeichnet, damit Navigation und Darstellung konsistent bleiben.
+    fn bench_lines(app: &App) -> Vec<crate::tui_state::BenchLine> {
+        let events = crate::bench_events::snapshot();
+        crate::tui_state::fold_bench_events(&events, &app.bench_expanded)
+    }
+
+    /// ID des Knotens unter dem Cursor (oder `None`, wenn die Liste leer ist).
+    fn bench_selected_id(app: &App, lines: &[crate::tui_state::BenchLine]) -> Option<u64> {
+        lines.get(app.bench_selected).map(|l| l.id)
+    }
+
+    /// Cursor in der Benchmark-Baumansicht einen Schritt bewegen.
+    fn bench_move(app: &mut App, delta: i64) {
+        let n = bench_lines(app).len();
+        app.bench_move(n, delta);
+    }
+
+    /// Auf-/Zuklappen des Knotens unter dem Cursor in der Baumansicht.
+    fn bench_toggle_at(app: &mut App, open: bool) {
+        let lines = bench_lines(app);
+        if let Some(id) = bench_selected_id(app, &lines) {
+            if open {
+                app.bench_expand(id);
+            } else {
+                app.bench_collapse(id);
+            }
+        }
     }
 
     // --- Event-Loop ---
@@ -581,10 +613,18 @@ fn run_tui_ratatui(
                 match app.input_mode {
                     InputMode::Normal => match key.code {
                         KeyCode::Up => {
-                            app.selected = select_wrap(app.selected, -1, app.agents.len());
+                            if app.view == View::Bench {
+                                bench_move(&mut app, -1);
+                            } else {
+                                app.selected = select_wrap(app.selected, -1, app.agents.len());
+                            }
                         }
                         KeyCode::Down => {
-                            app.selected = select_wrap(app.selected, 1, app.agents.len());
+                            if app.view == View::Bench {
+                                bench_move(&mut app, 1);
+                            } else {
+                                app.selected = select_wrap(app.selected, 1, app.agents.len());
+                            }
                         }
                         KeyCode::Char('q') => break 0,
                         // Ansicht umschalten: Worker-Dashboard <-> Benchmark.
@@ -593,25 +633,62 @@ fn run_tui_ratatui(
                         KeyCode::Char('v') | KeyCode::Char('<') | KeyCode::Char('>') => {
                             app.view = app.view.next();
                         }
-                        // In der Benchmark-Ansicht scrollen j/k durch den
-                        // Ereignisstrom statt durch die Agenten-Details.
+                        // In der Benchmark-Ansicht springt `g` ans untere Ende
+                        // des frischen Ereignisstroms.
                         KeyCode::Char('g') if app.view == View::Bench => {
-                            app.bench_scroll = 0;
+                            let n = bench_lines(&app).len();
+                            app.bench_bottom(n);
                         }
+                        // `e` klappt im Bench-Baum alles mit Detail auf, `c`
+                        // klappt alles zu (schneller Überblick ueber einen langen
+                        // Lauf, ohne jeden Knoten einzeln zu oeffnen).
+                        KeyCode::Char('e') if app.view == View::Bench => app.bench_expand_all(),
+                        KeyCode::Char('c') if app.view == View::Bench => app.bench_collapse_all(),
                         // Gewinner-Design (qwen, 2026-07-22): Tab wechselt den
                         // Panel-Fokus, f schaltet den Log-Filter durch.
                         KeyCode::Tab => app.focus = app.focus.next(),
                         KeyCode::Char('f') => app.log_filter = app.log_filter.next(),
                         // Ausklappen: Leertaste schaltet um, Pfeile sind
                         // gerichtet (mehrfach rechts klappt nicht wieder zu).
-                        KeyCode::Char(' ') => app.toggle_expanded(),
-                        KeyCode::Right => app.expand_selected(),
-                        KeyCode::Left => app.collapse_selected(),
+                        // In der Baumansicht gilt das den Ereignis-Knoten,
+                        // sonst den Agenten.
+                        KeyCode::Char(' ') => {
+                            if app.view == View::Bench {
+                                let lines = bench_lines(&app);
+                                if let Some(id) = bench_selected_id(&app, &lines) {
+                                    app.bench_toggle(id);
+                                }
+                            } else {
+                                app.toggle_expanded();
+                            }
+                        }
+                        KeyCode::Right => {
+                            if app.view == View::Bench {
+                                bench_toggle_at(&mut app, true);
+                            } else {
+                                app.expand_selected();
+                            }
+                        }
+                        KeyCode::Left => {
+                            if app.view == View::Bench {
+                                bench_toggle_at(&mut app, false);
+                            } else {
+                                app.collapse_selected();
+                            }
+                        }
                         KeyCode::Char('j') => {
-                            app.detail_scroll = app.detail_scroll.saturating_add(1);
+                            if app.view == View::Bench {
+                                bench_move(&mut app, 1);
+                            } else {
+                                app.detail_scroll = app.detail_scroll.saturating_add(1);
+                            }
                         }
                         KeyCode::Char('k') => {
-                            app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                            if app.view == View::Bench {
+                                bench_move(&mut app, -1);
+                            } else {
+                                app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                            }
                         }
                         KeyCode::Char('+') => {
                             app.target_active = (app.target_active + 1).min(candidates.len());
@@ -777,6 +854,10 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
     let mut loop_forever = false;
     let mut headless = true;
     let mut harvest = true;
+    // Storax-Vorgabe (31.07.2026): maximale Ausgabe im Ereignisstrom — die
+    // Schritt-Zeilen des Controllers gehoeren sichtbar in die TUI, nicht nur
+    // in die unterdrueckte Konsole. `--quiet` schaltet das wieder ab.
+    let mut verbose = true;
     let mut vetoes: Vec<String> = Vec::new();
 
     let parts: Vec<&str> = cmd.split_whitespace().skip(1).collect();
@@ -813,6 +894,8 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
             "--headless" => headless = true,
             "--headed" => headless = false,
             "--no-harvest" => harvest = false,
+            "--verbose" => verbose = true,
+            "--quiet" => verbose = false,
             "--veto" => {
                 i += 1;
                 if i < parts.len() && !parts[i].trim().is_empty() {
@@ -874,7 +957,7 @@ fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
             headless,
             max_iterations: 20,
             harvest,
-            verbose: false,
+            verbose,
             // Lesephasen haben keinen gemeinsamen Worktree und dürfen alle
             // verfügbaren Brains gleichzeitig auslasten. Nur das spätere
             // Implementieren bleibt im Benchmark bewusst sequenziell.

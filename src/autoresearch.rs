@@ -684,7 +684,35 @@ fn append_log_md(path: &Path, entry: &IterationLog) -> Result<(), String> {
 fn append_iterations_jsonl(path: &Path, entry: &IterationLog) -> Result<(), String> {
     let line = serde_json::to_string(entry)
         .map_err(|e| format!("IterationLog nicht serialisierbar: {e}"))?;
-    append_to_file(path, &format!("{line}\n"))
+    append_to_file(path, &format!("{line}\n"))?;
+
+    // Storax-Vorgabe (2026-08-01): die Selbstoptimierungs-Iterationen in den
+    // TUI-Baum spiegeln (maximale Tiefe — was, wann, womit probiert wurde).
+    // Nur im Spiegelmodus (`--verbose`-Benchmark).
+    if crate::bench_events::echo_bus_enabled() {
+        let after = entry
+            .metric_after
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "eval-fehlgeschlagen".to_string());
+        let level = if entry.kept {
+            crate::bench_events::Level::Pass
+        } else {
+            crate::bench_events::Level::Fail
+        };
+        crate::bench_events::emit_detailed(
+            level,
+            None,
+            &format!(
+                "[iter:{}] {} -> {} ({})",
+                entry.n,
+                entry.metric_before,
+                after,
+                if entry.kept { "behalten" } else { "verworfen" }
+            ),
+            Some(&line),
+        );
+    }
+    Ok(())
 }
 
 fn append_to_file(path: &Path, text: &str) -> Result<(), String> {
@@ -1253,5 +1281,52 @@ mod tests {
         assert!(name1.contains("fix_"), "name={name1}");
         assert!(!name1.contains('/'), "keine Slashes");
         assert!(!name1.contains(':'), "keine Doppelpunkte");
+    }
+
+    #[test]
+    fn iterations_spiegeln_den_bus_nur_im_spiegelmodus() {
+        // Negativ: ohne Spiegelmodus legt append_iterations_jsonl nichts in den
+        // Bus. Positiv: im Spiegelmodus erscheint die Iteration mit
+        // Metrik-Entwicklung und Voll-JSON als Detail.
+        let _guard = crate::bench_events::test_bus_mutex().lock();
+
+        let entry = IterationLog {
+            n: 3,
+            metric_before: 0.42,
+            metric_after: Some(0.61),
+            kept: true,
+            commit_sha: Some("abc123".to_string()),
+            brain_summary: "zeilen umgestellt".to_string(),
+            ts: "2026-08-01T12:00:00Z".to_string(),
+        };
+
+        crate::bench_events::set_echo_bus(false);
+        crate::bench_events::clear();
+        let dir = unique_dir("iter");
+        let path = dir.join("iterations.jsonl");
+        append_iterations_jsonl(&path, &entry).unwrap();
+        assert!(
+            !crate::bench_events::snapshot()
+                .iter()
+                .any(|e| e.text.starts_with("[iter:3]")),
+            "ohne Spiegelmodus duerfen keine Iterationen in den Bus"
+        );
+
+        crate::bench_events::set_echo_bus(true);
+        crate::bench_events::clear();
+        append_iterations_jsonl(&path, &entry).unwrap();
+        let events = crate::bench_events::snapshot();
+        assert!(
+            events.iter().any(|e| {
+                e.text.starts_with("[iter:3] 0.42 -> 0.61")
+                    && e.detail
+                        .as_deref()
+                        .is_some_and(|d| d.contains("commit_sha"))
+            }),
+            "im Spiegelmodus muss die Iteration mit Voll-JSON in den Bus"
+        );
+
+        crate::bench_events::set_echo_bus(false);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

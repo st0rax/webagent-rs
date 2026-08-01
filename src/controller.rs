@@ -689,7 +689,14 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     let _ = transcript.append("message", &action.text, extra);
                     self.report_step("Antwort");
                     if !self.quiet {
-                        crate::bench_events::print_line(&action.text);
+                        crate::bench_events::print_detailed(
+                            &format!(
+                                "[msg:{}] {}",
+                                action.id,
+                                crate::char_prefix(&action.text, 60)
+                            ),
+                            Some(&action.text),
+                        );
                     }
                     self.record_completed_action(&action.id, &action.text);
                     if let Some(nudge) = self.no_change_nudge() {
@@ -704,12 +711,6 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         "shell: {}",
                         crate::char_prefix(&action.command, 70)
                     ));
-                    if !self.quiet {
-                        crate::bench_events::print_line(&format!(
-                            "[shell:{}] {}",
-                            action.id, action.command
-                        ));
-                    }
                     let result = match crate::shell_policy::evaluate(&action.command) {
                         crate::shell_policy::Decision::Deny(reason) => {
                             crate::executor::ExecutionResult {
@@ -732,6 +733,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         result.timed_out,
                     );
                     let observation = self.bounded_observation(&action.id, &observation);
+                    if !self.quiet {
+                        crate::bench_events::print_detailed(
+                            &format!("[shell:{}] {}", action.id, action.command),
+                            Some(&observation),
+                        );
+                    }
                     observations.push(observation.clone());
                     self.record_completed_action(&action.id, &observation);
                     self.track_observation_bytes(&observation);
@@ -781,12 +788,6 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     let is_edit = action.action_type == protocol::ActionType::Edit;
                     let kind = if is_edit { "edit" } else { "write" };
                     self.report_step(&format!("{kind}: {}", action.path));
-                    if !self.quiet {
-                        crate::bench_events::print_line(&format!(
-                            "[{kind}:{}] {}",
-                            action.id, action.path
-                        ));
-                    }
                     let result = if is_edit {
                         crate::file_actions::apply_edit(
                             &action.path,
@@ -808,6 +809,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         &action.id, &stdout, &stderr, exit_code, false,
                     );
                     let observation = self.bounded_observation(&action.id, &observation);
+                    if !self.quiet {
+                        crate::bench_events::print_detailed(
+                            &format!("[{kind}:{}] {}", action.id, action.path),
+                            Some(&observation),
+                        );
+                    }
                     observations.push(observation.clone());
                     self.record_completed_action(&action.id, &observation);
                     self.track_observation_bytes(&observation);

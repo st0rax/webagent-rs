@@ -421,6 +421,25 @@ pub fn task_is_redundant(refined: &str, existing_api: &[String]) -> bool {
     }
 }
 
+/// `true`, wenn die Aufgabe eine `Zieldatei:` nennt, die NICHT in der erlaubten
+/// Modulliste steht. Einen solchen Plan auszufuehren liesse das Brain auf einem
+/// nicht existierenden Pfad suchen, endlos drehen und nichts aendern
+/// (real beobachtet 2026-08-01: isolated_query liegt in src/repl/mod.rs, die
+/// alte flache Modulliste kannte den Pfad gar nicht). Leere Liste = nichts
+/// pruefbar → nicht verwerfen.
+pub fn task_targets_missing_file(refined: &str, src_files: &[String]) -> bool {
+    if src_files.is_empty() {
+        return false;
+    }
+    let Some(target) = target_file_of(refined) else {
+        return false;
+    };
+    let rel = target.strip_prefix("src/").unwrap_or(&target);
+    !src_files
+        .iter()
+        .any(|f| f.strip_prefix("src/").map_or(false, |f| f == rel))
+}
+
 /// Platz-1-Vorschlag eines Self-Research-Reports (die Benchmark-Aufgabe), oder
 /// `None`, wenn niemand abgestimmt hat.
 pub fn winner_from_report(report: &SelfResearchReport) -> Option<String> {
@@ -1213,7 +1232,7 @@ where
             prompt.push_str(
                 "
 
-WICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es                  BEREITS GIBT. Schlage etwas anderes vor, das noch NICHT existiert.",
+WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das es BEREITS GIBT, oder nannte eine Zieldatei, die es NICHT gibt. Schlage etwas anderes vor, das es noch nicht gibt und dessen Zieldatei aus der erlaubten Liste stammt.",
             );
         }
         match query(refiner, &prompt) {
@@ -1224,6 +1243,15 @@ WICHTIG: Dein vorheriger Vorschlag verlangte eine Funktion, die es              
                         None,
                         "  verworfen: verlangt bereits vorhandene Funktion ({:?})",
                         proposed_fn_name(&t).unwrap_or_default()
+                    );
+                    continue;
+                }
+                Some(t) if task_targets_missing_file(&t, src_files) => {
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        None,
+                        "  verworfen: Zieldatei {:?} ist nicht in der erlaubten Modulliste",
+                        target_file_of(&t).unwrap_or_default()
                     );
                     continue;
                 }
@@ -1358,6 +1386,11 @@ where
             config.workdir.display()
         ));
     }
+
+    // Mit `--verbose` spiegeln die Schritt-Zeilen des Controllers
+    // (shell/edit/write/message) in den Ereignisbus — in der TUI wird der
+    // "Ereignisstrom" sonst von den unterdrueckten stdout-Zeilen nichts sehen.
+    crate::bench_events::set_echo_bus(config.verbose);
 
     let rounds = config.rounds.max(1);
     let mut repair_focus: Option<String> = None;
@@ -1580,19 +1613,32 @@ where
             let eff = match refined_cache.get(raw) {
                 Some(t) => t.clone(),
                 None => {
-                    let t =
-                        crate::StageTimer::start(format!("verfeinern fuer {brain} via {refiner}"));
-                    let e = refine_one(
-                        &consensus_plan,
-                        &round_facts,
-                        &refiner,
-                        &existing_api,
-                        &src_files,
-                        &query,
-                    );
-                    t.finish(crate::char_prefix(&e, 90));
-                    refined_cache.insert(raw.clone(), e.clone());
-                    e
+                    // Ein-Brain-Spur (Storax-Vorgabe 2026-08-01): der
+                    // Konsensplan stammt aus `design_vote` — beim einzigen
+                    // Brain ist das sein eigener Entwurf, `refine_one` wuerde
+                    // ihn durch denselben Brain nochmal verfeinern
+                    // (Selbstgespraech, ~90 s). Bei mehreren Brains bleibt der
+                    // Refiner-Schritt, weil der Refiner nicht der Autor sein
+                    // muss.
+                    let refined = if round_brains.len() == 1 {
+                        consensus_plan.clone()
+                    } else {
+                        let t = crate::StageTimer::start(format!(
+                            "verfeinern fuer {brain} via {refiner}"
+                        ));
+                        let e = refine_one(
+                            &consensus_plan,
+                            &round_facts,
+                            &refiner,
+                            &existing_api,
+                            &src_files,
+                            &query,
+                        );
+                        t.finish(crate::char_prefix(&e, 90));
+                        e
+                    };
+                    refined_cache.insert(raw.clone(), refined.clone());
+                    refined
                 }
             };
             bench_say!(
@@ -2710,6 +2756,41 @@ mod tests {
 
         // Ohne Zieldatei bleibt der Prompt unveraendert kurz.
         assert!(target_file_of("irgendein Vorschlag ohne Datei").is_none());
+    }
+
+    #[test]
+    fn task_targets_missing_file_guards_against_fake_paths() {
+        // Regression 2026-08-01: Plan auf nicht existierender Zieldatei → Brain
+        // sucht ewig, aendert nichts (did_change=false). Der Refine-Guard soll
+        // so einen Plan verwerfen.
+        let files = vec![
+            "src/protocol.rs".to_string(),
+            "src/repl/mod.rs".to_string(),
+        ];
+        // Erlaubte Datei wird akzeptiert (auch mit src/ prefix).
+        assert!(!task_targets_missing_file(
+            "Zieldatei: src/repl/mod.rs. Fuege foo() hinzu.",
+            &files
+        ));
+        assert!(!task_targets_missing_file(
+            "Zieldatei: repl/mod.rs. Fuege foo() hinzu.",
+            &files
+        ));
+        // Erfundene Datei wird verworfen.
+        assert!(task_targets_missing_file(
+            "Zieldatei: src/repl.rs. Fuege foo() hinzu.",
+            &files
+        ));
+        // Ohne Zieldatei-Angabe nicht pruefbar → akzeptieren.
+        assert!(!task_targets_missing_file(
+            "Fuege foo() zu den Repl-Commands hinzu.",
+            &files
+        ));
+        // Leere Modulliste = nichts pruefbar → akzeptieren (kein Pauschal-Kill).
+        assert!(!task_targets_missing_file(
+            "Zieldatei: src/irgendwas.rs.",
+            &[]
+        ));
     }
 
     #[test]

@@ -15,7 +15,7 @@
 //! echtes Brain im Test.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Ein gerankter Vorschlag im Endergebnis.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,7 +219,7 @@ pub fn build_facts(
         out.push_str("\n\n");
     }
     if !module_list.is_empty() {
-        out.push_str("## Module (src/*.rs, Zeilen)\n");
+        out.push_str("## Module (src/**/*.rs, Zeilen)\n");
         out.push_str(&module_list);
         out.push('\n');
     }
@@ -331,27 +331,50 @@ fn strip_list_marker(line: &str) -> &str {
     t.trim_start_matches(['-', '*', '•']).trim_start()
 }
 
-/// Modulliste aus einem `src/`-Verzeichnis: `*.rs`-Dateien mit Zeilenzahl,
-/// alphabetisch. I/O-behaftet, daher nicht unit-getestet (der Orchestrator übt
-/// es e2e). Fehlt das Verzeichnis, kommt eine leere Liste zurück.
-pub fn collect_modules(src_dir: &Path) -> Vec<(String, usize)> {
-    let mut mods: Vec<(String, usize)> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(src_dir) {
-        for entry in rd.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                if let Ok(text) = std::fs::read_to_string(&path) {
-                    let name = path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string();
-                    mods.push((name, text.lines().count()));
-                }
-            }
+/// Alle `*.rs`-Dateien unter `dir`, REKURSIV und sortiert. Nur die flache
+/// `src/*.rs`-Ebene zu sehen, versteckte die Untermodule (src/repl/mod.rs,
+/// src/commands/…): die Benchmark plante dann auf nicht existierende Pfade
+/// und die Brains suchten ewig nach Symbolen, die es laengst gab
+/// (real beobachtet 2026-08-01: isolated_query lebt in src/repl/mod.rs).
+fn walk_rs_relative(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_rs_relative(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            out.push(path);
         }
     }
-    mods.sort_by(|a, b| a.0.cmp(&b.0));
+}
+
+/// Pfad von `path` relativ zu `src_dir` als Forward-Slash-String
+/// (`repl/mod.rs`), plattformneutral.
+fn rs_rel_name(src_dir: &Path, path: &Path) -> String {
+    let rel = path.strip_prefix(src_dir).unwrap_or(path);
+    rel.components()
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Modulliste aus einem `src/`-Verzeichnis: `*.rs`-Dateien (rekursiv, inkl.
+/// Untermodule wie `repl/mod.rs`) mit Zeilenzahl, alphabetisch. I/O-behaftet,
+/// daher nur e2e über den Orchestrator erprobt; ein Unit-Test mit Temp-Verzeichnis
+/// deckt die Rekursion ab. Fehlt das Verzeichnis, kommt eine leere Liste zurück.
+pub fn collect_modules(src_dir: &Path) -> Vec<(String, usize)> {
+    let mut paths: Vec<PathBuf> = Vec::new();
+    walk_rs_relative(src_dir, &mut paths);
+    paths.sort();
+    let mut mods: Vec<(String, usize)> = Vec::new();
+    for path in paths {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            let name = rs_rel_name(src_dir, &path);
+            mods.push((name, text.lines().count()));
+        }
+    }
     mods
 }
 
@@ -378,18 +401,16 @@ pub fn gather_facts(root: &Path, max_chars: usize) -> String {
     facts
 }
 
-/// Namen aller `pub fn` unter `src/` — sortiert und dedupliziert.
-/// Dient als "das gibt es schon"-Signal fuer Abstimmung und Verfeinerung.
+/// Namen aller `pub fn` unter `src/` — REKURSIV (auch Untermodule wie
+/// `src/repl/mod.rs`), sortiert und dedupliziert.
+/// Dient als "das gibt es schon"-Signal für Abstimmung und Verfeinerung.
+/// Ohne Rekursion fehlten z.B. `repl::isolated_query` — der Schwarm schlug
+/// sie wiederholt neu vor (Messung 2026-08-01).
 pub fn collect_public_api(src: &Path) -> Vec<String> {
     let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let Ok(entries) = std::fs::read_dir(src) else {
-        return Vec::new();
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-            continue;
-        }
+    let mut paths: Vec<PathBuf> = Vec::new();
+    walk_rs_relative(src, &mut paths);
+    for path in paths {
         let Ok(text) = std::fs::read_to_string(&path) else {
             continue;
         };
@@ -618,6 +639,50 @@ where
             voters: 0,
             brains_total: total,
         };
+    }
+
+    // Ein-Brain-Spur (Storax-Vorgabe 2026-08-01): Konsolidieren und Abstimmen
+    // sind Selbstgespraeche, wenn nur ein Brain im Feld steht — der Brain hat
+    // seine Vorschlaege in Phase 1 bereits nummeriert (Prioritaet zuerst).
+    // Zwei Abfragen a 60–128 s entfallen pro Runde (~3 min), ohne den Report
+    // zu verfremden: Katalog = dedupeter Pool, Rangliste = die Reihenfolge,
+    // die der Brain selbst geliefert hat.
+    if total == 1 && answered.len() == 1 {
+        let catalog = dedupe_pool(&pool);
+        if !catalog.is_empty() {
+            let ranked: Vec<RankedSuggestion> = catalog
+                .iter()
+                .take(k)
+                .enumerate()
+                .map(|(i, text)| RankedSuggestion {
+                    index: i + 1,
+                    text: text.clone(),
+                    points: (catalog.len() - i) as u32,
+                    approvals: 1,
+                })
+                .collect();
+            crate::bench_events::info_line(&format!(
+                "[self-research] Ein-Brain-Spur: Konsolidieren+Abstimmen übersprungen — {} Vorschläge direkt als Rangliste.",
+                catalog.len()
+            ));
+            for (rank, r) in ranked.iter().enumerate() {
+                crate::bench_events::info_line(&format!(
+                    "   {}. {} Pkt · {} Stimmen — {}",
+                    rank + 1,
+                    r.points,
+                    r.approvals,
+                    r.text
+                ));
+            }
+            return SelfResearchReport {
+                catalog,
+                ranked,
+                consolidated_by: None,
+                collected: answered.len(),
+                voters: answered.len(),
+                brains_total: total,
+            };
+        }
     }
 
     // ---- Phase 2: Konsolidieren (mit Fallback) ----
@@ -1019,6 +1084,48 @@ mod tests {
     }
 
     #[test]
+    fn collect_modules_is_recursive_with_relative_names() {
+        // Regression 2026-08-01: nur flache `src/*.rs` gesehen → Untermodule
+        // wie src/repl/mod.rs fehlten der Benchmark-Modulliste.
+        let dir = std::env::temp_dir().join(format!("webagent_sr_mods_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("repl")).unwrap();
+        std::fs::write(dir.join("brain.rs"), "pub fn a() {}\n").unwrap();
+        std::fs::write(
+            dir.join("repl").join("mod.rs"),
+            "pub fn isolated_query() {}\npub fn b() {}\n",
+        )
+        .unwrap();
+        let mods = collect_modules(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            mods,
+            vec![
+                ("brain.rs".to_string(), 1),
+                ("repl/mod.rs".to_string(), 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn collect_public_api_covers_submodules() {
+        // Regression 2026-08-01: isolated_query (src/repl/mod.rs) tauchte in
+        // der "gibt es schon"-Liste nicht auf, der Schwarm schlug sie neu vor.
+        let dir = std::env::temp_dir().join(format!("webagent_sr_api_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("repl")).unwrap();
+        std::fs::write(dir.join("brain.rs"), "pub fn a() {}\n").unwrap();
+        std::fs::write(
+            dir.join("repl").join("mod.rs"),
+            "pub fn isolated_query() -> String {}\nfn private() {}\n",
+        )
+        .unwrap();
+        let api = collect_public_api(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(api, vec!["a".to_string(), "isolated_query".to_string()]);
+    }
+
+    #[test]
     fn first_progress_section_takes_newest() {
         let progress = "# T\n\n## neu\nA\n## alt\nB";
         assert_eq!(first_progress_section(progress), "## neu\nA");
@@ -1095,6 +1202,42 @@ mod tests {
         assert_eq!(
             report.ranked[0].text,
             "Fehlerhierarchie mit thiserror einfuehren"
+        );
+    }
+
+    #[test]
+    fn single_brain_shortcut_ueberspringt_konsolidierung_und_abstimmung() {
+        // Ein-Brain-Spur: nur die Sammel-Abfrage darf laufen; Konsolidierung
+        // und Abstimmung entfallen, die Rangliste ist die Reihenfolge des
+        // Brains. Der Zaehler bewacht, dass keine Selbstgespraeche entstehen.
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let c = calls.clone();
+        let query = move |_b: &str, _p: &str| -> Result<String, String> {
+            c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok("1. Fehlerhierarchie mit thiserror einfuehren\n\
+                2. Strukturiertes Logging via tracing ergaenzen\n\
+                3. Protokoll strikt validieren beim Parsen"
+                .to_string())
+        };
+        let report = run_self_research(&["kimi".to_string()], "# facts", 3, 3, 1, query);
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "nur die Sammel-Abfrage — keine Selbstgespraeche"
+        );
+        assert_eq!(report.collected, 1);
+        assert_eq!(report.voters, 1);
+        assert!(report.consolidated_by.is_none());
+        assert_eq!(report.catalog.len(), 3);
+        assert_eq!(report.ranked.len(), 3);
+        // Rangfolge = die Reihenfolge, die kimi geliefert hat.
+        assert_eq!(
+            report.ranked[0].text,
+            "Fehlerhierarchie mit thiserror einfuehren"
+        );
+        assert_eq!(
+            report.ranked[2].text,
+            "Protokoll strikt validieren beim Parsen"
         );
     }
 

@@ -68,6 +68,10 @@ pub struct App {
     pub view: View,
     /// Scroll-Offset der Benchmark-Ansicht (0 = am unteren Rand mitlaufen).
     pub bench_scroll: usize,
+    /// Aufgeklappte Knoten der Benchmark-Baumansicht (stabile Event-IDs).
+    pub bench_expanded: std::collections::HashSet<u64>,
+    /// Cursor-Position in der gefalteten Baum-Zeilenliste (0 = unterste Zeile).
+    pub bench_selected: usize,
     /// Eingabepuffer für die Kommandozeile (/).
     pub command_input: String,
 }
@@ -95,6 +99,71 @@ impl View {
             View::Bench => "Benchmark",
         }
     }
+}
+
+/// Eine sichtbare Zeile der Benchmark-Baumansicht.
+///
+/// Der flache Ereignisstrom wird gefaltet: Jedes Ereignis ist ein Knoten
+/// (`depth = 0`), seine aufgeklappten Detailzeilen folgen eingerueckt
+/// (`depth = 1`, `is_node = false`). So hat der Renderer eine schlichte
+/// Zeilenliste zum Zeichnen, und die Navigation rechnet in Zeilen statt in
+/// Baum-Indizes.
+#[derive(Debug, Clone)]
+pub struct BenchLine {
+    /// ID des zugehoerigen Ereignisses (auch Detailzeilen tragen sie, damit
+    /// Auf-/Zuklappen und Cursor zusammenpassen).
+    pub id: u64,
+    /// 0 = Knoten, 1 = Detailzeile.
+    pub depth: usize,
+    /// Ist das ein Knoten (Kopfzeile des Ereignisses) oder eine Detailzeile?
+    pub is_node: bool,
+    /// Hat der Knoten ueberhaupt ein Detail (zeigt der Renderer ▸/▾ an)?
+    pub has_children: bool,
+    pub ts: String,
+    pub level: crate::bench_events::Level,
+    pub brain: Option<String>,
+    pub text: String,
+}
+
+/// Faltet den Ereignisstrom zu einer Baum-Zeilenliste.
+///
+/// Knoten, deren ID in `expanded` steht, bekommen ihre Detailzeilen als
+/// eingerueckte Kinder. Ohne Aufklappen ist die Liste 1:1 der Strom.
+pub fn fold_bench_events(
+    events: &[crate::bench_events::BenchEvent],
+    expanded: &std::collections::HashSet<u64>,
+) -> Vec<BenchLine> {
+    let mut out = Vec::with_capacity(events.len());
+    for ev in events {
+        let has_children = ev.detail.is_some();
+        out.push(BenchLine {
+            id: ev.id,
+            depth: 0,
+            is_node: true,
+            has_children,
+            ts: ev.ts.clone(),
+            level: ev.level,
+            brain: ev.brain.clone(),
+            text: ev.text.clone(),
+        });
+        if expanded.contains(&ev.id) {
+            if let Some(detail) = &ev.detail {
+                for line in detail.lines() {
+                    out.push(BenchLine {
+                        id: ev.id,
+                        depth: 1,
+                        is_node: false,
+                        has_children: false,
+                        ts: String::new(),
+                        level: ev.level,
+                        brain: None,
+                        text: line.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Uebersetzt den `--view`-Wert in eine Ansicht. `None` = unbekannter Wert,
@@ -275,6 +344,59 @@ impl App {
 
     pub fn selected_brain(&self) -> Option<String> {
         self.agents.get(self.selected).map(|a| a.brain.clone())
+    }
+
+    /// Benchmark-Baum: Cursor verschieben, auf die Zeilenliste geklemmt.
+    /// `total_lines` ist die gefaltete Zeilenanzahl; 0 = Liste leer.
+    pub fn bench_move(&mut self, total_lines: usize, delta: i64) {
+        if total_lines == 0 {
+            self.bench_selected = 0;
+            return;
+        }
+        let next = self.bench_selected as i64 + delta;
+        self.bench_selected = next.clamp(0, (total_lines - 1) as i64) as usize;
+    }
+
+    /// Benchmark-Baum: Cursor ans untere Ende (folgt dem frischen Strom).
+    pub fn bench_bottom(&mut self, total_lines: usize) {
+        self.bench_selected = total_lines.saturating_sub(1);
+    }
+
+    /// Benchmark-Baum: Knoten der angeklickten Zeile auf-/zuklappen.
+    pub fn bench_toggle(&mut self, id: u64) {
+        if self.bench_expanded.contains(&id) {
+            self.bench_expanded.remove(&id);
+        } else {
+            self.bench_expanded.insert(id);
+        }
+    }
+
+    /// Benchmark-Baum: gezielt aufklappen (Pfeil rechts, ohne Umschalten).
+    pub fn bench_expand(&mut self, id: u64) {
+        self.bench_expanded.insert(id);
+    }
+
+    /// Benchmark-Baum: gezielt zuklappen (Pfeil links).
+    pub fn bench_collapse(&mut self, id: u64) {
+        self.bench_expanded.remove(&id);
+    }
+
+    pub fn is_bench_expanded(&self, id: u64) -> bool {
+        self.bench_expanded.contains(&id)
+    }
+
+    /// Benchmark-Baum: alle Knoten mit Detail aufklappen (`e`).
+    pub fn bench_expand_all(&mut self) {
+        for ev in crate::bench_events::snapshot() {
+            if ev.detail.is_some() {
+                self.bench_expanded.insert(ev.id);
+            }
+        }
+    }
+
+    /// Benchmark-Baum: alle Knoten zuklappen (`c`).
+    pub fn bench_collapse_all(&mut self) {
+        self.bench_expanded.clear();
     }
 }
 
@@ -679,6 +801,8 @@ mod tests {
             activity_history: std::collections::VecDeque::new(),
             view: View::Workers,
             bench_scroll: 0,
+            bench_expanded: std::collections::HashSet::new(),
+            bench_selected: 0,
             command_input: String::new(),
         }
     }
@@ -818,5 +942,103 @@ mod tests {
             Some(0),
             "toter Worker pulsiert nicht"
         );
+    }
+
+    #[test]
+    fn fold_bench_events_klappt_details_als_kinder_ein() {
+        use crate::bench_events::{BenchEvent, Level};
+        let kopf = BenchEvent {
+            id: 1,
+            ts: "10:00:00".into(),
+            level: Level::Info,
+            brain: None,
+            text: "[shell:step-1] cargo test".into(),
+            detail: Some(
+                "[Terminal-Ausgabe action_id=step-1]\nalles gut\n[exit_code: 0]".into(),
+            ),
+        };
+        let meldung = BenchEvent {
+            id: 2,
+            ts: "10:00:01".into(),
+            level: Level::Pass,
+            brain: Some("kimi".into()),
+            text: "[brain:kimi] ok 100ms 500Z".into(),
+            detail: None,
+        };
+        let events = vec![kopf, meldung];
+        let mut expanded = std::collections::HashSet::new();
+
+        let flach = fold_bench_events(&events, &expanded);
+        assert_eq!(flach.len(), 2, "alles zu: nur die Knoten");
+        assert_eq!(flach[0].depth, 0);
+        assert!(flach[0].has_children);
+        assert!(!flach[1].has_children);
+        assert!(flach[1].is_node);
+
+        expanded.insert(1);
+        let baum = fold_bench_events(&events, &expanded);
+        assert_eq!(
+            baum.len(),
+            5,
+            "aufgeklappt: 1 Knoten + 3 Detailzeilen + 1 Knoten"
+        );
+        assert_eq!(baum[0].id, 1);
+        assert_eq!(baum[0].depth, 0);
+        assert_eq!(baum[1].text, "[Terminal-Ausgabe action_id=step-1]");
+        assert_eq!(baum[1].depth, 1);
+        assert!(!baum[1].is_node, "Detailzeile ist kein Knoten");
+        assert_eq!(baum[2].text, "alles gut");
+        assert_eq!(baum[3].text, "[exit_code: 0]");
+        assert_eq!(baum[4].id, 2, "naechster Knoten folgt unveraendert");
+        assert_eq!(baum[4].depth, 0);
+    }
+
+    #[test]
+    fn bench_navigation_klemmt_und_klappt_ueber_ids() {
+        let mut app = app_with(vec![]);
+        assert_eq!(app.bench_selected, 0);
+        app.bench_move(0, 5);
+        assert_eq!(app.bench_selected, 0, "leere Liste klemmt auf 0");
+        app.bench_move(10, -1);
+        assert_eq!(app.bench_selected, 0, "nie unter 0");
+        app.bench_move(10, 5);
+        assert_eq!(app.bench_selected, 5);
+        app.bench_move(10, 100);
+        assert_eq!(app.bench_selected, 9, "nie ueber den Rand");
+        app.bench_bottom(10);
+        assert_eq!(app.bench_selected, 9, "g springt ans Ende");
+        app.bench_toggle(42);
+        assert!(app.is_bench_expanded(42));
+        app.bench_toggle(42);
+        assert!(!app.is_bench_expanded(42), "Toggle schliesst wieder");
+        app.bench_expand(7);
+        app.bench_collapse(7);
+        assert!(!app.is_bench_expanded(7));
+    }
+
+    #[test]
+    fn bench_expand_all_und_collapse_all_steuern_den_ganzen_baum() {
+        use crate::bench_events::Level;
+        let _guard = crate::bench_events::test_bus_mutex().lock();
+        crate::bench_events::clear();
+        crate::bench_events::emit_detailed(Level::Info, None, "knoten-a", Some("detail a"));
+        crate::bench_events::emit_detailed(Level::Info, None, "knoten-b", Some("detail b"));
+        crate::bench_events::emit(Level::Info, None, "flach");
+        let events = crate::bench_events::snapshot();
+        assert_eq!(events.len(), 3);
+
+        let mut app = app_with(vec![]);
+        app.bench_expand_all();
+        assert_eq!(
+            app.bench_expanded.len(),
+            2,
+            "e klappt nur Knoten mit Detail auf"
+        );
+        assert!(app.is_bench_expanded(events[0].id));
+        assert!(app.is_bench_expanded(events[1].id));
+        assert!(!app.is_bench_expanded(events[2].id), "flach hat kein Detail");
+
+        app.bench_collapse_all();
+        assert!(app.bench_expanded.is_empty(), "c klappt alles zu");
     }
 }

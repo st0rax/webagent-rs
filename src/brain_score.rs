@@ -119,6 +119,28 @@ fn record_event_at(
         return;
     };
     let _ = writeln!(file, "{line}");
+
+    // Storax-Vorgabe (2026-08-01): die Nutzungs-/Phase-A-Ereignisse aus
+    // events.jsonl gehoeren sichtbar in den TUI-Baum — Erfolg, Latenz und
+    // Prompt-Groesse sind genau die Kennzahlen, die dort aufklappbar sind.
+    // Nur im Spiegelmodus (`--verbose`-Benchmark), damit Tests und der
+    // normale Betrieb den Bus nicht mit Nutzungsdaten füllen.
+    if crate::bench_events::echo_bus_enabled() {
+        let level = if success {
+            crate::bench_events::Level::Pass
+        } else {
+            crate::bench_events::Level::Fail
+        };
+        crate::bench_events::emit_detailed(
+            level,
+            Some(brain_id),
+            &format!(
+                "[brain:{brain_id}] {} {latency_ms}ms {prompt_chars}Z",
+                if success { "ok" } else { "FEHLER" }
+            ),
+            reason,
+        );
+    }
 }
 
 fn load_events(path: &PathBuf) -> Vec<Event> {
@@ -324,5 +346,24 @@ mod tests {
         assert_eq!(board.len(), 2);
         assert_eq!(board[0].brain_id, "kimi");
         assert_eq!(board[1].brain_id, "qwen");
+    }
+
+    #[test]
+    fn record_event_beruehrt_den_bus_nur_im_spiegelmodus() {
+        // Negativ-Pruefung: OHNE Spiegelmodus darf record_event nichts in den
+        // Bus legen. Der Test serialisiert sich mit den anderen Bus-Tests und
+        // prueft gezielt die Abwesenheit eines brain_score-Eintrags statt
+        // `len() == 0` — letzteres waere gegen parallele Fremd-Events anfaellig.
+        let _guard = crate::bench_events::test_bus_mutex().lock();
+        crate::bench_events::clear();
+        let path = unique_path();
+        record_event_at("kimi", true, Some("grund"), 123, 456, &path);
+        let events = crate::bench_events::snapshot();
+        assert!(
+            !events
+                .iter()
+                .any(|e| e.brain.as_deref() == Some("kimi") && e.text.starts_with("[brain:kimi]")),
+            "ohne Spiegelmodus duerfen keine Nutzungs-Events in den Bus"
+        );
     }
 }

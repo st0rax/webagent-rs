@@ -153,6 +153,33 @@ fn record_at(event: &CodeEvent, path: &Path) {
         return;
     };
     let _ = writeln!(file, "{line}");
+
+    // Storax-Vorgabe (2026-08-01): die Benchmark-Versuche aus
+    // code_score/events.jsonl spiegeln in den TUI-Baum — Pass/Change/Compile
+    // sind genau die Kennzahlen, die dort aufklappbar interessant sind. Nur im
+    // Spiegelmodus (`--verbose`-Benchmark), damit Tests und Normalbetrieb den
+    // Bus nicht mit Messdaten füllen.
+    if crate::bench_events::echo_bus_enabled() {
+        let level = if event.passed() {
+            crate::bench_events::Level::Pass
+        } else {
+            crate::bench_events::Level::Fail
+        };
+        crate::bench_events::emit_detailed(
+            level,
+            Some(&event.brain_id),
+            &format!(
+                "[code:{}] {} change={} compiled={} tests={} {}ms",
+                event.brain_id,
+                crate::char_prefix(&event.task_id, 20),
+                event.did_change,
+                event.compiled,
+                event.tests_passed,
+                event.latency_ms
+            ),
+            Some(&serde_json::to_string(event).unwrap_or_default()),
+        );
+    }
 }
 
 fn load_events(path: &Path) -> Vec<CodeEvent> {
@@ -460,6 +487,41 @@ mod tests {
         let loaded = load_events(&path);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0], event);
+    }
+
+    #[test]
+    fn record_spiegelt_den_bus_nur_im_spiegelmodus() {
+        // Negativ-Pruefung: ohne Spiegelmodus legt record nichts in den Bus.
+        // Positiv: im Spiegelmodus erscheint der Versuch als aufklappbarer
+        // `[code:…]`-Knoten mit dem vollen JSON als Detail.
+        let _guard = crate::bench_events::test_bus_mutex().lock();
+
+        crate::bench_events::set_echo_bus(false);
+        crate::bench_events::clear();
+        let path = unique_path();
+        record_at(&ev("kimi", true, true, true), &path);
+        assert!(
+            !crate::bench_events::snapshot()
+                .iter()
+                .any(|e| e.text.starts_with("[code:kimi]")),
+            "ohne Spiegelmodus duerfen keine Code-Events in den Bus"
+        );
+
+        crate::bench_events::set_echo_bus(true);
+        crate::bench_events::clear();
+        record_at(&ev("kimi", false, true, false), &path);
+        let events = crate::bench_events::snapshot();
+        assert!(
+            events.iter().any(|e| {
+                e.brain.as_deref() == Some("kimi")
+                    && e.text.starts_with("[code:kimi]")
+                    && e.detail.as_deref().is_some_and(|d| d.contains("did_change"))
+            }),
+            "im Spiegelmodus muss der Code-Versuch mit vollem Detail in den Bus"
+        );
+
+        crate::bench_events::set_echo_bus(false);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// Wie `ev`, aber als weitergereichte Aufgabe (ein anderes Brain gab auf).
