@@ -51,8 +51,13 @@ macro_rules! bench_say {
 
 /// Wall-Timeout je Brain-Run in Sekunden (ein Benchmark-Run darf nicht ewig
 /// laufen — via `AgentController::set_wall_timeout_secs`).
+///
+/// 300 s reichten nicht: kimi (Ein-Brain-Lauf, 2026-08-01) brauchte allein fürs
+/// gezielte Erkunden der Zieldatei (Gliederung, Select-String, 5 Shell-Steps)
+/// über die Deadline und kam nie zum Editieren. 900 s lassen ein komplettes
+/// Brain-Zyklus (Erkunden + Edit + cargo build + cargo test) zu.
 #[cfg_attr(not(feature = "webview"), allow(dead_code))]
-const BENCH_WALL_SECS: u64 = 300;
+const BENCH_WALL_SECS: u64 = 900;
 /// Controller-Zyklen je Brain-Run: klein, damit das Brain fokussiert am Sieger
 /// baut statt an einer offenen Aufgabe.
 #[cfg_attr(not(feature = "webview"), allow(dead_code))]
