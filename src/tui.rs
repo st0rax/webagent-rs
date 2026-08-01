@@ -639,11 +639,10 @@ fn run_tui_ratatui(
                             let n = bench_lines(&app).len();
                             app.bench_bottom(n);
                         }
-                        // `e` klappt im Bench-Baum alles mit Detail auf, `c`
-                        // klappt alles zu (schneller Überblick ueber einen langen
-                        // Lauf, ohne jeden Knoten einzeln zu oeffnen).
-                        KeyCode::Char('e') if app.view == View::Bench => app.bench_expand_all(),
-                        KeyCode::Char('c') if app.view == View::Bench => app.bench_collapse_all(),
+                        // `e` togglet den Bench-Baum: klappt alles mit Detail
+                        // auf, ein zweites Mal klappt alles wieder zu (schneller
+                        // Überblick ueber einen langen Lauf).
+                        KeyCode::Char('e') if app.view == View::Bench => app.bench_toggle_all(),
                         // Gewinner-Design (qwen, 2026-07-22): Tab wechselt den
                         // Panel-Fokus, f schaltet den Log-Filter durch.
                         KeyCode::Tab => app.focus = app.focus.next(),

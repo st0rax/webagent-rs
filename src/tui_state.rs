@@ -398,6 +398,22 @@ impl App {
     pub fn bench_collapse_all(&mut self) {
         self.bench_expanded.clear();
     }
+
+    /// Benchmark-Baum: ist mindestens ein Knoten mit Detail noch zugeklappt?
+    pub fn bench_any_collapsed(&self) -> bool {
+        crate::bench_events::snapshot()
+            .iter()
+            .any(|ev| ev.detail.is_some() && !self.bench_expanded.contains(&ev.id))
+    }
+
+    /// Benchmark-Baum: eine Taste togglet zwischen allem auf/allem zu (`e`).
+    pub fn bench_toggle_all(&mut self) {
+        if self.bench_any_collapsed() {
+            self.bench_expand_all();
+        } else {
+            self.bench_collapse_all();
+        }
+    }
 }
 
 /// Baut die Detailzeilen eines Agenten aus seinen Roh-Ereignissen.
@@ -1017,7 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn bench_expand_all_und_collapse_all_steuern_den_ganzen_baum() {
+    fn eine_taste_togglet_den_ganzen_baum_auf_und_zu() {
         use crate::bench_events::Level;
         let _guard = crate::bench_events::test_bus_mutex().lock();
         crate::bench_events::clear();
@@ -1028,17 +1044,27 @@ mod tests {
         assert_eq!(events.len(), 3);
 
         let mut app = app_with(vec![]);
-        app.bench_expand_all();
+        app.bench_toggle_all();
         assert_eq!(
             app.bench_expanded.len(),
             2,
-            "e klappt nur Knoten mit Detail auf"
+            "erster Toggle klappt alle Knoten mit Detail auf"
         );
         assert!(app.is_bench_expanded(events[0].id));
         assert!(app.is_bench_expanded(events[1].id));
         assert!(!app.is_bench_expanded(events[2].id), "flach hat kein Detail");
 
-        app.bench_collapse_all();
-        assert!(app.bench_expanded.is_empty(), "c klappt alles zu");
+        app.bench_toggle_all();
+        assert!(
+            app.bench_expanded.is_empty(),
+            "zweiter Toggle klappt den ganzen Baum zu"
+        );
+
+        app.bench_toggle_all();
+        assert_eq!(
+            app.bench_expanded.len(),
+            2,
+            "dritter Toggle klappt wieder alles auf"
+        );
     }
 }
