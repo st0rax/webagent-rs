@@ -656,7 +656,7 @@ pub fn cmd_probe(
 
     // Bestehende Datei mergen statt ueberschreiben: der Prober ist ein
     // Ergaenzungs-Tool, keine Neuschreibung.
-    let merged = if let Ok(existing) = webagent::config::load_selectors(&id) {
+    let mut merged = if let Ok(existing) = webagent::config::load_selectors(&id) {
         let mut obj = existing;
         if let Some(map) = obj.as_object_mut() {
             if let Some(fresh_map) = fresh.as_object() {
@@ -669,6 +669,39 @@ pub fn cmd_probe(
     } else {
         fresh
     };
+
+    // `ui_options` = Nenner des Levels: die Faehigkeiten, die die Oberflaeche
+    // nachweisbar anbietet. Ohne sie gilt das Brain als unvermessen ([n/?]).
+    let capability_keys: Vec<String> = {
+        let mut seen: Vec<String> = Vec::new();
+        for p in &all {
+            let k = p.capability_key.to_string();
+            if k == "chat" {
+                // `chat` steckt hinter jedem send_button/composer-Fund und
+                // ist der gemeinsame Nenner aller Brains — ihn explizit zu
+                // nennen ist Redundanz, nicht Information.
+                continue;
+            }
+            if !seen.contains(&k) {
+                seen.push(k);
+            }
+        }
+        seen
+    };
+    if !capability_keys.is_empty() {
+        merged
+            .as_object_mut()
+            .unwrap()
+            .insert(
+                "ui_options".to_string(),
+                serde_json::Value::Array(
+                    capability_keys
+                        .iter()
+                        .map(|k| serde_json::Value::String(k.clone()))
+                        .collect(),
+                ),
+            );
+    }
 
     let body = match serde_json::to_string_pretty(&merged) {
         Ok(s) => s,
