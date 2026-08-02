@@ -26,6 +26,12 @@
     "button:has-text('暂停')",
     "button[class*='stop' i]"
   ],
+  "model_menu": [
+    "div.current-model"
+  ],
+  "model_option": [
+    ".models-popover .model-item"
+  ],
   "assistant_message": [
     "div.markdown",
     "div[class*='chat-message-assistant'] .prose",

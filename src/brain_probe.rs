@@ -40,6 +40,13 @@ pub struct Candidate {
     pub test_id: String,
     #[serde(default)]
     pub id: String,
+    /// Klassennamen — fuer Discovery von Bedienelementen ohne Text/role (z.B.
+    /// kimi's Modell-Picker, ein `div[class*=...]` ohne aria-label).
+    #[serde(default)]
+    pub class: String,
+    /// `title`-Attribut (Tooltip), oft die einzige Beschriftung eines Icon-Buttons.
+    #[serde(default)]
+    pub title: String,
     #[serde(default)]
     pub contenteditable: bool,
     /// Sichtbar und bedienbar — unsichtbare Treffer sind Rauschen.
@@ -55,8 +62,8 @@ impl Candidate {
     /// findet je nach Brain die Haelfte nicht.
     fn haystack(&self) -> String {
         format!(
-            "{} {} {} {} {}",
-            self.aria_label, self.text, self.test_id, self.id, self.placeholder
+            "{} {} {} {} {} {} {}",
+            self.aria_label, self.text, self.test_id, self.id, self.placeholder, self.class, self.title
         )
         .to_lowercase()
     }
@@ -201,7 +208,7 @@ const RULES: &[Rule] = &[
             "modell", "model selector", "choose model", "switch model",
             "modell wählen", "change model", "model",
         ],
-        &["option", "einstellung"],
+        &["option", "einstellung", "vereinbarung", "dienste", "richtlinie", "bedingungen", "nutzung"],
     ),
     rule!(
         "model_switch",
