@@ -97,6 +97,16 @@ fn check_at(brain_id: &str, path: &PathBuf) -> Option<i64> {
     let _guard = WRITE_LOCK.lock();
     let state = load(path);
     let entry = state.get(brain_id)?;
+    // Deterministische Sperre: eine harte Reason (fehlender Login, Quota,
+    // Rate-Limit, Cloudflare) bleibt bestehen, solange sie nicht behoben ist.
+    // Ohne diesen Check laeuft der Cooldown ab und das Brain wird erneut
+    // angefragt — jeder Versuch kostet einen vollen `ensure_ready`-Timeout.
+    // Beobachtet 2026-08-02: gemini wurde nach Ablauf der 15-min-Sperre in
+    // jeder Runde erneut gefragt und verlor dabei ~144s pro Anlauf.
+    if entry.last_reason.as_deref().is_some_and(is_hard_block) {
+        let until = entry.open_until.unwrap_or(now_secs() + cooldown_secs());
+        return Some((until - now_secs()).max(1));
+    }
     let until = entry.open_until?;
     let remaining = until - now_secs();
     if remaining > 0 {
@@ -333,6 +343,24 @@ mod tests {
         assert!(
             e.open_until.is_some(),
             "Breaker blieb nach deterministischer Sperre zu"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn deterministische_sperre_bleibt_auch_nach_cooldownablauf_gesperrt() {
+        let path = unique_path();
+        record_failure_at("gemini", "Login nötig (/login)", &path);
+        let mut state = load(&path);
+        // Cooldown kuenstlich ablaufen lassen — open_until liegt jetzt in der
+        // Vergangenheit, aber die harte Reason besteht weiter.
+        state.get_mut("gemini").unwrap().open_until =
+            Some(now_secs() - 1);
+        save(&path, &state);
+        let rest = check_at("gemini", &path);
+        assert!(
+            rest.is_some(),
+            "harte Sperre muss trotz abgelaufenem Cooldown bestehen bleiben"
         );
         let _ = std::fs::remove_file(&path);
     }
