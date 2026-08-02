@@ -345,23 +345,48 @@ where
                 .collect()
         });
         if config.mode == VoteMode::ImplementationPlan {
-            // Borda-Auswertung der vollständigen Ranglisten. Wir entfernen etwa
-            // die schwächere Hälfte pro Welle – 7 Pläne brauchen so drei statt
-            // sechs Browser-Abstimmungen, ohne eine lokale Bauchentscheidung.
+            // Borda-Auswertung — ausschliesslich ueber VOLLSTAENDIGE Ranglisten.
+            //
+            // Eine Teilrangliste ist keine schwaechere Stimme, sondern eine
+            // verzerrte: `scores` startet fuer alle Plaene bei 0, und 0 ist
+            // zugleich die Punktzahl des schwaechsten Platzes. Ein Plan, den ein
+            // Brain gar nicht nennt, wird damit wie der schwaechste behandelt.
+            // Da diese eine Welle direkt auf einen Sieger reduziert, entschied
+            // eine Antwort wie `3,1` bei sieben lebenden Plaenen das ganze Vote:
+            // Plan 1 gewann, fuenf Plaene ohne jede gemessene Praeferenz flogen
+            // raus. Unvollstaendige Listen zaehlen deshalb nicht mit; bleibt
+            // keine vollstaendige uebrig, uebernimmt der Kick-Fallback.
             let mut scores = vec![0usize; alive_orig.len()];
             let mut valid_rankings = 0usize;
+            let mut partial_rankings = 0usize;
+            let answered = responses.iter().filter(|r| r.is_ok()).count();
             for response in responses
                 .iter()
                 .filter_map(|response| response.as_ref().ok())
             {
                 let ranking = parse_ranking(response, alive_orig.len());
-                if ranking.len() < 2 {
+                if ranking.len() != alive_orig.len() {
+                    if !ranking.is_empty() {
+                        partial_rankings += 1;
+                    }
                     continue;
                 }
                 valid_rankings += 1;
                 for (position, display_idx) in ranking.into_iter().enumerate() {
                     scores[display_idx] += position;
                 }
+            }
+            // Ohne diese Meldung ist ein degradierter Lauf im Log nicht von
+            // einer vollen Abstimmung zu unterscheiden.
+            on_round(&format!(
+                "  Rangwahl: {valid_rankings} vollstaendige Ranglisten von {} Brains \
+                 ({answered} geantwortet, {partial_rankings} unvollstaendig verworfen)",
+                config.brains.len()
+            ));
+            if valid_rankings == 0 {
+                on_round(
+                    "  Rangwahl unbrauchbar — keine vollstaendige Rangliste, Kick-Fallback greift",
+                );
             }
             if valid_rankings > 0 {
                 // Vollstaendige Ranglisten: jede Stimme enthaelt die Praeferenz
@@ -402,6 +427,21 @@ where
         // eine Welle pro Kandidat — beobachtet 2026-08-02: Phase A hing ueber
         // 20 Minuten in der Abstimmung, obwohl 3 Wellen genuegt haetten.
         let remove_count = (alive_orig.len().saturating_sub(1)).div_ceil(2);
+        // Ohne jede verwertbare Stimme entscheidet unten allein die
+        // Index-Reihenfolge. Das ist ein zulaessiger Notausgang, darf aber nicht
+        // wie eine Abstimmung aussehen.
+        if kicks.is_empty() {
+            on_round(&format!(
+                "  WARNUNG: keine gueltige Kick-Stimme — {remove_count} Plaene \
+                 scheiden nach Reihenfolge aus, nicht nach Bewertung"
+            ));
+        } else {
+            on_round(&format!(
+                "  Kick-Fallback: {} gueltige Stimmen von {} Brains",
+                kicks.len(),
+                config.brains.len()
+            ));
+        }
         let mut counts: std::collections::HashMap<usize, u32> =
             std::collections::HashMap::new();
         for &k in &kicks {
@@ -739,6 +779,124 @@ mod tests {
         assert!(
             report.approved_text().is_some(),
             "ohne Einstimmigkeit MUSS der Turniersieger uebernommen werden"
+        );
+    }
+
+    /// Baut ein `query`, das den Plan-Modus vollstaendig bedient: Sammeln,
+    /// Rangwahl mit fester Antwort, Ratifikation immer JA.
+    fn plan_query<'a>(
+        calls: &'a AtomicUsize,
+        ballot: &'static str,
+    ) -> impl Fn(&str, &str) -> Result<String, String> + Send + Sync + 'a {
+        move |_brain: &str, prompt: &str| {
+            if prompt.contains("Erstelle EINEN konkreten") {
+                let n = calls.fetch_add(1, Ordering::SeqCst);
+                return Ok(format!(
+                    "Plan {n}: eine Zieldatei, exakte API-Aenderung, Tests und Risiken benannt"
+                ));
+            }
+            if prompt.contains("Ratifikation") {
+                return Ok("JA".to_string());
+            }
+            // Rangwahl bzw. Kick-Fallback.
+            Ok(ballot.to_string())
+        }
+    }
+
+    fn plan_config(brains: Vec<String>) -> DesignVoteConfig {
+        DesignVoteConfig {
+            brains,
+            topic: "src/shell_policy.rs".to_string(),
+            context: String::new(),
+            mode: VoteMode::ImplementationPlan,
+        }
+    }
+
+    #[test]
+    fn vollstaendige_ranglisten_entscheiden_in_einer_welle() {
+        // Der Borda-Pfad unter ImplementationPlan war komplett ungetestet —
+        // die "7/7 gruen" von ebb7c02 deckten ihn nicht ab.
+        let brains = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let calls = AtomicUsize::new(0);
+        // "1,2,3" = schwaechster zuerst, also ist Plan 3 (Index 2) der staerkste.
+        let report = run_design_vote(&plan_config(brains), &|_| {}, plan_query(&calls, "1,2,3"));
+
+        assert_eq!(report.proposals.len(), 3);
+        assert_eq!(report.winner, Some(2), "staerkster Plan gewinnt");
+        assert_eq!(report.eliminated.len(), 2, "n-1 Ausscheidungen");
+        assert!(
+            report.eliminated.iter().all(|&(_, round)| round == 1),
+            "vollstaendige Ranglisten entscheiden in EINER Welle: {:?}",
+            report.eliminated
+        );
+        assert!(report.approved_text().is_some());
+    }
+
+    #[test]
+    fn unvollstaendige_rangliste_entscheidet_das_vote_nicht() {
+        // Regression zu Befund 1: `scores` startet fuer alle Plaene bei 0, und 0
+        // ist zugleich die Punktzahl des schwaechsten Platzes. Wurde eine
+        // Teilrangliste mitgezaehlt, galten alle ungenannten Plaene als
+        // schwaechste und flogen in derselben Welle raus.
+        //
+        // Hier nennt jedes Brain bei DREI lebenden Plaenen nur zwei Nummern.
+        // Frueher kuerte das in Runde 1 sofort Plan 1 (Index 0) zum Sieger.
+        // Jetzt ist die Stimme als Rangwahl unbrauchbar, der Kick-Fallback
+        // uebernimmt und braucht mehrere Wellen.
+        let brains = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let calls = AtomicUsize::new(0);
+        let report = run_design_vote(&plan_config(brains), &|_| {}, plan_query(&calls, "3,1"));
+
+        assert_eq!(report.proposals.len(), 3);
+        assert!(
+            report.eliminated.iter().any(|&(_, round)| round >= 2),
+            "unvollstaendige Listen duerfen nicht in einer Welle durchentscheiden: {:?}",
+            report.eliminated
+        );
+        assert_ne!(
+            report.winner,
+            Some(0),
+            "Sieger darf nicht aus der verzerrten Borda-Wertung stammen"
+        );
+        assert_eq!(report.winner, Some(1), "Kick-Fallback bestimmt den Sieger");
+    }
+
+    #[test]
+    fn rangwahl_meldet_wie_viele_stimmen_gueltig_waren() {
+        // Befund 2: valid_rankings wurde berechnet, aber nie gemeldet — ein
+        // degradierter Lauf war im Log nicht von einem vollen zu unterscheiden.
+        let brains = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let calls = AtomicUsize::new(0);
+        let log = std::sync::Mutex::new(Vec::<String>::new());
+        run_design_vote(
+            &plan_config(brains),
+            &|line| log.lock().unwrap().push(line.to_string()),
+            plan_query(&calls, "1,2,3"),
+        );
+        let log = log.into_inner().unwrap();
+        assert!(
+            log.iter().any(|line| line.contains("vollstaendige Ranglisten")),
+            "Anzahl gueltiger Ranglisten muss im Log stehen: {log:?}"
+        );
+    }
+
+    #[test]
+    fn ohne_gueltige_kick_stimme_warnt_der_fallback() {
+        // Befund 3: bei leeren kicks entscheidet allein die Index-Reihenfolge.
+        // Zulaessiger Notausgang, aber er darf nicht wie eine Abstimmung aussehen.
+        let brains = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let calls = AtomicUsize::new(0);
+        let log = std::sync::Mutex::new(Vec::<String>::new());
+        // Antwort ohne jede verwertbare Nummer.
+        run_design_vote(
+            &plan_config(brains),
+            &|line| log.lock().unwrap().push(line.to_string()),
+            plan_query(&calls, "kann ich nicht beurteilen"),
+        );
+        let log = log.into_inner().unwrap();
+        assert!(
+            log.iter().any(|line| line.contains("WARNUNG")),
+            "fehlende Stimmen muessen im Log auffallen: {log:?}"
         );
     }
 
