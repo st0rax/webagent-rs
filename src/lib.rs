@@ -11,6 +11,7 @@ pub mod benchmark;
 pub mod bot2bot_worker;
 pub mod brain;
 pub mod brain_limits;
+pub mod brain_probe;
 pub mod brain_score;
 pub mod brains_health;
 pub mod browser;
