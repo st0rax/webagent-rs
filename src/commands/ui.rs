@@ -197,7 +197,14 @@ pub fn cmd_toggle(brain: &str, option: &str, headless: bool) -> i32 {
         eprintln!("[toggle] {brain}: {e}");
         return 2;
     }
-    let code = match backend.toggle_option(option) {
+    // Der Faehigkeitsname aus `capability.rs` muss hier ankommen, sonst ist der
+    // Antrieb zwar gebaut, aber von aussen nur ueber den internen Selektornamen
+    // erreichbar — und damit praktisch unbenutzt.
+    let code = match if option == "temporary_chat" {
+        backend.toggle_temporary_chat()
+    } else {
+        backend.toggle_option(option)
+    } {
         Ok((before, after)) => {
             println!("[toggle] {brain}/{option}: '{before}' -> '{after}'");
             0

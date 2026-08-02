@@ -21,6 +21,11 @@ struct MockStateInner {
     url: String,
     scripts: ScriptMap,
     navigate_delay: Duration,
+    /// Antwortfolgen: jeder Aufruf nimmt den naechsten Wert, der letzte bleibt
+    /// stehen. Ohne das kann ein Test keinen Zustandswechsel nachstellen —
+    /// „vorher" und „nachher" waeren zwangslaeufig derselbe Wert, und jede
+    /// Vorher/Nachher-Pruefung sähe im Test aus wie ein Fehlschlag.
+    sequences: HashMap<String, Vec<Value>>,
 }
 
 impl MockPageState {
@@ -39,6 +44,16 @@ impl MockPageState {
     pub fn on_eval(self, expression: impl Into<String>, value: Value) -> Self {
         if let Ok(mut g) = self.inner.lock() {
             g.scripts.insert(expression.into(), value);
+        }
+        self
+    }
+
+    /// Registriert eine Antwortfolge für ein exaktes JS-Expression: der erste
+    /// Aufruf liefert `values[0]`, der zweite `values[1]` usw.; ist die Folge
+    /// aufgebraucht, bleibt der letzte Wert stehen.
+    pub fn on_eval_seq(self, expression: impl Into<String>, values: Vec<Value>) -> Self {
+        if let Ok(mut g) = self.inner.lock() {
+            g.sequences.insert(expression.into(), values);
         }
         self
     }
@@ -64,11 +79,19 @@ impl MockPageDriver {
 
 impl PageDriver for MockPageDriver {
     fn evaluate(&mut self, expression: &str) -> Result<Value> {
-        let guard = self
+        let mut guard = self
             .state
             .inner
             .lock()
             .map_err(|_| PageDriverError::Protocol("Mock-Sperre verloren".into()))?;
+        if let Some(seq) = guard.sequences.get_mut(expression) {
+            if seq.len() > 1 {
+                return Ok(seq.remove(0));
+            }
+            if let Some(v) = seq.first() {
+                return Ok(v.clone());
+            }
+        }
         if let Some(v) = guard.scripts.get(expression) {
             return Ok(v.clone());
         }

@@ -11,6 +11,9 @@ use super::WebBrainBackend;
 use crate::brain::BrainBackend;
 use std::time::Duration;
 
+/// Selektorschluessel der Faehigkeit `temporary_chat` (siehe `capability.rs`).
+pub const TEMPORARY_CHAT_KEY: &str = "temporary_chat_button";
+
 impl WebBrainBackend {
     /// Zustand eines Umschalters als Zeichenkette: `aria-pressed`,
     /// `aria-checked`, `data-state` oder — als letzter Ausweg — die
@@ -22,13 +25,23 @@ impl WebBrainBackend {
     /// feststellbare Wirkung ist von einem Klick ins Leere nicht zu
     /// unterscheiden.
     fn toggle_state(&self, key: &str) -> String {
+        let expr = self.toggle_state_expr(key);
+        self.eval_str(&expr)
+    }
+
+    /// Das JS hinter [`Self::toggle_state`], als eigene Funktion, damit ein Test
+    /// dem Mock-Driver exakt dieselbe Ausdrucksform vorlegen kann wie der
+    /// Produktivpfad. Zwei handgepflegte Kopien desselben Skripts waeren genau
+    /// die Art doppelter Auslesepfad, an der Fixes hier schon vorbeigelaufen
+    /// sind.
+    fn toggle_state_expr(&self, key: &str) -> String {
         let list = Self::js_selectors(&self.sel(key));
         // `Q` liefert den INNERSTEN Treffer — bei `text=DeepThink` also den
         // Textknoten, nicht die schaltbare Pille. Dessen Klassen aendern sich
         // beim Umschalten nicht; real gemessen blieb der Zustand konstant,
         // obwohl der Klick ankam. Deshalb zum klickbaren Vorfahren hochlaufen
         // und dessen Zustand lesen.
-        let expr = Self::js_scan(
+        Self::js_scan(
             &list,
             // ALLE data-*-Attribute lesen, nicht nur `data-state`: zais
             // Deep-Think-Knopf haelt seinen Zustand in `data-autoThink`, und
@@ -37,8 +50,7 @@ impl WebBrainBackend {
             // einer festen Attributliste bliebe der Wechsel unsichtbar.
             "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;var d=[];for(var a=0;a<t.attributes.length;a++){var at=t.attributes[a];if(at.name.indexOf('data-')===0||at.name.indexOf('aria-')===0)d.push(at.name+'='+at.value);}d.sort();return d.join(';')+'|'+((t.className||'')+'');}",
             "\"\"",
-        );
-        self.eval_str(&expr)
+        )
     }
 
     /// Waehlt ueber mehrere Menuestufen, z.B. `["Aufwand", "Hoch"]`.
@@ -255,13 +267,19 @@ impl WebBrainBackend {
 
     /// Klickt den schaltbaren Vorfahren des Treffers (siehe `toggle_state`).
     fn click_toggle(&self, key: &str) -> bool {
+        let expr = self.click_toggle_expr(key);
+        self.eval_bool(&expr)
+    }
+
+    /// Das JS hinter [`Self::click_toggle`] — aus demselben Grund ausgelagert
+    /// wie [`Self::toggle_state_expr`].
+    fn click_toggle_expr(&self, key: &str) -> String {
         let list = Self::js_selectors(&self.sel(key));
-        let expr = Self::js_scan(
+        Self::js_scan(
             &list,
             "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;t.click();return true;}",
             "false",
-        );
-        self.eval_bool(&expr)
+        )
     }
 
     /// Schaltet eine Option um und belegt, dass sich dabei wirklich etwas
@@ -307,6 +325,28 @@ impl WebBrainBackend {
             ));
         }
         Ok((before, after))
+    }
+
+    /// Aktueller Zustand des Temporaer-Chat-Knopfs (leer = nicht auffindbar).
+    pub fn temporary_chat_state(&self) -> String {
+        self.toggle_state(TEMPORARY_CHAT_KEY)
+    }
+
+    /// Schaltet den temporaeren Chat um und belegt den Wechsel.
+    ///
+    /// Bewusst nur eine benannte Tuer vor [`Self::toggle_option`] statt eines
+    /// eigenen Antriebs: der Temporaer-Chat ist ein gewoehnlicher Umschalter,
+    /// und der Beleg — vorher/nachher lesen, bei Gleichstand echter Mausklick,
+    /// Verschwinden zaehlt nicht als Wirkung — ist derselbe, den `web_search`
+    /// und `reasoning_toggle` schon tragen. Eine zweite Fassung derselben
+    /// Pruefung waere ein zweiter Auslesepfad, der beim naechsten Fix stehen
+    /// bleibt.
+    ///
+    /// Der Selektorname steht hier fest, weil er die Faehigkeit `temporary_chat`
+    /// aus `capability.rs` bedient; wer einen anderen Knopf schalten will,
+    /// nimmt direkt `toggle_option`.
+    pub fn toggle_temporary_chat(&mut self) -> Result<(String, String), String> {
+        self.toggle_option(TEMPORARY_CHAT_KEY)
     }
 
     /// Öffnet die Oberfläche für interaktive Bedienung (Modellwahl u.ä.) und
@@ -464,5 +504,108 @@ impl WebBrainBackend {
         driver
             .press_key("Escape", "Escape", 27, "")
             .map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    /// qwen-Backend mit angehaengtem Mock-Driver. Die Selektoren kommen aus der
+    /// echten `selectors/qwen.json` — ein Test gegen erfundene Selektoren wuerde
+    /// nicht merken, wenn der Schluessel dort verschwindet.
+    fn qwen_with(state: MockPageState) -> WebBrainBackend {
+        let backend = WebBrainBackend::from_config("qwen").expect("qwen config");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state)));
+        backend
+    }
+
+    #[test]
+    fn qwen_has_temporary_chat_selector() {
+        let backend = WebBrainBackend::from_config("qwen").expect("qwen config");
+        assert!(
+            !backend.sel(TEMPORARY_CHAT_KEY).is_empty(),
+            "ohne '{TEMPORARY_CHAT_KEY}' in selectors/qwen.json faehrt der Antrieb ins Leere"
+        );
+    }
+
+    #[test]
+    fn toggle_temporary_chat_reports_state_change() {
+        let probe = WebBrainBackend::from_config("qwen").expect("qwen config");
+        let state_expr = probe.toggle_state_expr(TEMPORARY_CHAT_KEY);
+        let click_expr = probe.click_toggle_expr(TEMPORARY_CHAT_KEY);
+        let mut backend = qwen_with(
+            MockPageState::new()
+                .on_eval(click_expr, json!(true))
+                .on_eval_seq(
+                    state_expr,
+                    vec![
+                        json!("aria-pressed=false|chat-btn"),
+                        json!("aria-pressed=true|chat-btn"),
+                    ],
+                ),
+        );
+        let (before, after) = backend.toggle_temporary_chat().expect("Wechsel belegt");
+        assert_eq!(before, "aria-pressed=false|chat-btn");
+        assert_eq!(after, "aria-pressed=true|chat-btn");
+    }
+
+    /// Der Kern der Regel „kein Beleg, kein Level": ein Klick, der ankommt, aber
+    /// nichts aendert, muss ein Fehlschlag sein. Wuerde er als Erfolg
+    /// durchgehen, stuende `temporary_chat` als fahrbar in der Bilanz, ohne es
+    /// je gewesen zu sein.
+    #[test]
+    fn toggle_temporary_chat_without_state_change_fails() {
+        let probe = WebBrainBackend::from_config("qwen").expect("qwen config");
+        let state_expr = probe.toggle_state_expr(TEMPORARY_CHAT_KEY);
+        let click_expr = probe.click_toggle_expr(TEMPORARY_CHAT_KEY);
+        let mut backend = qwen_with(
+            MockPageState::new()
+                .on_eval(click_expr, json!(true))
+                .on_eval(state_expr, json!("aria-pressed=false|chat-btn")),
+        );
+        let err = backend
+            .toggle_temporary_chat()
+            .expect_err("ohne Zustandswechsel darf das kein Erfolg sein");
+        assert!(err.contains("kein Zustandswechsel"), "{err}");
+    }
+
+    /// Verschwindet der Knopf nach dem Klick, ist das kein Beleg fuer Wirkung —
+    /// dieselbe Falle, die bei kimi einmal als Erfolg gezaehlt wurde.
+    #[test]
+    fn toggle_temporary_chat_vanishing_button_is_no_proof() {
+        let probe = WebBrainBackend::from_config("qwen").expect("qwen config");
+        let state_expr = probe.toggle_state_expr(TEMPORARY_CHAT_KEY);
+        let click_expr = probe.click_toggle_expr(TEMPORARY_CHAT_KEY);
+        let mut backend = qwen_with(
+            MockPageState::new()
+                .on_eval(click_expr, json!(true))
+                .on_eval_seq(
+                    state_expr,
+                    vec![json!("aria-pressed=false|chat-btn"), json!("")],
+                ),
+        );
+        let err = backend
+            .toggle_temporary_chat()
+            .expect_err("Verschwinden ist kein Beleg");
+        assert!(err.contains("nicht mehr"), "{err}");
+    }
+
+    #[test]
+    fn toggle_temporary_chat_without_selector_fails() {
+        // chatgpt hat den Knopf (noch) nicht konfiguriert — dort muss der
+        // Antrieb sofort und ehrlich abbrechen statt blind zu klicken.
+        let mut backend = WebBrainBackend::from_config("chatgpt").expect("chatgpt config");
+        assert!(
+            backend.sel(TEMPORARY_CHAT_KEY).is_empty(),
+            "Test setzt voraus, dass chatgpt keinen temporary_chat_button hat"
+        );
+        backend.attach_page_driver(Box::new(MockPageDriver::new(MockPageState::new())));
+        let err = backend
+            .toggle_temporary_chat()
+            .expect_err("ohne Selektor kein Antrieb");
+        assert!(err.contains("konfiguriert"), "{err}");
     }
 }

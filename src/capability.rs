@@ -165,6 +165,11 @@ pub const CATALOG: &[Capability] = &[
         key: "temporary_chat",
         label: "Temporären Chat nutzen",
         needs: &["temporary_chat_button"],
+        // Antrieb steht seit 2026-08-02 (`WebBrainBackend::toggle_temporary_chat`,
+        // Vorher/Nachher-Beleg wie bei `toggle_option`, gegen den Mock getestet).
+        // Bleibt trotzdem `false`: kein Beleg, kein Level — es fehlt der Klick am
+        // echten qwen, der nachweislich einen Zustand geaendert hat. Erst danach
+        // hier auf `true` stellen, mit Datum und Brain im Kommentar.
         driveable: false,
         attainable: true,
     },
