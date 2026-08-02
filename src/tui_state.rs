@@ -79,6 +79,13 @@ pub struct App {
     /// Ohne diese Zeile bliebe ein fehlgeschlagenes Anordnen unsichtbar: die
     /// Fenster liegen off-screen, man sieht also weder Erfolg noch Misserfolg.
     pub grid_status: String,
+    /// Cursor in der Faehigkeiten-Ansicht.
+    pub cap_selected: usize,
+    /// Rueckmeldung der zuletzt geschalteten Faehigkeit.
+    ///
+    /// Zeigt ausdruecklich, ob der Zustandswechsel BELEGT wurde — ein Klick
+    /// ohne nachweisbare Wirkung ist in diesem Projekt kein Koennen.
+    pub cap_status: String,
 }
 
 /// Die umschaltbaren Hauptansichten.
@@ -88,13 +95,20 @@ pub enum View {
     Workers,
     /// Arbeits-/Benchmark-Ansicht: der Ereignisstrom des laufenden Laufs.
     Bench,
+    /// Faehigkeiten je Brain — anzeigen UND schalten.
+    ///
+    /// Die CLI kann Reasoning, Modellwechsel, Websuche und den temporaeren
+    /// Chat laengst fahren (`webagent toggle`, `model`, `menu`, `mode`). In der
+    /// TUI gab es dafuer nichts, obwohl dort der Mensch sitzt.
+    Capabilities,
 }
 
 impl View {
     pub fn next(self) -> View {
         match self {
             View::Workers => View::Bench,
-            View::Bench => View::Workers,
+            View::Bench => View::Capabilities,
+            View::Capabilities => View::Workers,
         }
     }
 
@@ -102,8 +116,84 @@ impl View {
         match self {
             View::Workers => "Worker",
             View::Bench => "Benchmark",
+            View::Capabilities => "Faehigkeiten",
         }
     }
+}
+
+/// Zustand einer Faehigkeit in der Faehigkeiten-Ansicht.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapState {
+    /// Fahrbar — per Taste schaltbar.
+    Driveable,
+    /// Angeboten, aber noch kein Code bzw. keine Selektoren.
+    Quest,
+    /// Fuer diesen Harness nicht nachweisbar fahrbar; zaehlt nicht im Nenner.
+    OutOfReach,
+}
+
+/// Eine Zeile der Faehigkeiten-Ansicht.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CapRow {
+    pub brain: String,
+    /// `None` = Kopfzeile des Brains.
+    pub key: Option<String>,
+    pub label: String,
+    pub state: CapState,
+}
+
+impl CapRow {
+    /// Nur fahrbare Zeilen lassen sich schalten.
+    pub fn is_actionable(&self) -> bool {
+        self.key.is_some() && self.state == CapState::Driveable
+    }
+}
+
+/// Baut die Zeilenliste der Faehigkeiten-Ansicht.
+///
+/// Nicht fahrbare Faehigkeiten werden bewusst ANGEZEIGT statt versteckt: sie
+/// sind die Landkarte dessen, was ein Brain koennte und webagent noch nicht
+/// kann. Ein Panel, das nur das Erreichte zeigt, sieht immer fertig aus.
+pub fn capability_rows(levels: &[crate::capability::BrainLevel]) -> Vec<CapRow> {
+    let mut rows = Vec::new();
+    for lvl in levels {
+        let head = match lvl.max_level() {
+            Some(max) => format!("{} [{}/{}]", lvl.brain_id, lvl.level(), max),
+            // Unvermessen: ein Maximum zu behaupten waere geraten.
+            None => format!("{} [{}/?] unvermessen", lvl.brain_id, lvl.level()),
+        };
+        rows.push(CapRow {
+            brain: lvl.brain_id.clone(),
+            key: None,
+            label: head,
+            state: CapState::Quest,
+        });
+        for key in &lvl.have {
+            rows.push(CapRow {
+                brain: lvl.brain_id.clone(),
+                key: Some(key.clone()),
+                label: key.clone(),
+                state: CapState::Driveable,
+            });
+        }
+        for quest in &lvl.quests {
+            rows.push(CapRow {
+                brain: lvl.brain_id.clone(),
+                key: Some(quest.key.clone()),
+                label: format!("{} — {}", quest.key, quest.label),
+                state: CapState::Quest,
+            });
+        }
+        for key in &lvl.out_of_reach {
+            rows.push(CapRow {
+                brain: lvl.brain_id.clone(),
+                key: Some(key.clone()),
+                label: format!("{key} — nicht belegbar"),
+                state: CapState::OutOfReach,
+            });
+        }
+    }
+    rows
 }
 
 /// Eine sichtbare Zeile der Benchmark-Baumansicht.
@@ -701,6 +791,71 @@ mod tests {
     use super::*;
 
     #[test]
+    fn faehigkeiten_zeigen_auch_die_luecken() {
+        use crate::capability::{BrainLevel, Quest, QuestBlocker};
+
+        let level = BrainLevel {
+            brain_id: "qwen".to_string(),
+            surveyed: true,
+            available: vec!["chat".into(), "temporary_chat".into(), "voice_mode".into()],
+            have: vec!["chat".into()],
+            quests: vec![Quest {
+                brain_id: "qwen".to_string(),
+                key: "temporary_chat".to_string(),
+                label: "Temporären Chat nutzen".to_string(),
+                blocker: QuestBlocker::NeedsCode,
+            }],
+            out_of_reach: vec!["voice_mode".into()],
+        };
+        let rows = capability_rows(&[level]);
+
+        // Kopfzeile mit Level, dann fahrbar, dann Quest, dann ausser Reichweite.
+        assert_eq!(rows[0].key, None);
+        assert!(rows[0].label.contains("qwen [1/3]"), "{}", rows[0].label);
+        assert_eq!(rows[1].state, CapState::Driveable);
+        assert_eq!(rows[2].state, CapState::Quest);
+        assert_eq!(rows[3].state, CapState::OutOfReach);
+
+        // Nur Fahrbares laesst sich schalten — eine Quest ist kein Knopf.
+        assert!(rows[1].is_actionable());
+        assert!(!rows[2].is_actionable(), "Quest darf nicht schaltbar sein");
+        assert!(!rows[3].is_actionable());
+        assert!(!rows[0].is_actionable(), "Kopfzeile ist kein Knopf");
+
+        // Die Luecken MUESSEN sichtbar sein: ein Panel, das nur das Erreichte
+        // zeigt, sieht immer fertig aus.
+        assert_eq!(rows.len(), 4, "Quests und Unerreichbares gehoeren mit rein");
+    }
+
+    #[test]
+    fn unvermessenes_brain_behauptet_kein_maximum() {
+        use crate::capability::BrainLevel;
+        // gemini stand am 02.08.2026 auf 0/0 ohne eine einzige katalogisierte
+        // Option. „0/0" laese sich als „fertig" missverstehen.
+        let level = BrainLevel {
+            brain_id: "gemini".to_string(),
+            surveyed: false,
+            available: Vec::new(),
+            have: Vec::new(),
+            quests: Vec::new(),
+            out_of_reach: Vec::new(),
+        };
+        let rows = capability_rows(&[level]);
+        assert!(
+            rows[0].label.contains("unvermessen"),
+            "{}",
+            rows[0].label
+        );
+    }
+
+    #[test]
+    fn ansichten_rotieren_durch_alle_drei() {
+        assert_eq!(View::Workers.next(), View::Bench);
+        assert_eq!(View::Bench.next(), View::Capabilities);
+        assert_eq!(View::Capabilities.next(), View::Workers);
+    }
+
+    #[test]
     fn view_parameter_waehlt_die_startansicht() {
         assert_eq!(parse_view("workers"), Some(View::Workers));
         assert_eq!(parse_view("Worker"), Some(View::Workers));
@@ -826,6 +981,8 @@ mod tests {
             bench_selected: 0,
             command_input: String::new(),
             grid_status: String::new(),
+            cap_selected: 0,
+            cap_status: String::new(),
         }
     }
 

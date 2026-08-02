@@ -11,7 +11,7 @@ use ratatui::{
 };
 
 use crate::bench_events::Level;
-use crate::tui_state::{App, View};
+use crate::tui_state::{App, CapState, View};
 
 /// Akzentfarbe der Oberfläche (ein durchgängiger Ton statt bunt gemischt).
 const ACCENT: Color = Color::Rgb(94, 197, 214); // gedämpftes Cyan
@@ -152,6 +152,12 @@ pub fn ui(f: &mut Frame, app: &App) {
         return;
     }
 
+    if app.view == View::Capabilities {
+        render_capabilities(f, app, outer[1]);
+        render_footer(f, app, outer[2]);
+        return;
+    }
+
     // Leerzustand: kein Worker-Pool aktiv -> einladender Hinweis statt toter Kästen.
     if app.agents.is_empty() {
         render_empty_state(f, outer[1]);
@@ -234,6 +240,40 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let kpi_rows: Vec<Line> = match app.view {
+        View::Capabilities => {
+            // Gesamtstand ueber alle Brains: erreicht / erreichbar. Der Nenner
+            // ist die Summe der ANGEBOTENEN Optionen, nicht ein Wunschwert —
+            // ein Maximum, das niemand erreichen kann, ist kein Massstab.
+            let levels = crate::capability::levels_all();
+            let have: usize = levels.iter().map(|l| l.level()).sum();
+            let max: usize = levels.iter().filter_map(|l| l.max_level()).sum();
+            let unsurveyed = levels.iter().filter(|l| l.max_level().is_none()).count();
+            vec![
+                Line::from(vec![
+                    Span::styled(
+                        format!("◇ {have}/{max} Faehigkeiten fahrbar"),
+                        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("   "),
+                    Span::styled(
+                        if unsurveyed > 0 {
+                            format!("{unsurveyed} Brain(s) unvermessen")
+                        } else {
+                            "alle vermessen".to_string()
+                        },
+                        Style::default().fg(if unsurveyed > 0 { Color::Yellow } else { MUTED }),
+                    ),
+                ]),
+                Line::from(Span::styled(
+                    if app.cap_status.is_empty() {
+                        "t schaltet die gewaehlte Faehigkeit".to_string()
+                    } else {
+                        app.cap_status.clone()
+                    },
+                    Style::default().fg(Color::Gray),
+                )),
+            ]
+        }
         View::Workers => {
             let mut kpis: Vec<Span> = Vec::new();
             kpis.extend(chip(
@@ -863,6 +903,13 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     // Die Tastenleiste haengt an der Ansicht — in der Benchmark-Ansicht sind
     // Worker-Tasten (Tab/Filter/+/-) sinnlos.
     let binds: &[(&str, &str)] = match app.view {
+        View::Capabilities => &[
+            ("v", "ansicht"),
+            ("j/k", "wählen"),
+            ("t", "schalten"),
+            ("w", "kacheln"),
+            ("q", "quit"),
+        ],
         View::Workers => &[
             ("v", "ansicht"),
             ("↑↓", "wählen"),
@@ -918,6 +965,65 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
         ));
     }
     f.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// Faehigkeiten-Ansicht: was jedes Brain kann, und was sich davon schalten laesst.
+///
+/// Nicht fahrbare Faehigkeiten stehen bewusst mit drin, nur gedaempft. Ein
+/// Panel, das ausschliesslich das Erreichte zeigt, sieht immer fertig aus —
+/// die Luecke ist hier die eigentliche Information.
+fn render_capabilities(f: &mut Frame, app: &App, area: Rect) {
+    let block = titled_block("Faehigkeiten je Brain (↑↓ waehlen, t schalten)");
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let rows = crate::tui_state::capability_rows(&crate::capability::levels_all());
+    if rows.is_empty() {
+        f.render_widget(
+            Paragraph::new("Keine Brains registriert.").style(Style::default().fg(MUTED)),
+            inner,
+        );
+        return;
+    }
+
+    let height = inner.height as usize;
+    let first = app.cap_selected.saturating_sub(height.saturating_sub(1) / 2);
+    let lines: Vec<Line> = rows
+        .iter()
+        .enumerate()
+        .skip(first)
+        .take(height)
+        .map(|(index, row)| {
+            let selected = index == app.cap_selected;
+            let marker = if selected { "▸ " } else { "  " };
+            match row.key {
+                None => Line::from(Span::styled(
+                    format!("{marker}{}", row.label),
+                    Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                )),
+                Some(_) => {
+                    let (symbol, style) = match row.state {
+                        CapState::Driveable => (
+                            "✓",
+                            Style::default().fg(Color::Green),
+                        ),
+                        CapState::Quest => ("·", Style::default().fg(Color::Yellow)),
+                        CapState::OutOfReach => ("—", Style::default().fg(MUTED)),
+                    };
+                    let style = if selected {
+                        style.add_modifier(Modifier::REVERSED)
+                    } else {
+                        style
+                    };
+                    Line::from(Span::styled(
+                        format!("{marker}  {symbol} {}", row.label),
+                        style,
+                    ))
+                }
+            }
+        })
+        .collect();
+    f.render_widget(Paragraph::new(lines), inner);
 }
 
 /// Farbe je Schweregrad einer Benchmark-Meldung.
@@ -1103,6 +1209,8 @@ mod tests {
             bench_selected: 0,
             command_input: String::new(),
             grid_status: String::new(),
+            cap_selected: 0,
+            cap_status: String::new(),
         }
     }
 

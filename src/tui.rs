@@ -577,6 +577,8 @@ fn run_tui_ratatui(
         bench_selected: 0,
         command_input: String::new(),
         grid_status: String::new(),
+            cap_selected: 0,
+            cap_status: String::new(),
     };
     if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
         let command = format!("/benchmark {arguments}");
@@ -668,6 +670,39 @@ fn run_tui_ratatui(
                             grid_on = !grid_on;
                             app.grid_status = toggle_brain_grid(grid_on);
                         }
+                        // Faehigkeit schalten. Der Browser-Anteil laeuft im
+                        // Hintergrund-Thread: ein Toggle dauert Sekunden, und
+                        // eine TUI, die dabei einfriert, sieht aus wie ein
+                        // Absturz — heute wissen wir, wie teuer diese
+                        // Verwechslung ist.
+                        KeyCode::Char('t') if app.view == View::Capabilities => {
+                            let rows = crate::tui_state::capability_rows(
+                                &crate::capability::levels_all(),
+                            );
+                            match rows.get(app.cap_selected) {
+                                Some(row) if row.is_actionable() => {
+                                    let brain = row.brain.clone();
+                                    let key = row.key.clone().unwrap_or_default();
+                                    app.cap_status =
+                                        format!("{brain}/{key}: wird geschaltet …");
+                                    std::thread::spawn(move || {
+                                        let line = drive_capability(&brain, &key);
+                                        crate::bench_events::emit(
+                                            crate::bench_events::Level::Info,
+                                            Some(&brain),
+                                            &line,
+                                        );
+                                    });
+                                }
+                                Some(row) => {
+                                    app.cap_status = format!(
+                                        "{}: nicht fahrbar — steht als Quest, nicht als Knopf",
+                                        row.label
+                                    );
+                                }
+                                None => {}
+                            }
+                        }
                         // In der Benchmark-Ansicht springt `g` ans untere Ende
                         // des frischen Ereignisstroms.
                         KeyCode::Char('g') if app.view == View::Bench => {
@@ -709,6 +744,12 @@ fn run_tui_ratatui(
                             } else {
                                 app.collapse_selected();
                             }
+                        }
+                        KeyCode::Char('j') if app.view == View::Capabilities => {
+                            app.cap_selected = app.cap_selected.saturating_add(1);
+                        }
+                        KeyCode::Char('k') if app.view == View::Capabilities => {
+                            app.cap_selected = app.cap_selected.saturating_sub(1);
                         }
                         KeyCode::Char('j') => {
                             if app.view == View::Bench {
@@ -1045,6 +1086,39 @@ fn enable_vt_processing() {
 #[cfg(not(all(windows, feature = "webview")))]
 #[cfg_attr(not(feature = "tui"), allow(dead_code))]
 fn enable_vt_processing() {}
+
+/// Schaltet eine Faehigkeit an einem Brain und liefert die Meldung dazu.
+///
+/// Meldet ausdruecklich, OB der Zustandswechsel belegt wurde. Ein Klick, dessen
+/// Wirkung man nicht nachweisen kann, ist in diesem Projekt kein Koennen — die
+/// Oberflaeche darf das nicht verwischen, sonst zaehlt sie Absichten.
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(feature = "webview")]
+fn drive_capability(brain: &str, key: &str) -> String {
+    use crate::browser::WebBrainBackend;
+
+    let mut backend = match WebBrainBackend::from_config(brain) {
+        Ok(b) => b,
+        Err(e) => return format!("{brain}/{key}: Backend nicht verfuegbar — {e}"),
+    };
+    match backend.toggle_option(key) {
+        // Vorher/Nachher ausdruecklich gegenueberstellen. Ein Klick ohne
+        // messbaren Unterschied ist kein Erfolg — er sieht nur so aus.
+        Ok((before, after)) if before != after => {
+            format!("{brain}/{key}: belegt — {before} → {after}")
+        }
+        Ok((before, _)) => format!(
+            "{brain}/{key}: geklickt, aber KEIN Zustandswechsel messbar (blieb {before})"
+        ),
+        Err(e) => format!("{brain}/{key}: fehlgeschlagen — {e}"),
+    }
+}
+
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(not(feature = "webview"))]
+fn drive_capability(brain: &str, key: &str) -> String {
+    format!("{brain}/{key}: ohne webview-Feature nicht schaltbar")
+}
 
 /// Schaltet die Brain-Kachelansicht und liefert die Zeile, die in der TUI dazu erscheint.
 ///
