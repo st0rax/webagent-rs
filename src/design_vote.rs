@@ -364,7 +364,14 @@ where
                 }
             }
             if valid_rankings > 0 {
-                let remove_count = (alive_orig.len() - 1).div_ceil(2);
+                // Vollstaendige Ranglisten: jede Stimme enthaelt die Praeferenz
+                // ueber ALLE lebenden Plaene. Dann entscheidet die Borda-Summe
+                // bereits in dieser einen Welle — weitere Wellen mit erneutem
+                // Abfragen aller Brains sind pure Sequenz. Frueher wurde nur die
+                // schwaechere Haelfte entfernt (drei statt sechs Wellen); auch
+                // das war zu langsam. Beobachtet 2026-08-02: Phase A hing ueber
+                // 20 Minuten in der Abstimmung.
+                let remove_count = alive_orig.len().saturating_sub(1);
                 let mut order: Vec<usize> = (0..alive_orig.len()).collect();
                 order.sort_by_key(|&display_idx| (scores[display_idx], alive_orig[display_idx]));
                 for display_idx in order.into_iter().take(remove_count) {
@@ -389,29 +396,34 @@ where
             }
         }
 
-        match bracket.eliminate(&kicks) {
-            Some(loser) => {
-                on_round(&format!(
-                    "  ausgeschieden: #{loser} ({}, {})",
-                    proposals[loser].0,
-                    crate::char_prefix(&proposals[loser].1, 60)
-                ));
-                eliminated.push((loser, round));
+        // Fallback-Beschleunigung: statt nur den meist-gekickten zu entfernen,
+        // scheidet die schwächere Hälfte aus (analog zum Borda-Pfad). Sonst
+        // braucht das Ausscheiden bei 6+ Plänen und unbrauchbaren Ranglisten
+        // eine Welle pro Kandidat — beobachtet 2026-08-02: Phase A hing ueber
+        // 20 Minuten in der Abstimmung, obwohl 3 Wellen genuegt haetten.
+        let remove_count = (alive_orig.len().saturating_sub(1)).div_ceil(2);
+        let mut counts: std::collections::HashMap<usize, u32> =
+            std::collections::HashMap::new();
+        for &k in &kicks {
+            *counts.entry(k).or_default() += 1;
+        }
+        let mut order = alive_orig.clone();
+        order.sort_by_key(|&i| {
+            (
+                std::cmp::Reverse(counts.get(&i).copied().unwrap_or(0)),
+                i,
+            )
+        });
+        for loser in order.into_iter().take(remove_count) {
+            if bracket.is_decided() {
+                break;
             }
-            None => {
-                // Keine gültige Stimme — Patt. Um nicht endlos zu drehen, den
-                // Kandidaten mit dem höchsten Original-Index entfernen (stabil).
-                if let Some(&last) = alive_orig.last() {
-                    on_round(&format!(
-                        "  keine gueltige Stimme — entferne #{last} ({}, Patt)",
-                        proposals[last].0
-                    ));
-                    let _ = bracket.eliminate(&[last]);
-                    eliminated.push((last, round));
-                } else {
-                    break;
-                }
-            }
+            let _ = bracket.eliminate(&[loser]);
+            on_round(&format!(
+                "  ausgeschieden: #{loser} ({}, Kick-Fallback)",
+                proposals[loser].0
+            ));
+            eliminated.push((loser, round));
         }
     }
 
