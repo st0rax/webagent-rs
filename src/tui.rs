@@ -300,7 +300,13 @@ fn render(
 // ANSI-TUI (Fallback ohne ratatui)
 // ---------------------------------------------------------------------------
 
-fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> i32 {
+fn run_tui_ansi(
+    active: usize,
+    brains: &str,
+    poll_secs: u64,
+    headless: bool,
+    startup_benchmark: Option<&str>,
+) -> i32 {
     let all = available_brain_ids();
     let selected: Vec<String> = if brains.trim().is_empty() {
         all
@@ -339,6 +345,18 @@ fn run_tui_ansi(active: usize, brains: &str, poll_secs: u64, headless: bool) -> 
     let handle = thread::spawn(move || {
         pool.run();
     });
+
+    // Benchmark beim Oeffnen genauso starten wie in der ratatui-Variante:
+    // `run_tui` reichte das Startup-Argument bisher nur dorthin durch, der
+    // ANSI-Fallback (aktiver Sonderweg, sobald stdout umgeleitet/detached
+    // ist) liess den Benchmark nie laufen. Beobachtet 2026-08-02: nach der
+    // Tee-Protokoll-Umstellung hing die TUI nur im Pool-Dashboard, die
+    // brain_score-Events blieben aus.
+    if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
+        let command = format!("/benchmark {arguments}");
+        spawn_benchmark_from_tui(&command, &candidates);
+        println!("[tui] Benchmark gestartet: {arguments}");
+    }
 
     println!("{CLEAR}webagent TUI startet Worker-Pool … (q zum Beenden)");
     let mut target_active = active.min(candidates.len());
@@ -1039,7 +1057,7 @@ pub fn run_tui(
         }
         eprintln!("[tui] Kein interaktives Terminal (umgeleitet/detached) — ANSI-Fallback.");
     }
-    run_tui_ansi(active, brains, poll_secs, headless)
+    run_tui_ansi(active, brains, poll_secs, headless, startup_benchmark)
 }
 
 #[cfg(test)]
