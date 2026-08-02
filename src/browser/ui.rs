@@ -35,22 +35,11 @@ impl WebBrainBackend {
     /// die Art doppelter Auslesepfad, an der Fixes hier schon vorbeigelaufen
     /// sind.
     fn toggle_state_expr(&self, key: &str) -> String {
-        let list = Self::js_selectors(&self.sel(key));
-        // `Q` liefert den INNERSTEN Treffer — bei `text=DeepThink` also den
-        // Textknoten, nicht die schaltbare Pille. Dessen Klassen aendern sich
-        // beim Umschalten nicht; real gemessen blieb der Zustand konstant,
-        // obwohl der Klick ankam. Deshalb zum klickbaren Vorfahren hochlaufen
-        // und dessen Zustand lesen.
-        Self::js_scan(
-            &list,
-            // ALLE data-*-Attribute lesen, nicht nur `data-state`: zais
-            // Deep-Think-Knopf haelt seinen Zustand in `data-autoThink`, und
-            // seine Klassenliste aendert sich dabei nicht (Tailwind-Varianten
-            // `data-[autoThink=true]:` sind statisch im class-Attribut). Mit
-            // einer festen Attributliste bliebe der Wechsel unsichtbar.
-            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;var d=[];for(var a=0;a<t.attributes.length;a++){var at=t.attributes[a];if(at.name.indexOf('data-')===0||at.name.indexOf('aria-')===0)d.push(at.name+'='+at.value);}d.sort();return d.join(';')+'|'+((t.className||'')+'');}",
-            "\"\"",
-        )
+        // Das JS selbst steht in `browser::js` — es hat einen zweiten Aufrufer
+        // (`brain_probe::verify`), der denselben Ausdruck mit einem fertigen
+        // Selektor statt eines Konfigurationsschluessels baut. Der Unterschied
+        // ist genau diese eine Zeile.
+        crate::browser::js::toggle_state_expr_for(&self.sel(key))
     }
 
     /// Waehlt ueber mehrere Menuestufen, z.B. `["Aufwand", "Hoch"]`.
@@ -274,12 +263,7 @@ impl WebBrainBackend {
     /// Das JS hinter [`Self::click_toggle`] — aus demselben Grund ausgelagert
     /// wie [`Self::toggle_state_expr`].
     fn click_toggle_expr(&self, key: &str) -> String {
-        let list = Self::js_selectors(&self.sel(key));
-        Self::js_scan(
-            &list,
-            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;t.click();return true;}",
-            "false",
-        )
+        crate::browser::js::click_toggle_expr_for(&self.sel(key))
     }
 
     /// Schaltet eine Option um und belegt, dass sich dabei wirklich etwas

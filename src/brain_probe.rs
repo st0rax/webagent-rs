@@ -314,6 +314,102 @@ pub fn probe(driver: &mut dyn PageDriver) -> Result<Vec<Proposal>> {
     Ok(classify(&candidates))
 }
 
+/// Ergebnis der Nachpruefung eines [`Proposal`]s an der lebenden Oberflaeche.
+///
+/// Ein Vorschlag ist ein Fund, keine Faehigkeit. Erst wenn ein Klick
+/// nachweislich einen lesbaren Zustand geaendert hat, gilt sie als fahrbar —
+/// „kein Beleg, kein Level".
+#[derive(Debug, Clone, PartialEq)]
+pub struct Verdict {
+    pub capability_key: &'static str,
+    pub selector_key: &'static str,
+    pub selector: String,
+    /// Zustand vor dem Klick (Ausgabe der gemeinsamen Zustandsauslese).
+    pub before: String,
+    /// Zustand nach dem Klick.
+    pub after: String,
+    /// Nur `true`, wenn sich der Zustand messbar geaendert hat.
+    pub proven: bool,
+    /// Wurde der Ausgangszustand wiederhergestellt? `None`, wenn gar nichts zu
+    /// widerrufen war (kein Wechsel).
+    pub restored: Option<bool>,
+    /// Klartext fuer Menschen — auch und gerade im Nicht-belegt-Fall.
+    pub note: String,
+}
+
+/// Klickt einen Vorschlag an und prueft, ob sich ein lesbarer Zustand aendert.
+///
+/// Wichtig: **kein** Zustandswechsel ist ein gueltiges Ergebnis, kein Fehler.
+/// Genau dieser Fall ist bei deepseeks `mode_switch` real aufgetreten — die
+/// Segmente tragen keinerlei Auswahlmarkierung —, und er ist der Grund, warum
+/// die Faehigkeit dort `driveable:false` steht. Ein `Err` gibt es nur, wenn die
+/// Seite selbst nicht antwortet.
+///
+/// Nebenwirkungsarm: hat der Klick gewirkt, wird zurueckgeklickt und vermerkt,
+/// ob der Rueckweg gelang. Ein Test, der die Oberflaeche anders hinterlaesst,
+/// als er sie vorfand, ist eine Nebenwirkung — keine Messung.
+pub fn verify(driver: &mut dyn PageDriver, proposal: &Proposal) -> Result<Verdict> {
+    // Dieselben JS-Bausteine wie der Umschaltpfad des Backends
+    // (`browser::ui::toggle_state_expr` / `click_toggle_expr`); nur die Quelle
+    // der Selektorliste ist eine andere. Eine zweite handgepflegte Kopie waere
+    // der doppelte Auslesepfad, an dem hier schon Fixes vorbeigelaufen sind.
+    let selectors = vec![proposal.selector.clone()];
+    let state_expr = crate::browser::js::toggle_state_expr_for(&selectors);
+    let click_expr = crate::browser::js::click_toggle_expr_for(&selectors);
+
+    let before = driver.eval_string(&state_expr)?;
+    let clicked = driver.evaluate(&click_expr)?.as_bool().unwrap_or(false);
+    if !clicked {
+        return Ok(Verdict {
+            capability_key: proposal.capability_key,
+            selector_key: proposal.selector_key,
+            selector: proposal.selector.clone(),
+            before: before.clone(),
+            after: before,
+            proven: false,
+            restored: None,
+            note: format!("Selektor '{}' war nicht anklickbar", proposal.selector),
+        });
+    }
+    let after = driver.eval_string(&state_expr)?;
+
+    if before == after {
+        return Ok(Verdict {
+            capability_key: proposal.capability_key,
+            selector_key: proposal.selector_key,
+            selector: proposal.selector.clone(),
+            before,
+            after,
+            proven: false,
+            restored: None,
+            note: "Klick kam an, Zustand unveraendert — kein Beleg, kein Level".into(),
+        });
+    }
+
+    // Zustand hat sich geaendert: zurueckschalten und den Rueckweg belegen.
+    let mut restored = false;
+    if driver.evaluate(&click_expr)?.as_bool().unwrap_or(false) {
+        restored = driver.eval_string(&state_expr)? == before;
+    }
+    let note = if restored {
+        "Zustandswechsel belegt, Ausgangszustand wiederhergestellt".to_string()
+    } else {
+        format!(
+            "Zustandswechsel belegt, aber Rueckweg misslungen — Oberflaeche steht jetzt auf '{after}' statt '{before}'"
+        )
+    };
+    Ok(Verdict {
+        capability_key: proposal.capability_key,
+        selector_key: proposal.selector_key,
+        selector: proposal.selector.clone(),
+        before,
+        after,
+        proven: true,
+        restored: Some(restored),
+        note,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,5 +551,85 @@ mod tests {
         let keys: Vec<&str> = found.iter().map(|p| p.selector_key).collect();
         assert!(keys.contains(&"stop_button"), "{keys:?}");
         assert!(keys.contains(&"composer"), "{keys:?}");
+    }
+
+    fn proposal() -> Proposal {
+        Proposal {
+            capability_key: "reasoning_toggle",
+            selector_key: "reasoning_toggle",
+            selector: "[data-testid='think']".into(),
+            confidence: 95,
+            evidence: "data-testid=think".into(),
+        }
+    }
+
+    /// Baut den Mock so, wie `verify` fragt: Zustandsauslese als Antwortfolge,
+    /// Klick als Festwert.
+    fn mock(states: Vec<&str>, click: bool) -> crate::mock_page::MockPageDriver {
+        let sels = vec![proposal().selector];
+        let state_expr = crate::browser::js::toggle_state_expr_for(&sels);
+        let click_expr = crate::browser::js::click_toggle_expr_for(&sels);
+        let state = crate::mock_page::MockPageState::new()
+            .on_eval_seq(
+                state_expr,
+                states.into_iter().map(|s| serde_json::json!(s)).collect(),
+            )
+            .on_eval(click_expr, serde_json::json!(click));
+        crate::mock_page::MockPageDriver::new(state)
+    }
+
+    #[test]
+    fn verify_belegt_zustandswechsel_und_raeumt_auf() {
+        // vorher / nachher / nach dem Rueckklick wieder wie vorher.
+        let mut driver = mock(vec!["aria-pressed=false|", "aria-pressed=true|", "aria-pressed=false|"], true);
+        let verdict = verify(&mut driver, &proposal()).expect("verify");
+        assert!(verdict.proven);
+        assert_eq!(verdict.restored, Some(true));
+        assert_ne!(verdict.before, verdict.after);
+    }
+
+    #[test]
+    fn verify_ohne_wechsel_ist_kein_fehler() {
+        // deepseeks mode_switch: die Segmente tragen keine Auswahlmarkierung.
+        // Der Klick kommt an, der Zustand bleibt — das ist ein sauberes
+        // Ergebnis (proven=false), kein Err.
+        let mut driver = mock(vec!["|seg"], true);
+        let verdict = verify(&mut driver, &proposal()).expect("verify darf hier nicht scheitern");
+        assert!(!verdict.proven);
+        assert_eq!(verdict.restored, None);
+        assert_eq!(verdict.before, verdict.after);
+        assert!(verdict.note.contains("unveraendert"), "{}", verdict.note);
+    }
+
+    #[test]
+    fn verify_meldet_misslungenen_rueckweg() {
+        // Der dritte Wert bleibt beim geaenderten Zustand: der Rueckklick hat
+        // nicht zurueckgeschaltet. Belegt ist die Faehigkeit trotzdem — aber
+        // die Nebenwirkung muss sichtbar sein.
+        let mut driver = mock(vec!["aria-pressed=false|", "aria-pressed=true|", "aria-pressed=true|"], true);
+        let verdict = verify(&mut driver, &proposal()).expect("verify");
+        assert!(verdict.proven);
+        assert_eq!(verdict.restored, Some(false));
+        assert!(verdict.note.contains("Rueckweg misslungen"), "{}", verdict.note);
+    }
+
+    #[test]
+    fn verify_meldet_nicht_anklickbaren_selektor() {
+        let mut driver = mock(vec!["aria-pressed=false|"], false);
+        let verdict = verify(&mut driver, &proposal()).expect("verify");
+        assert!(!verdict.proven);
+        assert!(verdict.note.contains("nicht anklickbar"), "{}", verdict.note);
+    }
+
+    #[test]
+    fn verify_nutzt_dieselbe_zustandsauslese_wie_der_toggle_pfad() {
+        // Der Kern der Extraktion: haette verify eine eigene Kopie des JS,
+        // wuerde dieser Vergleich auseinanderlaufen — und ein Fix am einen
+        // Pfad am anderen vorbei.
+        let sels = vec!["[data-testid='think']".to_string()];
+        let expr = crate::browser::js::toggle_state_expr_for(&sels);
+        assert!(expr.contains("closest("), "{expr}");
+        assert!(expr.contains("data-"), "{expr}");
+        assert!(crate::browser::js::click_toggle_expr_for(&sels).contains("t.click()"));
     }
 }

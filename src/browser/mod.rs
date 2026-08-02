@@ -6,6 +6,7 @@
 
 pub mod backend;
 pub mod composer;
+pub mod js;
 pub mod ui;
 
 use std::cell::RefCell;
@@ -363,12 +364,11 @@ impl WebBrainBackend {
     }
 
     /// JS-Array-Literal aus einer Selektorliste (sicher escaped).
+    ///
+    /// Delegiert an [`js::js_selectors`] — die Bausteine haben inzwischen einen
+    /// zweiten Aufrufer ausserhalb des Backends (`brain_probe::verify`).
     fn js_selectors(list: &[String]) -> String {
-        let items: Vec<String> = list
-            .iter()
-            .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into()))
-            .collect();
-        format!("[{}]", items.join(","))
+        js::js_selectors(list)
     }
 
     /// JS-Array-Literal der Selektoren zu einem Schlüssel; `fallback` greift,
@@ -397,25 +397,7 @@ impl WebBrainBackend {
     ///
     /// Bei Textmatches nur die **innersten** Treffer zurueckgeben — sonst matcht
     /// jeder Vorfahr bis `<body>` mit.
-    const JS_SEL_PRELUDE: &'static str = r#"
-var __p=function(s){var m=/^text=\/(.*)\/([a-z]*)$/.exec(s);if(m)return{base:'*',re:new RegExp(m[1],m[2])};
-m=/^text=(.*)$/.exec(s);if(m)return{base:'*',txt:m[1]};
-m=/^(.*?):has-text\((['"])([\s\S]*?)\2\)$/.exec(s);if(m)return{base:m[1]||'*',txt:m[3]};return null;};
-var QA=function(s){var p=__p(s);if(!p)return document.querySelectorAll(s);
-var base=document.querySelectorAll(p.base),c=[];
-for(var k=0;k<base.length;k++){var e=base[k],t=(e.innerText||e.textContent||'');
-if(p.re?p.re.test(t):t.indexOf(p.txt)!==-1)c.push(e);}
-return c.filter(function(e){return !c.some(function(o){return o!==e&&e.contains(o);});});};
-var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
-var TX=function(el){if(!el)return '';
-if(!el.querySelector||!el.querySelector('.katex'))return (el.innerText||el.textContent||'');
-var c=el.cloneNode(true);
-var ks=c.querySelectorAll('.katex');
-for(var i=0;i<ks.length;i++){var a=ks[i].querySelector('annotation[encoding="application/x-tex"]');
-var src=a?(a.textContent||''):'';
-ks[i].parentNode.replaceChild(document.createTextNode(src),ks[i]);}
-return (c.innerText||c.textContent||'');};
-"#;
+    const JS_SEL_PRELUDE: &'static str = js::JS_SEL_PRELUDE;
 
     /// Baut ein IIFE, das die Selektorliste `list_js` durchläuft und `body` auf
     /// jeden Selektor `S[i]` anwendet; liefert `default`, wenn nichts matcht.
@@ -426,10 +408,7 @@ return (c.innerText||c.textContent||'');};
     /// Jeder Selektor läuft weiterhin in einem eigenen try/catch: ein kaputter
     /// Selektor darf die restliche Liste nicht abbrechen.
     fn js_scan(list_js: &str, body: &str, default: &str) -> String {
-        format!(
-            "(function(){{{prelude}var S={list_js};for(var i=0;i<S.length;i++){{try{{{body}}}catch(e){{}}}}return {default};}})()",
-            prelude = Self::JS_SEL_PRELUDE
-        )
+        js::js_scan(list_js, body, default)
     }
 
     /// Führt ein JS im Seitenkontext aus (mit ausgeliehenem Client).
