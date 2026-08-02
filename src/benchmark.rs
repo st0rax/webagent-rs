@@ -472,22 +472,26 @@ pub fn ranked_from_report(report: &SelfResearchReport) -> Vec<String> {
 /// Bauen alle dasselbe, kollidieren die Patches im selben Code und sieben von
 /// acht Beiträgen sind zwangsläufig Ausschuss — die Messung war brauchbar, die
 /// Produktion nicht.
-///
-/// `round` rotiert die Zuteilung: Brain `i` baut Rang `(i + round) % k`. Über
+/// Rotiert die Zuteilung: Brain `(i + round) % k` baut Rang `i % k`. Ueber
 /// mehrere Runden sieht damit jedes Brain jeden Rang, sodass keines dauerhaft
 /// die leichteren oder schwereren Aufgaben zieht und der Score fair bleibt.
+/// Gleichzeitig wandert der ERSTE Bauplatz (der erste Implementierer eines
+/// Turniers) pro Runde zum naechsten Brain — sonst bearbeitet bei nur einem
+/// Sieger-Rang immer dasselbe erste Brain den Sieger zuerst. Beobachtet
+/// 2026-08-02: chatgpt bekam als erstes Brain der Liste jede Runde den
+/// Implementierer-Job, obwohl claude den Sieger nie sah.
 /// Gibt es weniger Vorschläge als Brains, teilen sich mehrere Brains einen Rang
 /// (dann gewinnt beim Ernten der beste — wie im Turnier).
 pub fn assign_tasks(brains: &[String], ranked: &[String], round: usize) -> Vec<(String, String)> {
     if ranked.is_empty() {
         return Vec::new();
     }
-    brains
-        .iter()
-        .enumerate()
-        .map(|(i, b)| {
-            let idx = (i + round) % ranked.len();
-            (b.clone(), ranked[idx].clone())
+    let n = brains.len();
+    (0..n)
+        .map(|i| {
+            let brain = &brains[(i + round) % n];
+            let idx = i % ranked.len();
+            (brain.clone(), ranked[idx].clone())
         })
         .collect()
 }
@@ -2997,6 +3001,18 @@ mod tests {
         let got = assign_tasks(&brains, &ranked, 0);
         assert_eq!(got.len(), 3);
         assert!(got.iter().all(|(_, t)| t == "nur_einer"));
+    }
+
+    #[test]
+    fn assign_rotates_the_first_builder_across_rounds() {
+        // Bei nur einem Sieger-Rang darf nicht immer dasselbe Brain den
+        // Implementierer-Job bekommen (chatgpt-Problem 2026-08-02).
+        let brains: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        let ranked: Vec<String> = vec!["sieger".to_string()];
+        let firsts: Vec<String> = (0..3)
+            .map(|round| assign_tasks(&brains, &ranked, round)[0].0.clone())
+            .collect();
+        assert_eq!(firsts, ["a", "b", "c"], "der erste Bauplatz muss rotieren");
     }
 
     #[test]
