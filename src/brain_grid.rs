@@ -1,9 +1,9 @@
-//! Brain-Wall — Geometrie.
+//! Brain-Kachelansicht — Geometrie.
 //!
 //! Die Brain-Fenster existieren bereits: [`crate::webview_runtime`] oeffnet pro
 //! Tab ein echtes Fenster und parkt es nur auf `OFFSCREEN_POS`, damit es
 //! fokussierbar bleibt (ein `with_visible(false)`-Fenster bekommt keinen Fokus,
-//! dann laeuft `press_enter` ins Leere). Die Wall holt diese Fenster in ein
+//! dann laeuft `press_enter` ins Leere). Die Kachelansicht holt diese Fenster in ein
 //! Raster zurueck auf den Bildschirm.
 //!
 //! Dieses Modul rechnet ausschliesslich — es fasst kein Fenster an. Genau
@@ -70,7 +70,7 @@ impl Rect {
 const GAP: u32 = 6;
 
 /// Unterhalb dieser Kachelgroesse schalten die Chat-Oberflaechen der Brains in
-/// Mobil-Layouts um und der Inhalt wird unlesbar. Die Wall verkleinert dann
+/// Mobil-Layouts um und der Inhalt wird unlesbar. Die Kachelansicht verkleinert dann
 /// lieber die Zahl der Spalten, statt weiter zu schrumpfen.
 pub const MIN_TILE_WIDTH: u32 = 320;
 pub const MIN_TILE_HEIGHT: u32 = 240;
@@ -91,7 +91,7 @@ pub fn grid_dimensions(n: usize) -> (usize, usize) {
 /// Die Restpixel der Ganzzahldivision werden auf die vorderen Spalten bzw.
 /// Zeilen verteilt, statt sie am Rand liegen zu lassen — sonst klafft rechts
 /// und unten je nach Aufloesung eine sichtbare Luecke.
-pub fn wall_layout(area: Rect, n: usize) -> Vec<Rect> {
+pub fn grid_layout(area: Rect, n: usize) -> Vec<Rect> {
     if n == 0 || area.is_empty() {
         return Vec::new();
     }
@@ -139,11 +139,11 @@ pub fn wall_layout(area: Rect, n: usize) -> Vec<Rect> {
     tiles
 }
 
-/// Wohin die Wall relativ zum Terminalfenster gehoert.
+/// Wohin die Kachelansicht relativ zum Terminalfenster gehoert.
 ///
 /// Storax' Wunsch ist „oberhalb der TUI angedockt". Reicht der Platz oberhalb
 /// nicht, ist ein zu flacher Streifen schlechter als die Alternative: dann
-/// bekommt die Wall den groesseren der beiden freien Bereiche.
+/// bekommt die Kachelansicht den groesseren der beiden freien Bereiche.
 pub fn dock_area(screen: Rect, terminal: Rect) -> Rect {
     let above_height = (terminal.y - screen.y).max(0) as u32;
     let below_height = (screen.bottom() - terminal.bottom()).max(0) as u32;
@@ -163,7 +163,7 @@ pub fn dock_area(screen: Rect, terminal: Rect) -> Rect {
 /// auf den Schirm legen.
 pub fn fitting_tile_count(area: Rect, desired: usize) -> usize {
     for count in (1..=desired).rev() {
-        let tiles = wall_layout(area, count);
+        let tiles = grid_layout(area, count);
         if tiles
             .iter()
             .all(|t| t.width >= MIN_TILE_WIDTH && t.height >= MIN_TILE_HEIGHT)
@@ -209,19 +209,19 @@ pub fn primary_work_area() -> Option<Rect> {
     None
 }
 
-/// Anteil der Bildschirmhoehe, den die Wall belegt, solange sie nicht an ein
+/// Anteil der Bildschirmhoehe, den die Kachelansicht belegt, solange sie nicht an ein
 /// konkretes Terminalfenster angedockt ist.
-const WALL_HEIGHT_SHARE: u32 = 60;
+const GRID_HEIGHT_SHARE: u32 = 60;
 
-/// Wall-Bereich ohne Terminal-Kopplung: oberer Teil des Arbeitsbereichs.
+/// Kachelbereich ohne Terminal-Kopplung: oberer Teil des Arbeitsbereichs.
 ///
 /// Erstes Inkrement bewusst ohne Fensterjagd: Windows Terminal liefert ueber
 /// `GetConsoleWindow` nur ein verstecktes Pseudokonsolen-Fenster, dessen Rect
 /// nichts mit dem sichtbaren Fenster zu tun hat. Lieber ein verlaesslicher
 /// oberer Streifen als eine Andockung, die je nach Terminal falsch liegt.
-pub fn default_wall_area() -> Option<Rect> {
+pub fn default_grid_area() -> Option<Rect> {
     let work = primary_work_area()?;
-    let height = work.height * WALL_HEIGHT_SHARE / 100;
+    let height = work.height * GRID_HEIGHT_SHARE / 100;
     if height == 0 {
         return None;
     }
@@ -254,7 +254,7 @@ mod tests {
         // Der eigentliche Zweck des Moduls. Ueber mehrere Kachelzahlen, weil
         // sich Rundungsfehler nur bei bestimmten Teilern zeigen.
         for n in 1..=12 {
-            let tiles = wall_layout(SCREEN, n);
+            let tiles = grid_layout(SCREEN, n);
             assert_eq!(tiles.len(), n, "n={n}");
             for (i, a) in tiles.iter().enumerate() {
                 assert!(!a.is_empty(), "n={n}, Kachel {i} ist leer");
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn restpixel_werden_verteilt_statt_am_rand_zu_verfallen() {
         // 2560 / 3 geht nicht auf. Ohne Verteilung klafft rechts eine Luecke.
-        let tiles = wall_layout(Rect::new(0, 0, 2560, 1440), 9);
+        let tiles = grid_layout(Rect::new(0, 0, 2560, 1440), 9);
         let rightmost = tiles.iter().map(|t| t.right()).max().unwrap();
         assert_eq!(rightmost, 2560, "rechter Rand muss ausgenutzt sein");
         let bottom = tiles.iter().map(|t| t.bottom()).max().unwrap();
@@ -283,35 +283,35 @@ mod tests {
     fn negative_koordinaten_bleiben_erhalten() {
         // Zweiter Monitor links vom Hauptbildschirm.
         let left_screen = Rect::new(-1920, 0, 1920, 1080);
-        let tiles = wall_layout(left_screen, 4);
+        let tiles = grid_layout(left_screen, 4);
         assert!(tiles.iter().all(|t| t.contained_in(&left_screen)));
         assert!(tiles.iter().any(|t| t.x < 0));
     }
 
     #[test]
     fn leere_faelle_liefern_nichts_statt_zu_panicken() {
-        assert!(wall_layout(SCREEN, 0).is_empty());
-        assert!(wall_layout(Rect::new(0, 0, 0, 1080), 4).is_empty());
-        assert!(wall_layout(Rect::new(0, 0, 1920, 0), 4).is_empty());
+        assert!(grid_layout(SCREEN, 0).is_empty());
+        assert!(grid_layout(Rect::new(0, 0, 0, 1080), 4).is_empty());
+        assert!(grid_layout(Rect::new(0, 0, 1920, 0), 4).is_empty());
         // Flaeche kleiner als die Zwischenraeume: kein Panic, keine Kachel.
-        assert!(wall_layout(Rect::new(0, 0, 4, 4), 9).is_empty());
+        assert!(grid_layout(Rect::new(0, 0, 4, 4), 9).is_empty());
     }
 
     #[test]
     fn dock_area_liegt_oberhalb_des_terminals() {
-        // Terminal im unteren Drittel -> Wall darueber.
+        // Terminal im unteren Drittel -> Kachelansicht darueber.
         let terminal = Rect::new(0, 900, 2560, 540);
         let area = dock_area(SCREEN, terminal);
         assert_eq!(area, Rect::new(0, 0, 2560, 900));
-        assert!(area.bottom() <= terminal.y, "Wall darf die TUI nicht ueberdecken");
+        assert!(area.bottom() <= terminal.y, "Kachelansicht darf die TUI nicht ueberdecken");
     }
 
     #[test]
     fn dock_area_weicht_nach_unten_aus_wenn_oben_kein_platz_ist() {
-        // Terminal klebt oben: oberhalb bleiben 40 px, das ist als Wall nutzlos.
+        // Terminal klebt oben: oberhalb bleiben 40 px, das ist als Kachelansicht nutzlos.
         let terminal = Rect::new(0, 40, 2560, 700);
         let area = dock_area(SCREEN, terminal);
-        assert_eq!(area.y, terminal.bottom(), "Wall weicht unter das Terminal");
+        assert_eq!(area.y, terminal.bottom(), "Kachelansicht weicht unter das Terminal");
         assert!(area.height > MIN_TILE_HEIGHT);
     }
 
@@ -322,7 +322,7 @@ mod tests {
         let fits = fitting_tile_count(strip, 8);
         assert!(fits < 8, "8 Kacheln passen hier nicht: {fits}");
         assert!(fits >= 1);
-        for tile in wall_layout(strip, fits) {
+        for tile in grid_layout(strip, fits) {
             assert!(tile.width >= MIN_TILE_WIDTH && tile.height >= MIN_TILE_HEIGHT);
         }
         // Grosser Bereich: alle acht passen.

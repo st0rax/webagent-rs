@@ -374,7 +374,7 @@ impl BrowserPool {
     /// Brain-Namen aller offenen Tabs, alphabetisch.
     ///
     /// Stabile Reihenfolge, damit eine Kachel beim erneuten Anordnen nicht
-    /// springt — eine Wall, in der die Brains bei jedem Aufruf die Plaetze
+    /// springt — ein Raster, in dem die Brains bei jedem Aufruf die Plaetze
     /// tauschen, ist unbrauchbar.
     pub fn open_brains(&self) -> Vec<String> {
         let mut names: Vec<String> = self.tabs.keys().cloned().collect();
@@ -382,18 +382,18 @@ impl BrowserPool {
         names
     }
 
-    /// Ordnet die vorhandenen Brain-Fenster als Wall an — oder parkt sie wieder.
+    /// Ordnet die vorhandenen Brain-Fenster als Kachelraster an — oder parkt sie wieder.
     ///
     /// `Some(area)` verteilt die offenen Tabs auf Kacheln in `area`,
-    /// `None` stellt den Zustand ohne Wall wieder her.
+    /// `None` stellt den Zustand ohne Kachelansicht wieder her.
     ///
     /// Gibt zurueck, wie viele Fenster angeordnet wurden. Passen nicht alle in
-    /// den Bereich (siehe [`crate::wall::fitting_tile_count`]), werden die
+    /// den Bereich (siehe [`crate::brain_grid::fitting_tile_count`]), werden die
     /// ueberzaehligen bewusst geparkt statt zu Briefmarken gequetscht — der
     /// Aufrufer sieht das an der Differenz zu [`Self::open_brains`] und muss es
     /// melden.
     #[cfg(feature = "webview")]
-    pub fn arrange_wall(&self, area: Option<crate::wall::Rect>) -> Result<usize, String> {
+    pub fn arrange_brain_grid(&self, area: Option<crate::brain_grid::Rect>) -> Result<usize, String> {
         let Some(runtime) = self.runtime.as_ref() else {
             return Ok(0);
         };
@@ -409,8 +409,8 @@ impl BrowserPool {
             return Ok(0);
         };
 
-        let fitting = crate::wall::fitting_tile_count(area, names.len());
-        let tiles = crate::wall::wall_layout(area, fitting);
+        let fitting = crate::brain_grid::fitting_tile_count(area, names.len());
+        let tiles = crate::brain_grid::grid_layout(area, fitting);
         for (index, name) in names.iter().enumerate() {
             let Some(tab) = self.tabs.get(name) else {
                 continue;

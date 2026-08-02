@@ -40,12 +40,12 @@ enum RuntimeMessage {
         view_id: ViewId,
         respond: Sender<Result<()>>,
     },
-    /// Fenster auf eine Bildschirmposition holen (Brain-Wall) oder wieder
+    /// Fenster auf eine Bildschirmposition holen (Brain-Kachelansicht) oder wieder
     /// off-screen parken. `None` = zurueck auf [`OFFSCREEN_POS`], also exakt
-    /// das Verhalten ohne Wall.
+    /// das Verhalten ohne Kachelansicht.
     SetBounds {
         view_id: ViewId,
-        bounds: Option<crate::wall::Rect>,
+        bounds: Option<crate::brain_grid::Rect>,
         respond: Sender<Result<()>>,
     },
     Shutdown,
@@ -164,13 +164,13 @@ impl WebViewRuntime {
         self.wake_and_wait(resp_rx, Duration::from_secs(15))
     }
 
-    /// Holt ein Tab-Fenster auf den Bildschirm (Brain-Wall) oder parkt es wieder.
+    /// Holt ein Tab-Fenster auf den Bildschirm (Brain-Kachelansicht) oder parkt es wieder.
     ///
-    /// `None` stellt exakt den Zustand ohne Wall wieder her: zurueck auf
+    /// `None` stellt exakt den Zustand ohne Kachelansicht wieder her: zurueck auf
     /// [`OFFSCREEN_POS`] und wieder aus der Taskleiste. Das Fenster bleibt in
     /// beiden Faellen sichtbar und fokussierbar — `with_visible(false)` wuerde
     /// den Enter-Absendeweg zerstoeren (siehe `open_page`).
-    pub fn set_bounds(&self, view_id: ViewId, bounds: Option<crate::wall::Rect>) -> Result<()> {
+    pub fn set_bounds(&self, view_id: ViewId, bounds: Option<crate::brain_grid::Rect>) -> Result<()> {
         let (resp_tx, resp_rx) = mpsc::channel();
         self.tx
             .send(RuntimeMessage::SetBounds {
@@ -495,7 +495,7 @@ fn close_page(rt: &mut SharedRuntime, view_id: ViewId) -> Result<()> {
 fn set_bounds(
     rt: &mut SharedRuntime,
     view_id: ViewId,
-    bounds: Option<crate::wall::Rect>,
+    bounds: Option<crate::brain_grid::Rect>,
 ) -> Result<()> {
     let slot = rt
         .pages
@@ -507,7 +507,7 @@ fn set_bounds(
                 .set_inner_size(tao::dpi::PhysicalSize::new(rect.width, rect.height));
             slot.window
                 .set_outer_position(tao::dpi::PhysicalPosition::new(rect.x, rect.y));
-            // In der Wall soll das Fenster normal erreichbar sein; off-screen
+            // In der Kachelansicht soll das Fenster normal erreichbar sein; off-screen
             // war der Taskleisteneintrag nur ein toter Klick.
             #[cfg(windows)]
             {

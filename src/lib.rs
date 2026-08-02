@@ -46,7 +46,7 @@ pub mod shell_policy;
 pub mod timeouts;
 pub mod transcript;
 pub mod tui;
-pub mod wall;
+pub mod brain_grid;
 #[cfg(feature = "tui")]
 pub mod tui_render;
 #[cfg(feature = "tui")]

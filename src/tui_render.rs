@@ -340,10 +340,25 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
                         },
                     ),
                     Span::raw("   "),
-                    Span::styled(
-                        if n > 0 { "aktiv" } else { "bereit" },
-                        if n > 0 { ok } else { warn },
-                    ),
+                    {
+                        let last = evs.last().map(|e| e.text.as_str()).unwrap_or("");
+                        let status = bench_status(
+                            n,
+                            crate::bench_events::seconds_since_last_event(),
+                            last,
+                        );
+                        Span::styled(
+                            status.label(),
+                            match status {
+                                BenchStatus::Aktiv => ok,
+                                BenchStatus::Bereit => warn,
+                                BenchStatus::Beendet => Style::default().fg(MUTED),
+                                BenchStatus::Stillstand => Style::default()
+                                    .fg(Color::Red)
+                                    .add_modifier(Modifier::BOLD),
+                            },
+                        )
+                    },
                 ]),
             ]
         }
@@ -733,6 +748,63 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(p, area);
 }
 
+/// Was die Kopfzeile ueber den Benchmark sagt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BenchStatus {
+    /// Noch kein Ereignis.
+    Bereit,
+    /// Es kommen Meldungen.
+    Aktiv,
+    /// Lange nichts mehr gehoert, ohne dass ein Ende gemeldet wurde.
+    Stillstand,
+    /// Der Benchmark hat sich selbst beendet.
+    Beendet,
+}
+
+impl BenchStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            BenchStatus::Bereit => "bereit",
+            BenchStatus::Aktiv => "aktiv",
+            BenchStatus::Stillstand => "STILLSTAND",
+            BenchStatus::Beendet => "beendet",
+        }
+    }
+}
+
+/// Leitet den Kopfstatus aus dem Ereignisstrom ab.
+///
+/// Vorher stand hier `if n > 0 { "aktiv" }` — der Status haing also allein
+/// daran, ob JE eine Meldung kam, nicht daran, ob gerade etwas passiert. Am
+/// 02.08.2026 beendete sich der Benchmark um 12:53:21 selbst („nach 2
+/// unproduktiven Runden angehalten"), und die Kopfzeile behauptete drei
+/// Stunden weiter „aktiv". Genau darum hielten Claude und opencode den Lauf
+/// fuer lebendig und berichteten das auch so.
+pub fn bench_status(
+    event_count: usize,
+    idle_seconds: Option<u64>,
+    last_event_text: &str,
+) -> BenchStatus {
+    if event_count == 0 {
+        return BenchStatus::Bereit;
+    }
+    // Ein gemeldetes Ende schlaegt jede Zeitrechnung: es ist kein Stillstand,
+    // sondern ein Abschluss, und der Unterschied entscheidet, ob man neu
+    // startet oder nach der Ursache sucht.
+    let low = last_event_text.to_lowercase();
+    if low.contains("angehalten")
+        || low.contains("abgebrochen")
+        || low.contains("benchmark beendet")
+        || low.contains("run_finished")
+    {
+        return BenchStatus::Beendet;
+    }
+    match idle_seconds {
+        Some(seconds) if seconds > STALL_WARN_SECONDS => BenchStatus::Stillstand,
+        _ => BenchStatus::Aktiv,
+    }
+}
+
 /// Ab hier gilt ein Lauf als verdaechtig still.
 ///
 /// Bewusst grosszuegig: ein Brain-Turn dauert gemessen ~34s, ein `cargo test`
@@ -783,14 +855,14 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
             ("+/-", "worker"),
             ("↵", "task"),
             ("/", "kommando"),
-            ("w", "wall"),
+            ("w", "kacheln"),
             ("q", "quit"),
         ],
         View::Bench => &[
             ("v", "ansicht"),
             ("j/k", "scroll"),
             ("g", "ans ende"),
-            ("w", "wall"),
+            ("w", "kacheln"),
             ("q", "quit"),
         ],
     };
@@ -819,12 +891,12 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
         };
         spans.push(Span::styled(label, style));
     }
-    // Rueckmeldung der Brain-Wall rechts daneben. Ohne sie bliebe ein
+    // Rueckmeldung der Brain-Kachelansicht rechts daneben. Ohne sie bliebe ein
     // fehlgeschlagenes Anordnen unsichtbar — die Fenster stehen off-screen,
     // man saehe also weder Erfolg noch Fehler.
-    if !app.wall_status.is_empty() {
+    if !app.grid_status.is_empty() {
         spans.push(Span::styled(
-            format!("│ {}", app.wall_status),
+            format!("│ {}", app.grid_status),
             Style::default().fg(ACCENT),
         ));
     }
@@ -950,6 +1022,32 @@ mod tests {
     }
 
     #[test]
+    fn kopfstatus_unterscheidet_beendet_von_aktiv() {
+        // Der echte Fall vom 02.08.2026: der Benchmark beendete sich um
+        // 12:53:21 selbst, die Kopfzeile stand drei Stunden auf "aktiv".
+        let halt = "Fehler: Benchmark nach 2 unproduktiven Runden angehalten \
+                    - kein Kandidat bestand Build/Test/Scope-Gates.";
+        assert_eq!(
+            bench_status(2000, Some(11_160), halt),
+            BenchStatus::Beendet,
+            "ein gemeldetes Ende ist kein Stillstand und erst recht nicht aktiv"
+        );
+
+        // Kein Ende gemeldet, aber lange nichts gehoert -> Stillstand.
+        assert_eq!(
+            bench_status(2000, Some(11_160), "deepseek: Browser: warte auf Antwort"),
+            BenchStatus::Stillstand
+        );
+        // Frische Meldung -> aktiv.
+        assert_eq!(
+            bench_status(2000, Some(5), "deepseek: Browser: Antwort empfangen"),
+            BenchStatus::Aktiv
+        );
+        // Noch nichts passiert -> bereit, nicht aktiv.
+        assert_eq!(bench_status(0, None, ""), BenchStatus::Bereit);
+    }
+
+    #[test]
     fn stillstand_wird_lesbar_formatiert() {
         // Sekunden allein liest im Stundenbereich niemand — der Lauf stand
         // 3h 6m, und genau das muss dastehen.
@@ -987,7 +1085,7 @@ mod tests {
             bench_expanded: std::collections::HashSet::new(),
             bench_selected: 0,
             command_input: String::new(),
-            wall_status: String::new(),
+            grid_status: String::new(),
         }
     }
 
