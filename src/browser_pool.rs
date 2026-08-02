@@ -371,6 +371,58 @@ impl BrowserPool {
         self.tabs.contains_key(&brain_id.to_lowercase())
     }
 
+    /// Brain-Namen aller offenen Tabs, alphabetisch.
+    ///
+    /// Stabile Reihenfolge, damit eine Kachel beim erneuten Anordnen nicht
+    /// springt — eine Wall, in der die Brains bei jedem Aufruf die Plaetze
+    /// tauschen, ist unbrauchbar.
+    pub fn open_brains(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.tabs.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// Ordnet die vorhandenen Brain-Fenster als Wall an — oder parkt sie wieder.
+    ///
+    /// `Some(area)` verteilt die offenen Tabs auf Kacheln in `area`,
+    /// `None` stellt den Zustand ohne Wall wieder her.
+    ///
+    /// Gibt zurueck, wie viele Fenster angeordnet wurden. Passen nicht alle in
+    /// den Bereich (siehe [`crate::wall::fitting_tile_count`]), werden die
+    /// ueberzaehligen bewusst geparkt statt zu Briefmarken gequetscht — der
+    /// Aufrufer sieht das an der Differenz zu [`Self::open_brains`] und muss es
+    /// melden.
+    #[cfg(feature = "webview")]
+    pub fn arrange_wall(&self, area: Option<crate::wall::Rect>) -> Result<usize, String> {
+        let Some(runtime) = self.runtime.as_ref() else {
+            return Ok(0);
+        };
+        let names = self.open_brains();
+        let Some(area) = area else {
+            for name in &names {
+                if let Some(tab) = self.tabs.get(name) {
+                    runtime
+                        .set_bounds(tab.view_id, None)
+                        .map_err(|e| format!("{name}: {e}"))?;
+                }
+            }
+            return Ok(0);
+        };
+
+        let fitting = crate::wall::fitting_tile_count(area, names.len());
+        let tiles = crate::wall::wall_layout(area, fitting);
+        for (index, name) in names.iter().enumerate() {
+            let Some(tab) = self.tabs.get(name) else {
+                continue;
+            };
+            let bounds = tiles.get(index).copied();
+            runtime
+                .set_bounds(tab.view_id, bounds)
+                .map_err(|e| format!("{name}: {e}"))?;
+        }
+        Ok(fitting)
+    }
+
     pub fn tab_ref_count(&self, brain_id: &str) -> u32 {
         self.tabs
             .get(&brain_id.to_lowercase())

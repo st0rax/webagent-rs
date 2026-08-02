@@ -40,6 +40,14 @@ enum RuntimeMessage {
         view_id: ViewId,
         respond: Sender<Result<()>>,
     },
+    /// Fenster auf eine Bildschirmposition holen (Brain-Wall) oder wieder
+    /// off-screen parken. `None` = zurueck auf [`OFFSCREEN_POS`], also exakt
+    /// das Verhalten ohne Wall.
+    SetBounds {
+        view_id: ViewId,
+        bounds: Option<crate::wall::Rect>,
+        respond: Sender<Result<()>>,
+    },
     Shutdown,
 }
 
@@ -150,6 +158,24 @@ impl WebViewRuntime {
         self.tx
             .send(RuntimeMessage::ClosePage {
                 view_id,
+                respond: resp_tx,
+            })
+            .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
+        self.wake_and_wait(resp_rx, Duration::from_secs(15))
+    }
+
+    /// Holt ein Tab-Fenster auf den Bildschirm (Brain-Wall) oder parkt es wieder.
+    ///
+    /// `None` stellt exakt den Zustand ohne Wall wieder her: zurueck auf
+    /// [`OFFSCREEN_POS`] und wieder aus der Taskleiste. Das Fenster bleibt in
+    /// beiden Faellen sichtbar und fokussierbar — `with_visible(false)` wuerde
+    /// den Enter-Absendeweg zerstoeren (siehe `open_page`).
+    pub fn set_bounds(&self, view_id: ViewId, bounds: Option<crate::wall::Rect>) -> Result<()> {
+        let (resp_tx, resp_rx) = mpsc::channel();
+        self.tx
+            .send(RuntimeMessage::SetBounds {
+                view_id,
+                bounds,
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
@@ -323,6 +349,14 @@ fn pump_runtime(rt: &mut SharedRuntime, event_loop: &mut EventLoop<()>) -> bool 
                 let result = close_page(rt, view_id);
                 let _ = respond.send(result);
             }
+            RuntimeMessage::SetBounds {
+                view_id,
+                bounds,
+                respond,
+            } => {
+                let result = set_bounds(rt, view_id, bounds);
+                let _ = respond.send(result);
+            }
         }
     }
 
@@ -453,6 +487,47 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
 
 fn close_page(rt: &mut SharedRuntime, view_id: ViewId) -> Result<()> {
     rt.pages.remove(&view_id);
+    Ok(())
+}
+
+/// Positioniert ein Tab-Fenster. Laeuft ausschliesslich im UI-Thread — tao
+/// erlaubt Fensterzugriffe nur dort, deshalb der Umweg ueber `RuntimeMessage`.
+fn set_bounds(
+    rt: &mut SharedRuntime,
+    view_id: ViewId,
+    bounds: Option<crate::wall::Rect>,
+) -> Result<()> {
+    let slot = rt
+        .pages
+        .get(&view_id)
+        .ok_or_else(|| PageDriverError::Protocol(format!("Tab {view_id} existiert nicht")))?;
+    match bounds {
+        Some(rect) => {
+            slot.window
+                .set_inner_size(tao::dpi::PhysicalSize::new(rect.width, rect.height));
+            slot.window
+                .set_outer_position(tao::dpi::PhysicalPosition::new(rect.x, rect.y));
+            // In der Wall soll das Fenster normal erreichbar sein; off-screen
+            // war der Taskleisteneintrag nur ein toter Klick.
+            #[cfg(windows)]
+            {
+                use tao::platform::windows::WindowExtWindows;
+                slot.window.set_skip_taskbar(false);
+            }
+        }
+        None => {
+            #[cfg(windows)]
+            {
+                use tao::platform::windows::WindowExtWindows;
+                slot.window.set_skip_taskbar(true);
+            }
+            slot.window
+                .set_outer_position(tao::dpi::LogicalPosition::new(
+                    OFFSCREEN_POS.0,
+                    OFFSCREEN_POS.1,
+                ));
+        }
+    }
     Ok(())
 }
 

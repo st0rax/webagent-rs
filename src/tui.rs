@@ -572,6 +572,7 @@ fn run_tui_ratatui(
         bench_expanded: std::collections::HashSet::new(),
         bench_selected: 0,
         command_input: String::new(),
+        wall_status: String::new(),
     };
     if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
         let command = format!("/benchmark {arguments}");
@@ -620,6 +621,11 @@ fn run_tui_ratatui(
     let refresh_ticks = (poll_secs as f64 * 12.5).ceil() as u64;
     let mut frame_count = 0u64;
     let mut task_input = String::new();
+    // Brain-Wall: die Tab-Fenster stehen im Normalfall off-screen. `w` holt sie
+    // in ein Raster auf den Bildschirm. Bewusst hier und nicht als CLI-Befehl:
+    // die Fenster gehoeren DIESEM Prozess, ein zweiter `webagent`-Aufruf saehe
+    // sie gar nicht.
+    let mut wall_on = false;
 
     let exit_code = loop {
         // Tastatur-Event (non-blocking, 80ms Timeout)
@@ -650,6 +656,13 @@ fn run_tui_ratatui(
                         // in der Kopfzeile.
                         KeyCode::Char('v') | KeyCode::Char('<') | KeyCode::Char('>') => {
                             app.view = app.view.next();
+                        }
+                        // `w` schaltet die Brain-Wall um: alle offenen
+                        // Brain-Fenster als Kachelraster auf den Bildschirm,
+                        // nochmal `w` parkt sie wieder off-screen.
+                        KeyCode::Char('w') => {
+                            wall_on = !wall_on;
+                            app.wall_status = toggle_brain_wall(wall_on);
                         }
                         // In der Benchmark-Ansicht springt `g` ans untere Ende
                         // des frischen Ereignisstroms.
@@ -1028,6 +1041,48 @@ fn enable_vt_processing() {
 #[cfg(not(all(windows, feature = "webview")))]
 #[cfg_attr(not(feature = "tui"), allow(dead_code))]
 fn enable_vt_processing() {}
+
+/// Schaltet die Brain-Wall und liefert die Zeile, die in der TUI dazu erscheint.
+///
+/// Rueckmeldung statt stiller Wirkung: die Fenster liegen im Normalfall
+/// off-screen, ein fehlgeschlagenes Anordnen waere sonst nicht von „es gibt
+/// gerade kein offenes Brain-Fenster" zu unterscheiden.
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(feature = "webview")]
+fn toggle_brain_wall(on: bool) -> String {
+    let pool = match crate::browser_pool::BrowserPool::global().lock() {
+        Ok(pool) => pool,
+        Err(_) => return "Wall: Browser-Pool nicht erreichbar".to_string(),
+    };
+    let open = pool.open_brains().len();
+    if !on {
+        return match pool.arrange_wall(None) {
+            Ok(_) => format!("Wall aus — {open} Fenster wieder geparkt"),
+            Err(e) => format!("Wall aus fehlgeschlagen: {e}"),
+        };
+    }
+    if open == 0 {
+        return "Wall: kein Brain-Fenster offen".to_string();
+    }
+    let Some(area) = crate::wall::default_wall_area() else {
+        return "Wall: Bildschirmflaeche nicht ermittelbar".to_string();
+    };
+    match pool.arrange_wall(Some(area)) {
+        // Passen nicht alle, wird das benannt statt stillschweigend gekuerzt.
+        Ok(tiled) if tiled < open => format!(
+            "Wall an — {tiled} von {open} Fenstern gekachelt, {} zu klein und geparkt",
+            open - tiled
+        ),
+        Ok(tiled) => format!("Wall an — {tiled} Fenster gekachelt"),
+        Err(e) => format!("Wall fehlgeschlagen: {e}"),
+    }
+}
+
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(not(feature = "webview"))]
+fn toggle_brain_wall(_on: bool) -> String {
+    "Wall: ohne webview-Feature nicht verfuegbar".to_string()
+}
 
 /// Einstiegspunkt der TUI (Default, wenn `webagent` ohne Subcommand läuft).
 #[cfg_attr(not(feature = "tui"), allow(unused_variables))]

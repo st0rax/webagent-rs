@@ -767,18 +767,29 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
             ("+/-", "worker"),
             ("↵", "task"),
             ("/", "kommando"),
+            ("w", "wall"),
             ("q", "quit"),
         ],
         View::Bench => &[
             ("v", "ansicht"),
             ("j/k", "scroll"),
             ("g", "ans ende"),
+            ("w", "wall"),
             ("q", "quit"),
         ],
     };
     for (k, label) in binds {
         spans.push(Span::styled(*k, key));
         spans.push(Span::styled(format!(" {label}  "), dim));
+    }
+    // Rueckmeldung der Brain-Wall rechts daneben. Ohne sie bliebe ein
+    // fehlgeschlagenes Anordnen unsichtbar — die Fenster stehen off-screen,
+    // man saehe also weder Erfolg noch Fehler.
+    if !app.wall_status.is_empty() {
+        spans.push(Span::styled(
+            format!("│ {}", app.wall_status),
+            Style::default().fg(ACCENT),
+        ));
     }
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
@@ -920,6 +931,7 @@ mod tests {
             bench_expanded: std::collections::HashSet::new(),
             bench_selected: 0,
             command_input: String::new(),
+            wall_status: String::new(),
         }
     }
 

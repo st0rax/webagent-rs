@@ -74,6 +74,11 @@ pub struct App {
     pub bench_selected: usize,
     /// Eingabepuffer für die Kommandozeile (/).
     pub command_input: String,
+    /// Rückmeldung der Brain-Wall (`w`), z.B. „Wall: 8 Fenster gekachelt".
+    ///
+    /// Ohne diese Zeile bliebe ein fehlgeschlagenes Anordnen unsichtbar: die
+    /// Fenster liegen off-screen, man sieht also weder Erfolg noch Misserfolg.
+    pub wall_status: String,
 }
 
 /// Die umschaltbaren Hauptansichten.
@@ -820,6 +825,7 @@ mod tests {
             bench_expanded: std::collections::HashSet::new(),
             bench_selected: 0,
             command_input: String::new(),
+            wall_status: String::new(),
         }
     }
 
