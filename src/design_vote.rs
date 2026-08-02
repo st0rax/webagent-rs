@@ -268,22 +268,46 @@ where
             .map(|job| job.join().expect("Design-Vote-Worker panicked"))
             .collect()
     });
+    // Ausgaenge zaehlen, nicht nur melden. Am 02.08.2026 lieferten 5 von 6
+    // Brains unlesbare Antworten; in der Oberflaeche war davon nichts zu
+    // sehen, und der Lauf hielt kommentarlos an.
+    crate::round_tally::reset();
     let mut proposals: Vec<(String, String)> = Vec::new();
     for (b, response) in collected {
+        crate::round_tally::note_started();
         match response {
             Ok(text)
                 if !text.trim().is_empty() && !crate::brain::is_retryable_empty_response(&text) =>
             {
+                crate::round_tally::note_outcome(crate::round_tally::Outcome::Answered);
                 on_round(&format!(
                     "  {b}: Entwurf ({} Zeichen)",
                     text.trim().chars().count()
                 ));
                 proposals.push((b.clone(), text.trim().to_string()));
             }
-            Ok(_) => on_round(&format!("  {b}: kein verwertbarer Entwurf")),
-            Err(e) => on_round(&format!("  {b}: Fehler — {e}")),
+            Ok(_) => {
+                crate::round_tally::note_outcome(crate::round_tally::Outcome::Discarded);
+                on_round(&format!("  {b}: kein verwertbarer Entwurf"));
+            }
+            Err(e) => {
+                crate::round_tally::note_outcome(crate::round_tally::Outcome::Failed);
+                on_round(&format!("  {b}: Fehler — {e}"));
+            }
         }
     }
+    // Die Quote gehoert in den Ereignisstrom, nicht nur in die Kopfzeile: eine
+    // Runde, die spaeter im Log gelesen wird, muss sie auch noch hergeben.
+    let tally = crate::round_tally::snapshot();
+    on_round(&format!(
+        "Sammeln beendet: {}{}",
+        tally.label(),
+        if tally.is_alarming() {
+            "  ← unter der Haelfte verwertbar"
+        } else {
+            ""
+        }
+    ));
 
     if proposals.len() <= 1 {
         // Ein einziger Entwurf ist nichts zum Abstimmen — aber ein Ergebnis.

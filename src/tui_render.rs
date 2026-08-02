@@ -320,6 +320,23 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
                         format!("{} Brains gemeldet", aktiv.len()),
                         Style::default().fg(MUTED),
                     ),
+                    Span::raw("   "),
+                    // Verwertbarkeitsquote der laufenden Runde. Ohne sie sieht
+                    // eine Runde, in der 5 von 6 Antworten wegen Formatfehlern
+                    // weggeworfen wurden, genauso aus wie eine gesunde.
+                    {
+                        let tally = crate::round_tally::snapshot();
+                        Span::styled(
+                            tally.label(),
+                            if tally.is_alarming() {
+                                Style::default()
+                                    .fg(Color::Red)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(MUTED)
+                            },
+                        )
+                    },
                 ]),
                 Line::from(vec![
                     Span::styled(

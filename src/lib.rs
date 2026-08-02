@@ -39,6 +39,7 @@ pub mod prompts;
 pub mod protocol;
 pub mod relay;
 pub mod repl;
+pub mod round_tally;
 pub mod run_store;
 pub mod runs_report;
 pub mod self_research;
