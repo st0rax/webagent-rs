@@ -538,6 +538,10 @@ fn run_tui_ratatui(
         }
     };
     crate::bench_events::set_console_output(false);
+    // Panics aus Hintergrund-Threads sichtbar machen. Ohne das beendet ein
+    // Panic nur seinen Thread und verschwindet — am 02.08.2026 starb so die
+    // Benchmark-Schleife, waehrend die TUI drei Stunden weiterlief.
+    crate::bench_events::install_panic_hook();
 
     // --- Worker-Pool im Hintergrund-Thread ---
     let mut pool = WorkerPool::new(

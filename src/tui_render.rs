@@ -733,6 +733,22 @@ fn render_tasks(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(p, area);
 }
 
+/// Ab hier gilt ein Lauf als verdaechtig still.
+///
+/// Bewusst grosszuegig: ein Brain-Turn dauert gemessen ~34s, ein `cargo test`
+/// im Turn bis zu mehreren Minuten. Wer zu frueh Alarm schlaegt, erzieht zum
+/// Wegsehen — und genau dann faellt der echte Stillstand nicht mehr auf.
+const STALL_WARN_SECONDS: u64 = 600;
+
+/// `615` → `10m 15s`. Sekunden allein liest im Minutenbereich niemand mehr.
+fn human_duration(seconds: u64) -> String {
+    match seconds {
+        0..=59 => format!("{seconds}s"),
+        60..=3599 => format!("{}m {}s", seconds / 60, seconds % 60),
+        _ => format!("{}h {}m", seconds / 3600, (seconds % 3600) / 60),
+    }
+}
+
 /// Footer: Keybindings — Tasten hervorgehoben, Beschriftung gedämpft.
 ///
 /// Design-spezifische Tasten: j/k für Detail-Scroll, f für Log-Filter,
@@ -781,6 +797,27 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     for (k, label) in binds {
         spans.push(Span::styled(*k, key));
         spans.push(Span::styled(format!(" {label}  "), dim));
+    }
+    // Totmannschalter: Zeit seit dem letzten Ereignis.
+    //
+    // Am 02.08.2026 stand der Dauerlauf drei Stunden still und sah dabei aus
+    // wie ein laufender — die TUI zeigte unveraendert den letzten Stand.
+    // Ereignisse anzuzeigen genuegt nicht; das AUSBLEIBEN von Ereignissen ist
+    // hier die Nachricht.
+    if let Some(idle) = crate::bench_events::seconds_since_last_event() {
+        let (label, style) = match idle {
+            0..=STALL_WARN_SECONDS => (
+                format!("│ letztes Ereignis vor {idle}s"),
+                Style::default().fg(Color::DarkGray),
+            ),
+            _ => (
+                format!("│ STILLSTAND — seit {} kein Ereignis", human_duration(idle)),
+                Style::default()
+                    .fg(Color::Red)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        };
+        spans.push(Span::styled(label, style));
     }
     // Rueckmeldung der Brain-Wall rechts daneben. Ohne sie bliebe ein
     // fehlgeschlagenes Anordnen unsichtbar — die Fenster stehen off-screen,
@@ -910,6 +947,25 @@ mod tests {
             last_response: Some("Test response".to_string()),
             detail,
         }
+    }
+
+    #[test]
+    fn stillstand_wird_lesbar_formatiert() {
+        // Sekunden allein liest im Stundenbereich niemand — der Lauf stand
+        // 3h 6m, und genau das muss dastehen.
+        assert_eq!(human_duration(45), "45s");
+        assert_eq!(human_duration(615), "10m 15s");
+        assert_eq!(human_duration(11_160), "3h 6m");
+    }
+
+    #[test]
+    fn stillstandsschwelle_ist_groesser_als_ein_langsamer_turn() {
+        // Ein Brain-Turn mit cargo test darin dauert gemessen bis zu 14 min…
+        // aber wer bei jedem langsamen Turn Alarm schlaegt, erzieht zum
+        // Wegsehen. 10 min ist der Kompromiss; dieser Test haelt die
+        // Begruendung fest, damit die Zahl nicht unbemerkt verrutscht.
+        assert!(STALL_WARN_SECONDS >= 300, "zu nervoes");
+        assert!(STALL_WARN_SECONDS <= 1800, "zu traege - 3h Stillstand fiel so durch");
     }
 
     fn test_app(agents: Vec<AgentView>) -> App {

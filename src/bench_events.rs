@@ -163,11 +163,86 @@ pub fn emit_detailed(level: Level, brain: Option<&str>, text: &str, detail: Opti
         text: text.to_string(),
         detail: detail.map(cap_detail),
     };
+    note_activity();
     let mut q = lock();
     if q.len() >= CAPACITY {
         q.pop_front();
     }
     q.push_back(ev);
+}
+
+/// Sekunden seit Prozessstart — monoton, also immun gegen Zeitumstellung.
+fn uptime_seconds() -> u64 {
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_secs()
+}
+
+/// Zeitpunkt des letzten Ereignisses, als Sekunden seit Prozessstart.
+/// `u64::MAX` = noch gar keines.
+static LAST_EVENT_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
+
+fn note_activity() {
+    LAST_EVENT_AT.store(uptime_seconds(), Ordering::Relaxed);
+}
+
+/// Sekunden seit dem letzten Ereignis; `None`, solange keines kam.
+///
+/// Grundlage des Totmannschalters. Am 02.08.2026 stand der Dauerlauf drei
+/// Stunden still, ohne dass es jemandem auffiel: die TUI zeigte unveraendert
+/// den letzten Stand, und ein toter Lauf sah damit exakt aus wie ein
+/// laufender. Wer nur Ereignisse anzeigt, zeigt nicht das Ausbleiben von
+/// Ereignissen — genau das ist hier aber die Nachricht.
+pub fn seconds_since_last_event() -> Option<u64> {
+    let last = LAST_EVENT_AT.load(Ordering::Relaxed);
+    if last == u64::MAX {
+        return None;
+    }
+    Some(uptime_seconds().saturating_sub(last))
+}
+
+/// Meldet Panics aus beliebigen Threads in den Ereignisstrom.
+///
+/// Ein Panic in einem gespawnten Thread beendet nur diesen Thread, nicht den
+/// Prozess. Ohne Hook verschwindet er spurlos: am 02.08.2026 starb so die
+/// Benchmark-Schleife um 12:53, waehrend die TUI munter weiterlief und drei
+/// Stunden lang niemand etwas merkte.
+///
+/// Der Hook nimmt bewusst `try_lock`: passiert der Panic ausgerechnet,
+/// waehrend der Bus gesperrt ist, wuerde ein blockierendes Sperren im selben
+/// Thread verklemmen. Lieber eine Meldung verlieren als den Prozess einfrieren
+/// — die Kopie auf stderr bleibt in jedem Fall.
+pub fn install_panic_hook() {
+    static INSTALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if INSTALLED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        let name = thread.name().unwrap_or("unbenannt").to_string();
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "unbekannte Stelle".to_string());
+        let text = format!("PANIC in Thread '{name}' bei {location}");
+        // Immer auf stderr — auch wenn der Bus gerade gesperrt ist.
+        eprintln!("{text}\n{info}");
+        if let Ok(mut q) = bus().try_lock() {
+            LAST_EVENT_AT.store(uptime_seconds(), Ordering::Relaxed);
+            if q.len() >= CAPACITY {
+                q.pop_front();
+            }
+            q.push_back(BenchEvent {
+                id: next_event_id(),
+                ts: crate::timestamp(),
+                level: Level::Fail,
+                brain: None,
+                text,
+                detail: Some(cap_detail(&info.to_string())),
+            });
+        }
+        previous(info);
+    }));
 }
 
 /// Kappt einen Detailblock auf [`DETAIL_CAP_CHARS`] Zeichen, zeichensicher.
@@ -227,6 +302,43 @@ mod tests {
     /// Der Bus ist prozessglobal, Tests laufen parallel: alle Faelle teilen
     /// sich EINEN Test, damit sie sich nicht gegenseitig den Puffer umbauen.
     /// Ein flackernder Test waere schlimmer als kein Test.
+    /// Der eigentliche Beweis: ein Panic in einem GESPAWNTEN Thread muss im
+    /// Ereignisstrom landen.
+    ///
+    /// Genau das fehlte am 02.08.2026. Die Benchmark-Schleife starb um 12:53
+    /// in ihrem Thread, der Prozess lief weiter, die TUI zeigte unveraendert
+    /// den letzten Stand — drei Stunden lang merkte es niemand. Ein Test, der
+    /// nur prueft, dass sich der Hook installieren laesst, haette das nicht
+    /// verhindert; deshalb stirbt hier wirklich ein Thread.
+    #[test]
+    fn panic_in_fremdem_thread_landet_im_ereignisstrom() {
+        let _test_guard = test_bus_mutex().lock();
+        install_panic_hook();
+        clear();
+
+        let died = std::thread::Builder::new()
+            .name("kanarienvogel".into())
+            .spawn(|| panic!("absichtlich gestorben"))
+            .expect("Thread startet")
+            .join();
+        assert!(died.is_err(), "der Thread muss wirklich gepanickt sein");
+
+        let snap = snapshot();
+        let found = snap
+            .iter()
+            .find(|e| e.text.contains("PANIC") && e.text.contains("kanarienvogel"));
+        let found = found.unwrap_or_else(|| {
+            panic!("kein Panic-Ereignis im Bus: {:?}", snap.iter().map(|e| &e.text).collect::<Vec<_>>())
+        });
+        assert_eq!(found.level, Level::Fail, "ein Panic ist kein Hinweis");
+        assert!(
+            found.detail.as_deref().unwrap_or("").contains("absichtlich gestorben"),
+            "die Panic-Meldung selbst muss im Detail stehen"
+        );
+        // Und der Totmannschalter muss den Panic als Lebenszeichen zaehlen.
+        assert!(seconds_since_last_event().is_some());
+    }
+
     #[test]
     fn ringpuffer_haelt_reihenfolge_deckel_und_seit_index_ein() {
         let _test_guard = test_bus_mutex().lock();
