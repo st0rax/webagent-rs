@@ -319,6 +319,32 @@ impl WebBrainBackend {
         })
     }
 
+    /// Erstellt ein Backend fuer einen noch nicht registrierten Brain (z.B.
+    /// aus `probe`): nur URL, noch keine Selektoren. `probe_surface` fuellt sie
+    /// an der lebenden Oberflaeche, danach registriert der Aufrufer das Brain.
+    pub fn from_url(brain_id: &str, url: &str) -> Result<Self, String> {
+        let id = crate::config::sanitize_brain_id(brain_id);
+        if id.is_empty() {
+            return Err("Brain-ID leer".into());
+        }
+        if url.trim().is_empty() {
+            return Err("URL leer".into());
+        }
+        let profile_dir = crate::config::profiles_dir().join(&id);
+        Ok(Self {
+            brain_id: id,
+            url: url.trim().to_string(),
+            selectors: serde_json::json!({}),
+            profile_dir,
+            profile_override: None,
+            #[cfg(feature = "webview")]
+            runtime: RefCell::new(None),
+            driver: RefCell::new(None),
+            baseline_text: RefCell::new(String::new()),
+            last_sent: RefCell::new(String::new()),
+        })
+    }
+
     /// Setzt ein isoliertes Laufzeit-Profil (z.B. eine Swarm-Teilkopie aus
     /// `config::prepare_swarm_profile`). Überschreibt `profile_dir` in `start()`.
     pub fn with_profile_override(mut self, profile: PathBuf) -> Self {
@@ -973,6 +999,49 @@ return null;}})()"#,
         let report = self.dom_report();
         let _ = self.stop();
         report
+    }
+
+    /// Oberflaechen-Analyse wie die Link-Analyse in JDownloader: die offene
+    /// Seite nach Bedienelementen scannen und sie per [`crate::brain_probe`]
+    /// deutet. Der Aufrufer entscheidet, ob die Funde als Selektoren
+    /// uebernommen werden.
+    pub fn probe_surface(&mut self, headless: bool) -> Result<Vec<crate::brain_probe::Proposal>, String> {
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+        self.wait_for_labeled_controls();
+        let proposals = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            crate::brain_probe::probe(driver.as_mut()).map_err(|e| e.to_string())
+        };
+        let _ = self.stop();
+        proposals
+    }
+
+    /// Faehrt einen Vorschlag aus [`probe_surface`] live an der offenen Seite:
+    /// klicken, messbarer Zustandswechsel als Beleg, Rueckweg wiederherstellen.
+    /// Passt zu `probe_surface`, weil dort derselbe (eigene) Browser laeuft.
+    pub fn verify_surface(
+        &mut self,
+        headless: bool,
+        proposal: &crate::brain_probe::Proposal,
+    ) -> Result<crate::brain_probe::Verdict, String> {
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+        self.wait_for_labeled_controls();
+        let verdict = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            crate::brain_probe::verify(driver.as_mut(), proposal).map_err(|e| e.to_string())
+        };
+        let _ = self.stop();
+        verdict
     }
 
     /// Live-Diagnose: startet den Browser, prüft am echten DOM Login-Zustand,

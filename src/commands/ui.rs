@@ -446,6 +446,235 @@ pub fn cmd_survey(
     }
 }
 
+/// Leitfaehigkeit: ableiten einer Brain-ID aus einer URL (host bis zum ersten
+/// `.com/.ai/.dev/...`). Rein regelbasiert, keine Raten.
+fn brain_id_from_url(url: &str) -> String {
+    let host = url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or(url)
+        .split(':')
+        .next()
+        .unwrap_or(url);
+    let domain = host.split('.').collect::<Vec<_>>();
+    // `www.perplexity.ai` → perplexity, nicht www; `chat.deepseek.com` → chat.
+    let first = match domain.as_slice() {
+        ["www", rest, ..] => rest,
+        [first, ..] => first,
+        [] => host,
+    };
+    webagent::config::sanitize_brain_id(first)
+}
+
+/// Baut die Selektor-JSON eines Brains aus den Proposals zusammen.
+fn selectors_from_proposals(proposals: &[webagent::brain_probe::Proposal]) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    for p in proposals {
+        obj.entry(p.selector_key.to_string())
+            .or_insert_with(|| serde_json::Value::Array(Vec::new()))
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::Value::String(p.selector.clone()));
+    }
+    serde_json::Value::Object(obj)
+}
+
+/// `webagent probe`: Oberflaechen-Analyse wie die Link-Analyse in JDownloader.
+///
+/// Erkennt Bedienelemente einer Chat-Oberflaeche und macht daraus Selektoren —
+/// fuer einen neuen Brain (`--url`) oder als Nachvermessung eines bestehenden
+/// (`--brain`). Mit `--write` wird das Brain automatisch eingebunden.
+pub fn cmd_probe(
+    url: Option<&str>,
+    brain_id: Option<&str>,
+    brain: Option<&str>,
+    write: bool,
+    verify: bool,
+    headless: bool,
+) -> i32 {
+    use webagent::brain_probe::{Proposal, Verdict};
+    use webagent::browser::WebBrainBackend;
+
+    let (id, url, is_new) = match (brain, url) {
+        (Some(b), None) => (b.to_string(), None, false),
+        (None, Some(u)) => {
+            let id = brain_id
+                .map(|s| webagent::config::sanitize_brain_id(s))
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| brain_id_from_url(u));
+            (id, Some(u.to_string()), true)
+        }
+        (Some(_), Some(_)) => {
+            eprintln!("[probe] --brain und --url schliessen sich aus");
+            return 2;
+        }
+        (None, None) => {
+            eprintln!("[probe] bitte --url <chat-url> (neuer Brain) oder --brain <id> angeben");
+            return 2;
+        }
+    };
+
+    // Für einen bestehenden Brain brauchen wir einen brauchbaren Ausgangs-
+    // Selektorsatz, sonst ist die Analyse gegen einen leeren Katalog sinnlos.
+    let mut backend = match (is_new, url.clone()) {
+        (true, Some(u)) => match WebBrainBackend::from_url(&id, &u) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[probe] {id}: {e}");
+                return 1;
+            }
+        },
+        (true, None) => {
+            eprintln!("[probe] {id}: keine URL fuer neues Brain");
+            return 2;
+        }
+        (false, _) => match WebBrainBackend::from_config(&id) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[probe] {id}: {e}");
+                return 1;
+            }
+        },
+    };
+
+    eprintln!("[probe] {id}: oeffne Oberflaeche (headless={headless})…");
+    let proposals = match backend.probe_surface(headless) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[probe] {id}: Fehler: {e}");
+            return 1;
+        }
+    };
+
+    if proposals.is_empty() {
+        eprintln!("[probe] {id}: keine Bedienelemente gefunden — ist ein Login noetig?");
+        eprintln!("[probe] Tipp: mit --visible laeuft der Browser sichtbar, dann einloggen.");
+        return 1;
+    }
+
+    // Nachvermessung eines bestehenden Brains: nur Funde zeigen, die es noch
+    // nicht gibt — die schon vorhandenen Selektoren sind die Wahrheit.
+    let known: Vec<String> = if is_new {
+        Vec::new()
+    } else {
+        webagent::config::load_selectors(&id)
+            .ok()
+            .and_then(|s| s.as_object().map(|o| o.keys().cloned().collect()))
+            .unwrap_or_default()
+    };
+
+    println!("  --- {id}: Oberflaechen-Analyse ({}) ---", proposals.len());
+    for p in &proposals {
+        let is_new_find = !known.contains(&p.selector_key.to_string());
+        let marker = if is_new_find { "+" } else { "=" };
+        println!(
+            "   {marker} {:<22} {:>3}%  {:<14} {}",
+            p.selector_key,
+            p.confidence,
+            p.evidence,
+            p.selector
+        );
+    }
+
+    // Verifikation: nur die Vorschlaege, die einen messbaren Zustandswechsel
+    // versprechen (Toggles/Schalter). Composer/Senden wuerden Nebenwirkungen
+    // erzeugen — die bleiben ein Fund, kein Beleg.
+    let mut verdicts: Vec<Verdict> = Vec::new();
+    if verify {
+        println!();
+        for p in proposals
+            .iter()
+            .filter(|p| p.selector_key.ends_with("toggle") || p.selector_key.contains("switch"))
+        {
+            println!("   pruefe {} ({})…", p.selector_key, p.selector);
+            match backend.verify_surface(headless, p) {
+                Ok(v) => {
+                    let proven = v.proven;
+                    let note = v.note.clone();
+                    verdicts.push(v);
+                    println!(
+                        "   {:<22} {}",
+                        p.selector_key,
+                        if proven { "PASS" } else { "FAIL" }
+                    );
+                    println!("        {note}");
+                }
+                Err(e) => eprintln!("   {:<22} FEHLER: {e}", p.selector_key),
+            }
+        }
+    }
+
+    if !write {
+        eprintln!();
+        eprintln!("[probe] kein Schreiben (--write fehlt). Funde oben = Vorschlaege.");
+        return 0;
+    }
+
+    // Schreiben: die Vorschlaege als Selektoren-Datei ablegen und das Brain
+    // (falls neu) in custom_brains.json registrieren.
+    let all: Vec<Proposal> = proposals;
+    let fresh = selectors_from_proposals(&all);
+    let dir = webagent::config::user_selectors_dir();
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("[probe] {id}: Selektoren-Verzeichnis nicht anlegbar: {e}");
+        return 1;
+    }
+    let path = dir.join(format!("{id}.json"));
+
+    // Bestehende Datei mergen statt ueberschreiben: der Prober ist ein
+    // Ergaenzungs-Tool, keine Neuschreibung.
+    let merged = if let Ok(existing) = webagent::config::load_selectors(&id) {
+        let mut obj = existing;
+        if let Some(map) = obj.as_object_mut() {
+            if let Some(fresh_map) = fresh.as_object() {
+                for (k, v) in fresh_map {
+                    map.entry(k.clone()).or_insert_with(|| v.clone());
+                }
+            }
+        }
+        obj
+    } else {
+        fresh
+    };
+
+    let body = match serde_json::to_string_pretty(&merged) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[probe] {id}: JSON-Fehler: {e}");
+            return 1;
+        }
+    };
+    if let Err(e) = std::fs::write(&path, body) {
+        eprintln!("[probe] {id}: schreiben fehlgeschlagen: {e}");
+        return 1;
+    }
+    println!("             Selektoren geschrieben nach {}", path.display());
+
+    if is_new {
+        match webagent::config::register_custom_brain(&id, &url.unwrap_or_default()) {
+            Ok(true) => println!("             Brain '{id}' registriert (custom_brains.json)"),
+            Ok(false) => eprintln!("[probe] {id}: ID bereits vergeben — nicht ueberschrieben"),
+            Err(e) => {
+                eprintln!("[probe] {id}: Registrierung fehlgeschlagen: {e}");
+                return 1;
+            }
+        }
+    } else {
+        println!("             Brain '{id}' (bestehend) um Selektoren ergaenzt");
+    }
+
+    if !verdicts.is_empty() {
+        let passed = verdicts.iter().filter(|v| v.proven).count();
+        println!(
+            "             Verifikation: {passed}/{} belegt",
+            verdicts.len()
+        );
+    }
+    0
+}
+
 pub fn cmd_quests(json: bool) -> i32 {
     let levels = webagent::capability::levels_all();
     if levels.is_empty() {
@@ -587,4 +816,40 @@ pub fn write_ui_options(brain: &str, options: &[String]) -> Result<std::path::Pa
     let body = serde_json::to_string_pretty(&sel).map_err(|e| format!("{e}"))?;
     std::fs::write(&path, body).map_err(|e| format!("{e}"))?;
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn brain_id_wird_aus_url_abgeleitet() {
+        assert_eq!(brain_id_from_url("https://www.perplexity.ai/"), "perplexity");
+        assert_eq!(brain_id_from_url("https://chat.deepseek.com/"), "chat");
+        assert_eq!(brain_id_from_url("https://gemini.google.com/app"), "gemini");
+        assert_eq!(brain_id_from_url("https://chat.qwen.ai/"), "chat");
+        // Kaputte URLs werden nicht schlimmer: kein Panic, ein brauchbarer Fallback.
+        assert_eq!(brain_id_from_url(""), "");
+    }
+
+    #[test]
+    fn brain_id_aus_url_wird_sanitisiert() {
+        assert_eq!(brain_id_from_url("https://www.mistral.ai/chat"), "mistral");
+        assert_eq!(brain_id_from_url("https://chat.deepseek.com/"), "chat");
+    }
+
+    #[test]
+    fn selectors_from_proposals_sammelt_schluessel() {
+        let p = |key: &'static str, sel: &'static str| webagent::brain_probe::Proposal {
+            capability_key: "chat",
+            selector_key: key,
+            selector: sel.to_string(),
+            confidence: 90,
+            evidence: "test".into(),
+        };
+        let json = selectors_from_proposals(&[p("composer", "[contenteditable]"), p("send_button", "button.send")]);
+        let obj = json.as_object().unwrap();
+        assert_eq!(obj["composer"][0], "[contenteditable]");
+        assert_eq!(obj["send_button"][0], "button.send");
+    }
 }

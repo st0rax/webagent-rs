@@ -306,8 +306,31 @@ pub enum Commands {
         visible: bool,
     },
 
-    /// Questlog: Level je Brain und was noch fehlt, um die Optionen des
-    /// jeweiligen Webchats auszureizen
+    /// Oberflaechen-Analyse wie die Link-Analyse in JDownloader: oeffnet eine
+    /// Chat-URL, sammelt die Bedienelemente ein und deutet sie als
+    /// Selektoren-Vorschlaege. Mit `--write` wird das Brain automatisch
+    /// eingebunden: Selektoren-Datei schreiben + als Custom-Brain registrieren.
+    Probe {
+        /// URL des zu analysierenden Chats (neuer Brain) oder ohne URL ueber
+        /// `--brain` ein bestehendes Brain nachvermessend pruefen
+        #[arg(long)]
+        url: Option<String>,
+        /// Brain-ID für die Selektoren-Datei (Default: aus URL abgeleitet)
+        #[arg(long)]
+        brain_id: Option<String>,
+        /// Bestehendes Brain nachvermessend pruefen (Featureliste auffuellen)
+        #[arg(long)]
+        brain: Option<String>,
+        /// Ergebnis schreiben: `selectors/<id>.json` + Custom-Brain registrieren
+        #[arg(long)]
+        write: bool,
+        /// Vorschlaege live nachpruefen (Zustandsbeleg, kann Zeit kosten)
+        #[arg(long)]
+        verify: bool,
+        /// Sichtbar statt headless (beim ersten Mal fuer den Login noetig)
+        #[arg(long)]
+        visible: bool,
+    },
     Quests {
         /// Maschinenlesbar statt Konsolenansicht
         #[arg(long)]

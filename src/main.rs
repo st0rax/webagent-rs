@@ -190,6 +190,22 @@ fn dispatch(command: Commands) -> i32 {
             visible,
         } => cmd_survey(brain.as_deref(), write, !visible, dump, open.as_deref()),
 
+        Commands::Probe {
+            url,
+            brain_id,
+            brain,
+            write,
+            verify,
+            visible,
+        } => cmd_probe(
+            url.as_deref(),
+            brain_id.as_deref(),
+            brain.as_deref(),
+            write,
+            verify,
+            !visible,
+        ),
+
         Commands::Quests { json } => cmd_quests(json),
 
         Commands::MeasureLimits {
