@@ -492,6 +492,7 @@ pub fn cmd_probe(
     brain: Option<&str>,
     write: bool,
     verify: bool,
+    open: Option<&str>,
     dump: bool,
     headless: bool,
 ) -> i32 {
@@ -544,7 +545,7 @@ pub fn cmd_probe(
     // `--dump` zeigt die Rohehebung (ohne Fill-Runde, sonst ist der Composer
     // schon gefuellt und die Antwort verdraengt die echten Bedienelemente).
     let (candidates, proposals) = if dump {
-        match backend.probe_surface_with_raw(headless) {
+        match backend.probe_surface_with_raw(headless, open) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("[probe] {id}: Fehler: {e}");
@@ -552,7 +553,7 @@ pub fn cmd_probe(
             }
         }
     } else {
-        match backend.probe_surface_with_fill(headless) {
+        match backend.probe_surface_with_fill(headless, open) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("[probe] {id}: Fehler: {e}");

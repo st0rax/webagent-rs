@@ -721,7 +721,7 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
             r#"(function(){
               var hit=false;
               var scopes=document.querySelectorAll('[role=dialog],[data-state="open"],[class*="modal"],[class*="Modal"],[class*="overlay"],[class*="Overlay"]');
-              var words=['später','spater','later','not now','maybe later','skip','got it','no thanks','dismiss','verstanden','vielleicht später'];
+              var words=['später','spater','later','not now','maybe later','skip','got it','no thanks','dismiss','verstanden','vielleicht später','nur notwendige','nur notwendige cookies','notwendige','necessary','essenziell','accept necessary','reject all','ablehnen','erforderlich'];
               for(var s=0;s<scopes.length;s++){
                 var btns=scopes[s].querySelectorAll('button,a,[role=button]');
                 for(var i=0;i<btns.length;i++){
@@ -1006,7 +1006,7 @@ return null;}})()"#,
     /// deutet. Der Aufrufer entscheidet, ob die Funde als Selektoren
     /// uebernommen werden.
     pub fn probe_surface(&mut self, headless: bool) -> Result<Vec<crate::brain_probe::Proposal>, String> {
-        let (_, proposals) = self.probe_surface_with_raw(headless)?;
+        let (_, proposals) = self.probe_surface_with_raw(headless, None)?;
         Ok(proposals)
     }
 
@@ -1016,14 +1016,40 @@ return null;}})()"#,
     pub fn probe_surface_with_raw(
         &mut self,
         headless: bool,
+        open_key: Option<&str>,
     ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
         self.wait_for_labeled_controls();
         let result = self.scan_once();
+        let opened = match (open_key, result) {
+            (Some(key), Ok((cands, props))) => {
+                let clicked = props.iter().find(|p| p.selector_key == key).map(|p| {
+                    let expr = crate::browser::js::js_scan(
+                        &crate::browser::js::js_selectors(&[p.selector.clone()]),
+                        "var el=Q(S[i]);if(el){el.click();return true;}",
+                        "false",
+                    );
+                    self.eval_bool(&expr)
+                });
+                match clicked {
+                    Some(true) => {
+                        eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
+                        std::thread::sleep(Duration::from_millis(1500));
+                        self.scan_once()
+                    }
+                    _ => {
+                        eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
+                        Ok((cands, props))
+                    }
+                }
+            }
+            (None, r) => r,
+            (_, Err(e)) => Err(e),
+        };
         let _ = self.stop();
-        result
+        opened
     }
 
     /// Ein einzelner Scan gegen die offene Seite (Browser muss laufen).
@@ -1070,9 +1096,14 @@ return null;}})()"#,
     /// wird ein Composer gefunden, aber kein Absende-Knopf, fuellt ein
     /// Testwort den Editor und scannt erneut. Viele SPAs (z.B. Perplexity)
     /// rendern den Send-Button erst, wenn Text drinsteht.
+    ///
+    /// `open_key`: nach dem ersten Scan diesen Vorschlag anklicken und einen
+    /// weiteren Scan ausloesen — Menue-Eintraege (`model_option` etc.) sind
+    /// erst sichtbar, wenn das Menue offen ist.
     pub fn probe_surface_with_fill(
         &mut self,
         headless: bool,
+        open_key: Option<&str>,
     ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
         self.start(headless)?;
         self.dismiss_consent();
@@ -1092,6 +1123,34 @@ return null;}})()"#,
         } else {
             Ok((candidates, proposals))
         };
+        if let Some(key) = open_key {
+            let opened = match result {
+                Ok((cands, props)) => {
+                    let clicked = props.iter().find(|p| p.selector_key == key).map(|p| {
+                        let expr = crate::browser::js::js_scan(
+                            &crate::browser::js::js_selectors(&[p.selector.clone()]),
+                            "var el=Q(S[i]);if(el){el.click();return true;}",
+                            "false",
+                        );
+                        self.eval_bool(&expr)
+                    });
+                    match clicked {
+                        Some(true) => {
+                            eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
+                            std::thread::sleep(Duration::from_millis(1500));
+                            self.scan_once()
+                        }
+                        _ => {
+                            eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
+                            Ok((cands, props))
+                        }
+                    }
+                }
+                Err(e) => Err(e),
+            };
+            let _ = self.stop();
+            return opened;
+        }
         let _ = self.stop();
         result
     }

@@ -87,152 +87,182 @@ struct Rule {
     needles: &'static [&'static str],
     /// Diese Woerter schliessen einen Treffer aus (Falschfreunde).
     excludes: &'static [&'static str],
+    /// Nur Kandidaten mit einer dieser `role`-Werte sind Kandidaten; `None`
+    /// = jede Rolle erlaubt. Fuer Menue-Eintraege (`model_option`) zwingend,
+    /// sonst matcht z.B. „Projekte" auf die Modell-Option, weil der Teilstring
+    /// „pro" im aria-label steckt.
+    roles: Option<&'static [&'static str]>,
+}
+
+macro_rules! rule {
+    ($cap:expr, $key:expr, $needles:expr, $excludes:expr $(,)?) => {
+        Rule {
+            capability_key: $cap,
+            selector_key: $key,
+            needles: $needles,
+            excludes: $excludes,
+            roles: None,
+        }
+    };
+    ($cap:expr, $key:expr, $needles:expr, $excludes:expr, $roles:expr $(,)?) => {
+        Rule {
+            capability_key: $cap,
+            selector_key: $key,
+            needles: $needles,
+            excludes: $excludes,
+            roles: Some($roles),
+        }
+    };
 }
 
 const RULES: &[Rule] = &[
-    Rule {
-        capability_key: "chat",
-        selector_key: "send_button",
-        needles: &[
+    rule!(
+        "chat",
+        "send_button",
+        &[
             "send", "senden", "absenden", "abschicken", "nachricht senden",
             "send prompt", "send message",
         ],
-        // „Sprachnachricht senden" ist der Sprachdialog, nicht der Absendeknopf.
-        excludes: &["sprach", "voice", "audio"],
-    },
-    Rule {
-        capability_key: "stop_generation",
-        selector_key: "stop_button",
-        needles: &[
+        &["sprach", "voice", "audio"],
+    ),
+    rule!(
+        "stop_generation",
+        "stop_button",
+        &[
             "stop", "stopp", "stoppen", "abbrechen", "beenden",
             "antwort stoppen", "generierung beenden", "stop streaming",
         ],
-        excludes: &["sprach", "voice"],
-    },
-    Rule {
-        capability_key: "new_chat",
-        selector_key: "new_chat_button",
-        needles: &[
+        &["sprach", "voice"],
+    ),
+    rule!(
+        "new_chat",
+        "new_chat_button",
+        &[
             "new chat", "neuer chat", "neue unterhaltung", "neuer thread",
             "new conversation", "neues gespraech", "neues gespräch",
         ],
-        excludes: &["temporary", "temporaer", "temporär"],
-    },
-    Rule {
-        capability_key: "temporary_chat",
-        selector_key: "temporary_chat_button",
-        needles: &[
+        &["temporary", "temporaer", "temporär"],
+    ),
+    rule!(
+        "temporary_chat",
+        "temporary_chat_button",
+        &[
             "temporary chat", "temporaerer chat", "temporärer chat",
             "temporary", "temporaer", "temporär", "incognito", "inkognito",
         ],
-        excludes: &[],
-    },
-    Rule {
-        capability_key: "deep_research",
-        selector_key: "deep_research_toggle",
-        needles: &[
+        &[],
+    ),
+    rule!(
+        "deep_research",
+        "deep_research_toggle",
+        &[
             "deep research", "deepresearch", "tiefe recherche",
             "tiefenrecherche", "ausfuehrliche recherche", "ausführliche recherche",
         ],
-        excludes: &[],
-    },
-    Rule {
-        capability_key: "web_search",
-        selector_key: "web_search_toggle",
-        needles: &[
+        &[],
+    ),
+    rule!(
+        "web_search",
+        "web_search_toggle",
+        &[
             "web search", "websuche", "web-suche", "im internet suchen",
             "search the web", "internetsuche",
         ],
-        excludes: &["deep"],
-    },
-    Rule {
-        capability_key: "reasoning_toggle",
-        selector_key: "reasoning_toggle",
-        needles: &["reason", "denken", "nachdenken", "think", "thinking"],
-        // Die Denkstufe ist eine eigene Faehigkeit (reasoning_effort).
-        excludes: &["stufe", "effort", "tiefe"],
-    },
-    Rule {
-        capability_key: "regenerate",
-        selector_key: "regenerate_button",
-        needles: &[
+        &["deep"],
+    ),
+    rule!(
+        "reasoning_toggle",
+        "reasoning_toggle",
+        &["reason", "denken", "nachdenken", "think", "thinking"],
+        &["stufe", "effort", "tiefe"],
+    ),
+    rule!(
+        "regenerate",
+        "regenerate_button",
+        &[
             "regenerate", "neu erzeugen", "neu generieren", "erneut versuchen",
             "try again", "wiederholen",
         ],
-        excludes: &[],
-    },
-    // Login/Oberflaechen-Einstieg — ohne den kommt man nicht an den Composer.
-    Rule {
-        capability_key: "chat",
-        selector_key: "login_button",
-        needles: &[
+        &[],
+    ),
+    rule!(
+        "chat",
+        "login_button",
+        &[
             "anmelden", "log in", "sign in", "signin", "einloggen",
             "login", "se connecter", "sich anmelden",
         ],
-        // „Abmelden"/„ausloggen" ist das Gegenteil und kein Einstieg.
-        excludes: &["ab", "aus", "logout", "abmelden"],
-    },
-    Rule {
-        capability_key: "model_switch",
-        selector_key: "model_menu",
-        needles: &[
+        &["ab", "aus", "logout", "abmelden"],
+    ),
+    rule!(
+        "model_switch",
+        "model_menu",
+        &[
             "modell", "model selector", "choose model", "switch model",
             "modell wählen", "change model", "model",
         ],
-        // „Modell" als reiner Menue-Oeffner, nicht ein konkreter Modelleintrag:
-        // eine Optionsliste liefert `model_option` weiter unten.
-        excludes: &["option", "einstellung"],
-    },
-    Rule {
-        capability_key: "projects",
-        selector_key: "projects_button",
-        needles: &[
+        &["option", "einstellung"],
+    ),
+    rule!(
+        "model_switch",
+        "model_option",
+        &[
+            "gpt", "o3", "o4", "claude", "sonnet", "opus", "haiku",
+            "deepseek", "reasoner", "kimi", "moonshot", "mistral", "mixtral",
+            "gemini", "flash", "qwen", "max", "plus", "turbo", "glm",
+            "llama", "perplexity", "sonar",
+        ],
+        &["modell wählen", "model selector", "switch model", "change model"],
+        &["option", "menuitem", "radio"],
+    ),
+    rule!(
+        "projects",
+        "projects_button",
+        &[
             "projekte", "projects", "arbeitsbereiche", "workspaces",
             "projektübersicht", "projektuebersicht",
         ],
-        excludes: &[],
-    },
-    Rule {
-        capability_key: "file_attach",
-        selector_key: "attach_button",
-        needles: &[
+        &[],
+    ),
+    rule!(
+        "file_attach",
+        "attach_button",
+        &[
             "datei", "dateien", "anhängen", "anhaengen", "hinzufügen",
             "hinzufuegen", "attach", "upload", "hochladen",
         ],
-        // „Dateien oder Tools hinzufügen" ist Anhaengen, kein Tool-Menue.
-        excludes: &["tool"],
-    },
-    Rule {
-        capability_key: "voice_input",
-        selector_key: "voice_input_button",
-        needles: &[
+        &["tool"],
+    ),
+    rule!(
+        "voice_input",
+        "voice_input_button",
+        &[
             "mikrofon", "spracheingabe", "diktiermodus", "voice input",
             "diktieren",
         ],
-        excludes: &[],
-    },
-    Rule {
-        capability_key: "voice_mode",
-        selector_key: "voice_mode_button",
-        needles: &[
+        &[],
+    ),
+    rule!(
+        "voice_mode",
+        "voice_mode_button",
+        &[
             "sprachmodus", "voice mode", "sprachdialog", "sprachmodus verwenden",
         ],
-        excludes: &[],
-    },
-    Rule {
+        &[],
+    ),
+    rule!(
         // Kein Capability-Key im Katalog: `consent_reject_button` ist ein
         // reiner Dialog-Selektor fuer `dismiss_consent`, kein Level-Faehigkeit.
         // Der capability_key bleibt dennoch ein gueltiges Katalog-Mitglied,
         // damit die Deutung typgleich bleibt.
-        capability_key: "chat",
-        selector_key: "consent_reject_button",
-        needles: &[
+        "chat",
+        "consent_reject_button",
+        &[
             "nur notwendige", "ablehnen", "reject all", "tout refuser",
             "nur notwendige cookies", "nicht akzeptieren",
         ],
-        // „Alle zulassen" ist Zustimmen, nicht Ablehnen.
-        excludes: &["alle", "zulassen", "akzeptieren", "accept"],
-    },
+        &["alle", "zulassen", "akzeptieren", "accept"],
+    ),
 ];
 
 /// JS, das die Bedienelemente der Seite einsammelt.
@@ -245,8 +275,9 @@ pub const PROBE_SCRIPT: &str = r#"
 (() => {
   const out = [];
   const sel = [
-    'button', 'a[href]', '[role=button]', '[role=menuitem]', '[role=switch]',
-    '[role=tab]', 'textarea', 'input[type=text]', '[contenteditable=true]'
+    'button', 'a[href]', '[role=button]', '[role=menuitem]', '[role=option]',
+    '[role=switch]', '[role=radio]', '[role=tab]', 'textarea',
+    'input[type=text]', '[contenteditable=true]'
   ].join(', ');
   for (const el of document.querySelectorAll(sel)) {
     const r = el.getBoundingClientRect();
@@ -345,6 +376,11 @@ pub fn classify(candidates: &[Candidate]) -> Vec<Proposal> {
         // beschriftungsloser Zufallstreffer keinen data-testid verdraengt.
         let mut best: Option<Proposal> = None;
         for candidate in candidates.iter().filter(|c| c.visible) {
+            if let Some(roles) = rule.roles {
+                if !roles.contains(&candidate.role.as_str()) {
+                    continue;
+                }
+            }
             let haystack = candidate.haystack();
             if haystack.trim().is_empty() {
                 continue;

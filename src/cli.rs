@@ -327,6 +327,10 @@ pub enum Commands {
         /// Vorschlaege live nachpruefen (Zustandsbeleg, kann Zeit kosten)
         #[arg(long)]
         verify: bool,
+        /// Nach dem ersten Scan diesen Vorschlag anklicken und erneut scannen
+        /// (z.B. `model_menu`, damit die Menue-Eintraege sichtbar werden)
+        #[arg(long)]
+        open: Option<String>,
         /// Rohe DOM-Kandidaten ausgeben (fuer die Analyse von Fehlfunden)
         #[arg(long)]
         dump: bool,
