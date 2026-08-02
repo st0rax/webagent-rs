@@ -196,6 +196,7 @@ fn dispatch(command: Commands) -> i32 {
             brain,
             write,
             verify,
+            dump,
             visible,
         } => cmd_probe(
             url.as_deref(),
@@ -203,6 +204,7 @@ fn dispatch(command: Commands) -> i32 {
             brain.as_deref(),
             write,
             verify,
+            dump,
             !visible,
         ),
 

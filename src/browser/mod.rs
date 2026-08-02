@@ -1006,19 +1006,41 @@ return null;}})()"#,
     /// deutet. Der Aufrufer entscheidet, ob die Funde als Selektoren
     /// uebernommen werden.
     pub fn probe_surface(&mut self, headless: bool) -> Result<Vec<crate::brain_probe::Proposal>, String> {
+        let (_, proposals) = self.probe_surface_with_raw(headless)?;
+        Ok(proposals)
+    }
+
+    /// Wie [`probe_surface`], gibt aber auch die rohen DOM-Kandidaten mit
+    /// zurueck — fuer die Analyse von Fehlfunden (Warum wurde der Absende-
+    /// Knopf nicht erkannt?).
+    pub fn probe_surface_with_raw(
+        &mut self,
+        headless: bool,
+    ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
         self.wait_for_labeled_controls();
-        let proposals = {
-            let mut guard = self.driver.borrow_mut();
-            let driver = guard
-                .as_mut()
-                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-            crate::brain_probe::probe(driver.as_mut()).map_err(|e| e.to_string())
-        };
+        let result = self.scan_once();
         let _ = self.stop();
-        proposals
+        result
+    }
+
+    /// Ein einzelner Scan gegen die offene Seite (Browser muss laufen).
+    fn scan_once(
+        &self,
+    ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard
+            .as_mut()
+            .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+        let raw = driver
+            .evaluate(crate::brain_probe::PROBE_SCRIPT)
+            .map_err(|e| e.to_string())?;
+        let candidates: Vec<crate::brain_probe::Candidate> =
+            serde_json::from_value(raw).unwrap_or_default();
+        let proposals = crate::brain_probe::classify(&candidates);
+        Ok((candidates, proposals))
     }
 
     /// Faehrt einen Vorschlag aus [`probe_surface`] live an der offenen Seite:
@@ -1044,7 +1066,35 @@ return null;}})()"#,
         verdict
     }
 
-    /// Live-Diagnose: startet den Browser, prüft am echten DOM Login-Zustand,
+    /// Oberflaechen-Analyse wie [`probe_surface`], aber mit einer zweiten Runde:
+    /// wird ein Composer gefunden, aber kein Absende-Knopf, fuellt ein
+    /// Testwort den Editor und scannt erneut. Viele SPAs (z.B. Perplexity)
+    /// rendern den Send-Button erst, wenn Text drinsteht.
+    pub fn probe_surface_with_fill(
+        &mut self,
+        headless: bool,
+    ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+        self.wait_for_labeled_controls();
+        let (candidates, proposals) = self.scan_once()?;
+        let has_composer = proposals.iter().any(|p| p.selector_key == "composer");
+        let has_send = proposals.iter().any(|p| p.selector_key == "send_button");
+        let result = if has_composer && !has_send {
+            eprintln!(
+                "[probe] Composer gefunden, Send-Button nicht — fuelle Editor und scanne erneut…"
+            );
+            let fill = "(function(){var el=document.querySelector('#ask-input')||document.querySelector('[contenteditable=true]')||document.querySelector('textarea');if(!el)return false;el.focus();if(el.isContentEditable){if(document.execCommand&&document.execCommand('insertText',false,'test')){return true;}el.innerText='test';var ev=new Event('input',{bubbles:true});el.dispatchEvent(ev);return true;}if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){var set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')||Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(set&&set.set){set.set.call(el,'test');var ev2=new Event('input',{bubbles:true});el.dispatchEvent(ev2);return true;}}return false;})()";
+            let _ = self.eval_js(fill);
+            std::thread::sleep(Duration::from_millis(1200));
+            self.scan_once()
+        } else {
+            Ok((candidates, proposals))
+        };
+        let _ = self.stop();
+        result
+    }
     /// Composer-/Assistant-Selektoren und Cloudflare, und schließt wieder. Deckt
     /// Selektor-Drift auf, die `doctor` (read-only) nicht sehen kann.
     pub fn live_diagnose(&mut self, headless: bool) -> Result<LiveDiagnosis, String> {

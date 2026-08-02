@@ -123,7 +123,7 @@ const RULES: &[Rule] = &[
         selector_key: "temporary_chat_button",
         needles: &[
             "temporary chat", "temporaerer chat", "temporärer chat",
-            "temporary", "temporaer", "temporär", "incognito",
+            "temporary", "temporaer", "temporär", "incognito", "inkognito",
         ],
         excludes: &[],
     },
@@ -160,6 +160,78 @@ const RULES: &[Rule] = &[
             "try again", "wiederholen",
         ],
         excludes: &[],
+    },
+    // Login/Oberflaechen-Einstieg — ohne den kommt man nicht an den Composer.
+    Rule {
+        capability_key: "chat",
+        selector_key: "login_button",
+        needles: &[
+            "anmelden", "log in", "sign in", "signin", "einloggen",
+            "login", "se connecter", "sich anmelden",
+        ],
+        // „Abmelden"/„ausloggen" ist das Gegenteil und kein Einstieg.
+        excludes: &["ab", "aus", "logout", "abmelden"],
+    },
+    Rule {
+        capability_key: "model_switch",
+        selector_key: "model_menu",
+        needles: &[
+            "modell", "model selector", "choose model", "switch model",
+            "modell wählen", "change model", "model",
+        ],
+        // „Modell" als reiner Menue-Oeffner, nicht ein konkreter Modelleintrag:
+        // eine Optionsliste liefert `model_option` weiter unten.
+        excludes: &["option", "einstellung"],
+    },
+    Rule {
+        capability_key: "projects",
+        selector_key: "projects_button",
+        needles: &[
+            "projekte", "projects", "arbeitsbereiche", "workspaces",
+            "projektübersicht", "projektuebersicht",
+        ],
+        excludes: &[],
+    },
+    Rule {
+        capability_key: "file_attach",
+        selector_key: "attach_button",
+        needles: &[
+            "datei", "dateien", "anhängen", "anhaengen", "hinzufügen",
+            "hinzufuegen", "attach", "upload", "hochladen",
+        ],
+        // „Dateien oder Tools hinzufügen" ist Anhaengen, kein Tool-Menue.
+        excludes: &["tool"],
+    },
+    Rule {
+        capability_key: "voice_input",
+        selector_key: "voice_input_button",
+        needles: &[
+            "mikrofon", "spracheingabe", "diktiermodus", "voice input",
+            "diktieren",
+        ],
+        excludes: &[],
+    },
+    Rule {
+        capability_key: "voice_mode",
+        selector_key: "voice_mode_button",
+        needles: &[
+            "sprachmodus", "voice mode", "sprachdialog", "sprachmodus verwenden",
+        ],
+        excludes: &[],
+    },
+    Rule {
+        // Kein Capability-Key im Katalog: `consent_reject_button` ist ein
+        // reiner Dialog-Selektor fuer `dismiss_consent`, kein Level-Faehigkeit.
+        // Der capability_key bleibt dennoch ein gueltiges Katalog-Mitglied,
+        // damit die Deutung typgleich bleibt.
+        capability_key: "chat",
+        selector_key: "consent_reject_button",
+        needles: &[
+            "nur notwendige", "ablehnen", "reject all", "tout refuser",
+            "nur notwendige cookies", "nicht akzeptieren",
+        ],
+        // „Alle zulassen" ist Zustimmen, nicht Ablehnen.
+        excludes: &["alle", "zulassen", "akzeptieren", "accept"],
     },
 ];
 
@@ -491,6 +563,73 @@ mod tests {
         let keys: Vec<&str> = found.iter().map(|p| p.capability_key).collect();
         assert!(keys.contains(&"deep_research"), "{keys:?}");
         assert!(keys.contains(&"temporary_chat"), "{keys:?}");
+    }
+
+    #[test]
+    fn perplexity_deutsche_oberflaeche_wird_gedeutet() {
+        // Real aus dem Perplexity-DOM geerntet (headless, 2026-07): deutsche
+        // Beschriftungen, die die englischen Muster alle verfehlt haetten.
+        let candidates = vec![
+            Candidate {
+                tag: "button".into(),
+                aria_label: "Modell".into(),
+                text: "Modell".into(),
+                visible: true,
+                ..Default::default()
+            },
+            Candidate {
+                tag: "a".into(),
+                aria_label: "Projekte".into(),
+                visible: true,
+                ..Default::default()
+            },
+            Candidate {
+                tag: "button".into(),
+                text: "Anmelden".into(),
+                visible: true,
+                ..Default::default()
+            },
+            Candidate {
+                tag: "button".into(),
+                aria_label: "Inkognito verwenden: Anonyme Sitzungen erstellen".into(),
+                visible: true,
+                ..Default::default()
+            },
+            Candidate {
+                tag: "button".into(),
+                aria_label: "Diktiermodus".into(),
+                visible: true,
+                ..Default::default()
+            },
+            Candidate {
+                tag: "button".into(),
+                text: "Nur notwendige".into(),
+                visible: true,
+                ..Default::default()
+            },
+        ];
+        let found = classify(&candidates);
+        let keys: Vec<(String, String)> = found
+            .iter()
+            .map(|p| (p.capability_key.to_string(), p.selector_key.to_string()))
+            .collect();
+        assert!(keys.contains(&("model_switch".into(), "model_menu".into())), "{keys:?}");
+        assert!(keys.contains(&("projects".into(), "projects_button".into())), "{keys:?}");
+        assert!(keys.contains(&("chat".into(), "login_button".into())), "{keys:?}");
+        assert!(keys.contains(&("temporary_chat".into(), "temporary_chat_button".into())), "{keys:?}");
+        assert!(keys.contains(&("voice_input".into(), "voice_input_button".into())), "{keys:?}");
+        assert!(keys.contains(&("chat".into(), "consent_reject_button".into())), "{keys:?}");
+    }
+
+    #[test]
+    fn alle_zulassen_ist_kein_ablehnen() {
+        // „Alle zulassen" (Perplexity-Cookie-Banner) ist Zustimmen — der
+        // Ablehnen-Selektor muss es uebersehen.
+        let found = classify(&[button("Alle zulassen")]);
+        assert!(
+            found.iter().all(|p| p.selector_key != "consent_reject_button"),
+            "{found:?}"
+        );
     }
 
     #[test]

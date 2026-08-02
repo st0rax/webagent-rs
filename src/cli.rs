@@ -327,6 +327,9 @@ pub enum Commands {
         /// Vorschlaege live nachpruefen (Zustandsbeleg, kann Zeit kosten)
         #[arg(long)]
         verify: bool,
+        /// Rohe DOM-Kandidaten ausgeben (fuer die Analyse von Fehlfunden)
+        #[arg(long)]
+        dump: bool,
         /// Sichtbar statt headless (beim ersten Mal fuer den Login noetig)
         #[arg(long)]
         visible: bool,

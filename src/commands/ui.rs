@@ -492,6 +492,7 @@ pub fn cmd_probe(
     brain: Option<&str>,
     write: bool,
     verify: bool,
+    dump: bool,
     headless: bool,
 ) -> i32 {
     use webagent::brain_probe::{Proposal, Verdict};
@@ -540,13 +541,43 @@ pub fn cmd_probe(
     };
 
     eprintln!("[probe] {id}: oeffne Oberflaeche (headless={headless})…");
-    let proposals = match backend.probe_surface(headless) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[probe] {id}: Fehler: {e}");
-            return 1;
+    // `--dump` zeigt die Rohehebung (ohne Fill-Runde, sonst ist der Composer
+    // schon gefuellt und die Antwort verdraengt die echten Bedienelemente).
+    let (candidates, proposals) = if dump {
+        match backend.probe_surface_with_raw(headless) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[probe] {id}: Fehler: {e}");
+                return 1;
+            }
+        }
+    } else {
+        match backend.probe_surface_with_fill(headless) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[probe] {id}: Fehler: {e}");
+                return 1;
+            }
         }
     };
+
+    if dump {
+        println!("  --- {id}: ROHE DOM-KANDIDATEN ({}) ---", candidates.len());
+        for c in candidates.iter() {
+            println!(
+                "      <{}> role={} visible={} al={:?} txt={:?} tid={:?} id={:?} ph={:?} ce={}",
+                c.tag,
+                c.role,
+                c.visible,
+                c.aria_label,
+                c.text,
+                c.test_id,
+                c.id,
+                c.placeholder,
+                c.contenteditable
+            );
+        }
+    }
 
     if proposals.is_empty() {
         eprintln!("[probe] {id}: keine Bedienelemente gefunden — ist ein Login noetig?");
