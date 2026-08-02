@@ -148,11 +148,124 @@ pub fn dock_area(screen: Rect, terminal: Rect) -> Rect {
     let above_height = (terminal.y - screen.y).max(0) as u32;
     let below_height = (screen.bottom() - terminal.bottom()).max(0) as u32;
 
+    // Der haeufigste Fall in der Praxis: das Terminal ist maximiert und deckt
+    // den ganzen Arbeitsbereich ab (gemessen 02.08.2026: 1936x1048 ueber einem
+    // Arbeitsbereich von 1920x1032). Dann gibt es weder oberhalb noch unterhalb
+    // Platz, und ein Andocken „daneben" ist schlicht unmoeglich.
+    //
+    // Statt in diesem Fall nichts anzuzeigen, legt sich die Kachelansicht
+    // ueber den oberen Teil des Terminalfensters. Das ist naeher an dem, was
+    // gewuenscht war („oberhalb der TUI"), als ein leerer Bildschirm — und die
+    // TUI bleibt darunter lesbar.
+    if above_height < MIN_TILE_HEIGHT && below_height < MIN_TILE_HEIGHT {
+        let overlay_height = terminal.height * GRID_HEIGHT_SHARE / 100;
+        return Rect::new(terminal.x, terminal.y, terminal.width, overlay_height);
+    }
+
     if above_height >= MIN_TILE_HEIGHT || above_height >= below_height {
         Rect::new(screen.x, screen.y, screen.width, above_height)
     } else {
         Rect::new(screen.x, terminal.bottom(), screen.width, below_height)
     }
+}
+
+/// Rechteck des Terminalfensters, in dem dieser Prozess laeuft.
+///
+/// **Nicht** ueber `GetConsoleWindow`: unter Windows Terminal liefert das nur
+/// ein verstecktes Pseudokonsolen-Fenster, dessen Rechteck mit dem sichtbaren
+/// Fenster nichts zu tun hat. Stattdessen die Elternkette hochlaufen, bis ein
+/// Prozess mit sichtbarem Fenster kommt — gemessen am 02.08.2026:
+/// `webagent.exe -> pwsh.exe -> WindowsTerminal.exe`, und erst der letzte hat
+/// ein Fenster.
+#[cfg(all(windows, feature = "webview"))]
+pub fn terminal_window_rect() -> Option<Rect> {
+    let mut pid = std::process::id();
+    for _ in 0..6 {
+        if let Some(rect) = visible_window_of(pid) {
+            return Some(rect);
+        }
+        pid = parent_pid(pid)?;
+    }
+    None
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+pub fn terminal_window_rect() -> Option<Rect> {
+    None
+}
+
+#[cfg(all(windows, feature = "webview"))]
+fn parent_pid(pid: u32) -> Option<u32> {
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut found = None;
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                if entry.th32ProcessID == pid {
+                    found = Some(entry.th32ParentProcessID);
+                    break;
+                }
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = windows::Win32::Foundation::CloseHandle(snapshot);
+        found.filter(|p| *p != 0 && *p != pid)
+    }
+}
+
+#[cfg(all(windows, feature = "webview"))]
+struct WindowSearch {
+    pid: u32,
+    result: Option<Rect>,
+}
+
+#[cfg(all(windows, feature = "webview"))]
+fn visible_window_of(pid: u32) -> Option<Rect> {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible,
+    };
+
+    unsafe extern "system" fn callback(window: HWND, param: LPARAM) -> BOOL {
+        let search = &mut *(param.0 as *mut WindowSearch);
+        let mut owner = 0u32;
+        GetWindowThreadProcessId(window, Some(&mut owner));
+        if owner != search.pid || !IsWindowVisible(window).as_bool() {
+            return BOOL(1);
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(window, &mut rect).is_err() {
+            return BOOL(1);
+        }
+        let width = (rect.right - rect.left).max(0) as u32;
+        let height = (rect.bottom - rect.top).max(0) as u32;
+        // Werkzeug- und Nachrichtenfenster aussortieren: nur etwas, das als
+        // Terminalfenster durchgeht, ist hier gemeint.
+        if width < 200 || height < 100 {
+            return BOOL(1);
+        }
+        search.result = Some(Rect::new(rect.left, rect.top, width, height));
+        BOOL(0)
+    }
+
+    let mut search = WindowSearch { pid, result: None };
+    unsafe {
+        let _ = EnumWindows(
+            Some(callback),
+            LPARAM(&mut search as *mut WindowSearch as isize),
+        );
+    }
+    search.result
 }
 
 /// Passt die Kachelzahl an, wenn `n` Kacheln zu klein wuerden.
@@ -178,7 +291,7 @@ pub fn fitting_tile_count(area: Rect, desired: usize) -> usize {
 ///
 /// Bewusst das Arbeitsbereichs-Rechteck und nicht die volle Aufloesung: eine
 /// Kachel unter der Taskleiste ist eine Kachel, die man nicht sieht.
-#[cfg(windows)]
+#[cfg(all(windows, feature = "webview"))]
 pub fn primary_work_area() -> Option<Rect> {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -204,7 +317,7 @@ pub fn primary_work_area() -> Option<Rect> {
     Some(Rect::new(rect.left, rect.top, width, height))
 }
 
-#[cfg(not(windows))]
+#[cfg(not(all(windows, feature = "webview")))]
 pub fn primary_work_area() -> Option<Rect> {
     None
 }
@@ -221,6 +334,15 @@ const GRID_HEIGHT_SHARE: u32 = 60;
 /// oberer Streifen als eine Andockung, die je nach Terminal falsch liegt.
 pub fn default_grid_area() -> Option<Rect> {
     let work = primary_work_area()?;
+    // Wenn sich das Terminalfenster finden laesst, richtet sich die
+    // Kachelansicht danach aus statt an einem festen Streifen — genau das war
+    // der Wunsch („oberhalb der TUI angedockt").
+    if let Some(terminal) = terminal_window_rect() {
+        let area = dock_area(work, terminal);
+        if !area.is_empty() {
+            return Some(area);
+        }
+    }
     let height = work.height * GRID_HEIGHT_SHARE / 100;
     if height == 0 {
         return None;
@@ -313,6 +435,28 @@ mod tests {
         let area = dock_area(SCREEN, terminal);
         assert_eq!(area.y, terminal.bottom(), "Kachelansicht weicht unter das Terminal");
         assert!(area.height > MIN_TILE_HEIGHT);
+    }
+
+    #[test]
+    fn maximiertes_terminal_bekommt_eine_ueberlagerung() {
+        // Der real gemessene Fall vom 02.08.2026: Windows Terminal maximiert,
+        // 1936x1048 (mit Maximierungs-Ueberstand) auf einem Arbeitsbereich von
+        // 1920x1032. Oberhalb und unterhalb ist NICHTS frei.
+        let work = Rect::new(0, 0, 1920, 1032);
+        let terminal = Rect::new(-8, -8, 1936, 1048);
+        let area = dock_area(work, terminal);
+
+        assert!(
+            !area.is_empty(),
+            "ohne freien Platz darf die Kachelansicht nicht verschwinden"
+        );
+        assert_eq!(area.y, terminal.y, "sie legt sich oben auf das Terminal");
+        assert!(
+            area.height < terminal.height,
+            "die TUI muss darunter lesbar bleiben"
+        );
+        // Und es muessen echte Kacheln hineinpassen.
+        assert!(fitting_tile_count(area, 8) >= 4, "zu wenig Platz fuer Kacheln");
     }
 
     #[test]
