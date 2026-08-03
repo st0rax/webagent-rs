@@ -1135,14 +1135,25 @@ fn toggle_brain_grid(on: bool) -> String {
     let open = pool.open_brains().len();
     if !on {
         return match pool.arrange_brain_grid(None) {
-            Ok(_) => format!("Kacheln aus — {open} Fenster wieder geparkt"),
+            Ok(_) => {
+                let restore = crate::brain_grid::restore_terminal();
+                match restore {
+                    Ok(()) => format!("Kacheln aus — {open} Fenster wieder geparkt, Terminal zurueck"),
+                    Err(e) => format!("Kacheln aus — {open} Fenster geparkt, Terminal-Reset fehlgeschlagen: {e}"),
+                }
+            }
             Err(e) => format!("Kacheln aus fehlgeschlagen: {e}"),
         };
     }
     if open == 0 {
         return "Kacheln: kein Brain-Fenster offen".to_string();
     }
-    let Some(area) = crate::brain_grid::default_grid_area() else {
+    // Wunsch (03.08.2026): Terminal links 50 %, Wall rechts 50 %. Erst das
+    // Terminalfenster andocken, dann die Brains in der rechten Haelfte kacheln.
+    if let Err(e) = crate::brain_grid::dock_terminal_left() {
+        return format!("Kacheln: Terminal links andocken fehlgeschlagen: {e}");
+    }
+    let Some(area) = crate::brain_grid::wall_area() else {
         return "Kacheln: Bildschirmflaeche nicht ermittelbar".to_string();
     };
     match pool.arrange_brain_grid(Some(area)) {

@@ -139,34 +139,22 @@ pub fn grid_layout(area: Rect, n: usize) -> Vec<Rect> {
     tiles
 }
 
-/// Wohin die Kachelansicht relativ zum Terminalfenster gehoert.
+/// Teilung des Arbeitsbereichs: Terminal links, Kachelwand rechts.
 ///
-/// Storax' Wunsch ist „oberhalb der TUI angedockt". Reicht der Platz oberhalb
-/// nicht, ist ein zu flacher Streifen schlechter als die Alternative: dann
-/// bekommt die Kachelansicht den groesseren der beiden freien Bereiche.
-pub fn dock_area(screen: Rect, terminal: Rect) -> Rect {
-    let above_height = (terminal.y - screen.y).max(0) as u32;
-    let below_height = (screen.bottom() - terminal.bottom()).max(0) as u32;
-
-    // Der haeufigste Fall in der Praxis: das Terminal ist maximiert und deckt
-    // den ganzen Arbeitsbereich ab (gemessen 02.08.2026: 1936x1048 ueber einem
-    // Arbeitsbereich von 1920x1032). Dann gibt es weder oberhalb noch unterhalb
-    // Platz, und ein Andocken „daneben" ist schlicht unmoeglich.
-    //
-    // Statt in diesem Fall nichts anzuzeigen, legt sich die Kachelansicht
-    // ueber den oberen Teil des Terminalfensters. Das ist naeher an dem, was
-    // gewuenscht war („oberhalb der TUI"), als ein leerer Bildschirm — und die
-    // TUI bleibt darunter lesbar.
-    if above_height < MIN_TILE_HEIGHT && below_height < MIN_TILE_HEIGHT {
-        let overlay_height = terminal.height * GRID_HEIGHT_SHARE / 100;
-        return Rect::new(terminal.x, terminal.y, terminal.width, overlay_height);
-    }
-
-    if above_height >= MIN_TILE_HEIGHT || above_height >= below_height {
-        Rect::new(screen.x, screen.y, screen.width, above_height)
-    } else {
-        Rect::new(screen.x, terminal.bottom(), screen.width, below_height)
-    }
+/// Storax' Wunsch (03.08.2026): die TUI sitzt links auf 50 % der
+/// Bildschirmbreite, daneben rechts die Brain-Wall auf den anderen 50 %. Die
+/// TUI dockt sich beim `w`-Toggle selbst in die linke Haelfte (siehe
+/// [`dock_terminal_left`]) und die Kacheln verteilen sich auf die rechte.
+pub fn split_areas(work: Rect) -> (Rect, Rect) {
+    let left_width = work.width / 2;
+    let terminal = Rect::new(work.x, work.y, left_width, work.height);
+    let wall = Rect::new(
+        work.x + left_width as i32,
+        work.y,
+        work.width - left_width,
+        work.height,
+    );
+    (terminal, wall)
 }
 
 /// Rechteck des Terminalfensters, in dem dieser Prozess laeuft.
@@ -179,18 +167,29 @@ pub fn dock_area(screen: Rect, terminal: Rect) -> Rect {
 /// ein Fenster.
 #[cfg(all(windows, feature = "webview"))]
 pub fn terminal_window_rect() -> Option<Rect> {
-    let mut pid = std::process::id();
-    for _ in 0..6 {
-        if let Some(rect) = visible_window_of(pid) {
-            return Some(rect);
-        }
-        pid = parent_pid(pid)?;
-    }
-    None
+    terminal_window_handle().map(|(_, rect)| rect)
 }
 
 #[cfg(not(all(windows, feature = "webview")))]
 pub fn terminal_window_rect() -> Option<Rect> {
+    None
+}
+
+/// Fenster (HWND + Rechteck) des Terminalfensters, in dem dieser Prozess laeuft.
+///
+/// Der Weg ueber die Elternkette ist der, den auch [`terminal_window_rect`]
+/// geht (`webagent.exe -> pwsh.exe -> WindowsTerminal.exe`). Hier kommt aber
+/// die HWND mit zurueck — die braucht die Kachelansicht, um das Terminalfenster
+/// selbst in die linke Bildschirmhaelfte zu docken.
+#[cfg(all(windows, feature = "webview"))]
+fn terminal_window_handle() -> Option<(windows::Win32::Foundation::HWND, Rect)> {
+    let mut pid = std::process::id();
+    for _ in 0..6 {
+        if let Some(hit) = visible_window_of(pid) {
+            return Some(hit);
+        }
+        pid = parent_pid(pid)?;
+    }
     None
 }
 
@@ -226,11 +225,13 @@ fn parent_pid(pid: u32) -> Option<u32> {
 #[cfg(all(windows, feature = "webview"))]
 struct WindowSearch {
     pid: u32,
-    result: Option<Rect>,
+    result: Option<(windows::Win32::Foundation::HWND, Rect)>,
 }
 
 #[cfg(all(windows, feature = "webview"))]
-fn visible_window_of(pid: u32) -> Option<Rect> {
+fn visible_window_of(
+    pid: u32,
+) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible,
@@ -254,7 +255,10 @@ fn visible_window_of(pid: u32) -> Option<Rect> {
         if width < 200 || height < 100 {
             return BOOL(1);
         }
-        search.result = Some(Rect::new(rect.left, rect.top, width, height));
+        search.result = Some((
+            window,
+            Rect::new(rect.left, rect.top, width, height),
+        ));
         BOOL(0)
     }
 
@@ -322,33 +326,106 @@ pub fn primary_work_area() -> Option<Rect> {
     None
 }
 
-/// Anteil der Bildschirmhoehe, den die Kachelansicht belegt, solange sie nicht an ein
-/// konkretes Terminalfenster angedockt ist.
-const GRID_HEIGHT_SHARE: u32 = 60;
-
-/// Kachelbereich ohne Terminal-Kopplung: oberer Teil des Arbeitsbereichs.
+/// Rechte Bildschirmhaelfte: der Bereich, in dem die Brain-Kacheln liegen.
 ///
-/// Erstes Inkrement bewusst ohne Fensterjagd: Windows Terminal liefert ueber
-/// `GetConsoleWindow` nur ein verstecktes Pseudokonsolen-Fenster, dessen Rect
-/// nichts mit dem sichtbaren Fenster zu tun hat. Lieber ein verlaesslicher
-/// oberer Streifen als eine Andockung, die je nach Terminal falsch liegt.
-pub fn default_grid_area() -> Option<Rect> {
+/// Die TUI dockt sich selbst in die linke Haelfte (siehe
+/// [`dock_terminal_left`]) und die Kachelwand bekommt die rechte — das ist
+/// Storax' Wunsch vom 03.08.2026 („Terminal links 50 %, Wall rechts 50 %").
+pub fn wall_area() -> Option<Rect> {
     let work = primary_work_area()?;
-    // Wenn sich das Terminalfenster finden laesst, richtet sich die
-    // Kachelansicht danach aus statt an einem festen Streifen — genau das war
-    // der Wunsch („oberhalb der TUI angedockt").
-    if let Some(terminal) = terminal_window_rect() {
-        let area = dock_area(work, terminal);
-        if !area.is_empty() {
-            return Some(area);
+    Some(split_areas(work).1)
+}
+
+/// Dockt das Terminalfenster dieses Prozesses in die linke Bildschirmhaelfte.
+///
+/// Merkt sich das alte Rechteck (inkl. Maximier-Status), damit
+/// [`restore_terminal`] den Zustand beim Ausschalten der Kachelansicht wieder
+/// herstellt.
+#[cfg(all(windows, feature = "webview"))]
+pub fn dock_terminal_left() -> Result<(), String> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IsZoomed, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
+    };
+    let Some((hwnd, old_rect)) = terminal_window_handle() else {
+        return Err("Terminalfenster nicht gefunden".into());
+    };
+    let maximized = unsafe { IsZoomed(hwnd).as_bool() };
+    let work = primary_work_area().ok_or("Arbeitsbereich nicht ermittelbar")?;
+    let (terminal_area, _) = split_areas(work);
+    // Maximierte Fenster ignorieren Groessenangaben von SetWindowPos — erst auf
+    // „normal" zuruecksetzen, dann andocken.
+    if maximized {
+        let _ = unsafe { ShowWindow(hwnd, SW_RESTORE) };
+    }
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            HWND_TOP,
+            terminal_area.x,
+            terminal_area.y,
+            terminal_area.width as i32,
+            terminal_area.height as i32,
+            SWP_NOACTIVATE | SWP_NOZORDER,
+        )
+        .map_err(|_| "SetWindowPos fehlgeschlagen".to_string())?;
+    }
+    *TERMINAL_SNAPSHOT.lock().unwrap() = Some(TerminalSnapshot {
+        rect: old_rect,
+        maximized,
+    });
+    Ok(())
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+pub fn dock_terminal_left() -> Result<(), String> {
+    Err("ohne webview-Feature nicht verfuegbar".into())
+}
+
+/// Stellt das Terminalfenster nach dem Ausschalten der Kachelansicht wieder her.
+#[cfg(all(windows, feature = "webview"))]
+pub fn restore_terminal() -> Result<(), String> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOZORDER, SW_MAXIMIZE,
+    };
+    let snapshot = TERMINAL_SNAPSHOT.lock().unwrap().take();
+    let Some(snapshot) = snapshot else {
+        return Ok(());
+    };
+    let Some((hwnd, _)) = terminal_window_handle() else {
+        return Err("Terminalfenster nicht gefunden".into());
+    };
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            HWND_TOP,
+            snapshot.rect.x,
+            snapshot.rect.y,
+            snapshot.rect.width as i32,
+            snapshot.rect.height as i32,
+            SWP_NOACTIVATE | SWP_NOZORDER,
+        )
+        .map_err(|_| "SetWindowPos fehlgeschlagen".to_string())?;
+        if snapshot.maximized {
+            let _ = ShowWindow(hwnd, SW_MAXIMIZE);
         }
     }
-    let height = work.height * GRID_HEIGHT_SHARE / 100;
-    if height == 0 {
-        return None;
-    }
-    Some(Rect::new(work.x, work.y, work.width, height))
+    Ok(())
 }
+
+#[cfg(not(all(windows, feature = "webview")))]
+pub fn restore_terminal() -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(all(windows, feature = "webview"))]
+struct TerminalSnapshot {
+    rect: Rect,
+    maximized: bool,
+}
+
+#[cfg(all(windows, feature = "webview"))]
+static TERMINAL_SNAPSHOT: std::sync::Mutex<Option<TerminalSnapshot>> =
+    std::sync::Mutex::new(None);
 
 #[cfg(test)]
 mod tests {
@@ -420,43 +497,36 @@ mod tests {
     }
 
     #[test]
-    fn dock_area_liegt_oberhalb_des_terminals() {
-        // Terminal im unteren Drittel -> Kachelansicht darueber.
-        let terminal = Rect::new(0, 900, 2560, 540);
-        let area = dock_area(SCREEN, terminal);
-        assert_eq!(area, Rect::new(0, 0, 2560, 900));
-        assert!(area.bottom() <= terminal.y, "Kachelansicht darf die TUI nicht ueberdecken");
-    }
-
-    #[test]
-    fn dock_area_weicht_nach_unten_aus_wenn_oben_kein_platz_ist() {
-        // Terminal klebt oben: oberhalb bleiben 40 px, das ist als Kachelansicht nutzlos.
-        let terminal = Rect::new(0, 40, 2560, 700);
-        let area = dock_area(SCREEN, terminal);
-        assert_eq!(area.y, terminal.bottom(), "Kachelansicht weicht unter das Terminal");
-        assert!(area.height > MIN_TILE_HEIGHT);
-    }
-
-    #[test]
-    fn maximiertes_terminal_bekommt_eine_ueberlagerung() {
-        // Der real gemessene Fall vom 02.08.2026: Windows Terminal maximiert,
-        // 1936x1048 (mit Maximierungs-Ueberstand) auf einem Arbeitsbereich von
-        // 1920x1032. Oberhalb und unterhalb ist NICHTS frei.
+    fn split_areas_teilt_exakt_in_links_und_rechts() {
         let work = Rect::new(0, 0, 1920, 1032);
-        let terminal = Rect::new(-8, -8, 1936, 1048);
-        let area = dock_area(work, terminal);
+        let (terminal, wall) = split_areas(work);
+        // Links: erste Haelfte, volle Hoehe.
+        assert_eq!(terminal, Rect::new(0, 0, 960, 1032));
+        // Rechts: beginnt dort, wo die linke Haelfte aufhoert.
+        assert_eq!(wall, Rect::new(960, 0, 960, 1032));
+        assert!(terminal.contained_in(&work));
+        assert!(wall.contained_in(&work));
+        assert!(!terminal.overlaps(&wall));
+    }
 
-        assert!(
-            !area.is_empty(),
-            "ohne freien Platz darf die Kachelansicht nicht verschwinden"
-        );
-        assert_eq!(area.y, terminal.y, "sie legt sich oben auf das Terminal");
-        assert!(
-            area.height < terminal.height,
-            "die TUI muss darunter lesbar bleiben"
-        );
-        // Und es muessen echte Kacheln hineinpassen.
-        assert!(fitting_tile_count(area, 8) >= 4, "zu wenig Platz fuer Kacheln");
+    #[test]
+    fn split_areas_mit_ungerader_breite() {
+        // 1921 / 2 = 960, Rest 1 wandert in die rechte Haelfte.
+        let work = Rect::new(0, 0, 1921, 800);
+        let (terminal, wall) = split_areas(work);
+        assert_eq!(terminal.width, 960);
+        assert_eq!(wall.width, 961);
+        assert_eq!(terminal.x + terminal.width as i32, wall.x);
+    }
+
+    #[test]
+    fn split_areas_auf_monitor_mit_negativem_ursprung() {
+        // Zweiter Monitor links: Ursprung bei -1920, aber dieselbe Teilung.
+        let work = Rect::new(-1920, 0, 1920, 1080);
+        let (terminal, wall) = split_areas(work);
+        assert_eq!(terminal.x, -1920);
+        assert_eq!(wall.x, -960);
+        assert!(wall.contained_in(&work));
     }
 
     #[test]
