@@ -56,25 +56,18 @@ pub fn login_all(timeout_per_brain: Duration, parallel: usize, force: bool) -> V
 }
 
 fn login_all_sequential(brains: &[String], timeout: Duration, force: bool) -> Vec<LoginResult> {
-    // KEIN Profil-Override mehr: `login-all` tut pro Brain exakt das, was
-    // `login` tut — Anmeldung landet in `profiles/<brain>`.
-    //
-    // Vorher lenkte diese Funktion die Google-SSO-Brains auf ein geteiltes
-    // `profiles/google-sso`, damit das Google-Passwort nur einmal fällig wird.
-    // Der Betrieb liest aber `profiles/<brain>` (siehe `config::brains`). Damit
-    // gab es ZWEI Profil-Layouts, je nachdem welcher Befehl geschrieben hatte:
-    // nach `login-all` war die Sitzung physisch da, für relay/benchmark/doctor
-    // aber unsichtbar. Real am 2026-07-29: gemini meldete direkt nach dem
-    // Anmelden wieder `logged_in: false` — die Anmeldung war nicht weg, sie
-    // lag nur am anderen Ort.
-    //
-    // Ein Login-Weg, ein Profil-Ort. Der Preis ist, dass das Google-Passwort
-    // pro Brain einmal fällig wird; das ist die richtige Seite des Tauschs
-    // gegenüber Anmeldungen, die stillschweigend ins Leere gehen.
-    brains
+    // Im Shared-Betrieb (WEBAGENT_USE_SHARED_BROWSER=1) ist `profiles/shared`
+    // das read-only Master-Hauptprofil mit den Logins ALLER Brains. login_all
+    // loggt deshalb direkt dort ein (statt `profiles/<brain>`) — nur so hat das
+    // Master alle Sessions, aus denen der Betrieb dann sparsam klont.
+    let results: Vec<LoginResult> = brains
         .iter()
         .map(|brain| login_one(brain, timeout, force, None))
-        .collect()
+        .collect();
+    if crate::config::use_shared_browser() {
+        crate::config::seal_master_profile();
+    }
+    results
 }
 
 /// Optionale Spiegelung des frisch eingeloggten Profils nach
@@ -112,35 +105,45 @@ fn login_one(
     force: bool,
     profile_override: Option<PathBuf>,
 ) -> LoginResult {
+    // Shared-Betrieb: das Master muss für den Login kurz beschreibbar sein.
+    let shared_mode = crate::config::use_shared_browser();
+    if shared_mode {
+        crate::config::unseal_master_profile();
+    }
+
     println!("[login-all] {brain_id}: Browser öffnen…");
     let mut backend = match WebBrainBackend::from_config(brain_id) {
         Ok(b) => b,
         Err(e) => {
-            return LoginResult {
+            return finish_login(shared_mode, None, LoginResult {
                 brain_id: brain_id.to_string(),
                 ok: false,
                 skipped: false,
                 message: format!("Backend-Fehler: {e}"),
-            };
+            });
         }
     };
     if let Some(p) = profile_override {
         backend = backend.with_profile_override(p);
+    } else if shared_mode {
+        // Nur das Master kennt alle Sessions: Login landet direkt in
+        // `profiles/shared` statt `profiles/<brain>`.
+        backend = backend.with_profile_override(crate::config::shared_profile_dir());
     }
 
     // Bereits eingeloggt? Nur wenn nicht --force.
     if !force {
         if let Ok(true) = backend.is_logged_in_quick() {
-            return LoginResult {
+            return finish_login(shared_mode, Some(backend), LoginResult {
                 brain_id: brain_id.to_string(),
                 ok: true,
                 skipped: true,
                 message: "bereits eingeloggt — übersprungen (--force zum erzwingen)".into(),
-            };
+            });
         }
     }
 
-    match backend.interactive_login(timeout) {
+    let result = match backend.interactive_login(timeout) {
         Ok(true) => {
             let profile = backend.effective_profile_dir().clone();
             maybe_copy_to_reference(brain_id);
@@ -166,7 +169,23 @@ fn login_one(
             skipped: false,
             message: format!("Fehler: {e}"),
         },
+    };
+    finish_login(shared_mode, Some(backend), result)
+}
+
+/// Schließt das Backend (Browser bereits gestoppt durch `interactive_login`)
+/// und versiegelt im Shared-Betrieb das Master-Profil wieder — nach jedem
+/// Login-Pfad, auch nach "bereits eingeloggt" oder Backend-Fehler.
+fn finish_login(
+    shared_mode: bool,
+    backend: Option<WebBrainBackend>,
+    result: LoginResult,
+) -> LoginResult {
+    if shared_mode {
+        drop(backend);
+        crate::config::seal_master_profile();
     }
+    result
 }
 
 #[cfg(test)]

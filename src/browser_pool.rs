@@ -11,7 +11,9 @@ use crate::brain::BrainBackend;
 use crate::browser::WebBrainBackend;
 use crate::config::persist_browser_tabs;
 #[cfg(feature = "webview")]
-use crate::config::{encapsulated_profile_dir, shared_profile_dir, ProfileClonePlanner};
+use crate::config::{
+    encapsulated_profile_dir, runtime_pool_profile_dir, shared_profile_dir, ProfileClonePlanner,
+};
 #[cfg(feature = "webview")]
 use crate::page_driver::PageDriver;
 #[cfg(feature = "webview")]
@@ -172,7 +174,10 @@ impl BrowserPool {
                 return Ok(());
             }
 
-            let profile = profile_override.unwrap_or_else(shared_profile_dir);
+            // Master-Hauptprofil NIE direkt öffnen: der Betrieb arbeitet in
+            // einer frischen Laufzeit-Kopie (siehe runtime_pool_profile_dir),
+            // damit die Logins im Master unangetastet bleiben.
+            let profile = profile_override.unwrap_or_else(runtime_pool_profile_dir);
             let mut driver = runtime
                 .open_page(&profile, backend.brain_url(), headless, &brain_id)
                 .map_err(|e| e.to_string())?;

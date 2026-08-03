@@ -467,20 +467,32 @@ pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool) -> i32 {
     use std::time::Duration;
     use webagent::browser::WebBrainBackend;
 
+    // Im Shared-Betrieb loggt auch der Einzel-Login direkt ins read-only
+    // Master-Hauptprofil (profiles/shared) statt nach profiles/<brain>.
+    let shared_mode = webagent::config::use_shared_browser();
+    if shared_mode {
+        webagent::config::unseal_master_profile();
+    }
     let mut backend = match WebBrainBackend::from_config(brain) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("[login] {e}");
+            if shared_mode {
+                webagent::config::seal_master_profile();
+            }
             return 2;
         }
     };
+    if shared_mode {
+        backend = backend.with_profile_override(webagent::config::shared_profile_dir());
+    }
     let timeout = Duration::from_secs(timeout_secs);
-    if force {
+    let code = if force {
         eprintln!(
             "[login] {brain}: --force — Fenster bleibt {timeout_secs}s offen, unabhaengig vom Login-Check. \
              Fenster schliessen, sobald du fertig bist."
         );
-        return match backend.hold_window_open(timeout) {
+        match backend.hold_window_open(timeout) {
             Ok(()) => {
                 println!("[login] {brain}: Fenster geschlossen, Profil geschrieben.");
                 0
@@ -489,25 +501,31 @@ pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool) -> i32 {
                 eprintln!("[login] {brain}: Fehler: {e}");
                 1
             }
-        };
+        }
+    } else {
+        match backend.interactive_login(timeout) {
+            Ok(true) => {
+                println!("[login] {brain}: Login erkannt und Session gespeichert.");
+                0
+            }
+            Ok(false) => {
+                eprintln!(
+                    "[login] {brain}: kein Login innerhalb von {timeout_secs}s erkannt. Erneut versuchen mit --timeout \
+                     oder --force (Erkennung ist bei manchen Brains zu optimistisch)."
+                );
+                1
+            }
+            Err(e) => {
+                eprintln!("[login] {brain}: Fehler: {e}");
+                1
+            }
+        }
+    };
+    if shared_mode {
+        drop(backend);
+        webagent::config::seal_master_profile();
     }
-    match backend.interactive_login(timeout) {
-        Ok(true) => {
-            println!("[login] {brain}: Login erkannt und Session gespeichert.");
-            0
-        }
-        Ok(false) => {
-            eprintln!(
-                "[login] {brain}: kein Login innerhalb von {timeout_secs}s erkannt. Erneut versuchen mit --timeout \
-                 oder --force (Erkennung ist bei manchen Brains zu optimistisch)."
-            );
-            1
-        }
-        Err(e) => {
-            eprintln!("[login] {brain}: Fehler: {e}");
-            1
-        }
-    }
+    code
 }
 
 pub fn cmd_diagnose(brain: &str, headless: bool) -> i32 {

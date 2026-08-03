@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// Root-Verzeichnis der WebAgent-Installation (Elternverzeichnis von src/).
 /// Compile-Zeit-Pfad (CARGO_MANIFEST_DIR) — nur für mitgelieferte Assets
@@ -128,6 +129,139 @@ pub fn profiles_dir() -> PathBuf {
 /// profiles/shared/ — Gemeinsames Browser-Profil (wenn shared_browser aktiviert)
 pub fn shared_profile_dir() -> PathBuf {
     profiles_dir().join("shared")
+}
+
+/// Laufzeit-Kopie des Master-Profils, einmal pro Prozess (`OnceLock`).
+///
+/// Das Master (`profiles/shared`) ist das **read-only Hauptprofil** mit allen
+/// eingeloggten Brains. Der Betrieb öffnet es NIE direkt: Beim ersten Zugriff
+/// wird eine sparsame Kopie der Login-Artefakte (Cookies, Local State,
+/// Preferences, … — siehe [`SPARSE_COPY_WHITELIST`]) nach
+/// `profiles/encapsulated/pool_<stamp>` gezogen und ausschließlich dort
+/// gearbeitet. Caches erzeugt WebView2 in der Kopie frisch.
+///
+/// Damit überlebt ein Neu-Login dauerhaft: Selbst wenn eine Laufzeit-Kopie
+/// aufgeräumt wird (siehe [`sweep_stale_runtime_profiles`]), klont der nächste
+/// Start erneut aus dem unangetasteten Master.
+static RUNTIME_POOL_PROFILE: OnceLock<PathBuf> = OnceLock::new();
+
+pub fn runtime_pool_profile_dir() -> PathBuf {
+    if let Some(p) = RUNTIME_POOL_PROFILE.get() {
+        return p.clone();
+    }
+    let master = shared_profile_dir();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+        .to_string();
+    let dst = encapsulated_profile_dir("pool", &stamp);
+    let copied = copy_dir_sparse(&master, &dst).is_ok();
+    if copied && has_login_artifacts(&dst) {
+        crate::bench_events::eprint_line(&format!(
+            "[master-profile] Laufzeit-Kopie des Hauptprofils → {:?}",
+            dst
+        ));
+    } else {
+        crate::bench_events::eprint_line(&format!(
+            "[master-profile] WARN: Laufzeit-Kopie von {:?} ohne Login-Artefakte \
+             (Master offen/gesperrt? Kopie nach {:?})",
+            master, dst
+        ));
+    }
+    let _ = RUNTIME_POOL_PROFILE.set(dst.clone());
+    dst
+}
+
+/// Liegt in `dir` (rekursiv) mindestens eine der Login-Dateien, deren Fehlen
+/// eine ausgeloggte Kopie bedeutet?
+fn has_login_artifacts(dir: &Path) -> bool {
+    const NEEDED: &[&str] = &["Cookies", "Local State", "Login Data"];
+    let mut found = false;
+    let mut stack: Vec<PathBuf> = vec![dir.to_path_buf()];
+    while let Some(cur) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&cur) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let Ok(ty) = e.file_type() else {
+                continue;
+            };
+            if ty.is_dir() {
+                stack.push(e.path());
+            } else {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                if NEEDED.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if found {
+            break;
+        }
+    }
+    found
+}
+
+/// Versiegelt das Master-Profil: alle Dateien unter `profiles/shared` werden
+/// read-only. NUR der Login-Mechanismus (unseal → schreiben → seal) macht das
+/// Profil jemals wieder beschreibbar; der Betrieb nutzt ausschließlich die
+/// Laufzeit-Kopie ([`runtime_pool_profile_dir`]).
+pub fn seal_master_profile() {
+    set_master_readonly(true);
+}
+
+/// Macht das Master-Profil wieder beschreibbar — NUR vom Login-Mechanismus
+/// aufgerufen, bevor ein Browser das Master öffnet.
+pub fn unseal_master_profile() {
+    set_master_readonly(false);
+}
+
+fn set_master_readonly(readonly: bool) {
+    let root = shared_profile_dir();
+    if !root.is_dir() {
+        return;
+    }
+    let mut files = Vec::new();
+    collect_files(&root, &mut files);
+    let mut ok = 0usize;
+    let mut failed = 0usize;
+    for f in &files {
+        if let Ok(md) = std::fs::metadata(f) {
+            let mut perms = md.permissions();
+            perms.set_readonly(readonly);
+            if std::fs::set_permissions(f, perms).is_ok() {
+                ok += 1;
+            } else {
+                failed += 1;
+            }
+        }
+    }
+    crate::bench_events::eprint_line(&format!(
+        "[master-profile] Hauptprofil {}: {ok} Dateien ({failed} Fehler)",
+        if readonly {
+            "versiegelt (read-only)"
+        } else {
+            "entsiegelt (beschreibbar)"
+        }
+    ));
+}
+
+fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let Ok(ty) = e.file_type() else {
+            continue;
+        };
+        if ty.is_dir() {
+            collect_files(&e.path(), out);
+        } else {
+            out.push(e.path());
+        }
+    }
 }
 
 /// Voreingestellte maximale Observation-Länge in Zeichen.
