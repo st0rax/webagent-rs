@@ -627,11 +627,23 @@ fn run_tui_ratatui(
     let refresh_ticks = (poll_secs as f64 * 12.5).ceil() as u64;
     let mut frame_count = 0u64;
     let mut task_input = String::new();
-    // Brain-Kachelansicht: die Tab-Fenster stehen im Normalfall off-screen. `w` holt sie
-    // in ein Raster auf den Bildschirm. Bewusst hier und nicht als CLI-Befehl:
-    // die Fenster gehoeren DIESEM Prozess, ein zweiter `webagent`-Aufruf saehe
-    // sie gar nicht.
-    let mut grid_on = false;
+    // Brain-Kachelansicht: die Tab-Fenster stehen im Normalfall off-screen.
+    // `w` holt sie in ein Raster auf den Bildschirm. Bewusst hier und nicht als
+    // CLI-Befehl: die Fenster gehoeren DIESEM Prozess, ein zweiter
+    // `webagent`-Aufruf saehe sie gar nicht.
+    //
+    // Storax (03.08.2026, Nachfolger): die Wall steht nicht erst nach `w` da,
+    // sondern automatisch beim Start — Terminal dockt sich unten an, Brains
+    // kacheln oben. `grid_on` startet deshalb bei `true`, wenn ein Benchmark
+    // gelaufen wird; `w` schaltet weiterhin manuell um.
+    let mut grid_on = startup_benchmark
+        .filter(|v| !v.trim().is_empty())
+        .is_some();
+    // Anzahl der Brains, fuer die die Wall zuletzt angeordnet wurde. Die
+    // Auto-Wall zieht nach: waechst die Zahl der offenen Fenster, wird neu
+    // gekachelt — ohne dass das Terminal erneut andockt (dock_terminal_bottom
+    // ist idempotent).
+    let mut grid_arranged_for = 0usize;
 
     let exit_code = loop {
         // Tastatur-Event (non-blocking, 80ms Timeout)
@@ -891,6 +903,23 @@ fn run_tui_ratatui(
             app.selected = app.selected.min(app.agents.len().saturating_sub(1));
         }
 
+        // Auto-Wall: offene Brain-Fenster automatisch kacheln, sobald neue
+        // dazukommen. Beim Start sind die Tabs noch geschlossen und oeffnen
+        // sich erst nach und nach — `w` muesste man sonst mehrmals druecken.
+        if grid_on {
+            let open = {
+                let pool = match crate::browser_pool::BrowserPool::global().lock() {
+                    Ok(pool) => pool,
+                    Err(_) => continue,
+                };
+                pool.open_brains().len()
+            };
+            if open > 0 && open != grid_arranged_for {
+                app.grid_status = toggle_brain_grid(true);
+                grid_arranged_for = open;
+            }
+        }
+
         // Rendern
         if let Err(e) = terminal.draw(|f| ui(f, &app)) {
             eprintln!("[tui] Render-Fehler: {e}");
@@ -1148,10 +1177,12 @@ fn toggle_brain_grid(on: bool) -> String {
     if open == 0 {
         return "Kacheln: kein Brain-Fenster offen".to_string();
     }
-    // Wunsch (03.08.2026): Terminal links 50 %, Wall rechts 50 %. Erst das
-    // Terminalfenster andocken, dann die Brains in der rechten Haelfte kacheln.
-    if let Err(e) = crate::brain_grid::dock_terminal_left() {
-        return format!("Kacheln: Terminal links andocken fehlgeschlagen: {e}");
+    // Wunsch (03.08.2026): Wall oben, Terminal darunter. Erst das
+    // Terminalfenster unten andocken, dann die Brains in der oberen
+    // Bildschirmflaeche kacheln. `dock_terminal_bottom` ist idempotent —
+    // die Auto-Wall ruft das bei jedem nachwachsenden Brain erneut.
+    if let Err(e) = crate::brain_grid::dock_terminal_bottom() {
+        return format!("Kacheln: Terminal unten andocken fehlgeschlagen: {e}");
     }
     let Some(area) = crate::brain_grid::wall_area() else {
         return "Kacheln: Bildschirmflaeche nicht ermittelbar".to_string();

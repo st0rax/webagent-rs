@@ -139,20 +139,20 @@ pub fn grid_layout(area: Rect, n: usize) -> Vec<Rect> {
     tiles
 }
 
-/// Teilung des Arbeitsbereichs: Terminal links, Kachelwand rechts.
+/// Teilung des Arbeitsbereichs: Kachelwand oben, Terminal unten.
 ///
-/// Storax' Wunsch (03.08.2026): die TUI sitzt links auf 50 % der
-/// Bildschirmbreite, daneben rechts die Brain-Wall auf den anderen 50 %. Die
-/// TUI dockt sich beim `w`-Toggle selbst in die linke Haelfte (siehe
-/// [`dock_terminal_left`]) und die Kacheln verteilen sich auf die rechte.
+/// Storax' Wunsch (03.08.2026, Nachfolger): die Brain-Wall steht automatisch
+/// auf dem oberen Teil des Bildschirms, die TUI dockt sich darunter an. Das
+/// Terminal bekommt die unteren ~30 % der Hoehe, die Wall den Rest.
 pub fn split_areas(work: Rect) -> (Rect, Rect) {
-    let left_width = work.width / 2;
-    let terminal = Rect::new(work.x, work.y, left_width, work.height);
-    let wall = Rect::new(
-        work.x + left_width as i32,
-        work.y,
-        work.width - left_width,
-        work.height,
+    let terminal_height = work.height * 3 / 10;
+    let wall_height = work.height - terminal_height;
+    let wall = Rect::new(work.x, work.y, work.width, wall_height);
+    let terminal = Rect::new(
+        work.x,
+        work.y + wall_height as i32,
+        work.width,
+        terminal_height,
     );
     (terminal, wall)
 }
@@ -326,23 +326,30 @@ pub fn primary_work_area() -> Option<Rect> {
     None
 }
 
-/// Rechte Bildschirmhaelfte: der Bereich, in dem die Brain-Kacheln liegen.
+/// Obere Bildschirmflaeche: der Bereich, in dem die Brain-Kacheln liegen.
 ///
-/// Die TUI dockt sich selbst in die linke Haelfte (siehe
-/// [`dock_terminal_left`]) und die Kachelwand bekommt die rechte — das ist
-/// Storax' Wunsch vom 03.08.2026 („Terminal links 50 %, Wall rechts 50 %").
+/// Die TUI dockt sich selbst darunter an (siehe [`dock_terminal_bottom`]) und
+/// die Kachelwand bekommt den Rest — das ist Storax' Wunsch vom 03.08.2026
+/// („Wall oben, Terminal darunter").
 pub fn wall_area() -> Option<Rect> {
     let work = primary_work_area()?;
     Some(split_areas(work).1)
 }
 
-/// Dockt das Terminalfenster dieses Prozesses in die linke Bildschirmhaelfte.
+/// Dockt das Terminalfenster dieses Prozesses unterhalb der Kachelwand.
+///
+/// Idempotent: ist das Terminal bereits angedockt (Snapshot vorhanden), passiert
+/// nichts — die Auto-Wall ruft das bei jedem Nachziehen neuer Brains erneut,
+/// ohne das Terminal jedes Mal neu zu platzieren.
 ///
 /// Merkt sich das alte Rechteck (inkl. Maximier-Status), damit
 /// [`restore_terminal`] den Zustand beim Ausschalten der Kachelansicht wieder
 /// herstellt.
 #[cfg(all(windows, feature = "webview"))]
-pub fn dock_terminal_left() -> Result<(), String> {
+pub fn dock_terminal_bottom() -> Result<(), String> {
+    if TERMINAL_SNAPSHOT.lock().unwrap().is_some() {
+        return Ok(());
+    }
     use windows::Win32::UI::WindowsAndMessaging::{
         IsZoomed, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
     };
@@ -377,7 +384,7 @@ pub fn dock_terminal_left() -> Result<(), String> {
 }
 
 #[cfg(not(all(windows, feature = "webview")))]
-pub fn dock_terminal_left() -> Result<(), String> {
+pub fn dock_terminal_bottom() -> Result<(), String> {
     Err("ohne webview-Feature nicht verfuegbar".into())
 }
 
@@ -497,26 +504,27 @@ mod tests {
     }
 
     #[test]
-    fn split_areas_teilt_exakt_in_links_und_rechts() {
+    fn split_areas_teilt_in_wall_oben_und_terminal_unten() {
         let work = Rect::new(0, 0, 1920, 1032);
         let (terminal, wall) = split_areas(work);
-        // Links: erste Haelfte, volle Hoehe.
-        assert_eq!(terminal, Rect::new(0, 0, 960, 1032));
-        // Rechts: beginnt dort, wo die linke Haelfte aufhoert.
-        assert_eq!(wall, Rect::new(960, 0, 960, 1032));
+        // Wall: obere 70 %, volle Breite.
+        assert_eq!(wall, Rect::new(0, 0, 1920, 723));
+        // Terminal: untere 30 %, beginnt dort, wo die Wall aufhoert.
+        assert_eq!(terminal, Rect::new(0, 723, 1920, 309));
         assert!(terminal.contained_in(&work));
         assert!(wall.contained_in(&work));
         assert!(!terminal.overlaps(&wall));
+        assert_eq!(wall.bottom(), terminal.y);
     }
 
     #[test]
-    fn split_areas_mit_ungerader_breite() {
-        // 1921 / 2 = 960, Rest 1 wandert in die rechte Haelfte.
-        let work = Rect::new(0, 0, 1921, 800);
+    fn split_areas_mit_ungerader_hoehe() {
+        // 1033 / 10 * 3 = 309, Rest 1 wandert in die Wall.
+        let work = Rect::new(0, 0, 1920, 1033);
         let (terminal, wall) = split_areas(work);
-        assert_eq!(terminal.width, 960);
-        assert_eq!(wall.width, 961);
-        assert_eq!(terminal.x + terminal.width as i32, wall.x);
+        assert_eq!(terminal.height, 309);
+        assert_eq!(wall.height, 724);
+        assert_eq!(wall.bottom(), terminal.y);
     }
 
     #[test]
@@ -524,9 +532,11 @@ mod tests {
         // Zweiter Monitor links: Ursprung bei -1920, aber dieselbe Teilung.
         let work = Rect::new(-1920, 0, 1920, 1080);
         let (terminal, wall) = split_areas(work);
+        assert_eq!(wall.x, -1920);
         assert_eq!(terminal.x, -1920);
-        assert_eq!(wall.x, -960);
+        assert_eq!(terminal.y, 756);
         assert!(wall.contained_in(&work));
+        assert!(terminal.contained_in(&work));
     }
 
     #[test]
