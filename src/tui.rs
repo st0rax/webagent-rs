@@ -906,17 +906,31 @@ fn run_tui_ratatui(
         // Auto-Wall: offene Brain-Fenster automatisch kacheln, sobald neue
         // dazukommen. Beim Start sind die Tabs noch geschlossen und oeffnen
         // sich erst nach und nach — `w` muesste man sonst mehrmals druecken.
+        //
+        // Nur `try_lock`: der Benchmark-Thread haelt den Browser-Pool waehrend
+        // Navigationen (bis zu 30 s Timeout pro Brain). Ein blockierendes
+        // Sperren hier wuerde die TUI einfrieren — genau das Symptom, das am
+        // 03.08.2026 als „nicht bedienbar" gemeldet wurde.
         if grid_on {
             let open = {
-                let pool = match crate::browser_pool::BrowserPool::global().lock() {
-                    Ok(pool) => pool,
-                    Err(_) => continue,
+                let Ok(pool) = crate::browser_pool::BrowserPool::global().try_lock() else {
+                    continue;
                 };
                 pool.open_brains().len()
             };
             if open > 0 && open != grid_arranged_for {
-                app.grid_status = toggle_brain_grid(true);
                 grid_arranged_for = open;
+                // Kacheln im Hintergrund-Thread: ein Toggle dauert Sekunden
+                // (Fenster positionieren) und wuerde die TUI einfrieren. Das
+                // Muster ist dasselbe wie bei `drive_capability`.
+                std::thread::spawn(move || {
+                    let status = toggle_brain_grid(true);
+                    crate::bench_events::emit(
+                        crate::bench_events::Level::Info,
+                        None,
+                        &format!("Auto-Wall: {status}"),
+                    );
+                });
             }
         }
 

@@ -185,12 +185,53 @@ pub fn terminal_window_rect() -> Option<Rect> {
 fn terminal_window_handle() -> Option<(windows::Win32::Foundation::HWND, Rect)> {
     let mut pid = std::process::id();
     for _ in 0..6 {
-        if let Some(hit) = visible_window_of(pid) {
+        if let Some(hit) = visible_terminal_window_of(pid) {
             return Some(hit);
         }
         pid = parent_pid(pid)?;
     }
     None
+}
+
+/// Sichtbares Terminalfenster des Prozesses `pid`.
+///
+/// Beim EIGENEN Prozess zaehlen die Brain-WebView-Fenster (gleicher Prozess,
+/// sichtbar, gross) nicht als Terminal: die Kachelansicht wuerde sonst ein
+/// Brain-Fenster unten andocken, statt des Terminals. Nur das echte
+/// Konsolenfenster gilt hier — und das ist unter Windows Terminal ein
+/// verstecktes Pseudokonsolen-Fenster, faellt also selbst durch und die Suche
+/// wandert zum Parent weiter. Unter einer echten Konsole ist es sichtbar und
+/// gross genug und die Wall funktioniert dort genauso.
+#[cfg(all(windows, feature = "webview"))]
+fn visible_terminal_window_of(
+    pid: u32,
+) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Console::GetConsoleWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsWindowVisible};
+
+    if pid == std::process::id() {
+        let console = unsafe { GetConsoleWindow() };
+        if console == HWND(std::ptr::null_mut())
+            || !unsafe { IsWindowVisible(console) }.as_bool()
+        {
+            return None;
+        }
+        let mut rect = windows::Win32::Foundation::RECT::default();
+        if unsafe { GetWindowRect(console, &mut rect) }.is_err() {
+            return None;
+        }
+        let width = (rect.right - rect.left).max(0) as u32;
+        let height = (rect.bottom - rect.top).max(0) as u32;
+        if width < 200 || height < 100 {
+            return None;
+        }
+        return Some((
+            console,
+            Rect::new(rect.left, rect.top, width, height),
+        ));
+    }
+    visible_window_of(pid)
 }
 
 #[cfg(all(windows, feature = "webview"))]
