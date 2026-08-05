@@ -7,6 +7,7 @@
 
 pub mod autoresearch;
 pub mod bench_events;
+pub mod bench_harvest;
 pub mod bench_scoring;
 pub mod benchmark;
 pub mod bot2bot_worker;
