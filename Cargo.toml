@@ -16,6 +16,10 @@ regex = "1"
 fancy-regex = "0.14"
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 lazy_static = "1.5"
+# Fehlerhierarchie statt String-Fehlern - vom Schwarm seit Runde 1 auf Platz 2
+# der Top-10 gefordert (verbesserungs-top10-2026-07), bis 05.08.2026 nicht
+# einmal als Abhaengigkeit vorhanden.
+thiserror = "2"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "std", "local-offset", "macros"] }
 tokio = { version = "1", features = ["full"] }
 # Embedded WebView (wry/tao) — optional, damit der Kern ohne GUI-Deps in CI baut.

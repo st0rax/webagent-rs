@@ -43,6 +43,7 @@ pub mod round_tally;
 pub mod run_store;
 pub mod runs_report;
 pub mod self_research;
+pub mod send_error;
 pub mod shell_policy;
 pub mod timeouts;
 pub mod transcript;
