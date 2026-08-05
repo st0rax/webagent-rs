@@ -137,7 +137,9 @@ pub fn cmd_measure_limits(
                     // deaktivierte nur den Absendeknopf. Wer bloss auf Texte
                     // schaut, verbucht das als Harness-Fehler und sucht ewig
                     // weiter nach einer Grenze, die er gerade beruehrt hat.
-                    if webagent::browser::is_send_disabled_error(&text) {
+                    // Typ statt Textvergleich: vorher stand hier eine Suche
+                    // nach dem Marker ABSENDEKNOPF_DEAKTIVIERT im Fehlertext.
+                    if webagent::relay::last_send_error().is_some_and(|se| se.is_rejection()) {
                         notiz = "Absendeknopf deaktiviert (Ablehnung ohne Meldung)".to_string();
                         webagent::brain_limits::ProbeOutcome::Rejected
                     } else if webagent::brain_limits::looks_like_length_rejection(&text) {

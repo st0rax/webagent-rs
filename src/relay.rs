@@ -15,6 +15,31 @@ impl std::fmt::Display for RelayError {
     }
 }
 
+/// Warum das letzte Absenden fehlschlug — als Typ, fuer Aufrufer die es
+/// unterscheiden muessen.
+///
+/// Prozessweit abgelegt statt durch `RelayError` gereicht: das ist ein
+/// Tupel-Struct, das an vielen Stellen konstruiert wird; ein zweites Feld
+/// haette jede davon angefasst. Der eine Aufrufer, der die Unterscheidung
+/// braucht (die Laengenmessung), liest sie direkt nach dem fehlgeschlagenen
+/// Aufruf.
+///
+/// Auch das ist ein Uebergang, kein Ziel: sauber waere `RelayError` als enum.
+/// Das ist der naechste Schritt derselben Umstellung.
+static LAST_SEND_ERROR: std::sync::Mutex<Option<crate::send_error::SendError>> =
+    std::sync::Mutex::new(None);
+
+fn remember_send_error(err: Option<crate::send_error::SendError>) {
+    if let Ok(mut slot) = LAST_SEND_ERROR.lock() {
+        *slot = err;
+    }
+}
+
+/// Der zuletzt gemerkte Absende-Fehler; `None`, wenn keiner vorlag.
+pub fn last_send_error() -> Option<crate::send_error::SendError> {
+    LAST_SEND_ERROR.lock().ok().and_then(|s| s.clone())
+}
+
 /// Eine Send+Wait-Runde gegen ein Brain; kein Controller, keine Shell-Actions.
 pub fn relay_single_turn(
     brain_id: &str,
@@ -76,9 +101,25 @@ pub fn relay_single_turn(
             continue;
         }
         let baseline = match backend.send(message) {
-            Ok(b) => b,
+            Ok(b) => {
+                remember_send_error(None);
+                b
+            }
             Err(e) => {
+                // Den TYP mitnehmen, bevor der naechste Versuch ihn ueberschreibt.
+                remember_send_error(backend.last_send_error());
                 last_err = e;
+                // Eine Verweigerung der Oberflaeche faellt beim naechsten
+                // Versuch genauso aus. Am 05.08.2026 liefen claude und mistral
+                // deshalb in je zwei sinnlose Wiederholungen plus
+                // Circuit-Breaker — mit einem Typ statt einem Text ist das
+                // eine Abfrage.
+                if backend
+                    .last_send_error()
+                    .is_some_and(|se| !se.is_retryable())
+                {
+                    break;
+                }
                 continue;
             }
         };

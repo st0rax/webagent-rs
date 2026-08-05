@@ -56,20 +56,6 @@ pub fn submit_verify_rounds(prompt_chars: usize) -> u32 {
     BASE.saturating_add(extra).min(MAX)
 }
 
-/// Marker im Fehlertext, an dem Aufrufer eine Ablehnung per DEAKTIVIERTEM
-/// Absendeknopf erkennen — im Unterschied zu einem echten Harness-Fehler.
-///
-/// Ein Marker im String ist die haessliche Loesung; richtig waere eine
-/// Fehlervariante. Die kommt mit der thiserror-Umstellung, bis dahin ist ein
-/// EINE Stelle definierender Marker besser als der Textvergleich, den sich
-/// sonst jeder Aufrufer selbst zusammenbaut.
-pub const SEND_DISABLED_MARKER: &str = "ABSENDEKNOPF_DEAKTIVIERT";
-
-/// `true`, wenn der Fehler eine Ablehnung per deaktiviertem Absendeknopf ist.
-pub fn is_send_disabled_error(message: &str) -> bool {
-    message.contains(SEND_DISABLED_MARKER)
-}
-
 const BLOCK_PHRASES: &[&str] = &[
     "nachrichtenlimit",
     "message limit",
@@ -314,9 +300,21 @@ pub struct WebBrainBackend {
     /// Aufgabe, die „Nachrichtenlimit"/„Login"/„Cloudflare" erwaehnt, alle Brains
     /// als blockiert (real passiert 2026-07-21).
     last_sent: RefCell<String>,
+    /// Warum das letzte Absenden fehlschlug — als TYP, nicht als Text.
+    ///
+    /// Die Schnittstelle liefert weiterhin `Result<_, String>`; sie komplett
+    /// umzustellen waere ein Umbau quer durchs Projekt. Diese Ablage ist der
+    /// Uebergang: der Aufrufer, der die Unterscheidung WIRKLICH braucht (die
+    /// Laengenmessung), fragt den Typ ab, statt im Fehlertext nach einem Marker
+    /// zu suchen.
+    last_send_error: RefCell<Option<crate::send_error::SendError>>,
 }
 
 impl WebBrainBackend {
+    /// Warum das letzte Absenden fehlschlug. `None`, wenn keins fehlschlug.
+    pub fn last_send_error(&self) -> Option<crate::send_error::SendError> {
+        self.last_send_error.borrow().clone()
+    }
     /// Start-URL des Brains (für Shared-Pool-Tabs).
     pub fn brain_url(&self) -> &str {
         &self.url
@@ -352,6 +350,7 @@ impl WebBrainBackend {
             driver: RefCell::new(None),
             baseline_text: RefCell::new(String::new()),
             last_sent: RefCell::new(String::new()),
+            last_send_error: RefCell::new(None),
         })
     }
 
@@ -1112,11 +1111,20 @@ return null;}})()"#,
     /// stehengebliebenen (oft STALE) Bildschirmtext für die Antwort — genau die
     /// Konversations-Vergiftung, die gemini/deepseek im Swarm zeigten
     /// ("gemini lebt um 11:19:06" aus einem alten Chat).
+    /// Baut den Fehler als TYP und merkt ihn sich; der Rueckgabewert bleibt
+    /// Text, weil die Schnittstelle `Result<_, String>` liefert. Aufrufer, die
+    /// die Unterscheidung brauchen, holen sie ueber [`Self::last_send_error`].
     fn submit_failed_error(&self, attempts: u32) -> String {
+        let err = self.classify_submit_failure(attempts);
+        let text = err.to_string();
+        *self.last_send_error.borrow_mut() = Some(err);
+        text
+    }
+
+    fn classify_submit_failure(&self, attempts: u32) -> crate::send_error::SendError {
+        use crate::send_error::SendError;
         if let Some(banner) = self.detect_block_banner() {
-            return format!(
-                "blockiert: kein Absende-Beweis nach {attempts} Versuchen -- Seite zeigt: {banner}"
-            );
+            return SendError::ProviderBlocked { attempts, banner };
         }
         // Keine BEKANNTE Phrase getroffen. Frueher endete die Meldung hier — und
         // damit war das Entscheidende verschwiegen: WAS steht denn da?
@@ -1135,11 +1143,11 @@ return null;}})()"#,
         let intended = self.last_sent.borrow().chars().count();
         let actual = self.composer_char_count();
         if intended > 0 && actual + actual / 10 < intended {
-            return format!(
-                "Absenden fehlgeschlagen nach {attempts} Versuchen: der Composer enthaelt \
-                 nur {actual} von {intended} Zeichen — die Eingabe wurde von der \
-                 Oberflaeche gekuerzt oder gar nicht uebernommen, es ist KEINE Blockade"
-            );
+            return SendError::ComposerTruncated {
+                attempts,
+                actual,
+                intended,
+            };
         }
         // Eine Laengenablehnung muss kein Text sein. Am 05.08.2026 stand bei
         // mistral und claude ab 400.000 Zeichen die Eingabe VOLLSTAENDIG im
@@ -1148,24 +1156,12 @@ return null;}})()"#,
         // Absendeknopf. `looks_like_length_rejection` sucht in TEXTEN und kann
         // eine Ablehnung, die nur ein grauer Knopf ist, nie sehen.
         if self.send_button_disabled() == Some(true) {
-            return format!(
-                "{SEND_DISABLED_MARKER}: Absendeknopf ist deaktiviert, obwohl der Text \
-                 vollstaendig im Composer steht ({attempts} Versuche) — die Oberflaeche \
-                 verweigert das Absenden ohne Meldung"
-            );
+            return SendError::SendButtonDisabled { attempts };
         }
-        if let Some(overlay) = self.blocking_dialog_text() {
-            return format!(
-                "Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen. \
-                 Unbekannter Dialog ueber dem Composer, Text: \"{overlay}\" \
-                 -- falls das eine Blockade ist, gehoert die Formulierung in BLOCK_PHRASES"
-            );
+        if let Some(text) = self.blocking_dialog_text() {
+            return SendError::UnknownDialog { attempts, text };
         }
-        format!(
-            "Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen \
-             (Text steht vollstaendig im Composer, kein Dialog gefunden — moeglich \
-             sind ein deaktivierter Absendeknopf oder eine stumm verworfene Eingabe)"
-        )
+        SendError::NoProof { attempts }
     }
 
     /// Ist der Absendeknopf deaktiviert? `None` = kein Knopf gefunden.
