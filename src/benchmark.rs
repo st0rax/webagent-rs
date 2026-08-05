@@ -33,6 +33,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use crate::send_error::RunFault;
 use crate::code_score::{CodeEvent, CodeStats};
 use crate::self_research::SelfResearchReport;
 
@@ -663,20 +664,22 @@ pub fn is_external_block(status: &str) -> bool {
 /// Reparaturfall: derselbe Browser-Run hat die Antwort bereits mehrfach
 /// zurückgewiesen. Für diese Aufgabe wird das Brain sofort als Fehlversuch
 /// gewertet; der nächste geplante Kandidat bekommt eine frische Chance.
+///
+/// Erkennt den Status ueber [`RunFault`] statt per `contains`: ein Statuswert,
+/// der den Namen nur ENTHAELT, ist nicht derselbe Status.
 pub fn is_protocol_fault(status: &str) -> bool {
-    let low = status.to_lowercase();
-    low.contains("protocol_error") || low.contains("protocol_invalid")
+    RunFault::parse(status).is_some_and(RunFault::is_protocol)
 }
 
 /// Diese Status werden nicht im selben Brain erneut versucht: der Controller
 /// hat bereits terminal abgebrochen. Sie bleiben im Score sichtbar, aber der
 /// nächste geplante Kandidat übernimmt auf frischer Basis.
+///
+/// Vorher eine Kette aus vier `low.contains(...)`. Eine neue terminale Variante
+/// musste dort UND in `is_protocol_fault` nachgetragen werden; jetzt genuegt
+/// die Variante im Typ.
 pub fn is_nonretryable_run_fault(status: &str) -> bool {
-    let low = status.to_lowercase();
-    is_protocol_fault(&low)
-        || low.contains("wall_timeout")
-        || low.contains("false_done")
-        || low.contains("max_cycles")
+    RunFault::parse(status).is_some_and(RunFault::is_nonretryable)
 }
 
 /// `true`, wenn ein Versuch objektiv besteht (geändert UND gebaut UND grün).

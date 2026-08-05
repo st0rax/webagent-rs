@@ -96,9 +96,103 @@ impl SendError {
     }
 }
 
+/// Terminaler Ausgang eines Brain-Runs, wie ihn der Controller in
+/// `meta.status` schreibt.
+///
+/// Die Werte werden als Zeichenkette in Run-Metadaten gespeichert und von
+/// mehreren Stellen mit `contains` wieder auseinandergenommen —
+/// `low.contains("wall_timeout")` in `benchmark.rs` ist die bekannteste. Ein
+/// `contains` trifft auch dort, wo der Statuswert nur zufaellig aehnlich
+/// heisst, und eine neue Variante vergisst man an genau einer der Stellen.
+///
+/// `parse` bildet die gespeicherte Zeichenkette EINMAL auf einen Typ ab;
+/// danach wird gematcht statt gesucht. `as_str` liefert exakt den
+/// gespeicherten Wert zurueck, damit alte Laeufe lesbar bleiben.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunFault {
+    /// Antwort verletzte das Protokoll (mehrfach zurueckgewiesen).
+    ProtocolError,
+    ProtocolInvalid,
+    /// Gesamt-Deadline des Runs ueberschritten.
+    WallTimeout,
+    /// Brain meldete „fertig", ohne etwas geaendert zu haben.
+    FalseDone,
+    /// Zyklusobergrenze erreicht.
+    MaxCycles,
+}
+
+impl RunFault {
+    /// Erkennt einen gespeicherten Statuswert. `None` = kein terminaler Fehler.
+    pub fn parse(status: &str) -> Option<Self> {
+        match status.trim().to_ascii_lowercase().as_str() {
+            "protocol_error" => Some(Self::ProtocolError),
+            "protocol_invalid" => Some(Self::ProtocolInvalid),
+            "wall_timeout" => Some(Self::WallTimeout),
+            "false_done" => Some(Self::FalseDone),
+            "max_cycles" => Some(Self::MaxCycles),
+            _ => None,
+        }
+    }
+
+    /// Der exakt gespeicherte Wert — Run-Metadaten duerfen sich nicht aendern.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ProtocolError => "protocol_error",
+            Self::ProtocolInvalid => "protocol_invalid",
+            Self::WallTimeout => "wall_timeout",
+            Self::FalseDone => "false_done",
+            Self::MaxCycles => "max_cycles",
+        }
+    }
+
+    /// Ein Protokollfehler ist weder Provider-Limit noch Reparaturfall.
+    pub fn is_protocol(self) -> bool {
+        matches!(self, Self::ProtocolError | Self::ProtocolInvalid)
+    }
+
+    /// Im selben Brain nicht erneut versuchen — der Controller hat terminal
+    /// abgebrochen.
+    pub fn is_nonretryable(self) -> bool {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn statuswerte_bleiben_exakt_wie_gespeichert() {
+        // Run-Metadaten frueherer Laeufe tragen genau diese Zeichenketten.
+        for fault in [
+            RunFault::ProtocolError,
+            RunFault::ProtocolInvalid,
+            RunFault::WallTimeout,
+            RunFault::FalseDone,
+            RunFault::MaxCycles,
+        ] {
+            assert_eq!(RunFault::parse(fault.as_str()), Some(fault));
+        }
+    }
+
+    #[test]
+    fn parse_trifft_nicht_mehr_auf_zufaellige_teilstrings() {
+        // Der eigentliche Gewinn gegenueber `low.contains("wall_timeout")`:
+        // ein Status, der den Namen nur ENTHAELT, ist nicht derselbe Status.
+        assert_eq!(RunFault::parse("kein wall_timeout aufgetreten"), None);
+        assert_eq!(RunFault::parse("done"), None);
+        assert_eq!(RunFault::parse(""), None);
+        // Gross-/Kleinschreibung und Rand-Leerzeichen bleiben tolerant.
+        assert_eq!(RunFault::parse("  WALL_TIMEOUT "), Some(RunFault::WallTimeout));
+    }
+
+    #[test]
+    fn protokollfehler_sind_eine_teilmenge() {
+        assert!(RunFault::ProtocolInvalid.is_protocol());
+        assert!(!RunFault::MaxCycles.is_protocol());
+        // Alle terminalen Ausgaenge werden im selben Brain nicht wiederholt.
+        assert!(RunFault::MaxCycles.is_nonretryable());
+    }
 
     #[test]
     fn ablehnung_und_harness_fehler_sind_unterscheidbar_ohne_textvergleich() {
