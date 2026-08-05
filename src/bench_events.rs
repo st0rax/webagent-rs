@@ -164,6 +164,31 @@ pub fn emit_detailed(level: Level, brain: Option<&str>, text: &str, detail: Opti
         detail: detail.map(cap_detail),
     };
     note_activity();
+
+    // Zusaetzlich in die strukturierte Diagnose spiegeln.
+    //
+    // Der Schwarm forderte „tracing statt println". Die naive Lesart waere ein
+    // Massenaustausch der 383 print-Aufrufe. Am 05.08.2026 nachgezaehlt: die
+    // stecken fast vollstaendig in der REPL (118) und den CLI-Befehlen
+    // (88+81+25), sind also die BEDIENOBERFLAECHE. Ausgerechnet das
+    // diagnoselastigste Modul, browser/mod.rs, hat null davon und meldet seit
+    // jeher hierher.
+    //
+    // Also die eine Stelle spiegeln, durch die Diagnose ohnehin laeuft, statt
+    // Nutzerausgaben in Logzeilen zu verwandeln. Der Ringpuffer bleibt die
+    // Quelle fuer die TUI; die Datei ist das, was einen Neustart ueberlebt —
+    // beim Selbst-Halt am 02.08. war die Begruendung nur im Terminalfenster
+    // sichtbar und danach fort.
+    let brain_field = ev.brain.as_deref().unwrap_or("-");
+    match ev.level {
+        Level::Fail => tracing::error!(brain = brain_field, "{}", ev.text),
+        Level::Warn => tracing::warn!(brain = brain_field, "{}", ev.text),
+        _ => tracing::info!(brain = brain_field, "{}", ev.text),
+    }
+    if let Some(detail) = ev.detail.as_deref() {
+        tracing::debug!(brain = brain_field, detail = detail);
+    }
+
     let mut q = lock();
     if q.len() >= CAPACITY {
         q.pop_front();

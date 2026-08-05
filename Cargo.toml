@@ -33,6 +33,11 @@ windows = { version = "0.58", optional = true, features = ["Win32_Foundation", "
 # windows=0.58 ist bereits optional im Projekt; kein C-Toolchain nötig).
 ratatui = { version = "0.29", optional = true }
 crossterm = { version = "0.28", optional = true }
+# Strukturierte Diagnose. Vom Brain-Schwarm in drei Abstimmungsrunden gefordert
+# (verbesserungs-top10-2026-07 und -runde2) und bis 05.08.2026 nie eingebaut:
+# 0 tracing-Treffer gegen 383 println!/eprintln!.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
 
 [features]
 default = ["webview", "tui"]

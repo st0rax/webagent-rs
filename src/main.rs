@@ -48,6 +48,12 @@ fn init_console_utf8() {}
 fn main() {
     // Muss vor der ersten Ausgabe laufen, sonst ist die erste Zeile Mojibake.
     init_console_utf8();
+    // Strukturierte Diagnose in eine Datei unter data/logs. Bewusst NICHT nach
+    // stdout: die ratatui-Oberflaeche besitzt das Terminal im Alternate Screen,
+    // und eine Datei ueberlebt den Neustart — beim Selbst-Halt des Benchmarks
+    // am 02.08.2026 stand die Begruendung nur im Terminalfenster und war danach
+    // fort.
+    webagent::diagnose_log::init();
 
     let cli = Cli::parse();
     // Kein Subcommand -> Chat-REPL als Default: `webagent` startet einen Chat,

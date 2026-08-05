@@ -24,6 +24,7 @@ pub mod comms;
 pub mod config;
 pub mod controller;
 pub mod design_vote;
+pub mod diagnose_log;
 pub mod doctor;
 pub mod executor;
 pub mod file_actions;
