@@ -1,5 +1,6 @@
 {
   "composer": [
+    "[data-testid='chat-input']",
     "div[contenteditable='true'][role='textbox']",
     "div[role='textbox'][contenteditable='true']",
     "div.ProseMirror[contenteditable='true']",
