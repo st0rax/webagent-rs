@@ -130,7 +130,17 @@ pub fn cmd_measure_limits(
                 Err(e) => {
                     let text = e.to_string();
                     println!("Fehler: {}", webagent::char_prefix(&text, 80));
-                    if webagent::brain_limits::looks_like_length_rejection(&text) {
+                    // Eine Laengenablehnung muss kein Text sein: gemessen am
+                    // 05.08.2026 stand bei claude und mistral ab 400.000
+                    // Zeichen die Eingabe VOLLSTAENDIG im Composer, es gab
+                    // keinen Dialog und keine Meldung — die Oberflaeche
+                    // deaktivierte nur den Absendeknopf. Wer bloss auf Texte
+                    // schaut, verbucht das als Harness-Fehler und sucht ewig
+                    // weiter nach einer Grenze, die er gerade beruehrt hat.
+                    if webagent::browser::is_send_disabled_error(&text) {
+                        notiz = "Absendeknopf deaktiviert (Ablehnung ohne Meldung)".to_string();
+                        webagent::brain_limits::ProbeOutcome::Rejected
+                    } else if webagent::brain_limits::looks_like_length_rejection(&text) {
                         notiz = webagent::char_prefix(&text, 120).to_string();
                         webagent::brain_limits::ProbeOutcome::Rejected
                     } else {
