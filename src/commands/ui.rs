@@ -656,33 +656,33 @@ pub fn cmd_probe(
     let path = dir.join(format!("{id}.json"));
 
     // Bestehende Datei mergen statt ueberschreiben: der Prober ist ein
-    // Ergaenzungs-Tool, keine Neuschreibung.
-    let mut merged = if let Ok(existing) = webagent::config::load_selectors(&id) {
-        let mut obj = existing;
-        if let Some(map) = obj.as_object_mut() {
-            if let Some(fresh_map) = fresh.as_object() {
+    // Ergaenzungs-Tool, keine Neuschreibung. Basis ist bewusst die NUTZER-Datei
+    // und nicht die zusammengefuehrte Sicht aus `load_selectors` — sonst friert
+    // dieser Lauf den mitgelieferten Stand als lokale Kopie ein und spaetere
+    // Pflege im Repo erreicht diese Maschine nie wieder.
+    let mut merged = match webagent::config::user_selectors(&id) {
+        Ok(Some(mut existing)) => {
+            if let (Some(map), Some(fresh_map)) = (existing.as_object_mut(), fresh.as_object()) {
                 for (k, v) in fresh_map {
                     map.entry(k.clone()).or_insert_with(|| v.clone());
                 }
             }
+            existing
         }
-        obj
-    } else {
-        fresh
+        _ => fresh,
     };
 
     // `ui_options` = Nenner des Levels: die Faehigkeiten, die die Oberflaeche
     // nachweisbar anbietet. Ohne sie gilt das Brain als unvermessen ([n/?]).
+    // `chat` gehoert dazu, obwohl es hinter jedem composer/send_button-Fund
+    // steckt: `capability::available_options` liest `ui_options` als das
+    // VOLLSTAENDIGE Angebot des Brains. Was hier fehlt, kann dort nie zaehlen —
+    // eine Datei ohne `chat` macht das Brain stumm, egal wie gut die
+    // Composer-Selektoren sind. Genau so ist kimi umgefallen.
     let capability_keys: Vec<String> = {
         let mut seen: Vec<String> = Vec::new();
         for p in &all {
             let k = p.capability_key.to_string();
-            if k == "chat" {
-                // `chat` steckt hinter jedem send_button/composer-Fund und
-                // ist der gemeinsame Nenner aller Brains — ihn explizit zu
-                // nennen ist Redundanz, nicht Information.
-                continue;
-            }
             if !seen.contains(&k) {
                 seen.push(k);
             }
@@ -690,18 +690,25 @@ pub fn cmd_probe(
         seen
     };
     if !capability_keys.is_empty() {
-        merged
-            .as_object_mut()
-            .unwrap()
-            .insert(
+        // Nur heben, nie kuerzen: dieser Lauf ist eine Untergrenze (ausgeloggt,
+        // eingeklappt, icon-only), kein Beweis fuer das Fehlen einer Option.
+        let known: Vec<String> = webagent::config::load_selectors(&id)
+            .ok()
+            .as_ref()
+            .and_then(webagent::capability::available_options)
+            .unwrap_or_default();
+        let union = webagent::capability::union_ui_options(&known, &capability_keys);
+        if let Some(map) = merged.as_object_mut() {
+            map.insert(
                 "ui_options".to_string(),
                 serde_json::Value::Array(
-                    capability_keys
+                    union
                         .iter()
                         .map(|k| serde_json::Value::String(k.clone()))
                         .collect(),
                 ),
             );
+        }
     }
 
     let body = match serde_json::to_string_pretty(&merged) {
@@ -860,16 +867,29 @@ pub fn level_bar(have: usize, max: usize, width: usize) -> String {
 /// Bewusst die Nutzer-Kopie unter `<stable_root>/selectors`: der Quellbaum ist
 /// bei einer deployten exe evtl. gar nicht da, und mitgelieferte Dateien
 /// sollen von der Automatik nicht ueberschrieben werden.
+///
+/// Der Fund wird mit dem bekannten Angebot VEREINIGT, nicht dagegen getauscht.
+/// `detect_ui_options` liefert eine Untergrenze; eine ausgeloggte Sitzung sieht
+/// keinen Composer und haette sonst `chat` aus der Datei geloescht — genau der
+/// Weg, auf dem kimi lokal stumm wurde. Streichen bleibt Handarbeit.
 pub fn write_ui_options(brain: &str, options: &[String]) -> Result<std::path::PathBuf, String> {
-    let mut sel = webagent::config::load_selectors(brain)
-        .map_err(|e| format!("Selektoren nicht lesbar: {e}"))?;
+    let known: Vec<String> = webagent::config::load_selectors(brain)
+        .ok()
+        .as_ref()
+        .and_then(webagent::capability::available_options)
+        .unwrap_or_default();
+    // Basis ist die Nutzer-Datei allein: die mitgelieferten Selektoren gehoeren
+    // nicht als eingefrorene Kopie in das lokale Overlay.
+    let mut sel = webagent::config::user_selectors(brain)
+        .map_err(|e| format!("Selektoren nicht lesbar: {e}"))?
+        .unwrap_or_else(|| serde_json::json!({}));
     let obj = sel
         .as_object_mut()
         .ok_or_else(|| "Selektordatei ist kein JSON-Objekt".to_string())?;
     obj.insert(
         "ui_options".to_string(),
         serde_json::Value::Array(
-            options
+            webagent::capability::union_ui_options(&known, options)
                 .iter()
                 .map(|o| serde_json::Value::String(o.clone()))
                 .collect(),
@@ -901,6 +921,31 @@ mod tests {
     fn brain_id_aus_url_wird_sanitisiert() {
         assert_eq!(brain_id_from_url("https://www.mistral.ai/chat"), "mistral");
         assert_eq!(brain_id_from_url("https://chat.deepseek.com/"), "chat");
+    }
+
+    #[test]
+    fn survey_schreibt_ui_options_nur_dazu() {
+        // Regression: eine ausgeloggte Sitzung sieht keinen Composer und meldet
+        // nur eine Handvoll Knoepfe. Frueher ersetzte genau dieser Fund die
+        // Datei — `chat` verschwand und das Brain galt als stumm. Der Fund darf
+        // heben, nicht kuerzen.
+        //
+        // `user_selectors_dir()` zeigt unter cargo test ins Temp, die echten
+        // Nutzerdaten dieser Maschine bleiben unangetastet.
+        let arm = vec!["new_chat".to_string(), "model_switch".to_string()];
+        let path = write_ui_options("mistral", &arm).expect("schreiben");
+        let raw = std::fs::read_to_string(&path).expect("lesen");
+        let _ = std::fs::remove_file(&path);
+        let written: serde_json::Value = serde_json::from_str(&raw).expect("json");
+        let opts: Vec<&str> = written["ui_options"]
+            .as_array()
+            .expect("ui_options")
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert!(opts.contains(&"chat"), "chat ueberlebt einen mageren Lauf");
+        assert!(opts.contains(&"stop_generation"), "genauso der Rest");
+        assert!(opts.contains(&"model_switch"), "der Fund steht auch drin");
     }
 
     #[test]

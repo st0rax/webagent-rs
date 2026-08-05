@@ -542,7 +542,13 @@ pub const BRAIN_TABLE: &[(&str, &str)] = &[
 /// geschrieben werden (ein deploytes Binary hat den Quellbaum evtl. gar nicht).
 /// Dieses Verzeichnis ist das schreibbare Gegenstück und hat Vorrang: bricht
 /// ein Anbieter sein HTML, ist der Brain hier reparierbar — ohne Neubau.
+/// Unter `cargo test` bewusst ins Temp-Verzeichnis umgelenkt — wie [`data_dir`].
+/// Sonst liest (und schreibt) ein Testlauf die echten Nutzer-Selektoren dieser
+/// Maschine, und ein Test ueber ausgelieferte Daten wird zur Wettervorhersage.
 pub fn user_selectors_dir() -> PathBuf {
+    if is_test_run() {
+        return env::temp_dir().join("webagent_test_data").join("selectors");
+    }
     webagent_root_stable().join("selectors")
 }
 
@@ -570,7 +576,10 @@ pub fn sanitize_brain_id(s: &str) -> String {
         .to_string()
 }
 
-/// Selektor-Datei eines Brains: Nutzer-Version schlägt mitgelieferte Version.
+/// Welche Selektor-Datei eines Brains obenauf liegt: Nutzer-Version, sonst
+/// mitgelieferte. Rein fuer Anzeige und Existenzpruefungen (doctor, canary,
+/// brains-health) — GELADEN wird nicht diese eine Datei, sondern beide
+/// uebereinander, siehe [`load_selectors`].
 pub fn resolve_selectors_path(brain_id: &str) -> PathBuf {
     let user = user_selectors_dir().join(format!("{brain_id}.json"));
     if user.is_file() {
@@ -1065,25 +1074,96 @@ pub fn embedded_selector(brain_id: &str) -> Option<&'static str> {
         .map(|(_, json)| *json)
 }
 
-/// Laedt die Selektor-JSON eines Brains. Zuerst von Platte (`selectors_dir()`),
-/// damit Dev-Edits und eigene Brains greifen; fehlt die Datei (z. B. bei einer
-/// heruntergeladenen exe ohne `selectors/`-Ordner), Fallback auf die in die
-/// Binary eingebetteten Selektoren.
-pub fn load_selectors(brain_id: &str) -> std::io::Result<serde_json::Value> {
-    // resolve_selectors_path: Nutzer-Kopie unter <stable_root>/selectors schlaegt
-    // die mitgelieferte Datei — so ist ein gebrochener Selektor reparierbar,
-    // ohne den Quellbaum zu haben oder neu zu bauen.
-    let path = resolve_selectors_path(brain_id);
-    let content = match std::fs::read_to_string(&path) {
+/// Die ausgelieferten Selektoren, so wie sie im Binary stecken — (id, JSON).
+/// Fuer Tests, die eine Aussage ueber die MITGELIEFERTEN Daten treffen wollen
+/// und dafuer nichts von der Platte lesen duerfen.
+pub fn shipped_selector_table() -> &'static [(&'static str, &'static str)] {
+    EMBEDDED_SELECTORS
+}
+
+/// Liest eine Selektor-Datei, falls vorhanden. Fehlende Datei = `None` (kein
+/// Fehler); kaputtes JSON bleibt ein Fehler — sonst faellt eine verungluecke
+/// Reparatur still auf die Basis zurueck und niemand merkt es.
+fn read_selector_file(path: &std::path::Path) -> std::io::Result<Option<serde_json::Value>> {
+    let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => match embedded_selector(brain_id) {
-            Some(json) => json.to_string(),
-            None => return Err(e),
-        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e),
     };
-    serde_json::from_str(&content)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+    serde_json::from_str(&content).map(Some).map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("{}: {e}", path.display()),
+        )
+    })
+}
+
+/// Die mitgelieferten Selektoren eines Brains: Datei aus `selectors_dir()`
+/// (damit Dev-Edits am Quellbaum greifen), sonst die eingebettete Kopie (damit
+/// eine heruntergeladene exe ohne `selectors/`-Ordner sofort funktioniert).
+pub fn shipped_selectors(brain_id: &str) -> std::io::Result<Option<serde_json::Value>> {
+    if let Some(v) = read_selector_file(&selectors_dir().join(format!("{brain_id}.json")))? {
+        return Ok(Some(v));
+    }
+    match embedded_selector(brain_id) {
+        Some(json) => serde_json::from_str(json).map(Some).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("eingebettete Selektoren {brain_id}: {e}"),
+            )
+        }),
+        None => Ok(None),
+    }
+}
+
+/// Die lokale Nutzer-Datei eines Brains (`<stable_root>/selectors/<id>.json`),
+/// falls vorhanden. Das ist das Overlay, nicht die ganze Wahrheit — wer den
+/// tatsaechlich gueltigen Stand braucht, nimmt [`load_selectors`].
+pub fn user_selectors(brain_id: &str) -> std::io::Result<Option<serde_json::Value>> {
+    read_selector_file(&user_selectors_dir().join(format!("{brain_id}.json")))
+}
+
+/// Overlay ueber Basis legen: je Oberschluessel gewinnt die Nutzer-Datei
+/// vollstaendig. Bewusst NICHT listenweise vereinigen — wer einen gebrochenen
+/// Selektor ersetzt, will ihn los sein, nicht ergaenzt haben.
+fn merge_selectors(base: &mut serde_json::Value, overlay: serde_json::Value) {
+    match (base.as_object_mut(), overlay) {
+        (Some(b), serde_json::Value::Object(o)) => {
+            for (k, v) in o {
+                b.insert(k, v);
+            }
+        }
+        // Eine Nutzer-Datei, die kein Objekt ist, gilt trotzdem: sie ist die
+        // bewusste Aussage des Menschen, die Basis nur der Lieferstand.
+        (_, other) => *base = other,
+    }
+}
+
+/// Laedt die gueltigen Selektoren eines Brains: mitgelieferte Datei als Basis,
+/// lokale Nutzer-Datei als Overlay darueber.
+///
+/// Frueher ersetzte die Nutzer-Datei die mitgelieferte KOMPLETT. Ein
+/// `probe --write` schrieb dann einen Messschnappschuss auf die Platte, und ab
+/// da war jede spaetere Pflege im Repo fuer diese Maschine unsichtbar — auch
+/// fuer Schluessel, die die Messung nie angefasst hat. Overlay statt Ersatz
+/// haelt beides: reparierbar ohne Neubau, ohne den Rest einzufrieren.
+pub fn load_selectors(brain_id: &str) -> std::io::Result<serde_json::Value> {
+    let shipped = shipped_selectors(brain_id)?;
+    let user = user_selectors(brain_id)?;
+    match (shipped, user) {
+        (Some(mut base), Some(overlay)) => {
+            merge_selectors(&mut base, overlay);
+            Ok(base)
+        }
+        (Some(base), None) => Ok(base),
+        // Selbst hinzugefuegte Brains haben keine Basis — dort ist die
+        // Nutzer-Datei alles, was es gibt.
+        (None, Some(overlay)) => Ok(overlay),
+        (None, None) => Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("keine Selektoren fuer '{brain_id}'"),
+        )),
+    }
 }
 
 /// Gibt die Liste aller verfügbaren Brain-IDs zurück (sortiert).
@@ -1741,6 +1821,41 @@ mod tests {
         // Ohne Nutzer-Datei muss der mitgelieferte Pfad herauskommen.
         let p = resolve_selectors_path("chatgpt");
         assert!(p.to_string_lossy().ends_with("chatgpt.json"));
+    }
+
+    #[test]
+    fn nutzer_overlay_ersetzt_nur_die_eigenen_schluessel() {
+        // Der Kern des Overlays: der Mensch repariert `composer`, und alles
+        // andere aus der Auslieferung bleibt sichtbar. Vorher ersetzte die
+        // Nutzer-Datei die mitgelieferte komplett — ein Messschnappschuss
+        // konnte damit gepflegte Selektoren dauerhaft verdecken.
+        let mut base = serde_json::json!({
+            "composer": ["#alt"],
+            "send_button": ["#send"],
+            "ui_options": ["chat", "new_chat"],
+        });
+        merge_selectors(&mut base, serde_json::json!({ "composer": ["#neu"] }));
+        assert_eq!(base["composer"][0], "#neu", "Reparatur gewinnt");
+        assert_eq!(base["send_button"][0], "#send", "ungenannt = unangetastet");
+        assert_eq!(base["ui_options"][0], "chat");
+
+        // Genannte Schluessel gewinnen ganz, nicht listenweise vereinigt: wer
+        // einen gebrochenen Selektor ersetzt, will ihn los sein.
+        merge_selectors(
+            &mut base,
+            serde_json::json!({ "send_button": ["#nur-der"] }),
+        );
+        assert_eq!(base["send_button"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn load_selectors_liefert_den_lieferstand_ohne_nutzer_datei() {
+        // Unter `cargo test` zeigt user_selectors_dir() ins Temp — dieser Test
+        // sieht also garantiert nur die ausgelieferten Daten, egal auf welcher
+        // Maschine er laeuft.
+        let sel = load_selectors("kimi").expect("kimi ist mitgeliefert");
+        let opts = crate::capability::available_options(&sel).expect("ui_options gepflegt");
+        assert!(opts.contains(&"chat".to_string()), "kimi kann chatten");
     }
 
     #[test]

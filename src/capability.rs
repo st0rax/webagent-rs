@@ -372,6 +372,24 @@ pub fn capability(key: &str) -> Option<&'static Capability> {
     CATALOG.iter().find(|c| c.key == key)
 }
 
+/// Neuen Messfund mit dem bereits bekannten Angebot vereinigen.
+///
+/// Eine Messung ist eine **Untergrenze** (siehe [`detect_ui_options`]): sie
+/// findet nur, was gerade im DOM steht und einen Namen traegt. Weniger zu
+/// finden belegt nicht, dass eine Option weg ist — ausgeloggt, eingeklappt
+/// oder icon-only reicht schon. Deshalb darf ein Lauf `ui_options` nur heben,
+/// nie kuerzen; Streichen bleibt eine Handarbeit an der Datei.
+///
+/// Genau das fehlte: ein Durchgang ohne erkannten Composer hat `chat` aus der
+/// Datei geworfen, und das Brain galt danach als stumm.
+pub fn union_ui_options(known: &[String], found: &[String]) -> Vec<String> {
+    CATALOG
+        .iter()
+        .filter(|c| known.iter().any(|k| k == c.key) || found.iter().any(|f| f == c.key))
+        .map(|c| c.key.to_string())
+        .collect()
+}
+
 /// Eine offene Aufgabe: das Brain bietet die Option an, webagent kann sie nicht.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Quest {
@@ -860,13 +878,44 @@ mod tests {
 
     #[test]
     fn shipped_brains_can_all_at_least_chat() {
-        for lvl in levels_all() {
+        // Bewusst NICHT ueber `levels_all()`: das laedt die Selektoren von der
+        // Platte, also samt lokalem Overlay unter <stable_root>/selectors und
+        // samt selbst registrierter Brains. Ein Test ueber AUSGELIEFERTE Daten,
+        // der am Zustand der Maschine haengt, misst nicht die Auslieferung —
+        // er faellt irgendwann bei irgendwem um (hier: ein `probe --write` aus
+        // einer ausgeloggten Sitzung hatte `chat` aus kimi.json entfernt).
+        for (id, raw) in crate::config::shipped_selector_table() {
+            let sel: serde_json::Value =
+                serde_json::from_str(raw).unwrap_or_else(|e| panic!("{id}: kaputtes JSON: {e}"));
+            let lvl = level_from_selectors(id, &sel);
             assert!(
                 lvl.have.contains(&"chat".to_string()),
-                "{} kann nicht mal Text senden",
-                lvl.brain_id
+                "{id} kann nicht mal Text senden"
             );
         }
+    }
+
+    #[test]
+    fn a_survey_may_raise_ui_options_never_shrink_them() {
+        // Der Fall, der kimi stumm gemacht hat: ein Durchgang ohne erkannten
+        // Composer meldet weniger als bekannt. Was er nicht gesehen hat, ist
+        // damit nicht widerlegt — `chat` und `stop_generation` bleiben stehen.
+        let known = vec![
+            "chat".to_string(),
+            "stop_generation".to_string(),
+            "new_chat".to_string(),
+        ];
+        let found = vec!["new_chat".to_string(), "model_switch".to_string()];
+        assert_eq!(
+            union_ui_options(&known, &found),
+            vec!["chat", "new_chat", "stop_generation", "model_switch"],
+            "Katalogreihenfolge, nichts verloren, Neufund dazu"
+        );
+        // Unfug faellt raus, Dubletten auch.
+        assert_eq!(
+            union_ui_options(&["chat".into(), "teleportation".into()], &["chat".into()]),
+            vec!["chat"]
+        );
     }
 
     #[test]
