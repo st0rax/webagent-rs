@@ -34,6 +34,42 @@ const PROSE_STABILITY_SECONDS: f64 = 8.0;
 /// Login, Cloudflare) — DE+EN. Geteilt zwischen `detect_block_banner` (JS-Scan der
 /// ganzen Seite) und `block_phrase_in_text` (reine Rust-Pruefung des bereits
 /// gelesenen Antworttexts), damit beide dieselbe Liste verwenden.
+/// Wie viele 250-ms-Runden auf den Absende-Beweis gewartet wird.
+///
+/// Bis zum 05.08.2026 waren es fest 12 Runden = 3 Sekunden, unabhaengig von der
+/// Nachrichtenlaenge. Bei grossen Eingaben reicht das nicht: der Browser muss
+/// erst eine riesige Eingabe verarbeiten und rendern, bevor ein Beweis (neue
+/// Antwort, Stop-Knopf, URL-Wechsel) ueberhaupt entstehen kann.
+///
+/// Gemessen: eine 200.000-Zeichen-Nachricht an claude ging um 17:41 durch und
+/// scheiterte um 18:58 an derselben Stelle — dazwischen lag nur Last auf der
+/// Maschine. Ein zeitabhaengiger Fehlschlag sieht wie eine Ablehnung aus und
+/// hat die Laengenmessung stundenlang in die Irre gefuehrt: gemeldet wurde
+/// „Absenden fehlgeschlagen", gemeint war „zu frueh aufgegeben".
+///
+/// Eine Runde je 10.000 Zeichen obendrauf, gedeckelt bei 30 Sekunden — lieber
+/// einmal laenger warten als eine Grenze erfinden, die es nicht gibt.
+pub fn submit_verify_rounds(prompt_chars: usize) -> u32 {
+    const BASE: u32 = 12;
+    const MAX: u32 = 120;
+    let extra = (prompt_chars / 10_000) as u32;
+    BASE.saturating_add(extra).min(MAX)
+}
+
+/// Marker im Fehlertext, an dem Aufrufer eine Ablehnung per DEAKTIVIERTEM
+/// Absendeknopf erkennen — im Unterschied zu einem echten Harness-Fehler.
+///
+/// Ein Marker im String ist die haessliche Loesung; richtig waere eine
+/// Fehlervariante. Die kommt mit der thiserror-Umstellung, bis dahin ist ein
+/// EINE Stelle definierender Marker besser als der Textvergleich, den sich
+/// sonst jeder Aufrufer selbst zusammenbaut.
+pub const SEND_DISABLED_MARKER: &str = "ABSENDEKNOPF_DEAKTIVIERT";
+
+/// `true`, wenn der Fehler eine Ablehnung per deaktiviertem Absendeknopf ist.
+pub fn is_send_disabled_error(message: &str) -> bool {
+    message.contains(SEND_DISABLED_MARKER)
+}
+
 const BLOCK_PHRASES: &[&str] = &[
     "nachrichtenlimit",
     "message limit",
@@ -1260,11 +1296,169 @@ return null;}})()"#,
                 "blockiert: kein Absende-Beweis nach {attempts} Versuchen -- Seite zeigt: {banner}"
             );
         }
+        // Keine BEKANNTE Phrase getroffen. Frueher endete die Meldung hier — und
+        // damit war das Entscheidende verschwiegen: WAS steht denn da?
+        //
+        // Real beobachtet am 05.08.2026 bei der Laengenmessung von claude: ab
+        // 400.000 Zeichen schlug das Absenden fuenfmal fehl, Grund unbekannt.
+        // Womoeglich war es genau die gesuchte Laengenablehnung, nur anders
+        // formuliert als die Phrasenliste sie kennt. Ohne den Text laesst sich
+        // die Liste nie erweitern, und die Messung raet weiter.
+        // Erst die naheliegendste Frage beantworten: steht der Text ueberhaupt
+        // im Composer? Am 05.08.2026 scheiterte das Absenden bei claude und
+        // mistral reproduzierbar ab 400.000 Zeichen, und die Meldung behauptete
+        // einen blockierenden Dialog. Es gab keinen — der Editor hatte den Text
+        // schlicht nicht angenommen. Eine Vermutung als Ursache auszugeben, hat
+        // die Suche in die falsche Richtung geschickt.
+        let intended = self.last_sent.borrow().chars().count();
+        let actual = self.composer_char_count();
+        if intended > 0 && actual + actual / 10 < intended {
+            return format!(
+                "Absenden fehlgeschlagen nach {attempts} Versuchen: der Composer enthaelt \
+                 nur {actual} von {intended} Zeichen — die Eingabe wurde von der \
+                 Oberflaeche gekuerzt oder gar nicht uebernommen, es ist KEINE Blockade"
+            );
+        }
+        // Eine Laengenablehnung muss kein Text sein. Am 05.08.2026 stand bei
+        // mistral und claude ab 400.000 Zeichen die Eingabe VOLLSTAENDIG im
+        // Composer, es gab keinen Dialog, und trotzdem ging nichts raus — bei
+        // 200.000 dagegen reibungslos. Die Oberflaeche deaktiviert schlicht den
+        // Absendeknopf. `looks_like_length_rejection` sucht in TEXTEN und kann
+        // eine Ablehnung, die nur ein grauer Knopf ist, nie sehen.
+        if self.send_button_disabled() == Some(true) {
+            return format!(
+                "{SEND_DISABLED_MARKER}: Absendeknopf ist deaktiviert, obwohl der Text \
+                 vollstaendig im Composer steht ({attempts} Versuche) — die Oberflaeche \
+                 verweigert das Absenden ohne Meldung"
+            );
+        }
+        if let Some(overlay) = self.blocking_dialog_text() {
+            return format!(
+                "Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen. \
+                 Unbekannter Dialog ueber dem Composer, Text: \"{overlay}\" \
+                 -- falls das eine Blockade ist, gehoert die Formulierung in BLOCK_PHRASES"
+            );
+        }
         format!(
             "Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen \
-             (blockiert ein Dialog/Overlay den Composer, dessen Text nicht in der \
-             bekannten Block-Phrasenliste steht)"
+             (Text steht vollstaendig im Composer, kein Dialog gefunden — moeglich \
+             sind ein deaktivierter Absendeknopf oder eine stumm verworfene Eingabe)"
         )
+    }
+
+    /// Ist der Absendeknopf deaktiviert? `None` = kein Knopf gefunden.
+    ///
+    /// Prueft `disabled`, `aria-disabled` und `pointer-events: none` — die drei
+    /// Arten, auf die Weboberflaechen einen Knopf stilllegen.
+    fn send_button_disabled(&self) -> Option<bool> {
+        let list = Self::js_selectors(&self.sel("send_button"));
+        let js = Self::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){var b=el.closest('button')||el;\
+             var st=window.getComputedStyle(b);\
+             return (b.disabled===true)||b.getAttribute('aria-disabled')==='true'\
+             ||st.pointerEvents==='none';}",
+            "null",
+        );
+        self.eval(&js).ok().and_then(|v| v.as_bool())
+    }
+
+    /// Wie viele Zeichen stehen tatsaechlich im Composer?
+    ///
+    /// Der billigste Weg, „Eingabe kam gar nicht an" von „Absenden blockiert"
+    /// zu unterscheiden — und genau diese Unterscheidung fehlte.
+    fn composer_char_count(&self) -> usize {
+        let list = Self::js_selectors(&self.sel("composer"));
+        let js = Self::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){return (el.value!==undefined?el.value:(el.innerText||'')).length;}",
+            "0",
+        );
+        self.eval(&js)
+            .ok()
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize
+    }
+
+    /// Text eines echten Dialogs ueber dem Composer, gekuerzt.
+    ///
+    /// Absichtlich OHNE Phrasenliste — hier geht es um den Fall, dass die Liste
+    /// den Text nicht kennt. Aber MIT Dialog-Semantik: ein erster Versuch ueber
+    /// „feste Positionierung + hoher z-index" fing bei mistral die Seitenleiste
+    /// („Vibe Chat Work Code Neuer Chat Agenten …") und meldete sie als
+    /// blockierenden Dialog. Eine Diagnose, die das Falsche zeigt, ist
+    /// schlimmer als eine, die schweigt.
+    fn blocking_dialog_text(&self) -> Option<String> {
+        let js = r#"(function(){
+var nodes=document.querySelectorAll('[role=dialog],[role=alertdialog],[aria-modal=true],dialog[open]');
+var best='';
+for(var i=0;i<nodes.length;i++){
+  var e=nodes[i];var r=e.getBoundingClientRect();
+  if(r.width<40||r.height<20)continue;
+  var st=window.getComputedStyle(e);
+  if(st.visibility==='hidden'||st.display==='none')continue;
+  // Navigation ist kein Dialog, auch wenn sie modal aussieht.
+  if(e.closest('nav,aside,[role=navigation]'))continue;
+  var links=e.querySelectorAll('a,[role=link]').length;
+  if(links>5)continue;
+  var t=(e.innerText||'').replace(/\s+/g,' ').trim();
+  if(t.length>best.length)best=t;
+}
+return best?best.slice(0,300):null;})()"#;
+        let value = self.eval(js).ok()?;
+        let text = value.as_str()?.trim().to_string();
+        if text.is_empty() {
+            return None;
+        }
+        let sent = self.last_sent.borrow().clone();
+        if banner_is_prompt_echo(&text, &sent) {
+            return None;
+        }
+        Some(text)
+    }
+
+    /// Text eines sichtbaren Dialogs/Overlays ueber dem Composer, gekuerzt.
+    ///
+    /// Absichtlich OHNE Phrasenliste: hier geht es genau um den Fall, dass die
+    /// Liste den Text NICHT kennt. Gesucht wird deshalb nach der Bauform —
+    /// `role=dialog`, `aria-modal`, oder ein Element mit fester/absoluter
+    /// Positionierung und hohem z-index —, nicht nach dem Inhalt.
+    fn visible_overlay_text(&self) -> Option<String> {
+        let js = r#"(function(){
+var sel='[role=dialog],[role=alertdialog],[aria-modal=true],dialog[open]';
+var best='';
+var nodes=document.querySelectorAll(sel);
+for(var i=0;i<nodes.length;i++){
+  var e=nodes[i];var r=e.getBoundingClientRect();
+  if(r.width<40||r.height<20)continue;
+  var t=(e.innerText||'').replace(/\s+/g,' ').trim();
+  if(t.length>best.length)best=t;
+}
+if(!best){
+  var all=document.body?document.body.querySelectorAll('*'):[];
+  for(var j=0;j<all.length;j++){
+    var el=all[j];var st=window.getComputedStyle(el);
+    if(st.position!=='fixed'&&st.position!=='absolute')continue;
+    if(parseInt(st.zIndex||'0',10)<10)continue;
+    var rr=el.getBoundingClientRect();
+    if(rr.width<120||rr.height<40)continue;
+    if(st.visibility==='hidden'||st.display==='none'||parseFloat(st.opacity||'1')<0.2)continue;
+    var tt=(el.innerText||'').replace(/\s+/g,' ').trim();
+    if(tt.length>10&&tt.length<600&&tt.length>best.length)best=tt;
+  }
+}
+return best?best.slice(0,300):null;})()"#;
+        let value = self.eval(js).ok()?;
+        let text = value.as_str()?.trim().to_string();
+        if text.is_empty() {
+            return None;
+        }
+        // Das Echo der eigenen Frage ist kein fremder Dialog.
+        let sent = self.last_sent.borrow().clone();
+        if banner_is_prompt_echo(&text, &sent) {
+            return None;
+        }
+        Some(text)
     }
 
     fn send_gemini(&mut self, text: &str) -> Result<i32, String> {
@@ -1400,7 +1594,8 @@ return null;}})()"#
     }
 
     fn verify_submitted(&self, baseline: i32, url_before: Option<&str>) -> bool {
-        for _ in 0..12 {
+        let rounds = submit_verify_rounds(self.last_sent.borrow().chars().count());
+        for _ in 0..rounds {
             std::thread::sleep(Duration::from_millis(250));
             let url_changed = match (url_before, self.get_conversation_ref()) {
                 (Some(before), Some(now)) => now != before,
@@ -1417,6 +1612,23 @@ return null;}})()"#
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn absende_wartezeit_waechst_mit_der_nachrichtenlaenge() {
+        // Kurze Nachricht: unveraendert 3 Sekunden.
+        assert_eq!(submit_verify_rounds(0), 12);
+        assert_eq!(submit_verify_rounds(500), 12);
+        // 200.000 Zeichen: 12 + 20 Runden = 8 Sekunden. Genau dieser Fall
+        // scheiterte am 05.08.2026 unter Last, obwohl er eine Stunde vorher
+        // durchging - der Beweis kam nur nach den festen 3 Sekunden.
+        assert_eq!(submit_verify_rounds(200_000), 32);
+        // Eine Million Zeichen: 12 + 100 Runden = 28 Sekunden, noch unter dem Deckel.
+        assert_eq!(submit_verify_rounds(1_000_000), 112);
+        // Erst darueber greift die Deckelung — sonst wartet eine irrtuemlich
+        // riesige Eingabe minutenlang.
+        assert_eq!(submit_verify_rounds(2_000_000), 120);
+        assert_eq!(submit_verify_rounds(usize::MAX), 120);
+    }
 
     /// Rust-Port der drei Regexe aus `JS_SEL_PRELUDE` (`text=/re/i`, `text=foo`,
     /// `sel:has-text('x')`). Kein JS-Interpreter im Testprozess verfuegbar, also
