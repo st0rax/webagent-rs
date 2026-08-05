@@ -173,6 +173,62 @@ pub fn runtime_pool_profile_dir() -> PathBuf {
     dst
 }
 
+/// Spielt die aufgefrischte Sitzung aus der Laufzeit-Kopie ins Master zurueck.
+///
+/// # Warum es das braucht
+///
+/// Das Master ist read-only und der Betrieb laeuft auf einem Klon. Der Browser
+/// erneuert Sitzungen aber IN DIE KOPIE — und ohne Rueckweg blieb das Master
+/// stehen. Gemessen am 05.08.2026: letzte Schreiboperation im Master
+/// 03.08. 18:07:44, in der Laufzeit-Kopie laufend.
+///
+/// Das ist nicht bloss veraltet, es ist toedlich: die Anbieter rotieren
+/// Refresh-Tokens. Sobald der Browser eine Sitzung erneuert, entwertet der
+/// Anbieter den alten Token serverseitig. Die Kopie haelt den neuen, das Master
+/// den bereits entwerteten. Nach ein bis zwei Runden ist das Master garantiert
+/// abgemeldet — und eine frische Anmeldung haelt nur bis zur naechsten
+/// Rotation. Genau so wurden 6 von 8 Brains abgemeldet.
+///
+/// # Die Schutzbedingung
+///
+/// Zurueckgeschrieben wird NUR, wenn die Kopie selbst Login-Artefakte hat. Ein
+/// Lauf, der frueh scheitert oder mit leerem Profil startet, darf das Master
+/// nicht ueberschreiben — sonst zerstoert genau dieser Rueckweg die
+/// Anmeldung, die er schuetzen soll.
+pub fn write_back_session_to_master() -> Result<(), String> {
+    let Some(runtime) = RUNTIME_POOL_PROFILE.get() else {
+        // Nie geklont, also nichts zurueckzuschreiben.
+        return Ok(());
+    };
+    if !runtime.is_dir() {
+        return Ok(());
+    }
+    if !has_login_artifacts(runtime) {
+        return Err(format!(
+            "Laufzeit-Kopie {:?} hat keine Login-Artefakte — nicht zurueckgeschrieben, \
+             sonst wuerde das Master ueberschrieben",
+            runtime
+        ));
+    }
+    let master = shared_profile_dir();
+    unseal_master_profile();
+    let result = copy_dir_sparse(runtime, &master).map_err(|e| e.to_string());
+    seal_master_profile();
+    match &result {
+        Ok(()) => crate::bench_events::emit(
+            crate::bench_events::Level::Info,
+            None,
+            "[master-profile] aufgefrischte Sitzung ins Hauptprofil zurueckgeschrieben",
+        ),
+        Err(e) => crate::bench_events::emit(
+            crate::bench_events::Level::Warn,
+            None,
+            &format!("[master-profile] Rueckschreiben fehlgeschlagen: {e}"),
+        ),
+    }
+    result
+}
+
 /// Liegt in `dir` (rekursiv) mindestens eine der Login-Dateien, deren Fehlen
 /// eine ausgeloggte Kopie bedeutet?
 fn has_login_artifacts(dir: &Path) -> bool {
@@ -1466,6 +1522,36 @@ fn volume_root(_path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Der Rueckweg darf eine gute Anmeldung niemals durch eine leere Kopie
+    /// ersetzen.
+    ///
+    /// Ohne diese Schranke wuerde ausgerechnet die Reparatur den Schaden
+    /// anrichten: ein Lauf, der frueh scheitert oder mit leerem Profil startet,
+    /// wuerde das Master ueberschreiben und alle acht Brains auf einen Schlag
+    /// abmelden.
+    #[test]
+    fn rueckweg_lehnt_eine_kopie_ohne_login_artefakte_ab() {
+        let base = std::env::temp_dir().join(format!("webagent_wb_{}", std::process::id()));
+        let leer = base.join("leer");
+        let voll = base.join("voll");
+        std::fs::create_dir_all(leer.join("EBWebView/Default")).unwrap();
+        std::fs::create_dir_all(voll.join("EBWebView/Default/Network")).unwrap();
+        // Nur Krimskrams, keine Anmeldung.
+        std::fs::write(leer.join("EBWebView/Default/History"), b"x").unwrap();
+        // Eine echte Anmeldung liegt unter Default/Network/Cookies.
+        std::fs::write(voll.join("EBWebView/Default/Network/Cookies"), b"x").unwrap();
+
+        assert!(
+            !has_login_artifacts(&leer),
+            "eine Kopie ohne Cookies/Local State/Login Data ist ausgeloggt"
+        );
+        assert!(
+            has_login_artifacts(&voll),
+            "Cookies liegen bei WebView2 unter Default/Network — rekursiv suchen"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     /// `assistant_message` darf NIE den laufenden Streaming-Container treffen.
     ///

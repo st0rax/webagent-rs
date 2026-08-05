@@ -449,7 +449,23 @@ impl BrowserPool {
     fn teardown_runtime(&mut self) {
         #[cfg(feature = "webview")]
         {
+            // Erst den Browser schliessen, DANN zurueckschreiben: solange er
+            // laeuft, haelt WebView2 Cookies und Local State teilweise im
+            // Speicher und schreibt sie erst beim Beenden weg. Wer vorher
+            // kopiert, sichert genau den alten Stand, der das Problem ist.
             self.runtime.take();
+            // Ohne diesen Rueckweg friert das Master-Profil ein: der Browser
+            // erneuert die Sitzung in der Laufzeit-Kopie, und der naechste
+            // Start klont wieder den alten Stand. Gemessen am 05.08.2026 stand
+            // das Master seit dem 03.08. still, waehrend die Kopie lief — 6 von
+            // 8 Brains waren dadurch abgemeldet.
+            if let Err(e) = crate::config::write_back_session_to_master() {
+                crate::bench_events::emit(
+                    crate::bench_events::Level::Warn,
+                    None,
+                    &format!("[master-profile] {e}"),
+                );
+            }
         }
     }
 
