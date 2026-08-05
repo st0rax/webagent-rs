@@ -8,6 +8,14 @@
 //! sichtbar (siehe [[external-blocks-flag-not-fail]]), statt den ganzen Lauf zu
 //! blockieren.
 //!
+//! Zwei Cooldown-Laengen: gewoehnliche Fehlschlaege (Timeout, Protokollfehler)
+//! sperren fuer `WEBAGENT_BREAKER_COOLDOWN_S` (15 min), deterministische Sperren
+//! (`is_hard_block`: Login, Quota, Cloudflare) fuer
+//! `WEBAGENT_BREAKER_HARD_COOLDOWN_S` (6 h) — lang, weil jeder Anlauf einen
+//! vollen `ensure_ready`-Timeout kostet, aber **endlich**, damit ein behobener
+//! Zustand von selbst wieder greift. Wer den Login von Hand erneuert, muss nicht
+//! warten: `login`/`login-all` raeumen den Eintrag ueber [`clear`] gleich mit.
+//!
 //! Zustand ist prozessuebergreifend auf Disk (JSON, atomic write), weil `/swarm`
 //! und `relay` typischerweise als separate Prozesse/Aufrufe laufen.
 
@@ -24,6 +32,11 @@ use crate::config::data_dir;
 
 const DEFAULT_MAX_FAILURES: u32 = 3;
 const DEFAULT_COOLDOWN_SECS: i64 = 900; // 15 min
+/// Cooldown fuer deterministische Sperren (fehlender Login, Quota, Cloudflare).
+/// Lang genug, dass ein gesperrtes Brain nicht jede Runde erneut in seinen
+/// `ensure_ready`-Timeout laeuft — aber endlich, damit ein behobener Zustand
+/// (neuer Login, Tageslimit zurueckgesetzt) von selbst wieder greift.
+const DEFAULT_HARD_COOLDOWN_SECS: i64 = 6 * 3600; // 6 h
 
 lazy_static! {
     static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -44,18 +57,30 @@ fn state_path() -> PathBuf {
     data_dir().join("circuit_breaker").join("state.json")
 }
 
-fn max_failures() -> u32 {
-    std::env::var("WEBAGENT_BREAKER_MAX_FAILURES")
+/// Zahl aus einer Env-Var, sonst Default. Getrennt, damit die drei Regler
+/// (Schwelle, Cooldown, harter Cooldown) nachweislich dieselbe Lesart haben.
+fn env_num<T: std::str::FromStr>(name: &str, default: T) -> T {
+    std::env::var(name)
         .ok()
         .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(DEFAULT_MAX_FAILURES)
+        .unwrap_or(default)
+}
+
+fn max_failures() -> u32 {
+    env_num("WEBAGENT_BREAKER_MAX_FAILURES", DEFAULT_MAX_FAILURES)
 }
 
 fn cooldown_secs() -> i64 {
-    std::env::var("WEBAGENT_BREAKER_COOLDOWN_S")
-        .ok()
-        .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(DEFAULT_COOLDOWN_SECS)
+    env_num("WEBAGENT_BREAKER_COOLDOWN_S", DEFAULT_COOLDOWN_SECS)
+}
+
+/// Cooldown fuer deterministische Sperren — per `WEBAGENT_BREAKER_HARD_COOLDOWN_S`
+/// ueberschreibbar.
+fn hard_cooldown_secs() -> i64 {
+    env_num(
+        "WEBAGENT_BREAKER_HARD_COOLDOWN_S",
+        DEFAULT_HARD_COOLDOWN_SECS,
+    )
 }
 
 fn now_secs() -> i64 {
@@ -97,16 +122,18 @@ fn check_at(brain_id: &str, path: &PathBuf) -> Option<i64> {
     let _guard = WRITE_LOCK.lock();
     let state = load(path);
     let entry = state.get(brain_id)?;
-    // Deterministische Sperre: eine harte Reason (fehlender Login, Quota,
-    // Rate-Limit, Cloudflare) bleibt bestehen, solange sie nicht behoben ist.
-    // Ohne diesen Check laeuft der Cooldown ab und das Brain wird erneut
-    // angefragt — jeder Versuch kostet einen vollen `ensure_ready`-Timeout.
-    // Beobachtet 2026-08-02: gemini wurde nach Ablauf der 15-min-Sperre in
-    // jeder Runde erneut gefragt und verlor dabei ~144s pro Anlauf.
-    if entry.last_reason.as_deref().is_some_and(is_hard_block) {
-        let until = entry.open_until.unwrap_or(now_secs() + cooldown_secs());
-        return Some((until - now_secs()).max(1));
-    }
+    // Wie lange gesperrt wird, entscheidet allein `open_until` — die Haerte der
+    // Reason steckt in der *Laenge* des Cooldowns (siehe `record_failure_at`),
+    // nicht in einem Sonderpfad hier.
+    //
+    // Frueher gab dieser Pfad fuer harte Reasons `(until - now).max(1)` zurueck
+    // und sperrte damit unendlich: ein abgelaufenes `open_until` ergibt eine
+    // negative Restzeit, `.max(1)` machte daraus wieder eine Sperre. Der Eintrag
+    // verschwand nur durch `record_success` — das aber nie eintreten kann, weil
+    // das Brain nie wieder gefragt wird. Beobachtet 2026-08-05: alle 8 Brains
+    // trugen „Login nötig"-Eintraege vom 03.08. mit laengst abgelaufenem
+    // `open_until`, der Benchmark klammerte 6 von 7 Brains mit exakt „(1s)" aus
+    // und lief nur noch mit qwen.
     let until = entry.open_until?;
     let remaining = until - now_secs();
     if remaining > 0 {
@@ -126,6 +153,28 @@ fn record_success_at(brain_id: &str, path: &PathBuf) {
     let mut state = load(path);
     state.remove(brain_id);
     save(path, &state);
+}
+
+/// Sperre fuer `brain_id` aktiv aufheben — fuer den Fall, dass die Ursache
+/// ausserhalb des Breakers behoben wurde.
+///
+/// Ohne das haelt ein erfolgreicher `webagent login` die Handarbeit nur zur
+/// Haelfte fertig: das Profil ist frisch eingeloggt, der Breaker traegt aber
+/// weiter „Login nötig" und laesst das Brain bis zum Ablauf des harten
+/// Cooldowns aussen vor. Gibt `true` zurueck, wenn es tatsaechlich einen
+/// Eintrag zu raeumen gab.
+pub fn clear(brain_id: &str) -> bool {
+    clear_at(brain_id, &state_path())
+}
+
+fn clear_at(brain_id: &str, path: &PathBuf) -> bool {
+    let _guard = WRITE_LOCK.lock();
+    let mut state = load(path);
+    let hatte_eintrag = state.remove(brain_id).is_some();
+    if hatte_eintrag {
+        save(path, &state);
+    }
+    hatte_eintrag
 }
 
 /// Fehlschlag (Timeout/Rate-Limit/Blocked): erhoeht den Zaehler; oeffnet den
@@ -166,15 +215,25 @@ fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
     entry.consecutive_failures += 1;
     entry.last_reason = Some(reason.to_string());
     if hard || entry.consecutive_failures >= max_failures() {
-        entry.open_until = Some(now_secs() + cooldown_secs());
+        // Harte Sperren bekommen den langen Cooldown: ein fehlender Login oder
+        // ein erschoepftes Tageslimit besteht nach 15 Minuten fast sicher noch,
+        // und jeder Anlauf kostet einen vollen `ensure_ready`-Timeout
+        // (beobachtet 2026-08-02: gemini verlor so ~144s pro Runde). Endlich
+        // ist er trotzdem — sonst kaeme das Brain nie zurueck, auch nicht
+        // nachdem der Login erneuert oder das Limit zurueckgesetzt wurde.
+        let dauer = if hard {
+            hard_cooldown_secs()
+        } else {
+            cooldown_secs()
+        };
+        entry.open_until = Some(now_secs() + dauer);
         let wie = if hard {
             "sofort (deterministische Sperre)".to_string()
         } else {
             format!("nach {} Fehlschlaegen", entry.consecutive_failures)
         };
         crate::bench_events::eprint_line(&format!(
-            "[circuit_breaker] {brain_id}: offen fuer {}s {wie} ({reason})",
-            cooldown_secs()
+            "[circuit_breaker] {brain_id}: offen fuer {dauer}s {wie} ({reason})"
         ));
     }
     save(path, &state);
@@ -254,7 +313,7 @@ mod tests {
     fn opens_after_max_failures() {
         let path = unique_path();
         for _ in 0..DEFAULT_MAX_FAILURES {
-            record_failure_at("qwen", "blocked", &path);
+            record_failure_at("qwen", "timeout_no_text", &path);
         }
         let remaining = check_at("qwen", &path).expect("breaker should be open");
         assert!(remaining > 0 && remaining <= DEFAULT_COOLDOWN_SECS);
@@ -326,7 +385,7 @@ mod tests {
         assert!(qwen.open_until.is_some());
         assert!(qwen
             .remaining_secs
-            .is_some_and(|r| r > 0 && r <= DEFAULT_COOLDOWN_SECS));
+            .is_some_and(|r| r > 0 && r <= DEFAULT_HARD_COOLDOWN_SECS));
         assert_eq!(qwen.last_reason.as_deref(), Some("blocked"));
 
         // sorted by brain_id
@@ -348,21 +407,133 @@ mod tests {
     }
 
     #[test]
-    fn deterministische_sperre_bleibt_auch_nach_cooldownablauf_gesperrt() {
+    fn harte_sperre_haelt_deutlich_laenger_als_ein_gewoehnlicher_fehlschlag() {
+        let path = unique_path();
+        record_failure_at("gemini", "Login nötig (/login)", &path);
+        let rest = check_at("gemini", &path).expect("harte Sperre muss greifen");
+        assert!(
+            rest > DEFAULT_COOLDOWN_SECS,
+            "harte Sperre darf nicht schon nach dem normalen Cooldown ablaufen (rest={rest}s)"
+        );
+        assert!(
+            rest <= DEFAULT_HARD_COOLDOWN_SECS,
+            "harte Sperre darf den harten Cooldown nicht ueberschreiten (rest={rest}s)"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn harte_sperre_verfaellt_nach_ablauf_des_harten_cooldowns() {
+        // Der Kern des Fixes vom 2026-08-05: frueher gab `check_at` fuer harte
+        // Reasons `(until - now).max(1)` zurueck. Ein abgelaufenes `open_until`
+        // ergab damit dauerhaft „1s Restsperre" — das Brain kam nie zurueck,
+        // weil nur `record_success` den Eintrag raeumt und dafuer das Brain
+        // gefragt werden muesste. Beobachtet: alle 8 Brains mit „Login nötig"
+        // vom 03.08., der Benchmark lief nur noch mit qwen.
         let path = unique_path();
         record_failure_at("gemini", "Login nötig (/login)", &path);
         let mut state = load(&path);
-        // Cooldown kuenstlich ablaufen lassen — open_until liegt jetzt in der
-        // Vergangenheit, aber die harte Reason besteht weiter.
-        state.get_mut("gemini").unwrap().open_until =
-            Some(now_secs() - 1);
+        state.get_mut("gemini").unwrap().open_until = Some(now_secs() - 1);
         save(&path, &state);
-        let rest = check_at("gemini", &path);
-        assert!(
-            rest.is_some(),
-            "harte Sperre muss trotz abgelaufenem Cooldown bestehen bleiben"
+        assert_eq!(
+            check_at("gemini", &path),
+            None,
+            "harte Sperre muss nach Ablauf verfallen, sonst bleibt das Brain fuer immer aus"
         );
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn abgelaufene_harte_sperre_ergibt_nie_die_alte_eine_sekunde() {
+        // Regression auf das konkrete Symptom: der Benchmark meldete jedes
+        // gesperrte Brain mit exakt „(1s)" — das war `.max(1)`, nicht ein echter
+        // Rest-Cooldown. Keine abgelaufene Sperre darf so etwas mehr liefern.
+        let path = unique_path();
+        for (brain, reason) in [
+            ("gemini", "Login nötig (/login)"),
+            ("kimi", "rate_limit"),
+            ("zai", "cloudflare challenge"),
+        ] {
+            record_failure_at(brain, reason, &path);
+        }
+        let mut state = load(&path);
+        for e in state.values_mut() {
+            // Zwei Tage alt — genau der Zustand aus state.json vom 05.08.
+            e.open_until = Some(now_secs() - 2 * 24 * 3600);
+        }
+        save(&path, &state);
+        for brain in ["gemini", "kimi", "zai"] {
+            assert_eq!(check_at(brain, &path), None, "{brain} haengt weiter fest");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn clear_hebt_eine_harte_sperre_sofort_auf() {
+        // `webagent login` haengt hier dran: der Login behebt die Ursache, also
+        // muss er auch den Eintrag raeumen — sonst bleibt das Brain trotz
+        // frischer Session bis zum Ablauf des harten Cooldowns aussen vor.
+        let path = unique_path();
+        record_failure_at("gemini", "Login nötig (/login)", &path);
+        assert!(
+            check_at("gemini", &path).is_some(),
+            "Vorbedingung: gesperrt"
+        );
+        assert!(
+            clear_at("gemini", &path),
+            "clear meldet den geraeumten Eintrag"
+        );
+        assert_eq!(check_at("gemini", &path), None);
+        assert!(
+            !clear_at("gemini", &path),
+            "zweites clear hat nichts mehr zu raeumen"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn clear_betrifft_nur_das_genannte_brain() {
+        let path = unique_path();
+        record_failure_at("gemini", "Login nötig (/login)", &path);
+        record_failure_at("kimi", "Login nötig (/login)", &path);
+        clear_at("gemini", &path);
+        assert_eq!(check_at("gemini", &path), None);
+        assert!(
+            check_at("kimi", &path).is_some(),
+            "ein Login fuer gemini darf kimi nicht entsperren"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn harter_cooldown_ist_per_env_ueberschreibbar() {
+        // Nur die Lesart pruefen, nicht die echten Vars setzen: cargo test laeuft
+        // parallel im selben Prozess, ein `set_var` wuerde andere Tests treffen.
+        assert_eq!(
+            hard_cooldown_secs(),
+            DEFAULT_HARD_COOLDOWN_SECS,
+            "ohne Env muss der Default gelten"
+        );
+        assert_eq!(env_num("WEBAGENT_BREAKER_TEST_UNSET_VAR", 42i64), 42);
+        std::env::set_var("WEBAGENT_BREAKER_TEST_HARD_COOLDOWN", " 1234 ");
+        assert_eq!(
+            env_num(
+                "WEBAGENT_BREAKER_TEST_HARD_COOLDOWN",
+                DEFAULT_HARD_COOLDOWN_SECS
+            ),
+            1234,
+            "Wert wird getrimmt und geparst"
+        );
+        std::env::set_var("WEBAGENT_BREAKER_TEST_HARD_COOLDOWN", "keine-zahl");
+        assert_eq!(
+            env_num(
+                "WEBAGENT_BREAKER_TEST_HARD_COOLDOWN",
+                DEFAULT_HARD_COOLDOWN_SECS
+            ),
+            DEFAULT_HARD_COOLDOWN_SECS,
+            "Muell faellt auf den Default zurueck"
+        );
+        std::env::remove_var("WEBAGENT_BREAKER_TEST_HARD_COOLDOWN");
     }
 
     #[test]

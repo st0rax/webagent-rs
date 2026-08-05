@@ -70,6 +70,20 @@ fn login_all_sequential(brains: &[String], timeout: Duration, force: bool) -> Ve
     results
 }
 
+/// Ein nachgewiesener Login raeumt die Breaker-Sperre desselben Brains mit weg.
+///
+/// Der Breaker kann sich aus einer harten Sperre („Login nötig", Quota) nicht
+/// selbst befreien, solange sie gilt — er fragt das Brain ja gerade nicht.
+/// Der Login ist der Moment, in dem die Ursache nachweislich behoben ist, also
+/// ist er auch die Stelle, an der der Eintrag faellt. Gilt auch fuer den
+/// „bereits eingeloggt"-Fall: dass die Erkennung anschlaegt, ist genau der
+/// Nachweis, dass ein alter „Login nötig"-Eintrag veraltet ist.
+pub fn clear_breaker(brain_id: &str) {
+    if crate::circuit_breaker::clear(brain_id) {
+        println!("[login] {brain_id}: Breaker-Sperre aufgehoben.");
+    }
+}
+
 /// Optionale Spiegelung des frisch eingeloggten Profils nach
 /// `profiles/reference/<brain>` — nur wenn `WEBAGENT_LOGIN_TO_REFERENCE=1`
 /// gesetzt ist. Canonical bleibt `profiles/<brain>`; die Referenz ist eine
@@ -134,6 +148,7 @@ fn login_one(
     // Bereits eingeloggt? Nur wenn nicht --force.
     if !force {
         if let Ok(true) = backend.is_logged_in_quick() {
+            clear_breaker(brain_id);
             return finish_login(shared_mode, Some(backend), LoginResult {
                 brain_id: brain_id.to_string(),
                 ok: true,
@@ -146,6 +161,7 @@ fn login_one(
     let result = match backend.interactive_login(timeout) {
         Ok(true) => {
             let profile = backend.effective_profile_dir().clone();
+            clear_breaker(brain_id);
             maybe_copy_to_reference(brain_id);
             LoginResult {
                 brain_id: brain_id.to_string(),

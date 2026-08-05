@@ -495,6 +495,7 @@ pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool) -> i32 {
         match backend.hold_window_open(timeout) {
             Ok(()) => {
                 println!("[login] {brain}: Fenster geschlossen, Profil geschrieben.");
+                webagent::login::clear_breaker(brain);
                 0
             }
             Err(e) => {
@@ -506,6 +507,7 @@ pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool) -> i32 {
         match backend.interactive_login(timeout) {
             Ok(true) => {
                 println!("[login] {brain}: Login erkannt und Session gespeichert.");
+                webagent::login::clear_breaker(brain);
                 0
             }
             Ok(false) => {
