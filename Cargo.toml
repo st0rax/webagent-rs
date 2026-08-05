@@ -50,3 +50,15 @@ path = "src/main.rs"
 [profile.release]
 lto = true
 strip = true
+
+# Testlaeufe dominiert das LINKEN, nicht das Kompilieren: die Testbinary zieht
+# wry/tao/webview2 mit voller Debug-Information, und der mingw-Linker schreibt
+# jedes Mal hunderte Megabyte. Zeilennummern in Panics bleiben mit `debug = 1`
+# erhalten, die Variableninformation faellt weg — die braucht hier niemand, es
+# laeuft kein Debugger.
+#
+# `debug-assertions` bleibt an: Ueberlaufpruefungen und debug_assert! sind der
+# Grund, warum ein Testlauf ueberhaupt mehr findet als ein Release-Lauf.
+[profile.dev]
+debug = 1
+incremental = true

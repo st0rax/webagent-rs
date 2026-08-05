@@ -152,10 +152,14 @@ pub const DEFAULT_MAX_OBSERVATION_CHARS: usize = 12_000;
 ///
 /// Am 30.07.2026 mit `webagent measure-limits` gemessen: chatgpt, deepseek,
 /// kimi und zai nahmen jeweils **100.000 Zeichen** an, alle beim ersten
-/// Versuch. Das ist die oberste Sprosse der Probenleiter, also eine untere
-/// Schranke — nach oben ist offen. Der bisherige Wert von 12.000 war damit rund
-/// achtmal zu vorsichtig; er stammte aus der Python-Portierung und war nie
-/// nachgeprüft worden.
+/// Versuch. Das war die oberste Sprosse der damaligen Probenleiter, also eine
+/// untere Schranke — nach oben blieb es offen. Genau daran ist die alte Messung
+/// missverstanden worden: `rejected_chars: null` heisst „nie abgelehnt", nicht
+/// „hier ist Schluss". Seit 02.08.2026 sucht `measure-limits` deshalb nach oben
+/// weiter und schachtelt bei der ersten Ablehnung ein; ein Eintrag ohne
+/// `rejected_chars` ist weiterhin ausdruecklich nur eine untere Schranke.
+/// Der frueher genutzte Wert von 12.000 war rund achtmal zu vorsichtig; er
+/// stammte aus der Python-Portierung und war nie nachgeprüft worden.
 ///
 /// Genutzt wird die **Hälfte** des gemessenen Werts: die Messung gilt für eine
 /// ganze Nachricht, unsere besteht aber aus Aufgabentext, Verlauf UND

@@ -7,6 +7,7 @@ mod cli;
 mod commands;
 use cli::{Cli, Commands};
 use commands::ops::*;
+use commands::probe::cmd_probe;
 use commands::research::*;
 use commands::ui::*;
 
@@ -190,13 +191,23 @@ fn dispatch(command: Commands) -> i32 {
             visible,
         } => cmd_survey(brain.as_deref(), write, !visible, dump, open.as_deref()),
 
+        Commands::Probe {
+            url,
+            throwaway_profile,
+            visible,
+            json,
+        } => cmd_probe(&url, throwaway_profile, !visible, json),
+
         Commands::Quests { json } => cmd_quests(json),
 
         Commands::MeasureLimits {
             brains,
             headless,
             force,
-        } => cmd_measure_limits(&brains, headless, force),
+            start,
+            ceiling,
+            tolerance,
+        } => cmd_measure_limits(&brains, headless, force, start, ceiling, tolerance),
 
         Commands::Relay {
             brain,

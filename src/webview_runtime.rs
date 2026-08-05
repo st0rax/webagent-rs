@@ -48,6 +48,13 @@ enum RuntimeMessage {
         bounds: Option<crate::brain_grid::Rect>,
         respond: Sender<Result<()>>,
     },
+    /// Fokus ausdruecklich auf eine Kachel holen (`true`) oder ihn ans
+    /// Terminalfenster zurueckgeben (`false`). Siehe [`WebViewRuntime::focus_view`].
+    FocusView {
+        view_id: ViewId,
+        focus: bool,
+        respond: Sender<Result<()>>,
+    },
     Shutdown,
 }
 
@@ -176,6 +183,26 @@ impl WebViewRuntime {
             .send(RuntimeMessage::SetBounds {
                 view_id,
                 bounds,
+                respond: resp_tx,
+            })
+            .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
+        self.wake_and_wait(resp_rx, Duration::from_secs(15))
+    }
+
+    /// Holt den Fokus ausdruecklich auf eine Kachel (`focus = true`) oder gibt
+    /// ihn ans Terminalfenster zurueck (`focus = false`).
+    ///
+    /// Der Normalfall ist „kein Fokus": jedes Kachelfenster traegt
+    /// `WS_EX_NOACTIVATE`, damit ein Klick oder ein Auftauchen auf dem Schirm
+    /// dem Terminal nicht mitten im Tippen den Fokus wegreisst. Nur dieser
+    /// Aufruf nimmt das Flag fuer die Dauer der Uebernahme weg — angestossen
+    /// ausschliesslich durch Alt+Nummer bzw. Esc in der TUI.
+    pub fn focus_view(&self, view_id: ViewId, focus: bool) -> Result<()> {
+        let (resp_tx, resp_rx) = mpsc::channel();
+        self.tx
+            .send(RuntimeMessage::FocusView {
+                view_id,
+                focus,
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
@@ -357,6 +384,14 @@ fn pump_runtime(rt: &mut SharedRuntime, event_loop: &mut EventLoop<()>) -> bool 
                 let result = set_bounds(rt, view_id, bounds);
                 let _ = respond.send(result);
             }
+            RuntimeMessage::FocusView {
+                view_id,
+                focus,
+                respond,
+            } => {
+                let result = focus_view(rt, view_id, focus);
+                let _ = respond.send(result);
+            }
         }
     }
 
@@ -440,6 +475,15 @@ fn open_page(
         .build(event_loop)
         .map_err(|e| PageDriverError::Launch(e.to_string()))?;
 
+    // Agentenfenster duerfen den Fokus nicht an sich reissen. Off-screen fiel das
+    // nicht auf; in der Kachelansicht liegen sie neben der TUI, und jedes
+    // absendende oder neu auftauchende Brain wuerde dem Nutzer den Fokus mitten
+    // im Tippen wegnehmen. Nur der interaktive (nicht-headless) Fall — z.B.
+    // `login` — bleibt ein normales, aktivierbares Fenster.
+    if headless {
+        set_no_activate(&window, true);
+    }
+
     let mut web_context = rt
         .web_context
         .take()
@@ -490,6 +534,91 @@ fn close_page(rt: &mut SharedRuntime, view_id: ViewId) -> Result<()> {
     Ok(())
 }
 
+/// Schaltet `WS_EX_NOACTIVATE` fuer ein Fenster an oder aus.
+///
+/// tao 0.29 kennt das Flag nicht (`WindowBuilderExtWindows`/`WindowExtWindows`
+/// bieten nur `skip_taskbar`, `undecorated_shadow`, `rtl`, `enable`, …) — es
+/// gibt aber `hwnd()`, also wird das erweiterte Fensterstil-Bit direkt per
+/// `SetWindowLongPtrW` gesetzt.
+///
+/// Wichtig fuer den Absendeweg: `WS_EX_NOACTIVATE` nimmt dem Fenster nur die
+/// *Aktivierung*, nicht die Sichtbarkeit. Genau das ist der Unterschied zu
+/// `with_visible(false)` (siehe `open_page`), das den Enter-Weg zerstoert hat.
+/// `press_key` laeuft ohnehin als DOM-`KeyboardEvent` ueber
+/// `evaluate_script` — dafuer braucht es keinen Betriebssystem-Fokus, nur eine
+/// laufende, gerenderte Seite. Die bleibt hier erhalten.
+#[cfg(windows)]
+fn set_no_activate(window: &tao::window::Window, no_activate: bool) {
+    use tao::platform::windows::WindowExtWindows;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+    };
+    let hwnd = HWND(window.hwnd() as *mut core::ffi::c_void);
+    unsafe {
+        let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let bit = WS_EX_NOACTIVATE.0 as isize;
+        let updated = if no_activate {
+            current | bit
+        } else {
+            current & !bit
+        };
+        if updated != current {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, updated);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn set_no_activate(_window: &tao::window::Window, _no_activate: bool) {}
+
+/// Gibt den Fokus aktiv an das Terminalfenster zurueck, in dem die TUI laeuft.
+///
+/// Ohne diesen Schritt landet der Fokus nach einer Uebernahme irgendwo —
+/// Windows waehlt beim Deaktivieren kein bestimmtes Nachfolgefenster.
+#[cfg(all(windows, feature = "webview"))]
+fn focus_terminal_window() {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+    if let Some(hwnd) = crate::brain_grid::terminal_window_hwnd() {
+        unsafe {
+            let _ = SetForegroundWindow(HWND(hwnd as *mut core::ffi::c_void));
+        }
+    }
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+fn focus_terminal_window() {}
+
+/// Ausdrueckliche Fokusuebernahme fuer eine Kachel bzw. Rueckgabe ans Terminal.
+fn focus_view(rt: &mut SharedRuntime, view_id: ViewId, focus: bool) -> Result<()> {
+    let slot = rt
+        .pages
+        .get(&view_id)
+        .ok_or_else(|| PageDriverError::Protocol(format!("Tab {view_id} existiert nicht")))?;
+    if focus {
+        // Erst das Flag weg, sonst verweigert Windows die Aktivierung.
+        set_no_activate(&slot.window, false);
+        slot.window.set_focus();
+        #[cfg(windows)]
+        {
+            use tao::platform::windows::WindowExtWindows;
+            use windows::Win32::Foundation::HWND;
+            use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+            unsafe {
+                let _ = SetForegroundWindow(HWND(
+                    slot.window.hwnd() as *mut core::ffi::c_void
+                ));
+            }
+        }
+    } else {
+        // Zurueck in den Normalzustand: nicht aktivierbar, Fokus ans Terminal.
+        set_no_activate(&slot.window, true);
+        focus_terminal_window();
+    }
+    Ok(())
+}
+
 /// Positioniert ein Tab-Fenster. Laeuft ausschliesslich im UI-Thread — tao
 /// erlaubt Fensterzugriffe nur dort, deshalb der Umweg ueber `RuntimeMessage`.
 fn set_bounds(
@@ -501,6 +630,9 @@ fn set_bounds(
         .pages
         .get(&view_id)
         .ok_or_else(|| PageDriverError::Protocol(format!("Tab {view_id} existiert nicht")))?;
+    // In beiden Richtungen: die Kachel bleibt nicht aktivierbar. Beim Auftauchen
+    // auf dem Schirm ist das der Kern des Entwurfs, beim Parken schadet es nicht.
+    set_no_activate(&slot.window, true);
     match bounds {
         Some(rect) => {
             slot.window
@@ -819,14 +951,15 @@ fn js_string(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())
 }
 
-fn press_key_js(
-    webview: &wry::WebView,
-    key: &str,
-    code: &str,
-    virtual_key: i64,
-    text: &str,
-    event_loop: &mut EventLoop<()>,
-) -> Result<()> {
+/// Baut das Skript fuer [`press_key_js`].
+///
+/// Eigene Funktion, damit der Absendeweg pruefbar bleibt: Enter wird als
+/// DOM-`KeyboardEvent` an `document.activeElement` geschickt, also **innerhalb**
+/// der Seite. Er haengt damit nicht am Fenster-Fokus des Betriebssystems —
+/// genau deshalb darf die Kachel `WS_EX_NOACTIVATE` tragen. Was er braucht, ist
+/// eine sichtbare, laufende Seite; die nimmt ihm `WS_EX_NOACTIVATE` nicht,
+/// `with_visible(false)` dagegen schon.
+fn press_key_script(key: &str, code: &str, virtual_key: i64, text: &str) -> String {
     let key = js_string(key);
     let code = js_string(code);
     let text = js_string(text);
@@ -844,6 +977,18 @@ return true;}})()"#,
         vk = virtual_key,
         text = text
     );
+    js
+}
+
+fn press_key_js(
+    webview: &wry::WebView,
+    key: &str,
+    code: &str,
+    virtual_key: i64,
+    text: &str,
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    let js = press_key_script(key, code, virtual_key, text);
     eval_js(webview, &js, event_loop)?;
     Ok(())
 }
@@ -893,7 +1038,35 @@ return true;}})()"#
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_eval_result, wrap_eval};
+    use super::{parse_eval_result, press_key_script, wrap_eval};
+
+    // Die Bedingung, unter der die ganze Kachelansicht steht: Enter absenden
+    // darf nicht am Betriebssystem-Fokus haengen. Tut es auch nicht — der
+    // Tastendruck ist ein DOM-Event an `document.activeElement`, das ueber
+    // `evaluate_script` in die Seite gereicht wird. Deshalb duerfen die
+    // Kachelfenster `WS_EX_NOACTIVATE` tragen, ohne den Absendeweg zu beruehren.
+    // Kaeme hier je ein Betriebssystem-Weg (SendInput, keybd_event, SendMessage
+    // an das Fenster) hinein, waere diese Annahme gebrochen — der Test schlaegt
+    // dann an, bevor der Relay stillschweigend in Timeouts laeuft.
+    #[test]
+    fn enter_wird_im_dom_ausgeloest_nicht_ueber_den_fensterfokus() {
+        let js = press_key_script("Enter", "Enter", 13, "\r");
+        assert!(
+            js.contains("document.activeElement"),
+            "Enter muss ans fokussierte DOM-Element gehen: {js}"
+        );
+        assert!(
+            js.contains("new KeyboardEvent('keydown'"),
+            "Enter muss ein DOM-KeyboardEvent sein: {js}"
+        );
+        for os_weg in ["SendInput", "keybd_event", "PostMessage", "SendMessage"] {
+            assert!(
+                !js.contains(os_weg),
+                "{os_weg} wuerde den Absendeweg an den Fensterfokus binden: {js}"
+            );
+        }
+        assert!(js.contains("13"), "keyCode fehlt: {js}");
+    }
 
     // Regression: der Wrapper darf kein Promise und keinen String liefern.
     // WebView2 serialisiert das Skript-Ergebnis; eine async-IIFE kommt als "{}"

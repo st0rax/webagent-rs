@@ -54,11 +54,17 @@ impl Candidate {
     /// sichtbaren Text, mal nur im `data-testid`. Wer nur eine Quelle prueft,
     /// findet je nach Brain die Haelfte nicht.
     fn haystack(&self) -> String {
+        // Trennzeichen vereinheitlichen: Maschinen-Kennungen schreiben
+        // `new-chat-button` oder `send_message`, Menschen „new chat". Ohne
+        // diese Umschrift greift kein einziges mehrwortiges Muster auf einem
+        // `data-testid` — chatgpts `data-testid='new-chat-button'` ist genau
+        // dieser Fall und war beim ersten Wurf ein stiller Fehlschlag.
         format!(
             "{} {} {} {} {}",
             self.aria_label, self.text, self.test_id, self.id, self.placeholder
         )
         .to_lowercase()
+        .replace(['-', '_', '.'], " ")
     }
 }
 
@@ -309,9 +315,45 @@ pub fn classify(candidates: &[Candidate]) -> Vec<Proposal> {
 /// Der Browser-Teil ist absichtlich duenn: einsammeln und deuten lassen. So
 /// bleibt die Logik im testbaren Teil.
 pub fn probe(driver: &mut dyn PageDriver) -> Result<Vec<Proposal>> {
+    Ok(classify(&collect(driver)?))
+}
+
+/// Sammelt nur ein, ohne zu deuten.
+///
+/// Getrennt von [`probe`], weil der Befehl auch die Rohzahl der gefundenen
+/// Bedienelemente braucht: „0 Vorschlaege" heisst etwas voellig anderes, je
+/// nachdem ob die Seite 0 oder 200 Elemente hatte. Ohne diese Zahl kann man
+/// einen Messfehler nicht von einem Ergebnis unterscheiden.
+pub fn collect(driver: &mut dyn PageDriver) -> Result<Vec<Candidate>> {
     let raw = driver.evaluate(PROBE_SCRIPT)?;
-    let candidates: Vec<Candidate> = serde_json::from_value(raw).unwrap_or_default();
-    Ok(classify(&candidates))
+    Ok(serde_json::from_value(raw).unwrap_or_default())
+}
+
+/// Verlangt die Seite eine Anmeldung?
+///
+/// Wichtig fuer die Ehrlichkeit des Befehls: eine Anmeldemaske hat auch Knoepfe
+/// und Textfelder, also liefert die Analyse dort *irgendwelche* Vorschlaege.
+/// Ohne diese Pruefung meldet `probe` einen Erfolg, wo es in Wahrheit die
+/// falsche Seite vermessen hat. Es wird nur erkannt und gemeldet — nie
+/// angemeldet.
+pub fn looks_like_login(candidates: &[Candidate], url: &str) -> bool {
+    const IN_URL: &[&str] = &["/login", "/signin", "/sign-in", "/auth", "accounts.google"];
+    if IN_URL.iter().any(|n| url.to_lowercase().contains(n)) {
+        return true;
+    }
+    // Ein Passwortfeld ist der eindeutigste Marker; das PROBE_SCRIPT sammelt
+    // aber nur `input[type=text]`. Also ueber die Beschriftungen gehen — und
+    // zwar streng: ein blosser „Anmelden"-Knopf steht auch neben einem voll
+    // bedienbaren Gast-Chat (perplexity). Erst wenn KEIN Eingabefeld fuer eine
+    // Nachricht da ist, ist die Anmeldung wirklich der einzige Weg weiter.
+    const LOGIN_WORDS: &[&str] = &[
+        "log in", "login", "sign in", "anmelden", "einloggen", "passwort", "password",
+    ];
+    let has_login = candidates
+        .iter()
+        .filter(|c| c.visible)
+        .any(|c| LOGIN_WORDS.iter().any(|w| c.haystack().contains(w)));
+    has_login && classify_composer(candidates).is_none()
 }
 
 /// Ergebnis der Nachpruefung eines [`Proposal`]s an der lebenden Oberflaeche.
@@ -551,6 +593,195 @@ mod tests {
         let keys: Vec<&str> = found.iter().map(|p| p.selector_key).collect();
         assert!(keys.contains(&"stop_button"), "{keys:?}");
         assert!(keys.contains(&"composer"), "{keys:?}");
+    }
+
+    // ── Gegenprobe gegen die gepflegten Selektordateien ──────────────────
+    //
+    // Der eigentliche Pruefstein: eine Regel, die zufaellig auf perplexity
+    // passt und bei den sieben eingetragenen Brains danebengreift, ist keine
+    // Regel. `selectors/*.json` ist die Referenz — dort steht, welche
+    // Beschriftungen die Oberflaechen wirklich tragen.
+    //
+    // Grenze dieses Tests, ehrlich benannt: er misst das WORTSCHATZ-Problem
+    // (findet die Regel den Knopf an seiner echten Beschriftung?), nicht das
+    // lebende DOM. Ein Selektor ohne jede Beschriftung — `button[type=submit]`,
+    // `a[href='/']`, `button:has(svg)` — ist hier grundsaetzlich nicht
+    // entscheidbar und wird deshalb ausgeklammert statt als Treffer gezaehlt.
+
+    /// Baut aus einem gepflegten Selektor den Kandidaten, den er meint.
+    /// `None`, wenn der Selektor keinerlei Beschriftung traegt.
+    fn candidate_from_selector(selector: &str) -> Option<Candidate> {
+        let tag = selector
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect::<String>();
+        let tag = if tag.is_empty() { "button".into() } else { tag };
+        let mut c = Candidate {
+            tag,
+            visible: true,
+            ..Default::default()
+        };
+        // Wert zwischen den Anfuehrungszeichen nach einem Attributnamen.
+        let value_after = |needle: &str| -> Option<String> {
+            let rest = selector.split_once(needle)?.1;
+            let quote = rest.chars().find(|c| *c == '\'' || *c == '"')?;
+            let rest = rest.split_once(quote)?.1;
+            Some(rest.split(quote).next()?.to_string())
+        };
+        if let Some(v) = value_after("data-testid") {
+            c.test_id = v;
+        }
+        if let Some(v) = value_after("aria-label") {
+            c.aria_label = v;
+        }
+        if let Some(v) = value_after(":has-text(") {
+            c.text = v;
+        }
+        if let Some(v) = selector.split_once("text=") {
+            if !v.0.ends_with("has-") {
+                c.text = v.1.to_string();
+            }
+        }
+        if let Some(v) = selector.split_once('#') {
+            c.id = v
+                .1
+                .chars()
+                .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+                .collect();
+        }
+        if selector.contains("contenteditable") {
+            c.contenteditable = true;
+        }
+        if selector.contains("textarea") {
+            c.tag = "textarea".into();
+        }
+        let labelled = !c.test_id.is_empty()
+            || !c.aria_label.is_empty()
+            || !c.text.is_empty()
+            || !c.id.is_empty();
+        if labelled || c.contenteditable || c.tag == "textarea" {
+            Some(c)
+        } else {
+            None
+        }
+    }
+
+    fn selector_files() -> Vec<(String, serde_json::Value)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("selectors");
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(dir).expect("selectors/ muss existieren") {
+            let path = entry.expect("Eintrag").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let name = path.file_stem().unwrap().to_string_lossy().to_string();
+            let body = std::fs::read_to_string(&path).expect("lesbar");
+            out.push((name, serde_json::from_str(&body).expect("gueltiges JSON")));
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    #[test]
+    fn gegenprobe_trifft_die_gepflegten_selektoren() {
+        // Fuer jeden Selektorschluessel, fuer den es eine Regel gibt: erkennt
+        // die Analyse das gemeinte Element an seiner echten Beschriftung?
+        let interesting = [
+            "composer",
+            "send_button",
+            "stop_button",
+            "new_chat_button",
+            "reasoning_toggle",
+            "web_search_toggle",
+            "temporary_chat_button",
+        ];
+        let mut misses: Vec<String> = Vec::new();
+        for (brain, sel) in selector_files() {
+            for key in interesting {
+                let Some(list) = sel.get(key).and_then(|v| v.as_array()) else {
+                    continue;
+                };
+                let candidates: Vec<Candidate> = list
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .filter_map(candidate_from_selector)
+                    .collect();
+                if candidates.is_empty() {
+                    // Nur beschriftungslose Selektoren — nicht entscheidbar.
+                    continue;
+                }
+                // Jeden Kandidaten EINZELN pruefen waere zu streng: die Listen
+                // sind Fallback-Ketten, in denen absichtlich auch grobe
+                // Eintraege stehen. Es genuegt, dass die Analyse den Knopf an
+                // IRGENDEINER seiner gepflegten Beschriftungen erkennt.
+                let found = candidates.iter().any(|c| {
+                    classify(std::slice::from_ref(c))
+                        .iter()
+                        .any(|p| p.selector_key == key)
+                });
+                if !found {
+                    misses.push(format!("{brain}/{key}"));
+                }
+            }
+        }
+        // Bekannte, benannte Luecken statt einer geschoenten Zahl. Wer eine
+        // Regel schaerft, muss diese Liste kuerzen — nicht verlaengern.
+        let known: &[&str] = &[
+            // deepseek beschriftet den Websuche-Knopf nur mit „Search". Ein
+            // Muster auf das blosse Wort wuerde bei allen anderen Brains das
+            // Suchfeld der Seitenleiste treffen — ein falscher Vorschlag ist
+            // schlimmer als ein fehlender, also bleibt die Luecke stehen.
+            "deepseek/web_search_toggle",
+        ];
+        let unexpected: Vec<&String> = misses
+            .iter()
+            .filter(|m| !known.contains(&m.as_str()))
+            .collect();
+        assert!(
+            unexpected.is_empty(),
+            "Analyse verfehlt gepflegte Selektoren: {unexpected:?}"
+        );
+    }
+
+    #[test]
+    fn gegenprobe_schlaegt_nichts_falsches_vor() {
+        // Die gefaehrlichere Haelfte: ein falscher Vorschlag verdrahtet
+        // stillschweigend das falsche Element. Geprueft wird, dass ein
+        // gepflegter Selektor NICHT einer fremden Faehigkeit zugeordnet wird.
+        let mut wrong: Vec<String> = Vec::new();
+        for (brain, sel) in selector_files() {
+            let Some(obj) = sel.as_object() else { continue };
+            for (key, list) in obj {
+                let Some(list) = list.as_array() else { continue };
+                for raw in list.iter().filter_map(|v| v.as_str()) {
+                    let Some(c) = candidate_from_selector(raw) else {
+                        continue;
+                    };
+                    for p in classify(std::slice::from_ref(&c)) {
+                        // Composer-Vorschlag auf einem Textfeld ist richtig,
+                        // egal unter welchem Schluessel es steht.
+                        if p.selector_key == "composer" {
+                            continue;
+                        }
+                        if p.selector_key != key.as_str() {
+                            wrong.push(format!("{brain}/{key}: '{raw}' -> {}", p.selector_key));
+                        }
+                    }
+                }
+            }
+        }
+        // Erwartete, harmlose Ueberschneidungen: `login_indicator` und
+        // `login_button` zeigen bewusst auf dieselben Elemente wie composer
+        // bzw. der Anmeldeknopf — das sind Zeiger, keine eigenen Knoepfe.
+        let benign = |s: &String| {
+            s.contains("/login_indicator")
+                || s.contains("/login_button")
+                || s.contains("/reasoning_effort_menu")
+                || s.contains("/model_menu")
+                || s.contains("/mode_option")
+        };
+        let real: Vec<&String> = wrong.iter().filter(|s| !benign(s)).collect();
+        assert!(real.is_empty(), "falsche Zuordnungen: {real:#?}");
     }
 
     fn proposal() -> Proposal {

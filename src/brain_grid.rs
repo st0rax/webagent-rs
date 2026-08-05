@@ -2,9 +2,15 @@
 //!
 //! Die Brain-Fenster existieren bereits: [`crate::webview_runtime`] oeffnet pro
 //! Tab ein echtes Fenster und parkt es nur auf `OFFSCREEN_POS`, damit es
-//! fokussierbar bleibt (ein `with_visible(false)`-Fenster bekommt keinen Fokus,
-//! dann laeuft `press_enter` ins Leere). Die Kachelansicht holt diese Fenster in ein
-//! Raster zurueck auf den Bildschirm.
+//! sichtbar (gerendert) bleibt — ein `with_visible(false)`-Fenster laesst die
+//! Seite nicht laufen, dann geht `press_enter` ins Leere. Die Kachelansicht holt
+//! diese Fenster in ein Raster zurueck auf den Bildschirm.
+//!
+//! Sichtbar heisst hier ausdruecklich **nicht** aktivierbar: die Kacheln tragen
+//! `WS_EX_NOACTIVATE` (siehe `webview_runtime::set_no_activate`), sonst wuerde
+//! jedes absendende Brain dem Terminal mitten im Tippen den Fokus wegreissen.
+//! Fokus bekommt eine Kachel nur auf ausdrueckliche Anforderung (Alt+Nummer),
+//! Esc gibt ihn ans Terminalfenster zurueck.
 //!
 //! Dieses Modul rechnet ausschliesslich — es fasst kein Fenster an. Genau
 //! deshalb ist es testbar: die Kachelaufteilung ist die Stelle, an der sich
@@ -179,19 +185,54 @@ pub fn dock_area(screen: Rect, terminal: Rect) -> Rect {
 /// ein Fenster.
 #[cfg(all(windows, feature = "webview"))]
 pub fn terminal_window_rect() -> Option<Rect> {
+    terminal_window().map(|(_hwnd, rect)| rect)
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+pub fn terminal_window_rect() -> Option<Rect> {
+    None
+}
+
+/// Fensterhandle desselben Terminalfensters, dessen Rechteck
+/// [`terminal_window_rect`] liefert.
+///
+/// Bewusst aus derselben Suche gespeist statt als zweite Elternketten-Jagd:
+/// zwei Suchen koennten auseinanderlaufen und dann wuerde der Fokus an ein
+/// anderes Fenster gehen, als die Kacheln umfliessen.
+#[cfg(all(windows, feature = "webview"))]
+pub fn terminal_window_hwnd() -> Option<isize> {
+    terminal_window().map(|(hwnd, _rect)| hwnd)
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+pub fn terminal_window_hwnd() -> Option<isize> {
+    None
+}
+
+/// Gemeinsame Elternketten-Suche: `webagent.exe -> pwsh.exe -> WindowsTerminal.exe`.
+#[cfg(all(windows, feature = "webview"))]
+fn terminal_window() -> Option<(isize, Rect)> {
     let mut pid = std::process::id();
     for _ in 0..6 {
-        if let Some(rect) = visible_window_of(pid) {
-            return Some(rect);
+        if let Some(found) = visible_window_of(pid) {
+            return Some(found);
         }
         pid = parent_pid(pid)?;
     }
     None
 }
 
-#[cfg(not(all(windows, feature = "webview")))]
-pub fn terminal_window_rect() -> Option<Rect> {
-    None
+/// Uebersetzt eine Nummerntaste (Alt+1 … Alt+9) in einen Kachelindex.
+///
+/// Rein rechnend und damit testbar — die Tastenbelegung ist genau die Stelle,
+/// an der sich ein Off-by-one einschleicht: der Nutzer zaehlt ab 1, die
+/// Kachelliste ab 0. `Alt+0` ist bewusst kein Brain: eine zehnte Kachel passt
+/// ohnehin nie auf den Schirm (siehe [`fitting_tile_count`]).
+pub fn brain_index_for_digit(c: char) -> Option<usize> {
+    match c {
+        '1'..='9' => Some(c as usize - '1' as usize),
+        _ => None,
+    }
 }
 
 #[cfg(all(windows, feature = "webview"))]
@@ -226,11 +267,11 @@ fn parent_pid(pid: u32) -> Option<u32> {
 #[cfg(all(windows, feature = "webview"))]
 struct WindowSearch {
     pid: u32,
-    result: Option<Rect>,
+    result: Option<(isize, Rect)>,
 }
 
 #[cfg(all(windows, feature = "webview"))]
-fn visible_window_of(pid: u32) -> Option<Rect> {
+fn visible_window_of(pid: u32) -> Option<(isize, Rect)> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible,
@@ -254,7 +295,7 @@ fn visible_window_of(pid: u32) -> Option<Rect> {
         if width < 200 || height < 100 {
             return BOOL(1);
         }
-        search.result = Some(Rect::new(rect.left, rect.top, width, height));
+        search.result = Some((window.0 as isize, Rect::new(rect.left, rect.top, width, height)));
         BOOL(0)
     }
 
@@ -457,6 +498,15 @@ mod tests {
         );
         // Und es muessen echte Kacheln hineinpassen.
         assert!(fitting_tile_count(area, 8) >= 4, "zu wenig Platz fuer Kacheln");
+    }
+
+    #[test]
+    fn alt_nummer_zaehlt_ab_eins_fuer_den_nutzer_und_ab_null_fuer_die_liste() {
+        assert_eq!(brain_index_for_digit('1'), Some(0));
+        assert_eq!(brain_index_for_digit('9'), Some(8));
+        // Alt+0 waere die zehnte Kachel — die passt nie auf den Schirm.
+        assert_eq!(brain_index_for_digit('0'), None);
+        assert_eq!(brain_index_for_digit('w'), None);
     }
 
     #[test]

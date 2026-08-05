@@ -284,6 +284,33 @@ pub enum Commands {
         visible: bool,
     },
 
+    /// Analysiert eine BELIEBIGE Chat-Oberflaeche und schlaegt Selektoren vor —
+    /// wie die Link-Analyse in JDownloader, nur fuer Bedienelemente.
+    ///
+    /// Anders als `survey` braucht das kein eingetragenes Brain und keine
+    /// vorhandenen Selektoren: es klopft ab, was da ist. Damit laesst sich ein
+    /// unbekannter Anbieter aufnehmen, statt seine Selektoren von Hand zu
+    /// pflegen und beim naechsten UI-Umbau wieder zu verlieren.
+    Probe {
+        /// Zu analysierende Seite, z.B. https://www.perplexity.ai
+        #[arg(long)]
+        url: String,
+
+        /// Wegwerf-Profil statt des kanonischen (Standard: an).
+        ///
+        /// Eine fremde Seite hat in den angemeldeten Profilen nichts verloren.
+        #[arg(long, default_value = "true")]
+        throwaway_profile: bool,
+
+        /// Sichtbar statt off-screen
+        #[arg(long)]
+        visible: bool,
+
+        /// Maschinenlesbares JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Vermisst die Oberflaeche eines Brains im echten DOM und traegt die
     /// gefundenen Optionen als `ui_options` ein (der Nenner des Levels)
     Survey {
@@ -324,6 +351,15 @@ pub enum Commands {
         /// Auch bereits gemessene Brains erneut messen
         #[arg(long)]
         force: bool,
+        /// Erste Probengroesse in Zeichen
+        #[arg(long, default_value_t = 100_000)]
+        start: usize,
+        /// Obergrenze: wird sie angenommen, gilt der Wert als untere Schranke
+        #[arg(long, default_value_t = 2_000_000)]
+        ceiling: usize,
+        /// Genauigkeit der Intervallschachtelung in Zeichen
+        #[arg(long, default_value_t = 10_000)]
+        tolerance: usize,
     },
 
     /// Single send+wait turn (bot2bot bridge debugging)
