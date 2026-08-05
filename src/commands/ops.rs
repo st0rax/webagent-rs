@@ -61,11 +61,19 @@ pub fn brain_io_json(r: &BrainIoResult) -> String {
 /// Misst je Brain, wie lange eine Eingabe sein darf, und schreibt das Ergebnis
 /// nach `<data>/brain_limits.json`.
 ///
-/// Absteigende Leiter: der erste Erfolg beendet die Messung, ein Brain mit
-/// grosszuegiger Oberflaeche kostet also genau eine Nachricht. Brains mit
-/// bereits gemessenem Wert werden uebersprungen — nur neu eingepflegte kommen
-/// dran, ohne die bekannten erneut zu befragen.
-pub fn cmd_measure_limits(brains: &str, headless: bool, force: bool) -> i32 {
+/// Erst verdoppeln bis zur ersten Ablehnung, dann zwischen letztem
+/// angenommenen und erstem abgelehnten Wert schachteln. Die frueher genutzte
+/// feste Leiter endete bei 100.000 und meldete deren Annahme als „Grenze" —
+/// tatsaechlich war das nur die Obergrenze des Tests. Brains mit bereits
+/// gemessenem Wert werden uebersprungen (ausser mit `--force`).
+pub fn cmd_measure_limits(
+    brains: &str,
+    headless: bool,
+    force: bool,
+    start: usize,
+    ceiling: usize,
+    tolerance: usize,
+) -> i32 {
     let liste: Vec<String> = if brains.trim().is_empty() {
         webagent::config::available_brain_ids()
     } else {
@@ -91,50 +99,71 @@ pub fn cmd_measure_limits(brains: &str, headless: bool, force: bool) -> i32 {
     }
     println!("[limits] zu messen: {}", offen.join(", "));
 
+    let cfg = webagent::brain_limits::SearchConfig {
+        start,
+        ceiling,
+        tolerance,
+        ..Default::default()
+    };
+
     let mut fehler = 0;
     for brain in &offen {
-        let mut angenommen: Option<usize> = None;
-        let mut abgelehnt: Option<usize> = None;
         let mut notiz = String::new();
-
-        for &groesse in webagent::brain_limits::PROBE_LADDER {
+        let ergebnis = webagent::brain_limits::search_limit(&cfg, |groesse| {
             let fuellung = "x".repeat(groesse.saturating_sub(200));
             let probe = format!(
                 "Antworte AUSSCHLIESSLICH mit dem Wort OK. Ignoriere den Fuelltext.\n\n{fuellung}"
             );
-            print!("  {brain:<10} {groesse:>7} Zeichen … ");
+            print!("  {brain:<10} {groesse:>8} Zeichen … ");
             let _ = std::io::Write::flush(&mut std::io::stdout());
             match webagent::relay::relay_single_turn(brain, &probe, headless, Some(180.0)) {
                 Ok(antwort) => {
                     if webagent::brain_limits::looks_like_length_rejection(&antwort) {
                         println!("abgelehnt");
-                        abgelehnt = Some(groesse);
                         notiz = webagent::char_prefix(antwort.trim(), 120).to_string();
-                        continue;
+                        webagent::brain_limits::ProbeOutcome::Rejected
+                    } else {
+                        println!("angenommen");
+                        webagent::brain_limits::ProbeOutcome::Accepted
                     }
-                    println!("angenommen");
-                    angenommen = Some(groesse);
-                    break;
                 }
                 Err(e) => {
                     let text = e.to_string();
                     println!("Fehler: {}", webagent::char_prefix(&text, 80));
                     if webagent::brain_limits::looks_like_length_rejection(&text) {
-                        abgelehnt = Some(groesse);
                         notiz = webagent::char_prefix(&text, 120).to_string();
-                        continue;
+                        webagent::brain_limits::ProbeOutcome::Rejected
+                    } else {
+                        // Kein Laengenproblem (Login, Kontingent, Netz).
+                        webagent::brain_limits::ProbeOutcome::Aborted(text)
                     }
-                    // Kein Laengenproblem (Login, Limit, Netz): nicht weiterraten.
-                    break;
                 }
             }
+        });
+
+        if let Some(grund) = &ergebnis.aborted {
+            eprintln!(
+                "  {brain}: abgebrochen, kein Laengenproblem: {}",
+                webagent::char_prefix(grund, 100)
+            );
         }
 
-        match angenommen {
+        match ergebnis.accepted {
             Some(n) => {
+                if ergebnis.rejected.is_none() {
+                    notiz = format!(
+                        "nie abgelehnt bis {n} — untere Schranke, keine Grenze (Decke {ceiling})"
+                    );
+                    println!("  {brain:<10} bis {n} angenommen, NIE abgelehnt (untere Schranke)");
+                } else {
+                    println!(
+                        "  {brain:<10} Grenze zwischen {n} und {}",
+                        ergebnis.rejected.unwrap_or(0)
+                    );
+                }
                 let eintrag = webagent::brain_limits::BrainLimit {
                     accepted_chars: n,
-                    rejected_chars: abgelehnt,
+                    rejected_chars: ergebnis.rejected,
                     measured_at: webagent::now_rfc3339(),
                     note: notiz,
                 };

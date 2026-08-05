@@ -472,7 +472,7 @@ fn run_tui_ratatui(
     startup_benchmark: Option<&str>,
     startup_view: Option<&str>,
 ) -> i32 {
-    use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+    use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
     use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
     use crossterm::ExecutableCommand;
     use ratatui::backend::CrosstermBackend;
@@ -654,6 +654,22 @@ fn run_tui_ratatui(
                 }
                 match app.input_mode {
                     InputMode::Normal => match key.code {
+                        // Alt+Nummer: Fokus ausdruecklich auf eine Kachel.
+                        // Enter gehoert IMMER dem Terminal — deshalb ist die
+                        // Fokusuebernahme an eine eigene, bewusste Geste
+                        // gebunden und passiert nie von selbst.
+                        KeyCode::Char(c)
+                            if key.modifiers.contains(KeyModifiers::ALT)
+                                && crate::brain_grid::brain_index_for_digit(c).is_some() =>
+                        {
+                            let index = crate::brain_grid::brain_index_for_digit(c)
+                                .unwrap_or(0);
+                            app.grid_status = focus_brain_tile(index);
+                        }
+                        // Esc springt aus einer Kachel zurueck ins Terminal.
+                        KeyCode::Esc => {
+                            app.grid_status = release_brain_focus();
+                        }
                         KeyCode::Up => {
                             if app.view == View::Bench {
                                 bench_move(&mut app, -1);
@@ -1203,11 +1219,18 @@ fn toggle_brain_grid(on: bool) -> String {
     };
     match pool.arrange_brain_grid(Some(area)) {
         // Passen nicht alle, wird das benannt statt stillschweigend gekuerzt.
+        // Die Tastenbelegung steht hier und nicht nur in der Legende: Alt+Nummer
+        // ist der einzige Weg in eine Kachel hinein, weil die Kacheln bewusst
+        // nicht anklickbar-aktivierbar sind. Ohne Hinweis wirkt das wie ein
+        // kaputtes Fenster statt wie eine Entscheidung.
         Ok(tiled) if tiled < open => format!(
-            "Kacheln an — {tiled} von {open} Fenstern gekachelt, {} zu klein und geparkt",
+            "Kacheln an — {tiled} von {open} Fenstern gekachelt, {} zu klein und geparkt \
+             · Alt+1…9 Fokus, Esc zurueck",
             open - tiled
         ),
-        Ok(tiled) => format!("Kacheln an — {tiled} Fenster gekachelt"),
+        Ok(tiled) => format!(
+            "Kacheln an — {tiled} Fenster gekachelt · Alt+1…9 Fokus, Esc zurueck"
+        ),
         Err(e) => format!("Kacheln fehlgeschlagen: {e}"),
     }
 }
@@ -1216,6 +1239,47 @@ fn toggle_brain_grid(on: bool) -> String {
 #[cfg(not(feature = "webview"))]
 fn toggle_brain_grid(_on: bool) -> String {
     "Kacheln: ohne webview-Feature nicht verfuegbar".to_string()
+}
+
+/// Alt+Nummer: Fokus auf eine Kachel holen.
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(feature = "webview")]
+fn focus_brain_tile(index: usize) -> String {
+    let pool = match crate::browser_pool::BrowserPool::global().lock() {
+        Ok(pool) => pool,
+        Err(_) => return "Fokus: Browser-Pool nicht erreichbar".to_string(),
+    };
+    match pool.focus_brain_tile(index) {
+        Ok(name) => format!("Fokus auf {name} — Esc zurueck ins Terminal"),
+        Err(e) => format!("Fokus fehlgeschlagen: {e}"),
+    }
+}
+
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(not(feature = "webview"))]
+fn focus_brain_tile(_index: usize) -> String {
+    "Fokus: ohne webview-Feature nicht verfuegbar".to_string()
+}
+
+/// Esc: Fokus zurueck ans Terminalfenster, Kacheln wieder nicht aktivierbar.
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(feature = "webview")]
+fn release_brain_focus() -> String {
+    let pool = match crate::browser_pool::BrowserPool::global().lock() {
+        Ok(pool) => pool,
+        Err(_) => return "Fokus: Browser-Pool nicht erreichbar".to_string(),
+    };
+    match pool.release_brain_focus() {
+        Ok(0) => "Fokus: kein Brain-Fenster offen".to_string(),
+        Ok(n) => format!("Fokus zurueck im Terminal — {n} Kacheln wieder passiv"),
+        Err(e) => format!("Fokusrueckgabe fehlgeschlagen: {e}"),
+    }
+}
+
+#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(not(feature = "webview"))]
+fn release_brain_focus() -> String {
+    "Fokus: ohne webview-Feature nicht verfuegbar".to_string()
 }
 
 /// Einstiegspunkt der TUI (Default, wenn `webagent` ohne Subcommand läuft).

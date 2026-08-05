@@ -428,6 +428,55 @@ impl BrowserPool {
         Ok(fitting)
     }
 
+    /// Holt den Fokus ausdruecklich auf die `index`-te Kachel (0-basiert, in der
+    /// stabilen Reihenfolge von [`Self::open_brains`]).
+    ///
+    /// Nur auf ausdrueckliche Anforderung (Alt+Nummer). Ohne diesen Aufruf
+    /// bleiben alle Kachelfenster nicht aktivierbar, damit Enter im Terminal
+    /// immer im Terminal landet.
+    #[cfg(feature = "webview")]
+    pub fn focus_brain_tile(&self, index: usize) -> Result<String, String> {
+        let Some(runtime) = self.runtime.as_ref() else {
+            return Err("kein Brain-Fenster offen".to_string());
+        };
+        let names = self.open_brains();
+        let name = names
+            .get(index)
+            .ok_or_else(|| format!("keine Kachel {}", index + 1))?
+            .clone();
+        let tab = self
+            .tabs
+            .get(&name)
+            .ok_or_else(|| format!("{name}: Tab verschwunden"))?;
+        runtime
+            .focus_view(tab.view_id, true)
+            .map_err(|e| format!("{name}: {e}"))?;
+        Ok(name)
+    }
+
+    /// Gibt den Fokus von allen Kacheln ans Terminalfenster zurueck (Esc).
+    ///
+    /// Bewusst ueber alle offenen Tabs: welche Kachel gerade den Fokus hat,
+    /// weiss dieser Prozess nicht zuverlaessig — der Nutzer kann sie auch
+    /// angeklickt haben. Jede Kachel wieder auf „nicht aktivierbar" zu setzen,
+    /// stellt den Normalzustand unabhaengig davon her.
+    #[cfg(feature = "webview")]
+    pub fn release_brain_focus(&self) -> Result<usize, String> {
+        let Some(runtime) = self.runtime.as_ref() else {
+            return Ok(0);
+        };
+        let mut count = 0;
+        for name in self.open_brains() {
+            if let Some(tab) = self.tabs.get(&name) {
+                runtime
+                    .focus_view(tab.view_id, false)
+                    .map_err(|e| format!("{name}: {e}"))?;
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     pub fn tab_ref_count(&self, brain_id: &str) -> u32 {
         self.tabs
             .get(&brain_id.to_lowercase())

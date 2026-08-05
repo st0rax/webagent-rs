@@ -4,5 +4,6 @@
 //! Handler-Rumpfe lagen dort als zusammenhaengender Block von rund 1500 Zeilen.
 
 pub mod ops;
+pub mod probe;
 pub mod research;
 pub mod ui;

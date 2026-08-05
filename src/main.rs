@@ -7,6 +7,7 @@ mod cli;
 mod commands;
 use cli::{Cli, Commands};
 use commands::ops::*;
+use commands::probe::cmd_probe;
 use commands::research::*;
 use commands::ui::*;
 
@@ -216,7 +217,10 @@ fn dispatch(command: Commands) -> i32 {
             brains,
             headless,
             force,
-        } => cmd_measure_limits(&brains, headless, force),
+            start,
+            ceiling,
+            tolerance,
+        } => cmd_measure_limits(&brains, headless, force, start, ceiling, tolerance),
 
         Commands::Relay {
             brain,

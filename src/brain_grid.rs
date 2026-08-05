@@ -2,9 +2,15 @@
 //!
 //! Die Brain-Fenster existieren bereits: [`crate::webview_runtime`] oeffnet pro
 //! Tab ein echtes Fenster und parkt es nur auf `OFFSCREEN_POS`, damit es
-//! fokussierbar bleibt (ein `with_visible(false)`-Fenster bekommt keinen Fokus,
-//! dann laeuft `press_enter` ins Leere). Die Kachelansicht holt diese Fenster in ein
-//! Raster zurueck auf den Bildschirm.
+//! sichtbar (gerendert) bleibt — ein `with_visible(false)`-Fenster laesst die
+//! Seite nicht laufen, dann geht `press_enter` ins Leere. Die Kachelansicht holt
+//! diese Fenster in ein Raster zurueck auf den Bildschirm.
+//!
+//! Sichtbar heisst hier ausdruecklich **nicht** aktivierbar: die Kacheln tragen
+//! `WS_EX_NOACTIVATE` (siehe `webview_runtime::set_no_activate`), sonst wuerde
+//! jedes absendende Brain dem Terminal mitten im Tippen den Fokus wegreissen.
+//! Fokus bekommt eine Kachel nur auf ausdrueckliche Anforderung (Alt+Nummer),
+//! Esc gibt ihn ans Terminalfenster zurueck.
 //!
 //! Dieses Modul rechnet ausschliesslich — es fasst kein Fenster an. Genau
 //! deshalb ist es testbar: die Kachelaufteilung ist die Stelle, an der sich
@@ -175,12 +181,29 @@ pub fn terminal_window_rect() -> Option<Rect> {
     None
 }
 
+/// Fensterhandle desselben Terminalfensters, dessen Rechteck
+/// [`terminal_window_rect`] liefert.
+///
+/// Bewusst aus derselben Suche gespeist statt als zweite Elternketten-Jagd:
+/// zwei Suchen koennten auseinanderlaufen, und dann ginge der Fokus an ein
+/// anderes Fenster, als die Kacheln umfliessen. Genau das ist beim Merge
+/// beinahe passiert — beide Zweige hatten die Suche unabhaengig gebaut.
+#[cfg(all(windows, feature = "webview"))]
+pub fn terminal_window_hwnd() -> Option<isize> {
+    terminal_window_handle().map(|(hwnd, _rect)| hwnd.0 as isize)
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+pub fn terminal_window_hwnd() -> Option<isize> {
+    None
+}
+
 /// Fenster (HWND + Rechteck) des Terminalfensters, in dem dieser Prozess laeuft.
 ///
 /// Der Weg ueber die Elternkette ist der, den auch [`terminal_window_rect`]
 /// geht (`webagent.exe -> pwsh.exe -> WindowsTerminal.exe`). Hier kommt aber
 /// die HWND mit zurueck — die braucht die Kachelansicht, um das Terminalfenster
-/// selbst in die linke Bildschirmhaelfte zu docken.
+/// selbst zu docken, und der Fokusweg, um es wieder nach vorn zu holen.
 #[cfg(all(windows, feature = "webview"))]
 fn terminal_window_handle() -> Option<(windows::Win32::Foundation::HWND, Rect)> {
     let mut pid = std::process::id();
@@ -232,6 +255,19 @@ fn visible_terminal_window_of(
         ));
     }
     visible_window_of(pid)
+}
+
+/// Uebersetzt eine Nummerntaste (Alt+1 … Alt+9) in einen Kachelindex.
+///
+/// Rein rechnend und damit testbar — die Tastenbelegung ist genau die Stelle,
+/// an der sich ein Off-by-one einschleicht: der Nutzer zaehlt ab 1, die
+/// Kachelliste ab 0. `Alt+0` ist bewusst kein Brain: eine zehnte Kachel passt
+/// ohnehin nie auf den Schirm (siehe [`fitting_tile_count`]).
+pub fn brain_index_for_digit(c: char) -> Option<usize> {
+    match c {
+        '1'..='9' => Some(c as usize - '1' as usize),
+        _ => None,
+    }
 }
 
 #[cfg(all(windows, feature = "webview"))]
@@ -578,6 +614,15 @@ mod tests {
         assert_eq!(terminal.y, 756);
         assert!(wall.contained_in(&work));
         assert!(terminal.contained_in(&work));
+    }
+
+    #[test]
+    fn alt_nummer_zaehlt_ab_eins_fuer_den_nutzer_und_ab_null_fuer_die_liste() {
+        assert_eq!(brain_index_for_digit('1'), Some(0));
+        assert_eq!(brain_index_for_digit('9'), Some(8));
+        // Alt+0 waere die zehnte Kachel — die passt nie auf den Schirm.
+        assert_eq!(brain_index_for_digit('0'), None);
+        assert_eq!(brain_index_for_digit('w'), None);
     }
 
     #[test]
