@@ -7,7 +7,6 @@ mod cli;
 mod commands;
 use cli::{Cli, Commands};
 use commands::ops::*;
-use commands::probe::cmd_probe;
 use commands::research::*;
 use commands::ui::*;
 
