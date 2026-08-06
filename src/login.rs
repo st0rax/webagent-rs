@@ -84,6 +84,48 @@ pub fn clear_breaker(brain_id: &str) {
     }
 }
 
+/// Spiegelt die frische Anmeldung aus `profiles/<brain>` ins Master-Profil.
+///
+/// # Warum das noetig ist
+///
+/// Der Worker-Pool oeffnet seine Tabs IMMER aus einer Laufzeit-Kopie von
+/// `profiles/shared` ([`crate::config::runtime_pool_profile_dir`]) — er ist ein
+/// GETEILTER Browser und braucht ein Profil, das die Sitzungen aller Brains
+/// kennt. Der Login schreibt aber nur dann direkt ins Master, wenn
+/// `WEBAGENT_USE_SHARED_BROWSER=1` gesetzt ist; sonst landet er in
+/// `profiles/<brain>`.
+///
+/// Ohne diese Bruecke bleibt das Master stehen, waehrend die Brain-Profile
+/// frisch sind. Gemessen am 06.08.2026: nach einem erfolgreichen `login-all`
+/// waren alle acht `profiles/<brain>` um 21:52 geschrieben, `profiles/shared`
+/// stand unveraendert auf dem 03.08. — der naechste Pool-Lauf waere trotz
+/// Anmeldung wieder ausgeloggt gewesen. Genau so wurden 6 von 8 Brains
+/// "Login noetig".
+///
+/// Kopiert wird sparsam ueber dieselbe Whitelist wie der Klon-Weg; das Master
+/// wird dafuer kurz entsiegelt und danach wieder versiegelt.
+fn sync_login_to_master(brain_id: &str) {
+    // Im Shared-Betrieb schreibt der Login ohnehin direkt ins Master.
+    if crate::config::use_shared_browser() {
+        return;
+    }
+    let src = crate::config::profiles_dir().join(brain_id);
+    if !src.is_dir() {
+        return;
+    }
+    let master = crate::config::shared_profile_dir();
+    crate::config::unseal_master_profile();
+    let result = crate::config::copy_dir_sparse(&src, &master);
+    crate::config::seal_master_profile();
+    match result {
+        Ok(()) => println!("[login] {brain_id}: Sitzung ins Hauptprofil gespiegelt."),
+        Err(e) => eprintln!(
+            "[login] {brain_id}: Spiegelung ins Hauptprofil fehlgeschlagen: {e} \
+             (der Worker-Pool bleibt dann auf dem alten Stand)"
+        ),
+    }
+}
+
 /// Optionale Spiegelung des frisch eingeloggten Profils nach
 /// `profiles/reference/<brain>` — nur wenn `WEBAGENT_LOGIN_TO_REFERENCE=1`
 /// gesetzt ist. Canonical bleibt `profiles/<brain>`; die Referenz ist eine
@@ -149,6 +191,11 @@ fn login_one(
     if !force {
         if let Ok(true) = backend.is_logged_in_quick() {
             clear_breaker(brain_id);
+            // Auch hier spiegeln: das Brain-Profil ist gueltig, aber das
+            // Master kann trotzdem veraltet sein. Genau dieser Fall ist am
+            // 06.08.2026 eingetreten — `login-all` meldete Erfolg, das Master
+            // blieb auf dem Stand vom 3. August.
+            sync_login_to_master(brain_id);
             return finish_login(shared_mode, Some(backend), LoginResult {
                 brain_id: brain_id.to_string(),
                 ok: true,
@@ -162,6 +209,7 @@ fn login_one(
         Ok(true) => {
             let profile = backend.effective_profile_dir().clone();
             clear_breaker(brain_id);
+            sync_login_to_master(brain_id);
             maybe_copy_to_reference(brain_id);
             LoginResult {
                 brain_id: brain_id.to_string(),
