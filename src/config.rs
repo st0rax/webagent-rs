@@ -211,6 +211,46 @@ pub fn write_back_session_to_master() -> Result<(), String> {
         ));
     }
     let master = shared_profile_dir();
+
+    // Zweite, schaerfere Bedingung: die Kopie darf nicht AERMER sein als das
+    // Master. Die blosse Existenz von Login-Dateien genuegt nicht — eine Kopie
+    // mit einer einzigen Sitzung besteht diese Pruefung und wuerde ein Master
+    // mit acht Sitzungen ueberschreiben. Gemessen am 07.08.2026: `Cookies` fiel
+    // von 108 KB auf 40 KB, danach meldete der halbe Lauf „Login noetig".
+    let source_weight = login_artifact_weight(runtime);
+    let target_weight = login_artifact_weight(&master);
+    if !write_back_is_safe(source_weight, target_weight) {
+        let msg = format!(
+            "[master-profile] Rueckschreiben ABGELEHNT: Laufzeit-Kopie traegt {} KB \
+             Sitzungsdaten, das Hauptprofil {} KB. Ueberschreiben wuerde Anmeldungen \
+             vernichten. Kopie bleibt unter {:?}",
+            source_weight / 1024,
+            target_weight / 1024,
+            runtime
+        );
+        crate::bench_events::emit(crate::bench_events::Level::Warn, None, &msg);
+        return Err(msg);
+    }
+
+    // Vor dem Ueberschreiben sichern. Auch eine bestandene Pruefung kann
+    // danebenliegen (Groesse ist ein Mass, kein Beweis) — und eine verlorene
+    // Anmeldung kostet den Menschen davor echte Zeit. Die Sicherung ist die
+    // Versicherung gegen genau diesen Irrtum.
+    let backup = master.with_file_name(format!(
+        "shared.session-bak-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    ));
+    if let Err(e) = copy_dir_sparse(&master, &backup) {
+        crate::bench_events::emit(
+            crate::bench_events::Level::Warn,
+            None,
+            &format!("[master-profile] Sicherung vor dem Rueckschreiben fehlgeschlagen: {e}"),
+        );
+    }
+
     unseal_master_profile();
     let result = copy_dir_sparse(runtime, &master).map_err(|e| e.to_string());
     seal_master_profile();
@@ -227,6 +267,58 @@ pub fn write_back_session_to_master() -> Result<(), String> {
         ),
     }
     result
+}
+
+/// Gesamtgroesse aller Login-Dateien in `dir` — ein grobes Mass dafuer, wie
+/// viele Sitzungen ein Profil traegt.
+///
+/// Kein exakter Zaehler (dafuer muesste man die SQLite-Datenbank oeffnen), aber
+/// ein belastbares Warnsignal: acht angemeldete Dienste hinterlassen deutlich
+/// mehr als zwei. Gemessen am 07.08.2026 fiel `Cookies` im Hauptprofil von
+/// 108 KB auf 40 KB, nachdem eine aermere Laufzeit-Kopie darueber geschrieben
+/// wurde.
+fn login_artifact_weight(dir: &Path) -> u64 {
+    const NEEDED: &[&str] = &["Cookies", "Local State", "Login Data"];
+    let mut sum = 0u64;
+    let mut stack: Vec<PathBuf> = vec![dir.to_path_buf()];
+    while let Some(cur) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&cur) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let Ok(ty) = e.file_type() else { continue };
+            if ty.is_dir() {
+                stack.push(e.path());
+            } else {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                if NEEDED.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+                    sum += e.metadata().map(|m| m.len()).unwrap_or(0);
+                }
+            }
+        }
+    }
+    sum
+}
+
+/// Ab welchem Anteil des Ziels eine Quelle noch als „nicht aermer" durchgeht.
+///
+/// Nicht 100 %: eine SQLite-Datenbank schrumpft auch beim Aufraeumen, und ein
+/// Schutz, der bei jeder Schwankung anschlaegt, wird abgeschaltet. 60 % laesst
+/// normales Atmen zu und faengt den Fall vom 07.08.2026 (Abfall auf 37 %).
+const WRITE_BACK_MIN_RATIO: f64 = 0.6;
+
+/// Darf `source` das `target` ueberschreiben, ohne Sitzungen zu vernichten?
+///
+/// Reine Funktion auf den beiden Gewichten, damit die Entscheidung ohne
+/// Dateisystem pruefbar ist.
+fn write_back_is_safe(source: u64, target: u64) -> bool {
+    if source == 0 {
+        return false; // nichts drin — niemals
+    }
+    if target == 0 {
+        return true; // Ziel leer, jede Quelle ist eine Verbesserung
+    }
+    source as f64 >= target as f64 * WRITE_BACK_MIN_RATIO
 }
 
 /// Liegt in `dir` (rekursiv) mindestens eine der Login-Dateien, deren Fehlen
@@ -1675,6 +1767,47 @@ mod tests {
         assert_eq!(resolve_max_run_wall_secs(Some("  900  ")), 900);
         assert_eq!(resolve_max_run_wall_secs(Some("1")), 1);
         assert_eq!(MAX_RUN_WALL_SECONDS, 600);
+    }
+
+    /// Der Fall vom 07.08.2026, als Zahlenpaar.
+    ///
+    /// Das Hauptprofil trug nach dem Login 108 KB Cookies, die Laufzeit-Kopie
+    /// brachte 40 KB zurueck — und danach meldete der halbe Lauf „Login
+    /// noetig". Dieser Test ist der Waechter dagegen.
+    #[test]
+    fn aermere_kopie_darf_das_hauptprofil_nicht_ueberschreiben() {
+        assert!(!write_back_is_safe(40 * 1024, 108 * 1024));
+    }
+
+    #[test]
+    fn leere_kopie_wird_immer_abgelehnt() {
+        assert!(!write_back_is_safe(0, 108 * 1024));
+        assert!(!write_back_is_safe(0, 0), "nichts zu schreiben ist kein Fortschritt");
+    }
+
+    #[test]
+    fn leeres_ziel_nimmt_jede_quelle() {
+        // Ein frisch angelegtes Master hat nichts zu verlieren.
+        assert!(write_back_is_safe(1024, 0));
+    }
+
+    #[test]
+    fn normales_atmen_der_datenbank_loest_keinen_fehlalarm_aus() {
+        // SQLite schrumpft auch beim Aufraeumen. Ein Schutz, der bei jeder
+        // Schwankung anschlaegt, wird abgeschaltet — und schuetzt dann nie.
+        let target = 100 * 1024;
+        assert!(write_back_is_safe(95 * 1024, target));
+        assert!(write_back_is_safe(70 * 1024, target));
+        // Genau auf der Schwelle noch erlaubt, knapp darunter nicht mehr.
+        assert!(write_back_is_safe(60 * 1024, target));
+        assert!(!write_back_is_safe(59 * 1024, target));
+    }
+
+    #[test]
+    fn gewachsene_kopie_ist_selbstverstaendlich_erlaubt() {
+        // Der Normalfall: der Browser hat Sitzungen erneuert, die Kopie ist
+        // reicher als das Master. Genau dafuer gibt es das Rueckschreiben.
+        assert!(write_back_is_safe(200 * 1024, 100 * 1024));
     }
 
     #[test]
