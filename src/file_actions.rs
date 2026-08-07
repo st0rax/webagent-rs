@@ -221,7 +221,7 @@ pub fn apply_edit_in(
                             updated.lines().count()
                         ));
                     }
-                    Err(0) => return Err(anchor_not_found(path)),
+                    Err(0) => return Err(anchor_not_found(path, &content, old)),
                     Err(n) => return Err(anchor_ambiguous(path, n)),
                 },
             }
@@ -276,12 +276,76 @@ fn whitespace_tolerant_span(content: &str, old: &str) -> Result<(usize, usize), 
     }
 }
 
-fn anchor_not_found(path: &str) -> String {
+/// Anker nicht gefunden — MIT dem tatsaechlichen Dateiinhalt an der
+/// wahrscheinlichsten Stelle.
+///
+/// # Warum der Ist-Stand mit hinein muss
+///
+/// Die alte Meldung riet, den Stand „z.B. mit Select-String" zu pruefen. Das
+/// kostet einen kompletten weiteren Turn — und ein Turn kostet hier real 30 bis
+/// 135 Sekunden (gemessen am 06.08.2026 ueber die Zeitstempel eines Laufs, der
+/// nach 900s in den wall_timeout lief; 889 dieser 900 Sekunden waren
+/// Brain-Antwortzeiten). Im selben Lauf scheiterten ZWEI Edits nacheinander an
+/// ihren Ankern.
+///
+/// Wer dem Brain zeigt, was an der erwarteten Stelle wirklich steht, spart den
+/// Leseturn und macht den zweiten Versuch treffsicher. Das ist kein Komfort,
+/// das sind zwei Minuten Budget pro Fehlschlag.
+fn anchor_not_found(path: &str, content: &str, old: &str) -> String {
+    let hinweis = match nearest_context(content, old) {
+        Some((line, block)) => format!(
+            "\nSo steht es dort wirklich (ab Zeile {line}):\n{block}"
+        ),
+        None => String::new(),
+    };
     format!(
         "edit fehlgeschlagen: old_string in {path} nicht gefunden. Kopiere den Anker \
-         EXAKT aus der Datei (inkl. Einrueckung); pruefe den Ist-Stand z.B. mit \
-         Select-String oder Get-Content -TotalCount."
+         EXAKT aus der Datei (inkl. Einrueckung).{hinweis}"
     )
+}
+
+/// Sucht die Stelle, die dem Anker am naechsten kommt, und liefert
+/// `(Startzeile, Ausschnitt mit Zeilennummern)`.
+///
+/// Gesucht wird ueber die erste nicht-leere Zeile des Ankers, mit getrimmtem
+/// Whitespace — das ist genau die Zeile, die ein Brain am ehesten richtig
+/// erinnert, waehrend Einrueckung und Folgezeilen abweichen.
+fn nearest_context(content: &str, old: &str) -> Option<(usize, String)> {
+    const UMGEBUNG: usize = 3;
+    let anker = old.lines().map(str::trim).find(|l| !l.is_empty())?;
+    if anker.len() < 4 {
+        // Zu kurz, um damit sinnvoll zu suchen — sonst zeigen wir eine
+        // beliebige Stelle und fuehren in die Irre.
+        return None;
+    }
+    let zeilen: Vec<&str> = content.lines().collect();
+    let treffer = zeilen
+        .iter()
+        .position(|l| l.trim() == anker)
+        .or_else(|| zeilen.iter().position(|l| l.trim().contains(anker)))
+        .or_else(|| {
+            // Letzter Versuch: die Zeile, die den laengsten gemeinsamen Anfang hat.
+            zeilen
+                .iter()
+                .enumerate()
+                .map(|(i, l)| (i, gemeinsamer_anfang(l.trim(), anker)))
+                .filter(|(_, n)| *n >= 8)
+                .max_by_key(|(_, n)| *n)
+                .map(|(i, _)| i)
+        })?;
+    let von = treffer.saturating_sub(UMGEBUNG);
+    let bis = (treffer + UMGEBUNG + 1).min(zeilen.len());
+    let block = zeilen[von..bis]
+        .iter()
+        .enumerate()
+        .map(|(k, l)| format!("{:>5} | {l}", von + k + 1))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some((von + 1, block))
+}
+
+fn gemeinsamer_anfang(a: &str, b: &str) -> usize {
+    a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count()
 }
 
 fn anchor_ambiguous(path: &str, count: usize) -> String {
@@ -436,6 +500,52 @@ fn collect_tree(
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// Ein gescheiterter Anker muss den IST-Stand mitliefern.
+    ///
+    /// Gemessen am 06.08.2026: ein Brain-Turn kostet 30 bis 135 Sekunden. Die
+    /// alte Meldung riet, den Stand selbst nachzulesen — das ist ein ganzer
+    /// Turn. Im selben Lauf scheiterten zwei Edits nacheinander an ihren
+    /// Ankern, danach lief er in den 900s-wall_timeout.
+    #[test]
+    fn gescheiterter_anker_zeigt_was_wirklich_dasteht() {
+        let inhalt = "fn eins() {}\n\nfn contains_chaining(cmd: &str) -> bool {\n    let mut state = State::Normal;\n    true\n}\n";
+        // Das Brain erinnert die Signatur falsch (anderer Parametername).
+        let meldung = anchor_not_found(
+            "src/shell_policy.rs",
+            inhalt,
+            "fn contains_chaining(command: &str) -> bool {",
+        );
+        assert!(meldung.contains("nicht gefunden"));
+        assert!(
+            meldung.contains("So steht es dort wirklich"),
+            "Ist-Stand fehlt: {meldung}"
+        );
+        assert!(
+            meldung.contains("fn contains_chaining(cmd: &str)"),
+            "die echte Zeile muss drinstehen: {meldung}"
+        );
+        assert!(
+            meldung.contains("    3 |"),
+            "Zeilennummern muessen mit: {meldung}"
+        );
+    }
+
+    #[test]
+    fn zu_kurzer_anker_zeigt_lieber_nichts() {
+        // Bei einem Zweizeichen-Anker waere jede Fundstelle Zufall — dann in
+        // die Irre zu fuehren ist schlechter als zu schweigen.
+        let meldung = anchor_not_found("a.rs", "fn eins() {}\nfn zwei() {}\n", "{}");
+        assert!(!meldung.contains("So steht es dort wirklich"), "{meldung}");
+    }
+
+    #[test]
+    fn kontext_findet_auch_bei_abweichender_einrueckung() {
+        let inhalt = "mod a {\n        let wert = berechne(x);\n}\n";
+        let (zeile, block) = nearest_context(inhalt, "let wert = berechne(x);").unwrap();
+        assert_eq!(zeile, 1);
+        assert!(block.contains("let wert = berechne(x);"), "{block}");
+    }
 
     fn test_root() -> PathBuf {
         let dir = std::env::temp_dir().join("webagent_file_actions_tests");
