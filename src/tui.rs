@@ -595,6 +595,8 @@ fn run_tui_ratatui(
         },
         cap_selected: 0,
         cap_status: String::new(),
+        cfg_selected: 0,
+        cfg_status: String::new(),
     };
     if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
         let command = format!("/benchmark {arguments}");
@@ -658,6 +660,11 @@ fn run_tui_ratatui(
             }
             View::Capabilities => {
                 app.cap_selected = offset;
+            }
+            View::Config => {
+                if offset < crate::tui_config::SETTINGS.len() {
+                    app.cfg_selected = offset;
+                }
             }
             View::Workers => {
                 if offset < app.agents.len() {
@@ -809,6 +816,48 @@ fn run_tui_ratatui(
                         // eine TUI, die dabei einfriert, sieht aus wie ein
                         // Absturz — heute wissen wir, wie teuer diese
                         // Verwechslung ist.
+                        // Einstellung weiterschalten. Laeuft im Vordergrund:
+                        // eine Datei schreiben und eine Umgebungsvariable
+                        // setzen dauert Millisekunden — anders als das
+                        // Schalten einer Faehigkeit, das einen Browser fahren
+                        // muss.
+                        KeyCode::Char('t') if app.view == View::Config => {
+                            match crate::tui_config::SETTINGS.get(app.cfg_selected) {
+                                Some(setting) => {
+                                    app.cfg_status = match crate::tui_config::cycle(setting) {
+                                        Ok(next) => {
+                                            format!("{} = {next} — gilt ab dem naechsten Lauf", setting.key)
+                                        }
+                                        // Ein fehlgeschlagenes Speichern MUSS
+                                        // dastehen: sonst zeigt die Zeile den
+                                        // neuen Wert und die Platte den alten.
+                                        Err(e) => format!("{}: nicht gespeichert — {e}", setting.key),
+                                    };
+                                }
+                                None => {}
+                            }
+                        }
+                        KeyCode::Char('r') if app.view == View::Config => {
+                            match crate::tui_config::SETTINGS.get(app.cfg_selected) {
+                                Some(setting) => {
+                                    app.cfg_status = match crate::tui_config::reset(setting) {
+                                        Ok(()) => format!(
+                                            "{} zurueckgesetzt — es gilt wieder die Vorgabe",
+                                            setting.key
+                                        ),
+                                        Err(e) => format!("{}: nicht zurueckgesetzt — {e}", setting.key),
+                                    };
+                                }
+                                None => {}
+                            }
+                        }
+                        KeyCode::Char('j') if app.view == View::Config => {
+                            let last = crate::tui_config::SETTINGS.len().saturating_sub(1);
+                            app.cfg_selected = app.cfg_selected.saturating_add(1).min(last);
+                        }
+                        KeyCode::Char('k') if app.view == View::Config => {
+                            app.cfg_selected = app.cfg_selected.saturating_sub(1);
+                        }
                         KeyCode::Char('t') if app.view == View::Capabilities => {
                             let rows = crate::tui_state::capability_rows(
                                 &crate::capability::levels_all(),

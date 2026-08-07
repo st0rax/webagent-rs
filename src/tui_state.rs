@@ -86,6 +86,11 @@ pub struct App {
     /// Zeigt ausdruecklich, ob der Zustandswechsel BELEGT wurde — ein Klick
     /// ohne nachweisbare Wirkung ist in diesem Projekt kein Koennen.
     pub cap_status: String,
+    /// Cursor in der Einstellungen-Ansicht.
+    pub cfg_selected: usize,
+    /// Rueckmeldung der zuletzt geaenderten Einstellung — inklusive der Frage,
+    /// ob sie sofort oder erst beim naechsten Lauf wirkt.
+    pub cfg_status: String,
 }
 
 /// Die umschaltbaren Hauptansichten.
@@ -95,6 +100,11 @@ pub enum View {
     Workers,
     /// Arbeits-/Benchmark-Ansicht: der Ereignisstrom des laufenden Laufs.
     Bench,
+    /// Einstellungen: was gilt, woher es kommt, und umschaltbar.
+    ///
+    /// Alle Stellschrauben lebten bisher nur in Umgebungsvariablen — man sah
+    /// nicht, was gilt, und ein vergessenes Flag aenderte das Verhalten stumm.
+    Config,
     /// Faehigkeiten je Brain — anzeigen UND schalten.
     ///
     /// Die CLI kann Reasoning, Modellwechsel, Websuche und den temporaeren
@@ -108,7 +118,8 @@ impl View {
         match self {
             View::Workers => View::Bench,
             View::Bench => View::Capabilities,
-            View::Capabilities => View::Workers,
+            View::Capabilities => View::Config,
+            View::Config => View::Workers,
         }
     }
 
@@ -117,6 +128,7 @@ impl View {
             View::Workers => "Worker",
             View::Bench => "Benchmark",
             View::Capabilities => "Faehigkeiten",
+            View::Config => "Einstellungen",
         }
     }
 }
@@ -267,6 +279,8 @@ pub fn parse_view(raw: &str) -> Option<View> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "workers" | "worker" | "pool" => Some(View::Workers),
         "bench" | "benchmark" => Some(View::Bench),
+        "config" | "einstellungen" | "settings" => Some(View::Config),
+        "capabilities" | "faehigkeiten" | "fähigkeiten" => Some(View::Capabilities),
         _ => None,
     }
 }
@@ -849,10 +863,33 @@ mod tests {
     }
 
     #[test]
-    fn ansichten_rotieren_durch_alle_drei() {
+    fn ansichten_rotieren_durch_alle() {
         assert_eq!(View::Workers.next(), View::Bench);
         assert_eq!(View::Bench.next(), View::Capabilities);
-        assert_eq!(View::Capabilities.next(), View::Workers);
+        assert_eq!(View::Capabilities.next(), View::Config);
+        assert_eq!(View::Config.next(), View::Workers);
+    }
+
+    /// Jede Ansicht muss per `v` erreichbar sein — und der Rundlauf muss sich
+    /// schliessen.
+    ///
+    /// Bewusst ohne feste Zahl: eine neue Ansicht, die jemand aus `next()`
+    /// vergisst, faellt hier auf, statt still unerreichbar zu bleiben. Genau
+    /// das ist beim Hinzufuegen von `Config` beinahe passiert.
+    #[test]
+    fn jede_ansicht_ist_per_v_erreichbar() {
+        let alle = [View::Workers, View::Bench, View::Capabilities, View::Config];
+        let mut gesehen = Vec::new();
+        let mut v = View::Workers;
+        for _ in 0..alle.len() {
+            gesehen.push(v);
+            v = v.next();
+        }
+        assert_eq!(v, View::Workers, "der Rundlauf schliesst sich nicht");
+        for a in alle {
+            assert!(gesehen.contains(&a), "{a:?} ist per v nicht erreichbar");
+            assert!(!a.label().trim().is_empty(), "{a:?} ohne Beschriftung");
+        }
     }
 
     #[test]
@@ -983,6 +1020,8 @@ mod tests {
             grid_status: String::new(),
             cap_selected: 0,
             cap_status: String::new(),
+            cfg_selected: 0,
+            cfg_status: String::new(),
         }
     }
 

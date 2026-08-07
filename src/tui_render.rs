@@ -158,6 +158,12 @@ pub fn ui(f: &mut Frame, app: &App) {
         return;
     }
 
+    if app.view == View::Config {
+        render_config(f, app, outer[1]);
+        render_footer(f, app, outer[2]);
+        return;
+    }
+
     // Leerzustand: kein Worker-Pool aktiv -> einladender Hinweis statt toter Kästen.
     if app.agents.is_empty() {
         render_empty_state(f, outer[1]);
@@ -240,6 +246,41 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let kpi_rows: Vec<Line> = match app.view {
+        View::Config => {
+            // Der Kopf zaehlt, wie viel vom Zustand nicht mehr Vorgabe ist.
+            // Genau das ist die Frage, die man bei einem unerwarteten Verhalten
+            // zuerst stellt: „was steht hier anders als ueberall sonst?"
+            let rows = crate::tui_config::rows();
+            let abweichend = rows
+                .iter()
+                .filter(|r| r.source != crate::tui_config::Source::Vorgabe)
+                .count();
+            vec![
+                Line::from(vec![
+                    Span::styled(
+                        format!("◇ {abweichend} von {} abweichend", rows.len()),
+                        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("   "),
+                    Span::styled(
+                        if abweichend == 0 {
+                            "alles auf Vorgabe".to_string()
+                        } else {
+                            "gelb = beim Start gesetzt, cyan = gespeichert".to_string()
+                        },
+                        Style::default().fg(MUTED),
+                    ),
+                ]),
+                Line::from(Span::styled(
+                    if app.cfg_status.is_empty() {
+                        "t schaltet, r setzt zurueck".to_string()
+                    } else {
+                        app.cfg_status.clone()
+                    },
+                    Style::default().fg(MUTED),
+                )),
+            ]
+        }
         View::Capabilities => {
             // Gesamtstand ueber alle Brains: erreicht / erreichbar. Der Nenner
             // ist die Summe der ANGEBOTENEN Optionen, nicht ein Wunschwert —
@@ -878,6 +919,98 @@ fn human_duration(seconds: u64) -> String {
     }
 }
 
+/// Einstellungen-Ansicht: Wert, Herkunft und Wirkung nebeneinander.
+///
+/// Die Herkunft steht bewusst gleichberechtigt neben dem Wert. „Geteilter
+/// Browser: an" beantwortet die halbe Frage; erst „an (Umgebung)" sagt, ob
+/// jemand das beim Start gesetzt hat oder ob es die Vorgabe ist. Genau diese
+/// Luecke hat am 07.08.2026 einen halben Tag gekostet: `start_tui.ps1` setzte
+/// `WEBAGENT_USE_SHARED_BROWSER` still, und niemand sah, aus welchem Profil der
+/// Lauf klont.
+fn render_config(f: &mut Frame, app: &App, area: Rect) {
+    let block = titled_block("Einstellungen (t schaltet, r setzt zurueck)");
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let rows = crate::tui_config::rows();
+    let selected = app.cfg_selected.min(rows.len().saturating_sub(1));
+
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, row) in rows.iter().enumerate() {
+        let base = if i == selected {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default()
+        };
+        // Die Vorgabe gedaempft, alles Gesetzte hervorgehoben: was jemand
+        // bewusst geaendert hat, soll ins Auge fallen.
+        let value_style = match row.source {
+            crate::tui_config::Source::Umgebung => base.fg(Color::Yellow),
+            crate::tui_config::Source::Gespeichert => base.fg(ACCENT),
+            crate::tui_config::Source::Vorgabe => base.fg(MUTED),
+        };
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {:<28}", row.label), base),
+            Span::styled(format!("{:<12}", row.value), value_style),
+            Span::styled(format!("({})", row.source.label()), base.fg(MUTED)),
+        ]));
+    }
+
+    // Erklaerung der gewaehlten Zeile darunter, umgebrochen. Eine
+    // Stellschraube, deren Wirkung man raten muss, wird nicht benutzt.
+    if let Some(row) = rows.get(selected) {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            format!("  {}", row.key),
+            Style::default().fg(MUTED).add_modifier(Modifier::BOLD),
+        )));
+        for chunk in wrap_text(row.help, inner.width.saturating_sub(4) as usize) {
+            lines.push(Line::from(Span::styled(
+                format!("  {chunk}"),
+                Style::default().fg(MUTED),
+            )));
+        }
+    }
+
+    // Aenderungen greifen nicht rueckwirkend — das gehoert dazu, sonst wartet
+    // jemand auf eine Wirkung, die im laufenden Lauf gar nicht kommen kann.
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Gilt ab dem naechsten Lauf; gespeichert in data/settings.json.",
+        Style::default().fg(MUTED),
+    )));
+    if !app.cfg_status.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", app.cfg_status),
+            Style::default().fg(ACCENT),
+        )));
+    }
+
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
+/// Bricht Text auf `width` Zeichen um, an Wortgrenzen.
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    if width < 8 {
+        return vec![text.to_string()];
+    }
+    let mut out = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+            out.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    if !line.is_empty() {
+        out.push(line);
+    }
+    out
+}
+
 /// Erste sichtbare Zeile des Ereignisbaums.
 ///
 /// Der Cursor ist der Anker und bleibt im oberen Drittel, damit unter ihm Platz
@@ -941,10 +1074,19 @@ pub fn footer_binds(view: View) -> &'static [FooterBind] {
         bind("w", "kacheln", "w"),
         bind("q", "quit", "q"),
     ];
+    const CONFIG: [FooterBind; 6] = [
+        bind("v", "ansicht", "v"),
+        bind("j/k", "wählen", "j"),
+        bind("t", "schalten", "t"),
+        bind("r", "zuruecksetzen", "r"),
+        bind("w", "kacheln", "w"),
+        bind("q", "quit", "q"),
+    ];
     match view {
         View::Capabilities => &CAPABILITIES,
         View::Workers => &WORKERS,
         View::Bench => &BENCH,
+        View::Config => &CONFIG,
     }
 }
 
@@ -1266,6 +1408,8 @@ mod tests {
             grid_status: String::new(),
             cap_selected: 0,
             cap_status: String::new(),
+            cfg_selected: 0,
+            cfg_status: String::new(),
         }
     }
 

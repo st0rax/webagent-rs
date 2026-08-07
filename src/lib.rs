@@ -50,6 +50,7 @@ pub mod timeouts;
 pub mod transcript;
 pub mod tui;
 pub mod brain_grid;
+pub mod tui_config;
 #[cfg(feature = "tui")]
 pub mod tui_keys;
 #[cfg(feature = "tui")]
