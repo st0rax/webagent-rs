@@ -203,16 +203,38 @@ pub fn write_back_session_to_master() -> Result<(), String> {
     if !runtime.is_dir() {
         return Ok(());
     }
-    if !has_login_artifacts(runtime) {
+    write_back_dir_to_master(runtime)
+}
+
+/// Spielt eine Laufzeit-Kopie ins Master-Profil zurueck — der gemeinsame Kern
+/// von [`write_back_session_to_master`] und dem CLI-Rettungsweg
+/// `webagent sync-master`.
+///
+/// Das Master ist read-only und der Betrieb laeuft auf einem Klon. Der Browser
+/// erneuert Sitzungen aber IN DIE KOPIE — und ohne Rueckweg blieb das Master
+/// stehen. Gemessen am 05.08.2026: letzte Schreiboperation im Master
+/// 03.08. 18:07:44, in der Laufzeit-Kopie laufend.
+///
+/// # Die Schutzbedingung
+///
+/// Zurueckgeschrieben wird NUR, wenn die Kopie selbst Login-Artefakte hat. Ein
+/// Lauf, der frueh scheitert oder mit leerem Profil startet, darf das Master
+/// nicht ueberschreiben — sonst zerstoert genau dieser Rueckweg die
+/// Anmeldung, die er schuetzen soll.
+pub fn write_back_dir_to_master(dir: &Path) -> Result<(), String> {
+    if !dir.is_dir() {
+        return Err(format!("{:?} ist kein Verzeichnis", dir));
+    }
+    if !has_login_artifacts(dir) {
         return Err(format!(
             "Laufzeit-Kopie {:?} hat keine Login-Artefakte — nicht zurueckgeschrieben, \
              sonst wuerde das Master ueberschrieben",
-            runtime
+            dir
         ));
     }
     let master = shared_profile_dir();
     unseal_master_profile();
-    let result = copy_dir_sparse(runtime, &master).map_err(|e| e.to_string());
+    let result = copy_dir_sparse(&dir.to_path_buf(), &master).map_err(|e| e.to_string());
     seal_master_profile();
     match &result {
         Ok(()) => crate::bench_events::emit(
@@ -419,6 +441,12 @@ pub const SPARSE_COPY_WHITELIST: &[&str] = &[
     "Secure Preferences",
     "Local Storage",
     "Session Storage",
+    // "IndexedDB" haelt bei mehreren AI-Web-UI die Sitzung statt der Cookies:
+    // Claude authentifiziert ueber IndexedDB (gemessen 07.08.2026: kein
+    // einziges Login-Cookie fuer die 9 Brains auf der Platte, dafuer frische
+    // IndexedDB-Schreibungen). Ohne den Eintrag ueberlebt der Login den
+    // Rueckweg ins Master nicht.
+    "IndexedDB",
     // "Network" enthaelt bei aktuellem Chromium/WebView2 den Cookie-Jar
     // (Default/Network/Cookies) — ohne das ist die Kopie ausgeloggt.
     "Network",
@@ -833,8 +861,40 @@ pub fn copy_dir_sparse(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
             src
         ));
     }
+    // Das Master ist versiegelt (read-only). `fs::copy` uebernimmt das Attribut
+    // in die Laufzeit-Kopie — ein read-only Klon kann WebView2 aber NIE
+    // beschreiben: Cookies und Local-State-Flush scheiterten still (gemessen
+    // 07.08.2026: Cookie-DB stand seit 17:17:59, nur Browser-neu erzeugte
+    // LevelDB-Dateien waren beschreibbar). Die Kopie muss beschreibbar sein,
+    // das Siegel bleibt am Master.
+    clear_readonly_recursive(dst);
     Ok(())
 }
+
+/// Entfernt das Read-only-Attribut rekursiv (Klon muss beschreibbar sein).
+#[cfg(windows)]
+fn clear_readonly_recursive(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(ty) = entry.file_type() else { continue };
+        if ty.is_dir() {
+            clear_readonly_recursive(&path);
+        }
+        let Ok(md) = entry.metadata() else { continue };
+        if !md.permissions().readonly() {
+            continue;
+        }
+        let mut perm = md.permissions();
+        perm.set_readonly(false);
+        let _ = std::fs::set_permissions(&path, perm);
+    }
+}
+
+#[cfg(not(windows))]
+fn clear_readonly_recursive(_dir: &Path) {}
 
 /// Rekursiver Helfer für [`copy_dir_sparse`]: kopiert Whitelist-Treffer
 /// (Datei ODER Verzeichnis) an ihrer relativen Position und steigt in alle
@@ -2350,5 +2410,46 @@ mod tests {
         let p = encapsulated_profile_dir("chatgpt", "run42");
         assert!(p.to_string_lossy().contains("encapsulated"));
         assert!(p.to_string_lossy().contains("chatgpt_run42"));
+    }
+
+    /// Regression 2026-08-07: Das versiegelte Master ist read-only, und
+    /// `fs::copy` uebernimmt das Attribut in die Laufzeit-Kopie. WebView2 konnte
+    /// dann im Klon nie Cookies/Local State persistieren (Cookie-DB stand
+    /// dauerhaft auf der alten mtime). Die Kopie muss beschreibbar sein — das
+    /// Siegel bleibt am Master.
+    #[cfg(windows)]
+    #[test]
+    fn klon_aus_versiegeltem_master_ist_beschreibbar() {
+        let base = std::env::temp_dir().join(format!("webagent_ro_{}", std::process::id()));
+        let src = base.join("master");
+        let dst = base.join("klon");
+        std::fs::create_dir_all(src.join("EBWebView/Default/Network")).unwrap();
+        std::fs::write(src.join("EBWebView/Default/Network/Cookies"), b"x").unwrap();
+        std::fs::write(src.join("EBWebView/Default/Local State"), b"y").unwrap();
+        for f in ["EBWebView/Default/Network/Cookies", "EBWebView/Default/Local State"] {
+            let mut perm = std::fs::metadata(src.join(f)).unwrap().permissions();
+            perm.set_readonly(true);
+            std::fs::set_permissions(src.join(f), perm).unwrap();
+            assert!(
+                std::fs::metadata(src.join(f)).unwrap().permissions().readonly(),
+                "Vorbedingung: Master-Datei ist versiegelt"
+            );
+        }
+
+        copy_dir_sparse(&src, &dst).unwrap();
+
+        for f in ["EBWebView/Default/Network/Cookies", "EBWebView/Default/Local State"] {
+            let dst_file = dst.join(f);
+            assert!(
+                dst_file.exists(),
+                "Klon muss die Datei enthalten (rekursive Kopie)"
+            );
+            assert!(
+                !std::fs::metadata(&dst_file).unwrap().permissions().readonly(),
+                "Klon darf nicht read-only sein: {f}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

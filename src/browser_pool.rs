@@ -502,7 +502,17 @@ impl BrowserPool {
             // laeuft, haelt WebView2 Cookies und Local State teilweise im
             // Speicher und schreibt sie erst beim Beenden weg. Wer vorher
             // kopiert, sichert genau den alten Stand, der das Problem ist.
+            let was_active = self.runtime.is_some();
             self.runtime.take();
+            // Die msedgewebview2.exe-Prozesse sind SEPARATE OS-Prozesse: sie
+            // beenden sich asynchron nach dem letzten freigegebenen Controller
+            // und committen Cookies/Local State erst dabei. Wuerden wir sofort
+            // zurueckschreiben, kaeme dieser Flush zu spaet. Ein Warteintervall
+            // statt eines Prozess-Polls: schnell genug fuer den Exit-Pfad,
+            // robust gegenueber der asynchronen Browserbeendigung.
+            if was_active {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+            }
             // Ohne diesen Rueckweg friert das Master-Profil ein: der Browser
             // erneuert die Sitzung in der Laufzeit-Kopie, und der naechste
             // Start klont wieder den alten Stand. Gemessen am 05.08.2026 stand
@@ -518,27 +528,47 @@ impl BrowserPool {
         }
     }
 
-    #[cfg(test)]
-    fn shutdown_force(&mut self) {
-        for (bid, tab) in self.tabs.drain() {
-            #[cfg(feature = "webview")]
-            if let Some(rt) = self.runtime.as_ref() {
-                let _ = rt.close_page(tab.view_id);
+    /// Faehrt den gesamten Pool sauber herunter: alle Tabs einzeln schliessen
+    /// (WebView2 schreibt Sitzungsdaten erst beim geordneten Beenden des
+    /// Browser-Prozesses weg), dann Runtime-Teardown und die Sitzung ins
+    /// Master-Profil zurueckspielen.
+    ///
+    /// Das ist der fehlende Rueckweg am TUI-Exit: ohne den Aufruf bleiben die
+    /// Tabs offen, `teardown_runtime` feuert nie und das Master-Profil friert
+    /// beim Stand des letzten sauberen Beendens ein. Gemessen 07.08.2026: das
+    /// Master stand seit dem 03.08., waehrend die Laufzeit-Kopie lief.
+    #[cfg_attr(not(feature = "webview"), allow(dead_code))]
+    pub fn shutdown(&mut self) {
+        #[cfg(feature = "webview")]
+        {
+            // Tabs einzeln schliessen statt das Runtime abrupt zu zerren: ein
+            // haertes Drop verliert die erst beim geordneten Beenden
+            // geschriebenen Cookies/Local State (siehe `teardown_runtime`).
+            for (_bid, tab) in self.tabs.drain() {
+                if let Some(rt) = self.runtime.as_ref() {
+                    let _ = rt.close_page(tab.view_id);
+                }
             }
-            let _ = (bid, tab);
+            // Gekapselte Instanzen ebenfalls entsorgen (Runtime drop + Klon-Verzeichnis).
+            for (_bid, inst) in self.encapsulated.drain() {
+                let EncapsulatedInstance {
+                    runtime: _rt,
+                    profile_dir,
+                    ..
+                } = inst;
+                let _ = _rt;
+                let _ = std::fs::remove_dir_all(&profile_dir);
+            }
         }
         self.teardown_runtime();
-        // Gekapselte Instanzen ebenfalls entsorgen (Runtime drop + Klon-Verzeichnis).
-        #[cfg(feature = "webview")]
-        for (_bid, inst) in self.encapsulated.drain() {
-            let EncapsulatedInstance {
-                runtime: _rt,
-                profile_dir,
-                ..
-            } = inst;
-            let _ = _rt;
-            let _ = std::fs::remove_dir_all(&profile_dir);
-        }
+    }
+
+    #[cfg(test)]
+    fn shutdown_force(&mut self) {
+        // Der Produktionspfad (TUI-Exit) schliesst die Tabs geordnet und
+        // spielt die Sitzung ins Master zurueck — exakt das, was Tests nach
+        // einem Lauf brauchen.
+        self.shutdown();
     }
 }
 

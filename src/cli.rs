@@ -613,6 +613,13 @@ pub enum Commands {
         #[arg(long, default_value = "600")]
         pytest_timeout: f64,
     },
+
+    /// Spielt die neueste Laufzeit-Kopie (profiles/encapsulated/pool_*) ins
+    /// Master-Profil zurueck. Manueller Rettungsweg, wenn der TUI-Exit den
+    /// Rueckweg nicht mehr selbst schafft (alter Binärstand) oder eine Kopie
+    /// uebrig geblieben ist.
+    #[command(name = "sync-master")]
+    SyncMaster,
 }
 
 /// Argumente des `autoresearch`-Subcommands (Spec: docs/AUTORESEARCH_PLAN.md §6).

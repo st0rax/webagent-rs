@@ -456,6 +456,16 @@ fn run_tui_ansi(
     }
 
     let _ = handle.join();
+    // Browser-Pool sauber herunterfahren, BEVOR der Prozess endet: nur so
+    // schliessen sich die WebView-Tabs geordnet und `write_back_session_to_master`
+    // spielt die Sitzung ins Master-Profil zurueck. Ohne diesen Schritt bleibt
+    // das Master eingefroren (Tabs offen -> teardown_runtime feuert nie), und
+    // der naechste Start klont wieder den alten Login-Stand.
+    // Der Benchmark-Thread laeuft detached weiter; seine naechste
+    // Pool-Operation wartet kurz auf der Sperre, waehrend wir hier beenden.
+    if let Ok(mut pool) = crate::browser_pool::BrowserPool::global().lock() {
+        pool.shutdown();
+    }
     0
 }
 
@@ -1071,6 +1081,16 @@ fn run_tui_ratatui(
         },
     );
     let _ = handle.join();
+    // Browser-Pool sauber herunterfahren, BEVOR der Prozess endet: nur so
+    // schliessen sich die WebView-Tabs geordnet und `write_back_session_to_master`
+    // spielt die Sitzung ins Master-Profil zurueck. Ohne diesen Schritt bleibt
+    // das Master eingefroren (Tabs offen -> teardown_runtime feuert nie), und
+    // der naechste Start klont wieder den alten Login-Stand.
+    // Der Benchmark-Thread laeuft detached weiter; seine naechste
+    // Pool-Operation wartet kurz auf der Sperre, waehrend wir hier beenden.
+    if let Ok(mut pool) = crate::browser_pool::BrowserPool::global().lock() {
+        pool.shutdown();
+    }
     // Mauserfassung ZUERST zuruecknehmen: bleibt sie an, schluckt das Terminal
     // nach dem Beenden weiter jede Mausgeste — Markieren und Kopieren gingen
     // dann nicht mehr, und zwar in einer Sitzung, die mit der TUI gar nichts

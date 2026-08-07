@@ -351,5 +351,7 @@ fn dispatch(command: Commands) -> i32 {
             pytest,
             pytest_timeout,
         } => cmd_maintenance_check(json, pytest, pytest_timeout),
+
+        Commands::SyncMaster => cmd_sync_master(),
     }
 }

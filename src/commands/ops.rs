@@ -12,6 +12,59 @@ pub fn startup_reconcile_runs() -> Vec<String> {
     store.reconcile_stale_runs(600.0)
 }
 
+/// Manueller Rettungsweg `webagent sync-master`: spielt die neueste
+/// Laufzeit-Kopie (`profiles/encapsulated/pool_*`) ins Master-Profil zurueck.
+///
+/// `write_back_session_to_master` haengt an `RUNTIME_POOL_PROFILE`, einem
+/// prozess-lokalen OnceLock — in einem frischen CLI-Prozess ist der leer und
+/// die Funktion tut nichts. Dieser Befehl findet die Kopie stattdessen auf der
+/// Platte, waehlt die juengste mit Login-Artefakten und kopiert sparsam ins
+/// Master (gleiche Schutzbedingung wie der Automatismus).
+pub fn cmd_sync_master() -> i32 {
+    use webagent::config::write_back_dir_to_master;
+    let base = webagent::config::profiles_dir().join("encapsulated");
+    let mut pools: Vec<std::path::PathBuf> = match std::fs::read_dir(&base) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.is_dir()
+                    && p.file_name()
+                        .map(|n| n.to_string_lossy().starts_with("pool_"))
+                        .unwrap_or(false)
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    if pools.is_empty() {
+        println!("[sync-master] keine Laufzeit-Kopien unter {}", base.display());
+        return 2;
+    }
+    // Juengste zuerst: die mtime der Kopie ist der letzte Browser-Schreibzugriff.
+    pools.sort_by_key(|p| {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    });
+    pools.reverse();
+    for dir in pools {
+        match write_back_dir_to_master(&dir) {
+            Ok(()) => {
+                println!(
+                    "[sync-master] {} -> Master kopiert",
+                    dir.file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| dir.display().to_string())
+                );
+                return 0;
+            }
+            Err(e) => eprintln!("[sync-master] {}: {e}", dir.display()),
+        }
+    }
+    println!("[sync-master] keine Laufzeit-Kopie mit Login-Artefakten gefunden");
+    1
+}
+
 pub fn cmd_canary() -> i32 {
     let results = webagent::canary::run_canary();
     if results.is_empty() {
