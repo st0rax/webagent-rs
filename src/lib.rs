@@ -51,6 +51,10 @@ pub mod transcript;
 pub mod tui;
 pub mod brain_grid;
 #[cfg(feature = "tui")]
+pub mod tui_keys;
+#[cfg(feature = "tui")]
+pub mod tui_mouse;
+#[cfg(feature = "tui")]
 pub mod tui_render;
 #[cfg(feature = "tui")]
 pub mod tui_state;

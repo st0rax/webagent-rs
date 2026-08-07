@@ -472,7 +472,10 @@ fn run_tui_ratatui(
     startup_benchmark: Option<&str>,
     startup_view: Option<&str>,
 ) -> i32 {
-    use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+    use crossterm::event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+        KeyModifiers, MouseButton, MouseEventKind,
+    };
     use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
     use crossterm::ExecutableCommand;
     use ratatui::backend::CrosstermBackend;
@@ -527,6 +530,12 @@ fn run_tui_ratatui(
     // dann monochrom, obwohl tui_render 58 Farben setzt (beobachtet
     // 2026-07-26: Helligkeitsunterschiede kamen durch, Farbtoene nicht).
     enable_vt_processing();
+    // Maus erfassen. Eine rein tastaturbediente Oberflaeche ist fuer alles
+    // unbedienbar, was keine Tastatur hat — Skripte, Watchdogs, und ein
+    // Assistent, der Terminalfenster nur anklicken darf. Ein Fehlschlag ist
+    // kein Abbruchgrund (die Tastatur bleibt), muss aber sichtbar sein: sonst
+    // sucht der naechste den Fehler in der Trefferpruefung.
+    let mouse_ready = stdout.execute(EnableMouseCapture).is_ok();
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = match Terminal::new(backend) {
@@ -576,9 +585,16 @@ fn run_tui_ratatui(
         bench_expanded: std::collections::HashSet::new(),
         bench_selected: 0,
         command_input: String::new(),
-        grid_status: String::new(),
-            cap_selected: 0,
-            cap_status: String::new(),
+        // Eine stumm gescheiterte Mauserfassung sieht exakt aus wie eine
+        // kaputte Trefferpruefung. Deshalb steht der Fehlschlag da, wo man
+        // hinsieht, wenn ein Klick nichts tut.
+        grid_status: if mouse_ready {
+            String::new()
+        } else {
+            "Maus nicht erfasst — nur Tastatur".to_string()
+        },
+        cap_selected: 0,
+        cap_status: String::new(),
     };
     if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
         let command = format!("/benchmark {arguments}");
@@ -607,6 +623,52 @@ fn run_tui_ratatui(
     fn bench_move(app: &mut App, delta: i64) {
         let n = bench_lines(app).len();
         app.bench_move(n, delta);
+    }
+
+    /// Klick auf die `offset`-te sichtbare Zeile des Koerpers.
+    ///
+    /// Rechnet den Ausschnitt mit [`crate::tui_render::bench_window_start`]
+    /// zurueck — derselben Formel, mit der gerendert wird. Eine zweite Formel
+    /// hier waere ein Klick, der eine andere Zeile trifft als die, auf die man
+    /// zeigt.
+    ///
+    /// Ein Klick auf die bereits gewaehlte Zeile klappt sie auf bzw. zu. So
+    /// bleibt die Oberflaeche ohne Doppelklick-Erkennung vollstaendig mit der
+    /// Maus bedienbar — Auswaehlen und Oeffnen sind zwei Klicks, nicht ein
+    /// zeitkritischer.
+    fn select_row_at(app: &mut App, offset: usize, rows: usize) {
+        match app.view {
+            View::Bench => {
+                let lines = bench_lines(app);
+                if lines.is_empty() {
+                    return;
+                }
+                let sel = app.bench_selected.min(lines.len() - 1);
+                let start = crate::tui_render::bench_window_start(lines.len(), rows, sel);
+                let Some(target) = start.checked_add(offset).filter(|t| *t < lines.len()) else {
+                    return;
+                };
+                if target == sel {
+                    if let Some(id) = bench_selected_id(app, &lines) {
+                        app.bench_toggle(id);
+                    }
+                } else {
+                    app.bench_selected = target;
+                }
+            }
+            View::Capabilities => {
+                app.cap_selected = offset;
+            }
+            View::Workers => {
+                if offset < app.agents.len() {
+                    if offset == app.selected {
+                        app.toggle_expanded();
+                    } else {
+                        app.selected = offset;
+                    }
+                }
+            }
+        }
     }
 
     /// Auf-/Zuklappen des Knotens unter dem Cursor in der Baumansicht.
@@ -645,13 +707,57 @@ fn run_tui_ratatui(
     // ist idempotent).
     let mut grid_arranged_for = 0usize;
 
-    let exit_code = loop {
-        // Tastatur-Event (non-blocking, 80ms Timeout)
+    let exit_code = 'main: loop {
+        // Eingaben einsammeln. Tastatur und Maus laufen bewusst in DIESELBE
+        // Warteschlange: ein Klick wird zu der Taste, die ein Mensch gedrueckt
+        // haette, und durchlaeuft danach denselben `match`. Ein eigener
+        // Maus-Zweig waere ein zweiter Bedienpfad — und zwei Bedienpfade
+        // laufen erfahrungsgemaess auseinander.
+        let mut pending: Vec<KeyEvent> = Vec::new();
         if event::poll(tick_rate).unwrap_or(false) {
-            if let Ok(Event::Key(key)) = event::read() {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+            match event::read() {
+                Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => pending.push(key),
+                Ok(Event::Mouse(m)) => {
+                    let size = terminal.size().unwrap_or_default();
+                    let screen = crate::tui_mouse::Screen {
+                        width: size.width,
+                        height: size.height,
+                        view: app.view,
+                        has_agents: !app.agents.is_empty(),
+                    };
+                    match m.kind {
+                        // Mausrad: eine Zeile pro Raste, in jeder Ansicht.
+                        MouseEventKind::ScrollDown => {
+                            pending.extend(crate::tui_keys::parse_key("j"))
+                        }
+                        MouseEventKind::ScrollUp => {
+                            pending.extend(crate::tui_keys::parse_key("k"))
+                        }
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            match crate::tui_mouse::hit(screen, m.column, m.row) {
+                                Some(crate::tui_mouse::Hit::Key(action)) => {
+                                    pending.extend(crate::tui_keys::parse_key(action));
+                                }
+                                Some(crate::tui_mouse::Hit::Row(offset)) => {
+                                    let rows = crate::tui_mouse::body_rows(size.height);
+                                    select_row_at(&mut app, offset, rows);
+                                }
+                                None => {}
+                            }
+                        }
+                        // Rechtsklick klappt zu — das Gegenstueck zum
+                        // Aufklappen per Doppel-/Linksklick auf einen Knoten.
+                        MouseEventKind::Down(MouseButton::Right) => {
+                            pending.extend(crate::tui_keys::parse_key("left"));
+                        }
+                        _ => {}
+                    }
                 }
+                _ => {}
+            }
+        }
+
+        for key in pending {
                 match app.input_mode {
                     InputMode::Normal => match key.code {
                         // Alt+Nummer: Fokus ausdruecklich auf eine Kachel.
@@ -684,7 +790,7 @@ fn run_tui_ratatui(
                                 app.selected = select_wrap(app.selected, 1, app.agents.len());
                             }
                         }
-                        KeyCode::Char('q') => break 0,
+                        KeyCode::Char('q') => break 'main 0,
                         // Ansicht umschalten: Worker-Dashboard <-> Benchmark.
                         // `v` wie „view", plus `<`/`>` als Griff aufs Eck-Symbol
                         // in der Kopfzeile.
@@ -900,12 +1006,11 @@ fn run_tui_ratatui(
                         _ => {}
                     },
                     InputMode::ConfirmQuit => match key.code {
-                        KeyCode::Char('y') | KeyCode::Enter => break 0,
+                        KeyCode::Char('y') | KeyCode::Enter => break 'main 0,
                         KeyCode::Char('n') | KeyCode::Esc => app.input_mode = InputMode::Normal,
                         _ => {}
                     },
                 }
-            }
         }
 
         // Tick (Spinner + gedämpftes Gauge)
@@ -966,6 +1071,13 @@ fn run_tui_ratatui(
         },
     );
     let _ = handle.join();
+    // Mauserfassung ZUERST zuruecknehmen: bleibt sie an, schluckt das Terminal
+    // nach dem Beenden weiter jede Mausgeste — Markieren und Kopieren gingen
+    // dann nicht mehr, und zwar in einer Sitzung, die mit der TUI gar nichts
+    // mehr zu tun hat.
+    if mouse_ready {
+        let _ = io::stdout().execute(DisableMouseCapture);
+    }
     let _ = terminal::disable_raw_mode();
     let _ = io::stdout().execute(LeaveAlternateScreen);
     crate::bench_events::set_console_output(true);
