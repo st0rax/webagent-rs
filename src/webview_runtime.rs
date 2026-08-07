@@ -572,6 +572,29 @@ fn set_no_activate(window: &tao::window::Window, no_activate: bool) {
 #[cfg(not(windows))]
 fn set_no_activate(_window: &tao::window::Window, _no_activate: bool) {}
 
+/// Holt ein Fenster auf den Schirm, ohne ihm den Fokus zu geben.
+///
+/// `Window::set_minimized(false)` genuegt hier nicht: gemessen am 07.08.2026
+/// blieben die Brain-Fenster nach dem Aufruf weiter als Symbol liegen
+/// (`IsIconic` = true, Rechteck -32000,-32000 160x28), waehrend die
+/// Kachelansicht „2 Fenster gekachelt" meldete. `SW_SHOWNOACTIVATE` macht
+/// beides in einem Schritt und passt zum Entwurf: die Kacheln sind sichtbar,
+/// aber nicht aktivierbar — der Fokus gehoert dem Terminal (Alt+1…9 ist der
+/// einzige bewusste Weg in eine Kachel).
+#[cfg(all(windows, feature = "webview"))]
+fn show_without_activating(window: &tao::window::Window) {
+    use tao::platform::windows::WindowExtWindows;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+    let hwnd = HWND(window.hwnd() as *mut core::ffi::c_void);
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    }
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+fn show_without_activating(_window: &tao::window::Window) {}
+
 /// Gibt den Fokus aktiv an das Terminalfenster zurueck, in dem die TUI laeuft.
 ///
 /// Ohne diesen Schritt landet der Fokus nach einer Uebernahme irgendwo —
@@ -643,6 +666,7 @@ fn set_bounds(
             // eines Symbols, nicht die des Park-Platzes, wo die Fenster ihre
             // echte Groesse behalten).
             slot.window.set_minimized(false);
+            show_without_activating(&slot.window);
             slot.window
                 .set_inner_size(tao::dpi::PhysicalSize::new(rect.width, rect.height));
             slot.window
