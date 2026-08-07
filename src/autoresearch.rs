@@ -131,13 +131,7 @@ fn run_core(
 ) -> Result<AutoResearchReport, String> {
     // Sicherheitsmodell §8: nie auf schmutzigem Working Tree starten — kein
     // Stash, kein Überschreiben von Nutzer-Zustand.
-    if !git_status_clean(&config.workdir)? {
-        return Err(format!(
-            "Working Tree in {} ist nicht sauber — bitte committen oder stashen, \
-             Autoresearch startet nur auf sauberem Stand.",
-            config.workdir.display()
-        ));
-    }
+    guard_clean_tree(&config.workdir)?;
 
     // Baseline VOR dem Branchwechsel messen. Frueher wurde erst der Branch
     // angelegt und dann evaluiert: schlug die erste Eval fehl, kehrte die
@@ -518,6 +512,27 @@ fn git_ok(workdir: &Path, args: &[&str]) -> Result<String, String> {
 /// `true`, wenn `git status --porcelain` leer ist (kein uncommitted Zustand).
 pub(crate) fn git_status_clean(workdir: &Path) -> Result<bool, String> {
     Ok(git_ok(workdir, &["status", "--porcelain"])?.is_empty())
+}
+
+/// Sicherheitsmodell §5/§8: Benchmark und Autoresearch laufen nur auf
+/// sauberem Git-Tree. Mit `WEBAGENT_ALLOW_DIRTY=1` wird die Sperre zur
+/// Warnung — Betriebsvorgabe 08.08.2026: die TUI darf nicht am Commit-Status
+/// haengen, uncommittete Aenderungen gehoeren zum laufenden Workflow.
+pub fn guard_clean_tree(workdir: &Path) -> Result<(), String> {
+    if git_status_clean(workdir)? {
+        return Ok(());
+    }
+    if std::env::var("WEBAGENT_ALLOW_DIRTY").ok().as_deref() == Some("1") {
+        crate::bench_events::eprint_line(&format!(
+            "[guard] WARN: Working Tree in {} ist nicht sauber, aber WEBAGENT_ALLOW_DIRTY=1 — weiter mit uncommittetem Stand.",
+            workdir.display()
+        ));
+        return Ok(());
+    }
+    Err(format!(
+        "Working Tree in {} ist nicht sauber — bitte committen, stashen oder WEBAGENT_ALLOW_DIRTY=1 setzen.",
+        workdir.display()
+    ))
 }
 
 /// SHA von HEAD.

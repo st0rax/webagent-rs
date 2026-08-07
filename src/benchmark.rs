@@ -1123,13 +1123,7 @@ where
     Q: Fn(&str, &str) -> Result<String, String> + Sync,
 {
     // Sicherheitsmodell §5: nur auf sauberem Git-Tree starten.
-    if !crate::autoresearch::git_status_clean(&config.workdir)? {
-        return Err(format!(
-            "Working Tree in {} ist nicht sauber — bitte committen oder stashen. \
-             Der Benchmark läuft nur auf sauberem Stand und resettet nach jedem Run.",
-            config.workdir.display()
-        ));
-    }
+    crate::autoresearch::guard_clean_tree(&config.workdir)?;
 
     // Mit `--verbose` spiegeln die Schritt-Zeilen des Controllers
     // (shell/edit/write/message) in den Ereignisbus — in der TUI wird der
@@ -1167,7 +1161,21 @@ where
         let (round_brains, gesperrt): (Vec<String>, Vec<(String, i64)>) = {
             let mut aktiv = Vec::new();
             let mut blockiert = Vec::new();
-            for b in &config.brains {
+            // Progressive Teamgroesse: bei `--loop` waechst das Feld pro Runde
+            // um genau ein Brain (1, 2, ... bis zur vollen Liste), dann beginnt
+            // die Welle von vorn — die Kachelwand faellt auf die erste Brain
+            // zurueck und startet erneut. Bei festen Runden bleibt das volle
+            // Team. Vorgabe Storax 08.08.2026.
+            let team_size = if config.loop_forever {
+                if config.brains.is_empty() {
+                    0
+                } else {
+                    ((round - 1) % config.brains.len()) + 1
+                }
+            } else {
+                config.brains.len()
+            };
+            for b in config.brains.iter().take(team_size) {
                 match crate::circuit_breaker::check(b) {
                     Some(rest) => blockiert.push((b.clone(), rest)),
                     None => aktiv.push(b.clone()),
@@ -1426,12 +1434,8 @@ where
             }
             let task = build_task_prompt(effective);
             let tid = task_id(effective);
-            if !crate::autoresearch::git_status_clean(&config.workdir)? {
-                return Err(format!(
-                    "Working Tree in {} ist vor dem Run von {brain} nicht sauber — Abbruch.",
-                    config.workdir.display()
-                ));
-            }
+            crate::autoresearch::guard_clean_tree(&config.workdir)
+                .map_err(|e| format!("{e} (vor dem Run von {brain})"))?;
             let baseline = crate::autoresearch::git_head_sha(&config.workdir)?;
             let started = Instant::now();
 
