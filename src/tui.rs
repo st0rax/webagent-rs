@@ -783,6 +783,23 @@ fn run_tui_ratatui(
                         KeyCode::Esc => {
                             app.grid_status = release_brain_focus();
                         }
+                        // Pfeile tun dasselbe wie j/k. Die Fusszeile bewirbt
+                        // zwar j/k, aber niemand liest eine Legende, bevor er
+                        // die Pfeiltaste drueckt — eine Liste, die auf Pfeile
+                        // nicht reagiert, wirkt kaputt.
+                        KeyCode::Up if app.view == View::Config => {
+                            app.cfg_selected = app.cfg_selected.saturating_sub(1);
+                        }
+                        KeyCode::Down if app.view == View::Config => {
+                            let last = crate::tui_config::SETTINGS.len().saturating_sub(1);
+                            app.cfg_selected = app.cfg_selected.saturating_add(1).min(last);
+                        }
+                        KeyCode::Up if app.view == View::Capabilities => {
+                            app.cap_selected = app.cap_selected.saturating_sub(1);
+                        }
+                        KeyCode::Down if app.view == View::Capabilities => {
+                            app.cap_selected = app.cap_selected.saturating_add(1);
+                        }
                         KeyCode::Up => {
                             if app.view == View::Bench {
                                 bench_move(&mut app, -1);

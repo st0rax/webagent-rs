@@ -482,13 +482,19 @@ pub enum Commands {
         #[arg(long)]
         benchmark: Option<String>,
 
-        /// Ansicht, mit der die TUI startet: `workers` oder `bench`.
+        /// Ansicht, mit der die TUI startet: `workers`, `bench`,
+        /// `capabilities` oder `config`.
         ///
         /// Ohne Angabe entscheidet der Kontext (mit `--benchmark` startet sie
         /// im Ereignisstrom, sonst im Worker-Dashboard). Explizit gesetzt,
         /// laesst sich jede Ansicht ohne Tastendruck oeffnen — noetig fuer
         /// automatisierte Abnahme per Screenshot.
-        #[arg(long, value_parser = ["workers", "bench"])]
+        ///
+        /// Die Liste hier muss zu `tui_state::parse_view` passen. Sie lief
+        /// schon einmal auseinander: parse_view kannte vier Ansichten, clap
+        /// liess zwei zu — die beiden anderen waren ueber die Kommandozeile
+        /// unerreichbar, ohne dass irgendetwas gemeckert haette.
+        #[arg(long, value_parser = ["workers", "bench", "capabilities", "config"])]
         view: Option<String>,
     },
 

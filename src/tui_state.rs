@@ -870,6 +870,24 @@ mod tests {
         assert_eq!(View::Config.next(), View::Workers);
     }
 
+    /// Jede Ansicht muss auch ueber `--view` waehlbar sein.
+    ///
+    /// Die Liste in `cli.rs` (`value_parser`) und `parse_view` sind zwei
+    /// Stellen fuer dieselbe Frage. Sie liefen bereits auseinander: parse_view
+    /// kannte vier Ansichten, clap liess zwei zu — die beiden anderen waren
+    /// ueber die Kommandozeile unerreichbar, ohne Fehlermeldung.
+    #[test]
+    fn jede_ansicht_ist_per_view_parameter_waehlbar() {
+        for (name, erwartet) in [
+            ("workers", View::Workers),
+            ("bench", View::Bench),
+            ("capabilities", View::Capabilities),
+            ("config", View::Config),
+        ] {
+            assert_eq!(parse_view(name), Some(erwartet), "--view {name}");
+        }
+    }
+
     /// Jede Ansicht muss per `v` erreichbar sein — und der Rundlauf muss sich
     /// schliessen.
     ///
