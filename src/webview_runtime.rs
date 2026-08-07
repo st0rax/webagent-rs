@@ -635,6 +635,14 @@ fn set_bounds(
     set_no_activate(&slot.window, true);
     match bounds {
         Some(rect) => {
+            // Zuerst aus dem minimierten Zustand holen. Ein minimiertes Fenster
+            // nimmt Groesse und Position klaglos an und bleibt trotzdem als
+            // Symbol liegen — die Kachelansicht meldete dann „3 Fenster
+            // gekachelt", waehrend der Bildschirm leer blieb (gemessen
+            // 07.08.2026: Rechteck -32000,-32000 160x28, also die Signatur
+            // eines Symbols, nicht die des Park-Platzes, wo die Fenster ihre
+            // echte Groesse behalten).
+            slot.window.set_minimized(false);
             slot.window
                 .set_inner_size(tao::dpi::PhysicalSize::new(rect.width, rect.height));
             slot.window
