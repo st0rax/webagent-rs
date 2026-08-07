@@ -268,7 +268,7 @@ fn classify_completion(
 /// Bewusst grob: ein `{` oder ein `WEBAGENT/1`-Umschlag genügt. Es geht nicht
 /// darum, ob das Protokoll gültig ist (das prüft `protocol::parse`), sondern ob
 /// das Brain überhaupt angefangen hat zu antworten statt nur zu denken.
-fn has_protocol_payload(text: &str) -> bool {
+pub(crate) fn has_protocol_payload(text: &str) -> bool {
     let t = text.trim();
     t.contains('{') || t.contains("WEBAGENT/1")
 }

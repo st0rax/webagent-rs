@@ -31,6 +31,13 @@ const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
 /// zweiten Hinweis nicht trifft, trifft ihn auch beim fuenften nicht.
 const MAX_NO_CHANGE_NUDGES: u32 = 2;
 
+/// Länge, unter der eine Antwort ohne Protokoll-Nutzlast als „fast leer"
+/// gilt (#11, abgestimmt 02.08., Daten 06.08.). Solche Antworten werden als
+/// `brain_unavailable` verbucht statt als `protocol_invalid` — ein
+/// Repair-Prompt („antworte im richtigen Format") kann nichts reparieren,
+/// was nie begonnen wurde, und kostet 10-35 s Roundtrip.
+const FAST_EMPTY_RESPONSE_CHARS: usize = 20;
+
 /// Exponential-Backoff-Basis/-Obergrenze zwischen incomplete-Retries.
 const INCOMPLETE_RETRY_BACKOFF_BASE_MS: u64 = 500;
 const INCOMPLETE_RETRY_BACKOFF_CAP_MS: u64 = 8_000;
@@ -850,6 +857,26 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             return ("brain_unavailable".to_string(), true);
         }
 
+        // #11: fast leere Antwort ohne jede Protokoll-Nutzlast (kein `{`, kein
+        // WEBAGENT/1) — das Brain hat nie zu antworten begonnen. Vorher landete
+        // das als `protocol_invalid` und kostete einen teuren Repair-Roundtrip.
+        // Real gemessen (chatgpt, brain_incomplete): kurze, inhaltslose Texte.
+        // Antworten MIT Protokoll-Marker fallen bewusst NICHT hierher, selbst
+        // wenn sie kurz sind — eine begonnene Antwort ist reparaturwuerdig.
+        if !crate::browser::has_protocol_payload(response_text)
+            && response_text.trim().chars().count() < FAST_EMPTY_RESPONSE_CHARS
+        {
+            let _ = transcript.append(
+                "system",
+                &format!(
+                    "brain_unavailable: fast leere Antwort ohne Protokoll-Nutzlast — {}",
+                    crate::char_prefix(response_text.trim(), 120)
+                ),
+                HashMap::new(),
+            );
+            return ("brain_unavailable".to_string(), true);
+        }
+
         let parsed = protocol::parse(response_text);
 
         if !parsed.valid {
@@ -1310,6 +1337,15 @@ per edit/write-Action pflegbar):\n",
             response_text = new_response;
             finished = new_finished;
 
+            // brain_unavailable (leer oder fast leer): Run terminal, Benchmark
+            // nimmt ihn aus der Wertung — nicht als `done` durchreichen.
+            if response_text == "brain_unavailable" {
+                let final_meta =
+                    self.finish_brain_unavailable(&mut meta, &mut transcript, &response_text);
+                self.finish_run_cleanup(opts);
+                return Ok(final_meta);
+            }
+
             // Protocol-Repair abgebrochen → Run terminal (kein incomplete-Recovery).
             if self
                 .meta
@@ -1347,6 +1383,12 @@ per edit/write-Action pflegbar):\n",
                         self.handle_response(&recovered.text, &mut transcript);
                     response_text = new_response;
                     finished = new_finished;
+                    if response_text == "brain_unavailable" {
+                        let final_meta = self
+                            .finish_brain_unavailable(&mut meta, &mut transcript, &response_text);
+                        self.finish_run_cleanup(opts);
+                        return Ok(final_meta);
+                    }
                 } else {
                     let final_meta = self.finish_brain_incomplete(&mut meta, &mut transcript);
                     self.finish_run_cleanup(opts);
@@ -1904,8 +1946,11 @@ mod tests {
 
     #[test]
     fn test_protocol_repair_recovers_after_one_invalid_answer() {
+        // Kurze Nicht-Protokoll-Antworten (< 20 Zeichen ohne Marker) sind seit
+        // #11 brain_unavailable — der Repair-Pfad wird mit einer LAENGEREN
+        // fehlgeformten Antwort geprueft, die die Nutzlast begonnen hat.
         let brain = MockBrain::new().with_responses(
-            vec!["das ist kein json", &finish_response()],
+            vec!["das hier ist leider kein gueltiges json format", &finish_response()],
             vec![true, true],
         );
         let executor = MockExecutor::new();
@@ -1930,9 +1975,9 @@ mod tests {
     fn test_protocol_repair_aborts_as_protocol_error_after_third_fail() {
         let brain = MockBrain::new().with_responses(
             vec![
-                "kaputt eins",
-                "kaputt zwei",
-                "kaputt drei",
+                "das hier ist kaputt eins und kein json",
+                "das hier ist kaputt zwei und kein json",
+                "das hier ist kaputt drei und kein json",
                 &finish_response(),
             ],
             vec![true, true, true, true],
@@ -2189,6 +2234,67 @@ mod tests {
         );
         // Genau ein Sende-Versuch — keine sechs Wiederholungen.
         assert_eq!(controller.brain().sent_message_count(), 1);
+    }
+
+    #[test]
+    fn fast_leere_antwort_ohne_protokoll_marker_ist_brain_unavailable() {
+        // #11: chatgpt brain_incomplete-Fall — kurzer Text ohne `{`/WEBAGENT/1.
+        // Vorher protocol_invalid + teurer Repair-Roundtrip; jetzt brain_unavailable.
+        let brain =
+            MockBrain::new().with_responses(vec!["Hmm, weiß nicht."], vec![true]);
+        let executor = MockExecutor::new();
+        let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let meta = controller.run("Antworte", "mock", None, false).unwrap();
+
+        assert_eq!(meta.status, "brain_unavailable");
+        assert!(
+            crate::benchmark::is_external_block(&meta.status),
+            "muss aus der Wertung fallen"
+        );
+        // Genau ein Sende-Versuch — kein Repair-Prompt, kein status=done.
+        assert_eq!(controller.brain().sent_message_count(), 1);
+    }
+
+    #[test]
+    fn kurze_antwort_mit_protokoll_marker_geht_in_repair() {
+        // Kurz, aber das Brain HAT begonnen zu antworten (WEBAGENT/1-Marker
+        // vorhanden, nur kaputt) → reparaturwuerdig, nicht brain_unavailable.
+        let brain = MockBrain::new().with_responses(
+            vec!["WEBAGENT/1 BROKEN", &finish_response()],
+            vec![true, true],
+        );
+        let executor = MockExecutor::new();
+        let messages = brain.messages.clone();
+        let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let meta = controller
+            .run("Repariere", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "done");
+        let sent = messages.borrow();
+        assert!(
+            sent.iter().any(|m| {
+                m.contains("NUR mit gültigem")
+                    || (m.contains("webagent/1") && m.contains("Ungültige"))
+            }),
+            "erwarte Repair-Prompt, got: {sent:?}"
+        );
+    }
+
+    #[test]
+    fn kurze_antwort_mit_klammer_geht_in_repair() {
+        // `{` ist ebenfalls Protokoll-Nutzlast (JSON-Versuch) — selbst "{}"
+        // ist reparaturwuerdig statt brain_unavailable.
+        let brain = MockBrain::new().with_responses(
+            vec!["{}", &finish_response()],
+            vec![true, true],
+        );
+        let executor = MockExecutor::new();
+        let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
+        let meta = controller.run("Repariere", "mock", None, false).unwrap();
+
+        assert_eq!(meta.status, "done");
+        assert_eq!(controller.brain().sent_message_count(), 2);
     }
 }
 
