@@ -109,8 +109,18 @@ impl BrainBackend for WebBrainBackend {
         if self.is_cloudflare_blocked() {
             return SessionState::Cloudflare;
         }
-        if !self.is_logged_in() {
+        // Zwei verschiedene Aussagen, zwei verschiedene Zustaende. Ein
+        // sichtbarer Anmelden-Knopf ist ein BELEG fuer eine Anmelde-Wand; ein
+        // fehlender Indikator ist nur ein fehlender Nachweis und trifft auch
+        // eine Seite, die noch laedt, oder einen Selektor, der nach einem
+        // Website-Umbau nicht mehr passt. Beides in einen Topf zu werfen hat am
+        // 07.08.2026 alle acht Brains fuer sechs Stunden gesperrt, obwohl jedes
+        // angemeldet war.
+        if self.any_visible("login_button") {
             return SessionState::LoginRequired;
+        }
+        if !self.is_logged_in() {
+            return SessionState::Unbestimmt;
         }
         SessionState::Ready
     }

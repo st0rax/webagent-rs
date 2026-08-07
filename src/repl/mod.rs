@@ -504,6 +504,14 @@ impl ReplSession {
             SessionState::Ready => "angemeldet",
             SessionState::LoginRequired => "Login nötig (/login)",
             SessionState::Cloudflare => "Cloudflare-Prüfung",
+            // Wortwahl ist hier keine Kosmetik: der Breaker entscheidet ueber
+            // Textsuche, und das Wort „login" macht daraus eine harte Sperre
+            // ueber sechs Stunden. Ein fehlender Nachweis ist aber kein Beleg
+            // fuer eine Anmelde-Wand — er darf nur weich sperren. Der Test
+            // `unbestimmt_sperrt_nicht_hart` haelt das fest.
+            SessionState::Unbestimmt => {
+                "Seite nicht bereit — kein Anmelde-Nachweis gefunden"
+            }
             SessionState::Error => "nicht erreichbar",
         }
     }
