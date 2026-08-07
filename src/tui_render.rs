@@ -878,6 +878,93 @@ fn human_duration(seconds: u64) -> String {
     }
 }
 
+/// Erste sichtbare Zeile des Ereignisbaums.
+///
+/// Der Cursor ist der Anker und bleibt im oberen Drittel, damit unter ihm Platz
+/// fuer aufgeklappte Details bleibt.
+///
+/// Eigene Funktion, weil zwei Stellen dieselbe Antwort brauchen: das Rendern und
+/// die Maus (welche Zeile liegt unter dem Klick?). Zwei Kopien dieser Formel
+/// waeren ein Klick, der eine andere Zeile trifft als die, auf die man zeigt.
+pub fn bench_window_start(total: usize, rows: usize, selected: usize) -> usize {
+    let keep = rows.saturating_div(3).max(1);
+    let max_start = total.saturating_sub(rows);
+    selected.saturating_sub(keep).min(max_start)
+}
+
+/// Ein Eintrag der Fusszeile: Beschriftung UND anklickbare Handlung.
+///
+/// `key` ist, was dransteht; `action` ist, was ein Klick ausloest. Beides
+/// auseinanderzuhalten ist noetig, weil Eintraege wie `j/k` oder `+/-` zwei
+/// Tasten anzeigen, ein Klick aber genau eine Handlung meinen muss.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FooterBind {
+    pub key: &'static str,
+    pub label: &'static str,
+    /// Tastenname fuer [`crate::tui_keys::parse_key`] — die Maus laeuft ueber
+    /// dieselbe Tastenlogik, damit es keinen zweiten Bedienpfad gibt.
+    pub action: &'static str,
+}
+
+const fn bind(key: &'static str, label: &'static str, action: &'static str) -> FooterBind {
+    FooterBind { key, label, action }
+}
+
+/// Tastenleiste der Ansicht — einzige Quelle fuer Darstellung und Trefferflaeche.
+///
+/// Die Leiste haengt an der Ansicht: in der Benchmark-Ansicht sind
+/// Worker-Tasten (Tab/Filter/+/-) sinnlos.
+pub fn footer_binds(view: View) -> &'static [FooterBind] {
+    const CAPABILITIES: [FooterBind; 5] = [
+        bind("v", "ansicht", "v"),
+        bind("j/k", "wählen", "j"),
+        bind("t", "schalten", "t"),
+        bind("w", "kacheln", "w"),
+        bind("q", "quit", "q"),
+    ];
+    const WORKERS: [FooterBind; 10] = [
+        bind("v", "ansicht", "v"),
+        bind("↑↓", "wählen", "down"),
+        bind("␣", "ausklappen", "space"),
+        bind("Tab", "fokus", "tab"),
+        bind("f", "filter", "f"),
+        bind("+/-", "worker", "+"),
+        bind("↵", "task", "enter"),
+        bind("/", "kommando", "/"),
+        bind("w", "kacheln", "w"),
+        bind("q", "quit", "q"),
+    ];
+    const BENCH: [FooterBind; 5] = [
+        bind("v", "ansicht", "v"),
+        bind("j/k", "scroll", "j"),
+        bind("g", "ans ende", "g"),
+        bind("w", "kacheln", "w"),
+        bind("q", "quit", "q"),
+    ];
+    match view {
+        View::Capabilities => &CAPABILITIES,
+        View::Workers => &WORKERS,
+        View::Bench => &BENCH,
+    }
+}
+
+/// Spaltenbereiche der Fusszeilen-Knoepfe: `(start, ende_exklusiv, action)`.
+///
+/// Rechnet exakt das Layout von [`render_footer`] nach: ein Leerzeichen
+/// Vorlauf, dann je Eintrag `key` + `" {label}  "`. Die Trefferflaeche umfasst
+/// Taste UND Beschriftung — wer auf das Wort „kacheln" zielt, trifft.
+/// Gemessen in Zeichenzellen, wie ratatui rendert.
+pub fn footer_zones(view: View) -> Vec<(u16, u16, &'static str)> {
+    let mut zones = Vec::new();
+    let mut x: u16 = 1; // fuehrendes Span::raw(" ")
+    for b in footer_binds(view) {
+        let width = (b.key.chars().count() + 1 + b.label.chars().count() + 2) as u16;
+        zones.push((x, x + width, b.action));
+        x += width;
+    }
+    zones
+}
+
 /// Footer: Keybindings — Tasten hervorgehoben, Beschriftung gedämpft.
 ///
 /// Design-spezifische Tasten: j/k für Detail-Scroll, f für Log-Filter,
@@ -900,39 +987,9 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let mut spans = vec![Span::raw(" ")];
-    // Die Tastenleiste haengt an der Ansicht — in der Benchmark-Ansicht sind
-    // Worker-Tasten (Tab/Filter/+/-) sinnlos.
-    let binds: &[(&str, &str)] = match app.view {
-        View::Capabilities => &[
-            ("v", "ansicht"),
-            ("j/k", "wählen"),
-            ("t", "schalten"),
-            ("w", "kacheln"),
-            ("q", "quit"),
-        ],
-        View::Workers => &[
-            ("v", "ansicht"),
-            ("↑↓", "wählen"),
-            ("␣", "ausklappen"),
-            ("Tab", "fokus"),
-            ("f", "filter"),
-            ("+/-", "worker"),
-            ("↵", "task"),
-            ("/", "kommando"),
-            ("w", "kacheln"),
-            ("q", "quit"),
-        ],
-        View::Bench => &[
-            ("v", "ansicht"),
-            ("j/k", "scroll"),
-            ("g", "ans ende"),
-            ("w", "kacheln"),
-            ("q", "quit"),
-        ],
-    };
-    for (k, label) in binds {
-        spans.push(Span::styled(*k, key));
-        spans.push(Span::styled(format!(" {label}  "), dim));
+    for b in footer_binds(app.view) {
+        spans.push(Span::styled(b.key, key));
+        spans.push(Span::styled(format!(" {}  ", b.label), dim));
     }
     // Totmannschalter: Zeit seit dem letzten Ereignis.
     //
@@ -1082,9 +1139,7 @@ fn render_bench(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let sel = app.bench_selected.min(total - 1);
-    let keep = rows.saturating_div(3).max(1);
-    let max_start = total.saturating_sub(rows);
-    let start = sel.saturating_sub(keep).min(max_start);
+    let start = bench_window_start(total, rows, sel);
     let end = (start + rows).min(total);
 
     let mut out: Vec<Line> = Vec::with_capacity(end - start);
