@@ -7,6 +7,7 @@
 pub mod backend;
 pub mod composer;
 pub mod js;
+pub mod selectors;
 pub mod ui;
 
 use std::cell::RefCell;
@@ -294,7 +295,7 @@ pub struct LiveDiagnosis {
 pub struct WebBrainBackend {
     brain_id: String,
     url: String,
-    selectors: Value,
+    selectors: selectors::Selectors,
     #[cfg_attr(not(feature = "webview"), allow(dead_code))]
     profile_dir: PathBuf,
     /// Optionales isoliertes Laufzeit-Profil (z.B. Swarm-Teilkopie). Überschreibt
@@ -340,6 +341,7 @@ impl WebBrainBackend {
         let url = spec.get("url").cloned().unwrap_or_default();
         let profile_dir = PathBuf::from(spec.get("profile_dir").cloned().unwrap_or_default());
         let selectors = crate::config::load_selectors(brain_id)
+            .map(selectors::Selectors::from_value)
             .map_err(|e| format!("Selektoren nicht ladbar: {e}"))?;
         Ok(Self {
             brain_id: brain_id.to_string(),
@@ -370,7 +372,7 @@ impl WebBrainBackend {
         Ok(Self {
             brain_id: id,
             url: url.trim().to_string(),
-            selectors: serde_json::json!({}),
+            selectors: selectors::Selectors::empty(),
             profile_dir,
             profile_override: None,
             #[cfg(feature = "webview")]
@@ -413,16 +415,17 @@ impl WebBrainBackend {
     }
 
     /// Selektor-Liste zu einem Schlüssel (leere Liste, wenn nicht vorhanden).
+    ///
+    /// Delegiert an [`selectors::Selectors`] — Schritt 1: Selektoren als eigener
+    /// Wert, damit die Operationen sie als Parameter mitgegeben bekommen.
     fn sel(&self, key: &str) -> Vec<String> {
-        self.selectors
-            .get(key)
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|s| s.as_str().map(|x| x.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default()
+        self.selectors.list(key)
+    }
+
+    /// JS-Array-Literal der Selektoren zu einem Schlüssel; `fallback` greift,
+    /// wenn keine konfiguriert sind.
+    fn sel_js(&self, key: &str, fallback: &[&str]) -> String {
+        self.selectors.js(key, fallback)
     }
 
     /// JS-Array-Literal aus einer Selektorliste (sicher escaped).
@@ -431,16 +434,6 @@ impl WebBrainBackend {
     /// zweiten Aufrufer ausserhalb des Backends (`brain_probe::verify`).
     fn js_selectors(list: &[String]) -> String {
         js::js_selectors(list)
-    }
-
-    /// JS-Array-Literal der Selektoren zu einem Schlüssel; `fallback` greift,
-    /// wenn keine konfiguriert sind.
-    fn sel_js(&self, key: &str, fallback: &[&str]) -> String {
-        let mut sels = self.sel(key);
-        if sels.is_empty() {
-            sels = fallback.iter().map(|s| s.to_string()).collect();
-        }
-        Self::js_selectors(&sels)
     }
 
     /// JS-Prelude fuer [`Self::js_scan`]: `Q(sel)` / `QA(sel)` loesen einen Selektor
