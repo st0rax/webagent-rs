@@ -344,9 +344,6 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn is_logged_in(&self) -> bool {
-        if self.driver.borrow().is_none() {
-            return false;
-        }
         // Wenn ein Brain `login_indicator` konfiguriert, ist das die Antwort — sonst
         // nichts. Frueher wurde `composer`/`new_chat_button` dazu-ODER-t, was die
         // sorgfaeltig authorten Indikatoren aushebelte: kimi zeigt seinen Composer
@@ -362,15 +359,11 @@ impl BrainBackend for WebBrainBackend {
         // ausgeloggtes Brain, das als gesund gilt, bekommt Auftraege und
         // liefert nie. Der Anmelden-Knopf ist das verlaesslichere Signal:
         // eingeloggt zeigt ihn keine Oberflaeche.
-        if self.any_visible("login_button") {
-            return false;
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => super::operations::is_logged_in(driver.as_mut(), &self.selectors),
+            None => false,
         }
-        let indicator = self.sel("login_indicator");
-        if !indicator.is_empty() {
-            return self.any_visible("login_indicator");
-        }
-        // Ohne konfigurierten Indikator: Composer/New-Chat als grobe Naeherung.
-        self.any_visible("composer") || self.any_visible("new_chat_button")
     }
 
     fn click_login(&mut self) -> Result<(), String> {

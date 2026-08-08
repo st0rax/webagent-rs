@@ -39,7 +39,19 @@ pub fn any_visible(driver: &mut dyn PageDriver, sel: &Selectors, key: &str) -> b
 /// auch die ausgeloggte Startseite zeigt). Ohne konfigurierten Indikator
 /// Composer/New-Chat als grobe Naeherung.
 pub fn is_logged_in(driver: &mut dyn PageDriver, sel: &Selectors) -> bool {
-    todo!("SCHRITT2:is_logged_in")
+    // Ein sichtbarer Anmelden-Knopf schlaegt JEDEN positiven Indikator.
+    // (Geschichte: geminis login_indicator war der Composer, den auch die
+    // ausgeloggte Startseite zeigt - deshalb darf der Composer NIE als
+    // Login-Beweis zaehlen, und ein sichtbarer login_button widerlegt alles.)
+    if any_visible(driver, sel, "login_button") {
+        return false;
+    }
+    let indicator = sel.list("login_indicator");
+    if !indicator.is_empty() {
+        return any_visible(driver, sel, "login_indicator");
+    }
+    // Ohne konfigurierten Indikator: Composer/New-Chat als grobe Naeherung.
+    any_visible(driver, sel, "composer") || any_visible(driver, sel, "new_chat_button")
 }
 
 /// Anzahl der Assistenten-Nachrichten (robust über die Selektorliste).
@@ -95,5 +107,93 @@ mod any_visible_tests {
         let sel = sel_with("key", &["div.x"]);
         let mut driver = MockPageDriver::new(MockPageState::new());
         assert!(!any_visible(&mut driver, &sel, "key"));
+    }
+}
+
+#[cfg(test)]
+mod is_logged_in_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    fn expr_for(selectors: &[&str]) -> String {
+        let sels: Vec<String> = selectors.iter().map(|s| s.to_string()).collect();
+        js::js_scan(&js::js_selectors(&sels), VISIBLE_BODY, "false")
+    }
+
+    fn sel_with(key: &str, selectors: &[&str]) -> Selectors {
+        Selectors::from_value(json!({ key: selectors }))
+    }
+
+    #[test]
+    fn true_wenn_login_indicator_sichtbar() {
+        let sel = sel_with("login_indicator", &["div.avatar"]);
+        let indicator_expr = expr_for(&["div.avatar"]);
+        let mut driver = MockPageDriver::new(
+            MockPageState::new().on_eval(&indicator_expr, json!(true)),
+        );
+        assert!(is_logged_in(&mut driver, &sel));
+    }
+
+    #[test]
+    fn false_wenn_login_button_sichtbar_trotz_indikator() {
+        let sel = Selectors::from_value(json!({
+            "login_button": ["button.login"],
+            "login_indicator": ["div.avatar"],
+        }));
+        let button_expr = expr_for(&["button.login"]);
+        let indicator_expr = expr_for(&["div.avatar"]);
+        let mut driver = MockPageDriver::new(
+            MockPageState::new()
+                .on_eval(&button_expr, json!(true))
+                .on_eval(&indicator_expr, json!(true)),
+        );
+        assert!(!is_logged_in(&mut driver, &sel));
+    }
+
+    #[test]
+    fn fallback_auf_composer_ohne_indikator() {
+        let sel = sel_with("composer", &["textarea.prompt"]);
+        let composer_expr = expr_for(&["textarea.prompt"]);
+        let mut driver = MockPageDriver::new(
+            MockPageState::new().on_eval(&composer_expr, json!(true)),
+        );
+        assert!(is_logged_in(&mut driver, &sel));
+    }
+
+    #[test]
+    fn fallback_auf_new_chat_button() {
+        let sel = sel_with("new_chat_button", &["button.new-chat"]);
+        let new_chat_expr = expr_for(&["button.new-chat"]);
+        let mut driver = MockPageDriver::new(
+            MockPageState::new().on_eval(&new_chat_expr, json!(true)),
+        );
+        assert!(is_logged_in(&mut driver, &sel));
+    }
+
+    #[test]
+    fn fallback_false_wenn_nichts_sichtbar() {
+        let sel = Selectors::from_value(json!({
+            "composer": ["textarea.prompt"],
+            "new_chat_button": ["button.new-chat"],
+        }));
+        let composer_expr = expr_for(&["textarea.prompt"]);
+        let new_chat_expr = expr_for(&["button.new-chat"]);
+        let mut driver = MockPageDriver::new(
+            MockPageState::new()
+                .on_eval(&composer_expr, json!(false))
+                .on_eval(&new_chat_expr, json!(false)),
+        );
+        assert!(!is_logged_in(&mut driver, &sel));
+    }
+
+    #[test]
+    fn false_bei_unbekannten_oder_leeren_selektoren() {
+        let sel = Selectors::from_value(json!({
+            "composer": [],
+            "new_chat_button": [],
+        }));
+        let mut driver = MockPageDriver::new(MockPageState::new());
+        assert!(!is_logged_in(&mut driver, &sel));
     }
 }
