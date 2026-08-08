@@ -496,9 +496,11 @@ impl WebBrainBackend {
 
     /// Anzahl der Assistenten-Nachrichten (robust über die Selektorliste).
     fn assistant_count(&self) -> i32 {
-        let list = self.sel_js("assistant_message", &["div.prose"]);
-        let expr = Self::js_scan(&list, "var n=QA(S[i]).length;if(n>0)return n;", "0");
-        self.eval_i64(&expr) as i32
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => operations::assistant_count(driver.as_mut(), &self.selectors),
+            None => 0,
+        }
     }
 
     /// Text der n-ten Assistenten-Nachricht, mit zurueckgewonnener Mathe-Quelle.
