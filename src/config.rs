@@ -169,6 +169,19 @@ pub fn runtime_pool_profile_dir() -> PathBuf {
             master, dst
         ));
     }
+    // Master gegen die kanonischen Profile pruefen: kennt das Master einen
+    // Brain nicht, den profiles/<brain> eingeloggt traegt, wird der Pool fuer
+    // genau diesen Brain "Login nötig" melden - obwohl die Session gueltig ist
+    // (gemessen 08.08.2026: kimi und chatgpt). Laut warnen statt still sperren.
+    let missing = master_missing_sessions_from_canonical();
+    if !missing.is_empty() {
+        crate::bench_events::eprint_line(&format!(
+            "[master-profile] WARN: Master kennt {} nicht, obwohl die kanonischen \
+             Profile eingeloggt sind. Der Pool wuerde Login nötig melden trotz \
+             gueltiger Session. Abhilfe: login-all (spiegelt die Sitzungen ins Master).",
+            missing.join(", ")
+        ));
+    }
     let _ = RUNTIME_POOL_PROFILE.set(dst.clone());
     dst
 }
@@ -226,6 +239,26 @@ pub fn write_back_session_to_master() -> Result<(), String> {
              vernichten. Kopie bleibt unter {:?}",
             source_weight / 1024,
             target_weight / 1024,
+            runtime
+        );
+        crate::bench_events::emit(crate::bench_events::Level::Warn, None, &msg);
+        return Err(msg);
+    }
+
+    // Dritte, pro-Brain Bedingung: eine Kopie, die eine Sitzung verloren hat,
+    // darf das Master mit dieser Sitzung nicht ueberschreiben. Gemessen am
+    // 08.08.2026: kimi und chatgpt waren im Master angemeldet (kanonische
+    // Profile trugen kimi-auth bzw. session-token), die Laufzeit-Kopie hatte
+    // die Cookies verloren - und der Pool meldete "Login nötig" trotz
+    // gueltiger Session. Das Gewichts-Mass sieht den Verlust eines einzelnen
+    // Brains nicht.
+    let lost = runtime_lost_sessions(&cookies_db_bytes(&master), &cookies_db_bytes(runtime));
+    if !lost.is_empty() {
+        let msg = format!(
+            "[master-profile] Rueckschreiben ABGELEHNT: Laufzeit-Kopie hat die Sitzung \
+             verloren, die das Hauptprofil noch traegt: {}. Ueberschreiben wuerde \
+             diese Anmeldung vernichten. Kopie bleibt unter {:?}",
+            lost.join(", "),
             runtime
         );
         crate::bench_events::emit(crate::bench_events::Level::Warn, None, &msg);
@@ -350,6 +383,122 @@ fn has_login_artifacts(dir: &Path) -> bool {
         }
     }
     found
+}
+
+/// Sitzungs-Nachweis je Brain: ein markanter Cookie-Name, der NUR in einem
+/// eingeloggten Profil auftaucht. Gemessen am 08.08.2026 an den echten
+/// Cookie-Datenbanken: kimi traegt `kimi-auth`, chatgpt
+/// `__Secure-next-auth.session-token` (Präfix, Suffix .0/.1), mistral
+/// `ory_session` (variables Suffix). Das Master trug diese Cookies am 07.08.
+/// noch; nach einem Rueckschreiben aus einer Laufzeit-Kopie, die die Brains
+/// als ausgeloggt erlebt hatte, fehlten kimi und chatgpt — und der Pool
+/// meldete "Login nötig", obwohl `profiles/<brain>` die gueltige Sitzung trug.
+///
+/// Bewusst keine Vollstaendigkeit: ein Brain ohne bekannten, eindeutigen
+/// Sitzungs-Cookie faellt einfach unter den Gewichts-Schutz.
+const SESSION_PROOF_COOKIES: &[(&str, &[&str])] = &[
+    ("kimi", &["kimi-auth"]),
+    ("chatgpt", &["__Secure-next-auth.session-token"]),
+    ("mistral", &["ory_session"]),
+];
+
+/// Enthaelt der Byte-Haufen `hay` den ASCII-Text `needle`?
+///
+/// Chromium speichert Cookie-Namen als Klartext-Spalten in der SQLite-Datei;
+/// ein Rohbyte-Scan genuegt als Sitzungs-Nachweis, ohne SQLite zu parsen oder
+/// verschluesselte Werte zu lesen.
+fn bytes_contain(hay: &[u8], needle: &str) -> bool {
+    let n = needle.as_bytes();
+    if n.is_empty() || n.len() > hay.len() {
+        return n.is_empty();
+    }
+    hay.windows(n.len()).any(|w| w == n)
+}
+
+/// Pfad zur Cookies-Datenbank unter `dir` (rekursiv, genau der Name "Cookies").
+fn cookies_db_path(dir: &Path) -> Option<PathBuf> {
+    let mut stack: Vec<PathBuf> = vec![dir.to_path_buf()];
+    while let Some(cur) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&cur) else {
+            continue;
+        };
+        for e in entries.flatten() {
+            let Ok(ty) = e.file_type() else {
+                continue;
+            };
+            let p = e.path();
+            if ty.is_dir() {
+                stack.push(p);
+            } else if e.file_name().to_string_lossy().eq_ignore_ascii_case("Cookies") {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// Rohbytes der Cookies-Datenbank unter `dir` (leer, wenn keine da ist).
+fn cookies_db_bytes(dir: &Path) -> Vec<u8> {
+    match cookies_db_path(dir).and_then(|p| std::fs::read(p).ok()) {
+        Some(b) => b,
+        None => Vec::new(),
+    }
+}
+
+/// Welche Brains hat die Laufzeit-Kopie ausgeloggt, die das Master noch kennt?
+///
+/// Kern der Schutzwache beim Rueckschreiben: nur der Fall "Nachweis im Master
+/// da, in der Kopie weg" vernichtet eine gueltige Anmeldung. Das Gewichts-Mass
+/// aus ed802aa sieht genau das nicht — am 08.08.2026 fehlten einem ~90-KB-
+/// Cookie-Vorrat ein paar hundert Bytes (kimi-auth) und die Schranke schwieg.
+/// Reine Funktion auf den Rohbytes, damit ohne Dateisystem pruefbar.
+fn runtime_lost_sessions(master_cookies: &[u8], runtime_cookies: &[u8]) -> Vec<&'static str> {
+    SESSION_PROOF_COOKIES
+        .iter()
+        .filter_map(|(brain, needles)| {
+            let master_has = needles.iter().any(|n| bytes_contain(master_cookies, n));
+            let runtime_has = needles.iter().any(|n| bytes_contain(runtime_cookies, n));
+            (master_has && !runtime_has).then_some(*brain)
+        })
+        .collect()
+}
+
+/// Welche Brains traegt das kanonische `canonical_cookies`-Profil eingeloggt,
+/// das Master aber nicht?
+///
+/// Gemessen 08.08.2026: kimi und chatgpt fehlten im Master, obwohl
+/// `profiles/kimi` und `profiles/chatgpt` gueltige Sitzungen trugen. Der Pool
+/// klont ausschliesslich aus dem Master — daher "Login nötig" trotz gueltiger
+/// Session. Reine Funktion auf den Rohbytes.
+fn master_missing_sessions(canonical_cookies: &[u8], master_cookies: &[u8]) -> Vec<&'static str> {
+    SESSION_PROOF_COOKIES
+        .iter()
+        .filter_map(|(brain, needles)| {
+            let canonical_has = needles.iter().any(|n| bytes_contain(canonical_cookies, n));
+            let master_has = needles.iter().any(|n| bytes_contain(master_cookies, n));
+            (canonical_has && !master_has).then_some(*brain)
+        })
+        .collect()
+}
+
+/// Kanonische Profile gegen das Master vergleichen: welche Brains kennt das
+/// Master nicht, obwohl `profiles/<brain>` eingeloggt ist? Laute Warnung beim
+/// Pool-Klon, damit die Luecke sichtbar wird, statt still in "Login nötig" zu
+/// muenden.
+fn master_missing_sessions_from_canonical() -> Vec<&'static str> {
+    let master_cookies = cookies_db_bytes(&shared_profile_dir());
+    SESSION_PROOF_COOKIES
+        .iter()
+        .filter_map(|(brain, needles)| {
+            // Nur den eigenen Sitzungs-Nachweis pruefen: ein kanonisches Profil
+            // kann auch fremde Cookies tragen (Sitzung aus einer gemeinsamen
+            // Login-Runde), das darf das Nachbar-Brain nicht als fehlend melden.
+            let canonical = cookies_db_bytes(&profiles_dir().join(brain));
+            let canonical_has = needles.iter().any(|n| bytes_contain(&canonical, n));
+            let master_has = needles.iter().any(|n| bytes_contain(&master_cookies, n));
+            (canonical_has && !master_has).then_some(*brain)
+        })
+        .collect()
 }
 
 /// Versiegelt das Master-Profil: alle Dateien unter `profiles/shared` werden
@@ -1808,6 +1957,63 @@ mod tests {
         // Der Normalfall: der Browser hat Sitzungen erneuert, die Kopie ist
         // reicher als das Master. Genau dafuer gibt es das Rueckschreiben.
         assert!(write_back_is_safe(200 * 1024, 100 * 1024));
+    }
+
+    #[test]
+    fn bytes_contain_findet_und_vermisst() {
+        assert!(bytes_contain(b"a b kimi-auth c", "kimi-auth"));
+        assert!(bytes_contain(b"prefix __Secure-next-auth.session-token.0", "__Secure-next-auth.session-token"));
+        assert!(!bytes_contain(b"a b c", "kimi-auth"));
+        assert!(bytes_contain(b"", ""));
+        assert!(!bytes_contain(b"", "kimi-auth"));
+    }
+
+    /// Der Fall vom 08.08.2026: das Master trug kimi-auth, die Laufzeit-Kopie
+    /// hatte es verloren. Das Rueckschreiben haette die gueltige Anmeldung
+    /// vernichtet - das Gewichts-Mass sah es nicht, der pro-Brain-Nachweis muss
+    /// es sehen.
+    #[test]
+    fn kopie_die_eine_sitzung_verloren_hat_darf_master_nicht_ueberschreiben() {
+        let master = b"kimi-auth mistral ory_session";
+        let runtime = b"mistral ory_session";
+        assert_eq!(runtime_lost_sessions(master, runtime), vec!["kimi"]);
+    }
+
+    #[test]
+    fn kopie_mit_rotierter_sitzung_ist_kein_verlust() {
+        // Sitzung erneuert: der Cookie-Name bleibt, nur der Wert ist neu.
+        let master = b"kimi-auth";
+        let runtime = b"kimi-auth";
+        assert!(runtime_lost_sessions(master, runtime).is_empty());
+    }
+
+    #[test]
+    fn kanonisch_eingeloggt_aber_master_nicht_wird_gemeldet() {
+        let canonical = b"kimi-auth";
+        let master = b"no kimi here";
+        assert_eq!(master_missing_sessions(canonical, master), vec!["kimi"]);
+        assert!(master_missing_sessions(b"kimi-auth", b"kimi-auth").is_empty());
+    }
+
+    #[test]
+    fn fehlende_cookies_db_zaehlt_als_leer() {
+        assert!(runtime_lost_sessions(&[], b"kimi-auth").is_empty());
+        assert!(master_missing_sessions(b"kimi-auth", &[]).contains(&"kimi"));
+    }
+
+    #[test]
+    fn cookies_db_wird_verschachtelt_gefunden() {
+        let tmp = std::env::temp_dir().join(format!("wa_cookies_db_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let nested = tmp.join("EBWebView").join("Default").join("Network");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("Cookies"), b"kimi-auth").unwrap();
+        // Nur die exakte Datei zaehlt, nicht Journal oder Backups.
+        std::fs::write(nested.join("Cookies-journal"), b"x").unwrap();
+        std::fs::write(nested.join("Cookies.bak"), b"kimi-auth").unwrap();
+        assert_eq!(cookies_db_path(&tmp), Some(nested.join("Cookies")));
+        assert!(bytes_contain(&cookies_db_bytes(&tmp), "kimi-auth"));
+        std::fs::remove_dir_all(&tmp).unwrap();
     }
 
     #[test]
