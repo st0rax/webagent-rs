@@ -7,6 +7,7 @@
 pub mod backend;
 pub mod composer;
 pub mod js;
+pub mod operations;
 pub mod selectors;
 pub mod ui;
 
@@ -529,17 +530,15 @@ impl WebBrainBackend {
     }
 
     /// Ist mindestens ein Selektor aus der Liste im DOM sichtbar?
+    ///
+    /// Delegiert an [`operations::any_visible`] — Schritt 2: die Operation als
+    /// freie Funktion, testbar mit dem `MockPageDriver`.
     fn any_visible(&self, key: &str) -> bool {
-        let sels = self.sel(key);
-        if sels.is_empty() {
-            return false;
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => operations::any_visible(driver.as_mut(), &self.selectors, key),
+            None => false,
         }
-        let expr = Self::js_scan(
-            &Self::js_selectors(&sels),
-            "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}",
-            "false",
-        );
-        self.eval_bool(&expr)
     }
 
     /// Klickt das erste sichtbare Element aus der Selektorliste.
