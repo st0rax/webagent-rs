@@ -34,7 +34,7 @@ Python-Referenzimplementierung. `webagent-rs` ist dort als Gitlink (Mode
 echter Submodule-Verweis. Falls du im Elternordner landest und dich wunderst,
 warum `git log` dort etwas völlig anderes zeigt: das ist erwartbar, es ist
 ein anderes Repo. Details, falls relevant: `CLEANUP_PLAN.md` (in diesem
-Repo) und `NOTE.md` im Elternordner. Ein unfertiger Branch
+Repo) und `docs/struktur.md` im Elternordner. Ein unfertiger Branch
 `origin/docs/deprecate-in-favor-of-rust` im Elternrepo zielt darauf ab, diese
 Verschachtelung aufzulösen — nicht gemerged, vor eigener Aufräumaktion dort
 erst prüfen.
@@ -103,7 +103,7 @@ Absturz. Ungefixt, siehe §6.
 - `docs/` — Konzept-/Planungsdokumente (siehe §5)
 - `.github/workflows/` — CI (`ci.yml`, `android.yml`) + Release (`release.yml`)
 - Root-`.md`-Dateien: `README.md` (öffentliche Übersicht), `CONVENTIONS.md`
-  (Code-Konventionen), `PROVIDER_STATUS.md` (Provider-Messwerte, mit
+  (Code-Konventionen), `docs/PROVIDER_STATUS.md` (Provider-Messwerte, mit
   Historie); externe Reviews + Roadmap in `docs/` (`CODE_REVIEW.md`/
   `CLAUDE_PROPOSALS.md`, siehe §6)
 

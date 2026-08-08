@@ -6,11 +6,11 @@ plattformunabhängig nach Rust zu portieren. Der Port ist inzwischen
 weitgehend abgeschlossen (8/8 Provider, siehe `START_HERE.md`) — die
 Portierungsregeln unten gelten weiter für Code, der noch aus der
 Python-Referenz übernommen wird, sind aber nicht mehr der Haupt-Auftrag.
-Aktueller Stand/Fokus: `START_HERE.md`, `MISSION.md`.
+Aktueller Stand/Fokus: `START_HERE.md`, `docs/MISSION.md`.
 
 ⚠️ **Korrektur:** Ein früherer Satz hier sagte „Default-Impl später via
 CDP/WebSocket" — das ist überholt. Die Browser-Anbindung ist **Embedded
-WebView** (`wry`/`tao`), kein CDP. Siehe `PROVIDER_STATUS.md`.
+WebView** (`wry`/`tao`), kein CDP. Siehe `docs/PROVIDER_STATUS.md`.
 
 ## Ziel & Scope
 
@@ -125,13 +125,13 @@ Jeder dortige Testfall bekommt ein Rust-Äquivalent in `#[cfg(test)]`.
 - **`START_HERE.md`** — einziger Einstiegspunkt, Status + Architektur +
   Build/Test + offene Punkte. Wird bei jeder strukturellen Änderung
   aktualisiert (siehe Pflegepflicht dort).
-- **`MISSION.md`** — aktueller Arbeitsfokus/Auftrag, ändert sich häufiger als
+- **`docs/MISSION.md`** — aktueller Arbeitsfokus/Auftrag, ändert sich häufiger als
   `START_HERE.md`. Bei Themenwechsel aktualisieren, nicht anhäufen.
 - **`CONVENTIONS.md`** (diese Datei) — Design-Prinzipien + wie Dokumentation
   organisiert wird. Ändert sich selten.
 - **`README.md`** — öffentliche/GitHub-Oberfläche, kurz, verkaufsorientierter
   als `START_HERE.md`.
-- **`PROVIDER_STATUS.md`** — Provider-Messwerte mit Historie (append, nicht
+- **`docs/PROVIDER_STATUS.md`** — Provider-Messwerte mit Historie (append, nicht
   überschreiben — alte Messungen sind Kontext für „warum haben wir das
   geglaubt").
 - **`docs/*.md`** — abgeschlossene Konzept-/Planungsdokumente (z. B.

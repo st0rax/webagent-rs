@@ -17,13 +17,13 @@ Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: plattformunabhä
 > **Provider: 8 von 8 antworten headless** — chatgpt, deepseek, kimi, gemini, qwen,
 > claude, mistral, zai. Gemessen per `relay` mit echten Antworten (nicht per
 > Exit-Code), zwei volle Runden 8/8. Messwerte und Historie:
-> [`PROVIDER_STATUS.md`](PROVIDER_STATUS.md).
+> [`docs/PROVIDER_STATUS.md`](docs/PROVIDER_STATUS.md).
 >
 > ⚠️ Die frühere Aussage „5/8 headless, chatgpt/claude/mistral scheitern an Cloudflare"
 > war **falsch**: `cloudflare: false` bei allen acht. Drei Bugs hatten alles maskiert
 > (tao-EventLoop panicte im Nicht-Main-Thread; `evaluate` lieferte für jeden Ausdruck
 > `{}`, weil der JS-Wrapper ein Promise zurückgab; „headless" war ein Fenster ohne
-> Fokus, sodass Enter nirgends ankam). Details in `PROVIDER_STATUS.md`.
+> Fokus, sodass Enter nirgends ankam). Details in `docs/PROVIDER_STATUS.md`.
 
 ## Architektur
 
