@@ -871,20 +871,12 @@ return null;}})()"#,
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
-        self.wait_for_labeled_controls();
-        if let Some(key) = open_key {
-            if !self.click_first(key) {
-                let _ = self.stop();
-                return Err(format!("'{key}' nicht anklickbar"));
-            }
-            std::thread::sleep(Duration::from_millis(1200));
-        }
         let shot = {
             let mut guard = self.driver.borrow_mut();
             let driver = guard
                 .as_mut()
                 .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-            driver.capture_png().map_err(|e| e.to_string())
+            operations::live_screenshot_with(driver.as_mut(), &self.selectors, open_key)
         };
         let _ = self.stop();
         shot

@@ -237,16 +237,18 @@ pub(crate) fn dismiss_qwen_blocks(driver: &mut dyn PageDriver) -> bool {
     )
 }
 
+/// Zaehlt beschriftete Bedienelemente in einem Scan. Geteilt zwischen
+/// Implementierung und Test — der Mock-Driver matcht auf die EXAKTE
+/// Zeichenkette.
+const LABELED_CONTROLS_EXPR: &str = "(function(){var n=0;document.querySelectorAll('button,[role=button],[aria-label],[data-testid]').forEach(function(e){var t=((e.innerText||e.textContent||'')+'').trim();if(e.getAttribute('aria-label')||e.getAttribute('title')||t)n++;});return n;})()";
+
 /// Wartet, bis die Oberflaeche beschriftete Bedienelemente zeigt.
 /// Ein Lade-Skelett bringt sofort Dutzende leerer Platzhalter mit; ein Scan
 /// darauf sah real 107 Elemente ohne einen einzigen Namen.
 pub(crate) fn wait_for_labeled_controls(driver: &mut dyn PageDriver) {
     let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
-        let labeled = eval_i64(
-            driver,
-            "(function(){var n=0;document.querySelectorAll('button,[role=button],[aria-label],[data-testid]').forEach(function(e){var t=((e.innerText||e.textContent||'')+'').trim();if(e.getAttribute('aria-label')||e.getAttribute('title')||t)n++;});return n;})()",
-        );
+        let labeled = eval_i64(driver, LABELED_CONTROLS_EXPR);
         if labeled >= 5 {
             std::thread::sleep(Duration::from_millis(1500));
             return;
@@ -332,6 +334,41 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
         prelude = js::JS_SEL_PRELUDE
     );
     eval(driver, &expr)
+}
+
+/// Öffnet die Oberfläche und nimmt sie als PNG auf.
+///
+/// Der Gegenentwurf zur DOM-Vermessung: was keinen Namen im DOM hat, hat
+/// trotzdem ein Bild. Gedacht als Vorlage für ein sehendes Brain — damit
+/// der Schwarm Oberflächen selbst vermisst, statt dass jemand die Optionen
+/// von Hand einträgt.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn live_screenshot(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+) -> Result<Vec<u8>, String> {
+    live_screenshot_with(driver, sel, None)
+}
+
+/// Wie `live_screenshot`, oeffnet vorher optional ein Menue.
+///
+/// Ein geschlossenes Menue hat keine Eintraege im DOM — und auf einem
+/// Screenshot des Startbildschirms sieht man sie ebenso wenig. Wer wissen
+/// will, was hinter `model_menu` steckt, muss es aufklappen und DANN
+/// aufnehmen, statt Rollen-Selektoren zu raten.
+pub(crate) fn live_screenshot_with(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+    open_key: Option<&str>,
+) -> Result<Vec<u8>, String> {
+    wait_for_labeled_controls(driver);
+    if let Some(key) = open_key {
+        if !click_first(driver, sel, key) {
+            return Err(format!("'{key}' nicht anklickbar"));
+        }
+        std::thread::sleep(Duration::from_millis(1200));
+    }
+    driver.capture_png().map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -681,5 +718,77 @@ mod live_diagnose_tests {
                 .unwrap();
         assert!(shot.is_none());
         assert_eq!(diag.assistant_count, 3);
+    }
+}
+
+#[cfg(test)]
+mod live_screenshot_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    fn sel_with(key: &str, selectors: &[&str]) -> Selectors {
+        Selectors::from_value(json!({ key: selectors }))
+    }
+
+    fn click_expr_for(sel: &Selectors) -> String {
+        js::js_scan(
+            &js::js_selectors(&sel.list("model_menu")),
+            "var el=Q(S[i]);if(el){el.click();return true;}",
+            "false",
+        )
+    }
+
+    #[test]
+    fn nimmt_png_ohne_menue() {
+        let sel = sel_with("model_menu", &["button.xyz"]);
+        let mut driver = MockPageDriver::new(
+            MockPageState::new()
+                .on_eval(LABELED_CONTROLS_EXPR, json!(5))
+                .with_png(vec![1, 2, 3]),
+        );
+        assert_eq!(live_screenshot(&mut driver, &sel), Ok(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn oeffnet_menue_und_nimmt_png() {
+        let sel = sel_with("model_menu", &["button.xyz"]);
+        let click_expr = click_expr_for(&sel);
+        let mut driver = MockPageDriver::new(
+            MockPageState::new()
+                .on_eval(LABELED_CONTROLS_EXPR, json!(5))
+                .on_eval(&click_expr, json!(true))
+                .with_png(vec![9, 8, 7]),
+        );
+        assert_eq!(
+            live_screenshot_with(&mut driver, &sel, Some("model_menu")),
+            Ok(vec![9, 8, 7])
+        );
+    }
+
+    #[test]
+    fn fehler_wenn_menue_nicht_anklickbar() {
+        let sel = sel_with("model_menu", &["button.xyz"]);
+        let click_expr = click_expr_for(&sel);
+        let mut driver = MockPageDriver::new(
+            MockPageState::new()
+                .on_eval(LABELED_CONTROLS_EXPR, json!(5))
+                .on_eval(&click_expr, json!(false))
+                .with_png(vec![1, 2, 3]),
+        );
+        let err = live_screenshot_with(&mut driver, &sel, Some("model_menu"))
+            .expect_err("Menue muss unklickbar fehlschlagen");
+        assert!(
+            err.contains("nicht anklickbar"),
+            "Fehler muss 'nicht anklickbar' enthalten: {err}"
+        );
+    }
+
+    #[test]
+    fn fehler_ohne_png_unterstuetzung() {
+        let sel = sel_with("model_menu", &["button.xyz"]);
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().on_eval(LABELED_CONTROLS_EXPR, json!(5)));
+        assert!(live_screenshot(&mut driver, &sel).is_err());
     }
 }
