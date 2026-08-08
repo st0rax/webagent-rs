@@ -7,6 +7,11 @@
 //! testbar — die Testlücke am Fundament schließt sich, statt nur eingestanden
 //! zu werden.
 //!
+//! Schritt 4 (Familie „diagnose"): auch `live_diagnose` und
+//! `live_diagnose_with_shot` laufen hier als freie Funktionen; das Backend
+//! bleibt nur noch Hülle für den Browser-Lebenszyklus
+//! (`start`/`ensure_ready`/`stop`).
+//!
 //! Jede Funktion bekommt das, was sie braucht, explizit: den Driver und die
 //! Selektoren. Der Browser-Lebenszyklus (`start`/`stop`) bleibt beim Backend.
 
@@ -14,8 +19,10 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+use crate::brain::SessionState;
 use crate::browser::js;
 use crate::browser::selectors::Selectors;
+use crate::browser::LiveDiagnosis;
 use crate::page_driver::PageDriver;
 
 /// Rumpf der Sichtbarkeitsprüfung: das erste Element, das eine reale Fläche
@@ -92,6 +99,47 @@ pub fn get_conversation_ref(driver: &mut dyn PageDriver) -> Option<String> {
     } else {
         Some(url.to_string())
     }
+}
+
+/// Live-Diagnose der offenen Seite (Selektoren + Cloudflare). Der
+/// Browser-Lebenszyklus (`start`/`ensure_ready`/`stop`) liegt beim Backend;
+/// hier wird nur der bereits gesicherte Zustand ausgelesen.
+///
+/// Im Nicht-Test-Build ungenutzt: die Backend-Methode `live_diagnose` ruft
+/// ihren `_with_shot`-Zwilling auf, diese freie Variante ist der bequemere
+/// Test-Einstieg und wird von den `MockPageDriver`-Tests genutzt.
+#[allow(dead_code)]
+pub(crate) fn live_diagnose(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+    brain_id: &str,
+    session_state: SessionState,
+) -> Result<LiveDiagnosis, String> {
+    live_diagnose_with_shot(driver, sel, brain_id, session_state, false).map(|(d, _)| d)
+}
+
+/// Wie [`live_diagnose`], zusätzlich optional ein Bildschirmfoto. Ein
+/// Fehlschlag des Fotos darf die Diagnose nicht wegwerfen — der Zustand ist
+/// die wichtigere Information.
+pub(crate) fn live_diagnose_with_shot(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+    brain_id: &str,
+    session_state: SessionState,
+    with_shot: bool,
+) -> Result<(LiveDiagnosis, Option<Vec<u8>>), String> {
+    let diag = LiveDiagnosis {
+        brain_id: brain_id.to_string(),
+        url: get_conversation_ref(driver).unwrap_or_default(),
+        cloudflare: is_cloudflare_blocked(driver),
+        logged_in: is_logged_in(driver, sel),
+        login_button_visible: any_visible(driver, sel, "login_button"),
+        composer_found: any_visible(driver, sel, "composer"),
+        assistant_count: assistant_count(driver, sel),
+        session_state,
+    };
+    let shot = if with_shot { driver.capture_png().ok() } else { None };
+    Ok((diag, shot))
 }
 
 /// Führt ein JS im Seitenkontext aus.
@@ -522,5 +570,116 @@ mod get_conversation_ref_tests {
             get_conversation_ref(&mut driver),
             Some("https://chatgpt.com/c/def".to_string())
         );
+    }
+}
+
+#[cfg(test)]
+mod live_diagnose_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    fn visibility_expr_for(sel: &Selectors, key: &str) -> String {
+        js::js_scan(&js::js_selectors(&sel.list(key)), VISIBLE_BODY, "false")
+    }
+
+    fn count_expr_for(sel: &Selectors) -> String {
+        let list = sel.js("assistant_message", &["div.prose"]);
+        js::js_scan(&list, "var n=QA(S[i]).length;if(n>0)return n;", "0")
+    }
+
+    fn diagnose_sel() -> Selectors {
+        Selectors::from_value(json!({
+            "login_button": ["button.login"],
+            "composer": ["textarea.prompt"],
+            "assistant_message": ["div.prose"],
+        }))
+    }
+
+    fn diagnose_state(url: &str, sel: &Selectors) -> MockPageState {
+        MockPageState::new()
+            .with_url(url)
+            .on_eval(CF_CHALLENGE_EXPR, json!(false))
+            .on_eval(&visibility_expr_for(sel, "login_button"), json!(false))
+            .on_eval(&visibility_expr_for(sel, "composer"), json!(true))
+            .on_eval(&count_expr_for(sel), json!(3))
+    }
+
+    #[test]
+    fn live_diagnose_voll_befuellt() {
+        let sel = diagnose_sel();
+        let state = diagnose_state("https://chatgpt.com/c/abc", &sel);
+        let mut driver = MockPageDriver::new(state);
+        let diag = live_diagnose(&mut driver, &sel, "chatgpt", SessionState::Ready).unwrap();
+        assert_eq!(diag.brain_id, "chatgpt");
+        assert_eq!(diag.url, "https://chatgpt.com/c/abc");
+        assert!(!diag.cloudflare);
+        assert!(diag.logged_in);
+        assert!(!diag.login_button_visible);
+        assert!(diag.composer_found);
+        assert_eq!(diag.assistant_count, 3);
+        assert_eq!(diag.session_state, SessionState::Ready);
+    }
+
+    #[test]
+    fn sichtbarer_login_button_setzt_login_button_visible() {
+        let sel = diagnose_sel();
+        let state = diagnose_state("https://chatgpt.com/c/abc", &sel)
+            .on_eval(&visibility_expr_for(&sel, "login_button"), json!(true));
+        let mut driver = MockPageDriver::new(state);
+        let diag = live_diagnose(&mut driver, &sel, "chatgpt", SessionState::LoginRequired).unwrap();
+        assert!(diag.login_button_visible);
+        assert!(!diag.logged_in);
+    }
+
+    #[test]
+    fn cloudflare_erkannt() {
+        let sel = diagnose_sel();
+        let state = diagnose_state("https://chatgpt.com/c/abc", &sel)
+            .on_eval(CF_CHALLENGE_EXPR, json!(true));
+        let mut driver = MockPageDriver::new(state);
+        let diag = live_diagnose(&mut driver, &sel, "chatgpt", SessionState::Cloudflare).unwrap();
+        assert!(diag.cloudflare);
+    }
+
+    #[test]
+    fn mit_shot_liefert_none_aber_volle_diagnose() {
+        let sel = diagnose_sel();
+        let state = diagnose_state("https://chatgpt.com/c/abc", &sel);
+        let mut driver = MockPageDriver::new(state);
+        let (diag, shot) =
+            live_diagnose_with_shot(&mut driver, &sel, "chatgpt", SessionState::Ready, true)
+                .unwrap();
+        assert!(shot.is_none());
+        assert_eq!(diag.brain_id, "chatgpt");
+        assert_eq!(diag.url, "https://chatgpt.com/c/abc");
+        assert!(!diag.cloudflare);
+        assert!(diag.logged_in);
+        assert!(!diag.login_button_visible);
+        assert!(diag.composer_found);
+        assert_eq!(diag.assistant_count, 3);
+        assert_eq!(diag.session_state, SessionState::Ready);
+    }
+
+    #[test]
+    fn session_state_wird_durchgereicht() {
+        let sel = diagnose_sel();
+        let state = diagnose_state("https://chatgpt.com/c/abc", &sel);
+        let mut driver = MockPageDriver::new(state);
+        let diag =
+            live_diagnose(&mut driver, &sel, "chatgpt", SessionState::LoginRequired).unwrap();
+        assert_eq!(diag.session_state, SessionState::LoginRequired);
+    }
+
+    #[test]
+    fn ohne_shot_kein_capture_png() {
+        let sel = diagnose_sel();
+        let state = diagnose_state("https://chatgpt.com/c/abc", &sel);
+        let mut driver = MockPageDriver::new(state);
+        let (diag, shot) =
+            live_diagnose_with_shot(&mut driver, &sel, "chatgpt", SessionState::Ready, false)
+                .unwrap();
+        assert!(shot.is_none());
+        assert_eq!(diag.assistant_count, 3);
     }
 }

@@ -1100,26 +1100,21 @@ return null;}})()"#,
         self.start(headless)?;
         self.dismiss_consent();
         let session_state = self.ensure_ready(15.0).unwrap_or(SessionState::Error);
-        let diag = LiveDiagnosis {
-            brain_id: self.brain_id.clone(),
-            url: self.get_conversation_ref().unwrap_or_default(),
-            cloudflare: self.is_cloudflare_blocked(),
-            logged_in: self.is_logged_in(),
-            login_button_visible: self.any_visible("login_button"),
-            composer_found: self.any_visible("composer"),
-            assistant_count: self.assistant_count(),
-            session_state,
-        };
-        let shot = if with_shot {
-            // Fehlschlaege beim Bild duerfen die Diagnose nicht wegwerfen —
-            // der Zustand ist die wichtigere Information.
+        let result = {
             let mut guard = self.driver.borrow_mut();
-            guard.as_mut().and_then(|d| d.capture_png().ok())
-        } else {
-            None
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            operations::live_diagnose_with_shot(
+                driver.as_mut(),
+                &self.selectors,
+                &self.brain_id,
+                session_state,
+                with_shot,
+            )
         };
         let _ = self.stop();
-        Ok((diag, shot))
+        result
     }
 
     fn send_generic(&mut self, text: &str) -> Result<i32, String> {
