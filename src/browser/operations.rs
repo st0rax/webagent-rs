@@ -47,9 +47,18 @@ pub fn assistant_count(driver: &mut dyn PageDriver, sel: &Selectors) -> i32 {
     todo!("SCHRITT2:assistant_count")
 }
 
+/// Cloudflare-Challenge-Erkennung: `__cf_chl` in der URL, oder ein
+/// „Just a moment"-Titel (DE+EN). Geteilt zwischen Implementierung und Test —
+/// der Mock-Driver matcht auf die EXAKTE Zeichenkette.
+const CF_CHALLENGE_EXPR: &str = r#"(function(){var u=location.href||"";if(u.indexOf("__cf_chl")>=0)return true;var t=(document.title||"").toLowerCase();return t.indexOf("just a moment")>=0||t.indexOf("nur einen moment")>=0;})()"#;
+
 /// Ist die Seite von Cloudflare blockiert (`__cf_chl`-URL oder Challenge-Titel)?
 pub fn is_cloudflare_blocked(driver: &mut dyn PageDriver) -> bool {
-    todo!("SCHRITT2:is_cloudflare_blocked")
+    driver
+        .evaluate(CF_CHALLENGE_EXPR)
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 /// Aktuelle Konversations-URL als Referenz; `None` für leere/`about:blank`.
@@ -95,5 +104,34 @@ mod any_visible_tests {
         let sel = sel_with("key", &["div.x"]);
         let mut driver = MockPageDriver::new(MockPageState::new());
         assert!(!any_visible(&mut driver, &sel, "key"));
+    }
+}
+
+#[cfg(test)]
+mod is_cloudflare_blocked_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    #[test]
+    fn true_wenn_js_true_liefert() {
+        let mut driver = MockPageDriver::new(
+            MockPageState::new().on_eval(CF_CHALLENGE_EXPR, json!(true)),
+        );
+        assert!(is_cloudflare_blocked(&mut driver));
+    }
+
+    #[test]
+    fn false_wenn_js_false_liefert() {
+        let mut driver = MockPageDriver::new(
+            MockPageState::new().on_eval(CF_CHALLENGE_EXPR, json!(false)),
+        );
+        assert!(!is_cloudflare_blocked(&mut driver));
+    }
+
+    #[test]
+    fn false_wenn_eval_scheitert() {
+        let mut driver = MockPageDriver::new(MockPageState::new());
+        assert!(!is_cloudflare_blocked(&mut driver));
     }
 }

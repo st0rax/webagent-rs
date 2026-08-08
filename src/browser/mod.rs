@@ -718,8 +718,11 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     }
 
     fn is_cloudflare_blocked(&self) -> bool {
-        let expr = r#"(function(){var u=location.href||"";if(u.indexOf("__cf_chl")>=0)return true;var t=(document.title||"").toLowerCase();return t.indexOf("just a moment")>=0||t.indexOf("nur einen moment")>=0;})()"#;
-        self.eval_bool(expr)
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => operations::is_cloudflare_blocked(driver.as_mut()),
+            None => false,
+        }
     }
 
     fn dismiss_consent(&self) -> bool {
