@@ -142,7 +142,7 @@ respawned, Heartbeat erneuert, Status `active`.
   **jetzt nicht bauen** (3-Brain-Konsens: Debugbarkeit > Token-Ersparnis bei
   kleiner Größe).
 - Fähigkeitsprofil/`/benchmark` (brain_score-Erweiterung), Controller-Split,
-  Integration-Tests — Backlog in `CLAUDE_PROPOSALS.md`.
+  Integration-Tests — Backlog in `docs/CLAUDE_PROPOSALS.md`.
 
 ## Offene Kleinigkeiten
 

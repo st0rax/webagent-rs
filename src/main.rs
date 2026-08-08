@@ -49,6 +49,12 @@ fn main() {
     // Muss vor der ersten Ausgabe laufen, sonst ist die erste Zeile Mojibake.
     init_console_utf8();
 
+    // Gespeicherte Einstellungen in die Prozessumgebung legen — VOR dem ersten
+    // Lesen, denn der uebrige Code fragt die Umgebung. Eine ausdrueckliche
+    // Variable beim Start bleibt unangetastet: wer sie setzt, meint es so.
+    // Ohne diesen Aufruf waere die Einstellungen-Ansicht eine Attrappe.
+    webagent::tui_config::apply_persisted();
+
     let cli = Cli::parse();
     // Kein Subcommand -> Chat-REPL als Default: `webagent` startet einen Chat,
     // der auch Aufgaben entgegennimmt (wie andere Coding-Agenten). Der

@@ -109,8 +109,18 @@ impl BrainBackend for WebBrainBackend {
         if self.is_cloudflare_blocked() {
             return SessionState::Cloudflare;
         }
-        if !self.is_logged_in() {
+        // Zwei verschiedene Aussagen, zwei verschiedene Zustaende. Ein
+        // sichtbarer Anmelden-Knopf ist ein BELEG fuer eine Anmelde-Wand; ein
+        // fehlender Indikator ist nur ein fehlender Nachweis und trifft auch
+        // eine Seite, die noch laedt, oder einen Selektor, der nach einem
+        // Website-Umbau nicht mehr passt. Beides in einen Topf zu werfen hat am
+        // 07.08.2026 alle acht Brains fuer sechs Stunden gesperrt, obwohl jedes
+        // angemeldet war.
+        if self.any_visible("login_button") {
             return SessionState::LoginRequired;
+        }
+        if !self.is_logged_in() {
+            return SessionState::Unbestimmt;
         }
         SessionState::Ready
     }
@@ -334,9 +344,6 @@ impl BrainBackend for WebBrainBackend {
     }
 
     fn is_logged_in(&self) -> bool {
-        if self.driver.borrow().is_none() {
-            return false;
-        }
         // Wenn ein Brain `login_indicator` konfiguriert, ist das die Antwort — sonst
         // nichts. Frueher wurde `composer`/`new_chat_button` dazu-ODER-t, was die
         // sorgfaeltig authorten Indikatoren aushebelte: kimi zeigt seinen Composer
@@ -352,15 +359,11 @@ impl BrainBackend for WebBrainBackend {
         // ausgeloggtes Brain, das als gesund gilt, bekommt Auftraege und
         // liefert nie. Der Anmelden-Knopf ist das verlaesslichere Signal:
         // eingeloggt zeigt ihn keine Oberflaeche.
-        if self.any_visible("login_button") {
-            return false;
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => super::operations::is_logged_in(driver.as_mut(), &self.selectors),
+            None => false,
         }
-        let indicator = self.sel("login_indicator");
-        if !indicator.is_empty() {
-            return self.any_visible("login_indicator");
-        }
-        // Ohne konfigurierten Indikator: Composer/New-Chat als grobe Naeherung.
-        self.any_visible("composer") || self.any_visible("new_chat_button")
     }
 
     fn click_login(&mut self) -> Result<(), String> {
@@ -380,13 +383,9 @@ impl BrainBackend for WebBrainBackend {
 
     fn get_conversation_ref(&self) -> Option<String> {
         let mut guard = self.driver.borrow_mut();
-        let driver = guard.as_mut()?;
-        let url = driver.current_url().ok()?;
-        let url = url.trim();
-        if url.is_empty() || url == "about:blank" {
-            None
-        } else {
-            Some(url.to_string())
+        match guard.as_mut() {
+            Some(driver) => super::operations::get_conversation_ref(driver.as_mut()),
+            None => None,
         }
     }
 

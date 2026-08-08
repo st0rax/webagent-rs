@@ -190,6 +190,17 @@ pub fn record_failure(brain_id: &str, reason: &str) {
 /// `ensure_ready`-Timeout. Beobachtet 2026-07-26: gemini meldete „Login noetig",
 /// der Breaker oeffnete aber erst nach `max_failures` (Default 3) Anlaeufen und
 /// blaehte damit Phase A auf.
+///
+/// # Vorsicht: die Einstufung haengt am Wortlaut
+///
+/// Entschieden wird per Teilstring-Suche. Jede Meldung, in der „login"
+/// vorkommt, wird damit zur harten Sperre — auch eine, die nur ERKLAERT, dass
+/// ein Anmelde-Nachweis fehlt. Am 07.08.2026 hat das alle acht Brains sechs
+/// Stunden lang aus dem Feld genommen, obwohl jedes angemeldet war.
+///
+/// Wer hier eine Meldung formuliert, entscheidet also ueber sechs Stunden
+/// Sperre. Die Tests unten halten die beiden Faelle auseinander, die sich am
+/// leichtesten verwechseln lassen.
 pub(crate) fn is_hard_block(reason: &str) -> bool {
     let low = reason.to_lowercase();
     [
@@ -292,6 +303,35 @@ fn snapshots_at(path: &PathBuf) -> Vec<BreakerSnapshot> {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Der belegte Fall bleibt hart — dafuer ist die harte Sperre da.
+    #[test]
+    fn gesehene_anmelde_wand_sperrt_hart() {
+        // So meldet relay.rs den Zustand: session_state={state:?}
+        assert!(is_hard_block("session_state=LoginRequired"));
+        assert!(is_hard_block("Login nötig (/login)"));
+    }
+
+    /// Der unbelegte Fall darf NICHT hart sperren.
+    ///
+    /// Am 07.08.2026 wurden alle acht Brains fuer sechs Stunden gesperrt,
+    /// obwohl jedes angemeldet war: ein fehlender Anmelde-Nachweis (Seite noch
+    /// nicht fertig, Selektor nach Website-Umbau) landete im selben Topf wie
+    /// eine gesehene Anmelde-Wand.
+    #[test]
+    fn unbestimmt_sperrt_nicht_hart() {
+        assert!(!is_hard_block("session_state=Unbestimmt"));
+    }
+
+    /// Die Erklaerung zum unbelegten Fall darf sich nicht selbst hart sperren.
+    ///
+    /// Die Einstufung laeuft ueber Teilstring-Suche: haette die Meldung das
+    /// Wort „Login" enthalten, waere die Trennung wirkungslos gewesen. Dieser
+    /// Test faengt eine spaetere, gut gemeinte Umformulierung ab.
+    #[test]
+    fn erklaerender_meldungstext_bleibt_weich() {
+        assert!(!is_hard_block("Seite nicht bereit — kein Anmelde-Nachweis gefunden"));
+    }
 
     fn unique_path() -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);

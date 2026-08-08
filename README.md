@@ -187,7 +187,7 @@ angemeldeten Nutzerkontext ausführen. Nur in vertrauenswürdiger Umgebung nutze
 ## Entwicklung
 
 - Portierungskonventionen: [`CONVENTIONS.md`](CONVENTIONS.md)
-- Parität vs. Python: [`MERGE_AND_PARITY.md`](MERGE_AND_PARITY.md)
+- Parität vs. Python: [`docs/MERGE_AND_PARITY.md`](docs/MERGE_AND_PARITY.md)
 - Tests: `cargo test --no-default-features` (kein echter Browser in Unit-Tests;
   `MockPageDriver` für Browser-Logik). Live-Provider-Checks: `cargo run --example inspect -- <brain>`.
 

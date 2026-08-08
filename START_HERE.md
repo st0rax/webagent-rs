@@ -104,8 +104,8 @@ Absturz. Ungefixt, siehe §6.
 - `.github/workflows/` — CI (`ci.yml`, `android.yml`) + Release (`release.yml`)
 - Root-`.md`-Dateien: `README.md` (öffentliche Übersicht), `CONVENTIONS.md`
   (Code-Konventionen), `PROVIDER_STATUS.md` (Provider-Messwerte, mit
-  Historie), `CODE_REVIEW.md`/`CLAUDE_PROPOSALS.md` (externer Review +
-  Roadmap, siehe §6)
+  Historie); externe Reviews + Roadmap in `docs/` (`CODE_REVIEW.md`/
+  `CLAUDE_PROPOSALS.md`, siehe §6)
 
 ## 5. Konzept-/Planungsdokumente
 
@@ -135,7 +135,7 @@ Download-Cradles) + Audit-Log (`data/audit/shell.jsonl`). Kein
 Allowlist-only — die Shell ist by Design offen (Single-User-Local-Agent),
 das ist ein Sicherheitsnetz, keine Sandbox.
 
-**Externer Review vorhanden:** `CODE_REVIEW.md` + `CLAUDE_PROPOSALS.md`
+**Externer Review vorhanden:** `docs/CODE_REVIEW.md` + `docs/CLAUDE_PROPOSALS.md`
 (Qwen/Grok, 2026-07-16) mit priorisierter Roadmap. ⚠️ Der darin behauptete
 P0-Blocker („7 rote Executor-Tests") war zum Zeitpunkt der Review nicht
 reproduzierbar (mehrfach 186/186 grün gemessen) — die eigentliche Ursache
@@ -151,7 +151,7 @@ Produkt benutzt wird (REPL, gehaltene Session) — nicht per Kaltstart-Hämmern.
 **Offene Punkte:**
 - Release-Workflow bündelt `WebView2Loader.dll` nicht mit der `.exe` (§3)
 - Canary (periodischer 8-Brain-Health-Check), Protocol-Repair-Loop,
-  Controller-Split (`controller.rs` ~1150 Zeilen) — in `CLAUDE_PROPOSALS.md`
+  Controller-Split (`controller.rs` ~1150 Zeilen) — in `docs/CLAUDE_PROPOSALS.md`
   skizziert, nicht begonnen
 - Fähigkeitsprofil-Teil des Leistungsindex (`/benchmark`, Stärken/Schwächen
   je Kategorie, maximale Prompt-Länge) — bewusst nicht mitgebaut, siehe

@@ -21,6 +21,8 @@ struct MockStateInner {
     url: String,
     scripts: ScriptMap,
     navigate_delay: Duration,
+    /// PNG-Ausgabe von `capture_png`; `None` = kein Bild (Trailing-Verhalten).
+    png: Option<Vec<u8>>,
     /// Antwortfolgen: jeder Aufruf nimmt den naechsten Wert, der letzte bleibt
     /// stehen. Ohne das kann ein Test keinen Zustandswechsel nachstellen —
     /// „vorher" und „nachher" waeren zwangslaeufig derselbe Wert, und jede
@@ -36,6 +38,13 @@ impl MockPageState {
     pub fn with_url(self, url: impl Into<String>) -> Self {
         if let Ok(mut g) = self.inner.lock() {
             g.url = url.into();
+        }
+        self
+    }
+
+    pub fn with_png(self, bytes: Vec<u8>) -> Self {
+        if let Ok(mut g) = self.inner.lock() {
+            g.png = Some(bytes);
         }
         self
     }
@@ -132,6 +141,18 @@ impl PageDriver for MockPageDriver {
 
     fn click_at(&mut self, _x: f64, _y: f64) -> Result<()> {
         Ok(())
+    }
+
+    fn capture_png(&mut self) -> Result<Vec<u8>> {
+        let guard = self
+            .state
+            .inner
+            .lock()
+            .map_err(|_| PageDriverError::Protocol("Mock-Sperre verloren".into()))?;
+        guard
+            .png
+            .clone()
+            .ok_or_else(|| PageDriverError::Protocol("kein PNG im Mock hinterlegt".into()))
     }
 }
 

@@ -4,8 +4,22 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionState {
     Ready,
+    /// Eine Anmelde-Wand wurde GESEHEN (sichtbarer Anmelden-Knopf). Ein Beleg.
     LoginRequired,
     Cloudflare,
+    /// Weder Anmelde-Wand noch Anmelde-Nachweis gefunden.
+    ///
+    /// Bewusst von [`SessionState::LoginRequired`] getrennt: „ich habe eine
+    /// Anmelde-Wand gesehen" und „ich habe meinen Indikator nicht gefunden"
+    /// sind verschiedene Aussagen mit sehr verschiedener Sicherheit. Der
+    /// zweite Fall entsteht auch bei einem Website-Umbau oder einer Seite, die
+    /// noch nicht fertig geladen ist.
+    ///
+    /// Am 07.08.2026 landeten beide im selben Topf: alle acht Brains wurden mit
+    /// „Login noetig" fuer sechs Stunden gesperrt, obwohl jedes einzelne
+    /// angemeldet war — beim anschliessenden Login musste Storax kein einziges
+    /// Mal Zugangsdaten eingeben.
+    Unbestimmt,
     Error,
 }
 
