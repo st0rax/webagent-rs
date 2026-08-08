@@ -906,17 +906,13 @@ return null;}})()"#,
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
-        // Der Titel steht, lange bevor die SPA ihren DOM aufgebaut hat: ein
-        // sofortiger Scan sah 0 Buttons auf einer korrekt geladenen Seite.
-        self.wait_for_labeled_controls();
-        if let Some(key) = open_key {
-            if !self.click_first(key) {
-                let _ = self.stop();
-                return Err(format!("'{key}' nicht anklickbar"));
-            }
-            std::thread::sleep(Duration::from_millis(1200));
-        }
-        let report = self.dom_report();
+        let report = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            operations::live_survey_with(driver.as_mut(), &self.selectors, open_key)
+        };
         let _ = self.stop();
         report
     }

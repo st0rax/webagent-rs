@@ -270,6 +270,36 @@ pub(crate) fn scan_once(
     Ok((candidates, proposals))
 }
 
+/// Diagnose des echten DOM gegen die offene Seite — ein einzelner
+/// [`dom_report`] ohne vorher ein Menue zu oeffnen.
+///
+/// Der Backend-Wrapper delegiert an [`live_survey_with`], deshalb ist diese
+/// Konvenienz-Variante ausserhalb der Tests unbenutzt (nur Test-getrieben).
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn live_survey(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+) -> Result<Value, String> {
+    live_survey_with(driver, sel, None)
+}
+
+/// Wie [`live_survey`], oeffnet vorher optional ein Menue — sonst fehlen
+/// dessen Eintraege im DOM und man raet ihre Selektoren.
+pub(crate) fn live_survey_with(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+    open_key: Option<&str>,
+) -> Result<Value, String> {
+    wait_for_labeled_controls(driver);
+    if let Some(key) = open_key {
+        if !click_first(driver, sel, key) {
+            return Err(format!("'{key}' nicht anklickbar"));
+        }
+        std::thread::sleep(Duration::from_millis(1200));
+    }
+    dom_report(driver, sel)
+}
+
 /// Diagnose des echten DOM: wie viele Elemente matchen die konfigurierten
 /// Selektoren, welche Buttons/Kandidaten-Container gibt es? Deckt Selektor-Drift
 /// auf (der Hauptgrund, warum die Antworterkennung eine fertige Nachricht
@@ -280,6 +310,12 @@ pub(crate) fn scan_once(
 /// deepseek die komplette abgefragte Liste zurück, inklusive Optionen, die
 /// seine Oberfläche gar nicht hat.
 pub(crate) fn dom_report(driver: &mut dyn PageDriver, sel: &Selectors) -> Result<Value, String> {
+    eval(driver, &dom_report_expr(sel))
+}
+
+/// Baut das DOM-Report-Expression — getrennt, damit der Mock-Test denselben
+/// Ausdruck registrieren kann (der Mock matcht auf die EXAKTE Zeichenkette).
+fn dom_report_expr(sel: &Selectors) -> String {
     let keys = [
         "composer",
         "assistant_message",
@@ -295,7 +331,7 @@ pub(crate) fn dom_report(driver: &mut dyn PageDriver, sel: &Selectors) -> Result
             "counts[{k:?}]=(function(){{var S={list};var n=0;for(var i=0;i<S.length;i++){{try{{n+=QA(S[i]).length;}}catch(e){{}}}}return n;}})();"
         ));
     }
-    let expr = format!(
+    format!(
         r#"(function(){{
 {prelude}
 {counts_js}
@@ -332,8 +368,7 @@ var tb=[];document.querySelectorAll('div,p,article,section,li').forEach(function
 return {{url:location.href,title:document.title,w:window.innerWidth,h:window.innerHeight,wd:navigator.webdriver,ua:(navigator.userAgent||'').slice(0,90),counts:counts,buttons:btns.slice(0,200),messages:msgs.slice(0,20),candidates:cand,textblocks:tb.slice(0,8)}};
 }})()"#,
         prelude = js::JS_SEL_PRELUDE
-    );
-    eval(driver, &expr)
+    )
 }
 
 /// Öffnet die Oberfläche und nimmt sie als PNG auf.
@@ -790,5 +825,85 @@ mod live_screenshot_tests {
         let mut driver =
             MockPageDriver::new(MockPageState::new().on_eval(LABELED_CONTROLS_EXPR, json!(5)));
         assert!(live_screenshot(&mut driver, &sel).is_err());
+    }
+}
+
+#[cfg(test)]
+mod live_survey_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    fn sel_with(key: &str, selectors: &[&str]) -> Selectors {
+        Selectors::from_value(json!({ key: selectors }))
+    }
+
+    /// Ausgangszustand, in dem die Warteschleife sofort (nach dem einen
+    /// 1,5 s-Schlaf) zurueckkehrt: `LABELED_CONTROLS_EXPR` liefert >= 5.
+    /// Nur diese Expression ist registriert — der DOM-Report scheitert.
+    fn wait_only_state() -> MockPageState {
+        MockPageState::new().on_eval(LABELED_CONTROLS_EXPR, json!(5))
+    }
+
+    /// Baut das Klick-Expression genau wie [`click_first`].
+    fn click_expr_for(selectors: &[&str]) -> String {
+        let sels: Vec<String> = selectors.iter().map(|s| s.to_string()).collect();
+        js::js_scan(
+            &js::js_selectors(&sels),
+            "var el=Q(S[i]);if(el){el.click();return true;}",
+            "false",
+        )
+    }
+
+    #[test]
+    fn liefert_den_canned_report_verbatim() {
+        let sel = sel_with("composer", &["textarea.prompt"]);
+        let canned = json!({
+            "url": "https://chatgpt.com/",
+            "counts": {"composer": 1},
+            "buttons": []
+        });
+        let mut driver = MockPageDriver::new(
+            wait_only_state().on_eval(&dom_report_expr(&sel), canned.clone()),
+        );
+        assert_eq!(live_survey(&mut driver, &sel), Ok(canned));
+    }
+
+    #[test]
+    fn mit_open_key_klickt_das_menue_vor_dem_report() {
+        let sel = sel_with("model_menu", &["button.xyz"]);
+        let click_expr = click_expr_for(&["button.xyz"]);
+        let canned = json!({
+            "url": "https://chatgpt.com/",
+            "counts": {"model_menu": 1},
+            "buttons": ["button.xyz"]
+        });
+        let mut driver = MockPageDriver::new(
+            wait_only_state()
+                .on_eval(&click_expr, json!(true))
+                .on_eval(&dom_report_expr(&sel), canned.clone()),
+        );
+        assert_eq!(
+            live_survey_with(&mut driver, &sel, Some("model_menu")),
+            Ok(canned)
+        );
+    }
+
+    #[test]
+    fn mit_open_key_fehler_wenn_menue_nicht_anklickbar() {
+        let sel = sel_with("model_menu", &["button.xyz"]);
+        let click_expr = click_expr_for(&["button.xyz"]);
+        let mut driver = MockPageDriver::new(
+            wait_only_state().on_eval(&click_expr, json!(false)),
+        );
+        let err = live_survey_with(&mut driver, &sel, Some("model_menu")).unwrap_err();
+        assert!(err.contains("nicht anklickbar"), "err={err}");
+    }
+
+    #[test]
+    fn leeres_mock_state_ergibt_err() {
+        let sel = sel_with("composer", &["textarea.prompt"]);
+        let mut driver = MockPageDriver::new(wait_only_state());
+        assert!(live_survey(&mut driver, &sel).is_err());
     }
 }
