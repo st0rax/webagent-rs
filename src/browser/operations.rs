@@ -189,16 +189,17 @@ pub(crate) fn dismiss_qwen_blocks(driver: &mut dyn PageDriver) -> bool {
     )
 }
 
+/// Zaehlt beschriftete Bedienelemente — geteilt zwischen Implementierung und
+/// Test, der Mock-Driver matcht auf die EXAKTE Zeichenkette.
+const LABELED_CONTROLS_EXPR: &str = "(function(){var n=0;document.querySelectorAll('button,[role=button],[aria-label],[data-testid]').forEach(function(e){var t=((e.innerText||e.textContent||'')+'').trim();if(e.getAttribute('aria-label')||e.getAttribute('title')||t)n++;});return n;})()";
+
 /// Wartet, bis die Oberflaeche beschriftete Bedienelemente zeigt.
 /// Ein Lade-Skelett bringt sofort Dutzende leerer Platzhalter mit; ein Scan
 /// darauf sah real 107 Elemente ohne einen einzigen Namen.
 pub(crate) fn wait_for_labeled_controls(driver: &mut dyn PageDriver) {
     let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
-        let labeled = eval_i64(
-            driver,
-            "(function(){var n=0;document.querySelectorAll('button,[role=button],[aria-label],[data-testid]').forEach(function(e){var t=((e.innerText||e.textContent||'')+'').trim();if(e.getAttribute('aria-label')||e.getAttribute('title')||t)n++;});return n;})()",
-        );
+        let labeled = eval_i64(driver, LABELED_CONTROLS_EXPR);
         if labeled >= 5 {
             std::thread::sleep(Duration::from_millis(1500));
             return;
@@ -218,6 +219,138 @@ pub(crate) fn scan_once(
         serde_json::from_value(raw).unwrap_or_default();
     let proposals = crate::brain_probe::classify(&candidates);
     Ok((candidates, proposals))
+}
+
+/// Oberflaechen-Analyse wie die Link-Analyse in JDownloader: die offene Seite
+/// nach Bedienelementen scannen und sie per [`crate::brain_probe`] deuten. Der
+/// Aufrufer entscheidet, ob die Funde als Selektoren uebernommen werden.
+///
+/// Das Backend kapselt die Browser-Lebensdauer selbst (siehe
+/// `WebBrainBackend::probe_surface`); diese freie Funktion wird deshalb im
+/// Nicht-Test-Build nicht aufgerufen — ihre Tests in `probe_surface_tests`
+/// belegen trotzdem, dass sie [`probe_surface_with_raw`] nur zusammenfaltet.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn probe_surface(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+) -> Result<Vec<crate::brain_probe::Proposal>, String> {
+    let (_, proposals) = probe_surface_with_raw(driver, sel, None)?;
+    Ok(proposals)
+}
+
+/// Wie [`probe_surface`], gibt aber auch die rohen DOM-Kandidaten mit zurueck —
+/// fuer die Analyse von Fehlfunden (Warum wurde der Absende-Knopf nicht erkannt?).
+///
+/// `open_key`: nach dem ersten Scan diesen Vorschlag anklicken und einen
+/// weiteren Scan ausloesen — Menue-Eintraege (`model_option` etc.) sind erst
+/// sichtbar, wenn das Menue offen ist.
+///
+/// `sel` wird hier nicht gebraucht (der Scan braucht keine Selektoren); der
+/// Parameter bleibt der einheitlichen Signatur aller Operationen wegen.
+pub(crate) fn probe_surface_with_raw(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+    open_key: Option<&str>,
+) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+    let _ = sel;
+    wait_for_labeled_controls(driver);
+    let result = scan_once(driver);
+    let opened = match (open_key, result) {
+        (Some(key), Ok((cands, props))) => {
+            let clicked = props.iter().find(|p| p.selector_key == key).map(|p| {
+                let expr = js::js_scan(
+                    &js::js_selectors(std::slice::from_ref(&p.selector)),
+                    "var el=Q(S[i]);if(el){el.click();return true;}",
+                    "false",
+                );
+                eval_bool(driver, &expr)
+            });
+            match clicked {
+                Some(true) => {
+                    eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
+                    std::thread::sleep(Duration::from_millis(1500));
+                    scan_once(driver)
+                }
+                _ => {
+                    eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
+                    Ok((cands, props))
+                }
+            }
+        }
+        (None, r) => r,
+        (_, Err(e)) => Err(e),
+    };
+    opened
+}
+
+/// Einzeiliges JS, das den Composer mit dem Testwort "test" fuellt — geteilt
+/// zwischen Implementierung und Test, der Mock-Driver matcht auf die EXAKTE
+/// Zeichenkette.
+const FILL_COMPOSER_JS: &str = "(function(){var el=document.querySelector('#ask-input')||document.querySelector('[contenteditable=true]')||document.querySelector('textarea');if(!el)return false;el.focus();if(el.isContentEditable){if(document.execCommand&&document.execCommand('insertText',false,'test')){return true;}el.innerText='test';var ev=new Event('input',{bubbles:true});el.dispatchEvent(ev);return true;}if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){var set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')||Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(set&&set.set){set.set.call(el,'test');var ev2=new Event('input',{bubbles:true});el.dispatchEvent(ev2);return true;}}return false;})()";
+
+/// Oberflaechen-Analyse wie [`probe_surface_with_raw`], aber mit einer zweiten
+/// Runde: wird ein Composer gefunden, aber kein Absende-Knopf, fuellt ein
+/// Testwort den Editor und scannt erneut. Viele SPAs (z.B. Perplexity)
+/// rendern den Send-Button erst, wenn Text drinsteht.
+///
+/// `open_key`: nach dem ersten Scan diesen Vorschlag anklicken und einen
+/// weiteren Scan ausloesen — Menue-Eintraege (`model_option` etc.) sind erst
+/// sichtbar, wenn das Menue offen ist.
+///
+/// `sel` wird hier nicht gebraucht (der Scan braucht keine Selektoren); der
+/// Parameter bleibt der einheitlichen Signatur aller Operationen wegen.
+pub(crate) fn probe_surface_with_fill(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+    open_key: Option<&str>,
+) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+    let _ = sel;
+    wait_for_labeled_controls(driver);
+    let first = scan_once(driver);
+    let has_composer = first
+        .as_ref()
+        .is_ok_and(|(_, p)| p.iter().any(|p| p.selector_key == "composer"));
+    let has_send = first
+        .as_ref()
+        .is_ok_and(|(_, p)| p.iter().any(|p| p.selector_key == "send_button"));
+    let result = if has_composer && !has_send {
+        eprintln!(
+            "[probe] Composer gefunden, Send-Button nicht — fuelle Editor und scanne erneut…"
+        );
+        let _ = eval(driver, FILL_COMPOSER_JS);
+        std::thread::sleep(Duration::from_millis(1200));
+        scan_once(driver)
+    } else {
+        first
+    };
+    if let Some(key) = open_key {
+        let opened = match result {
+            Ok((cands, props)) => {
+                let clicked = props.iter().find(|p| p.selector_key == key).map(|p| {
+                    let expr = js::js_scan(
+                        &js::js_selectors(std::slice::from_ref(&p.selector)),
+                        "var el=Q(S[i]);if(el){el.click();return true;}",
+                        "false",
+                    );
+                    eval_bool(driver, &expr)
+                });
+                match clicked {
+                    Some(true) => {
+                        eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
+                        std::thread::sleep(Duration::from_millis(1500));
+                        scan_once(driver)
+                    }
+                    _ => {
+                        eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
+                        Ok((cands, props))
+                    }
+                }
+            }
+            Err(e) => Err(e),
+        };
+        return opened;
+    }
+    result
 }
 
 /// Diagnose des echten DOM: wie viele Elemente matchen die konfigurierten
@@ -521,6 +654,128 @@ mod get_conversation_ref_tests {
         assert_eq!(
             get_conversation_ref(&mut driver),
             Some("https://chatgpt.com/c/def".to_string())
+        );
+    }
+}
+
+#[cfg(test)]
+mod probe_surface_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    /// Mock-Basis mit sofort voller Beschriftungs-Zaehlung, damit
+    /// `wait_for_labeled_controls` nicht 30 Sekunden gegen einen leeren Mock
+    /// schleift.
+    fn labeled_state() -> MockPageState {
+        MockPageState::new().on_eval(LABELED_CONTROLS_EXPR, json!(5))
+    }
+
+    fn sel_with(key: &str, selectors: &[&str]) -> Selectors {
+        Selectors::from_value(json!({ key: selectors }))
+    }
+
+    #[test]
+    fn leerer_scan_ergibt_leere_vorschlaege() {
+        let sel = sel_with("composer", &["div.prose"]);
+        let mut driver = MockPageDriver::new(
+            labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, json!([])),
+        );
+        let proposals = probe_surface(&mut driver, &sel).expect("probe_surface");
+        assert!(proposals.is_empty());
+    }
+
+    #[test]
+    fn ein_kandidat_wird_gedeutet() {
+        let sel = sel_with("composer", &["div.prose"]);
+        let dom = json!([
+            {"tag": "button", "aria_label": "Antwort stoppen", "visible": true}
+        ]);
+        let mut driver = MockPageDriver::new(
+            labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, dom),
+        );
+        let proposals = probe_surface(&mut driver, &sel).expect("probe_surface");
+        assert_eq!(proposals.len(), 1);
+        assert_eq!(proposals[0].selector_key, "stop_button");
+        assert_eq!(proposals[0].selector, "button[aria-label*='Antwort stoppen' i]");
+    }
+
+    #[test]
+    fn fehlender_scan_liefert_err() {
+        let sel = sel_with("composer", &["div.prose"]);
+        let mut driver = MockPageDriver::new(labeled_state());
+        let err = probe_surface_with_raw(&mut driver, &sel, None).unwrap_err();
+        assert!(err.contains("kein Mock-Skript"), "{err}");
+    }
+
+    #[test]
+    fn fill_runde_liefert_den_zweiten_scan() {
+        let sel = sel_with("composer", &["div.prose"]);
+        let composer = json!([{"tag": "div", "contenteditable": true, "visible": true}]);
+        let mit_send = json!([{"tag": "button", "aria_label": "Senden", "visible": true}]);
+        let state = labeled_state()
+            .on_eval(FILL_COMPOSER_JS, json!(true))
+            .on_eval_seq(crate::brain_probe::PROBE_SCRIPT, vec![composer, mit_send]);
+        let mut driver = MockPageDriver::new(state);
+        let (cands, props) =
+            probe_surface_with_fill(&mut driver, &sel, None).expect("probe_surface_with_fill");
+        assert!(cands.iter().any(|c| c.tag == "button"), "{cands:?}");
+        assert!(
+            props.iter().any(|p| p.selector_key == "send_button"),
+            "{props:?}"
+        );
+    }
+
+    #[test]
+    fn ohne_composer_keine_fill_runde() {
+        let sel = sel_with("composer", &["div.prose"]);
+        let nur_send = json!([{"tag": "button", "aria_label": "Senden", "visible": true}]);
+        let mut driver = MockPageDriver::new(
+            labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, nur_send),
+        );
+        let (_, props) = probe_surface_with_fill(&mut driver, &sel, None)
+            .expect("probe_surface_with_fill");
+        assert!(
+            props.iter().any(|p| p.selector_key == "send_button"),
+            "{props:?}"
+        );
+    }
+
+    #[test]
+    fn open_key_loest_rescan_aus() {
+        let sel = sel_with("composer", &["div.prose"]);
+        let first = json!([{"tag": "button", "aria_label": "Senden", "visible": true}]);
+        let second = json!([{"tag": "button", "aria_label": "Modell", "visible": true}]);
+        let click_expr = js::js_scan(
+            &js::js_selectors(&["button[aria-label*='Senden' i]".to_string()]),
+            "var el=Q(S[i]);if(el){el.click();return true;}",
+            "false",
+        );
+        let mut driver = MockPageDriver::new(
+            labeled_state()
+                .on_eval_seq(crate::brain_probe::PROBE_SCRIPT, vec![first, second])
+                .on_eval(click_expr, json!(true)),
+        );
+        let (_, props) = probe_surface_with_raw(&mut driver, &sel, Some("send_button"))
+            .expect("probe_surface_with_raw");
+        assert!(
+            props.iter().any(|p| p.selector_key == "model_menu"),
+            "{props:?}"
+        );
+    }
+
+    #[test]
+    fn open_key_ohne_treffer_gibt_ersten_scan_zurueck() {
+        let sel = sel_with("composer", &["div.prose"]);
+        let first = json!([{"tag": "button", "aria_label": "Senden", "visible": true}]);
+        let mut driver = MockPageDriver::new(
+            labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, first),
+        );
+        let (_, props) = probe_surface_with_raw(&mut driver, &sel, Some("stop_button"))
+            .expect("probe_surface_with_raw");
+        assert!(
+            props.iter().any(|p| p.selector_key == "send_button"),
+            "{props:?}"
         );
     }
 }

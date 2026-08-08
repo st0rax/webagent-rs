@@ -949,38 +949,23 @@ return null;}})()"#,
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
-        self.wait_for_labeled_controls();
-        let result = self.scan_once();
-        let opened = match (open_key, result) {
-            (Some(key), Ok((cands, props))) => {
-                let clicked = props.iter().find(|p| p.selector_key == key).map(|p| {
-                    let expr = crate::browser::js::js_scan(
-                        &crate::browser::js::js_selectors(&[p.selector.clone()]),
-                        "var el=Q(S[i]);if(el){el.click();return true;}",
-                        "false",
-                    );
-                    self.eval_bool(&expr)
-                });
-                match clicked {
-                    Some(true) => {
-                        eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
-                        std::thread::sleep(Duration::from_millis(1500));
-                        self.scan_once()
-                    }
-                    _ => {
-                        eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
-                        Ok((cands, props))
-                    }
-                }
-            }
-            (None, r) => r,
-            (_, Err(e)) => Err(e),
+        let result = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            operations::probe_surface_with_raw(driver.as_mut(), &self.selectors, open_key)
         };
         let _ = self.stop();
-        opened
+        result
     }
 
     /// Ein einzelner Scan gegen die offene Seite (Browser muss laufen).
+    ///
+    /// Mit der probe-Familie in `operations.rs` ist der Arbeitsteil dort
+    /// gelandet; der Backend-Methoden-Duenner bleibt als stable Helfer fuer
+    /// spaetere Aufrufer bestehen.
+    #[allow(dead_code)]
     fn scan_once(
         &self,
     ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
@@ -1030,53 +1015,13 @@ return null;}})()"#,
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
-        self.wait_for_labeled_controls();
-        let first = self.scan_once();
-        let has_composer = first
-            .as_ref()
-            .map_or(false, |(_, p)| p.iter().any(|p| p.selector_key == "composer"));
-        let has_send = first
-            .as_ref()
-            .map_or(false, |(_, p)| p.iter().any(|p| p.selector_key == "send_button"));
-        let result = if has_composer && !has_send {
-            eprintln!(
-                "[probe] Composer gefunden, Send-Button nicht — fuelle Editor und scanne erneut…"
-            );
-            let fill = "(function(){var el=document.querySelector('#ask-input')||document.querySelector('[contenteditable=true]')||document.querySelector('textarea');if(!el)return false;el.focus();if(el.isContentEditable){if(document.execCommand&&document.execCommand('insertText',false,'test')){return true;}el.innerText='test';var ev=new Event('input',{bubbles:true});el.dispatchEvent(ev);return true;}if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){var set=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')||Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(set&&set.set){set.set.call(el,'test');var ev2=new Event('input',{bubbles:true});el.dispatchEvent(ev2);return true;}}return false;})()";
-            let _ = self.eval_js(fill);
-            std::thread::sleep(Duration::from_millis(1200));
-            self.scan_once()
-        } else {
-            first
+        let result = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            operations::probe_surface_with_fill(driver.as_mut(), &self.selectors, open_key)
         };
-        if let Some(key) = open_key {
-            let opened = match result {
-                Ok((cands, props)) => {
-                    let clicked = props.iter().find(|p| p.selector_key == key).map(|p| {
-                        let expr = crate::browser::js::js_scan(
-                            &crate::browser::js::js_selectors(&[p.selector.clone()]),
-                            "var el=Q(S[i]);if(el){el.click();return true;}",
-                            "false",
-                        );
-                        self.eval_bool(&expr)
-                    });
-                    match clicked {
-                        Some(true) => {
-                            eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
-                            std::thread::sleep(Duration::from_millis(1500));
-                            self.scan_once()
-                        }
-                        _ => {
-                            eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
-                            Ok((cands, props))
-                        }
-                    }
-                }
-                Err(e) => Err(e),
-            };
-            let _ = self.stop();
-            return opened;
-        }
         let _ = self.stop();
         result
     }
