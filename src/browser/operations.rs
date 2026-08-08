@@ -54,7 +54,13 @@ pub fn is_cloudflare_blocked(driver: &mut dyn PageDriver) -> bool {
 
 /// Aktuelle Konversations-URL als Referenz; `None` für leere/`about:blank`.
 pub fn get_conversation_ref(driver: &mut dyn PageDriver) -> Option<String> {
-    todo!("SCHRITT2:get_conversation_ref")
+    let url = driver.current_url().ok()?;
+    let url = url.trim();
+    if url.is_empty() || url == "about:blank" {
+        None
+    } else {
+        Some(url.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -95,5 +101,42 @@ mod any_visible_tests {
         let sel = sel_with("key", &["div.x"]);
         let mut driver = MockPageDriver::new(MockPageState::new());
         assert!(!any_visible(&mut driver, &sel, "key"));
+    }
+}
+
+#[cfg(test)]
+mod get_conversation_ref_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+
+    #[test]
+    fn normale_url_ergibt_some() {
+        let mut driver = MockPageDriver::new(MockPageState::new().with_url("https://chatgpt.com/c/abc"));
+        assert_eq!(
+            get_conversation_ref(&mut driver),
+            Some("https://chatgpt.com/c/abc".to_string())
+        );
+    }
+
+    #[test]
+    fn about_blank_ergibt_none() {
+        let mut driver = MockPageDriver::new(MockPageState::new().with_url("about:blank"));
+        assert_eq!(get_conversation_ref(&mut driver), None);
+    }
+
+    #[test]
+    fn leere_url_ergibt_none() {
+        let mut driver = MockPageDriver::new(MockPageState::new().with_url(""));
+        assert_eq!(get_conversation_ref(&mut driver), None);
+    }
+
+    #[test]
+    fn whitespace_um_url_wird_getrimmt() {
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().with_url("  https://chatgpt.com/c/def\t\n"));
+        assert_eq!(
+            get_conversation_ref(&mut driver),
+            Some("https://chatgpt.com/c/def".to_string())
+        );
     }
 }

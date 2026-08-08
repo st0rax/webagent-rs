@@ -390,13 +390,9 @@ impl BrainBackend for WebBrainBackend {
 
     fn get_conversation_ref(&self) -> Option<String> {
         let mut guard = self.driver.borrow_mut();
-        let driver = guard.as_mut()?;
-        let url = driver.current_url().ok()?;
-        let url = url.trim();
-        if url.is_empty() || url == "about:blank" {
-            None
-        } else {
-            Some(url.to_string())
+        match guard.as_mut() {
+            Some(driver) => super::operations::get_conversation_ref(driver.as_mut()),
+            None => None,
         }
     }
 
