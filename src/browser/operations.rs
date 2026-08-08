@@ -44,7 +44,13 @@ pub fn is_logged_in(driver: &mut dyn PageDriver, sel: &Selectors) -> bool {
 
 /// Anzahl der Assistenten-Nachrichten (robust über die Selektorliste).
 pub fn assistant_count(driver: &mut dyn PageDriver, sel: &Selectors) -> i32 {
-    todo!("SCHRITT2:assistant_count")
+    let list = sel.js("assistant_message", &["div.prose"]);
+    let expr = js::js_scan(&list, "var n=QA(S[i]).length;if(n>0)return n;", "0");
+    driver
+        .evaluate(&expr)
+        .ok()
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32
 }
 
 /// Ist die Seite von Cloudflare blockiert (`__cf_chl`-URL oder Challenge-Titel)?
@@ -95,5 +101,48 @@ mod any_visible_tests {
         let sel = sel_with("key", &["div.x"]);
         let mut driver = MockPageDriver::new(MockPageState::new());
         assert!(!any_visible(&mut driver, &sel, "key"));
+    }
+}
+
+#[cfg(test)]
+mod assistant_count_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    fn count_expr_for(sel: &Selectors) -> String {
+        let list = sel.js("assistant_message", &["div.prose"]);
+        js::js_scan(&list, "var n=QA(S[i]).length;if(n>0)return n;", "0")
+    }
+
+    #[test]
+    fn returns_count_when_js_returns_number() {
+        let sel = Selectors::from_value(json!({ "assistant_message": ["div.prose"] }));
+        let expr = count_expr_for(&sel);
+        let mut driver = MockPageDriver::new(MockPageState::new().on_eval(&expr, json!(5)));
+        assert_eq!(assistant_count(&mut driver, &sel), 5);
+    }
+
+    #[test]
+    fn returns_zero_when_js_returns_zero() {
+        let sel = Selectors::from_value(json!({ "assistant_message": ["div.prose"] }));
+        let expr = count_expr_for(&sel);
+        let mut driver = MockPageDriver::new(MockPageState::new().on_eval(&expr, json!(0)));
+        assert_eq!(assistant_count(&mut driver, &sel), 0);
+    }
+
+    #[test]
+    fn returns_zero_when_eval_fails() {
+        let sel = Selectors::from_value(json!({ "assistant_message": ["div.prose"] }));
+        let mut driver = MockPageDriver::new(MockPageState::new());
+        assert_eq!(assistant_count(&mut driver, &sel), 0);
+    }
+
+    #[test]
+    fn uses_fallback_list_when_key_absent() {
+        let sel = Selectors::from_value(json!({}));
+        let expr = count_expr_for(&sel);
+        let mut driver = MockPageDriver::new(MockPageState::new().on_eval(&expr, json!(3)));
+        assert_eq!(assistant_count(&mut driver, &sel), 3);
     }
 }
