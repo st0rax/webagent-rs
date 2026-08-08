@@ -294,9 +294,9 @@ pub struct LiveDiagnosis {
 }
 
 pub struct WebBrainBackend {
-    brain_id: String,
+    pub(crate) brain_id: String,
     url: String,
-    selectors: selectors::Selectors,
+    pub(crate) selectors: selectors::Selectors,
     #[cfg_attr(not(feature = "webview"), allow(dead_code))]
     profile_dir: PathBuf,
     /// Optionales isoliertes Laufzeit-Profil (z.B. Swarm-Teilkopie). Überschreibt
@@ -306,7 +306,7 @@ pub struct WebBrainBackend {
     profile_override: Option<PathBuf>,
     #[cfg(feature = "webview")]
     runtime: RefCell<Option<WebViewRuntime>>,
-    driver: RefCell<Option<Box<dyn PageDriver>>>,
+    pub(crate) driver: RefCell<Option<Box<dyn PageDriver>>>,
     /// Text der letzten Assistenten-Nachricht VOR dem Senden — damit wait_response
     /// den Antwortbeginn auch dann erkennt, wenn der Nachrichtenzähler nicht
     /// inkrementiert (Container-Selektor / bestehende Konversation).
@@ -473,18 +473,15 @@ impl WebBrainBackend {
         let driver = guard
             .as_mut()
             .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-        driver.evaluate(expr).map_err(|e| e.to_string())
+        operations::eval(driver.as_mut(), expr)
     }
 
     fn eval_bool(&self, expr: &str) -> bool {
-        self.eval(expr)
-            .ok()
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-    }
-
-    fn eval_i64(&self, expr: &str) -> i64 {
-        self.eval(expr).ok().and_then(|v| v.as_i64()).unwrap_or(0)
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => operations::eval_bool(driver.as_mut(), expr),
+            None => false,
+        }
     }
 
     fn eval_str(&self, expr: &str) -> String {
@@ -545,16 +542,11 @@ impl WebBrainBackend {
 
     /// Klickt das erste sichtbare Element aus der Selektorliste.
     fn click_first(&self, key: &str) -> bool {
-        let sels = self.sel(key);
-        if sels.is_empty() {
-            return false;
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => operations::click_first(driver.as_mut(), &self.selectors, key),
+            None => false,
         }
-        let expr = Self::js_scan(
-            &Self::js_selectors(&sels),
-            "var el=Q(S[i]);if(el){el.click();return true;}",
-            "false",
-        );
-        self.eval_bool(&expr)
     }
 
     /// Klickt das erste sichtbare Element aus der Selektorliste per ECHTEM CDP-
@@ -657,60 +649,11 @@ return {{count:count,text:text,stop:stop}};}})()"#,
     /// deepseek die komplette abgefragte Liste zurück, inklusive Optionen, die
     /// seine Oberfläche gar nicht hat.
     pub fn dom_report(&self) -> Result<Value, String> {
-        let keys = [
-            "composer",
-            "assistant_message",
-            "stop_button",
-            "send_button",
-            "new_chat_button",
-            "login_indicator",
-        ];
-        let mut counts_js = String::from("var counts={};");
-        for k in keys {
-            let list = Self::js_selectors(&self.sel(k));
-            counts_js.push_str(&format!(
-                "counts[{k:?}]=(function(){{var S={list};var n=0;for(var i=0;i<S.length;i++){{try{{n+=QA(S[i]).length;}}catch(e){{}}}}return n;}})();"
-            ));
-        }
-        let expr = format!(
-            r#"(function(){{
-{prelude}
-{counts_js}
-// innerText haengt am Layout und ist headless haeufig leer — textContent nicht.
-// Icon-only-Knoepfe (deepseek: div.ds-button--icon, svg, kein Text, kein
-// aria-label) tragen ihren Namen anderswo: im <title>/<desc> des SVG, in der
-// id, in data-*-Attributen oder am Elternelement. `ex` sammelt genau das,
-// sonst ist so ein Knopf nicht identifizierbar.
-function nm(el){{if(!el)return '';return ((el.getAttribute('aria-label')||'')+' '+(el.getAttribute('title')||'')+' '+(el.getAttribute('id')||'')).trim();}}
-function inf(el){{
-  var t=((el.innerText||el.textContent||'')+'').replace(/\s+/g,' ').trim();
-  var ex=[];
-  try{{var st=el.querySelector('svg title,svg desc');if(st)ex.push((st.textContent||'').trim());}}catch(e){{}}
-  try{{var u=el.querySelector('svg use');if(u)ex.push(u.getAttribute('href')||u.getAttribute('xlink:href')||'');}}catch(e){{}}
-  try{{for(var a=0;a<el.attributes.length;a++){{var at=el.attributes[a];if(at.name.indexOf('data-')===0||at.name.indexOf('aria-')===0)ex.push(at.name+'='+at.value);}}}}catch(e){{}}
-  ex.push(el.getAttribute('id')||'');
-  ex.push(nm(el.parentElement));
-  return {{tag:el.tagName,cls:(el.className||'').toString().slice(0,90),al:el.getAttribute('aria-label')||'',ti:el.getAttribute('title')||'',dt:el.getAttribute('data-testid')||'',ex:ex.filter(function(s){{return s&&s.length;}}).join(' ').slice(0,160),svg:!!el.querySelector('svg'),tl:t.length,tp:t.slice(0,50)}};}}
-var btns=[],seen=[];
-['button','[role=button]','[role=switch]','[role=checkbox]','[role=menuitem]','[role=tab]','label','input[type=file]','[aria-label]','[data-testid]','[aria-pressed]','[aria-checked]','[aria-expanded]'].forEach(function(s){{
-  try{{document.querySelectorAll(s).forEach(function(b){{
-    if(seen.indexOf(b)>=0)return;
-    // Verlaufseintraege der Seitenleiste sind keine Bedienelemente: sie tragen
-    // frei getexteten Gespraechstitel und keinerlei Steuer-Attribut.
-    var lab=(b.getAttribute('aria-label')||'')+(b.getAttribute('title')||'')+(b.getAttribute('data-testid')||'');
-    var txt=((b.innerText||b.textContent||'')+'').replace(/\s+/g,' ').trim();
-    if(!lab&&txt.length>28)return;
-    seen.push(b);btns.push(inf(b));
-  }});}}catch(e){{}}
-}});
-var msgs=[];document.querySelectorAll('[class*=message]').forEach(function(m){{msgs.push(inf(m));}});
-var cand=[];['[data-message-author-role]','[data-testid]','.markdown','[class*=markdown]','[class*=message]','[class*=assistant]','[class*=chat]','div.prose','[class*=answer]','[class*=response]','[class*=bubble]'].forEach(function(s){{try{{var n=document.querySelectorAll(s).length;if(n>0)cand.push({{sel:s,n:n}});}}catch(e){{}}}});
-var tb=[];document.querySelectorAll('div,p,article,section,li').forEach(function(e){{var t=(e.innerText||'').trim();if(t.length<40)return;var cm=0;for(var k=0;k<e.children.length;k++){{var ct=(e.children[k].innerText||'').length;if(ct>cm)cm=ct;}}if(cm<t.length*0.75){{tb.push(inf(e));}}}});tb.sort(function(a,b){{return b.tl-a.tl;}});
-return {{url:location.href,title:document.title,w:window.innerWidth,h:window.innerHeight,wd:navigator.webdriver,ua:(navigator.userAgent||'').slice(0,90),counts:counts,buttons:btns.slice(0,200),messages:msgs.slice(0,20),candidates:cand,textblocks:tb.slice(0,8)}};
-}})()"#,
-            prelude = Self::JS_SEL_PRELUDE
-        );
-        self.eval(&expr)
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard
+            .as_mut()
+            .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+        operations::dom_report(driver.as_mut(), &self.selectors)
     }
 
     /// Diagnose-Hilfe: beliebiges JS am aktiven Target auswerten. Nur für
@@ -728,63 +671,22 @@ return {{url:location.href,title:document.title,w:window.innerWidth,h:window.inn
     }
 
     fn dismiss_consent(&self) -> bool {
-        let mut dismissed = self.click_first("consent_reject_button");
-        // Konfigurierte Dialog-Schliesser (bisher tote Config — nie aufgerufen).
-        dismissed |= self.click_first("dialog_dismiss_button");
-        // Generischer Werbe-/Ankuendigungs-Modal-Schliesser. mistral warf z.B. ein
-        // "Mistral Vibe CLI"-Announcement ueber den Composer, das jede Eingabe
-        // blockierte — der Grund fuer konsistente mistral-Timeouts. Nur Buttons
-        // INNERHALB offener Dialoge/Overlays, damit nichts Legitimes getroffen wird.
-        dismissed |= self.dismiss_modal_buttons();
-        if self.brain_id == "gemini" {
-            dismissed |= self.click_first("notice_close_button");
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => {
+                operations::dismiss_consent(driver.as_mut(), &self.selectors, &self.brain_id)
+            }
+            None => false,
         }
-        if self.brain_id == "qwen" {
-            dismissed |= self.dismiss_qwen_blocks();
-        }
-        dismissed
-    }
-
-    /// Schliesst Werbe-/Ankuendigungs-Modals: klickt einen „Spaeter/Later/Skip/Got
-    /// it"-artigen Button, aber NUR innerhalb eines offenen Dialogs/Overlays
-    /// (`[role=dialog]`, `[data-state=open]`, `*modal*`/`*overlay*`), damit auf der
-    /// normalen Seite nichts faelschlich geklickt wird.
-    fn dismiss_modal_buttons(&self) -> bool {
-        self.eval_bool(
-            r#"(function(){
-              var hit=false;
-              var scopes=document.querySelectorAll('[role=dialog],[data-state="open"],[class*="modal"],[class*="Modal"],[class*="overlay"],[class*="Overlay"]');
-              var words=['später','spater','later','not now','maybe later','skip','got it','no thanks','dismiss','verstanden','vielleicht später','nur notwendige','nur notwendige cookies','notwendige','necessary','essenziell','accept necessary','reject all','ablehnen','erforderlich'];
-              for(var s=0;s<scopes.length;s++){
-                var btns=scopes[s].querySelectorAll('button,a,[role=button]');
-                for(var i=0;i<btns.length;i++){
-                  var t=(btns[i].innerText||btns[i].textContent||'').trim().toLowerCase();
-                  if(!t||t.length>24)continue;
-                  for(var w=0;w<words.length;w++){
-                    if(t.indexOf(words[w])>=0){try{btns[i].click();hit=true;}catch(e){}break;}
-                  }
-                }
-              }
-              return hit;
-            })()"#,
-        )
     }
 
     /// qwen: „App herunterladen / not supported"-Banner schließen.
     fn dismiss_qwen_blocks(&self) -> bool {
-        self.eval_bool(
-            r#"(function(){
-              var hit=false;
-              document.querySelectorAll('button,a,[role=button]').forEach(function(el){
-                var t=(el.textContent||'').toLowerCase();
-                if(t.indexOf('continue on web')>=0||t.indexOf('use web')>=0||
-                   t.indexOf('web version')>=0||t.indexOf('im browser')>=0){
-                  try{el.click();hit=true;}catch(e){}
-                }
-              });
-              return hit;
-            })()"#,
-        )
+        let mut guard = self.driver.borrow_mut();
+        match guard.as_mut() {
+            Some(driver) => operations::dismiss_qwen_blocks(driver.as_mut()),
+            None => false,
+        }
     }
 
     ///
@@ -992,16 +894,9 @@ return null;}})()"#,
     /// Ein Lade-Skelett bringt sofort Dutzende leerer Platzhalter mit; ein Scan
     /// darauf sah real 107 Elemente ohne einen einzigen Namen.
     fn wait_for_labeled_controls(&self) {
-        let deadline = Instant::now() + Duration::from_secs(30);
-        while Instant::now() < deadline {
-            let labeled = self.eval_i64(
-                "(function(){var n=0;document.querySelectorAll('button,[role=button],[aria-label],[data-testid]').forEach(function(e){var t=((e.innerText||e.textContent||'')+'').trim();if(e.getAttribute('aria-label')||e.getAttribute('title')||t)n++;});return n;})()",
-            );
-            if labeled >= 5 {
-                std::thread::sleep(Duration::from_millis(1500));
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(500));
+        let mut guard = self.driver.borrow_mut();
+        if let Some(driver) = guard.as_mut() {
+            operations::wait_for_labeled_controls(driver.as_mut());
         }
     }
 
@@ -1093,13 +988,7 @@ return null;}})()"#,
         let driver = guard
             .as_mut()
             .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-        let raw = driver
-            .evaluate(crate::brain_probe::PROBE_SCRIPT)
-            .map_err(|e| e.to_string())?;
-        let candidates: Vec<crate::brain_probe::Candidate> =
-            serde_json::from_value(raw).unwrap_or_default();
-        let proposals = crate::brain_probe::classify(&candidates);
-        Ok((candidates, proposals))
+        operations::scan_once(driver.as_mut())
     }
 
     /// Faehrt einen Vorschlag aus [`probe_surface`] live an der offenen Seite:
