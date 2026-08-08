@@ -1218,50 +1218,6 @@ return best?best.slice(0,300):null;})()"#;
         Some(text)
     }
 
-    /// Text eines sichtbaren Dialogs/Overlays ueber dem Composer, gekuerzt.
-    ///
-    /// Absichtlich OHNE Phrasenliste: hier geht es genau um den Fall, dass die
-    /// Liste den Text NICHT kennt. Gesucht wird deshalb nach der Bauform —
-    /// `role=dialog`, `aria-modal`, oder ein Element mit fester/absoluter
-    /// Positionierung und hohem z-index —, nicht nach dem Inhalt.
-    fn visible_overlay_text(&self) -> Option<String> {
-        let js = r#"(function(){
-var sel='[role=dialog],[role=alertdialog],[aria-modal=true],dialog[open]';
-var best='';
-var nodes=document.querySelectorAll(sel);
-for(var i=0;i<nodes.length;i++){
-  var e=nodes[i];var r=e.getBoundingClientRect();
-  if(r.width<40||r.height<20)continue;
-  var t=(e.innerText||'').replace(/\s+/g,' ').trim();
-  if(t.length>best.length)best=t;
-}
-if(!best){
-  var all=document.body?document.body.querySelectorAll('*'):[];
-  for(var j=0;j<all.length;j++){
-    var el=all[j];var st=window.getComputedStyle(el);
-    if(st.position!=='fixed'&&st.position!=='absolute')continue;
-    if(parseInt(st.zIndex||'0',10)<10)continue;
-    var rr=el.getBoundingClientRect();
-    if(rr.width<120||rr.height<40)continue;
-    if(st.visibility==='hidden'||st.display==='none'||parseFloat(st.opacity||'1')<0.2)continue;
-    var tt=(el.innerText||'').replace(/\s+/g,' ').trim();
-    if(tt.length>10&&tt.length<600&&tt.length>best.length)best=tt;
-  }
-}
-return best?best.slice(0,300):null;})()"#;
-        let value = self.eval(js).ok()?;
-        let text = value.as_str()?.trim().to_string();
-        if text.is_empty() {
-            return None;
-        }
-        // Das Echo der eigenen Frage ist kein fremder Dialog.
-        let sent = self.last_sent.borrow().clone();
-        if banner_is_prompt_echo(&text, &sent) {
-            return None;
-        }
-        Some(text)
-    }
-
     fn send_gemini(&mut self, text: &str) -> Result<i32, String> {
         let baseline = self.prepare_send_baseline();
         self.handle_interruptions();

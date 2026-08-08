@@ -492,6 +492,11 @@ fn runtime_lost_sessions(master_cookies: &[u8], runtime_cookies: &[u8]) -> Vec<&
 /// `profiles/kimi` und `profiles/chatgpt` gueltige Sitzungen trugen. Der Pool
 /// klont ausschliesslich aus dem Master — daher "Login nötig" trotz gueltiger
 /// Session. Reine Funktion auf den Rohbytes.
+// Reiner Kern des Vergleichs. Die Produktivfunktion
+// `master_missing_sessions_from_canonical` liest pro Brain ein eigenes
+// kanonisches Profil und kann diesen Kern deshalb nicht direkt nutzen;
+// hier bleibt er als pruefbare Fassung der Regel.
+#[cfg(test)]
 fn master_missing_sessions(canonical_cookies: &[u8], master_cookies: &[u8]) -> Vec<&'static str> {
     SESSION_PROOF_COOKIES
         .iter()

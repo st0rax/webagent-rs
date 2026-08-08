@@ -17,7 +17,6 @@
 //! aendert, ist nicht mehr nachvollziehbar, wenn er schiefgeht — und bei 3000
 //! Zeilen will man genau das nicht riskieren.
 
-use std::path::Path;
 
 // Bleibt vorerst in `benchmark`: parst die Zusammenfassungszeile eines
 // Testlaufs und gehoert thematisch hierher, wird dort aber noch von mehreren
