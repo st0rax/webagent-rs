@@ -538,6 +538,90 @@ pub(crate) fn live_screenshot_with(
     driver.capture_png().map_err(|e| e.to_string())
 }
 
+/// Faehrt einen Vorschlag aus [`crate::brain_probe::classify`] live an der
+/// offenen Seite: klicken, messbarer Zustandswechsel als Beleg, Rueckweg
+/// wiederherstellen. Kein `sel`-Parameter — die Original-Methode hat die
+/// Selektoren nie benutzt; der Selektoren-Satz ist der einzelne Vorschlag.
+pub(crate) fn verify_surface(
+    driver: &mut dyn PageDriver,
+    proposal: &crate::brain_probe::Proposal,
+) -> Result<crate::brain_probe::Verdict, String> {
+    wait_for_labeled_controls(driver);
+    crate::brain_probe::verify(driver, proposal).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod verify_surface_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    fn proposal() -> crate::brain_probe::Proposal {
+        crate::brain_probe::Proposal {
+            capability_key: "chat",
+            selector_key: "send_button",
+            selector: "button[data-testid='send-button']".to_string(),
+            confidence: 90,
+            evidence: "aria-label 'Nachricht senden'".to_string(),
+        }
+    }
+
+    fn verify_exprs() -> (String, String) {
+        let selectors = vec![proposal().selector];
+        (
+            crate::browser::js::toggle_state_expr_for(&selectors),
+            crate::browser::js::click_toggle_expr_for(&selectors),
+        )
+    }
+
+    #[test]
+    fn belegt_zustandswechsel_und_wiederherstellung() {
+        let (state_expr, click_expr) = verify_exprs();
+        let mut driver = MockPageDriver::new(
+            MockPageState::new()
+                .on_eval(LABELED_CONTROLS_EXPR, json!(5))
+                .on_eval_seq(&state_expr, vec![json!("before"), json!("after"), json!("before")])
+                .on_eval(&click_expr, json!(true)),
+        );
+        let verdict = verify_surface(&mut driver, &proposal()).unwrap();
+        assert_eq!(
+            verdict,
+            crate::brain_probe::Verdict {
+                capability_key: "chat",
+                selector_key: "send_button",
+                selector: "button[data-testid='send-button']".to_string(),
+                before: "before".to_string(),
+                after: "after".to_string(),
+                proven: true,
+                restored: Some(true),
+                note: "Zustandswechsel belegt, Ausgangszustand wiederhergestellt".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn nicht_anklickbar_ist_ok_ohne_beleg() {
+        let (state_expr, click_expr) = verify_exprs();
+        let mut driver = MockPageDriver::new(
+            MockPageState::new()
+                .on_eval(LABELED_CONTROLS_EXPR, json!(5))
+                .on_eval(&state_expr, json!("x"))
+                .on_eval(&click_expr, json!(false)),
+        );
+        let verdict = verify_surface(&mut driver, &proposal()).unwrap();
+        assert!(!verdict.proven);
+        assert_eq!(verdict.restored, None);
+    }
+
+    #[test]
+    fn fehler_wenn_kein_mock_skript_registriert() {
+        let mut driver = MockPageDriver::new(
+            MockPageState::new().on_eval(LABELED_CONTROLS_EXPR, json!(5)),
+        );
+        assert!(verify_surface(&mut driver, &proposal()).is_err());
+    }
+}
+
 #[cfg(test)]
 mod any_visible_tests {
     use super::*;

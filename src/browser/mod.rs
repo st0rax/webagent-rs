@@ -975,13 +975,12 @@ return null;}})()"#,
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
-        self.wait_for_labeled_controls();
         let verdict = {
             let mut guard = self.driver.borrow_mut();
             let driver = guard
                 .as_mut()
                 .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-            crate::brain_probe::verify(driver.as_mut(), proposal).map_err(|e| e.to_string())
+            operations::verify_surface(driver.as_mut(), proposal)
         };
         let _ = self.stop();
         verdict
