@@ -1145,9 +1145,13 @@ return null;}})()"#,
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
         self.wait_for_labeled_controls();
-        let (candidates, proposals) = self.scan_once()?;
-        let has_composer = proposals.iter().any(|p| p.selector_key == "composer");
-        let has_send = proposals.iter().any(|p| p.selector_key == "send_button");
+        let first = self.scan_once();
+        let has_composer = first
+            .as_ref()
+            .map_or(false, |(_, p)| p.iter().any(|p| p.selector_key == "composer"));
+        let has_send = first
+            .as_ref()
+            .map_or(false, |(_, p)| p.iter().any(|p| p.selector_key == "send_button"));
         let result = if has_composer && !has_send {
             eprintln!(
                 "[probe] Composer gefunden, Send-Button nicht — fuelle Editor und scanne erneut…"
@@ -1157,7 +1161,7 @@ return null;}})()"#,
             std::thread::sleep(Duration::from_millis(1200));
             self.scan_once()
         } else {
-            Ok((candidates, proposals))
+            first
         };
         if let Some(key) = open_key {
             let opened = match result {
