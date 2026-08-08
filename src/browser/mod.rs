@@ -948,22 +948,6 @@ return null;}})()"#,
         result
     }
 
-    /// Ein einzelner Scan gegen die offene Seite (Browser muss laufen).
-    ///
-    /// Mit der probe-Familie in `operations.rs` ist der Arbeitsteil dort
-    /// gelandet; der Backend-Methoden-Duenner bleibt als stable Helfer fuer
-    /// spaetere Aufrufer bestehen.
-    #[allow(dead_code)]
-    fn scan_once(
-        &self,
-    ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
-        let mut guard = self.driver.borrow_mut();
-        let driver = guard
-            .as_mut()
-            .ok_or_else(|| "Backend nicht gestartet".to_string())?;
-        operations::scan_once(driver.as_mut())
-    }
-
     /// Faehrt einen Vorschlag aus [`probe_surface`] live an der offenen Seite:
     /// klicken, messbarer Zustandswechsel als Beleg, Rueckweg wiederherstellen.
     /// Passt zu `probe_surface`, weil dort derselbe (eigene) Browser laeuft.
