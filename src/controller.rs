@@ -10,19 +10,22 @@ use crate::comms::CommsStore;
 use crate::executor::ShellExecutor;
 use crate::loop_guard::{loop_guard_message, shell_read_fingerprint};
 use crate::memory::MemoryStore;
-use crate::prompts::{autonomous_task_prompt, resume_continue_prompt, resume_recovery_prompt};
+use crate::prompts::autonomous_task_prompt;
 use crate::protocol::{self, Action};
 use crate::run_store::{RunMeta, RunStore};
 use crate::transcript::Transcript;
 
-const INCOMPLETE_RETRY_PROMPT: &str =
-    "[Controller] Die letzte Web-Antwort war unvollständig oder leer. \
-     Setze mit einer gültigen webagent/1-Antwort fort. \
-     Wenn die Aufgabe abgeschlossen ist, sende eine message-Action.";
+mod plan;
+mod resume;
+mod types;
+
+pub use plan::validate_action_plan;
+pub use types::{BrainTurn, RunOptions};
+#[cfg(test)]
+pub(crate) use resume::{incomplete_retry_backoff, is_valid_resume_conversation_ref};
 
 // Konfigurationskonstanten (aus CONVENTIONS.md: keine externe config-Crate)
 use crate::config::{max_observation_chars_for, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT};
-const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 const MEMORY_CONTEXT_LIMIT: usize = 5;
 const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
 
@@ -37,112 +40,6 @@ const MAX_NO_CHANGE_NUDGES: u32 = 2;
 /// Repair-Prompt („antworte im richtigen Format") kann nichts reparieren,
 /// was nie begonnen wurde, und kostet 10-35 s Roundtrip.
 const FAST_EMPTY_RESPONSE_CHARS: usize = 20;
-
-/// Exponential-Backoff-Basis/-Obergrenze zwischen incomplete-Retries.
-const INCOMPLETE_RETRY_BACKOFF_BASE_MS: u64 = 500;
-const INCOMPLETE_RETRY_BACKOFF_CAP_MS: u64 = 8_000;
-
-/// Backoff-Dauer vor dem `retry_index`-ten incomplete-Retry (1-basiert):
-/// `min(BASE * 2^(retry_index-1), CAP)`. Reine, überlauf­sichere Funktion, damit
-/// wiederholte incomplete-Antworten nicht sofort neu gefeuert werden. `retry_index`
-/// 0 wird wie 1 behandelt (BASE).
-fn incomplete_retry_backoff(retry_index: usize) -> Duration {
-    let exp = retry_index.saturating_sub(1).min(32) as u32;
-    let scaled = INCOMPLETE_RETRY_BACKOFF_BASE_MS
-        .checked_shl(exp)
-        .unwrap_or(INCOMPLETE_RETRY_BACKOFF_CAP_MS)
-        .min(INCOMPLETE_RETRY_BACKOFF_CAP_MS);
-    Duration::from_millis(scaled)
-}
-
-/// Hosts that must never be treated as a live chat session for resume.
-/// Includes reserved/test TLDs and classic documentation placeholders so a
-/// leaked mock `conversation_ref` cannot short-circuit a real run (phantom finish).
-fn is_blocked_resume_host(host: &str) -> bool {
-    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
-    if h.is_empty() {
-        return true;
-    }
-    // Explicit documentation / mock hosts seen in fixtures and failed runs.
-    if matches!(
-        h.as_str(),
-        "example.test"
-            | "example.com"
-            | "example.org"
-            | "example.net"
-            | "localhost"
-            | "127.0.0.1"
-            | "0.0.0.0"
-            | "::1"
-            | "[::1]"
-            | "test"
-            | "invalid"
-            | "local"
-    ) {
-        return true;
-    }
-    // RFC 2606 / special-use and common mock TLDs.
-    h.ends_with(".test")
-        || h.ends_with(".invalid")
-        || h.ends_with(".localhost")
-        || h.ends_with(".example")
-        || h.ends_with(".local")
-}
-
-/// Returns true only if `conversation_ref` looks like a real browser chat URL
-/// worth restoring. Invalid refs force the new_chat+transcript resume path.
-pub(crate) fn is_valid_resume_conversation_ref(reference: &str) -> bool {
-    let reference = reference.trim();
-    if reference.is_empty() {
-        return false;
-    }
-    let lower = reference.to_ascii_lowercase();
-    if !(lower.starts_with("https://") || lower.starts_with("http://")) {
-        return false;
-    }
-    // Strip scheme, then take authority (before path/query/fragment).
-    let without_scheme = reference
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .unwrap_or(reference);
-    let authority = without_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("")
-        .trim();
-    if authority.is_empty() {
-        return false;
-    }
-    // Drop userinfo if present; host is before optional :port (IPv6 in []).
-    let hostport = authority.rsplit('@').next().unwrap_or(authority);
-    let host = if hostport.starts_with('[') {
-        hostport
-            .split(']')
-            .next()
-            .unwrap_or(hostport)
-            .trim_start_matches('[')
-    } else {
-        hostport.split(':').next().unwrap_or(hostport)
-    };
-    if host.is_empty() || is_blocked_resume_host(host) {
-        return false;
-    }
-    true
-}
-
-/// Ergebnis eines einzelnen Brain-Turns.
-#[derive(Debug, Clone)]
-pub struct BrainTurn {
-    pub text: String,
-    pub complete: bool,
-}
-
-/// Optionen für `AgentController::run_with_options` (REPL: Browser-Session offen lassen).
-#[derive(Debug, Clone, Copy, Default)]
-pub struct RunOptions {
-    pub skip_brain_start: bool,
-    pub skip_brain_stop: bool,
-}
 
 /// AgentController orchestriert Brain + Executor im Plan/Act/Observe-Loop.
 pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
@@ -491,38 +388,6 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         );
         meta.clone()
     }
-
-    /// Versucht Recovery nach incomplete Response.
-    fn recover_from_incomplete(
-        &mut self,
-        transcript: &mut Transcript,
-        context: &str,
-    ) -> Option<BrainTurn> {
-        self.incomplete_retries += 1;
-        let _ = transcript.append(
-            "system",
-            &format!(
-                "brain_incomplete_retry={}/{} context={}",
-                self.incomplete_retries,
-                Self::MAX_INCOMPLETE_RETRIES,
-                context
-            ),
-            HashMap::new(),
-        );
-
-        if let Some(meta) = &self.meta {
-            let _ = self.run_store.save(meta);
-        }
-
-        if self.incomplete_retries > Self::MAX_INCOMPLETE_RETRIES {
-            return None;
-        }
-
-        // Exponential-Backoff (gedeckelt) statt sofortigem Neufeuern.
-        std::thread::sleep(incomplete_retry_backoff(self.incomplete_retries));
-        Some(self.run_once(INCOMPLETE_RETRY_PROMPT, Some(transcript)))
-    }
-
     /// Speichert completed action.
     fn record_completed_action(&mut self, action_id: &str, result: &str) {
         self.completed_actions
@@ -967,69 +832,6 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         }
         (turn.text, false)
     }
-
-    /// Resume: Initial Turn (restore oder fallback).
-    fn resume_initial_turn(&mut self, transcript: &mut Transcript) -> BrainTurn {
-        // Benoetigte Werte vorab kopieren, damit kein langlebiger &self.meta-Borrow
-        // die spaeteren &mut self-Aufrufe (run_once) blockiert.
-        let conv_ref = self.meta.as_ref().unwrap().conversation_ref.clone();
-        let task = self.meta.as_ref().unwrap().task.clone();
-        let mut restored = false;
-
-        if let Some(cr) = conv_ref.as_ref() {
-            if !is_valid_resume_conversation_ref(cr) {
-                // Mock/placeholder refs (e.g. https://example.test/...) must not
-                // look like a successful restore — that produced phantom done runs.
-                let _ = transcript.append(
-                    "system",
-                    &format!(
-                        "resume_invalid_conversation_ref={}; forcing new_chat fallback",
-                        cr
-                    ),
-                    HashMap::new(),
-                );
-            } else {
-                restored = self.brain.restore_conversation(cr).unwrap_or(false);
-            }
-        }
-
-        let ready_timeout =
-            crate::timeouts::resolve_timeout("ensure_ready", self.brain.brain_id(), "", None);
-        if restored
-            && self.brain.ensure_ready(ready_timeout).ok()
-                == Some(crate::brain::SessionState::Ready)
-        {
-            let _ = transcript.append(
-                "system",
-                &format!(
-                    "resume_restored conversation_ref={}",
-                    conv_ref.as_ref().unwrap()
-                ),
-                HashMap::new(),
-            );
-            let restored_turn = self.run_once(&resume_continue_prompt(), Some(transcript));
-            if restored_turn.complete {
-                return restored_turn;
-            }
-            let _ = transcript.append(
-                "system",
-                "resume_restored_unresponsive; falling back to new chat",
-                HashMap::new(),
-            );
-        }
-
-        let _ = self.brain.new_chat();
-        let tail = transcript
-            .recovery_tail(RESUME_TRANSCRIPT_CHAR_BUDGET)
-            .unwrap_or_default();
-        let _ = transcript.append(
-            "system",
-            "resume_fallback=new_chat+transcript",
-            HashMap::new(),
-        );
-        self.run_once(&resume_recovery_prompt(&task, &tail), Some(transcript))
-    }
-
     fn finish_run_cleanup(&mut self, opts: RunOptions) {
         self.executor.stop();
         if !opts.skip_brain_stop {
@@ -2295,125 +2097,5 @@ mod tests {
 
         assert_eq!(meta.status, "done");
         assert_eq!(controller.brain().sent_message_count(), 2);
-    }
-}
-
-pub fn validate_action_plan(actions: &[crate::protocol::Action]) -> Result<(), String> {
-    if actions.is_empty() {
-        return Err("Aktionsplan ist leer".to_string());
-    }
-
-    for (idx, action) in actions.iter().enumerate() {
-        if action.id.trim().is_empty() {
-            return Err(format!("Action an Position {} hat keine ID", idx));
-        }
-
-        match action.action_type {
-            crate::protocol::ActionType::Shell => {
-                if action.command.trim().is_empty() {
-                    return Err(format!(
-                        "Shell-Action '{}' hat keinen Befehl (command)",
-                        action.id
-                    ));
-                }
-            }
-            crate::protocol::ActionType::Message => {
-                if action.text.trim().is_empty() {
-                    return Err(format!(
-                        "Message-Action '{}' hat keinen Text (text)",
-                        action.id
-                    ));
-                }
-            }
-            crate::protocol::ActionType::Finish => {}
-            crate::protocol::ActionType::Edit => {
-                if action.path.trim().is_empty() {
-                    return Err(format!(
-                        "Edit-Action '{}' hat keinen Pfad (path)",
-                        action.id
-                    ));
-                }
-            }
-            crate::protocol::ActionType::Write => {
-                if action.path.trim().is_empty() {
-                    return Err(format!(
-                        "Write-Action '{}' hat keinen Pfad (path)",
-                        action.id
-                    ));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod validate_action_plan_tests {
-    use super::*;
-    use crate::protocol::{Action, ActionType};
-
-    #[test]
-    fn test_empty_plan_rejected() {
-        let plan: Vec<Action> = vec![];
-        assert!(validate_action_plan(&plan).is_err());
-    }
-
-    #[test]
-    fn test_valid_shell_and_file_actions_accepted() {
-        let plan = vec![
-            Action {
-                id: "step-1".to_string(),
-                action_type: ActionType::Shell,
-                command: "Get-Location".to_string(),
-                text: "".to_string(),
-                timeout_seconds: 30.0,
-                path: "".to_string(),
-                old_string: "".to_string(),
-                new_string: "".to_string(),
-                content: "".to_string(),
-            },
-            Action {
-                id: "write-1".to_string(),
-                action_type: ActionType::Write,
-                command: "".to_string(),
-                text: "".to_string(),
-                timeout_seconds: 30.0,
-                path: "src/test.txt".to_string(),
-                old_string: "".to_string(),
-                new_string: "".to_string(),
-                content: "hello".to_string(),
-            },
-        ];
-        assert!(validate_action_plan(&plan).is_ok());
-    }
-
-    #[test]
-    fn test_missing_required_fields_rejected() {
-        let plan_missing_cmd = vec![Action {
-            id: "step-1".to_string(),
-            action_type: ActionType::Shell,
-            command: "   ".to_string(),
-            text: "".to_string(),
-            timeout_seconds: 30.0,
-            path: "".to_string(),
-            old_string: "".to_string(),
-            new_string: "".to_string(),
-            content: "".to_string(),
-        }];
-        assert!(validate_action_plan(&plan_missing_cmd).is_err());
-
-        let plan_missing_path = vec![Action {
-            id: "step-2".to_string(),
-            action_type: ActionType::Write,
-            command: "".to_string(),
-            text: "".to_string(),
-            timeout_seconds: 30.0,
-            path: "".to_string(),
-            old_string: "".to_string(),
-            new_string: "".to_string(),
-            content: "hello".to_string(),
-        }];
-        assert!(validate_action_plan(&plan_missing_path).is_err());
     }
 }
