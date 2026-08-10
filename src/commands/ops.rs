@@ -958,6 +958,122 @@ pub fn cmd_maintenance_check(json: bool, pytest: bool, pytest_timeout: f64) -> i
     }
 }
 
+/// Verifikationslauf `webagent verify` (Phase 6 des Capability-Proof-Plans).
+///
+/// Faehrt fuer jede Brain die ausgewaehlten Faehigkeiten in EINER Sitzung,
+/// misst sie real im Browser und schreibt je Befund einen Record in
+/// `proofs.jsonl`. Die eigentliche Messlogik lebt in
+/// `webagent::browser::verify`; hier passiert nur Argumentaufloesung, Loop,
+/// Ausgabe und Exit-Code. Belege werden IMMER geschrieben (auch Unreachable),
+/// aber es gibt keine Writes an `brain_score` oder `circuit_breaker` — der
+/// Befund ist ein Klartext-Zeugnis, kein Level.
+///
+/// Exit-Code 0, wenn der Lauf durchlief (auch wenn einzelne Faehigkeiten
+/// Unreachable sind); != 0 nur bei Konfigurations-/Store-Fehlern.
+pub fn cmd_verify(brain_ids: Option<Vec<String>>, caps: Vec<String>, headless: bool) -> i32 {
+    use std::io::Write;
+    use webagent::browser::verify::{probe_message, resolve_verify_targets, verify_capabilities, verify_records};
+    use webagent::capability_proof::{record_proof, ProofOutcome};
+
+    const PREFLIGHT_SECS: f64 = 15.0;
+    let mut out = std::io::stdout();
+
+    let (targets, warnings) = match resolve_verify_targets(&caps) {
+        Ok(x) => x,
+        Err(msg) => {
+            eprintln!("[verify] {msg}");
+            return 1;
+        }
+    };
+    for w in &warnings {
+        eprintln!("[verify] Warnung: {w}");
+    }
+    if targets.is_empty() {
+        eprintln!("[verify] keine fahrbaren Faehigkeiten ausgewaehlt");
+        return 1;
+    }
+    let ids: Vec<String> = match brain_ids {
+        Some(ids) if !ids.is_empty() => ids,
+        _ => webagent::config::available_brain_ids(),
+    };
+    if ids.is_empty() {
+        eprintln!("[verify] keine Brains registriert");
+        return 1;
+    }
+    let keys: Vec<&str> = targets.iter().map(|c| c.key).collect();
+    println!(
+        "[verify] {} Brain(s), {} Faehigkeit(en): {}",
+        ids.len(),
+        keys.len(),
+        keys.join(", ")
+    );
+    if caps.iter().any(|c| c == "stop_generation")
+        && !(caps.iter().any(|c| c == "chat") && caps.iter().any(|c| c == "new_chat"))
+    {
+        println!("[verify] stop_generation laeuft in der Generation-Sequenz: chat und new_chat werden mitbelegt");
+    }
+    out.flush().ok();
+    let probe = probe_message(&webagent::now_rfc3339());
+    let mut exit = 0;
+    let mut measured = 0usize;
+    let mut unreachable = 0usize;
+    for id in &ids {
+        println!("[verify] {id}: Start");
+        out.flush().ok();
+        let mut backend = match webagent::browser::WebBrainBackend::from_config(id) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[verify] {id}: Backend-Konfiguration fehlt: {e}");
+                exit = 1;
+                continue;
+            }
+        };
+        let results =
+            verify_capabilities(&mut backend, headless, &targets, &probe, PREFLIGHT_SECS);
+        for rec in verify_records(id, &results) {
+            record_proof(rec);
+        }
+        for r in &results {
+            match r.outcome {
+                ProofOutcome::Unreachable => unreachable += 1,
+                _ => measured += 1,
+            }
+            let status = match r.outcome {
+                ProofOutcome::Passed => "Passed",
+                ProofOutcome::Failed => "Failed",
+                ProofOutcome::Unreachable => "Unreachable",
+            };
+            println!(
+                "[verify] {id}: {} = {status} ({}ms) — {}",
+                r.measurement.capability_key, r.latency_ms, r.measurement.note
+            );
+            out.flush().ok();
+        }
+        out.flush().ok();
+    }
+
+    // Ein Lauf, der ausschliesslich `Unreachable` liefert, hat NICHTS gemessen.
+    // `Unreachable` entzieht bewusst keinen Beleg (§6) — deshalb sieht so ein
+    // Lauf im Store unauffaellig aus, und am 2026-08-09 waren 128 von 195
+    // Eintraegen `start_failed`. Ohne diese Meldung sieht "fertig" aus wie
+    // "geprueft", also genau die Selbsttaeuschung, gegen die das Feature gebaut
+    // ist. Deshalb laut und mit Exitcode != 0.
+    if measured == 0 && unreachable > 0 {
+        eprintln!();
+        eprintln!(
+            "[verify] KEIN EINZIGER BELEG: alle {unreachable} Pruefungen endeten \
+             'Unreachable' — dieser Lauf hat nichts gemessen."
+        );
+        eprintln!(
+            "[verify] Bestehende Belege sind unveraendert (Unreachable entzieht nie). \
+             Ursache pruefen: Login, Cloudflare, Browserstart, offener Circuit-Breaker."
+        );
+        exit = 1;
+    }
+
+    exit
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

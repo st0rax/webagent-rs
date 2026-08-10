@@ -1382,8 +1382,8 @@ mod tests {
         // aber wer bei jedem langsamen Turn Alarm schlaegt, erzieht zum
         // Wegsehen. 10 min ist der Kompromiss; dieser Test haelt die
         // Begruendung fest, damit die Zahl nicht unbemerkt verrutscht.
-        assert!(STALL_WARN_SECONDS >= 300, "zu nervoes");
-        assert!(STALL_WARN_SECONDS <= 1800, "zu traege - 3h Stillstand fiel so durch");
+        const _: () = assert!(STALL_WARN_SECONDS >= 300, "zu nervoes");
+        const _: () = assert!(STALL_WARN_SECONDS <= 1800, "zu traege - 3h Stillstand fiel so durch");
     }
 
     fn test_app(agents: Vec<AgentView>) -> App {

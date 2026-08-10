@@ -888,9 +888,9 @@ mod live_diagnose_tests {
         MockPageState::new()
             .with_url(url)
             .on_eval(CF_CHALLENGE_EXPR, json!(false))
-            .on_eval(&visibility_expr_for(sel, "login_button"), json!(false))
-            .on_eval(&visibility_expr_for(sel, "composer"), json!(true))
-            .on_eval(&count_expr_for(sel), json!(3))
+            .on_eval(visibility_expr_for(sel, "login_button"), json!(false))
+            .on_eval(visibility_expr_for(sel, "composer"), json!(true))
+            .on_eval(count_expr_for(sel), json!(3))
     }
 
     #[test]
@@ -913,7 +913,7 @@ mod live_diagnose_tests {
     fn sichtbarer_login_button_setzt_login_button_visible() {
         let sel = diagnose_sel();
         let state = diagnose_state("https://chatgpt.com/c/abc", &sel)
-            .on_eval(&visibility_expr_for(&sel, "login_button"), json!(true));
+            .on_eval(visibility_expr_for(&sel, "login_button"), json!(true));
         let mut driver = MockPageDriver::new(state);
         let diag = live_diagnose(&mut driver, &sel, "chatgpt", SessionState::LoginRequired).unwrap();
         assert!(diag.login_button_visible);
@@ -1080,7 +1080,7 @@ mod live_survey_tests {
             "buttons": []
         });
         let mut driver = MockPageDriver::new(
-            wait_only_state().on_eval(&dom_report_expr(&sel), canned.clone()),
+            wait_only_state().on_eval(dom_report_expr(&sel), canned.clone()),
         );
         assert_eq!(live_survey(&mut driver, &sel), Ok(canned));
     }
@@ -1097,7 +1097,7 @@ mod live_survey_tests {
         let mut driver = MockPageDriver::new(
             wait_only_state()
                 .on_eval(&click_expr, json!(true))
-                .on_eval(&dom_report_expr(&sel), canned.clone()),
+                .on_eval(dom_report_expr(&sel), canned.clone()),
         );
         assert_eq!(
             live_survey_with(&mut driver, &sel, Some("model_menu")),

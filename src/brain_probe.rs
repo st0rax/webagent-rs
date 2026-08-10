@@ -517,6 +517,45 @@ pub struct Verdict {
     pub note: String,
 }
 
+/// **Ein** Weg in den Store: die Messung der Oberflaeche, quellenunabhaengig.
+///
+/// `Verdict` ist die Messung, `capability_proof::ProofOutcome` das Urteil —
+/// der Uebergang passiert in `capability_proof::record_measurement`, nicht hier.
+/// Diese Konvertierung sitzt bewusst in `brain_probe` und nicht in
+/// `capability_proof`: das rechnende Modul bleibt frei von Browser-Typen (§6 des
+/// Capability-Proof-Plans).
+///
+/// `winning_selector` ist der tatsaechlich geklickte Selektor — der im Betrieb
+/// aufgeloeste Gewinner der Fallback-Kette, nicht der erste Eintrag.
+impl From<&Verdict> for crate::capability_proof::Measurement {
+    fn from(v: &Verdict) -> Self {
+        Self {
+            capability_key: v.capability_key.to_string(),
+            before: v.before.clone(),
+            after: v.after.clone(),
+            proven: v.proven,
+            restored: v.restored,
+            note: v.note.clone(),
+            winning_selector: Some(v.selector.clone()),
+        }
+    }
+}
+
+/// Baut aus einer belegten Faehigkeit und dem aufgeloesten Gewinner der
+/// Fallback-Kette einen [`Proposal`] fuer die Nachpruefung an der lebenden
+/// Oberflaeche (`operations::verify_surface`). Der Gewinner ist der Selektor,
+/// den `resolve_fallback` wirklich getroffen hat — nicht der erste
+/// Katalogeintrag.
+pub fn proposal_from(cap: &crate::capability::Capability, winner: &str) -> Proposal {
+    Proposal {
+        capability_key: cap.key,
+        selector_key: cap.needs[0],
+        selector: winner.to_string(),
+        confidence: 100,
+        evidence: format!("aufgeloester Fallback: {winner}"),
+    }
+}
+
 /// Klickt einen Vorschlag an und prueft, ob sich ein lesbarer Zustand aendert.
 ///
 /// Wichtig: **kein** Zustandswechsel ist ein gueltiges Ergebnis, kein Fehler.
@@ -997,6 +1036,20 @@ mod tests {
             confidence: 95,
             evidence: "data-testid=think".into(),
         }
+    }
+
+    #[test]
+    fn proposal_from_nimmt_den_gewinner_nicht_den_ersten_eintrag() {
+        let cap = crate::capability::CATALOG
+            .iter()
+            .find(|c| c.key == "reasoning_toggle")
+            .expect("capability");
+        let p = proposal_from(cap, "[data-testid='think']");
+        assert_eq!(p.capability_key, "reasoning_toggle");
+        assert_eq!(p.selector_key, "reasoning_toggle");
+        assert_eq!(p.selector, "[data-testid='think']");
+        assert_eq!(p.confidence, 100);
+        assert!(p.evidence.contains("[data-testid='think']"));
     }
 
     /// Baut den Mock so, wie `verify` fragt: Zustandsauslese als Antwortfolge,

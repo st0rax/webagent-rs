@@ -106,6 +106,22 @@ pub enum Commands {
         json: bool,
     },
 
+    /// Capability-Verifikation: echte Live-Laeufe belegen die Faehigkeiten
+    /// (ProofKind-gesteuert, schreibt Belege nach proofs.jsonl)
+    Verify {
+        /// Nur diese Gehirne pruefen (leer = alle)
+        #[arg(long)]
+        brain: Vec<String>,
+
+        /// Nur diese Faehigkeiten pruefen (wiederholbar); leer = alle
+        #[arg(long)]
+        cap: Vec<String>,
+
+        /// Headless statt sichtbar (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// Watchdog: Scannt verwaiste Runs, Bridge-Locks, Profil-Locks (Dry-Run/Repair)
     Watchdog {
         /// Bridge-Lock-Root (bot2bot Verzeichnis)

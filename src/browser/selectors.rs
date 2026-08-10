@@ -57,6 +57,12 @@ impl Selectors {
         }
         js::js_selectors(&sels)
     }
+
+    /// Der rohe JSON-Wert (für `js_scan_indexed` und `selector_hash_for`, die
+    /// das komplette Objekt über alle Schlüssel scannen).
+    pub fn as_value(&self) -> &Value {
+        &self.inner
+    }
 }
 
 impl Default for Selectors {

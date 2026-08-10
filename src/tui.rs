@@ -849,33 +849,27 @@ fn run_tui_ratatui(
                         // Schalten einer Faehigkeit, das einen Browser fahren
                         // muss.
                         KeyCode::Char('t') if app.view == View::Config => {
-                            match crate::tui_config::SETTINGS.get(app.cfg_selected) {
-                                Some(setting) => {
-                                    app.cfg_status = match crate::tui_config::cycle(setting) {
-                                        Ok(next) => {
-                                            format!("{} = {next} — gilt ab dem naechsten Lauf", setting.key)
-                                        }
-                                        // Ein fehlgeschlagenes Speichern MUSS
-                                        // dastehen: sonst zeigt die Zeile den
-                                        // neuen Wert und die Platte den alten.
-                                        Err(e) => format!("{}: nicht gespeichert — {e}", setting.key),
-                                    };
-                                }
-                                None => {}
+                            if let Some(setting) = crate::tui_config::SETTINGS.get(app.cfg_selected) {
+                                app.cfg_status = match crate::tui_config::cycle(setting) {
+                                    Ok(next) => {
+                                        format!("{} = {next} — gilt ab dem naechsten Lauf", setting.key)
+                                    }
+                                    // Ein fehlgeschlagenes Speichern MUSS
+                                    // dastehen: sonst zeigt die Zeile den
+                                    // neuen Wert und die Platte den alten.
+                                    Err(e) => format!("{}: nicht gespeichert — {e}", setting.key),
+                                };
                             }
                         }
                         KeyCode::Char('r') if app.view == View::Config => {
-                            match crate::tui_config::SETTINGS.get(app.cfg_selected) {
-                                Some(setting) => {
-                                    app.cfg_status = match crate::tui_config::reset(setting) {
-                                        Ok(()) => format!(
-                                            "{} zurueckgesetzt — es gilt wieder die Vorgabe",
-                                            setting.key
-                                        ),
-                                        Err(e) => format!("{}: nicht zurueckgesetzt — {e}", setting.key),
-                                    };
-                                }
-                                None => {}
+                            if let Some(setting) = crate::tui_config::SETTINGS.get(app.cfg_selected) {
+                                app.cfg_status = match crate::tui_config::reset(setting) {
+                                    Ok(()) => format!(
+                                        "{} zurueckgesetzt — es gilt wieder die Vorgabe",
+                                        setting.key
+                                    ),
+                                    Err(e) => format!("{}: nicht zurueckgesetzt — {e}", setting.key),
+                                };
                             }
                         }
                         KeyCode::Char('j') if app.view == View::Config => {

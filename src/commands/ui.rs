@@ -486,6 +486,7 @@ fn selectors_from_proposals(proposals: &[webagent::brain_probe::Proposal]) -> se
 /// Erkennt Bedienelemente einer Chat-Oberflaeche und macht daraus Selektoren —
 /// fuer einen neuen Brain (`--url`) oder als Nachvermessung eines bestehenden
 /// (`--brain`). Mit `--write` wird das Brain automatisch eingebunden.
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_probe(
     url: Option<&str>,
     brain_id: Option<&str>,
@@ -503,7 +504,7 @@ pub fn cmd_probe(
         (Some(b), None) => (b.to_string(), None, false),
         (None, Some(u)) => {
             let id = brain_id
-                .map(|s| webagent::config::sanitize_brain_id(s))
+                .map(webagent::config::sanitize_brain_id)
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| brain_id_from_url(u));
             (id, Some(u.to_string()), true)
@@ -611,15 +612,25 @@ pub fn cmd_probe(
     }
 
     // Verifikation: nur die Vorschlaege, die einen messbaren Zustandswechsel
-    // versprechen (Toggles/Schalter). Composer/Senden wuerden Nebenwirkungen
-    // erzeugen — die bleiben ein Fund, kein Beleg.
+    // versprechen — Auswahl ueber die Beleg-Form (§8 des Capability-Proof-
+    // Plans), nicht ueber ein Namensmuster auf `selector_key`. Composer/Senden
+    // wuerden Nebenwirkungen erzeugen — die bleiben ein Fund, kein Beleg. Die
+    // Beleg-Form entscheidet: nur Round-Trip-Belege passen in den Prober
+    // (zustandslokal, auf der Startseite), Generation/Navigation/Induced
+    // gehoeren zu `webagent verify`.
     let mut verdicts: Vec<Verdict> = Vec::new();
     if verify {
         println!();
-        for p in proposals
-            .iter()
-            .filter(|p| p.selector_key.ends_with("toggle") || p.selector_key.contains("switch"))
-        {
+        for p in proposals.iter().filter(|p| {
+            matches!(
+                webagent::capability::capability(p.capability_key).map(|c| c.proof),
+                Some(
+                    webagent::capability::ProofKind::RoundTripToggle
+                        | webagent::capability::ProofKind::RoundTripMenu
+                        | webagent::capability::ProofKind::RoundTripSegment
+                )
+            )
+        }) {
             println!("   pruefe {} ({})…", p.selector_key, p.selector);
             match backend.verify_surface(headless, p) {
                 Ok(v) => {
@@ -646,7 +657,20 @@ pub fn cmd_probe(
 
     // Schreiben: die Vorschlaege als Selektoren-Datei ablegen und das Brain
     // (falls neu) in custom_brains.json registrieren.
-    let all: Vec<Proposal> = proposals;
+    //
+    // FAIL-Selektoren landen NICHT in der Datei (§3 des Plans): ein Selektor,
+    // dessen Round-Trip keinen Zustandswechsel belegt hat, ist ein Fund ohne
+    // Beweis — in die Nutzerdatei gehoert er nicht. Unverifizierte Funde
+    // (Composer, Senden …) bleiben: das sind Beobachtungen, keine Behauptungen.
+    let failed: Vec<&str> = verdicts
+        .iter()
+        .filter(|v| !v.proven)
+        .map(|v| v.selector_key)
+        .collect();
+    let all: Vec<Proposal> = proposals
+        .into_iter()
+        .filter(|p| !failed.contains(&p.selector_key))
+        .collect();
     let fresh = selectors_from_proposals(&all);
     let dir = webagent::config::user_selectors_dir();
     if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -743,6 +767,28 @@ pub fn cmd_probe(
             "             Verifikation: {passed}/{} belegt",
             verdicts.len()
         );
+
+        // Belege in den Store: JEDER probe --verify-Lauf schreibt sein Urteil,
+        // auch das "Failed" — das ist das "letztes Urteil gewinnt" des Plans.
+        // Der Selektor-Hash wird erst NACH dem Schreiben ueber
+        // `load_selectors` gebildet: die Datei ist die Wahrheit, die das Level
+        // naechste Runde liest. Wuerde man vorher hashieren, verfiele der
+        // frische Beleg sofort als "Selektoren geaendert".
+        let sel_now = webagent::config::load_selectors(&id).ok();
+        for v in &verdicts {
+            let m: webagent::capability_proof::Measurement = v.into();
+            let hash = webagent::capability::capability(v.capability_key)
+                .and_then(|c| sel_now.as_ref().map(|s| {
+                    webagent::capability_proof::selector_hash_for(c, s)
+                }))
+                .unwrap_or(0);
+            let outcome = if v.proven {
+                webagent::capability_proof::ProofOutcome::Passed
+            } else {
+                webagent::capability_proof::ProofOutcome::Failed
+            };
+            webagent::capability_proof::record_measurement(&id, &m, outcome, hash, 0);
+        }
     }
     0
 }

@@ -1550,7 +1550,7 @@ pub fn debug_port(brain_id: &str) -> u16 {
 }
 
 /// FNV-1a-Hash (gemeinfrei) für die stabile Port-Zuteilung.
-fn fnv1a(s: &str) -> u32 {
+pub fn fnv1a(s: &str) -> u32 {
     let mut h: u32 = 2166136261;
     for b in s.bytes() {
         h ^= b as u32;

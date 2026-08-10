@@ -80,3 +80,70 @@ pub fn toggle_state_expr_for(selectors: &[String]) -> String {
 pub fn click_toggle_expr_for(selectors: &[String]) -> String {
     js_scan(&js_selectors(selectors), CLICK_TOGGLE_BODY, "false")
 }
+
+/// Baut ein IIFE, das ALLE Selektorlisten des kompletten Selektor-Objekts in
+/// fester Reihenfolge durchlaeuft und `body` auf jeden Selektor `S[i]` anwendet.
+///
+/// Der Flat-Index `i` zaehlt ueber Schluesel-Grenzen hinweg; `body` liefert ein
+/// Objekt mit `i` und `v` (dem Selektor), `default` greift, wenn nichts matcht
+/// — fuer `resolve_fallback` in der Capability-Verifikation (§5 des Plans):
+/// welcher Eintrag der Fallback-Kette eines Brains einen Zustand wirklich
+/// traegt, soll messbar im Beleg landen, nicht die Annahme des Katalogs.
+pub fn js_scan_indexed(all: &serde_json::Value, body: &str, default: &str) -> String {
+    let mut flat: Vec<String> = Vec::new();
+    if let Some(obj) = all.as_object() {
+        for v in obj.values() {
+            if let Some(arr) = v.as_array() {
+                for s in arr {
+                    if let Some(str) = s.as_str() {
+                        flat.push(str.to_string());
+                    }
+                }
+            }
+        }
+    }
+    js_scan(&js_selectors(&flat), body, default)
+}
+
+/// Rumpf fuer `js_scan_indexed`: erster Selektor mit echter Flaeche gewinnt,
+/// liefert `{i, v}` — der aufgeloeste Gewinner der Fallback-Kette.
+pub const FALLBACK_VISIBLE_BODY: &str = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return {i:i,v:S[i]};}";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample() -> serde_json::Value {
+        serde_json::json!({
+            "composer": ["textarea[name=\"prompt\"]"],
+            "assistant_message": ["div.prose", "div.message"],
+        })
+    }
+
+    #[test]
+    fn scan_indexed_baett_die_gesamte_flat_liste_in_ordnung() {
+        let expr = js_scan_indexed(&sample(), FALLBACK_VISIBLE_BODY, "{i:-1,v:null}");
+        // Alle vier Eintraege, in Objekt-Reihenfolge (composer zuerst).
+        assert!(expr.contains("\"textarea[name=\\\"prompt\\\"]\""));
+        assert!(expr.contains("\"div.prose\""));
+        assert!(expr.contains("\"div.message\""));
+        let a = expr.find("\"div.prose\"").unwrap();
+        let b = expr.find("\"div.message\"").unwrap();
+        assert!(a < b, "assistant_message bleibt in Liste-Reihenfolge");
+    }
+
+    #[test]
+    fn scan_indexed_bringt_prelude_und_body_mit() {
+        let expr = js_scan_indexed(&sample(), FALLBACK_VISIBLE_BODY, "{i:-1,v:null}");
+        assert!(expr.contains("var __p=function(s)"));
+        assert!(expr.contains("return {i:i,v:S[i]};"));
+        assert!(expr.contains("return {i:-1,v:null};"));
+    }
+
+    #[test]
+    fn scan_indexed_leere_objekte_geben_default() {
+        let expr = js_scan_indexed(&serde_json::json!({}), FALLBACK_VISIBLE_BODY, "{i:-1,v:null}");
+        assert!(expr.contains("var S=[];"));
+        assert!(expr.contains("return {i:-1,v:null};"));
+    }
+}

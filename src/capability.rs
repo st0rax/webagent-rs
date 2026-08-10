@@ -28,7 +28,34 @@
 //! Fähigkeiten. Alles, was das Brain anbietet aber noch nicht fahrbar ist,
 //! landet im Questlog.
 
+use crate::capability_proof::selector_hash_for;
 use crate::config::load_selectors;
+
+/// Wie eine Fähigkeit zu belegen ist — steuert auch, **was** `verify` auslöst
+/// (§8 des Capability-Proof-Plans). Die Beleg-Form gehört in dieselbe Zeile wie
+/// `needs`, `driveable` und `attainable`.
+///
+/// `None` nur für Katalog-Einträge ohne Beleg-Form: nicht `driveable` oder
+/// nicht `attainable`. Der Vollständigkeits-Test unten erzwingt den
+/// Zusammenhang: genau die fahrbaren und erreichbaren Fähigkeiten haben eine
+/// Beleg-Form, alle anderen `None`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProofKind {
+    /// Probe senden, Antwort abwarten (Dreier-ODER wie `wait_response`).
+    Generation,
+    /// Auf chats Generierung aufgesattelt: Stop sichtbar → Klick → weg.
+    Induced,
+    /// URL-Paar vorher/nachher (`get_conversation_ref`, `open_section`).
+    Navigation,
+    /// Zustandswechsel mit Rückkehr, wie `operations::verify_surface`.
+    RoundTripToggle,
+    /// `list_menu` → Eintrag ≠ aktuell → hin → zurück.
+    RoundTripMenu,
+    /// Segmentleiste, in der alle Stellungen dauerhaft sichtbar sind.
+    RoundTripSegment,
+    /// Kein Beleg definiert — Fähigkeit ist nicht fahrbar oder nicht erreichbar.
+    None,
+}
 
 /// Eine bekannte Webchat-Fähigkeit (das Universum, nicht das Angebot).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +67,9 @@ pub struct Capability {
     /// Selektor-Schlüssel, die alle vorhanden sein müssen, damit die Fähigkeit
     /// fahrbar ist.
     pub needs: &'static [&'static str],
+    /// Beleg-Form dieser Fähigkeit (§5 des Plans). `None` nur bei nicht
+    /// fahrbaren oder nicht erreichbaren Einträgen.
+    pub proof: ProofKind,
     /// Ob der Agent die Fähigkeit heute bedienen kann. `false` = Katalogeintrag
     /// ohne Code; zählt nie zum Level, erscheint aber als Quest.
     pub driveable: bool,
@@ -60,6 +90,7 @@ pub const CATALOG: &[Capability] = &[
         key: "chat",
         label: "Text senden und Antwort lesen",
         needs: &["composer", "send_button", "assistant_message"],
+        proof: ProofKind::Generation,
         driveable: true,
         attainable: true,
     },
@@ -67,6 +98,7 @@ pub const CATALOG: &[Capability] = &[
         key: "new_chat",
         label: "Neuen Chat beginnen",
         needs: &["new_chat_button"],
+        proof: ProofKind::Navigation,
         driveable: true,
         attainable: true,
     },
@@ -74,6 +106,7 @@ pub const CATALOG: &[Capability] = &[
         key: "stop_generation",
         label: "Laufende Antwort abbrechen",
         needs: &["stop_button"],
+        proof: ProofKind::Induced,
         driveable: true,
         attainable: true,
     },
@@ -84,6 +117,7 @@ pub const CATALOG: &[Capability] = &[
         key: "reasoning_toggle",
         label: "Reasoning/Thinking umschalten",
         needs: &["reasoning_toggle"],
+        proof: ProofKind::RoundTripToggle,
         driveable: true,
         attainable: true,
     },
@@ -91,6 +125,7 @@ pub const CATALOG: &[Capability] = &[
         key: "web_search",
         label: "Websuche zuschalten",
         needs: &["web_search_toggle"],
+        proof: ProofKind::RoundTripToggle,
         driveable: true,
         attainable: true,
     },
@@ -105,6 +140,7 @@ pub const CATALOG: &[Capability] = &[
         key: "model_switch",
         label: "Modell wechseln",
         needs: &["model_menu", "model_option"],
+        proof: ProofKind::RoundTripMenu,
         driveable: true,
         attainable: true,
     },
@@ -125,6 +161,9 @@ pub const CATALOG: &[Capability] = &[
         key: "mode_switch",
         label: "Modus umschalten (Segmentleiste)",
         needs: &["mode_option"],
+        // Beleg-Form folgt beim Fahren: sobald ein Marker gefunden ist und
+        // `driveable` auf `true` kippt, kommt hier `RoundTripSegment` dazu.
+        proof: ProofKind::None,
         driveable: false,
         attainable: true,
     },
@@ -132,6 +171,7 @@ pub const CATALOG: &[Capability] = &[
         key: "deep_research",
         label: "Deep Research starten",
         needs: &["deep_research_toggle"],
+        proof: ProofKind::None,
         driveable: false,
         attainable: true,
     },
@@ -139,6 +179,7 @@ pub const CATALOG: &[Capability] = &[
         key: "file_attach",
         label: "Datei anhängen",
         needs: &["attach_button"],
+        proof: ProofKind::None,
         driveable: false,
         // Nicht erreichbar, nicht bloss ungebaut: der Knopf oeffnet einen
         // Dateidialog des Betriebssystems. JavaScript kann keine File-Objekte
@@ -151,6 +192,7 @@ pub const CATALOG: &[Capability] = &[
         key: "canvas",
         label: "Canvas/Artifact öffnen",
         needs: &["canvas_button"],
+        proof: ProofKind::None,
         driveable: false,
         attainable: true,
     },
@@ -158,6 +200,7 @@ pub const CATALOG: &[Capability] = &[
         key: "regenerate",
         label: "Antwort neu erzeugen",
         needs: &["regenerate_button"],
+        proof: ProofKind::None,
         driveable: false,
         attainable: true,
     },
@@ -165,6 +208,7 @@ pub const CATALOG: &[Capability] = &[
         key: "temporary_chat",
         label: "Temporären Chat nutzen",
         needs: &["temporary_chat_button"],
+        proof: ProofKind::None,
         // Antrieb steht seit 2026-08-02 (`WebBrainBackend::toggle_temporary_chat`,
         // Vorher/Nachher-Beleg wie bei `toggle_option`, gegen den Mock getestet).
         // Bleibt trotzdem `false`: kein Beleg, kein Level — es fehlt der Klick am
@@ -181,6 +225,7 @@ pub const CATALOG: &[Capability] = &[
         key: "voice_input",
         label: "Spracheingabe per Mikrofon",
         needs: &["voice_input_button"],
+        proof: ProofKind::None,
         driveable: false,
         // Anklickbar, aber nicht belegbar: ein laufendes Mikrofon aendert
         // keinen pruefbaren Zustand. Nach dem eigenen Massstab — kein Beleg,
@@ -195,6 +240,7 @@ pub const CATALOG: &[Capability] = &[
         key: "voice_mode",
         label: "Sprachdialog-Modus",
         needs: &["voice_mode_button"],
+        proof: ProofKind::None,
         driveable: false,
         // Wie voice_input: der Sprachdialog laesst sich starten, sein
         // Gelingen aber nicht aus dem DOM ablesen.
@@ -207,7 +253,11 @@ pub const CATALOG: &[Capability] = &[
     Capability {
         key: "reasoning_effort",
         label: "Denkstufe waehlen",
-        needs: &["reasoning_effort_menu"],
+        // Der Stufen-Pfad liegt in einem Untermenue ("Aufwand > Hoch"); ohne
+        // konfigurierten `reasoning_effort_path` kann `verify` die Fähigkeit
+        // nicht ausfuehren und meldet ehrlich NeedsSelectors (Nacharbeit §13).
+        needs: &["reasoning_effort_menu", "reasoning_effort_path"],
+        proof: ProofKind::RoundTripMenu,
         // Seit 2026-07-28 fahrbar (`select_in_menu_path`), live belegt an claude:
         // "Sonnet 5 Mittel" -> "Sonnet 5 Hoch" -> zurueck. Die Stufe liegt in
         // einem Untermenue ("Aufwand > Hoch"), ein einstufiger Klick erreicht
@@ -222,6 +272,7 @@ pub const CATALOG: &[Capability] = &[
         key: "projects",
         label: "Projekte/Arbeitsbereiche",
         needs: &["projects_button"],
+        proof: ProofKind::Navigation,
         // Seit 2026-07-28 fahrbar (`open_section`), live belegt: chatgpt
         // navigiert nach /projects, claude nach claude.ai/projects. Der Beleg
         // ist die URL — am Knopf selbst gibt es keinen Zustand.
@@ -409,6 +460,10 @@ pub enum QuestBlocker {
     NeedsSelectors,
     /// Beides fehlt.
     NeedsBoth,
+    /// Code + Selektoren da, aber nie verifiziert — es fehlt ein Beleg.
+    NeedsProof,
+    /// Lief einmal, Beleg aber verfallen (TTL abgelaufen oder Selektoren geändert).
+    ProofExpired,
 }
 
 impl QuestBlocker {
@@ -417,6 +472,8 @@ impl QuestBlocker {
             QuestBlocker::NeedsCode => "Code fehlt",
             QuestBlocker::NeedsSelectors => "Selektoren fehlen",
             QuestBlocker::NeedsBoth => "Code + Selektoren fehlen",
+            QuestBlocker::NeedsProof => "nie verifiziert",
+            QuestBlocker::ProofExpired => "Beleg verfallen",
         }
     }
 }
@@ -434,6 +491,10 @@ pub struct BrainLevel {
     pub have: Vec<String>,
     /// Der Rest, als Aufgaben.
     pub quests: Vec<Quest>,
+    /// Bewiesene Fähigkeiten: `(Fähigkeit, Zeitpunkt des Belegs)`. Der
+    /// Grund, warum ein Brain `[n/…]` steht, obwohl n = 0 ist, wird hier
+    /// sichtbar statt verschwiegen.
+    pub verified: Vec<(String, String)>,
     /// Vom Brain angeboten, aber fuer diesen Harness prinzipiell nicht
     /// nachweisbar fahrbar — bewusst aus dem Nenner genommen und hier
     /// sichtbar gehalten.
@@ -452,10 +513,29 @@ impl BrainLevel {
             None
         }
     }
-    /// `deepseek [1/5]` bzw. `deepseek [1/?]` solange unvermessen.
+    /// `deepseek [1/5]` bzw. `deepseek [1/?]` solange unvermessen. Sind
+    /// Fähigkeiten vorhanden, aber unbewiesen, trägt das Wort die Ehrlichkeit
+    /// (CONVENTIONS.md:106): `deepseek [0/7 · 5 unbewiesen]`.
     pub fn label(&self) -> String {
+        let unproven = self
+            .quests
+            .iter()
+            .filter(|q| matches!(q.blocker, QuestBlocker::NeedsProof | QuestBlocker::ProofExpired))
+            .count();
         match self.max_level() {
-            Some(m) => format!("{} [{}/{}]", self.brain_id, self.level(), m),
+            Some(m) => {
+                if unproven > 0 {
+                    format!(
+                        "{} [{}/{} · {} unbewiesen]",
+                        self.brain_id,
+                        self.level(),
+                        m,
+                        unproven
+                    )
+                } else {
+                    format!("{} [{}/{}]", self.brain_id, self.level(), m)
+                }
+            }
             None => format!("{} [{}/?]", self.brain_id, self.level()),
         }
     }
@@ -463,7 +543,9 @@ impl BrainLevel {
     pub fn maxed(&self) -> bool {
         matches!(self.max_level(), Some(m) if m > 0 && self.level() == m)
     }
-    /// Rang-Titel — reine Anzeige, aus dem Anteil abgeleitet.
+    /// Rang-Titel — reine Anzeige, aus dem Anteil abgeleitet. 0 ist
+    /// „unbewiesen", nicht „stumm": alles da, nur nie verifiziert
+    /// (CONVENTIONS.md:106 — unbekannt, nicht schlecht).
     pub fn rank(&self) -> &'static str {
         let max = match self.max_level() {
             Some(m) if m > 0 => m,
@@ -475,7 +557,7 @@ impl BrainLevel {
             67..=99 => "fortgeschritten",
             34..=66 => "angelernt",
             1..=33 => "Anfänger",
-            _ => "stumm",
+            _ => "unbewiesen",
         }
     }
 }
@@ -536,6 +618,24 @@ pub fn out_of_reach(available: &[String]) -> Vec<String> {
 }
 
 pub fn level_from_selectors(brain_id: &str, sel: &serde_json::Value) -> BrainLevel {
+    level_from_selectors_with(brain_id, sel, &|b, cap, hash| {
+        crate::capability_proof::proof_state(b, cap, hash)
+    })
+}
+
+/// Stand eines Brains aus seiner bereits geladenen Selektor-JSON bestimmen —
+/// mit injiziertem Beleg-Nachschlag. Die IO bleibt damit aus dem reinen
+/// Teil; `lookup(brain_id, fähigkeit, selektor_hash)` liefert den Belegzustand
+/// (Tests spielen hier einen Fake ein, siehe `shipped_brains_can_all_at_least_chat`).
+///
+/// **Beide Wege zu `have` sind gegatet** — der offensichtliche (Fähigkeit im
+/// `ui_options`-Angebot) wie der Überschreib-Pfad bei unvermessenem Brain.
+/// Sonst behielte ein Brain ohne `ui_options` sein selektor-basiertes Level.
+pub fn level_from_selectors_with(
+    brain_id: &str,
+    sel: &serde_json::Value,
+    lookup: &dyn Fn(&str, &str, u32) -> crate::capability_proof::ProofState,
+) -> BrainLevel {
     // Kein `ui_options` = niemand hat die Oberfläche je durchgezählt. Dann ist
     // der Nenner unbekannt, NICHT "das, wofür zufällig Selektoren da sind" —
     // sonst meldet jedes Brain "ausgereizt", obwohl nur Text funktioniert.
@@ -552,34 +652,49 @@ pub fn level_from_selectors(brain_id: &str, sel: &serde_json::Value) -> BrainLev
         .collect();
     let mut have = Vec::new();
     let mut quests = Vec::new();
+    let mut verified = Vec::new();
     for key in &available {
         let cap = match capability(key) {
             Some(c) => c,
             None => continue,
         };
         let has_sel = cap.needs.iter().all(|k| has_selector(sel, k));
-        match (cap.driveable, has_sel) {
-            (true, true) => have.push(cap.key.to_string()),
-            (driveable, has_sel) => quests.push(Quest {
-                brain_id: brain_id.to_string(),
-                key: cap.key.to_string(),
-                label: cap.label.to_string(),
-                blocker: match (driveable, has_sel) {
-                    (false, true) => QuestBlocker::NeedsCode,
-                    (true, false) => QuestBlocker::NeedsSelectors,
-                    _ => QuestBlocker::NeedsBoth,
-                },
-            }),
+        let proof = (cap.driveable && has_sel)
+            .then(|| lookup(brain_id, cap.key, selector_hash_for(cap, sel)));
+        match proof {
+            Some(crate::capability_proof::ProofState::Proven { at }) => {
+                have.push(cap.key.to_string());
+                verified.push((cap.key.to_string(), at));
+            }
+            Some(crate::capability_proof::ProofState::Expired { .. }) => {
+                quests.push(quest(brain_id, cap, QuestBlocker::ProofExpired));
+            }
+            Some(_) => quests.push(quest(brain_id, cap, QuestBlocker::NeedsProof)),
+            None if has_sel => quests.push(quest(brain_id, cap, QuestBlocker::NeedsCode)),
+            None if cap.driveable => {
+                quests.push(quest(brain_id, cap, QuestBlocker::NeedsSelectors))
+            }
+            None => quests.push(quest(brain_id, cap, QuestBlocker::NeedsBoth)),
         }
     }
     // Fahrbares zählt auch bei unvermessenem Brain — nur der Nenner fehlt.
+    // Auch hier gilt das Gate: ohne Beleg kein `have`, sonst ist gerade das
+    // unvermessene Brain die Hintertür (gemini hat leere `ui_options`).
     if surveyed.is_none() {
-        have = CATALOG
-            .iter()
-            .filter(|c| c.driveable && c.needs.iter().all(|k| has_selector(sel, k)))
-            .map(|c| c.key.to_string())
-            .collect();
+        have.clear();
+        verified.clear();
         quests.clear();
+        for cap in CATALOG {
+            if !cap.driveable || !cap.needs.iter().all(|k| has_selector(sel, k)) {
+                continue;
+            }
+            if let crate::capability_proof::ProofState::Proven { at } =
+                lookup(brain_id, cap.key, selector_hash_for(cap, sel))
+            {
+                have.push(cap.key.to_string());
+                verified.push((cap.key.to_string(), at));
+            }
+        }
     }
     BrainLevel {
         brain_id: brain_id.to_string(),
@@ -588,6 +703,16 @@ pub fn level_from_selectors(brain_id: &str, sel: &serde_json::Value) -> BrainLev
         out_of_reach: unreachable,
         have,
         quests,
+        verified,
+    }
+}
+
+fn quest(brain_id: &str, cap: &Capability, blocker: QuestBlocker) -> Quest {
+    Quest {
+        brain_id: brain_id.to_string(),
+        key: cap.key.to_string(),
+        label: cap.label.to_string(),
+        blocker,
     }
 }
 
@@ -604,6 +729,7 @@ pub fn level_of(brain_id: &str) -> BrainLevel {
             out_of_reach: Vec::new(),
             have: Vec::new(),
             quests: Vec::new(),
+            verified: Vec::new(),
         },
     }
 }
@@ -638,6 +764,7 @@ pub fn quest_log() -> Vec<(String, Vec<Quest>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::capability_proof::ProofState;
     use serde_json::json;
 
     fn text_only() -> serde_json::Value {
@@ -646,6 +773,27 @@ mod tests {
             "send_button": ["#y"],
             "assistant_message": ["#z"],
         })
+    }
+
+    /// Fake-Beleg: jede fahrbare Fähigkeit gilt als bewiesen. Damit prüfen
+    /// Tests, die nur den selektor-Teil messen, genau das — und bleiben ohne
+    /// Store und Browser lauffähig (§11 des Plans).
+    fn always_proven(
+        _brain: &str,
+        _cap: &str,
+        _hash: u32,
+    ) -> crate::capability_proof::ProofState {
+        ProofState::Proven {
+            at: "2026-01-01T00:00:00Z".into(),
+        }
+    }
+
+    fn never_proven(
+        _brain: &str,
+        _cap: &str,
+        _hash: u32,
+    ) -> crate::capability_proof::ProofState {
+        ProofState::Never
     }
 
     #[test]
@@ -705,7 +853,7 @@ mod tests {
                         "projects_button": ["#pr"],
             "ui_options": got,
         });
-        let lvl = level_from_selectors("claude", &sel);
+        let lvl = level_from_selectors_with("claude", &sel, &always_proven);
         // Mikrofon und Sprachdialog sind angeboten, aber nicht
         // nachweisbar fahrbar (attainable: false) — sie fallen aus dem Nenner
         // und stehen in `out_of_reach`. Bliebe ein unerreichbarer Eintrag im
@@ -736,7 +884,7 @@ mod tests {
             "attach_button": ["#a"],
             "ui_options": ["chat", "file_attach"],
         });
-        let lvl = level_from_selectors("t", &sel);
+        let lvl = level_from_selectors_with("t", &sel, &always_proven);
         assert_eq!(lvl.label(), "t [1/1]");
         assert!(
             lvl.maxed(),
@@ -775,7 +923,7 @@ mod tests {
             "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
             "ui_options": ["chat", "reasoning_toggle"],
         });
-        let lvl = level_from_selectors("deepseek", &karg);
+        let lvl = level_from_selectors_with("deepseek", &karg, &always_proven);
         assert_eq!(lvl.label(), "deepseek [1/2]");
 
         // Reiches UI, gleicher Code-Stand -> gleicher Zaehler, groesserer Nenner.
@@ -783,7 +931,7 @@ mod tests {
             "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
             "ui_options": ["chat", "reasoning_toggle", "web_search", "canvas", "regenerate"],
         });
-        let lvl2 = level_from_selectors("chatgpt", &reich);
+        let lvl2 = level_from_selectors_with("chatgpt", &reich, &always_proven);
         assert_eq!(lvl2.label(), "chatgpt [1/5]");
         assert_eq!(
             lvl.level(),
@@ -804,7 +952,7 @@ mod tests {
             "canvas_button": ["#c"],
             "ui_options": ["chat", "canvas"],
         });
-        let lvl = level_from_selectors("t", &sel);
+        let lvl = level_from_selectors_with("t", &sel, &always_proven);
         assert_eq!(lvl.level(), 1, "Selektor ohne Code ist kein Koennen");
         assert_eq!(lvl.quests.len(), 1);
         assert_eq!(lvl.quests[0].key, "canvas");
@@ -818,7 +966,7 @@ mod tests {
             "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
             "ui_options": ["chat", "new_chat", "canvas"],
         });
-        let lvl = level_from_selectors("t", &sel);
+        let lvl = level_from_selectors_with("t", &sel, &always_proven);
         let by = |k: &str| lvl.quests.iter().find(|q| q.key == k).map(|q| q.blocker);
         assert_eq!(by("new_chat"), Some(QuestBlocker::NeedsSelectors));
         assert_eq!(by("canvas"), Some(QuestBlocker::NeedsBoth));
@@ -829,7 +977,7 @@ mod tests {
         // Frueher galt hier "Nenner = vorhandene Selektoren". Das meldete jedes
         // Brain als ausgereizt, obwohl nur Text laeuft — ein Teilnahmepokal.
         // Unvermessen heisst jetzt `?`, und `?` ist nie "gemeistert".
-        let lvl = level_from_selectors("t", &text_only());
+        let lvl = level_from_selectors_with("t", &text_only(), &always_proven);
         assert!(!lvl.surveyed);
         assert_eq!(lvl.max_level(), None);
         assert_eq!(lvl.label(), "t [1/?]");
@@ -845,7 +993,7 @@ mod tests {
             "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
             "ui_options": ["chat", "teleportation", ""],
         });
-        let lvl = level_from_selectors("t", &sel);
+        let lvl = level_from_selectors_with("t", &sel, &always_proven);
         assert_eq!(lvl.available, vec!["chat"], "Unfug zaehlt nicht zum Nenner");
     }
 
@@ -853,16 +1001,16 @@ mod tests {
     fn partial_requirements_do_not_count_as_driveable() {
         // model_switch braucht beide Selektoren — einer allein reicht nicht.
         let sel = json!({ "model_menu": ["#m"], "ui_options": ["model_switch"] });
-        let lvl = level_from_selectors("t", &sel);
+        let lvl = level_from_selectors_with("t", &sel, &always_proven);
         assert_eq!(lvl.level(), 0);
         assert_eq!(lvl.max_level(), Some(1));
-        assert_eq!(lvl.rank(), "stumm");
+        assert_eq!(lvl.rank(), "unbewiesen");
     }
 
     #[test]
     fn empty_or_blank_selector_lists_do_not_count() {
         let sel = json!({ "new_chat_button": [], "stop_button": ["  "] });
-        let lvl = level_from_selectors("t", &sel);
+        let lvl = level_from_selectors_with("t", &sel, &always_proven);
         assert_eq!(lvl.level(), 0);
         assert!(lvl.available.is_empty());
         assert!(!lvl.maxed(), "0/0 ist nicht gemeistert");
@@ -887,7 +1035,7 @@ mod tests {
         for (id, raw) in crate::config::shipped_selector_table() {
             let sel: serde_json::Value =
                 serde_json::from_str(raw).unwrap_or_else(|e| panic!("{id}: kaputtes JSON: {e}"));
-            let lvl = level_from_selectors(id, &sel);
+            let lvl = level_from_selectors_with(id, &sel, &always_proven);
             assert!(
                 lvl.have.contains(&"chat".to_string()),
                 "{id} kann nicht mal Text senden"
@@ -928,6 +1076,109 @@ mod tests {
                 w[0].1.len() >= w[1].1.len(),
                 "Questlog nicht nach Reichweite sortiert"
             );
+        }
+    }
+
+    #[test]
+    fn never_verified_is_needs_proof_not_have() {
+        // Code + Selektoren da, aber kein Beleg: die Fähigkeit zählt nicht,
+        // sie steht als Quest mit dem Grund "nie verifiziert".
+        let sel = json!({
+            "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
+            "ui_options": ["chat"],
+        });
+        let lvl = level_from_selectors_with("t", &sel, &never_proven);
+        assert_eq!(lvl.level(), 0, "ohne Beleg ist nichts bewiesen");
+        assert_eq!(lvl.quests.len(), 1);
+        assert_eq!(lvl.quests[0].key, "chat");
+        assert_eq!(lvl.quests[0].blocker, QuestBlocker::NeedsProof);
+        assert!(lvl.verified.is_empty());
+    }
+
+    #[test]
+    fn proven_is_have_with_timestamp() {
+        let sel = json!({
+            "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
+            "ui_options": ["chat"],
+        });
+        let lvl = level_from_selectors_with("t", &sel, &always_proven);
+        assert_eq!(lvl.level(), 1);
+        assert_eq!(lvl.verified, vec![("chat".to_string(), "2026-01-01T00:00:00Z".into())]);
+    }
+
+    #[test]
+    fn expired_proof_is_a_quest_not_have() {
+        // Der Beleg lief mal, ist aber verfallen — anderes Urteil als "nie
+        // verifiziert", denn es bedeutet: nochmal verifizieren, nicht neu
+        // lernen.
+        let sel = json!({
+            "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
+            "ui_options": ["chat"],
+        });
+        let lvl = level_from_selectors_with("t", &sel, &|_, _, _| ProofState::Expired {
+            at: "2026-01-01T00:00:00Z".into(),
+            reason: crate::capability_proof::ExpiryReason::TtlElapsed,
+        });
+        assert_eq!(lvl.level(), 0);
+        assert_eq!(lvl.quests[0].blocker, QuestBlocker::ProofExpired);
+        assert!(lvl.verified.is_empty());
+    }
+
+    #[test]
+    fn unmeasured_brain_is_gated_too() {
+        // Pfad 2 aus §7: ohne `ui_options` wird `have` per Selektor-Scan
+        // bestimmt — auch dort gilt der Beleg. Gemessen am
+        // `never_proven`-Fall: das kaputte Brain (leere `ui_options`) darf
+        // nicht sein selektor-basiertes Level behalten.
+        let sel = json!({
+            "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
+        });
+        let lvl = level_from_selectors_with("t", &sel, &never_proven);
+        assert_eq!(lvl.level(), 0, "unvermessen heisst nicht ungegated");
+        assert!(lvl.quests.is_empty());
+        assert!(lvl.verified.is_empty());
+
+        let lvl_proven = level_from_selectors_with("t", &sel, &always_proven);
+        assert_eq!(lvl_proven.level(), 1);
+        assert_eq!(lvl_proven.verified.len(), 1);
+    }
+
+    #[test]
+    fn label_counts_unproven_faithfully() {
+        let sel = json!({
+            "composer": ["#x"], "send_button": ["#y"], "assistant_message": ["#z"],
+            "reasoning_toggle": ["#r"],
+            "ui_options": ["chat", "reasoning_toggle"],
+        });
+        let lvl = level_from_selectors_with("t", &sel, &never_proven);
+        assert_eq!(lvl.label(), "t [0/2 · 2 unbewiesen]");
+        let proven = level_from_selectors_with("t", &sel, &always_proven);
+        assert_eq!(proven.label(), "t [2/2]");
+    }
+
+    #[test]
+    fn proof_kind_is_complete() {
+        // Vollständigkeits-Gate: genau die fahrbaren UND erreichbaren
+        // Fähigkeiten haben eine Beleg-Form, alle anderen `None`. Wer eine
+        // neue Fähigkeit einträgt, muss hier Farbe bekennen — eine fahrbare
+        // ohne Beleg-Form würde `verify` nie messen, und die stille Lücke
+        // bliebe unsichtbar.
+        for cap in CATALOG {
+            let needs_proof = cap.driveable && cap.attainable;
+            if needs_proof {
+                assert!(
+                    cap.proof != ProofKind::None,
+                    "{} ist fahrbar und erreichbar, hat aber keine Beleg-Form",
+                    cap.key
+                );
+            } else {
+                assert_eq!(
+                    cap.proof,
+                    ProofKind::None,
+                    "{} ist nicht (fahrbar UND erreichbar), darf keine Beleg-Form haben",
+                    cap.key
+                );
+            }
         }
     }
 }

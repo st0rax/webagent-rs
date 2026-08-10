@@ -192,7 +192,15 @@ pub fn capability_rows(levels: &[crate::capability::BrainLevel]) -> Vec<CapRow> 
             rows.push(CapRow {
                 brain: lvl.brain_id.clone(),
                 key: Some(quest.key.clone()),
-                label: format!("{} — {}", quest.key, quest.label),
+                // Der Blocker ist der eigentliche Wert der Quest — sonst waere
+                // ein verfallener Beleg ("Beleg verfallen") von "nie verifiziert"
+                // nicht zu unterscheiden.
+                label: format!(
+                    "{} — {} ({})",
+                    quest.key,
+                    quest.label,
+                    quest.blocker.as_str()
+                ),
                 state: CapState::Quest,
             });
         }
@@ -820,6 +828,7 @@ mod tests {
                 blocker: QuestBlocker::NeedsCode,
             }],
             out_of_reach: vec!["voice_mode".into()],
+            verified: vec![("chat".to_string(), "2026-01-01T00:00:00Z".into())],
         };
         let rows = capability_rows(&[level]);
 
@@ -842,6 +851,38 @@ mod tests {
     }
 
     #[test]
+    fn verfallener_beleg_ist_in_der_zeile_sichtbar() {
+        use crate::capability::{BrainLevel, Quest, QuestBlocker};
+
+        // Ein Beleg, der mal lief und verfiel, ist etwas anderes als eine nie
+        // verifizierte Faehigkeit: „nochmal verifizieren", nicht „neu lernen".
+        // Die TUI-Zeile muss das tragen (Phase 7 des Plans).
+        let level = BrainLevel {
+            brain_id: "qwen".to_string(),
+            surveyed: true,
+            available: vec!["chat".into()],
+            have: Vec::new(),
+            quests: vec![Quest {
+                brain_id: "qwen".to_string(),
+                key: "chat".to_string(),
+                label: "Chat oeffnen".to_string(),
+                blocker: QuestBlocker::ProofExpired,
+            }],
+            out_of_reach: Vec::new(),
+            verified: Vec::new(),
+        };
+        let rows = capability_rows(&[level]);
+        let quest_row = &rows[1];
+        assert_eq!(quest_row.state, CapState::Quest);
+        assert!(
+            quest_row.label.contains("Beleg verfallen"),
+            "{}",
+            quest_row.label
+        );
+        assert!(!quest_row.is_actionable());
+    }
+
+    #[test]
     fn unvermessenes_brain_behauptet_kein_maximum() {
         use crate::capability::BrainLevel;
         // gemini stand am 02.08.2026 auf 0/0 ohne eine einzige katalogisierte
@@ -853,6 +894,7 @@ mod tests {
             have: Vec::new(),
             quests: Vec::new(),
             out_of_reach: Vec::new(),
+            verified: Vec::new(),
         };
         let rows = capability_rows(&[level]);
         assert!(

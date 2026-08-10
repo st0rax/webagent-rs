@@ -128,6 +128,12 @@ fn dispatch(command: Commands) -> i32 {
             cmd_doctor(if brain.is_empty() { None } else { Some(brain) }, json)
         }
 
+        Commands::Verify {
+            brain,
+            cap,
+            headless,
+        } => cmd_verify(if brain.is_empty() { None } else { Some(brain) }, cap, headless),
+
         Commands::Watchdog {
             bot2bot_root,
             profile_dir,

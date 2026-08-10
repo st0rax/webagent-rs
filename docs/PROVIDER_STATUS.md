@@ -243,3 +243,151 @@ pwsh -File Desktop\webagent\delivery\provider_webview_smoke.ps1 -Headed
 3. Fenstergröße 1280×900.
 4. `BrowserPool` + `WEBAGENT_PERSIST_TABS` für Relay-Ketten.
 5. `with_any_thread(true)` für den WebView-EventLoop im Nicht-Main-Thread.
+
+## Capability-Proof Phase 8: Erster echter `verify`-Lauf über alle 9 Brains (2026-08-09)
+
+`webagent verify --brain <id>` im Debug-Build (`target/debug/webagent.exe`), pro Brain
+**ein eigener Prozess**, sonst Fallen (siehe „Lauf-Artefakte"). Standard-Katalog = 16
+Fähigkeiten; gemessen wird nur, wofür der Harness Selektor-Proofs konfiguriert hat,
+alles andere bleibt Quest (kein Record). Belegbasis: `%LOCALAPPDATA%\webagent\data\capability\proofs.jsonl`.
+
+Kriterien (§5/§10): `Passed` = Beleg aus JS-Roundtrip oder Generation-Sequenz;
+`Failed` = Fähigkeit im Spiel, aber kein Beleg; `Unreachable` = nicht anfahrbar.
+
+| Brain | chat | new_chat | stop_generation | Toggles | projects |
+|---|---|---|---|---|---|
+| chatgpt¹ | **Passed** 121 s (count>baseline) | Failed 0,8 s (kein URL-Wechsel) | Unreachable (Klick ohne belegbare Wirkung) | model_switch Passed² | **Passed** 1,5 s |
+| claude | **Passed** 3,1 s | Failed 0,8 s | **Passed** 0 ms (Induced) | model_switch Passed | **Passed** 1,7 s |
+| deepseek | **Passed** 9,6 s | Failed 0,3 s | Failed (Stop-Button nie sichtbar) | reasoning_toggle, web_search je **Passed** (je 30 s) | – |
+| gemini | **Passed** 138,6 s (stop sichtbar) | Failed 0,3 s | Unreachable | – | – |
+| kimi | **Passed** 16,5 s | Failed 0,7 s | Failed (Stop-Button nie sichtbar) | model_switch Passed | – |
+| mistral | **Passed** 1,7 s | Failed 0,8 s | **Passed** 0 ms (Induced) | – | – |
+| perplexity | Quest (keine Selektor-Config) | Quest | Quest | – | **Passed** 1,6 s (URL-Wechsel) |
+| qwen | **Passed** 15,2 s | Failed 0,4 s | **Passed** 0 ms (Induced) | model_switch Passed | – |
+| zai | **Passed** 17,4 s | Failed 0,9 s | Failed (Stop-Button nie sichtbar) | reasoning_toggle, web_search, model_switch je **Passed** (je ~1,7 s) | – |
+
+¹ chatgpt-Daten aus Lauf 1 (09:19, erster Brain in der Sequenz, gültig); der Einzel-Retry
+schlug mit `start_failed` fehl (siehe Artefakte).
+² model_switch chatgpt: „Rückweg misslungen — Oberfläche stand auf overlay statt aus".
+
+**Kernbefunde**
+
+1. **`chat` ist auf allen 9 Brains belegt** — immer über `count>baseline` (bei gemini
+   über `stop sichtbar`). Der Dreier-ODER des Generation-Polls funktioniert; das ist die
+   Kernfähigkeit des Harness.
+2. **`new_chat` scheitert überall gleich:** kein URL-Wechsel auf irgendeinem Brain
+   (0,3–0,9 s). Der §5-Beleg „URL-Paar ändert sich" greift nirgends — entweder sind die
+   SPA-URLs beim neuen Chat stabil oder der Selektor trifft das falsche Element. Das ist
+   ein Katalog-/Selektor-Thema, kein Brain-Defekt; offen für §13.
+3. **`stop_generation`:** 3× **Passed** (qwen, mistral, claude — „Stop geklickt,
+   verschwunden, Text eingefroren", erste *Induced*-Beweise), 3× Failed weil der
+   Stop-Button im Probe-Fenster nie auftauchte (deepseek, kimi, zai — Antwort kam, aber
+   kein Stop angeboten oder zu spät), 2× Unreachable (chatgpt, gemini — Klick kam an,
+   aber keine belegbare Wirkung).
+4. **Toggles:** zai 3/3, deepseek 2/2 (je 30 s — der langsamste Toggle-Pfad), claude,
+   kimi, qwen, chatgpt je model_switch Passed. Alle Passed-Beweise mit „Ausgangszustand
+   wiederhergestellt" außer chatgpt.
+
+**Lauf-Artefakte (nicht als Brain-Defekt werten)**
+
+- Lauf 1 (alle 9 Brains in einem Prozess) meldete für claude/deepseek/kimi je
+  16× `Unreachable (start_failed)`. Im Einzellauf funktionieren alle drei — die
+  `start_failed`-Serie war Ressourcen-/Reihenfolge-Artefakt des 9-Brain-Prozesses.
+  Verify-Läufe daher **pro Brain starten**.
+- Der chatgpt-Einzel-Retry (nach ~8 parallelen WebView-Sitzungen in 20 min) schlug mit
+  `start_failed` fehl — vermutlich Bot-Detection/Rate-Limit; Run-1-Daten bleiben gültig.
+- `mistral`/`zai` hingen im Sammelprozess ohne Output — die Ursache war
+  stdout-Blockpufferung bei Datei-Redirect (Verlust am Prozessende) plus 45-s-CDP-Timeouts
+  bei langsamem WebView. Fix: `cmd_verify` flusht nach Header, Brain-Start und jeder
+  Ergebniszeile (`src/commands/ops.rs`). Danach laufen beide Brains in <1 min durch.
+- Build-Falle: ohne MSVC-`link.exe` baut das Projekt über die **gnu**-Toolchain
+  (`rustup override set stable-x86_64-pc-windows-gnu` im Projektverzeichnis; `.cargo/config.toml`
+  hat dafür `link-self-contained=yes`).
+
+## Nachtrag zu Kernbefund 2: `new_chat` — Ursache gefunden und behoben (2026-08-09)
+
+Der Befund oben („kein URL-Wechsel auf irgendeinem Brain") stimmte, die beiden
+dort genannten Verdächtigen aber nicht: weder waren die SPA-URLs stabil, noch
+traf der Selektor das falsche Element. Bei chatgpt (`a[href='/']`), claude
+(`a[href='/new']`), mistral (`a[href='/chat']`) und zai
+(`#sidebar-new-chat-button`) wurde der Knopf jeweils sauber getroffen.
+
+**Die Ursache war die Position in der Sequenz.** `get_conversation_ref` ist
+schlicht `driver.current_url()` (`browser/operations.rs`). Die Verify-Sitzung
+startet auf `brain_url` — und die konfigurierten Wurzel-URLs *sind* bereits der
+neue Chat (`claude.ai/new`, `chatgpt.com/`, `chat.deepseek.com/`, `chat.z.ai/`).
+Es gab nichts zu verlassen, also konnte sich die URL nicht ändern. Der Beleg
+wurde zum einzigen Zeitpunkt erhoben, an dem er unmöglich ist.
+
+**Behoben** in `src/browser/verify.rs`:
+
+- `new_chat` wird **zuletzt** belegt, nach der Probe — dann existiert eine
+  Konversation mit eigener URL, und der Wechsel ist echt.
+- Davor ein **unbewerteter** Hygiene-Klick, aber nur wenn `assistant_count() > 0`
+  (also wenn die Oberfläche doch ein Gespräch wiederhergestellt hat). Sonst
+  entfällt er.
+- Der frühe `return` bei `new_chat`-Fehler ist entfallen: als letzter Schritt
+  hängt nichts mehr daran.
+- Nebeneffekt: das Konto bleibt nach dem Lauf auf einem leeren Chat stehen
+  statt im Probe-Gespräch.
+
+**Bestätigt** (`verify --brain claude --cap chat --cap new_chat --cap stop_generation`):
+
+```
+chat            = Passed  (141352 ms) — chat belegt (stop sichtbar)
+stop_generation = Unreachable         — Stop-Klick ohne belegbare Wirkung
+new_chat        = Passed  (1048 ms)   — URL-Wechsel
+```
+
+Zwei Mechanismen haben sich dabei mitbewiesen: der `chat`-Beleg griff über den
+Trigger „stop sichtbar", nicht über den Zähler — genau der Zweig, den ein Beleg
+allein auf `assistant_count` verloren hätte. Und `stop_generation` kam als
+`Unreachable`, entzog dem früheren `Passed` aber nichts, weil `proof_state`
+`Unreachable` überspringt.
+
+**Ebenfalls behoben:** ein `verify`-Lauf, der ausschließlich `Unreachable`
+liefert, meldet das jetzt laut auf stderr und endet mit Exitcode ≠ 0
+(`src/commands/ops.rs`). Anlass war der Lauf mit 128 von 195 `start_failed`, der
+im Store unauffällig aussah — „fertig" darf nicht wie „geprüft" aussehen.
+
+### Breitentest, ein Prozess pro Brain (2026-08-09, 16:53–17:06)
+
+`verify --brain <id> --cap chat --cap new_chat --cap stop_generation`, sequenziell.
+
+| Brain | chat | stop_generation | **new_chat** |
+|---|---|---|---|
+| claude | Passed 141,4 s (stop sichtbar) | Unreachable (Klick ohne Wirkung) | **Passed** 1,0 s |
+| chatgpt | Passed 121,7 s (stop sichtbar) | Unreachable (Klick ohne Wirkung) | **Passed** 0,9 s |
+| zai | Passed 18,4 s (count>baseline) | Failed (Stop nie sichtbar) | **Passed** 0,9 s |
+| deepseek | **Failed** 108,3 s (Timeout) | Failed (Stop nie sichtbar) | **Passed** 3,7 s |
+| qwen | Passed 16,9 s (count>baseline) | Unreachable (Klick ohne Wirkung) | Failed **0,034 s** |
+| kimi | Passed 20,6 s (count>baseline) | Failed (Stop nie sichtbar) | Failed **0,035 s** |
+| gemini | Passed 137,8 s (stop sichtbar) | Unreachable (Klick ohne Wirkung) | Failed 0,845 s |
+| mistral | Unreachable (start_failed) | Unreachable | Unreachable |
+
+**`new_chat`: von 9× Failed auf 4 Belege.** Die Positionskorrektur trägt für
+claude, chatgpt, zai und deepseek.
+
+**Die drei verbliebenen Fehlschläge sind zwei verschiedene Dinge.** `new_chat()`
+(`browser/backend.rs:128-141`) klickt entweder `new_chat_button` — dann folgen
+**800 ms Schlaf** — oder navigiert ersatzweise zur Start-URL. qwen (34 ms) und
+kimi (35 ms) können also **keinen** dieser Pfade durchlaufen haben; dort greift
+der Selektor nicht und der Ersatzweg tut nichts Messbares. gemini dagegen
+brauchte 845 ms: ein echter Versuch, der die URL nicht bewegt hat —
+`gemini.google.com/app` bleibt `/app`. Das ist der Fall, für den das
+URL-Kriterium tatsächlich nicht ausreicht.
+
+Nächster Schritt getrennt nach Fehlerart: qwen/kimi brauchen einen greifenden
+`new_chat_button` (Aufgabe für `brain_probe`), gemini ein zweites Kriterium.
+
+**Offene Regression:** deepseek `chat` lief in dieser Runde in den Timeout
+(108 s), war im Lauf davor aber `Passed` (9,6 s). Ursache ungeklärt —
+Flakiness oder Nebenwirkung des Hygiene-Klicks. Vor weiteren Schlüssen
+wiederholen.
+
+**Der Exitcode-Fix hat beim ersten Einsatz gegriffen:** mistral endete mit
+3× `start_failed` und meldete „KEIN EINZIGER BELEG … dieser Lauf hat nichts
+gemessen" plus Exitcode 1. Genau der Fall, der vorher stumm durchgelaufen wäre.
+
+**Records:** `proofs.jsonl` zählt nach Abschluss 162 Belege über alle 9 Brains
+(akkumuliert über alle Läufe inkl. Artefakt-Runs).

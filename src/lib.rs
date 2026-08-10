@@ -5,51 +5,74 @@
 //! Kern überall baut. Zeitstempel werden *formatiert* über [`civil_utc`] (Python-kompatibel,
 //! siehe dort) und *geparst* über `time` — das ist ohnehin Dependency.
 
+// Modul-Übersicht, gruppiert nach Schicht (siehe docs/ARCHITECTURE.md).
+// Alle Module `pub`: die echte API-Fläche ist kleiner (nur das Binary nutzt
+// ~31 Module direkt) — Verschlankung ist als P1 notiert, sie erfordert das
+// Löschen toter Items (siehe docs/ARCHITECTURE.md → "API-Fläche").
+
+// ── core: plattformreiner Kern (keine UI/Browser-Abhängigkeiten) ──
+pub mod circuit_breaker;
+pub mod comms;
+pub mod config;
+pub mod executor;
+pub mod file_actions;
+pub mod loop_guard;
+pub mod memory;
+pub mod observer;
+pub mod oobe;
+pub mod protocol;
+pub mod run_store;
+pub mod shell_policy;
+pub mod timeouts;
+pub mod transcript;
+
+// ── brain: Gehirn-Abstraktion + Browser-Anbindung ──
+pub mod brain;
+pub mod brain_limits;
+pub mod brain_probe;
+pub mod browser;
+pub mod browser_pool;
+pub mod login;
+pub mod mock_page;
+pub mod page_driver;
+#[cfg(feature = "webview")]
+pub mod webview_runtime;
+
+// ── agent: Steuerung & Agent-Schleife ──
+pub mod canary;
+pub mod capability;
+pub mod capability_proof;
+pub mod controller;
+pub mod knockout;
+pub mod prompts;
+pub mod relay;
+pub mod welcome;
+
+// ── bench: Messung & Selbst-Verbesserung ──
 pub mod autoresearch;
 pub mod bench_events;
 pub mod bench_harvest;
 pub mod bench_scoring;
 pub mod benchmark;
-pub mod bot2bot_worker;
-pub mod brain;
-pub mod brain_limits;
-pub mod brain_probe;
 pub mod brain_score;
 pub mod brains_health;
-pub mod browser;
-pub mod browser_pool;
-pub mod canary;
-pub mod capability;
-pub mod circuit_breaker;
 pub mod code_score;
-pub mod comms;
-pub mod config;
-pub mod controller;
 pub mod design_vote;
-pub mod doctor;
-pub mod executor;
-pub mod file_actions;
-pub mod knockout;
-pub mod login;
-pub mod loop_guard;
-pub mod memory;
-pub mod mock_page;
-pub mod observer;
-pub mod oobe;
-pub mod page_driver;
-pub mod prompts;
-pub mod protocol;
-pub mod relay;
-pub mod repl;
 pub mod round_tally;
-pub mod run_store;
 pub mod runs_report;
 pub mod self_research;
-pub mod shell_policy;
-pub mod timeouts;
-pub mod transcript;
-pub mod tui;
+pub mod wiki_memory;
+
+// ── workers: Parallelität & Gesundheit ──
+pub mod bot2bot_worker;
+pub mod doctor;
+pub mod watchdog;
+pub mod worker_pool;
+
+// ── ui: TUI, REPL ──
 pub mod brain_grid;
+pub mod repl;
+pub mod tui;
 pub mod tui_config;
 #[cfg(feature = "tui")]
 pub mod tui_keys;
@@ -59,12 +82,6 @@ pub mod tui_mouse;
 pub mod tui_render;
 #[cfg(feature = "tui")]
 pub mod tui_state;
-pub mod watchdog;
-#[cfg(feature = "webview")]
-pub mod webview_runtime;
-pub mod welcome;
-pub mod wiki_memory;
-pub mod worker_pool;
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
