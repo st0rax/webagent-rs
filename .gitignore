@@ -17,3 +17,7 @@ test_out.txt
 /ci_log.txt
 ci_log.txt
 runtime-workers/
+/target-gnu
+target-gnu/
+*.out
+.graphify/

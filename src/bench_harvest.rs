@@ -18,7 +18,6 @@ use crate::benchmark::HarvestCandidate;
 ///
 /// „Beim ersten Versuch grün" ist das stärkere Signal als „nach neun Korrekturen
 /// grün" — beide bestehen, aber nur eines davon ist verlässliche Arbeit.
-
 pub fn pick_harvest(candidates: &[HarvestCandidate]) -> Option<&HarvestCandidate> {
     candidates
         .iter()

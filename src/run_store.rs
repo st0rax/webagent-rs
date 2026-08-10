@@ -302,7 +302,7 @@ impl RunStore {
             crate::bench_events::emit_detailed(
                 level,
                 None,
-                &format!("[run:{}] {}", &meta.run_id, event_type),
+                &format!("[run:{}] {}", meta.run_id, event_type),
                 Some(&payload.to_string()),
             );
         }

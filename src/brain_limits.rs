@@ -350,7 +350,7 @@ mod tests {
         };
         let r = search_limit(&cfg, |_| {
             i += 1;
-            if i % 2 == 0 {
+            if i.is_multiple_of(2) {
                 ProbeOutcome::Accepted
             } else {
                 ProbeOutcome::Rejected
