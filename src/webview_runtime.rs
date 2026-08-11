@@ -776,7 +776,15 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
 /// Streaming-JS werden gedrosselt, und ein Verify-Lauf wirkte eingefroren, bis
 /// die Maus das Fenster aktivierte (beobachtet 2026-08-11, alle Brains).
 fn browser_args() -> String {
-    let mut args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection".to_string();
+    // `CalculateNativeWinOcclusion` ist die Windows-Occlusion-Erkennung von
+    // Chromium selbst: verdeckte Fenster gelten als "hintergrund", und Timer/
+    // Streaming werden gedrosselt, bis das Fenster in den Vordergrund kommt
+    // (beobachtet 2026-08-11: verify-Fenster kamen erst nach min/max in Gang).
+    // Die backgrounding-Flags reduzieren das Throttling, aber nur das
+    // Abschalten der Erkennung beendet es.
+    let mut args =
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion"
+            .to_string();
 
     for a in [
         "--autoplay-policy=no-user-gesture-required",

@@ -1,0 +1,70 @@
+{
+  "composer": [
+    "rich-textarea > div > p",
+    "rich-textarea div[contenteditable='true']",
+    "div[contenteditable='true']",
+    "textarea",
+    "div[role='textbox']"
+  ],
+  "send_button": [
+    "div[class*='send-button-container'] > button",
+    "button[aria-label*='Send' i]",
+    "button[aria-label*='Nachricht senden' i]",
+    "button[type='submit']"
+  ],
+  "consent_reject_button": [
+    "button:has-text('Alle ablehnen')",
+    "button:has-text('Reject all')"
+  ],
+  "notice_close_button": [
+    "button:has-text('Schließen')",
+    "button:has-text('Close')"
+  ],
+  "stop_button": [
+    "button[aria-label*='stoppen' i]",
+    "button[aria-label*='Stop' i]",
+    "button[aria-label*='stop' i]",
+    "button:has-text('Stop')",
+    "button[aria-label*='Stop generating']"
+  ],
+  "assistant_message": [
+    "message-content[class*='model-response-text']",
+    "div[class*='model-response-text']",
+    "div[class*='response-text']",
+    "div[class*='markdown']",
+    "div.prose"
+  ],
+  "new_chat_button": [
+    "a[aria-label*='Neuer Chat' i]",
+    "[aria-label*='Neuer Chat' i]",
+    "[aria-label*='New Chat' i]",
+    "button[aria-label*='New chat' i]",
+    "button[aria-label*='Start new chat']",
+    "button:has-text('New chat')",
+    "button:has-text('Neuer Chat')",
+    "a[href='/']"
+  ],
+  "login_button": [
+    "text=Sign in",
+    "text=Log in",
+    "text=Anmelden",
+    "button:has-text('Sign in')",
+    "button:has-text('Log in')",
+    "button:has-text('Anmelden')",
+    "a:has-text('Anmelden')"
+  ],
+  "login_indicator": [
+    "rich-textarea > div > p",
+    "rich-textarea div[contenteditable='true']",
+    "div[contenteditable='true']"
+  ],
+  "google_sso_button": [
+    "button:has-text('Continue with Google')",
+    "button:has-text('Sign in with Google')",
+    "button:has-text('Continue to Google')",
+    "button:has-text('Mit Google fortfahren')",
+    "button:has-text('Weiter mit Google')",
+    "button:has-text('Anmelden mit Google')",
+    "button[aria-label*='Google' i]"
+  ]
+}

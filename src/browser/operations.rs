@@ -246,14 +246,21 @@ const LABELED_CONTROLS_EXPR: &str = "(function(){var n=0;document.querySelectorA
 /// Ein Lade-Skelett bringt sofort Dutzende leerer Platzhalter mit; ein Scan
 /// darauf sah real 107 Elemente ohne einen einzigen Namen.
 pub(crate) fn wait_for_labeled_controls(driver: &mut dyn PageDriver) {
+    let start = Instant::now();
     let deadline = Instant::now() + Duration::from_secs(30);
+    let mut last_labeled = 0i64;
     while Instant::now() < deadline {
         let labeled = eval_i64(driver, LABELED_CONTROLS_EXPR);
+        last_labeled = labeled;
         if labeled >= 5 {
             std::thread::sleep(Duration::from_millis(1500));
             return;
         }
         std::thread::sleep(Duration::from_millis(500));
+    }
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        let t = start.elapsed().as_secs_f64();
+        println!("[verify] trace +{t:>7.2}s  wait_labeled: DEADLINE (letzte Zaehlung {last_labeled})");
     }
 }
 

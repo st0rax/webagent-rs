@@ -1,0 +1,88 @@
+{
+  "composer": [
+    "#chat-input",
+    "textarea#chat-input",
+    "textarea",
+    "div[contenteditable='true']",
+    "div[role='textbox']"
+  ],
+  "send_button": [
+    "#send-message-button",
+    "button#send-message-button",
+    "button[type='submit']",
+    "button[aria-label*='Send' i]",
+    "button:has-text('Send')"
+  ],
+  "stop_button": [
+    "button[aria-label*='stoppen' i]",
+    "#stop-response-button",
+    "button#stop-response-button",
+    "button:has-text('Stop')",
+    "button[aria-label*='Stop' i]"
+  ],
+  "assistant_message": [
+    "div.chat-assistant .prose",
+    "div.chat-assistant .markdown-prose",
+    "div.chat-assistant"
+  ],
+  "new_chat_button": [
+    "#sidebar-new-chat-button",
+    "button#sidebar-new-chat-button",
+    "button:has-text('New Chat')",
+    "button:has-text('New chat')",
+    "button:has-text('新建')"
+  ],
+  "login_button": [
+    "button:has-text('Continue with Google')",
+    "button:has-text('Continue with Email')",
+    "button:has-text('Continue with Github')",
+    "button:has-text('Skip for now')",
+    "button:has-text('Sign in')",
+    "button:has-text('Log in')",
+    "button:has-text('登录')"
+  ],
+  "login_indicator": [
+    "#sidebar-new-chat-button",
+    "button#sidebar-new-chat-button"
+  ],
+  "google_sso_button": [
+    "button:has-text('Continue with Google')",
+    "button:has-text('Sign in with Google')",
+    "button:has-text('Continue to Google')",
+    "button:has-text('Mit Google fortfahren')",
+    "button:has-text('Weiter mit Google')",
+    "button:has-text('Anmelden mit Google')",
+    "button[aria-label*='Google' i]"
+  ],
+  "model_menu": [
+    "button[aria-label='Select a model']",
+    "button[aria-label*='Select a model' i]"
+  ],
+  "model_option": [
+    "[data-testid='model-item']",
+    "[title='model-item']",
+    "[aria-label='model-item']",
+    "[class*='model-item']",
+    "[id*='model-item']",
+    "[role=menuitem]",
+    "[role=option]"
+  ],
+  "ui_options": [
+    "chat",
+    "new_chat",
+    "model_switch",
+    "web_search",
+    "file_attach",
+    "stop_generation",
+    "reasoning_toggle"
+  ],
+  "reasoning_toggle": [
+    "[aria-label^='Deep think'] button",
+    "[aria-label^='Deep think'] [role=button]",
+    "[aria-label^='Deep think']"
+  ],
+  "web_search_toggle": [
+    "[data-active][class*='p-1.5']",
+    "button[data-active]:not([id*='sidebar'])"
+  ]
+}
