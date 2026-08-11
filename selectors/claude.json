@@ -107,5 +107,9 @@
     "[data-testid='model-selector-dropdown']",
     "button[aria-label^='Modell:']",
     "button[aria-label^='Model:']"
+  ],
+  "reasoning_effort_path": [
+    "Aufwand",
+    "Hoch"
   ]
 }
