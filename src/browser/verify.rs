@@ -38,6 +38,30 @@ const STABLE_DONE_SECS: u64 = 5;
 /// Banner-Scan ist teurer als die Zähl-Probe).
 const BLOCK_POLL_EVERY: u32 = 7;
 
+/// Schritt-Trace: zeigt, wo in der Sequenz die Zeit verbraucht wird. Nur aktiv,
+/// wenn `WEBAGENT_VERIFY_TRACE` gesetzt ist — sonst bleibt die Ausgabe der
+/// Endmessungen unveraendert. Jede Zeile traegt die Sekunden seit Sequenzstart.
+struct Trace {
+    start: Instant,
+    active: bool,
+}
+
+impl Trace {
+    fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            active: std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some(),
+        }
+    }
+
+    fn step(&self, msg: &str) {
+        if self.active {
+            let t = self.start.elapsed().as_secs_f64();
+            println!("[verify] trace +{t:>7.2}s  {msg}");
+        }
+    }
+}
+
 /// Ergebnis EINER gemessenen Fähigkeit — so, wie der Store es braucht.
 #[derive(Debug, Clone)]
 pub struct VerifyResult {
@@ -152,17 +176,21 @@ pub fn verify_capabilities(
     probe: &str,
     preflight_secs: f64,
 ) -> Vec<VerifyResult> {
+    let tr = Trace::new();
     if let Some(_secs) = crate::circuit_breaker::check(&backend.brain_id) {
         return all_unreachable(backend, targets, "circuit_open");
     }
     let driver_attached = backend.driver.borrow().is_some();
     if !driver_attached {
+        tr.step("Browserstart");
         if let Err(_e) = backend.start(headless) {
             return all_unreachable(backend, targets, "start_failed");
         }
     }
     backend.dismiss_consent();
+    tr.step("ensure_ready (Login/Cloudflare-Check)");
     let state = backend.ensure_ready(preflight_secs).unwrap_or(SessionState::Error);
+    tr.step("ensure_ready fertig");
     let results = match state {
         SessionState::Ready => verify_session(backend, targets, probe),
         SessionState::Cloudflare => all_unreachable(backend, targets, "cloudflare"),
@@ -551,6 +579,8 @@ fn generation_sequence(
     let do_new_chat = targets.iter().any(|c| c.key == "new_chat");
     let do_chat = targets.iter().any(|c| c.key == "chat");
     let do_stop = targets.iter().any(|c| c.key == "stop_generation");
+    let tr = Trace::new();
+    tr.step("generation_sequence start");
 
     // --- Hygiene: frischer Thread, aber UNBEWERTET ---
     //
@@ -564,7 +594,9 @@ fn generation_sequence(
     // von 8 Brains gescheitert. Belegt wird `new_chat` am Ende der Sequenz,
     // wenn eine Konversation mit eigener URL existiert (§5).
     if backend.assistant_count() > 0 {
+        tr.step("hygiene: Verlauf nicht leer, neuer Chat");
         let _ = backend.new_chat();
+        tr.step("hygiene: new_chat geklickt");
     }
 
     // --- chat + stop_generation ---
@@ -594,6 +626,7 @@ fn generation_sequence(
     }
 
     let start = Instant::now();
+    tr.step("Probe wird gesendet");
     let baseline = match backend.send(probe) {
         Ok(b) => b,
         Err(e) => {
@@ -616,6 +649,7 @@ fn generation_sequence(
             return results;
         }
     };
+    tr.step("Probe gesendet (baseline gesetzt), Poll startet");
 
     // Selektor-Literale einmal bauen, dann ein CDP-Roundtrip pro Poll.
     let assistant_js = backend.sel_js("assistant_message", &["div.prose"]);
@@ -634,9 +668,11 @@ fn generation_sequence(
     let mut stable_since = Instant::now();
     let mut block_polls = 0u32;
     let mut blocked = false;
+    let mut poll_deadline_hit = false;
 
     loop {
         if Instant::now() >= deadline {
+            poll_deadline_hit = true;
             break;
         }
         let (count, text, stop) = backend.probe_generation(&assistant_js, &stop_js, -1);
@@ -653,27 +689,36 @@ fn generation_sequence(
                 } else {
                     "text geaendert".to_string()
                 };
+                tr.step(&format!("chat belegt ({chat_trigger})"));
             }
         }
         if stop_visible {
+            if !stop_seen {
+                tr.step("Stop-Button sichtbar");
+            }
             stop_seen = true;
         }
         if chat_proven && stop_visible && !stop_clicked {
             stop_clicked = backend.click_first("stop_button");
+            tr.step(&format!("Stop geklickt (wirksam: {stop_clicked})"));
         }
         if stop_clicked {
-            if !stop_visible {
+            if !stop_visible && !stop_gone {
+                tr.step("Stop verschwunden");
                 stop_gone = true;
             }
-            if !last_text.is_empty() && text == last_text {
+            if !last_text.is_empty() && text == last_text && !frozen {
+                tr.step("Text eingefroren");
                 frozen = true;
             }
         }
         let text_stable = chat_proven && !text.is_empty() && text == last_text;
         if text_stable && stable_since.elapsed() >= Duration::from_secs(STABLE_DONE_SECS) {
+            tr.step("Text still, Generierung beendet");
             break; // Generierung fertig (Text steht still) — Stop-Fenster vorbei.
         }
         if stop_clicked && stop_gone && frozen {
+            tr.step("Stop nachweislich gewirkt");
             break; // Stop nachweislich gewirkt.
         }
         if !text_stable {
@@ -683,11 +728,17 @@ fn generation_sequence(
 
         block_polls += 1;
         if block_polls.is_multiple_of(BLOCK_POLL_EVERY) && backend.detect_block_banner().is_some() {
+            tr.step("Block-Banner erkannt");
             blocked = true;
             break;
         }
         std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
+    tr.step(match (blocked, poll_deadline_hit) {
+        (true, _) => "Poll-Ende: Block-Banner",
+        (false, true) => "Poll-Ende: Deadline erreicht",
+        (false, false) => "Poll-Ende: normales Ende (Stop/Stabilitaet)",
+    });
 
     if blocked {
         // Rate-Limit/Blockade während der Probe: alles Unreachable `blocked`
@@ -707,6 +758,7 @@ fn generation_sequence(
     }
 
     // --- chat belegt? ---
+    tr.step("chat-Urteil");
     if do_chat {
         let cap = cap_chat.expect("chat im Katalog");
         let winner = resolve_fallback(backend, cap.needs).map(|(w, _)| w);
@@ -798,6 +850,7 @@ fn generation_sequence(
             // Aenderung ohne Wirkungsnachweis waere genau das, was dieses
             // Modul sonst verhindert. Zum Klaeren braucht es einen
             // DOM-Abzug NACH dem Stop-Klick.
+            tr.step("new_chat: Klick");
             let nc_start = Instant::now();
             let hash = hash_for(backend, cap);
             let before = backend.get_conversation_ref();
@@ -814,6 +867,7 @@ fn generation_sequence(
                     let count_after = backend.assistant_count();
                     let url_changed = after != before && after.is_some();
                     let (outcome, note) = new_chat_outcome(url_changed, count_before, count_after);
+                    tr.step(&format!("new_chat: {note}"));
                     let m = measure(
                         cap.key,
                         before.unwrap_or_default(),
