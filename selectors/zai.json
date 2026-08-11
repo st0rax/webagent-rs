@@ -14,6 +14,8 @@
     "button:has-text('Send')"
   ],
   "stop_button": [
+    "[aria-label*='stopp' i]",
+    "[aria-label*='stop' i]",
     "button[aria-label*='stoppen' i]",
     "#stop-response-button",
     "button#stop-response-button",

@@ -17,6 +17,8 @@
     "button:has-text('发送')"
   ],
   "stop_button": [
+    "[aria-label*='stopp' i]",
+    "[aria-label*='stop' i]",
     "button[aria-label*='stoppen' i]",
     "button[aria-label*='Stop' i]",
     "button[aria-label*='stop' i]",
@@ -43,6 +45,9 @@
     "div[class*='chat-message']:not([class*='user'])"
   ],
   "new_chat_button": [
+    "a[aria-label*='Neuer Chat' i]",
+    "[aria-label*='Neuer Chat' i]",
+    "[aria-label*='New Chat' i]",
     "button:has-text('New chat')",
     "button:has-text('Neuer Chat')",
     "button:has-text('New')",

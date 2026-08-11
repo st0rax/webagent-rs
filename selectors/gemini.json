@@ -21,6 +21,8 @@
     "button:has-text('Close')"
   ],
   "stop_button": [
+    "[aria-label*='stopp' i]",
+    "[aria-label*='stop' i]",
     "button[aria-label*='stoppen' i]",
     "button[aria-label*='Stop' i]",
     "button[aria-label*='stop' i]",
@@ -35,11 +37,14 @@
     "div.prose"
   ],
   "new_chat_button": [
+    "a[aria-label*='Neuer Chat' i]",
+    "[aria-label*='Neuer Chat' i]",
+    "[aria-label*='New Chat' i]",
     "button[aria-label*='New chat' i]",
     "button[aria-label*='Start new chat']",
-    "a[href='/']",
     "button:has-text('New chat')",
-    "button:has-text('Neuer Chat')"
+    "button:has-text('Neuer Chat')",
+    "a[href='/']"
   ],
   "login_button": [
     "text=Sign in",

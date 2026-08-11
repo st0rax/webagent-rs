@@ -36,6 +36,8 @@
     "div[class*='message-content']"
   ],
   "new_chat_button": [
+    "div[aria-label*='New Chat' i]",
+    "[aria-label*='New Chat' i]",
     "button[aria-label*='New chat' i]",
     "a[href='/']",
     "button:has-text('New chat')",
