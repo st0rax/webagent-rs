@@ -210,6 +210,8 @@ fn dispatch(command: Commands) -> i32 {
             verify,
             open,
             dump,
+            generating,
+            stop_diff,
             visible,
         } => cmd_probe(
             url.as_deref(),
@@ -219,6 +221,8 @@ fn dispatch(command: Commands) -> i32 {
             verify,
             open.as_deref(),
             dump,
+            generating,
+            stop_diff,
             !visible,
         ),
 

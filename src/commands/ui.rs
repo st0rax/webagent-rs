@@ -495,9 +495,12 @@ pub fn cmd_probe(
     verify: bool,
     open: Option<&str>,
     dump: bool,
+    generating: bool,
+    stop_diff: bool,
     headless: bool,
 ) -> i32 {
     use webagent::brain_probe::{Proposal, Verdict};
+    use webagent::browser::verify::probe_message;
     use webagent::browser::WebBrainBackend;
 
     let (id, url, is_new) = match (brain, url) {
@@ -542,10 +545,63 @@ pub fn cmd_probe(
         },
     };
 
+    if stop_diff {
+        eprintln!("[probe] {id}: Probe senden, waehrend + nach der Generierung scannen…");
+        return match backend
+            .probe_stop_by_disappearance(headless, &probe_message(&webagent::now_rfc3339()))
+        {
+            Ok((during, after, only_during)) => {
+                let vis = |v: &[webagent::brain_probe::Candidate]| {
+                    v.iter().filter(|c| c.visible).count()
+                };
+                println!(
+                    "  --- {id}: waehrend {} sichtbar, danach {} sichtbar ---",
+                    vis(&during),
+                    vis(&after)
+                );
+                if only_during.is_empty() {
+                    println!("  Weder verschwunden noch veraendert — der Stop-Knopf war");
+                    println!("  entweder nie da, oder er ist von den uebrigen nicht");
+                    println!("  unterscheidbar (dann hilft nur SVG-/Elternketten-Analyse).");
+                    return 1;
+                }
+                println!(
+                    "  Nur waehrend der Generierung vorhanden ODER dort anders ({}) — \
+                     darunter ist der Stop-Knopf:",
+                    only_during.len()
+                );
+                for c in &only_during {
+                    println!(
+                        "      <{}> role={} pos=({},{}) {}x{} al={:?} txt={:?} title={:?} id={:?} cls={:?}",
+                        c.tag, c.role, c.x, c.y, c.w, c.h,
+                        c.aria_label, c.text, c.title, c.id, c.class
+                    );
+                }
+                0
+            }
+            Err(e) => {
+                eprintln!("[probe] {id}: Fehler: {e}");
+                1
+            }
+        };
+    }
+
     eprintln!("[probe] {id}: oeffne Oberflaeche (headless={headless})…");
     // `--dump` zeigt die Rohehebung (ohne Fill-Runde, sonst ist der Composer
     // schon gefuellt und die Antwort verdraengt die echten Bedienelemente).
-    let (candidates, proposals) = if dump {
+    let (candidates, proposals) = if generating {
+        // Der Stop-Knopf existiert nur waehrend einer laufenden Antwort; ein
+        // Scan im Ruhezustand kann ihn nicht finden. Kostet eine echte
+        // Nachricht — deshalb nur auf ausdrueckliche Anforderung.
+        eprintln!("[probe] {id}: sende Probe und scanne waehrend der Generierung…");
+        match backend.probe_surface_generating(headless, &probe_message(&webagent::now_rfc3339())) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[probe] {id}: Fehler: {e}");
+                return 1;
+            }
+        }
+    } else if dump {
         match backend.probe_surface_with_raw(headless, open) {
             Ok(p) => p,
             Err(e) => {
@@ -564,19 +620,32 @@ pub fn cmd_probe(
     };
 
     if dump {
-        println!("  --- {id}: ROHE DOM-KANDIDATEN ({}) ---", candidates.len());
-        for c in candidates.iter() {
+        // Nur die sichtbaren: unsichtbare Treffer sind Rauschen (deepseek
+        // liefert 212 Kandidaten, davon eine Handvoll sichtbar).
+        let visible: Vec<_> = candidates.iter().filter(|c| c.visible).collect();
+        println!(
+            "  --- {id}: ROHE DOM-KANDIDATEN ({} sichtbar von {}) ---",
+            visible.len(),
+            candidates.len()
+        );
+        for c in visible {
+            // `cls` und `title` gehoeren dazu: bei Icon-only-Oberflaechen
+            // (deepseek rendert `div[role=button]` ohne Label, Text, id und
+            // data-*) sind sie das EINZIGE, woran ein Selektor sich festmachen
+            // kann. Ohne sie zeigt der Abzug lauter identische Leerzeilen und
+            // ist wertlos — genau der Zustand am 2026-08-10.
             println!(
-                "      <{}> role={} visible={} al={:?} txt={:?} tid={:?} id={:?} ph={:?} ce={}",
+                "      <{}> role={} al={:?} txt={:?} title={:?} tid={:?} id={:?} ph={:?} ce={} cls={:?}",
                 c.tag,
                 c.role,
-                c.visible,
                 c.aria_label,
                 c.text,
+                c.title,
                 c.test_id,
                 c.id,
                 c.placeholder,
-                c.contenteditable
+                c.contenteditable,
+                c.class
             );
         }
     }

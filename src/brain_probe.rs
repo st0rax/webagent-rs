@@ -52,6 +52,21 @@ pub struct Candidate {
     /// Sichtbar und bedienbar — unsichtbare Treffer sind Rauschen.
     #[serde(default)]
     pub visible: bool,
+    /// Lage und Größe im Viewport. Nicht als Selektor gedacht, sondern als
+    /// **Identität** für Vergleiche zwischen zwei Abzügen: Oberflächen wie
+    /// deepseek rendern Dutzende `div[role=button]` mit identischer Klasse und
+    /// ohne jedes Label — da ist die Position das Einzige, was sie
+    /// unterscheidbar macht. Genau das braucht die Suche nach dem Stop-Knopf,
+    /// der sich nur dadurch auszeichnet, dass er während der Generierung
+    /// erscheint und danach verschwindet.
+    #[serde(default)]
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
+    #[serde(default)]
+    pub w: i32,
+    #[serde(default)]
+    pub h: i32,
 }
 
 impl Candidate {
@@ -325,8 +340,14 @@ pub const PROBE_SCRIPT: &str = r#"
       placeholder: el.getAttribute('placeholder') || '',
       test_id: el.getAttribute('data-testid') || '',
       id: el.id || '',
+      title: el.getAttribute('title') || '',
+      class: (typeof el.className === 'string' ? el.className : '').trim().slice(0, 400),
       contenteditable: el.getAttribute('contenteditable') === 'true',
-      visible: r.width > 0 && r.height > 0
+      visible: r.width > 0 && r.height > 0,
+      x: Math.round(r.left),
+      y: Math.round(r.top),
+      w: Math.round(r.width),
+      h: Math.round(r.height)
     });
   }
   return out;
@@ -337,7 +358,11 @@ pub const PROBE_SCRIPT: &str = r#"
 ///
 /// Reihenfolge nach Haltbarkeit: `data-testid` ueberlebt Umbauten am ehesten,
 /// eine `id` meist auch; `aria-label` ist sprachabhaengig und faellt beim
-/// naechsten Sprachwechsel um; reiner Text ist der letzte Ausweg.
+/// naechsten Sprachwechsel um; reiner Text ist der naechste Ausweg. Erst
+/// danach `title` (Tooltip, eine absichtliche Beschriftung) und `class`
+/// (Deko, wechselt bei jedem Theme-Redesign) — die zwei tragen nur
+/// Icon-only-Oberflaechen, auf denen alle anderen Quellen leer sind
+/// (deepseek: `div[role=button]` ohne jede Beschriftung).
 fn selector_for(candidate: &Candidate) -> Option<(String, u8, String)> {
     if !candidate.test_id.is_empty() {
         return Some((
@@ -367,6 +392,22 @@ fn selector_for(candidate: &Candidate) -> Option<(String, u8, String)> {
             format!("{}:has-text('{}')", candidate.tag, candidate.text),
             50,
             format!("text={}", candidate.text),
+        ));
+    }
+    if !candidate.title.is_empty() {
+        return Some((
+            format!("[title*='{}' i]", candidate.title),
+            45,
+            format!("title={}", candidate.title),
+        ));
+    }
+    if !candidate.class.is_empty() {
+        // `i` wie oben; der Teilstring-Match greift auch, wenn die Klasse
+        // mehrere Namen traegt (`className` ist eine Leerzeichen-Liste).
+        return Some((
+            format!("[class*='{}' i]", candidate.class),
+            35,
+            format!("class={}", candidate.class),
         ));
     }
     None
@@ -465,6 +506,55 @@ pub fn probe(driver: &mut dyn PageDriver) -> Result<Vec<Proposal>> {
 pub fn collect(driver: &mut dyn PageDriver) -> Result<Vec<Candidate>> {
     let raw = driver.evaluate(PROBE_SCRIPT)?;
     Ok(serde_json::from_value(raw).unwrap_or_default())
+}
+
+/// Identitaet eines Kandidaten fuer den Zwei-Abzug-Vergleich.
+///
+/// Bei Icon-only-Oberflaechen (deepseek: Dutzende `div[role=button]` mit
+/// identischer Klasse, ohne Label, Text, id oder title) ist die Position im
+/// Viewport das Einzige, was zwei sonst identische Elemente unterscheidet —
+/// deshalb Lage UND Groesse, nicht etwa die Klasse.
+fn stop_diff_key(c: &Candidate) -> (String, i32, i32, i32, i32) {
+    (c.tag.clone(), c.x, c.y, c.w, c.h)
+}
+
+/// Der Ertrag der Stop-Discovery: die Elemente, die nur **waehrend** der
+/// Generierung da waren oder sich an gleicher Stelle verwandelt haben.
+///
+/// Der Stop-Knopf traegt bei manchen Oberflaechen kein unterscheidendes
+/// Attribut und ist statisch nicht findbar — wohl aber an seiner *zeitlichen*
+/// Signatur: er ist da, solange die Antwort laeuft, und verschwindet danach.
+/// [`WebBrainBackend::probe_stop_by_disappearance`] macht zwei Abzuege und
+/// reicht sie hierher; unter den Rueckgaeben muss der Stop-Knopf sein.
+///
+/// Zwei Muster:
+/// - **Verschwinden**: ein Element, das waehrend der Generierung sichtbar war
+///   und danach an gleicher Stelle (Lage + Groesse) nicht mehr existiert.
+/// - **Verwandlung**: viele Oberflaechen benutzen EIN Element, das zwischen
+///   „senden" und „stoppen" wechselt — dann bleibt die Stelle, aber Klasse,
+///   `aria-label` oder `title` aendern sich.
+pub fn stop_diff_candidates(during: &[Candidate], after: &[Candidate]) -> Vec<Candidate> {
+    use std::collections::HashSet;
+
+    let after_keys: HashSet<_> = after
+        .iter()
+        .filter(|c| c.visible)
+        .map(stop_diff_key)
+        .collect();
+    let mut candidates: Vec<_> = during
+        .iter()
+        .filter(|c| c.visible && !after_keys.contains(&stop_diff_key(c)))
+        .cloned()
+        .collect();
+
+    for d in during.iter().filter(|c| c.visible) {
+        if let Some(a) = after.iter().find(|a| a.visible && a.x == d.x && a.y == d.y) {
+            if a.class != d.class || a.aria_label != d.aria_label || a.title != d.title {
+                candidates.push(d.clone());
+            }
+        }
+    }
+    candidates
 }
 
 /// Verlangt die Seite eine Anmeldung?
@@ -1120,5 +1210,106 @@ mod tests {
         assert!(expr.contains("closest("), "{expr}");
         assert!(expr.contains("data-"), "{expr}");
         assert!(crate::browser::js::click_toggle_expr_for(&sels).contains("t.click()"));
+    }
+
+    fn at(tag: &str, x: i32, y: i32, w: i32, h: i32) -> Candidate {
+        Candidate {
+            tag: tag.into(),
+            x,
+            y,
+            w,
+            h,
+            visible: true,
+            ..Default::default()
+        }
+    }
+
+    /// Der Stop-Knopf erscheint waehrend der Generierung und verschwindet
+    /// danach — das ist seine zeitliche Signatur auf Icon-only-Oberflaechen.
+    #[test]
+    fn stop_diff_findet_das_verschwundene_element() {
+        let during = vec![
+            at("div", 10, 20, 30, 40),
+            at("button", 5, 5, 20, 20),
+        ];
+        // Der Button bleibt, das div verschwindet (der Stop-Knopf).
+        let after = vec![at("button", 5, 5, 20, 20)];
+        let found = stop_diff_candidates(&during, &after);
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].x, found[0].y), (10, 20));
+    }
+
+    /// Bleibt alles gleich, ist nichts ein Kandidat — sonst meldete der
+    /// Vergleich bei jeder ruhigen Seite den halben DOM als „Stop".
+    #[test]
+    fn stop_diff_ignoriert_bleibende_elemente() {
+        let both = vec![at("button", 5, 5, 20, 20)];
+        let found = stop_diff_candidates(&both, &both);
+        assert!(found.is_empty());
+    }
+
+    /// Gleiche Stelle, geaenderte Klasse/Beschriftung: manche Oberflaechen
+    /// benutzen EIN Element, das zwischen „senden" und „stoppen" wechselt.
+    #[test]
+    fn stop_diff_erkennt_die_verwandlung() {
+        let mut during = at("button", 5, 5, 20, 20);
+        during.class = "btn-send".into();
+        let mut after = at("button", 5, 5, 20, 20);
+        after.class = "btn-stop".into();
+        let found = stop_diff_candidates(&[during], &[after]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].class, "btn-send");
+    }
+
+    /// Unsichtbare Elemente sind Rauschen und niemals Kandidaten — der
+    /// Zwei-Abzug soll den Stop-Knopf finden, nicht verstecktes DOM.
+    #[test]
+    fn stop_diff_ignoriert_unsichtbare() {
+        let mut during = at("div", 10, 20, 30, 40);
+        during.visible = false;
+        let found = stop_diff_candidates(&[during], &[]);
+        assert!(found.is_empty());
+    }
+
+    /// Ein reines Icon-`div` ohne jede Beschriftung (deepseek) wird ueber seine
+    /// Klasse gefunden — der einzige Anker, der dort bleibt.
+    #[test]
+    fn selector_for_faellt_auf_class_zurueck() {
+        let c = Candidate {
+            tag: "div".into(),
+            class: "d4910adc".into(),
+            visible: true,
+            ..Default::default()
+        };
+        let (sel, conf, ev) = selector_for(&c).expect("class muss einen Selektor liefern");
+        assert_eq!(sel, "[class*='d4910adc' i]");
+        assert_eq!(ev, "class=d4910adc");
+        assert!(conf < 50, "class ist der unbeständigste Anker: {conf}");
+    }
+
+    /// Ein Tooltip ist eine absichtliche Beschriftung und schlaegt die blosse
+    /// CSS-Klasse — beide aber erst, wenn text/id/aria-label leer sind.
+    #[test]
+    fn selector_for_nutzt_title_vor_class_aber_nach_aria_label() {
+        let title_only = Candidate {
+            tag: "button".into(),
+            title: "Antwort stoppen".into(),
+            visible: true,
+            ..Default::default()
+        };
+        let (sel, conf, _) = selector_for(&title_only).unwrap();
+        assert_eq!(sel, "[title*='Antwort stoppen' i]");
+        assert!((45..50).contains(&conf), "{conf}");
+
+        // Aria-label gewinnt: es ist stabiler als der Tooltip.
+        let both = Candidate {
+            tag: "button".into(),
+            aria_label: "Stop".into(),
+            title: "Antwort stoppen".into(),
+            visible: true,
+            ..Default::default()
+        };
+        let (sel, _, _) = selector_for(&both).unwrap();
+        assert!(sel.contains("aria-label"), "{sel}");
     }
 }

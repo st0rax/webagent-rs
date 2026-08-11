@@ -350,6 +350,18 @@ pub enum Commands {
         /// Rohe DOM-Kandidaten ausgeben (fuer die Analyse von Fehlfunden)
         #[arg(long)]
         dump: bool,
+        /// Waehrend einer laufenden Generierung scannen: sendet eine Probe und
+        /// scannt erst, wenn die Antwort laeuft. Noetig fuer `stop_button` —
+        /// den gibt es im Ruhezustand nicht. Schreibt eine echte Nachricht.
+        #[arg(long)]
+        generating: bool,
+        /// Stop-Knopf ueber sein VERSCHWINDEN finden: scannt waehrend der
+        /// Generierung und danach und meldet, was nur waehrenddessen da war.
+        /// Fuer Oberflaechen ohne Label/Text/id an den Bedienelementen
+        /// (deepseek). Schreibt eine echte Nachricht und wartet die ganze
+        /// Antwort ab.
+        #[arg(long)]
+        stop_diff: bool,
         /// Sichtbar statt headless (beim ersten Mal fuer den Login noetig)
         #[arg(long)]
         visible: bool,

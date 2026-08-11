@@ -13,6 +13,17 @@ use crate::brain::{BrainBackend, SessionState};
 
 use super::{operations, LiveDiagnosis, WebBrainBackend};
 
+/// Ergebnis von [`WebBrainBackend::probe_stop_by_disappearance`]:
+/// `(waehrend der Generierung, danach, Stop-Kandidaten)`.
+///
+/// Der dritte Teil ist der eigentliche Ertrag — die Elemente, die es nur
+/// während der Antwort gab oder die sich an gleicher Stelle verändert haben.
+pub type StopDiff = (
+    Vec<crate::brain_probe::Candidate>,
+    Vec<crate::brain_probe::Candidate>,
+    Vec<crate::brain_probe::Candidate>,
+);
+
 impl WebBrainBackend {
     pub fn dom_report(&self) -> Result<Value, String> {
         let mut guard = self.driver.borrow_mut();
@@ -362,6 +373,181 @@ return null;}})()"#,
         let _ = self.stop();
         result
     }
+    /// Oberflächen-Analyse **während einer laufenden Generierung**.
+    ///
+    /// Der Stop-Knopf existiert im Ruhezustand nicht. Ein normaler
+    /// [`probe_surface`](Self::probe_surface)-Scan sieht ihn deshalb nie — und
+    /// genau daran sind am 2026-08-10 die Selektor-Reparaturen für deepseek und
+    /// kimi gescheitert: raten statt messen. Diese Methode sendet eine Probe,
+    /// wartet, bis die Antwort nachweislich läuft, und scannt **dann**.
+    ///
+    /// Sie schreibt eine echte Nachricht in einen echten Chat — wie die
+    /// Generation-Sequenz von `verify` und aus demselben Grund: eine Fähigkeit,
+    /// die nur während einer Generierung existiert, ist ohne Generierung nicht
+    /// messbar.
+    ///
+    /// Bricht mit Fehler ab, wenn kein Antwortsignal kommt: ein Scan im
+    /// Ruhezustand wäre wertlos und würde als „Stop-Knopf nicht gefunden"
+    /// missverstanden.
+    pub fn probe_surface_generating(
+        &mut self,
+        headless: bool,
+        probe: &str,
+    ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+        use std::time::{Duration, Instant};
+
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+
+        let baseline = match self.send(probe) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = self.stop();
+                return Err(format!("Probe nicht absendbar: {e}"));
+            }
+        };
+
+        // Warten, bis die Generierung nachweislich läuft — dieselben Signale
+        // wie im Beleg-Poll (`browser/verify.rs`), nur ohne Stop-Zweig: der
+        // Knopf, den wir suchen, darf hier nicht Voraussetzung sein.
+        let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
+        let baseline_text = self.baseline_text.borrow().clone();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut running = false;
+        while Instant::now() < deadline {
+            let (count, text, _) = self.probe_generation(&assistant_js, "[]", -1);
+            if count > baseline || (!text.trim().is_empty() && text != baseline_text) {
+                running = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        if !running {
+            let _ = self.stop();
+            return Err("kein Antwort-Signal — Scan waere im Ruhezustand und damit wertlos".into());
+        }
+
+        // Kurz laufen lassen: manche Oberflächen rendern den Stop-Knopf erst
+        // mit dem ersten Textchunk, nicht schon beim Absenden.
+        std::thread::sleep(Duration::from_millis(1200));
+
+        let result = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            operations::scan_once(driver.as_mut())
+        };
+        let _ = self.stop();
+        result
+    }
+
+    /// Zwei Abzüge — während der Generierung und danach — und die Differenz.
+    ///
+    /// Der Stop-Knopf trägt bei manchen Oberflächen **kein** unterscheidendes
+    /// Attribut: deepseek rendert Dutzende `div[role=button]` mit identischer
+    /// Klasse, ohne Label, Text, id oder title. Statisch ist er dort nicht
+    /// findbar — wohl aber an seiner *zeitlichen* Signatur: er ist da, solange
+    /// die Antwort läuft, und verschwindet danach.
+    ///
+    /// Liefert `(waehrend, danach, nur_waehrend)`. Der dritte Teil sind die
+    /// Kandidaten, die es nur während der Generierung gab — unter ihnen muss
+    /// der Stop-Knopf sein. Verglichen wird über Lage und Größe, weil bei
+    /// solchen Oberflächen sonst nichts sie unterscheidet.
+    pub fn probe_stop_by_disappearance(
+        &mut self,
+        headless: bool,
+        probe: &str,
+    ) -> Result<StopDiff, String> {
+        use std::time::{Duration, Instant};
+
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+
+        let baseline = match self.send(probe) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = self.stop();
+                return Err(format!("Probe nicht absendbar: {e}"));
+            }
+        };
+
+        let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
+        let baseline_text = self.baseline_text.borrow().clone();
+
+        let scan = |me: &Self| -> Result<Vec<crate::brain_probe::Candidate>, String> {
+            let mut guard = me.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            operations::scan_once(driver.as_mut()).map(|(c, _)| c)
+        };
+
+        // Phase 1: warten bis die Antwort läuft, dann Abzug.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut running = false;
+        while Instant::now() < deadline {
+            let (count, text, _) = self.probe_generation(&assistant_js, "[]", -1);
+            if count > baseline || (!text.trim().is_empty() && text != baseline_text) {
+                running = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        if !running {
+            let _ = self.stop();
+            return Err("kein Antwort-Signal — ohne laufende Generierung kein Vergleich".into());
+        }
+        // Warten, bis die Oberfläche fertig gerendert ist — nicht bloß eine
+        // feste Pause. Gemessen an zai: ein Abzug 1,2 s nach dem ersten Signal
+        // sah 21 sichtbare Elemente, der Abzug danach 203. Ein Vergleich
+        // zwischen einer halb aufgebauten und einer fertigen Seite meldet
+        // Hunderte „Unterschiede" und keinen davon brauchbar.
+        //
+        // Kriterium: zwei aufeinanderfolgende Abzüge mit gleicher Anzahl
+        // sichtbarer Elemente. Danach ist der Aufbau stabil.
+        let mut during = scan(self)?;
+        let stable_until = Instant::now() + Duration::from_secs(20);
+        loop {
+            std::thread::sleep(Duration::from_millis(700));
+            let next = scan(self)?;
+            let a = during.iter().filter(|c| c.visible).count();
+            let b = next.iter().filter(|c| c.visible).count();
+            during = next;
+            if a == b || Instant::now() >= stable_until {
+                break;
+            }
+        }
+
+        // Phase 2: warten bis der Text stillsteht, dann erneut.
+        let mut last = String::new();
+        let mut stable_since = Instant::now();
+        let deadline2 = Instant::now() + Duration::from_secs(180);
+        while Instant::now() < deadline2 {
+            let (_, text, _) = self.probe_generation(&assistant_js, "[]", -1);
+            if !text.is_empty() && text == last {
+                if stable_since.elapsed() >= Duration::from_secs(4) {
+                    break;
+                }
+            } else {
+                stable_since = Instant::now();
+                last = text;
+            }
+            std::thread::sleep(Duration::from_millis(400));
+        }
+        std::thread::sleep(Duration::from_millis(1500));
+        let after = scan(self)?;
+        let _ = self.stop();
+
+        // Die Identität über Lage/Größe und die beiden Muster (Verschwinden +
+        // Verwandlung) sind in `brain_probe.rs` als reine Rechnung, damit sie
+        // ohne Browser testbar sind.
+        let candidates = crate::brain_probe::stop_diff_candidates(&during, &after);
+        Ok((during, after, candidates))
+    }
+
     /// Composer-/Assistant-Selektoren und Cloudflare, und schließt wieder. Deckt
     /// Selektor-Drift auf, die `doctor` (read-only) nicht sehen kann.
     pub fn live_diagnose(&mut self, headless: bool) -> Result<LiveDiagnosis, String> {
