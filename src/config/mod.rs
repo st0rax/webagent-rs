@@ -576,6 +576,47 @@ mod tests {
     }
 
     #[test]
+    fn load_selectors_faellt_auf_die_generische_maske_zurueck() {
+        // Ein registrierter, aber unvermessener Brain (keine mitgelieferte
+        // Datei; unter cargo test auch keine Nutzer-Datei) bekommt die Maske —
+        // statt des frueheren `NotFound`-Fehlers.
+        let sel = load_selectors("perplexity").expect("Maske greift statt NotFound");
+        for key in [
+            "composer",
+            "send_button",
+            "stop_button",
+            "new_chat_button",
+            "login_button",
+            "assistant_message",
+        ] {
+            let has = sel
+                .get(key)
+                .and_then(|v| v.as_array())
+                .map(|a| !a.is_empty())
+                .unwrap_or(false);
+            assert!(has, "Maske muss {key} liefern");
+        }
+        // Bewusst OHNE ui_options: die Maske belegt nichts von selbst, nur ein
+        // bestandener Live-Lauf zaehlt ein Level (capability-proof).
+        assert!(sel.get("ui_options").is_none());
+    }
+
+    #[test]
+    fn brain_datei_gewinnt_die_maske_pro_schluessel() {
+        // Der Brain-Selektor ueberschreibt die Maske je Oberschluessel komplett:
+        // kimi's Composer-Anker (lexical editor) schlaegt den generischen.
+        let sel = load_selectors("kimi").expect("kimi ist mitgeliefert");
+        let composer = sel
+            .get("composer")
+            .and_then(|v| v.as_array())
+            .expect("composer-Liste");
+        assert_eq!(
+            composer[0], "div[data-lexical-editor=\"true\"]",
+            "kimi gewinnt ueber die Maske"
+        );
+    }
+
+    #[test]
     fn test_swarm_and_reference_paths() {
         let r = reference_profile_dir("claude");
         assert!(r.ends_with(std::path::Path::new("reference").join("claude")));

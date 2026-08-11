@@ -27,6 +27,23 @@ pub fn embedded_selector(brain_id: &str) -> Option<&'static str> {
         .map(|(_, json)| *json)
 }
 
+/// Generische Brain-Maske: die aus den belegten Selektor-Dateien abgeleiteten
+/// Fallback-Ketten der Kern-Keys (composer, send, stop, new_chat, login, ...).
+/// Unterste Stufe der Aufloesungskette — ein registriertes Brain ohne eigene
+/// Datei (oder mit fehlenden Keys) faellt per Key hierauf zurueck. Belegt nichts
+/// von selbst: ein Level zaehlt erst nach bestandenem Live-Lauf (capability-proof).
+pub(crate) const GENERIC_MASK: &str = include_str!("../../selectors/_generic.json");
+
+/// Die generische Maske als JSON. Kann nicht fehlschlagen (eingebettet).
+pub(crate) fn generic_mask() -> std::io::Result<serde_json::Value> {
+    serde_json::from_str(GENERIC_MASK).map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("generische Maske: {e}"),
+        )
+    })
+}
+
 /// Die ausgelieferten Selektoren, so wie sie im Binary stecken — (id, JSON).
 /// Fuer Tests, die eine Aussage ueber die MITGELIEFERTEN Daten treffen wollen
 /// und dafuer nichts von der Platte lesen duerfen.
@@ -92,31 +109,32 @@ pub(crate) fn merge_selectors(base: &mut serde_json::Value, overlay: serde_json:
     }
 }
 
-/// Laedt die gueltigen Selektoren eines Brains: mitgelieferte Datei als Basis,
-/// lokale Nutzer-Datei als Overlay darueber.
+/// Laedt die gueltigen Selektoren eines Brains: **generische Maske als Basis**,
+/// mitgelieferte Datei als Overlay, lokale Nutzer-Datei als Overlay.
 ///
 /// Frueher ersetzte die Nutzer-Datei die mitgelieferte KOMPLETT. Ein
 /// `probe --write` schrieb dann einen Messschnappschuss auf die Platte, und ab
 /// da war jede spaetere Pflege im Repo fuer diese Maschine unsichtbar — auch
 /// fuer Schluessel, die die Messung nie angefasst hat. Overlay statt Ersatz
 /// haelt beides: reparierbar ohne Neubau, ohne den Rest einzufrieren.
+///
+/// Die Maske (bottom-up aus den belegten Dateien abgeleitet) macht den letzten
+/// Fallback statt `NotFound`: fehlt die ganze Brain-Datei — oder einzelne Keys —
+/// traegt die Maske per Key. `merge_selectors` ueberschreibt je Oberschluessel
+/// vollstaendig, also gewinnt ein Brain-Selektor die Maske, und ein
+/// Nutzer-Selektor gewinnt den Brain-Selektor. Keine Fehlerfaelle mehr fuer
+/// registrierte Brains; kaputtes JSON bleibt weiterhin ein Fehler.
 pub fn load_selectors(brain_id: &str) -> std::io::Result<serde_json::Value> {
     let shipped = shipped_selectors(brain_id)?;
     let user = user_selectors(brain_id)?;
-    match (shipped, user) {
-        (Some(mut base), Some(overlay)) => {
-            merge_selectors(&mut base, overlay);
-            Ok(base)
-        }
-        (Some(base), None) => Ok(base),
-        // Selbst hinzugefuegte Brains haben keine Basis — dort ist die
-        // Nutzer-Datei alles, was es gibt.
-        (None, Some(overlay)) => Ok(overlay),
-        (None, None) => Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("keine Selektoren fuer '{brain_id}'"),
-        )),
+    let mut base = generic_mask()?;
+    if let Some(s) = shipped {
+        merge_selectors(&mut base, s);
     }
+    if let Some(u) = user {
+        merge_selectors(&mut base, u);
+    }
+    Ok(base)
 }
 
 /// Gibt die Liste aller verfügbaren Brain-IDs zurück (sortiert).
