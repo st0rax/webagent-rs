@@ -230,7 +230,12 @@ pub const CATALOG: &[Capability] = &[
         // Anklickbar, aber nicht belegbar: ein laufendes Mikrofon aendert
         // keinen pruefbaren Zustand. Nach dem eigenen Massstab — kein Beleg,
         // kein Level — darf es nicht zaehlen; dann gehoert es auch nicht in
-        // den Nenner.
+        // den Nenner. Seit `webview_runtime.rs::apply_fake_audio_args` kann
+        // eine WAV-Datei die Mikrofon-Freigabe ersetzen und die Transkription
+        // landet belegbar im Composer (`--use-file-for-fake-audio-capture`,
+        // opt-in via `WEBAGENT_FAKE_AUDIO`). Bleibt `false`, bis ein
+        // End-to-End-Lauf bestanden ist, dann `ProofKind::Generation` und
+        // `attainable: true` (§13: voice_* verschoben, eigener grill-me).
         attainable: false,
     },
     // Bewusst getrennt von `voice_input`: das Mikrofon diktiert in den Composer,

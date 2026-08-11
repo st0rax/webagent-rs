@@ -1,6 +1,11 @@
 # /autoresearch.self — Swarm-Selbstbewertung (Spec)
 
-> STATUS: SPEZIFIZIERT 2026-07-21, Umsetzung delegiert. Verwandt, aber NICHT
+> **STATUS: UMGESETZT (Banner korrigiert 2026-08-10).** `src/self_research.rs`
+> (54 KB), CLI `webagent autoresearch-self` (`src/cli.rs:534`). Der Text unten
+> ist die Spezifikation vom 2026-07-21 und beschreibt die Absicht — bei
+> Abweichung gilt der Code.
+>
+> Ursprünglicher Banner: „SPEZIFIZIERT 2026-07-21, Umsetzung delegiert". Verwandt, aber NICHT
 > identisch mit dem metrik-getriebenen `autoresearch` (Modify/Verify/Keep/
 > Discard). Dies ist eine **Prioritätsfindung durch den Schwarm**: N Vorschläge
 > je Brain einsammeln, konsolidieren, abstimmen, gerankte Top-K ausgeben.

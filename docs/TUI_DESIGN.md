@@ -1,6 +1,12 @@
 # TUI-Redesign — animiertes Multi-Agent-Dashboard (pi.dev / grok-CLI Stil)
 
-> **STATUS: DESIGN, ZUR UMSETZUNG FREIGEGEBEN (nach login-persist).** Vorbild:
+> **STATUS: UMGESETZT (Banner korrigiert 2026-08-10).** `src/tui.rs` (66 KB),
+> `src/tui_state.rs`, `src/tui_render.rs`, CLI `webagent tui`
+> (`src/cli.rs:475`). Der Text unten ist der Entwurf vom 2026-07-17 und
+> beschreibt die Absicht — bei Abweichung gilt der Code.
+>
+> Ursprünglicher Banner: „DESIGN, ZUR UMSETZUNG FREIGEGEBEN (nach
+> login-persist)". Vorbild:
 > pi.dev + grok-CLI-Dashboard. Ziel: die aktuelle `src/tui.rs` (rudimentär) zu
 > einem animierten Dashboard mit **Agenten-Umschaltung** ausbauen. Design von
 > mistral (Brain-Worker) erarbeitet + Claude an webagents echte Datenquellen

@@ -160,6 +160,12 @@ gemini   [3/?] unvermessen (ausgeloggt)
 
 Gesamt 36. Zu Beginn des Ziels: 24.
 
+> **Diese Level-Tabellen sind Maschinenstände, keine Projektaussagen.** Sie
+> beschreiben Storax' Accounts (gemini ausgeloggt, deepseek mit 7 statt 9
+> Optionen), nicht das Projekt. Lebende Quellen sind `docs/ARCHITECTURE.md` und
+> `docs/PROVIDER_STATUS.md`; die Tabellen hier und in `docs/PARITY.md` (dort
+> als OBSOLETE markiert) sind Momentaufnahmen vom Stand der jeweiligen Sitzung.
+
 ---
 
 ## 5. Offene Blocker — gemessen, nicht vermutet

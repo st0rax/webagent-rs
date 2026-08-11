@@ -1,12 +1,15 @@
 # Autoresearch — Implementierungsplan
 
-> **STATUS: GEPLANT, NICHT IMPLEMENTIERT.**
-> Dieses Dokument ist eine vollständige Spezifikation für ein Feature, das noch
-> nicht existiert. Es ist bewusst so geschrieben, dass jemand anderes (Mensch
-> oder ein anderer Claude/Brain) direkt damit anfangen kann, ohne die
-> Ursprungs-Konversation zu kennen. Nichts hier ist bereits in `src/`
-> umgesetzt — vor dem Start `git grep -n autoresearch src/` laufen lassen, um
-> zu prüfen, ob sich das inzwischen geändert hat.
+> **STATUS: UMGESETZT (Banner korrigiert 2026-08-10).**
+> `src/autoresearch.rs` (52 KB) steht, CLI `webagent autoresearch`
+> (`src/cli.rs:529`), dazu `autoresearch-self` (`:534`) auf
+> `src/self_research.rs`.
+>
+> Der Text unten ist der Entwurf vom 2026-07-17 und beschreibt die **Absicht**,
+> nicht zwingend den gebauten Stand — bei Abweichung gilt der Code. Der
+> ursprüngliche Banner („GEPLANT, NICHT IMPLEMENTIERT") stand hier über drei
+> Wochen, während das Modul längst lief; §10 „Offene Design-Fragen" ist
+> entsprechend mit Vorsicht zu lesen.
 
 ---
 

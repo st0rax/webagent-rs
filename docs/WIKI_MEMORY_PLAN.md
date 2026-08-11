@@ -1,6 +1,12 @@
 # Wiki-Memory — Implementierungsplan (Karpathy-LLM-Wiki, Kern-Pattern)
 
-> **STATUS: SPEZIFIZIERT 2026-07-20, Umsetzung delegiert.** Grundlage:
+> **STATUS: UMGESETZT (Banner korrigiert 2026-08-10).** `src/wiki_memory.rs`
+> (23 KB), verdrahtet in `controller.rs`, `repl/commands.rs` und
+> `benchmark/pipeline.rs`. Der Text unten ist die Spezifikation vom 2026-07-20
+> und beschreibt die Absicht — bei Abweichung gilt der Code.
+>
+> Ursprünglicher Banner: „SPEZIFIZIERT 2026-07-20, Umsetzung delegiert".
+> Grundlage:
 > Karpathys "LLM Wiki"-Pattern (raw sources → wiki → schema; ingest/query/lint).
 > Bewusst NUR das Kern-Pattern — keine v2-Erweiterungen (Konsolidierungs-Tiers,
 > Confidence-Decay, Supersession-Versionierung), gemäß Projektlinie

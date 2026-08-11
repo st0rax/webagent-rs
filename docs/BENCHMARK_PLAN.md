@@ -1,6 +1,12 @@
 # benchmark — objektiver Code-Kompetenz-Score (Spec)
 
-> STATUS: SPEZIFIZIERT 2026-07-21. Die fehlende **code-Dimension** des im
+> **STATUS: UMGESETZT (Banner korrigiert 2026-08-10).** `src/benchmark/`
+> (8 Dateien, aus einer 125-KB-Datei aufgeteilt) plus `src/code_score.rs`
+> (24 KB), CLI `webagent benchmark` (`src/cli.rs:555`). Der Text unten ist die
+> Spezifikation vom 2026-07-21 und beschreibt die Absicht — bei Abweichung gilt
+> der Code.
+>
+> Ursprünglicher Banner: „SPEZIFIZIERT 2026-07-21". Die fehlende **code-Dimension** des im
 > `brain_score.rs`-Header geplanten Fähigkeitsprofils. Anders als der
 > Reliability-Score (Wilson über "hat geantwortet") ist dies **objektiv**:
 > der Compiler + die Tests sind der Schiedsrichter (umgeht den Phantom-Done-

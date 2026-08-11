@@ -389,5 +389,224 @@ wiederholen.
 3× `start_failed` und meldete „KEIN EINZIGER BELEG … dieser Lauf hat nichts
 gemessen" plus Exitcode 1. Genau der Fall, der vorher stumm durchgelaufen wäre.
 
+### qwen + kimi: falscher Elementtyp, plus eine Schattendatei (2026-08-10)
+
+`webagent probe --brain <id>` (nur Scan, kein `--write`, keine Nachricht) hat
+die Ursache der 34/35-ms-Fehlschläge geliefert — in beiden Fällen stimmte der
+**Elementtyp** nicht:
+
+| Brain | tatsächlich im DOM | war konfiguriert |
+|---|---|---|
+| qwen | `div[aria-label*='New Chat' i]` | nur `button[…]` und `a[href='/']` |
+| kimi | `a[aria-label*='Neuer Chat' i]` | u.a. `button[aria-label*='new' i]` |
+
+Beide Male zielten alle hinterlegten Selektoren auf `button` bzw. `a`, das reale
+Element ist ein `div` (qwen) bzw. ein `<a>` mit **deutschem** Label (kimi).
+Deshalb lieferte `click_first` sofort `false`, und der Ersatzweg von `new_chat()`
+tat nichts Messbares — daher die unmöglich kurzen 34/35 ms.
+
+Selektoren ergänzt (gemessener Wert zuerst, alte als Fallback), Ergebnis:
+
+```
+qwen: new_chat = Passed (1092 ms) — URL-Wechsel
+kimi: new_chat = Passed (1040 ms) — URL-Wechsel
+```
+
+**Der Zwilling hat dabei zugeschlagen.** qwen war nach der Repo-Änderung sofort
+grün, kimi blieb bei 33 ms — weil
+`%LOCALAPPDATA%\webagent\selectors\kimi.json` (vom 05.08.) die Repo-Datei
+überschattet. Genau die Falle aus `UEBERGABE_2026-07-28.md`: *„Greift ein
+verifizierter Fix live nicht, NICHT die Logik weiter ändern — erst nach dem
+Zwilling suchen."* Und genau das, wovor der Kommentar in `commands/ui.rs`
+warnt: ein `probe --write` friert den mitgelieferten Stand lokal ein, „spaetere
+Pflege im Repo erreicht diese Maschine nie wieder".
+
+Die Nutzerdatei enthielt inhaltlich **nur einen** eigenen Schlüssel
+(`attach_button`), sonst den eingefrorenen Altstand. `new_chat_button` wurde
+angeglichen (Backup: `kimi.json.bak-20260810`).
+
+**Umfang der Schattendateien** (nachgemessen, meine erste Einschätzung war zu
+pauschal — `load_selectors` merged **pro Schlüssel**, überschattet also nur, was
+die Nutzerdatei tatsächlich führt):
+
+| Nutzerdatei | Schlüssel | Wirkung |
+|---|---|---|
+| `kimi.json` | 12 (u.a. `assistant_message`, `composer`, `model_menu`) | überschattet fast alles — hier war die Repo-Pflege wirkungslos |
+| `gemini.json` | 1 (`ui_options`) | überschattet nur den Nenner; Selektorpflege im Repo greift |
+| `perplexity.json` | 9 | **kein Repo-Gegenstück** — die Datei ist die einzige Quelle, kein Schatten |
+
+Also nur kimi war betroffen. Für perplexity ist die Nutzerdatei sogar die
+einzige Konfiguration; sie gehört ins Repo, wenn perplexity dauerhaft
+mitlaufen soll.
+
+### `new_chat`: 8 von 8 belegt (2026-08-10, Abschluss)
+
+gemini und mistral nachgezogen — beide Male war die Diagnose **falsch**, die
+ich zuvor notiert hatte:
+
+- **gemini** galt als „echter Fall ohne URL-Wechsel, braucht ein zweites
+  Kriterium". Tatsächlich stand `a[href='/']` an dritter Stelle der Liste,
+  traf ein anderes Element (vermutlich das Logo) und wurde geklickt — daher
+  862 ms *mit* Klick und *ohne* Wirkung. Nach Voranstellen des gemessenen
+  `a[aria-label*='Neuer Chat' i]` und Verschieben von `a[href='/']` ans Ende:
+  `Passed — URL-Wechsel + Verlauf geleert (1 -> 0)`. gemini wechselt die URL
+  sehr wohl.
+- **mistral** war nie kaputt: der `start_failed` vom Vortag war flüchtig.
+  Einzellauf: `Passed — URL-Wechsel + Verlauf geleert (1 -> 0)`.
+- **deepseek `chat`** (108-s-Timeout im Breitentest) ebenfalls flüchtig:
+  Nachlauf `Passed` nach 11,4 s. Keine Regression durch den Hygiene-Klick.
+
+Damit dieselbe Ursache bei **vier** Brains (qwen, kimi, gemini + der
+ursprüngliche Positionsfehler): zu enge oder zu generische Selektoren, nie ein
+konzeptionelles Problem des URL-Kriteriums.
+
+**Zweites Kriterium trotzdem eingebaut** (`new_chat_outcome` in
+`browser/verify.rs`): Beleg gilt bei URL-Wechsel **oder** geleertem Verlauf
+(`count_before > 0 && count_after == 0`). Die Schranke `count_before > 0`
+verhindert, dass ein ohnehin leerer Verlauf (0 → 0) jeden wirkungslosen Klick
+belegt. Beide Zweige werden im `evidence` getrennt ausgewiesen, damit sichtbar
+bleibt, welches Kriterium trägt — sonst verdeckt ein blankes ODER beginnende
+Drift. Ehrlichkeitshalber: die Hypothese, die diesen Zweig motiviert hat, war
+falsch; er bleibt als unabhängiges Zweitsignal, nicht als der Fix.
+
+**Stand:** `chat` 8/8, `new_chat` 8/8 (perplexity bleibt Quest — keine
+Chat-Selektoren konfiguriert).
+
+### `stop_generation`: Teilerfolg und zwei offene Befunde (2026-08-10)
+
+Dieselbe Hypothese wie bei `new_chat` — alle `stop_button`-Selektoren der vier
+Fehlschläge waren **ausschließlich `button`-verankert**, kein einziger
+tag-agnostischer. Ergänzt um `[aria-label*='stopp' i]` und
+`[aria-label*='stop' i]` (Repo; bei kimi zusätzlich die Nutzerdatei).
+
+| Brain | vorher | nachher |
+|---|---|---|
+| zai | Failed „nie sichtbar" | **Unreachable** „Klick ohne belegbare Wirkung" |
+| gemini | Failed/Unreachable | Unreachable „Klick ohne belegbare Wirkung" |
+| deepseek | Failed „nie sichtbar" | unverändert |
+| kimi | Failed „nie sichtbar" | unverändert |
+
+**zai ist einen Schritt weiter:** der Knopf wird jetzt gefunden und geklickt,
+nur die Wirkung (`stop weg` UND `Text eingefroren`) ist nicht belegbar. Das ist
+ein anderes Problem als ein toter Selektor.
+
+**deepseek und kimi sind mit aria-label nicht erreichbar.** Für deepseek
+dokumentiert der Modulkopf von `capability.rs` den Grund: 107 Bedienelemente
+als reine Icon-`div`s ohne aria-label, title, id, `data-*` oder Text. Dort hilft
+kein Label-Selektor, sondern nur Klassen-/Strukturanalyse — und die braucht
+einen DOM-Abzug **während** der Generierung. Ein statischer `probe`-Scan sieht
+den Stop-Knopf nie, weil es ihn im Ruhezustand nicht gibt.
+
+**Reihenfolge-Interaktion bei gemini (offen).** `new_chat` hängt davon ab, ob
+`stop_generation` im selben Lauf geprüft wurde:
+
+```
+ohne --cap stop_generation:  Passed  "URL-Wechsel + Verlauf geleert (1 -> 0)"   2×
+mit  --cap stop_generation:  Failed  "1 -> 1"                                   3×
+```
+
+Das ist die unangenehmste Sorte Fehler: der **volle** Lauf liefert ein
+schlechteres Ergebnis als ein gezielter Teillauf. Ein Setzenlassen von 1,5 s vor
+dem Neu-Chat-Klick hat **nichts** geändert — die Vermutung „Generierung läuft
+noch" ist damit widerlegt (der Poll war ohnehin bis zum 137-s-Deadline
+gelaufen). Wahrscheinlicher hinterlässt der Stop-Klick bei gemini einen
+DOM-Zustand, in dem der Neu-Chat-Anker nicht mehr trifft.
+
+Der Workaround wurde wieder **entfernt**: eine Änderung ohne Wirkungsnachweis
+gehört nicht in dieses Modul. Der Befund steht als Kommentar an der Fundstelle
+in `browser/verify.rs`.
+
+**Nächster Schritt für beide offenen Punkte ist derselbe:** ein DOM-Abzug
+während bzw. direkt nach der Generierung. Ohne den bleibt jede weitere
+Selektor-Änderung Raten — genau der Modus, vor dem `UEBERGABE_2026-07-28.md`
+warnt („NICHT die Logik weiter ändern — erst nach dem Zwilling suchen").
+
+### `probe --generating` gebaut, und ein totes Feld gefunden (2026-08-10)
+
+Neu: `webagent probe --brain <id> --generating` sendet eine Probe, wartet bis
+die Antwort **nachweislich läuft** (Zähler wächst oder Text ändert sich — der
+Stop-Zweig fehlt hier bewusst, der gesuchte Knopf darf nicht Voraussetzung
+sein) und scannt erst dann. Bricht mit Fehler ab, wenn kein Antwortsignal
+kommt: ein Scan im Ruhezustand wäre wertlos und würde als „Stop-Knopf nicht
+gefunden" missverstanden.
+
+**Dabei ein echter Bug aufgefallen:** `PROBE_SCRIPT` sammelte weder `class` noch
+`title` ein. Beide Felder sind in `Candidate` deklariert **und ausdrücklich als
+wichtig dokumentiert** — „`title` … oft die einzige Beschriftung eines
+Icon-Buttons", `class` „fuer Discovery von Bedienelementen ohne Text/role".
+`#[serde(default)]` füllte sie still mit Leerstring. Damit war der Rohabzug bei
+genau den Oberflächen blind, für die er gedacht war. Behoben; `--dump` zeigt
+jetzt zusätzlich `title` und `cls` und filtert auf **sichtbare** Kandidaten
+(deepseek: 110 von 212).
+
+**Ergebnis für deepseek — negativ, aber belastbar.** Der Abzug während der
+Generierung zeigt die Icon-Buttons endlich mit Klassen:
+
+```
+<div role=button al="" txt="" title="" tid="" id=""
+     cls="ds-button ds-button--iconLabelTertiary ds-button--icon ds-button--capsule ds-button--m …"
+```
+
+Genau wie `capability.rs` es beschreibt — und die Klassen sind untereinander
+**identisch**. Der Stop-Knopf ist an keinem gesammelten Attribut von den übrigen
+Icon-Buttons zu unterscheiden. kimi und zai liefern während der Generierung
+ebenfalls keinen `stop_button`-Vorschlag, weil die Muster des Klassifizierers
+label- und textbasiert sind.
+
+**Damit ist die Grenze benannt statt geraten:** `stop_generation` für deepseek,
+kimi und zai braucht Unterscheidung über SVG-Inhalt, Position oder Elternkette —
+nicht über Label, Text, id, testid, title oder Klasse. Das ist ein eigenes
+Stück Arbeit, kein Selektor-Nachtrag.
+
+### deepseek `stop_generation` belegt — über das Verschwinden (2026-08-10)
+
+Der Stop-Knopf hat ein Merkmal, das kein Attribut ist: **er existiert nur,
+solange die Antwort läuft.** Neu: `probe --brain <id> --stop-diff` scannt
+während der Generierung und danach und meldet, was nur währenddessen da war.
+Verglichen wird über Lage und Größe — bei Oberflächen ohne Label ist das das
+Einzige, was zwei Elemente unterscheidbar macht (dafür sammelt `PROBE_SCRIPT`
+jetzt `x/y/w/h`).
+
+Für deepseek engte das **110 sichtbare Kandidaten auf zwei** ein:
+
+```
+(1081,168) 28x28  cls="… ds-button--xs … db183363"
+(1119,168) 28x28  cls="… ds-button--xs … d4910adc"
+```
+
+Einzeln durchgetestet: `div.d4910adc` ist der Stop-Knopf.
+
+```
+deepseek: stop_generation = Passed — Stop geklickt, verschwunden, Text eingefroren
+```
+
+Reproduziert; im selben Lauf sind `chat` und `new_chat` ebenfalls Passed.
+
+**Zwei eigene Fehler auf dem Weg**, beide vom Messwert aufgedeckt:
+`PROBE_SCRIPT` kürzte den Klassenstring auf 120 Zeichen — genau drei Zeichen zu
+früh, sodass aus `db183363` ein `db183` wurde und der Selektor ins Leere lief.
+Limit auf 400 erhöht. Und der erste Kandidat (`db183363`) war der falsche der
+beiden; erst `d4910adc` trägt.
+
+⚠ `db183363`/`d4910adc` sind CSS-Modul-Hashes und überleben ein Redeploy von
+deepseek vermutlich nicht. Das ist vertretbar, weil genau dieser Fall
+abgesichert ist: ändert sich die Selektordatei, entwertet der Hash den Beleg;
+greift der Selektor nicht mehr, meldet der nächste `verify` ein `Failed`.
+
+### Wo die Methode nicht greift: kimi und zai
+
+- **kimi**: 56 sichtbare Elemente während wie nach der Generierung, kein
+  Verschwinden und keine Änderung an gleicher Stelle. Deckt sich mit „Stop-Button
+  nie sichtbar" aus dem Beleg-Lauf, der alle 300 ms pollt. Entweder erscheint
+  der Knopf dort nie — dann ist `stop_generation` in kimis `ui_options` zu
+  Unrecht deklariert — oder kürzer als ein Poll-Intervall.
+- **zai**: 21 sichtbare Elemente während, 203 danach. zai blendet während der
+  Antwort fast die ganze Oberfläche aus. Ein Bereitschafts-Kriterium (zwei
+  aufeinanderfolgende Abzüge mit gleicher Anzahl) ändert daran nichts — die 21
+  sind stabil. Der einzige Unterschied ist der Upload-Knopf, also nicht der
+  gesuchte.
+
+Für beide bleibt nur SVG-Inhalt oder Elternkette. **Nicht weiter geraten.**
+
 **Records:** `proofs.jsonl` zählt nach Abschluss 162 Belege über alle 9 Brains
 (akkumuliert über alle Läufe inkl. Artefakt-Runs).

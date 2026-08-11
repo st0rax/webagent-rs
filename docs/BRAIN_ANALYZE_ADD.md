@@ -1,6 +1,17 @@
 # Brain Analyze & Add (`/aa`) — Design
 
-> **STATUS: DESIGN, NICHT IMPLEMENTIERT.** Methodik, um ein neues Web-Chat-Brain
+> **STATUS: UMGESETZT als `brain_probe` (Banner korrigiert 2026-08-10).**
+> `src/brain_probe.rs` (44 KB) steht, CLI `webagent probe`
+> (`src/cli.rs:329`) mit `--write`, `--verify`, `--open`, `--dump`. Der
+> Live-Beleg-Teil ist in `browser/operations.rs::verify_surface` gelandet und
+> speist seit 2026-08-09 den Capability-Proof-Store
+> (siehe `CAPABILITY_PROOF_PLAN.md`). Abweichung zum Entwurf unten: es gibt
+> kein eigenes `analyze_add()`/`aa`, die Kette liegt im `probe`-Befehl.
+>
+> **§7 „Offene Fragen" ist überholt:** die dort vorgesehene Markierung
+> `"_needs_review"` wurde nie gebaut (`git grep needs_review` trifft nur dieses
+> Dokument). Stattdessen gilt seit 2026-08-09 die schärfere Regel: Selektoren,
+> deren Round-Trip `FAIL` gemeldet hat, werden gar nicht erst geschrieben. Methodik, um ein neues Web-Chat-Brain
 > (Provider) möglichst autonom zu erkennen und als Brain hinzuzufügen. Von Claude
 > entworfen (2026-07-17), noch kein Code. Vor Umsetzung `git grep -n analyze_add
 > src/` prüfen.
@@ -95,5 +106,8 @@ REPL: `/aa <url> <id>`. Wiederverwendung von `browser`/`page_driver`/`JS_SEL_PRE
 
 - Reicht ein einziger Brain als Generator, oder Ensemble (2 Brains schlagen
   Kandidaten vor, Validierung entscheidet)? — Start: einer, bei FAIL zweiter.
-- Sollen unsichere Selektoren committet oder erst nach Mensch-Abnahme? — Default:
-  schreiben, aber `"_needs_review": ["send_button"]` markieren.
+- Sollen unsichere Selektoren committet oder erst nach Mensch-Abnahme? — Stand
+  2026-08-10: **kein `_needs_review`-Mechanismus gebaut** (siehe Banner oben).
+  Stattdessen gilt die `verify`-Regel aus `docs/CAPABILITY_PROOF_PLAN.md`:
+  ein Vorschlag wird nur geschrieben, wenn ein Round-Trip ihn belegt; was der
+  Round-Trip nicht belegt, wird als `Failed` gemessen und **nicht** geschrieben.

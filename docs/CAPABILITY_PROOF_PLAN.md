@@ -933,18 +933,34 @@ Drei Nebenbefunde:
 
 - **`selectors/claude.json`**: `model_menu` (Z. 76-81) und
   `reasoning_effort_menu` (Z. 105-110) entkoppeln — erst nach dem ersten Lauf.
-- **`new_chat_button` für qwen und kimi.** Beide melden den Beleg nach 34 bzw.
-  35 ms — zu schnell für beide Pfade von `new_chat()` (`backend.rs:128-141`:
-  Klick plus 800 ms Schlaf, sonst Ersatz-Navigation). Der Selektor greift dort
-  also nicht. Aufgabe für `brain_probe`, nicht für das Kriterium.
-- **Zweites `new_chat`-Kriterium für gemini.** Dort lief ein echter Versuch
-  (845 ms), aber `gemini.google.com/app` bleibt `/app` — die URL bewegt sich
-  nicht. Erst hier ist das URL-Kriterium tatsächlich zu eng. Kandidat: Verlauf
-  geleert (`assistant_count` fällt), sauber getrennt vom URL-Zweig, damit im
-  `evidence` steht, welches Kriterium getragen hat.
-- **Regression prüfen: deepseek `chat`.** Im Breitentest Timeout nach 108 s, im
-  Lauf davor `Passed` nach 9,6 s. Ursache offen — Flakiness oder Nebenwirkung
-  des Hygiene-Klicks. Wiederholen, bevor daraus etwas geschlossen wird.
+- ~~**`new_chat_button` für qwen und kimi.**~~ **Erledigt 2026-08-10.**
+  `probe --brain <id>` zeigte den Grund: falscher **Elementtyp**. qwen fährt
+  ein `div[aria-label*='New Chat' i]`, kimi ein `a[aria-label*='Neuer Chat' i]`
+  — konfiguriert waren nur `button`/`a`-Varianten. Beide jetzt `Passed`
+  (1092 bzw. 1040 ms). Details in `PROVIDER_STATUS.md`.
+  **Nebenbefund mit Folgen:** `%LOCALAPPDATA%\webagent\selectors\<brain>.json`
+  überschattet die Repo-Datei. Bei kimi wirkte der Repo-Fix deshalb zunächst
+  nicht. `gemini.json` und `perplexity.json` liegen dort ebenfalls — für diese
+  beiden Brains greift Selektorpflege im Repo aktuell **nicht**.
+- ~~**Zweites `new_chat`-Kriterium für gemini.**~~ **Erledigt 2026-08-10 — und
+  die Begründung war falsch.** Angenommen war, `gemini.google.com/app` bleibe
+  `/app`. Tatsächlich stand `a[href='/']` an dritter Stelle der Selektorliste,
+  traf ein anderes Element und wurde geklickt (daher 845 ms *mit* Klick, *ohne*
+  Wirkung). Mit dem gemessenen `a[aria-label*='Neuer Chat' i]` vorn und
+  `a[href='/']` ganz hinten: `Passed — URL-Wechsel + Verlauf geleert (1 -> 0)`.
+  gemini wechselt die URL sehr wohl.
+  Das zweite Kriterium ist trotzdem eingebaut (`new_chat_outcome`,
+  `browser/verify.rs`) — als unabhängiges Zweitsignal, nicht als der Fix.
+  Schranke `count_before > 0`, sonst würde 0 → 0 jeden wirkungslosen Klick
+  belegen.
+- ~~**Regression prüfen: deepseek `chat`.**~~ **Erledigt: flüchtig.** Nachlauf
+  `Passed` nach 11,4 s. Keine Nebenwirkung des Hygiene-Klicks. Ebenso mistral,
+  dessen `start_failed` sich im Einzellauf nicht reproduzieren ließ.
+- **Nachgemessen zur Schattendatei-Warnung:** `load_selectors` merged **pro
+  Schlüssel**. Betroffen war nur `kimi.json` (12 Schlüssel). `gemini.json`
+  führt allein `ui_options`, `perplexity.json` hat gar kein Repo-Gegenstück und
+  ist damit die einzige Quelle — die gehört ins Repo, wenn perplexity bleiben
+  soll.
 - **`stop_button` für deepseek, gemini, kimi, zai.** Alle vier melden „Stop-Button
   nie sichtbar", obwohl plausible `aria-label`-Selektoren hinterlegt sind. Der
   Modulkopf von `capability.rs` nennt den Grund für deepseek: 107 Bedienelemente
@@ -980,3 +996,55 @@ Drei Nebenbefunde:
   End-to-End-Lauf, dann `ProofKind::Generation` und `attainable: true`.
 - **`mode_switch`** (`capability.rs:125`) bleibt Quest: `driveable: false`,
   solange deepseeks Segmente keinen auslesbaren Marker tragen.
+
+## 14. Entscheidungen zum §13-Folgeplan (2026-08-10)
+
+Erarbeitet in einem weiteren `/grill-me`-Durchgang. Zwei §13-Items waren beim
+Grill bereits erledigt — der Durchgang hat das aus `proofs.jsonl` + Code
+nachgewiesen statt über offene Fragen (siehe unten). Reihenfolge der
+**verbliebenen** Arbeit: Selektor-Hunting (`stop_button`, 4 Brains) →
+`reasoning_effort` (claude/qwen) → Docs (`_needs_review`-Folgesatz + Level-
+Tabellen) → `voice_*` (verschoben). Validierung gezielt pro Brain, voller
+9-Brain-Sweep nur als Endvalidierung; thematische Commits direkt auf
+`evolution/supervised-harvest`, je `cargo test` + `clippy` grün.
+
+**Bereits erledigt (2026-08-10, uncommitted im Working Tree) — die zugehörigen
+Grill-Aste wurden gegenstandslos:**
+- **deepseek `chat`-Regression: flüchtig, kein Fix nötig.** `proofs.jsonl`:
+  2026-08-09 14:55 `Failed` (108 s, `winning_selector: textarea`) → 2026-08-10
+  07:25 `Passed` 11,4 s (`div.ds-markdown`). Keine Nebenwirkung des
+  Hygiene-Klicks (so auch §13). Der Hygiene-Klick ist bereits frisch-guardig:
+  `browser/verify.rs:566-568` klickt nur, wenn `assistant_count() > 0`.
+- **gemini `new_chat`: erledigt.** Echter Fix war die Selektor-Reihenfolge
+  (`a[aria-label*='Neuer Chat' i]` vorn, `a[href='/']` ganz hinten); der
+  generelle ODER-Arm ist als Zweitsignal gebaut: `new_chat_outcome`
+  (`browser/verify.rs:496-516`) = URL-Wechsel ODER
+  `count_before > 0 && count_after == 0`, Zweige im `evidence` getrennt,
+  Schranke `count_before > 0`. Tests `verify.rs:1010-1037`.
+
+| Frage | Entscheidung | Warum |
+|---|---|---|
+| Icon-only-Discovery? | `selector_for` um `[class*='…' i]` + `[title*='…']` erweitern (niedrigste Priorität); Rohe-Dump um class/title erweitern | `Candidate`+`haystack` führen beide schon (`brain_probe.rs:46-49`), nur der Emitter (`selector_for`, `brain_probe.rs:341-373`) fehlt — der Pfad ist halbfertig, nicht neu |
+| Gewinner in die Kette? | Mensch setzt ihn vorne (js_scan = first-match), nachweislich tote Einträge im selben Commit; Write-Pfad bleibt merge-over-write | Round-Trip bleibt das Gate; die „nie überschreiben"-Sicherheit der Nutzerdatei bleibt unangetastet |
+| Stop-Discovery-Fenster? | generierungsbewusster Probe-Modus: Probe senden, beim ersten Stop-Sichtbar `collect()`, Kandidaten drucken | `probe_surface` sendet keine Nachricht; ein Stop-Button existiert nur während der Generierung |
+| claude `reasoning_effort`? | Byte-Identität als strukturell korrekt akzeptieren (dasselbe Dropdown öffnet Modelle UND „Aufwand"), nur `reasoning_effort_path: ["Aufwand","Hoch"]` nachtragen, dann Lauf | es gibt keinen separaten Effort-Button auf claude; der Lauf liefert den Befund (§10) |
+| qwen `reasoning_effort`? | Discovery, Lauf entscheidet; ist es ein Toggle statt Pfad-Menü → ehrlich `NeedsSelectors` + PROVIDER_STATUS-Notiz | `ProofKind` ist brain-unabhängig; kein erfundener Pfad, kein Katalog-Umbau |
+| `voice_*` E2E bauen? | verschieben; nur überholten Katalog-Kommentar (`capability.rs:230`) auf Fake-Audio-Stand nachziehen + Notiz | einziger Brain mit Button (qwen), Cloud-STT-Flakiness, geringster Wahrheitsertrag; eigener grill-me, wenn dran |
+| Level-Tabellen-Maschinenstände? | ein Satz in `docs/UEBERGABE_2026-07-28.md`, gebündelt mit den übrigen Doc-Notizen | PARITY ist bereits OBSOLETE; Banner- und `_needs_review`-Folge (siehe unten) fallen in denselben Doc-Commit |
+| Validierung? | gezielter Lauf pro betroffenem Brain; voller Sweep nur am Ende | Batch-Artefakte (`start_failed`) verfälschen Diagnosen; gezielt ist billiger |
+| Commits? | thematische Commits, direkt auf `evolution/supervised-harvest`, je `cargo test` + `clippy` grün | History bleibt brauchbar, Fehler kosten einen kleinen Diff |
+
+Vom Code beantwortet statt gefragt: die Stale-Banner aller Pläne sind korrigiert
+(2026-08-10; `BRAIN_ANALYZE_ADD.md:3`, `AUTORESEARCH_PLAN.md:3` u. a. — alle
+dokumentieren „Banner korrigiert 2026-08-10"). **Noch offen ist dagegen der
+`_needs_review`-Folgesatz:** `BRAIN_ANALYZE_ADD.md:12` räumt ein, dass
+`_needs_review` nie gebaut wurde, aber §7 (`BRAIN_ANALYZE_ADD.md:109-110`)
+beschreibt weiterhin das alte „schreiben, aber `_needs_review` markieren" — das
+gehört auf „FAIL nicht schreiben" nachgezogen (§13). `reasoning_effort_path`
+steht in keiner Selektor-Datei, `capability.rs:259` verlangt ihn aber schon.
+Nur `qwen` hat `voice_input_button`/`voice_mode_button`; `apply_fake_audio_args`
+(`webview_runtime.rs:774`) injiziert via `--use-file-for-fake-audio-capture`;
+`reasoning_effort` war am 2026-07-28 an claude live belegt
+(`capability.rs:261-264`). Für das stop_button-Hunting an gemini ist eine
+Anmeldung von Hand nötig (auch zum Vermessen der leeren `ui_options`;
+`selectors/gemini.json`).
