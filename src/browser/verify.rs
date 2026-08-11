@@ -477,23 +477,71 @@ fn navigate_back(backend: &WebBrainBackend) -> Result<(), String> {
     }
 }
 
-/// Die Generierungs-Sequenz: frischer Chat → Probe senden → eigener Poll mit
-/// Dreier-ODER → Stop-Beweis. Schreibt Belege für `new_chat` (URL-Paar),
-/// `chat` (Dreier-ODER) und `stop_generation` (Stop sichtbar → Klick → weg und
-/// Text eingefroren) aus EINEM Lauf.
+/// Urteil für `new_chat` aus zwei unabhängigen Signalen — reine Rechnung,
+/// damit sie ohne Browser und ohne Mock-Aufrufzählerei prüfbar ist.
+///
+/// Zwei Kriterien, weil eines nicht reicht: der URL-Wechsel trägt bei den
+/// meisten Brains, aber gemini bleibt beim neuen Chat auf `/app`. Ein geleerter
+/// Verlauf belegt denselben Vorgang, ohne die URL zu brauchen.
+///
+/// `count_before > 0` ist Bedingung: nach der Probe steht dort eine Antwort.
+/// Ohne diese Schranke würde ein ohnehin leerer Verlauf (0 → 0) als „geleert"
+/// durchgehen und jeden wirkungslosen Klick belegen — genau die
+/// Trivialerfüllung, die der Round-Trip an anderer Stelle ausschließt.
+///
+/// Die beiden Zweige bleiben im Text getrennt, damit im `evidence` steht,
+/// WELCHES Kriterium getragen hat. Ein blankes ODER würde verdecken, dass ein
+/// Brain nur noch über den Ersatzweg belegt wird — und damit die beginnende
+/// Selektor-Drift unsichtbar machen.
+fn new_chat_outcome(url_changed: bool, count_before: i32, count_after: i32) -> (ProofOutcome, String) {
+    let history_cleared = count_before > 0 && count_after == 0;
+    match (url_changed, history_cleared) {
+        (true, true) => (
+            ProofOutcome::Passed,
+            format!("URL-Wechsel + Verlauf geleert ({count_before} -> 0)"),
+        ),
+        (true, false) => (ProofOutcome::Passed, "URL-Wechsel".to_string()),
+        (false, true) => (
+            ProofOutcome::Passed,
+            format!("Verlauf geleert ({count_before} -> 0), URL unveraendert"),
+        ),
+        (false, false) => (
+            ProofOutcome::Failed,
+            format!(
+                "weder URL-Wechsel noch geleerter Verlauf \
+                 ({count_before} -> {count_after}) — kein Beleg"
+            ),
+        ),
+    }
+}
+
+/// Die Generierungs-Sequenz: Probe senden → eigener Poll mit Dreier-ODER →
+/// Stop-Beweis → zuletzt `new_chat`. Schreibt Belege für `chat`,
+/// `stop_generation` und `new_chat` aus EINEM Lauf.
 ///
 /// Ablauf im Detail:
-/// 1. `new_chat` klicken, `get_conversation_ref` vorher/nachher. Fehlt der
-///    Selektor, bleibt new_chat eine Quest und der Lauf geht weiter.
-/// 2. `send(probe)` liefert die Baseline; ein `Err` ist ein chat-Failed
+///
+/// 0. Hygiene, **unbewertet**: ist der Verlauf nicht leer (`assistant_count > 0`),
+///    einmal `new_chat` klicken. Die Wurzel-URLs sind normalerweise schon der
+///    neue Chat; das greift nur, wenn eine Oberfläche das letzte Gespräch
+///    wiederherstellt.
+/// 1. `send(probe)` liefert die Baseline; ein `Err` ist ein chat-Failed
 ///    (Absenden ist die Fähigkeit, nicht ihr Umfeld).
-/// 3. EIGENER Poll (nicht `wait_response` — dessen Phase 2 wartet bis zur
+/// 2. EIGENER Poll (nicht `wait_response` — dessen Phase 2 wartet bis zur
 ///    Vollständigkeit, dann wäre nichts mehr zu stoppen):
 ///    `probe_generation` in einem CDP-Roundtrip, Dreier-ODER wie `wait_response`
 ///    (`count > baseline || (has_stop && stop) || text != baseline_text`).
-/// 4. Stop sichtbar → `click_first("stop_button")` → weg UND Text wächst nicht
+/// 3. Stop sichtbar → `click_first("stop_button")` → weg UND Text wächst nicht
 ///    weiter → `stop_generation` Passed. Nie sichtbar → Failed (toter
 ///    Selektor). War sichtbar, aber der Klick blieb wirkungslos → Unreachable.
+/// 4. **Zuletzt** `new_chat`: jetzt existiert eine Konversation, die man
+///    verlassen kann. Urteil über [`new_chat_outcome`] aus URL-Wechsel ODER
+///    geleertem Verlauf.
+///
+/// Die Reihenfolge ist nicht beliebig: `new_chat` stand ursprünglich an
+/// Position 1 und scheiterte am 2026-08-09 bei 8 von 8 Brains, weil die Sitzung
+/// auf `brain_url` startet — das IST bereits der neue Chat, es gab nichts zu
+/// verlassen.
 fn generation_sequence(
     backend: &mut WebBrainBackend,
     targets: &[&Capability],
@@ -734,21 +782,38 @@ fn generation_sequence(
     if do_new_chat {
         let cap = cap_by_key(targets, "new_chat").expect("new_chat im Katalog");
         if has_sel(&backend.selectors, cap.needs) {
+            // MESSBEFUND 2026-08-10 (offen, nicht behoben): bei gemini haengt
+            // das Ergebnis dieses Schritts davon ab, ob `stop_generation` im
+            // selben Lauf geprueft wurde.
+            //   ohne  --cap stop_generation:  Passed, "URL-Wechsel + Verlauf
+            //                                 geleert (1 -> 0)"  (2x)
+            //   mit   --cap stop_generation:  Failed, "1 -> 1"    (3x)
+            // Ein Setzenlassen von 1,5 s hat NICHTS geaendert, die Vermutung
+            // "Generierung laeuft noch" ist damit widerlegt — der Poll war
+            // ohnehin bis zum Deadline (137 s) gelaufen. Wahrscheinlicher:
+            // der Stop-Klick hinterlaesst bei gemini einen DOM-Zustand, in dem
+            // der Neu-Chat-Anker nicht mehr trifft.
+            //
+            // Bewusst KEIN spekulativer Workaround an dieser Stelle: eine
+            // Aenderung ohne Wirkungsnachweis waere genau das, was dieses
+            // Modul sonst verhindert. Zum Klaeren braucht es einen
+            // DOM-Abzug NACH dem Stop-Klick.
             let nc_start = Instant::now();
             let hash = hash_for(backend, cap);
             let before = backend.get_conversation_ref();
+            // Zweites Kriterium: der Verlauf muss leer werden. Noetig fuer
+            // Oberflaechen, die beim neuen Chat die URL NICHT wechseln —
+            // gemini bleibt auf `/app` und meldete deshalb am 2026-08-09 einen
+            // echten Versuch (845 ms) als Fehlschlag. Der Zaehler vor dem Klick
+            // ist > 0, weil die Probe gerade gelaufen ist.
+            let count_before = backend.assistant_count();
             let winner = resolve_fallback(backend, cap.needs).map(|(w, _)| w);
             match backend.new_chat() {
                 Ok(()) => {
                     let after = backend.get_conversation_ref();
-                    let (outcome, note) = if after != before && after.is_some() {
-                        (ProofOutcome::Passed, "URL-Wechsel".to_string())
-                    } else {
-                        (
-                            ProofOutcome::Failed,
-                            "neuer Chat ohne URL-Wechsel — kein Beleg".to_string(),
-                        )
-                    };
+                    let count_after = backend.assistant_count();
+                    let url_changed = after != before && after.is_some();
+                    let (outcome, note) = new_chat_outcome(url_changed, count_before, count_after);
                     let m = measure(
                         cap.key,
                         before.unwrap_or_default(),
@@ -950,6 +1015,43 @@ mod tests {
         assert!(st.measurement.proven, "stop_generation: {st:?}");
         assert_eq!(st.outcome, ProofOutcome::Passed);
         assert!(st.measurement.note.contains("Stop"));
+    }
+
+    /// `new_chat` hat zwei unabhängige Kriterien. Der URL-Zweig trägt bei den
+    /// meisten Brains, der Verlaufs-Zweig ist für die, die beim neuen Chat auf
+    /// derselben URL bleiben (gemini: `/app`).
+    #[test]
+    fn new_chat_belegt_auch_ohne_url_wechsel() {
+        // Nur URL: klassischer Fall.
+        let (o, n) = new_chat_outcome(true, 1, 1);
+        assert_eq!(o, ProofOutcome::Passed);
+        assert_eq!(n, "URL-Wechsel");
+
+        // Nur Verlauf geleert: gemini-Fall — muss ebenfalls belegen, und das
+        // evidence muss sagen, welches Kriterium getragen hat.
+        let (o, n) = new_chat_outcome(false, 2, 0);
+        assert_eq!(o, ProofOutcome::Passed);
+        assert!(n.contains("Verlauf geleert"), "{n}");
+        assert!(n.contains("URL unveraendert"), "{n}");
+
+        // Beides: darf nicht als „nur URL" verbucht werden.
+        let (o, n) = new_chat_outcome(true, 3, 0);
+        assert_eq!(o, ProofOutcome::Passed);
+        assert!(n.contains("URL-Wechsel") && n.contains("Verlauf geleert"), "{n}");
+
+        // Nichts von beidem: Failed.
+        let (o, n) = new_chat_outcome(false, 2, 2);
+        assert_eq!(o, ProofOutcome::Failed);
+        assert!(n.contains("kein Beleg"), "{n}");
+    }
+
+    /// Ein ohnehin leerer Verlauf darf NICHT als „geleert" durchgehen — sonst
+    /// belegt jeder wirkungslose Klick die Fähigkeit. Das ist dieselbe
+    /// Trivialerfüllung, die der Round-Trip an anderer Stelle ausschließt.
+    #[test]
+    fn leerer_verlauf_ist_kein_geleerter_verlauf() {
+        let (o, n) = new_chat_outcome(false, 0, 0);
+        assert_eq!(o, ProofOutcome::Failed, "0 -> 0 ist kein Beleg: {n}");
     }
 
     /// Stop ist im Angebot, wird aber nie sichtbar: ehrliches Failed (toter
