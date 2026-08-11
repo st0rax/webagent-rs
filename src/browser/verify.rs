@@ -34,6 +34,11 @@ const POLL_INTERVAL_MS: u64 = 300;
 /// kein Stop-Button kam — ohne dieses Fenster würde ein toter Stop-Selektor
 /// den vollen `wait_response`-Timeout verbrennen.
 const STABLE_DONE_SECS: u64 = 5;
+/// Nach einem erfolgreichen Stop-Klick reicht dieses Fenster, um zu sehen, ob
+/// der Text einfriert. Waechst er weiter, ist der Stop wirkungslos — das Urteil
+/// steht, der Lauf muss NICHT bis zur Deadline warten (sonst ~120 s tote Zeit,
+/// z. B. chatgpt am 2026-08-11: Stop verschwunden +1,4 s, Urteil erst +121 s).
+const STOP_CONFIRM_SECS: u64 = 6;
 /// Alle so viele Polls wird der Block-Banner geprüft (nicht jeder Poll — der
 /// Banner-Scan ist teurer als die Zähl-Probe).
 const BLOCK_POLL_EVERY: u32 = 7;
@@ -669,6 +674,8 @@ fn generation_sequence(
     let mut block_polls = 0u32;
     let mut blocked = false;
     let mut poll_deadline_hit = false;
+    let mut stop_unconfirmed = false;
+    let mut stop_gone_since: Option<Instant> = None;
 
     loop {
         if Instant::now() >= deadline {
@@ -706,6 +713,7 @@ fn generation_sequence(
             if !stop_visible && !stop_gone {
                 tr.step("Stop verschwunden");
                 stop_gone = true;
+                stop_gone_since = Some(Instant::now());
             }
             if !last_text.is_empty() && text == last_text && !frozen {
                 tr.step("Text eingefroren");
@@ -721,6 +729,16 @@ fn generation_sequence(
             tr.step("Stop nachweislich gewirkt");
             break; // Stop nachweislich gewirkt.
         }
+        // Stop geklickt und verschwunden, aber der Text waechst weiter: der
+        // Klick hat keine belegbare Wirkung. Das Urteil steht nach dem
+        // Bestaetigungsfenster — nicht erst an der Deadline.
+        if let Some(t) = stop_gone_since {
+            if t.elapsed() >= Duration::from_secs(STOP_CONFIRM_SECS) {
+                stop_unconfirmed = true;
+                tr.step("Stop-Wirkung nicht bestaetigt (Text waechst weiter)");
+                break;
+            }
+        }
         if !text_stable {
             stable_since = Instant::now();
         }
@@ -734,10 +752,11 @@ fn generation_sequence(
         }
         std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
-    tr.step(match (blocked, poll_deadline_hit) {
-        (true, _) => "Poll-Ende: Block-Banner",
-        (false, true) => "Poll-Ende: Deadline erreicht",
-        (false, false) => "Poll-Ende: normales Ende (Stop/Stabilitaet)",
+    tr.step(match (blocked, poll_deadline_hit, stop_unconfirmed) {
+        (true, _, _) => "Poll-Ende: Block-Banner",
+        (_, true, _) => "Poll-Ende: Deadline erreicht",
+        (_, _, true) => "Poll-Ende: Stop-Wirkung nicht bestaetigt",
+        (false, false, false) => "Poll-Ende: normales Ende (Stop/Stabilitaet)",
     });
 
     if blocked {

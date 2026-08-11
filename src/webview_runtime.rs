@@ -430,6 +430,7 @@ fn open_page(
     // Muss VOR dem Anlegen des WebContext stehen: WebView2 liest die Variable
     // beim Erzeugen der Umgebung, spaetere Aenderungen wirken nicht mehr.
     apply_fake_audio_args();
+    apply_browser_perf_args();
 
     if rt.web_context.is_none() {
         rt.web_context = Some(wry::WebContext::new(Some(profile_dir.to_path_buf())));
@@ -756,6 +757,41 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
             let _ = respond.send(r);
         }
     }
+}
+
+/// Erzwingt gleichmaessiges Rendering/Streaming auch in verdeckten Fenstern.
+///
+/// WebView2 ist Chromium: ein vollstaendig okkludiertes (hinter anderen Fenstern
+/// liegendes) Fenster wird als "backgrounded" behandelt — Chromium drosselt
+/// dann Timer und Streaming-JS. Beobachtet am 2026-08-11: ein Verify-Lauf
+/// wirkte im verdeckten Fenster eingefroren, und lief sofort weiter, sobald die
+/// Maus das Fenster aktivierte. Genau diese Okklusion tritt bei Automation
+/// typischerweise auf (Fenster off-screen oder hinter dem Terminal), also sind
+/// die Flags hier Standard, nicht Opt-in:
+///
+/// - `--disable-backgrounding-occluded-windows`: kein Backgrounding, nur weil
+///   ein anderes Fenster davorliegt
+/// - `--disable-background-timer-throttling`: Timer (Streaming-Append) laufen
+///   auch im Hintergrund
+/// - `--disable-renderer-backgrounding`: Renderer bleibt voll aktiv
+///
+/// Anders als `apply_fake_audio_args` gibt es hier nichts Sicherheitsrelevantes:
+/// die Flags heben nur eine Energiespar-Heuristik auf.
+fn apply_browser_perf_args() {
+    let mut args = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+    for a in [
+        "--disable-backgrounding-occluded-windows",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+    ] {
+        if !args.contains(a) {
+            if !args.is_empty() {
+                args.push(' ');
+            }
+            args.push_str(a);
+        }
+    }
+    std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args);
 }
 
 /// Speist eine WAV-Datei als Mikrofon ein, wenn `WEBAGENT_FAKE_AUDIO` gesetzt
