@@ -16,6 +16,29 @@ use crate::page_driver::PageDriver;
 use crate::webview_runtime::WebViewRuntime;
 use std::time::{Duration, Instant};
 
+impl WebBrainBackend {
+    /// Eine Blockade als **Nachrichtenkontingent** festhalten, falls sie eine
+    /// ist.
+    ///
+    /// Befund Claude 02:49: `brain_limits.json` misst die Laenge einer
+    /// Nachricht, aber niemand misst die Anzahl pro Zeitfenster — und genau
+    /// daran sind mistral (51x) und qwen (8x) im Korpus gescheitert. Der
+    /// Wortlaut steht an dieser Stelle ohnehin schon vor uns; er muss nur
+    /// aufgeschrieben werden. Ein Schreibfehler darf den Turn nicht kippen.
+    fn note_quota_block(&self, text: &str) {
+        if !crate::brain_limits::looks_like_quota_block(text) {
+            return;
+        }
+        let snippet: String = text.trim().chars().take(300).collect();
+        if let Err(e) = crate::brain_limits::record_block(&self.brain_id, &snippet) {
+            crate::bench_events::eprint_line(&format!(
+                "[browser] {}: Kontingent-Blockade nicht schreibbar: {e}",
+                self.brain_id
+            ));
+        }
+    }
+}
+
 impl BrainBackend for WebBrainBackend {
     fn brain_id(&self) -> &str {
         &self.brain_id
@@ -233,12 +256,16 @@ impl BrainBackend for WebBrainBackend {
                 // dass ich sie in einer Extra-Sitzung von Hand suchen muesste.
                 if has_stop && !stop_seen_ever && !stop_inventory_done {
                     stop_inventory_done = true;
-                    let inventar = self.visible_button_inventory();
-                    if !inventar.is_empty() {
-                        crate::bench_events::eprint_line(&format!(
-                            "[browser] {}: kein Stop-Button erkannt, sichtbare Bedienelemente waehrend der Generierung: {inventar}",
-                            self.brain_id
-                        ));
+                    // Nur auf Anforderung protokollieren (WEBAGENT_STOP_INVENTORY=1):
+                    // das Inventar ist ein Suchwerkzeug, kein Dauerlauf-Log.
+                    if std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1") {
+                        let inventar = self.visible_button_inventory();
+                        if !inventar.is_empty() {
+                            crate::bench_events::eprint_line(&format!(
+                                "[browser] {}: kein Stop-Button erkannt, sichtbare Bedienelemente waehrend der Generierung: {inventar}",
+                                self.brain_id
+                            ));
+                        }
                     }
                 }
                 last_text = current.clone();
@@ -302,7 +329,12 @@ impl BrainBackend for WebBrainBackend {
                     // jetzt weg" gewartet wird, liefe JEDER Lauf ins Timeout.
                     // Fuer diese Brains ist das Stabilitaetsfenster nicht die
                     // Kruecke, sondern der einzige korrekte Mechanismus.
-                    if has_stop && !stop_seen_ever {
+                    // Auch diese Bestandsaufnahme ist ein Suchwerkzeug: nur auf
+                    // Anforderung (WEBAGENT_STOP_INVENTORY=1) statt bei jeder
+                    // Generation, sonst spamt der Dauerlauf.
+                    if has_stop && !stop_seen_ever
+                        && std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1")
+                    {
                         crate::bench_events::eprint_line(&format!(
                             "[browser] {}: kein Stop-Knopf erkannt — Fertigsignal kommt aus \
                              Textstabilitaet. Bestandsaufnahme im Log zeigt, ob ein \
@@ -315,6 +347,7 @@ impl BrainBackend for WebBrainBackend {
                             "[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt",
                             self.brain_id
                         ));
+                        self.note_quota_block(&text);
                         return Ok(mk(text, target, false, "blocked"));
                     }
                     return Ok(mk(text, target, true, "ok"));
@@ -327,6 +360,7 @@ impl BrainBackend for WebBrainBackend {
                 // der Seite (mistral: „Nachrichtenlimit erreicht") -> als Block melden.
                 if last_text.trim().is_empty() {
                     if let Some(banner) = self.detect_block_banner() {
+                        self.note_quota_block(&banner);
                         return Ok(mk(banner, target, false, "blocked"));
                     }
                 }

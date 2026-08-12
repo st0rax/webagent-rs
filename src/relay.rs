@@ -16,11 +16,18 @@ impl std::fmt::Display for RelayError {
 }
 
 /// Eine Send+Wait-Runde gegen ein Brain; kein Controller, keine Shell-Actions.
+///
+/// `model` wechselt das Zielmodell in DERSELBEN Sitzung, in der auch gefragt
+/// wird. Ein Wechsel in einer separaten Sitzung waere wirkungslos: jeder neue
+/// Browserstart faellt aufs Standardmodell zurueck. Der Wechsel passiert
+/// deshalb genau einmal, vor der Turn-Schleife — `new_chat` in der Schleife
+/// startet nur eine neue Konversation, das Modell der Sitzung bleibt.
 pub fn relay_single_turn(
     brain_id: &str,
     message: &str,
     headless: bool,
     timeout_override: Option<f64>,
+    model: Option<&str>,
 ) -> Result<String, RelayError> {
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
     // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
@@ -51,6 +58,35 @@ pub fn relay_single_turn(
             prompt_chars,
         );
         return Err(RelayError(reason));
+    }
+    if let Some(want) = model {
+        match backend.switch_model(want) {
+            Ok(now) => {
+                // „bereits aktiv" ist kein Wechsel: die Beschriftung trug das
+                // Ziel schon vorher, also hat dieser Lauf den Antrieb nicht
+                // belegt. Erst ein gemessener Wechsel ist ein Live-Beweis.
+                if !now.contains("bereits aktiv") {
+                    crate::capability_proof::record_route_proof(
+                        brain_id,
+                        "model_switch",
+                        &format!("relay --model '{want}' (Beschriftung nachgeprueft)"),
+                        started.elapsed().as_millis() as u64,
+                    );
+                }
+            }
+            Err(e) => {
+                let reason = format!("model_switch({want}): {e}");
+                crate::circuit_breaker::record_failure(brain_id, &reason);
+                crate::brain_score::record_event(
+                    brain_id,
+                    false,
+                    Some(&reason),
+                    started.elapsed().as_millis() as u64,
+                    prompt_chars,
+                );
+                return Err(RelayError(reason));
+            }
+        }
     }
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
     // sind unvermeidlich flakig: das Editor-Submit greift manchmal nicht (kimi),
@@ -142,6 +178,14 @@ pub fn relay_single_turn(
         Some(text) => {
             crate::circuit_breaker::record_success(brain_id);
             crate::brain_score::record_event(brain_id, true, None, latency_ms, prompt_chars);
+            // Send+Wait gegen den echten Browser = das Brain kann Text
+            // senden und eine Antwort lesen. Das ist der Beleg fuer "chat".
+            crate::capability_proof::record_route_proof(
+                brain_id,
+                "chat",
+                "relay_single_turn ok (send+wait gegen echten Browser)",
+                latency_ms,
+            );
             Ok(text)
         }
         None => {
@@ -164,7 +208,7 @@ mod tests {
 
     #[test]
     fn relay_error_on_bad_brain_id() {
-        let err = relay_single_turn("nonexistent_brain_xyz", "hi", true, None);
+        let err = relay_single_turn("nonexistent_brain_xyz", "hi", true, None, None);
         assert!(err.is_err());
     }
 }

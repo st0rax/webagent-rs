@@ -90,6 +90,11 @@ pub(crate) enum PageMessage {
         y: f64,
         respond: Sender<Result<()>>,
     },
+    ClickAtTrusted {
+        x: f64,
+        y: f64,
+        respond: Sender<Result<()>>,
+    },
     CapturePng {
         respond: Sender<Result<Vec<u8>>>,
     },
@@ -292,6 +297,10 @@ impl PageDriver for WebViewPageDriver {
 
     fn click_at(&mut self, x: f64, y: f64) -> Result<()> {
         self.call(|respond| PageMessage::ClickAt { x, y, respond })
+    }
+
+    fn click_at_trusted(&mut self, x: f64, y: f64) -> Result<()> {
+        self.call(|respond| PageMessage::ClickAtTrusted { x, y, respond })
     }
 
     fn capture_png(&mut self) -> Result<Vec<u8>> {
@@ -750,6 +759,10 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
             let r = click_at_js(&slot.webview, x, y, event_loop);
             let _ = respond.send(r);
         }
+        PageMessage::ClickAtTrusted { x, y, respond } => {
+            let r = click_at_trusted_cdp(&slot.webview, x, y, event_loop);
+            let _ = respond.send(r);
+        }
         PageMessage::CapturePng { respond } => {
             let r = capture_png(&slot.webview, event_loop);
             let _ = respond.send(r);
@@ -1076,8 +1089,14 @@ fn click_at_js(
 var x={x},y={y};
 var el=document.elementFromPoint(x,y);
 if(!el)return false;
-['mousedown','mouseup','click'].forEach(function(t){{
-  el.dispatchEvent(new MouseEvent(t,{{clientX:x,clientY:y,bubbles:true,button:0}}));
+// Der vollstaendige Ereignisweg in der Reihenfolge eines echten Mausklicks:
+// pointerdown -> mousedown -> pointerup -> mouseup -> click. Radix-basierte
+// Oberflaechen (Perplexitys Modellmenue, gemessen 2026-08-12) oeffnen sich
+// auf pointerdown und blieben ohne diese beiden Ereignisse geschlossen.
+var pd=new PointerEvent('pointerdown',{{clientX:x,clientY:y,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});
+var pu=new PointerEvent('pointerup',{{clientX:x,clientY:y,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});
+['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t){{
+  el.dispatchEvent(t==='pointerdown'?pd:t==='pointerup'?pu:new MouseEvent(t,{{clientX:x,clientY:y,bubbles:true,button:0}}));
 }});
 try{{el.focus();}}catch(e){{}}
 return true;}})()"#
@@ -1086,9 +1105,137 @@ return true;}})()"#
     Ok(())
 }
 
+/// CDP-Methode aufrufen und auf den Completion-Handler warten (on-device:
+/// `CallDevToolsProtocolMethod` spricht denselben CDP-Kanal wie die
+/// Remote-Debugging-Session, aber in-prozess — kein Port, kein WebSocket).
+///
+/// Wie bei `capture_png` und `eval_js`: die Event-Loop muss weiterlaufen,
+/// sonst feuert der Completion-Handler nie und wir warten auf uns selbst.
+fn call_cdp(
+    webview: &wry::WebView,
+    method: &str,
+    params: &str,
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    use std::sync::mpsc;
+    use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+    use windows::core::HSTRING;
+    use wry::WebViewExtWindows;
+
+    let proto = |e: String| PageDriverError::Protocol(e);
+    unsafe {
+        let core = webview
+            .controller()
+            .CoreWebView2()
+            .map_err(|e| proto(e.to_string()))?;
+
+        // `CallDevToolsProtocolMethod` nimmt PCWSTR — `&str` ist kein
+        // `Param<PCWSTR>`, HSTRING dagegen schon.
+        let method_wide = HSTRING::from(method);
+        let params_wide = HSTRING::from(params);
+
+        let (tx, rx) = mpsc::channel();
+        let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+            move |hr, _json| {
+                let _ = tx.send(hr);
+                Ok(())
+            },
+        ));
+        core.CallDevToolsProtocolMethod(&method_wide, &params_wide, &handler)
+            .map_err(|e| proto(e.to_string()))?;
+
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            match rx.try_recv() {
+                Ok(hr) => {
+                    hr.map_err(|e| proto(e.to_string()))?;
+                    break;
+                }
+                Err(_) if Instant::now() >= deadline => {
+                    return Err(PageDriverError::Timeout(format!(
+                        "{method}: CDP-Antwort ausstehend"
+                    )));
+                }
+                Err(_) => {}
+            }
+            pump_once(event_loop);
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+    Ok(())
+}
+
+/// Die drei Events der vertrauenswuerdigen Pointer-Sequenz, als (Eventtyp,
+/// CDP-Parameter-JSON). Als eigene Funktion, damit ein Test exakt pruefen kann,
+/// welche Sequenz an die Engine geht — dieselbe Unterscheidung zwischen
+/// Mechanismus-Test und Verhalten, die `press_key_script` schon traegt.
+fn cdp_click_events(x: f64, y: f64) -> Vec<(&'static str, String)> {
+    let base = |extra: &str| {
+        format!(
+            r#"{{"x":{x},"y":{y},"button":"left","pointerType":"mouse",{extra}}}"#,
+            extra = extra
+        )
+    };
+    [
+        ("mouseMoved", r#""buttons":0"#),
+        ("mousePressed", r#""buttons":1,"clickCount":1"#),
+        ("mouseReleased", r#""buttons":0,"clickCount":1"#),
+    ]
+    .iter()
+    .map(|(e, extra)| (*e, base(extra)))
+    .collect()
+}
+
+/// Vertrauenswuerdiger Linksklick an Viewport-Koordinaten ueber die
+/// vollstaendige CDP-Pointer-Sequenz (moved -> pressed -> released), wie sie
+/// auch Puppeteer/Playwright senden. Anders als [`click_at_js`] sind diese
+/// Events `isTrusted=true` — genau das verlangt qwens Denkstufen-Menue.
+fn click_at_trusted_cdp(
+    webview: &wry::WebView,
+    x: f64,
+    y: f64,
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    for (_event, params) in cdp_click_events(x, y) {
+        call_cdp(webview, "Input.dispatchMouseEvent", &params, event_loop)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_eval_result, press_key_script, wrap_eval};
+    use super::{cdp_click_events, parse_eval_result, press_key_script, wrap_eval};
+
+    // Der vertrauenswuerdige Klick ist eine vollstaendige Pointer-Sequenz
+    // (moved -> pressed -> released) mit Koordinaten, button und clickCount —
+    // nicht ein einziges synthetisches DOM-Event. Genau daran haengt, ob
+    // qwens Denkstufen-Menue aufpoppt: die Oberflaeche lauscht auf trusted
+    // pointerdown, und das liefert nur `Input.dispatchMouseEvent` ueber CDP.
+    #[test]
+    fn cdp_klick_sendet_vollstaendige_pointer_sequenz() {
+        let events = cdp_click_events(123.0, 456.0);
+        let types: Vec<&str> = events.iter().map(|(t, _)| *t).collect();
+        assert_eq!(
+            types,
+            vec!["mouseMoved", "mousePressed", "mouseReleased"]
+        );
+        for (t, params) in &events {
+            assert!(
+                params.contains("\"x\":123") && params.contains("\"y\":456"),
+                "{t} muss die Koordinaten tragen: {params}"
+            );
+            assert!(params.contains("\"button\":\"left\""), "{t}: {params}");
+            assert!(
+                params.contains("\"pointerType\":\"mouse\""),
+                "{t}: {params}"
+            );
+        }
+        assert!(
+            events[1].1.contains("\"clickCount\":1"),
+            "pressed braucht clickCount: {}",
+            events[1].1
+        );
+    }
 
     // Die Bedingung, unter der die ganze Kachelansicht steht: Enter absenden
     // darf nicht am Betriebssystem-Fokus haengen. Tut es auch nicht — der

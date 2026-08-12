@@ -92,6 +92,15 @@ pub fn cmd_canary() -> i32 {
     }
 }
 
+/// Zaehl-Spiel: Brains zaehlen abwechselnd bis `count`, Traces als JSON.
+pub fn cmd_count(brains: Option<Vec<String>>, count: u32, headless: bool) -> i32 {
+    let ids: Vec<String> = match brains {
+        Some(b) => b,
+        None => webagent::config::available_brain_ids(),
+    };
+    webagent::counting::counting_game(&ids, headless, count)
+}
+
 /// Ein Brain-Ergebnis fuer `--json` (relay + swarm).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BrainIoResult {
@@ -169,7 +178,7 @@ pub fn cmd_measure_limits(
             );
             print!("  {brain:<10} {groesse:>8} Zeichen … ");
             let _ = std::io::Write::flush(&mut std::io::stdout());
-            match webagent::relay::relay_single_turn(brain, &probe, headless, Some(180.0)) {
+            match webagent::relay::relay_single_turn(brain, &probe, headless, Some(180.0), None) {
                 Ok(antwort) => {
                     if webagent::brain_limits::looks_like_length_rejection(&antwort) {
                         println!("abgelehnt");
@@ -255,6 +264,7 @@ pub fn cmd_relay(
     headless: bool,
     timeout: f64,
     json: bool,
+    model: Option<&str>,
 ) -> i32 {
     let text = match message_file {
         Some(p) => match std::fs::read_to_string(p) {
@@ -273,7 +283,7 @@ pub fn cmd_relay(
     let message = text.as_str();
     let to = if timeout > 0.0 { Some(timeout) } else { None };
     let started = std::time::Instant::now();
-    match webagent::relay::relay_single_turn(brain, message, headless, to) {
+    match webagent::relay::relay_single_turn(brain, message, headless, to, model) {
         Ok(reply) => {
             let r = BrainIoResult {
                 brain: brain.to_string(),
@@ -337,7 +347,7 @@ pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json
     let mut results: Vec<BrainIoResult> = Vec::new();
     for brain in &targets {
         let started = std::time::Instant::now();
-        let r = match webagent::relay::relay_single_turn(brain, message, headless, to) {
+        let r = match webagent::relay::relay_single_turn(brain, message, headless, to, None) {
             Ok(answer) => BrainIoResult {
                 brain: brain.clone(),
                 ok: true,
@@ -410,7 +420,7 @@ pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json
             println!("[swarm] Phase 2/3 — Synthese via {orch}…");
         }
         let started = std::time::Instant::now();
-        match webagent::relay::relay_single_turn(orch, &synth_prompt, headless, to) {
+        match webagent::relay::relay_single_turn(orch, &synth_prompt, headless, to, None) {
             Ok(answer) => Some(BrainIoResult {
                 brain: orch.to_string(),
                 ok: true,
@@ -555,7 +565,7 @@ pub fn cmd_login_all(timeout_secs: u64, force: bool, parallel: usize) -> i32 {
     }
 }
 
-pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool) -> i32 {
+pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool, auto: bool) -> i32 {
     use std::time::Duration;
     use webagent::browser::WebBrainBackend;
 
@@ -596,7 +606,16 @@ pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool) -> i32 {
             }
         }
     } else {
-        match backend.interactive_login(timeout) {
+        if auto {
+            eprintln!(
+                "[login] {brain}: --auto — klicke Login-Kette selbst durch (Anmelden → ggf. Google-SSO)."
+            );
+        }
+        match if auto {
+            backend.try_auto_login(timeout)
+        } else {
+            backend.interactive_login(timeout)
+        } {
             Ok(true) => {
                 println!("[login] {brain}: Login erkannt und Session gespeichert.");
                 webagent::login::clear_breaker(brain);

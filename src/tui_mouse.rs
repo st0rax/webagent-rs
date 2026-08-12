@@ -57,7 +57,7 @@ pub fn hit(screen: Screen, col: u16, row: u16) -> Option<Hit> {
 
     // Fusszeile: die Knopfleiste.
     if row == last {
-        return crate::tui_render::footer_zones(screen.view)
+        return crate::tui_footer::footer_zones(screen.view)
             .into_iter()
             .find(|(from, to, _)| col >= *from && col < *to)
             .map(|(_, _, action)| Hit::Key(action));
@@ -117,7 +117,7 @@ mod tests {
     fn fusszeile_trifft_den_kachel_knopf() {
         let s = screen(View::Bench);
         // Reihenfolge in der Bench-Ansicht: v, j/k, g, w, q.
-        let zones = crate::tui_render::footer_zones(View::Bench);
+        let zones = crate::tui_footer::footer_zones(View::Bench);
         let (from, to, action) = zones[3];
         assert_eq!(action, "w");
         assert_eq!(hit(s, from, 29), Some(Hit::Key("w")));
@@ -130,7 +130,7 @@ mod tests {
     fn beschriftung_ist_teil_der_trefferflaeche() {
         // Wer auf das Wort zeigt, trifft — nicht nur wer den Buchstaben trifft.
         let s = screen(View::Bench);
-        let (from, to, _) = crate::tui_render::footer_zones(View::Bench)[0];
+        let (from, to, _) = crate::tui_footer::footer_zones(View::Bench)[0];
         for col in from..to {
             assert_eq!(hit(s, col, 29), Some(Hit::Key("v")), "Spalte {col}");
         }
@@ -199,7 +199,7 @@ mod tests {
         // Ohne diesen Test kann ein Eintrag mit unbekannter Aktion in die
         // Leiste geraten: er waere sichtbar, anklickbar — und wirkungslos.
         for view in [View::Bench, View::Workers, View::Capabilities] {
-            for b in crate::tui_render::footer_binds(view) {
+            for b in crate::tui_footer::footer_binds(view) {
                 assert!(
                     crate::tui_keys::parse_key(b.action).is_some(),
                     "{:?}: Knopf {:?} hat keine ausloesbare Aktion ({:?})",
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn knopf_zonen_ueberlappen_nicht() {
         for view in [View::Bench, View::Workers, View::Capabilities] {
-            let zones = crate::tui_render::footer_zones(view);
+            let zones = crate::tui_footer::footer_zones(view);
             for pair in zones.windows(2) {
                 assert!(
                     pair[0].1 <= pair[1].0,

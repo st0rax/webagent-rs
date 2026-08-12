@@ -261,6 +261,33 @@ fn leaderboard_at(path: &PathBuf) -> Vec<BrainStats> {
     result
 }
 
+/// Normalisierte Routing-Gewichtung fuer ein Brain aus Performance-Zahlen.
+///
+/// Gewichtet Task-Erfolgsquote (50 %), Antwortzeit (30 %) und Robustheit
+/// (20 %, Abzuege fuer JSON-Fehler und Reparaturen). Reine Funktion — nichts
+/// wird gelesen oder geschrieben; das Ergebnis liegt immer in [0,1] und ist
+/// deterministisch (gleiche Eingabe → gleiche Gewichtung).
+pub fn calculate_brain_routing_weight(
+    response_ms: u64,
+    json_errors: u32,
+    repair_count: u32,
+    successful_tasks: u32,
+    failed_tasks: u32,
+) -> f64 {
+    let total_tasks = (successful_tasks as f64) + (failed_tasks as f64);
+    let task_score = if total_tasks > 0.0 {
+        (successful_tasks as f64) / total_tasks
+    } else {
+        0.5
+    };
+    let latency_norm = (response_ms as f64 / 10_000.0).clamp(0.0, 1.0);
+    let latency_score = 1.0 - latency_norm;
+    let json_penalty = (json_errors as f64 * 0.15).clamp(0.0, 1.0);
+    let repair_penalty = (repair_count as f64 * 0.10).clamp(0.0, 1.0);
+    let quality_score = (1.0 - json_penalty - repair_penalty).clamp(0.0, 1.0);
+    (0.50 * task_score + 0.30 * latency_score + 0.20 * quality_score).clamp(0.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,5 +392,48 @@ mod tests {
                 .any(|e| e.brain.as_deref() == Some("kimi") && e.text.starts_with("[brain:kimi]")),
             "ohne Spiegelmodus duerfen keine Nutzungs-Events in den Bus"
         );
+    }
+
+    #[test]
+    fn routing_weight_fast_and_successful_beats_slow_and_flaky() {
+        let good = calculate_brain_routing_weight(100, 0, 0, 10, 0);
+        let bad = calculate_brain_routing_weight(5000, 2, 3, 5, 5);
+        assert!(
+            good > bad,
+            "gutes Brain ({good}) muss hoeher gewichtet werden als schlechtes ({bad})"
+        );
+    }
+
+    #[test]
+    fn routing_weight_ist_deterministisch() {
+        let a = calculate_brain_routing_weight(500, 1, 1, 8, 2);
+        let b = calculate_brain_routing_weight(500, 1, 1, 8, 2);
+        assert_eq!(a, b, "identische Eingaben muessen identische Scores liefern");
+    }
+
+    #[test]
+    fn routing_weight_fehler_und_reparaturen_senken_den_score() {
+        let reference = calculate_brain_routing_weight(1000, 0, 0, 10, 0);
+        let flawed = calculate_brain_routing_weight(1000, 0, 2, 10, 5);
+        assert!(
+            flawed < reference,
+            "fehlgeschlagene Tasks/Reparaturen muessen den Score senken"
+        );
+    }
+
+    #[test]
+    fn routing_weight_nullfall_liefert_gueltigen_score() {
+        let score = calculate_brain_routing_weight(0, 0, 0, 0, 0);
+        assert!(!score.is_nan());
+        assert!(!score.is_infinite());
+        assert!((0.0..=1.0).contains(&score));
+    }
+
+    #[test]
+    fn routing_weight_extremwerte_ohne_overflow() {
+        let score = calculate_brain_routing_weight(u64::MAX, u32::MAX, u32::MAX, u32::MAX, u32::MAX);
+        assert!(!score.is_nan());
+        assert!(!score.is_infinite());
+        assert!((0.0..=1.0).contains(&score));
     }
 }

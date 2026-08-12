@@ -143,6 +143,10 @@ impl PageDriver for MockPageDriver {
         Ok(())
     }
 
+    fn click_at_trusted(&mut self, _x: f64, _y: f64) -> Result<()> {
+        Ok(())
+    }
+
     fn capture_png(&mut self) -> Result<Vec<u8>> {
         let guard = self
             .state

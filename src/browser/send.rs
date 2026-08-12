@@ -29,7 +29,7 @@ use super::WebBrainBackend;
 /// Eine Runde je 10.000 Zeichen obendrauf, gedeckelt bei 30 Sekunden — lieber
 /// einmal laenger warten als eine Grenze erfinden, die es nicht gibt.
 pub fn submit_verify_rounds(prompt_chars: usize) -> u32 {
-    const BASE: u32 = 12;
+    const BASE: u32 = 32;
     const MAX: u32 = 120;
     let extra = (prompt_chars / 10_000) as u32;
     BASE.saturating_add(extra).min(MAX)
@@ -78,14 +78,18 @@ impl WebBrainBackend {
         // Erfolg gar nicht erst laeuft, hebt die Zuverlaessigkeit deutlich. Bei einem
         // wirklich blockierten Composer (mistral-Dialog) scheitern trotzdem alle.
         for attempt in 0..5 {
-            // Vor jedem Absende-Versuch sicherstellen, dass der Text (noch) drinsteht.
-            if !self.composer_contains(&composer_js, text) {
-                let _ = self.fill_composer(&composer_js, text);
-            }
-            if attempt == 0 || !has_send_button {
-                self.press_enter().ok();
-            } else if !self.click_visible_real("send_button") {
-                self.click_first("send_button");
+            // Absendung ist im Gange, wenn der Composer die Eingabe schon
+            // konsumiert hat (leer): dann NUR den Beweis abwarten, nicht neu
+            // fuellen/senden — sonst ensteht ein Doppel-Send bei Brains, deren
+            // Send-Registrierung (perplexity/deepseek ~20s) laenger dauert als
+            // das Beweisfenster des ersten Versuchs.
+            let consumed = !self.composer_contains(&composer_js, text);
+            if !consumed {
+                if attempt == 0 || !has_send_button {
+                    self.press_enter().ok();
+                } else if !self.click_visible_real("send_button") {
+                    self.click_first("send_button");
+                }
             }
             if self.verify_submitted(baseline, url_before.as_deref()) {
                 return Ok(baseline);
@@ -239,18 +243,38 @@ return best?best.slice(0,300):null;})()"#;
         let baseline = self.prepare_send_baseline();
         self.handle_interruptions();
         let composer_js = self.sel_js("composer", &[]);
+        // ProseMirror (geminis Editor) registriert ein reines DOM-Set (textContent
+        // + InputEvent) NICHT — der Absendeknopf bleibt dann deaktiviert und der
+        // ehrliche Fehler "kein Absende-Beweis" war die Folge. Darum zuerst echt
+        // tippen (`fill_composer`: Klick + trusted `Input.insertText`), DOM-Set nur
+        // als Fallback.
         if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.fill_composer_dom_set(js, t)
+            s.fill_composer(js, t)
         }) {
             let _ = self.wait_fill_composer(&composer_js, text, |s, js, t| {
-                s.fill_composer(js, t) && s.type_text_char_by_char(t).is_ok()
+                s.fill_composer_dom_set(js, t) && s.type_text_char_by_char(t).is_ok()
             });
         }
         std::thread::sleep(Duration::from_millis(200));
+        // Gibt die Oberflaeche den Text nicht an ProseMirror weiter, bleibt der
+        // Absendeknopf grau — dann Zeichen fuer Zeichen nachtippen statt blind
+        // zu klicken (React/ProseMirror registriert echte Tastatur-Events).
+        if self.send_button_disabled() == Some(true) {
+            let _ = self.fill_composer_dom_set(&composer_js, text);
+            let _ = self.type_text_char_by_char(text);
+        }
         let url_before = self.get_conversation_ref();
-        for _ in 0..3 {
-            if self.click_visible_real("send_button") || self.click_first("send_button") {
-                std::thread::sleep(Duration::from_millis(400));
+        for attempt in 0..3 {
+            // Abwechselnd echten Klick und Enter: Geminis "Nachricht senden"-Button
+            // ignoriert gelegentlich den trusted Klick (Anti-Automation), Enter
+            // sendet zuverlaessig, wenn der Text im Composer steht. Nach dem
+            // ersten Senden einer Konversation wechselt die UI teils den Knopf.
+            if attempt % 2 == 0 {
+                if self.click_visible_real("send_button") || self.click_first("send_button") {
+                    std::thread::sleep(Duration::from_millis(400));
+                }
+            } else {
+                let _ = self.press_enter();
             }
             if self.verify_submitted(baseline, url_before.as_deref()) {
                 return Ok(baseline);
@@ -356,13 +380,21 @@ return best?best.slice(0,300):null;})()"#;
 
     fn verify_submitted(&self, baseline: i32, url_before: Option<&str>) -> bool {
         let rounds = submit_verify_rounds(self.last_sent.borrow().chars().count());
+        let composer_js = self.sel_js("composer", &[]);
+        let sent = self.last_sent.borrow().clone();
         for _ in 0..rounds {
             std::thread::sleep(Duration::from_millis(250));
             let url_changed = match (url_before, self.get_conversation_ref()) {
                 (Some(before), Some(now)) => now != before,
                 _ => false,
             };
-            if self.assistant_count() > baseline || self.any_visible("stop_button") || url_changed {
+            // URL-Wechsel allein ist KEIN Beweis: chatgpt erzeugt /c/<uuid> schon
+            // beim Fokussieren des Composers, bevor die Nachricht wirklich raus ist
+            // — die UI "startet eine neue Session statt zu senden". Der Beweis steht
+            // erst, wenn die Oberflaeche die Eingabe konsumiert hat (Composer leer)
+            // ODER eine neue Antwort/Stop erschienen ist.
+            let consumed = url_changed && !self.composer_contains(&composer_js, &sent);
+            if self.assistant_count() > baseline || self.any_visible("stop_button") || consumed {
                 return true;
             }
         }

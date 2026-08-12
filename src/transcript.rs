@@ -2,7 +2,7 @@
 
 use crate::run_store::RunMeta;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -200,6 +200,20 @@ impl Transcript {
     }
 }
 
+/// Erzeugt eine einzelne valide JSON-Zeile fuer ein strukturiertes Ereignis.
+///
+/// Deterministisch: die Felder werden alphabetisch nach Schluessel sortiert
+/// (BTreeMap), und Sonderzeichen werden von serde_json korrekt escaped.
+/// `event` ist immer dabei; weitere Felder kommen aus `fields`.
+pub fn emit_structured_log(event: &str, fields: &[(&str, &str)]) -> String {
+    let mut map = BTreeMap::new();
+    map.insert("event".to_string(), event.to_string());
+    for (k, v) in fields {
+        map.insert(k.to_string(), v.to_string());
+    }
+    serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,5 +328,47 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn emit_structured_log_einfach() {
+        let result = emit_structured_log("action_started", &[("id", "123")]);
+        assert!(result.contains("\"event\":\"action_started\""));
+        assert!(result.contains("\"id\":\"123\""));
+    }
+
+    #[test]
+    fn emit_structured_log_felder_stabil_sortiert() {
+        let result = emit_structured_log("test_event", &[("z_key", "1"), ("a_key", "2")]);
+        let pos_a = result.find("\"a_key\"").unwrap();
+        let pos_e = result.find("\"event\"").unwrap();
+        let pos_z = result.find("\"z_key\"").unwrap();
+        assert!(pos_a < pos_e && pos_e < pos_z);
+        assert!(result.contains("\"a_key\":\"2\""));
+        assert!(result.contains("\"z_key\":\"1\""));
+    }
+
+    #[test]
+    fn emit_structured_log_escaped_sonderzeichen() {
+        let result = emit_structured_log("escape_test", &[("val", "\"quote\"\\backslash\nnewline")]);
+        assert!(result.contains("\\\"quote\\\""));
+        assert!(result.contains("\\\\backslash"));
+        assert!(result.contains("\\nnewline"));
+    }
+
+    #[test]
+    fn emit_structured_log_leere_felder() {
+        assert_eq!(
+            emit_structured_log("empty_event", &[]),
+            "{\"event\":\"empty_event\"}"
+        );
+    }
+
+    #[test]
+    fn emit_structured_log_unicode() {
+        let result = emit_structured_log("🚀_start", &[("user", "äöüß"), ("emoji", "🦀")]);
+        assert!(result.contains("🚀_start"));
+        assert!(result.contains("äöüß"));
+        assert!(result.contains("🦀"));
     }
 }

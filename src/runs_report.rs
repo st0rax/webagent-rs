@@ -14,6 +14,10 @@
 //! Hand gesucht. Dieses Modul macht daraus eine Abfrage: [`classify_run`]
 //! trennt „Brain konnte nicht" von „Harness hat es kaputtgemacht", damit die
 //! nächste Fehlklassifikation auffällt, bevor sie in den Score wandert.
+//!
+//! Der Status `never_started` (Reconcile-Fund: angelegt, aber nie ausgefuehrt,
+//! cycles==0) ist kein Fehlschlag: er taucht als eigenes Label „nie gestartet"
+//! auf und laedt dem Brain nichts auf. Siehe `run_store::stale_status`.
 
 use std::path::{Path, PathBuf};
 
@@ -36,6 +40,9 @@ pub enum FailureClass {
     /// Das Brain meldete fertig, obwohl JEDER Edit-Versuch fehlschlug — die
     /// Erfolgsmeldung ist nicht durch eine Datei-Aenderung gedeckt.
     FalseDone,
+    /// Lauf wurde angelegt, aber nie ausgefuehrt (cycles==0, per Reconcile als
+    /// verwaist markiert). Kein Fehlschlag und kein Abbruch — ein Nichtereignis.
+    NeverStarted,
     /// Alles andere.
     Other,
 }
@@ -50,6 +57,7 @@ impl FailureClass {
             FailureClass::FalseDone => "Falschmeldung (kein Edit)",
             FailureClass::CycleBudget => "Zyklenbudget",
             FailureClass::Timeout => "Timeout",
+            FailureClass::NeverStarted => "nie gestartet",
             FailureClass::Other => "sonstiges",
         }
     }
@@ -144,6 +152,7 @@ pub fn classify_run(facts: &RunFacts) -> FailureClass {
         "max_cycles" => FailureClass::CycleBudget,
         "wall_timeout" => FailureClass::Timeout,
         "protocol_error" => FailureClass::ProtocolViolation,
+        "never_started" => FailureClass::NeverStarted,
         _ if facts.protocol_errors > 0 => FailureClass::ProtocolViolation,
         _ => FailureClass::Other,
     }
@@ -311,6 +320,17 @@ mod tests {
     fn a_clean_run_passes() {
         let f = facts("done", &["{\"protocol\":\"webagent/1\",\"actions\":[]}"], 0);
         assert_eq!(classify_run(&f), FailureClass::Passed);
+    }
+
+    /// Ein `never_started`-Lauf hat nie gearbeitet: kein Brain-Fehlschlag, kein
+    /// Abbruch, kein Erfolg — ein Nichtereignis fuer die Quoten.
+    #[test]
+    fn never_started_is_a_non_event() {
+        let f = facts("never_started", &[], 0);
+        assert_eq!(classify_run(&f), FailureClass::NeverStarted);
+        assert!(!classify_run(&f).blames_brain());
+        assert_ne!(classify_run(&f), FailureClass::Passed);
+        assert_eq!(classify_run(&f).label(), "nie gestartet");
     }
 
     /// Eine Fertig-Meldung ohne gedeckte Datei-Aenderung darf nicht als

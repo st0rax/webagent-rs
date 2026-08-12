@@ -46,6 +46,7 @@ pub mod controller;
 pub mod knockout;
 pub mod prompts;
 pub mod relay;
+pub mod counting;
 pub mod welcome;
 
 // ── bench: Messung & Selbst-Verbesserung ──
@@ -67,21 +68,32 @@ pub mod wiki_memory;
 pub mod bot2bot_worker;
 pub mod doctor;
 pub mod watchdog;
+pub mod pool_failover;
+pub mod pool_state;
 pub mod worker_pool;
 
 // ── ui: TUI, REPL ──
 pub mod brain_grid;
 pub mod repl;
 pub mod tui;
+pub mod tui_ansi;
+#[cfg(feature = "tui")]
+pub mod tui_bench;
 pub mod tui_config;
 #[cfg(feature = "tui")]
+pub mod tui_footer;
+#[cfg(feature = "tui")]
 pub mod tui_keys;
+#[cfg(feature = "tui")]
+pub mod tui_load;
 #[cfg(feature = "tui")]
 pub mod tui_mouse;
 #[cfg(feature = "tui")]
 pub mod tui_render;
 #[cfg(feature = "tui")]
 pub mod tui_state;
+#[cfg(feature = "tui")]
+pub mod tui_widgets;
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 

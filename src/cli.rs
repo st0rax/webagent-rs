@@ -55,6 +55,12 @@ pub enum Commands {
         /// auch anonym sichtbar) oder wo nur ein Dialog zu bestaetigen ist (mistral-AGB).
         #[arg(long)]
         force: bool,
+
+        /// Login-Kette selbst durchklicken (Anmelden → ggf. Google-SSO → warten),
+        /// statt nur auf manuelle Eingabe zu warten. Passwort/2FA bleibt Sache
+        /// des Menschen; das Fenster bleibt offen.
+        #[arg(long)]
+        auto: bool,
     },
 
     /// Alle Brains nacheinander einloggen (canonical profiles/<brain>).
@@ -122,7 +128,22 @@ pub enum Commands {
         headless: bool,
     },
 
-    /// Watchdog: Scannt verwaiste Runs, Bridge-Locks, Profil-Locks (Dry-Run/Repair)
+    /// Zaehl-Spiel: die Brains zaehlen abwechselnd der Reihe nach bis `count`
+    /// (Ball wandert im Kreis). Performance- und Zuverlaessigkeitsmass: eine
+    /// Sitzung pro Brain, Traces werden als JSON gespeichert und ausgewertet.
+    Count {
+        /// Nur diese Brains (wiederholbar); leer = alle
+        #[arg(long)]
+        brain: Vec<String>,
+
+        /// Zielzahl (Standard: 100)
+        #[arg(long, default_value_t = 100)]
+        count: u32,
+
+        /// Headless statt sichtbar (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+    },
     Watchdog {
         /// Bridge-Lock-Root (bot2bot Verzeichnis)
         #[arg(long)]
@@ -414,6 +435,14 @@ pub enum Commands {
         /// Maschinenlesbare JSON-Ausgabe (brain/ok/answer/latency_ms/reason)
         #[arg(long)]
         json: bool,
+        /// Zielmodell in derselben Sitzung umschalten, bevor die Frage rausgeht.
+        ///
+        /// Ohne diese Option gilt das Standardmodell des Brains. Mit dieser
+        /// Option bleibt der Wechsel UND die Frage in einer Sitzung — ein
+        /// Wechsel in einem separaten Browserlauf wuerde aufs Standardmodell
+        /// zurueckfallen und die Frage liefe mit dem falschen Modell.
+        #[arg(long)]
+        model: Option<String>,
     },
 
     /// Multi-Brain-Swarm (Relay je Brain + Synthese). Default menschenlesbar; `--json` fuer CLI-Anbindung.

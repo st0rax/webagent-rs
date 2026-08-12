@@ -270,6 +270,37 @@ impl WebBrainBackend {
         }
     }
 
+    /// Diagnose-Kompendium fuer fehlgeschlagene Turns: URL, Nachrichtenanzahl,
+    /// Texte aller Assistenten-Nachrichten, Stop-Knopf, Dialoge. Nur zur Fehlersuche.
+    pub(crate) fn diagnostic_state(&self) -> String {
+        let mut out = String::new();
+        out.push_str(&format!(
+            "url={:?} assistant_count={}",
+            self.get_conversation_ref(),
+            self.assistant_count()
+        ));
+        let count = self.assistant_count();
+        for i in 0..count.max(3) {
+            let t = self.assistant_text(i);
+            if !t.is_empty() {
+                out.push_str(&format!("  [{i}] {:?}", crate::char_prefix(&t, 60)));
+            }
+        }
+        out.push_str(&format!("  stop_visible={}", self.any_visible("stop_button")));
+        let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
+        let stop_sel = self.sel("stop_button");
+        let stop_js = Self::js_selectors(&stop_sel);
+        let (pcount, ptext, pstop) = self.probe_generation(&assistant_js, &stop_js, -1);
+        out.push_str(&format!(
+            "  probe(count={pcount},text={:?},stop={pstop})",
+            crate::char_prefix(&ptext, 60)
+        ));
+        let js = "var d=document.querySelector('[role=dialog],[aria-modal=true]');d?d.innerText.slice(0,120):'kein Dialog'";
+        let dlg = self.eval(js).ok().and_then(|v| v.as_str().map(|s| s.to_string()));
+        out.push_str(&format!("  dialog={}", dlg.unwrap_or_default()));
+        out
+    }
+
     /// Text der n-ten Assistenten-Nachricht, mit zurueckgewonnener Mathe-Quelle.
     ///
     /// Liest ueber `TX` statt `innerText`: deepseeks Oberflaeche schickt jeden
@@ -347,7 +378,7 @@ impl WebBrainBackend {
         };
         let mut guard = self.driver.borrow_mut();
         match guard.as_mut() {
-            Some(driver) => driver.click_at(x, y).is_ok(),
+            Some(driver) => driver.click_at_trusted(x, y).is_ok(),
             None => false,
         }
     }
@@ -416,15 +447,18 @@ mod tests {
 
     #[test]
     fn absende_wartezeit_waechst_mit_der_nachrichtenlaenge() {
-        // Kurze Nachricht: unveraendert 3 Sekunden.
-        assert_eq!(submit_verify_rounds(0), 12);
-        assert_eq!(submit_verify_rounds(500), 12);
-        // 200.000 Zeichen: 12 + 20 Runden = 8 Sekunden. Genau dieser Fall
+        // Kurze Nachricht: 32 Runden = 8 Sekunden. Mindestfenster, weil Brains
+        // wie perplexity/deepseek das Senden erst nach ~20 s registrieren und
+        // ein zu kurzes Fenster als "kein Absende-Beweis" droppt (100er-Lauf
+        // 11.08.: 7 von 14 Drops waren Send-Fehlnegative).
+        assert_eq!(submit_verify_rounds(0), 32);
+        assert_eq!(submit_verify_rounds(500), 32);
+        // 200.000 Zeichen: 32 + 20 Runden = 13 Sekunden. Genau dieser Fall
         // scheiterte am 05.08.2026 unter Last, obwohl er eine Stunde vorher
         // durchging - der Beweis kam nur nach den festen 3 Sekunden.
-        assert_eq!(submit_verify_rounds(200_000), 32);
-        // Eine Million Zeichen: 12 + 100 Runden = 28 Sekunden, noch unter dem Deckel.
-        assert_eq!(submit_verify_rounds(1_000_000), 112);
+        assert_eq!(submit_verify_rounds(200_000), 52);
+        // Eine Million Zeichen: 32 + 100 Runden = 33 Sekunden, noch unter dem Deckel.
+        assert_eq!(submit_verify_rounds(1_000_000), 120);
         // Erst darueber greift die Deckelung — sonst wartet eine irrtuemlich
         // riesige Eingabe minutenlang.
         assert_eq!(submit_verify_rounds(2_000_000), 120);

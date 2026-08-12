@@ -428,6 +428,27 @@ pub fn capability(key: &str) -> Option<&'static Capability> {
     CATALOG.iter().find(|c| c.key == key)
 }
 
+/// Fähigkeits-Schlüssel, den eine Antriebs-Route bedient.
+///
+/// Eine Route kann ein Fähigkeitsname sein (`temporary_chat`, `voice_input`)
+/// oder ein Selektor-Schlüssel (`web_search_toggle`, `model_menu`). Beides
+/// muss denselben Katalog-Eintrag treffen, damit Beweise aus verschiedenen
+/// Kommandos an derselben Fähigkeit ankommen. Nicht-fahrbare Fähigkeiten
+/// (und Routen, deren Selektor zu einer nicht-fahrbaren Fähigkeit gehört)
+/// liefern `None`: ein Beweis für etwas, das nie ins Level zählt, wäre ein
+/// Fake-Level.
+pub fn capability_for_route(route: &str) -> Option<&'static str> {
+    if let Some(c) = capability(route) {
+        if c.driveable {
+            return Some(c.key);
+        }
+    }
+    CATALOG
+        .iter()
+        .find(|c| c.driveable && c.needs.contains(&route))
+        .map(|c| c.key)
+}
+
 /// Neuen Messfund mit dem bereits bekannten Angebot vereinigen.
 ///
 /// Eine Messung ist eine **Untergrenze** (siehe [`detect_ui_options`]): sie
@@ -1046,6 +1067,22 @@ mod tests {
                 "{id} kann nicht mal Text senden"
             );
         }
+    }
+
+    #[test]
+    fn capability_for_route_maps_names_and_selector_keys() {
+        // Faehigkeitsname und Selektor-Schluessel muessen dieselbe Faehigkeit
+        // treffen, sonst landen Beweise aus verschiedenen Kommandos am falschen
+        // Eintrag.
+        assert_eq!(capability_for_route("chat"), Some("chat"));
+        assert_eq!(capability_for_route("web_search_toggle"), Some("web_search"));
+        assert_eq!(capability_for_route("reasoning_toggle"), Some("reasoning_toggle"));
+        assert_eq!(capability_for_route("model_menu"), Some("model_switch"));
+        assert_eq!(capability_for_route("reasoning_effort_menu"), Some("reasoning_effort"));
+        // Nicht-fahrbar: kein Beweis fuer etwas, das nie ins Level zaehlt.
+        assert_eq!(capability_for_route("temporary_chat"), None);
+        assert_eq!(capability_for_route("canvas_button"), None);
+        assert_eq!(capability_for_route("gibt-es-nicht"), None);
     }
 
     #[test]

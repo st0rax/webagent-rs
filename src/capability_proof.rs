@@ -180,6 +180,53 @@ pub fn record_proof(rec: ProofRecord) {
     record_proof_at(rec, &proofs_path());
 }
 
+/// Beleg aus einem bestandenen Antriebs-Lauf ableiten und in den Store
+/// schreiben — der Weg, über den Kommando-/Antriebs-Ebene live Beweise
+/// erzeugen, ohne ein eigenes Gate zu bauen.
+///
+/// `route` ist ein Fähigkeitsname oder ein Selektor-Schlüssel (aufgelöst über
+/// [`crate::capability::capability_for_route`]). Der Hash wird gegen die
+/// **aktuellen** Selektoren des Brains gebildet, damit der Beleg am Gate
+/// dieselbe Grundlage hat wie bei `verify`. Fehler werden still geschluckt:
+/// eine unauflösbare Route, unlesbare Selektoren oder ein nicht schreibbarer
+/// Store dürfen einen laufenden Antrieb nicht scheitern lassen — sie kosten
+/// nur einen künftigen Level. Genau die Konvention von
+/// `brain_score::record_event`.
+pub fn record_route_proof(brain_id: &str, route: &str, note: &str, latency_ms: u64) {
+    record_route_proof_at(brain_id, route, note, latency_ms, &proofs_path());
+}
+
+/// Wie [`record_route_proof`], aber gegen einen beliebigen Pfad — Tests
+/// schreiben in ein Wegwerf-Verzeichnis statt in den echten Store.
+pub(crate) fn record_route_proof_at(
+    brain_id: &str,
+    route: &str,
+    note: &str,
+    latency_ms: u64,
+    path: &PathBuf,
+) {
+    let Some(key) = crate::capability::capability_for_route(route) else {
+        return;
+    };
+    let Some(cap) = crate::capability::capability(key) else {
+        return;
+    };
+    let Ok(sel) = crate::config::load_selectors(brain_id) else {
+        return;
+    };
+    let rec = ProofRecord {
+        brain_id: brain_id.to_string(),
+        capability: key.to_string(),
+        ts: crate::now_rfc3339(),
+        outcome: ProofOutcome::Passed,
+        selector_hash: selector_hash_for(cap, &sel),
+        winning_selector: None,
+        evidence: note.to_string(),
+        latency_ms,
+    };
+    record_proof_at(rec, path);
+}
+
 /// Append-only schreiben. `pub(crate)`: Tests schreiben gegen ein Tempfile.
 pub(crate) fn record_proof_at(rec: ProofRecord, path: &PathBuf) {
     let _guard = WRITE_LOCK.lock();
@@ -507,5 +554,37 @@ mod tests {
                 ProofState::Failed { .. }
             ));
         });
+    }
+
+    #[test]
+    fn route_proof_wird_gegen_echte_selektoren_belegt() {
+        // Nutzt eine echte Brain-Selektor-JSON (wie
+        // `shipped_brains_can_all_at_least_chat`), damit der Hash dieselbe
+        // Grundlage hat wie der Level-Nachschlag — nur so bleibt der Beleg
+        // gueltig.
+        with_ttl("14", || {
+            let id = crate::config::available_brain_ids()
+                .first()
+                .expect("mindestens ein Brain")
+                .clone();
+            let path = unique_path();
+            record_route_proof_at(&id, "chat", "testlauf", 7, &path);
+            let sel = crate::config::load_selectors(&id).expect("selektoren");
+            let cap = crate::capability::capability("chat").expect("chat");
+            let hash = selector_hash_for(cap, &sel);
+            assert!(matches!(
+                proof_state_at(&id, "chat", hash, &path),
+                ProofState::Proven { .. }
+            ));
+        });
+    }
+
+    #[test]
+    fn route_proof_ueberspringt_nicht_fahrbare_routen() {
+        // Ein Beweis fuer etwas, das nie ins Level zaehlt, waere ein Fake-Level:
+        // die Route wird nicht aufgeloest und es landet nichts im Store.
+        let path = unique_path();
+        record_route_proof_at("t", "canvas_button", "test", 0, &path);
+        assert_eq!(proof_state_at("t", "canvas", 0, &path), ProofState::Never);
     }
 }

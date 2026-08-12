@@ -112,7 +112,8 @@ fn dispatch(command: Commands) -> i32 {
             brain,
             timeout,
             force,
-        } => cmd_login(&brain, timeout, force),
+            auto,
+        } => cmd_login(&brain, timeout, force, auto),
 
         Commands::LoginAll {
             timeout,
@@ -133,6 +134,12 @@ fn dispatch(command: Commands) -> i32 {
             cap,
             headless,
         } => cmd_verify(if brain.is_empty() { None } else { Some(brain) }, cap, headless),
+
+        Commands::Count {
+            brain,
+            count,
+            headless,
+        } => cmd_count(if brain.is_empty() { None } else { Some(brain) }, count, headless),
 
         Commands::Watchdog {
             bot2bot_root,
@@ -244,6 +251,7 @@ fn dispatch(command: Commands) -> i32 {
             headless,
             timeout,
             json,
+            model,
         } => cmd_relay(
             &brain,
             &message,
@@ -251,6 +259,7 @@ fn dispatch(command: Commands) -> i32 {
             headless,
             timeout,
             json,
+            model.as_deref(),
         ),
 
         Commands::Swarm {

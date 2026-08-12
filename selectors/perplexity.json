@@ -1,0 +1,14 @@
+{
+  "model_menu": [
+    "button[aria-label='Modell']",
+    "button[aria-label='Model']",
+    "button[aria-label*='Modell' i]",
+    "button[aria-label*='Model' i]"
+  ],
+  "model_option": [
+    "div[role=menuitem]",
+    "[role=menuitem]",
+    "[role=menuitemradio]",
+    "[role=option]"
+  ]
+}

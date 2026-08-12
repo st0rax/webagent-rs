@@ -73,6 +73,14 @@ pub fn cmd_section(brain: &str, key: &str, headless: bool) -> i32 {
     let code = match backend.open_section(key) {
         Ok((before, after)) => {
             println!("[section] {brain}/{key}: ''{before}'' -> ''{after}''");
+            // `open_section` bricht ab, wenn die URL sich nicht aendert —
+            // ein Ok ist also bereits der Beleg einer echten Navigation.
+            webagent::capability_proof::record_route_proof(
+                brain,
+                key,
+                &format!("cmd_section '{key}'"),
+                0,
+            );
             0
         }
         Err(e) => {
@@ -159,6 +167,7 @@ pub fn cmd_menu(brain: &str, key: &str, options: &str, set: Option<&str>, headle
                 .collect();
             match backend.select_in_menu_path(key, options, &path) {
                 Ok(now) => {
+                    record_menu_proof(brain, key, &now);
                     println!("[menu] {brain}/{key}: ''{now}''");
                     0
                 }
@@ -170,6 +179,7 @@ pub fn cmd_menu(brain: &str, key: &str, options: &str, set: Option<&str>, headle
         }
         Some(want) => match backend.select_in_menu(key, options, want) {
             Ok(now) => {
+                record_menu_proof(brain, key, &now);
                 println!("[menu] {brain}/{key}: ''{now}''");
                 0
             }
@@ -181,6 +191,17 @@ pub fn cmd_menu(brain: &str, key: &str, options: &str, set: Option<&str>, headle
     };
     let _ = backend.close_ui();
     code
+}
+
+/// Live-Beweis nach einem erfolgreichen Menue-Wechsel aufzeichnen — aber nur,
+/// wenn wirklich gewechselt wurde. „bereits aktiv" ist kein gemessener Wechsel
+/// (die Beschriftung trug das Ziel schon vorher), und nur ein gemessener
+/// Wechsel ist ein Beleg. Gleiche Grenze wie in `cmd_model`.
+fn record_menu_proof(brain: &str, key: &str, now: &str) {
+    if now.contains("bereits aktiv") {
+        return;
+    }
+    webagent::capability_proof::record_route_proof(brain, key, &format!("cmd_menu '{key}'"), 0);
 }
 
 pub fn cmd_toggle(brain: &str, option: &str, headless: bool) -> i32 {
@@ -207,6 +228,18 @@ pub fn cmd_toggle(brain: &str, option: &str, headless: bool) -> i32 {
     } {
         Ok((before, after)) => {
             println!("[toggle] {brain}/{option}: '{before}' -> '{after}'");
+            // Ein Ok ist hier bereits der Beleg: `toggle_option` bricht ab,
+            // wenn kein Zustandswechsel messbar ist und wenn das Element danach
+            // verschwindet. Was nach dieser Pruefung noch gilt, faellt als
+            // Live-Beweis — aber nur fuer Faehigkeiten, die ins Level zaehlen
+            // (nicht-fahrbare wie `temporary_chat` loest der Mapper zu `None`
+            // auf, dann passiert hier nichts).
+            webagent::capability_proof::record_route_proof(
+                brain,
+                option,
+                &format!("cmd_toggle '{option}' ({before} -> {after})"),
+                0,
+            );
             0
         }
         Err(e) => {
@@ -256,6 +289,17 @@ pub fn cmd_model(brain: &str, set: Option<&str>, headless: bool) -> i32 {
         }
         Some(want) => match backend.switch_model(want) {
             Ok(now) => {
+                // „bereits aktiv" ist kein gemessener Wechsel — nur der faellt
+                // als Live-Beweis. (Der Antrieb prueft ohnehin per Menue-
+                // Beschriftung nach, hier nur die No-op-Falle.)
+                if !now.contains("bereits aktiv") {
+                    webagent::capability_proof::record_route_proof(
+                        brain,
+                        "model_switch",
+                        &format!("cmd_model --set '{want}'"),
+                        0,
+                    );
+                }
                 println!("[model] {brain}: umgestellt auf '{now}'");
                 0
             }
@@ -671,12 +715,14 @@ pub fn cmd_probe(
     for p in &proposals {
         let is_new_find = !known.contains(&p.selector_key.to_string());
         let marker = if is_new_find { "+" } else { "=" };
+        let disabled = if p.disabled { " [deaktiviert]" } else { "" };
         println!(
-            "   {marker} {:<22} {:>3}%  {:<14} {}",
+            "   {marker} {:<22} {:>3}%  {:<14} {}{}",
             p.selector_key,
             p.confidence,
             p.evidence,
-            p.selector
+            p.selector,
+            disabled
         );
     }
 
@@ -1070,6 +1116,7 @@ mod tests {
             selector_key: key,
             selector: sel.to_string(),
             confidence: 90,
+            disabled: false,
             evidence: "test".into(),
         };
         let json = selectors_from_proposals(&[p("composer", "[contenteditable]"), p("send_button", "button.send")]);

@@ -340,7 +340,10 @@ pub fn infer_login_state(
         if age > 72.0 {
             return "unknown (old)".to_string();
         }
-        if (status == "brain_incomplete" || status == "interrupted" || status == "max_cycles")
+        if (status == "brain_incomplete"
+            || status == "interrupted"
+            || status == "never_started"
+            || status == "max_cycles")
             && (0.0..48.0).contains(&age)
         {
             return "likely_ready".to_string();

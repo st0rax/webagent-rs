@@ -102,6 +102,15 @@ impl MemoryStore {
             return Ok(existing.id);
         }
 
+        // Dedup ueber den Inhalt: identische Eintraege in derselben
+        // scope/kind-Kombination werden nicht erneut angehaengt. Befund
+        // Claude 03:20: 357x derselbe Aufgabentext = 1,4 MB fuer eine Episode,
+        // weil die Quelle (`run:{run_id}`) pro Lauf eindeutig war und die
+        // Inhalts-Pruefung fehlte.
+        if let Some(existing) = self.find_by_content(text, scope, kind) {
+            return Ok(existing.id);
+        }
+
         let id = self.next_id();
         let entry = StoredEntry {
             id,
@@ -229,6 +238,16 @@ impl MemoryStore {
             .ok()?
             .into_iter()
             .find(|e| e.source == source)
+    }
+
+    /// Existierender Eintrag mit identischem (getrimmtem) Inhalt in derselben
+    /// scope/kind-Kombination — Grundlage der Schreib-Deduplizierung.
+    fn find_by_content(&self, content: &str, scope: &str, kind: &str) -> Option<StoredEntry> {
+        let needle = content.trim();
+        self.load_all()
+            .ok()?
+            .into_iter()
+            .find(|e| e.scope == scope && e.kind == kind && e.content.trim() == needle)
     }
 
     fn next_id(&self) -> u64 {
@@ -429,6 +448,74 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(store.list(20).unwrap().len(), 1);
         assert!(store.list(20).unwrap()[0].content.contains("Fertig"));
+    }
+
+    /// Befund Claude 03:20: 357x derselbe Aufgabentext. Verschiedene Runs mit
+    /// identischem Inhalt muessen in EINEN Eintrag kollabieren, obwohl ihre
+    /// Quellen (`run:{run_id}`) eindeutig sind.
+    #[test]
+    fn test_record_run_dedups_identical_content_across_runs() {
+        let tmp = unique_tmp();
+        let store = MemoryStore::new(tmp.join("memory.jsonl"));
+
+        let mut actions = HashMap::new();
+        actions.insert("m".to_string(), "Fertig".to_string());
+
+        for i in 0..5 {
+            let meta = RunMeta {
+                run_id: format!("r{i}"),
+                status: "done".to_string(),
+                task: "Identische Aufgabe".to_string(),
+                completed_actions: actions.clone(),
+            };
+            let id = store.record_run(&meta).unwrap().unwrap();
+            assert_eq!(id, 1, "alle identischen Episoden muessen kollabieren");
+        }
+        assert_eq!(store.list(20).unwrap().len(), 1);
+    }
+
+    /// Dedup respektiert scope/kind: derselbe Text in einer anderen
+    /// Kombination ist ein eigener Eintrag, kein Duplikat.
+    #[test]
+    fn test_content_dedup_respects_scope_and_kind() {
+        let tmp = unique_tmp();
+        let store = MemoryStore::new(tmp.join("memory.jsonl"));
+
+        let a = store
+            .add("Gleicher Text", "shared", "episode", Some("run:a"), 0.35)
+            .unwrap();
+        let b = store
+            .add("Gleicher Text", "shared", "episode", Some("run:b"), 0.35)
+            .unwrap();
+        assert_eq!(a, b, "identische episode/shared kollabiert");
+
+        let c = store
+            .add("Gleicher Text", "private", "episode", Some("run:c"), 0.35)
+            .unwrap();
+        assert_ne!(a, c, "anderer scope ist ein eigener Eintrag");
+
+        let d = store
+            .add("Gleicher Text", "shared", "explicit", Some("run:d"), 0.9)
+            .unwrap();
+        assert_ne!(a, d, "anderer kind ist ein eigener Eintrag");
+
+        assert_eq!(store.list(20).unwrap().len(), 3);
+    }
+
+    /// Whitespace-Rand unterscheidet nicht: "Text" und " Text " sind dasselbe.
+    #[test]
+    fn test_content_dedup_trims_whitespace() {
+        let tmp = unique_tmp();
+        let store = MemoryStore::new(tmp.join("memory.jsonl"));
+
+        let a = store
+            .add("Text", "shared", "episode", Some("run:a"), 0.35)
+            .unwrap();
+        let b = store
+            .add("  Text  ", "shared", "episode", Some("run:b"), 0.35)
+            .unwrap();
+        assert_eq!(a, b);
+        assert_eq!(store.list(20).unwrap().len(), 1);
     }
 
     #[test]

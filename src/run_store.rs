@@ -9,7 +9,27 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Terminal-Status, die nicht mehr geändert werden können.
-const TERMINAL_STATUSES: &[&str] = &["done", "failed", "interrupted", "protocol_error"];
+const TERMINAL_STATUSES: &[&str] = &[
+    "done",
+    "failed",
+    "interrupted",
+    "never_started",
+    "protocol_error",
+];
+
+/// Ausgangsstatus fuer einen verwaisten, nicht mehr laufenden Run.
+///
+/// Ein Run mit `cycles == 0` wurde angelegt, hat aber nie eine Schleife
+/// ausgefuehrt — er ist nie wirklich gestartet und daher kein Abbruch, sondern
+/// ein Nichtereignis (`never_started`). Erst ein Run mit tatsaechlicher Arbeit
+/// (`cycles >= 1`), der mitten in der Ausfuehrung abbrach, ist `interrupted`.
+pub fn stale_status(cycles: u32) -> &'static str {
+    if cycles == 0 {
+        "never_started"
+    } else {
+        "interrupted"
+    }
+}
 
 /// Nicht-laufende Status (außer Terminal).
 const NON_RUNNING_STATUSES: &[&str] = &[
@@ -449,7 +469,7 @@ impl RunStore {
             }
 
             let mut updated = meta.clone();
-            updated.status = "interrupted".to_string();
+            updated.status = stale_status(meta.cycles).to_string();
             updated.extra.insert(
                 "reconciled_at".to_string(),
                 serde_json::Value::String(crate::now_rfc3339()),
@@ -595,7 +615,7 @@ mod tests {
             vec![run_id.clone()],
             "toter Lauf blieb auf running"
         );
-        assert_eq!(store.load(&run_id).unwrap().status, "interrupted");
+        assert_eq!(store.load(&run_id).unwrap().status, "never_started");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -642,10 +662,37 @@ mod tests {
         assert_eq!(repaired, vec![meta.run_id.clone()]);
 
         let loaded = store.load(&meta.run_id).unwrap();
-        assert_eq!(loaded.status, "interrupted");
+        assert_eq!(loaded.status, "never_started");
         assert!(loaded.extra.contains_key("reconciled_at"));
 
         // Cleanup
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Nur ein Run, der tatsaechlich gearbeitet hat (cycles >= 1), wird bei der
+    /// Reconcile-Reparatur `interrupted`; ein Lauf ohne Schleife ist ein
+    /// Nichtereignis (`never_started`).
+    #[test]
+    fn test_reconcile_unterscheidet_never_started_von_interrupted() {
+        let tmp = unique_tmp();
+        let runs_dir = tmp.join("runs");
+        let logs_dir = tmp.join("logs");
+
+        let store = RunStore::new(runs_dir.clone(), logs_dir.clone());
+        let mut meta = store.create("mock", "stale").unwrap();
+        meta.cycles = 3;
+        store.save_internal(&meta).unwrap();
+
+        let repaired = store.reconcile_stale_runs(0.0);
+        assert_eq!(repaired, vec![meta.run_id.clone()]);
+        assert_eq!(store.load(&meta.run_id).unwrap().status, "interrupted");
+
+        let meta2 = store.create("mock", "nie-gestartet").unwrap();
+        store.save_internal(&meta2).unwrap();
+        let repaired = store.reconcile_stale_runs(0.0);
+        assert!(repaired.contains(&meta2.run_id));
+        assert_eq!(store.load(&meta2.run_id).unwrap().status, "never_started");
+
         fs::remove_dir_all(&tmp).ok();
     }
 

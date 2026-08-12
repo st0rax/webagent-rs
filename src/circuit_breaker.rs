@@ -49,6 +49,16 @@ struct BrainState {
     /// vergangen heisst: Breaker zu, Brain darf befragt werden.
     open_until: Option<i64>,
     last_reason: Option<String>,
+    /// Wieviele Nachrichtenlimit-Blockaden beobachtet wurden (Befund Claude
+    /// 02:49: mistral/qwen laufen in ihr Tageslimit, niemand plant das ein).
+    #[serde(default)]
+    message_blocks: u32,
+    /// Unix-Sekunden der letzten Nachrichtenlimit-Blockade.
+    #[serde(default)]
+    last_message_block_at: Option<i64>,
+    /// Aus der Meldung gelesenes Reset-Fenster (z. B. "wait 7 hours" -> 7).
+    #[serde(default)]
+    message_window_hours: Option<u32>,
 }
 
 type StateMap = HashMap<String, BrainState>;
@@ -218,6 +228,53 @@ pub(crate) fn is_hard_block(reason: &str) -> bool {
     .any(|p| low.contains(p))
 }
 
+/// Spezifisch: ein erschoepftes NACHrichtenlimit (nicht jedes "limit").
+///
+/// Grundlage sind die real beobachteten Meldungen (Claude 02:49):
+/// mistral: „Nachrichtenlimit erreicht. Ihr Limit wird um in 3 Stunden
+/// zurueckgesetzt." · qwen: „daily usage limit, please wait 7 hours".
+/// Solch eine Blockade ist kein Qualitaetsurteil — das Brain ist bis zum
+/// Reset schlicht unbenutzbar, und jeder Anlauf faehrt es nur erneut in die
+/// Sperre.
+fn is_message_limit_block(reason: &str) -> bool {
+    let low = reason.to_lowercase();
+    [
+        "nachrichtenlimit",
+        "nachrichten limit",
+        "message limit",
+        "messages limit",
+        "daily usage limit",
+        "usage limit",
+    ]
+    .iter()
+    .any(|p| low.contains(p))
+}
+
+/// Stundenzahl bis zum Reset, wenn die Meldung eines explizit nennt.
+/// "in 3 Stunden" -> 3, "wait 7 hours" -> 7. Minuten zaehlen nicht (wuerde
+/// das Fenster auf eine Stunde runden); ohne Angabe `None`.
+fn implied_window_hours(reason: &str) -> Option<u32> {
+    let low = reason.to_lowercase();
+    for (marker, unit) in [("in ", "stunde"), ("wait ", "hour")] {
+        if let Some(idx) = low.find(marker) {
+            let rest = &low[idx + marker.len()..];
+            let num: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if num.is_empty() {
+                continue;
+            }
+            let after = rest[num.len()..].trim_start();
+            if after.starts_with(unit) {
+                if let Ok(n) = num.parse::<u32>() {
+                    if n >= 1 {
+                        return Some(n);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
     let _guard = WRITE_LOCK.lock();
     let mut state = load(path);
@@ -225,20 +282,43 @@ fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
     let entry = state.entry(brain_id.to_string()).or_default();
     entry.consecutive_failures += 1;
     entry.last_reason = Some(reason.to_string());
-    if hard || entry.consecutive_failures >= max_failures() {
+
+    // Nachrichtenlimit: zaehlen und das Reset-Fenster aus der Meldung
+    // uebernehmen, damit der Breaker das Brain bis dahin aussetzt statt es
+    // nach dem kurzen Standard-Cooldown erneut ins Limit zu fahren.
+    let window_block = is_message_limit_block(reason);
+    if window_block {
+        entry.message_blocks += 1;
+        entry.last_message_block_at = Some(now_secs());
+        if let Some(h) = implied_window_hours(reason) {
+            entry.message_window_hours = Some(h);
+        }
+    }
+
+    if window_block || hard || entry.consecutive_failures >= max_failures() {
         // Harte Sperren bekommen den langen Cooldown: ein fehlender Login oder
         // ein erschoepftes Tageslimit besteht nach 15 Minuten fast sicher noch,
         // und jeder Anlauf kostet einen vollen `ensure_ready`-Timeout
-        // (beobachtet 2026-08-02: gemini verlor so ~144s pro Runde). Endlich
-        // ist er trotzdem — sonst kaeme das Brain nie zurueck, auch nicht
-        // nachdem der Login erneuert oder das Limit zurueckgesetzt wurde.
-        let dauer = if hard {
+        // (beobachtet 2026-08-02: gemini verlor so ~144s pro Runde). Ein
+        // explizit gemeldetes Reset-Fenster schlaegt den Standard: "wait 7
+        // hours" heisst, das Brain ist sieben Stunden lang unbenutzbar.
+        // Endlich ist die Sperre trotzdem — sonst kaeme das Brain nie zurueck.
+        let dauer = if let Some(h) = implied_window_hours(reason) {
+            (h as i64 * 3600).max(hard_cooldown_secs())
+        } else if hard {
             hard_cooldown_secs()
         } else {
             cooldown_secs()
         };
         entry.open_until = Some(now_secs() + dauer);
-        let wie = if hard {
+        let wie = if window_block {
+            format!(
+                "sofort (Nachrichtenlimit, Fenster {}s)",
+                implied_window_hours(reason)
+                    .map(|h| h as i64 * 3600)
+                    .unwrap_or(hard_cooldown_secs())
+            )
+        } else if hard {
             "sofort (deterministische Sperre)".to_string()
         } else {
             format!("nach {} Fehlschlaegen", entry.consecutive_failures)
@@ -262,6 +342,12 @@ pub struct BreakerSnapshot {
     /// Verbleibende Cooldown-Sekunden, falls noch offen.
     pub remaining_secs: Option<i64>,
     pub last_reason: Option<String>,
+    /// Wieviele Nachrichtenlimit-Blockaden dieses Brain je beobachtet hat.
+    pub message_blocks: u32,
+    /// Unix-Sekunden der letzten Nachrichtenlimit-Blockade.
+    pub last_message_block_at: Option<i64>,
+    /// Aus der letzten Meldung gelesenes Reset-Fenster in Stunden.
+    pub message_window_hours: Option<u32>,
 }
 
 /// Lese-API: alle bekannten Brain-Zustaende (sortiert nach `brain_id`).
@@ -292,6 +378,9 @@ fn snapshots_at(path: &PathBuf) -> Vec<BreakerSnapshot> {
                 open_until: entry.open_until,
                 remaining_secs: remaining,
                 last_reason: entry.last_reason,
+                message_blocks: entry.message_blocks,
+                last_message_block_at: entry.last_message_block_at,
+                message_window_hours: entry.message_window_hours,
             }
         })
         .collect();
@@ -602,5 +691,109 @@ mod tests {
         for r in ["timeout_no_text", "protocol_error", "wall_timeout", ""] {
             assert!(!is_hard_block(r), "faelschlich als harte Sperre: {r}");
         }
+    }
+
+    #[test]
+    fn nachrichtenlimit_erkannt_de_und_en() {
+        // Die real beobachteten Meldungen (Befund Claude 02:49).
+        assert!(is_message_limit_block(
+            "Nachrichtenlimit erreicht. Ihr Limit wird um in 3 Stunden zurueckgesetzt."
+        ));
+        assert!(is_message_limit_block(
+            "daily usage limit, please wait 7 hours"
+        ));
+        assert!(is_message_limit_block("Daily messages limit reached"));
+        for r in ["timeout_no_text", "Login nötig (/login)", "rate_limit"] {
+            assert!(
+                !is_message_limit_block(r),
+                "kein Nachrichtenlimit, aber erkannt: {r}"
+            );
+        }
+    }
+
+    #[test]
+    fn implied_window_hours_liest_reset_fenster() {
+        assert_eq!(implied_window_hours("... um in 3 Stunden zurueckgesetzt."), Some(3));
+        assert_eq!(implied_window_hours("daily usage limit, please wait 7 hours"), Some(7));
+        assert_eq!(implied_window_hours("... in 1 Stunde ..."), Some(1));
+        // Minuten und bloße Erwaehnung von "in" zaehlen nicht.
+        assert_eq!(implied_window_hours("please wait 45 minutes"), None);
+        assert_eq!(implied_window_hours("within 30 minutes you are good"), None);
+        assert_eq!(implied_window_hours("Nachrichtenlimit erreicht."), None);
+        assert_eq!(implied_window_hours(""), None);
+    }
+
+    #[test]
+    fn nachrichtenlimit_oeffnet_sofort_mit_fenster() {
+        let path = unique_path();
+        record_failure_at(
+            "mistral",
+            "Nachrichtenlimit erreicht. Ihr Limit wird um in 3 Stunden zurueckgesetzt.",
+            &path,
+        );
+        let state = load(&path);
+        let e = state.get("mistral").expect("Eintrag fehlt");
+        assert_eq!(e.consecutive_failures, 1, "oeffnet sofort, nicht nach Max-Failures");
+        assert_eq!(e.message_blocks, 1);
+        assert_eq!(e.message_window_hours, Some(3));
+        assert!(e.last_message_block_at.is_some());
+        let rest = check_at("mistral", &path).expect("Breaker muss offen sein");
+        assert!(
+            rest > DEFAULT_COOLDOWN_SECS,
+            "das gemeldete Fenster muss den Standard-Cooldown schlagen (rest={rest}s)"
+        );
+        assert!(
+            rest <= DEFAULT_HARD_COOLDOWN_SECS,
+            "Fenster wird auf den harten Cooldown als Boden begrenzt (rest={rest}s)"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn qwen_nachrichtenlimit_wartet_das_gemeldete_fenster() {
+        let path = unique_path();
+        record_failure_at(
+            "qwen",
+            "daily usage limit, please wait 7 hours",
+            &path,
+        );
+        let rest = check_at("qwen", &path).expect("Breaker muss offen sein");
+        assert!(
+            rest <= 7 * 3600,
+            "Sperre darf das Reset-Fenster nicht ueberschreiten (rest={rest}s)"
+        );
+        assert!(
+            rest > DEFAULT_HARD_COOLDOWN_SECS,
+            "7h-Fenster muss den harten Cooldown schlagen (rest={rest}s)"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn nachrichtenlimit_ohne_fenster_haelt_den_harten_cooldown() {
+        let path = unique_path();
+        record_failure_at("deepseek", "Nachrichtenlimit erreicht.", &path);
+        let rest = check_at("deepseek", &path).expect("Breaker muss offen sein");
+        assert!(
+            rest <= DEFAULT_HARD_COOLDOWN_SECS,
+            "ohne Fensterangabe gilt der harte Cooldown (rest={rest}s)"
+        );
+        let state = load(&path);
+        let e = state.get("deepseek").unwrap();
+        assert_eq!(e.message_blocks, 1);
+        assert_eq!(e.message_window_hours, None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn snapshot_zeigt_nachrichtenlimit_felder() {
+        let path = unique_path();
+        record_failure_at("mistral", "Nachrichtenlimit erreicht. in 3 Stunden", &path);
+        let snaps = snapshots_at(&path);
+        let s = snaps.iter().find(|s| s.brain_id == "mistral").expect("mistral");
+        assert_eq!(s.message_blocks, 1);
+        assert_eq!(s.message_window_hours, Some(3));
+        assert!(s.last_message_block_at.is_some());
+        let _ = std::fs::remove_file(&path);
     }
 }

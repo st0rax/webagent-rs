@@ -49,6 +49,12 @@ pub struct Candidate {
     pub title: String,
     #[serde(default)]
     pub contenteditable: bool,
+    /// Deaktiviert (`disabled`- oder `aria-disabled`-Attribut). Ein
+    /// deaktivierter Knopf ist ein Hinweis, kein Abfall: deepseeks Send-Button
+    /// traegt bei leerem Composer `ds-button--disabled` — der Zustand wird
+    /// mitgeschrieben, das Element nicht verschwiegen.
+    #[serde(default)]
+    pub disabled: bool,
     /// Sichtbar und bedienbar — unsichtbare Treffer sind Rauschen.
     #[serde(default)]
     pub visible: bool,
@@ -101,6 +107,11 @@ pub struct Proposal {
     pub selector: String,
     /// 0..100. Ein `data-testid` ist verlaesslicher als ein Textfund.
     pub confidence: u8,
+    /// War das Element zum Scan-Zeitpunkt deaktiviert? Ein deaktivierter Knopf
+    /// ist kein Nicht-Fund — nur nicht bedienbar, bis der Zustand kippt. Der
+    /// Zustand gehoert in den Vorschlag, sonst faellt der Send-Button eines
+    /// leeren Composer (deepseek: `ds-button--disabled`) aus jeder Auswertung.
+    pub disabled: bool,
     /// Woran es erkannt wurde — fuer die Nachpruefung durch einen Menschen.
     pub evidence: String,
 }
@@ -249,9 +260,15 @@ const RULES: &[Rule] = &[
         // gefunden: `[data-testid='model-item']` wurde als model_menu
         // eingeordnet. Wer den Eintrag fuer den Oeffner haelt, klickt beim
         // Modellwechsel ins Leere, solange das Menue zu ist.
+        //
+        // Bewusst NUR die zusammengesetzten Muster: das Einzelwort „item"
+        // kollidiert mit Tailwinds `items-center`, das im Klassen-Attribut
+        // praktisch jedes Buttons steckt — am 2026-08-12 am live Perplexity-
+        // DOM gemessen, wo der echte Modell-Knopf deshalb nie als model_menu
+        // klassifiziert wurde.
         &[
-            "option", "item", "entry", "einstellung", "vereinbarung",
-            "dienste", "richtlinie", "bedingungen", "nutzung",
+            "option", "model item", "model entry", "einstellung",
+            "vereinbarung", "dienste", "richtlinie", "bedingungen", "nutzung",
         ],
     ),
     rule!(
@@ -343,6 +360,7 @@ pub const PROBE_SCRIPT: &str = r#"
       title: el.getAttribute('title') || '',
       class: (typeof el.className === 'string' ? el.className : '').trim().slice(0, 400),
       contenteditable: el.getAttribute('contenteditable') === 'true',
+      disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
       visible: r.width > 0 && r.height > 0,
       x: Math.round(r.left),
       y: Math.round(r.top),
@@ -385,6 +403,30 @@ fn selector_for(candidate: &Candidate) -> Option<(String, u8, String)> {
             format!("{}[aria-label*='{}' i]", candidate.tag, candidate.aria_label),
             70,
             format!("aria-label={}", candidate.aria_label),
+        ));
+    }
+    if !candidate.placeholder.is_empty() {
+        // Ein Platzhalter ist eine bewusste Design-Beschriftung: stabiler als
+        // sichtbarer Text, aber nicht so stabil wie aria-label. deepseeks
+        // Composer traegt placeholder='Message DeepSeek', waehrend seine
+        // Klassen Hash-Fragmente sind, die beim naechsten Deploy verfallen.
+        return Some((
+            format!("{}[placeholder*='{}' i]", candidate.tag, candidate.placeholder),
+            60,
+            format!("placeholder={}", candidate.placeholder),
+        ));
+    }
+    if !candidate.role.is_empty() && !candidate.text.is_empty() {
+        // role-qualifizierter Text: `[role='radio']:has-text('Instant')` trifft
+        // genau ein Element, wo `div:has-text('Instant')` auch den Container
+        // treffen koennte. Genau der Fall bei deepseeks Segmenten
+        // (Instant/Expert/Vision), die role=radio und Klartext tragen und nur
+        // ueber verfallende Hash-Klassen erreichbar wuerden — der Selektor ist
+        // sichtbar, er wird nur nicht gebildet.
+        return Some((
+            format!("[role='{}']:has-text('{}')", candidate.role, candidate.text),
+            55,
+            format!("role={} text={}", candidate.role, candidate.text),
         ));
     }
     if !candidate.text.is_empty() {
@@ -435,6 +477,7 @@ fn classify_composer(candidates: &[Candidate]) -> Option<Proposal> {
         selector_key: "composer",
         selector,
         confidence,
+        disabled: false,
         evidence,
     })
 }
@@ -476,6 +519,7 @@ pub fn classify(candidates: &[Candidate]) -> Vec<Proposal> {
                 selector_key: rule.selector_key,
                 selector,
                 confidence,
+                disabled: candidate.disabled,
                 evidence,
             };
             if best.as_ref().is_none_or(|b| b.confidence < proposal.confidence) {
@@ -642,6 +686,7 @@ pub fn proposal_from(cap: &crate::capability::Capability, winner: &str) -> Propo
         selector_key: cap.needs[0],
         selector: winner.to_string(),
         confidence: 100,
+        disabled: false,
         evidence: format!("aufgeloester Fallback: {winner}"),
     }
 }
@@ -680,7 +725,23 @@ pub fn verify(driver: &mut dyn PageDriver, proposal: &Proposal) -> Result<Verdic
             note: format!("Selektor '{}' war nicht anklickbar", proposal.selector),
         });
     }
-    let after = driver.eval_string(&state_expr)?;
+    let mut after = driver.eval_string(&state_expr)?;
+
+    // Zweiter Anlauf: `element.click()` feuert nur ein synthetisches
+    // `click`-Ereignis. Oberflaechen, die auf pointerdown/mousedown lauschen,
+    // ignorieren es — qwens Denkstufen-Menue und Perplexitys Modellmenue
+    // (ui.rs `open_menu` kennt genau diesen Fall und klickt dann real). Der
+    // echte Mausklick an den Koordinaten geht den vollstaendigen Ereignisweg.
+    let mut real_path = false;
+    if before == after {
+        if let Some((x, y)) = click_point_of(driver, &selectors) {
+            if driver.click_at(x, y).is_ok() {
+                std::thread::sleep(std::time::Duration::from_millis(700));
+                after = driver.eval_string(&state_expr)?;
+                real_path = true;
+            }
+        }
+    }
 
     if before == after {
         return Ok(Verdict {
@@ -696,16 +757,33 @@ pub fn verify(driver: &mut dyn PageDriver, proposal: &Proposal) -> Result<Verdic
     }
 
     // Zustand hat sich geaendert: zurueckschalten und den Rueckweg belegen.
-    let mut restored = false;
-    if driver.evaluate(&click_expr)?.as_bool().unwrap_or(false) {
-        restored = driver.eval_string(&state_expr)? == before;
-    }
+    // Der Rueckweg nimmt dieselbe Strasse, die geoeffnet hat.
+    let restored = if real_path {
+        match click_point_of(driver, &selectors) {
+            Some((x, y)) => {
+                driver.click_at(x, y).is_ok()
+                    && driver
+                        .eval_string(&state_expr)
+                        .map(|s| s == before)
+                        .unwrap_or(false)
+            }
+            None => false,
+        }
+    } else {
+        driver.evaluate(&click_expr)?.as_bool().unwrap_or(false)
+            && driver.eval_string(&state_expr)? == before
+    };
     let note = if restored {
         "Zustandswechsel belegt, Ausgangszustand wiederhergestellt".to_string()
     } else {
         format!(
             "Zustandswechsel belegt, aber Rueckweg misslungen — Oberflaeche steht jetzt auf '{after}' statt '{before}'"
         )
+    };
+    let note = if real_path {
+        format!("{note} (via echtem Mausklick)")
+    } else {
+        note
     };
     Ok(Verdict {
         capability_key: proposal.capability_key,
@@ -717,6 +795,19 @@ pub fn verify(driver: &mut dyn PageDriver, proposal: &Proposal) -> Result<Verdic
         restored: Some(restored),
         note,
     })
+}
+
+/// Mittelpunkt des klickbaren Vorfahren im Viewport — die Koordinaten fuer
+/// den echten Mausklick, den [`verify`] als zweiten Anlauf faehrt, wenn der
+/// synthetische Klick keinen Zustandswechsel bringt.
+pub(crate) fn click_point_of(driver: &mut dyn PageDriver, selectors: &[String]) -> Option<(f64, f64)> {
+    let expr = crate::browser::js::js_scan(
+        &crate::browser::js::js_selectors(selectors),
+        "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;var r=t.getBoundingClientRect();if(r.width>0&&r.height>0)return {x:r.left+r.width/2,y:r.top+r.height/2};}",
+        "null",
+    );
+    let v = driver.evaluate(&expr).ok()?;
+    Some((v.get("x")?.as_f64()?, v.get("y")?.as_f64()?))
 }
 
 #[cfg(test)]
@@ -800,6 +891,47 @@ mod tests {
         let keys: Vec<&str> = found.iter().map(|p| p.capability_key).collect();
         assert!(keys.contains(&"deep_research"), "{keys:?}");
         assert!(keys.contains(&"temporary_chat"), "{keys:?}");
+    }
+
+    #[test]
+    fn tailwind_items_center_verdraengt_model_menu_nicht() {
+        // Real aus dem Perplexity-DOM geerntet (headless, 2026-08-12): der
+        // Modell-Knopf traegt die volle Tailwind-Klasse mit `items-center`.
+        // Das alte Exclude „item" schlug dort zu — der echte Oeffner wurde
+        // nie als model_menu klassifiziert und das Modell-Menue blieb fuer
+        // die Analyse unsichtbar.
+        let candidates = vec![Candidate {
+            tag: "button".into(),
+            aria_label: "Modell".into(),
+            text: "Modell".into(),
+            class: "reset interactable select-none [-webkit-user-drag:none] outline-none font-medium transition-[background-color,border-color,transform,color,opacity] duration-300 ease-out font-sans text-center items-center justify-center leading-loose whitespace-nowrap disabled:cursor-default disabled:opacity-50 data-[state=open]:text-primary data-[state=open]:bg-quiet h-8 text-sm cursor-pointer origin-center activ".into(),
+            visible: true,
+            ..Default::default()
+        }];
+        let found = classify(&candidates);
+        let menu = found
+            .iter()
+            .find(|p| p.selector_key == "model_menu")
+            .expect("Modell-Knopf muss model_menu bleiben, {found:?}");
+        assert!(menu.selector.contains("Modell"), "{}", menu.selector);
+    }
+
+    #[test]
+    fn model_item_bleibt_vom_oeffner_ausgeschlossen() {
+        // zai-Gegenprobe: `[data-testid='model-item']` ist ein EINTRAG in der
+        // Liste, kein Oeffner — darf auch mit dem geschaerften Exclude nicht
+        // als model_menu durchrutschen.
+        let candidates = vec![Candidate {
+            tag: "button".into(),
+            test_id: "model-item".into(),
+            visible: true,
+            ..Default::default()
+        }];
+        let found = classify(&candidates);
+        assert!(
+            found.iter().all(|p| p.selector_key != "model_menu"),
+            "{found:?}"
+        );
     }
 
     #[test]
@@ -1124,6 +1256,7 @@ mod tests {
             selector_key: "reasoning_toggle",
             selector: "[data-testid='think']".into(),
             confidence: 95,
+            disabled: false,
             evidence: "data-testid=think".into(),
         }
     }
@@ -1165,6 +1298,37 @@ mod tests {
         assert!(verdict.proven);
         assert_eq!(verdict.restored, Some(true));
         assert_ne!(verdict.before, verdict.after);
+    }
+
+    #[test]
+    fn verify_faehrt_echten_mausklick_wenn_synthetisch_ohne_wechsel() {
+        // Perplexitys Modellmenue lauscht auf pointerdown: der synthetische
+        // `element.click()` kommt an, aendert aber nichts. Erst der echte
+        // Mausklick an den Koordinaten oeffnet es (data-state=open) — und
+        // der Rueckweg nimmt dieselbe Strasse.
+        let sels = vec![proposal().selector];
+        let state_expr = crate::browser::js::toggle_state_expr_for(&sels);
+        let click_expr = crate::browser::js::click_toggle_expr_for(&sels);
+        let point_expr = crate::browser::js::js_scan(
+            &crate::browser::js::js_selectors(&sels),
+            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;var r=t.getBoundingClientRect();if(r.width>0&&r.height>0)return {x:r.left+r.width/2,y:r.top+r.height/2};}",
+            "null",
+        );
+        let state = crate::mock_page::MockPageState::new()
+            .on_eval_seq(
+                state_expr,
+                ["aria-pressed=false|", "aria-pressed=false|", "aria-pressed=true|", "aria-pressed=false|"]
+                    .into_iter()
+                    .map(|s| serde_json::json!(s))
+                    .collect(),
+            )
+            .on_eval(click_expr, serde_json::json!(true))
+            .on_eval(point_expr, serde_json::json!({"x": 100.0, "y": 50.0}));
+        let mut driver = crate::mock_page::MockPageDriver::new(state);
+        let verdict = verify(&mut driver, &proposal()).expect("verify");
+        assert!(verdict.proven, "{verdict:?}");
+        assert_eq!(verdict.restored, Some(true));
+        assert!(verdict.note.contains("echtem Mausklick"), "{}", verdict.note);
     }
 
     #[test]
@@ -1311,5 +1475,85 @@ mod tests {
         };
         let (sel, _, _) = selector_for(&both).unwrap();
         assert!(sel.contains("aria-label"), "{sel}");
+    }
+
+    /// Ein Platzhalter ist eine bewusste Beschriftung: er gewinnt gegen die
+    /// blosse Klassenkette (deepseek: Composer `placeholder='Message DeepSeek'`
+    /// gegen verfallende Hash-Klassen).
+    #[test]
+    fn selector_for_nutzt_placeholder_vor_klassen() {
+        let c = Candidate {
+            tag: "textarea".into(),
+            placeholder: "Message DeepSeek".into(),
+            class: "d96f2d2a _27c9245 ds-scroll-area".into(),
+            visible: true,
+            ..Default::default()
+        };
+        let (sel, conf, ev) = selector_for(&c).expect("placeholder muss einen Selektor liefern");
+        assert_eq!(sel, "textarea[placeholder*='Message DeepSeek' i]");
+        assert_eq!(ev, "placeholder=Message DeepSeek");
+        assert!((55..65).contains(&conf), "Placeholder ist ein starker Anker: {conf}");
+    }
+
+    /// role-qualifizierter Text gewinnt gegen die Klassenkette (deepseek:
+    /// Segmente mit role=radio und Klartext). Der Selektor ist sichtbar — er
+    /// wurde nur nicht gebildet.
+    #[test]
+    fn selector_for_nutzt_role_text_vor_klassen() {
+        let c = Candidate {
+            tag: "div".into(),
+            role: "radio".into(),
+            text: "Instant".into(),
+            class: "d4910adc".into(),
+            visible: true,
+            ..Default::default()
+        };
+        let (sel, conf, ev) = selector_for(&c).expect("role+text muss einen Selektor liefern");
+        assert_eq!(sel, "[role='radio']:has-text('Instant')");
+        assert_eq!(ev, "role=radio text=Instant");
+        assert!((50..60).contains(&conf), "role+text ist praeziser als nackter Text: {conf}");
+    }
+
+    /// role ohne Text ist kein Selektor — ein blosser `[role=radio]` traefe
+    /// alle Segmente auf einmal. Dann gilt weiterhin die Klassenkette.
+    #[test]
+    fn selector_for_role_ohne_text_faellt_auf_klassen() {
+        let c = Candidate {
+            tag: "div".into(),
+            role: "radio".into(),
+            class: "d4910adc".into(),
+            visible: true,
+            ..Default::default()
+        };
+        let (sel, _, ev) = selector_for(&c).expect("class muss tragen");
+        assert_eq!(sel, "[class*='d4910adc' i]");
+        assert_eq!(ev, "class=d4910adc");
+    }
+
+    /// Ein deaktivierter Knopf ist ein Hinweis, kein Abfall: der Vorschlag
+    /// traegt den Zustand mit, statt das Element zu verschweigen (deepseek:
+    /// Send-Button traegt bei leerem Composer `ds-button--disabled`).
+    #[test]
+    fn deaktivierter_knopf_wird_nicht_verworfen_und_traegt_den_zustand() {
+        let mut c = button("Nachricht senden");
+        c.disabled = true;
+        let found = classify(&[c]);
+        let send = found
+            .iter()
+            .find(|p| p.selector_key == "send_button")
+            .expect("deaktivierter Send-Button bleibt ein Fund");
+        assert!(send.disabled, "{send:?}");
+    }
+
+    /// Ein aktiver Knopf bleibt ein aktiver Vorschlag — die Unterscheidung
+    /// ist der Sinn des Zustands.
+    #[test]
+    fn aktiver_knopf_traegt_disabled_false() {
+        let found = classify(&[button("Nachricht senden")]);
+        let send = found
+            .iter()
+            .find(|p| p.selector_key == "send_button")
+            .expect("Send-Button");
+        assert!(!send.disabled, "{send:?}");
     }
 }

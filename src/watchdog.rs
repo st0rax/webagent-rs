@@ -386,7 +386,8 @@ fn chrome_running_for_profile(profile_dir: &str) -> bool {
     }
 }
 
-/// Repariert verwaiste Runs: setzt Status auf "interrupted".
+/// Repariert verwaiste Runs: setzt Status auf `never_started` (cycles==0) oder
+/// `interrupted` (echter Abbruch).
 pub fn repair_orphaned_runs(
     report: &mut WatchdogReport,
     run_store: Option<&crate::run_store::RunStore>,
@@ -394,7 +395,7 @@ pub fn repair_orphaned_runs(
     for orphan in std::mem::take(&mut report.orphaned_runs) {
         if let Some(store) = run_store {
             if let Ok(mut meta) = store.load(&orphan.run_id) {
-                meta.status = "interrupted".to_string();
+                meta.status = crate::run_store::stale_status(meta.cycles).to_string();
                 meta.extra.insert(
                     "reconciled_at".to_string(),
                     serde_json::Value::String(
@@ -677,7 +678,7 @@ mod tests {
 
         // Prüfen dass Run repariert wurde
         let repaired_meta = store.load(&report.repaired_runs[0]).unwrap();
-        assert_eq!(repaired_meta.status, "interrupted");
+        assert_eq!(repaired_meta.status, "never_started");
 
         // Prüfen dass Lock-Dateien weg sind
         assert!(!bridge_lock.exists());

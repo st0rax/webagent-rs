@@ -277,6 +277,56 @@ pub(crate) fn scan_once(
     Ok((candidates, proposals))
 }
 
+/// `--open <key>`-Schritt des Probers: den Vorschlag anklicken und erneut
+/// scannen, damit Menue-Eintraege (`model_option` etc.) sichtbar werden —
+/// sie existieren im DOM erst, wenn das Menue offen ist.
+///
+/// Wie `open_menu`/`toggle_option` in ui.rs faehrt der Oeffner zwei Schienen:
+/// erst der synthetische `element.click()`; bleibt der Zustand (aria-*/data-*/
+/// Klasse des klickbaren Vorfahren) unveraendert, folgt ein echter Mausklick
+/// an den Koordinaten, der den vollstaendigen Ereignisweg geht. Perplexitys
+/// Modellmenue lauscht nur auf pointerdown und bliebe sonst zu (am 2026-08-12
+/// an der offenen Seite gemessen).
+fn open_and_rescan(
+    driver: &mut dyn PageDriver,
+    props: &[crate::brain_probe::Proposal],
+    cands: Vec<crate::brain_probe::Candidate>,
+    key: &str,
+) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+    let Some(p) = props.iter().find(|p| p.selector_key == key) else {
+        eprintln!("[probe] {key}: kein Vorschlag gefunden ({})", cands.len());
+        return Ok((cands, props.to_vec()));
+    };
+    let selectors = vec![p.selector.clone()];
+    let state_expr = js::toggle_state_expr_for(&selectors);
+    let click_expr = js::click_toggle_expr_for(&selectors);
+    let read_state = |driver: &mut dyn PageDriver| -> String {
+        eval(driver, &state_expr)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default()
+    };
+    let before = read_state(driver);
+    let clicked = eval_bool(driver, &click_expr);
+    if !clicked {
+        eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
+        return Ok((cands, props.to_vec()));
+    }
+    std::thread::sleep(Duration::from_millis(1200));
+    if read_state(driver) == before {
+        eprintln!(
+            "[probe] {key}: synthetischer Klick ohne Zustandswechsel — echter Mausklick…"
+        );
+        if let Some((x, y)) = crate::brain_probe::click_point_of(driver, &selectors) {
+            if driver.click_at(x, y).is_ok() {
+                std::thread::sleep(Duration::from_millis(1200));
+            }
+        }
+    }
+    eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
+    scan_once(driver)
+}
+
 /// Diagnose des echten DOM gegen die offene Seite — ein einzelner
 /// [`dom_report`] ohne vorher ein Menue zu oeffnen.
 ///
@@ -341,32 +391,11 @@ pub(crate) fn probe_surface_with_raw(
     let _ = sel;
     wait_for_labeled_controls(driver);
     let result = scan_once(driver);
-    let opened = match (open_key, result) {
-        (Some(key), Ok((cands, props))) => {
-            let clicked = props.iter().find(|p| p.selector_key == key).map(|p| {
-                let expr = js::js_scan(
-                    &js::js_selectors(std::slice::from_ref(&p.selector)),
-                    "var el=Q(S[i]);if(el){el.click();return true;}",
-                    "false",
-                );
-                eval_bool(driver, &expr)
-            });
-            match clicked {
-                Some(true) => {
-                    eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
-                    std::thread::sleep(Duration::from_millis(1500));
-                    scan_once(driver)
-                }
-                _ => {
-                    eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
-                    Ok((cands, props))
-                }
-            }
-        }
+    match (open_key, result) {
+        (Some(key), Ok((cands, props))) => open_and_rescan(driver, &props, cands, key),
         (None, r) => r,
         (_, Err(e)) => Err(e),
-    };
-    opened
+    }
 }
 
 /// Einzeiliges JS, das den Composer mit dem Testwort "test" fuellt — geteilt
@@ -411,27 +440,7 @@ pub(crate) fn probe_surface_with_fill(
     };
     if let Some(key) = open_key {
         let opened = match result {
-            Ok((cands, props)) => {
-                let clicked = props.iter().find(|p| p.selector_key == key).map(|p| {
-                    let expr = js::js_scan(
-                        &js::js_selectors(std::slice::from_ref(&p.selector)),
-                        "var el=Q(S[i]);if(el){el.click();return true;}",
-                        "false",
-                    );
-                    eval_bool(driver, &expr)
-                });
-                match clicked {
-                    Some(true) => {
-                        eprintln!("[probe] {key} geklickt — scanne nach den Menue-Eintraegen…");
-                        std::thread::sleep(Duration::from_millis(1500));
-                        scan_once(driver)
-                    }
-                    _ => {
-                        eprintln!("[probe] {key}: nichts anzuklicken ({})", cands.len());
-                        Ok((cands, props))
-                    }
-                }
-            }
+            Ok((cands, props)) => open_and_rescan(driver, &props, cands, key),
             Err(e) => Err(e),
         };
         return opened;
@@ -569,6 +578,7 @@ mod verify_surface_tests {
             selector_key: "send_button",
             selector: "button[data-testid='send-button']".to_string(),
             confidence: 90,
+            disabled: false,
             evidence: "aria-label 'Nachricht senden'".to_string(),
         }
     }
@@ -1219,14 +1229,16 @@ mod probe_surface_tests {
         let sel = sel_with("composer", &["div.prose"]);
         let first = json!([{"tag": "button", "aria_label": "Senden", "visible": true}]);
         let second = json!([{"tag": "button", "aria_label": "Modell", "visible": true}]);
-        let click_expr = js::js_scan(
-            &js::js_selectors(&["button[aria-label*='Senden' i]".to_string()]),
-            "var el=Q(S[i]);if(el){el.click();return true;}",
-            "false",
-        );
+        // Der Oeffner nutzt seit dem pointerdown-Fix dieselben Bausteine wie
+        // der Umschaltpfad (`click_toggle_expr_for`/`toggle_state_expr_for`)
+        // statt eines eigenen `el.click()`-Ausdrucks.
+        let sels = vec!["button[aria-label*='Senden' i]".to_string()];
+        let state_expr = js::toggle_state_expr_for(&sels);
+        let click_expr = js::click_toggle_expr_for(&sels);
         let mut driver = MockPageDriver::new(
             labeled_state()
                 .on_eval_seq(crate::brain_probe::PROBE_SCRIPT, vec![first, second])
+                .on_eval(state_expr, json!("aria-pressed=false|"))
                 .on_eval(click_expr, json!(true)),
         );
         let (_, props) = probe_surface_with_raw(&mut driver, &sel, Some("send_button"))

@@ -617,6 +617,42 @@ mod tests {
     }
 
     #[test]
+    fn generische_maske_traegt_jeden_brain_mit_den_kern_keys() {
+        // Multiplikator-Anspruch aus dem Masken-Plan: JEDES registrierte Brain —
+        // mit eigener Datei oder nur Maske — hat sofort alle 8 Kern-Keys. Die
+        // Maske ist die unterste Stufe; eine Brain-Datei darf pro Key drueberlegen,
+        // aber nichts darf fehlen. Ein Kern-Key als leere Liste (oder ganz weg)
+        // bricht diesen Test.
+        let ids: Vec<String> = {
+            let mut v: Vec<String> = brains().keys().cloned().collect();
+            v.sort();
+            v
+        };
+        assert!(!ids.is_empty(), "keine Brains registriert");
+        for id in &ids {
+            let sel = load_selectors(id)
+                .unwrap_or_else(|e| panic!("{id}: load_selectors fehlgeschlagen: {e}"));
+            for key in [
+                "composer",
+                "send_button",
+                "stop_button",
+                "new_chat_button",
+                "login_button",
+                "login_indicator",
+                "google_sso_button",
+                "assistant_message",
+            ] {
+                let has = sel
+                    .get(key)
+                    .and_then(|v| v.as_array())
+                    .map(|a| !a.is_empty())
+                    .unwrap_or(false);
+                assert!(has, "{id}: Kern-Key {key} fehlt — Maske traegt nicht");
+            }
+        }
+    }
+
+    #[test]
     fn test_swarm_and_reference_paths() {
         let r = reference_profile_dir("claude");
         assert!(r.ends_with(std::path::Path::new("reference").join("claude")));

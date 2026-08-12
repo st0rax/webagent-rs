@@ -224,6 +224,60 @@ return null;}})()"#,
         }
     }
 
+    /// Skriptbasiertes Login: klickt die Login-Kette selbst durch statt auf
+    /// manuelle Eingabe zu warten.
+    ///
+    /// Die Kette ist bewusst kurz und am Selektorbestand entlanggebaut:
+    /// `login_button` (Anmelden) → ggf. `google_sso_button` (SSO-Klick) → warten
+    /// bis `is_logged_in`. Mehr tut sie nicht — Passwort, 2FA und unerwartete
+    /// Zwischenseiten überlässt sie dem Menschen, das Fenster bleibt dabei
+    /// offen. Wer schon eingeloggt ist, bekommt sofort `true`.
+    pub fn try_auto_login(&mut self, timeout: Duration) -> Result<bool, String> {
+        self.start(false)?; // headed — der Mensch soll sehen (und ggf. nachhelfen) können
+        let deadline = Instant::now() + timeout;
+        if self.is_logged_in() {
+            let _ = self.stop();
+            return Ok(true);
+        }
+        // Klick 1: "Anmelden"/"Sign in". Echte Maus-Klicks, denn Geminis SSO-
+        // Buttons ignorieren synthetische `el.click()`.
+        self.dismiss_consent();
+        crate::bench_events::eprint_line("[auto-login] klicke 'Anmelden'…");
+        let first = self.click_visible_real("login_button");
+        if !first {
+            self.dismiss_consent();
+            if !self.click_visible_real("login_button") {
+                let _ = self.stop();
+                return Err("Anmelden-Button nicht gefunden".into());
+            }
+        }
+        std::thread::sleep(Duration::from_secs(2));
+        // Klick 2: falls eine Google-SSO-Oberfläche erscheint, deren Button
+        // mitnehmen. Nur wenn sichtbar — manche Brains loggen ohne SSO ein.
+        if self.any_visible("google_sso_button") {
+            crate::bench_events::eprint_line("[auto-login] klicke Google-SSO…");
+            self.click_visible_real("google_sso_button");
+            std::thread::sleep(Duration::from_secs(3));
+        }
+        // Klick 3+: falls ein Kontowähler die letzte Sitzung anbietet, wird er
+        // typischerweise mit EINEM weiteren Klick übernommen. Das Fenster bleibt
+        // offen; der Mensch kann eingreifen, und wir pollen bis zum Timeout.
+        while Instant::now() < deadline {
+            self.dismiss_consent();
+            if self.is_logged_in() {
+                std::thread::sleep(Duration::from_secs(2)); // Session ins Profil flushen
+                let _ = self.stop();
+                return Ok(true);
+            }
+            // Beim Google-Kontowähler sitzt die "Weiter"-Logik oft in einem
+            // nicht selektorisierten Element — dafür gibt es keinen Selektorschlüssel.
+            // Statt zu raten: warten, damit die Oberfläche sich stabilisiert.
+            std::thread::sleep(Duration::from_secs(2));
+        }
+        let _ = self.stop();
+        Ok(false)
+    }
+
     /// Öffnet die Oberfläche und nimmt sie als PNG auf.
     ///
     /// Der Gegenentwurf zur DOM-Vermessung: was keinen Namen im DOM hat, hat

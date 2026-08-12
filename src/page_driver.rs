@@ -57,6 +57,17 @@ pub trait PageDriver: Send {
     /// Linksklick an Viewport-Koordinaten.
     fn click_at(&mut self, x: f64, y: f64) -> Result<()>;
 
+    /// Linksklick an Viewport-Koordinaten als vertrauenswuerdige CDP-Pointer-
+    /// Sequenz (`Input.dispatchMouseEvent`: moved -> pressed -> released).
+    ///
+    /// Der einfache [`Self::click_at`] feuert synthetische DOM-Events
+    /// (`isTrusted=false`). Oberflaechen, die auf trusted pointerdown lauschen
+    /// (qwens Denkstufen-Menue), ignorieren die. Diese Variante geht den echten
+    /// Input-Pfad der Browser-Engine — derselbe CDP-Kanal, den auch Chrome
+    /// DevTools ueber die Remote-Debugging-Session nutzt, hier aber in-prozess
+    /// ueber `CallDevToolsProtocolMethod` statt ueber Port/WebSocket.
+    fn click_at_trusted(&mut self, x: f64, y: f64) -> Result<()>;
+
     /// Nimmt den sichtbaren Seiteninhalt als PNG auf.
     ///
     /// Warum das hier gebraucht wird: die Fähigkeits-Vermessung über das DOM

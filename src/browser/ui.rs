@@ -218,7 +218,8 @@ impl WebBrainBackend {
             return false;
         }
         std::thread::sleep(Duration::from_millis(900));
-        if expanded(self) == "false" && self.click_real(menu_key) {
+        let e1 = expanded(self);
+        if e1 == "false" && self.click_real(menu_key) {
             std::thread::sleep(Duration::from_millis(900));
         }
         true
@@ -258,6 +259,34 @@ impl WebBrainBackend {
     fn click_toggle(&self, key: &str) -> bool {
         let expr = self.click_toggle_expr(key);
         self.eval_bool(&expr)
+    }
+
+    /// Schaltet einen Umschalter (z.B. deepseeks `reasoning_toggle`/DeepThink)
+    /// aus, wenn er erkennbar aktiv ist. Kein Blind-Klick: belegt kein Attribut
+    /// den aktiven Zustand, wird nichts angefasst. `true`, wenn der Zustand
+    /// danach "aus" ist (bereits aus oder erfolgreich ausgeklickt).
+    ///
+    /// DeepThink eingeschaltet streamt deepseek ~100 s Reasoning, das die
+    /// Stabilitäts-Erkennung blockiert — jede Turn kostet dann den vollen
+    /// wait_response-Timeout (gemessen: konstant 110 s). Ausgeschaltet antwortet
+    /// deepseek in Sekunden.
+    pub(crate) fn disable_toggle(&self, key: &str) -> bool {
+        if self.sel(key).is_empty() {
+            return true;
+        }
+        let state = self.toggle_state(key).to_lowercase();
+        let active = state.contains("aria-pressed=true")
+            || state.contains("aria-checked=true")
+            || state.contains("data-state=on")
+            || state.contains("data-active=true");
+        if !active {
+            return true;
+        }
+        crate::bench_events::eprint_line(&format!(
+            "[browser] {}: {key} ist aktiv, wird ausgeschaltet ({state})",
+            self.brain_id
+        ));
+        self.click_toggle(key)
     }
 
     /// Das JS hinter [`Self::click_toggle`] — aus demselben Grund ausgelagert
@@ -454,16 +483,39 @@ impl WebBrainBackend {
             return Err(format!("'{menu_key}' nicht anklickbar"));
         }
 
+        // Perplexity (Radix-Portal) rendert den Menue-Content zeitversetzt nach
+        // aria-expanded: open_menu belegt nur den offenen Trigger, die Eintraege
+        // kommen erst danach ins DOM. Erst warten, bis ein Options-Selektor
+        // matcht, sonst klickt der Scan ins Leere (gemessen 2026-08-12).
         let list = Self::js_selectors(&self.sel(option_key));
         let needle = serde_json::to_string(&want_l).unwrap_or_else(|_| "\"\"".into());
+        let mut options_sichtbar = self.wait_for_options(&list, 26, 150);
+        // Ein frisch geoeffnetes Menue eines gerade geladenen Webviews zeigt den
+        // Content oft erst beim ZWEITEN Oeffnen (perplexity, gemessen 2026-08-12:
+        // Erst-Oeffnen 0 Eintraege, Reopen zuverlaessig alle). Einmalig retry.
+        if !options_sichtbar {
+            let _ = self.press_key_escape();
+            std::thread::sleep(Duration::from_millis(400));
+            if self.open_menu(menu_key) {
+                options_sichtbar = self.wait_for_options(&list, 26, 150);
+            }
+        }
+        if !options_sichtbar {
+            let _ = self.press_key_escape();
+            return Err(format!(
+                "'{want}': Eintraege von '{option_key}' trotz Warten/Reopen nicht im DOM"
+            ));
+        }
+
+        // 1. Versuch: synthetisches element.click() inkl. Pointer-Dispatch —
+        // fuer die meisten Brains ausreichend.
         let expr = format!(
-            "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{els[k].click();return true;}}}}}}catch(e){{}}}}return false;}})()",
+            "(function(){{{prelude}var S={list};var n={needle};function clk(e){{var r=e.getBoundingClientRect();var cx=r.left+r.width/2,cy=r.top+r.height/2;var pd=new PointerEvent('pointerdown',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});var pu=new PointerEvent('pointerup',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t2){{e.dispatchEvent(t2==='pointerdown'?pd:t2==='pointerup'?pu:new MouseEvent(t2,{{clientX:cx,clientY:cy,bubbles:true,button:0}}));}});}}for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{clk(els[k]);return true;}}}}}}catch(e){{}}}}return false;}})()",
             prelude = Self::JS_SEL_PRELUDE,
             list = list,
             needle = needle
         );
-        let clicked = self.eval_bool(&expr);
-        if !clicked {
+        if !self.eval_bool(&expr) {
             let _ = self.press_key_escape();
             return Err(format!("'{want}' steht nicht im Menue '{option_key}'"));
         }
@@ -473,10 +525,82 @@ impl WebBrainBackend {
         if after.to_lowercase().contains(&want_l) {
             return Ok(after);
         }
+
+        // Interaktionsnachweis: schliesst sich das Menue nach einem Klick, wurde
+        // der Eintrag verarbeitet — entscheidend fuer Brains wie perplexity, die
+        // den Modellnamen nirgends im DOM spiegeln (Button zeigt statisch
+        // "Modell", keine Auswahl-Markierung, kein localStorage-Eintrag).
+        let mut menue_zu = self.menuitem_count() == 0;
+
+        // 2. Versuch: echter Mausklick auf die Item-Koordinaten. Perplexity
+        // lauscht nur auf pointerdown; selbst der Pointer-Dispatch des
+        // synthetischen Klicks waehlt dort nichts aus, der echte Klick schon
+        // (am 2026-08-12 gemessen: Menue schloss sich = Eintrag verarbeitet).
+        if !menue_zu {
+            if let Some((x, y)) = self.option_point(&list, &needle) {
+                let mut guard = self.driver.borrow_mut();
+                if let Some(driver) = guard.as_mut() {
+                    if driver.click_at(x, y).is_ok() {
+                        std::thread::sleep(Duration::from_millis(1500));
+                        let after2 = self.current_model();
+                        if after2.to_lowercase().contains(&want_l) {
+                            return Ok(after2);
+                        }
+                        menue_zu = self.menuitem_count() == 0;
+                    }
+                }
+            }
+        }
         Err(format!(
-            "Wechsel nicht bestaetigt: Menue zeigt weiterhin '{}' (vorher '{}'), erwartet '{}'",
-            after, before, want
+            "Wechsel nicht bestaetigt: Menue zeigt weiterhin '{}' (vorher '{}'), erwartet '{}' (Menue nach Klick {})",
+            after,
+            before,
+            want,
+            if menue_zu { "geschlossen - Eintrag verarbeitet, aber Namensbestaetigung fehlt" } else { "noch offen - Klick wohl ins Leere" }
         ))
+    }
+
+    /// Anzahl der `[role=menuitem]`-Elemente im DOM — das zuverlaessige Signal
+    /// dafuer, ob ein Radix-Menue mit Content offen ist (Options-Selektoren
+    /// matchen auch nach dem Schliessen weiter).
+    fn menuitem_count(&self) -> i64 {
+        self.eval_str("(function(){return JSON.stringify(document.querySelectorAll('[role=menuitem]').length);})()")
+            .trim()
+            .parse::<i64>()
+            .unwrap_or(0)
+    }
+
+    /// Wartet, bis ein Options-Selektor im DOM matcht (Menue-Content rendert
+    /// bei Radix-Portalen zeitversetzt). Rueckgabe: ob binnen
+    /// `versuche * interval_ms` ein Treffer auftrat.
+    fn wait_for_options(&self, list: &str, versuche: usize, interval_ms: u64) -> bool {
+        let expr = format!(
+            "(function(){{{prelude}var S={list};var n=0;for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);if(els.length){{n=els.length;break;}}}}catch(e){{}}}}return JSON.stringify(n);}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            list = list
+        );
+        for _ in 0..versuche {
+            if self.eval_str(&expr).trim().parse::<i64>().unwrap_or(0) > 0 {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(interval_ms));
+        }
+        false
+    }
+
+    /// Mittelpunkt des Ziel-Eintrags im Viewport, oder `None`.
+    fn option_point(&self, list: &str, needle: &str) -> Option<(f64, f64)> {
+        let expr = format!(
+            "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var r=els[k].getBoundingClientRect();return JSON.stringify(r.left+r.width/2)+','+JSON.stringify(r.top+r.height/2);}}}}}}catch(e){{}}}}return 'false';}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            list = list,
+            needle = needle
+        );
+        let c = self.eval_str(&expr);
+        let (xs, ys) = c.split_once(',')?;
+        let x = xs.trim().parse::<f64>().ok()?;
+        let y = ys.trim().parse::<f64>().ok()?;
+        Some((x, y))
     }
 
     /// Escape ans Dokument — schliesst offene Menues.
