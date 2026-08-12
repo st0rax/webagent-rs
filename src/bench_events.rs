@@ -70,11 +70,84 @@ pub fn echo_bus_enabled() -> bool {
     ECHO_TO_BUS.load(Ordering::Relaxed)
 }
 
-pub fn print_line(text: &str) {
-    if ECHO_TO_BUS.load(Ordering::Relaxed) {
-        emit(Level::Info, None, text);
+/// Wohin eine Meldung auf der Konsole geht.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Console {
+    Aus,
+    Stdout,
+    Stderr,
+}
+
+/// Baut das Ereignis **einmal** und verteilt es an die angemeldeten Senken.
+///
+/// Vorher rief jede Ausgabefunktion ihre Senken einzeln auf — und gab ihnen
+/// verschiedene Nutzlast: `print_detailed` reichte `detail` an den Bus und
+/// druckte auf der Konsole nur die Kopfzeile. Solche Bauformen driften
+/// auseinander, weil nichts sie zusammenhaelt; am 12.08.2026 kostete das eine
+/// Fehlersuche, die aus dem Log nicht zu fuehren war.
+///
+/// Hier gibt es nur noch **eine** Nutzlast: das [`BenchEvent`]. Beide Senken
+/// rendern daraus, keine kann etwas anderes bekommen als die andere.
+/// Die *Weiterleitung* bleibt unveraendert — wer vorher nur auf die Konsole
+/// ging, geht weiterhin nur dorthin.
+fn dispatch(
+    level: Level,
+    brain: Option<&str>,
+    text: &str,
+    detail: Option<&str>,
+    to_bus: bool,
+    console: Console,
+) {
+    let ev = BenchEvent {
+        id: next_event_id(),
+        ts: crate::timestamp(),
+        level,
+        brain: brain.map(|b| b.to_string()),
+        text: text.to_string(),
+        detail: detail.map(cap_detail),
+    };
+
+    if console != Console::Aus && console_output_enabled() {
+        for line in console_lines(&ev) {
+            match console {
+                Console::Stderr => eprintln!("{line}"),
+                _ => println!("{line}"),
+            }
+        }
     }
-    console_print(text);
+
+    if to_bus {
+        note_activity();
+        let mut q = lock();
+        if q.len() >= CAPACITY {
+            q.pop_front();
+        }
+        q.push_back(ev);
+    }
+}
+
+/// Wie ein Ereignis auf der Konsole aussieht.
+///
+/// Bewusst eine reine Funktion ueber dem Ereignis: nur so laesst sich in einem
+/// Test festhalten, dass Konsole und Bus **dieselbe Quelle** haben. Genau diese
+/// Zusicherung fehlte, als `detail` still verlorenging.
+pub fn console_lines(ev: &BenchEvent) -> Vec<String> {
+    let mut out = vec![ev.text.clone()];
+    if let Some(d) = &ev.detail {
+        out.extend(detail_excerpt(d));
+    }
+    out
+}
+
+pub fn print_line(text: &str) {
+    dispatch(
+        Level::Info,
+        None,
+        text,
+        None,
+        echo_bus_enabled(),
+        Console::Stdout,
+    );
 }
 
 /// Wie [`print_line`], aber mit ausklappbarem Detailblock: der Knoten-Text ist
@@ -82,24 +155,14 @@ pub fn print_line(text: &str) {
 /// Inhalt (Terminal-Ausgabe, Edit-Ergebnis, Antworttext). In der TUI-Baumansicht
 /// wird das Detail per Enter/Rechts auf-, mit Links wieder zugeklappt.
 pub fn print_detailed(text: &str, detail: Option<&str>) {
-    if ECHO_TO_BUS.load(Ordering::Relaxed) {
-        emit_detailed(Level::Info, None, text, detail);
-    }
-    console_print(text);
-    // Das Ergebnis gehoert auch ins Log, nicht nur in die TUI.
-    //
-    // Vorher ging `detail` ausschliesslich an den Ereignisbus; auf der Konsole
-    // stand nur die Kopfzeile. Im Logfile eines Dauerlaufs war damit sichtbar,
-    // DASS eine Edit- oder Shell-Aktion versucht wurde, aber nie, was dabei
-    // herauskam. Am 12.08.2026 liefen drei Brains je 7-11 Minuten in
-    // `max_cycles`, ohne dass sich aus dem Log sagen liess, ob ihre Anker
-    // trafen — die Fehlersuche stand still, weil der Versuch gebucht war und
-    // das Ergebnis nicht.
-    if let Some(d) = detail {
-        for line in detail_excerpt(d) {
-            console_print(&line);
-        }
-    }
+    dispatch(
+        Level::Info,
+        None,
+        text,
+        detail,
+        echo_bus_enabled(),
+        Console::Stdout,
+    );
 }
 
 /// Wie viele Zeilen einer Beobachtung ins Log wandern.
@@ -131,23 +194,14 @@ pub fn detail_excerpt(detail: &str) -> Vec<String> {
     out
 }
 
-fn console_print(text: &str) {
-    if console_output_enabled() {
-        println!("{text}");
-    }
-}
-
 /// Meldet einen fachlichen Fortschritt sowohl strukturiert an die TUI als auch
 /// an die normale Konsole. Für längere Phasen gedacht, nicht für Ticker.
 pub fn info_line(text: &str) {
-    emit(Level::Info, None, text);
-    console_print(text);
+    dispatch(Level::Info, None, text, None, true, Console::Stdout);
 }
 
 pub fn eprint_line(text: &str) {
-    if console_output_enabled() {
-        eprintln!("{text}");
-    }
+    dispatch(Level::Info, None, text, None, false, Console::Stderr);
 }
 
 /// Schweregrad einer Meldung — die TUI faerbt danach ein.
@@ -196,22 +250,10 @@ pub fn emit(level: Level, brain: Option<&str>, text: &str) {
     emit_detailed(level, brain, text, None);
 }
 
-/// Haengt eine Meldung mit ausklappbarem Detailblock an.
+/// Haengt eine Meldung mit ausklappbarem Detailblock an — nur an den Bus,
+/// nicht an die Konsole. Die Verteilung selbst macht [`dispatch`].
 pub fn emit_detailed(level: Level, brain: Option<&str>, text: &str, detail: Option<&str>) {
-    let ev = BenchEvent {
-        id: next_event_id(),
-        ts: crate::timestamp(),
-        level,
-        brain: brain.map(|b| b.to_string()),
-        text: text.to_string(),
-        detail: detail.map(cap_detail),
-    };
-    note_activity();
-    let mut q = lock();
-    if q.len() >= CAPACITY {
-        q.pop_front();
-    }
-    q.push_back(ev);
+    dispatch(level, brain, text, detail, true, Console::Aus);
 }
 
 /// Sekunden seit Prozessstart — monoton, also immun gegen Zeitumstellung.
@@ -508,5 +550,65 @@ Anker: pub fn progress";
 
    
 ").is_empty());
+    }
+
+    /// Die Zusicherung, die vor dem Umbau fehlte: Bus und Konsole bekommen
+    /// **dieselbe** Nutzlast, weil beide aus demselben Ereignis rendern.
+    ///
+    /// Vorher gab `print_detailed` `detail` an den Bus und der Konsole nur die
+    /// Kopfzeile — nichts im Code hielt die beiden zusammen.
+    #[test]
+    fn bus_und_konsole_rendern_aus_derselben_quelle() {
+        let _g = test_bus_mutex().lock().unwrap_or_else(|e| e.into_inner());
+        let vorher_echo = echo_bus_enabled();
+        clear();
+        set_echo_bus(true);
+
+        print_detailed("[edit:step-4] src/foo.rs", Some("exit_code: 1
+old_string nicht gefunden"));
+
+        let evs = snapshot();
+        let ev = evs.last().expect("Ereignis im Bus");
+        let detail = ev.detail.as_deref().expect("Bus hat das Detail");
+        assert!(detail.contains("old_string nicht gefunden"));
+
+        let konsole = console_lines(ev);
+        assert_eq!(konsole[0], ev.text, "Kopfzeile ist der Ereignistext");
+        assert!(
+            konsole.iter().any(|l| l.contains("old_string nicht gefunden")),
+            "die Konsole sieht dasselbe wie der Bus: {konsole:?}"
+        );
+
+        set_echo_bus(vorher_echo);
+        clear();
+    }
+
+    /// Der Umbau darf die Weiterleitung nicht veraendern — nur ihre Bauform.
+    #[test]
+    fn weiterleitung_bleibt_wie_vorher() {
+        let _g = test_bus_mutex().lock().unwrap_or_else(|e| e.into_inner());
+        let vorher_echo = echo_bus_enabled();
+
+        // emit geht in den Bus, nie auf die Konsole.
+        clear();
+        emit(Level::Warn, Some("deepseek"), "nur bus");
+        assert_eq!(snapshot().len(), 1);
+
+        // eprint_line geht auf die Konsole, nie in den Bus.
+        clear();
+        eprint_line("nur konsole");
+        assert!(snapshot().is_empty(), "eprint_line darf den Bus nicht fuellen");
+
+        // print_line respektiert weiterhin den Spiegelschalter.
+        clear();
+        set_echo_bus(false);
+        print_line("ohne spiegel");
+        assert!(snapshot().is_empty());
+        set_echo_bus(true);
+        print_line("mit spiegel");
+        assert_eq!(snapshot().len(), 1);
+
+        set_echo_bus(vorher_echo);
+        clear();
     }
 }
