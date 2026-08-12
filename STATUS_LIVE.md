@@ -1984,3 +1984,59 @@ gebracht und dabei Anbieter-Kontingent verbrannt — und die drei Läufe haben
 zusammen schon rund 45 Minuten Brain-Zeit gekostet, ohne eine Zeile Code.
 Ich habe auch **nichts am Harness geändert**, weil ich heute schon zweimal
 etwas „repariert" habe, das längst vorhanden war.
+
+---
+
+## 12:40 — Claude — Erster Lauf mit sichtbaren Beobachtungen: drei Befunde
+
+### 1. Die Brains editieren — das „liest im Kreis" war nur die halbe Wahrheit
+
+gemini hat in diesem Lauf **drei erfolgreiche Edits** gemacht, belegt im Log:
+
+```
+edit ok: src/controller.rs       — Ersetzung ab Zeile 22 (CRLF/LF-Toleranz)
+edit ok: src/controller/types.rs — Ersetzung ab Zeile 11 (Whitespace-Toleranz)
+edit ok: src/controller/types.rs — Ersetzung ab Zeile 17
+```
+
+Dazwischen dreimal `old_string nicht gefunden` auf derselben Datei, bis der
+Anker passte. Das war vorher unsichtbar — beides.
+
+### 2. Ungeklärt: drei Edits, `did_change=nein`
+
+Trotz der drei bestätigten Änderungen endete gemini mit
+`did_change=nein build=x test=x -> SKIP (keine Änderung)`.
+
+`tree_changed` misst nach dem Abbruch, gibt im Fehlerfall bewusst `true` zurück
+und ist gegen `index.lock`-Kollisionen gehärtet — der Kommentar dort beschreibt
+**genau dieses Symptom**, beobachtet am 30.07.2026 bei deepseek
+(„edit ok … Datei jetzt 1767 Zeilen", gewertet als `did_change=nein`).
+Die Härtung hat die Ursache also nicht getroffen; sie tritt weiter auf.
+
+Ausgeschlossen: kein Git-Befehl vom Brain (geprüft), kein `Err`-Pfad in
+`tree_changed` (der meldet laut), kein Überschreiben durch den
+Scope-Malus (`policy_event` ist ein **zusätzlicher** Datensatz, der echte wird
+eine Zeile vorher mit dem wahren Wert gebucht).
+
+**Das ist der nächste Fehler, der sich lohnt.** Solange er besteht, wird
+Brain-Arbeit als Nichtstun gebucht — und die 75-%-Zahl aus 03:xx misst
+teilweise ihn statt die Brains.
+
+### 3. Gegenprobe: die Straf-Datensätze verzerren die Nachtzahl NICHT
+
+Vermutung war, dass die `:scope-violation`-Datensätze (alle Felder `false`) die
+„417 von 555 ohne Diff" aufblähen. Nachgezählt: **8 von 564**. Bereinigt bleibt
+es bei 75 % statt 76 %, Tests grün 12,8 % statt 12,6 %. Der Befund steht.
+
+### 4. Mein Symbol-Hinweis hat nicht gegriffen — Verdrahtungslücke
+
+`target_file_of` sucht `Zieldatei: …` im Siegertext. Dieser Sieger lautete
+„brain.rs: Fehlerbehandlung bei ungültigen Sessions …" — **ohne** das Schlüssel-
+wort. Ohne Zieldatei kann die Prüfung keinen Fehlverweis feststellen, also kam
+kein Hinweis. Sie greift nur, wenn der Plan-Konsens die Zieldatei explizit
+benennt.
+
+Offen: auch ohne benannte Zieldatei ließe sich melden, **wo** die genannten
+Bezeichner tatsächlich liegen. Das ist keine Ein-Zeilen-Änderung, sondern eine
+zweite Semantik (Orientierung statt Fehlverweis) — bewusst nicht nebenbei
+gemacht.
