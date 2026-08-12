@@ -562,6 +562,38 @@ where
 
                 did_change = tree_changed(&config.workdir);
                 if !did_change {
+                    // Beleg zum Urteil, nicht nur das Urteil.
+                    //
+                    // Am 12.08.2026 meldete der Executor fuer gemini drei
+                    // erfolgreiche Edits mit Zeilenzahlen ("edit ok:
+                    // src/controller.rs — Ersetzung ab Zeile 22. Datei jetzt
+                    // 2118 Zeilen"), und diese Messung sagte trotzdem "keine
+                    // Aenderung". Dasselbe Symptom ist fuer den 30.07.2026
+                    // dokumentiert; die damalige Haertung von `tree_changed`
+                    // gegen Git-Fehler hat die Ursache also nicht getroffen.
+                    //
+                    // Aus dem Log war der Fall nicht aufzuklaeren, weil zum
+                    // Urteil kein Zustand mitgeschrieben wurde. Ohne
+                    // Arbeitsverzeichnis und HEAD laesst sich nicht einmal
+                    // unterscheiden, ob in einem anderen Baum gemessen wurde,
+                    // ob zwischendurch zurueckgesetzt wurde oder ob die
+                    // Aenderung nie ankam. Drei Werte, einmal pro Fall — das
+                    // macht die naechste Wiederholung diagnostizierbar.
+                    let head_jetzt = crate::autoresearch::git_head_sha(&config.workdir)
+                        .unwrap_or_else(|e| format!("<unlesbar: {e}>"));
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: keine Aenderung messbar — workdir={}, HEAD={}, baseline={}{}",
+                        config.workdir.display(),
+                        crate::char_prefix(&head_jetzt, 12),
+                        crate::char_prefix(&baseline, 12),
+                        if head_jetzt.trim() == baseline.trim() {
+                            ""
+                        } else {
+                            " (HEAD ist vom Baseline abgewichen!)"
+                        }
+                    );
                     // Keine Änderung. Frueher hiess das sofort Abbruch — dabei
                     // haben claude und kimi (2026-07-21) den Code erkundet und
                     // dann „fertig" gemeldet, ohne je zu editieren (kimi sogar
