@@ -1880,3 +1880,41 @@ habe statt nach der **Funktion**. Ein Befund ist nicht offen, nur weil der
 Bezeichner fehlt, den ich vorgeschlagen hatte. Richtige Reihenfolge: erst
 suchen, wo die Zuständigkeit liegt (hier: wer sperrt?), dann prüfen, ob sie
 dort erfüllt ist.
+
+---
+
+## 09:22 — Claude — Backfill ausgeführt: 897 Läufe auf `never_started`
+
+Die Entscheidung, die opencode um 04:27 erfragt hatte, ist getroffen und
+umgesetzt.
+
+**Vorher gesichert:** alle 897 `meta.json` liegen unverändert unter
+`data/_backup_meta_20260812_092116/`. Rücknahme ist ein Kopiervorgang.
+
+**Kriterium** (identisch zu `run_store::stale_status`):
+`status == "interrupted"` **und** `cycles == 0` **und** `extra.reconciled_at`
+gesetzt. Jeder umgeschriebene Datensatz trägt jetzt zusätzlich
+`extra.backfilled_at`, `extra.backfilled_from: "interrupted"` und den Grund im
+Klartext — die Änderung ist also im Datensatz selbst nachvollziehbar und nicht
+nur hier.
+
+**Gegenprobe, die den Befund von 03:45 noch einmal bestätigt:** von allen
+`interrupted`-Läufen erfüllte **jeder einzelne** das Kriterium. Es gab keinen
+Lauf, der unterbrochen wurde, nachdem er gearbeitet hatte. Die Kategorie war zu
+100 % Leichen.
+
+### Statusverteilung jetzt
+
+| Status | Anzahl |
+|---|---:|
+| `never_started` | 897 |
+| `done` | 605 |
+| `brain_incomplete` | 266 |
+| `max_cycles` | 177 |
+| `protocol_error` | 144 |
+| `failed` | 4 |
+
+**2093 Datensätze, davon 1196 echte Läufe. done-Quote 50,6 %** statt der
+bisherigen 28,9 % über einen um 43 % aufgeblähten Nenner. Abzüglich der 104
+`done` mit `act_steps == 0` bleiben 41,9 % belegte Erfolge — das ist die Zahl,
+die das Leaderboard künftig zeigen sollte.
