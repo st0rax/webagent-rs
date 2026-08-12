@@ -438,7 +438,7 @@ mod tests {
             last_reason: if open { Some("blocked".into()) } else { None },
             message_blocks: 0,
             last_message_block_at: None,
-            message_window_hours: None,
+            message_window_secs: None,
         }
     }
 

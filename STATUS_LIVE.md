@@ -1809,3 +1809,74 @@ entstehen jetzt, genutzt werden sie noch nicht. Das ist bewusst getrennt —
 erst messen, dann steuern — und gehört als nächster Schritt in die Runden-Logik
 (`benchmark/pipeline.rs`, wo die „zwei solche Runden"-Notiz zu mistral/qwen
 schon steht).
+
+---
+
+## 08:35 — Claude — Zwei Korrekturen an mir selbst, und was dabei übrig blieb
+
+### 1. Meine 07:40-Meldung war falsch
+
+Dort steht: *„`brain_limits.messages_per_window` — nicht vorhanden"* und *„eine
+Meldung hält nicht"*. **Beides stimmt nicht.** opencode hat den 02:49-Befund
+umgesetzt, nur an der richtigeren Stelle und unter anderen Namen:
+
+```
+circuit_breaker.rs   is_message_limit_block()   ← statt looks_like_quota_block
+                     implied_window_hours()     ← statt parse_reset_minutes
+                     message_blocks             ← statt blocks
+                     message_window_hours       ← statt window_minutes
+                     open_until                 ← statt blocked_until_unix
+```
+
+Und dort ist es **an den Scheduler verdrahtet**: `pipeline.rs:216` bildet
+`round_brains` über `circuit_breaker::check` und klammert gesperrte Brains aus.
+Ich hatte nach meinem eigenen vorgeschlagenen Bezeichner gegrept, ihn nicht
+gefunden und daraus „nicht umgesetzt" geschlossen. Der Fehler ist derselbe wie
+vorhin bei `denial_circumvented` — zum zweiten Mal in einer Stunde.
+
+### 2. Mein 08:05-Einbau war ein Duplikat — zurückgenommen
+
+`MessageQuota` in `brain_limits.rs` hat exakt dasselbe getan wie der Breaker,
+in einem zweiten Speicher, den kein Scheduler liest. **Das ist `live_proof` ein
+zweites Mal** — und ich habe im selben Commit geschrieben „der Speicher ist
+verdrahtet, nicht nur gebaut". Er war beschrieben, aber ohne Wirkung.
+`MessageQuota`, `record_block`, `parse_reset_minutes`, `looks_like_quota_block`
+und die Verdrahtung in `browser/backend.rs` sind wieder raus.
+
+### 3. Was beim Vergleich wirklich herauskam — zwei echte Fehler
+
+Beide im Breaker, also dort, wo die Sperre entsteht:
+
+**a) Das gemeldete Fenster verlor gegen den Standard.** Die Zeile lautete
+`(h * 3600).max(hard_cooldown_secs())` — bei „in 3 Stunden" gewann der
+6-Stunden-Boden. Der Kommentar direkt darüber sagt das Gegenteil: *„Ein
+explizit gemeldetes Reset-Fenster schlaegt den Standard."* Ein Brain saß damit
+doppelt so lange aus wie nötig. Jetzt gilt das Fenster, nach unten durch den
+normalen Cooldown geschützt.
+
+**b) Minuten zählten nicht.** `implied_window_hours` erkannte nur Stunden —
+`„please wait 45 minutes"` ergab `None`. In eurer echten
+`circuit_breaker/state.json` steht für mistral aber wörtlich *„Ihr Limit wird
+um in 35 Minuten zurückgesetzt"*. Der Fall fiel damit auf den Standard zurück:
+entweder 15 Minuten (zu kurz, das Brain fährt erneut ins Limit) oder 6 Stunden
+(zwölfmal zu lang). Jetzt `implied_window_secs` mit Stunden **und** Minuten.
+
+Beim Umbau fiel eine Falle auf: `find("in ")` trifft auch das Innere von
+`„within "`. Solange nur Stunden gesucht wurden, blieb das folgenlos; mit
+Minuten hätte `„within 30 minutes"` fälschlich getroffen. Die Markersuche
+prüft jetzt die Wortgrenze und alle Vorkommen statt nur des ersten — der
+bestehende Test dazu bleibt grün.
+
+**c) Nebenbei:** die Log-Meldung berechnete das Fenster ein zweites Mal, statt
+`dauer` zu nehmen — sie konnte also eine andere Zahl ausgeben als tatsächlich
+gesetzt wurde. Nutzt jetzt `dauer`.
+
+916 lib-Tests grün, clippy sauber.
+
+### Die Lehre, die ich mir selbst aufschreibe
+
+Zweimal heute habe ich „fehlt" gemeldet, weil ich nach **meinem** Namen gesucht
+habe statt nach der **Funktion**. Ein Befund ist nicht offen, nur weil der
+Bezeichner fehlt, den ich vorgeschlagen hatte. Richtige Reihenfolge: erst
+suchen, wo die Zuständigkeit liegt (hier: wer sperrt?), dann prüfen, ob sie
+dort erfüllt ist.

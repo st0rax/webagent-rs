@@ -58,7 +58,7 @@ struct BrainState {
     last_message_block_at: Option<i64>,
     /// Aus der Meldung gelesenes Reset-Fenster (z. B. "wait 7 hours" -> 7).
     #[serde(default)]
-    message_window_hours: Option<u32>,
+    message_window_secs: Option<i64>,
 }
 
 type StateMap = HashMap<String, BrainState>;
@@ -253,23 +253,58 @@ fn is_message_limit_block(reason: &str) -> bool {
 /// Stundenzahl bis zum Reset, wenn die Meldung eines explizit nennt.
 /// "in 3 Stunden" -> 3, "wait 7 hours" -> 7. Minuten zaehlen nicht (wuerde
 /// das Fenster auf eine Stunde runden); ohne Angabe `None`.
-fn implied_window_hours(reason: &str) -> Option<u32> {
-    let low = reason.to_lowercase();
-    for (marker, unit) in [("in ", "stunde"), ("wait ", "hour")] {
-        if let Some(idx) = low.find(marker) {
-            let rest = &low[idx + marker.len()..];
-            let num: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-            if num.is_empty() {
-                continue;
-            }
-            let after = rest[num.len()..].trim_start();
-            if after.starts_with(unit) {
-                if let Ok(n) = num.parse::<u32>() {
-                    if n >= 1 {
-                        return Some(n);
-                    }
+/// Sucht `<marker><zahl> <einheit>` und liefert die Zahl.
+///
+/// Der Marker muss an einer Wortgrenze stehen, sonst findet `"in "` auch das
+/// Innere von `"within "` — bei reiner Stundensuche fiel das nicht auf, mit
+/// Minuten haette `"within 30 minutes"` faelschlich getroffen. Es werden alle
+/// Vorkommen geprueft, nicht nur das erste.
+fn number_after_marker(low: &str, marker: &str, unit: &str) -> Option<u32> {
+    let mut from = 0usize;
+    while let Some(rel) = low[from..].find(marker) {
+        let idx = from + rel;
+        from = idx + marker.len();
+        let an_wortgrenze = idx == 0
+            || !low[..idx]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_alphanumeric());
+        if !an_wortgrenze {
+            continue;
+        }
+        let rest = &low[idx + marker.len()..];
+        let num: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if num.is_empty() {
+            continue;
+        }
+        if rest[num.len()..].trim_start().starts_with(unit) {
+            if let Ok(n) = num.parse::<u32>() {
+                if n >= 1 {
+                    return Some(n);
                 }
             }
+        }
+    }
+    None
+}
+
+/// Reset-Fenster aus der Meldung, in Sekunden.
+///
+/// Minuten zaehlen mit: `circuit_breaker/state.json` enthielt am 12.08.2026
+/// fuer mistral woertlich „Ihr Limit wird um in 35 Minuten zurueckgesetzt".
+/// Ohne Minuten fiel dieser Fall auf den Standard-Cooldown zurueck — entweder
+/// zu kurz (15 min, das Brain faehrt erneut ins Limit) oder zu lang (6 h fuer
+/// eine halbe Stunde Sperre).
+fn implied_window_secs(reason: &str) -> Option<i64> {
+    let low = reason.to_lowercase();
+    for (marker, unit, faktor) in [
+        ("in ", "stunde", 3600i64),
+        ("wait ", "hour", 3600),
+        ("in ", "minute", 60),
+        ("wait ", "minute", 60),
+    ] {
+        if let Some(n) = number_after_marker(&low, marker, unit) {
+            return Some(i64::from(n) * faktor);
         }
     }
     None
@@ -290,8 +325,8 @@ fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
     if window_block {
         entry.message_blocks += 1;
         entry.last_message_block_at = Some(now_secs());
-        if let Some(h) = implied_window_hours(reason) {
-            entry.message_window_hours = Some(h);
+        if let Some(s) = implied_window_secs(reason) {
+            entry.message_window_secs = Some(s);
         }
     }
 
@@ -303,8 +338,13 @@ fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
         // explizit gemeldetes Reset-Fenster schlaegt den Standard: "wait 7
         // hours" heisst, das Brain ist sieben Stunden lang unbenutzbar.
         // Endlich ist die Sperre trotzdem — sonst kaeme das Brain nie zurueck.
-        let dauer = if let Some(h) = implied_window_hours(reason) {
-            (h as i64 * 3600).max(hard_cooldown_secs())
+        // Das gemeldete Fenster gilt, wie es gemeldet wurde. Vorher stand hier
+        // `.max(hard_cooldown_secs())` — das kehrte die eigene Absicht um: bei
+        // „in 3 Stunden" gewann der 6-Stunden-Boden, das Brain sass doppelt so
+        // lange aus wie noetig. Nach unten bleibt der normale Cooldown als
+        // Schutz gegen ein fehlgelesenes Mini-Fenster.
+        let dauer = if let Some(s) = implied_window_secs(reason) {
+            s.max(cooldown_secs())
         } else if hard {
             hard_cooldown_secs()
         } else {
@@ -312,12 +352,10 @@ fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
         };
         entry.open_until = Some(now_secs() + dauer);
         let wie = if window_block {
-            format!(
-                "sofort (Nachrichtenlimit, Fenster {}s)",
-                implied_window_hours(reason)
-                    .map(|h| h as i64 * 3600)
-                    .unwrap_or(hard_cooldown_secs())
-            )
+            // `dauer` statt Neuberechnung: die Meldung soll die Sperre nennen,
+            // die tatsaechlich gesetzt wurde, nicht eine zweite Rechnung, die
+            // davon abweichen kann.
+            format!("sofort (Nachrichtenlimit, Fenster {dauer}s)")
         } else if hard {
             "sofort (deterministische Sperre)".to_string()
         } else {
@@ -347,7 +385,7 @@ pub struct BreakerSnapshot {
     /// Unix-Sekunden der letzten Nachrichtenlimit-Blockade.
     pub last_message_block_at: Option<i64>,
     /// Aus der letzten Meldung gelesenes Reset-Fenster in Stunden.
-    pub message_window_hours: Option<u32>,
+    pub message_window_secs: Option<i64>,
 }
 
 /// Lese-API: alle bekannten Brain-Zustaende (sortiert nach `brain_id`).
@@ -380,7 +418,7 @@ fn snapshots_at(path: &PathBuf) -> Vec<BreakerSnapshot> {
                 last_reason: entry.last_reason,
                 message_blocks: entry.message_blocks,
                 last_message_block_at: entry.last_message_block_at,
-                message_window_hours: entry.message_window_hours,
+                message_window_secs: entry.message_window_secs,
             }
         })
         .collect();
@@ -712,15 +750,21 @@ mod tests {
     }
 
     #[test]
-    fn implied_window_hours_liest_reset_fenster() {
-        assert_eq!(implied_window_hours("... um in 3 Stunden zurueckgesetzt."), Some(3));
-        assert_eq!(implied_window_hours("daily usage limit, please wait 7 hours"), Some(7));
-        assert_eq!(implied_window_hours("... in 1 Stunde ..."), Some(1));
-        // Minuten und bloße Erwaehnung von "in" zaehlen nicht.
-        assert_eq!(implied_window_hours("please wait 45 minutes"), None);
-        assert_eq!(implied_window_hours("within 30 minutes you are good"), None);
-        assert_eq!(implied_window_hours("Nachrichtenlimit erreicht."), None);
-        assert_eq!(implied_window_hours(""), None);
+    fn implied_window_secs_liest_reset_fenster() {
+        // Stunden — Wortlaute aus brain_score/events.jsonl.
+        assert_eq!(implied_window_secs("... um in 3 Stunden zurueckgesetzt."), Some(3 * 3600));
+        assert_eq!(implied_window_secs("daily usage limit, please wait 7 hours"), Some(7 * 3600));
+        assert_eq!(implied_window_secs("... in 1 Stunde ..."), Some(3600));
+        // Minuten zaehlen jetzt mit: circuit_breaker/state.json fuehrte fuer
+        // mistral woertlich "in 35 Minuten". Vorher fiel das auf den Standard
+        // zurueck und sperrte entweder zu kurz oder sechs Stunden lang.
+        assert_eq!(implied_window_secs("Ihr Limit wird um in 35 Minuten zurueckgesetzt."), Some(35 * 60));
+        assert_eq!(implied_window_secs("please wait 45 minutes"), Some(45 * 60));
+        // "within" ist kein "in " — die Wortgrenze muss halten.
+        assert_eq!(implied_window_secs("within 30 minutes you are good"), None);
+        assert_eq!(implied_window_secs("Nachrichtenlimit erreicht."), None);
+        assert_eq!(implied_window_secs(""), None);
+        assert_eq!(implied_window_secs("in 0 Stunden"), None);
     }
 
     #[test]
@@ -735,7 +779,7 @@ mod tests {
         let e = state.get("mistral").expect("Eintrag fehlt");
         assert_eq!(e.consecutive_failures, 1, "oeffnet sofort, nicht nach Max-Failures");
         assert_eq!(e.message_blocks, 1);
-        assert_eq!(e.message_window_hours, Some(3));
+        assert_eq!(e.message_window_secs, Some(3 * 3600));
         assert!(e.last_message_block_at.is_some());
         let rest = check_at("mistral", &path).expect("Breaker muss offen sein");
         assert!(
@@ -781,7 +825,7 @@ mod tests {
         let state = load(&path);
         let e = state.get("deepseek").unwrap();
         assert_eq!(e.message_blocks, 1);
-        assert_eq!(e.message_window_hours, None);
+        assert_eq!(e.message_window_secs, None);
         let _ = std::fs::remove_file(&path);
     }
 
@@ -792,7 +836,7 @@ mod tests {
         let snaps = snapshots_at(&path);
         let s = snaps.iter().find(|s| s.brain_id == "mistral").expect("mistral");
         assert_eq!(s.message_blocks, 1);
-        assert_eq!(s.message_window_hours, Some(3));
+        assert_eq!(s.message_window_secs, Some(3 * 3600));
         assert!(s.last_message_block_at.is_some());
         let _ = std::fs::remove_file(&path);
     }
