@@ -38,12 +38,36 @@ pub fn build_task_prompt_in(winner: &str, root: &Path) -> String {
          füge keine Dependencies hinzu und bearbeite keine Build-/CI-Skripte.\n\nVorschlag: {winner}",
         winner = winner.trim()
     );
+    // Symbol-Pruefung: nennt der Vorschlag Bezeichner, die in der Zieldatei
+    // gar nicht vorkommen, sondern woanders?
+    //
+    // Beobachtet 12.08.2026: Sieger war „src/benchmark/mod.rs: Fehlerbehandlung
+    // bei `bench_collapse_all`" — die Funktion steht in src/tui_state.rs, der
+    // ebenfalls genannte Typ `BenchmarkUi` existiert nirgends. deepseek suchte
+    // acht Minuten in einer 1046-Zeilen-Datei nach einem Symbol, das dort nie
+    // war, und endete in `max_cycles` ohne eine einzige Aenderung.
+    //
+    // `task_targets_missing_file` faengt nur erfundene PFADE; ein existierender
+    // Pfad mit falschem Symbol lief bisher durch. Der Hinweis verwirft nichts —
+    // ein Vorschlag darf eine neue Funktion fordern —, er nennt nur die Datei,
+    // in der das Symbol wirklich steht.
+    let hinweis = crate::target_check::pruefe(
+        target_file_of(winner).unwrap_or_default().as_str(),
+        winner,
+        &crate::target_check::quelldateien(root),
+    )
+    .hinweis();
+    let basis = if hinweis.is_empty() {
+        basis
+    } else {
+        format!("{basis}\n\n{hinweis}")
+    };
+
     match target_file_of(winner).and_then(|rel| file_outline(&root.join(&rel), 120)) {
         Some(gliederung) => format!("{basis}\n\n{gliederung}"),
         None => basis,
     }
 }
-
 /// Zieht die vom Plan genannte Zieldatei heraus (`Zieldatei: src/foo.rs`).
 pub fn target_file_of(text: &str) -> Option<String> {
     let re = Regex::new(r"(?i)zieldatei:\s*([A-Za-z0-9_./-]+\.rs)").ok()?;
@@ -297,3 +321,47 @@ pub fn repair_focus_from_failures(failures: &[String]) -> Option<String> {
     })
 }
 
+#[cfg(test)]
+mod tests_symbol_hinweis {
+    use super::*;
+
+    fn welt(name: &str) -> std::path::PathBuf {
+        let w = std::env::temp_dir().join(format!("wa_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&w);
+        std::fs::create_dir_all(w.join("src").join("benchmark")).expect("anlegbar");
+        std::fs::write(w.join("src/benchmark/mod.rs"), "pub fn run() {}\n").expect("schreibbar");
+        std::fs::write(w.join("src/tui_state.rs"), "pub fn bench_collapse_all() {}\n")
+            .expect("schreibbar");
+        w
+    }
+
+    /// Der Hinweis muss im PROMPT landen, nicht nur berechnet werden.
+    #[test]
+    fn prompt_nennt_die_datei_in_der_das_symbol_wirklich_steht() {
+        let wurzel = welt("hinweis");
+        let winner = "Zieldatei: src/benchmark/mod.rs. Fehlerbehandlung bei \
+                      `bench_collapse_all` fuer leere Panel-Liste ergaenzen.";
+        let prompt = build_task_prompt_in(winner, &wurzel);
+        assert!(
+            prompt.contains("src/tui_state.rs"),
+            "richtige Datei fehlt:\n{prompt}"
+        );
+        assert!(prompt.contains("HINWEIS ZUR AUFGABE"));
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Eine saubere Aufgabe bekommt keinen Hinweis — sonst rauscht der Prompt
+    /// zu und das Brain misstraut jeder Angabe.
+    #[test]
+    fn saubere_aufgabe_bleibt_ohne_hinweis() {
+        let wurzel = welt("sauber");
+        let winner = "Zieldatei: src/tui_state.rs. `bench_collapse_all` um einen \
+                      Frueh-Ausstieg ergaenzen.";
+        let prompt = build_task_prompt_in(winner, &wurzel);
+        assert!(
+            !prompt.contains("HINWEIS ZUR AUFGABE"),
+            "kein Hinweis noetig:\n{prompt}"
+        );
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+}
