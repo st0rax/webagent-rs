@@ -1918,3 +1918,69 @@ Lauf, der unterbrochen wurde, nachdem er gearbeitet hatte. Die Kategorie war zu
 bisherigen 28,9 % über einen um 43 % aufgeblähten Nenner. Abzüglich der 104
 `done` mit `act_steps == 0` bleiben 41,9 % belegte Erfolge — das ist die Zahl,
 die das Leaderboard künftig zeigen sollte.
+
+---
+
+## 11:05 — Claude — Benchmark mit Ernte: dreimal angelaufen, nichts geerntet — und warum
+
+Auftrag war ein Dauerlauf mit Ernte. Der Lauf hält sich zweimal selbst an, und
+der Grund liegt nicht bei den Brains.
+
+### Die Zahlen
+
+```
+3 Bauversuche · 3× did_change=nein · 3× terminaler Status max_cycles
+chatgpt   11 Min, nur Get-Content/rg, kein Edit → 3 Anstösse, SKIP
+deepseek   7 Min (2×), 2 Edit-Versuche, danach nur noch Lesen → max_cycles
+gemini     7 Min, 7× exakt derselbe Get-Content|Select-String → max_cycles
+```
+
+**Drei verschiedene Brains, dasselbe Verhalten:** Befehl absetzen, weiterlesen,
+denselben Befehl erneut absetzen, bis das Zyklenbudget alle ist. gemini hat
+seinen Lesebefehl **siebenmal wörtlich wiederholt**.
+
+### Was das ausschliesst
+
+- **Nicht die Brain-Qualität.** In der zweiten Fassung liefen deepseek (30 %
+  Tests grün) und gemini (20 %) — die beiden Besten der code_score-Auswertung.
+  Sie scheiterten identisch zu chatgpt (7 %).
+- **Nicht die Reihenfolge.** Erster Anlauf startete mit chatgpt/claude, weil die
+  Welle (`pipeline.rs:224`) nach Registrierungsreihenfolge nimmt — Plätze 7 und
+  8 der Kompetenzliste. Zweiter Anlauf mit `--brains deepseek,gemini,…`.
+  Gleiches Ergebnis.
+- **Nicht die Edit-Mechanik.** `file_actions.rs:183` hat CRLF/LF-Toleranz und
+  einen whitespace-toleranten Fallback. Ich hatte das als Ursache vermutet und
+  es widerlegt, bevor ich etwas „repariert" habe.
+
+### Was es sein könnte — und warum ich es nicht beweisen kann
+
+Die naheliegende Erklärung für „derselbe Befehl siebenmal" ist, dass die
+**Beobachtung nicht verwertbar beim Brain ankommt**. Beweisen lässt sich das
+nicht, denn:
+
+1. **Das Ergebnis einer Edit-Aktion wird nicht protokolliert.** Im Log steht
+   `[edit:step-4] src/bench_events.rs` — der *Versuch*. Ob der Anker traf, ob
+   `old_string nicht gefunden` kam: nirgends.
+2. **Verworfene Brain-Antworten werden nicht aufgehoben.** Runde 1 meldete
+   „1 mit erkennbarem Format — DAS ist der Harness". Der Wortlaut ist weg.
+3. **Die Bauläufe des Benchmarks legen keine `runs/`-Einträge an.** Der neueste
+   Eintrag ist von 08:56, der Lauf lief 10:39–11:04. Kein Transkript.
+
+Das ist wieder dasselbe Muster wie in den fünf Datensätzen der Nacht: **der
+Versuch wird gebucht, das Ergebnis nicht.** Nur diesmal blockiert es nicht die
+Statistik, sondern die Fehlersuche.
+
+### Empfehlung — ein Schritt, nicht drei
+
+Bevor irgendetwas an Prompt, Zyklenbudget oder Gates gedreht wird: **die
+Beobachtung von `edit`- und `shell`-Aktionen mitschreiben** (Kurzform reicht:
+exit_code + erste Zeile stdout/stderr). Ohne das ist jede weitere Änderung
+geraten. Mit ihr ist in einem Lauf sichtbar, ob die Brains blind arbeiten.
+
+### Was ich NICHT getan habe
+
+Ich habe **nicht** neu gestartet. Ein dritter Anlauf hätte dasselbe Ergebnis
+gebracht und dabei Anbieter-Kontingent verbrannt — und die drei Läufe haben
+zusammen schon rund 45 Minuten Brain-Zeit gekostet, ohne eine Zeile Code.
+Ich habe auch **nichts am Harness geändert**, weil ich heute schon zweimal
+etwas „repariert" habe, das längst vorhanden war.

@@ -86,6 +86,49 @@ pub fn print_detailed(text: &str, detail: Option<&str>) {
         emit_detailed(Level::Info, None, text, detail);
     }
     console_print(text);
+    // Das Ergebnis gehoert auch ins Log, nicht nur in die TUI.
+    //
+    // Vorher ging `detail` ausschliesslich an den Ereignisbus; auf der Konsole
+    // stand nur die Kopfzeile. Im Logfile eines Dauerlaufs war damit sichtbar,
+    // DASS eine Edit- oder Shell-Aktion versucht wurde, aber nie, was dabei
+    // herauskam. Am 12.08.2026 liefen drei Brains je 7-11 Minuten in
+    // `max_cycles`, ohne dass sich aus dem Log sagen liess, ob ihre Anker
+    // trafen — die Fehlersuche stand still, weil der Versuch gebucht war und
+    // das Ergebnis nicht.
+    if let Some(d) = detail {
+        for line in detail_excerpt(d) {
+            console_print(&line);
+        }
+    }
+}
+
+/// Wie viele Zeilen einer Beobachtung ins Log wandern.
+const DETAIL_LOG_LINES: usize = 3;
+/// Wie breit eine davon hoechstens sein darf.
+const DETAIL_LOG_WIDTH: usize = 200;
+
+/// Kurzfassung einer Beobachtung fuer Konsole und Log.
+///
+/// Bewusst knapp: eine vollstaendige Beobachtung kann eine ganze Datei
+/// enthalten und wuerde das Log unlesbar machen. Exit-Code und die ersten
+/// Zeilen von stdout/stderr reichen, um „Anker getroffen?" zu beantworten —
+/// genau die Frage, die vorher offen blieb.
+pub fn detail_excerpt(detail: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut genommen = 0usize;
+    let mut uebrig = 0usize;
+    for line in detail.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()) {
+        if genommen < DETAIL_LOG_LINES {
+            out.push(format!("      {}", crate::char_prefix(line, DETAIL_LOG_WIDTH)));
+            genommen += 1;
+        } else {
+            uebrig += 1;
+        }
+    }
+    if uebrig > 0 {
+        out.push(format!("      … {uebrig} weitere Zeile(n)"));
+    }
+    out
 }
 
 fn console_print(text: &str) {
@@ -424,5 +467,46 @@ mod tests {
         set_echo_bus(vorher_echo);
         set_console_output(vorher_console);
         clear();
+    }
+
+    /// Regression zum 12.08.2026: `print_detailed` gab die Beobachtung nur an
+    /// den TUI-Bus und verwarf sie auf der Konsole. Im Log stand damit der
+    /// Versuch ohne sein Ergebnis.
+    #[test]
+    fn beobachtung_wird_gekuerzt_aber_nicht_verschluckt() {
+        let d = "exit_code: 1
+edit fehlgeschlagen: old_string nicht gefunden
+Anker: pub fn progress";
+        let out = detail_excerpt(d);
+        assert_eq!(out.len(), 3, "drei Zeilen, keine verschluckt: {out:?}");
+        assert!(out[0].contains("exit_code: 1"));
+        assert!(out[1].contains("old_string nicht gefunden"), "die Ursache MUSS sichtbar sein");
+        assert!(out.iter().all(|l| l.starts_with("      ")), "eingerueckt unter der Kopfzeile");
+    }
+
+    #[test]
+    fn lange_beobachtung_wird_gedeckelt_und_der_rest_gezaehlt() {
+        let d = (1..=10).map(|i| format!("zeile {i}")).collect::<Vec<_>>().join("
+");
+        let out = detail_excerpt(&d);
+        assert_eq!(out.len(), 4, "3 Zeilen + Hinweis");
+        assert!(out[3].contains("7 weitere"), "der Rest wird gezaehlt statt still zu verschwinden: {:?}", out[3]);
+    }
+
+    #[test]
+    fn breite_zeile_wird_utf8_sicher_gekuerzt() {
+        let d = "ä".repeat(500);
+        let out = detail_excerpt(&d);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].chars().count() <= 6 + 200 + 1);
+    }
+
+    #[test]
+    fn leere_beobachtung_erzeugt_keine_zeile() {
+        assert!(detail_excerpt("").is_empty());
+        assert!(detail_excerpt("
+
+   
+").is_empty());
     }
 }
