@@ -71,7 +71,7 @@ pub fn edit_envelope_regex() -> &'static Regex {
     })
 }
 
-fn edit_batch_envelope_regex() -> &'static Regex {
+pub(super) fn edit_batch_envelope_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(

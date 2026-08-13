@@ -1,8 +1,8 @@
 use serde_json::Value;
 
 use super::parser::{
-    edit_envelope_regex, message_envelope_regex, script_envelope_regex, strip_rendered_ui_controls,
-    write_envelope_regex,
+    edit_batch_envelope_regex, edit_envelope_regex, message_envelope_regex,
+    script_envelope_regex, strip_rendered_ui_controls, write_envelope_regex,
 };
 use super::types::PROTOCOL_VERSION;
 pub fn is_possibly_truncated(response_text: &str) -> bool {
@@ -13,6 +13,11 @@ pub fn is_possibly_truncated(response_text: &str) -> bool {
     }
     if text.starts_with("WEBAGENT/1 WRITE") {
         return !write_envelope_regex().is_match(&text);
+    }
+    // EDIT_BATCH muss vor EDIT geprüft werden, weil sein Präfix ebenfalls mit
+    // `WEBAGENT/1 EDIT` beginnt.
+    if text.starts_with("WEBAGENT/1 EDIT_BATCH") {
+        return !edit_batch_envelope_regex().is_match(&text);
     }
     if text.starts_with("WEBAGENT/1 EDIT") {
         return !edit_envelope_regex().is_match(&text);

@@ -187,6 +187,22 @@ mod tests {
     }
 
     #[test]
+    fn complete_raw_edit_batch_is_not_truncated() {
+        let complete = "WEBAGENT/1 EDIT_BATCH\n\
+id: batch-complete-1\n\
+---EDIT---\n\
+path: src/a.rs\n\
+---OLD---\n\
+old\n\
+---NEW---\n\
+new\n\
+---END EDIT---\n\
+---END BATCH---";
+        assert!(!is_possibly_truncated(complete));
+        assert!(parse(complete).valid);
+    }
+
+    #[test]
     fn test_parse_valid_markdown_block() {
         let text = format!(
             "```json\n{}\n```",
