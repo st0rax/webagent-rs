@@ -174,8 +174,8 @@ pub(crate) fn click_first(driver: &mut dyn PageDriver, sel: &Selectors, key: &st
     eval_bool(driver, &expr)
 }
 
-/// Schliesst Consent- und Werbe-Dialoge; gemini/qwen bekommen ihre Zusatz-Schritte.
-pub(crate) fn dismiss_consent(driver: &mut dyn PageDriver, sel: &Selectors, brain_id: &str) -> bool {
+/// Schliesst Consent- und Werbe-Dialoge; zusätzliche Signale kommen aus dem Profil.
+pub(crate) fn dismiss_consent(driver: &mut dyn PageDriver, sel: &Selectors) -> bool {
     let mut dismissed = click_first(driver, sel, "consent_reject_button");
     // Konfigurierte Dialog-Schliesser (bisher tote Config — nie aufgerufen).
     dismissed |= click_first(driver, sel, "dialog_dismiss_button");
@@ -184,12 +184,8 @@ pub(crate) fn dismiss_consent(driver: &mut dyn PageDriver, sel: &Selectors, brai
     // blockierte — der Grund fuer konsistente mistral-Timeouts. Nur Buttons
     // INNERHALB offener Dialoge/Overlays, damit nichts Legitimes getroffen wird.
     dismissed |= dismiss_modal_buttons(driver);
-    if brain_id == "gemini" {
-        dismissed |= click_first(driver, sel, "notice_close_button");
-    }
-    if brain_id == "qwen" {
-        dismissed |= dismiss_qwen_blocks(driver);
-    }
+    dismissed |= click_first(driver, sel, "notice_close_button");
+    dismissed |= dismiss_qwen_blocks(driver);
     dismissed
 }
 

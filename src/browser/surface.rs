@@ -51,7 +51,7 @@ impl WebBrainBackend {
         let mut guard = self.driver.borrow_mut();
         match guard.as_mut() {
             Some(driver) => {
-                operations::dismiss_consent(driver.as_mut(), &self.selectors, &self.brain_id)
+                operations::dismiss_consent(driver.as_mut(), &self.selectors)
             }
             None => false,
         }
