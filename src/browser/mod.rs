@@ -796,7 +796,7 @@ mod tests {
             Completion::Continue
         );
         assert_eq!(
-            classify_completion(text, true, false, false, STABILITY_SECONDS * 1.5, false),
+            classify_completion(text, true, false, false, PROSE_STABILITY_SECONDS + 0.1, false),
             Completion::Complete
         );
     }
