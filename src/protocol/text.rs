@@ -5,7 +5,6 @@ use super::parser::{
     write_envelope_regex,
 };
 use super::types::PROTOCOL_VERSION;
-
 pub fn is_possibly_truncated(response_text: &str) -> bool {
     let text = strip_rendered_ui_controls(response_text);
 
@@ -110,9 +109,9 @@ pub fn format_protocol_error_for(detail: &str, invalid_response: &str) -> String
     let compact = invalid_response.to_ascii_lowercase().replace(' ', "");
     if compact.contains("\"type\":\"edit\"") || compact.contains("webagent/1edit") {
         return format!(
-            "[Controller] Ungültige EDIT-Antwort — Repair. {detail}\n\
-             Dein beabsichtigter Edit wurde NICHT ausgefuehrt. Wiederhole exakt denselben Edit \
-             JETZT im escape-freien Rohformat, ohne JSON, Prosa oder Codeblock:\n\
+            "[Interpreter] EDIT-Anforderung nicht lesbar: {detail}\n\
+             Es wurde nichts ausgeführt. Das Format unten ist keine Ausführungsbehauptung, \
+             sondern eine Anfrage an den lokalen Interpreter. Bitte sende denselben Edit erneut:\n\
              WEBAGENT/1 EDIT\n\
              id: neue-eindeutige-id\n\
              path: derselbe-pfad\n\
@@ -125,9 +124,9 @@ pub fn format_protocol_error_for(detail: &str, invalid_response: &str) -> String
     }
     if compact.contains("\"type\":\"write\"") || compact.contains("webagent/1write") {
         return format!(
-            "[Controller] Ungültige WRITE-Antwort — Repair. {detail}\n\
-             Dein beabsichtigter Write wurde NICHT ausgefuehrt. Wiederhole ihn JETZT im \
-             escape-freien Rohformat, ohne JSON, Prosa oder Codeblock:\n\
+            "[Interpreter] WRITE-Anforderung nicht lesbar: {detail}\n\
+             Es wurde nichts ausgeführt. Bitte sende dieselbe Anfrage erneut im \
+             escape-freien Transportformat:\n\
              WEBAGENT/1 WRITE\n\
              id: neue-eindeutige-id\n\
              path: derselbe-pfad\n\
@@ -138,9 +137,10 @@ pub fn format_protocol_error_for(detail: &str, invalid_response: &str) -> String
     }
     if compact.contains("\"type\":\"shell\"") || compact.contains("webagent/1shell") {
         return format!(
-            "[Controller] Ungültige SHELL-Antwort — Repair. {detail}\n\
-             Dein beabsichtigter Befehl wurde NICHT ausgefuehrt. Wiederhole den Befehl JETZT \
-             im escape-freien Rohformat, ohne JSON, Prosa oder Codeblock. Der Prozess arbeitet \
+            "[Interpreter] SHELL-Anforderung nicht lesbar: {detail}\n\
+             Es wurde nichts ausgeführt. Das Format fordert den lokalen Interpreter zur \
+             Ausführung auf und behauptet keinen Zugriff. Bitte sende denselben Befehl im \
+             escape-freien Rohformat. Der Prozess arbeitet \
              bereits im richtigen Workspace; kein cd und kein absoluter Workspace-Pfad:\n\
              WEBAGENT/1 SHELL\n\
              id: neue-eindeutige-id\n\
@@ -150,26 +150,12 @@ pub fn format_protocol_error_for(detail: &str, invalid_response: &str) -> String
              ---END SCRIPT---"
         );
     }
-    let example = serde_json::json!({
-        "protocol": PROTOCOL_VERSION,
-        "actions": [
-            {
-                "id": "repair-1",
-                "type": "shell",
-                "command": "Get-Location",
-                "timeout_seconds": 30
-            }
-        ]
-    });
-    let example_s = serde_json::to_string_pretty(&example).unwrap();
-
     format!(
-        "[Controller] Ungültige Antwort — Repair. {detail}\n\
-         Antworte JETZT NUR mit genau diesem Format (gültiges {PROTOCOL_VERSION}-JSON).\n\
-         Keine Prosa, kein Markdown-Dokument, kein Thought Process. Sofort mit `{{` oder ```json beginnen.\n\
-         EXAKT erwartetes Muster (eine shell-Action; id darf neu sein):\n\
-         {example_s}\n\
-         Nach der Observation: eigene Antwort nur mit finish ODER nur mit message.\n\
+        "[Interpreter] {PROTOCOL_VERSION}-Tool-Anforderung nicht lesbar: {detail}\n\
+         Behaupte keine lokale Ausführung ohne eine zurückgepipedete Observation.\n\
+         Eine Action ist nur eine Anfrage an den verbundenen lokalen Interpreter.\n\
+         Der Interpreter führt sie aus und piped stdout, stderr und Exitcode zurück.\n\
+         Bitte sende die beabsichtigte Action erneut als gültiges JSON oder Rohformat.\n\
          WICHTIG: in command Anführungszeichen als \\\" und Backslashes als \\\\ escapen."
     )
 }

@@ -636,10 +636,10 @@ Write-Output $html
     fn test_format_protocol_error_demands_valid_webagent_json_only() {
         let msg = format_protocol_error("Ungültiges JSON: trailing comma");
         assert!(msg.contains(PROTOCOL_VERSION));
-        assert!(msg.contains("NUR mit genau diesem Format") || msg.contains("Repair"));
+        assert!(msg.contains("Interpreter"));
         assert!(msg.contains("Ungültiges JSON: trailing comma"));
-        assert!(msg.contains("repair-1"));
-        assert!(msg.contains(r#""protocol""#));
+        assert!(msg.contains("Tool-Anforderung"));
+        assert!(!msg.contains("Get-Location"));
     }
 
     #[test]
