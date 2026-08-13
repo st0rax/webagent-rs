@@ -249,7 +249,7 @@ pub fn apply_edit_in(
 /// Nur bei EINDEUTIGKEIT erfolgreich: `Err(0)` = kein Treffer, `Err(n>1)` =
 /// mehrdeutig. `end` zeigt hinter das Inhaltsende der letzten Ankerzeile (ohne
 /// deren Zeilenumbruch), damit die Ersetzung die Zeilenstruktur nicht zerstört.
-fn whitespace_tolerant_span(content: &str, old: &str) -> Result<(usize, usize), usize> {
+pub(super) fn whitespace_tolerant_span(content: &str, old: &str) -> Result<(usize, usize), usize> {
     let old_lines: Vec<&str> = old.lines().map(str::trim).collect();
     if old_lines.is_empty() {
         return Err(0);
@@ -639,6 +639,48 @@ mod tests {
         assert_eq!(
             fs::read_to_string(root.join("b.txt")).unwrap(),
             "original b\n"
+        );
+    }
+
+    #[test]
+    fn edit_batch_rescues_unique_anchor_without_indentation() {
+        let root = test_root().join(format!("batch_whitespace_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("pool.rs"),
+            "enum Command {\n    Query {\n        fresh: bool,\n    },\n}\n",
+        )
+        .unwrap();
+        let edits = vec![crate::protocol::EditOperation {
+            path: "pool.rs".to_string(),
+            old_string: "enum Command {\nQuery {\nfresh: bool,\n},\n}".to_string(),
+            new_string:
+                "enum Mode { Fresh, Continue }\n\nenum Command {\nQuery {\nmode: Mode,\n},\n}"
+                    .to_string(),
+        }];
+
+        apply_edit_batch_in(&root, &edits).unwrap();
+        let updated = fs::read_to_string(root.join("pool.rs")).unwrap();
+        assert!(updated.contains("enum Mode { Fresh, Continue }"));
+        assert!(!updated.contains("fresh: bool"));
+    }
+
+    #[test]
+    fn edit_batch_rejects_ambiguous_whitespace_fallback() {
+        let root = test_root().join(format!("batch_ambiguous_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("x.rs"), "    value\nvalue\n").unwrap();
+        let edits = vec![crate::protocol::EditOperation {
+            path: "x.rs".to_string(),
+            old_string: "value".to_string(),
+            new_string: "changed".to_string(),
+        }];
+
+        let error = apply_edit_batch_in(&root, &edits).unwrap_err();
+        assert!(error.contains("mehrdeutig"));
+        assert_eq!(
+            fs::read_to_string(root.join("x.rs")).unwrap(),
+            "    value\nvalue\n"
         );
     }
 

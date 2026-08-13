@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 
 use crate::protocol::EditOperation;
 
-use super::{anchor_ambiguous, anchor_not_found, current_workspace_root, resolve_existing};
+use super::{
+    anchor_ambiguous, anchor_not_found, current_workspace_root, resolve_existing,
+    whitespace_tolerant_span,
+};
 
 pub fn apply_edit_batch_in(
     workspace_root: &Path,
@@ -91,6 +94,13 @@ fn batch_anchor(
     match content.matches(&alternate_old).count() {
         1 => Ok((alternate_old, alternate_new)),
         n if n > 1 => Err(anchor_ambiguous(path, n)),
-        _ => Err(anchor_not_found(path, content, old)),
+        _ => match whitespace_tolerant_span(content, old) {
+            Ok((start, end)) => Ok((
+                content[start..end].to_string(),
+                new.trim_end_matches(['\r', '\n']).to_string(),
+            )),
+            Err(0) => Err(anchor_not_found(path, content, old)),
+            Err(n) => Err(anchor_ambiguous(path, n)),
+        },
     }
 }
