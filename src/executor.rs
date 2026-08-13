@@ -388,6 +388,9 @@ fn wrap_powershell_command(command: &str, nonce: &str) -> String {
         "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); \
          [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); \
          $OutputEncoding = [Console]::OutputEncoding; \
+         if (Get-Variable -Name PSStyle -ErrorAction SilentlyContinue) {{ \
+           $PSStyle.OutputRendering = 'PlainText' \
+         }}; \
          $PSDefaultParameterValues['Get-Content:Encoding'] = 'utf8'; \
          $__w2t_ec = 0; \
          $LASTEXITCODE = $null; \
@@ -484,6 +487,7 @@ mod tests {
         let wrapped = wrap_powershell_command("Get-Content x", "nonce");
         assert!(wrapped.contains("[Console]::InputEncoding"));
         assert!(wrapped.contains("[Console]::OutputEncoding"));
+        assert!(wrapped.contains("$PSStyle.OutputRendering = 'PlainText'"));
         assert!(wrapped.contains("$PSDefaultParameterValues['Get-Content:Encoding'] = 'utf8'"));
         assert!(wrapped.contains("[System.Text.Encoding]::UTF8.GetString"));
     }

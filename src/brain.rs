@@ -31,6 +31,12 @@ pub struct BrainResponse {
     pub generation_complete: bool,
     pub backend_status: String,
     pub raw_html: String,
+    pub first_text_ms: Option<u64>,
+    pub stop_first_seen_ms: Option<u64>,
+    pub stop_gone_ms: Option<u64>,
+    pub completion_ms: Option<u64>,
+    pub completion_reason: Option<String>,
+    pub polls: Option<u32>,
 }
 
 impl Default for BrainResponse {
@@ -41,6 +47,12 @@ impl Default for BrainResponse {
             generation_complete: true,
             backend_status: "ok".to_string(),
             raw_html: String::new(),
+            first_text_ms: None,
+            stop_first_seen_ms: None,
+            stop_gone_ms: None,
+            completion_ms: None,
+            completion_reason: None,
+            polls: None,
         }
     }
 }

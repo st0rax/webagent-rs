@@ -1747,6 +1747,12 @@ mod tests {
                 generation_complete: complete,
                 backend_status: "ok".to_string(),
                 raw_html: String::new(),
+                first_text_ms: None,
+                stop_first_seen_ms: None,
+                stop_gone_ms: None,
+                completion_ms: None,
+                completion_reason: None,
+                polls: None,
             })
         }
 
