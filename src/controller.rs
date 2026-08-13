@@ -1029,6 +1029,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             (meta, transcript, task.to_string())
         };
 
+        if continuation.is_some() {
+            self.run_store.activate_continuation(&mut meta)?;
+            self.incomplete_retries = 0;
+        }
         self.meta = Some(meta.clone());
         self.completed_actions = meta.completed_actions.clone();
         meta.extra.insert(
@@ -1150,9 +1154,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         // Pending response oder Resume oder Initial
         let mut turn = if let Some(resume_id) = resume_id {
-            if let Some(pending_str) =
-                resume::take_pending_response(&mut meta.extra)
-            {
+            if let Some(pending_str) = resume::take_pending_response(&mut meta.extra) {
                 let _ = transcript.append("system", "resume_pending_response", HashMap::new());
                 self.run_store.save(&meta).ok();
                 BrainTurn {
@@ -2285,6 +2287,43 @@ mod tests {
         let sent = messages.borrow();
         assert!(sent[0].contains("CONTINUATION_INSTRUCTION"), "{sent:?}");
         assert!(sent[0].contains("expected 2, got 1"), "{sent:?}");
+    }
+
+    #[test]
+    fn continuation_after_protocol_error_processes_valid_response() {
+        let data_dir = unique_data_dir();
+        let store = RunStore::new(data_dir.join("runs"), data_dir.join("logs"));
+        let mut meta = store.create("mock", "Implementiere die Funktion").unwrap();
+        meta.status = "protocol_error".to_string();
+        meta.cycles = 2;
+        meta.conversation_ref = Some("https://chatgpt.com/c/protocol-repair".to_string());
+        meta.completed_actions
+            .insert("prior-read".to_string(), "ok".to_string());
+        meta.extra.insert(
+            "protocol_error_streak".to_string(),
+            serde_json::Value::String("3".to_string()),
+        );
+        store.save(&meta).unwrap();
+
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
+        let result = controller
+            .continue_run(
+                &meta.run_id,
+                "Die nächste Antwort ist wieder protokollkonform; fahre fort.",
+                "mock",
+                false,
+                RunOptions::default(),
+            )
+            .unwrap();
+
+        assert_eq!(result.status, "done");
+        assert_eq!(result.run_id, meta.run_id);
+        assert!(result.cycles > 2);
+        assert!(result.completed_actions.contains_key("prior-read"));
+        assert!(!result.extra.contains_key("protocol_error_streak"));
+        assert_eq!(store.load(&meta.run_id).unwrap().status, "done");
     }
 
     #[test]

@@ -229,6 +229,45 @@ impl RunStore {
         Ok(())
     }
 
+    /// Reaktiviert einen explizit fortgesetzten Run, ohne die allgemeinen
+    /// Status-Übergänge für normale Saves aufzuweichen.
+    ///
+    /// Ein Provider-/Protokollfehler beendet einen einzelnen Controller-Aufruf,
+    /// nicht zwingend die langlebige Agent-Session. Nur bekannte reparierbare
+    /// Endzustände dürfen über diesen dedizierten Pfad wieder `running` werden.
+    pub fn activate_continuation(&self, meta: &mut RunMeta) -> Result<(), String> {
+        const ACTIVATABLE: &[&str] = &[
+            "brain_incomplete",
+            "max_cycles",
+            "protocol_error",
+            "wall_timeout",
+            "interrupted",
+        ];
+
+        let persisted = self
+            .load_existing_meta(&meta.run_id)
+            .ok_or_else(|| format!("Run {:?} existiert nicht", meta.run_id))?;
+        if persisted.status != meta.status {
+            return Err(format!(
+                "Run-Status wurde parallel geändert: gespeichert={:?}, geladen={:?}",
+                persisted.status, meta.status
+            ));
+        }
+        if meta.status != "running" && !ACTIVATABLE.contains(&meta.status.as_str()) {
+            return Err(format!(
+                "Run mit Status {:?} kann nicht fortgesetzt werden",
+                meta.status
+            ));
+        }
+
+        let previous = meta.clone();
+        meta.status = "running".to_string();
+        meta.extra.remove("protocol_error_streak");
+        meta.extra.remove("protocol_error");
+        self.save_internal(meta)?;
+        self.append_save_events(Some(&previous), meta)
+    }
+
     /// Interne Speicherfunktion ohne Validierung.
     fn save_internal(&self, meta: &RunMeta) -> Result<(), String> {
         let run_dir = meta.dir(&self.runs_dir);
@@ -828,6 +867,54 @@ mod tests {
         assert!(store.save(&meta).is_err());
 
         // Cleanup
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn continuation_activation_is_explicit_and_clears_transient_protocol_state() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let mut meta = store.create("mock", "repair").unwrap();
+        meta.status = "protocol_error".to_string();
+        meta.cycles = 3;
+        meta.completed_actions
+            .insert("read-before-error".to_string(), "ok".to_string());
+        meta.extra.insert(
+            "protocol_error_streak".to_string(),
+            serde_json::Value::String("3".to_string()),
+        );
+        meta.extra.insert(
+            "protocol_error".to_string(),
+            serde_json::Value::String("legacy parser failure".to_string()),
+        );
+        store.save(&meta).unwrap();
+
+        let mut generic = meta.clone();
+        generic.status = "running".to_string();
+        assert!(store.save(&generic).is_err());
+
+        store.activate_continuation(&mut meta).unwrap();
+        assert_eq!(meta.status, "running");
+        assert_eq!(meta.cycles, 3);
+        assert!(meta.completed_actions.contains_key("read-before-error"));
+        assert!(!meta.extra.contains_key("protocol_error_streak"));
+        assert!(!meta.extra.contains_key("protocol_error"));
+        assert_eq!(store.load(&meta.run_id).unwrap().status, "running");
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn continuation_activation_rejects_successful_terminal_run() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let mut meta = store.create("mock", "already complete").unwrap();
+        meta.status = "done".to_string();
+        store.save(&meta).unwrap();
+
+        assert!(store.activate_continuation(&mut meta).is_err());
+        assert_eq!(store.load(&meta.run_id).unwrap().status, "done");
+
         fs::remove_dir_all(&tmp).ok();
     }
 
