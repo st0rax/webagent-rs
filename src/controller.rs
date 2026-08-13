@@ -376,6 +376,27 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 "status".to_string(),
                 serde_json::Value::String(response.backend_status.clone()),
             );
+            if let Some(value) = response.first_text_ms {
+                extra.insert("first_text_ms".to_string(), value.into());
+            }
+            if let Some(value) = response.stop_first_seen_ms {
+                extra.insert("stop_first_seen_ms".to_string(), value.into());
+            }
+            if let Some(value) = response.stop_gone_ms {
+                extra.insert("stop_gone_ms".to_string(), value.into());
+            }
+            if let Some(value) = response.completion_ms {
+                extra.insert("completion_ms".to_string(), value.into());
+            }
+            if let Some(value) = response.completion_reason.as_deref() {
+                extra.insert(
+                    "completion_reason".to_string(),
+                    serde_json::Value::String(value.to_string()),
+                );
+            }
+            if let Some(value) = response.polls {
+                extra.insert("polls".to_string(), value.into());
+            }
             if protocol_complete {
                 extra.insert("completion_salvaged_by_protocol".to_string(), true.into());
             }
