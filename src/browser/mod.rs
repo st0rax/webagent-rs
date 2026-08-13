@@ -22,18 +22,18 @@ use crate::page_driver::PageDriver;
 #[cfg(feature = "webview")]
 use crate::webview_runtime::WebViewRuntime;
 
-
 mod blocking;
 mod send;
 mod surface;
 
-pub use send::is_send_disabled_error;
+#[cfg(test)]
+pub(crate) use blocking::{
+    banner_is_prompt_echo, BLOCK_BANNER_MAX_CHARS, PROSE_STABILITY_SECONDS, STABILITY_SECONDS,
+};
 pub(crate) use blocking::{block_phrase_in_text, classify_completion, Completion};
+pub use send::is_send_disabled_error;
 #[cfg(test)]
 pub(crate) use send::submit_verify_rounds;
-#[cfg(test)]
-pub(crate) use blocking::{banner_is_prompt_echo, BLOCK_BANNER_MAX_CHARS, STABILITY_SECONDS, PROSE_STABILITY_SECONDS};
-
 
 /// Enthält der Text überhaupt etwas, das eine Protokoll-Antwort sein könnte?
 ///
@@ -286,7 +286,10 @@ impl WebBrainBackend {
                 out.push_str(&format!("  [{i}] {:?}", crate::char_prefix(&t, 60)));
             }
         }
-        out.push_str(&format!("  stop_visible={}", self.any_visible("stop_button")));
+        out.push_str(&format!(
+            "  stop_visible={}",
+            self.any_visible("stop_button")
+        ));
         let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
         let stop_sel = self.sel("stop_button");
         let stop_js = Self::js_selectors(&stop_sel);
@@ -296,7 +299,10 @@ impl WebBrainBackend {
             crate::char_prefix(&ptext, 60)
         ));
         let js = "var d=document.querySelector('[role=dialog],[aria-modal=true]');d?d.innerText.slice(0,120):'kein Dialog'";
-        let dlg = self.eval(js).ok().and_then(|v| v.as_str().map(|s| s.to_string()));
+        let dlg = self
+            .eval(js)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()));
         out.push_str(&format!("  dialog={}", dlg.unwrap_or_default()));
         out
     }
@@ -590,6 +596,13 @@ mod tests {
             block_phrase_in_text("Die Hauptstadt von Frankreich ist Paris."),
             None
         );
+    }
+
+    #[test]
+    fn block_phrase_in_text_ignores_cloudflare_in_code_fragment() {
+        let fragment = "blockierte Antworten (Tageslimit/Login/Cloudflare) \
+                        zählen als Fehler statt als Beitrag";
+        assert_eq!(block_phrase_in_text(fragment), None);
     }
 
     #[test]

@@ -20,7 +20,6 @@ pub(crate) const STABILITY_SECONDS: f64 = 1.5;
 /// `classify_completion`.
 pub(crate) const PROSE_STABILITY_SECONDS: f64 = 8.0;
 
-
 /// Phrasen, die auf eine externe Blockierung hindeuten (Tages-/Nachrichtenlimit,
 /// Login, Cloudflare) — DE+EN. Geteilt zwischen `detect_block_banner` (JS-Scan der
 /// ganzen Seite) und `block_phrase_in_text` (reine Rust-Pruefung des bereits
@@ -129,7 +128,24 @@ pub(crate) fn block_phrase_in_text(text: &str) -> Option<&'static str> {
         return None;
     }
     let low = text.to_lowercase();
-    BLOCK_PHRASES.iter().copied().find(|p| low.contains(p))
+    let phrase_count = BLOCK_PHRASES
+        .iter()
+        .filter(|phrase| low.contains(**phrase))
+        .count();
+    // Kurze technische Aufzählungen wie `Tageslimit/Login/Cloudflare` kommen
+    // in Code und Diagnostik vor. Provider-Banner formulieren dagegen eine
+    // konkrete Meldung und listen nicht mehrere Kategorien per Slash auf.
+    if low.contains('/') && phrase_count >= 2 {
+        return None;
+    }
+    BLOCK_PHRASES
+        .iter()
+        .copied()
+        // `cloudflare` allein ist in Code, Logs und technischen Antworten ein
+        // normaler Begriff. Echte Challenges werden bereits durch die beiden
+        // spezifischen Phrasen sowie den separaten Seiten-/URL-Check erkannt.
+        .filter(|phrase| *phrase != "cloudflare")
+        .find(|phrase| low.contains(phrase))
 }
 
 /// Baut das JS der Block-Banner-Suche. Geteilt zwischen Implementierung und
