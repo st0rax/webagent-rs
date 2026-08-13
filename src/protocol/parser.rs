@@ -774,15 +774,12 @@ pub fn parse(response_text: &str) -> ParseResult {
 }
 
 fn looks_like_capacity_notice(text: &str) -> bool {
-    static CAPACITY_RE: OnceLock<Regex> = OnceLock::new();
-    CAPACITY_RE
-        .get_or_init(|| {
-            Regex::new(
-                r"(?i)(Höchstgrenze|Kapazität|capacity|rate limit|zu viele|erneut versuchen)",
-            )
-            .expect("capacity regex")
-        })
-        .is_match(text)
+    // Dieselbe konservative Banner-Regel wie das Browser-Backend verwenden.
+    // Eine lange technische Antwort, ein Codebeispiel oder eine Diagnose darf
+    // allein wegen der Wörter "rate limit"/"capacity" nicht zum
+    // Providerzustand umgedeutet werden. Das ist ein normaler Protokollfehler
+    // und gehört in den Repair-Pfad.
+    crate::browser::block_phrase_in_text(text).is_some()
 }
 
 #[cfg(test)]

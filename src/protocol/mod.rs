@@ -59,6 +59,22 @@ mod tests {
     }
 
     #[test]
+    fn technical_prose_that_mentions_rate_limits_is_not_a_capacity_notice() {
+        let response = format!(
+            "Die Implementierung sollte einen Windows-1252-Fallback enthalten. {} rate limit.",
+            "Ausführliche technische Erläuterung mit Code und Diagnose. ".repeat(12)
+        );
+        let result = parse(&response);
+        assert!(!result.valid);
+        assert_ne!(result.error, "Model capacity / rate limit.");
+        assert!(
+            result.error.starts_with("Ungültiges JSON:"),
+            "{}",
+            result.error
+        );
+    }
+
+    #[test]
     fn test_parse_edit_action() {
         let env = json!({
             "protocol": "webagent/1",
