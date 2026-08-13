@@ -229,6 +229,17 @@ Write-Output $html
     }
 
     #[test]
+    fn test_parse_legacy_run_envelope_as_shell() {
+        let raw = "WEBAGENT/1 RUN\nid: check-cargo\ncommand: \"cargo check --lib\"\n---END RUN---";
+        let result = parse(raw);
+        assert!(result.valid, "{:?}", result.error);
+        assert_eq!(result.actions.len(), 1);
+        assert_eq!(result.actions[0].action_type, ActionType::Shell);
+        assert_eq!(result.actions[0].command, "cargo check --lib");
+        assert_eq!(result.actions[0].timeout_seconds, 120.0);
+    }
+
+    #[test]
     fn test_complex_powershell_envelope_must_be_complete() {
         let partial = r#"WEBAGENT/1 SHELL
 id: report-1

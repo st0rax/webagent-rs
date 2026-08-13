@@ -44,6 +44,18 @@ pub fn script_envelope_regex() -> &'static Regex {
     })
 }
 
+/// Kompatibles Kurzformat fuer Shell-Aktionen, das einige Provider trotz des
+/// aktuellen SHELL-Vertrags aus aelteren Gespraechskontexten verwenden.
+fn run_envelope_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r#"(?s)\AWEBAGENT/1 RUN\r?\nid:\s*([A-Za-z0-9][A-Za-z0-9._-]{0,127})\r?\ncommand:\s*(\"[^\r\n]*\")\r?\n---END RUN---\s*\z"#,
+        )
+        .unwrap()
+    })
+}
+
 /// Rohformat für `write` — Dateiinhalt roh zwischen Markern, ohne JSON-Escaping.
 /// Löst den Fall, an dem Web-Brains mehrzeiligen Code mit Quotes nicht als
 /// JSON-String kodieren konnten (Fund 2026-07-21, autonomer Selbstbau-Versuch).
@@ -577,6 +589,25 @@ pub fn parse(response_text: &str) -> ParseResult {
         a.command = caps[3].trim().to_string();
         a.timeout_seconds = timeout;
         return ParseResult::valid(vec![a], text);
+    }
+
+    // Legacy-Kurzform, strikt als Top-Level-Huelle und mit JSON-kodiertem
+    // Command. Damit wird keine erklaerende Prosa versehentlich ausgefuehrt.
+    if let Some(caps) = run_envelope_regex().captures(&text) {
+        let command = match serde_json::from_str::<String>(&caps[2]) {
+            Ok(command) if !command.trim().is_empty() => command,
+            Ok(_) => return ParseResult::invalid("run: command darf nicht leer sein", text),
+            Err(error) => {
+                return ParseResult::invalid(
+                    format!("run: command ist kein gueltiger JSON-String: {error}"),
+                    text,
+                )
+            }
+        };
+        let mut action = Action::base(caps[1].to_string(), ActionType::Shell);
+        action.command = command;
+        action.timeout_seconds = 120.0;
+        return ParseResult::valid(vec![action], text);
     }
 
     // WEBAGENT/1 WRITE Rohformat (Dateiinhalt ohne JSON-Escaping).
