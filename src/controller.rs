@@ -103,6 +103,11 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// haengendes mistral/gemini bis 409s, obwohl die Deadline 300s war, weil
     /// die Wand nur ZWISCHEN Zyklen geprueft wurde, nicht waehrend des Wartens.
     wall_deadline_at: Option<Instant>,
+    /// Absolute Notbremse. Produktive Writes dürfen die Arbeits-Lease bis zu
+    /// dieser Grenze verlängern, aber niemals einen unbegrenzten Run erzeugen.
+    wall_hard_deadline_at: Option<Instant>,
+    /// Länge einer neuen Lease nach belegtem Fortschritt.
+    wall_lease_secs: u64,
     /// Senke fuer „was tue ich gerade" — die mitlaufende Timer-Zeile.
     progress: Option<crate::StageNote>,
     /// Unterdrueckt die Schritt-fuer-Schritt-Ausgabe. Am Terminal wuerden diese
@@ -183,6 +188,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             no_change_nudges: 0,
             wall_secs_override: None,
             wall_deadline_at: None,
+            wall_hard_deadline_at: None,
+            wall_lease_secs: 0,
             progress: None,
             quiet: false,
             workspace_root: None,
@@ -229,6 +236,36 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 timeout.min(remaining.max(1.0))
             }
             None => timeout,
+        }
+    }
+
+    fn wall_expired(&self) -> bool {
+        self.wall_deadline_at
+            .is_some_and(|deadline| Instant::now() >= deadline)
+    }
+
+    /// Ein erfolgreicher Datei-Write ist ein objektiver Fortschrittsbeleg. Er
+    /// erneuert die Arbeits-Lease ab jetzt; die absolute Notbremse bleibt hart.
+    fn renew_progress_lease(&mut self) {
+        let (Some(current), Some(hard)) = (self.wall_deadline_at, self.wall_hard_deadline_at)
+        else {
+            return;
+        };
+        let proposed = Instant::now() + Duration::from_secs(self.wall_lease_secs.max(1));
+        let renewed = proposed.min(hard);
+        if renewed > current {
+            self.wall_deadline_at = Some(renewed);
+            if let Some(meta) = &mut self.meta {
+                let renewals = meta
+                    .extra
+                    .get("progress_lease_renewals")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0)
+                    .saturating_add(1);
+                meta.extra
+                    .insert("progress_lease_renewals".to_string(), renewals.into());
+                let _ = self.run_store.save(meta);
+            }
         }
     }
 
@@ -727,6 +764,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     let (stdout, stderr, exit_code) = match result {
                         Ok(msg) => {
                             self.file_writes_ok += 1;
+                            self.renew_progress_lease();
                             self.shell_reads_since_write = 0;
                             self.read_budget_warned = false;
                             (msg, String::new(), Some(0))
@@ -892,6 +930,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         (turn.text, false)
     }
     fn finish_run_cleanup(&mut self, opts: RunOptions) {
+        self.wall_deadline_at = None;
+        self.wall_hard_deadline_at = None;
+        self.wall_lease_secs = 0;
         self.executor.stop();
         if !opts.skip_brain_stop {
             self.brain.stop().ok();
@@ -1100,8 +1141,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             .wall_secs_override
             .unwrap_or_else(crate::config::max_run_wall_secs);
         let wall_deadline = Duration::from_secs(wall_secs);
-        // run_once deckelt sein Warte-Timeout auf diese Deadline.
+        self.wall_lease_secs = wall_secs;
+        // Die erste Lease entspricht dem bisherigen Wall-Timeout. Belegter
+        // Fortschritt darf sie erneuern; nach spätestens 3 Leases greift die
+        // absolute Notbremse.
         self.wall_deadline_at = Some(wall_started + wall_deadline);
+        self.wall_hard_deadline_at = Some(wall_started + wall_deadline.saturating_mul(3));
 
         // Pending response oder Resume oder Initial
         let mut turn = if let Some(resume_id) = resume_id {
@@ -1195,12 +1240,16 @@ per edit/write-Action pflegbar):\n",
 
         // Incomplete recovery initial
         while !turn.complete {
-            if wall_started.elapsed() >= wall_deadline {
+            if self.wall_expired() {
+                let effective_deadline = self
+                    .wall_deadline_at
+                    .and_then(|deadline| deadline.checked_duration_since(wall_started))
+                    .unwrap_or(wall_deadline);
                 let final_meta = self.finish_wall_timeout(
                     &mut meta,
                     &mut transcript,
                     wall_started.elapsed(),
-                    wall_deadline,
+                    effective_deadline,
                 );
                 self.finish_run_cleanup(opts);
                 return Ok(final_meta);
@@ -1241,12 +1290,16 @@ per edit/write-Action pflegbar):\n",
         {
             // Wall-Clock-Deadline am Schleifenkopf: greift auch, wenn interne
             // Wait/Recover-Zweige lange klemmen (kein Panic, sauberes finish).
-            if wall_started.elapsed() >= wall_deadline {
+            if self.wall_expired() {
+                let effective_deadline = self
+                    .wall_deadline_at
+                    .and_then(|deadline| deadline.checked_duration_since(wall_started))
+                    .unwrap_or(wall_deadline);
                 let final_meta = self.finish_wall_timeout(
                     &mut meta,
                     &mut transcript,
                     wall_started.elapsed(),
-                    wall_deadline,
+                    effective_deadline,
                 );
                 self.finish_run_cleanup(opts);
                 return Ok(final_meta);
@@ -1291,12 +1344,16 @@ per edit/write-Action pflegbar):\n",
             }
 
             while response_text.is_empty() && !finished {
-                if wall_started.elapsed() >= wall_deadline {
+                if self.wall_expired() {
+                    let effective_deadline = self
+                        .wall_deadline_at
+                        .and_then(|deadline| deadline.checked_duration_since(wall_started))
+                        .unwrap_or(wall_deadline);
                     let final_meta = self.finish_wall_timeout(
                         &mut meta,
                         &mut transcript,
                         wall_started.elapsed(),
-                        wall_deadline,
+                        effective_deadline,
                     );
                     self.finish_run_cleanup(opts);
                     return Ok(final_meta);
@@ -2398,6 +2455,41 @@ mod tests {
         let controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
         assert_eq!(controller.wall_deadline_at, None);
         assert_eq!(controller.cap_to_wall(100.0), 100.0);
+    }
+
+    #[test]
+    fn erfolgreicher_fortschritt_erneuert_lease_bis_zur_notbremse() {
+        let data_dir = unique_data_dir();
+        let brain = MockBrain::new();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir);
+        let now = Instant::now();
+        controller.wall_deadline_at = Some(now + Duration::from_secs(1));
+        controller.wall_hard_deadline_at = Some(now + Duration::from_secs(10));
+        controller.wall_lease_secs = 5;
+
+        controller.renew_progress_lease();
+
+        let renewed = controller.wall_deadline_at.expect("erneuerte Lease");
+        assert!(renewed >= now + Duration::from_secs(4));
+        assert!(renewed <= now + Duration::from_secs(10));
+    }
+
+    #[test]
+    fn fortschritts_lease_ueberschreitet_absolute_notbremse_nicht() {
+        let data_dir = unique_data_dir();
+        let brain = MockBrain::new();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir);
+        let now = Instant::now();
+        let hard = now + Duration::from_secs(2);
+        controller.wall_deadline_at = Some(now + Duration::from_secs(1));
+        controller.wall_hard_deadline_at = Some(hard);
+        controller.wall_lease_secs = 60;
+
+        controller.renew_progress_lease();
+
+        assert_eq!(controller.wall_deadline_at, Some(hard));
     }
 
     #[test]
