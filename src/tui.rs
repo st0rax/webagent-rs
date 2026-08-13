@@ -340,23 +340,22 @@ fn run_tui_ratatui(
     let refresh_ticks = (poll_secs as f64 * 12.5).ceil() as u64;
     let mut frame_count = 0u64;
     let mut task_input = String::new();
-    // Brain-Kachelansicht: die Tab-Fenster stehen im Normalfall off-screen.
-    // `w` holt sie in ein Raster auf den Bildschirm. Bewusst hier und nicht als
-    // CLI-Befehl: die Fenster gehoeren DIESEM Prozess, ein zweiter
-    // `webagent`-Aufruf saehe sie gar nicht.
-    //
-    // Storax (03.08.2026, Nachfolger): die Wall steht nicht erst nach `w` da,
-    // sondern automatisch beim Start — Terminal dockt sich unten an, Brains
-    // kacheln oben. `grid_on` startet deshalb bei `true`, wenn ein Benchmark
-    // gelaufen wird; `w` schaltet weiterhin manuell um.
-    let mut grid_on = startup_benchmark
-        .filter(|v| !v.trim().is_empty())
-        .is_some();
-    // Anzahl der Brains, fuer die die Wall zuletzt angeordnet wurde. Die
-    // Auto-Wall zieht nach: waechst die Zahl der offenen Fenster, wird neu
-    // gekachelt — ohne dass das Terminal erneut andockt (dock_terminal_bottom
-    // ist idempotent).
-    let mut grid_arranged_for = 0usize;
+    // Brain-Kachelansicht: Worker-Fenster leben in Kindprozessen und stehen
+    // oft off-screen. Beim normalen TUI-Start dockt die Wall automatisch an
+    // (Terminal unten, Brains oben); `w` schaltet Arrange/Park.
+    let mut wall = crate::brain_wall::WallState::start_on();
+    let _wall_cleanup = crate::brain_wall::WallCleanupGuard;
+    let (wall_tx, wall_rx) = std::sync::mpsc::channel::<Result<
+        (crate::brain_wall::WindowSignature, String),
+        String,
+    >>();
+    let mut wall_apply_pending = false;
+    let mut wall_apply_thread: Option<std::thread::JoinHandle<()>> = None;
+    let mut wall_retry_after = std::time::Instant::now();
+    // Prozesssnapshot + EnumWindows sind globale OS-Scans, nicht Teil des
+    // 80-ms-Render-Ticks. Rund einmal pro Sekunde reicht fuer nachwachsende
+    // Worker-Fenster und haelt Tastatur/Rendering frei.
+    let wall_discovery_ticks = 13u64;
 
     let exit_code = 'main: loop {
         // Eingaben einsammeln. Tastatur und Maus laufen bewusst in DIESELBE
@@ -421,11 +420,11 @@ fn run_tui_ratatui(
                         {
                             let index = crate::brain_grid::brain_index_for_digit(c)
                                 .unwrap_or(0);
-                            app.grid_status = focus_brain_tile(index);
+                            app.grid_status = crate::brain_wall::focus_tile(index);
                         }
                         // Esc springt aus einer Kachel zurueck ins Terminal.
                         KeyCode::Esc => {
-                            app.grid_status = release_brain_focus();
+                            app.grid_status = crate::brain_wall::release_focus();
                         }
                         // Pfeile tun dasselbe wie j/k. Die Fusszeile bewirbt
                         // zwar j/k, aber niemand liest eine Legende, bevor er
@@ -469,8 +468,32 @@ fn run_tui_ratatui(
                         // Brain-Fenster als Kachelraster auf den Bildschirm,
                         // nochmal `w` parkt sie wieder off-screen.
                         KeyCode::Char('w') => {
-                            grid_on = !grid_on;
-                            app.grid_status = toggle_brain_grid(grid_on);
+                            // Kein Arrange/Park gegeneinander laufen lassen:
+                            // sonst kann ein spaet endender Auto-Thread die eben
+                            // geparkten Fenster wieder auf den Bildschirm holen.
+                            if let Some(thread) = wall_apply_thread.take() {
+                                let _ = thread.join();
+                                wall_apply_pending = false;
+                                let _ = wall_rx.try_recv();
+                            }
+                            wall.toggle();
+                            let discovered = crate::brain_wall::discover_owned();
+                            let signature = crate::brain_wall::window_signature(&discovered);
+                            match crate::brain_wall::apply_wall_checked(wall.on) {
+                                Ok(status) => {
+                                    app.grid_status = status;
+                                    if wall.on {
+                                        wall.mark_arranged(signature);
+                                    } else {
+                                        wall.mark_parked();
+                                    }
+                                }
+                                Err(status) => {
+                                    app.grid_status = status;
+                                    wall_retry_after = std::time::Instant::now()
+                                        + std::time::Duration::from_secs(1);
+                                }
+                            }
                         }
                         // Faehigkeit schalten. Der Browser-Anteil laeuft im
                         // Hintergrund-Thread: ein Toggle dauert Sekunden, und
@@ -728,34 +751,49 @@ fn run_tui_ratatui(
             app.selected = app.selected.min(app.agents.len().saturating_sub(1));
         }
 
-        // Auto-Wall: offene Brain-Fenster automatisch kacheln, sobald neue
-        // dazukommen. Beim Start sind die Tabs noch geschlossen und oeffnen
-        // sich erst nach und nach — `w` muesste man sonst mehrmals druecken.
-        //
-        // Nur `try_lock`: der Benchmark-Thread haelt den Browser-Pool waehrend
-        // Navigationen (bis zu 30 s Timeout pro Brain). Ein blockierendes
-        // Sperren hier wuerde die TUI einfrieren — genau das Symptom, das am
-        // 03.08.2026 als „nicht bedienbar" gemeldet wurde.
-        if grid_on {
-            let open = {
-                let Ok(pool) = crate::browser_pool::BrowserPool::global().try_lock() else {
-                    continue;
-                };
-                pool.open_brains().len()
-            };
-            if open > 0 && open != grid_arranged_for {
-                grid_arranged_for = open;
-                // Kacheln im Hintergrund-Thread: ein Toggle dauert Sekunden
-                // (Fenster positionieren) und wuerde die TUI einfrieren. Das
-                // Muster ist dasselbe wie bei `drive_capability`.
-                std::thread::spawn(move || {
-                    let status = toggle_brain_grid(true);
+        // Ergebnis erst quittieren, wenn das Win32-Anordnen wirklich gelang.
+        // Fehler bleiben mit Backoff retrybar; waehrend eines laufenden Apply
+        // wird kein zweiter Thread gestartet.
+        if let Ok(result) = wall_rx.try_recv() {
+            wall_apply_pending = false;
+            if let Some(thread) = wall_apply_thread.take() {
+                let _ = thread.join();
+            }
+            match result {
+                Ok((signature, status)) => {
+                    wall.mark_arranged(signature);
                     crate::bench_events::emit(
                         crate::bench_events::Level::Info,
                         None,
                         &format!("Auto-Wall: {status}"),
                     );
-                });
+                }
+                Err(status) => {
+                    wall_retry_after =
+                        std::time::Instant::now() + std::time::Duration::from_secs(1);
+                    crate::bench_events::emit(
+                        crate::bench_events::Level::Warn,
+                        None,
+                        &format!("Auto-Wall: {status}; neuer Versuch folgt"),
+                    );
+                }
+            }
+        }
+        if wall.on
+            && !wall_apply_pending
+            && frame_count.is_multiple_of(wall_discovery_ticks)
+            && std::time::Instant::now() >= wall_retry_after
+        {
+            let discovered = crate::brain_wall::discover_owned();
+            let signature = crate::brain_wall::window_signature(&discovered);
+            if wall.needs_arrange(&signature) {
+                wall_apply_pending = true;
+                let tx = wall_tx.clone();
+                wall_apply_thread = Some(std::thread::spawn(move || {
+                    let result = crate::brain_wall::apply_wall_checked(true)
+                        .map(|status| (signature, status));
+                    let _ = tx.send(result);
+                }));
             }
         }
 
@@ -767,6 +805,14 @@ fn run_tui_ratatui(
     };
 
     // --- Cleanup ---
+    // Noch bevor die Worker beendet werden parken, damit deren Fenster fuer
+    // die Discovery vorhanden sind. Der Guard wiederholt den Terminal-Restore
+    // auf jedem spaeteren Return-/Unwind-Pfad idempotent.
+    if let Some(thread) = wall_apply_thread.take() {
+        let _ = thread.join();
+    }
+    let _ = crate::brain_wall::apply_wall_checked(false);
+    wall.mark_parked();
     write_control(
         &control_path,
         &PoolControl {
@@ -1012,6 +1058,7 @@ fn drive_capability(brain: &str, key: &str) -> String {
 /// gerade kein offenes Brain-Fenster" zu unterscheiden.
 #[cfg_attr(not(feature = "tui"), allow(dead_code))]
 #[cfg(feature = "webview")]
+#[allow(dead_code)]
 fn toggle_brain_grid(on: bool) -> String {
     let pool = match crate::browser_pool::BrowserPool::global().lock() {
         Ok(pool) => pool,
@@ -1070,6 +1117,7 @@ fn toggle_brain_grid(_on: bool) -> String {
 /// Alt+Nummer: Fokus auf eine Kachel holen.
 #[cfg_attr(not(feature = "tui"), allow(dead_code))]
 #[cfg(feature = "webview")]
+#[allow(dead_code)]
 fn focus_brain_tile(index: usize) -> String {
     let pool = match crate::browser_pool::BrowserPool::global().lock() {
         Ok(pool) => pool,
@@ -1090,6 +1138,7 @@ fn focus_brain_tile(_index: usize) -> String {
 /// Esc: Fokus zurueck ans Terminalfenster, Kacheln wieder nicht aktivierbar.
 #[cfg_attr(not(feature = "tui"), allow(dead_code))]
 #[cfg(feature = "webview")]
+#[allow(dead_code)]
 fn release_brain_focus() -> String {
     let pool = match crate::browser_pool::BrowserPool::global().lock() {
         Ok(pool) => pool,

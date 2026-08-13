@@ -74,6 +74,7 @@ pub mod worker_pool;
 
 // ── ui: TUI, REPL ──
 pub mod brain_grid;
+pub mod brain_wall;
 pub mod repl;
 pub mod tui;
 pub mod tui_ansi;
