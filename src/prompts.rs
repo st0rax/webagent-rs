@@ -68,6 +68,12 @@ alter exakter Inhalt
 neuer Inhalt
 ---END EDIT---
 
+Sende jede komplette WEBAGENT/1-Antwort in einem einzelnen Markdown-Codeblock
+(````text` vor der ersten und ``` nach der letzten Zeile). Der Interpreter
+entfernt nur diese äußere Hülle. Das ist wichtig: Ohne Codeblock können
+Weboberflächen Literaltext in spitzen Klammern als HTML interpretieren und
+beispielsweise Rust-Code `Option<u64>` beim Transport beschädigen.
+
 Eine abschließende Nachricht hat im Rohformat ein `text:`-Feld (keinen
 MESSAGE-Block):
 WEBAGENT/1 MESSAGE
@@ -248,6 +254,13 @@ mod tests {
         let prompt = autonomous_task_prompt("Arbeite", "");
         assert!(prompt.contains("Zwei Darstellungen sind\ngleichwertig"));
         assert!(prompt.contains(&format!(r#""protocol":"{}""#, PROTOCOL_VERSION)));
+    }
+
+    #[test]
+    fn prompt_verlangt_codeblock_fuer_literal_code_transport() {
+        let prompt = autonomous_task_prompt("Arbeite", "");
+        assert!(prompt.contains("Markdown-Codeblock"));
+        assert!(prompt.contains("Option<u64>"));
     }
 
     #[test]

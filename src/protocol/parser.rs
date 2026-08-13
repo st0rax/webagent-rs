@@ -563,7 +563,7 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
 }
 
 pub fn parse(response_text: &str) -> ParseResult {
-    let text = strip_rendered_ui_controls(response_text);
+    let text = unwrap_protocol_code_fence(&strip_rendered_ui_controls(response_text));
 
     if text.is_empty() {
         return ParseResult::invalid("Leere Antwort.", text);
@@ -771,6 +771,29 @@ pub fn parse(response_text: &str) -> ParseResult {
     }
 
     ParseResult::valid(actions, text)
+}
+
+/// Web-Chats rendern nackte Rohformat-Antworten als Markdown/HTML. Dadurch
+/// können Rust-Generics wie `Option<u64>` im DOM als vermeintliche HTML-Tags
+/// verschwinden, bevor der lokale Interpreter `innerText` liest. Ein einziger,
+/// äußerer Markdown-Codeblock hält den Transport wortgetreu. Er wird nur als
+/// vollständige Top-Level-Hülle entfernt; Prosa außerhalb bleibt unzulässig.
+fn unwrap_protocol_code_fence(text: &str) -> String {
+    let trimmed = text.trim();
+    let Some(first_newline) = trimmed.find('\n') else {
+        return trimmed.to_string();
+    };
+    if !trimmed[..first_newline].trim().starts_with("```") {
+        return trimmed.to_string();
+    }
+    let body_and_close = &trimmed[first_newline + 1..];
+    let Some(last_fence) = body_and_close.rfind("\n```") else {
+        return trimmed.to_string();
+    };
+    if !body_and_close[last_fence + 1..].trim().eq("```") {
+        return trimmed.to_string();
+    }
+    body_and_close[..last_fence].to_string()
 }
 
 fn looks_like_capacity_notice(text: &str) -> bool {

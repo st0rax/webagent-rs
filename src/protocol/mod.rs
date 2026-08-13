@@ -153,6 +153,15 @@ mod tests {
     }
 
     #[test]
+    fn fenced_raw_edit_preserves_rust_generics() {
+        let text = "```text\nWEBAGENT/1 EDIT\nid: e-generic-1\npath: src/lib.rs\n---OLD---\npub value: Option<u32>,\n---NEW---\npub value: Option<u64>,\n---END EDIT---\n```";
+        let result = parse(text);
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions[0].old_string, "pub value: Option<u32>,");
+        assert_eq!(result.actions[0].new_string, "pub value: Option<u64>,");
+    }
+
+    #[test]
     fn test_raw_message_envelope() {
         let text =
             "WEBAGENT/1 MESSAGE\nid: answer-1\ntext: Ergebnis fertig.\n\nAlle Tests sind gruen.";
