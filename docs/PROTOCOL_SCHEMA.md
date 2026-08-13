@@ -1,9 +1,14 @@
 # Protokoll-Schema: `webagent/1`
 
+> **Referenz mit historischem JSON-Schwerpunkt.** Der ausführbare Parser unter
+> `src/protocol/` ist autoritativ. Er unterstützt zusätzlich strikte Rohformate
+> für `SHELL`, `EDIT`, `EDIT_BATCH`, `WRITE` und `MESSAGE`; Beispiele in diesem
+> Dokument sind keine Aufforderung, Actions in Prosa einzubetten.
+
 Menschenlesbare Referenz des Aktionsprotokolls, das jedes Brain ausgeben
-muss. Sie ist aus `src/protocol.rs` abgeleitet (Funktionen `parse`,
-`action_from_value`, `allowed_fields`) und dient Prompt-Autoren und Reviewern
-als einzige Quelle. Bei Änderungen am Parser diese Datei mitziehen.
+muss. Sie ist aus `src/protocol/{types,parser}.rs` abgeleitet und dient
+Prompt-Autoren und Reviewern als Orientierung. Bei Änderungen am Parser diese
+Datei mitziehen; bei einem Widerspruch gilt der getestete Parser.
 
 Die Validierung ist **hand-gerollt und strikt** (kein externes Schema-Framework,
 keine zusätzliche Dependency). Strikt heißt: unbekannte Felder in einem
@@ -40,7 +45,7 @@ Jede Action ist ein Objekt. Gemeinsame Pflichtfelder für **alle** Typen:
 | Feld   | Typ    | Constraint                                        |
 |--------|--------|---------------------------------------------------|
 | `id`   | String | Pflicht                                           |
-| `type` | String | einer von: `shell`, `message`, `finish`, `edit`, `write` |
+| `type` | String | einer von: `shell`, `message`, `finish`, `edit`, `edit_batch`, `write` |
 
 Über die unten je Typ gelisteten Felder hinaus sind **keine** weiteren Felder
 erlaubt. Ein unbekanntes Feld (Tippfehler oder falscher Typ) → Antwort ungültig.
@@ -89,7 +94,7 @@ Erlaubte Felder: `id`, `type`, `path`, `old_string`, `new_string`.
 | `new_string` | String | optional (`""` löscht den Anker); muss `!= old_string` sein |
 
 ```json
-{ "id": "fix-1", "type": "edit", "path": "C:/pfad/app.py",
+{ "id": "fix-1", "type": "edit", "path": "src/app.rs",
   "old_string": "return 1", "new_string": "return 2" }
 ```
 
@@ -106,13 +111,35 @@ Schlägt fehl, wenn die Zieldatei bereits existiert — Bestandsdateien immer mi
 `edit` ändern.
 
 ```json
-{ "id": "new-1", "type": "write", "path": "C:/tmp/neu.txt", "content": "zeile1\n" }
+{ "id": "new-1", "type": "write", "path": "src/neu.rs", "content": "zeile1\n" }
 ```
 
-## Alternatives Rohskript-Format (`shell`)
+### `type: "edit_batch"` — mehrere Anker atomar ersetzen
 
-Für komplexe PowerShell-Skripte mit vielen Anführungszeichen gibt es ein
-JSON-freies Envelope, das intern in eine einzelne `shell`-Action übersetzt wird:
+Erlaubte Felder: `id`, `type`, `edits`. `edits` ist eine nicht-leere Liste aus
+`path`, `old_string` und `new_string` mit denselben Ankerregeln wie `edit`.
+Zuerst werden alle Pfade und Anker validiert; schlägt ein Eintrag fehl, wird
+kein Teil des Batches geschrieben.
+
+```json
+{
+  "id": "refactor-1",
+  "type": "edit_batch",
+  "edits": [
+    { "path": "src/a.rs", "old_string": "old_a", "new_string": "new_a" },
+    { "path": "src/b.rs", "old_string": "old_b", "new_string": "new_b" }
+  ]
+}
+```
+
+## Alternative Rohformate
+
+Für Inhalte mit vielen Anführungszeichen oder Zeilenumbrüchen gibt es strikt
+begrenzte JSON-freie Envelopes. Sie werden intern jeweils in genau eine Action
+übersetzt. Der Parser akzeptiert nur ein top-level Envelope, nicht Treffer in
+erklärender Begleitprosa.
+
+Shell:
 
 ```
 WEBAGENT/1 SHELL
@@ -124,3 +151,15 @@ timeout_seconds: 300
 ```
 
 `timeout_seconds` unterliegt derselben Range-Prüfung (`0 < x <= 3600`).
+
+Die kanonischen Header der übrigen Rohformate sind:
+
+```text
+WEBAGENT/1 EDIT
+WEBAGENT/1 EDIT_BATCH
+WEBAGENT/1 WRITE
+WEBAGENT/1 MESSAGE
+```
+
+Die exakten Delimiter und Pflichtfelder stehen in `src/protocol/parser.rs` und
+werden durch dessen Parser-Tests festgelegt.

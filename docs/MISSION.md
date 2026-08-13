@@ -1,7 +1,7 @@
 # MISSION / ÜBERGABE — webagent-rs
 
-**Wahrheitsquelle für Architektur:** `START_HERE.md`. Diese Datei = aktueller
-Arbeitsfokus + Übergabestand. Stand: **2026-07-17**.
+> **Historische Übergabe, Stand 2026-07-17.** Keine aktuelle Wahrheitsquelle.
+> Zielbild, Reifegrade und Betrieb stehen in [`OVERVIEW.md`](OVERVIEW.md).
 
 > Handoff von **qwen** zu Ende geschrieben (Claude beim Update abgeschmiert).
 > `worker_pool` ist geschrieben **und verifiziert** (`cargo test --lib worker_pool::`: 6 passed /

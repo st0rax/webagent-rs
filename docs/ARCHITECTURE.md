@@ -1,5 +1,10 @@
 # WebAgent — Architektur
 
+> **Detaillierte Momentaufnahme.** Für Zielbild, Vertrauensleiter, Reifegrade
+> und aktuellen Funktionsstand siehe [`OVERVIEW.md`](OVERVIEW.md). Dateizahlen
+> und Refactoring-Befunde in diesem Dokument sind zeitgebunden und vor einer
+> Entscheidung am aktuellen Quellbaum nachzumessen.
+
 > **Zweck:** Dieses Dokument ist die Karte. Sie erklärt in 10 Minuten, welche
 > Schichten existieren, was wo liegt, und wo die dokumentierten
 > Struktur-Schwächen sind. Grundlage ist der statische Wissensgraph

@@ -53,9 +53,9 @@ Brain (Web-Chat)  ──plan──▶  Controller  ──shell──▶  Executo
 Selektoren pro Provider liegen in [`selectors/`](selectors/); Portierungsregeln in
 [`CONVENTIONS.md`](CONVENTIONS.md).
 
-> **Architektur im Detail:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —
-> Schicht-Diagramm, vollständige Modul-Karte, dokumentierte God-File-Schnitte
-> und bekannte Redundanzen.
+> **Aktueller Systemüberblick:** [`docs/OVERVIEW.md`](docs/OVERVIEW.md) — Ziel,
+> Vertrauensleiter, Reifegrade und Betrieb. Die detaillierte
+> [`Modulkarte`](docs/ARCHITECTURE.md) ist eine datierte Momentaufnahme.
 
 ## Bauen
 

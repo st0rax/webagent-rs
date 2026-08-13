@@ -1,8 +1,9 @@
 # START HERE — webagent-rs
 
-**Stand:** 2026-07-17 · Lies diese Datei zuerst, komplett, bevor du andere
-Dokumente öffnest. Sie ist in sich geschlossen — du brauchst kein anderes
-Repo und kein Vorwissen, um hier weiterzuarbeiten.
+> **Historische Übergabe (Stand 2026-07-17).** Diese Datei enthält weiterhin
+> nützlichen Repo-Kontext, ist aber nicht mehr die aktuelle Status- oder
+> Architekturquelle. Beginne mit [`docs/OVERVIEW.md`](docs/OVERVIEW.md) und
+> behandle Zahlen und offene Punkte weiter unten als damalige Momentaufnahme.
 
 > 🔧 **Pflegepflicht:** Wer hier strukturell etwas ändert (neue Features,
 > geänderter Provider-/Test-Status, neue Abhängigkeiten, Versionssprung)
