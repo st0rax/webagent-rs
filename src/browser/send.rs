@@ -10,7 +10,9 @@ use std::time::{Duration, Instant};
 
 use crate::brain::BrainBackend;
 
-use super::blocking::{banner_is_prompt_echo, block_banner_expr};
+use super::blocking::{
+    banner_is_prompt_echo, block_banner_expr, is_technical_block_phrase_list,
+};
 use super::WebBrainBackend;
 
 /// Wie viele 250-ms-Runden auf den Absende-Beweis gewartet wird.
@@ -373,6 +375,9 @@ return best?best.slice(0,300):null;})()"#;
             .filter(|s| !s.is_empty())?;
         if banner_is_prompt_echo(&banner, sent) {
             // Unsere eigene Frage, kein Banner des Anbieters.
+            return None;
+        }
+        if is_technical_block_phrase_list(&banner) {
             return None;
         }
         Some(banner)

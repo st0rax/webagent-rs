@@ -930,4 +930,18 @@ mod tests {
         let banner = "Please sign in to continue. Login required to use this service.";
         assert!(!banner_is_prompt_echo(banner, prompt));
     }
+
+    #[test]
+    fn technical_block_category_list_is_not_a_provider_banner() {
+        let fragment = "ockierte Antworten (Tageslimit/Login/Cloudflare) \
+                        zählen als Fehler statt als Beitrag";
+        assert!(blocking::is_technical_block_phrase_list(fragment));
+    }
+
+    #[test]
+    fn real_limit_banner_is_not_a_technical_category_list() {
+        assert!(!blocking::is_technical_block_phrase_list(
+            "Nachrichtenlimit erreicht. Ihr Limit wird in 9 Minuten zurückgesetzt."
+        ));
+    }
 }

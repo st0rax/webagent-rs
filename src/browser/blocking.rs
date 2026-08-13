@@ -148,6 +148,19 @@ pub(crate) fn block_phrase_in_text(text: &str) -> Option<&'static str> {
         .find(|phrase| low.contains(phrase))
 }
 
+/// Erkennt kurze technische Kategorienlisten aus Code/Diagnostik, die der
+/// Ganzseiten-Scan als vermeintlichen Provider-Banner ausschneiden kann.
+pub(crate) fn is_technical_block_phrase_list(text: &str) -> bool {
+    let low = text.to_lowercase();
+    low.contains('/')
+        && BLOCK_PHRASES
+            .iter()
+            .filter(|phrase| low.contains(**phrase))
+            .take(2)
+            .count()
+            >= 2
+}
+
 /// Baut das JS der Block-Banner-Suche. Geteilt zwischen Implementierung und
 /// Test — der Mock-Driver matcht auf die EXAKTE Zeichenkette.
 pub(crate) fn block_banner_expr() -> String {
