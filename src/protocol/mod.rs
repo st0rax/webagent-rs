@@ -176,6 +176,14 @@ mod tests {
     }
 
     #[test]
+    fn complete_message_envelope_is_not_truncated() {
+        let text =
+            "WEBAGENT/1 MESSAGE\nid: answer-2\ntext: Fertig und sofort verwertbar.";
+        assert!(!is_possibly_truncated(text));
+        assert!(parse(text).valid);
+    }
+
+    #[test]
     fn test_raw_edit_rejects_identical_and_empty() {
         let same =
             "WEBAGENT/1 EDIT\nid: e1\npath: a.rs\n---OLD---\nx\n---NEW---\nx\n---END EDIT---";
