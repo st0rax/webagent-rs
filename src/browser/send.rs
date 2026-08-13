@@ -10,9 +10,7 @@ use std::time::{Duration, Instant};
 
 use crate::brain::BrainBackend;
 
-use super::blocking::{
-    banner_is_prompt_echo, block_banner_expr, is_technical_block_phrase_list,
-};
+use super::blocking::{banner_is_prompt_echo, block_banner_expr, is_technical_block_phrase_list};
 use super::WebBrainBackend;
 
 /// Wie viele 250-ms-Runden auf den Absende-Beweis gewartet wird.
@@ -51,9 +49,25 @@ pub fn is_send_disabled_error(message: &str) -> bool {
     message.contains(SEND_DISABLED_MARKER)
 }
 
+fn submission_is_proven(
+    chatgpt_user_baseline_known: bool,
+    user_echo: bool,
+    composer_consumed: bool,
+    stop_visible: bool,
+    assistant_grew: bool,
+    url_changed: bool,
+) -> bool {
+    if chatgpt_user_baseline_known {
+        stop_visible || (composer_consumed && (user_echo || url_changed))
+    } else {
+        stop_visible || assistant_grew || (url_changed && composer_consumed)
+    }
+}
+
 impl WebBrainBackend {
     pub(crate) fn send_generic(&mut self, text: &str) -> Result<i32, String> {
         let baseline = self.prepare_send_baseline();
+        let user_baseline = self.chatgpt_user_message_count();
         if self.sel("composer").is_empty() {
             return Err("Keine Composer-Selektoren konfiguriert".into());
         }
@@ -93,7 +107,7 @@ impl WebBrainBackend {
                     self.click_first("send_button");
                 }
             }
-            if self.verify_submitted(baseline, url_before.as_deref()) {
+            if self.verify_submitted(baseline, user_baseline, url_before.as_deref()) {
                 return Ok(baseline);
             }
         }
@@ -198,10 +212,7 @@ impl WebBrainBackend {
             "var el=Q(S[i]);if(el){return (el.value!==undefined?el.value:(el.innerText||'')).length;}",
             "0",
         );
-        self.eval(&js)
-            .ok()
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize
+        self.eval(&js).ok().and_then(|v| v.as_u64()).unwrap_or(0) as usize
     }
 
     /// Text eines echten Dialogs ueber dem Composer, gekuerzt.
@@ -250,9 +261,7 @@ return best?best.slice(0,300):null;})()"#;
         // ehrliche Fehler "kein Absende-Beweis" war die Folge. Darum zuerst echt
         // tippen (`fill_composer`: Klick + trusted `Input.insertText`), DOM-Set nur
         // als Fallback.
-        if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.fill_composer(js, t)
-        }) {
+        if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t)) {
             let _ = self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 s.fill_composer_dom_set(js, t) && s.type_text_char_by_char(t).is_ok()
             });
@@ -278,7 +287,7 @@ return best?best.slice(0,300):null;})()"#;
             } else {
                 let _ = self.press_enter();
             }
-            if self.verify_submitted(baseline, url_before.as_deref()) {
+            if self.verify_submitted(baseline, None, url_before.as_deref()) {
                 return Ok(baseline);
             }
             let _ = self.fill_composer_dom_set(&composer_js, text);
@@ -309,7 +318,7 @@ return best?best.slice(0,300):null;})()"#;
             } else {
                 self.press_enter().ok();
             }
-            if self.verify_submitted(baseline, url_before.as_deref()) {
+            if self.verify_submitted(baseline, None, url_before.as_deref()) {
                 return Ok(baseline);
             }
             let _ = self.fill_composer(&composer_js, text);
@@ -383,7 +392,12 @@ return best?best.slice(0,300):null;})()"#;
         Some(banner)
     }
 
-    fn verify_submitted(&self, baseline: i32, url_before: Option<&str>) -> bool {
+    fn verify_submitted(
+        &self,
+        baseline: i32,
+        user_baseline: Option<i32>,
+        url_before: Option<&str>,
+    ) -> bool {
         let rounds = submit_verify_rounds(self.last_sent.borrow().chars().count());
         let composer_js = self.sel_js("composer", &[]);
         let sent = self.last_sent.borrow().clone();
@@ -398,11 +412,54 @@ return best?best.slice(0,300):null;})()"#;
             // — die UI "startet eine neue Session statt zu senden". Der Beweis steht
             // erst, wenn die Oberflaeche die Eingabe konsumiert hat (Composer leer)
             // ODER eine neue Antwort/Stop erschienen ist.
-            let consumed = url_changed && !self.composer_contains(&composer_js, &sent);
-            if self.assistant_count() > baseline || self.any_visible("stop_button") || consumed {
+            let composer_consumed = !self.composer_contains(&composer_js, &sent);
+            let user_echo = user_baseline
+                .zip(self.chatgpt_user_message_count())
+                .is_some_and(|(before, now)| now > before);
+            let stop_visible = self.any_visible("stop_button");
+            let assistant_grew = self.assistant_count() > baseline;
+            // ChatGPTs Assistant-Zaehler schwankt bei DOM-Rehydration und
+            // kann nach F5 wachsen, obwohl die neue User-Nachricht nie im
+            // Chat angekommen ist. Fuer bestehende Chats gilt deshalb das
+            // User-Echo als Beleg; ein sichtbarer Stop-Knopf bleibt ein
+            // autoritatives Generierungssignal. URL-Wechsel gilt nur beim
+            // Erzeugen eines neuen Chats und weiterhin nur konsumiert.
+            let proven = submission_is_proven(
+                user_baseline.is_some(),
+                user_echo,
+                composer_consumed,
+                stop_visible,
+                assistant_grew,
+                url_changed,
+            );
+            if proven {
                 return true;
             }
         }
         false
+    }
+
+    /// ChatGPT-spezifischer User-Turn-Zaehler fuer den Absende-Beweis.
+    /// Andere Provider liefern `None` und behalten ihre vorhandenen Signale.
+    fn chatgpt_user_message_count(&self) -> Option<i32> {
+        if self.brain_id != "chatgpt" {
+            return None;
+        }
+        self.eval("document.querySelectorAll('[data-message-author-role=user]').length")
+            .ok()
+            .and_then(|value| value.as_i64())
+            .and_then(|count| i32::try_from(count).ok())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::submission_is_proven;
+
+    #[test]
+    fn chatgpt_dom_rehydration_is_not_a_send_proof_without_user_echo() {
+        assert!(!submission_is_proven(true, false, true, false, true, false));
+        assert!(submission_is_proven(true, true, true, false, false, false));
+        assert!(submission_is_proven(true, false, false, true, false, false));
     }
 }
