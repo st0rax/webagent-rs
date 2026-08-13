@@ -43,6 +43,17 @@ const MAX_NO_CHANGE_NUDGES: u32 = 2;
 /// Repair-Prompt („antworte im richtigen Format") kann nichts reparieren,
 /// was nie begonnen wurde, und kostet 10-35 s Roundtrip.
 const FAST_EMPTY_RESPONSE_CHARS: usize = 20;
+
+fn protocol_completes_unstable_response(
+    generation_complete: bool,
+    backend_status: &str,
+    text: &str,
+) -> bool {
+    !generation_complete
+        && backend_status == "timeout_unstable"
+        && !protocol::is_possibly_truncated(text)
+        && protocol::parse(text).valid
+}
 /// Nach so vielen reinen Leseaktionen ohne erfolgreichen Datei-Write wird das
 /// Brain aus variierender Exploration in die Umsetzung geschoben.
 const READ_BUDGET_ACTIONS: u32 = 5;
@@ -287,6 +298,18 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             rereads += 1;
         }
 
+        // Web-UIs ohne belastbares Stop-Signal können bis zum Timeout als
+        // `unstable` gelten, obwohl bereits ein syntaktisch vollständiges,
+        // streng parsebares Protokolldokument vorliegt. In diesem Fall ist das
+        // Protokoll selbst das stärkere Fertigsignal. Ein abgeschnittener Block
+        // bleibt ausdrücklich incomplete.
+        let protocol_complete = protocol_completes_unstable_response(
+            response.generation_complete,
+            &response.backend_status,
+            &response.text,
+        );
+        let effective_complete = response.generation_complete || protocol_complete;
+
         if let Some(t) = transcript {
             let mut extra = HashMap::new();
             extra.insert(
@@ -297,14 +320,17 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 "status".to_string(),
                 serde_json::Value::String(response.backend_status.clone()),
             );
+            if protocol_complete {
+                extra.insert("completion_salvaged_by_protocol".to_string(), true.into());
+            }
             let _ = t.append("brain", &response.text, extra);
         }
 
-        if response.generation_complete {
+        if effective_complete {
             self.persist_conversation_ref();
         }
         crate::bench_events::emit(
-            if response.generation_complete {
+            if effective_complete {
                 crate::bench_events::Level::Pass
             } else {
                 crate::bench_events::Level::Warn
@@ -315,7 +341,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         BrainTurn {
             text: response.text,
-            complete: response.generation_complete,
+            complete: effective_complete,
         }
     }
 
@@ -1430,6 +1456,32 @@ per edit/write-Action pflegbar):\n",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_protocol_salvages_timeout_unstable() {
+        let message = r#"{"protocol":"webagent/1","actions":[{"id":"final","type":"message","text":"fertig"}]}"#;
+        assert!(protocol_completes_unstable_response(
+            false,
+            "timeout_unstable",
+            message
+        ));
+    }
+
+    #[test]
+    fn truncated_or_other_timeout_is_not_salvaged() {
+        let truncated = "WEBAGENT/1 MESSAGE\nid: final\n---MESSAGE---\nfertig";
+        assert!(!protocol_completes_unstable_response(
+            false,
+            "timeout_unstable",
+            truncated
+        ));
+        let complete = r#"{"protocol":"webagent/1","actions":[{"id":"final","type":"message","text":"fertig"}]}"#;
+        assert!(!protocol_completes_unstable_response(
+            false,
+            "timeout_still_generating",
+            complete
+        ));
+    }
     use crate::brain::{BrainResponse, SessionState};
     use crate::executor::ExecutionResult;
     use std::cell::RefCell;

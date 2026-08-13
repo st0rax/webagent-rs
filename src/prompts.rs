@@ -60,6 +60,12 @@ alter exakter Inhalt
 neuer Inhalt
 ---END EDIT---
 
+Eine abschließende Nachricht hat im Rohformat ein `text:`-Feld (keinen
+MESSAGE-Block):
+WEBAGENT/1 MESSAGE
+id: eindeutige-abschluss-id
+text: Kurze Zusammenfassung der Änderungen und ausgeführten Prüfungen.
+
 Für mehrteilige Refactorings bündelst du mehrere Blöcke atomar:
 WEBAGENT/1 EDIT_BATCH
 id: refactor-1
