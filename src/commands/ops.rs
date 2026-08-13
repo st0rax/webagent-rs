@@ -486,7 +486,7 @@ pub fn cmd_run(
     max_cycles: u32,
 ) -> i32 {
     use webagent::browser::WebBrainBackend;
-    use webagent::controller::AgentController;
+    use webagent::controller::{AgentController, RunOptions};
     use webagent::executor::PlatformShellExecutor;
 
     let backend = match WebBrainBackend::from_config(brain) {
@@ -505,7 +505,17 @@ pub fn cmd_run(
         "[run] brain={} headless={} max_cycles={} — starte Embedded WebView…",
         brain, headless, max_cycles
     );
-    match controller.run(task, brain, resume, headless) {
+    let result = match resume {
+        Some(run_id) => controller.continue_run(
+            run_id,
+            task,
+            brain,
+            headless,
+            RunOptions::default(),
+        ),
+        None => controller.run(task, brain, None, headless),
+    };
+    match result {
         Ok(meta) => {
             println!(
                 "[run] status={} run_id={} cycles={}",
