@@ -1150,8 +1150,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         // Pending response oder Resume oder Initial
         let mut turn = if let Some(resume_id) = resume_id {
-            if let Some(pending) = meta.extra.remove("pending_response") {
-                let pending_str = pending.as_str().unwrap_or("").to_string();
+            if let Some(pending_str) =
+                resume::take_pending_response(&mut meta.extra)
+            {
                 let _ = transcript.append("system", "resume_pending_response", HashMap::new());
                 self.run_store.save(&meta).ok();
                 BrainTurn {

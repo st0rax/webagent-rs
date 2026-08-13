@@ -49,6 +49,19 @@ fn incomplete_retry_prompt(last_text: &str) -> String {
 
 const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 
+/// Entnimmt nur eine tatsaechlich vorhandene Antwort. Ein leerer String wird
+/// bei einem incomplete/timeout Lauf ebenfalls persistiert, ist aber kein
+/// wiederverwendbarer Brain-Turn und darf die echte Continuation nicht
+/// kurzschliessen.
+pub(crate) fn take_pending_response(
+    extra: &mut HashMap<String, serde_json::Value>,
+) -> Option<String> {
+    extra
+        .remove("pending_response")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .filter(|text| !text.trim().is_empty())
+}
+
 /// Exponential-Backoff-Basis/-Obergrenze zwischen incomplete-Retries.
 const INCOMPLETE_RETRY_BACKOFF_BASE_MS: u64 = 500;
 const INCOMPLETE_RETRY_BACKOFF_CAP_MS: u64 = 8_000;
@@ -247,7 +260,23 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
 #[cfg(test)]
 mod incomplete_prompt_tests {
-    use super::incomplete_retry_prompt;
+    use super::{incomplete_retry_prompt, take_pending_response};
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    #[test]
+    fn empty_pending_response_does_not_short_circuit_resume() {
+        let mut extra = HashMap::from([("pending_response".to_string(), json!(""))]);
+        assert_eq!(take_pending_response(&mut extra), None);
+        assert!(!extra.contains_key("pending_response"));
+    }
+
+    #[test]
+    fn nonempty_pending_response_is_reused() {
+        let mut extra = HashMap::from([("pending_response".to_string(), json!("answer"))]);
+        assert_eq!(take_pending_response(&mut extra).as_deref(), Some("answer"));
+        assert!(!extra.contains_key("pending_response"));
+    }
 
     #[test]
     fn names_missing_shell_end_marker_exactly() {
