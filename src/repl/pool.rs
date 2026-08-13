@@ -110,10 +110,16 @@ pub struct PersistentQueryPool {
     joins: Mutex<Vec<std::thread::JoinHandle<()>>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChatMode {
+    Fresh,
+    Continue,
+}
+
 enum PersistentCommand {
     Query {
         prompt: String,
-        fresh_chat: bool,
+        mode: ChatMode,
         reply: mpsc::Sender<Result<String, String>>,
     },
     Shutdown,
@@ -135,10 +141,10 @@ impl PersistentQueryPool {
                     match command {
                         PersistentCommand::Query {
                             prompt,
-                            fresh_chat,
+                            mode,
                             reply,
                         } => {
-                            let _ = reply.send(session.query(&prompt, fresh_chat));
+                            let _ = reply.send(session.query(&prompt, mode));
                         }
                         PersistentCommand::Shutdown => break,
                     }
@@ -161,17 +167,17 @@ impl PersistentQueryPool {
     /// Sendet eine unabhängige Frage in einen frischen Chat, behält aber den
     /// Browser-Prozess und das Profil des Brains bei.
     pub fn query_fresh(&self, brain_id: &str, prompt: &str) -> Result<String, String> {
-        self.send_query(brain_id, prompt, true)
+        self.send_query(brain_id, prompt, ChatMode::Fresh)
     }
 
     /// Setzt die aktuelle Unterhaltung desselben Brains fort. Das ist für
     /// Refinement- und Repair-Schritte gedacht, die auf vorherigem Kontext
     /// aufbauen; insbesondere wird dabei kein `new_chat` ausgelöst.
     pub fn query_continue(&self, brain_id: &str, prompt: &str) -> Result<String, String> {
-        self.send_query(brain_id, prompt, false)
+        self.send_query(brain_id, prompt, ChatMode::Continue)
     }
 
-    fn send_query(&self, brain_id: &str, prompt: &str, fresh_chat: bool) -> Result<String, String> {
+    fn send_query(&self, brain_id: &str, prompt: &str, mode: ChatMode) -> Result<String, String> {
         let sender = self
             .workers
             .get(brain_id)
@@ -180,7 +186,7 @@ impl PersistentQueryPool {
         sender
             .send(PersistentCommand::Query {
                 prompt: prompt.to_string(),
-                fresh_chat,
+                mode,
                 reply: reply_tx,
             })
             .map_err(|_| format!("persistente Sitzung {brain_id} beendet"))?;
@@ -229,7 +235,7 @@ impl PersistentBrain {
             .ok_or_else(|| "Backend fehlt".to_string())
     }
 
-    fn query(&mut self, prompt: &str, fresh_chat: bool) -> Result<String, String> {
+    fn query(&mut self, prompt: &str, mode: ChatMode) -> Result<String, String> {
         if let Some(remaining) = crate::circuit_breaker::check(&self.brain_id) {
             return Err(format!(
                 "circuit_open: uebersprungen, noch {remaining}s Cooldown"
@@ -274,7 +280,7 @@ impl PersistentBrain {
             Some(&self.brain_id),
             "Sitzung bereit; Eingabe wird gesendet…",
         );
-        if fresh_chat {
+        if should_trigger_new_chat(mode) {
             self.backend()?.new_chat()?;
         }
         let baseline = self.backend()?.send(prompt)?;
@@ -314,5 +320,26 @@ impl PersistentBrain {
             }
             self.started = false;
         }
+    }
+}
+
+fn should_trigger_new_chat(mode: ChatMode) -> bool {
+    matches!(mode, ChatMode::Fresh)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_should_trigger_new_chat_routing() {
+        assert!(
+            should_trigger_new_chat(ChatMode::Fresh),
+            "Fresh mode must trigger a new chat reset"
+        );
+        assert!(
+            !should_trigger_new_chat(ChatMode::Continue),
+            "Continue mode must not trigger a new chat reset"
+        );
     }
 }
