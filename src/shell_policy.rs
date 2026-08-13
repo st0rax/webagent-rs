@@ -32,6 +32,12 @@ lazy_static! {
     /// legitime Commands blockieren oder zu leicht umgehbar sein.
     static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
     static ref DENY_PATTERNS: Vec<(Regex, &'static str)> = vec![
+        // Der Executor IST bereits eine persistente PowerShell. Ein weiteres
+        // `powershell -Command "...$var..."` erzeugt eine zweite Parser-/
+        // Encoding-Schicht: Variablen werden vom äußeren Prozess expandiert
+        // und Windows PowerShell 5 liest UTF-8 ohne BOM als ANSI. Brains sollen
+        // den Scriptinhalt direkt senden; die Observation erklärt den Fix.
+        (Regex::new(r"(?i)^\s*(?:&\s*)?(?:powershell|pwsh)(?:\.exe)?\s+(?:-[a-z][a-z0-9-]*\s+)*-(?:command|c)\b").unwrap(), "redundante verschachtelte PowerShell; Script direkt senden"),
         // Rekursives/Massen-Löschen
         (Regex::new(r"(?i)remove-item\s+.*-recurse").unwrap(), "rekursives Remove-Item"),
         (Regex::new(r"(?i)\brm\s+.*-rf\s*(/|~|\*|\$env:)").unwrap(), "rm -rf auf Root/Home/Wildcard"),
@@ -783,6 +789,24 @@ mod tests {
     fn empty_command_is_allowed() {
         assert_eq!(evaluate_with_mode("", false), Decision::Allow);
         assert_eq!(evaluate_with_mode("   ", false), Decision::Allow);
+    }
+
+    #[test]
+    fn redundant_nested_powershell_is_rejected_with_actionable_reason() {
+        for command in [
+            "powershell -Command \"Get-Content src/lib.rs\"",
+            "powershell.exe -NoProfile -Command \"$c = Get-Content x\"",
+            "pwsh -NoLogo -NoProfile -c 'Get-Location'",
+        ] {
+            let Decision::Deny(reason) = evaluate_with_mode(command, false) else {
+                panic!("verschachtelte PowerShell wurde erlaubt: {command}");
+            };
+            assert!(reason.contains("Script direkt senden"), "{reason}");
+        }
+        assert_eq!(
+            evaluate_with_mode("Get-Content src/lib.rs", false),
+            Decision::Allow
+        );
     }
 
     #[test]

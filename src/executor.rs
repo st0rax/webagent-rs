@@ -385,8 +385,10 @@ fn wrap_command(command: &str, nonce: &str) -> String {
 fn wrap_powershell_command(command: &str, nonce: &str) -> String {
     let encoded = base64_encode(command.trim().as_bytes());
     format!(
-        "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); \
+        "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); \
+         [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); \
          $OutputEncoding = [Console]::OutputEncoding; \
+         $PSDefaultParameterValues['Get-Content:Encoding'] = 'utf8'; \
          $__w2t_ec = 0; \
          $LASTEXITCODE = $null; \
          try {{ \
@@ -474,6 +476,40 @@ mod tests {
         let ex = PlatformShellExecutor::new();
         ex.start();
         (ex, guard)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_wrapper_establishes_utf8_for_input_output_and_file_reads() {
+        let wrapped = wrap_powershell_command("Get-Content x", "nonce");
+        assert!(wrapped.contains("[Console]::InputEncoding"));
+        assert!(wrapped.contains("[Console]::OutputEncoding"));
+        assert!(wrapped.contains("$PSDefaultParameterValues['Get-Content:Encoding'] = 'utf8'"));
+        assert!(wrapped.contains("[System.Text.Encoding]::UTF8.GetString"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn direct_get_content_preserves_utf8_without_bom() {
+        let _guard = SHELL_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let path = std::env::temp_dir().join(format!(
+            "webagent_executor_utf8_{}_{}.txt",
+            std::process::id(),
+            crate::now_run_stamp()
+        ));
+        std::fs::write(&path, "Grüße …").unwrap();
+        let executor = PlatformShellExecutor::new();
+        executor.start();
+        let escaped = path.display().to_string().replace(char::from(39), "''");
+        let result = executor.execute(
+            &format!("Get-Content -LiteralPath '{escaped}'"),
+            TEST_CMD_TIMEOUT,
+        );
+        executor.stop();
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(result.exit_code, Some(0), "{result:?}");
+        assert!(result.stdout.contains("Grüße …"), "{result:?}");
     }
 
     #[test]
