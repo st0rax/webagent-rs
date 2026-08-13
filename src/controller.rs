@@ -1232,8 +1232,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         } else {
             // Frischer Run: neuen Chat erzwingen, damit die Antworterkennung von
             // einer leeren Konversation ausgeht (baseline=0). Ohne das verfehlt die
-            // Erkennung bei Brains mit bestehender Konversation den Antwortbeginn
-            // (verifiziert: kimi/mistral liefen erst mit vorherigem new_chat).
+            // Erkennung bei Oberflächen, die bestehende Verläufe wiederherstellen,
+            // den Antwortbeginn.
             let _ = self.brain.new_chat();
 
             let memories: Vec<_> = if opts.suppress_memory_context {
