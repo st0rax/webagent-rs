@@ -51,6 +51,37 @@ pub fn shell_read_fingerprint(command: &str) -> Option<&'static str> {
     None
 }
 
+/// Erkennt klar lesende Shell-Aktionen auch dann, wenn sich Datei, Suchwort
+/// oder Offset jedes Mal ändern. Der Fingerprint-Guard allein sieht solche
+/// variierenden Explorationsschleifen nicht.
+pub fn is_shell_read_action(command: &str) -> bool {
+    let c = command.trim().to_ascii_lowercase();
+    [
+        "get-content",
+        "select-string",
+        "get-childitem",
+        "rg ",
+        "rg.exe ",
+        "type ",
+        "grep ",
+        "sed -n",
+        "head ",
+        "tail ",
+    ]
+    .iter()
+    .any(|needle| c.starts_with(needle) || c.contains(&format!("| {needle}")))
+}
+
+pub fn read_budget_message(count: u32) -> String {
+    format!(
+        "[Controller] LESE-CHECKPOINT ({count} reine Leseaktionen seit dem letzten erfolgreichen \
+         Edit). Pruefe, ob der vorhandene Kontext bereits fuer eine Umsetzung reicht. Weitere \
+         gezielte Reads bleiben erlaubt; vermeide Wiederholungen und wechsle zu EDIT/WRITE, \
+         sobald ein belastbarer Anker vorliegt."
+    )
+}
+
+
 /// Generate warning message for repeated read patterns.
 pub fn loop_guard_message(fingerprint: &str, count: usize) -> String {
     format!(
@@ -92,4 +123,19 @@ mod tests {
         assert!(msg.contains("read:cli.py"));
         assert!(msg.contains("5x"));
     }
+
+    #[test]
+    fn variable_dateilesen_werden_als_leseaktionen_erkannt() {
+        assert!(is_shell_read_action(
+            "Get-Content src/a.rs | Select-Object -Skip 20"
+        ));
+        assert!(is_shell_read_action(
+            "Select-String -Path src/*.rs -Pattern foo"
+        ));
+        assert!(is_shell_read_action("rg -n foo src"));
+        assert!(!is_shell_read_action("cargo test --lib"));
+        assert!(!is_shell_read_action("Set-Content src/a.rs x"));
+    }
+
+
 }

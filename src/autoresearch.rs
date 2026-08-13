@@ -420,7 +420,7 @@ pub(crate) fn run_eval_with_timeout(
         .current_dir(workdir)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::piped());
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -434,9 +434,18 @@ pub(crate) fn run_eval_with_timeout(
         .stdout
         .take()
         .ok_or_else(|| "eval_cmd: stdout-Pipe fehlt".to_string())?;
-    let reader = std::thread::spawn(move || {
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "eval_cmd: stderr-Pipe fehlt".to_string())?;
+    let stdout_reader = std::thread::spawn(move || {
         let mut buf = String::new();
         let _ = stdout.read_to_string(&mut buf);
+        buf
+    });
+    let stderr_reader = std::thread::spawn(move || {
+        let mut buf = String::new();
+        let _ = stderr.read_to_string(&mut buf);
         buf
     });
 
@@ -448,20 +457,28 @@ pub(crate) fn run_eval_with_timeout(
             Ok(None) => {
                 if start.elapsed() >= limit {
                     kill_eval_tree(&mut child);
-                    let _ = reader.join();
+                    let _ = stdout_reader.join();
+                    let _ = stderr_reader.join();
                     return Err(format!("eval_cmd timeout nach {}s", limit.as_secs()));
                 }
                 std::thread::sleep(Duration::from_millis(200));
             }
             Err(e) => {
                 kill_eval_tree(&mut child);
-                let _ = reader.join();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
                 return Err(format!("eval_cmd wait fehlgeschlagen: {e}"));
             }
         }
     };
-    let stdout = reader.join().unwrap_or_default();
-    Ok((status.code(), stdout))
+    let stdout = stdout_reader.join().unwrap_or_default();
+    let stderr = stderr_reader.join().unwrap_or_default();
+    let output = match (stderr.trim().is_empty(), stdout.trim().is_empty()) {
+        (true, _) => stdout,
+        (_, true) => stderr,
+        (false, false) => format!("{stderr}\n{stdout}"),
+    };
+    Ok((status.code(), output))
 }
 
 /// Letzte nicht-leere stdout-Zeile als endliche f64 (Vertrag §7). Alles andere
@@ -925,6 +942,21 @@ mod tests {
         };
         let err = eval_metric(cmd, &dir, 60).unwrap_err();
         assert!(err.contains("exit code"), "err={err}");
+    }
+
+    #[test]
+    fn eval_output_enthaelt_stderr_und_behaelt_stdout_am_ende() {
+        let dir = unique_dir("eval-stderr");
+        let cmd = if cfg!(windows) {
+            "[Console]::Error.WriteLine('compiler error E0425'); Write-Output 42"
+        } else {
+            "echo 'compiler error E0425' >&2; echo 42"
+        };
+        let (code, output) = run_eval_with_timeout(cmd, &dir, 60).unwrap();
+        assert_eq!(code, Some(0));
+        assert!(output.contains("compiler error E0425"), "{output}");
+        assert_eq!(output.lines().last().map(str::trim), Some("42"));
+        assert_eq!(parse_metric_output(&output).unwrap(), 42.0);
     }
 
     #[test]

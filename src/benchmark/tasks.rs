@@ -30,13 +30,42 @@ pub fn build_task_prompt(winner: &str) -> String {
 /// ein Brain scheibchenweise durch die Datei und verbraucht dabei sein
 /// Zyklenbudget — siehe [`file_outline`].
 pub fn build_task_prompt_in(winner: &str, root: &Path) -> String {
+    build_task_prompt_with_context_budget(winner, root, 0)
+}
+
+/// Brain-spezifischer Bauauftrag. Nutzt die gemessene Eingabekapazitaet, um
+/// die Zieldatei moeglichst vollstaendig statt scheibchenweise mitzugeben.
+pub fn build_task_prompt_for_brain_in(winner: &str, root: &Path, brain_id: &str) -> String {
+    let accepted = crate::brain_limits::accepted_chars(brain_id).unwrap_or(40_000);
+    // Systemprompt, Aufgabe, Baum und spaetere Observations brauchen ebenfalls
+    // Platz. Die Haelfte der belegten Kapazitaet bleibt die konservative Grenze.
+    // Auch ein noch nicht vermessenes Brain bekommt kleine Zieldateien komplett.
+    // Die alte Formel ergab beim 40k-Fallback exakt 0 und degradierte abrupt auf
+    // einen Ausschnitt, obwohl der Prompt bequem noch Platz hatte.
+    let context_budget = (accepted / 2).saturating_sub(12_000).max(8_000);
+    build_task_prompt_with_context_budget(winner, root, context_budget)
+}
+
+fn build_task_prompt_with_context_budget(
+    winner: &str,
+    root: &Path,
+    context_budget: usize,
+) -> String {
+    let workspace = root
+        .canonicalize()
+        .unwrap_or_else(|_| root.to_path_buf())
+        .display()
+        .to_string();
     let basis = format!(
         "Implementiere folgenden Verbesserungsvorschlag im Rust-Projekt webagent-rs \
-         (aktuelles Verzeichnis) mit dem Rohformat (WEBAGENT/1 EDIT/WRITE). Ergänze \
+         im Workspace `{workspace}` mit dem Rohformat (WEBAGENT/1 EDIT/WRITE). \
+         Lies, aendere und teste AUSSCHLIESSLICH in diesem Workspace; verwende \
+         keinen anderen Checkout und keinen hartcodierten frueheren Repo-Pfad. Ergänze \
          Tests. `cargo test --lib` muss grün bleiben. Mache genau diese eine \
          Änderung, nichts darüber hinaus. Ändere weder Cargo.toml noch Cargo.lock, \
          füge keine Dependencies hinzu und bearbeite keine Build-/CI-Skripte.\n\nVorschlag: {winner}",
-        winner = winner.trim()
+        winner = winner.trim(),
+        workspace = workspace,
     );
     // Symbol-Pruefung: nennt der Vorschlag Bezeichner, die in der Zieldatei
     // gar nicht vorkommen, sondern woanders?
@@ -63,15 +92,58 @@ pub fn build_task_prompt_in(winner: &str, root: &Path) -> String {
         format!("{basis}\n\n{hinweis}")
     };
 
-    match target_file_of(winner).and_then(|rel| file_outline(&root.join(&rel), 120)) {
-        Some(gliederung) => format!("{basis}\n\n{gliederung}"),
-        None => basis,
+    let Some(rel) = target_file_of(winner) else {
+        return basis;
+    };
+    let path = root.join(&rel);
+    let mut teile = Vec::new();
+    if let Some(gliederung) = file_outline(&path, 120) {
+        teile.push(gliederung);
     }
+    if let Some(kontext) = full_target_context(&path, context_budget)
+        .or_else(|| relevant_target_context(&path, winner, 35))
+    {
+        teile.push(kontext);
+    }
+    if teile.is_empty() {
+        basis
+    } else {
+        format!("{basis}\n\n{}", teile.join("\n\n"))
+    }
+}
+
+fn full_target_context(path: &Path, max_chars: usize) -> Option<String> {
+    if max_chars == 0 {
+        return None;
+    }
+    let text = std::fs::read_to_string(path).ok()?;
+    if text.chars().count() > max_chars {
+        return None;
+    }
+    Some(format!(
+        "VOLLSTAENDIGE ZIELDATEI {} ({} Zeilen; bereits komplett gelesen, nicht erneut per Shell laden):\n```rust\n{}\n```",
+        path.display(),
+        text.lines().count(),
+        text
+    ))
 }
 /// Zieht die vom Plan genannte Zieldatei heraus (`Zieldatei: src/foo.rs`).
 pub fn target_file_of(text: &str) -> Option<String> {
     let re = Regex::new(r"(?i)zieldatei:\s*([A-Za-z0-9_./-]+\.rs)").ok()?;
-    re.captures(text)
+    if let Some(target) = re
+        .captures(text)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+    {
+        return Some(target);
+    }
+    // Konsensplaene formulieren oft natuerlich „implementiere ... in
+    // src/brain.rs" statt das starre Label zu wiederholen. Der erste konkrete
+    // src/-Rustpfad ist dann die Zieldatei; spaetere Aufruferlisten folgen erst
+    // in Risiken/Tests.
+    let fallback = Regex::new(r"(?i)\b(src/[A-Za-z0-9_./-]+\.rs)\b").ok()?;
+    fallback
+        .captures(text)
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().to_string())
 }
@@ -154,6 +226,17 @@ pub fn proposed_fn_name(refined: &str) -> Option<String> {
             }
         }
     }
+    // Refiner schreiben trotz verlangter exakter Signatur gelegentlich
+    // "Funktion foo_bar(...)" statt "pub fn foo_bar(...)". Der Name ist
+    // trotzdem eindeutig genug fuer Redundanz- und Scope-Pruefung.
+    let re = Regex::new(r"(?i)\bfunktion\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(").ok()?;
+    if let Some(name) = re
+        .captures(refined)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+    {
+        return Some(name);
+    }
     None
 }
 
@@ -186,6 +269,19 @@ pub fn task_targets_missing_file(refined: &str, src_files: &[String]) -> bool {
     !src_files
         .iter()
         .any(|f| f.strip_prefix("src/") == Some(rel))
+}
+
+/// Eine existierende Zieldatei reicht nicht: nennt der Plan ein bereits
+/// vorhandenes Symbol, das nachweislich in einer anderen Datei steht, wuerde
+/// das Brain am falschen Ort arbeiten.
+pub fn task_is_misdirected(refined: &str, root: &Path) -> bool {
+    let target = target_file_of(refined).unwrap_or_default();
+    crate::target_check::pruefe(
+        &target,
+        refined,
+        &crate::target_check::quelldateien(root),
+    )
+    .irrefuehrend()
 }
 
 /// Platz-1-Vorschlag eines Self-Research-Reports (die Benchmark-Aufgabe), oder
@@ -239,7 +335,6 @@ pub fn assign_tasks(brains: &[String], ranked: &[String], round: usize) -> Vec<(
         .collect()
 }
 
-
 /// Kompakte Gliederung einer Rust-Datei: Signaturen mit Zeilennummern.
 ///
 /// Warum das in den Aufgabentext gehoert, statt die Brains die Datei lesen zu
@@ -292,6 +387,52 @@ pub fn file_outline(path: &Path, max_entries: usize) -> Option<String> {
     ))
 }
 
+/// Liefert den wahrscheinlich relevanten Quelltext bereits im Bauauftrag mit.
+/// Vorhandene, im Vorschlag genannte Symbole schlagen allgemeine Einfuegepunkte;
+/// fuer eine rein neue API dient der Beginn des Testmoduls als stabiler Anker.
+pub fn relevant_target_context(path: &Path, task: &str, radius: usize) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.is_empty() {
+        return None;
+    }
+    let identifiers: Vec<&str> = task
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .filter(|word| word.len() >= 3)
+        .collect();
+    let signature = |line: &&str| {
+        let t = line.trim_start();
+        t.starts_with("pub fn ")
+            || t.starts_with("fn ")
+            || t.starts_with("pub struct ")
+            || t.starts_with("pub enum ")
+            || t.starts_with("pub trait ")
+            || t.starts_with("impl ")
+    };
+    let center = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| signature(line))
+        .filter_map(|(idx, line)| {
+            let score = identifiers.iter().filter(|word| line.contains(**word)).count();
+            (score > 0).then_some((score, idx))
+        })
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, idx)| idx)
+        .or_else(|| lines.iter().position(|line| line.trim() == "#[cfg(test)]"))
+        .unwrap_or(0);
+    let start = center.saturating_sub(radius);
+    let end = (center + radius + 1).min(lines.len());
+    Some(format!(
+        "RELEVANTER ZIELKONTEXT aus {} (Zeilen {}-{}):\n```rust\n{}\n```\n\
+         Nutze diesen Kontext als Ausgangspunkt. Lies bei Bedarf weitere relevante Stellen; \
+         vermeide lediglich wiederholtes Lesen bereits gelieferter Bereiche.",
+        path.display(),
+        start + 1,
+        end,
+        lines[start..end].join("\n")
+    ))
+}
 
 /// Verdichtet echte, interne Gate-Befunde zu einem begrenzten Reparaturfokus
 /// für die Folgerunde. Provider-/Login-Blockaden gelangen nicht hierher.
@@ -330,8 +471,11 @@ mod tests_symbol_hinweis {
         let _ = std::fs::remove_dir_all(&w);
         std::fs::create_dir_all(w.join("src").join("benchmark")).expect("anlegbar");
         std::fs::write(w.join("src/benchmark/mod.rs"), "pub fn run() {}\n").expect("schreibbar");
-        std::fs::write(w.join("src/tui_state.rs"), "pub fn bench_collapse_all() {}\n")
-            .expect("schreibbar");
+        std::fs::write(
+            w.join("src/tui_state.rs"),
+            "pub fn bench_collapse_all() {}\n",
+        )
+        .expect("schreibbar");
         w
     }
 
@@ -350,6 +494,71 @@ mod tests_symbol_hinweis {
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 
+    #[test]
+    fn prompt_liefert_relevanten_code_statt_nur_leseanweisung() {
+        let wurzel = welt("zielkontext");
+        std::fs::write(
+            wurzel.join("src/tui_state.rs"),
+            "fn weit_weg() {}\n\nfn bench_collapse_all() {\n    collapse();\n}\n\n#[cfg(test)]\nmod tests {}\n",
+        )
+        .unwrap();
+        let winner = "Zieldatei: src/tui_state.rs. Erweitere `bench_collapse_all`.";
+
+        let prompt = build_task_prompt_in(winner, &wurzel);
+
+        assert!(prompt.contains("RELEVANTER ZIELKONTEXT"), "{prompt}");
+        assert!(prompt.contains("fn bench_collapse_all()"), "{prompt}");
+        assert!(prompt.contains("Lies bei Bedarf"), "{prompt}");
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    #[test]
+    fn neuer_funktionsname_nutzt_testmodul_als_einfuegeanker() {
+        let wurzel = welt("neue_api");
+        std::fs::write(
+            wurzel.join("src/tui_state.rs"),
+            "fn vorhanden() {}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn alt() {}\n}\n",
+        )
+        .unwrap();
+        let winner = "Zieldatei: src/tui_state.rs. Neue Funktion `ganz_neu` ergaenzen.";
+
+        let prompt = build_task_prompt_in(winner, &wurzel);
+
+        assert!(prompt.contains("#[cfg(test)]"), "{prompt}");
+        assert!(prompt.contains("fn alt()"), "{prompt}");
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    #[test]
+    fn vorhandenes_symbol_in_anderer_datei_verwirft_plan() {
+        let wurzel = welt("fehlgeleitet");
+        let plan = "Zieldatei: src/benchmark/mod.rs. Aendere `bench_collapse_all`.";
+        assert!(task_is_misdirected(plan, &wurzel));
+        assert!(!task_is_misdirected(
+            "Zieldatei: src/tui_state.rs. Aendere `bench_collapse_all`.",
+            &wurzel
+        ));
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    #[test]
+    fn brain_budget_liefert_kleine_zieldatei_vollstaendig() {
+        let wurzel = welt("vollstaendig");
+        let plan = "Zieldatei: src/tui_state.rs. Neue Funktion `ganz_neu` ergaenzen.";
+        let prompt = build_task_prompt_with_context_budget(plan, &wurzel, 10_000);
+        assert!(prompt.contains("VOLLSTAENDIGE ZIELDATEI"), "{prompt}");
+        assert!(prompt.contains("pub fn bench_collapse_all()"), "{prompt}");
+        assert!(prompt.contains("nicht erneut per Shell laden"), "{prompt}");
+    }
+
+    #[test]
+    fn natuerliche_in_datei_formulierung_erkennt_zieldatei() {
+        assert_eq!(
+            target_file_of("Implementiere pub fn reset() in src/brain.rs. Aufrufer spaeter in src/repl/mod.rs."),
+            Some("src/brain.rs".to_string())
+        );
+    }
+
     /// Eine saubere Aufgabe bekommt keinen Hinweis — sonst rauscht der Prompt
     /// zu und das Brain misstraut jeder Angabe.
     #[test]
@@ -362,6 +571,17 @@ mod tests_symbol_hinweis {
             !prompt.contains("HINWEIS ZUR AUFGABE"),
             "kein Hinweis noetig:\n{prompt}"
         );
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    #[test]
+    fn prompt_orientiert_auch_ohne_explizite_zieldatei() {
+        let wurzel = welt("ohne_ziel");
+        let winner = "Fehlerbehandlung bei `bench_collapse_all` fuer leere Panel-Liste ergaenzen.";
+        let prompt = build_task_prompt_in(winner, &wurzel);
+        assert!(prompt.contains("HINWEIS ZUR AUFGABE"), "{prompt}");
+        assert!(prompt.contains("src/tui_state.rs"), "{prompt}");
+        assert!(prompt.contains("keine Zieldatei genannt"), "{prompt}");
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 }

@@ -5,7 +5,6 @@ use std::sync::OnceLock;
 
 use super::types::{Action, ActionType, ParseResult, PROTOCOL_VERSION};
 
-
 fn json_block_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"```(?:json)?\s*(\{.*\})\s*```").unwrap())
@@ -82,6 +81,18 @@ pub fn edit_envelope_regex() -> &'static Regex {
     })
 }
 
+/// Rohformat fuer eine abschliessende Nutzerantwort. Anders als Edit/Write
+/// braucht Message keinen Endmarker: alles nach `text:` gehoert zur Antwort.
+pub fn message_envelope_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?s)\AWEBAGENT/1 MESSAGE\r?\nid:\s*([A-Za-z0-9][A-Za-z0-9._-]{0,127})\r?\ntext:\s*([\s\S]+?)\s*\z",
+        )
+        .unwrap()
+    })
+}
+
 fn strip_leading_prose(text: &str) -> &str {
     let lines: Vec<&str> = text.lines().collect();
     let mut index = 0;
@@ -142,7 +153,12 @@ fn extract_first_protocol_json(text: &str) -> Option<String> {
 /// Der Block muss weiterhin bis zum Ende der Nachricht reichen; nur der Vorspann
 /// darf weg. Damit bleibt das Format streng, ohne an Geschwätz zu scheitern.
 fn trim_to_raw_marker(text: &str) -> &str {
-    const MARKERS: [&str; 3] = ["WEBAGENT/1 SHELL", "WEBAGENT/1 WRITE", "WEBAGENT/1 EDIT"];
+    const MARKERS: [&str; 4] = [
+        "WEBAGENT/1 SHELL",
+        "WEBAGENT/1 WRITE",
+        "WEBAGENT/1 EDIT",
+        "WEBAGENT/1 MESSAGE",
+    ];
     let mut best: Option<usize> = None;
     for (offset, line) in line_offsets(text) {
         let t = line.trim_start();
@@ -602,6 +618,17 @@ pub fn parse(response_text: &str) -> ParseResult {
         a.path = path;
         a.old_string = old_string;
         a.new_string = new_string;
+        return ParseResult::valid(vec![a], text);
+    }
+
+    // WEBAGENT/1 MESSAGE Rohformat fuer robuste Abschlussantworten.
+    if let Some(caps) = message_envelope_regex().captures(&text) {
+        let message = caps[2].trim().to_string();
+        if message.is_empty() {
+            return ParseResult::invalid("message: text darf nicht leer sein", text);
+        }
+        let mut a = Action::base(caps[1].to_string(), ActionType::Message);
+        a.text = message;
         return ParseResult::valid(vec![a], text);
     }
 

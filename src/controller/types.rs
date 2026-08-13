@@ -12,4 +12,7 @@ pub struct BrainTurn {
 pub struct RunOptions {
     pub skip_brain_start: bool,
     pub skip_brain_stop: bool,
+    /// Fuer objektive Coding-Benchmarks: keine alten Run-Episoden/Wiki-Seiten
+    /// in die neue Aufgabe mischen. Verhindert Datenleck und stale Pfade.
+    pub suppress_memory_context: bool,
 }

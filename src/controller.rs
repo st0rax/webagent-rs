@@ -8,7 +8,9 @@ use std::env;
 use crate::brain::BrainBackend;
 use crate::comms::CommsStore;
 use crate::executor::ShellExecutor;
-use crate::loop_guard::{loop_guard_message, shell_read_fingerprint};
+use crate::loop_guard::{
+    is_shell_read_action, loop_guard_message, read_budget_message, shell_read_fingerprint,
+};
 use crate::memory::MemoryStore;
 use crate::prompts::autonomous_task_prompt;
 use crate::protocol::{self, Action};
@@ -20,9 +22,9 @@ mod resume;
 mod types;
 
 pub use plan::validate_action_plan;
-pub use types::{BrainTurn, RunOptions};
 #[cfg(test)]
 pub(crate) use resume::{incomplete_retry_backoff, is_valid_resume_conversation_ref};
+pub use types::{BrainTurn, RunOptions};
 
 // Konfigurationskonstanten (aus CONVENTIONS.md: keine externe config-Crate)
 use crate::config::{max_observation_chars_for, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT};
@@ -40,6 +42,9 @@ const MAX_NO_CHANGE_NUDGES: u32 = 2;
 /// Repair-Prompt („antworte im richtigen Format") kann nichts reparieren,
 /// was nie begonnen wurde, und kostet 10-35 s Roundtrip.
 const FAST_EMPTY_RESPONSE_CHARS: usize = 20;
+/// Nach so vielen reinen Leseaktionen ohne erfolgreichen Datei-Write wird das
+/// Brain aus variierender Exploration in die Umsetzung geschoben.
+const READ_BUDGET_ACTIONS: u32 = 5;
 
 /// AgentController orchestriert Brain + Executor im Plan/Act/Observe-Loop.
 pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
@@ -69,6 +74,8 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// Anker (`old_string nicht gefunden`) — und es meldet trotzdem „fertig"
     /// samt erfundenem Testergebnis. Real 2026-07-24, vier Laeufe in Folge.
     file_writes_ok: u32,
+    shell_reads_since_write: u32,
+    read_budget_warned: bool,
     /// Wie oft schon wegen „fertig ohne Edit" nachgehakt wurde (Deckel gegen
     /// Endlos-Nachhaken bei einem Brain, das partout nicht editiert).
     no_change_nudges: u32,
@@ -90,6 +97,9 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// Zeilen die sich selbst aktualisierende Timer-Zeile zerschiessen; der
     /// Inhalt steckt dann stattdessen IN der Timer-Zeile.
     quiet: bool,
+    /// Expliziter Workspace fuer native Edit/Write-Actions. Ohne Override
+    /// bleibt das historische Verhalten (naechster Git-Root ab Prozess-CWD).
+    workspace_root: Option<std::path::PathBuf>,
 }
 
 impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
@@ -156,12 +166,21 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             act_steps: 0,
             file_actions_tried: 0,
             file_writes_ok: 0,
+            shell_reads_since_write: 0,
+            read_budget_warned: false,
             no_change_nudges: 0,
             wall_secs_override: None,
             wall_deadline_at: None,
             progress: None,
             quiet: false,
+            workspace_root: None,
         }
+    }
+
+    /// Bindet native Datei-Aktionen an denselben Workspace, den der Aufrufer
+    /// fuer Git-Messung, Build und Tests verwendet.
+    pub fn set_workspace_root(&mut self, root: impl Into<std::path::PathBuf>) {
+        self.workspace_root = Some(root.into());
     }
 
     /// Setzt die Wall-Deadline dieses Runs (Sekunden) und uebersteuert damit
@@ -583,6 +602,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         "shell: {}",
                         crate::char_prefix(&action.command, 70)
                     ));
+                    let is_read = is_shell_read_action(&action.command);
                     let result = match crate::shell_policy::evaluate(&action.command) {
                         crate::shell_policy::Decision::Deny(reason) => {
                             crate::executor::ExecutionResult {
@@ -615,6 +635,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     self.record_completed_action(&action.id, &observation);
                     self.track_observation_bytes(&observation);
                     self.act_steps += 1;
+
+                    if is_read {
+                        self.shell_reads_since_write += 1;
+                        if self.shell_reads_since_write >= READ_BUDGET_ACTIONS
+                            && !self.read_budget_warned
+                        {
+                            observations.push(read_budget_message(self.shell_reads_since_write));
+                            self.read_budget_warned = true;
+                        }
+                    }
 
                     // Loop-Guard
                     if let Some(meta) = &mut self.meta {
@@ -660,19 +690,31 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     let is_edit = action.action_type == protocol::ActionType::Edit;
                     let kind = if is_edit { "edit" } else { "write" };
                     self.report_step(&format!("{kind}: {}", action.path));
-                    let result = if is_edit {
-                        crate::file_actions::apply_edit(
+                    let result = match (&self.workspace_root, is_edit) {
+                        (Some(root), true) => crate::file_actions::apply_edit_in(
+                            root,
                             &action.path,
                             &action.old_string,
                             &action.new_string,
-                        )
-                    } else {
-                        crate::file_actions::apply_write(&action.path, &action.content)
+                        ),
+                        (Some(root), false) => {
+                            crate::file_actions::apply_write_in(root, &action.path, &action.content)
+                        }
+                        (None, true) => crate::file_actions::apply_edit(
+                            &action.path,
+                            &action.old_string,
+                            &action.new_string,
+                        ),
+                        (None, false) => {
+                            crate::file_actions::apply_write(&action.path, &action.content)
+                        }
                     };
                     self.file_actions_tried += 1;
                     let (stdout, stderr, exit_code) = match result {
                         Ok(msg) => {
                             self.file_writes_ok += 1;
+                            self.shell_reads_since_write = 0;
+                            self.read_budget_warned = false;
                             (msg, String::new(), Some(0))
                         }
                         Err(msg) => (String::new(), msg, Some(1)),
@@ -791,7 +833,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             }
 
             debug_assert!(protocol::should_attempt_protocol_repair(failures));
-            let turn = self.run_once(&protocol::format_protocol_error(&detail), Some(transcript));
+            let turn = self.run_once(
+                &protocol::format_protocol_error_for(&detail, response_text),
+                Some(transcript),
+            );
             if !turn.complete {
                 return (String::new(), false);
             }
@@ -871,6 +916,8 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         self.act_steps = 0;
         self.file_actions_tried = 0;
         self.file_writes_ok = 0;
+        self.shell_reads_since_write = 0;
+        self.read_budget_warned = false;
         self.no_change_nudges = 0;
 
         let (mut meta, mut transcript, task) = if let Some(rid) = resume_id {
@@ -1013,22 +1060,25 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             // (verifiziert: kimi/mistral liefen erst mit vorherigem new_chat).
             let _ = self.brain.new_chat();
 
-            let memories: Vec<_> = self
-                .memory
-                .search(&task, &["shared", brain_id], MEMORY_CONTEXT_LIMIT)
-                .unwrap_or_default()
-                .into_iter()
-                // Alte Episoden können vollständige, normale Chat-Antworten
-                // enthalten. Eine darin dokumentierte Protokollverweigerung
-                // ist weder Wissen noch nützlicher Kontext, sondern erzeugt
-                // bei Web-Chats besonders leicht eine Verweigerungsschleife.
-                .filter(|episode| {
-                    let text = episode.content.to_ascii_lowercase();
-                    !text.contains("keinen tatsächlichen zugriff")
-                        && !text.contains("keine technische kopplung")
-                        && !text.contains("keinen zugriff auf dein lokales")
-                })
-                .collect();
+            let memories: Vec<_> = if opts.suppress_memory_context {
+                Vec::new()
+            } else {
+                self.memory
+                    .search(&task, &["shared", brain_id], MEMORY_CONTEXT_LIMIT)
+                    .unwrap_or_default()
+            }
+            .into_iter()
+            // Alte Episoden können vollständige, normale Chat-Antworten
+            // enthalten. Eine darin dokumentierte Protokollverweigerung
+            // ist weder Wissen noch nützlicher Kontext, sondern erzeugt
+            // bei Web-Chats besonders leicht eine Verweigerungsschleife.
+            .filter(|episode| {
+                let text = episode.content.to_ascii_lowercase();
+                !text.contains("keinen tatsächlichen zugriff")
+                    && !text.contains("keine technische kopplung")
+                    && !text.contains("keinen zugriff auf dein lokales")
+            })
+            .collect();
             let mut memory_context: String = memories
                 .iter()
                 .map(|e| format!("- [memory:{} {}] {}", e.id, e.kind, e.content))
@@ -1038,7 +1088,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             // Wiki-Index als Langzeitwissen anhängen. Fehler (z.B. Verzeichnis
             // nicht anlegbar) liefern einen leeren Block — sie dürfen den Run
             // NIEMALS blockieren.
-            let wiki_block = self.wiki.context_block(1500).unwrap_or_default();
+            let wiki_block = if opts.suppress_memory_context {
+                String::new()
+            } else {
+                self.wiki.context_block(1500).unwrap_or_default()
+            };
             if !wiki_block.trim().is_empty() {
                 if !memory_context.is_empty() {
                     memory_context.push_str("\n\n");
@@ -1060,7 +1114,10 @@ per edit/write-Action pflegbar):\n",
             // Repo-Kontext (Phase 2): begrenzter Dateibaum des Arbeitsverzeichnisses,
             // damit das Brain nicht jede Struktur-Frage per Shell-Roundtrip klärt.
             let mut prompt = autonomous_task_prompt(&task, &memory_context);
-            let tree = crate::file_actions::worktree_context(120);
+            let tree = match &self.workspace_root {
+                Some(root) => crate::file_actions::worktree_context_in(root, 120),
+                None => crate::file_actions::worktree_context(120),
+            };
             if !tree.is_empty() {
                 prompt.push_str("\n\n");
                 prompt.push_str(&tree);
@@ -1105,7 +1162,15 @@ per edit/write-Action pflegbar):\n",
         let mut last_heartbeat = loop_started;
         let heartbeat_interval = Duration::from_secs_f64(CONTROLLER_HEARTBEAT_INTERVAL_SECONDS);
 
-        while !finished && (cycle as usize) < self.max_cycles {
+        while !finished
+            && (cycle as usize)
+                < self.max_cycles
+                    + if self.file_writes_ok > 0 {
+                        self.max_cycles
+                    } else {
+                        0
+                    }
+        {
             // Wall-Clock-Deadline am Schleifenkopf: greift auch, wenn interne
             // Wait/Recover-Zweige lange klemmen (kein Panic, sauberes finish).
             if wall_started.elapsed() >= wall_deadline {
@@ -1186,8 +1251,11 @@ per edit/write-Action pflegbar):\n",
                     response_text = new_response;
                     finished = new_finished;
                     if response_text == "brain_unavailable" {
-                        let final_meta = self
-                            .finish_brain_unavailable(&mut meta, &mut transcript, &response_text);
+                        let final_meta = self.finish_brain_unavailable(
+                            &mut meta,
+                            &mut transcript,
+                            &response_text,
+                        );
                         self.finish_run_cleanup(opts);
                         return Ok(final_meta);
                     }
@@ -1538,6 +1606,20 @@ mod tests {
         .to_string()
     }
 
+    fn successful_edit_response(action_id: &str, path: &str, old: &str, new: &str) -> String {
+        serde_json::json!({
+            "protocol": "webagent/1",
+            "actions": [{
+                "id": action_id,
+                "type": "edit",
+                "path": path,
+                "old_string": old,
+                "new_string": new
+            }]
+        })
+        .to_string()
+    }
+
     fn shell_response(action_id: &str, command: &str) -> String {
         serde_json::json!({
             "protocol": "webagent/1",
@@ -1597,6 +1679,32 @@ mod tests {
             std::fs::read_to_string(&ziel).unwrap(),
             "unveraenderter inhalt\n"
         );
+    }
+
+    #[test]
+    fn expliziter_workspace_bindet_relative_edit_action() {
+        let data_dir = unique_data_dir();
+        let workspace = unique_data_dir().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("ziel.txt"), "vorher\n").unwrap();
+        let edit = successful_edit_response("e-1", "ziel.txt", "vorher", "nachher");
+        let brain =
+            MockBrain::new().with_responses(vec![&edit, &finish_response()], vec![true, true]);
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
+        controller.set_workspace_root(workspace.clone());
+
+        let meta = controller
+            .run("Aendere die relative Datei", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "done");
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("ziel.txt")).unwrap(),
+            "nachher\n"
+        );
+        let _ = std::fs::remove_dir_all(data_dir);
+        let _ = std::fs::remove_dir_all(workspace);
     }
 
     /// Der Anstoss darf nicht endlos nachhaken — sonst haengt ein Brain, das
@@ -1689,6 +1797,75 @@ mod tests {
     }
 
     #[test]
+    fn benchmark_option_unterdrueckt_alte_episoden_im_prompt() {
+        let data_dir = unique_data_dir();
+        let memory = MemoryStore::new(data_dir.join("memory.jsonl"));
+        memory
+            .add(
+                "ALTER_AUSFUEHRBARER_PLAN brain.rs C:/falscher/checkout",
+                "shared",
+                "episode",
+                Some("test:stale"),
+                1.0,
+            )
+            .unwrap();
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let messages = brain.messages.clone();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
+
+        controller
+            .run_with_options(
+                "Aendere brain.rs",
+                "mock",
+                None,
+                false,
+                RunOptions {
+                    suppress_memory_context: true,
+                    ..RunOptions::default()
+                },
+            )
+            .unwrap();
+
+        let sent = messages.borrow().join("\n");
+        assert!(!sent.contains("ALTER_AUSFUEHRBARER_PLAN"), "{sent}");
+        assert!(sent.contains("Aendere brain.rs"), "aktuelle Aufgabe fehlt");
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn expliziter_workspace_bindet_auch_prompt_dateibaum() {
+        let data_dir = unique_data_dir();
+        let workspace = unique_data_dir().join("benchmark-workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("NUR_IM_BENCHMARK.txt"), "test\n").unwrap();
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let messages = brain.messages.clone();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
+        controller.set_workspace_root(workspace.clone());
+
+        controller
+            .run_with_options(
+                "Arbeite im gebundenen Workspace",
+                "mock",
+                None,
+                false,
+                RunOptions {
+                    suppress_memory_context: true,
+                    ..RunOptions::default()
+                },
+            )
+            .unwrap();
+
+        let sent = messages.borrow().join("\n");
+        assert!(sent.contains("NUR_IM_BENCHMARK.txt"), "{sent}");
+        assert!(sent.contains(&workspace.display().to_string()), "{sent}");
+        let _ = std::fs::remove_dir_all(data_dir);
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
     fn test_done_without_actions_is_flagged_suspect() {
         // Pfad c (gemini 2026-07-20): sofortiges finish ohne einen Act-Step →
         // done bleibt done, aber act_steps=0 + suspect_no_actions=true.
@@ -1725,6 +1902,54 @@ mod tests {
     }
 
     #[test]
+    fn variierende_leseschleife_bekommt_umsetzungs_nudge() {
+        let reads: Vec<String> = (1..=5)
+            .map(|n| shell_response(&format!("read-{n}"), &format!("Get-Content src/x{n}.rs")))
+            .collect();
+        let refs: Vec<&str> = reads.iter().map(String::as_str).collect();
+        let brain = MockBrain::new().with_responses(refs, vec![true; 5]);
+        let messages = brain.messages.clone();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, unique_data_dir());
+
+        let meta = controller
+            .run("Implementiere eine Aenderung", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "max_cycles");
+        let sent = messages.borrow();
+        assert!(
+            sent.iter()
+                .any(|m| m.contains("LESE-CHECKPOINT") && m.contains("Weitere gezielte Reads")),
+            "Umsetzungs-Nudge fehlt: {sent:?}"
+        );
+    }
+
+    #[test]
+    fn erfolgreicher_write_erweitert_statt_kappt_das_zyklenbudget() {
+        let workspace = unique_data_dir().join("progress-workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("ziel.txt"), "vorher\n").unwrap();
+        let edit = successful_edit_response("edit-progress", "ziel.txt", "vorher", "nachher");
+        let shell = shell_response("test-progress", "Write-Output test-ok");
+        let brain = MockBrain::new().with_responses(
+            vec![&edit, &shell, &finish_response()],
+            vec![true, true, true],
+        );
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 2, unique_data_dir());
+        controller.set_workspace_root(workspace.clone());
+
+        let meta = controller
+            .run("Editiere, teste und beende", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "done", "Fortschritt muss Zusatzzyklen erhalten");
+        assert_eq!(meta.cycles, 3);
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
     fn test_duplicate_action_id_not_reexecuted() {
         let brain = MockBrain::new().with_responses(
             vec![
@@ -1752,7 +1977,10 @@ mod tests {
         // #11 brain_unavailable — der Repair-Pfad wird mit einer LAENGEREN
         // fehlgeformten Antwort geprueft, die die Nutzlast begonnen hat.
         let brain = MockBrain::new().with_responses(
-            vec!["das hier ist leider kein gueltiges json format", &finish_response()],
+            vec![
+                "das hier ist leider kein gueltiges json format",
+                &finish_response(),
+            ],
             vec![true, true],
         );
         let executor = MockExecutor::new();
@@ -2042,8 +2270,7 @@ mod tests {
     fn fast_leere_antwort_ohne_protokoll_marker_ist_brain_unavailable() {
         // #11: chatgpt brain_incomplete-Fall — kurzer Text ohne `{`/WEBAGENT/1.
         // Vorher protocol_invalid + teurer Repair-Roundtrip; jetzt brain_unavailable.
-        let brain =
-            MockBrain::new().with_responses(vec!["Hmm, weiß nicht."], vec![true]);
+        let brain = MockBrain::new().with_responses(vec!["Hmm, weiß nicht."], vec![true]);
         let executor = MockExecutor::new();
         let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
         let meta = controller.run("Antworte", "mock", None, false).unwrap();
@@ -2068,9 +2295,7 @@ mod tests {
         let executor = MockExecutor::new();
         let messages = brain.messages.clone();
         let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
-        let meta = controller
-            .run("Repariere", "mock", None, false)
-            .unwrap();
+        let meta = controller.run("Repariere", "mock", None, false).unwrap();
 
         assert_eq!(meta.status, "done");
         let sent = messages.borrow();
@@ -2087,10 +2312,8 @@ mod tests {
     fn kurze_antwort_mit_klammer_geht_in_repair() {
         // `{` ist ebenfalls Protokoll-Nutzlast (JSON-Versuch) — selbst "{}"
         // ist reparaturwuerdig statt brain_unavailable.
-        let brain = MockBrain::new().with_responses(
-            vec!["{}", &finish_response()],
-            vec![true, true],
-        );
+        let brain =
+            MockBrain::new().with_responses(vec!["{}", &finish_response()], vec![true, true]);
         let executor = MockExecutor::new();
         let mut controller = AgentController::with_data_dir(brain, executor, 10, unique_data_dir());
         let meta = controller.run("Repariere", "mock", None, false).unwrap();

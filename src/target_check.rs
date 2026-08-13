@@ -27,7 +27,15 @@ pub enum Befund {
     /// Symbol steht in der genannten Datei — alles in Ordnung.
     Passt,
     /// Symbol existiert, aber in anderen Dateien. Die Aufgabe zeigt falsch.
-    AndereDatei { symbol: String, gefunden_in: Vec<String> },
+    AndereDatei {
+        symbol: String,
+        gefunden_in: Vec<String>,
+    },
+    /// Ohne genannte Zieldatei: bekannte Fundstellen als Orientierung.
+    Gefunden {
+        symbol: String,
+        gefunden_in: Vec<String>,
+    },
     /// Symbol kommt nirgends vor. Kein Fehler: vermutlich neu anzulegen.
     Unbekannt { symbol: String },
 }
@@ -66,16 +74,24 @@ impl Pruefung {
             ));
         }
         for b in &self.befunde {
-            if let Befund::AndereDatei {
-                symbol,
-                gefunden_in,
-            } = b
-            {
-                zeilen.push(format!(
+            match b {
+                Befund::AndereDatei {
+                    symbol,
+                    gefunden_in,
+                } => zeilen.push(format!(
                     "`{symbol}` steht nicht in der genannten Datei, sondern in: {}. \
                      Suche dort, nicht in der Zieldatei.",
                     gefunden_in.join(", ")
-                ));
+                )),
+                Befund::Gefunden {
+                    symbol,
+                    gefunden_in,
+                } => zeilen.push(format!(
+                    "Fuer `{symbol}` wurde keine Zieldatei genannt. Das Symbol steht in: {}. \
+                     Beginne die Aenderung dort.",
+                    gefunden_in.join(", ")
+                )),
+                Befund::Passt | Befund::Unbekannt { .. } => {}
             }
         }
         if zeilen.is_empty() {
@@ -158,8 +174,9 @@ pub fn symbole(text: &str) -> Vec<String> {
 pub fn pruefe(zieldatei: &str, aufgabe: &str, dateien: &BTreeMap<String, String>) -> Pruefung {
     let mut p = Pruefung::default();
 
-    let ziel_inhalt = dateien.get(zieldatei);
-    if ziel_inhalt.is_none() {
+    let hat_ziel = !zieldatei.trim().is_empty();
+    let ziel_inhalt = hat_ziel.then(|| dateien.get(zieldatei)).flatten();
+    if hat_ziel && ziel_inhalt.is_none() {
         p.zieldatei_fehlt = Some(zieldatei.to_string());
     }
 
@@ -170,14 +187,21 @@ pub fn pruefe(zieldatei: &str, aufgabe: &str, dateien: &BTreeMap<String, String>
         }
         let anderswo: Vec<String> = dateien
             .iter()
-            .filter(|(pfad, inhalt)| pfad.as_str() != zieldatei && inhalt.contains(&sym))
+            .filter(|(pfad, inhalt)| {
+                (!hat_ziel || pfad.as_str() != zieldatei) && inhalt.contains(&sym)
+            })
             .map(|(pfad, _)| pfad.clone())
             .take(3)
             .collect();
         if anderswo.is_empty() {
             p.befunde.push(Befund::Unbekannt { symbol: sym });
-        } else {
+        } else if hat_ziel {
             p.befunde.push(Befund::AndereDatei {
+                symbol: sym,
+                gefunden_in: anderswo,
+            });
+        } else {
+            p.befunde.push(Befund::Gefunden {
                 symbol: sym,
                 gefunden_in: anderswo,
             });
@@ -288,10 +312,26 @@ mod tests {
     }
 
     #[test]
+    fn fehlende_zieldatei_liefert_symbol_fundstelle_statt_leerpfad_warnung() {
+        let p = pruefe(
+            "",
+            "Fehlerbehandlung bei `bench_collapse_all` ergaenzen",
+            &welt(),
+        );
+        assert_eq!(p.zieldatei_fehlt, None);
+        assert!(p.hinweis().contains("src/tui_state.rs"), "{}", p.hinweis());
+        assert!(p.hinweis().contains("keine Zieldatei genannt"));
+        assert!(!p.hinweis().contains("`` existiert nicht"));
+    }
+
+    #[test]
     fn symbole_erkennt_backticks_typen_und_snake_case() {
         let s = symbole("Bei `bench_collapse_all` fehlt in BenchmarkUi die Behandlung, siehe crate::tui_state::fold_bench_events.");
         assert!(s.contains(&"bench_collapse_all".to_string()));
-        assert!(s.contains(&"BenchmarkUi".to_string()), "Typen zaehlen: {s:?}");
+        assert!(
+            s.contains(&"BenchmarkUi".to_string()),
+            "Typen zaehlen: {s:?}"
+        );
         assert!(
             s.contains(&"fold_bench_events".to_string()),
             "Pfad wird auf den letzten Teil gekuerzt: {s:?}"

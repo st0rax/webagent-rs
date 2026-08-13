@@ -10,11 +10,18 @@ use std::time::Instant;
 
 use crate::code_score::CodeEvent;
 
-use super::git::{build_no_change_prompt, build_repair_prompt, capture_patch, reset_repo, run_eval_detail, tree_changed};
-use super::harvest::{harvest_commit, scope_compensation_count, validate_task_scope};
+use super::git::{
+    build_no_change_prompt, build_repair_prompt, capture_patch, reset_repo, run_eval_detail,
+    tree_changed,
+};
 use super::handoff::HandoffQueue;
+use super::harvest::{harvest_commit, scope_compensation_count, validate_task_scope};
 use super::report::{format_benchmark_report, print_leaderboard};
-use super::tasks::{assign_tasks, build_refine_prompt, build_task_prompt, parse_test_count, proposed_fn_name, ranked_from_report, repair_focus_from_failures, target_file_of, task_id, task_is_redundant, task_targets_missing_file, usable_refinement};
+use super::tasks::{
+    assign_tasks, build_refine_prompt, parse_test_count, proposed_fn_name,
+    ranked_from_report, repair_focus_from_failures, target_file_of, task_id, task_is_redundant,
+    task_is_misdirected, task_targets_missing_file, usable_refinement,
+};
 use super::types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
 use super::{
     count_build_errors, is_availability_outage, is_external_block, is_improvement,
@@ -45,10 +52,11 @@ pub(crate) use bench_say;
 /// Brain-Zyklus (Erkunden + Edit + cargo build + cargo test) zu.
 #[cfg_attr(not(feature = "webview"), allow(dead_code))]
 const BENCH_WALL_SECS: u64 = 900;
-/// Controller-Zyklen je Brain-Run: klein, damit das Brain fokussiert am Sieger
-/// baut statt an einer offenen Aufgabe.
+/// Grosszuegiger Circuit-Breaker je Brain-Run. Die eigentliche Zeitgrenze ist
+/// die Wall-Deadline; unterschiedliche sinnvolle Arbeitszyklen sollen nicht an
+/// einer starren 15-Turn-Choreografie scheitern.
 #[cfg_attr(not(feature = "webview"), allow(dead_code))]
-const BENCH_MAX_CYCLES: usize = 15;
+const BENCH_MAX_CYCLES: usize = 40;
 
 /// Größe der gerankten Top-Liste in Phase A (nur Platz 1 wird zur Aufgabe).
 const VOTE_TOP_K: usize = 10;
@@ -65,34 +73,45 @@ const MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS: usize = 2;
 const OUTAGE_COOLDOWN_SECS: u64 = 300;
 
 /// Ein Brain baut die Aufgabe über den normalen Controller-Pfad (mit Wall-Timeout
-/// und kleinem `max_cycles`). Liefert `(status, cycles)`.
+/// und grosszuegigem Cycle-Circuit-Breaker). Liefert `(status, cycles)`.
 #[cfg(feature = "webview")]
 fn bench_run(
     brain_id: &str,
     task: &str,
+    workdir: &std::path::Path,
     headless: bool,
     note: Option<crate::StageNote>,
     verbose: bool,
 ) -> Result<(String, u32), String> {
     use crate::browser::WebBrainBackend;
-    use crate::controller::AgentController;
+    use crate::controller::{AgentController, RunOptions};
     use crate::executor::PlatformShellExecutor;
 
     let backend = WebBrainBackend::from_config(brain_id)?;
-    let executor = PlatformShellExecutor::new();
+    let executor = PlatformShellExecutor::new_in(workdir);
     let mut controller = AgentController::with_data_dir(
         backend,
         executor,
         BENCH_MAX_CYCLES,
         crate::config::data_dir(),
     );
+    controller.set_workspace_root(workdir.to_path_buf());
     controller.set_wall_timeout_secs(BENCH_WALL_SECS);
     // Ohne --verbose wandern die Schritt-Zeilen IN die Timer-Zeile, statt sie
     // zu zerschneiden; mit --verbose laeuft beides nebeneinander.
     if let Some(n) = note {
         controller.set_progress(n, !verbose);
     }
-    let meta = controller.run(task, brain_id, None, headless)?;
+    let meta = controller.run_with_options(
+        task,
+        brain_id,
+        None,
+        headless,
+        RunOptions {
+            suppress_memory_context: true,
+            ..RunOptions::default()
+        },
+    )?;
     Ok((meta.status, meta.cycles))
 }
 
@@ -100,6 +119,7 @@ fn bench_run(
 fn bench_run(
     _brain_id: &str,
     _task: &str,
+    _workdir: &std::path::Path,
     _headless: bool,
     _note: Option<crate::StageNote>,
     _verbose: bool,
@@ -117,6 +137,7 @@ fn refine_one<Q>(
     refiner: &str,
     existing_api: &[String],
     src_files: &[String],
+    root: &std::path::Path,
     query: &Q,
 ) -> String
 where
@@ -131,7 +152,7 @@ where
             prompt.push_str(
                 "
 
-WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das es BEREITS GIBT, oder nannte eine Zieldatei, die es NICHT gibt. Schlage etwas anderes vor, das es noch nicht gibt und dessen Zieldatei aus der erlaubten Liste stammt.",
+WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das es BEREITS GIBT, nannte eine Zieldatei, die es NICHT gibt, oder ordnete ein vorhandenes Symbol der falschen Datei zu. Schlage etwas anderes vor, das es noch nicht gibt und dessen Zieldatei und bestehende Symbole nachweislich zusammenpassen.",
             );
         }
         match query(refiner, &prompt) {
@@ -150,6 +171,15 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                         crate::bench_events::Level::Warn,
                         None,
                         "  verworfen: Zieldatei {:?} ist nicht in der erlaubten Modulliste",
+                        target_file_of(&t).unwrap_or_default()
+                    );
+                    continue;
+                }
+                Some(t) if task_is_misdirected(&t, root) => {
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        None,
+                        "  verworfen: vorhandenes Symbol steht nicht in Zieldatei {:?}",
                         target_file_of(&t).unwrap_or_default()
                     );
                     continue;
@@ -427,7 +457,9 @@ where
                     // (Selbstgespraech, ~90 s). Bei mehreren Brains bleibt der
                     // Refiner-Schritt, weil der Refiner nicht der Autor sein
                     // muss.
-                    let refined = if round_brains.len() == 1 {
+                    let refined = if round_brains.len() == 1
+                        && !task_is_misdirected(&consensus_plan, &config.workdir)
+                    {
                         consensus_plan.clone()
                     } else {
                         let t = crate::StageTimer::start(format!(
@@ -439,6 +471,7 @@ where
                             &refiner,
                             &existing_api,
                             &src_files,
+                            &config.workdir,
                             &query,
                         );
                         t.finish(crate::char_prefix(&e, 90));
@@ -462,10 +495,17 @@ where
         // Erfolg — real beobachtet 2026-07-21.
         let baseline_tests = {
             let t = crate::StageTimer::start("Baseline-Tests".to_string());
-            let (_ok, out) = run_eval_detail(&config.test_eval, &config.workdir);
-            let n = parse_test_count(&out);
-            t.finish(&format!("Baseline: {} Tests", n.unwrap_or(0)));
-            n.unwrap_or(0)
+            let (ok, out) = run_eval_detail(&config.test_eval, &config.workdir);
+            match super::baseline_test_count(ok, &out) {
+                Ok(n) => {
+                    t.finish(&format!("Baseline: {n} Tests"));
+                    n
+                }
+                Err(e) => {
+                    t.finish("Baseline ROT — Benchmark abgebrochen");
+                    return Err(e);
+                }
+            }
         };
 
         // Phase B — Arbeitsschlange statt fester Liste: bleibt ein Brain stecken,
@@ -487,7 +527,11 @@ where
                     "{brain} uebernimmt die Aufgabe von {prev}."
                 );
             }
-            let task = build_task_prompt(effective);
+            let task = crate::benchmark::tasks::build_task_prompt_for_brain_in(
+                effective,
+                &config.workdir,
+                brain,
+            );
             let tid = task_id(effective);
             crate::autoresearch::guard_clean_tree(&config.workdir)
                 .map_err(|e| format!("{e} (vor dem Run von {brain})"))?;
@@ -522,9 +566,11 @@ where
                 let t = crate::StageTimer::start(format!(
                     "{brain} Iteration {iter}/{max_iter}: Brain baut"
                 ));
+                let mut terminal_status: Option<String> = None;
                 match bench_run(
                     brain,
                     &attempt_task,
+                    &config.workdir,
                     config.headless,
                     Some(t.note_handle()),
                     config.verbose,
@@ -538,16 +584,11 @@ where
                         }
                         if is_nonretryable_run_fault(&status) {
                             protocol_fault = is_protocol_fault(&status);
-                            stalled = true;
-                            t.finish("Terminaler Run-Fehler — Brain für diese Aufgabe beendet");
-                            bench_say!(
-                                crate::bench_events::Level::Fail,
-                                Some(brain),
-                                "{brain}: terminaler Run-Status `{status}` — keine weiteren Retries für diese Aufgabe."
-                            );
-                            break;
+                            t.finish("Terminaler Run-Status — vorhandenen Diff prüfen");
+                            terminal_status = Some(status);
+                        } else {
+                            t.finish(&format!("Brain fertig ({c} Zyklen)"));
                         }
-                        t.finish(&format!("Brain fertig ({c} Zyklen)"));
                     }
                     Err(e) => {
                         last_gate_failure = Some(format!("Runner-Fehler bei {brain}: {e}"));
@@ -561,6 +602,22 @@ where
                 }
 
                 did_change = tree_changed(&config.workdir);
+                if let Some(status) = terminal_status {
+                    if super::terminal_status_blocks_evaluation(&status, did_change) {
+                        stalled = true;
+                        bench_say!(
+                            crate::bench_events::Level::Fail,
+                            Some(brain),
+                            "{brain}: terminaler Run-Status `{status}` ohne Diff — keine weiteren Retries für diese Aufgabe."
+                        );
+                        break;
+                    }
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: Run endete mit `{status}`, hat aber Code geaendert — Diff wird trotzdem gebaut und getestet."
+                    );
+                }
                 if !did_change {
                     // Beleg zum Urteil, nicht nur das Urteil.
                     //
@@ -1093,4 +1150,3 @@ fn ok_x(b: bool) -> &'static str {
         "x"
     }
 }
-

@@ -8,7 +8,7 @@
 //!   Benchmark-Aufgabe ([`build_task_prompt`]).
 //! - **Phase B (Implementieren + Messen, pro Brain sequenziell):** sauberen
 //!   Git-Tree prüfen, Baseline-SHA merken, mehrere Brains über den Controller
-//!   (mit Wall-Timeout + kleinem `max_cycles`) DENSELBEN Abstimmungssieger bauen
+//!   (mit Wall-Timeout + Cycle-Circuit-Breaker) DENSELBEN Abstimmungssieger bauen
 //!   lassen, dann objektiv evaluieren (`did_change` →
 //!   `cargo build --lib` → `cargo test --lib`), das
 //!   [`CodeEvent`](crate::code_score::CodeEvent) speichern und den Tree hart auf
@@ -27,7 +27,6 @@
 //! [`outcome_label`], [`is_pass`], [`format_benchmark_report`]) sind unit-getestet;
 //! der Live-Teil (echtes Brain + `cargo` + Git) wird vom Orchestrator end-to-end
 //! geprüft, nicht im Unit-Test.
-
 
 mod git;
 mod handoff;
@@ -52,8 +51,36 @@ pub use git::{build_no_change_prompt, build_repair_prompt};
 pub use harvest::{scope_compensation_count, validate_harvest_patch, validate_task_scope};
 pub use pipeline::run_benchmark;
 pub use report::{format_benchmark_report, format_benchmark_result};
-pub use tasks::{assign_tasks, build_refine_prompt, build_task_prompt, build_task_prompt_in, file_outline, parse_test_count, proposed_fn_name, ranked_from_report, repair_focus_from_failures, target_file_of, task_id, task_is_redundant, task_targets_missing_file, usable_refinement, winner_from_report};
+pub use tasks::{
+    assign_tasks, build_refine_prompt, build_task_prompt, build_task_prompt_for_brain_in,
+    build_task_prompt_in, file_outline, relevant_target_context,
+    parse_test_count, proposed_fn_name, ranked_from_report, repair_focus_from_failures,
+    target_file_of, task_id, task_is_redundant, task_targets_missing_file, usable_refinement,
+    task_is_misdirected,
+    winner_from_report,
+};
 pub use types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
+
+/// Terminale Controller-Status verbieten weitere Brain-Retries, aber ein
+/// bereits vorhandener Diff muss trotzdem durch Build und Tests laufen.
+pub(crate) fn terminal_status_blocks_evaluation(status: &str, did_change: bool) -> bool {
+    is_nonretryable_run_fault(status) && !did_change
+}
+
+pub(crate) fn baseline_test_count(ok: bool, output: &str) -> Result<u32, String> {
+    if !ok {
+        return Err(format!(
+            "Baseline-Testkommando ist bereits vor dem Brain rot:\n{}",
+            crate::char_prefix(output.trim(), 2000)
+        ));
+    }
+    parse_test_count(output).ok_or_else(|| {
+        format!(
+            "Baseline-Testkommando war gruen, lieferte aber keine parsebare Testzahl:\n{}",
+            crate::char_prefix(output.trim(), 2000)
+        )
+    })
+}
 
 #[cfg(test)]
 mod refine_tests {
@@ -156,6 +183,10 @@ mod refine_tests {
             Some("helper_fn".to_string())
         );
         assert_eq!(proposed_fn_name("kein code hier"), None);
+        assert_eq!(
+            proposed_fn_name("Neue öffentliche Funktion brain_session_age_secs(id: &str) ergänzen"),
+            Some("brain_session_age_secs".to_string())
+        );
     }
 
     #[test]
@@ -460,6 +491,8 @@ mod tests {
         assert!(p.contains("WEBAGENT/1"));
         assert!(p.contains("cargo test --lib"));
         assert!(p.contains("Rohformat"));
+        assert!(p.contains("AUSSCHLIESSLICH in diesem Workspace"));
+        assert!(p.contains(&crate::config::root_dir().display().to_string()));
     }
 
     #[test]
@@ -564,10 +597,7 @@ mod tests {
         // Regression 2026-08-01: Plan auf nicht existierender Zieldatei → Brain
         // sucht ewig, aendert nichts (did_change=false). Der Refine-Guard soll
         // so einen Plan verwerfen.
-        let files = vec![
-            "src/protocol.rs".to_string(),
-            "src/repl/mod.rs".to_string(),
-        ];
+        let files = vec!["src/protocol.rs".to_string(), "src/repl/mod.rs".to_string()];
         // Erlaubte Datei wird akzeptiert (auch mit src/ prefix).
         assert!(!task_targets_missing_file(
             "Zieldatei: src/repl/mod.rs. Fuege foo() hinzu.",
@@ -988,6 +1018,23 @@ error: could not compile `webagent` (lib test)",
     }
 
     #[test]
+    fn terminaler_status_mit_diff_wird_in_pipeline_weiter_geprueft() {
+        assert!(terminal_status_blocks_evaluation("max_cycles", false));
+        assert!(!terminal_status_blocks_evaluation("max_cycles", true));
+        assert!(!terminal_status_blocks_evaluation("done", false));
+    }
+
+    #[test]
+    fn kaputte_baseline_wird_nicht_dem_brain_angelastet() {
+        assert!(baseline_test_count(false, "error: linker `link.exe` not found").is_err());
+        assert!(baseline_test_count(true, "irgendeine Ausgabe ohne Testresultat").is_err());
+        assert_eq!(
+            baseline_test_count(true, "test result: ok. 938 passed; 0 failed; 0 ignored").unwrap(),
+            938
+        );
+    }
+
+    #[test]
     fn no_change_prompt_demands_a_real_edit() {
         // Gegen das Phantom-Done: kimi meldete "Implementierung erfolgreich"
         // per message, ohne zu editieren. Der Anstoss muss unmissverstaendlich
@@ -1000,7 +1047,6 @@ error: could not compile `webagent` (lib test)",
         assert!(p.contains("src/x.rs"));
     }
 }
-
 
 #[cfg(test)]
 mod format_benchmark_result_tests {
@@ -1043,4 +1089,3 @@ mod format_benchmark_result_tests {
         );
     }
 }
-

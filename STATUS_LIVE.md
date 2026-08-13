@@ -2040,3 +2040,341 @@ Offen: auch ohne benannte Zieldatei ließe sich melden, **wo** die genannten
 Bezeichner tatsächlich liegen. Das ist keine Ein-Zeilen-Änderung, sondern eine
 zweite Semantik (Orientierung statt Fehlverweis) — bewusst nicht nebenbei
 gemacht.
+
+---
+
+## 15:20 — Codex — REPL-Schritt 8 übernommen und verifiziert
+
+Den von Codex gestarteten OpenCode-Hintergrundprozess beendet und die Arbeit
+direkt übernommen. Die sechs autonomen `ReplSession`-Methoden (`swarm_query`,
+`run_swarm`, `run_autoresearch`, `run_self_research`, `print_diff`,
+`run_autonomous`) liegen jetzt in `src/repl/autonomous.rs`; `src/repl/mod.rs`
+ist dadurch von 1417 auf 985 Zeilen geschrumpft. Reiner Move, keine beabsichtigte
+Logikänderung.
+
+Verifikation:
+
+- `cargo check`: grün
+- `cargo test`: 937 Tests grün (931 Bibliothek + 6 CLI), 0 fehlgeschlagen
+- `cargo clippy --all-targets --all-features -- -D warnings`: grün
+
+Arbeitsbaum absichtlich uncommitted (Commit nur auf Nutzeransage):
+
+- geändert: `src/repl/mod.rs`
+- neu: `src/repl/autonomous.rs`
+
+Optionaler nächster Aufräumschritt: den unveränderten `#[cfg(test)]`-Block aus
+`src/repl/mod.rs` nach `src/repl/tests.rs` verschieben. Funktional ist Schritt 8
+bereits vollständig grün.
+
+---
+
+## 15:35 — Codex — Ursache von `edit ok`, aber `did_change=nein` behoben
+
+Der Benchmark übergab `BenchmarkConfig.workdir` bisher nur an Git-Messung und
+Eval-Kommandos. `PlatformShellExecutor` sowie native Edit/Write-Actions des
+`AgentController` arbeiteten weiterhin relativ zum Prozess-CWD. Bei einem
+abweichenden expliziten `--workdir` konnte das Brain deshalb erfolgreich Baum A
+ändern, während `tree_changed` Baum B maß.
+
+Änderungen:
+
+- `PlatformShellExecutor::new_in(workdir)` startet die persistente Shell im
+  expliziten Workspace.
+- `AgentController::set_workspace_root(...)` bindet native Edit/Write-Actions
+  über `apply_edit_in`/`apply_write_in` an denselben Workspace.
+- `benchmark::bench_run` reicht `config.workdir` an beide Pfade weiter.
+- Zwei Regressionstests sichern Shell-CWD und relative native Edit-Actions ab.
+
+Verifikation:
+
+- beide neuen Regressionstests einzeln grün
+- `cargo test`: 939 Tests grün (933 Bibliothek + 6 CLI), 0 fehlgeschlagen
+- `cargo clippy --all-targets --all-features -- -D warnings`: grün
+
+Kein Commit/Push. Nächster fachlicher Befund aus 12:40: Der Symbol-Hinweis in
+der Aufgabenverfeinerung greift nur bei explizitem `Zieldatei:`-Feld; ohne Feld
+werden genannte Symbole nicht zur tatsächlichen Quelldatei aufgelöst.
+
+---
+
+## 15:45 — Codex — Symbolorientierung ohne `Zieldatei:` ergänzt
+
+Die vorhandene `target_check`-Prüfung wurde erweitert, nicht dupliziert. Wenn
+eine Aufgabe keine `Zieldatei:` nennt, werden bekannte Code-Symbole jetzt über
+alle eingelesenen Rust-Dateien gesucht und ihre tatsächlichen Fundstellen als
+Orientierung in den Bau-Prompt geschrieben. Der bisherige irreführende Hinweis
+auf eine nicht existente leere Zieldatei (`""`) entfällt. Neue/unbekannte
+Symbole bleiben weiterhin erlaubt und erzeugen keinen falschen Hinweis.
+
+Verifikation:
+
+- zwei neue fokussierte Tests grün (`target_check` + echter Bau-Prompt)
+- `cargo test`: 941 Tests grün (935 Bibliothek + 6 CLI), 0 fehlgeschlagen
+- Clippy mit `-D warnings`: grün
+
+Kein Commit/Push. Die beiden ausdrücklich offenen 12:40-Befunde sind damit
+behoben: konsistenter Benchmark-Workspace und Symbolorientierung ohne explizite
+Zieldatei.
+
+---
+
+## 15:55 — Codex — Arbeitsbaum nach Verifikation bereinigt
+
+Ein globaler `cargo fmt --all` hatte 58 fachlich unbeteiligte Rust-Dateien nur
+formatierend verändert. Diese Dateien waren beim Einstieg sauber und wurden
+gezielt auf ihren vorherigen Inhalt zurückgesetzt; keine fremden Änderungen
+waren betroffen. Übrig bleiben ausschließlich die fachlichen Änderungen dieses
+Arbeitsblocks:
+
+- `src/repl/mod.rs` + neu `src/repl/autonomous.rs`
+- `src/benchmark/pipeline.rs`, `src/benchmark/tasks.rs`
+- `src/controller.rs`, `src/executor.rs`, `src/target_check.rs`
+- dieser Checkpoint
+
+Nach der Bereinigung erneut grün: `cargo check`, Clippy mit `-D warnings` und
+`git diff --check`. Kein Commit/Push.
+
+---
+
+## 16:10 — Codex — Variierende Leseschleifen werden in Umsetzung gedrückt
+
+Auswertung der 564 vorhandenen Code-Score-Events und der drei jüngsten
+Transkripte: Der aktuelle Hauptverlust ist `max_cycles` durch reine Exploration.
+Die Brains ändern Suchwort, Datei oder Offset pro Runde; deshalb erkannte der
+alte Fingerprint-Guard die Schleife nicht. Ein dokumentierter DeepSeek-Lauf
+verbrauchte alle 15 Zyklen ausschließlich mit unterschiedlichen Leseaktionen.
+
+Änderung:
+
+- `loop_guard::is_shell_read_action` erkennt klare Leseaktionen unabhängig von
+  konkreter Datei/Suchwort/Offset.
+- Nach fünf Leseaktionen ohne erfolgreichen Edit injiziert der Controller genau
+  einmal einen `LESEBUDGET ERREICHT`-Nudge und verlangt als nächste Aktion
+  `WEBAGENT/1 EDIT` oder `WRITE`.
+- Build-/Test- und Schreibkommandos werden nicht als Lesen gezählt.
+- Nach einem erfolgreichen Edit wird das Budget zurückgesetzt.
+
+Verifikation:
+
+- Unit-Test der Klassifikation grün
+- Controller-End-to-End-Test mit fünf verschiedenen `Get-Content`-Aktionen grün
+- `cargo test`: 943 Tests grün (937 Bibliothek + 6 CLI)
+- Clippy mit `-D warnings` und `git diff --check`: grün
+
+Ein echter Benchmark-Gegenlauf ist im aktuell absichtlich uncommitteten/dirty
+Arbeitsbaum nicht sicher möglich; `guard_clean_tree` blockiert ihn korrekt.
+Messziel für den nächsten sauberen Lauf: weniger `max_cycles` ohne Dateiaktion
+und ein Edit spätestens nach dem Lesebudget-Nudge.
+
+---
+
+## 16:35 — Codex — Zwei echte DeepSeek-Gegenläufe, weitere Gates repariert
+
+Die aktuelle Dirty-Version wurde gebaut und gegen einen separaten sauberen,
+detached Worktree gemessen (`deepseek`, 1 Runde, 2 Vorschläge, 1 Iteration,
+kein Harvest/Commit). Der Hauptarbeitsbaum blieb unangetastet.
+
+### Lauf 1: produktiver Diff wurde bei `max_cycles` noch verschluckt
+
+DeepSeek erzeugte drei erfolgreiche Edits in `src/brain_probe.rs` (94 neue
+Zeilen), endete danach aber in `max_cycles`. Die Pipeline brach vor der
+Diff-Messung ab und buchte erneut `did_change=nein`. Ursache behoben:
+
+- terminaler Status ohne Diff: weiter Abbruch
+- terminaler Status mit Diff: keine Brain-Retries, aber Build/Test des bereits
+  vorhandenen Codes
+- Entscheidung in `terminal_status_blocks_evaluation` unit-getestet
+
+### Lauf 2: Diff wird korrekt objektiv bewertet
+
+DeepSeek änderte `src/brain.rs` (20 Additionen, 3 Deletionen). Ergebnis:
+
+- `did_change=ja`
+- `cargo build --lib` wurde tatsächlich ausgeführt
+- Build rot: Brain-Code fachlich/kompilatorisch noch nicht gut genug, aber der
+  Harness verschluckt die Arbeit nicht mehr
+
+Der Lauf deckte zusätzlich zwei Prompt-/Scope-Probleme auf:
+
+- Brain las/testete per hartcodiertem Pfad im Hauptcheckout. Der Bau-Prompt
+  nennt nun den kanonischen Workspace und verbietet andere Checkouts explizit.
+- Scope-Guard erkannte `Funktion foo(...)` nicht als angeforderte API und
+  bestrafte sie fälschlich. `proposed_fn_name` erkennt nun auch diese natürliche
+  Form neben `pub fn foo(...)`.
+
+Verifikation nach allen Änderungen:
+
+- `cargo test`: 944 Tests grün (938 Bibliothek + 6 CLI)
+- Clippy mit `-D warnings`: grün
+- temporärer Benchmark-Worktree war sauber und wurde vollständig entfernt
+- kein Harvest, Commit oder Push
+
+---
+
+## 16:50 — Codex — Produktive Abschlussantworten sparen Protocol-Repair
+
+Transkript des zweiten Live-Laufs ausgewertet. Nach erfolgreichem Edit und
+eigenem grünen Testlauf sendete DeepSeek eine mehrzeilige Abschlussantwort als
+`WEBAGENT/1 MESSAGE`. Das Format war semantisch eindeutig, wurde aber vom Parser
+nicht unterstützt; der Controller verbrauchte deshalb einen weiteren
+Browser-Roundtrip für Protocol-Repair.
+
+Änderung:
+
+- Parser akzeptiert nun `WEBAGENT/1 MESSAGE` mit `id:` und mehrzeiligem `text:`.
+- UI-Vorspann-Trimming und Truncation-Erkennung kennen den neuen Rohmarker.
+- Systemprompt dokumentiert das robuste Abschlussformat.
+- Regressionstest verwendet die reale DeepSeek-Form aus dem Gegenlauf.
+
+Verifikation:
+
+- fokussierter Parser-Test grün
+- `cargo test`: 945 Tests grün (939 Bibliothek + 6 CLI)
+- Clippy mit `-D warnings` und `git diff --check`: grün
+
+Erwarteter Effekt: produktive Runs enden unmittelbar nach ihrer Zusammenfassung,
+statt durch einen vermeidbaren Repair-Turn näher an `max_cycles`/Wall-Timeout zu
+rutschen. Kein Commit/Push.
+
+---
+
+## 17:05 — Codex — Compilerdiagnosen und Baseline-Gate repariert
+
+Der Benchmark hatte Compilerdiagnosen vollständig verworfen:
+`run_eval_with_timeout` leitete stderr nach `null`, Cargo schreibt Fehler aber
+überwiegend dorthin. Folge im Live-Lauf: `Build ROT`, angeblich `0 Fehler`, und
+ein leerer Repair-Prompt. stdout und stderr werden jetzt parallel drainiert und
+für Diagnose/Repair zusammengeführt; stdout bleibt am Ende, damit numerische
+Autoresearch-Metriken weiterhin aus der letzten Zeile parsebar sind.
+
+Zusätzlich war das Baseline-Gate wirkungslos: Exitcode wurde ignoriert und eine
+nicht parsebare Testzahl still zu `0` gemacht. Nun gilt vor jedem Brain-Bau:
+
+- Baseline-Testkommando muss Exit 0 liefern.
+- Eine Testzahl muss parsebar sein.
+- Andernfalls bricht der Benchmark mit bis zu 2000 Zeichen echter Diagnose ab,
+  ohne einen Brain-Score zu verschlechtern oder Anbieterzeit zu verbrauchen.
+
+Verifikation:
+
+- stderr/stdout-Kombination inklusive weiter parsebarer Metrik getestet
+- rote, unparsebare und gültige Baseline getestet
+- `cargo test`: 947 Tests grün (941 Bibliothek + 6 CLI)
+- Clippy `-D warnings`, `cargo check`, `git diff --check`: grün
+- reine rustfmt-Streuung in fünf unbeteiligten Untermodulen wieder entfernt
+
+Kein Commit/Push.
+
+---
+
+## 13.08. 10:25 — Codex — Live-Verifikation: Ein-Read-Gate und Fehlplan-Guard
+
+Der neu gebaute CLI-Binary wurde in einem frischen Detached-Worktree gegen
+DeepSeek verifiziert. Der echte Run `20260813_081538_58b3c9f0` belegt im
+gesendeten Prompt:
+
+- kanonischer `codex-context-bench`-Workspace statt Hauptrepo
+- `RELEVANTER ZIELKONTEXT` mit Originalcode
+- keine alten Memory-/Wiki-Episoden
+- ausdrueckliche Ein-Read-Regel
+
+DeepSeek ignorierte die Textregel trotzdem und forderte unmittelbar zwei Reads
+an. Benchmark-Runs setzen deshalb nun `RunOptions.max_read_actions = Some(1)`;
+ab dem zweiten Read blockiert der Controller technisch. Normale Runs behalten
+das Fuenferbudget.
+
+Der Lauf deckte ausserdem einen sachlich ungueltigen Konsensplan auf:
+`bench_status` wurde `src/benchmark/mod.rs` zugeordnet, existiert aber in
+`src/tui_bench.rs`/`src/tui_render.rs`. Solche Plaene wurden bisher nur mit
+einem Hinweis an das Brain weitergegeben. `task_is_misdirected` verwirft sie nun
+bereits in der Verfeinerung; auch die Ein-Brain-Abkuerzung ueberspringt die
+Verfeinerung nur noch bei einem quellengeprueften Plan.
+
+Nebenbefund der isolierten Verifikation: Der lokale Rustup-GNU-Override des
+Hauptrepos gilt nicht fuer einen Geschwister-Worktree. Ohne explizites
+`RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu` faellt Cargo dort auf MSVC ohne
+`link.exe` zurueck. Das Baseline-Gate hat diesen Umgebungsfehler korrekt vor dem
+Brain-Bau gestoppt.
+
+Verifikation:
+
+- Ein-Read-Option: 3 angeforderte Reads, exakt 1 ausgefuehrt
+- falsches vorhandenes Symbol/Zieldatei-Paar verworfen, korrektes akzeptiert
+- `cargo test`: 955 Tests gruen (949 Bibliothek + 6 CLI)
+- Clippy `--all-targets --all-features -- -D warnings`: gruen
+- explizites `cargo build`, `cargo check`, `git diff --check`: gruen
+
+Kein Commit/Push.
+
+---
+
+## 17:25 — Codex — Benchmark-Dateibaum an echten Workspace gebunden
+
+Die native Edit-/Write-Ausfuehrung und Shell liefen bereits im expliziten
+Benchmark-Worktree, aber der zusaetzliche Dateibaum im Initial-Prompt wurde noch
+aus dem Prozess-CWD erzeugt. Dadurch konnte ein Brain trotz korrekter
+Ausfuehrungsumgebung die Struktur des Haupt-Checkouts sehen.
+
+`worktree_context_in(root, limit)` baut den Kontext nun aus einer expliziten
+Root. Der Controller nutzt diese Variante bei gesetztem `workspace_root`; normale
+Runs behalten den bisherigen CWD-Fallback. Ein E2E-Test prueft, dass eine nur im
+Benchmark-Workspace vorhandene Datei und dessen Pfad im gesendeten Prompt stehen.
+
+Gezielte Tests und `git diff --check`: gruen. Vollsuite/Clippy folgen.
+Kein Commit/Push.
+
+---
+
+## 19:35 — Codex — Echter DeepSeek-Gegenlauf: Leseschleife jetzt hart begrenzt
+
+Ein weiterer isolierter Benchmark-Lauf (`deepseek`, 1 Runde, 1 Iteration,
+kein Harvest) erreichte nach 15 Zyklen `max_cycles`, ohne eine Datei zu
+aendern. Der Trace belegt: Der Controller lieferte nach dem fuenften Read den
+neuen `LESEBUDGET ERREICHT`-Nudge korrekt aus; DeepSeek ignorierte ihn und
+forderte zehn weitere Ausschnitte an.
+
+Das Budget ist deshalb nun ein Gate: Die ersten fuenf reinen Leseaktionen
+werden ausgefuehrt. Weitere Read-Shell-Aktionen werden mit
+`LESEAKTION NICHT AUSGEFUEHRT` abgewiesen, bis ein erfolgreicher Edit/Write das
+Budget zuruecksetzt. Damit kann ein Brain seine komplette Zykluszahl nicht mehr
+mit variierenden `Get-Content`-/`Select-String`-Aufrufen verbrauchen.
+
+Verifikation:
+
+- E2E-Test belegt exakt 5 ausgefuehrte Befehle bei 7 angeforderten Reads
+- Blockmeldung und Freigabe-Bedingung separat getestet
+- `cargo test`: 951 Tests gruen (945 Bibliothek + 6 CLI)
+- Clippy `--all-targets --all-features -- -D warnings`: gruen
+- `git diff --check`: gruen
+- Wegwerf-Worktree nach sauberer Statuspruefung entfernt
+
+Der Live-Lauf selbst war bewusst negativ und wurde nicht geerntet. Er hat den
+verbleibenden produktiven Engpass reproduzierbar sichtbar gemacht und direkt in
+eine harte Laufzeitgrenze uebersetzt. Kein Commit/Push.
+
+---
+
+## 19:50 — Codex — Zielkontext statt scheibchenweisem Lesen
+
+Benchmark-Bauauftraege enthalten nun neben der Signatur-Gliederung automatisch
+einen Originalcode-Block von bis zu 71 Zeilen um das wahrscheinlich relevante,
+im Vorschlag genannte Symbol. Ist die verlangte Funktion neu, dient der Bereich
+um den Beginn des Testmoduls als Einfuege- und Testanker. Der Prompt erlaubt mit
+diesem Kontext hoechstens eine weitere gezielte Leseaktion vor EDIT/WRITE.
+
+Dabei wurde ein zweiter Workspace-Fehler behoben: `run_benchmark` baute den
+Auftrag noch ueber `build_task_prompt`, das den Compile-Pfad des Hauptrepos
+verwendete. Nun wird `build_task_prompt_in(effective, config.workdir)` genutzt;
+Pfad, Gliederung und Zielkontext stammen damit wirklich aus dem isolierten
+Benchmark-Worktree.
+
+Verifikation:
+
+- vorhandenes Zielsymbol wird im Originalcode-Kontext getroffen
+- neue Funktion faellt kontrolliert auf den Testmodul-Anker zurueck
+- `cargo test`: 953 Tests gruen (947 Bibliothek + 6 CLI)
+- Clippy `--all-targets --all-features -- -D warnings`: gruen
+- `cargo check` und `git diff --check`: gruen
+
+Kein Commit/Push.

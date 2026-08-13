@@ -415,6 +415,16 @@ pub fn apply_write_in(workspace_root: &Path, path: &str, content: &str) -> Resul
 /// (Repo-Kontext, Phase 2). Bewusst begrenzt: max. Tiefe 3, max. `max_entries`
 /// Zeilen, Build-/VCS-/Profil-Verzeichnisse übersprungen.
 pub fn worktree_context(max_entries: usize) -> String {
+    let cwd = match std::env::current_dir() {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+    worktree_context_in(&cwd, max_entries)
+}
+
+/// Variante von [`worktree_context`] fuer Controller mit explizit gebundenem
+/// Workspace (z.B. Benchmark-Worktrees).
+pub fn worktree_context_in(workspace_root: &Path, max_entries: usize) -> String {
     // Kill-Switch, z.B. für Worker in riesigen Arbeitsverzeichnissen.
     if std::env::var("WEBAGENT_NO_TREE")
         .map(|v| v == "1")
@@ -422,18 +432,14 @@ pub fn worktree_context(max_entries: usize) -> String {
     {
         return String::new();
     }
-    let cwd = match std::env::current_dir() {
-        Ok(c) => c,
-        Err(_) => return String::new(),
-    };
     let mut lines: Vec<String> = Vec::new();
-    collect_tree(&cwd, "", 0, 3, max_entries, &mut lines);
+    collect_tree(workspace_root, "", 0, 3, max_entries, &mut lines);
     if lines.is_empty() {
         return String::new();
     }
     let mut out = format!(
         "Arbeitsverzeichnis: {}\nDateibaum (begrenzt, Tiefe<=3):\n",
-        cwd.display()
+        workspace_root.display()
     );
     let truncated = lines.len() >= max_entries;
     out.push_str(&lines.join("\n"));

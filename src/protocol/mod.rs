@@ -7,8 +7,8 @@ mod types;
 pub use parser::{parse, ui_control_line_regex};
 pub use text::{
     format_observation, format_observations_bundle, format_protocol_error,
-    is_possibly_truncated, should_abort_protocol_repair,
-    should_attempt_protocol_repair, PROTOCOL_REPAIR_MAX_FAILURES,
+    format_protocol_error_for, is_possibly_truncated,
+    should_abort_protocol_repair, should_attempt_protocol_repair, PROTOCOL_REPAIR_MAX_FAILURES,
 };
 pub use types::{error_code, Action, ActionType, ParseResult, PROTOCOL_VERSION};
 
@@ -134,6 +134,20 @@ mod tests {
         assert_eq!(result.actions[0].path, "src/lib.rs");
         assert_eq!(result.actions[0].old_string, "    return a * b;");
         assert_eq!(result.actions[0].new_string, "    return a + b;");
+    }
+
+    #[test]
+    fn test_raw_message_envelope() {
+        let text =
+            "WEBAGENT/1 MESSAGE\nid: answer-1\ntext: Ergebnis fertig.\n\nAlle Tests sind gruen.";
+        let result = parse(text);
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions.len(), 1);
+        assert_eq!(result.actions[0].action_type, ActionType::Message);
+        assert_eq!(
+            result.actions[0].text,
+            "Ergebnis fertig.\n\nAlle Tests sind gruen."
+        );
     }
 
     #[test]
@@ -632,6 +646,16 @@ Write-Output $html
         assert!(msg.contains("Ungültiges JSON: trailing comma"));
         assert!(msg.contains("repair-1"));
         assert!(msg.contains(r#""protocol""#));
+    }
+
+    #[test]
+    fn kaputtes_edit_json_bekommt_rohformat_statt_shell_beispiel() {
+        let invalid = r#"{"actions":[{"type":"edit","path":"src/x.rs","new_string":"fn x() { "kaputt" }"}]}"#;
+        let msg = format_protocol_error_for("ungueltiges JSON", invalid);
+        assert!(msg.contains("WEBAGENT/1 EDIT"), "{msg}");
+        assert!(msg.contains("---OLD---"), "{msg}");
+        assert!(msg.contains("---NEW---"), "{msg}");
+        assert!(!msg.contains("Get-Location"), "{msg}");
     }
 
     #[test]

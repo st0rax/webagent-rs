@@ -1,6 +1,9 @@
 use serde_json::Value;
 
-use super::parser::{edit_envelope_regex, script_envelope_regex, strip_rendered_ui_controls, write_envelope_regex};
+use super::parser::{
+    edit_envelope_regex, message_envelope_regex, script_envelope_regex, strip_rendered_ui_controls,
+    write_envelope_regex,
+};
 use super::types::PROTOCOL_VERSION;
 
 pub fn is_possibly_truncated(response_text: &str) -> bool {
@@ -14,6 +17,9 @@ pub fn is_possibly_truncated(response_text: &str) -> bool {
     }
     if text.starts_with("WEBAGENT/1 EDIT") {
         return !edit_envelope_regex().is_match(&text);
+    }
+    if text.starts_with("WEBAGENT/1 MESSAGE") {
+        return !message_envelope_regex().is_match(&text);
     }
 
     if !text.starts_with('{') {
@@ -94,6 +100,42 @@ pub fn should_abort_protocol_repair(consecutive_failures: usize) -> bool {
 
 /// Repair-Prompt nach ungueltigem Brain-Output. Zeigt exakt erwartetes Mini-JSON.
 pub fn format_protocol_error(detail: &str) -> String {
+    format_protocol_error_for(detail, "")
+}
+
+/// Reparaturhinweis, der die erkennbare Absicht der kaputten Antwort erhaelt.
+/// Mehrzeiliger Code in JSON ist der haeufigste Realfehler; dann darf der
+/// Repair-Prompt nicht ausgerechnet eine weitere Shell-JSON-Aktion vormachen.
+pub fn format_protocol_error_for(detail: &str, invalid_response: &str) -> String {
+    let compact = invalid_response.to_ascii_lowercase().replace(' ', "");
+    if compact.contains("\"type\":\"edit\"") || compact.contains("webagent/1edit") {
+        return format!(
+            "[Controller] Ungültige EDIT-Antwort — Repair. {detail}\n\
+             Dein beabsichtigter Edit wurde NICHT ausgefuehrt. Wiederhole exakt denselben Edit \
+             JETZT im escape-freien Rohformat, ohne JSON, Prosa oder Codeblock:\n\
+             WEBAGENT/1 EDIT\n\
+             id: neue-eindeutige-id\n\
+             path: derselbe-pfad\n\
+             ---OLD---\n\
+             derselbe old_string unveraendert\n\
+             ---NEW---\n\
+             derselbe new_string unveraendert\n\
+             ---END EDIT---"
+        );
+    }
+    if compact.contains("\"type\":\"write\"") || compact.contains("webagent/1write") {
+        return format!(
+            "[Controller] Ungültige WRITE-Antwort — Repair. {detail}\n\
+             Dein beabsichtigter Write wurde NICHT ausgefuehrt. Wiederhole ihn JETZT im \
+             escape-freien Rohformat, ohne JSON, Prosa oder Codeblock:\n\
+             WEBAGENT/1 WRITE\n\
+             id: neue-eindeutige-id\n\
+             path: derselbe-pfad\n\
+             ---CONTENT---\n\
+             derselbe Dateiinhalt unveraendert\n\
+             ---END CONTENT---"
+        );
+    }
     let example = serde_json::json!({
         "protocol": PROTOCOL_VERSION,
         "actions": [
@@ -121,4 +163,3 @@ pub fn format_protocol_error(detail: &str) -> String {
 pub fn format_observations_bundle(parts: &[String]) -> String {
     parts.join("\n\n")
 }
-

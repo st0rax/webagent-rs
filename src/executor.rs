@@ -5,6 +5,7 @@
 //! nonce-gebundenem Abschlussmarker und Base64-wrapped Commands auf PowerShell.
 
 use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Mutex;
@@ -42,6 +43,7 @@ struct ShellSession {
     stdin: Option<ChildStdin>,
     output_rx: Receiver<OutputLine>,
     generation: u64,
+    start_dir: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -59,6 +61,23 @@ impl PlatformShellExecutor {
                 stdin: None,
                 output_rx: rx,
                 generation: 0,
+                start_dir: None,
+            }),
+        }
+    }
+
+    /// Startet die persistente Shell in einem expliziten Workspace. Damit
+    /// arbeiten relative Shell-Pfade im selben Baum wie native Edit/Write-
+    /// Actions und nachgelagerte Git-Messungen.
+    pub fn new_in(start_dir: impl AsRef<Path>) -> Self {
+        let (_tx, rx) = mpsc::channel();
+        Self {
+            session: Mutex::new(ShellSession {
+                child: None,
+                stdin: None,
+                output_rx: rx,
+                generation: 0,
+                start_dir: Some(start_dir.as_ref().to_path_buf()),
             }),
         }
     }
@@ -119,6 +138,9 @@ impl ShellSession {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(start_dir) = &self.start_dir {
+            cmd.current_dir(start_dir);
+        }
 
         #[cfg(windows)]
         {
@@ -596,6 +618,33 @@ mod tests {
         }
 
         executor.stop();
+    }
+
+    #[test]
+    fn test_explicit_start_dir_is_shell_cwd() {
+        let _guard = SHELL_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let dir = std::env::temp_dir().join(format!(
+            "webagent_executor_cwd_{}_{}",
+            std::process::id(),
+            crate::now_run_stamp()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let expected = dir.canonicalize().unwrap();
+        let executor = PlatformShellExecutor::new_in(&expected);
+        executor.start();
+
+        #[cfg(windows)]
+        let result = executor.execute("(Get-Location).Path", TEST_CMD_TIMEOUT);
+        #[cfg(unix)]
+        let result = executor.execute("pwd", TEST_CMD_TIMEOUT);
+
+        assert_eq!(result.exit_code, Some(0));
+        let actual = std::path::PathBuf::from(result.stdout.trim())
+            .canonicalize()
+            .unwrap();
+        assert_eq!(actual, expected);
+        executor.stop();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
