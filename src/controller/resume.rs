@@ -6,7 +6,10 @@ use std::time::Duration;
 
 use crate::brain::BrainBackend;
 use crate::executor::ShellExecutor;
-use crate::prompts::{resume_continue_prompt, resume_recovery_prompt};
+use crate::prompts::{
+    resume_continue_prompt, resume_continue_prompt_with, resume_recovery_prompt,
+    resume_recovery_prompt_with_instruction,
+};
 use crate::transcript::Transcript;
 
 use super::{AgentController, BrainTurn};
@@ -141,7 +144,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
     }
 
     /// Resume: Initial Turn (restore oder fallback).
-    pub(crate) fn resume_initial_turn(&mut self, transcript: &mut Transcript) -> BrainTurn {
+    pub(crate) fn resume_initial_turn(
+        &mut self,
+        transcript: &mut Transcript,
+        instruction: Option<&str>,
+    ) -> BrainTurn {
         // Benoetigte Werte vorab kopieren, damit kein langlebiger &self.meta-Borrow
         // die spaeteren &mut self-Aufrufe (run_once) blockiert.
         let conv_ref = self.meta.as_ref().unwrap().conversation_ref.clone();
@@ -179,7 +186,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 ),
                 HashMap::new(),
             );
-            let restored_turn = self.run_once(&resume_continue_prompt(), Some(transcript));
+            let prompt =
+                instruction.map_or_else(resume_continue_prompt, resume_continue_prompt_with);
+            let restored_turn = self.run_once(&prompt, Some(transcript));
             if restored_turn.complete {
                 return restored_turn;
             }
@@ -199,6 +208,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             "resume_fallback=new_chat+transcript",
             HashMap::new(),
         );
-        self.run_once(&resume_recovery_prompt(&task, &tail), Some(transcript))
+        let prompt = instruction.map_or_else(
+            || resume_recovery_prompt(&task, &tail),
+            |current| resume_recovery_prompt_with_instruction(&task, &tail, current),
+        );
+        self.run_once(&prompt, Some(transcript))
     }
 }

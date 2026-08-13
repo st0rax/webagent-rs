@@ -395,7 +395,7 @@ pub fn repair_orphaned_runs(
     for orphan in std::mem::take(&mut report.orphaned_runs) {
         if let Some(store) = run_store {
             if let Ok(mut meta) = store.load(&orphan.run_id) {
-                meta.status = crate::run_store::stale_status(meta.cycles).to_string();
+                meta.status = crate::run_store::stale_status_for(&meta).to_string();
                 meta.extra.insert(
                     "reconciled_at".to_string(),
                     serde_json::Value::String(

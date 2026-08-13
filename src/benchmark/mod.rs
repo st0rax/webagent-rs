@@ -28,6 +28,7 @@
 //! der Live-Teil (echtes Brain + `cargo` + Git) wird vom Orchestrator end-to-end
 //! geprüft, nicht im Unit-Test.
 
+mod feasibility;
 mod git;
 mod handoff;
 mod harvest;
@@ -35,6 +36,7 @@ mod pipeline;
 mod report;
 mod tasks;
 mod types;
+mod work_package;
 
 pub(crate) use pipeline::bench_say;
 
@@ -47,6 +49,7 @@ pub use crate::bench_scoring::{
     progress_after_tests, Progress,
 };
 
+pub use feasibility::{evaluate_work_package, Feasibility, FeasibilityIssue};
 pub use git::{build_no_change_prompt, build_repair_prompt};
 pub use harvest::{scope_compensation_count, validate_harvest_patch, validate_task_scope};
 pub use pipeline::run_benchmark;
@@ -59,6 +62,9 @@ pub use tasks::{
     winner_from_report,
 };
 pub use types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
+pub use work_package::{
+    parse_work_package, AcceptanceCheck, AnchorRequirement, CodeAnchor, WorkPackage,
+};
 
 /// Terminale Controller-Status verbieten weitere Brain-Retries, aber ein
 /// bereits vorhandener Diff muss trotzdem durch Build und Tests laufen.

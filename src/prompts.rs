@@ -138,6 +138,17 @@ pub fn resume_continue_prompt() -> String {
     )
 }
 
+/// Prompt zum Fortsetzen einer bestehenden Aufgabe mit einer konkreten neuen
+/// Beobachtung oder Reparaturanweisung.
+pub fn resume_continue_prompt_with(instruction: &str) -> String {
+    format!(
+        "Setze die vorherige Aufgabe und den vorhandenen Workspace-Zustand fort.\n<CONTINUATION_INSTRUCTION length=\"{}\">\n{}\n</CONTINUATION_INSTRUCTION>\nAntworte ausschließlich mit einer gültigen {}-Protokollantwort.",
+        instruction.len(),
+        instruction,
+        PROTOCOL_VERSION
+    )
+}
+
 /// Prompt zur Wiederherstellung nach Session-Verlust.
 pub fn resume_recovery_prompt(task: &str, transcript_tail: &str) -> String {
     format!(
@@ -147,6 +158,23 @@ pub fn resume_recovery_prompt(task: &str, transcript_tail: &str) -> String {
         transcript_tail,
         task.len(),
         task
+    )
+}
+
+/// Wie [`resume_recovery_prompt`], ergänzt um die aktuelle Reparaturanweisung.
+/// Sie steht nach dem alten Transcript, damit ein verlorener Chat nicht nur den
+/// historischen Auftrag rekonstruiert, sondern mit der neuesten Beobachtung
+/// weiterarbeitet.
+pub fn resume_recovery_prompt_with_instruction(
+    task: &str,
+    transcript_tail: &str,
+    instruction: &str,
+) -> String {
+    format!(
+        "{}\n<CONTINUATION_INSTRUCTION length=\"{}\">\n{}\n</CONTINUATION_INSTRUCTION>",
+        resume_recovery_prompt(task, transcript_tail),
+        instruction.len(),
+        instruction
     )
 }
 

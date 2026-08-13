@@ -31,6 +31,41 @@ pub fn stale_status(cycles: u32) -> &'static str {
     }
 }
 
+/// Bestimmt den Status eines verwaisten Runs anhand seiner tatsaechlich
+/// persistierten Arbeit.
+///
+/// `cycles` ist kein verlaesslicher Aktivitaetszaehler: der Controller schreibt
+/// ihn erst beim geordneten Abschluss zurueck. Nach einem harten Prozessabbruch
+/// kann ein Run deshalb `cycles == 0` haben, obwohl bereits Actions ausgefuehrt
+/// und Observations gespeichert wurden. Solche Laeufe sind `interrupted`, nicht
+/// `never_started`.
+pub fn stale_status_for(meta: &RunMeta) -> &'static str {
+    let observation_bytes = meta
+        .extra
+        .get("observation_bytes")
+        .and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+        })
+        .unwrap_or(0);
+    let act_steps = meta
+        .extra
+        .get("act_steps")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+
+    if meta.cycles > 0
+        || !meta.completed_actions.is_empty()
+        || observation_bytes > 0
+        || act_steps > 0
+    {
+        "interrupted"
+    } else {
+        "never_started"
+    }
+}
+
 /// Nicht-laufende Status (außer Terminal).
 const NON_RUNNING_STATUSES: &[&str] = &[
     "brain_incomplete",
@@ -469,7 +504,7 @@ impl RunStore {
             }
 
             let mut updated = meta.clone();
-            updated.status = stale_status(meta.cycles).to_string();
+            updated.status = stale_status_for(&meta).to_string();
             updated.extra.insert(
                 "reconciled_at".to_string(),
                 serde_json::Value::String(crate::now_rfc3339()),
@@ -692,6 +727,59 @@ mod tests {
         let repaired = store.reconcile_stale_runs(0.0);
         assert!(repaired.contains(&meta2.run_id));
         assert_eq!(store.load(&meta2.run_id).unwrap().status, "never_started");
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn reconcile_erkennt_arbeit_auch_wenn_cycles_nach_hartem_abbruch_null_ist() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let mut meta = store.create("mock", "wurde bereits bearbeitet").unwrap();
+        meta.extra.insert(
+            "owner_pid".to_string(),
+            serde_json::Value::Number(0x7FFF_FFFEu32.into()),
+        );
+        meta.extra.insert(
+            "observation_bytes".to_string(),
+            serde_json::Value::String("84341".to_string()),
+        );
+        meta.completed_actions
+            .insert("find-registry".to_string(), "[exit_code: 0]".to_string());
+        assert_eq!(meta.cycles, 0, "simuliert den ungeordneten Abbruch");
+        store.save_internal(&meta).unwrap();
+
+        assert_eq!(store.reconcile_stale_runs(600.0), vec![meta.run_id.clone()]);
+        let loaded = store.load(&meta.run_id).unwrap();
+        assert_eq!(loaded.status, "interrupted");
+        assert!(loaded.extra.contains_key("reconciled_at"));
+        assert_eq!(
+            loaded.extra.get("error").and_then(|value| value.as_str()),
+            Some("Prozess endete ohne finalen Run-Status.")
+        );
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn stale_status_for_akzeptiert_numerische_und_legacy_string_metriken() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let mut meta = store.create("mock", "metriken").unwrap();
+        assert_eq!(stale_status_for(&meta), "never_started");
+
+        meta.extra.insert(
+            "observation_bytes".to_string(),
+            serde_json::Value::Number(1u64.into()),
+        );
+        assert_eq!(stale_status_for(&meta), "interrupted");
+
+        meta.extra.clear();
+        meta.extra.insert(
+            "observation_bytes".to_string(),
+            serde_json::Value::String("1".to_string()),
+        );
+        assert_eq!(stale_status_for(&meta), "interrupted");
 
         fs::remove_dir_all(&tmp).ok();
     }

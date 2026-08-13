@@ -113,6 +113,7 @@ pub struct PersistentQueryPool {
 enum PersistentCommand {
     Query {
         prompt: String,
+        fresh_chat: bool,
         reply: mpsc::Sender<Result<String, String>>,
     },
     Shutdown,
@@ -132,8 +133,12 @@ impl PersistentQueryPool {
                 let mut session = PersistentBrain::new(&brain_id, headless);
                 while let Ok(command) = rx.recv() {
                     match command {
-                        PersistentCommand::Query { prompt, reply } => {
-                            let _ = reply.send(session.query(&prompt));
+                        PersistentCommand::Query {
+                            prompt,
+                            fresh_chat,
+                            reply,
+                        } => {
+                            let _ = reply.send(session.query(&prompt, fresh_chat));
                         }
                         PersistentCommand::Shutdown => break,
                     }
@@ -150,6 +155,23 @@ impl PersistentQueryPool {
     }
 
     pub fn query(&self, brain_id: &str, prompt: &str) -> Result<String, String> {
+        self.query_fresh(brain_id, prompt)
+    }
+
+    /// Sendet eine unabhängige Frage in einen frischen Chat, behält aber den
+    /// Browser-Prozess und das Profil des Brains bei.
+    pub fn query_fresh(&self, brain_id: &str, prompt: &str) -> Result<String, String> {
+        self.send_query(brain_id, prompt, true)
+    }
+
+    /// Setzt die aktuelle Unterhaltung desselben Brains fort. Das ist für
+    /// Refinement- und Repair-Schritte gedacht, die auf vorherigem Kontext
+    /// aufbauen; insbesondere wird dabei kein `new_chat` ausgelöst.
+    pub fn query_continue(&self, brain_id: &str, prompt: &str) -> Result<String, String> {
+        self.send_query(brain_id, prompt, false)
+    }
+
+    fn send_query(&self, brain_id: &str, prompt: &str, fresh_chat: bool) -> Result<String, String> {
         let sender = self
             .workers
             .get(brain_id)
@@ -158,6 +180,7 @@ impl PersistentQueryPool {
         sender
             .send(PersistentCommand::Query {
                 prompt: prompt.to_string(),
+                fresh_chat,
                 reply: reply_tx,
             })
             .map_err(|_| format!("persistente Sitzung {brain_id} beendet"))?;
@@ -206,7 +229,7 @@ impl PersistentBrain {
             .ok_or_else(|| "Backend fehlt".to_string())
     }
 
-    fn query(&mut self, prompt: &str) -> Result<String, String> {
+    fn query(&mut self, prompt: &str, fresh_chat: bool) -> Result<String, String> {
         if let Some(remaining) = crate::circuit_breaker::check(&self.brain_id) {
             return Err(format!(
                 "circuit_open: uebersprungen, noch {remaining}s Cooldown"
@@ -251,7 +274,9 @@ impl PersistentBrain {
             Some(&self.brain_id),
             "Sitzung bereit; Eingabe wird gesendet…",
         );
-        let _ = self.backend()?.new_chat();
+        if fresh_chat {
+            self.backend()?.new_chat()?;
+        }
         let baseline = self.backend()?.send(prompt)?;
         let wait_to = resolve_timeout("wait_response", &self.brain_id, prompt, None);
         crate::bench_events::emit(

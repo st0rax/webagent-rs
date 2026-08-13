@@ -899,6 +899,43 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         headless: bool,
         opts: RunOptions,
     ) -> Result<RunMeta, String> {
+        self.run_with_continuation(task, brain_id, resume_id, None, headless, opts)
+    }
+
+    /// Setzt einen bestehenden Run mit einer konkreten neuen Beobachtung fort.
+    /// Browser-Konversation, Transcript und bereits ausgeführte Action-IDs
+    /// bleiben erhalten. Das ist insbesondere für Compiler-/Test-Reparaturen
+    /// gedacht, die nicht als neue Aufgabe bei null beginnen sollen.
+    pub fn continue_run(
+        &mut self,
+        run_id: &str,
+        instruction: &str,
+        brain_id: &str,
+        headless: bool,
+        opts: RunOptions,
+    ) -> Result<RunMeta, String> {
+        if instruction.trim().is_empty() {
+            return Err("Continuation-Anweisung darf nicht leer sein".to_string());
+        }
+        self.run_with_continuation(
+            "",
+            brain_id,
+            Some(run_id),
+            Some(instruction),
+            headless,
+            opts,
+        )
+    }
+
+    fn run_with_continuation(
+        &mut self,
+        task: &str,
+        brain_id: &str,
+        resume_id: Option<&str>,
+        continuation: Option<&str>,
+        headless: bool,
+        opts: RunOptions,
+    ) -> Result<RunMeta, String> {
         let runs_dir = self.runs_dir.clone();
         // Zählt nur die Act-Steps DIESES Aufrufs (REPL-Sessions rufen mehrfach).
         self.act_steps = 0;
@@ -931,7 +968,24 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             "owner_pid".to_string(),
             serde_json::Value::Number(std::process::id().into()),
         );
-        self.run_store.save(&meta).ok();
+        if continuation.is_some() {
+            let count = meta
+                .extra
+                .get("continuation_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0)
+                .saturating_add(1);
+            meta.extra.insert(
+                "continuation_count".to_string(),
+                serde_json::Value::Number(count.into()),
+            );
+            // Auf dem Continuation-Pfad ist dieser Save Teil des Vertrags: geht
+            // der strukturierte Zustand verloren, darf der Caller das nicht als
+            // erfolgreichen Repair-Versuch missverstehen.
+            self.run_store.save(&meta)?;
+        } else {
+            self.run_store.save(&meta).ok();
+        }
 
         if let Ok(m) = self.comms.send(
             "webagent-rs",
@@ -1039,7 +1093,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     &format!("resume run {}", resume_id),
                     HashMap::new(),
                 );
-                self.resume_initial_turn(&mut transcript)
+                self.resume_initial_turn(&mut transcript, continuation)
             }
         } else {
             // Frischer Run: neuen Chat erzwingen, damit die Antworterkennung von
@@ -1338,7 +1392,11 @@ per edit/write-Action pflegbar):\n",
             );
         }
 
-        self.run_store.save(&meta).ok();
+        if continuation.is_some() {
+            self.run_store.save(&meta)?;
+        } else {
+            self.run_store.save(&meta).ok();
+        }
 
         if meta.status == "done" {
             // Konvertiere RunMeta zu memory::RunMeta
@@ -2074,6 +2132,73 @@ mod tests {
         assert_eq!(result.status, "done");
         assert_eq!(restore_calls.borrow().as_slice(), &[live_ref.as_str()]);
         assert_eq!(*new_chat_calls.borrow(), 0);
+    }
+
+    #[test]
+    fn continuation_sends_concrete_instruction_in_restored_conversation() {
+        let data_dir = unique_data_dir();
+        let store = RunStore::new(data_dir.join("runs"), data_dir.join("logs"));
+        let mut meta = store.create("mock", "Implementiere die Funktion").unwrap();
+        let live_ref = "https://chatgpt.com/c/repair-session".to_string();
+        meta.conversation_ref = Some(live_ref.clone());
+        store.save(&meta).unwrap();
+
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let messages = brain.messages.clone();
+        let restore_calls = brain.restore_calls.clone();
+        let new_chat_calls = brain.new_chat_calls.clone();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir);
+
+        let result = controller
+            .continue_run(
+                &meta.run_id,
+                "cargo test scheitert: expected 2, got 1",
+                "mock",
+                false,
+                RunOptions::default(),
+            )
+            .unwrap();
+
+        assert_eq!(result.run_id, meta.run_id);
+        assert_eq!(result.extra["continuation_count"].as_u64(), Some(1));
+        assert_eq!(restore_calls.borrow().as_slice(), &[live_ref.as_str()]);
+        assert_eq!(*new_chat_calls.borrow(), 0);
+        let sent = messages.borrow();
+        assert!(sent[0].contains("CONTINUATION_INSTRUCTION"), "{sent:?}");
+        assert!(sent[0].contains("expected 2, got 1"), "{sent:?}");
+    }
+
+    #[test]
+    fn continuation_fallback_reconstructs_task_and_current_instruction() {
+        let data_dir = unique_data_dir();
+        let store = RunStore::new(data_dir.join("runs"), data_dir.join("logs"));
+        let mut meta = store.create("mock", "Urspruengliche Aufgabe").unwrap();
+        meta.conversation_ref = Some("https://chatgpt.com/c/lost-session".to_string());
+        store.save(&meta).unwrap();
+
+        let mut brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        brain.restore_result = false;
+        let messages = brain.messages.clone();
+        let new_chat_calls = brain.new_chat_calls.clone();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir);
+
+        controller
+            .continue_run(
+                &meta.run_id,
+                "Buildfehler E0425 reparieren",
+                "mock",
+                false,
+                RunOptions::default(),
+            )
+            .unwrap();
+
+        assert!(*new_chat_calls.borrow() >= 1);
+        let sent = messages.borrow();
+        assert!(sent[0].contains("Urspruengliche Aufgabe"), "{sent:?}");
+        assert!(sent[0].contains("PRIOR_TRANSCRIPT"), "{sent:?}");
+        assert!(sent[0].contains("Buildfehler E0425 reparieren"), "{sent:?}");
     }
 
     #[test]

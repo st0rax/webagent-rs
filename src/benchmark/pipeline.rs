@@ -78,11 +78,12 @@ const OUTAGE_COOLDOWN_SECS: u64 = 300;
 fn bench_run(
     brain_id: &str,
     task: &str,
+    resume_id: Option<&str>,
     workdir: &std::path::Path,
     headless: bool,
     note: Option<crate::StageNote>,
     verbose: bool,
-) -> Result<(String, u32), String> {
+) -> Result<(String, u32, String), String> {
     use crate::browser::WebBrainBackend;
     use crate::controller::{AgentController, RunOptions};
     use crate::executor::PlatformShellExecutor;
@@ -102,28 +103,28 @@ fn bench_run(
     if let Some(n) = note {
         controller.set_progress(n, !verbose);
     }
-    let meta = controller.run_with_options(
-        task,
-        brain_id,
-        None,
-        headless,
-        RunOptions {
-            suppress_memory_context: true,
-            ..RunOptions::default()
-        },
-    )?;
-    Ok((meta.status, meta.cycles))
+    let options = RunOptions {
+        suppress_memory_context: true,
+        ..RunOptions::default()
+    };
+    let meta = if let Some(run_id) = resume_id {
+        controller.continue_run(run_id, task, brain_id, headless, options)?
+    } else {
+        controller.run_with_options(task, brain_id, None, headless, options)?
+    };
+    Ok((meta.status, meta.cycles, meta.run_id))
 }
 
 #[cfg(not(feature = "webview"))]
 fn bench_run(
     _brain_id: &str,
     _task: &str,
+    _resume_id: Option<&str>,
     _workdir: &std::path::Path,
     _headless: bool,
     _note: Option<crate::StageNote>,
     _verbose: bool,
-) -> Result<(String, u32), String> {
+) -> Result<(String, u32, String), String> {
     Err("webview-Feature nicht aktiv — kein Brain-Backend verfügbar".to_string())
 }
 
@@ -550,6 +551,7 @@ where
             let max_iter = config.max_iterations.max(1);
             let stall_limit = config.stall_limit.max(1);
             let mut attempt_task = task.clone();
+            let mut run_id: Option<String> = None;
             let mut cycles = 0u32;
             let mut did_change = false;
             let mut compiled = false;
@@ -575,13 +577,17 @@ where
                 match bench_run(
                     brain,
                     &attempt_task,
+                    run_id.as_deref(),
                     &config.workdir,
                     config.headless,
                     Some(t.note_handle()),
                     config.verbose,
                 ) {
-                    Ok((status, c)) => {
-                        cycles += c;
+                    Ok((status, c, continued_run_id)) => {
+                        // `continue_run` liefert kumulative Zyklen derselben
+                        // Agent-Session. Nicht über Iterationen doppelt zählen.
+                        cycles = c;
+                        run_id = Some(continued_run_id);
                         if is_external_block(&status) {
                             unavailable = true;
                             t.finish("Brain nicht verfuegbar (extern)");
@@ -727,14 +733,15 @@ where
                     "Tests {} ({after} bestanden)",
                     if t_ok { "ok" } else { "ROT" }
                 ));
-                // Gruen UND mehr Tests als vorher: nur dann ist der Code wirklich
-                // eingebunden und getestet (verwaiste Datei erhoeht die Zahl nicht).
-                tests_passed = t_ok && after > baseline_tests;
+                // Eine grüne task-spezifische Suite ist der Beleg. Eine höhere
+                // Testzahl ist wertvoll, aber kein universelles Erfolgskriterium:
+                // Bugfixes und Refactorings dürfen bestehende Tests reparieren.
+                tests_passed = t_ok;
                 if t_ok && after <= baseline_tests {
                     bench_say!(
-                        crate::bench_events::Level::Warn,
+                        crate::bench_events::Level::Info,
                         None,
-                        "  Tests gruen, aber Testzahl unveraendert ({after} <= {baseline_tests}) — nicht eingebunden"
+                        "  Tests gruen; Testzahl unveraendert ({after} <= {baseline_tests})"
                     );
                 }
                 if tests_passed {
