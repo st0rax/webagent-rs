@@ -185,7 +185,7 @@ pub(crate) fn dismiss_consent(driver: &mut dyn PageDriver, sel: &Selectors) -> b
     // INNERHALB offener Dialoge/Overlays, damit nichts Legitimes getroffen wird.
     dismissed |= dismiss_modal_buttons(driver);
     dismissed |= click_first(driver, sel, "notice_close_button");
-    dismissed |= dismiss_qwen_blocks(driver);
+    dismissed |= click_first(driver, sel, "profile_block_button");
     dismissed
 }
 
