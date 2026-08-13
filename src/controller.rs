@@ -284,7 +284,26 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             Some(&brain_id),
             "Browser: Auftrag wird gesendet",
         );
-        let baseline = self.brain.send(message).unwrap_or_default();
+        let baseline = match self.brain.send(message) {
+            Ok(baseline) => baseline,
+            Err(error) => {
+                if let Some(t) = transcript {
+                    let mut extra = HashMap::new();
+                    extra.insert("status".to_string(), "send_error".into());
+                    extra.insert("error".to_string(), error.clone().into());
+                    let _ = t.append("system", "brain_send_failed", extra);
+                }
+                crate::bench_events::emit(
+                    crate::bench_events::Level::Warn,
+                    Some(&brain_id),
+                    &format!("Browser: Auftrag nicht gesendet: {error}"),
+                );
+                return BrainTurn {
+                    text: serde_json::json!({ "error": error, "stage": "send" }).to_string(),
+                    complete: false,
+                };
+            }
+        };
         crate::bench_events::emit(
             crate::bench_events::Level::Progress,
             Some(&brain_id),
@@ -1587,6 +1606,8 @@ mod tests {
         /// eindeutiger id liefern (nie abschließen) — simuliert einen Run, der
         /// nur durch die Wall-Deadline gestoppt werden kann.
         loop_shell: bool,
+        send_error: Option<String>,
+        wait_calls: Rc<RefCell<usize>>,
     }
 
     impl MockBrain {
@@ -1607,6 +1628,8 @@ mod tests {
                 response_index: Rc::new(RefCell::new(0)),
                 wait_sleep: Duration::ZERO,
                 loop_shell: false,
+                send_error: None,
+                wait_calls: Rc::new(RefCell::new(0)),
             }
         }
 
@@ -1621,6 +1644,11 @@ mod tests {
         fn with_wall_stall(mut self, sleep: Duration) -> Self {
             self.wait_sleep = sleep;
             self.loop_shell = true;
+            self
+        }
+
+        fn with_send_error(mut self, error: &str) -> Self {
+            self.send_error = Some(error.to_string());
             self
         }
 
@@ -1662,6 +1690,9 @@ mod tests {
 
         fn send(&mut self, text: &str) -> Result<i32, String> {
             self.messages.borrow_mut().push(text.to_string());
+            if let Some(error) = &self.send_error {
+                return Err(error.clone());
+            }
             Ok(0)
         }
 
@@ -1670,6 +1701,7 @@ mod tests {
             _baseline_count: i32,
             _timeout: f64,
         ) -> Result<BrainResponse, String> {
+            *self.wait_calls.borrow_mut() += 1;
             if !self.wait_sleep.is_zero() {
                 std::thread::sleep(self.wait_sleep);
             }
@@ -1797,6 +1829,30 @@ mod tests {
             }]
         })
         .to_string()
+    }
+
+    #[test]
+    fn send_error_never_waits_for_and_recycles_a_stale_response() {
+        let brain = MockBrain::new()
+            .with_responses(
+                vec![&shell_response("stale-action", "Get-Location")],
+                vec![true],
+            )
+            .with_send_error("kein Absende-Beweis");
+        let wait_calls = brain.wait_calls.clone();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, unique_data_dir());
+
+        let turn = controller.run_once("neue Observation", None);
+
+        assert!(!turn.complete);
+        assert!(turn.text.contains("kein Absende-Beweis"), "{}", turn.text);
+        assert!(turn.text.contains("\"stage\":\"send\""), "{}", turn.text);
+        assert_eq!(
+            *wait_calls.borrow(),
+            0,
+            "stale Antwort darf nie gelesen werden"
+        );
     }
 
     /// Legt eine Datei an, deren Inhalt den Test-Anker garantiert nicht enthaelt.
