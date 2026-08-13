@@ -238,6 +238,7 @@ impl RunStore {
     pub fn activate_continuation(&self, meta: &mut RunMeta) -> Result<(), String> {
         const ACTIVATABLE: &[&str] = &[
             "brain_incomplete",
+            "done",
             "max_cycles",
             "protocol_error",
             "wall_timeout",
@@ -905,15 +906,20 @@ mod tests {
     }
 
     #[test]
-    fn continuation_activation_rejects_successful_terminal_run() {
+    fn continuation_activation_reopens_brain_done_for_external_review_repair() {
         let tmp = unique_tmp();
         let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
         let mut meta = store.create("mock", "already complete").unwrap();
         meta.status = "done".to_string();
         store.save(&meta).unwrap();
 
-        assert!(store.activate_continuation(&mut meta).is_err());
-        assert_eq!(store.load(&meta.run_id).unwrap().status, "done");
+        let mut generic = meta.clone();
+        generic.status = "running".to_string();
+        assert!(store.save(&generic).is_err());
+
+        store.activate_continuation(&mut meta).unwrap();
+        assert_eq!(meta.status, "running");
+        assert_eq!(store.load(&meta.run_id).unwrap().status, "running");
 
         fs::remove_dir_all(&tmp).ok();
     }
