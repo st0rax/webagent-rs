@@ -20,6 +20,12 @@ pub(crate) const STABILITY_SECONDS: f64 = 1.5;
 /// `classify_completion`.
 pub(crate) const PROSE_STABILITY_SECONDS: f64 = 8.0;
 
+/// Ein syntaktisch offener Protokollblock kann ein echter Stream-Zwischenstand
+/// oder eine bereits beendete, fehlerhafte Modellantwort sein. Nach diesem
+/// stabilen Fenster wird letzteres an den Parser-/Repair-Pfad weitergereicht,
+/// statt bis zum Provider-Timeout auf Bytes zu warten, die nie mehr kommen.
+pub(crate) const TRUNCATED_STABILITY_SECONDS: f64 = 8.0;
+
 /// Phrasen, die auf eine externe Blockierung hindeuten (Tages-/Nachrichtenlimit,
 /// Login, Cloudflare) — DE+EN. Geteilt zwischen `detect_block_banner` (JS-Scan der
 /// ganzen Seite) und `block_phrase_in_text` (reine Rust-Pruefung des bereits
@@ -214,11 +220,22 @@ pub(crate) fn classify_completion(
         return Completion::RateLimited;
     }
 
-    let text_ready = !text.trim().is_empty()
-        && !is_transient_response_text(text)
-        && !is_possibly_truncated(text);
+    let text_ready = !text.trim().is_empty() && !is_transient_response_text(text);
     if !text_ready {
         return Completion::Continue;
+    }
+
+    if is_possibly_truncated(text) {
+        // Solange die UI noch generiert, ist dies ein echter Zwischenstand.
+        // Ist der Text dagegen stabil und kein Stop-Signal mehr sichtbar,
+        // muss der Parser den geschlossenen Transport als invalid reparieren
+        // duerfen. Andernfalls kostet ein fehlender END-Marker jedes Mal den
+        // vollen wait_response-Timeout.
+        return if !stop_visible && stable_secs >= TRUNCATED_STABILITY_SECONDS {
+            Completion::Complete
+        } else {
+            Completion::Continue
+        };
     }
 
     // Ein vollständig geparstes Protokoll-Dokument ist immer fertig — auch wenn

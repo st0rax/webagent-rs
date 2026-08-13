@@ -29,6 +29,7 @@ mod surface;
 #[cfg(test)]
 pub(crate) use blocking::{
     banner_is_prompt_echo, BLOCK_BANNER_MAX_CHARS, PROSE_STABILITY_SECONDS, STABILITY_SECONDS,
+    TRUNCATED_STABILITY_SECONDS,
 };
 pub(crate) use blocking::{block_phrase_in_text, classify_completion, Completion};
 pub use send::is_send_disabled_error;
@@ -701,6 +702,22 @@ mod tests {
         let partial = r#"{"protocol":"webagent/1","actions":[{"id":"a","type":"shell","command":"unterminated"#;
         let r = classify_completion(partial, true, true, false, 5.0, true);
         assert_eq!(r, Completion::Continue);
+    }
+
+    #[test]
+    fn stable_truncated_protocol_reaches_repair_instead_of_provider_timeout() {
+        let partial =
+            "WEBAGENT/1 SHELL\nid: inspect\n---SCRIPT---\nGet-Content src/lib.rs\n---END SCRIPT";
+        let r = classify_completion(
+            partial,
+            true,
+            true,
+            false,
+            TRUNCATED_STABILITY_SECONDS + 0.1,
+            false,
+        );
+        assert_eq!(r, Completion::Complete);
+        assert!(!crate::protocol::parse(partial).valid);
     }
 
     #[test]
