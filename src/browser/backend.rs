@@ -423,12 +423,12 @@ impl BrainBackend for WebBrainBackend {
         let mut guard = self.driver.borrow_mut();
         let driver = match guard.as_mut() {
             Some(c) => c,
-            None => return Ok(false),
+            None => return Err("Browser-Driver nicht gestartet".into()),
         };
-        match driver.navigate(reference, Duration::from_secs(30)) {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
-        }
+        driver
+            .navigate(reference, Duration::from_secs(30))
+            .map(|_| true)
+            .map_err(|e| e.to_string())
     }
 }
 

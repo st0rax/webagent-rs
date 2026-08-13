@@ -198,6 +198,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         let mut restored = false;
 
         if let Some(cr) = conv_ref.as_ref() {
+            let _ = transcript.append(
+                "system",
+                &format!("resume_phase=restore_attempt conversation_ref={cr}"),
+                HashMap::new(),
+            );
             if !is_valid_resume_conversation_ref(cr) {
                 // Mock/placeholder refs (e.g. https://example.test/...) must not
                 // look like a successful restore — that produced phantom done runs.
@@ -210,7 +215,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     HashMap::new(),
                 );
             } else {
-                restored = self.brain.restore_conversation(cr).unwrap_or(false);
+                match self.brain.restore_conversation(cr) {
+                    Ok(ok) => restored = ok,
+                    Err(err) => {
+                        let _ = transcript.append(
+                            "system",
+                            &format!("resume_restore_error={err}"),
+                            HashMap::new(),
+                        );
+                    }
+                }
             }
         }
 
@@ -222,10 +236,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         {
             let _ = transcript.append(
                 "system",
-                &format!(
-                    "resume_restored conversation_ref={}",
-                    conv_ref.as_ref().unwrap()
-                ),
+                &format!("resume_phase=restored_ready conversation_ref={}", conv_ref.as_ref().unwrap()),
                 HashMap::new(),
             );
             let prompt =
@@ -247,7 +258,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             .unwrap_or_default();
         let _ = transcript.append(
             "system",
-            "resume_fallback=new_chat+transcript",
+            "resume_phase=fallback_new_chat+transcript",
             HashMap::new(),
         );
         let prompt = instruction.map_or_else(
