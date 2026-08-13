@@ -1323,6 +1323,7 @@ per edit/write-Action pflegbar):\n",
                 last_heartbeat = now;
             }
 
+            let incomplete_response_text = response_text.clone();
             let (new_response, new_finished) =
                 self.handle_response(&response_text, &mut transcript);
             response_text = new_response;
@@ -1368,9 +1369,11 @@ per edit/write-Action pflegbar):\n",
                 {
                     break;
                 }
-                if let Some(recovered) =
-                    self.recover_from_incomplete(&mut transcript, "cycle", &response_text)
-                {
+                if let Some(recovered) = self.recover_from_incomplete(
+                    &mut transcript,
+                    "cycle",
+                    &incomplete_response_text,
+                ) {
                     if !recovered.complete {
                         let final_meta = self.finish_brain_incomplete(&mut meta, &mut transcript);
                         self.finish_run_cleanup(opts);

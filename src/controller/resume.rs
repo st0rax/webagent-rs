@@ -21,6 +21,14 @@ const INCOMPLETE_RETRY_PROMPT: &str =
 
 fn incomplete_retry_prompt(last_text: &str) -> String {
     let trimmed = last_text.trim_end();
+    if trimmed.matches("WEBAGENT/1 ").count() > 1 {
+        return "[Interpreter] Die letzte Antwort enthält mehrere aneinandergehängte \
+                WEBAGENT/1-Rohdokumente. Rohformat erlaubt genau eine Action. Bündele \
+                Dateiänderungen in genau einem WEBAGENT/1 EDIT_BATCH mit korrektem \
+                ---END EDIT--- je Block und abschließendem ---END BATCH---. Sende \
+                abhängige Shell-Checks erst nach der Batch-Observation in einer neuen Antwort."
+            .to_string();
+    }
     let missing = [
         ("WEBAGENT/1 SHELL", "---END SCRIPT---"),
         ("WEBAGENT/1 WRITE", "---END CONTENT---"),
@@ -253,5 +261,13 @@ mod incomplete_prompt_tests {
     fn keeps_generic_repair_for_empty_response() {
         let prompt = incomplete_retry_prompt("");
         assert!(prompt.contains("unvollständig oder leer"));
+    }
+
+    #[test]
+    fn explains_multiple_raw_actions_as_one_edit_batch() {
+        let text = "WEBAGENT/1 EDIT\nid: a\n---END EDIT---\n\nWEBAGENT/1 SHELL\nid: b";
+        let prompt = incomplete_retry_prompt(text);
+        assert!(prompt.contains("EDIT_BATCH"));
+        assert!(prompt.contains("abhängige Shell-Checks"));
     }
 }
