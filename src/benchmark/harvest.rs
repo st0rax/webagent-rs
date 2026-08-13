@@ -159,4 +159,3 @@ pub(crate) fn harvest_commit(
     }
     Ok(())
 }
-

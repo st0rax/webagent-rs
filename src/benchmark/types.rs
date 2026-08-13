@@ -91,4 +91,3 @@ pub struct BenchmarkReport {
     /// der als Code im Repo bleibt statt nur als Messpunkt.
     pub harvested: Vec<(String, String)>,
 }
-

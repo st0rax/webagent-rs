@@ -227,4 +227,3 @@ pub(crate) fn patch_touched_paths(patch: &str) -> (Vec<String>, Vec<String>) {
     deleted.dedup();
     (paths, deleted)
 }
-

@@ -21,6 +21,7 @@ pub(crate) struct HandoffQueue {
     max_handoffs: usize,
 }
 
+
 impl HandoffQueue {
     pub(crate) fn new(plan: &[(String, String)], brains: &[String], max_handoffs: usize) -> Self {
         Self {
@@ -101,4 +102,3 @@ impl HandoffQueue {
         self.dropped.contains(effective)
     }
 }
-

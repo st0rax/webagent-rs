@@ -82,4 +82,3 @@ pub(crate) fn print_leaderboard(board: &[CodeStats]) {
 pub fn format_benchmark_result(name: &str, value: u64, unit: &str) -> String {
     format!("{}={}{}", name, value, unit)
 }
-

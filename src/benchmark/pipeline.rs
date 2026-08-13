@@ -18,9 +18,9 @@ use super::handoff::HandoffQueue;
 use super::harvest::{harvest_commit, scope_compensation_count, validate_task_scope};
 use super::report::{format_benchmark_report, print_leaderboard};
 use super::tasks::{
-    assign_tasks, build_refine_prompt, parse_test_count, proposed_fn_name,
-    ranked_from_report, repair_focus_from_failures, target_file_of, task_id, task_is_redundant,
-    task_is_misdirected, task_targets_missing_file, usable_refinement,
+    assign_tasks, build_refine_prompt, parse_test_count, proposed_fn_name, ranked_from_report,
+    refinement_has_evidence, repair_focus_from_failures, target_file_of, task_id,
+    task_is_misdirected, task_is_redundant, task_targets_missing_file, usable_refinement,
 };
 use super::types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
 use super::{
@@ -130,7 +130,8 @@ fn bench_run(
 /// Übersetzt EINEN gevoteten Vorschlag in eine konkrete, bounded Coding-Aufgabe
 /// (Phase A.5). Zwei Versuche: verlangt die Aufgabe etwas bereits Vorhandenes,
 /// wäre der Bauauftrag wertlos ("ist schon implementiert" → keine Änderung →
-/// fälschlich FAIL). Fällt die Verfeinerung aus, trägt der Rohvorschlag.
+/// fälschlich FAIL). Fällt die Verfeinerung aus, wird der unbelegte Vorschlag
+/// verworfen statt als teurer Bauauftrag durchgereicht.
 fn refine_one<Q>(
     winner: &str,
     facts: &str,
@@ -144,7 +145,7 @@ where
     Q: Fn(&str, &str) -> Result<String, String> + Sync,
 {
     if refiner.is_empty() {
-        return winner.to_string();
+        return String::new();
     }
     for attempt in 1..=2 {
         let mut prompt = build_refine_prompt(winner, facts, src_files);
@@ -184,6 +185,14 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                     );
                     continue;
                 }
+                Some(t) if !refinement_has_evidence(&t) => {
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        None,
+                        "  verworfen: keine lokalen Belege oder kein automatisierbarer Abschluss"
+                    );
+                    continue;
+                }
                 Some(t) => return t,
                 None => break,
             },
@@ -197,7 +206,7 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
             }
         }
     }
-    winner.to_string()
+    String::new()
 }
 
 /// Fährt den vollen Benchmark: `query` speist Phase A (Swarm-Abstimmung, in
@@ -450,37 +459,33 @@ where
             let eff = match refined_cache.get(raw) {
                 Some(t) => t.clone(),
                 None => {
-                    // Ein-Brain-Spur (Storax-Vorgabe 2026-08-01): der
-                    // Konsensplan stammt aus `design_vote` — beim einzigen
-                    // Brain ist das sein eigener Entwurf, `refine_one` wuerde
-                    // ihn durch denselben Brain nochmal verfeinern
-                    // (Selbstgespraech, ~90 s). Bei mehreren Brains bleibt der
-                    // Refiner-Schritt, weil der Refiner nicht der Autor sein
-                    // muss.
-                    let refined = if round_brains.len() == 1
-                        && !task_is_misdirected(&consensus_plan, &config.workdir)
-                    {
-                        consensus_plan.clone()
-                    } else {
-                        let t = crate::StageTimer::start(format!(
-                            "verfeinern fuer {brain} via {refiner}"
-                        ));
-                        let e = refine_one(
-                            &consensus_plan,
-                            &round_facts,
-                            &refiner,
-                            &existing_api,
-                            &src_files,
-                            &config.workdir,
-                            &query,
-                        );
-                        t.finish(crate::char_prefix(&e, 90));
-                        e
-                    };
+                    // Auch ein einzelnes Brain muss seinen Entwurf als lokal
+                    // belegtes Work-Package konkretisieren. Der fruehere
+                    // Shortcut liess erfundene APIs direkt in den Baulauf.
+                    let t =
+                        crate::StageTimer::start(format!("verfeinern fuer {brain} via {refiner}"));
+                    let refined = refine_one(
+                        &consensus_plan,
+                        &round_facts,
+                        &refiner,
+                        &existing_api,
+                        &src_files,
+                        &config.workdir,
+                        &query,
+                    );
+                    t.finish(crate::char_prefix(&refined, 90));
                     refined_cache.insert(raw.clone(), refined.clone());
                     refined
                 }
             };
+            if eff.is_empty() {
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    Some(brain),
+                    "{brain}: Vorschlag ohne belegtes Work-Package verworfen"
+                );
+                continue;
+            }
             bench_say!(
                 crate::bench_events::Level::Info,
                 Some(brain),

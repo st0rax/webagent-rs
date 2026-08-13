@@ -184,9 +184,13 @@ pub fn build_refine_prompt(winner: &str, facts: &str, files: &[String]) -> Strin
          Agent in wenigen Schritten umsetzen kann. Anforderungen an deine Antwort:\n\
          - genau EINE Zieldatei benennen, und sie MUSS aus dieser Liste stammen \
            (erfinde KEINE Pfade, lege KEINE neuen Dateien/Module an):\n           {files}\n\
-         - genau EINE neue oeffentliche Funktion mit EXAKTER Rust-Signatur angeben\n\
+         - eine EXAKTE Rust-Signatur oder einen bestehenden, konkret zu aendernden Anker angeben; \
+           eine neue oeffentliche API nur wenn sie wirklich erforderlich ist\n\
          - das erwartete Verhalten in 2-4 Saetzen praezise beschreiben\n\
-         - mindestens 4 konkrete Testfaelle auflisten\n\
+         - 1-4 konkrete automatisierbare Testfaelle und ein ausfuehrbares Testkommando nennen\n\
+         - unter `Lokale Belege:` mindestens zwei EXISTIERENDE Symbole/Funktionen aus den \
+           Projektfakten nennen; keine unbelegte Registry, API oder Infrastruktur voraussetzen\n\
+         - unter `Abschlussbeleg:` die erwartete Datei-Aenderung und das pruefende Kommando nennen\n\
          - nur std und bereits vorhandene Dependencies verwenden\n\
          - KEINE Architektur-Umbauten, keine neuen Module, kein Refactoring\n\n\
          Antworte AUSSCHLIESSLICH mit der Aufgabenbeschreibung als Fliesstext \
@@ -209,6 +213,19 @@ pub fn usable_refinement(text: &str) -> Option<String> {
         return None;
     }
     Some(t.to_string())
+}
+
+/// Ein autonom uebernehmbares Arbeitspaket braucht lokale Anker und einen
+/// maschinell pruefbaren Abschluss. Freie Wunschtexte werden nicht in einen
+/// teuren Browser-Baulauf durchgereicht.
+pub fn refinement_has_evidence(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    target_file_of(text).is_some()
+        && lower.contains("lokale belege:")
+        && lower.contains("abschlussbeleg:")
+        && (lower.contains("cargo test")
+            || lower.contains("cargo check")
+            || lower.contains("cargo clippy"))
 }
 
 /// Extrahiert den vorgeschlagenen Funktionsnamen aus einer verfeinerten Aufgabe
@@ -276,12 +293,8 @@ pub fn task_targets_missing_file(refined: &str, src_files: &[String]) -> bool {
 /// das Brain am falschen Ort arbeiten.
 pub fn task_is_misdirected(refined: &str, root: &Path) -> bool {
     let target = target_file_of(refined).unwrap_or_default();
-    crate::target_check::pruefe(
-        &target,
-        refined,
-        &crate::target_check::quelldateien(root),
-    )
-    .irrefuehrend()
+    crate::target_check::pruefe(&target, refined, &crate::target_check::quelldateien(root))
+        .irrefuehrend()
 }
 
 /// Platz-1-Vorschlag eines Self-Research-Reports (die Benchmark-Aufgabe), oder
@@ -414,7 +427,10 @@ pub fn relevant_target_context(path: &Path, task: &str, radius: usize) -> Option
         .enumerate()
         .filter(|(_, line)| signature(line))
         .filter_map(|(idx, line)| {
-            let score = identifiers.iter().filter(|word| line.contains(**word)).count();
+            let score = identifiers
+                .iter()
+                .filter(|word| line.contains(**word))
+                .count();
             (score > 0).then_some((score, idx))
         })
         .max_by_key(|(score, _)| *score)

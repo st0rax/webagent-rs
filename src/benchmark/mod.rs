@@ -53,10 +53,9 @@ pub use pipeline::run_benchmark;
 pub use report::{format_benchmark_report, format_benchmark_result};
 pub use tasks::{
     assign_tasks, build_refine_prompt, build_task_prompt, build_task_prompt_for_brain_in,
-    build_task_prompt_in, file_outline, relevant_target_context,
-    parse_test_count, proposed_fn_name, ranked_from_report, repair_focus_from_failures,
-    target_file_of, task_id, task_is_redundant, task_targets_missing_file, usable_refinement,
-    task_is_misdirected,
+    build_task_prompt_in, file_outline, parse_test_count, proposed_fn_name, ranked_from_report,
+    refinement_has_evidence, relevant_target_context, repair_focus_from_failures, target_file_of,
+    task_id, task_is_misdirected, task_is_redundant, task_targets_missing_file, usable_refinement,
     winner_from_report,
 };
 pub use types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
@@ -93,8 +92,10 @@ mod refine_tests {
             "FAKTEN",
             &[],
         );
-        assert!(p.contains("EXAKTER Rust-Signatur"), "{p}");
+        assert!(p.contains("EXAKTE Rust-Signatur"), "{p}");
         assert!(p.contains("Testfaelle"), "{p}");
+        assert!(p.contains("Lokale Belege:"), "{p}");
+        assert!(p.contains("Abschlussbeleg:"), "{p}");
         assert!(p.contains("Sicherheitshaertung"), "Sieger muss drinstehen");
         assert!(p.contains("FAKTEN"), "Projektfakten muessen drinstehen");
         // Keine Architektur-Umbauten anfordern (sonst explorieren die Brains wieder).
@@ -199,6 +200,18 @@ mod refine_tests {
         // Whitespace wird getrimmt.
         let padded = format!("   {spec}   ");
         assert_eq!(usable_refinement(&padded), Some(spec.trim().to_string()));
+    }
+
+    #[test]
+    fn refinement_braucht_lokale_belege_und_automatisierten_abschluss() {
+        let ready = "Zieldatei: src/brain.rs\nLokale Belege: BrainBackend und BrainResponse existieren in src/brain.rs.\nAbschlussbeleg: geaenderte Datei plus cargo test brain::tests --lib.";
+        assert!(refinement_has_evidence(ready));
+        assert!(!refinement_has_evidence(
+            "Zieldatei: src/brain.rs. Fuege eine globale Registry hinzu. cargo test --lib"
+        ));
+        assert!(!refinement_has_evidence(
+            "Lokale Belege: BrainBackend. Abschlussbeleg: cargo test --lib"
+        ));
     }
 }
 
