@@ -904,10 +904,30 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             }
 
             debug_assert!(protocol::should_attempt_protocol_repair(failures));
-            let turn = self.run_once(
-                &protocol::format_protocol_error_for(&detail, response_text),
-                Some(transcript),
-            );
+            let mut repair_prompt = protocol::format_protocol_error_for(&detail, response_text);
+            // Lange Tool-Observations koennen die eigentliche Aufgabe im
+            // Webchat aus dem wirksamen Kontext druecken. Ein Brain antwortet
+            // dann auf den generischen Formatfehler mit „Wie kann ich weiter
+            // helfen?" und der Repair-Loop repariert nur noch seine eigene
+            // Reparatur. Verankere bei noch fehlendem Write deshalb erneut das
+            // Ziel, ohne eine bestimmte Arbeitsfolge vorzuschreiben.
+            if self.file_writes_ok == 0 {
+                if let Some(task) = self.meta.as_ref().map(|meta| meta.task.trim()) {
+                    repair_prompt.push_str(
+                        "\n\n[Controller] Die ursprüngliche Aufgabe ist weiterhin offen; ",
+                    );
+                    repair_prompt.push_str(
+                        "warte nicht auf eine neue Nutzeranweisung und liefere keine reine "
+                    );
+                    repair_prompt.push_str(
+                        "Zusammenfassung. Setze sie autonom mit der naechsten gueltigen "
+                    );
+                    repair_prompt.push_str(&format!(
+                        "WEBAGENT/1-Action fort.\n<ORIGINAL_TASK>{task}</ORIGINAL_TASK>"
+                    ));
+                }
+            }
+            let turn = self.run_once(&repair_prompt, Some(transcript));
             if !turn.complete {
                 return (String::new(), false);
             }
@@ -2223,6 +2243,13 @@ mod tests {
                     || (m.contains("webagent/1") && m.contains("Ungültige"))
             }),
             "expected protocol repair prompt, got: {sent:?}"
+        );
+        assert!(
+            sent.iter().any(|m| {
+                m.contains("<ORIGINAL_TASK>Repariere Protokoll</ORIGINAL_TASK>")
+                    && m.contains("warte nicht auf eine neue Nutzeranweisung")
+            }),
+            "repair must re-anchor the unfinished task, got: {sent:?}"
         );
     }
 
