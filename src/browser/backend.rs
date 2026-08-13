@@ -205,9 +205,16 @@ impl BrainBackend for WebBrainBackend {
         let mut stable_since = Instant::now();
         let mut stop_seen_ever = false;
         let mut stop_inventory_done = false;
-        let mut target = (self.probe_generation(&assistant_js, &stop_js, -1).0 - 1)
-            .max(baseline_count)
-            .max(0);
+        // `baseline_count` ist eine ANZAHL, kein nullbasierter Index. Einige UIs
+        // (real: ChatGPT nach DOM-Rehydration) ersetzen den letzten Assistant-
+        // Container, ohne die Anzahl zu erhoehen. Das fruehere
+        // `(count - 1).max(baseline_count)` las dann Index `count` und damit
+        // dauerhaft hinter das Array: sichtbare fertige Antwort, aber
+        // `timeout_no_text`. Immer den aktuell letzten existierenden Container
+        // verfolgen; separat sicherstellen, dass dessen Inhalt wirklich neu ist.
+        let mut target =
+            latest_response_target(self.probe_generation(&assistant_js, &stop_js, -1).0);
+        let mut response_started = false;
 
         let mut p2_polls = 0u32;
         loop {
@@ -215,11 +222,11 @@ impl BrainBackend for WebBrainBackend {
             // sonst bleibt der Antwort-Container leer und die Erkennung timeoutet.
             self.handle_interruptions();
             let (count, current, stop_raw) = self.probe_generation(&assistant_js, &stop_js, target);
-            if count - 1 > target {
-                target = count - 1;
-            }
+            target = latest_response_target(count);
             let stop_visible = has_stop && stop_raw;
             stop_seen_ever |= stop_visible;
+            response_started |=
+                response_has_started(count, baseline_count, &current, &baseline_text);
 
             if current != last_text {
                 // Der Text waechst gerade, also generiert die Oberflaeche
@@ -261,14 +268,23 @@ impl BrainBackend for WebBrainBackend {
                 }
             }
 
-            match classify_completion(
-                &current,
-                has_stop,
-                stop_seen_ever,
-                stop_visible,
-                stable_secs,
-                self.brain_id == "claude",
-            ) {
+            // Ein Stop-Signal kann vor dem ersten Textchunk auftauchen. In
+            // diesem Fenster steht im letzten Container noch die alte Antwort;
+            // sie darf keinesfalls als neue, bereits valide Antwort geerntet
+            // werden.
+            let completion = if response_started {
+                classify_completion(
+                    &current,
+                    has_stop,
+                    stop_seen_ever,
+                    stop_visible,
+                    stable_secs,
+                    self.brain_id == "claude",
+                )
+            } else {
+                Completion::Continue
+            };
+            match completion {
                 Completion::RateLimited => return Ok(mk(current, target, false, "rate_limit")),
                 Completion::Complete => {
                     // Kurzes Settle: der letzte Chunk committet oft erst, nachdem
@@ -309,7 +325,8 @@ impl BrainBackend for WebBrainBackend {
                     // Auch diese Bestandsaufnahme ist ein Suchwerkzeug: nur auf
                     // Anforderung (WEBAGENT_STOP_INVENTORY=1) statt bei jeder
                     // Generation, sonst spamt der Dauerlauf.
-                    if has_stop && !stop_seen_ever
+                    if has_stop
+                        && !stop_seen_ever
                         && std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1")
                     {
                         crate::bench_events::eprint_line(&format!(
@@ -411,5 +428,40 @@ impl BrainBackend for WebBrainBackend {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
+    }
+}
+
+fn latest_response_target(count: i32) -> i32 {
+    (count - 1).max(0)
+}
+
+fn response_has_started(
+    count: i32,
+    baseline_count: i32,
+    current: &str,
+    baseline_text: &str,
+) -> bool {
+    count > baseline_count || (!current.trim().is_empty() && current != baseline_text)
+}
+
+#[cfg(test)]
+mod response_tracking_tests {
+    use super::{latest_response_target, response_has_started};
+
+    #[test]
+    fn reused_last_container_uses_existing_index_and_detects_changed_text() {
+        assert_eq!(latest_response_target(3), 2);
+        assert!(response_has_started(
+            3,
+            3,
+            "WEBAGENT/1 MESSAGE\ntext: fertig",
+            "alte Antwort"
+        ));
+    }
+
+    #[test]
+    fn stop_before_first_text_change_does_not_reuse_old_answer() {
+        assert_eq!(latest_response_target(3), 2);
+        assert!(!response_has_started(3, 3, "alte Antwort", "alte Antwort"));
     }
 }

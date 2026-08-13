@@ -612,6 +612,13 @@ mod tests {
         assert_eq!(backend.brain_id(), "chatgpt");
         assert_eq!(backend.url, "https://chatgpt.com/");
         assert!(!backend.sel("composer").is_empty());
+        assert!(
+            backend
+                .sel("stop_button")
+                .iter()
+                .all(|selector| !selector.contains("*=")),
+            "ChatGPT-Stop-Signale muessen exakt sein; breite aria-Teilstrings treffen fremde Controls"
+        );
     }
 
     #[test]
