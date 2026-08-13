@@ -17,6 +17,9 @@
   "assistant_message": [
     "div[data-message-author-role='assistant']"
   ],
+  "user_message": [
+    "div[data-message-author-role='user']"
+  ],
   "new_chat_button": [
     "a[href='/']",
     "button[data-testid='new-chat-button']"

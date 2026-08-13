@@ -67,7 +67,7 @@ fn submission_is_proven(
 impl WebBrainBackend {
     pub(crate) fn send_generic(&mut self, text: &str) -> Result<i32, String> {
         let baseline = self.prepare_send_baseline();
-        let user_baseline = self.chatgpt_user_message_count();
+        let user_baseline = self.user_message_count();
         if self.sel("composer").is_empty() {
             return Err("Keine Composer-Selektoren konfiguriert".into());
         }
@@ -414,7 +414,7 @@ return best?best.slice(0,300):null;})()"#;
             // ODER eine neue Antwort/Stop erschienen ist.
             let composer_consumed = !self.composer_contains(&composer_js, &sent);
             let user_echo = user_baseline
-                .zip(self.chatgpt_user_message_count())
+                .zip(self.user_message_count())
                 .is_some_and(|(before, now)| now > before);
             let stop_visible = self.any_visible("stop_button");
             let assistant_grew = self.assistant_count() > baseline;
@@ -439,13 +439,15 @@ return best?best.slice(0,300):null;})()"#;
         false
     }
 
-    /// ChatGPT-spezifischer User-Turn-Zaehler fuer den Absende-Beweis.
-    /// Andere Provider liefern `None` und behalten ihre vorhandenen Signale.
-    fn chatgpt_user_message_count(&self) -> Option<i32> {
-        if self.brain_id != "chatgpt" {
+    /// Optionaler User-Turn-Zaehler fuer den Absende-Beweis.
+    /// Nur Provider mit einem `user_message`-Selektor in ihrer Profil-Datei
+    /// liefern hier ein Signal; alle anderen behalten ihre vorhandenen Signale.
+    fn user_message_count(&self) -> Option<i32> {
+        if self.sel("user_message").is_empty() {
             return None;
         }
-        self.eval("document.querySelectorAll('[data-message-author-role=user]').length")
+        let user_js = Self::js_selectors(&self.sel("user_message"));
+        self.eval(&format!("document.querySelectorAll({user_js}).length"))
             .ok()
             .and_then(|value| value.as_i64())
             .and_then(|count| i32::try_from(count).ok())
