@@ -6,6 +6,9 @@
     "textarea",
     "div[role='textbox']"
   ],
+  "send_strategy": [
+    "gemini"
+  ],
   "send_button": [
     "div[class*='send-button-container'] > button",
     "button[aria-label*='Send' i]",

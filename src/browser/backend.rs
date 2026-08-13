@@ -142,9 +142,10 @@ impl BrainBackend for WebBrainBackend {
 
     fn send(&mut self, text: &str) -> Result<i32, String> {
         *self.last_sent.borrow_mut() = text.to_string();
-        match self.brain_id.as_str() {
-            "gemini" => self.send_gemini(text),
-            "qwen" => self.send_qwen(text),
+        let strategy = self.sel("send_strategy").into_iter().next();
+        match strategy.as_deref() {
+            Some("gemini") => self.send_gemini(text),
+            Some("qwen") => self.send_qwen(text),
             _ => self.send_generic(text),
         }
     }

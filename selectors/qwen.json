@@ -4,6 +4,9 @@
     "textarea",
     "div[contenteditable='true']"
   ],
+  "send_strategy": [
+    "qwen"
+  ],
   "send_button": [
     "button[aria-label*='Send' i]",
     "button[aria-label*='send' i]",
