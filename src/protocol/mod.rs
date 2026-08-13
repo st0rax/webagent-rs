@@ -172,6 +172,21 @@ mod tests {
     }
 
     #[test]
+    fn closed_but_invalid_raw_envelopes_are_not_treated_as_streams() {
+        let legacy_message =
+            "WEBAGENT/1 MESSAGE\nid: final\n---CONTENT---\nfertig\n---END MESSAGE---";
+        assert!(!is_possibly_truncated(legacy_message));
+        assert!(!parse(legacy_message).valid);
+
+        let open_message = "WEBAGENT/1 MESSAGE\nid: final\n---CONTENT---\nfertig";
+        assert!(is_possibly_truncated(open_message));
+
+        let closed_bad_edit = "WEBAGENT/1 EDIT\nid: bad\npath: a.rs\n---OLD---\nx\n---END EDIT---";
+        assert!(!is_possibly_truncated(closed_bad_edit));
+        assert!(!parse(closed_bad_edit).valid);
+    }
+
+    #[test]
     fn test_edit_batches_with_shell() {
         // edit/shell dürfen gemischt in einer Antwort stehen (seriell ausgeführt).
         let env = json!({

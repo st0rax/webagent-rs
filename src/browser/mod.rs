@@ -755,6 +755,19 @@ mod tests {
     }
 
     #[test]
+    fn closed_invalid_message_reaches_repair_after_stability() {
+        let text = "WEBAGENT/1 MESSAGE\nid: final\n---CONTENT---\nfertig\n---END MESSAGE---";
+        assert_eq!(
+            classify_completion(text, true, false, false, 0.5, false),
+            Completion::Continue
+        );
+        assert_eq!(
+            classify_completion(text, true, false, false, STABILITY_SECONDS * 1.5, false),
+            Completion::Complete
+        );
+    }
+
+    #[test]
     fn beide_auslesepfade_gewinnen_die_mathe_quelle_zurueck() {
         // Regression 30.07.2026: deepseeks Oberflaeche schickt PowerShell mit
         // `$`-Variablen durch KaTeX. `innerText` liefert dann ein Zeichen pro
