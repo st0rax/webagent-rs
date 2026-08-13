@@ -484,6 +484,7 @@ pub fn cmd_run(
     resume: Option<&str>,
     headless: bool,
     max_cycles: u32,
+    no_memory: bool,
 ) -> i32 {
     use webagent::browser::WebBrainBackend;
     use webagent::controller::{AgentController, RunOptions};
@@ -505,15 +506,19 @@ pub fn cmd_run(
         "[run] brain={} headless={} max_cycles={} — starte Embedded WebView…",
         brain, headless, max_cycles
     );
+    let opts = RunOptions {
+        suppress_memory_context: no_memory,
+        ..RunOptions::default()
+    };
     let result = match resume {
         Some(run_id) => controller.continue_run(
             run_id,
             task,
             brain,
             headless,
-            RunOptions::default(),
+            opts,
         ),
-        None => controller.run(task, brain, None, headless),
+        None => controller.run_with_options(task, brain, None, headless, opts),
     };
     match result {
         Ok(meta) => {

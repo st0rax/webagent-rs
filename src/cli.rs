@@ -38,6 +38,10 @@ pub enum Commands {
         /// Maximale Anzahl an Zyklen
         #[arg(long, default_value = "100")]
         max_cycles: u32,
+
+        /// Aufgabe ohne alte Run-Episoden und Wiki-Kontext starten
+        #[arg(long)]
+        no_memory: bool,
     },
 
     /// Sichtbaren Browser oeffnen und auf manuellen Login warten (keine Zugangsdaten-Eingabe)

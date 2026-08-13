@@ -106,7 +106,15 @@ fn dispatch(command: Commands) -> i32 {
             resume,
             headless,
             max_cycles,
-        } => cmd_run(&brain, &task, resume.as_deref(), headless, max_cycles),
+            no_memory,
+        } => cmd_run(
+            &brain,
+            &task,
+            resume.as_deref(),
+            headless,
+            max_cycles,
+            no_memory,
+        ),
 
         Commands::Login {
             brain,
