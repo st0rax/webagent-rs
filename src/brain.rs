@@ -101,6 +101,16 @@ pub fn is_retryable_empty_response(response: &str) -> bool {
     if trimmed.is_empty() {
         return true;
     }
+
+    // Protokoll-Nutzlast hat Vorrang vor Banner-Phrasen. Dateiinhalt und
+    // Aufgaben koennen legitimerweise Texte wie `usage limit` enthalten. Im
+    // Run 20260813_182931 enthielt eine vollstaendige EDIT-Action genau solchen
+    // Code und wurde vor dem Parser als `brain_unavailable` verworfen. Eine
+    // begonnene Tool-Antwort muss stattdessen normal geparst bzw. repariert
+    // werden; echte Provider-Banner enthalten keine WEBAGENT/1-Nutzlast.
+    if crate::browser::has_protocol_payload(trimmed) {
+        return false;
+    }
     let low = trimmed.to_lowercase();
 
     // Anbieter-Block: eine EINZIGE solche Phrase genuegt. „You have reached the
@@ -370,5 +380,21 @@ a
 b
 ---END EDIT---"
         ));
+    }
+
+    #[test]
+    fn protocol_payload_containing_provider_banner_is_not_unavailable() {
+        let edit = "WEBAGENT/1 EDIT
+id: instrument-block-detection
+path: src/browser/blocking.rs
+---OLD---
+const MESSAGE: &str = \"usage limit\";
+---NEW---
+const MESSAGE: &str = \"usage limit reached\";
+---END EDIT---";
+        assert!(!is_retryable_empty_response(edit));
+
+        let json = r#"{"protocol":"webagent/1","actions":[{"id":"m","type":"message","text":"usage limit handled"}]}"#;
+        assert!(!is_retryable_empty_response(json));
     }
 }
