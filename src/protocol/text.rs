@@ -136,6 +136,20 @@ pub fn format_protocol_error_for(detail: &str, invalid_response: &str) -> String
              ---END CONTENT---"
         );
     }
+    if compact.contains("\"type\":\"shell\"") || compact.contains("webagent/1shell") {
+        return format!(
+            "[Controller] Ungültige SHELL-Antwort — Repair. {detail}\n\
+             Dein beabsichtigter Befehl wurde NICHT ausgefuehrt. Wiederhole den Befehl JETZT \
+             im escape-freien Rohformat, ohne JSON, Prosa oder Codeblock. Der Prozess arbeitet \
+             bereits im richtigen Workspace; kein cd und kein absoluter Workspace-Pfad:\n\
+             WEBAGENT/1 SHELL\n\
+             id: neue-eindeutige-id\n\
+             timeout_seconds: 300\n\
+             ---SCRIPT---\n\
+             derselbe Befehl direkt\n\
+             ---END SCRIPT---"
+        );
+    }
     let example = serde_json::json!({
         "protocol": PROTOCOL_VERSION,
         "actions": [

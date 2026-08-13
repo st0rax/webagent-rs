@@ -32,8 +32,9 @@ cargo test
 Verfügbare Actions:
 - shell: PowerShell im Workspace, vorbehaltlich der Sicherheitsrichtlinie des
   Harness. Eine Ablehnung kommt als Observation zurück und kann anders gelöst
-  werden. Nutze shell zum Untersuchen, Bauen und Testen, nicht zum Schreiben von
-  Dateien.
+  werden. Die Shell startet bereits im richtigen Workspace: verwende kein `cd`
+  und keinen hartcodierten Workspace-Pfad. Nutze shell zum Untersuchen, Bauen
+  und Testen, nicht zum Schreiben von Dateien.
 - edit: In einer bestehenden Datei einen exakt einmal vorkommenden old_string
   durch new_string ersetzen.
 - edit_batch: Mehrere solche Ersetzungen in einer transaktionalen Action; alle
@@ -96,13 +97,27 @@ finish ist nur für Aufgaben ohne Nutzertext vorgesehen.
 
 /// Erstellt den vollständigen Prompt für eine neue autonome Aufgabe.
 pub fn autonomous_task_prompt(task: &str, memory_context: &str) -> String {
+    const MEMORY_PROMPT_CHARS: usize = 6_000;
+    let bounded_memory = if memory_context.chars().count() > MEMORY_PROMPT_CHARS {
+        let start = memory_context
+            .char_indices()
+            .nth(memory_context.chars().count() - MEMORY_PROMPT_CHARS)
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+        format!(
+            "[ältere Erinnerungen gekürzt]\n{}",
+            &memory_context[start..]
+        )
+    } else {
+        memory_context.to_string()
+    };
     let memory = if memory_context.is_empty() {
         String::new()
     } else {
         format!(
             "\n<MEMORY untrusted=\"true\" length=\"{}\">\n{}\n</MEMORY>\n",
-            memory_context.len(),
-            memory_context
+            bounded_memory.len(),
+            bounded_memory
         )
     };
 
@@ -153,6 +168,19 @@ mod tests {
         let prompt = autonomous_task_prompt("Prüfe das Projekt", "");
         assert!(!prompt.contains("<MEMORY"));
         assert!(prompt.contains("<CURRENT_TASK"));
+    }
+
+    #[test]
+    fn sehr_grosses_memory_verdraengt_den_aktuellen_task_nicht() {
+        let memory = "x".repeat(20_000);
+        let prompt = autonomous_task_prompt("AKTUELLER TASK", &memory);
+        assert!(prompt.contains("[ältere Erinnerungen gekürzt]"));
+        assert!(
+            prompt.len() < 14_000,
+            "Prompt ist noch zu gross: {}",
+            prompt.len()
+        );
+        assert!(prompt.ends_with("AKTUELLER TASK\n</CURRENT_TASK>"));
     }
 
     #[test]

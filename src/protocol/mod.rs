@@ -654,6 +654,15 @@ Write-Output $html
     }
 
     #[test]
+    fn kaputtes_shell_json_bekommt_escape_freies_rohformat() {
+        let invalid = r#"{"actions":[{"type":"shell","command":"cd "C:\repo" && cargo test"}]}"#;
+        let msg = format_protocol_error_for("ungueltiges JSON", invalid);
+        assert!(msg.contains("WEBAGENT/1 SHELL"), "{msg}");
+        assert!(msg.contains("kein cd"), "{msg}");
+        assert!(!msg.contains("Get-Location"), "{msg}");
+    }
+
+    #[test]
     fn test_error_code_unknown_field() {
         assert_eq!(error_code("unbekanntes Feld"), "unknown_field");
         assert_eq!(error_code("Unbekannt"), "unknown_field");
