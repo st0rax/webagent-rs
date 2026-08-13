@@ -19,6 +19,26 @@ const INCOMPLETE_RETRY_PROMPT: &str =
      Setze mit einer gültigen webagent/1-Antwort fort. \
      Wenn die Aufgabe abgeschlossen ist, sende eine message-Action.";
 
+fn incomplete_retry_prompt(last_text: &str) -> String {
+    let trimmed = last_text.trim_end();
+    let missing = [
+        ("WEBAGENT/1 SHELL", "---END SCRIPT---"),
+        ("WEBAGENT/1 WRITE", "---END CONTENT---"),
+        ("WEBAGENT/1 EDIT_BATCH", "---END BATCH---"),
+        ("WEBAGENT/1 EDIT", "---END EDIT---"),
+    ]
+    .into_iter()
+    .find(|(prefix, marker)| trimmed.starts_with(prefix) && !trimmed.ends_with(marker));
+    match missing {
+        Some((_, marker)) => format!(
+            "[Interpreter] Die letzte Tool-Anforderung ist fast vollständig, aber der exakte \
+             Abschlussmarker `{marker}` fehlt. Sende dieselbe Action mit einer neuen eindeutigen \
+             ID erneut und beende sie exakt mit `{marker}`."
+        ),
+        None => INCOMPLETE_RETRY_PROMPT.to_string(),
+    }
+}
+
 const RESUME_TRANSCRIPT_CHAR_BUDGET: usize = 8_000;
 
 /// Exponential-Backoff-Basis/-Obergrenze zwischen incomplete-Retries.
@@ -117,6 +137,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         &mut self,
         transcript: &mut Transcript,
         context: &str,
+        last_text: &str,
     ) -> Option<BrainTurn> {
         self.incomplete_retries += 1;
         let _ = transcript.append(
@@ -140,7 +161,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         // Exponential-Backoff (gedeckelt) statt sofortigem Neufeuern.
         std::thread::sleep(incomplete_retry_backoff(self.incomplete_retries));
-        Some(self.run_once(INCOMPLETE_RETRY_PROMPT, Some(transcript)))
+        Some(self.run_once(&incomplete_retry_prompt(last_text), Some(transcript)))
     }
 
     /// Resume: Initial Turn (restore oder fallback).
@@ -213,5 +234,24 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             |current| resume_recovery_prompt_with_instruction(&task, &tail, current),
         );
         self.run_once(&prompt, Some(transcript))
+    }
+}
+
+#[cfg(test)]
+mod incomplete_prompt_tests {
+    use super::incomplete_retry_prompt;
+
+    #[test]
+    fn names_missing_shell_end_marker_exactly() {
+        let text = "WEBAGENT/1 SHELL\nid: inspect-1\n---SCRIPT---\nGet-Content a.rs\n---END SCRIPT";
+        let prompt = incomplete_retry_prompt(text);
+        assert!(prompt.contains("---END SCRIPT---"));
+        assert!(prompt.contains("neuen eindeutigen ID"));
+    }
+
+    #[test]
+    fn keeps_generic_repair_for_empty_response() {
+        let prompt = incomplete_retry_prompt("");
+        assert!(prompt.contains("unvollständig oder leer"));
     }
 }

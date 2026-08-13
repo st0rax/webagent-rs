@@ -1262,7 +1262,10 @@ per edit/write-Action pflegbar):\n",
                 self.finish_run_cleanup(opts);
                 return Ok(final_meta);
             }
-            if let Some(recovered) = self.recover_from_incomplete(&mut transcript, "initial") {
+            let incomplete_text = turn.text.clone();
+            if let Some(recovered) =
+                self.recover_from_incomplete(&mut transcript, "initial", &incomplete_text)
+            {
                 turn = recovered;
             } else {
                 let final_meta = self.finish_brain_incomplete(&mut meta, &mut transcript);
@@ -1365,7 +1368,9 @@ per edit/write-Action pflegbar):\n",
                 {
                     break;
                 }
-                if let Some(recovered) = self.recover_from_incomplete(&mut transcript, "cycle") {
+                if let Some(recovered) =
+                    self.recover_from_incomplete(&mut transcript, "cycle", &response_text)
+                {
                     if !recovered.complete {
                         let final_meta = self.finish_brain_incomplete(&mut meta, &mut transcript);
                         self.finish_run_cleanup(opts);
