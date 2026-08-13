@@ -128,6 +128,7 @@ pub fn is_retryable_empty_response(response: &str) -> bool {
 /// damit ein Fachvorschlag über „Rate-Limiting" nicht anschlägt.
 const PROVIDER_BLOCK_PHRASES: &[&str] = &[
     "usage limit",
+    "nutzungslimit",
     "daily limit",
     "message limit",
     "limit reached",
@@ -336,6 +337,13 @@ mod tests {
         assert!(is_retryable_empty_response(raw));
         let frag = "e reached the daily usage limit. Please wait 2 hours before trying again.";
         assert!(is_retryable_empty_response(frag));
+    }
+
+    #[test]
+    fn chatgpt_german_usage_limit_is_recognised_as_unavailable() {
+        assert!(is_retryable_empty_response(
+            "Dateien, Bilder und Datenanalyse sind nicht verfügbar, bis dein Nutzungslimit um 23:40 zurückgesetzt wird."
+        ));
     }
 
     #[test]

@@ -34,6 +34,7 @@ pub(crate) const BLOCK_PHRASES: &[&str] = &[
     "nachrichtenlimit",
     "message limit",
     "usage limit",
+    "nutzungslimit",
     "rate limit",
     "ratelimit",
     "daily limit",

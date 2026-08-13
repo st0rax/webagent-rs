@@ -565,6 +565,16 @@ mod tests {
     }
 
     #[test]
+    fn block_phrase_in_text_detects_chatgpt_german_usage_limit() {
+        assert_eq!(
+            block_phrase_in_text(
+                "Dateien, Bilder und Datenanalyse sind nicht verfügbar, bis dein Nutzungslimit um 23:40 zurückgesetzt wird."
+            ),
+            Some("nutzungslimit")
+        );
+    }
+
+    #[test]
     fn block_phrase_in_text_detects_capacity_message() {
         assert_eq!(
             block_phrase_in_text("Sorry, too many users are chatting with Kimi right now."),
