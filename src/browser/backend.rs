@@ -279,7 +279,7 @@ impl BrainBackend for WebBrainBackend {
                     stop_seen_ever,
                     stop_visible,
                     stable_secs,
-                    self.brain_id == "claude",
+                    !self.sel("rate_limit_banner").is_empty(),
                 )
             } else {
                 Completion::Continue

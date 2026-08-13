@@ -30,6 +30,13 @@
     "button[data-testid='stop-button']",
     "button:has-text('Stop response')"
   ],
+  "rate_limit_banner": [
+    "text=You have reached your usage limit",
+    "text=usage limit",
+    "text=rate limit",
+    "text=limit reached",
+    "text=Nutzungslimit"
+  ],
   "assistant_message": [
     "div[data-testid='assistant-message']",
     "div.font-claude-response",
