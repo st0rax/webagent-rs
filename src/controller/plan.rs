@@ -36,6 +36,14 @@ pub fn validate_action_plan(actions: &[crate::protocol::Action]) -> Result<(), S
                     ));
                 }
             }
+            crate::protocol::ActionType::EditBatch => {
+                if action.edits.is_empty() {
+                    return Err(format!(
+                        "EditBatch-Action '{}' enthält keine Edits",
+                        action.id
+                    ));
+                }
+            }
             crate::protocol::ActionType::Write => {
                 if action.path.trim().is_empty() {
                     return Err(format!(
@@ -74,6 +82,7 @@ mod validate_action_plan_tests {
                 old_string: "".to_string(),
                 new_string: "".to_string(),
                 content: "".to_string(),
+                edits: Vec::new(),
             },
             Action {
                 id: "write-1".to_string(),
@@ -85,6 +94,7 @@ mod validate_action_plan_tests {
                 old_string: "".to_string(),
                 new_string: "".to_string(),
                 content: "hello".to_string(),
+                edits: Vec::new(),
             },
         ];
         assert!(validate_action_plan(&plan).is_ok());
@@ -102,6 +112,7 @@ mod validate_action_plan_tests {
             old_string: "".to_string(),
             new_string: "".to_string(),
             content: "".to_string(),
+            edits: Vec::new(),
         }];
         assert!(validate_action_plan(&plan_missing_cmd).is_err());
 
@@ -115,6 +126,7 @@ mod validate_action_plan_tests {
             old_string: "".to_string(),
             new_string: "".to_string(),
             content: "hello".to_string(),
+            edits: Vec::new(),
         }];
         assert!(validate_action_plan(&plan_missing_path).is_err());
     }

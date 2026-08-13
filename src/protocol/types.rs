@@ -10,8 +10,18 @@ pub enum ActionType {
     Finish,
     /// Eindeutiger Anker-Ersatz in einer Bestandsdatei (path/old_string/new_string).
     Edit,
+    /// Mehrere Anker-Ersetzungen als eine validierte, transaktionale Action.
+    EditBatch,
     /// Neue Datei anlegen (path/content); existierende Dateien werden abgelehnt.
     Write,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditOperation {
+    pub path: String,
+    pub old_string: String,
+    pub new_string: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,6 +43,8 @@ pub struct Action {
     pub new_string: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub edits: Vec<EditOperation>,
 }
 
 impl Action {
@@ -48,6 +60,7 @@ impl Action {
             old_string: String::new(),
             new_string: String::new(),
             content: String::new(),
+            edits: Vec::new(),
         }
     }
 }

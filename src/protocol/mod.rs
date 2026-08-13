@@ -7,10 +7,10 @@ mod types;
 pub use parser::{parse, ui_control_line_regex};
 pub use text::{
     format_observation, format_observations_bundle, format_protocol_error,
-    format_protocol_error_for, is_possibly_truncated,
-    should_abort_protocol_repair, should_attempt_protocol_repair, PROTOCOL_REPAIR_MAX_FAILURES,
+    format_protocol_error_for, is_possibly_truncated, should_abort_protocol_repair,
+    should_attempt_protocol_repair, PROTOCOL_REPAIR_MAX_FAILURES,
 };
-pub use types::{error_code, Action, ActionType, ParseResult, PROTOCOL_VERSION};
+pub use types::{error_code, Action, ActionType, EditOperation, ParseResult, PROTOCOL_VERSION};
 
 #[cfg(test)]
 mod tests {
@@ -286,7 +286,7 @@ Write-Output $html
     }
 
     #[test]
-    fn test_parse_strips_leading_prose_before_json_controls() {
+    fn test_parse_rejects_leading_prose_before_json_controls() {
         for prefix in &["Denke nach…\n", "Thinking\n", "Hier ist\n"] {
             let rendered = format!(
                 "{}JSON\nCopy\n{}",
@@ -294,13 +294,12 @@ Write-Output $html
                 serde_json::to_string(&valid_envelope()).unwrap()
             );
             let result = parse(&rendered);
-            assert!(result.valid, "failed for prefix {:?}", prefix);
-            assert_eq!(result.actions[0].id, "s1");
+            assert!(!result.valid, "dangerous prefix accepted: {:?}", prefix);
         }
     }
 
     #[test]
-    fn test_parse_tolerates_thought_process_and_prose_from_chatgpt_zai_deepseek() {
+    fn test_parse_rejects_thought_process_and_embedded_json() {
         for bad_prefix in &[
             "Thought Process\n\n",
             "Thought Process\njson\n",
@@ -313,12 +312,7 @@ Write-Output $html
                 serde_json::to_string(&valid_envelope()).unwrap()
             );
             let result = parse(&rendered);
-            assert!(
-                result.valid,
-                "failed for prefix {:?}: {}",
-                bad_prefix, result.error
-            );
-            assert_eq!(result.actions[0].id, "s1");
+            assert!(!result.valid, "dangerous prefix accepted: {:?}", bad_prefix);
         }
     }
 
@@ -650,7 +644,8 @@ Write-Output $html
 
     #[test]
     fn kaputtes_edit_json_bekommt_rohformat_statt_shell_beispiel() {
-        let invalid = r#"{"actions":[{"type":"edit","path":"src/x.rs","new_string":"fn x() { "kaputt" }"}]}"#;
+        let invalid =
+            r#"{"actions":[{"type":"edit","path":"src/x.rs","new_string":"fn x() { "kaputt" }"}]}"#;
         let msg = format_protocol_error_for("ungueltiges JSON", invalid);
         assert!(msg.contains("WEBAGENT/1 EDIT"), "{msg}");
         assert!(msg.contains("---OLD---"), "{msg}");
@@ -708,11 +703,7 @@ Write-Output $html
     }
 
     #[test]
-    fn raw_edit_survives_a_reasoning_preamble() {
-        // Wortlaut aus claudes Lauf 20260721_200745: die Denk-Zeile stand
-        // (sogar doppelt) VOR einem syntaktisch einwandfreien EDIT. Die
-        // \A-Verankerung liess den Block durchfallen, der Parser meldete
-        // "Ungueltiges JSON" — ein korrekter Edit landete im Muell.
+    fn raw_edit_in_reasoning_preamble_is_never_executed() {
         let raw = concat!(
             "Architected adaptive brain weight function with multi-parameter normalization\n",
             "Architected adaptive brain weight function with multi-parameter normalization\n",
@@ -726,16 +717,15 @@ Write-Output $html
             "---END EDIT---"
         );
         let r = parse(raw);
-        assert!(r.valid, "sollte gueltig sein, war: {}", r.error);
-        assert_eq!(r.actions.len(), 1);
-        assert_eq!(r.actions[0].action_type, ActionType::Edit);
-        assert_eq!(r.actions[0].path, "src/brain_score.rs");
+        assert!(
+            !r.valid,
+            "eingebetteter Beispiel-Edit darf nicht ausgeführt werden"
+        );
     }
 
     #[test]
     fn raw_block_must_still_reach_the_end_of_the_message() {
-        // Der Vorspann darf weg — Nachgeplapper nicht. Sonst wuerde ein Brain,
-        // das das Format nur ZITIERT, versehentlich Aktionen ausloesen.
+        // Auch Nachgeplapper macht einen Rohblock ungültig.
         let raw = concat!(
             "WEBAGENT/1 EDIT\n",
             "id: e1\n",

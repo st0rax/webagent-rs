@@ -6,6 +6,9 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
+mod batch;
+pub use batch::{apply_edit_batch, apply_edit_batch_in};
+
 /// Ermittelt die Sicherheitsgrenze fuer native Datei-Aktionen. Innerhalb eines
 /// Git-Worktrees ist das der naechste Repo-Root, sonst das aktuelle
 /// Arbeitsverzeichnis. Der Rueckgabepfad ist kanonisch (Symlinks aufgeloest).
@@ -293,9 +296,7 @@ fn whitespace_tolerant_span(content: &str, old: &str) -> Result<(usize, usize), 
 /// das sind zwei Minuten Budget pro Fehlschlag.
 fn anchor_not_found(path: &str, content: &str, old: &str) -> String {
     let hinweis = match nearest_context(content, old) {
-        Some((line, block)) => format!(
-            "\nSo steht es dort wirklich (ab Zeile {line}):\n{block}"
-        ),
+        Some((line, block)) => format!("\nSo steht es dort wirklich (ab Zeile {line}):\n{block}"),
         None => String::new(),
     };
     format!(
@@ -505,6 +506,7 @@ fn collect_tree(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::EditOperation;
     use std::path::PathBuf;
 
     /// Ein gescheiterter Anker muss den IST-Stand mitliefern.
@@ -574,6 +576,84 @@ mod tests {
         assert!(msg.contains("edit ok"), "{msg}");
         assert!(msg.contains("Zeile 2"), "{msg}");
         assert_eq!(fs::read_to_string(&p).unwrap(), "alpha\nBETA\ngamma\n");
+    }
+
+    #[test]
+    fn edit_batch_aendert_mehrere_hunks_und_dateien() {
+        let root = test_root().join(format!("batch_ok_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.txt"), "eins\nzwei\ndrei\n").unwrap();
+        fs::write(root.join("b.txt"), "alpha\nbeta\n").unwrap();
+        let edits = vec![
+            EditOperation {
+                path: "a.txt".into(),
+                old_string: "eins".into(),
+                new_string: "EINS".into(),
+            },
+            EditOperation {
+                path: "a.txt".into(),
+                old_string: "drei".into(),
+                new_string: "DREI".into(),
+            },
+            EditOperation {
+                path: "b.txt".into(),
+                old_string: "beta".into(),
+                new_string: "BETA".into(),
+            },
+        ];
+        let message = apply_edit_batch_in(&root, &edits).unwrap();
+        assert!(message.contains("3 Ersetzungen in 2 Datei"), "{message}");
+        assert_eq!(
+            fs::read_to_string(root.join("a.txt")).unwrap(),
+            "EINS\nzwei\nDREI\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("b.txt")).unwrap(),
+            "alpha\nBETA\n"
+        );
+    }
+
+    #[test]
+    fn edit_batch_validiert_komplett_bevor_es_schreibt() {
+        let root = test_root().join(format!("batch_rollback_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.txt"), "original a\n").unwrap();
+        fs::write(root.join("b.txt"), "original b\n").unwrap();
+        let edits = vec![
+            EditOperation {
+                path: "a.txt".into(),
+                old_string: "original a".into(),
+                new_string: "geaendert".into(),
+            },
+            EditOperation {
+                path: "b.txt".into(),
+                old_string: "nicht vorhanden".into(),
+                new_string: "x".into(),
+            },
+        ];
+        assert!(apply_edit_batch_in(&root, &edits).is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("a.txt")).unwrap(),
+            "original a\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("b.txt")).unwrap(),
+            "original b\n"
+        );
+    }
+
+    #[test]
+    fn edit_batch_verweigert_workspace_escape() {
+        let root = test_root().join(format!("batch_escape_{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let edits = vec![EditOperation {
+            path: "../outside.txt".into(),
+            old_string: "a".into(),
+            new_string: "b".into(),
+        }];
+        assert!(apply_edit_batch_in(&root, &edits)
+            .unwrap_err()
+            .contains("Traversal"));
     }
 
     #[test]

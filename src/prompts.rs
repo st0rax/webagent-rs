@@ -36,6 +36,8 @@ Verfügbare Actions:
   Dateien.
 - edit: In einer bestehenden Datei einen exakt einmal vorkommenden old_string
   durch new_string ersetzen.
+- edit_batch: Mehrere solche Ersetzungen in einer transaktionalen Action; alle
+  werden vor dem Schreiben validiert, ein Fehler verändert keine Datei.
 - write: Eine neue, noch nicht existierende Datei anlegen.
 - message: Nutzerlesbares Ergebnis mitteilen und den Run beenden.
 - finish: Den Run ohne Nutzertext beenden.
@@ -56,6 +58,25 @@ alter exakter Inhalt
 ---NEW---
 neuer Inhalt
 ---END EDIT---
+
+Für mehrteilige Refactorings bündelst du mehrere Blöcke atomar:
+WEBAGENT/1 EDIT_BATCH
+id: refactor-1
+---EDIT---
+path: src/a.rs
+---OLD---
+alter Inhalt A
+---NEW---
+neuer Inhalt A
+---END EDIT---
+---EDIT---
+path: src/b.rs
+---OLD---
+alter Inhalt B
+---NEW---
+neuer Inhalt B
+---END EDIT---
+---END BATCH---
 
 Jede Action-ID ist im gesamten Run eindeutig. Abhängige Schritte gehören in
 aufeinanderfolgende Antworten, damit du ihre Observation auswertest; wirklich

@@ -3,7 +3,7 @@ use regex::Regex;
 use serde_json::Value;
 use std::sync::OnceLock;
 
-use super::types::{Action, ActionType, ParseResult, PROTOCOL_VERSION};
+use super::types::{Action, ActionType, EditOperation, ParseResult, PROTOCOL_VERSION};
 
 fn json_block_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -29,16 +29,6 @@ pub fn ui_control_line_regex() -> &'static Regex {
         // nach Oberflaeche und Inhalt — deshalb die ueblichen mit aufnehmen.
         Regex::new(
             r"(?i)^(?:json|plain|plaintext|text|code|bash|sh|shell|powershell|ps1|rust|\d+|copy|kopieren|download|herunterladen)$",
-        )
-        .unwrap()
-    })
-}
-
-fn leading_prose_line_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(
-            r"(?i)^(?:denke nach|thinking|thought process|thoughtprocess|reasoning|ueberlege|überlege|思考|antworte|hier ist|sure|ok|okay|alright|verstanden|ich sehe das problem|thought|erneut versuchen)[\s.…:]*$",
         )
         .unwrap()
     })
@@ -81,6 +71,53 @@ pub fn edit_envelope_regex() -> &'static Regex {
     })
 }
 
+fn edit_batch_envelope_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?s)\AWEBAGENT/1 EDIT_BATCH\r?\nid:\s*([A-Za-z0-9][A-Za-z0-9._-]{0,127})\r?\n([\s\S]+)\r?\n---END BATCH---\s*\z",
+        )
+        .unwrap()
+    })
+}
+
+fn parse_raw_edit_batch(text: &str) -> Result<Option<Action>, String> {
+    let Some(caps) = edit_batch_envelope_regex().captures(text) else {
+        return Ok(None);
+    };
+    let body = caps[2].replace("\r\n", "\n");
+    let edit_re = Regex::new(
+        r"(?s)\Apath:\s*([^\n]+?)\n---OLD---\n([\s\S]*?)\n---NEW---\n([\s\S]*?)\n---END EDIT---\s*\z",
+    )
+    .unwrap();
+    let mut edits = Vec::new();
+    for part in body.split("---EDIT---\n").skip(1) {
+        let item = edit_re.captures(part).ok_or_else(|| {
+            "EDIT_BATCH enthält einen ungültigen EDIT-Block oder Text außerhalb der Blöcke"
+                .to_string()
+        })?;
+        let path = item[1].trim().to_string();
+        let old_string = item[2].to_string();
+        let new_string = item[3].to_string();
+        if path.is_empty() || old_string.is_empty() || old_string == new_string {
+            return Err(
+                "EDIT_BATCH braucht je Block path sowie verschiedene old/new-Inhalte".to_string(),
+            );
+        }
+        edits.push(EditOperation {
+            path,
+            old_string,
+            new_string,
+        });
+    }
+    if edits.is_empty() || !body.starts_with("---EDIT---\n") {
+        return Err("EDIT_BATCH braucht mindestens einen ---EDIT--- Block".to_string());
+    }
+    let mut action = Action::base(caps[1].to_string(), ActionType::EditBatch);
+    action.edits = edits;
+    Ok(Some(action))
+}
+
 /// Rohformat fuer eine abschliessende Nutzerantwort. Anders als Edit/Write
 /// braucht Message keinen Endmarker: alles nach `text:` gehoert zur Antwort.
 pub fn message_envelope_regex() -> &'static Regex {
@@ -90,97 +127,6 @@ pub fn message_envelope_regex() -> &'static Regex {
             r"(?s)\AWEBAGENT/1 MESSAGE\r?\nid:\s*([A-Za-z0-9][A-Za-z0-9._-]{0,127})\r?\ntext:\s*([\s\S]+?)\s*\z",
         )
         .unwrap()
-    })
-}
-
-fn strip_leading_prose(text: &str) -> &str {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut index = 0;
-    let re = leading_prose_line_regex();
-    while index < lines.len() && re.is_match(lines[index].trim()) {
-        index += 1;
-    }
-    if index > 0 {
-        lines[index..].join("\n").leak()
-    } else {
-        text
-    }
-}
-
-fn extract_first_protocol_json(text: &str) -> Option<String> {
-    // Suche nach einem Top-Level-Objekt mit "protocol": "webagent/1"
-    // Kein Lookahead nötig, einfaches Pattern
-    let re = Regex::new(r#"(?is)\{\s*"protocol"\s*:\s*"webagent/1"[^}]*\}"#).unwrap();
-
-    if let Some(mat) = re.find(text) {
-        let candidate = mat.as_str().trim();
-        if let Ok(obj) = serde_json::from_str::<Value>(candidate) {
-            if obj.get("protocol").and_then(|v| v.as_str()) == Some(PROTOCOL_VERSION) {
-                return Some(candidate.to_string());
-            }
-        }
-    }
-
-    // Fallback: erstes { bis letztes }
-    if let Some(first) = text.find('{') {
-        if let Some(last) = text.rfind('}') {
-            if last > first {
-                let candidate = &text[first..=last];
-                if let Ok(obj) = serde_json::from_str::<Value>(candidate) {
-                    if let Some(obj_map) = obj.as_object() {
-                        if obj_map.get("protocol").and_then(|v| v.as_str())
-                            == Some(PROTOCOL_VERSION)
-                        {
-                            return Some(candidate.trim().to_string());
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Schneidet eine Denk-/Prosa-Präambel vor einem Rohformat-Block weg.
-///
-/// Die Rohformat-Regexe sind mit `\A` verankert: die Antwort muss VOLLSTÄNDIG
-/// aus dem Block bestehen. claude stellte am 2026-07-21 seine Denk-Zeile voran
-/// („Architected adaptive brain weight function …", sogar doppelt) und schrieb
-/// darunter ein syntaktisch einwandfreies `WEBAGENT/1 EDIT`. Die Verankerung
-/// griff nicht, der Parser fiel auf JSON zurück und meldete „Ungültiges JSON" —
-/// ein korrekter Edit landete im Müll, und claude brach den Lauf ab.
-///
-/// Der Block muss weiterhin bis zum Ende der Nachricht reichen; nur der Vorspann
-/// darf weg. Damit bleibt das Format streng, ohne an Geschwätz zu scheitern.
-fn trim_to_raw_marker(text: &str) -> &str {
-    const MARKERS: [&str; 4] = [
-        "WEBAGENT/1 SHELL",
-        "WEBAGENT/1 WRITE",
-        "WEBAGENT/1 EDIT",
-        "WEBAGENT/1 MESSAGE",
-    ];
-    let mut best: Option<usize> = None;
-    for (offset, line) in line_offsets(text) {
-        let t = line.trim_start();
-        if MARKERS.iter().any(|m| t.starts_with(m)) {
-            let start = offset + (line.len() - t.len());
-            best = Some(best.map_or(start, |b: usize| b.min(start)));
-        }
-    }
-    match best {
-        Some(i) => &text[i..],
-        None => text,
-    }
-}
-
-/// `(Byte-Offset, Zeile)` für jede Zeile — `str::lines()` allein verliert die
-/// Position, die zum Zuschneiden nötig ist.
-fn line_offsets(text: &str) -> impl Iterator<Item = (usize, &str)> {
-    let mut pos = 0usize;
-    text.split_inclusive('\n').map(move |raw| {
-        let start = pos;
-        pos += raw.len();
-        (start, raw.trim_end_matches(['\n', '\r']))
     })
 }
 
@@ -210,9 +156,6 @@ pub fn strip_rendered_ui_controls(text: &str) -> String {
         .trim()
         .to_string();
 
-    let normalized = strip_leading_prose(&normalized);
-    // Rohformat-Block freilegen: alles vor dem Marker faellt weg.
-    let normalized = trim_to_raw_marker(normalized);
     let lines: Vec<&str> = normalized.lines().collect();
     let mut index = 0;
     // Frueher wurde NUR ein "json"-Label als Startsignal akzeptiert; jede andere
@@ -236,7 +179,7 @@ pub fn strip_rendered_ui_controls(text: &str) -> String {
     if saw_language_label {
         lines[index..].join("\n").trim().to_string()
     } else {
-        normalized.to_string()
+        normalized
     }
 }
 
@@ -401,6 +344,7 @@ fn allowed_fields(action_type: &ActionType) -> &'static [&'static str] {
         ActionType::Message => &["id", "type", "text"],
         ActionType::Finish => &["id", "type"],
         ActionType::Edit => &["id", "type", "path", "old_string", "new_string"],
+        ActionType::EditBatch => &["id", "type", "edits"],
         ActionType::Write => &["id", "type", "path", "content"],
     }
 }
@@ -424,6 +368,7 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
         "message" => ActionType::Message,
         "finish" => ActionType::Finish,
         "edit" => ActionType::Edit,
+        "edit_batch" => ActionType::EditBatch,
         "write" => ActionType::Write,
         _ => return Err(format!("unbekannter type: {:?}", action_type_str)),
     };
@@ -549,6 +494,46 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
             a.new_string = new_string;
             Ok(a)
         }
+        ActionType::EditBatch => {
+            let raw_edits = obj
+                .get("edits")
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("edit_batch action {} braucht edits", action_id))?;
+            if raw_edits.is_empty() {
+                return Err(format!(
+                    "edit_batch action {} braucht mindestens ein edit",
+                    action_id
+                ));
+            }
+            let mut edits = Vec::with_capacity(raw_edits.len());
+            for (index, raw) in raw_edits.iter().enumerate() {
+                let edit: EditOperation = serde_json::from_value(raw.clone()).map_err(|e| {
+                    format!(
+                        "edit_batch action {}: edit {} ungültig: {e}",
+                        action_id,
+                        index + 1
+                    )
+                })?;
+                if edit.path.trim().is_empty() || edit.old_string.is_empty() {
+                    return Err(format!(
+                        "edit_batch action {}: edit {} braucht path und old_string",
+                        action_id,
+                        index + 1
+                    ));
+                }
+                if edit.old_string == edit.new_string {
+                    return Err(format!(
+                        "edit_batch action {}: edit {} hat identische old/new-Inhalte",
+                        action_id,
+                        index + 1
+                    ));
+                }
+                edits.push(edit);
+            }
+            let mut action = Action::base(action_id, ActionType::EditBatch);
+            action.edits = edits;
+            Ok(action)
+        }
         ActionType::Write => {
             let path = str_field("path").trim().to_string();
             if path.is_empty() {
@@ -570,6 +555,12 @@ pub fn parse(response_text: &str) -> ParseResult {
 
     if text.is_empty() {
         return ParseResult::invalid("Leere Antwort.", text);
+    }
+
+    match parse_raw_edit_batch(&text) {
+        Ok(Some(action)) => return ParseResult::valid(vec![action], text),
+        Err(error) => return ParseResult::invalid(error, text),
+        Ok(None) => {}
     }
 
     // WEBAGENT/1 SHELL Rohskript-Format
@@ -652,13 +643,6 @@ pub fn parse(response_text: &str) -> ParseResult {
         caps[1].trim().to_string()
     } else {
         text.clone()
-    };
-
-    // Robuste Extraktion für Brains mit "Thought Process" etc.
-    let json_str = if !json_str.trim().starts_with('{') {
-        extract_first_protocol_json(&text).unwrap_or(json_str)
-    } else {
-        json_str
     };
 
     // Parse JSON
@@ -768,4 +752,43 @@ fn looks_like_capacity_notice(text: &str) -> bool {
             .expect("capacity regex")
         })
         .is_match(text)
+}
+
+#[cfg(test)]
+mod edit_batch_tests {
+    use super::*;
+
+    #[test]
+    fn raw_edit_batch_parst_mehrere_dateien_und_hunks() {
+        let response = "WEBAGENT/1 EDIT_BATCH\nid: refactor-1\n---EDIT---\npath: src/a.rs\n---OLD---\nalt a\n---NEW---\nneu a\n---END EDIT---\n---EDIT---\npath: src/b.rs\n---OLD---\nalt b\n---NEW---\nneu b\n---END EDIT---\n---END BATCH---";
+        let parsed = parse(response);
+        assert!(parsed.valid, "{}", parsed.error);
+        assert_eq!(parsed.actions[0].action_type, ActionType::EditBatch);
+        assert_eq!(parsed.actions[0].edits.len(), 2);
+        assert_eq!(parsed.actions[0].edits[1].path, "src/b.rs");
+    }
+
+    #[test]
+    fn json_edit_batch_parst_strikt() {
+        let response = r#"{"protocol":"webagent/1","actions":[{"id":"batch-1","type":"edit_batch","edits":[{"path":"a.rs","old_string":"a","new_string":"b"}]}]}"#;
+        let parsed = parse(response);
+        assert!(parsed.valid, "{}", parsed.error);
+        assert_eq!(parsed.actions[0].edits.len(), 1);
+        let unknown = r#"{"protocol":"webagent/1","actions":[{"id":"batch-2","type":"edit_batch","edits":[{"path":"a.rs","old_string":"a","new_string":"b","surprise":true}]}]}"#;
+        assert!(!parse(unknown).valid);
+    }
+
+    #[test]
+    fn raw_edit_batch_verwirft_text_zwischen_bloecken() {
+        let response = "WEBAGENT/1 EDIT_BATCH\nid: bad-1\nHier ist mein Edit\n---EDIT---\npath: a.rs\n---OLD---\na\n---NEW---\nb\n---END EDIT---\n---END BATCH---";
+        assert!(!parse(response).valid);
+    }
+
+    #[test]
+    fn eingebettete_actions_in_prosa_werden_nicht_ausgefuehrt() {
+        let raw = "Hier ein Beispiel:\nWEBAGENT/1 EDIT\nid: example-1\npath: a.rs\n---OLD---\na\n---NEW---\nb\n---END EDIT---";
+        assert!(!parse(raw).valid);
+        let json = r#"Ich würde so antworten: {"protocol":"webagent/1","actions":[{"id":"x","type":"finish"}]}"#;
+        assert!(!parse(json).valid);
+    }
 }

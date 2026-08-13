@@ -17,6 +17,7 @@ use crate::protocol::{self, Action};
 use crate::run_store::{RunMeta, RunStore};
 use crate::transcript::Transcript;
 
+mod action_engine;
 mod plan;
 mod resume;
 mod types;
@@ -538,6 +539,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 match action.action_type {
                     protocol::ActionType::Shell
                     | protocol::ActionType::Edit
+                    | protocol::ActionType::EditBatch
                     | protocol::ActionType::Write => {
                         observations.push(format!(
                             "[Controller] action_id={} wurde bereits ausgefuehrt; \
@@ -648,7 +650,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
                     // Loop-Guard
                     if let Some(meta) = &mut self.meta {
-                        if let Some(fp) = shell_read_fingerprint(&action.command) {
+                        if let Some(fp) = shell_read_fingerprint(&action.command, &observation) {
                             let counts_key = "loop_fingerprints";
                             let mut counts: HashMap<String, usize> = meta
                                 .extra
@@ -657,7 +659,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                                 .and_then(|s| serde_json::from_str(s).ok())
                                 .unwrap_or_default();
 
-                            let n = counts.entry(fp.to_string()).or_insert(0);
+                            let n = counts.entry(fp.clone()).or_insert(0);
                             *n += 1;
                             let count = *n;
 
@@ -670,7 +672,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                             self.run_store.save(meta).ok();
 
                             if count >= LOOP_GUARD_WARN_COUNT {
-                                observations.push(loop_guard_message(fp, count));
+                                observations.push(loop_guard_message(&fp, count));
                             }
                             if count >= LOOP_GUARD_ABORT_COUNT {
                                 meta.status = "analysis_loop".to_string();
@@ -686,29 +688,15 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         }
                     }
                 }
-                protocol::ActionType::Edit | protocol::ActionType::Write => {
-                    let is_edit = action.action_type == protocol::ActionType::Edit;
-                    let kind = if is_edit { "edit" } else { "write" };
-                    self.report_step(&format!("{kind}: {}", action.path));
-                    let result = match (&self.workspace_root, is_edit) {
-                        (Some(root), true) => crate::file_actions::apply_edit_in(
-                            root,
-                            &action.path,
-                            &action.old_string,
-                            &action.new_string,
-                        ),
-                        (Some(root), false) => {
-                            crate::file_actions::apply_write_in(root, &action.path, &action.content)
-                        }
-                        (None, true) => crate::file_actions::apply_edit(
-                            &action.path,
-                            &action.old_string,
-                            &action.new_string,
-                        ),
-                        (None, false) => {
-                            crate::file_actions::apply_write(&action.path, &action.content)
-                        }
-                    };
+                protocol::ActionType::Edit
+                | protocol::ActionType::EditBatch
+                | protocol::ActionType::Write => {
+                    let action_engine::FileActionResult {
+                        kind,
+                        target,
+                        result,
+                    } = action_engine::execute_file_action(self.workspace_root.as_deref(), action);
+                    self.report_step(&format!("{kind}: {target}"));
                     self.file_actions_tried += 1;
                     let (stdout, stderr, exit_code) = match result {
                         Ok(msg) => {
@@ -725,7 +713,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     let observation = self.bounded_observation(&action.id, &observation);
                     if !self.quiet {
                         crate::bench_events::print_detailed(
-                            &format!("[{kind}:{}] {}", action.id, action.path),
+                            &format!("[{kind}:{}] {target}", action.id),
                             Some(&observation),
                         );
                     }
@@ -1944,7 +1932,10 @@ mod tests {
             .run("Editiere, teste und beende", "mock", None, false)
             .unwrap();
 
-        assert_eq!(meta.status, "done", "Fortschritt muss Zusatzzyklen erhalten");
+        assert_eq!(
+            meta.status, "done",
+            "Fortschritt muss Zusatzzyklen erhalten"
+        );
         assert_eq!(meta.cycles, 3);
         let _ = std::fs::remove_dir_all(workspace);
     }
