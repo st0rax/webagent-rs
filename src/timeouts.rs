@@ -1,11 +1,10 @@
 //! Timeout-Politik: bevorzugt GEMESSEN, nur notfalls geschaetzt.
 //!
 //! Die frueheren Werte waren durchweg Schaetzungen — feste Basiszeiten je
-//! Operation und eine handgepflegte Multiplikatoren-Tabelle je Brain. Eine
-//! Messung ueber 2072 Erfolgslaeufe (2026-07-26) zeigte, dass diese Tabelle in
-//! BEIDE Richtungen danebenlag: claude war mit 1.8 hinterlegt, gemessen 0.9;
-//! kimi mit 1.3, gemessen 2.2. Folge: bei den einen liefen Fehlschlaege
-//! minutenlang aus, die anderen wurden mitten in der Arbeit abgeschnitten.
+//! Operation und eine handgepflegte Multiplikatoren-Tabelle je Brain. Die
+//! aktuelle Politik vermeidet diese Brain-Sonderbehandlung und nutzt nur noch
+//! operationelle Basiszeiten plus gemessene p95-Werte, damit neue Provider
+//! nicht wieder in eine handgeschriebene Schublade fallen.
 //!
 //! Deshalb kommt der Brain-Anteil jetzt aus der tatsaechlichen p95-Latenz
 //! erfolgreicher Aufrufe (`brain_score`). Die statische Tabelle dient nur noch
@@ -105,18 +104,15 @@ fn resolve_with(_operation: &str, message: &str, override_timeout: Option<f64>, 
     computed
 }
 
-/// Kaltstart-Schaetzung: Operationsbasis x Brain-Faktor. Nur noch gueltig,
-/// solange fuer das Brain zu wenige Messwerte vorliegen.
+/// Kaltstart-Schaetzung: reine Operationsbasis. Brain-spezifische Multiplikatoren
+/// sind bewusst entfernt.
 fn static_base(operation: &str, brain_id: &str) -> f64 {
     let base = get_operation_base()
         .get(operation)
         .copied()
         .unwrap_or_else(|| env_float("WEBAGENT_TIMEOUT_BASE_DEFAULT", 90.0));
-    let mult = get_brain_multipliers()
-        .get(&brain_id.to_lowercase())
-        .copied()
-        .unwrap_or(1.0);
-    base * mult
+    let _ = brain_id;
+    base
 }
 
 fn get_operation_base() -> HashMap<&'static str, f64> {
@@ -132,19 +128,6 @@ fn get_operation_base() -> HashMap<&'static str, f64> {
     );
     map.insert("relay", env_float("WEBAGENT_TIMEOUT_RELAY", 90.0));
     map.insert("login", env_float("WEBAGENT_TIMEOUT_LOGIN", 300.0));
-    map
-}
-
-fn get_brain_multipliers() -> HashMap<String, f64> {
-    let mut map = HashMap::new();
-    map.insert("chatgpt".to_string(), 1.0);
-    map.insert("deepseek".to_string(), 1.2);
-    map.insert("kimi".to_string(), 1.3);
-    map.insert("qwen".to_string(), 1.2);
-    map.insert("zai".to_string(), 1.2);
-    map.insert("gemini".to_string(), 1.5);
-    map.insert("mistral".to_string(), 1.5);
-    map.insert("claude".to_string(), 1.8);
     map
 }
 
@@ -169,19 +152,17 @@ mod tests {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Kaltstart (keine Messwerte): die statische Tabelle gilt, dort ist
-    /// claude langsamer hinterlegt.
+    /// Kaltstart (keine Messwerte): die Operationsbasis gilt fuer alle gleich.
     #[test]
-    fn kaltstart_nutzt_die_statische_tabelle() {
+    fn kaltstart_nutzt_die_operationsbasis() {
         let _g = env_guard();
         let chatgpt = resolve_from("wait_response", "chatgpt", "hi", None, None);
         let claude = resolve_from("wait_response", "claude", "hi", None, None);
-        assert!(claude > chatgpt, "statische Tabelle nicht angewandt");
+        assert_eq!(claude, chatgpt, "brain-spezifische Multiplikatoren sind entfernt");
     }
 
-    /// Sobald Messwerte vorliegen, schlagen sie die Schaetzung — auch wenn sie
-    /// ihr widersprechen. Genau das war der Befund: claude ist entgegen der
-    /// Tabelle (1.8) nicht langsamer als chatgpt.
+    /// Sobald Messwerte vorliegen, schlagen sie die Schaetzung — und das
+    /// gilt unabhängig vom Brain-Namen.
     #[test]
     fn messwerte_schlagen_die_schaetztabelle() {
         let _g = env_guard();

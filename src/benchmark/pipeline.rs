@@ -522,7 +522,7 @@ where
         // NICHT extern blockiert waren). Siehe Auswertung am Rundenende.
         let mut round_attempted = 0usize;
         let mut hq = HandoffQueue::new(&plan, &round_brains, config.max_handoffs);
-        while let Some((brain_owned, effective_owned, handoff_from)) = hq.next() {
+        while let Some((brain_owned, effective_owned, handoff_from, handoff_context)) = hq.next() {
             let brain = &brain_owned;
             let effective = &effective_owned;
 
@@ -537,6 +537,7 @@ where
                 effective,
                 &config.workdir,
                 brain,
+                handoff_context.as_deref(),
             );
             let tid = task_id(effective);
             crate::autoresearch::guard_clean_tree(&config.workdir)
@@ -816,8 +817,8 @@ where
             round_attempted += 1;
 
             if !is_pass(did_change, compiled, tests_passed) {
-                if let Some(failure) = last_gate_failure {
-                    round_failures.push(failure);
+                if let Some(failure) = last_gate_failure.as_deref() {
+                    round_failures.push(failure.to_string());
                 }
             }
 
@@ -920,6 +921,25 @@ where
                 ok_x(tests_passed),
                 outcome_label(did_change, compiled, tests_passed)
             );
+
+            if stalled {
+                let context = Some(format!(
+                    "Vorarbeit: Brain {brain} blieb bei '{effective}' stehen mit {}.",
+                    last_gate_failure.as_deref().unwrap_or("unbekanntem Gate")
+                ));
+                match hq.on_stall(brain, effective, context) {
+                    Some(next_brain) => bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: Aufgabe an {next_brain} weitergereicht."
+                    ),
+                    None => bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: keine weiteren Brains für diese Aufgabe verfügbar."
+                    ),
+                }
+            }
 
             // Bestandene Arbeit sichern, BEVOR der Reset sie verwirft.
             if config.harvest && is_pass(did_change, compiled, tests_passed) {

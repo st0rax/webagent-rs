@@ -27,6 +27,7 @@ pub struct Msg {
     pub to: String,
     pub time: String,
     pub subject: String,
+    pub lineage: String,
     pub body: String,
 }
 
@@ -38,6 +39,7 @@ impl Msg {
         let mut to: Option<String> = None;
         let mut time: Option<String> = None;
         let mut subject = String::new();
+        let mut lineage = String::new();
         let mut in_body = false;
         let mut body_lines: Vec<&str> = Vec::new();
 
@@ -55,6 +57,8 @@ impl Msg {
                     time = Some(rest.trim().to_string());
                 } else if let Some(rest) = line.strip_prefix("Subject:") {
                     subject = rest.trim().to_string();
+                } else if let Some(rest) = line.strip_prefix("Lineage:") {
+                    lineage = rest.trim().to_string();
                 }
                 // Unbekannte Header werden ignoriert (forward-compat).
             } else {
@@ -72,6 +76,7 @@ impl Msg {
             to,
             time,
             subject,
+            lineage,
             body,
         })
     }
@@ -85,6 +90,8 @@ pub struct WorkerState {
     pub registered: String,
     #[serde(default)]
     pub last_seen: String,
+    #[serde(default)]
+    pub last_lineage: String,
     #[serde(default)]
     pub processed: Vec<String>,
 }
@@ -101,6 +108,7 @@ impl WorkerState {
             name: String::new(),
             registered: crate::now_rfc3339(),
             last_seen: String::new(),
+            last_lineage: String::new(),
             processed: Vec::new(),
         }
     }
@@ -258,6 +266,11 @@ impl Bot2BotWorker {
             .to_string();
 
         let run_result = self.run_controller(&msg.body, profile);
+        state.last_lineage = if msg.lineage.trim().is_empty() {
+            format!("{} -> {}", msg.from, self.brain_id)
+        } else {
+            format!("{} -> {} -> {}", msg.lineage, msg.from, self.brain_id)
+        };
 
         let (status, body) = match &run_result {
             Ok(meta) => (
@@ -277,7 +290,7 @@ impl Bot2BotWorker {
             } else {
                 format!("RE: {}", msg.subject)
             };
-            self.writeback(&msg.from, &subject, &body);
+            self.writeback(&msg.from, &subject, &body, &state.last_lineage);
         }
 
         // Egal ob Erfolg oder Fehler: Task als erledigt markieren.
@@ -342,17 +355,19 @@ impl Bot2BotWorker {
 
     /// Schreibt das Ergebnis als Legacy-`msg.txt` in `agents/<from>/inbox/` plus
     /// append an `history.jsonl` (bot2bot send-Aequivalent).
-    fn writeback(&self, from: &str, subject: &str, body: &str) {
+    fn writeback(&self, from: &str, subject: &str, body: &str, lineage: &str) {
         let inbox = self.bot2bot_root.join("agents").join(from).join("inbox");
         let _ = fs::create_dir_all(&inbox);
         let ts = crate::now_run_stamp();
         let file = inbox.join(format!("{ts}_to_{}.msg.txt", sanitize(from)));
+        let lineage = lineage.trim();
         let content = format!(
-            "From: {}\nTo: {}\nTime: {}\nSubject: {}\n\n{}",
+            "From: {}\nTo: {}\nTime: {}\nSubject: {}\nLineage: {}\n\n{}",
             self.brain_id,
             from,
             crate::now_rfc3339(),
             subject,
+            lineage,
             body
         );
         let _ = fs::write(&file, &content);
@@ -475,8 +490,7 @@ mod tests {
         fs::write(dir.join(name), content).unwrap();
     }
 
-    const SAMPLE: &str =
-        "From: claude\nTo: qwen\nTime: 2026-07-17T06:34:12+02:00\nSubject: GO x\n\nMach das.\n";
+    const SAMPLE: &str = "From: claude\nTo: qwen\nTime: 2026-07-17T06:34:12+02:00\nSubject: GO x\nLineage: mentor > coach\n\nMach das.\n";
 
     #[test]
     fn parse_msg_basic() {
@@ -485,6 +499,7 @@ mod tests {
         assert_eq!(m.to, "qwen");
         assert_eq!(m.time, "2026-07-17T06:34:12+02:00");
         assert_eq!(m.subject, "GO x");
+        assert_eq!(m.lineage, "mentor > coach");
         assert_eq!(m.body, "Mach das.");
     }
 
@@ -493,6 +508,7 @@ mod tests {
         let c = "From: a\nTo: b\nTime: t\n\nHallo";
         let m = Msg::parse(c).unwrap();
         assert_eq!(m.subject, "");
+        assert_eq!(m.lineage, "");
         assert_eq!(m.body, "Hallo");
     }
 
@@ -521,7 +537,7 @@ mod tests {
     fn writeback_creates_msg_and_history() {
         let root = tmp_root();
         let w = Bot2BotWorker::new("deepseek".into(), root.clone(), 30, true, 5, true);
-        w.writeback("claude", "RE: GO", "status=done run_id=x cycles=3");
+        w.writeback("claude", "RE: GO", "status=done run_id=x cycles=3", "mentor");
 
         let inbox = root.join("agents/claude/inbox");
         let files: Vec<_> = fs::read_dir(&inbox).unwrap().flatten().collect();
@@ -529,10 +545,23 @@ mod tests {
         let content = fs::read_to_string(files[0].path()).unwrap();
         assert!(content.contains("From: deepseek"));
         assert!(content.contains("To: claude"));
+        assert!(content.contains("Lineage: mentor"));
         assert!(content.contains("status=done run_id=x cycles=3"));
 
         let hist = fs::read_to_string(w.history_path()).unwrap();
         assert!(hist.contains("status=done run_id=x cycles=3"));
+    }
+
+    #[test]
+    fn lineage_roundtrip_is_preserved() {
+        let msg = Msg::parse(SAMPLE).unwrap();
+        let root = tmp_root();
+        let w = Bot2BotWorker::new("deepseek".into(), root.clone(), 30, true, 5, true);
+        let mut state = WorkerState::load(&w.state_path());
+        state.last_lineage = msg.lineage.clone();
+        state.save(&w.state_path()).unwrap();
+        let loaded = WorkerState::load(&w.state_path());
+        assert_eq!(loaded.last_lineage, "mentor > coach");
     }
 
     #[test]

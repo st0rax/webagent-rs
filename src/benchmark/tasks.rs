@@ -30,12 +30,17 @@ pub fn build_task_prompt(winner: &str) -> String {
 /// ein Brain scheibchenweise durch die Datei und verbraucht dabei sein
 /// Zyklenbudget — siehe [`file_outline`].
 pub fn build_task_prompt_in(winner: &str, root: &Path) -> String {
-    build_task_prompt_with_context_budget(winner, root, 0)
+    build_task_prompt_with_context_budget(winner, root, 0, None)
 }
 
 /// Brain-spezifischer Bauauftrag. Nutzt die gemessene Eingabekapazitaet, um
 /// die Zieldatei moeglichst vollstaendig statt scheibchenweise mitzugeben.
-pub fn build_task_prompt_for_brain_in(winner: &str, root: &Path, brain_id: &str) -> String {
+pub fn build_task_prompt_for_brain_in(
+    winner: &str,
+    root: &Path,
+    brain_id: &str,
+    handoff_context: Option<&str>,
+) -> String {
     let accepted = crate::brain_limits::accepted_chars(brain_id).unwrap_or(40_000);
     // Systemprompt, Aufgabe, Baum und spaetere Observations brauchen ebenfalls
     // Platz. Die Haelfte der belegten Kapazitaet bleibt die konservative Grenze.
@@ -43,20 +48,21 @@ pub fn build_task_prompt_for_brain_in(winner: &str, root: &Path, brain_id: &str)
     // Die alte Formel ergab beim 40k-Fallback exakt 0 und degradierte abrupt auf
     // einen Ausschnitt, obwohl der Prompt bequem noch Platz hatte.
     let context_budget = (accepted / 2).saturating_sub(12_000).max(8_000);
-    build_task_prompt_with_context_budget(winner, root, context_budget)
+    build_task_prompt_with_context_budget(winner, root, context_budget, handoff_context)
 }
 
 fn build_task_prompt_with_context_budget(
     winner: &str,
     root: &Path,
     context_budget: usize,
+    handoff_context: Option<&str>,
 ) -> String {
     let workspace = root
         .canonicalize()
         .unwrap_or_else(|_| root.to_path_buf())
         .display()
         .to_string();
-    let basis = format!(
+    let mut basis = format!(
         "Implementiere folgenden Verbesserungsvorschlag im Rust-Projekt webagent-rs \
          im Workspace `{workspace}` mit dem Rohformat (WEBAGENT/1 EDIT/WRITE). \
          Lies, aendere und teste AUSSCHLIESSLICH in diesem Workspace; verwende \
@@ -67,6 +73,9 @@ fn build_task_prompt_with_context_budget(
         winner = winner.trim(),
         workspace = workspace,
     );
+    if let Some(ctx) = handoff_context.map(str::trim).filter(|ctx| !ctx.is_empty()) {
+        basis = format!("{basis}\n\nVorarbeit vom vorherigen Brain:\n{ctx}");
+    }
     // Symbol-Pruefung: nennt der Vorschlag Bezeichner, die in der Zieldatei
     // gar nicht vorkommen, sondern woanders?
     //
@@ -561,7 +570,7 @@ mod tests_symbol_hinweis {
     fn brain_budget_liefert_kleine_zieldatei_vollstaendig() {
         let wurzel = welt("vollstaendig");
         let plan = "Zieldatei: src/tui_state.rs. Neue Funktion `ganz_neu` ergaenzen.";
-        let prompt = build_task_prompt_with_context_budget(plan, &wurzel, 10_000);
+        let prompt = build_task_prompt_with_context_budget(plan, &wurzel, 10_000, None);
         assert!(prompt.contains("VOLLSTAENDIGE ZIELDATEI"), "{prompt}");
         assert!(prompt.contains("pub fn bench_collapse_all()"), "{prompt}");
         assert!(prompt.contains("nicht erneut per Shell laden"), "{prompt}");

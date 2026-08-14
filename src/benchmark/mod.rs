@@ -403,11 +403,11 @@ mod tests {
     fn leerfahren(q: &mut HandoffQueue) -> Vec<(String, String)> {
         let mut gesehen = Vec::new();
         let mut n = 0;
-        while let Some((brain, effective, _)) = q.next() {
+        while let Some((brain, effective, _, _)) = q.next() {
             n += 1;
             assert!(n < 100, "Endlosschleife: {n} Durchlaeufe ohne Ende");
             gesehen.push((brain.clone(), effective.clone()));
-            q.on_stall(&brain, &effective);
+            q.on_stall(&brain, &effective, None);
         }
         gesehen
     }
@@ -446,16 +446,16 @@ mod tests {
         let mut q = HandoffQueue::new(&plan_alle_gleiche_aufgabe(), &acht_brains(), 3);
         // Bis zum ersten endgueltigen Ausfall fahren.
         let mut n = 0;
-        while let Some((brain, effective, _)) = q.next() {
+        while let Some((brain, effective, _, _)) = q.next() {
             n += 1;
             assert!(n < 100, "Endlosschleife");
-            if q.on_stall(&brain, &effective).is_none() {
+            if q.on_stall(&brain, &effective, None).is_none() {
                 break;
             }
         }
         assert!(q.is_dropped("T"));
         // Danach darf "T" nicht noch einmal ausgegeben werden.
-        while let Some((_, effective, _)) = q.next() {
+        while let Some((_, effective, _, _)) = q.next() {
             assert_ne!(effective, "T", "ausgefallene Aufgabe wurde neu eingereiht");
         }
     }

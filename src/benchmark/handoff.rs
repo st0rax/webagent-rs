@@ -11,8 +11,9 @@ use super::bench_say;
 /// Aufgabe fuer jeden weiteren Eintrag erneut durch einen vollen Brain-Run.
 /// Als reine Datenstruktur ist das ohne Netzwerk und ohne Brains testbar.
 pub(crate) struct HandoffQueue {
-    /// (Brain, Aufgabentext, abgebendes Brain — None = frischer Plan-Eintrag)
-    queue: std::collections::VecDeque<(String, String, Option<String>)>,
+    /// (Brain, Aufgabentext, abgebendes Brain — None = frischer Plan-Eintrag,
+    ///  Kontext der Vorarbeit)
+    queue: std::collections::VecDeque<(String, String, Option<String>, Option<String>)>,
     tried: std::collections::HashMap<String, Vec<String>>,
     dropped: std::collections::HashSet<String>,
     #[allow(dead_code)]
@@ -27,7 +28,7 @@ impl HandoffQueue {
         Self {
             queue: plan
                 .iter()
-                .map(|(b, t)| (b.clone(), t.clone(), None))
+                .map(|(b, t)| (b.clone(), t.clone(), None, None))
                 .collect(),
             tried: std::collections::HashMap::new(),
             dropped: std::collections::HashSet::new(),
@@ -38,8 +39,8 @@ impl HandoffQueue {
 
     /// Naechster Auftrag. Ausgefallene Aufgaben werden hier verworfen, damit
     /// sie keinen weiteren Brain-Run kosten.
-    pub(crate) fn next(&mut self) -> Option<(String, String, Option<String>)> {
-        while let Some((brain, effective, from)) = self.queue.pop_front() {
+    pub(crate) fn next(&mut self) -> Option<(String, String, Option<String>, Option<String>)> {
+        while let Some((brain, effective, from, context)) = self.queue.pop_front() {
             if self.dropped.contains(&effective) {
                 bench_say!(
                     crate::bench_events::Level::Warn,
@@ -62,7 +63,7 @@ impl HandoffQueue {
                 }
                 tried.push(brain.clone());
             }
-            return Some((brain, effective, from));
+            return Some((brain, effective, from, context));
         }
         None
     }
@@ -73,7 +74,12 @@ impl HandoffQueue {
     /// Die Reservierung passiert BEIM EINREIHEN, nicht erst beim Poppen —
     /// sonst waehlen zwei Stalls derselben Aufgabe dasselbe naechste Brain.
     #[allow(dead_code)]
-    pub(crate) fn on_stall(&mut self, brain: &str, effective: &str) -> Option<String> {
+    pub(crate) fn on_stall(
+        &mut self,
+        brain: &str,
+        effective: &str,
+        context: Option<String>,
+    ) -> Option<String> {
         let already = self.tried.entry(effective.to_string()).or_default();
         let cap = self.max_handoffs.max(1) + 1;
         let next = if already.len() < cap {
@@ -85,7 +91,12 @@ impl HandoffQueue {
             Some(nb) => {
                 already.push(nb.clone());
                 self.queue
-                    .push_back((nb.clone(), effective.to_string(), Some(brain.to_string())));
+                    .push_back((
+                        nb.clone(),
+                        effective.to_string(),
+                        Some(brain.to_string()),
+                        context,
+                    ));
                 Some(nb)
             }
             None => {
