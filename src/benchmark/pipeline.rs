@@ -1040,7 +1040,7 @@ where
                                 // nicht verwirft (real beobachtet 2026-08-14 Runde 5).
                                 match persist_candidate(
                                     brain,
-                                    &effective,
+                                    effective,
                                     &patch,
                                 ) {
                                     Ok(path) => bench_say!(

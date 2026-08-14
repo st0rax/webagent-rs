@@ -63,11 +63,14 @@ fn build_task_prompt_with_context_budget(
         .display()
         .to_string();
     let mut basis = format!(
-        "Implementiere folgenden Verbesserungsvorschlag im Rust-Projekt webagent-rs \
+         "Implementiere folgenden Verbesserungsvorschlag im Rust-Projekt webagent-rs \
          im Workspace `{workspace}` mit dem Rohformat (WEBAGENT/1 EDIT/WRITE). \
          Lies, aendere und teste AUSSCHLIESSLICH in diesem Workspace; verwende \
          keinen anderen Checkout und keinen hartcodierten frueheren Repo-Pfad. Ergänze \
-         Tests. `cargo test --lib` muss grün bleiben. Mache genau diese eine \
+         Tests. `cargo test --lib` muss grün bleiben. Zusätzlich gilt die \
+         Aufnahmeprüfung des Harnesses: `cargo clippy --all-targets -- -D warnings` \
+         muss ohne Warnungen durchlaufen — führe es selbst aus und behebe jede \
+         Warnung, bevor du fertig bist. Mache genau diese eine \
          Änderung, nichts darüber hinaus. Ändere weder Cargo.toml noch Cargo.lock, \
          füge keine Dependencies hinzu und bearbeite keine Build-/CI-Skripte.\n\nVorschlag: {winner}",
         winner = winner.trim(),
