@@ -7,7 +7,7 @@
 //! Tests in `mod.rs` und externe Aufrufer greifen ueber die Re-Exports aus
 //! `mod.rs` zu.
 
-use crate::observer::{is_claude_limit_response_text, is_transient_response_text};
+use crate::observer::{is_limit_response_text, is_transient_response_text};
 use crate::protocol::is_possibly_truncated;
 
 use super::has_protocol_payload;
@@ -213,11 +213,10 @@ pub(crate) fn classify_completion(
     stable_secs: f64,
     rate_limit_aware: bool,
 ) -> Completion {
-    // Die Rate-Limit-Erkennung ist Claude-spezifisch (`claude_rate_limited`) und wird
-    // NUR fuer claude angewandt. Sonst schlug sie fuer andere Brains fehl: qwens
-    // Ausgabe/UI-Chrome enthielt "…limit…", wurde faelschlich als Claude-Limit
-    // gewertet und der (terminale) Rate-Limit-Pfad brach den Lauf ohne Retry ab.
-    if rate_limit_aware && is_claude_limit_response_text(text) {
+    // Die Rate-Limit-Erkennung wird nur dort aktiviert, wo das Profil einen
+    // passenden Banner-Selektor gemeldet hat. Die Textprüfung selbst ist
+    // generisch; ob sie terminal wirkt, entscheidet der Aufrufer.
+    if rate_limit_aware && is_limit_response_text(text) {
         return Completion::RateLimited;
     }
 

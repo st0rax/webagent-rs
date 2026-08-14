@@ -89,13 +89,13 @@ pub fn relay_single_turn(
         }
     }
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
-    // sind unvermeidlich flakig: das Editor-Submit greift manchmal nicht (kimi),
-    // manchmal wird die Antwort nicht erkannt (qwen/zai). Jeder Turn startet mit
-    // einem frischen `new_chat`, also entsteht kein Doppel-Post im selben Thread —
-    // ein evtl. schon gesendeter, aber unerkannter Vorgaenger bleibt in seiner
-    // eigenen (verlassenen) Konversation. Rate-Limit wird NICHT wiederholt: das ist
-    // ein echtes "spaeter wieder", kein transienter Fehler. Retries gehen sichtbar
-    // nach stderr, werden also nicht versteckt.
+    // sind unvermeidlich flakig: Submit oder Antworterkennung koennen scheitern.
+    // Jeder Turn startet mit einem frischen `new_chat`, also entsteht kein
+    // Doppel-Post im selben Thread — ein evtl. schon gesendeter, aber unerkannter
+    // Vorgaenger bleibt in seiner eigenen (verlassenen) Konversation.
+    // Rate-Limit wird NICHT wiederholt: das ist ein echtes "spaeter wieder", kein
+    // transienter Fehler. Retries gehen sichtbar nach stderr, werden also nicht
+    // versteckt.
     const MAX_TURNS: usize = 3;
     let mut last_err = format!("kein Versuch ausgefuehrt fuer {brain_id}");
     let mut answer: Option<String> = None;
@@ -136,7 +136,7 @@ pub fn relay_single_turn(
                 prompt_chars,
             );
             return Err(RelayError(
-                "claude_rate_limited: Claude ist aktuell limitiert/nicht verfügbar".into(),
+                "rate_limited: Brain ist aktuell limitiert/nicht verfügbar".into(),
             ));
         }
         // Externe Blockierung (Rate-/Nachrichtenlimit, Login, Cloudflare) auf der

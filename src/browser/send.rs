@@ -299,7 +299,7 @@ return best?best.slice(0,300):null;})()"#;
 
     pub(crate) fn send_qwen(&mut self, text: &str) -> Result<i32, String> {
         let baseline = self.prepare_send_baseline();
-        let _ = self.dismiss_qwen_blocks();
+        self.dismiss_consent();
         let composer_js = self.sel_js("composer", &[]);
         if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t))
             && !self.wait_fill_composer(&composer_js, text, |s, js, t| {

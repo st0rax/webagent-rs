@@ -215,24 +215,6 @@ pub(crate) fn dismiss_modal_buttons(driver: &mut dyn PageDriver) -> bool {
     )
 }
 
-/// qwen: „App herunterladen / not supported"-Banner schließen.
-pub(crate) fn dismiss_qwen_blocks(driver: &mut dyn PageDriver) -> bool {
-    eval_bool(
-        driver,
-        r#"(function(){
-              var hit=false;
-              document.querySelectorAll('button,a,[role=button]').forEach(function(el){
-                var t=(el.textContent||'').toLowerCase();
-                if(t.indexOf('continue on web')>=0||t.indexOf('use web')>=0||
-                   t.indexOf('web version')>=0||t.indexOf('im browser')>=0){
-                  try{el.click();hit=true;}catch(e){}
-                }
-              });
-              return hit;
-            })()"#,
-    )
-}
-
 /// Zaehlt beschriftete Bedienelemente in einem Scan. Geteilt zwischen
 /// Implementierung und Test — der Mock-Driver matcht auf die EXAKTE
 /// Zeichenkette.

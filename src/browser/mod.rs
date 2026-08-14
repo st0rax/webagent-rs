@@ -756,18 +756,18 @@ mod tests {
         assert_eq!(r, Completion::RateLimited);
     }
 
-    // Regression: derselbe Limit-Text darf für Nicht-Claude-Brains NICHT als
-    // Rate-Limit gelten. qwens Ausgabe/UI enthielt "…usage limit…" und wurde sonst
-    // fälschlich als claude_rate_limited terminal abgebrochen.
+    // Regression: derselbe Limit-Text darf für Nicht-Limit-aktive Profiles NICHT
+    // als Rate-Limit gelten. Sonst würde ein generischer Text fälschlich
+    // terminal abgebrochen.
     #[test]
-    fn rate_limit_ignored_when_not_claude() {
+    fn rate_limit_ignored_when_not_active() {
         let r = classify_completion(
             "You have reached your usage limit for Claude.",
             true,
             true,
             false,
             0.0,
-            false, // rate_limit_aware=false (nicht claude)
+            false, // rate_limit_aware=false
         );
         assert_ne!(r, Completion::RateLimited);
     }

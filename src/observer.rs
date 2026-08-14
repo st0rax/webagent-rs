@@ -23,8 +23,8 @@ fn clock_only_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"^\d{1,2}:\d{2}$").unwrap())
 }
 
-/// Regex für Claude-Limit-Meldungen.
-fn claude_limit_regex() -> &'static Regex {
+/// Regex für Limit-/Quota-Meldungen in einer Web-UI.
+fn limit_response_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
@@ -156,8 +156,8 @@ pub fn is_transient_response_text(text: &str) -> bool {
     transient_status_regex().is_match(normalized)
 }
 
-/// True wenn Claude Web UI eine Usage/Rate-Limit-Banner statt einer Antwort zeigt.
-pub fn is_claude_limit_response_text(text: &str) -> bool {
+/// True wenn die Web-UI eine Usage/Rate-Limit-Banner statt einer Antwort zeigt.
+pub fn is_limit_response_text(text: &str) -> bool {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let normalized = normalized.trim();
 
@@ -165,7 +165,7 @@ pub fn is_claude_limit_response_text(text: &str) -> bool {
         return false;
     }
 
-    claude_limit_regex().is_match(normalized)
+    limit_response_regex().is_match(normalized)
 }
 
 #[cfg(test)]
@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn strips_exact_string_observed_from_claude() {
+    fn strips_exact_string_observed_from_relay() {
         // 1:1 aus der relay-Ausgabe vom 2026-07-27 (Leerzeile auch NACH dem Paar).
         let raw = "Synthesized drei Robustheitskriterien für Web-Selektoren\n\nSynthesized drei Robustheitskriterien für Web-Selektoren\n\nAntwortsprache: Deutsch.";
         assert_eq!(strip_repeated_lead_line(raw), "Antwortsprache: Deutsch.");
@@ -225,8 +225,8 @@ mod tests {
     }
 
     #[test]
-    fn claude_rotating_thinking_labels_are_transient() {
-        // Real am 2026-07-27 ueber `relay --brain claude` beobachtet: der
+    fn rotating_thinking_labels_are_transient() {
+        // Real am 2026-07-27 ueber `relay` beobachtet: der
         // Harness lieferte diese als fertige Antwort mit ok=true zurueck.
         // Eine Vokabelliste haette sie nie gefangen — das Wort rotiert.
         for s in [
@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn test_claude_limit_messages_are_detected() {
+    fn test_limit_messages_are_detected() {
         let cases = vec![
             "You have reached your usage limit for today.",
             "Message limit reached. Try again later.",
@@ -327,15 +327,15 @@ mod tests {
 
         for text in cases {
             assert!(
-                is_claude_limit_response_text(text),
-                "Expected '{}' to be a Claude limit message",
+                is_limit_response_text(text),
+                "Expected '{}' to be a limit message",
                 text
             );
         }
     }
 
     #[test]
-    fn test_non_limit_responses_are_not_claude_limits() {
+    fn test_non_limit_responses_are_not_limits() {
         let cases = vec![
             "METHODOLOGY:C REASON:Balanced mix.",
             "The counter is 8.",
@@ -344,8 +344,8 @@ mod tests {
 
         for text in cases {
             assert!(
-                !is_claude_limit_response_text(text),
-                "Expected '{}' to NOT be a Claude limit message",
+                !is_limit_response_text(text),
+                "Expected '{}' to NOT be a limit message",
                 text
             );
         }

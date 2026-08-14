@@ -1,8 +1,8 @@
 //! DOM-Inspektion, Login und Live-Diagnose des Web-Backends.
 //!
 //! Extrahiert aus `mod.rs` am 2026-08-09 (browser-Split). Die Methoden bauen
-//! auf den `operations`-Free-Fns auf. `dismiss_consent`/`dismiss_qwen_blocks`
-//! sind `pub(crate)` (vom `send`-Pfad gerufen), `account_label_js` ebenso
+//! auf den `operations`-Free-Fns auf. `dismiss_consent` ist `pub(crate)`
+//! (vom `send`-Pfad gerufen), `account_label_js` ebenso
 //! (Regressionstest in `mod.rs`).
 
 use std::time::{Duration, Instant};
@@ -53,15 +53,6 @@ impl WebBrainBackend {
             Some(driver) => {
                 operations::dismiss_consent(driver.as_mut(), &self.selectors)
             }
-            None => false,
-        }
-    }
-
-    /// qwen: „App herunterladen / not supported"-Banner schließen.
-    pub(crate) fn dismiss_qwen_blocks(&self) -> bool {
-        let mut guard = self.driver.borrow_mut();
-        match guard.as_mut() {
-            Some(driver) => operations::dismiss_qwen_blocks(driver.as_mut()),
             None => false,
         }
     }
