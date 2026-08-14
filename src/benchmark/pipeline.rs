@@ -15,7 +15,7 @@ use super::git::{
     tree_changed,
 };
 use super::handoff::HandoffQueue;
-use super::harvest::{harvest_commit, scope_compensation_count, validate_task_scope};
+use super::harvest::{harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope};
 use super::report::{format_benchmark_report, print_leaderboard};
 use super::tasks::{
     assign_tasks, build_refine_prompt, parse_test_count, proposed_fn_name, ranked_from_report,
@@ -1035,6 +1035,26 @@ where
                                 "  {brain}: Patch gesichert ({} Dateien, {} Zeilen) — Kandidat für die Ernte",
                                 paths.len(), patch.lines().count()
                             );
+                                // Crash-Sicherheit: der Patch liegt sofort auf Platte,
+                                // damit ein Prozessabbruch vor der Ernte die Arbeit
+                                // nicht verwirft (real beobachtet 2026-08-14 Runde 5).
+                                match persist_candidate(
+                                    brain,
+                                    &effective,
+                                    &patch,
+                                ) {
+                                    Ok(path) => bench_say!(
+                                        crate::bench_events::Level::Info,
+                                        Some(brain),
+                                        "  {brain}: Patch crash-sicher unter {} abgelegt",
+                                        path.display()
+                                    ),
+                                    Err(e) => bench_say!(
+                                        crate::bench_events::Level::Warn,
+                                        Some(brain),
+                                        "  {brain}: Patch-Persistenz fehlgeschlagen: {e}"
+                                    ),
+                                }
                                 harvest_pool.push(HarvestCandidate {
                                     brain: brain.clone(),
                                     task: effective.clone(),

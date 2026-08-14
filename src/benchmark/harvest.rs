@@ -77,6 +77,27 @@ pub fn scope_compensation_count(technical_pass: bool, lint_passed: bool) -> usiz
     usize::from(technical_pass && lint_passed) * 2
 }
 
+/// Sichert einen bestandenen Patch sofort auf Platte, damit ein Absturz vor
+/// der Ernte-Phase die Arbeit nicht verwirft (real beobachtet 2026-08-14:
+/// Runde 5 lief bis zum PASS durch, der Prozess starb vor der Ernte und der
+/// Patch war weg).
+pub(crate) fn persist_candidate(
+    brain: &str,
+    task: &str,
+    patch: &str,
+) -> Result<std::path::PathBuf, String> {
+    let dir = crate::config::data_dir().join("benchmark").join("harvest_pending");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("harvest_pending: {e}"))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let base = format!("{stamp}_{brain}");
+    std::fs::write(dir.join(format!("{base}.patch")), patch).map_err(|e| format!("patch: {e}"))?;
+    std::fs::write(dir.join(format!("{base}.task")), task).map_err(|e| format!("task: {e}"))?;
+    Ok(dir.join(format!("{base}.patch")))
+}
+
 /// Spielt einen geernteten Patch wieder ein, verifiziert ihn erneut (Build +
 /// Tests) und committet ihn mit dem Brain als Autor.
 ///
@@ -158,4 +179,31 @@ pub(crate) fn harvest_commit(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::persist_candidate;
+
+    #[test]
+    fn persist_candidate_legt_patch_und_task_ab() {
+        let path = persist_candidate("deepseek", "Zieldatei: src/observer.rs.", "+fn neuer_test() {}")
+            .expect("persistiert");
+        let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+        assert!(path.to_string_lossy().contains("harvest_pending"));
+        assert!(file_name.ends_with("_deepseek.patch"), "{file_name}");
+        assert!(path.exists());
+        let task_path = path.with_extension("task");
+        assert!(task_path.exists());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "+fn neuer_test() {}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&task_path).unwrap(),
+            "Zieldatei: src/observer.rs."
+        );
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&task_path);
+    }
 }
