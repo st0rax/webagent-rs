@@ -21,7 +21,7 @@ use crate::benchmark::HarvestCandidate;
 pub fn pick_harvest(candidates: &[HarvestCandidate]) -> Option<&HarvestCandidate> {
     candidates
         .iter()
-        .filter(|c| !c.patch.trim().is_empty())
+        .filter(|c| has_substantive_change(&c.patch))
         .filter(|c| harvest_rejection(&c.patch).is_none())
         .min_by_key(|c| (c.iterations, c.latency_ms))
 }
@@ -40,6 +40,11 @@ pub fn pick_harvest(candidates: &[HarvestCandidate]) -> Option<&HarvestCandidate
 /// Kriterium, das Ballast nicht von Verbesserung unterscheidet. Also muss das
 /// Kriterium schärfer werden, nicht der Prompt frommer.
 pub fn harvest_rejection(patch: &str) -> Option<String> {
+    if !has_substantive_change(patch) {
+        return Some(
+            "keine inhaltliche Änderung — nur Leerzeilen/Whitespace".to_string(),
+        );
+    }
     let removed = count_marker(patch, '-', "#[test]");
     let added = count_marker(patch, '+', "#[test]");
     if removed > added {
@@ -65,6 +70,32 @@ fn count_marker(patch: &str, sign: char, needle: &str) -> usize {
         .filter(|l| l.starts_with(sign) && !l.starts_with("+++") && !l.starts_with("---"))
         .filter(|l| l.contains(needle))
         .count()
+}
+
+/// True, wenn der Diff mindestens eine Zeile mit echtem Inhalt veraendert —
+/// also eine Hinzugefuegte/Entfernte Zeile, die mehr als Leerraum oder
+/// Kommentar traegt.
+///
+/// Hintergrund, real am 2026-08-14 (`ff33b75`): ein Brain "aenderte" den Baum
+/// nur um vier Leerzeilen. `git apply` spielt das fehlerfrei ein, Build und
+/// Tests bleiben gruen — doch `patch.trim().is_empty()` greift nicht, weil
+/// eine Diff-Zeile `+` allein beim Trimmen nicht leer wird. Erst diese
+/// Pruefung verlangt, dass ueberhaupt Inhalt bewegt wird. Kommentare zaehlen
+/// nicht: "Stubenrein" heisst, eine Aufgabe loest sich in veraendertem
+/// Verhalten, nicht in Randnotizen.
+pub fn has_substantive_change(patch: &str) -> bool {
+    patch.lines().any(|line| {
+        let is_hunk = line.starts_with('+') || line.starts_with('-');
+        let is_header = line.starts_with("+++") || line.starts_with("---");
+        is_hunk && !is_header && hunk_line_has_content(&line[1..])
+    })
+}
+
+/// True, wenn eine Hunk-Zeile (ohne Vorzeichen) mehr als Leerraum oder einen
+/// Kommentar traegt.
+fn hunk_line_has_content(content: &str) -> bool {
+    let t = content.trim();
+    !t.is_empty() && !t.starts_with("//") && !t.starts_with("/*")
 }
 
 /// Namen der im Diff neu hinzugefügten öffentlichen Funktionen.

@@ -944,7 +944,7 @@ where
             // Bestandene Arbeit sichern, BEVOR der Reset sie verwirft.
             if config.harvest && is_pass(did_change, compiled, tests_passed) {
                 match patch_scope {
-                    Some((patch, None)) if !patch.trim().is_empty() => {
+                    Some((patch, None)) if crate::bench_harvest::has_substantive_change(&patch) => {
                         match validate_task_scope(&patch, effective) {
                             Ok(paths) => {
                                 bench_say!(
@@ -968,7 +968,7 @@ where
                             ),
                         }
                     }
-                    Some((patch, None)) if patch.trim().is_empty() => bench_say!(
+                    Some((patch, None)) if !crate::bench_harvest::has_substantive_change(&patch) => bench_say!(
                         crate::bench_events::Level::Warn,
                         Some(brain),
                         "  {brain}: leerer Patch — nichts zu ernten"

@@ -263,6 +263,33 @@ mod tests {
     }
 
     #[test]
+    fn harvest_rejects_pure_blank_line_changes() {
+        // Real am 2026-08-14 (`ff33b75`): ein Brain "aenderte" den Baum nur um
+        // Leerzeilen. `git apply` spielt das ein, Build und Tests bleiben gruen —
+        // aber Inhalt wird keiner bewegt. `patch.trim().is_empty()` greift hier
+        // NICHT: die Diff-Zeile `+` allein ist nach dem Trimmen nicht leer.
+        let blanks = "+++ b/src/self_research.rs\n@@ -1,2 +1,6 @@\n\n+\n+\n+\n+\n";
+        let reason = harvest_rejection(blanks).expect("Blank-Diff muss verworfen werden");
+        assert!(reason.contains("inhaltliche"), "{reason}");
+    }
+
+    #[test]
+    fn harvest_rejects_comment_only_additions_as_non_substantive() {
+        // Nur ein Kommentar ist genauso wenig eine veraenderte Funktionalitaet
+        // wie eine Leerzeile — die Ernte darf daraus keinen "Fortschritt" bauen.
+        let comment = "+++ b/src/x.rs\n+// TODO aufraeumen\n";
+        let reason = harvest_rejection(comment)
+            .expect("Kommentar-Ergaenzung ist keine inhaltliche Aenderung");
+        assert!(reason.contains("inhaltliche"), "{reason}");
+    }
+
+    #[test]
+    fn harvest_accepts_real_content_after_blank_header() {
+        let real = "+++ b/src/x.rs\n@@ -1 +1,2 @@\n\n+let anw = 1;\n";
+        assert!(harvest_rejection(real).is_none());
+    }
+
+    #[test]
     fn harvest_accepts_a_function_that_is_actually_used() {
         // Neue Funktion MIT Aufrufer im Produktivcode: das ist Verbesserung.
         let good = "+++ b/src/x.rs\n+pub fn parse_limit(s: &str) -> u32 { 0 }\n+    let n = parse_limit(raw);\n";
@@ -712,8 +739,18 @@ mod tests {
         // Beim ersten Versuch gruen schlaegt "nach neun Korrekturen gruen" —
         // beide bestehen, nur eines davon ist verlaessliche Arbeit.
         let pool = vec![
-            cand("zai", 9, 1_000, "diff --git a/src/x.rs"),
-            cand("deepseek", 1, 90_000, "diff --git a/src/y.rs"),
+            cand(
+                "zai",
+                9,
+                1_000,
+                "diff --git a/src/x.rs\n@@ -1 +1 @@\n-old\n+new\n",
+            ),
+            cand(
+                "deepseek",
+                1,
+                90_000,
+                "diff --git a/src/y.rs\n@@ -1 +1 @@\n-old\n+new\n",
+            ),
         ];
         assert_eq!(pick_harvest(&pool).unwrap().brain, "deepseek");
     }
@@ -721,8 +758,18 @@ mod tests {
     #[test]
     fn harvest_breaks_iteration_tie_by_latency() {
         let pool = vec![
-            cand("kimi", 2, 80_000, "diff --git a/src/x.rs"),
-            cand("deepseek", 2, 20_000, "diff --git a/src/y.rs"),
+            cand(
+                "kimi",
+                2,
+                80_000,
+                "diff --git a/src/x.rs\n@@ -1 +1 @@\n-old\n+new\n",
+            ),
+            cand(
+                "deepseek",
+                2,
+                20_000,
+                "diff --git a/src/y.rs\n@@ -1 +1 @@\n-old\n+new\n",
+            ),
         ];
         assert_eq!(pick_harvest(&pool).unwrap().brain, "deepseek");
     }
