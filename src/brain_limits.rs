@@ -67,6 +67,16 @@ pub fn accepted_chars(brain_id: &str) -> Option<usize> {
     load().brains.get(brain_id).map(|l| l.accepted_chars)
 }
 
+/// Prüft, ob ein konfiguriertes Token-Limit gültig ist.
+/// Ein Limit von 0 oder ein negativer Wert wird als ungültig abgelehnt.
+fn check_token_limit(limit: i64) -> Result<(), String> {
+    if limit <= 0 {
+        Err("Token-Limit muss positiv sein".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 /// Brains ohne Messwert — genau die, die noch befragt werden müssen.
 pub fn unmeasured(brains: &[String]) -> Vec<String> {
     let store = load();
@@ -79,6 +89,9 @@ pub fn unmeasured(brains: &[String]) -> Vec<String> {
 
 /// Ergebnis eintragen und sichern.
 pub fn record(brain_id: &str, limit: BrainLimit) -> std::io::Result<()> {
+    if let Err(msg) = check_token_limit(limit.accepted_chars as i64) {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, msg));
+    }
     let path = store_path();
     let mut store = load_at(&path);
     store.brains.insert(brain_id.to_string(), limit);
@@ -426,4 +439,36 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[test]
+    fn limit_null_wird_abgelehnt() {
+        assert!(check_token_limit(0).is_err());
+    }
+
+    #[test]
+    fn limit_negativ_wird_abgelehnt() {
+        assert!(check_token_limit(-1).is_err());
+        assert!(check_token_limit(-1000).is_err());
+    }
+
+    #[test]
+    fn limit_positiv_wird_akzeptiert() {
+        assert!(check_token_limit(1).is_ok());
+        assert!(check_token_limit(50_000).is_ok());
+    }
+
+    #[test]
+    fn token_limit_pruefung_bleibt_erfolgreich() {
+        let path = store_path();
+        let _ = std::fs::remove_file(&path);
+        let limit = BrainLimit {
+            accepted_chars: 50_000,
+            rejected_chars: Some(100_000),
+            measured_at: "2026-08-14T12:00:00+00:00".to_string(),
+            note: "Test".to_string(),
+        };
+        record("test_brain", limit).expect("gueltiges Limit muss gespeichert werden");
+        let store = load_at(&path);
+        assert_eq!(store.brains["test_brain"].accepted_chars, 50_000);
+        let _ = std::fs::remove_file(&path);
+    }
 }
