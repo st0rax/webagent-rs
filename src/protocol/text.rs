@@ -28,9 +28,13 @@ pub fn is_possibly_truncated(response_text: &str) -> bool {
     }
     if text.starts_with("WEBAGENT/1 MESSAGE") {
         // `MESSAGE` ist kanonisch ohne End-Tag. Sobald der Text die
-        // vorgeschriebene `id:`/`text:`-Form erfüllt, ist er abgeschlossen;
-        // alles andere ist ein normaler Parser-Fehler, kein laufender Stream.
-        return !message_envelope_regex().is_match(&text);
+        // vorgeschriebene `id:`/`text:`-Form erfüllt, ist er abgeschlossen.
+        // Provider erfinden unter Formatdruck gelegentlich trotzdem einen
+        // vollständig geschlossenen Legacy-Block (`---END MESSAGE---`). Der ist
+        // parser-invalid, aber nicht mehr im Stream: zügig an den normalen
+        // Repair-Pfad geben statt bis zum Provider-Timeout zu warten.
+        return !message_envelope_regex().is_match(&text)
+            && !text.trim_end().ends_with("---END MESSAGE---");
     }
 
     if !text.starts_with('{') {
