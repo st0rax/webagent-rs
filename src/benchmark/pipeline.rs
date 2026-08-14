@@ -396,7 +396,10 @@ where
         // verbrennt sonst die gesamte Planungsphase: am 2026-08-14 hat der Schwarm
         // einen shell_policy-Test um das nicht existente `resolve_symlink_escape`
         // gewaehlt — alle 9 Verfeinerungen wurden verworfen, die Runde war verloren.
-        if !refiner.is_empty() {
+        // Die validierte Spezifikation bleibt als `preflight_spec` erhalten: schlaegt
+        // die Verfeinerung des Konsensplans fehl, ersetzt sie den Plan als Auftrag,
+        // statt die ganze Runde wegzuwerfen (real beobachtet 2026-08-14, Runde 2+4).
+        let preflight_spec: String = if !refiner.is_empty() {
             let preflight = refine_one(
                 &winner,
                 &round_facts,
@@ -414,7 +417,10 @@ where
                 );
                 continue;
             }
-        }
+            preflight
+        } else {
+            String::new()
+        };
         winners.push((round, winner.clone()));
 
         // Phase A.5: Alle Brains planen den Sieger; der Konsensplan wird erst
@@ -523,6 +529,16 @@ where
                         &config.workdir,
                         &query,
                     );
+                    let refined = if refined.is_empty() && !preflight_spec.is_empty() {
+                        bench_say!(
+                            crate::bench_events::Level::Info,
+                            None,
+                            "Plan-Refinement leer — validierte Pre-Flight-Spezifikation des Siegers als Auftrag uebernommen."
+                        );
+                        preflight_spec.clone()
+                    } else {
+                        refined
+                    };
                     t.finish(crate::char_prefix(&refined, 90));
                     refined_cache.insert(raw.clone(), refined.clone());
                     refined
