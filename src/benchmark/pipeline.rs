@@ -382,17 +382,44 @@ where
         };
         attempted_candidates.insert(winner.clone());
         bench_say!(crate::bench_events::Level::Pass, None, "Sieger: {winner}");
-        winners.push((round, winner.clone()));
 
-        // Phase A.5: Alle Brains planen den Sieger; der Konsensplan wird erst
-        // danach zum verbindlichen Bauauftrag. Ein einzelner Erst-Refiner wäre
-        // hier ein unnötiger, unbeobachteter Engpass.
         let existing_api = crate::self_research::collect_public_api(&config.workdir.join("src"));
         let src_files: Vec<String> =
             crate::self_research::collect_modules(&config.workdir.join("src"))
                 .into_iter()
                 .map(|(name, _lines)| format!("src/{name}"))
                 .collect();
+        let refiner = round_brains.first().cloned().unwrap_or_default();
+        // Pre-Flight: der Sieger muss sich als EIN belegtes Work-Package
+        // uebersetzen lassen, BEVOR der teure Plan-Konsens laeuft. Ein Sieger mit
+        // Phantom-Anker (behauptetes Symbol existiert nicht oder steht woanders)
+        // verbrennt sonst die gesamte Planungsphase: am 2026-08-14 hat der Schwarm
+        // einen shell_policy-Test um das nicht existente `resolve_symlink_escape`
+        // gewaehlt — alle 9 Verfeinerungen wurden verworfen, die Runde war verloren.
+        if !refiner.is_empty() {
+            let preflight = refine_one(
+                &winner,
+                &round_facts,
+                &refiner,
+                &existing_api,
+                &src_files,
+                &config.workdir,
+                &query,
+            );
+            if preflight.is_empty() {
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    None,
+                    "Sieger ohne belegtes Work-Package verworfen (Phantom-Anker oder Redundanz) — naechster Kandidat aus dem Vorrat."
+                );
+                continue;
+            }
+        }
+        winners.push((round, winner.clone()));
+
+        // Phase A.5: Alle Brains planen den Sieger; der Konsensplan wird erst
+        // danach zum verbindlichen Bauauftrag. Ein einzelner Erst-Refiner wäre
+        // hier ein unnötiger, unbeobachteter Engpass.
         let plan_context = format!(
             "Projektfakten:\n{}\n\nErlaubte Zieldateien: {}\n\nBestehende öffentliche APIs: {}\n\nDer Plan muss genau eine kleine Änderung beschreiben.",
             crate::char_prefix(&round_facts, 1200), src_files.join(", "), existing_api.join(", ")
@@ -452,7 +479,6 @@ where
 
         // Phase A.5 — jede zugeteilte Aufgabe konkretisieren. Gleiche Vorschlaege
         // nur einmal verfeinern (bei weniger Vorschlaegen als Brains).
-        let refiner = round_brains.first().cloned().unwrap_or_default();
         let mut refined_cache: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
         let mut plan: Vec<(String, String)> = Vec::new();
