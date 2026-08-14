@@ -472,6 +472,29 @@ where
             crate::char_prefix(&consensus_plan, 140)
         );
 
+        // Treueprobe: Der Konsensplan muss den Zieldatei-Anker des Siegers nennen.
+        // Real beobachtet 2026-08-14: Der Sieger handelte von browser/blocking.rs,
+        // der Endplan des Leaders war ein nichtssagender Abschlussbericht ohne die
+        // Datei — der Refiner hat daraus eigenmaechtig einen repl/commands.rs-Auftrag
+        // gebaut und alle Brains bauten gegen die falsche Datei.
+        let winner_target = crate::benchmark::tasks::suggestion_target(&winner);
+        if let Some(target) = &winner_target {
+            let base = target
+                .rsplit('/')
+                .next()
+                .unwrap_or(target)
+                .to_string();
+            if !consensus_plan.contains(target) && !consensus_plan.contains(&base) {
+                bench_say!(
+                    crate::bench_events::Level::Warn,
+                    None,
+                    "Plan-Konsens nennt den Sieger-Anker '{target}' nicht — der Plan \
+                     driftete ab. Runde verworfen, naechster Kandidat aus dem Vorrat."
+                );
+                continue;
+            }
+        }
+
         // Turnier statt Mischmasch: jedes Brain bearbeitet exakt den gewählten
         // Sieger. Damit misst der Score die Qualität der Umsetzung und nicht,
         // ob ein zufällig zugeteilter Neben-Vorschlag leichter war.
@@ -512,6 +535,23 @@ where
                     "{brain}: Vorschlag ohne belegtes Work-Package verworfen"
                 );
                 continue;
+            }
+            // Treueprobe auf dem verfeinerten Auftrag: Der Refiner muss beim
+            // Zieldatei-Anker des Siegers bleiben. Driftet er ab, ist das
+            // Work-Package kein legitimer Ausbau des Siegers und der Baulauf
+            // wuerde die falsche Datei treffen.
+            if let (Some(wt), Some(et)) = (
+                &winner_target,
+                crate::benchmark::tasks::target_file_of(&eff),
+            ) {
+                if !crate::benchmark::tasks::same_target(wt, &et) {
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "{brain}: verfeinerter Auftrag driftete auf {et} statt {wt} ab — uebersprungen"
+                    );
+                    continue;
+                }
             }
             bench_say!(
                 crate::bench_events::Level::Info,

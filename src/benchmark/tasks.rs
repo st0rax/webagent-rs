@@ -157,6 +157,24 @@ pub fn target_file_of(text: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
+/// Zieht die Datei heraus, die ein Siegervorschlag als Ziel nennt
+/// (`In brain_wall.rs …`, `in browser/blocking.rs …`, `src/brain.rs`).
+/// Erster Treffer gewinnt wie bei `target_file_of`; ein "src/"-Praefix bleibt
+/// im Wert erhalten, damit die Treueprobe auch ohne Verzeichnis vergleichbar ist.
+pub fn suggestion_target(text: &str) -> Option<String> {
+    let re = Regex::new(r"(?i)\b((?:src/)?[A-Za-z0-9_/]+\.rs)\b").ok()?;
+    re.captures(text)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+}
+
+/// True, wenn beide Treffer dieselbe Zieldatei meinen — egal, ob einer die
+/// "src/"-Schreibweise nutzt und der andere den relativen Pfad nennt.
+pub fn same_target(a: &str, b: &str) -> bool {
+    let strip = |t: &str| t.trim().strip_prefix("src/").unwrap_or(t.trim()).to_string();
+    strip(a) == strip(b)
+}
+
 /// Zählt die bestandenen Tests aus einer `cargo test`-Ausgabe
 /// (`test result: ok. 387 passed; 0 failed; …`).
 ///
@@ -582,6 +600,31 @@ mod tests_symbol_hinweis {
             target_file_of("Implementiere pub fn reset() in src/brain.rs. Aufrufer spaeter in src/repl/mod.rs."),
             Some("src/brain.rs".to_string())
         );
+    }
+
+    #[test]
+    fn suggestion_target_erkennt_ziel_datei_im_siegertext() {
+        assert_eq!(
+            suggestion_target("In browser/blocking.rs ein Zaehler-Gate einbauen, samt Test."),
+            Some("browser/blocking.rs".to_string())
+        );
+        assert_eq!(
+            suggestion_target("In src/brain.rs die Funktion retry_failed_request hinzufuegen."),
+            Some("src/brain.rs".to_string())
+        );
+        assert_eq!(
+            suggestion_target("In brain_limits.rs eine harte Obergrenze einfuehren."),
+            Some("brain_limits.rs".to_string())
+        );
+        assert_eq!(suggestion_target("Nur Entwurf ohne konkrete Datei."), None);
+    }
+
+    #[test]
+    fn same_target_ignoriert_src_praefix() {
+        assert!(same_target("browser/blocking.rs", "src/browser/blocking.rs"));
+        assert!(same_target("brain.rs", "brain.rs"));
+        assert!(!same_target("blocking.rs", "other/blocking.rs"));
+        assert!(!same_target("repl/commands.rs", "browser/blocking.rs"));
     }
 
     /// Eine saubere Aufgabe bekommt keinen Hinweis — sonst rauscht der Prompt
