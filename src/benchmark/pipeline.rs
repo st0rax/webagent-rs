@@ -18,10 +18,10 @@ use super::handoff::HandoffQueue;
 use super::harvest::{harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope};
 use super::report::{format_benchmark_report, print_leaderboard};
 use super::tasks::{
-    assign_tasks, build_refine_prompt, parse_test_count, proposed_fn_name, ranked_from_report,
-    refinement_has_evidence, repair_focus_from_failures, target_file_of, task_id,
-    task_has_phantom_anchors, task_is_misdirected, task_is_redundant, task_targets_missing_file,
-    usable_refinement,
+    assign_tasks, build_refine_prompt, file_outline, parse_test_count, proposed_fn_name,
+    ranked_from_report, refinement_has_evidence, repair_focus_from_failures, suggestion_target,
+    target_file_of, task_id, task_has_phantom_anchors, task_is_misdirected, task_is_redundant,
+    task_targets_missing_file, usable_refinement,
 };
 use super::types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
 use super::{
@@ -151,6 +151,26 @@ where
     }
     for attempt in 1..=2 {
         let mut prompt = build_refine_prompt(winner, facts, src_files);
+        // Anker-Grundlage: der Refiner soll die echten Signaturen der
+        // Sieger-Zieldatei SEHEN. Sonst verankert er die Lokalen Belege in
+        // halluzinierten Symbolen (real beobachtet 2026-08-15, 12/12
+        // Ablehnungen: `probe_brain`, `BrowserBackend`, `RiskLevel` — keins
+        // davon existiert). Die Gliederung ist dieselbe, mit der auch der
+        // Bauauftrag die Brains an echte Code-Realitaet bindet.
+        if let Some(rel0) = suggestion_target(winner).or_else(|| target_file_of(winner)) {
+            let rel = if rel0.starts_with("src/") {
+                rel0
+            } else {
+                format!("src/{rel0}")
+            };
+            if let Some(gliederung) = file_outline(&root.join(&rel), 120) {
+                prompt = format!(
+                    "{prompt}\n\nGLIEDERUNG DER ZIELDATEI {rel} (bestehende Signaturen mit \
+                     Zeilennummern). Nutze als Anker und in den Lokalen Belegen NUR Symbole, \
+                     die in dieser Gliederung vorkommen — erfinde keine.\n{gliederung}"
+                );
+            }
+        }
         if attempt > 1 {
             prompt.push_str(
                 "
