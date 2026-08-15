@@ -18,10 +18,11 @@ use super::handoff::HandoffQueue;
 use super::harvest::{harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope};
 use super::report::{format_benchmark_report, print_leaderboard};
 use super::tasks::{
-    assign_tasks, build_refine_prompt, file_outline, parse_test_count, proposed_fn_name,
-    ranked_from_report, refinement_has_evidence, repair_focus_from_failures, suggestion_target,
-    target_file_of, task_id, task_has_phantom_anchors, task_is_misdirected, task_is_redundant,
-    task_targets_missing_file, usable_refinement,
+    assign_tasks, build_refine_prompt, file_outline, misdirection_detail, parse_test_count,
+    phantom_detail, proposed_fn_name, ranked_from_report, refinement_has_evidence,
+    repair_focus_from_failures, suggestion_target, target_file_of, task_id,
+    task_has_phantom_anchors, task_is_misdirected, task_is_redundant, task_targets_missing_file,
+    usable_refinement,
 };
 use super::types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
 use super::{
@@ -204,8 +205,9 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                     bench_say!(
                         crate::bench_events::Level::Warn,
                         None,
-                        "  verworfen: vorhandenes Symbol steht nicht in Zieldatei {:?} — {}",
+                        "  verworfen: vorhandenes Symbol steht nicht in Zieldatei {:?} [{}] — {}",
                         target_file_of(&t).unwrap_or_default(),
+                        misdirection_detail(&t, root),
                         crate::char_prefix(&t, 160)
                     );
                     continue;
@@ -214,7 +216,8 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                     bench_say!(
                         crate::bench_events::Level::Warn,
                         None,
-                        "  verworfen: Lokale Belege nennen Phantom-Symbole — {}",
+                        "  verworfen: Lokale Belege nennen Phantom-Symbole [{}] — {}",
+                        phantom_detail(&t, root),
                         crate::char_prefix(&t, 160)
                     );
                     continue;

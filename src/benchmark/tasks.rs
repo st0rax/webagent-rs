@@ -350,13 +350,60 @@ pub fn task_targets_missing_file(refined: &str, src_files: &[String]) -> bool {
         .any(|f| f.strip_prefix("src/") == Some(rel))
 }
 
+/// Text vor der `Lokale Belege:`-Sektion: der Aufgabenkoerper mit Zieldatei,
+/// Anker und Verhaltensbeschreibung. Die Belege sind laut Prompt bewusst
+/// kontextuebergreifend (Aufrufer, verwandte APIs aus anderen Dateien) und
+/// duerfen den Fehlweisungs-Check nicht ausloesen — real beobachtet
+/// 2026-08-15: `check_token_limit` liegt korrekt in src/brain_limits.rs,
+/// die Belege nannten aber den Aufrufer `record` aus ops.rs, und das Gate
+/// verwarf den ganzen Plan.
+fn koerper_teil(refined: &str) -> &str {
+    match refined.to_lowercase().find("lokale belege:") {
+        Some(i) => &refined[..i],
+        None => refined,
+    }
+}
+
+/// Die `Lokale Belege:`-Sektion (bis `Abschlussbeleg:`), falls vorhanden.
+fn belege_teil(refined: &str) -> Option<&str> {
+    let lower = refined.to_lowercase();
+    let i = lower.find("lokale belege:")?;
+    let nach = &refined[i + "lokale belege:".len()..];
+    let ende = nach
+        .to_lowercase()
+        .find("abschlussbeleg:")
+        .unwrap_or(nach.len());
+    Some(&nach[..ende])
+}
+
 /// Eine existierende Zieldatei reicht nicht: nennt der Plan ein bereits
 /// vorhandenes Symbol, das nachweislich in einer anderen Datei steht, wuerde
 /// das Brain am falschen Ort arbeiten.
+///
+/// Geprueft wird nur der Aufgabenkoerper vor `Lokale Belege:` — siehe
+/// [`koerper_teil`].
 pub fn task_is_misdirected(refined: &str, root: &Path) -> bool {
     let target = target_file_of(refined).unwrap_or_default();
-    crate::target_check::pruefe(&target, refined, &crate::target_check::quelldateien(root))
+    crate::target_check::pruefe(&target, koerper_teil(refined), &crate::target_check::quelldateien(root))
         .irrefuehrend()
+}
+
+/// Abstoß-Grund einer Fehlweisung: die Symbole des Aufgabenkoerpers, die
+/// nachweislich in anderen Dateien stehen, samt Fundstellen — fuer das Log.
+pub fn misdirection_detail(refined: &str, root: &Path) -> String {
+    let target = target_file_of(refined).unwrap_or_default();
+    let p = crate::target_check::pruefe(&target, koerper_teil(refined), &crate::target_check::quelldateien(root));
+    p.befunde
+        .iter()
+        .filter_map(|b| match b {
+            crate::target_check::Befund::AndereDatei {
+                symbol,
+                gefunden_in,
+            } => Some(format!("`{symbol}` -> {}", gefunden_in.join(", "))),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 /// Phantom-Anker: die `Lokale Belege:`-Sektion behauptet ein Symbol als
@@ -378,16 +425,9 @@ pub fn task_is_misdirected(refined: &str, root: &Path) -> bool {
 /// Das eigene, vom Plan VORGESCHLAGENE neue Symbol (aus `fn NAME`) zaehlt
 /// nicht: es ist der Sinn der Aufgabe und darf fehlen.
 pub fn task_has_phantom_anchors(refined: &str, root: &Path) -> bool {
-    let lower = refined.to_lowercase();
-    let Some(i) = lower.find("lokale belege:") else {
+    let Some(belege) = belege_teil(refined) else {
         return false;
     };
-    let nach = &refined[i + "lokale belege:".len()..];
-    let ende = nach
-        .to_lowercase()
-        .find("abschlussbeleg:")
-        .unwrap_or(nach.len());
-    let belege = &nach[..ende];
     let neu = proposed_fn_name(refined);
     crate::target_check::pruefe("", belege, &crate::target_check::quelldateien(root))
         .befunde
@@ -399,6 +439,27 @@ pub fn task_has_phantom_anchors(refined: &str, root: &Path) -> bool {
             },
             _ => false,
         })
+}
+
+/// Abstoß-Grund eines Phantom-Befunds: die in den Lokalen Belegen behaupteten
+/// Symbole, die nirgends im Quelltext vorkommen — fuer das Log.
+pub fn phantom_detail(refined: &str, root: &Path) -> String {
+    let Some(belege) = belege_teil(refined) else {
+        return String::new();
+    };
+    let neu = proposed_fn_name(refined);
+    crate::target_check::pruefe("", belege, &crate::target_check::quelldateien(root))
+        .befunde
+        .iter()
+        .filter_map(|b| match b {
+            crate::target_check::Befund::Unbekannt { symbol } => match &neu {
+                Some(n) if n == symbol => None,
+                _ => Some(format!("`{symbol}`")),
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Platz-1-Vorschlag eines Self-Research-Reports (die Benchmark-Aufgabe), oder
@@ -658,6 +719,21 @@ mod tests_symbol_hinweis {
             "Zieldatei: src/tui_state.rs. Aendere `bench_collapse_all`.",
             &wurzel
         ));
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Lokale Belege duerfen kontextuebergreifend sein (Aufrufer aus anderen
+    /// Dateien) — der Fehlweisungs-Check betrifft nur den Aufgabenkoerper.
+    /// Real beobachtet 2026-08-15: `check_token_limit` liegt in
+    /// brain_limits.rs, sein Aufrufer `record` in ops.rs — das Gate verwarf
+    /// den Plan faelschlich, bis der Check auf den Koerper begrenzt wurde.
+    #[test]
+    fn belege_aus_anderer_datei_sind_keine_fehlweisung() {
+        let wurzel = welt("kontext");
+        let plan = "Zieldatei: src/tui_state.rs. Aendere `bench_collapse_all`.\n\n\
+                    Lokale Belege:\nbench_collapse_all ruft eine Hilfe aus einer \
+                    anderen Datei auf.\n\nAbschlussbeleg:\ncargo test --lib";
+        assert!(!task_is_misdirected(plan, &wurzel));
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 
