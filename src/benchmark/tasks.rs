@@ -287,6 +287,35 @@ pub fn proposed_fn_name(refined: &str) -> Option<String> {
     None
 }
 
+/// `true`, wenn ein gefundenes Funktionssymbol im Aufgabentext als BESTEHENDER
+/// Anker markiert ist („ändere den bestehenden Anker fn start…",
+/// „Änderungsanker pub fn search_limit…", „bestehende Methode fn classify…")
+/// statt als neu anzulegende Funktion. Dann ist die Nennung einer vorhandenen
+/// Funktion kein Redundanz-Fehlschlag, sondern der gewollte Änderungsanker.
+///
+/// Die Gliederung im Refine-Prompt verlangt seit 2026-08-15 EXAKTE Signaturen
+/// als Anker — ohne diese Unterscheidung verwarf `task_is_redundant` genau
+/// diese guten Aufgaben (real beobachtet im 07:16-Run: `start`,
+/// `search_limit`, `classify` alle abgelehnt, obwohl sie nur modifiziert
+/// werden sollten).
+fn funktion_als_bestehend_markiert(text: &str, name: &str) -> bool {
+    let lower = text.to_lowercase();
+    let sym = name.to_lowercase();
+    let mut suche = 0;
+    while let Some(rel) = lower[suche..].find(&sym) {
+        let pos = suche + rel;
+        let fenster = &lower[pos.saturating_sub(60)..pos];
+        if ["bestehend", "vorhanden", "anker", "änderungsanker"]
+            .iter()
+            .any(|m| fenster.contains(m))
+        {
+            return true;
+        }
+        suche = pos + sym.len();
+    }
+    false
+}
+
 /// `true`, wenn die Aufgabe etwas verlangt, das es SCHON GIBT — dann ist die
 /// Runde wertlos: das Brain meldet korrekt "ist bereits implementiert", ändert
 /// nichts und würde faelschlich als Fehlschlag gewertet (Storax-Beobachtung
@@ -294,7 +323,10 @@ pub fn proposed_fn_name(refined: &str) -> Option<String> {
 /// implementiert").
 pub fn task_is_redundant(refined: &str, existing_api: &[String]) -> bool {
     match proposed_fn_name(refined) {
-        Some(name) => existing_api.iter().any(|e| e == &name),
+        Some(name) => {
+            existing_api.iter().any(|e| e == &name)
+                && !funktion_als_bestehend_markiert(refined, &name)
+        }
         None => false,
     }
 }
@@ -674,6 +706,38 @@ mod tests_symbol_hinweis {
             &wurzel
         ));
         let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Der 07:16-Run zeigte das False Positive: Der Refiner zitiert nach der
+    /// Gliederungs-Vorgabe bestehende Anker mit exakter Signatur
+    /// („bestehender Anker fn start…") — Modifizieren ist keine Redundanz.
+    #[test]
+    fn bestehender_anker_wird_nicht_als_redundanz_verworfen() {
+        let api = vec!["start".to_string(), "search_limit".to_string()];
+        assert!(!task_is_redundant(
+            "Zieldatei: src/browser/backend.rs. Ändere den bestehenden Anker \
+             fn start(&mut self, headless: bool) so, dass der WebView-Attach mit Timeout läuft.\n\n\
+             Lokale Belege: ...\n\nAbschlussbeleg: cargo test --lib",
+            &api
+        ));
+        assert!(!task_is_redundant(
+            "Zieldatei: src/brain_limits.rs. Als konkreten Änderungsanker \
+             pub fn search_limit(cfg, probe) verwenden und den Grenzwert nach oben setzen.",
+            &api
+        ));
+    }
+
+    /// Der eigentliche Redundanz-Fall bleibt abgefangen: eine als NEU
+    /// deklarierte Funktion, die es schon gibt.
+    #[test]
+    fn neu_deklarierte_vorhandene_funktion_bleibt_redundant() {
+        let api = vec!["is_retryable_empty_response".to_string()];
+        assert!(task_is_redundant(
+            "Zieldatei: src/brain.rs. Implementiere die neue Funktion \
+             fn is_retryable_empty_response(...) und teste sie.\n\nLokale Belege: ...\n\n\
+             Abschlussbeleg: cargo test --lib",
+            &api
+        ));
     }
 
     #[test]
