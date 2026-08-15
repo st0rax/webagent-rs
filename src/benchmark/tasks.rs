@@ -327,6 +327,48 @@ pub fn task_is_misdirected(refined: &str, root: &Path) -> bool {
         .irrefuehrend()
 }
 
+/// Phantom-Anker: die `Lokale Belege:`-Sektion behauptet ein Symbol als
+/// EXISTIEREND, das nirgends im Quelltext vorkommt.
+///
+/// [`task_is_misdirected`] faengt nur Symbole, die ANDERSWO stehen
+/// (`Befund::AndereDatei`). Ein behaupteter Anker, der komplett fehlt, gilt in
+/// `target_check` bewusst als „neu anzulegen“ und damit als kein Fehler. Fuer
+/// die Lokale-Belege-Sektion stimmt das aber nicht: sie soll laut Prompt nur
+/// EXISTIERENDE Symbole nennen. Nennt sie ein Symbol, das in keiner Quelldatei
+/// steht, ist die Aufgabe eine Halluzination.
+///
+/// Real beobachtet 2026-08-15: Der Sieger wollte „dem bestehenden
+/// BrainProbe-Struct ein timeout-Feld geben“ — `BrainProbe` und `ProbeError`
+/// existieren in keiner Datei. Alle Brains lasen die Zieldatei, fanden keinen
+/// Anker und weigerten sich korrekt zu editieren („Kein-Edit“), die Runde war
+/// verloren.
+///
+/// Das eigene, vom Plan VORGESCHLAGENE neue Symbol (aus `fn NAME`) zaehlt
+/// nicht: es ist der Sinn der Aufgabe und darf fehlen.
+pub fn task_has_phantom_anchors(refined: &str, root: &Path) -> bool {
+    let lower = refined.to_lowercase();
+    let Some(i) = lower.find("lokale belege:") else {
+        return false;
+    };
+    let nach = &refined[i + "lokale belege:".len()..];
+    let ende = nach
+        .to_lowercase()
+        .find("abschlussbeleg:")
+        .unwrap_or(nach.len());
+    let belege = &nach[..ende];
+    let neu = proposed_fn_name(refined);
+    crate::target_check::pruefe("", belege, &crate::target_check::quelldateien(root))
+        .befunde
+        .iter()
+        .any(|b| match b {
+            crate::target_check::Befund::Unbekannt { symbol } => match &neu {
+                Some(n) => n != symbol,
+                None => true,
+            },
+            _ => false,
+        })
+}
+
 /// Platz-1-Vorschlag eines Self-Research-Reports (die Benchmark-Aufgabe), oder
 /// `None`, wenn niemand abgestimmt hat.
 pub fn winner_from_report(report: &SelfResearchReport) -> Option<String> {
@@ -582,6 +624,53 @@ mod tests_symbol_hinweis {
         assert!(task_is_misdirected(plan, &wurzel));
         assert!(!task_is_misdirected(
             "Zieldatei: src/tui_state.rs. Aendere `bench_collapse_all`.",
+            &wurzel
+        ));
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Der reale Fall vom 15.08.2026: `BrainProbe` und `ProbeError` existieren
+    /// nirgends, die Lokalen Belege behaupten sie trotzdem als bestehend.
+    #[test]
+    fn lokale_belege_mit_phantom_symbol_werden_verworfen() {
+        let wurzel = welt("phantom");
+        let plan = "Zieldatei: src/tui_state.rs. Dem bestehenden BrainProbe-Struct \
+                    ein timeout-Feld geben.\n\nLokale Belege:\nBrainProbe ist das bestehende \
+                    Struct, ProbeError::Timeout ist der bestehende Fehlerpfad.\n\nAbschlussbeleg:\n\
+                    cargo test --lib";
+        assert!(task_has_phantom_anchors(plan, &wurzel));
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Ein Symbol, das in den Lokalen Belegen wirklich existiert, ist kein Phantom.
+    #[test]
+    fn echte_lokale_belege_sind_kein_phantom() {
+        let wurzel = welt("echt");
+        let plan = "Zieldatei: src/tui_state.rs. `bench_collapse_all` um einen Frueh-Ausstieg \
+                    ergaenzen.\n\nLokale Belege:\nbench_collapse_all ist der bestehende Einstieg.\n\n\
+                    Abschlussbeleg:\ncargo test --lib";
+        assert!(!task_has_phantom_anchors(plan, &wurzel));
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Das vom Plan selbst vorgeschlagene neue Symbol darf fehlen — es ist der
+    /// Zweck der Aufgabe, nicht ein Phantom-Anker. Der Prompt verlangt eine
+    /// EXAKTE Signatur, daher erkennt `proposed_fn_name` es zuverlaessig.
+    #[test]
+    fn eigenes_neues_symbol_zaehlt_nicht_als_phantom() {
+        let wurzel = welt("neu");
+        let plan = "Zieldatei: src/tui_state.rs. Neue Funktion `pub fn ganz_neu()` ergaenzen.\n\n\
+                    Lokale Belege:\nbench_collapse_all ist der bestehende Aufrufer, \
+                    ganz_neu wird neu angelegt.\n\nAbschlussbeleg:\ncargo test --lib";
+        assert!(!task_has_phantom_anchors(plan, &wurzel));
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    #[test]
+    fn ohne_lokale_belege_sektion_kein_phantom_befund() {
+        let wurzel = welt("ohne");
+        assert!(!task_has_phantom_anchors(
+            "Zieldatei: src/tui_state.rs. Erweitere `bench_collapse_all`.",
             &wurzel
         ));
         let _ = std::fs::remove_dir_all(&wurzel);

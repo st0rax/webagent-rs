@@ -20,7 +20,8 @@ use super::report::{format_benchmark_report, print_leaderboard};
 use super::tasks::{
     assign_tasks, build_refine_prompt, parse_test_count, proposed_fn_name, ranked_from_report,
     refinement_has_evidence, repair_focus_from_failures, target_file_of, task_id,
-    task_is_misdirected, task_is_redundant, task_targets_missing_file, usable_refinement,
+    task_has_phantom_anchors, task_is_misdirected, task_is_redundant, task_targets_missing_file,
+    usable_refinement,
 };
 use super::types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
 use super::{
@@ -154,7 +155,7 @@ where
             prompt.push_str(
                 "
 
-WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das es BEREITS GIBT, nannte eine Zieldatei, die es NICHT gibt, oder ordnete ein vorhandenes Symbol der falschen Datei zu. Schlage etwas anderes vor, das es noch nicht gibt und dessen Zieldatei und bestehende Symbole nachweislich zusammenpassen.",
+WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das es BEREITS GIBT, nannte eine Zieldatei, die es NICHT gibt, ordnete ein vorhandenes Symbol der falschen Datei zu oder behauptete in den Lokalen Belegen ein bestehendes Symbol, das NIRGENDS im Quelltext existiert. Schlage etwas anderes vor, dessen Zieldatei und bestehende Symbole nachweislich zusammenpassen.",
             );
         }
         match query(refiner, &prompt) {
@@ -183,6 +184,14 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                         None,
                         "  verworfen: vorhandenes Symbol steht nicht in Zieldatei {:?}",
                         target_file_of(&t).unwrap_or_default()
+                    );
+                    continue;
+                }
+                Some(t) if task_has_phantom_anchors(&t, root) => {
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        None,
+                        "  verworfen: Lokale Belege nennen Phantom-Symbole (existieren nirgends)"
                     );
                     continue;
                 }
