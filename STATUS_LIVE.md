@@ -2438,3 +2438,24 @@ Fix (Commit 33c983f):
 Wichtig fuer Folge-Lauefe: Der 23:30-Run starb nicht an keiner Meldung - er
 endete sauber per Guard nach 2 unproduktiven Runden; Ursache war dieser
 Phantom-Auftrag, nicht die Brains. Naegst: Benchmark neu starten (Tree sauber).
+
+## 15.08. 08:30 - opencode - Diagnose-Kette komplett: Phantom-Gate, Refiner-Gliederung, Redundanz-Fix
+
+Die 'Kein-Edit'-Ursache war kein Brain-Problem: Runde-1-Sieger war eine
+Halluzination (BrainProbe/ProbeError existieren nirgends). Laufende Haertung:
+
+1. 33c983f - Phantom-Anker-Gate: Lokale-Belege-Sektion gegen Quelldateien;
+   behauptetes Symbol, das nirgends existiert = Phantom -> verworfen.
+2. 8d4ca3f - verworfenes Refinement (160 Zeichen) im Log sichtbar.
+   08:24-Run-Befund: Refiner verankerte sich in halluzinierten Symbolen
+   (probe_brain, BrowserBackend, RiskLevel existieren nicht).
+3. 9b0a8ad - Refine-Prompt bekommt file_outline der Sieger-Zieldatei: Anker
+   NUR aus echter Gliederung. 07:16-Run: Runde 1 BAUTE real (claude 3 It,
+   deepseek 5 It mit edit src/browser/blocking.rs) - aber kein Harvest.
+4. 2f06012 - task_is_redundant verwarf Modifikationen bestehender Anker
+   ('bestehender Anker fn start' -> fälschlich 'verlangt vorhandene
+   Funktion'). Fenster-Check bestehend/vorhanden/Anker. 1031 Tests gruen.
+
+Befund 07:16-Run: Runde 1 baute, Runden 2-6 verloren Sieger an den
+Redundanz-False-Positive (jetzt gefixt). Kein Harvest, da kein Brain die
+Build/Test/Scope-Gates passierte. Naechstes: frischer Run, Harvest beobachten.
