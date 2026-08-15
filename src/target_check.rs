@@ -117,12 +117,28 @@ fn wie_bezeichner(s: &str, streng: bool) -> bool {
     if s.len() < 4 {
         return false;
     }
+    // Echte Bezeichner bestehen nur aus Buchstaben, Ziffern und Unterstrichen.
+    // Real beobachtet 2026-08-15: der Refiner schrieb `Backend-Implementierung`,
+    // `Parse-Fehler`, `Symbole/Funktionen`, `Unit-Test-Bereich` in Backticks,
+    // und die Pruefung meldete daraus Phantom- und Fehlweisungs-Funde.
+    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return false;
+    }
     if s.contains('_') {
-        return true;
+        return s.chars().any(|c| c.is_ascii_alphabetic());
     }
     let grosse = s.chars().filter(|c| c.is_uppercase()).count();
     let gemischt = grosse >= 1 && s.chars().any(|c| c.is_lowercase());
     if !gemischt {
+        return false;
+    }
+    // Akronym-Plural wie `APIs`, `IDs`, `URLs` (Grossbuchstaben vor genau einem
+    // Kleinbuchstaben) ist deutsches Fliesstext-Wort, kein Bezeichner.
+    let caps = s.chars().take_while(|c| c.is_uppercase()).count();
+    let acronym_plural = caps > 0
+        && s[caps..].len() == 1
+        && s[caps..].chars().next().is_some_and(|c| c.is_lowercase());
+    if acronym_plural {
         return false;
     }
     if streng {
@@ -360,5 +376,31 @@ mod tests {
     fn kurze_woerter_und_doppelte_fallen_raus() {
         let s = symbole("`ab` `a_b` `lange_sache` `lange_sache`");
         assert_eq!(s, vec!["lange_sache".to_string()], "{s:?}");
+    }
+
+    /// Real beobachtet 2026-08-15: der Refiner belegte mit `Backend-Implementierung`,
+    /// `Parse-Fehler`, `Symbole/Funktionen` usw. — deutsche Komposita mit
+    /// Bindestrich/Schrägstrich, die die Pruefung als Bezeichner behandelte und
+    /// daraus Phantom-/Fehlweisungs-Funde meldete.
+    #[test]
+    fn komposita_mit_trennzeichen_sind_keine_bezeichner() {
+        let s = symbole(
+            "Belege: `Backend-Implementierung`, `Parse-Fehler`, `Symbole/Funktionen`, \
+             `Unit-Test-Bereich`, `Nachrichtenversand-Anker`, `Antwortverarbeitungs-Pfad`.",
+        );
+        assert!(s.is_empty(), "kein Kompositum darf durch: {s:?}");
+    }
+
+    /// `APIs`, `IDs`, `URLs` sind deutsche Akronym-Plurale, keine Bezeichner —
+    /// im 08-15-Lauf liess genau `APIs` einen richtigen Plan kippen
+    /// („keine offenen APIs ändern" fand das Wort in einem Kommentar).
+    #[test]
+    fn akronym_plural_ist_kein_bezeichner() {
+        let s = symbole("keine bestehenden APIs oder IDs im Aufrufer anfassen");
+        assert!(s.is_empty(), "kein Akronym-Plural darf durch: {s:?}");
+        let t = symbole("`APIClient` ruft `ControllerError` und `bench_collapse_all`");
+        assert!(t.contains(&"APIClient".to_string()), "{t:?}");
+        assert!(t.contains(&"ControllerError".to_string()), "{t:?}");
+        assert!(t.contains(&"bench_collapse_all".to_string()), "{t:?}");
     }
 }

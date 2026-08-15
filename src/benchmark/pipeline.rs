@@ -676,6 +676,8 @@ where
             let mut did_change = false;
             let mut compiled = false;
             let mut tests_passed = false;
+            // Lint-Ergebnis der letzten gruenen Iteration (leer konfiguriert = true).
+            let mut lint_ok = true;
             let mut iterations = 0u32;
             // Fortschritts-Gedaechtnis: bestes bisher erreichtes Stadium und wie
             // viele Iterationen seither nichts besser wurde.
@@ -865,11 +867,69 @@ where
                     );
                 }
                 if tests_passed {
+                    if config.lint_eval.trim().is_empty() {
+                        bench_say!(
+                            crate::bench_events::Level::Pass,
+                            Some(brain),
+                            "{brain}: Iteration {iter}/{max_iter} — grün"
+                        );
+                        break;
+                    }
+                    // Lint gehoert zum Pass-Gate. Real beobachtet 2026-08-15:
+                    // deepseek bestand build+test, sein Patch fiel erst bei der
+                    // Ernte-Nachkontrolle durch das Lint-Tor durch — die einzige
+                    // Messung, die Lint je ansah, und der Erntekandidat ging
+                    // verloren, obwohl claude/kimi dasselbe gebaut hatten.
+                    let tl = crate::StageTimer::start(format!("{brain}: {}", config.lint_eval));
+                    let (l_ok, l_out) = run_eval_detail(&config.lint_eval, &config.workdir);
+                    tl.finish(if l_ok { "Lint ok" } else { "Lint ROT" });
+                    lint_ok = l_ok;
+                    if l_ok {
+                        bench_say!(
+                            crate::bench_events::Level::Pass,
+                            Some(brain),
+                            "{brain}: Iteration {iter}/{max_iter} — grün (Build, Tests, Lint)"
+                        );
+                        break;
+                    }
+                    last_gate_failure = Some(format!(
+                        "Lint-Gate bei {brain}: {}",
+                        crate::char_prefix(&l_out, 700)
+                    ));
                     bench_say!(
-                        crate::bench_events::Level::Pass,
+                        crate::bench_events::Level::Warn,
                         Some(brain),
-                        "{brain}: Iteration {iter}/{max_iter} — grün"
+                        "{brain}: Iteration {iter}/{max_iter} — Tests grün, aber Lint rot"
                     );
+                    let now = Progress {
+                        stage: 3,
+                        errors: count_build_errors(&l_out),
+                    };
+                    if is_improvement(best, now) {
+                        bench_say!(
+                            crate::bench_events::Level::Progress,
+                            Some(brain),
+                            "{brain}: Iteration {iter}/{max_iter} — Lint rot, aber naeher dran ({} Fehler)",
+                            now.errors
+                        );
+                        best = Some(now);
+                        stalls = 0;
+                    } else {
+                        stalls += 1;
+                        bench_say!(
+                            crate::bench_events::Level::Warn,
+                            Some(brain),
+                            "{brain}: Iteration {iter}/{max_iter} — Lint rot, kein Fortschritt ({stalls}/{stall_limit})"
+                        );
+                    }
+                    if stalls >= stall_limit {
+                        stalled = true;
+                        break;
+                    }
+                    if iter < max_iter {
+                        attempt_task = build_repair_prompt(&task, &config.lint_eval, &l_out);
+                        continue;
+                    }
                     break;
                 }
                 last_gate_failure = Some(format!(
@@ -920,6 +980,10 @@ where
             }
             let latency_ms = started.elapsed().as_millis() as u64;
 
+            // Der Pass ist did_change + Build + Tests + Lint. Das Lint-Gate
+            // wertet die letzte Iteration; ohne Lint-Konfiguration bleibt es true.
+            let passed = is_pass(did_change, compiled, tests_passed) && lint_ok;
+
             if unavailable {
                 // Kein CodeEvent: ein ausgesperrtes Brain ist kein schlechtes
                 // Brain. Wuerde es als Fehlschlag zaehlen, saenke der Score mit
@@ -935,7 +999,7 @@ where
 
             round_attempted += 1;
 
-            if !is_pass(did_change, compiled, tests_passed) {
+            if !passed {
                 if let Some(failure) = last_gate_failure.as_deref() {
                     round_failures.push(failure.to_string());
                 }
@@ -976,6 +1040,7 @@ where
                 did_change,
                 compiled,
                 tests_passed,
+                lint_passed: lint_ok,
                 cycles,
                 iterations,
                 latency_ms,
@@ -995,7 +1060,7 @@ where
                 policy_event.tests_passed = false;
                 crate::code_score::record(&policy_event);
                 let compensation = scope_compensation_count(
-                    is_pass(did_change, compiled, tests_passed),
+                    passed,
                     scope_lint_ok,
                 );
                 for n in 0..compensation {
@@ -1017,7 +1082,7 @@ where
                     );
                 }
             }
-            if is_pass(did_change, compiled, tests_passed) {
+            if passed {
                 if let Some(prev) = &handoff_from {
                     bench_say!(
                         crate::bench_events::Level::Pass,
@@ -1028,17 +1093,18 @@ where
             }
 
             bench_say!(
-                if is_pass(did_change, compiled, tests_passed) {
+                if passed {
                     crate::bench_events::Level::Pass
                 } else {
                     crate::bench_events::Level::Fail
                 },
                 Some(brain),
-                "{brain}: {iterations} Iteration(en), did_change={} build={} test={} -> {}",
+                "{brain}: {iterations} Iteration(en), did_change={} build={} test={} lint={} -> {}",
                 yes_no(did_change),
                 ok_x(compiled),
                 ok_x(tests_passed),
-                outcome_label(did_change, compiled, tests_passed)
+                ok_x(lint_ok),
+                outcome_label(did_change, compiled, tests_passed && lint_ok)
             );
 
             if stalled {
@@ -1061,7 +1127,7 @@ where
             }
 
             // Bestandene Arbeit sichern, BEVOR der Reset sie verwirft.
-            if config.harvest && is_pass(did_change, compiled, tests_passed) {
+            if config.harvest && passed {
                 match patch_scope {
                     Some((patch, None)) if crate::bench_harvest::has_substantive_change(&patch) => {
                         match validate_task_scope(&patch, effective) {
