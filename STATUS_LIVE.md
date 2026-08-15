@@ -2413,3 +2413,28 @@ Diagnosen aus den Live-Runs:
 Naechster Schritt: Brain-Gesundheit (Kein-Edit-Problem) statt weiterer Harness-
 Schleifen; erneuter Run mit `--parallel 2` ist vorbereitet, laeuft aber erst
 nach Diagnose der Send-Button/Edit-Faehigkeit sinnvoll.
+
+## 15.08. 07:15 - opencode - Kein-Edit-ROOTCAUSE geloest: Phantom-Anker-Gate (33c983f)
+
+Diagnose abgeschlossen (Nutzerentscheid). Die 'Kein-Edit'-Brains waren NICHT das
+Problem - der Sieger-Auftrag der Runde 1 war eine Halluzination:
+'BrainProbe'/'ProbeError' existieren nirgends im Quelltext (rg-Beweis). Die
+Brains lasen die Zieldatei korrekt, fanden keinen Anker und weigerten sich zu
+Recht zu editieren (Ground-Truth: Run-Transcript 20260815_022926_77de85fc).
+
+Luecke im Pre-Flight-Gate: pruefe() stuft ein nirgends vorhandenes Symbol als
+'neu anzulegen' (Unbekannt) ein - korrekt fuer echte Neubauten, falsch fuer die
+'Lokale Belege:'-Sektion, die laut Prompt nur EXISTIERENDE Symbole nennt.
+
+Fix (Commit 33c983f):
+- tasks.rs: task_has_phantom_anchors() - Lokale-Belege-Sektion gegen
+  quelldateien(root) pruefen; jedes Unbekannt-Symbol (ausser dem eigenen
+  vorgeschlagenen neuen aus fn NAME) = Phantom -> verwerfen.
+- pipeline.rs: neues Gate in refine_one() nach task_is_misdirected; Retry-Prompt
+  nennt jetzt auch 'behauptetes bestehendes Symbol, das nirgends existiert'.
+- 4 neue Tests (Phantom verworfen, echte Belege ok, eigenes neues Symbol ok,
+  keine Sektion ok); 1029 lib-Tests gruen, Clippy sauber.
+
+Wichtig fuer Folge-Lauefe: Der 23:30-Run starb nicht an keiner Meldung - er
+endete sauber per Guard nach 2 unproduktiven Runden; Ursache war dieser
+Phantom-Auftrag, nicht die Brains. Naegst: Benchmark neu starten (Tree sauber).
