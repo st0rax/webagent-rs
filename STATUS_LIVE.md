@@ -2378,3 +2378,38 @@ Verifikation:
 - `cargo check` und `git diff --check`: gruen
 
 Kein Commit/Push.
+
+---
+
+## 15.08. 00:50 - opencode - Erster echter Harvest; Lint- und Crash-Probleme geloest
+
+Vier Commits auf `dogfood/gemini-telemetry-fenced`, alle verifiziert
+(`cargo test --lib`: 1021 → 1025 gruen, Clippy `--all-targets -- -D warnings` gruen):
+
+- `7c7012f` Pre-Flight-Gate (Phantom-Anker vor Plan-Konsens verwerfen)
+- `92f21d8` Treue-Gate (Plan/Refinement muss bei der Zieldatei des Siegers bleiben)
+- `2da1172` Fallback auf validierte Pre-Flight-Spezifikation bei leerem Plan-Refinement
+- `69c2372` Ernte-Kandidaten crash-sicher auf Platte (`harvest_pending/*.patch` + `.task`)
+- `78c9ac2` Build-Prompt: Brains muessen vor Abgabe selbst `cargo clippy --all-targets -- -D warnings` gruen bauen (das Lint-Gate verwarf zuvor alle Kandidaten)
+
+**Erste echte Ernte aus dem Schwarm ist committed:** `51492b0`
+`feat(brain-limits): check_token_limit validiert Limits vor record()` — von kimi
+im Run ab 21:10 gebaut (Zieldatei src/brain_limits.rs), crash-sicher persistiert,
+manuell nachverifiziert und eingecheckt (45 Zeilen, 4 Tests).
+
+Diagnosen aus den Live-Runs:
+
+- Lint-Gate verwarf 3 Kandidaten in Folge; kimi-Patch war nachweislich
+  clippy-sauber → Harness-Lint lief unter Speicherdruck (Clippy = rustc), kurz
+  bevor der Prozess an OOM starb. Gegenmassnahmen: Patch-Persistenz, `--parallel 2`.
+- Run ab 23:30 endete SAUBER per Design: `MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS = 2`
+  → „Benchmark nach 2 unproduktiven Runden angehalten". Ursache ist kein
+  Harness-Bug, sondern ein Brain-Gesundheitsproblem: claude/deepseek/kimi
+  erkunden (Get-ChildItem-Loops), editieren aber nicht (Kein-Edit-Gate,
+  Repair-Prioritaeten notiert). claude-UI nachweislich kaputt
+  (ABSENDEKNOPF_DEAKTIVIERT); Verdacht: ChatGPT-Familie betroffen.
+- qwen 6h deterministisch gesperrt, mistral im Nachrichtenlimit.
+
+Naechster Schritt: Brain-Gesundheit (Kein-Edit-Problem) statt weiterer Harness-
+Schleifen; erneuter Run mit `--parallel 2` ist vorbereitet, laeuft aber erst
+nach Diagnose der Send-Button/Edit-Faehigkeit sinnvoll.
