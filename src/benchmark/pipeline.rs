@@ -164,8 +164,9 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                     bench_say!(
                         crate::bench_events::Level::Warn,
                         None,
-                        "  verworfen: verlangt bereits vorhandene Funktion ({:?})",
-                        proposed_fn_name(&t).unwrap_or_default()
+                        "  verworfen: verlangt bereits vorhandene Funktion ({:?}) — {}",
+                        proposed_fn_name(&t).unwrap_or_default(),
+                        crate::char_prefix(&t, 160)
                     );
                     continue;
                 }
@@ -173,8 +174,9 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                     bench_say!(
                         crate::bench_events::Level::Warn,
                         None,
-                        "  verworfen: Zieldatei {:?} ist nicht in der erlaubten Modulliste",
-                        target_file_of(&t).unwrap_or_default()
+                        "  verworfen: Zieldatei {:?} ist nicht in der erlaubten Modulliste — {}",
+                        target_file_of(&t).unwrap_or_default(),
+                        crate::char_prefix(&t, 160)
                     );
                     continue;
                 }
@@ -182,8 +184,9 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                     bench_say!(
                         crate::bench_events::Level::Warn,
                         None,
-                        "  verworfen: vorhandenes Symbol steht nicht in Zieldatei {:?}",
-                        target_file_of(&t).unwrap_or_default()
+                        "  verworfen: vorhandenes Symbol steht nicht in Zieldatei {:?} — {}",
+                        target_file_of(&t).unwrap_or_default(),
+                        crate::char_prefix(&t, 160)
                     );
                     continue;
                 }
@@ -191,7 +194,8 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                     bench_say!(
                         crate::bench_events::Level::Warn,
                         None,
-                        "  verworfen: Lokale Belege nennen Phantom-Symbole (existieren nirgends)"
+                        "  verworfen: Lokale Belege nennen Phantom-Symbole — {}",
+                        crate::char_prefix(&t, 160)
                     );
                     continue;
                 }
@@ -199,7 +203,8 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
                     bench_say!(
                         crate::bench_events::Level::Warn,
                         None,
-                        "  verworfen: keine lokalen Belege oder kein automatisierbarer Abschluss"
+                        "  verworfen: keine lokalen Belege oder kein automatisierbarer Abschluss — {}",
+                        crate::char_prefix(&t, 160)
                     );
                     continue;
                 }
