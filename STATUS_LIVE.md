@@ -2459,3 +2459,20 @@ Halluzination (BrainProbe/ProbeError existieren nirgends). Laufende Haertung:
 Befund 07:16-Run: Runde 1 baute, Runden 2-6 verloren Sieger an den
 Redundanz-False-Positive (jetzt gefixt). Kein Harvest, da kein Brain die
 Build/Test/Scope-Gates passierte. Naechstes: frischer Run, Harvest beobachten.
+
+## 15.08. 17:55 - opencode - 08:29-Run ausgewertet: Fehlweisung-Overkill + Stale-Binary-Lektion
+
+Der 08:29-Run (5 Brains) verwarf wieder 6/6 Sieger, 0 Builds. Ursachen:
+1. STALE BINARY: exe war von 07:15 - der Redundanz-Fix 2f06012 lief nie.
+   Lektion: nach jeder Aenderung cargo build, sonst testet man das Alte.
+2. task_is_misdirected feuerte auf Belege-Symbole aus anderen Dateien
+   (Aufrufer wie record in ops.rs) - obwohl alle Anker real und richtig
+   waren (ensure_ready, run_core, check_token_limit, MIN_CORE_WORDS).
+   Geprueft wird jetzt nur noch der Aufgabenkoerper (bis 'Lokale Belege:').
+
+07159cb: Fehlweisung body-scoped + misdirection_detail()/phantom_detail()
+nennen das abgelehnte Symbol samt Fundstellen im Log. 1032 Tests gruen.
+
+17:49-Run mit frischer exe gestartet (alle 9 Brains wieder frei, Sperren
+abgelaufen). Beobachtungspunkt: ob nach dem Body-Scope echte Pre-Flight-
+Pässe und Builds/Harvests entstehen.
