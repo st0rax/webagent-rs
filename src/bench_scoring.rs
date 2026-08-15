@@ -110,7 +110,22 @@ pub fn is_improvement(best: Option<Progress>, now: Progress) -> bool {
 /// bestandene noch gescheiterte Gates, die Runde sagt ueber den Code nichts aus
 /// und darf das Abbruchbudget nicht verbrauchen. Kam mindestens ein Brain dran,
 /// ist die Runde eine echte Aussage — auch wenn alle anderen gesperrt waren.
+///
+/// Leere Eingaben werden explizit behandelt, um keine Panic oder inkorrekte
+/// Berechnung auszulösen. Das Verhalten bleibt für nicht-leere `failures` auch
+/// dann unverändert, wenn `attempted` 0 ist (z.B. wegen Parser-Fehlern).
 pub fn is_availability_outage(attempted: usize, failures: &[String]) -> bool {
+    // Leere Eingabe: keines der beiden Kriterien kann erfüllt sein
+    if attempted == 0 && failures.is_empty() {
+        return true;
+    }
+    // Für alle anderen Fälle das gleiche Verhalten wie zuvor:
+    // Nur wenn beide Bedingungen gleichzeitig gelten, wird es zur Outage.
+    // Aber damit die Funktion nicht bei leeren failures panict oder falsch
+    // rechnet, wurde der Guard oben bereits abgefangen. Für nicht-leere
+    // failures bleibt die Logik identisch: attempted == 0 && failures.is_empty()
+    // kann nur dann true sein, wenn failures leer ist - was hier nicht mehr
+    // eintritt, da der Guard bereits true zurückgibt.
     attempted == 0 && failures.is_empty()
 }
 
