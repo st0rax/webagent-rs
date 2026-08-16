@@ -2497,3 +2497,21 @@ aller Pre-Flight-Verwerfungen verantwortlich). 1034 Tests gruen.
 
 20:21-Run gestartet (frische exe). Beobachtungspunkt: mehr Pre-Flight-
 Paesse und - wenn es zum Erntekandidat kommt - gruenes Lint-Tor.
+
+## 16.08. 04:20 - opencode - DREI automatische Ernten gecommittet (erste ueberhaupt)
+
+Der 20:21-Run (9 Brains, 6 Runden, ~7,8h) hat die Ernte-Pipeline erstmals
+end-to-end durchlaufen. Die beiden Flaschenhals-Fixes des Vortags trugen
+direkt: Preflight-Verwerfungen gingen von 12/12 auf 5 ueber alle Runden
+zurueck, und das Lint-Gate im Pass machte die Erntekandidaten tragfaehig.
+
+1. 0894c94 - deepseek: is_availability_outage-Doku/Guard in bench_scoring.rs
+   (verhaltensneutral, gruen - schwaecher Mehrwert)
+2. bf89c09 - perplexity: Navigation-Timeout 30s->15s mit echter Elapsed-
+   Messung in browser/backend.rs (echter Diagnose-Mehrwert)
+3. 35e05f8 - chatgpt: Regressionstest test_empty_webview_response_returns_error
+   in brain_probe.rs (liefert exakt die bestellte Absicherung)
+
+Je 1 Datei, 7-15 Zeilen, lint- und testgruen, Brain als Autor. Eine Runde
+in der Mitte: 'Nichts zu ernten'. Damit ist die Leerlauf-Periode seit
+Beginn des Harnessings beendet - der Schwarm erntet jetzt.
