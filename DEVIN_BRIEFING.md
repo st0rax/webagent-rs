@@ -62,8 +62,11 @@ Vor dem Brain-Bauen prueft der Harness:
 ## Befehle
 
 ```bash
-# Benchmarks
+# Benchmarks (CLI)
 target\debug\webagent.exe benchmark --brains chatgpt,claude,deepseek,gemini,kimi,mistral,perplexity,qwen,zai --rounds 6 --suggestions 3 --parallel 2 --headless
+
+# TUI mit Benchmark (aus opencode oder Terminal)
+target\debug\webagent.exe tui --force-tui --benchmark="--rounds 6" --view=bench
 
 # Nur Tests
 cargo test --lib
@@ -73,6 +76,19 @@ cargo clippy --all-targets -- -D warnings
 
 # Build
 cargo build
+```
+
+## Monitoring
+
+```bash
+# Live-Log (letzte 10 Events)
+powershell -Command "Get-Content 'C:\Users\storax\AppData\Local\webagent\data\brain_score\events.jsonl' -Tail 10"
+
+# Circuit-Breaker (gesperrte Brains)
+powershell -Command "Get-Content 'C:\Users\storax\AppData\Local\webagent\data\circuit_breaker\state.json' | ConvertFrom-Json | ConvertTo-Json -Depth 3"
+
+# Alles auf einmal
+powershell -File bench-monitor.ps1
 ```
 
 ## Wichtige Lektionen
@@ -94,4 +110,14 @@ cargo build
 - `35e05f8` chatgpt: Regressionstest leere Webview (brain_probe.rs)
 - `db6c75e` deepseek: Test-Refactoring (brain_probe.rs)
 
-Laufender Run: 19:36 gestartet, 6 Runden, alle 9 Brains.
+Laufender Run: 21:34 gestartet, 6 Runden, 7 Brains (mistral+perplexity gesperrt).
+
+## Wichtige Lektionen (ergaenzt)
+
+- **Working Tree dirty durch untracked Files:** `git status --short` pruefen —
+  auch `??`-Eintraege brechen den Benchmark (`autoresearch.rs:550`).
+- **Kacheln brauchen Konsolenfenster:** Bei Start aus opencode via
+  `Start-Process cmd.exe` gibt es kein `GetConsoleWindow()` => Kacheln
+  schlagen fehl. Kosmetisch, Benchmark laeuft trotzdem.
+- **OCR funktioniert nur mit Windows PowerShell** (nicht pwsh) wegen
+  WinRT-Bridge (`System.Runtime.WindowsRuntime`).

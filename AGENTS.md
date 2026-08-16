@@ -45,3 +45,56 @@ Session-Grenzen in `STATUS_LIVE.md`.
 
 Niemals committen, pushen oder einen PR bauen, ausser der Nutzer fordert es
 ausdruecklich.
+
+## 6. Benchmark-Monitoring & TUI
+
+### Live-Log (bench_events)
+Der Benchmark schreibt Events in `brain_score/events.jsonl` (JSON-Lines).
+Der in-memory Ringpuffer (bench_events.rs) ist prozessglobal und nicht
+auslesbar — das File ist die einzige persisted Quelle.
+
+```bash
+# Letzte 10 Events
+Get-Content "C:\Users\storax\AppData\Local\webagent\data\brain_score\events.jsonl" -Tail 10
+
+# Circuit-Breaker-Status (welche Brains sind gesperrt)
+Get-Content "C:\Users\storax\AppData\Local\webagent\data\circuit_breaker\state.json" | ConvertFrom-Json | ConvertTo-Json -Depth 3
+
+# Prozesse
+Get-Process webagent -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Output "PID=$($_.Id) cpu=$([math]::Round($_.CPU,1))s threads=$($_.Threads.Count)"
+}
+
+# Alles auf einmal
+powershell -File bench-monitor.ps1
+```
+
+### TUI aus opencode starten
+Die TUI braucht ein Terminal mit raw mode. Aus opencode (stdout ist Pipe)
+funktioniert `webagent tui` nicht direkt — `stdout().is_terminal()` ist false.
+
+Loesung: `--force-tui` Flag (seit `c9df7a7`):
+```bash
+target\debug\webagent.exe tui --force-tui --benchmark="--rounds 6" --view=bench
+```
+
+### Working Tree muss sauber sein
+Der Benchmark prueft `is_working_tree_clean()`. AUCH untracked Files (??)
+machen den Tree dreckig! Vor jedem Run pruefen:
+```bash
+git status --short
+# Muss leer sein
+```
+
+### Kacheln (Brain-Grid)
+Kacheln brauchen ein echtes Konsolenfenster (`GetConsoleWindow()`).
+Bei Start aus opencode/`Start-Process` gibt es kein solches Fenster =>
+"Terminalfenster nicht gefunden". Das ist kosmetisch — der Benchmark
+laeuft trotzdem. Kacheln funktionieren nur bei direktem Terminal-Start.
+
+### OCR (Fenster auslesen)
+TUI-Fenster per Screenshot + OCR auslesen (wenn noetig):
+```bash
+powershell -ExecutionPolicy Bypass -File screenshot_ocr.ps1
+```
+Voraussetzung: Windows PowerShell (nicht pwsh) wegen WinRT-Bridge.
