@@ -510,27 +510,16 @@ pub fn dock_terminal_bottom() -> Result<(), String> {
     Ok(())
 }
 
-/// Erzwingtes Andocken des Konsolenfensters unten — nutzt `GetConsoleWindow()`
-/// direkt (funktioniert, weil wir im selben Prozess sind). Wird einmalig beim
-/// TUI-Start mit `--force-tui` aufgerufen, bevor die Kacheln aktiviert werden.
+/// Dockt ein HWND (Terminalfenster) an die untere Bildschirmhaelfte.
 #[cfg(all(windows, feature = "webview"))]
-pub fn dock_terminal_bottom_force() {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::System::Console::GetConsoleWindow;
+fn dock_hwnd(hwnd: windows::Win32::Foundation::HWND, terminal_area: &Rect) -> Option<()> {
     use windows::Win32::UI::WindowsAndMessaging::{
         GetWindowRect, IsZoomed, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE,
         SWP_NOZORDER, SW_RESTORE,
     };
-    if TERMINAL_SNAPSHOT.lock().unwrap().is_some() {
-        return;
-    }
-    let console = unsafe { GetConsoleWindow() };
-    if console == HWND(std::ptr::null_mut()) {
-        return;
-    }
     let mut rect = windows::Win32::Foundation::RECT::default();
-    if unsafe { GetWindowRect(console, &mut rect) }.is_err() {
-        return;
+    if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
+        return None;
     }
     let old_rect = crate::brain_grid::Rect::new(
         rect.left,
@@ -538,17 +527,13 @@ pub fn dock_terminal_bottom_force() {
         (rect.right - rect.left).max(0) as u32,
         (rect.bottom - rect.top).max(0) as u32,
     );
-    let maximized = unsafe { IsZoomed(console).as_bool() };
-    let Some(work) = primary_work_area() else {
-        return;
-    };
-    let (terminal_area, _) = split_areas(work);
+    let maximized = unsafe { IsZoomed(hwnd).as_bool() };
     if maximized {
-        let _ = unsafe { ShowWindow(console, SW_RESTORE) };
+        let _ = unsafe { ShowWindow(hwnd, SW_RESTORE) };
     }
-    let _ = unsafe {
+    let result = unsafe {
         SetWindowPos(
-            console,
+            hwnd,
             HWND_TOP,
             terminal_area.x,
             terminal_area.y,
@@ -557,10 +542,60 @@ pub fn dock_terminal_bottom_force() {
             SWP_NOACTIVATE | SWP_NOZORDER,
         )
     };
+    if result.is_err() {
+        return None;
+    }
     *TERMINAL_SNAPSHOT.lock().unwrap() = Some(crate::brain_grid::TerminalSnapshot {
         rect: old_rect,
         maximized,
     });
+    Some(())
+}
+
+/// Erzwingtes Andocken des Konsolenfensters unten — nutzt `GetConsoleWindow()`
+/// direkt (funktioniert, weil wir im selben Prozess sind). Wird einmalig beim
+/// TUI-Start mit `--force-tui` aufgerufen, bevor die Kacheln aktiviert werden.
+///
+/// Wenn `GetConsoleWindow()` versagt (z.B. opencode/ConPTY), wird per
+/// `FindWindowW` mit `ConsoleWindowClass` gesucht.
+#[cfg(all(windows, feature = "webview"))]
+pub fn dock_terminal_bottom_force() {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Console::GetConsoleWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW};
+    if TERMINAL_SNAPSHOT.lock().unwrap().is_some() {
+        return;
+    }
+    let Some(work) = primary_work_area() else {
+        return;
+    };
+    let (terminal_area, _) = split_areas(work);
+
+    // Versuch 1: GetConsoleWindow
+    let console = unsafe { GetConsoleWindow() };
+    if console != HWND(std::ptr::null_mut()) {
+        if dock_hwnd(console, &terminal_area).is_some() {
+            return;
+        }
+    }
+
+    // Versuch 2: FindWindowW mit ConsoleWindowClass
+    let class: Vec<u16> = "ConsoleWindowClass\0".encode_utf16().collect();
+    let pcw = windows::core::PCWSTR(class.as_ptr());
+    if let Ok(hwnd) = unsafe { FindWindowW(pcw, windows::core::PCWSTR::null()) } {
+        if !hwnd.0.is_null() && dock_hwnd(hwnd, &terminal_area).is_some() {
+            return;
+        }
+    }
+
+    // Versuch 3: Windows Terminal (Cascadia)
+    let tty: Vec<u16> = "CASCADIA_HOSTING_WINDOW_CLASS\0".encode_utf16().collect();
+    let pcw2 = windows::core::PCWSTR(tty.as_ptr());
+    if let Ok(hwnd) = unsafe { FindWindowW(pcw2, windows::core::PCWSTR::null()) } {
+        if !hwnd.0.is_null() {
+            let _ = dock_hwnd(hwnd, &terminal_area);
+        }
+    }
 }
 
 #[cfg(not(all(windows, feature = "webview")))]
