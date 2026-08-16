@@ -214,6 +214,16 @@ pub fn apply_wall_checked(on: bool) -> Result<String, String> {
         let open = windows.len();
         if !on {
             let parked = park_windows(&windows);
+            // Im --force-tui-Modus: Terminal-Position NICHT aendern —
+            // die PowerShell-Hilfe hat das Terminal positioniert, und
+            // restore_terminal wuerde den Snapshot loeschen, so dass
+            // Re-Docking beim naechsten w-Druck scheitert.
+            if brain_grid::is_force_tui() {
+                return match parked {
+                    Ok(_) => Ok(format!("Kacheln aus — {open} Fenster geparkt")),
+                    Err(e) => Err(format!("Kacheln aus fehlgeschlagen: {e}")),
+                };
+            }
             let restore = brain_grid::restore_terminal();
             return match (parked, restore) {
                 (Ok(_), Ok(())) => Ok(format!(
@@ -228,10 +238,15 @@ pub fn apply_wall_checked(on: bool) -> Result<String, String> {
         if open == 0 {
             return Err("Kacheln: kein Brain-Fenster offen".to_string());
         }
-        if let Err(e) = brain_grid::dock_terminal_bottom() {
-            return Err(format!(
-                "Kacheln: Terminal unten andocken fehlgeschlagen: {e}"
-            ));
+        // Im --force-tui-Modus: Docking ueberspringen (FindWindowW findet
+        // das falsche Fenster). Die PowerShell-Hilfe hat das Terminal
+        // bereits positioniert.
+        if !brain_grid::is_force_tui() {
+            if let Err(e) = brain_grid::dock_terminal_bottom() {
+                return Err(format!(
+                    "Kacheln: Terminal unten andocken fehlgeschlagen: {e}"
+                ));
+            }
         }
         let Some(area) = brain_grid::wall_area() else {
             return Err("Kacheln: Bildschirmflaeche nicht ermittelbar".to_string());
