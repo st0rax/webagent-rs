@@ -1046,6 +1046,13 @@ mod tests {
     }
 
     #[test]
+    fn test_empty_webview_response_returns_error() {
+        let mut driver = crate::mock_page::MockPageDriver::new(crate::mock_page::MockPageState::new());
+        assert!(probe(&mut driver).is_err());
+    }
+
+
+    #[test]
     fn probe_faehrt_ueber_den_page_driver() {
         // Beweist die Verdrahtung ohne Browser: der Mock liefert die Rohdaten,
         // die Deutung passiert in Rust.
