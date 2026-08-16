@@ -196,6 +196,11 @@ fn run_tui_ratatui(
     // Benchmark-Schleife, waehrend die TUI drei Stunden weiterlief.
     crate::bench_events::install_panic_hook();
 
+    // --force-tui: Terminal-Fenster direkt nach unten docken.
+    if crate::brain_grid::is_force_tui() {
+        crate::brain_grid::dock_terminal_bottom_force();
+    }
+
     // --- Worker-Pool im Hintergrund-Thread ---
     let mut pool = WorkerPool::new(
         candidates.clone(),

@@ -510,10 +510,66 @@ pub fn dock_terminal_bottom() -> Result<(), String> {
     Ok(())
 }
 
+/// Erzwingtes Andocken des Konsolenfensters unten — nutzt `GetConsoleWindow()`
+/// direkt (funktioniert, weil wir im selben Prozess sind). Wird einmalig beim
+/// TUI-Start mit `--force-tui` aufgerufen, bevor die Kacheln aktiviert werden.
+#[cfg(all(windows, feature = "webview"))]
+pub fn dock_terminal_bottom_force() {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Console::GetConsoleWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowRect, IsZoomed, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE,
+        SWP_NOZORDER, SW_RESTORE,
+    };
+    if TERMINAL_SNAPSHOT.lock().unwrap().is_some() {
+        return;
+    }
+    let console = unsafe { GetConsoleWindow() };
+    if console == HWND(std::ptr::null_mut()) {
+        return;
+    }
+    let mut rect = windows::Win32::Foundation::RECT::default();
+    if unsafe { GetWindowRect(console, &mut rect) }.is_err() {
+        return;
+    }
+    let old_rect = crate::brain_grid::Rect::new(
+        rect.left,
+        rect.top,
+        (rect.right - rect.left).max(0) as u32,
+        (rect.bottom - rect.top).max(0) as u32,
+    );
+    let maximized = unsafe { IsZoomed(console).as_bool() };
+    let Some(work) = primary_work_area() else {
+        return;
+    };
+    let (terminal_area, _) = split_areas(work);
+    if maximized {
+        let _ = unsafe { ShowWindow(console, SW_RESTORE) };
+    }
+    let _ = unsafe {
+        SetWindowPos(
+            console,
+            HWND_TOP,
+            terminal_area.x,
+            terminal_area.y,
+            terminal_area.width as i32,
+            terminal_area.height as i32,
+            SWP_NOACTIVATE | SWP_NOZORDER,
+        )
+    };
+    *TERMINAL_SNAPSHOT.lock().unwrap() = Some(crate::brain_grid::TerminalSnapshot {
+        rect: old_rect,
+        maximized,
+    });
+}
+
 #[cfg(not(all(windows, feature = "webview")))]
 pub fn dock_terminal_bottom() -> Result<(), String> {
     Err("ohne webview-Feature nicht verfuegbar".into())
 }
+
+#[cfg(not(all(windows, feature = "webview")))]
+pub fn dock_terminal_bottom_force() {}
 
 /// Stellt das Terminalfenster nach dem Ausschalten der Kachelansicht wieder her.
 #[cfg(all(windows, feature = "webview"))]
