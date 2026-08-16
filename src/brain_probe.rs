@@ -1045,11 +1045,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_empty_webview_response_returns_error() {
-        let mut driver = crate::mock_page::MockPageDriver::new(crate::mock_page::MockPageState::new());
-        assert!(probe(&mut driver).is_err());
-    }
+#[test]
+fn test_empty_webview_response_returns_error() {
+    let mut driver = crate::mock_page::MockPageDriver::new(crate::mock_page::MockPageState::new());
+    let result = probe(&mut driver);
+    assert!(result.is_err(), "probe sollte bei leerer Webview-Antwort einen Fehler liefern, bekam aber: {result:?}");
+}
 
 
     #[test]
