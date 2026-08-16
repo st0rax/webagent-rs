@@ -2476,3 +2476,24 @@ nennen das abgelehnte Symbol samt Fundstellen im Log. 1032 Tests gruen.
 17:49-Run mit frischer exe gestartet (alle 9 Brains wieder frei, Sperren
 abgelaufen). Beobachtungspunkt: ob nach dem Body-Scope echte Pre-Flight-
 Pässe und Builds/Harvests entstehen.
+
+## 15.08. 20:25 - opencode - 17:49-Run: DREI echte PASSes, aber Ernte scheiterte an Lint
+
+Meilenstein erreicht: nach dem Body-Scope von task_is_misdirected kam
+Runde 6 (cap_to_wall in src/controller.rs) durch den Pre-Flight, und drei
+Brains bauten sie: claude + deepseek + kimi = PASS (did_change=ja,
+build=ok, test=ok), Patches in harvest_pending gesichert. perplexity
+erreichte wall_timeout ohne Diff. ABER: die Ernte verwarf deepseek bei der
+Nachkontrolle - Lint rot. Erkenntnis: der Sandbox-Pass-Gate pruefte NUR
+build+test; Lint wurde einzig bei der Ernte gemessen, und nur EIN Kandidat
+bekam diese eine Chance.
+
+a1b7045: Lint ist jetzt Teil des Pass-Gates (Brain-Loop laesst bei Lint rot
+mit Clippy-Reparier-Prompt weiteriterieren, Fortschritt Stufe 3),
+CodeEvent.lint_passed (serde default true fuer Altdaten). Zweiter Fix:
+Symbol-Extraktor verlangt reine [A-Za-z0-9_]-Token + weist Akronym-Plurale
+ab (Backend-Implementierung, Symbole/Funktionen, APIs etc. waren fuer 2/3
+aller Pre-Flight-Verwerfungen verantwortlich). 1034 Tests gruen.
+
+20:21-Run gestartet (frische exe). Beobachtungspunkt: mehr Pre-Flight-
+Paesse und - wenn es zum Erntekandidat kommt - gruenes Lint-Tor.
