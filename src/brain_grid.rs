@@ -428,16 +428,60 @@ pub fn dock_terminal_bottom() -> Result<(), String> {
         return Ok(());
     }
     use windows::Win32::UI::WindowsAndMessaging::{
-        IsZoomed, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
+        FindWindowW, GetWindowRect, IsZoomed, SetWindowPos, ShowWindow, HWND_TOP,
+        SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
     };
-    let Some((hwnd, old_rect)) = terminal_window_handle() else {
-        // Im --force-tui-Modus gibt es kein Konsolenfenster (opencode,
-        // Start-Process). Kacheln laufen dann auf dem gesamten Bildschirm
-        // statt nur auf der unteren Haelfte — das ist akzeptabel.
-        if is_force_tui() {
-            return Ok(());
+    let (hwnd, old_rect) = match terminal_window_handle() {
+        Some(pair) => pair,
+        None if is_force_tui() => {
+            // Fallback: `FindWindowW` mit der Classic-Console-Klasse.
+            // Wenn die normale Prozessketten-Walk (webagent → cmd → ...)
+            // kein sichtbares Fenster findet, versuchen wir die Klasse
+            // direkt.
+            let class: Vec<u16> = "ConsoleWindowClass\0".encode_utf16().collect();
+            let found = unsafe {
+                FindWindowW(
+                    windows::core::PCWSTR(class.as_ptr()),
+                    windows::core::PCWSTR::null(),
+                )
+            };
+            match found {
+                Ok(hwnd) if !hwnd.0.is_null() => {
+                    let mut rect = windows::Win32::Foundation::RECT::default();
+                    if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
+                        return Ok(());
+                    }
+                    let w = (rect.right - rect.left).max(0) as u32;
+                    let h = (rect.bottom - rect.top).max(0) as u32;
+                    (hwnd, Rect::new(rect.left, rect.top, w, h))
+                }
+                _ => {
+                    // Letzter Versuch: die "tty"-Klasse (Windows Terminal)
+                    let tty_class: Vec<u16> = "CASCADIA_HOSTING_WINDOW_CLASS\0"
+                        .encode_utf16()
+                        .collect();
+                    let found2 = unsafe {
+                        FindWindowW(
+                            windows::core::PCWSTR(tty_class.as_ptr()),
+                            windows::core::PCWSTR::null(),
+                        )
+                    };
+                    match found2 {
+                        Ok(hwnd2) if !hwnd2.0.is_null() => {
+                            let mut rect = windows::Win32::Foundation::RECT::default();
+                            if unsafe { GetWindowRect(hwnd2, &mut rect) }.is_err() {
+                                return Ok(());
+                            }
+                            let w = (rect.right - rect.left).max(0) as u32;
+                            let h = (rect.bottom - rect.top).max(0) as u32;
+                            (hwnd2, Rect::new(rect.left, rect.top, w, h))
+                        }
+                        _ => return Ok(()),
+                    }
+                }
+            }
         }
-        return Err("Terminalfenster nicht gefunden".into());
+        None => return Err("Terminalfenster nicht gefunden".into()),
     };
     let maximized = unsafe { IsZoomed(hwnd).as_bool() };
     let work = primary_work_area().ok_or("Arbeitsbereich nicht ermittelbar")?;
