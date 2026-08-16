@@ -302,6 +302,7 @@ fn dispatch(command: Commands) -> i32 {
             headless,
             benchmark,
             view,
+            force_tui,
         } => webagent::tui::run_tui(
             active,
             &brains,
@@ -309,6 +310,7 @@ fn dispatch(command: Commands) -> i32 {
             headless,
             benchmark.as_deref(),
             view.as_deref(),
+            force_tui,
         ),
 
         Commands::Oobe {

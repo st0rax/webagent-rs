@@ -1166,14 +1166,12 @@ pub fn run_tui(
     headless: bool,
     startup_benchmark: Option<&str>,
     startup_view: Option<&str>,
+    force_tui: bool,
 ) -> i32 {
     #[cfg(feature = "tui")]
     {
-        // ratatui braucht ein echtes Terminal (raw mode + alternate screen).
-        // Bei umgeleiteter/detached Ausgabe schlaegt enable_raw_mode fehl — dann
-        // die ANSI-Variante fahren statt mit Fehler abzubrechen.
         use std::io::IsTerminal;
-        if std::io::stdout().is_terminal() {
+        if force_tui || std::io::stdout().is_terminal() {
             return run_tui_ratatui(
                 active,
                 brains,

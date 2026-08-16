@@ -557,6 +557,11 @@ pub enum Commands {
         /// unerreichbar, ohne dass irgendetwas gemeckert haette.
         #[arg(long, value_parser = ["workers", "bench", "capabilities", "config"])]
         view: Option<String>,
+
+        /// ratatui-TUI erzwingen, auch wenn stdout kein Terminal ist
+        /// (z.B. fuer Launch aus opencode oder anderen Kontexten)
+        #[arg(long)]
+        force_tui: bool,
     },
 
     /// First-run setup: Brain-Auswahl und optional Login-Hinweise
