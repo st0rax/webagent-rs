@@ -1087,14 +1087,7 @@ fn toggle_brain_grid(on: bool) -> String {
     if let Err(e) = crate::brain_grid::dock_terminal_bottom() {
         return format!("Kacheln: Terminal unten andocken fehlgeschlagen: {e}");
     }
-    // Im --force-tui-Modus gibt es kein Terminal zum Andocken — Kacheln
-    // nutzen den gesamten Bildschirm.
-    let area = if crate::brain_grid::is_force_tui() {
-        crate::brain_grid::primary_work_area()
-    } else {
-        crate::brain_grid::wall_area()
-    };
-    let Some(area) = area else {
+    let Some(area) = crate::brain_grid::wall_area() else {
         return "Kacheln: Bildschirmflaeche nicht ermittelbar".to_string();
     };
     match pool.arrange_brain_grid(Some(area)) {
