@@ -257,6 +257,46 @@ fn visible_terminal_window_of(
     visible_window_of(pid)
 }
 
+/// Findet das Konsolenfenster via `FindWindowW` — probiert ConsoleWindowClass
+/// und CASCADIA_HOSTING_WINDOW_CLASS (Windows Terminal).
+#[cfg(all(windows, feature = "webview"))]
+fn find_console_hwnd() -> Option<(windows::Win32::Foundation::HWND, Rect)> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowRect};
+
+    let try_class = |class_name: &str| -> Option<(HWND, Rect)> {
+        let class: Vec<u16> = format!("{class_name}\0").encode_utf16().collect();
+        let hwnd = unsafe {
+            FindWindowW(
+                windows::core::PCWSTR(class.as_ptr()),
+                windows::core::PCWSTR::null(),
+            )
+        }
+        .ok()?;
+        if hwnd.0.is_null() {
+            return None;
+        }
+        let mut rect = windows::Win32::Foundation::RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
+            return None;
+        }
+        let w = (rect.right - rect.left).max(0) as u32;
+        let h = (rect.bottom - rect.top).max(0) as u32;
+        if w < 100 || h < 50 {
+            return None;
+        }
+        Some((hwnd, Rect::new(rect.left, rect.top, w, h)))
+    };
+
+    try_class("ConsoleWindowClass")
+        .or_else(|| try_class("CASCADIA_HOSTING_WINDOW_CLASS"))
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+fn find_console_hwnd() -> Option<(windows::Win32::Foundation::HWND, Rect)> {
+    None
+}
+
 /// Uebersetzt eine Nummerntaste (Alt+1 … Alt+9) in einen Kachelindex.
 ///
 /// Rein rechnend und damit testbar — die Tastenbelegung ist genau die Stelle,
@@ -428,60 +468,21 @@ pub fn dock_terminal_bottom() -> Result<(), String> {
         return Ok(());
     }
     use windows::Win32::UI::WindowsAndMessaging::{
-        FindWindowW, GetWindowRect, IsZoomed, SetWindowPos, ShowWindow, HWND_TOP,
+        IsZoomed, SetWindowPos, ShowWindow, HWND_TOP,
         SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
     };
-    let (hwnd, old_rect) = match terminal_window_handle() {
-        Some(pair) => pair,
-        None if is_force_tui() => {
-            // Fallback: `FindWindowW` mit der Classic-Console-Klasse.
-            // Wenn die normale Prozessketten-Walk (webagent → cmd → ...)
-            // kein sichtbares Fenster findet, versuchen wir die Klasse
-            // direkt.
-            let class: Vec<u16> = "ConsoleWindowClass\0".encode_utf16().collect();
-            let found = unsafe {
-                FindWindowW(
-                    windows::core::PCWSTR(class.as_ptr()),
-                    windows::core::PCWSTR::null(),
-                )
-            };
-            match found {
-                Ok(hwnd) if !hwnd.0.is_null() => {
-                    let mut rect = windows::Win32::Foundation::RECT::default();
-                    if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
-                        return Ok(());
-                    }
-                    let w = (rect.right - rect.left).max(0) as u32;
-                    let h = (rect.bottom - rect.top).max(0) as u32;
-                    (hwnd, Rect::new(rect.left, rect.top, w, h))
-                }
-                _ => {
-                    // Letzter Versuch: die "tty"-Klasse (Windows Terminal)
-                    let tty_class: Vec<u16> = "CASCADIA_HOSTING_WINDOW_CLASS\0"
-                        .encode_utf16()
-                        .collect();
-                    let found2 = unsafe {
-                        FindWindowW(
-                            windows::core::PCWSTR(tty_class.as_ptr()),
-                            windows::core::PCWSTR::null(),
-                        )
-                    };
-                    match found2 {
-                        Ok(hwnd2) if !hwnd2.0.is_null() => {
-                            let mut rect = windows::Win32::Foundation::RECT::default();
-                            if unsafe { GetWindowRect(hwnd2, &mut rect) }.is_err() {
-                                return Ok(());
-                            }
-                            let w = (rect.right - rect.left).max(0) as u32;
-                            let h = (rect.bottom - rect.top).max(0) as u32;
-                            (hwnd2, Rect::new(rect.left, rect.top, w, h))
-                        }
-                        _ => return Ok(()),
-                    }
-                }
-            }
+    let (hwnd, old_rect) = if is_force_tui() {
+        // Im --force-tui-Modus: Prozessketten-Walk ueberspringen (falsche
+        // Ergebnisse in opencode-Kontext) und direkt FindWindowW nutzen.
+        match find_console_hwnd() {
+            Some(pair) => pair,
+            None => return Ok(()),
         }
-        None => return Err("Terminalfenster nicht gefunden".into()),
+    } else {
+        match terminal_window_handle() {
+            Some(pair) => pair,
+            None => return Err("Terminalfenster nicht gefunden".into()),
+        }
     };
     let maximized = unsafe { IsZoomed(hwnd).as_bool() };
     let work = primary_work_area().ok_or("Arbeitsbereich nicht ermittelbar")?;
@@ -552,17 +553,10 @@ fn dock_hwnd(hwnd: windows::Win32::Foundation::HWND, terminal_area: &Rect) -> Op
     Some(())
 }
 
-/// Erzwingtes Andocken des Konsolenfensters unten — nutzt `GetConsoleWindow()`
-/// direkt (funktioniert, weil wir im selben Prozess sind). Wird einmalig beim
-/// TUI-Start mit `--force-tui` aufgerufen, bevor die Kacheln aktiviert werden.
-///
-/// Wenn `GetConsoleWindow()` versagt (z.B. opencode/ConPTY), wird per
-/// `FindWindowW` mit `ConsoleWindowClass` gesucht.
+/// Erzwingtes Andocken des Konsolenfensters unten — wird einmalig beim
+/// TUI-Start mit `--force-tui` aufgerufen.
 #[cfg(all(windows, feature = "webview"))]
 pub fn dock_terminal_bottom_force() {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::System::Console::GetConsoleWindow;
-    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW};
     if TERMINAL_SNAPSHOT.lock().unwrap().is_some() {
         return;
     }
@@ -570,31 +564,8 @@ pub fn dock_terminal_bottom_force() {
         return;
     };
     let (terminal_area, _) = split_areas(work);
-
-    // Versuch 1: GetConsoleWindow
-    let console = unsafe { GetConsoleWindow() };
-    if console != HWND(std::ptr::null_mut()) {
-        if dock_hwnd(console, &terminal_area).is_some() {
-            return;
-        }
-    }
-
-    // Versuch 2: FindWindowW mit ConsoleWindowClass
-    let class: Vec<u16> = "ConsoleWindowClass\0".encode_utf16().collect();
-    let pcw = windows::core::PCWSTR(class.as_ptr());
-    if let Ok(hwnd) = unsafe { FindWindowW(pcw, windows::core::PCWSTR::null()) } {
-        if !hwnd.0.is_null() && dock_hwnd(hwnd, &terminal_area).is_some() {
-            return;
-        }
-    }
-
-    // Versuch 3: Windows Terminal (Cascadia)
-    let tty: Vec<u16> = "CASCADIA_HOSTING_WINDOW_CLASS\0".encode_utf16().collect();
-    let pcw2 = windows::core::PCWSTR(tty.as_ptr());
-    if let Ok(hwnd) = unsafe { FindWindowW(pcw2, windows::core::PCWSTR::null()) } {
-        if !hwnd.0.is_null() {
-            let _ = dock_hwnd(hwnd, &terminal_area);
-        }
+    if let Some((hwnd, _)) = find_console_hwnd() {
+        let _ = dock_hwnd(hwnd, &terminal_area);
     }
 }
 

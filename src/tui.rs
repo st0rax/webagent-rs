@@ -1089,10 +1089,17 @@ fn toggle_brain_grid(on: bool) -> String {
     // Terminalfenster unten andocken, dann die Brains in der oberen
     // Bildschirmflaeche kacheln. `dock_terminal_bottom` ist idempotent —
     // die Auto-Wall ruft das bei jedem nachwachsenden Brain erneut.
-    if let Err(e) = crate::brain_grid::dock_terminal_bottom() {
-        return format!("Kacheln: Terminal unten andocken fehlgeschlagen: {e}");
-    }
-    let Some(area) = crate::brain_grid::wall_area() else {
+    //
+    // Im --force-tui-Modus: Docking-Fehler sind kein Abbruchgrund —
+    // Kacheln nutzen dann den gesamten Bildschirm (die PowerShell-Hilfe
+    // hat das Terminal eh schon positioniert).
+    let docking_ok = crate::brain_grid::dock_terminal_bottom().is_ok();
+    let area = if docking_ok {
+        crate::brain_grid::wall_area()
+    } else {
+        crate::brain_grid::primary_work_area()
+    };
+    let Some(area) = area else {
         return "Kacheln: Bildschirmflaeche nicht ermittelbar".to_string();
     };
     match pool.arrange_brain_grid(Some(area)) {
