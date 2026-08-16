@@ -196,10 +196,9 @@ fn run_tui_ratatui(
     // Benchmark-Schleife, waehrend die TUI drei Stunden weiterlief.
     crate::bench_events::install_panic_hook();
 
-    // --force-tui: Terminal-Fenster direkt nach unten docken.
-    if crate::brain_grid::is_force_tui() {
-        crate::brain_grid::dock_terminal_bottom_force();
-    }
+    // --force-tui: Terminal-Fenster wird extern via PowerShell-Helfer
+    // positioniert (opencode-Kontext erlaubt kein FindWindowW).
+    // Kein dock_terminal_bottom_force() noetig.
 
     // --- Worker-Pool im Hintergrund-Thread ---
     let mut pool = WorkerPool::new(
@@ -1073,11 +1072,14 @@ fn toggle_brain_grid(on: bool) -> String {
     if !on {
         return match pool.arrange_brain_grid(None) {
             Ok(_) => {
-                let restore = crate::brain_grid::restore_terminal();
-                match restore {
-                    Ok(()) => format!("Kacheln aus — {open} Fenster wieder geparkt, Terminal zurueck"),
-                    Err(e) => format!("Kacheln aus — {open} Fenster geparkt, Terminal-Reset fehlgeschlagen: {e}"),
+                // Im --force-tui-Modus: Terminal-Position NICHT aendern —
+                // die PowerShell-Hilfe hat das Terminal positioniert, und
+                // restore_terminal wuerde den Snapshot loeschen, so dass
+                // Re-Docking beim naechsten w-Druck scheitert.
+                if !crate::brain_grid::is_force_tui() {
+                    let _ = crate::brain_grid::restore_terminal();
                 }
+                format!("Kacheln aus — {open} Fenster geparkt")
             }
             Err(e) => format!("Kacheln aus fehlgeschlagen: {e}"),
         };
@@ -1085,20 +1087,14 @@ fn toggle_brain_grid(on: bool) -> String {
     if open == 0 {
         return "Kacheln: kein Brain-Fenster offen".to_string();
     }
-    // Wunsch (03.08.2026): Wall oben, Terminal darunter. Erst das
-    // Terminalfenster unten andocken, dann die Brains in der oberen
-    // Bildschirmflaeche kacheln. `dock_terminal_bottom` ist idempotent —
-    // die Auto-Wall ruft das bei jedem nachwachsenden Brain erneut.
-    //
-    // Im --force-tui-Modus: Docking-Fehler sind kein Abbruchgrund —
-    // Kacheln nutzen dann den gesamten Bildschirm (die PowerShell-Hilfe
-    // hat das Terminal eh schon positioniert).
-    let docking_ok = crate::brain_grid::dock_terminal_bottom().is_ok();
-    let area = if docking_ok {
-        crate::brain_grid::wall_area()
-    } else {
-        crate::brain_grid::primary_work_area()
-    };
+    // Im --force-tui-Modus: Docking ueberspringen (FindWindowW findet das
+    // falsche Fenster). Die PowerShell-Hilfe hat das Terminal positioniert.
+    if !crate::brain_grid::is_force_tui() {
+        if let Err(e) = crate::brain_grid::dock_terminal_bottom() {
+            return format!("Kacheln: Terminal unten andocken fehlgeschlagen: {e}");
+        }
+    }
+    let area = crate::brain_grid::wall_area();
     let Some(area) = area else {
         return "Kacheln: Bildschirmflaeche nicht ermittelbar".to_string();
     };
