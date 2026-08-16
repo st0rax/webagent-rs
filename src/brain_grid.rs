@@ -431,6 +431,12 @@ pub fn dock_terminal_bottom() -> Result<(), String> {
         IsZoomed, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
     };
     let Some((hwnd, old_rect)) = terminal_window_handle() else {
+        // Im --force-tui-Modus gibt es kein Konsolenfenster (opencode,
+        // Start-Process). Kacheln laufen dann auf dem gesamten Bildschirm
+        // statt nur auf der unteren Haelfte — das ist akzeptabel.
+        if is_force_tui() {
+            return Ok(());
+        }
         return Err("Terminalfenster nicht gefunden".into());
     };
     let maximized = unsafe { IsZoomed(hwnd).as_bool() };
@@ -510,6 +516,23 @@ struct TerminalSnapshot {
 #[cfg(all(windows, feature = "webview"))]
 static TERMINAL_SNAPSHOT: std::sync::Mutex<Option<TerminalSnapshot>> =
     std::sync::Mutex::new(None);
+
+/// Wenn `true`, wird `dock_terminal_bottom` graceful behandelt: kein
+/// Konsolenfenster heisst Skip statt Error. Noetig fuer `--force-tui`-Modus,
+/// bei dem die TUI aus einem Kontext gestartet wird, in dem kein echtes
+/// Konsolenfenster existiert (z.B. opencode, Start-Process).
+static FORCE_TUI: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Schaltet die Force-TUI-Flag. Muss einmalig vor dem ersten
+/// `dock_terminal_bottom`-Aufruf gesetzt werden.
+pub fn set_force_tui(enabled: bool) {
+    FORCE_TUI.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Wenn `true`, wird `dock_terminal_bottom` graceful behandelt.
+pub fn is_force_tui() -> bool {
+    FORCE_TUI.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 #[cfg(test)]
 mod tests {

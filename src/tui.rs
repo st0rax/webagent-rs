@@ -1087,7 +1087,14 @@ fn toggle_brain_grid(on: bool) -> String {
     if let Err(e) = crate::brain_grid::dock_terminal_bottom() {
         return format!("Kacheln: Terminal unten andocken fehlgeschlagen: {e}");
     }
-    let Some(area) = crate::brain_grid::wall_area() else {
+    // Im --force-tui-Modus gibt es kein Terminal zum Andocken — Kacheln
+    // nutzen den gesamten Bildschirm.
+    let area = if crate::brain_grid::is_force_tui() {
+        crate::brain_grid::primary_work_area()
+    } else {
+        crate::brain_grid::wall_area()
+    };
+    let Some(area) = area else {
         return "Kacheln: Bildschirmflaeche nicht ermittelbar".to_string();
     };
     match pool.arrange_brain_grid(Some(area)) {
@@ -1172,6 +1179,10 @@ pub fn run_tui(
     {
         use std::io::IsTerminal;
         if force_tui || std::io::stdout().is_terminal() {
+            // --force-tui: Kacheln auf gesamtem Bildschirm (kein Terminal-Andocken)
+            if force_tui {
+                crate::brain_grid::set_force_tui(true);
+            }
             return run_tui_ratatui(
                 active,
                 brains,
