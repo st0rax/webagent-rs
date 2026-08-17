@@ -1,9 +1,11 @@
 # Webagent: Systemüberblick
 
-**Stand:** 2026-08-13. Diese Datei ist die aktuelle Produkt- und
-Architekturübersicht. Historische Messungen und Entwürfe stehen in den übrigen
-Dokumenten; ihr Dateiname (`*_PLAN.md`, `*_CONCEPT.md`, `PROGRESS.md`) ist kein
-Nachweis, dass eine Funktion heute produktiv verdrahtet ist.
+**Stand:** 2026-08-17. Diese Datei ist die aktuelle Produkt- und
+Architekturübersicht.
+
+Nicht jede `.md` im Repo ist Soll-Zustand. `*_PLAN.md`, `*_CONCEPT.md`,
+`PROGRESS.md`, `TUI_DESIGN.md`, `START_HERE.md`, `STATUS_LIVE.md` und die
+Übergaben sind Log oder Entwurf. Betrieb der TUI steht in `AGENTS.md` §6.
 
 ## Ziel
 
@@ -106,7 +108,12 @@ Stufe vortäuschen.
   Repos. `docs/PROVIDER_STATUS.md` ist ein datierter Messverlauf, keine Garantie.
 - Benchmark-Dogfooding und Harvest: ausführbar, aber teuer und von erreichbaren
   Brains sowie einem sauberen Git-Tree abhängig.
-- Multi-Brain-Pool, Handoff und TUI-Orchestrierung.
+- Multi-Brain-Pool, Handoff und TUI-Orchestrierung. Desktop-Layout unter
+  Windows: TUI unten 30 %, Brain-Fenster oben 70 % (`brain_grid::split_areas`).
+  Die Wall findet Fenster am Titel `webagent · …` im TUI-Prozessbaum und legt
+  sie `HWND_TOPMOST` ohne Fokus. Overflow und TUI-Minimize parken auf
+  `-32000`. `docs/TUI_DESIGN.md` ist der Dashboard-Entwurf von Juli, nicht
+  dieses Layout.
 - Persistente Query-Continuation, Controller-Continuation und die
   Wiederverwendung derselben Controller-Run-ID über Benchmark-Repair-
   Iterationen sind vorhanden. Der Livebetrieb bleibt wegen externer Web-Sessions

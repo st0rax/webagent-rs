@@ -1,9 +1,9 @@
 # TUI-Redesign — animiertes Multi-Agent-Dashboard (pi.dev / grok-CLI Stil)
 
-> **STATUS: UMGESETZT (Banner korrigiert 2026-08-10).** `src/tui.rs` (66 KB),
-> `src/tui_state.rs`, `src/tui_render.rs`, CLI `webagent tui`
-> (`src/cli.rs:475`). Der Text unten ist der Entwurf vom 2026-07-17 und
-> beschreibt die Absicht — bei Abweichung gilt der Code.
+> **ARCHIV (Entwurf 2026-07-17).** Das 3-Pane-Dashboard unten ist Absicht von
+> Juli. Das Desktop-Layout 2026-08 ist ein anderes Ding: Terminal unten,
+> Brain-Kacheln oben — siehe `AGENTS.md` §6 und `src/brain_grid.rs` /
+> `src/brain_wall.rs`. Diesen Text nicht als Betriebsanleitung lesen.
 >
 > Ursprünglicher Banner: „DESIGN, ZUR UMSETZUNG FREIGEGEBEN (nach
 > login-persist)". Vorbild:

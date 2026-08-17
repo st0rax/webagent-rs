@@ -87,6 +87,9 @@ das Brain, `/pool` öffnet die Worker-Pool-TUI, `/diff` zeigt git-Änderungen,
 Metrik-Verbesserungsschleife. `/exit` druckt eine Session-Zusammenfassung
 (Anfragen, Zyklen, Brains, Token-Schätzung).
 
+TUI (eigenes Konsolenfenster, nicht aus einer Pipe): `webagent tui --force-tui --view=bench`.
+Unter Windows liegen die Brain-Fenster oben, die TUI unten — `AGENTS.md` §6.
+
 ```
 webagent login            --brain <id> [--timeout <sek>] [--force]
 webagent login-all        [--timeout <sek>] [--force] [--parallel N]

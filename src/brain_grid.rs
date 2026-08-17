@@ -534,6 +534,92 @@ pub fn is_force_tui() -> bool {
     FORCE_TUI.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Liegt das Terminal, in dem diese TUI laeuft, als Symbol?
+///
+/// Bewusst nicht [`terminal_window_handle`]: die Suche verwirft minimierte
+/// Konsolen (160×28) und wuerde bei `--force-tui` ein Brain-Fenster greifen.
+/// Hier zaehlt `GetConsoleWindow` plus die Elternkette (cmd / Windows Terminal).
+#[cfg(all(windows, feature = "webview"))]
+pub fn host_window_is_iconic() -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Console::GetConsoleWindow;
+    use windows::Win32::UI::WindowsAndMessaging::IsIconic;
+
+    let console = unsafe { GetConsoleWindow() };
+    if console != HWND(std::ptr::null_mut()) && unsafe { IsIconic(console) }.as_bool() {
+        return true;
+    }
+    let mut pid = parent_pid(std::process::id());
+    for _ in 0..6 {
+        let Some(current) = pid else {
+            break;
+        };
+        if let Some((hwnd, _)) = visible_or_iconic_window_of(current) {
+            if unsafe { IsIconic(hwnd) }.as_bool() {
+                return true;
+            }
+        }
+        pid = parent_pid(current);
+    }
+    false
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+pub fn host_window_is_iconic() -> bool {
+    false
+}
+
+#[cfg(all(windows, feature = "webview"))]
+fn visible_or_iconic_window_of(
+    pid: u32,
+) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    };
+
+    struct Search {
+        pid: u32,
+        result: Option<(HWND, Rect)>,
+    }
+
+    unsafe extern "system" fn callback(window: HWND, param: LPARAM) -> BOOL {
+        let search = &mut *(param.0 as *mut Search);
+        let mut owner = 0u32;
+        GetWindowThreadProcessId(window, Some(&mut owner));
+        if owner != search.pid {
+            return BOOL(1);
+        }
+        let iconic = IsIconic(window).as_bool();
+        if !iconic && !IsWindowVisible(window).as_bool() {
+            return BOOL(1);
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(window, &mut rect).is_err() {
+            return BOOL(1);
+        }
+        let width = (rect.right - rect.left).max(0) as u32;
+        let height = (rect.bottom - rect.top).max(0) as u32;
+        if !iconic && (width < 200 || height < 100) {
+            return BOOL(1);
+        }
+        search.result = Some((window, Rect::new(rect.left, rect.top, width, height)));
+        BOOL(0)
+    }
+
+    let mut search = Search {
+        pid,
+        result: None,
+    };
+    unsafe {
+        let _ = EnumWindows(
+            Some(callback),
+            LPARAM(&mut search as *mut Search as isize),
+        );
+    }
+    search.result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

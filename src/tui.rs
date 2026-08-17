@@ -356,6 +356,8 @@ fn run_tui_ratatui(
     let mut wall_apply_pending = false;
     let mut wall_apply_thread: Option<std::thread::JoinHandle<()>> = None;
     let mut wall_retry_after = std::time::Instant::now();
+    // TUI-Fenster minimiert: Kacheln parken. Restore legt neu (needs_relayout).
+    let mut wall_hidden_for_host_minimize = false;
     // Prozesssnapshot + EnumWindows sind globale OS-Scans, nicht Teil des
     // 80-ms-Render-Ticks. Rund einmal pro Sekunde reicht fuer nachwachsende
     // Worker-Fenster und haelt Tastatur/Rendering frei.
@@ -788,9 +790,24 @@ fn run_tui_ratatui(
             && frame_count.is_multiple_of(wall_discovery_ticks)
             && std::time::Instant::now() >= wall_retry_after
         {
+            let host_iconic = crate::brain_grid::host_window_is_iconic();
+            if host_iconic {
+                if !wall_hidden_for_host_minimize {
+                    if let Some(thread) = wall_apply_thread.take() {
+                        let _ = thread.join();
+                    }
+                    let _ = crate::brain_wall::park_owned();
+                    wall.mark_parked();
+                    wall_hidden_for_host_minimize = true;
+                    app.grid_status = "Kacheln geparkt — TUI minimiert".to_string();
+                }
+            } else if wall_hidden_for_host_minimize {
+                wall_hidden_for_host_minimize = false;
+            }
             let discovered = crate::brain_wall::discover_owned();
             let signature = crate::brain_wall::window_signature(&discovered);
-            if wall.needs_arrange(&signature) {
+            let iconic = crate::brain_wall::any_iconic(&discovered);
+            if !host_iconic && wall.needs_relayout(&signature, iconic) {
                 wall_apply_pending = true;
                 let tx = wall_tx.clone();
                 wall_apply_thread = Some(std::thread::spawn(move || {

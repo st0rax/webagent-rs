@@ -1,12 +1,16 @@
-//! Brain-Wall über Prozessgrenzen: Discovery, Raster, Zustandswechsel.
+//! Brain-Wall: sichtbare Brain-Fenster finden und als Raster legen.
 //!
-//! Die sichtbaren Browserfenster gehören den `bot2bot-worker`-Kindprozessen,
-//! nicht dem prozesslokalen [`crate::browser_pool::BrowserPool`] der TUI.
-//! Dieses Modul findet die Fenster über Titel und Abstammung und ordnet sie
-//! per Win32 an. Geometrie kommt aus [`crate::brain_grid`].
+//! Ein Fenster zaehlt, wenn sein Titel `webagent · <brain>` ist und seine PID
+//! im Prozessbaum der TUI liegt (TUI selbst oder ein Kind). Ob der Tab im
+//! TUI-Prozess oder in einem Worker lebt, ist fuer das Raster egal.
+//! Geometrie: [`crate::brain_grid`] (oben 70 % Wall, unten 30 % Terminal).
 //!
-//! Fensterzugriffe sind hinter `windows`+`webview` gekapselt. Titelparsing,
-//! PID-Filter und Wall-Zustand bleiben rein und damit testbar.
+//! Sichtbare Kacheln liegen `HWND_TOPMOST` ohne Fokus. `SWP_NOZORDER` wuerde
+//! `HWND_TOP` ignorieren — dann bleibt das Raster hinter einem Vollbild
+//! (gemessen 17.08.2026). Minimierte Kacheln haben dieselbe HWND-Liste;
+//! [`WallState::needs_relayout`] legt sie trotzdem neu.
+//!
+//! Titelparsing, PID-Filter und Wall-Zustand sind ohne Win32 testbar.
 
 use std::collections::HashSet;
 
@@ -69,6 +73,14 @@ impl WallState {
 
     pub fn needs_arrange(&self, discovered: &WindowSignature) -> bool {
         self.on && !discovered.is_empty() && discovered != &self.arranged_for
+    }
+
+    /// Neu legen, wenn die HWND-Liste sich aendert ODER eine Kachel als
+    /// Symbol liegt. Minimize aendert die Signatur nicht — ohne das bleiben
+    /// die Kacheln nach Win+D / Minimieren weg, waehrend die Wall
+    /// „bereits angeordnet" glaubt.
+    pub fn needs_relayout(&self, discovered: &WindowSignature, any_iconic: bool) -> bool {
+        self.needs_arrange(discovered) || (self.on && !discovered.is_empty() && any_iconic)
     }
 
     pub fn mark_arranged(&mut self, discovered: WindowSignature) {
@@ -180,6 +192,19 @@ pub fn window_signature(windows: &[OwnedBrainWindow]) -> WindowSignature {
         .collect()
 }
 
+/// `true`, wenn mindestens eine entdeckte Kachel als Symbol liegt.
+pub fn any_iconic(windows: &[OwnedBrainWindow]) -> bool {
+    #[cfg(all(windows, feature = "webview"))]
+    {
+        windows.iter().any(|window| hwnd_is_iconic(window.hwnd))
+    }
+    #[cfg(not(all(windows, feature = "webview")))]
+    {
+        let _ = windows;
+        false
+    }
+}
+
 pub fn discover_owned() -> Vec<OwnedBrainWindow> {
     #[cfg(all(windows, feature = "webview"))]
     {
@@ -247,6 +272,22 @@ pub fn apply_wall_checked(on: bool) -> Result<String, String> {
             )),
             Err(e) => Err(format!("Kacheln fehlgeschlagen: {e}")),
         }
+    }
+}
+
+/// Parkt die Kacheln, ohne das Terminal zu verschieben.
+///
+/// Fuer TUI-Minimize: `apply_wall_checked(false)` wuerde
+/// [`brain_grid::restore_terminal`] aufrufen und das minimierte Terminal
+/// wieder aufklappen.
+pub fn park_owned() -> Result<usize, String> {
+    #[cfg(not(all(windows, feature = "webview")))]
+    {
+        return Err("Kacheln: ohne webview-Feature nicht verfuegbar".to_string());
+    }
+    #[cfg(all(windows, feature = "webview"))]
+    {
+        park_windows(&discover_owned())
     }
 }
 
@@ -395,11 +436,18 @@ fn park_windows(windows: &[OwnedBrainWindow]) -> Result<usize, String> {
 }
 
 #[cfg(all(windows, feature = "webview"))]
+fn hwnd_is_iconic(hwnd: isize) -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::IsIconic;
+    unsafe { IsIconic(HWND(hwnd as *mut core::ffi::c_void)).as_bool() }
+}
+
+#[cfg(all(windows, feature = "webview"))]
 fn place_window(hwnd: isize, rect: Rect, on_screen: bool) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
-        SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE,
+        SWP_NOZORDER, SW_RESTORE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
     let hwnd = HWND(hwnd as *mut core::ffi::c_void);
     unsafe {
@@ -408,14 +456,23 @@ fn place_window(hwnd: isize, rect: Rect, on_screen: bool) -> Result<(), String> 
         // Kacheln bleiben nicht aktivierbar — Enter gehört dem Terminal.
         set_ex_style(hwnd, WS_EX_NOACTIVATE, true);
         set_ex_style(hwnd, WS_EX_TOOLWINDOW, !on_screen);
+        // Sichtbar: vor andere Apps, ohne Fokus zu stehlen. HWND_TOP allein
+        // verliert gegen ein aktives Vollbild; SWP_NOZORDER ignoriert die
+        // Einfuegeposition ganz (17.08.2026: Raster bei y=0, OCR las die
+        // Session darueber). Parken nimmt TOPMOST wieder weg.
+        let (insert, flags) = if on_screen {
+            (HWND_TOPMOST, SWP_NOACTIVATE)
+        } else {
+            (HWND_NOTOPMOST, SWP_NOACTIVATE | SWP_NOZORDER)
+        };
         SetWindowPos(
             hwnd,
-            HWND_TOP,
+            insert,
             rect.x,
             rect.y,
             rect.width as i32,
             rect.height as i32,
-            SWP_NOACTIVATE | SWP_NOZORDER,
+            flags,
         )
         .map_err(|_| "SetWindowPos fehlgeschlagen".to_string())?;
     }
@@ -570,6 +627,27 @@ mod tests {
         s.toggle();
         assert!(s.on);
         assert!(s.needs_arrange(&three));
+    }
+
+    #[test]
+    fn minimierte_kachel_erzwingt_relayout_bei_gleicher_signatur() {
+        let mut s = WallState::start_on();
+        let two = vec![(10, 1, Some(0)), (20, 2, Some(0))];
+        s.mark_arranged(two.clone());
+        assert!(
+            !s.needs_arrange(&two),
+            "HWND-Liste unveraendert — arrange allein greift nicht"
+        );
+        assert!(
+            s.needs_relayout(&two, true),
+            "IsIconic muss neu legen, sonst bleiben Kacheln nach Minimize weg"
+        );
+        assert!(!s.needs_relayout(&two, false));
+        s.on = false;
+        assert!(
+            !s.needs_relayout(&two, true),
+            "Wall aus: nicht still wieder aufklappen"
+        );
     }
 
     #[test]

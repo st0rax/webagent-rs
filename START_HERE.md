@@ -1,17 +1,8 @@
 # START HERE — webagent-rs
 
-> **Historische Übergabe (Stand 2026-07-17).** Diese Datei enthält weiterhin
-> nützlichen Repo-Kontext, ist aber nicht mehr die aktuelle Status- oder
-> Architekturquelle. Beginne mit [`docs/OVERVIEW.md`](docs/OVERVIEW.md) und
-> behandle Zahlen und offene Punkte weiter unten als damalige Momentaufnahme.
-
-> 🔧 **Pflegepflicht:** Wer hier strukturell etwas ändert (neue Features,
-> geänderter Provider-/Test-Status, neue Abhängigkeiten, Versionssprung)
-> aktualisiert diese Datei **als Teil derselben Änderung**, nicht als
-> Nachtrag. Ein veralteter Stand hier ist schlimmer als keiner — er kostet
-> die nächste Session Zeit, ihn erst zu widerlegen. Diese Regel gilt
-> unabhängig davon, mit welchem Tool/Agenten gearbeitet wird (Claude Code,
-> Codex, Grok-CLI, ein Mensch, egal).
+> **Archiv (Stand 2026-07-17).** Keine Pflegepflicht mehr — die widerspricht
+> dem Banner. Aktuell: [`docs/OVERVIEW.md`](docs/OVERVIEW.md), TUI-Betrieb:
+> [`AGENTS.md`](AGENTS.md) §6. Zahlen unten sind Momentaufnahme.
 
 ---
 

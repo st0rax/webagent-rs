@@ -69,32 +69,34 @@ Get-Process webagent -ErrorAction SilentlyContinue | ForEach-Object {
 powershell -File bench-monitor.ps1
 ```
 
-### TUI aus opencode starten
-Die TUI braucht ein Terminal mit raw mode. Aus opencode (stdout ist Pipe)
-funktioniert `webagent tui` nicht direkt — `stdout().is_terminal()` ist false.
+### TUI starten
+Die TUI braucht ein Terminal mit raw mode. Aus einer Pipe (opencode, viele
+Agenten-CLIs) ist `stdout().is_terminal()` false — dann `--force-tui`.
+Fenster mit Titel, `cmd /c` (nicht `/k`), sonst bleiben tote Konsolen:
 
-Loesung: `--force-tui` Flag (seit `c9df7a7`):
-```bash
-target\debug\webagent.exe tui --force-tui --benchmark="--rounds 6" --view=bench
+```bat
+cmd /c start "webagent TUI" cmd /c "cd /d <repo> && target\debug\webagent.exe tui --force-tui --view=bench --benchmark=--brains chatgpt,claude,deepseek,kimi,mistral,perplexity,qwen,zai --rounds 1 --headless"
 ```
 
 ### Working Tree muss sauber sein
-Der Benchmark prueft `is_working_tree_clean()`. AUCH untracked Files (??)
-machen den Tree dreckig! Vor jedem Run pruefen:
-```bash
-git status --short
-# Muss leer sein
-```
+Der Benchmark prueft `is_working_tree_clean()`. Auch untracked Files (`??`)
+zaehlen. `git status --short` muss leer sein.
 
-### Kacheln (Brain-Grid)
-Kacheln brauchen ein echtes Konsolenfenster (`GetConsoleWindow()`).
-Bei Start aus opencode/`Start-Process` gibt es kein solches Fenster =>
-"Terminalfenster nicht gefunden". Das ist kosmetisch — der Benchmark
-laeuft trotzdem. Kacheln funktionieren nur bei direktem Terminal-Start.
+### Desktop: Terminal unten, Kacheln oben
+`brain_grid::split_areas` teilt den Arbeitsbereich (ohne Taskleiste):
+obere 70 % Brain-Fenster, untere 30 % TUI. Die Wall startet an, `w` schaltet.
 
-### OCR (Fenster auslesen)
-TUI-Fenster per Screenshot + OCR auslesen (wenn noetig):
-```bash
-powershell -ExecutionPolicy Bypass -File screenshot_ocr.ps1
-```
-Voraussetzung: Windows PowerShell (nicht pwsh) wegen WinRT-Bridge.
+- Fensterzaehler: Titel `webagent · <brain>`, PID im TUI-Baum (TUI oder Kind).
+- Was nicht in 320×240 passt, liegt auf `-32000` (geparkt, nicht minimiert).
+- Sichtbare Kacheln: `HWND_TOPMOST` + kein Fokus. Ohne TOPMOST liegen sie
+  hinter einem Vollbild, obwohl das Raster stimmt.
+- Nach Minimize/Win+D: `needs_relayout` (IsIconic), nicht nur neue HWNDs.
+  TUI-Minimize parkt die Kacheln; Restore legt neu.
+
+`--force-tui` heisst nicht „keine Kacheln“. Es verhindert nur, dass ein
+fehlendes Konsolenfenster die Wall hart abbricht. Das Host-Fenster (oft
+Windows Terminal mit Titel `webagent TUI`) ist die TUI, nicht ein Brain-Tab.
+
+### OCR
+Nur wenn ein Fensterstand belegt werden muss: Windows PowerShell (nicht pwsh),
+`screenshot_ocr.ps1`. Keine Sichtbarkeitsbehauptung ohne HWND+Rect oder OCR.
