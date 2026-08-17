@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # PROGRESS — webagent-rs
 
 **Stand:** 2026-07-21 (/autoresearch.self + TUI-Lesbarkeit)

@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # MISSION / ÜBERGABE — webagent-rs
 
 > **Historische Übergabe, Stand 2026-07-17.** Keine aktuelle Wahrheitsquelle.

@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # /autoresearch.self — Swarm-Selbstbewertung (Spec)
 
 > **STATUS: UMGESETZT (Banner korrigiert 2026-08-10).** `src/self_research.rs`

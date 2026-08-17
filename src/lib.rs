@@ -91,8 +91,8 @@ pub mod tui_load;
 pub mod tui_mouse;
 #[cfg(feature = "tui")]
 pub mod tui_render;
-#[cfg(feature = "tui")]
 pub mod target_check;
+#[cfg(feature = "tui")]
 pub mod tui_state;
 #[cfg(feature = "tui")]
 pub mod tui_widgets;

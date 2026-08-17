@@ -321,14 +321,32 @@ fn funktion_als_bestehend_markiert(text: &str, name: &str) -> bool {
 /// nichts und würde faelschlich als Fehlschlag gewertet (Storax-Beobachtung
 /// 2026-07-21: "einer der Kandidaten sagt immer wieder, alles sei schon sauber
 /// implementiert").
+/// Historische Sieger-Namen, deren Arbeit unter einem anderen `pub fn`
+/// schon liegt. Ohne das baut die Refine-Strecke `contains_chained_shell_metachar`
+/// neu, obwohl [`crate::shell_policy::split_statements`] dasselbe tut.
+const REDUNDANT_ALIASES: &[(&str, &str)] = &[
+    ("contains_chained_shell_metachar", "split_statements"),
+    ("block_dangerous_cmd", "evaluate"),
+];
+
 pub fn task_is_redundant(refined: &str, existing_api: &[String]) -> bool {
-    match proposed_fn_name(refined) {
-        Some(name) => {
-            existing_api.iter().any(|e| e == &name)
-                && !funktion_als_bestehend_markiert(refined, &name)
+    let existiert = |n: &str| existing_api.iter().any(|e| e == n);
+    if let Some(name) = proposed_fn_name(refined) {
+        if existiert(&name) && !funktion_als_bestehend_markiert(refined, &name) {
+            return true;
         }
-        None => false,
+        if REDUNDANT_ALIASES.iter().any(|(alias, real)| {
+            name == *alias && existiert(real) && !funktion_als_bestehend_markiert(refined, real)
+        }) {
+            return true;
+        }
     }
+    // Abstimmungstext nennt oft nur den Alias, ohne `fn `.
+    REDUNDANT_ALIASES.iter().any(|(alias, real)| {
+        refined.contains(alias)
+            && existiert(real)
+            && !funktion_als_bestehend_markiert(refined, real)
+    })
 }
 
 /// `true`, wenn die Aufgabe eine `Zieldatei:` nennt, die NICHT in der erlaubten

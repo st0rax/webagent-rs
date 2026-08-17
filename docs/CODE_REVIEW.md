@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # WebAgent-RS Code Review
 *Erstellt: 2026-07-16 | Reviewer: Qwen Code*  
 *Gegenprüfung & Ergänzung: 2026-07-16 | Grok (xAI)*

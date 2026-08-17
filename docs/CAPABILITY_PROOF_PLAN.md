@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # Capability-Proof — Implementierungsplan
 
 > **STATUS: UMGESETZT — alle Phasen gebaut, erste Läufe gemessen (2026-08-09).**

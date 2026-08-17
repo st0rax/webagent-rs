@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # In-Process-CDP über WebView2 — Befund und Plan
 
 **Stand:** 2026-08-11, Claude-Code-Sitzung · **Status:** §6 Schritt 1 (Mechanik) umgesetzt auf `feature/relay-proofs-probe`, Live-Beweis ausstehend — Details in §9.

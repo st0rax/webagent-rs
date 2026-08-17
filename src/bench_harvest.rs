@@ -40,6 +40,9 @@ pub fn pick_harvest(candidates: &[HarvestCandidate]) -> Option<&HarvestCandidate
 /// Kriterium, das Ballast nicht von Verbesserung unterscheidet. Also muss das
 /// Kriterium schärfer werden, nicht der Prompt frommer.
 pub fn harvest_rejection(patch: &str) -> Option<String> {
+    if let Some(e) = crate::benchmark::policy_harvest_block(patch) {
+        return Some(e);
+    }
     if !has_substantive_change(patch) {
         return Some(
             "keine inhaltliche Änderung — nur Leerzeilen/Whitespace".to_string(),

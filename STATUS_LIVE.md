@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # Live-Status — Claude + opencode
 
 Gemeinsame Statusdatei. **Beide Agenten hängen hier unten an, niemand löscht fremde Einträge.**

@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # Übergabe — webagent-rs, Stand 2026-07-28
 
 Verfasst von Claude (Desktop-Agent) für Codex/ChatGPT und jede Session, die kalt einsteigt.

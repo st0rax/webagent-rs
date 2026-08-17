@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # Genius Council — Konzept
 
 > **STATUS: DEFERRED / KONZEPT, NICHT v1.**

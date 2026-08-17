@@ -34,7 +34,62 @@ pub fn validate_harvest_patch(patch: &str) -> Result<Vec<String>, String> {
             ));
         }
     }
+    if let Some(e) = policy_harvest_block(patch) {
+        return Err(e);
+    }
     Ok(paths)
+}
+
+/// Policy-Regression, unabhängig vom Diff-Format — damit `pick_harvest`
+/// kimi/deepseek-Patches verwirft, ohne synthetische Tests zu zerlegen.
+pub(crate) fn policy_harvest_block(patch: &str) -> Option<String> {
+    if patch_angelt_pflicht_lock(patch) {
+        return Some(
+            "Patch aendert den Pflicht-Deny-Lock (PFLICHT_DENY / pflicht_denys_bleiben) — nicht automatisch erntbar"
+                .to_string(),
+        );
+    }
+    if let Some(cmd) = patch_entfernt_pflicht_befehl(patch) {
+        return Some(format!(
+            "Patch entfernt Pflicht-Deny `{cmd}` — nicht automatisch erntbar"
+        ));
+    }
+    None
+}
+
+/// Marker, die ein Brain nicht umschreiben darf, um eine lockerere Policy
+/// durch die Tests zu schieben.
+const PFLICHT_LOCK_MARKERS: &[&str] = &[
+    "PFLICHT_DENY",
+    "pflicht_denys_bleiben",
+    "pflicht_deny_verletzt",
+];
+
+fn patch_entfernt_pflicht_befehl(patch: &str) -> Option<&'static str> {
+    crate::shell_policy::PFLICHT_DENY.iter().copied().find(|cmd| {
+        let entfernt = patch.lines().any(|line| ist_diff_inhalt(line, '-') && line.contains(cmd));
+        let bleibt = patch.lines().any(|line| ist_diff_inhalt(line, '+') && line.contains(cmd));
+        entfernt && !bleibt
+    })
+}
+
+fn ist_diff_inhalt(line: &str, mark: char) -> bool {
+    line.starts_with(mark) && !line.starts_with("+++") && !line.starts_with("---")
+}
+
+fn patch_angelt_pflicht_lock(patch: &str) -> bool {
+    patch.lines().any(|line| {
+        let inhalt = line.strip_prefix('+').or_else(|| line.strip_prefix('-'));
+        let Some(inhalt) = inhalt else {
+            return false;
+        };
+        if line.starts_with("+++") || line.starts_with("---") {
+            return false;
+        }
+        PFLICHT_LOCK_MARKERS
+            .iter()
+            .any(|marker| inhalt.contains(marker))
+    })
 }
 
 /// Prüft zusätzlich zum Datei-Scope den fachlichen Auftrag. Private Helfer und
@@ -116,6 +171,7 @@ pub(crate) fn harvest_commit(
         std::fs::create_dir_all(parent).map_err(|e| format!("{e}"))?;
     }
     std::fs::write(&patch_path, &cand.patch).map_err(|e| format!("Patch schreiben: {e}"))?;
+    validate_harvest_patch(&cand.patch)?;
 
     let apply = std::process::Command::new("git")
         .args(["apply", "--index"])

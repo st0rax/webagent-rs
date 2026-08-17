@@ -1,5 +1,8 @@
 # WebAgent — Architektur
 
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+> **Zeilenzahlen nachmessen** — `controller.rs` ist wieder ~2500 Z.
+
 > **Detaillierte Momentaufnahme.** Für Zielbild, Vertrauensleiter, Reifegrade
 > und aktuellen Funktionsstand siehe [`OVERVIEW.md`](OVERVIEW.md). Dateizahlen
 > und Refactoring-Befunde in diesem Dokument sind zeitgebunden und vor einer

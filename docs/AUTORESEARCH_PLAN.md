@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # Autoresearch — Implementierungsplan
 
 > **STATUS: UMGESETZT (Banner korrigiert 2026-08-10).**

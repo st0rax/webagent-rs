@@ -1,16 +1,7 @@
-# WebAgent Rust — Design- & Doku-Konventionen
+# WebAgent Rust — Design-Konventionen
 
-**Historischer Kontext (nicht mehr aktueller Auftrag):** dieses Dokument
-begann als Anleitung für Aider, den Python-Agenten (`../src/webagent/`)
-plattformunabhängig nach Rust zu portieren. Der Port ist inzwischen
-weitgehend abgeschlossen (8/8 Provider, siehe `START_HERE.md`) — die
-Portierungsregeln unten gelten weiter für Code, der noch aus der
-Python-Referenz übernommen wird, sind aber nicht mehr der Haupt-Auftrag.
-Aktueller Stand/Fokus: `START_HERE.md`, `docs/MISSION.md`.
-
-⚠️ **Korrektur:** Ein früherer Satz hier sagte „Default-Impl später via
-CDP/WebSocket" — das ist überholt. Die Browser-Anbindung ist **Embedded
-WebView** (`wry`/`tao`), kein CDP. Siehe `docs/PROVIDER_STATUS.md`.
+> Aktuell: [`docs/OVERVIEW.md`](docs/OVERVIEW.md), TUI: [`AGENTS.md`](AGENTS.md) §6.
+> Regeln, die der Code heute braucht — kein Port-Auftrag.
 
 ## Ziel & Scope
 
@@ -26,7 +17,7 @@ WebView** (`wry`/`tao`), kein CDP. Siehe `docs/PROVIDER_STATUS.md`.
 ## Architektur-Grenzen (Traits)
 
 - `BrainBackend` — Web-Chat-Gehirn (start/stop/ensure_ready/send/wait_response/…).
-  Genau ein Trait; konkrete Backends (CDP) sind separate Structs.
+  Genau ein Trait. Kein zweiter Beweis-Gate neben `capability_proof`.
 - `ShellExecutor` — lokale Shell. Windows → PowerShell, Unix → `sh`/`bash`.
   Auswahl über `#[cfg(...)]`, nicht über Laufzeit-Stringvergleich.
 - Persistenz (`run_store`, `transcript`) arbeitet nur mit `std::fs` + `serde_json`,

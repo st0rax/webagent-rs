@@ -52,6 +52,7 @@ pub use crate::bench_scoring::{
 pub use feasibility::{evaluate_work_package, Feasibility, FeasibilityIssue};
 pub use git::{build_no_change_prompt, build_repair_prompt};
 pub use harvest::{scope_compensation_count, validate_harvest_patch, validate_task_scope};
+pub(crate) use harvest::policy_harvest_block;
 pub use pipeline::run_benchmark;
 pub use report::{format_benchmark_report, format_benchmark_result};
 pub use tasks::{
@@ -177,6 +178,19 @@ mod refine_tests {
 
         // Ohne erkennbare Signatur nicht faelschlich als redundant werten.
         assert!(!task_is_redundant("Mach irgendwas mit Sicherheit.", &api));
+    }
+
+    #[test]
+    fn historischer_siegername_ist_redundant_wenn_die_arbeit_schon_liegt() {
+        let api = vec!["split_statements".to_string(), "evaluate".to_string()];
+        let sieger = "shell_policy.rs: contains_chained_shell_metachar() (blockiert &&, ||) \
+                      und block_dangerous_cmd() als harte Gates. Tests: a, b, c, d.";
+        assert!(
+            task_is_redundant(sieger, &api),
+            "contains_chained_shell_metachar ist split_statements"
+        );
+        let echt_neu = "shell_policy.rs: pub fn describe_denial(cmd: &str) -> String. Tests: a, b, c, d.";
+        assert!(!task_is_redundant(echt_neu, &api));
     }
 
     #[test]
@@ -393,6 +407,38 @@ mod tests {
         ]);
         let (paths, _) = patch_touched_paths(&patch);
         assert_eq!(paths, vec!["src/mit leerzeichen.rs".to_string()]);
+    }
+
+    #[test]
+    fn pflicht_deny_befehl_darf_nicht_aus_tests_verschwinden() {
+        // kimi 17.08.2026: `rm -rf ~` aus denies_recursive_delete genommen.
+        let patch = patch_aus(&[
+            "diff --git a/src/shell_policy.rs b/src/shell_policy.rs",
+            "--- a/src/shell_policy.rs",
+            "+++ b/src/shell_policy.rs",
+            "@@ -547,7 +547,7 @@",
+            "-            evaluate_with_mode(\"rm -rf ~\", false),",
+            "+            evaluate_with_mode(\"rm -rf /*\", false),",
+        ]);
+        let err = validate_harvest_patch(&patch).expect_err("entferntes ~ kam durch");
+        assert!(err.contains("rm -rf ~"), "falscher Grund: {err}");
+    }
+
+    #[test]
+    fn pflicht_deny_lock_wird_nicht_geerntet() {
+        let patch = patch_aus(&[
+            "diff --git a/src/shell_policy.rs b/src/shell_policy.rs",
+            "--- a/src/shell_policy.rs",
+            "+++ b/src/shell_policy.rs",
+            "@@ -1,3 +1,3 @@",
+            "-    \"rm -rf ~\",",
+            "+    // PFLICHT_DENY gekuerzt",
+        ]);
+        let err = validate_harvest_patch(&patch).expect_err("Lock-Aenderung kam durch");
+        assert!(
+            err.contains("Pflicht-Deny-Lock"),
+            "falscher Grund: {err}"
+        );
     }
 
     #[test]

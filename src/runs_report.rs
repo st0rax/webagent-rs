@@ -40,6 +40,11 @@ pub enum FailureClass {
     /// Das Brain meldete fertig, obwohl JEDER Edit-Versuch fehlschlug — die
     /// Erfolgsmeldung ist nicht durch eine Datei-Aenderung gedeckt.
     FalseDone,
+    /// `done` ohne einen einzigen Act-Step (`suspect_no_actions`). Bleibt im
+    /// Store `done` (reine Fragen sind legitim), zaehlt aber nicht als
+    /// bestanden — sonst sind 17 % der Erfolgslauefe Phantom-Dones
+    /// (STATUS_LIVE 12.08.2026).
+    UnverifiedDone,
     /// Lauf wurde angelegt, aber nie ausgefuehrt (cycles==0, per Reconcile als
     /// verwaist markiert). Kein Fehlschlag und kein Abbruch — ein Nichtereignis.
     NeverStarted,
@@ -55,6 +60,7 @@ impl FailureClass {
             FailureClass::HarnessParseBug => "HARNESS-BUG",
             FailureClass::ProtocolViolation => "Protokollverstoss",
             FailureClass::FalseDone => "Falschmeldung (kein Edit)",
+            FailureClass::UnverifiedDone => "unbelegt (keine Aktion)",
             FailureClass::CycleBudget => "Zyklenbudget",
             FailureClass::Timeout => "Timeout",
             FailureClass::NeverStarted => "nie gestartet",
@@ -86,6 +92,8 @@ pub struct RunFacts {
     pub brain_texts: Vec<String>,
     /// Alle `protocol_invalid`-Meldungen des Controllers.
     pub protocol_errors: usize,
+    /// `extra.suspect_no_actions` — `done` ohne Act-Step.
+    pub suspect_no_actions: bool,
 }
 
 /// `true`, wenn der Text einen Rohformat-Marker enthält — also erkennbar dem
@@ -147,6 +155,7 @@ pub fn classify_run(facts: &RunFacts) -> FailureClass {
     }
 
     match facts.status.as_str() {
+        "done" if facts.suspect_no_actions => FailureClass::UnverifiedDone,
         "done" => FailureClass::Passed,
         "false_done" => FailureClass::FalseDone,
         "max_cycles" => FailureClass::CycleBudget,
@@ -192,6 +201,11 @@ pub fn read_run(dir: &Path) -> Option<RunFacts> {
         cycles: meta.get("cycles").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
         brain_texts,
         protocol_errors,
+        suspect_no_actions: meta
+            .get("extra")
+            .and_then(|e| e.get("suspect_no_actions"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     })
 }
 
@@ -263,6 +277,7 @@ mod tests {
             cycles: 3,
             brain_texts: texts.iter().map(|s| s.to_string()).collect(),
             protocol_errors: p_err,
+            suspect_no_actions: false,
         }
     }
 
@@ -320,6 +335,16 @@ mod tests {
     fn a_clean_run_passes() {
         let f = facts("done", &["{\"protocol\":\"webagent/1\",\"actions\":[]}"], 0);
         assert_eq!(classify_run(&f), FailureClass::Passed);
+    }
+
+    #[test]
+    fn done_ohne_aktion_ist_kein_bestehen() {
+        let mut f = facts("done", &["Fertig."], 0);
+        f.suspect_no_actions = true;
+        assert_eq!(classify_run(&f), FailureClass::UnverifiedDone);
+        assert_ne!(classify_run(&f), FailureClass::Passed);
+        assert!(!classify_run(&f).blames_brain());
+        assert_eq!(classify_run(&f).label(), "unbelegt (keine Aktion)");
     }
 
     /// Ein `never_started`-Lauf hat nie gearbeitet: kein Brain-Fehlschlag, kein

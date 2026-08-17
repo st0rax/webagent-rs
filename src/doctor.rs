@@ -158,6 +158,31 @@ pub fn find_lock_files(profile_dir: &str) -> Vec<String> {
     locks
 }
 
+fn extra_suspect_no_actions(extra: &HashMap<String, Value>) -> bool {
+    extra
+        .get("suspect_no_actions")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// `done` ohne Act-Step ist kein bestandener Lauf — Doctor darf ihn nicht
+/// als „ready" zählen.
+fn run_meta_is_verified_done(meta: &RunMeta) -> bool {
+    meta.status == "done" && !extra_suspect_no_actions(&meta.extra)
+}
+
+fn json_is_verified_done(meta: &HashMap<String, Value>) -> bool {
+    let status = meta.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if status != "done" {
+        return false;
+    }
+    !meta
+        .get("extra")
+        .and_then(|e| e.get("suspect_no_actions"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 /// Letzten abgeschlossenen Run für ein Brain finden.
 /// Gibt (run_id, alter_in_stunden) zurück. (-1.0) wenn kein Run gefunden.
 pub fn find_last_done_run(
@@ -194,7 +219,7 @@ pub fn find_last_done_run(
     for run_id in all_runs {
         if let Some(load_fn) = load_fn {
             if let Some(meta) = load_fn(&run_id) {
-                if meta.brain_id == brain_id && meta.status == "done" {
+                if meta.brain_id == brain_id && run_meta_is_verified_done(&meta) {
                     let age_hours = calculate_age_hours(&meta.created_at, now);
                     return (run_id, age_hours);
                 }
@@ -204,7 +229,7 @@ pub fn find_last_done_run(
             let meta_path = Path::new(runs_dir).join(&run_id).join("meta.json");
             if let Ok(content) = fs::read_to_string(&meta_path) {
                 if let Ok(meta) = serde_json::from_str::<RunMeta>(&content) {
-                    if meta.brain_id == brain_id && meta.status == "done" {
+                    if meta.brain_id == brain_id && run_meta_is_verified_done(&meta) {
                         let age_hours = calculate_age_hours(&meta.created_at, now);
                         return (run_id, age_hours);
                     }
@@ -302,10 +327,10 @@ pub fn infer_login_state(
         if status == "login_required" {
             return "login_required".to_string();
         }
-        if status == "done" && (0.0..48.0).contains(&age) {
+        if json_is_verified_done(&meta) && (0.0..48.0).contains(&age) {
             return "ready".to_string();
         }
-        if status == "done" && age >= 48.0 {
+        if json_is_verified_done(&meta) && age >= 48.0 {
             return "stale".to_string();
         }
 
@@ -815,6 +840,41 @@ mod tests {
 
         let (run_id, _) = find_last_done_run(runs_dir.to_str().unwrap(), "chatgpt", None, None);
         assert_eq!(run_id, "");
+    }
+
+    #[test]
+    fn phantom_done_ohne_aktion_zaehlt_nicht_als_last_done() {
+        let tmp = unique_tmp();
+        let runs_dir = tmp.join("runs");
+        fs::create_dir_all(&runs_dir).unwrap();
+        let run_dir = runs_dir.join("20260712_120000_aabbccdd");
+        fs::create_dir_all(&run_dir).unwrap();
+
+        let mut extra = HashMap::new();
+        extra.insert(
+            "suspect_no_actions".to_string(),
+            serde_json::Value::Bool(true),
+        );
+        extra.insert("act_steps".to_string(), serde_json::Value::Number(0.into()));
+        let meta = RunMeta {
+            run_id: "20260712_120000_aabbccdd".to_string(),
+            brain_id: "chatgpt".to_string(),
+            status: "done".to_string(),
+            created_at: "2026-07-12T12:00:00+00:00".to_string(),
+            task: "test".to_string(),
+            extra,
+            completed_actions: HashMap::new(),
+            conversation_ref: None,
+            cycles: 0,
+        };
+        fs::write(
+            run_dir.join("meta.json"),
+            serde_json::to_string(&meta).unwrap(),
+        )
+        .unwrap();
+
+        let (run_id, _) = find_last_done_run(runs_dir.to_str().unwrap(), "chatgpt", None, None);
+        assert_eq!(run_id, "", "suspect_no_actions darf nicht als last_done gelten");
     }
 
     // --- find_recent_run_meta and infer_login_state ---
