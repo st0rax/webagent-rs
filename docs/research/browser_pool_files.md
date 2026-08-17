@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # Chromium/WebView2 User-Data-Profil-Dateien – Klassifikation für Linked-Clone/Delta-Modell
 
 ## (A) READ-ONLY – Kann verlinkt werden (statisch / shared)

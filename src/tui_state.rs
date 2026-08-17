@@ -92,6 +92,12 @@ pub struct App {
     pub session_turns: Vec<crate::transcript::SessionTurn>,
     pub session_status: String,
     pub session_brain: String,
+    pub session_selected: usize,
+    pub session_folded: Vec<bool>,
+    pub session_help: bool,
+    /// `true`: Tick liest den neuesten (oder gepinnten) Transcript nach.
+    pub session_follow_disk: bool,
+    pub session_transcript: Option<std::path::PathBuf>,
 }
 
 /// Die umschaltbaren Hauptansichten.
@@ -796,6 +802,11 @@ mod tests {
             session_turns: Vec::new(),
             session_status: String::new(),
             session_brain: "chatgpt".to_string(),
+            session_selected: 0,
+            session_folded: Vec::new(),
+            session_help: false,
+            session_follow_disk: true,
+            session_transcript: None,
         }
     }
 

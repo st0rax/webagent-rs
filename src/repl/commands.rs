@@ -91,6 +91,8 @@ pub enum SlashCommand {
     Brute {
         url: String,
     },
+    /// Transcript-Kurzfassung (`/compact`) — bestehender Trim-Pfad.
+    Compact,
     Unknown {
         raw: String,
     },
@@ -107,6 +109,11 @@ pub enum SessionSlashEffect {
     Dashboard,
     Evolve(String),
     Brute(String),
+    Compact,
+    Swarm {
+        orchestrator: Option<usize>,
+        prompt: String,
+    },
     Unhandled,
 }
 
@@ -130,6 +137,14 @@ pub fn session_slash_effect(cmd: &SlashCommand) -> SessionSlashEffect {
         SlashCommand::Dashboard | SlashCommand::Pool { .. } => SessionSlashEffect::Dashboard,
         SlashCommand::Evolve { args } => SessionSlashEffect::Evolve(args.clone()),
         SlashCommand::Brute { url } => SessionSlashEffect::Brute(url.clone()),
+        SlashCommand::Compact => SessionSlashEffect::Compact,
+        SlashCommand::Swarm {
+            orchestrator,
+            prompt,
+        } => SessionSlashEffect::Swarm {
+            orchestrator: *orchestrator,
+            prompt: prompt.clone(),
+        },
         _ => SessionSlashEffect::Unhandled,
     }
 }
@@ -163,6 +178,9 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     if trimmed == "/dashboard" || trimmed == "/sessions" {
         return Some(SlashCommand::Dashboard);
     }
+    if trimmed == "/compact" {
+        return Some(SlashCommand::Compact);
+    }
     if trimmed == "/evolve" || trimmed == "/benchmark" {
         return Some(SlashCommand::Evolve {
             args: String::new(),
@@ -177,9 +195,7 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
         });
     }
     if trimmed == "/brute" {
-        return Some(SlashCommand::Brute {
-            url: String::new(),
-        });
+        return Some(SlashCommand::Brute { url: String::new() });
     }
     if let Some(rest) = trimmed.strip_prefix("/brute ") {
         return Some(SlashCommand::Brute {
@@ -449,10 +465,24 @@ mod tests {
         assert_eq!(brute_http_url("ftp://x"), None);
         assert_eq!(brute_http_url(""), None);
         assert_eq!(
-            session_slash_effect(
-                &parse_slash_command("/brute https://chat.example.com").unwrap()
-            ),
+            session_slash_effect(&parse_slash_command("/brute https://chat.example.com").unwrap()),
             SessionSlashEffect::Brute("https://chat.example.com".into())
+        );
+    }
+
+    #[test]
+    fn compact_und_swarm_nutzen_denselben_parser() {
+        assert_eq!(parse_slash_command("/compact"), Some(SlashCommand::Compact));
+        assert_eq!(
+            session_slash_effect(&parse_slash_command("/compact").unwrap()),
+            SessionSlashEffect::Compact
+        );
+        assert_eq!(
+            session_slash_effect(&parse_slash_command("/swarm 2 hallo").unwrap()),
+            SessionSlashEffect::Swarm {
+                orchestrator: Some(2),
+                prompt: "hallo".into()
+            }
         );
     }
 }

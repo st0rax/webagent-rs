@@ -561,6 +561,13 @@ impl ReplSession {
                 }
                 ReplAction::Continue
             }
+            SlashCommand::Compact => {
+                match crate::transcript::compact_latest_run() {
+                    Ok(summary) => println!("[compact]\n{summary}"),
+                    Err(e) => println!("[compact] {e}"),
+                }
+                ReplAction::Continue
+            }
             SlashCommand::Unknown { raw } => {
                 println!("[repl] Unbekannter Befehl: {raw}");
                 ReplAction::Continue

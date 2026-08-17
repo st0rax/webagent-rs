@@ -198,8 +198,13 @@ mod tests {
     fn jeder_knopf_loest_wirklich_eine_taste_aus() {
         // Ohne diesen Test kann ein Eintrag mit unbekannter Aktion in die
         // Leiste geraten: er waere sichtbar, anklickbar — und wirkungslos.
-        for view in [View::Bench, View::Workers, View::Capabilities] {
-            for b in crate::tui_footer::footer_binds(view) {
+        for view in [
+            View::Bench,
+            View::Workers,
+            View::Capabilities,
+            View::Session,
+        ] {
+            for b in crate::tui_footer::footer_binds_ex(view, view == View::Session) {
                 assert!(
                     crate::tui_keys::parse_key(b.action).is_some(),
                     "{:?}: Knopf {:?} hat keine ausloesbare Aktion ({:?})",

@@ -30,6 +30,12 @@ pub struct Rect {
     pub height: u32,
 }
 
+/// Tab-Titel der Brain-Fenster. Der Host (Konsole / Windows Terminal)
+/// traegt das nicht — sonst wuerde die Suche ein Brain unten andocken.
+pub fn is_brain_tab_title(title: &str) -> bool {
+    title.trim_start().starts_with("webagent ·")
+}
+
 impl Rect {
     pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
         Self {
@@ -226,18 +232,14 @@ fn terminal_window_handle() -> Option<(windows::Win32::Foundation::HWND, Rect)> 
 /// wandert zum Parent weiter. Unter einer echten Konsole ist es sichtbar und
 /// gross genug und die Wall funktioniert dort genauso.
 #[cfg(all(windows, feature = "webview"))]
-fn visible_terminal_window_of(
-    pid: u32,
-) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
+fn visible_terminal_window_of(pid: u32) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Console::GetConsoleWindow;
     use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsWindowVisible};
 
     if pid == std::process::id() {
         let console = unsafe { GetConsoleWindow() };
-        if console == HWND(std::ptr::null_mut())
-            || !unsafe { IsWindowVisible(console) }.as_bool()
-        {
+        if console == HWND(std::ptr::null_mut()) || !unsafe { IsWindowVisible(console) }.as_bool() {
             return None;
         }
         let mut rect = windows::Win32::Foundation::RECT::default();
@@ -249,14 +251,10 @@ fn visible_terminal_window_of(
         if width < 200 || height < 100 {
             return None;
         }
-        return Some((
-            console,
-            Rect::new(rect.left, rect.top, width, height),
-        ));
+        return Some((console, Rect::new(rect.left, rect.top, width, height)));
     }
     visible_window_of(pid)
 }
-
 
 /// Uebersetzt eine Nummerntaste (Alt+1 … Alt+9) in einen Kachelindex.
 ///
@@ -307,12 +305,10 @@ struct WindowSearch {
 }
 
 #[cfg(all(windows, feature = "webview"))]
-fn visible_window_of(
-    pid: u32,
-) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
+fn visible_window_of(pid: u32) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible,
+        EnumWindows, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
 
     unsafe extern "system" fn callback(window: HWND, param: LPARAM) -> BOOL {
@@ -321,6 +317,14 @@ fn visible_window_of(
         GetWindowThreadProcessId(window, Some(&mut owner));
         if owner != search.pid || !IsWindowVisible(window).as_bool() {
             return BOOL(1);
+        }
+        let mut title_buf = [0u16; 256];
+        let n = GetWindowTextW(window, &mut title_buf);
+        if n > 0 {
+            let title = String::from_utf16_lossy(&title_buf[..n as usize]);
+            if crate::brain_grid::is_brain_tab_title(&title) {
+                return BOOL(1);
+            }
         }
         let mut rect = RECT::default();
         if GetWindowRect(window, &mut rect).is_err() {
@@ -333,10 +337,7 @@ fn visible_window_of(
         if width < 200 || height < 100 {
             return BOOL(1);
         }
-        search.result = Some((
-            window,
-            Rect::new(rect.left, rect.top, width, height),
-        ));
+        search.result = Some((window, Rect::new(rect.left, rect.top, width, height)));
         BOOL(0)
     }
 
@@ -429,8 +430,7 @@ pub fn dock_terminal_bottom() -> Result<(), String> {
         return Ok(());
     }
     use windows::Win32::UI::WindowsAndMessaging::{
-        IsZoomed, SetWindowPos, ShowWindow, HWND_TOP,
-        SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
+        IsZoomed, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
     };
     let (hwnd, old_rect) = match terminal_window_handle() {
         Some(pair) => pair,
@@ -514,8 +514,7 @@ struct TerminalSnapshot {
 }
 
 #[cfg(all(windows, feature = "webview"))]
-static TERMINAL_SNAPSHOT: std::sync::Mutex<Option<TerminalSnapshot>> =
-    std::sync::Mutex::new(None);
+static TERMINAL_SNAPSHOT: std::sync::Mutex<Option<TerminalSnapshot>> = std::sync::Mutex::new(None);
 
 /// Wenn `true`, wird `dock_terminal_bottom` graceful behandelt: kein
 /// Konsolenfenster heisst Skip statt Error. Noetig fuer `--force-tui`-Modus,
@@ -570,9 +569,7 @@ pub fn host_window_is_iconic() -> bool {
 }
 
 #[cfg(all(windows, feature = "webview"))]
-fn visible_or_iconic_window_of(
-    pid: u32,
-) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
+fn visible_or_iconic_window_of(pid: u32) -> Option<(windows::Win32::Foundation::HWND, Rect)> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
@@ -607,15 +604,9 @@ fn visible_or_iconic_window_of(
         BOOL(0)
     }
 
-    let mut search = Search {
-        pid,
-        result: None,
-    };
+    let mut search = Search { pid, result: None };
     unsafe {
-        let _ = EnumWindows(
-            Some(callback),
-            LPARAM(&mut search as *mut Search as isize),
-        );
+        let _ = EnumWindows(Some(callback), LPARAM(&mut search as *mut Search as isize));
     }
     search.result
 }
@@ -630,6 +621,15 @@ mod tests {
         width: 2560,
         height: 1440,
     };
+
+    #[test]
+    fn host_ist_kein_brain_tab() {
+        assert!(is_brain_tab_title("webagent · claude (3)"));
+        assert!(is_brain_tab_title("webagent · chatgpt"));
+        assert!(!is_brain_tab_title("Windows PowerShell"));
+        assert!(!is_brain_tab_title("webagent"));
+        assert!(!is_brain_tab_title("C:\\Windows\\system32\\cmd.exe"));
+    }
 
     #[test]
     fn grid_ist_moeglichst_quadratisch() {

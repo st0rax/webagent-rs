@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # Brains als Worker im Webagent
 
 > Diese Datei wurde **autonom von deepseek** über `webagent run` erzeugt

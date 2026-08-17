@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # webagent + webagent-rs — Vergleich, Parität, Merge & Plattform-Plan
 
 > **Ziel (Storax):** EIN Projekt, plattformunabhängig (Windows, Linux),

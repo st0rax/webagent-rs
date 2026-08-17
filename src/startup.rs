@@ -81,10 +81,102 @@ mod tests {
     }
 
     #[test]
+    fn betriebs_markdown_hat_eine_wahrheit() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let living = [
+            "README.md",
+            "AGENTS.md",
+            "CONVENTIONS.md",
+            "docs/OVERVIEW.md",
+            "docs/PROTOCOL_SCHEMA.md",
+        ];
+        for rel in living {
+            let text = std::fs::read_to_string(root.join(rel)).unwrap();
+            let head: String = text.lines().take(8).collect::<Vec<_>>().join("\n");
+            assert!(
+                !head.contains("**Archiv"),
+                "{rel} ist Betrieb und darf kein Archiv-Banner tragen"
+            );
+        }
+        let conventions = std::fs::read_to_string(root.join("CONVENTIONS.md")).unwrap();
+        assert!(
+            !conventions.contains("zuerst portiert")
+                && !conventions.contains("../tests/test_protocol.py")
+                && !conventions.contains("START_HERE.md`** — einziger Einstiegspunkt"),
+            "CONVENTIONS.md darf keinen Port-Auftrag und keinen START_HERE-Einstieg enthalten"
+        );
+        fn walk(dir: &std::path::Path, acc: &mut Vec<std::path::PathBuf>) {
+            let Ok(rd) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    if name == "target" || name == ".git" {
+                        continue;
+                    }
+                    walk(&p, acc);
+                } else if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                    acc.push(p);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(root, &mut files);
+        for path in files {
+            let rel = path.strip_prefix(root).unwrap();
+            let rel_s = rel.to_string_lossy().replace('\\', "/");
+            if living.contains(&rel_s.as_str()) {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let head: String = text.lines().take(8).collect::<Vec<_>>().join("\n");
+            let head_l = head.to_ascii_lowercase();
+            assert!(
+                head_l.contains("**archiv") || head_l.contains("**referenz"),
+                "{rel_s} braucht Archiv- oder Referenz-Banner in den ersten Zeilen"
+            );
+        }
+    }
+
+    #[test]
+    fn code_score_und_brain_score_teilen_eine_wilson_rechnung() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let needle = format!("{}::{}", "bench_scoring", "wilson_lower_bound");
+        for rel in ["src/code_score.rs", "src/brain_score.rs"] {
+            let text = std::fs::read_to_string(root.join(rel)).unwrap();
+            let cut = text.find("#[cfg(test)]").unwrap_or(text.len());
+            assert!(
+                text[..cut].contains(&needle),
+                "{rel} muss {needle} nutzen, keine zweite Kopie"
+            );
+        }
+        let shared = std::fs::read_to_string(root.join("src/bench_scoring.rs")).unwrap();
+        assert!(
+            shared.contains("pub fn wilson_lower_bound"),
+            "wilson_lower_bound muss die gelieferte Funktion sein"
+        );
+    }
+
+    #[test]
+    fn tui_ruft_nicht_den_zweiten_kachel_pfad() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/tui.rs");
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let cut = raw.find("#[cfg(test)]").unwrap_or(raw.len());
+        let text = &raw[..cut];
+        let a = format!("{}{}", "arrange_brain", "_grid");
+        let b = format!("{}{}", "toggle_brain", "_grid");
+        assert!(!text.contains(&a), "TUI darf {a} nicht aufrufen");
+        assert!(!text.contains(&b), "toter zweiter Pfad {b} muss weg");
+    }
+
+    #[test]
     fn release_workflow_nennt_die_drei_binaries() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(".github/workflows/release.yml");
-        let yml = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/release.yml");
+        let yml =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         for needle in [
             "webagent-windows-x86_64.exe",
             "WebView2Loader.dll",

@@ -26,8 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::data_dir;
 
-/// 95%-Konfidenz-Z-Wert für den Wilson-Score (identisch zu brain_score).
-const Z: f64 = 1.96;
+use crate::bench_scoring::wilson_lower_bound;
 
 lazy_static! {
     static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -205,22 +204,6 @@ fn load_events(path: &Path) -> Vec<CodeEvent> {
         .map_while(Result::ok)
         .filter_map(|line| serde_json::from_str(&line).ok())
         .collect()
-}
-
-/// Wilson-Score-Lower-Bound für `successes` von `n` Versuchen. `n == 0` liefert
-/// 0.5 (völlige Unsicherheit) — ein Brain ohne Daten ist nicht „schlecht",
-/// sondern unbekannt (gleiche Konvention wie brain_score).
-fn wilson_lower_bound(successes: usize, n: usize) -> f64 {
-    if n == 0 {
-        return 0.5;
-    }
-    let n = n as f64;
-    let p = successes as f64 / n;
-    let z2 = Z * Z;
-    let denom = 1.0 + z2 / n;
-    let center = p + z2 / (2.0 * n);
-    let margin = Z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt();
-    ((center - margin) / denom).clamp(0.0, 1.0)
 }
 
 /// Reine Aggregation eines Ereignis-Slices zu einer nach `wilson_pass`
@@ -530,7 +513,9 @@ mod tests {
             events.iter().any(|e| {
                 e.brain.as_deref() == Some("kimi")
                     && e.text.starts_with("[code:kimi]")
-                    && e.detail.as_deref().is_some_and(|d| d.contains("did_change"))
+                    && e.detail
+                        .as_deref()
+                        .is_some_and(|d| d.contains("did_change"))
             }),
             "im Spiegelmodus muss der Code-Versuch mit vollem Detail in den Bus"
         );

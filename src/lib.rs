@@ -6,24 +6,24 @@
 //! siehe dort) und *geparst* über `time` — das ist ohnehin Dependency.
 
 // Modul-Übersicht, gruppiert nach Schicht (siehe docs/ARCHITECTURE.md).
-// Alle Module `pub`: die echte API-Fläche ist kleiner (nur das Binary nutzt
-// ~31 Module direkt) — Verschlankung ist als P1 notiert, sie erfordert das
-// Löschen toter Items (siehe docs/ARCHITECTURE.md → "API-Fläche").
+// `pub` ist Absicht. Crate-interne Schicht (Wilson, Harvest-Helfer, Loop-Guard)
+// ist `pub(crate)`. Weitere Fläche nur schließen, wenn tote `pub`-Items
+// vorher gelöscht oder getestet sind — sonst wird Clippy zum Lärm.
 
 // ── core: plattformreiner Kern (keine UI/Browser-Abhängigkeiten) ──
-pub mod circuit_breaker;
+pub mod bin_hooks;
+pub(crate) mod circuit_breaker;
 pub mod comms;
 pub mod config;
 pub mod executor;
 pub mod file_actions;
-pub mod loop_guard;
+pub(crate) mod loop_guard;
 pub mod memory;
 pub mod observer;
 pub mod oobe;
 pub mod protocol;
 pub mod run_store;
 pub mod shell_policy;
-pub mod bin_hooks;
 pub mod startup;
 pub mod timeouts;
 pub mod transcript;
@@ -54,14 +54,14 @@ pub mod welcome;
 // ── bench: Messung & Selbst-Verbesserung ──
 pub mod autoresearch;
 pub mod bench_events;
-pub mod bench_harvest;
-pub mod bench_scoring;
+pub(crate) mod bench_harvest;
+pub(crate) mod bench_scoring;
 pub mod benchmark;
 pub mod brain_score;
 pub mod brains_health;
-pub mod code_score;
+pub(crate) mod code_score;
 pub mod design_vote;
-pub mod round_tally;
+pub(crate) mod round_tally;
 pub mod runs_report;
 pub mod self_research;
 pub mod wiki_memory;
@@ -69,8 +69,8 @@ pub mod wiki_memory;
 // ── workers: Parallelität & Gesundheit ──
 pub mod bot2bot_worker;
 pub mod doctor;
-pub mod pool_failover;
-pub mod pool_state;
+pub(crate) mod pool_failover;
+pub(crate) mod pool_state;
 pub mod watchdog;
 pub mod worker_pool;
 

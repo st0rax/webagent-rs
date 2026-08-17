@@ -250,6 +250,85 @@ pub fn session_turns_from_jsonl(jsonl: &str) -> Vec<SessionTurn> {
     out
 }
 
+/// Letzte Brain-Antwort im Scrollback — das ist der Copy-Inhalt.
+pub fn last_brain_copy_text(turns: &[SessionTurn]) -> Option<String> {
+    turns
+        .iter()
+        .rev()
+        .find(|t| t.kind == SessionTurnKind::Brain)
+        .map(|t| t.body.clone())
+}
+
+/// Fold-Vektor an die Turn-Liste anpassen. Tool-Karten starten zugeklappt.
+pub fn sync_session_folds(turns: &[SessionTurn], folded: &mut Vec<bool>) {
+    if folded.len() == turns.len() {
+        return;
+    }
+    *folded = turns
+        .iter()
+        .map(|t| t.kind == SessionTurnKind::Tool)
+        .collect();
+}
+
+/// Klappt die Karte `idx` um. Unbekannter Index ist ein No-Op.
+pub fn toggle_session_fold(folded: &mut [bool], idx: usize) {
+    if let Some(flag) = folded.get_mut(idx) {
+        *flag = !*flag;
+    }
+}
+
+/// Session-Karten aus einem Swarm-Lauf: User-Prompt plus eine Brain-Karte
+/// je Antwort. Nicht Println — dieselbe Turn-Form wie das Transcript.
+pub fn session_turns_from_swarm(prompt: &str, answers: &[(String, String)]) -> Vec<SessionTurn> {
+    let mut out = Vec::with_capacity(answers.len() + 1);
+    let prompt = prompt.trim();
+    if !prompt.is_empty() {
+        out.push(SessionTurn {
+            kind: SessionTurnKind::User,
+            body: prompt.to_string(),
+        });
+    }
+    for (brain, text) in answers {
+        out.push(SessionTurn {
+            kind: SessionTurnKind::Brain,
+            body: format!("{brain}: {text}"),
+        });
+    }
+    out
+}
+
+/// Neueste Run-Directory unter `runs/` (Name absteigend, wie die TUI).
+pub fn latest_session_run_dir(runs: &Path) -> Option<PathBuf> {
+    let mut dirs: Vec<_> = std::fs::read_dir(runs)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+    dirs.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+    dirs.into_iter().next().map(|e| e.path())
+}
+
+/// Turns aus `dir/transcript.jsonl` — ohne `/resume`, ohne TUI.
+pub fn session_turns_from_run_dir(dir: &Path) -> Vec<SessionTurn> {
+    let text = std::fs::read_to_string(dir.join("transcript.jsonl")).unwrap_or_default();
+    session_turns_from_jsonl(&text)
+}
+
+/// Compact-Pfad des letzten Laufs (derselbe `Transcript::compact_summary`).
+pub fn compact_latest_run() -> Result<String, String> {
+    let runs = crate::config::data_dir().join("runs");
+    let dir = latest_session_run_dir(&runs).ok_or_else(|| "kein run".to_string())?;
+    compact_run_dir(&dir)
+}
+
+/// Compact eines konkreten Laufs.
+pub fn compact_run_dir(dir: &Path) -> Result<String, String> {
+    let transcript = Transcript {
+        path: dir.join("transcript.jsonl"),
+    };
+    transcript.compact_summary(12, 2000)
+}
+
 fn looks_like_tool(content: &str) -> bool {
     let t = content.trim();
     t == "finish"
@@ -404,6 +483,48 @@ mod tests {
         assert_eq!(turns[1].kind, SessionTurnKind::Tool);
         assert_eq!(turns[2].kind, SessionTurnKind::Brain);
         assert_eq!(turns[2].body, "Fertig.");
+        assert_eq!(last_brain_copy_text(&turns).as_deref(), Some("Fertig."));
+        let mut folded = Vec::new();
+        sync_session_folds(&turns, &mut folded);
+        assert_eq!(folded, vec![false, true, false]);
+        toggle_session_fold(&mut folded, 1);
+        assert!(!folded[1]);
+    }
+
+    #[test]
+    fn swarm_karten_sind_session_turns() {
+        let turns = session_turns_from_swarm(
+            "fasst zusammen",
+            &[
+                ("claude".into(), "eins".into()),
+                ("chatgpt".into(), "zwei".into()),
+            ],
+        );
+        assert_eq!(turns[0].kind, SessionTurnKind::User);
+        assert_eq!(turns[0].body, "fasst zusammen");
+        assert_eq!(turns[1].kind, SessionTurnKind::Brain);
+        assert!(turns[1].body.starts_with("claude:"));
+        assert_eq!(
+            last_brain_copy_text(&turns).as_deref(),
+            Some("chatgpt: zwei")
+        );
+    }
+
+    #[test]
+    fn live_turns_ohne_resume_kommen_aus_dem_jsonl() {
+        let tmp = unique_tmp();
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(
+            tmp.join("transcript.jsonl"),
+            "{\"role\":\"user\",\"content\":\"live\"}\n{\"role\":\"brain\",\"content\":\"ok\"}\n",
+        )
+        .unwrap();
+        let turns = session_turns_from_run_dir(&tmp);
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[0].body, "live");
+        let summary = compact_run_dir(&tmp).unwrap();
+        assert!(summary.contains("live") || summary.contains("ok") || !summary.is_empty());
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

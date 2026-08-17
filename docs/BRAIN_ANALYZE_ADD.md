@@ -1,3 +1,5 @@
+> **Archiv.** Kein Soll-Zustand. Aktuell: docs/OVERVIEW.md, TUI-Betrieb: AGENTS.md §6.
+
 # Brain Analyze & Add (`/aa`) — Design
 
 > **STATUS: UMGESETZT als `brain_probe` (Banner korrigiert 2026-08-10).**

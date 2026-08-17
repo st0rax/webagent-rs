@@ -112,6 +112,8 @@ impl ReplSession {
                         if a.chars().count() > 200 { "…" } else { "" }
                     );
                     answers.push((tb.clone(), a));
+                    let _cards =
+                        crate::transcript::session_turns_from_swarm(&framed_prompt, &answers);
                 }
                 Err(e) => println!("[swarm {}/{}] {tb}: — {e}", i + 1, targets.len()),
             }

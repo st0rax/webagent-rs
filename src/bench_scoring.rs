@@ -17,7 +17,6 @@
 //! aendert, ist nicht mehr nachvollziehbar, wenn er schiefgeht — und bei 3000
 //! Zeilen will man genau das nicht riskieren.
 
-
 // Bleibt vorerst in `benchmark`: parst die Zusammenfassungszeile eines
 // Testlaufs und gehoert thematisch hierher, wird dort aber noch von mehreren
 // Stellen benutzt. Ein Schnitt, der mehrere Bewegungen mischt, ist nicht mehr
@@ -97,6 +96,24 @@ pub fn progress_after_tests(output: &str) -> Progress {
 /// herunterarbeitet, wurde genauso hart gestoppt wie eines, das zehnmal
 /// dieselbe kaputte Zeile schreibt (Beobachtung Storax, deepseek lief
 /// regelmäßig ins Limit statt zu scheitern).
+/// Wilson-Lower-Bound (95 %, z = 1.96). `n == 0` ist unbekannt, nicht 0.
+///
+/// Eine Rechnung für `code_score` und `brain_score`. Gleiches Verhältnis,
+/// mehr Evidenz → höherer Wert.
+pub fn wilson_lower_bound(successes: usize, n: usize) -> f64 {
+    if n == 0 {
+        return 0.5;
+    }
+    const Z: f64 = 1.96;
+    let n = n as f64;
+    let p = successes as f64 / n;
+    let z2 = Z * Z;
+    let denom = 1.0 + z2 / n;
+    let center = p + z2 / (2.0 * n);
+    let margin = Z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt();
+    ((center - margin) / denom).clamp(0.0, 1.0)
+}
+
 pub fn is_improvement(best: Option<Progress>, now: Progress) -> bool {
     match best {
         None => now.stage > 0,
@@ -186,3 +203,19 @@ pub fn outcome_label(did_change: bool, compiled: bool, tests_passed: bool) -> &'
     }
 }
 
+#[cfg(test)]
+mod wilson_tests {
+    use super::wilson_lower_bound;
+
+    #[test]
+    fn wilson_no_data_is_uncertain_not_zero() {
+        assert_eq!(wilson_lower_bound(0, 0), 0.5);
+    }
+
+    #[test]
+    fn wilson_prefers_more_evidence_at_same_ratio() {
+        let few = wilson_lower_bound(9, 10);
+        let many = wilson_lower_bound(90, 100);
+        assert!(many > few, "many={many} sollte > few={few} sein");
+    }
+}

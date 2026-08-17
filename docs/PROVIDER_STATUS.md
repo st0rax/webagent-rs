@@ -1,5 +1,8 @@
 # Provider-Status (Live-Verifikation Rust-Port)
 
+> **Referenz.** Zahlen nachmessen — kein Soll-Zustand. Betrieb: docs/OVERVIEW.md,
+> TUI: AGENTS.md §6.
+
 > **Begriffsklärung:** Status bewertet **Provider-Integrationen** `webagent/<id>`,
 > nicht die KI-Entitäten dahinter.
 

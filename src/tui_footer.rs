@@ -40,6 +40,10 @@ const fn bind(key: &'static str, label: &'static str, action: &'static str) -> F
 /// Die Leiste haengt an der Ansicht: in der Benchmark-Ansicht sind
 /// Worker-Tasten (Tab/Filter/+/-) sinnlos.
 pub fn footer_binds(view: View) -> &'static [FooterBind] {
+    footer_binds_ex(view, false)
+}
+
+pub fn footer_binds_ex(view: View, session_help: bool) -> &'static [FooterBind] {
     const CAPABILITIES: [FooterBind; 5] = [
         bind("v", "ansicht", "v"),
         bind("j/k", "wählen", "j"),
@@ -74,11 +78,18 @@ pub fn footer_binds(view: View) -> &'static [FooterBind] {
         bind("w", "kacheln", "w"),
         bind("q", "quit", "q"),
     ];
-    const SESSION: [FooterBind; 5] = [
+    const SESSION: [FooterBind; 4] = [
         bind("v", "ansicht", "v"),
         bind("/", "befehl", "/"),
+        bind("?", "mehr", "?"),
+        bind("q", "quit", "q"),
+    ];
+    const SESSION_HELP: [FooterBind; 6] = [
         bind("j/k", "scroll", "j"),
+        bind("f", "fold", "f"),
+        bind("y", "copy", "y"),
         bind("w", "kacheln", "w"),
+        bind("?", "weniger", "?"),
         bind("q", "quit", "q"),
     ];
     match view {
@@ -86,6 +97,7 @@ pub fn footer_binds(view: View) -> &'static [FooterBind] {
         View::Workers => &WORKERS,
         View::Bench => &BENCH,
         View::Config => &CONFIG,
+        View::Session if session_help => &SESSION_HELP,
         View::Session => &SESSION,
     }
 }
@@ -129,7 +141,7 @@ pub(crate) fn render_footer(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let mut spans = vec![Span::raw(" ")];
-    for b in footer_binds(app.view) {
+    for b in footer_binds_ex(app.view, app.session_help) {
         spans.push(Span::styled(b.key, key));
         spans.push(Span::styled(format!(" {}  ", b.label), dim));
     }

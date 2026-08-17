@@ -94,19 +94,42 @@ fn render_session(f: &mut Frame, app: &App, area: Rect) {
     let items: Vec<ListItem> = app
         .session_turns
         .iter()
-        .map(|t| {
+        .enumerate()
+        .map(|(i, t)| {
+            let folded = app.session_folded.get(i).copied().unwrap_or(false);
             let (tag, color) = match t.kind {
                 SessionTurnKind::User => ("you ", ACCENT),
                 SessionTurnKind::Brain => ("brain", Color::Green),
                 SessionTurnKind::Tool => ("tool", Color::Yellow),
             };
+            let body = if folded {
+                crate::char_prefix(t.body.lines().next().unwrap_or(""), 80)
+            } else {
+                crate::char_prefix(&t.body, 200)
+            };
+            let mark = if i == app.session_selected { ">" } else { " " };
+            let fold = if t.kind == SessionTurnKind::Tool {
+                if folded {
+                    "+"
+                } else {
+                    "-"
+                }
+            } else {
+                " "
+            };
             ListItem::new(Line::from(vec![
+                Span::raw(format!("{mark}{fold}")),
                 Span::styled(format!("{tag} "), Style::default().fg(color)),
-                Span::raw(crate::char_prefix(&t.body, 200)),
+                Span::raw(body),
             ]))
         })
         .collect();
-    let list = List::new(items).block(titled_block("session"));
+    let title = if app.session_status.is_empty() {
+        "session".to_string()
+    } else {
+        format!("session · {}", crate::char_prefix(&app.session_status, 40))
+    };
+    let list = List::new(items).block(titled_block(&title));
     f.render_widget(list, area);
 }
 
@@ -954,6 +977,11 @@ mod tests {
             session_turns: Vec::new(),
             session_status: String::new(),
             session_brain: "chatgpt".to_string(),
+            session_selected: 0,
+            session_folded: Vec::new(),
+            session_help: false,
+            session_follow_disk: true,
+            session_transcript: None,
         }
     }
 

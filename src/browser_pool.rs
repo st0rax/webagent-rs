@@ -398,7 +398,12 @@ impl BrowserPool {
     /// Aufrufer sieht das an der Differenz zu [`Self::open_brains`] und muss es
     /// melden.
     #[cfg(feature = "webview")]
-    pub fn arrange_brain_grid(&self, area: Option<crate::brain_grid::Rect>) -> Result<usize, String> {
+    /// Zweiter Arrange-Pfad — die ausgelieferte TUI nutzt `brain_wall`.
+    #[allow(dead_code)]
+    pub fn arrange_brain_grid(
+        &self,
+        area: Option<crate::brain_grid::Rect>,
+    ) -> Result<usize, String> {
         let Some(runtime) = self.runtime.as_ref() else {
             return Ok(0);
         };

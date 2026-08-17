@@ -51,11 +51,34 @@ fn apply_session_resume(app: &mut App, id: Option<&str>) {
     };
     let text = std::fs::read_to_string(dir.join("transcript.jsonl")).unwrap_or_default();
     app.session_turns = crate::transcript::session_turns_from_jsonl(&text);
+    crate::transcript::sync_session_folds(&app.session_turns, &mut app.session_folded);
+    app.session_follow_disk = false;
+    app.session_transcript = Some(dir.join("transcript.jsonl"));
     let name = dir
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
     app.session_status = format!("resume {name} ({} turns)", app.session_turns.len());
+}
+
+#[cfg(feature = "tui")]
+fn refresh_session_from_disk(app: &mut App) {
+    if !app.session_follow_disk && app.session_transcript.is_none() {
+        return;
+    }
+    let runs = crate::config::data_dir().join("runs");
+    let path = app.session_transcript.clone().or_else(|| {
+        crate::transcript::latest_session_run_dir(&runs).map(|d| d.join("transcript.jsonl"))
+    });
+    let Some(path) = path else {
+        return;
+    };
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let turns = crate::transcript::session_turns_from_jsonl(&text);
+    if turns != app.session_turns {
+        app.session_turns = turns;
+        crate::transcript::sync_session_folds(&app.session_turns, &mut app.session_folded);
+    }
 }
 
 #[cfg(feature = "tui")]
@@ -289,7 +312,13 @@ fn run_tui_ratatui(
         session_turns: Vec::new(),
         session_status: String::new(),
         session_brain: "chatgpt".to_string(),
+        session_selected: 0,
+        session_folded: Vec::new(),
+        session_help: false,
+        session_follow_disk: true,
+        session_transcript: None,
     };
+    refresh_session_from_disk(&mut app);
     if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
         let command = format!("/benchmark {arguments}");
         spawn_benchmark_from_tui(&command, &candidates);
@@ -394,10 +423,8 @@ fn run_tui_ratatui(
     // (Terminal unten, Brains oben); `w` schaltet Arrange/Park.
     let mut wall = crate::brain_wall::WallState::start_on();
     let _wall_cleanup = crate::brain_wall::WallCleanupGuard;
-    let (wall_tx, wall_rx) = std::sync::mpsc::channel::<Result<
-        (crate::brain_wall::WindowSignature, String),
-        String,
-    >>();
+    let (wall_tx, wall_rx) =
+        std::sync::mpsc::channel::<Result<(crate::brain_wall::WindowSignature, String), String>>();
     let mut wall_apply_pending = false;
     let mut wall_apply_thread: Option<std::thread::JoinHandle<()>> = None;
     let mut wall_retry_after = std::time::Instant::now();
@@ -431,9 +458,7 @@ fn run_tui_ratatui(
                         MouseEventKind::ScrollDown => {
                             pending.extend(crate::tui_keys::parse_key("j"))
                         }
-                        MouseEventKind::ScrollUp => {
-                            pending.extend(crate::tui_keys::parse_key("k"))
-                        }
+                        MouseEventKind::ScrollUp => pending.extend(crate::tui_keys::parse_key("k")),
                         MouseEventKind::Down(MouseButton::Left) => {
                             match crate::tui_mouse::hit(screen, m.column, m.row) {
                                 Some(crate::tui_mouse::Hit::Key(action)) => {
@@ -459,390 +484,462 @@ fn run_tui_ratatui(
         }
 
         for key in pending {
-                match app.input_mode {
-                    InputMode::Normal => match key.code {
-                        // Alt+Nummer: Fokus ausdruecklich auf eine Kachel.
-                        // Enter gehoert IMMER dem Terminal — deshalb ist die
-                        // Fokusuebernahme an eine eigene, bewusste Geste
-                        // gebunden und passiert nie von selbst.
-                        KeyCode::Char(c)
-                            if key.modifiers.contains(KeyModifiers::ALT)
-                                && crate::brain_grid::brain_index_for_digit(c).is_some() =>
+            match app.input_mode {
+                InputMode::Normal => match key.code {
+                    // Alt+Nummer: Fokus ausdruecklich auf eine Kachel.
+                    // Enter gehoert IMMER dem Terminal — deshalb ist die
+                    // Fokusuebernahme an eine eigene, bewusste Geste
+                    // gebunden und passiert nie von selbst.
+                    KeyCode::Char(c)
+                        if key.modifiers.contains(KeyModifiers::ALT)
+                            && crate::brain_grid::brain_index_for_digit(c).is_some() =>
+                    {
+                        let index = crate::brain_grid::brain_index_for_digit(c).unwrap_or(0);
+                        app.grid_status = crate::brain_wall::focus_tile(index);
+                    }
+                    // Esc springt aus einer Kachel zurueck ins Terminal.
+                    KeyCode::Esc => {
+                        app.grid_status = crate::brain_wall::release_focus();
+                    }
+                    // Pfeile tun dasselbe wie j/k. Die Fusszeile bewirbt
+                    // zwar j/k, aber niemand liest eine Legende, bevor er
+                    // die Pfeiltaste drueckt — eine Liste, die auf Pfeile
+                    // nicht reagiert, wirkt kaputt.
+                    KeyCode::Up if app.view == View::Config => {
+                        app.cfg_selected = app.cfg_selected.saturating_sub(1);
+                    }
+                    KeyCode::Down if app.view == View::Config => {
+                        let last = crate::tui_config::SETTINGS.len().saturating_sub(1);
+                        app.cfg_selected = app.cfg_selected.saturating_add(1).min(last);
+                    }
+                    KeyCode::Up if app.view == View::Capabilities => {
+                        app.cap_selected = app.cap_selected.saturating_sub(1);
+                    }
+                    KeyCode::Down if app.view == View::Capabilities => {
+                        app.cap_selected = app.cap_selected.saturating_add(1);
+                    }
+                    KeyCode::Up => {
+                        if app.view == View::Bench {
+                            bench_move(&mut app, -1);
+                        } else {
+                            app.selected = select_wrap(app.selected, -1, app.agents.len());
+                        }
+                    }
+                    KeyCode::Down => {
+                        if app.view == View::Bench {
+                            bench_move(&mut app, 1);
+                        } else {
+                            app.selected = select_wrap(app.selected, 1, app.agents.len());
+                        }
+                    }
+                    KeyCode::Char('?') if app.view == View::Session => {
+                        app.session_help = !app.session_help;
+                    }
+                    KeyCode::Char('y') if app.view == View::Session => {
+                        if let Some(text) =
+                            crate::transcript::last_brain_copy_text(&app.session_turns)
                         {
-                            let index = crate::brain_grid::brain_index_for_digit(c)
-                                .unwrap_or(0);
-                            app.grid_status = crate::brain_wall::focus_tile(index);
+                            app.session_status = format!("copy {}c", text.chars().count());
                         }
-                        // Esc springt aus einer Kachel zurueck ins Terminal.
-                        KeyCode::Esc => {
-                            app.grid_status = crate::brain_wall::release_focus();
+                    }
+                    KeyCode::Char('f') if app.view == View::Session => {
+                        crate::transcript::sync_session_folds(
+                            &app.session_turns,
+                            &mut app.session_folded,
+                        );
+                        crate::transcript::toggle_session_fold(
+                            &mut app.session_folded,
+                            app.session_selected,
+                        );
+                    }
+                    KeyCode::Char('q') => break 'main 0,
+                    // Ansicht umschalten: Worker-Dashboard <-> Benchmark.
+                    // `v` wie „view", plus `<`/`>` als Griff aufs Eck-Symbol
+                    // in der Kopfzeile.
+                    KeyCode::Char('v') | KeyCode::Char('<') | KeyCode::Char('>') => {
+                        app.view = app.view.next();
+                    }
+                    // `w` schaltet die Brain-Kachelansicht um: alle offenen
+                    // Brain-Fenster als Kachelraster auf den Bildschirm,
+                    // nochmal `w` parkt sie wieder off-screen.
+                    KeyCode::Char('w') => {
+                        // Kein Arrange/Park gegeneinander laufen lassen:
+                        // sonst kann ein spaet endender Auto-Thread die eben
+                        // geparkten Fenster wieder auf den Bildschirm holen.
+                        if let Some(thread) = wall_apply_thread.take() {
+                            let _ = thread.join();
+                            wall_apply_pending = false;
+                            let _ = wall_rx.try_recv();
                         }
-                        // Pfeile tun dasselbe wie j/k. Die Fusszeile bewirbt
-                        // zwar j/k, aber niemand liest eine Legende, bevor er
-                        // die Pfeiltaste drueckt — eine Liste, die auf Pfeile
-                        // nicht reagiert, wirkt kaputt.
-                        KeyCode::Up if app.view == View::Config => {
-                            app.cfg_selected = app.cfg_selected.saturating_sub(1);
-                        }
-                        KeyCode::Down if app.view == View::Config => {
-                            let last = crate::tui_config::SETTINGS.len().saturating_sub(1);
-                            app.cfg_selected = app.cfg_selected.saturating_add(1).min(last);
-                        }
-                        KeyCode::Up if app.view == View::Capabilities => {
-                            app.cap_selected = app.cap_selected.saturating_sub(1);
-                        }
-                        KeyCode::Down if app.view == View::Capabilities => {
-                            app.cap_selected = app.cap_selected.saturating_add(1);
-                        }
-                        KeyCode::Up => {
-                            if app.view == View::Bench {
-                                bench_move(&mut app, -1);
-                            } else {
-                                app.selected = select_wrap(app.selected, -1, app.agents.len());
-                            }
-                        }
-                        KeyCode::Down => {
-                            if app.view == View::Bench {
-                                bench_move(&mut app, 1);
-                            } else {
-                                app.selected = select_wrap(app.selected, 1, app.agents.len());
-                            }
-                        }
-                        KeyCode::Char('q') => break 'main 0,
-                        // Ansicht umschalten: Worker-Dashboard <-> Benchmark.
-                        // `v` wie „view", plus `<`/`>` als Griff aufs Eck-Symbol
-                        // in der Kopfzeile.
-                        KeyCode::Char('v') | KeyCode::Char('<') | KeyCode::Char('>') => {
-                            app.view = app.view.next();
-                        }
-                        // `w` schaltet die Brain-Kachelansicht um: alle offenen
-                        // Brain-Fenster als Kachelraster auf den Bildschirm,
-                        // nochmal `w` parkt sie wieder off-screen.
-                        KeyCode::Char('w') => {
-                            // Kein Arrange/Park gegeneinander laufen lassen:
-                            // sonst kann ein spaet endender Auto-Thread die eben
-                            // geparkten Fenster wieder auf den Bildschirm holen.
-                            if let Some(thread) = wall_apply_thread.take() {
-                                let _ = thread.join();
-                                wall_apply_pending = false;
-                                let _ = wall_rx.try_recv();
-                            }
-                            wall.toggle();
-                            let discovered = crate::brain_wall::discover_owned();
-                            let signature = crate::brain_wall::window_signature(&discovered);
-                            match crate::brain_wall::apply_wall_checked(wall.on) {
-                                Ok(status) => {
-                                    app.grid_status = status;
-                                    if wall.on {
-                                        wall.mark_arranged(signature);
-                                    } else {
-                                        wall.mark_parked();
-                                    }
-                                }
-                                Err(status) => {
-                                    app.grid_status = status;
-                                    wall_retry_after = std::time::Instant::now()
-                                        + std::time::Duration::from_secs(1);
+                        wall.toggle();
+                        let discovered = crate::brain_wall::discover_owned();
+                        let signature = crate::brain_wall::window_signature(&discovered);
+                        match crate::brain_wall::apply_wall_checked(wall.on) {
+                            Ok(status) => {
+                                app.grid_status = status;
+                                if wall.on {
+                                    wall.mark_arranged(signature);
+                                } else {
+                                    wall.mark_parked();
                                 }
                             }
-                        }
-                        // Faehigkeit schalten. Der Browser-Anteil laeuft im
-                        // Hintergrund-Thread: ein Toggle dauert Sekunden, und
-                        // eine TUI, die dabei einfriert, sieht aus wie ein
-                        // Absturz — heute wissen wir, wie teuer diese
-                        // Verwechslung ist.
-                        // Einstellung weiterschalten. Laeuft im Vordergrund:
-                        // eine Datei schreiben und eine Umgebungsvariable
-                        // setzen dauert Millisekunden — anders als das
-                        // Schalten einer Faehigkeit, das einen Browser fahren
-                        // muss.
-                        KeyCode::Char('t') if app.view == View::Config => {
-                            if let Some(setting) = crate::tui_config::SETTINGS.get(app.cfg_selected) {
-                                app.cfg_status = match crate::tui_config::cycle(setting) {
-                                    Ok(next) => {
-                                        format!("{} = {next} — gilt ab dem naechsten Lauf", setting.key)
-                                    }
-                                    // Ein fehlgeschlagenes Speichern MUSS
-                                    // dastehen: sonst zeigt die Zeile den
-                                    // neuen Wert und die Platte den alten.
-                                    Err(e) => format!("{}: nicht gespeichert — {e}", setting.key),
-                                };
+                            Err(status) => {
+                                app.grid_status = status;
+                                wall_retry_after =
+                                    std::time::Instant::now() + std::time::Duration::from_secs(1);
                             }
                         }
-                        KeyCode::Char('r') if app.view == View::Config => {
-                            if let Some(setting) = crate::tui_config::SETTINGS.get(app.cfg_selected) {
-                                app.cfg_status = match crate::tui_config::reset(setting) {
-                                    Ok(()) => format!(
-                                        "{} zurueckgesetzt — es gilt wieder die Vorgabe",
-                                        setting.key
+                    }
+                    // Faehigkeit schalten. Der Browser-Anteil laeuft im
+                    // Hintergrund-Thread: ein Toggle dauert Sekunden, und
+                    // eine TUI, die dabei einfriert, sieht aus wie ein
+                    // Absturz — heute wissen wir, wie teuer diese
+                    // Verwechslung ist.
+                    // Einstellung weiterschalten. Laeuft im Vordergrund:
+                    // eine Datei schreiben und eine Umgebungsvariable
+                    // setzen dauert Millisekunden — anders als das
+                    // Schalten einer Faehigkeit, das einen Browser fahren
+                    // muss.
+                    KeyCode::Char('t') if app.view == View::Config => {
+                        if let Some(setting) = crate::tui_config::SETTINGS.get(app.cfg_selected) {
+                            app.cfg_status = match crate::tui_config::cycle(setting) {
+                                Ok(next) => {
+                                    format!("{} = {next} — gilt ab dem naechsten Lauf", setting.key)
+                                }
+                                // Ein fehlgeschlagenes Speichern MUSS
+                                // dastehen: sonst zeigt die Zeile den
+                                // neuen Wert und die Platte den alten.
+                                Err(e) => format!("{}: nicht gespeichert — {e}", setting.key),
+                            };
+                        }
+                    }
+                    KeyCode::Char('r') if app.view == View::Config => {
+                        if let Some(setting) = crate::tui_config::SETTINGS.get(app.cfg_selected) {
+                            app.cfg_status = match crate::tui_config::reset(setting) {
+                                Ok(()) => format!(
+                                    "{} zurueckgesetzt — es gilt wieder die Vorgabe",
+                                    setting.key
+                                ),
+                                Err(e) => format!("{}: nicht zurueckgesetzt — {e}", setting.key),
+                            };
+                        }
+                    }
+                    KeyCode::Char('j') if app.view == View::Config => {
+                        let last = crate::tui_config::SETTINGS.len().saturating_sub(1);
+                        app.cfg_selected = app.cfg_selected.saturating_add(1).min(last);
+                    }
+                    KeyCode::Char('k') if app.view == View::Config => {
+                        app.cfg_selected = app.cfg_selected.saturating_sub(1);
+                    }
+                    KeyCode::Char('t') if app.view == View::Capabilities => {
+                        let rows =
+                            crate::tui_state::capability_rows(&crate::capability::levels_all());
+                        match rows.get(app.cap_selected) {
+                            Some(row) if row.is_actionable() => {
+                                let brain = row.brain.clone();
+                                let key = row.key.clone().unwrap_or_default();
+                                app.cap_status = format!("{brain}/{key}: wird geschaltet …");
+                                std::thread::spawn(move || {
+                                    let line = drive_capability(&brain, &key);
+                                    crate::bench_events::emit(
+                                        crate::bench_events::Level::Info,
+                                        Some(&brain),
+                                        &line,
+                                    );
+                                });
+                            }
+                            Some(row) => {
+                                app.cap_status = format!(
+                                    "{}: nicht fahrbar — steht als Quest, nicht als Knopf",
+                                    row.label
+                                );
+                            }
+                            None => {}
+                        }
+                    }
+                    // In der Benchmark-Ansicht springt `g` ans untere Ende
+                    // des frischen Ereignisstroms.
+                    KeyCode::Char('g') if app.view == View::Bench => {
+                        let n = bench_lines(&app).len();
+                        app.bench_bottom(n);
+                    }
+                    // `e` togglet den Bench-Baum: klappt alles mit Detail
+                    // auf, ein zweites Mal klappt alles wieder zu (schneller
+                    // Überblick ueber einen langen Lauf).
+                    KeyCode::Char('e') if app.view == View::Bench => app.bench_toggle_all(),
+                    // Gewinner-Design (qwen, 2026-07-22): Tab wechselt den
+                    // Panel-Fokus, f schaltet den Log-Filter durch.
+                    KeyCode::Tab => app.focus = app.focus.next(),
+                    KeyCode::Char('f') if app.view != View::Session => {
+                        app.log_filter = app.log_filter.next();
+                    }
+                    // Ausklappen: Leertaste schaltet um, Pfeile sind
+                    // gerichtet (mehrfach rechts klappt nicht wieder zu).
+                    // In der Baumansicht gilt das den Ereignis-Knoten,
+                    // sonst den Agenten.
+                    KeyCode::Char(' ') => {
+                        if app.view == View::Bench {
+                            let lines = bench_lines(&app);
+                            if let Some(id) = bench_selected_id(&app, &lines) {
+                                app.bench_toggle(id);
+                            }
+                        } else {
+                            app.toggle_expanded();
+                        }
+                    }
+                    KeyCode::Right => {
+                        if app.view == View::Bench {
+                            bench_toggle_at(&mut app, true);
+                        } else {
+                            app.expand_selected();
+                        }
+                    }
+                    KeyCode::Left => {
+                        if app.view == View::Bench {
+                            bench_toggle_at(&mut app, false);
+                        } else {
+                            app.collapse_selected();
+                        }
+                    }
+                    KeyCode::Char('j') if app.view == View::Session => {
+                        if app.session_selected + 1 < app.session_turns.len() {
+                            app.session_selected += 1;
+                        }
+                    }
+                    KeyCode::Char('k') if app.view == View::Session => {
+                        app.session_selected = app.session_selected.saturating_sub(1);
+                    }
+                    KeyCode::Char('j') if app.view == View::Capabilities => {
+                        app.cap_selected = app.cap_selected.saturating_add(1);
+                    }
+                    KeyCode::Char('k') if app.view == View::Capabilities => {
+                        app.cap_selected = app.cap_selected.saturating_sub(1);
+                    }
+                    KeyCode::Char('j') => {
+                        if app.view == View::Bench {
+                            bench_move(&mut app, 1);
+                        } else {
+                            app.detail_scroll = app.detail_scroll.saturating_add(1);
+                        }
+                    }
+                    KeyCode::Char('k') => {
+                        if app.view == View::Bench {
+                            bench_move(&mut app, -1);
+                        } else {
+                            app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                        }
+                    }
+                    KeyCode::Char('+') => {
+                        app.target_active = (app.target_active + 1).min(candidates.len());
+                        write_control(
+                            &control_path,
+                            &PoolControl {
+                                target_active: Some(app.target_active),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                    KeyCode::Char('-') => {
+                        app.target_active = app.target_active.saturating_sub(1);
+                        write_control(
+                            &control_path,
+                            &PoolControl {
+                                target_active: Some(app.target_active),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                    KeyCode::Char('r') => {
+                        write_control(
+                            &control_path,
+                            &PoolControl {
+                                reflag_all: true,
+                                ..Default::default()
+                            },
+                        );
+                    }
+                    // Kommandozeile: / startet Eingabe fuer /benchmark etc.
+                    KeyCode::Char('/') => {
+                        app.input_mode = InputMode::CommandInput;
+                        app.command_input.clear();
+                        app.command_input.push('/');
+                    }
+                    KeyCode::Enter => {
+                        app.input_mode = InputMode::TaskInput;
+                        task_input.clear();
+                    }
+                    _ => {}
+                },
+                InputMode::TaskInput => match key.code {
+                    KeyCode::Esc => {
+                        app.input_mode = InputMode::Normal;
+                        task_input.clear();
+                    }
+                    KeyCode::Enter => {
+                        if !task_input.is_empty() {
+                            let mut parts = task_input.splitn(2, ' ');
+                            let brain = parts.next().unwrap_or("").trim();
+                            let text = parts.next().unwrap_or("").trim();
+                            if !brain.is_empty()
+                                && !text.is_empty()
+                                && candidates.iter().any(|c| c == brain)
+                            {
+                                match send_task(&root, brain, "tui", text) {
+                                    Ok(()) => crate::bench_events::emit(
+                                        crate::bench_events::Level::Pass,
+                                        Some(brain),
+                                        "Aufgabe in die Inbox gestellt.",
                                     ),
-                                    Err(e) => format!("{}: nicht zurueckgesetzt — {e}", setting.key),
-                                };
+                                    Err(e) => {
+                                        crate::bench_events::emit(
+                                            crate::bench_events::Level::Fail,
+                                            Some(brain),
+                                            &format!("Inbox-Fehler: {e}"),
+                                        );
+                                        // Die Benchmark-Ansicht zeigt den
+                                        // Ereignisstrom unmittelbar sichtbar.
+                                        app.view = View::Bench;
+                                    }
+                                }
                             }
                         }
-                        KeyCode::Char('j') if app.view == View::Config => {
-                            let last = crate::tui_config::SETTINGS.len().saturating_sub(1);
-                            app.cfg_selected = app.cfg_selected.saturating_add(1).min(last);
-                        }
-                        KeyCode::Char('k') if app.view == View::Config => {
-                            app.cfg_selected = app.cfg_selected.saturating_sub(1);
-                        }
-                        KeyCode::Char('t') if app.view == View::Capabilities => {
-                            let rows = crate::tui_state::capability_rows(
-                                &crate::capability::levels_all(),
-                            );
-                            match rows.get(app.cap_selected) {
-                                Some(row) if row.is_actionable() => {
-                                    let brain = row.brain.clone();
-                                    let key = row.key.clone().unwrap_or_default();
-                                    app.cap_status =
-                                        format!("{brain}/{key}: wird geschaltet …");
-                                    std::thread::spawn(move || {
-                                        let line = drive_capability(&brain, &key);
-                                        crate::bench_events::emit(
-                                            crate::bench_events::Level::Info,
-                                            Some(&brain),
-                                            &line,
-                                        );
-                                    });
+                        app.input_mode = InputMode::Normal;
+                        task_input.clear();
+                    }
+                    KeyCode::Backspace => {
+                        task_input.pop();
+                    }
+                    KeyCode::Char(c) => {
+                        task_input.push(c);
+                    }
+                    _ => {}
+                },
+                InputMode::CommandInput => match key.code {
+                    KeyCode::Esc => {
+                        app.input_mode = InputMode::Normal;
+                        app.command_input.clear();
+                    }
+                    KeyCode::Enter => {
+                        let cmd = app.command_input.trim().to_string();
+                        if cmd.starts_with("/benchmark") {
+                            spawn_benchmark_from_tui(&cmd, &candidates);
+                        } else if let Some(parsed) = crate::repl::parse_slash_command(&cmd) {
+                            use crate::repl::commands::SessionSlashEffect;
+                            match crate::repl::commands::session_slash_effect(&parsed) {
+                                SessionSlashEffect::Quit => break 'main 0,
+                                SessionSlashEffect::Dashboard => {
+                                    app.view = View::Workers;
                                 }
-                                Some(row) => {
-                                    app.cap_status = format!(
-                                        "{}: nicht fahrbar — steht als Quest, nicht als Knopf",
-                                        row.label
+                                SessionSlashEffect::NewSession => {
+                                    app.session_turns.clear();
+                                    app.session_folded.clear();
+                                    app.session_selected = 0;
+                                    app.session_follow_disk = false;
+                                    app.session_transcript = None;
+                                    app.session_status = "neue session".to_string();
+                                }
+                                SessionSlashEffect::Status => {
+                                    app.session_status = format!(
+                                        "brain={} turns={}",
+                                        app.session_brain,
+                                        app.session_turns.len()
                                     );
                                 }
-                                None => {}
-                            }
-                        }
-                        // In der Benchmark-Ansicht springt `g` ans untere Ende
-                        // des frischen Ereignisstroms.
-                        KeyCode::Char('g') if app.view == View::Bench => {
-                            let n = bench_lines(&app).len();
-                            app.bench_bottom(n);
-                        }
-                        // `e` togglet den Bench-Baum: klappt alles mit Detail
-                        // auf, ein zweites Mal klappt alles wieder zu (schneller
-                        // Überblick ueber einen langen Lauf).
-                        KeyCode::Char('e') if app.view == View::Bench => app.bench_toggle_all(),
-                        // Gewinner-Design (qwen, 2026-07-22): Tab wechselt den
-                        // Panel-Fokus, f schaltet den Log-Filter durch.
-                        KeyCode::Tab => app.focus = app.focus.next(),
-                        KeyCode::Char('f') => app.log_filter = app.log_filter.next(),
-                        // Ausklappen: Leertaste schaltet um, Pfeile sind
-                        // gerichtet (mehrfach rechts klappt nicht wieder zu).
-                        // In der Baumansicht gilt das den Ereignis-Knoten,
-                        // sonst den Agenten.
-                        KeyCode::Char(' ') => {
-                            if app.view == View::Bench {
-                                let lines = bench_lines(&app);
-                                if let Some(id) = bench_selected_id(&app, &lines) {
-                                    app.bench_toggle(id);
+                                SessionSlashEffect::SwitchBrain(target) => {
+                                    if let Some(b) = target {
+                                        app.session_brain = b;
+                                    }
+                                    app.session_status = format!("model {}", app.session_brain);
                                 }
-                            } else {
-                                app.toggle_expanded();
-                            }
-                        }
-                        KeyCode::Right => {
-                            if app.view == View::Bench {
-                                bench_toggle_at(&mut app, true);
-                            } else {
-                                app.expand_selected();
-                            }
-                        }
-                        KeyCode::Left => {
-                            if app.view == View::Bench {
-                                bench_toggle_at(&mut app, false);
-                            } else {
-                                app.collapse_selected();
-                            }
-                        }
-                        KeyCode::Char('j') if app.view == View::Capabilities => {
-                            app.cap_selected = app.cap_selected.saturating_add(1);
-                        }
-                        KeyCode::Char('k') if app.view == View::Capabilities => {
-                            app.cap_selected = app.cap_selected.saturating_sub(1);
-                        }
-                        KeyCode::Char('j') => {
-                            if app.view == View::Bench {
-                                bench_move(&mut app, 1);
-                            } else {
-                                app.detail_scroll = app.detail_scroll.saturating_add(1);
-                            }
-                        }
-                        KeyCode::Char('k') => {
-                            if app.view == View::Bench {
-                                bench_move(&mut app, -1);
-                            } else {
-                                app.detail_scroll = app.detail_scroll.saturating_sub(1);
-                            }
-                        }
-                        KeyCode::Char('+') => {
-                            app.target_active = (app.target_active + 1).min(candidates.len());
-                            write_control(
-                                &control_path,
-                                &PoolControl {
-                                    target_active: Some(app.target_active),
-                                    ..Default::default()
-                                },
-                            );
-                        }
-                        KeyCode::Char('-') => {
-                            app.target_active = app.target_active.saturating_sub(1);
-                            write_control(
-                                &control_path,
-                                &PoolControl {
-                                    target_active: Some(app.target_active),
-                                    ..Default::default()
-                                },
-                            );
-                        }
-                        KeyCode::Char('r') => {
-                            write_control(
-                                &control_path,
-                                &PoolControl {
-                                    reflag_all: true,
-                                    ..Default::default()
-                                },
-                            );
-                        }
-                        // Kommandozeile: / startet Eingabe fuer /benchmark etc.
-                        KeyCode::Char('/') => {
-                            app.input_mode = InputMode::CommandInput;
-                            app.command_input.clear();
-                            app.command_input.push('/');
-                        }
-                        KeyCode::Enter => {
-                            app.input_mode = InputMode::TaskInput;
-                            task_input.clear();
-                        }
-                        _ => {}
-                    },
-                    InputMode::TaskInput => match key.code {
-                        KeyCode::Esc => {
-                            app.input_mode = InputMode::Normal;
-                            task_input.clear();
-                        }
-                        KeyCode::Enter => {
-                            if !task_input.is_empty() {
-                                let mut parts = task_input.splitn(2, ' ');
-                                let brain = parts.next().unwrap_or("").trim();
-                                let text = parts.next().unwrap_or("").trim();
-                                if !brain.is_empty()
-                                    && !text.is_empty()
-                                    && candidates.iter().any(|c| c == brain)
-                                {
-                                    match send_task(&root, brain, "tui", text) {
-                                        Ok(()) => crate::bench_events::emit(
-                                            crate::bench_events::Level::Pass,
-                                            Some(brain),
-                                            "Aufgabe in die Inbox gestellt.",
-                                        ),
-                                        Err(e) => {
-                                            crate::bench_events::emit(
-                                                crate::bench_events::Level::Fail,
-                                                Some(brain),
-                                                &format!("Inbox-Fehler: {e}"),
+                                SessionSlashEffect::Resume(id) => {
+                                    apply_session_resume(&mut app, id.as_deref());
+                                }
+                                SessionSlashEffect::Evolve(args) => {
+                                    run_evolve(&args, &candidates);
+                                    app.view = View::Bench;
+                                    app.session_status = "evolve".to_string();
+                                }
+                                SessionSlashEffect::Compact => {
+                                    let summary = app
+                                        .session_transcript
+                                        .as_ref()
+                                        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+                                        .or_else(|| {
+                                            crate::transcript::latest_session_run_dir(
+                                                &crate::config::data_dir().join("runs"),
+                                            )
+                                        })
+                                        .map(|d| crate::transcript::compact_run_dir(&d));
+                                    match summary {
+                                        Some(Ok(text)) => {
+                                            app.session_status =
+                                                format!("compact {}c", text.chars().count());
+                                            app.session_turns.push(
+                                                crate::transcript::SessionTurn {
+                                                    kind: crate::transcript::SessionTurnKind::Tool,
+                                                    body: text,
+                                                },
                                             );
-                                            // Die Benchmark-Ansicht zeigt den
-                                            // Ereignisstrom unmittelbar sichtbar.
-                                            app.view = View::Bench;
+                                            crate::transcript::sync_session_folds(
+                                                &app.session_turns,
+                                                &mut app.session_folded,
+                                            );
+                                        }
+                                        Some(Err(e)) => {
+                                            app.session_status = format!("compact: {e}");
+                                        }
+                                        None => {
+                                            app.session_status = "compact: kein run".into();
                                         }
                                     }
                                 }
-                            }
-                            app.input_mode = InputMode::Normal;
-                            task_input.clear();
-                        }
-                        KeyCode::Backspace => {
-                            task_input.pop();
-                        }
-                        KeyCode::Char(c) => {
-                            task_input.push(c);
-                        }
-                        _ => {}
-                    },
-                    InputMode::CommandInput => match key.code {
-                        KeyCode::Esc => {
-                            app.input_mode = InputMode::Normal;
-                            app.command_input.clear();
-                        }
-                        KeyCode::Enter => {
-                            let cmd = app.command_input.trim().to_string();
-                            if cmd.starts_with("/benchmark") {
-                                spawn_benchmark_from_tui(&cmd, &candidates);
-                            } else if let Some(parsed) = crate::repl::parse_slash_command(&cmd) {
-                                use crate::repl::commands::SessionSlashEffect;
-                                match crate::repl::commands::session_slash_effect(&parsed) {
-                                    SessionSlashEffect::Quit => break 'main 0,
-                                    SessionSlashEffect::Dashboard => {
-                                        app.view = View::Workers;
-                                    }
-                                    SessionSlashEffect::NewSession => {
-                                        app.session_turns.clear();
-                                        app.session_status = "neue session".to_string();
-                                    }
-                                    SessionSlashEffect::Status => {
-                                        app.session_status = format!(
-                                            "brain={} turns={}",
-                                            app.session_brain,
-                                            app.session_turns.len()
-                                        );
-                                    }
-                                    SessionSlashEffect::SwitchBrain(target) => {
-                                        if let Some(b) = target {
-                                            app.session_brain = b;
-                                        }
-                                        app.session_status =
-                                            format!("model {}", app.session_brain);
-                                    }
-                                    SessionSlashEffect::Resume(id) => {
-                                        apply_session_resume(&mut app, id.as_deref());
-                                    }
-                                    SessionSlashEffect::Evolve(args) => {
-                                        run_evolve(&args, &candidates);
-                                        app.view = View::Bench;
-                                        app.session_status = "evolve".to_string();
-                                    }
-                                    SessionSlashEffect::Brute(url) => {
-                                        match crate::repl::commands::brute_http_url(&url) {
-                                            Some(u) => {
-                                                app.session_status = format!("brute {u}");
-                                                let code =
-                                                    crate::bin_hooks::run_brute_write(&u, true);
-                                                if code != 0 {
-                                                    app.session_status =
-                                                        format!("brute exit {code}");
-                                                }
-                                            }
-                                            None => {
-                                                app.session_status =
-                                                    "brute: /brute <https://url>".to_string();
+                                SessionSlashEffect::Swarm { prompt, .. } => {
+                                    let cards =
+                                        crate::transcript::session_turns_from_swarm(&prompt, &[]);
+                                    app.session_turns.extend(cards);
+                                    crate::transcript::sync_session_folds(
+                                        &app.session_turns,
+                                        &mut app.session_folded,
+                                    );
+                                    app.session_status = format!("swarm {prompt}");
+                                }
+                                SessionSlashEffect::Brute(url) => {
+                                    match crate::repl::commands::brute_http_url(&url) {
+                                        Some(u) => {
+                                            app.session_status = format!("brute {u}");
+                                            let code = crate::bin_hooks::run_brute_write(&u, true);
+                                            if code != 0 {
+                                                app.session_status = format!("brute exit {code}");
                                             }
                                         }
-                                    }
-                                    SessionSlashEffect::Unhandled => {
-                                        app.session_status = format!("unbekannt: {cmd}");
+                                        None => {
+                                            app.session_status =
+                                                "brute: /brute <https://url>".to_string();
+                                        }
                                     }
                                 }
+                                SessionSlashEffect::Unhandled => {
+                                    app.session_status = format!("unbekannt: {cmd}");
+                                }
                             }
-                            app.input_mode = InputMode::Normal;
-                            app.command_input.clear();
                         }
-                        KeyCode::Backspace => {
-                            app.command_input.pop();
-                        }
-                        KeyCode::Char(c) => {
-                            app.command_input.push(c);
-                        }
-                        _ => {}
-                    },
-                    InputMode::ConfirmQuit => match key.code {
-                        KeyCode::Char('y') | KeyCode::Enter => break 'main 0,
-                        KeyCode::Char('n') | KeyCode::Esc => app.input_mode = InputMode::Normal,
-                        _ => {}
-                    },
-                }
+                        app.input_mode = InputMode::Normal;
+                        app.command_input.clear();
+                    }
+                    KeyCode::Backspace => {
+                        app.command_input.pop();
+                    }
+                    KeyCode::Char(c) => {
+                        app.command_input.push(c);
+                    }
+                    _ => {}
+                },
+                InputMode::ConfirmQuit => match key.code {
+                    KeyCode::Char('y') | KeyCode::Enter => break 'main 0,
+                    KeyCode::Char('n') | KeyCode::Esc => app.input_mode = InputMode::Normal,
+                    _ => {}
+                },
+            }
         }
 
         // Tick (Spinner + gedämpftes Gauge)
@@ -854,6 +951,7 @@ fn run_tui_ratatui(
         if frame_count.is_multiple_of(refresh_ticks.max(1)) || frame_count == 1 {
             app.agents = load_state(false);
             app.selected = app.selected.min(app.agents.len().saturating_sub(1));
+            refresh_session_from_disk(&mut app);
         }
 
         // Ergebnis erst quittieren, wenn das Win32-Anordnen wirklich gelang.
@@ -1168,9 +1266,9 @@ fn drive_capability(brain: &str, key: &str) -> String {
         Ok((before, after)) if before != after => {
             format!("{brain}/{key}: belegt — {before} → {after}")
         }
-        Ok((before, _)) => format!(
-            "{brain}/{key}: geklickt, aber KEIN Zustandswechsel messbar (blieb {before})"
-        ),
+        Ok((before, _)) => {
+            format!("{brain}/{key}: geklickt, aber KEIN Zustandswechsel messbar (blieb {before})")
+        }
         Err(e) => format!("{brain}/{key}: fehlgeschlagen — {e}"),
     }
 }
@@ -1179,73 +1277,6 @@ fn drive_capability(brain: &str, key: &str) -> String {
 #[cfg(not(feature = "webview"))]
 fn drive_capability(brain: &str, key: &str) -> String {
     format!("{brain}/{key}: ohne webview-Feature nicht schaltbar")
-}
-
-/// Schaltet die Brain-Kachelansicht und liefert die Zeile, die in der TUI dazu erscheint.
-///
-/// Rueckmeldung statt stiller Wirkung: die Fenster liegen im Normalfall
-/// off-screen, ein fehlgeschlagenes Anordnen waere sonst nicht von „es gibt
-/// gerade kein offenes Brain-Fenster" zu unterscheiden.
-#[cfg_attr(not(feature = "tui"), allow(dead_code))]
-#[cfg(feature = "webview")]
-#[allow(dead_code)]
-fn toggle_brain_grid(on: bool) -> String {
-    let pool = match crate::browser_pool::BrowserPool::global().lock() {
-        Ok(pool) => pool,
-        Err(_) => return "Kacheln: Browser-Pool nicht erreichbar".to_string(),
-    };
-    let open = pool.open_brains().len();
-    if !on {
-        return match pool.arrange_brain_grid(None) {
-            Ok(_) => {
-                // Im --force-tui-Modus: Terminal-Position NICHT aendern —
-                // die PowerShell-Hilfe hat das Terminal positioniert, und
-                // restore_terminal wuerde den Snapshot loeschen, so dass
-                // Re-Docking beim naechsten w-Druck scheitert.
-                if !crate::brain_grid::is_force_tui() {
-                    let _ = crate::brain_grid::restore_terminal();
-                }
-                format!("Kacheln aus — {open} Fenster geparkt")
-            }
-            Err(e) => format!("Kacheln aus fehlgeschlagen: {e}"),
-        };
-    }
-    if open == 0 {
-        return "Kacheln: kein Brain-Fenster offen".to_string();
-    }
-    // Im --force-tui-Modus: Docking ueberspringen (FindWindowW findet das
-    // falsche Fenster). Die PowerShell-Hilfe hat das Terminal positioniert.
-    if !crate::brain_grid::is_force_tui() {
-        if let Err(e) = crate::brain_grid::dock_terminal_bottom() {
-            return format!("Kacheln: Terminal unten andocken fehlgeschlagen: {e}");
-        }
-    }
-    let area = crate::brain_grid::wall_area();
-    let Some(area) = area else {
-        return "Kacheln: Bildschirmflaeche nicht ermittelbar".to_string();
-    };
-    match pool.arrange_brain_grid(Some(area)) {
-        // Passen nicht alle, wird das benannt statt stillschweigend gekuerzt.
-        // Die Tastenbelegung steht hier und nicht nur in der Legende: Alt+Nummer
-        // ist der einzige Weg in eine Kachel hinein, weil die Kacheln bewusst
-        // nicht anklickbar-aktivierbar sind. Ohne Hinweis wirkt das wie ein
-        // kaputtes Fenster statt wie eine Entscheidung.
-        Ok(tiled) if tiled < open => format!(
-            "Kacheln an — {tiled} von {open} Fenstern gekachelt, {} zu klein und geparkt \
-             · Alt+1…9 Fokus, Esc zurueck",
-            open - tiled
-        ),
-        Ok(tiled) => format!(
-            "Kacheln an — {tiled} Fenster gekachelt · Alt+1…9 Fokus, Esc zurueck"
-        ),
-        Err(e) => format!("Kacheln fehlgeschlagen: {e}"),
-    }
-}
-
-#[cfg_attr(not(feature = "tui"), allow(dead_code))]
-#[cfg(not(feature = "webview"))]
-fn toggle_brain_grid(_on: bool) -> String {
-    "Kacheln: ohne webview-Feature nicht verfuegbar".to_string()
 }
 
 /// Alt+Nummer: Fokus auf eine Kachel holen.
