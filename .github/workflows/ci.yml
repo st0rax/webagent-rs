@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+env:
+  RUSTUP_TOOLCHAIN: stable
+
 jobs:
   test:
     name: build & test

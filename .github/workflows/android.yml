@@ -8,6 +8,9 @@ on:
     branches: [master]
   pull_request:
 
+env:
+  RUSTUP_TOOLCHAIN: stable
+
 jobs:
   aarch64:
     runs-on: ubuntu-latest

@@ -11,6 +11,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+env:
+  RUSTUP_TOOLCHAIN: stable
+
 permissions:
   contents: write
 
