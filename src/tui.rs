@@ -800,12 +800,7 @@ fn run_tui_ratatui(
                                         apply_session_resume(&mut app, id.as_deref());
                                     }
                                     SessionSlashEffect::Evolve(args) => {
-                                        let line = if args.is_empty() {
-                                            "/benchmark".to_string()
-                                        } else {
-                                            format!("/benchmark {args}")
-                                        };
-                                        spawn_benchmark_from_tui(&line, &candidates);
+                                        run_evolve(&args, &candidates);
                                         app.view = View::Bench;
                                         app.session_status = "evolve".to_string();
                                     }
@@ -813,13 +808,12 @@ fn run_tui_ratatui(
                                         match crate::repl::commands::brute_http_url(&url) {
                                             Some(u) => {
                                                 app.session_status = format!("brute {u}");
-                                                let _ = std::process::Command::new(
-                                                    std::env::current_exe().unwrap_or_else(|_| {
-                                                        std::path::PathBuf::from("webagent")
-                                                    }),
-                                                )
-                                                .args(["probe", "--url", &u, "--write"])
-                                                .spawn();
+                                                let code =
+                                                    crate::bin_hooks::run_brute_write(&u, true);
+                                                if code != 0 {
+                                                    app.session_status =
+                                                        format!("brute exit {code}");
+                                                }
                                             }
                                             None => {
                                                 app.session_status =
@@ -973,6 +967,16 @@ fn run_tui_ratatui(
 // ---------------------------------------------------------------------------
 // Benchmark-Spawner (aus der TUI-Kommandozeile via /benchmark)
 // ---------------------------------------------------------------------------
+
+/// `/evolve` und `/benchmark` — dieselbe Pipeline wie die TUI-Kommandozeile.
+pub fn run_evolve(args: &str, candidates: &[String]) {
+    let line = if args.trim().is_empty() {
+        "/benchmark".to_string()
+    } else {
+        format!("/benchmark {args}")
+    };
+    spawn_benchmark_from_tui(&line, candidates);
+}
 
 /// Parst `/benchmark --brains a,b --rounds 5 --loop` und startet den Benchmark
 /// in einem Hintergrund-Thread im GLEICHEN Prozess. Browser bleiben dabei

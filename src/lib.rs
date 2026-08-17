@@ -23,6 +23,7 @@ pub mod oobe;
 pub mod protocol;
 pub mod run_store;
 pub mod shell_policy;
+pub mod bin_hooks;
 pub mod startup;
 pub mod timeouts;
 pub mod transcript;

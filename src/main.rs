@@ -54,6 +54,7 @@ fn main() {
     // Variable beim Start bleibt unangetastet: wer sie setzt, meint es so.
     // Ohne diesen Aufruf waere die Einstellungen-Ansicht eine Attrappe.
     webagent::tui_config::apply_persisted();
+    webagent::bin_hooks::set_probe_fn(cmd_probe);
 
     let cli = Cli::parse();
     // Kein Subcommand -> Session-TUI. REPL bleibt `webagent repl`,
