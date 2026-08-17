@@ -400,6 +400,76 @@ fn dispatch(command: Commands) -> i32 {
             pytest_timeout,
         } => cmd_maintenance_check(json, pytest, pytest_timeout),
 
-        Commands::SyncMaster => cmd_sync_master(),
+        Commands::Goal { command } => cmd_goal(command),
+        Commands::Plan { command } => cmd_plan(command),        Commands::SyncMaster => cmd_sync_master(),
+    }
+}
+
+fn print_goal_plan_result(result: Result<String, String>) -> i32 {
+    match result {
+        Ok(text) => {
+            print!("{text}");
+            0
+        }
+        Err(error) => {
+            eprintln!("Plan-/Ziel-Fehler: {error}");
+            2
+        }
+    }
+}
+
+fn cmd_goal(command: cli::GoalCommands) -> i32 {
+    let data_dir = webagent::config::data_dir();
+    match command {
+        cli::GoalCommands::Create {
+            objective,
+            acceptance,
+            scope,
+        } => print_goal_plan_result(
+            webagent::goal_plan::create_goal(&data_dir, objective, acceptance, scope)
+                .and_then(|goal| webagent::goal_plan::render_json(&goal)),
+        ),
+        cli::GoalCommands::Get { json: _ } => print_goal_plan_result(
+            webagent::goal_plan::active_goal(&data_dir).and_then(|goal| {
+                let value = goal.map_or(serde_json::Value::Null, |goal| {
+                    serde_json::to_value(goal).unwrap_or(serde_json::Value::Null)
+                });
+                webagent::goal_plan::render_json(&value)
+            }),
+        ),
+        cli::GoalCommands::Complete {
+            evidence,
+            reviewer,
+            verdict,
+        } => print_goal_plan_result(
+            webagent::goal_plan::complete_goal(&data_dir, evidence, reviewer, verdict)
+                .and_then(|goal| webagent::goal_plan::render_json(&goal)),
+        ),
+        cli::GoalCommands::Abandon { reason } => print_goal_plan_result(
+            webagent::goal_plan::abandon_goal(&data_dir, reason)
+                .and_then(|goal| webagent::goal_plan::render_json(&goal)),
+        ),
+    }
+}
+
+fn cmd_plan(command: cli::PlanCommands) -> i32 {
+    let data_dir = webagent::config::data_dir();
+    match command {
+        cli::PlanCommands::Create { title, item } => print_goal_plan_result(
+            webagent::goal_plan::create_plan(&data_dir, title, item)
+                .and_then(|plan| webagent::goal_plan::render_json(&plan)),
+        ),
+        cli::PlanCommands::Get { json: _ } => print_goal_plan_result(
+            webagent::goal_plan::active_plan(&data_dir).and_then(|plan| {
+                let value = plan.map_or(serde_json::Value::Null, |plan| {
+                    serde_json::to_value(plan).unwrap_or(serde_json::Value::Null)
+                });
+                webagent::goal_plan::render_json(&value)
+            }),
+        ),
+        cli::PlanCommands::Done { id } => print_goal_plan_result(
+            webagent::goal_plan::complete_plan_item(&data_dir, id)
+                .and_then(|plan| webagent::goal_plan::render_json(&plan)),
+        ),
     }
 }

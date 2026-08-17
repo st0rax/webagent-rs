@@ -169,3 +169,15 @@ als Daten behandelt und in Prompts markiert.
 - `STATUS_LIVE.md`: chronologisches Arbeitsjournal, keine Architekturquelle.
 - `*_PLAN.md`, `*_CONCEPT.md`, `CODE_REVIEW.md`, `CLAUDE_PROPOSALS.md`:
   historische Entwürfe/Reviews; nur explizit belegte Teile gelten als umgesetzt.
+
+## Priorisierte Roadmap
+
+### `/api`: lokale Provider-Bridge fÃ¼r externe AgentenoberflÃ¤chen
+
+**Status:** geplant, hohe PrioritÃ¤t. Die Bridge soll WebAgent als kontrollierten lokalen Provider fÃ¼r externe AgentenoberflÃ¤chen (z. B. pi.dev) verfÃ¼gbar machen. Sie ergÃ¤nzt die Web-Brain-Worker; sie ersetzt weder deren Profile noch die lokalen Sicherheitsgrenzen.
+
+1. Einen versionierten, loopback-gebundenen HTTP-Endpunkt mit tokenbasierter Authentifizierung bereitstellen: Aufgabe einreichen, Laufstatus abfragen, Ereignisse lesen und Lauf abbrechen.
+2. Einen providerneutralen Aufgaben-, Ergebnis- und Ereignisvertrag Ã¼ber `RunStore`/`Transcript` definieren; keine rohe Shell-, Browser- oder Dateisystem-RPC exponieren.
+3. Zuerst **OpenAI** und **Anthropic** als Adapter unterstÃ¼tzen. Credentials ausschlieÃŸlich lokal aus explizit konfigurierten Umgebungsvariablen/Stores lesen; nie in Transcripts, Antworten oder Logs ausgeben.
+4. Jeden extern ausgelÃ¶sten Lauf an einen expliziten Workspace und eine Capability-/Policy-Grenze binden. Der Default bleibt read-only/advisory; schreibende Aktionen benÃ¶tigen einen separat aktivierten lokalen Vertrag.
+5. FÃ¼r pi.dev eine kompakte Provider-Konfiguration und einen Harness-Nachweis liefern: Request -> Run-ID -> Status/Ereignisse -> Ergebnis/Fehler -> Cleanup.

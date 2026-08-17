@@ -182,6 +182,15 @@ impl Bot2BotWorker {
             .join("history.jsonl")
     }
 
+    /// AusschlieÃŸlich fÃ¼r relative Shell-Pfade dieses Workers. Der Ordner liegt
+    /// unter der konfigurierten Bot2bot-Root und nie implizit im Benutzer-Desktop.
+    fn workspace_dir(&self) -> PathBuf {
+        self.bot2bot_root
+            .join("agents")
+            .join(&self.brain_id)
+            .join("workspace")
+    }
+
     /// Noch nicht verarbeitete Tasks: `*.msg.txt` in `inbox/`, nicht in `_read/`,
     /// nicht in `processed[]`.
     fn pending_tasks(&self, state: &WorkerState) -> Vec<(PathBuf, Msg)> {
@@ -273,13 +282,7 @@ impl Bot2BotWorker {
         };
 
         let (status, body) = match &run_result {
-            Ok(meta) => (
-                meta.status.clone(),
-                format!(
-                    "status={} run_id={} cycles={}",
-                    meta.status, meta.run_id, meta.cycles
-                ),
-            ),
+            Ok(meta) => (meta.status.clone(), render_worker_result(meta)),
             Err(e) => (format!("error: {e}"), format!("status=error detail={e}")),
         };
 
@@ -320,8 +323,12 @@ impl Bot2BotWorker {
 
         let backend = WebBrainBackend::from_config(&self.brain_id)?
             .with_profile_override(profile.to_path_buf());
-        let executor = PlatformShellExecutor::new();
+        let workspace = self.workspace_dir();
+        fs::create_dir_all(&workspace)
+            .map_err(|e| format!("Worker-Workspace konnte nicht erstellt werden: {e}"))?;
+        let executor = PlatformShellExecutor::new_in(&workspace);
         let mut controller = AgentController::new(backend, executor, self.max_cycles);
+        controller.set_fresh_chat(true);
         // Inbox tasks MUST always be fresh runs: never pass resume_id.
         // Resuming a prior run (or a mock conversation_ref) can yield a phantom
         // finish with cycles=1 and no browser/file work.
@@ -425,6 +432,42 @@ impl Drop for WorkerProfileGuard {
 }
 
 /// Agent-Namen säubern, damit kein Pfadausbruch über den Empfänger-Namen möglich ist.
+/// Rendert die Worker-Rueckgabe aus den kanonischen Run-Metadaten.
+/// Ein `done` ohne Antworttext bleibt sichtbar, damit ein Koordinator ihn nicht
+/// mit einem fachlich verwertbaren Ergebnis verwechselt.
+/// Liefert den letzten kanonischen Arbeitstext samt Quelle. `answer-*` hat
+/// Vorrang; manche Provider schlieÃŸen jedoch nur mit `finish-*` ab.
+fn final_result_text(meta: &crate::run_store::RunMeta) -> Option<(&'static str, &str)> {
+    [("answer", "answer-"), ("finish", "finish-"), ("final", "final-"), ("review", "review-"), ("review", "eval-")]
+        .into_iter()
+        .find_map(|(source, prefix)| {
+            meta.completed_actions
+                .iter()
+                .filter(|(key, value)| key.starts_with(prefix) && !value.trim().is_empty())
+                .max_by_key(|(key, _)| key.as_str())
+                .map(|(_, value)| (source, value.trim()))
+        })
+}
+
+/// Rendert die Worker-Rueckgabe aus den kanonischen Run-Metadaten.
+/// Ein `done` ohne Ergebnistext bleibt sichtbar, damit ein Koordinator ihn nicht
+/// mit einem fachlich verwertbaren Ergebnis verwechselt.
+fn render_worker_result(meta: &crate::run_store::RunMeta) -> String {
+    let result = final_result_text(meta);
+    let mut body = format!(
+        "status={} run_id={} cycles={}\nanswer_present={}",
+        meta.status,
+        meta.run_id,
+        meta.cycles,
+        result.is_some(),
+    );
+    if let Some((source, result)) = result {
+        body.push_str(&format!("\nresult_source={source}\n\nresult:\n"));
+        body.push_str(result);
+    }
+    body
+}
+
 fn sanitize(s: &str) -> String {
     s.chars()
         .map(|c| {
@@ -552,6 +595,136 @@ mod tests {
         assert!(hist.contains("status=done run_id=x cycles=3"));
     }
 
+    #[test]
+    fn worker_workspace_is_namespaced_by_brain() {
+        let root = tmp_root();
+        let worker = Bot2BotWorker::new("deepseek".into(), root.clone(), 30, true, 5, true);
+        assert_eq!(
+            worker.workspace_dir(),
+            root.join("agents").join("deepseek").join("workspace")
+        );
+    }
+    #[test]
+    fn render_worker_result_carries_latest_answer() {
+        let mut meta = crate::run_store::RunMeta {
+            run_id: "run-1".into(),
+            brain_id: "deepseek".into(),
+            task: "advisory".into(),
+            created_at: "t".into(),
+            status: "done".into(),
+            cycles: 2,
+            conversation_ref: None,
+            completed_actions: std::collections::HashMap::new(),
+            extra: std::collections::HashMap::new(),
+        };
+        meta.completed_actions.insert("answer-1".into(), "erste Antwort".into());
+        meta.completed_actions.insert("answer-2".into(), "letzte Antwort".into());
+
+        let body = render_worker_result(&meta);
+        assert!(body.contains("status=done run_id=run-1 cycles=2"));
+        assert!(body.contains("answer_present=true"));
+        assert!(body.contains("result_source=answer"));
+        assert!(body.ends_with("result:\nletzte Antwort"));
+    }
+
+    #[test]
+    fn render_worker_result_falls_back_to_finish_text() {
+        let mut meta = crate::run_store::RunMeta {
+            run_id: "run-3".into(),
+            brain_id: "deepseek".into(),
+            task: "advisory".into(),
+            created_at: "t".into(),
+            status: "done".into(),
+            cycles: 1,
+            conversation_ref: None,
+            completed_actions: std::collections::HashMap::new(),
+            extra: std::collections::HashMap::new(),
+        };
+        meta.completed_actions.insert("finish-safety-rules".into(), "belegtes Ergebnis".into());
+
+        let body = render_worker_result(&meta);
+        assert!(body.contains("answer_present=true"));
+        assert!(body.contains("result_source=finish"));
+        assert!(body.ends_with("result:\nbelegtes Ergebnis"));
+    }
+    #[test]
+    fn render_worker_result_carries_final_text() {
+        let mut meta = crate::run_store::RunMeta {
+            run_id: "run-3".into(),
+            brain_id: "deepseek".into(),
+            task: "advisory".into(),
+            created_at: "t".into(),
+            status: "done".into(),
+            cycles: 1,
+            conversation_ref: None,
+            completed_actions: std::collections::HashMap::new(),
+            extra: std::collections::HashMap::new(),
+        };
+        meta.completed_actions.insert("final-safety-rules".into(), "finales Ergebnis".into());
+
+        let body = render_worker_result(&meta);
+        assert!(body.contains("answer_present=true"));
+        assert!(body.contains("result_source=final"));
+        assert!(body.ends_with("result:\nfinales Ergebnis"));
+    }
+    #[test]
+    fn render_worker_result_carries_review_text() {
+        let mut meta = crate::run_store::RunMeta {
+            run_id: "review-1".into(),
+            brain_id: "chatgpt".into(),
+            task: "review".into(),
+            created_at: "t".into(),
+            status: "done".into(),
+            cycles: 1,
+            conversation_ref: None,
+            completed_actions: std::collections::HashMap::new(),
+            extra: std::collections::HashMap::new(),
+        };
+        meta.completed_actions.insert("review-1".into(), "VERDICT: PASS".into());
+
+        let body = render_worker_result(&meta);
+        assert!(body.contains("answer_present=true"));
+        assert!(body.contains("result_source=review"));
+        assert!(body.ends_with("result:\nVERDICT: PASS"));
+    }
+    #[test]
+    fn render_worker_result_maps_eval_to_review() {
+        let mut meta = crate::run_store::RunMeta {
+            run_id: "eval-1".into(),
+            brain_id: "chatgpt".into(),
+            task: "review".into(),
+            created_at: "t".into(),
+            status: "done".into(),
+            cycles: 1,
+            conversation_ref: None,
+            completed_actions: std::collections::HashMap::new(),
+            extra: std::collections::HashMap::new(),
+        };
+        meta.completed_actions.insert("eval-1".into(), "VERDICT: PASS".into());
+
+        let body = render_worker_result(&meta);
+        assert!(body.contains("answer_present=true"));
+        assert!(body.contains("result_source=review"));
+        assert!(body.ends_with("result:\nVERDICT: PASS"));
+    }
+    #[test]
+    fn render_worker_result_marks_missing_answer_explicitly() {
+        let meta = crate::run_store::RunMeta {
+            run_id: "run-2".into(),
+            brain_id: "gemini".into(),
+            task: "advisory".into(),
+            created_at: "t".into(),
+            status: "done".into(),
+            cycles: 1,
+            conversation_ref: None,
+            completed_actions: std::collections::HashMap::new(),
+            extra: std::collections::HashMap::new(),
+        };
+
+        let body = render_worker_result(&meta);
+        assert!(body.contains("answer_present=false"));
+        assert!(!body.contains("result:\n"));
+    }
     #[test]
     fn lineage_roundtrip_is_preserved() {
         let msg = Msg::parse(SAMPLE).unwrap();

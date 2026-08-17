@@ -691,9 +691,57 @@ pub enum Commands {
     /// uebrig geblieben ist.
     #[command(name = "sync-master")]
     SyncMaster,
+
+    /// Versionierten Zielvertrag lokal verwalten.
+    Goal {
+        #[command(subcommand)]
+        command: GoalCommands,
+    },
+
+    /// Aktive Arbeitsscheiben des lokalen Zielvertrags verwalten.
+    Plan {
+        #[command(subcommand)]
+        command: PlanCommands,
+    },
+
 }
 
 /// Argumente des `autoresearch`-Subcommands (Spec: docs/AUTORESEARCH_PLAN.md §6).
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum GoalCommands {
+    Create {
+        #[arg(long)]
+        objective: String,
+        #[arg(long = "acceptance", required = true)]
+        acceptance: Vec<String>,
+        #[arg(long = "scope")]
+        scope: Vec<String>,
+    },
+    Get { #[arg(long)] json: bool },
+    Complete {
+        #[arg(long = "evidence", required = true)]
+        evidence: Vec<String>,
+        #[arg(long)]
+        reviewer: String,
+        #[arg(long)]
+        verdict: String,
+    },
+    Abandon { #[arg(long)] reason: String },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum PlanCommands {
+    Create {
+        #[arg(long)]
+        title: String,
+        #[arg(long = "item", required = true)]
+        item: Vec<String>,
+    },
+    Get { #[arg(long)] json: bool },
+    Done { #[arg(long)] id: u32 },
+}
+
 #[derive(Args)]
 pub struct AutoresearchArgs {
     /// Brain-Backend (z.B. chatgpt, claude, deepseek)

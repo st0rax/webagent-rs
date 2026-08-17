@@ -117,6 +117,7 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// Expliziter Workspace fuer native Edit/Write-Actions. Ohne Override
     /// bleibt das historische Verhalten (naechster Git-Root ab Prozess-CWD).
     workspace_root: Option<std::path::PathBuf>,
+    fresh_chat: bool,
 }
 
 impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
@@ -193,11 +194,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             progress: None,
             quiet: false,
             workspace_root: None,
+            fresh_chat: false,
         }
     }
 
     /// Bindet native Datei-Aktionen an denselben Workspace, den der Aufrufer
     /// fuer Git-Messung, Build und Tests verwendet.
+    pub fn set_fresh_chat(&mut self, fresh: bool) {
+        self.fresh_chat = fresh;
+    }
+
     pub fn set_workspace_root(&mut self, root: impl Into<std::path::PathBuf>) {
         self.workspace_root = Some(root.into());
     }
@@ -1156,6 +1162,24 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             })?;
         }
         self.executor.start();
+
+        if self.fresh_chat {
+            crate::bench_events::emit(
+                crate::bench_events::Level::Progress,
+                Some(brain_id),
+                "Browser: frischer Chat wird erstellt",
+            );
+            self.brain.new_chat().inspect_err(|e| {
+                meta.status = "failed".to_string();
+                meta.extra.insert(
+                    "error_type".to_string(),
+                    serde_json::Value::String("FreshChatError".to_string()),
+                );
+                meta.extra
+                    .insert("error".to_string(), serde_json::Value::String(e.clone()));
+                self.run_store.save(&meta).ok();
+            })?;
+        }
 
         let ready_timeout =
             crate::timeouts::resolve_timeout("ensure_ready", self.brain.brain_id(), "", None);
@@ -2738,5 +2762,21 @@ mod tests {
 
         assert_eq!(meta.status, "done");
         assert_eq!(controller.brain().sent_message_count(), 2);
+    }
+    #[test]
+    fn fresh_chat_is_created_before_worker_task() {
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let new_chat_calls = brain.new_chat_calls.clone();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, unique_data_dir());
+        controller.set_fresh_chat(true);
+
+        let _meta = controller.run("finish the isolated task", "mock", None, false).unwrap();
+
+        assert!(
+            *new_chat_calls.borrow() >= 1,
+            "expected a fresh chat before task dispatch, calls={}",
+            *new_chat_calls.borrow()
+        );
     }
 }

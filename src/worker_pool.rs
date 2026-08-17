@@ -50,6 +50,8 @@ pub struct WorkerPool {
     state_path: PathBuf,
     control_path: PathBuf,
     children: HashMap<String, Child>,
+    /// Ende der begrenzten Anlaufzeit je frisch gestartetem Worker.
+    startup_grace_until: HashMap<String, SystemTime>,
     /// Laufende BLOCK-Failover pro Brain (Cooldown + Restore-Buchhaltung).
     failover: HashMap<String, FailoverRecord>,
 }
@@ -71,6 +73,7 @@ impl WorkerPool {
             state_path,
             control_path,
             children: HashMap::new(),
+            startup_grace_until: HashMap::new(),
             failover: HashMap::new(),
         }
     }
@@ -81,6 +84,33 @@ impl WorkerPool {
     ///
     /// Wird sowohl beim geordneten Herunterfahren als auch aus `Drop` gerufen,
     /// damit kein Weg am Aufräumen vorbeiführt.
+    /// Ein Browserprozess braucht nach dem Spawn mehrere Poll-Intervalle bis
+    /// zum ersten Heartbeat. Die Grace verhindert nur einen falschen
+    /// `stale`-Failover waehrend dieses Fensters; ein offener Circuit-Breaker
+    /// bleibt weiterhin ein sofortiges Block-Signal.
+    fn startup_grace(poll_secs: u64) -> Duration {
+        Duration::from_secs(poll_secs.saturating_mul(3).clamp(30, 120))
+    }
+
+    fn heartbeat_age_during_startup(
+        startup_grace_until: Option<&SystemTime>,
+        now: SystemTime,
+        heartbeat_age: Duration,
+    ) -> Duration {
+        if startup_grace_until.is_some_and(|until| *until > now) {
+            Duration::ZERO
+        } else {
+            heartbeat_age
+        }
+    }
+
+    fn mark_worker_spawned(&mut self, brain: &str) {
+        self.startup_grace_until.insert(
+            brain.to_string(),
+            SystemTime::now() + Self::startup_grace(self.poll_secs),
+        );
+    }
+
     pub fn kill_all_children(&mut self) -> usize {
         let mut n = 0;
         for (brain, mut child) in self.children.drain() {
@@ -251,6 +281,17 @@ impl WorkerPool {
             None => Vec::new(),
         };
 
+        let running_ages: Vec<(String, Duration)> = running_ages
+            .into_iter()
+            .map(|(brain, age)| {
+                let effective_age = Self::heartbeat_age_during_startup(
+                    self.startup_grace_until.get(&brain),
+                    SystemTime::now(),
+                    age,
+                );
+                (brain, effective_age)
+            })
+            .collect();
         let blocked = detect_blocked(&running_ages, &snaps, stale);
 
         let running_pids: HashMap<String, u32> = self
@@ -281,6 +322,8 @@ impl WorkerPool {
         // 2) Cooldown/Restore: abgelaufene Failover wiederherstellen. Der Closure
         //    spawned den frischen Worker real und liefert dessen Erfolg zurueck
         //    (bestimmt das Retry/Retire-Verhalten).
+        let startup_grace = Self::startup_grace(self.poll_secs);
+        let startup_grace_until = &mut self.startup_grace_until;
         let restore_actions = compute_restore(
             now,
             &mut self.failover,
@@ -289,6 +332,7 @@ impl WorkerPool {
             |brain| match Self::spawn_worker(brain, self.poll_secs, self.headless) {
                 Ok(child) => {
                     self.children.insert(brain.to_string(), child);
+                    startup_grace_until.insert(brain.to_string(), SystemTime::now() + startup_grace);
                     true
                 }
                 Err(_) => false,
@@ -300,6 +344,7 @@ impl WorkerPool {
             match Self::spawn_worker(b, self.poll_secs, self.headless) {
                 Ok(child) => {
                     self.children.insert(b.clone(), child);
+                    self.mark_worker_spawned(b);
                 }
                 Err(e) => {
                     state.set(b, STATUS_UNAVAILABLE, &format!("spawn failed: {e}"));
@@ -538,5 +583,30 @@ mod tests {
         );
         assert_eq!(pool.kill_all_children(), 0);
         assert_eq!(pool.kill_all_children(), 0, "zweiter Aufruf bleibt harmlos");
+    }
+
+    #[test]
+    fn startup_grace_masks_only_the_missing_first_heartbeat() {
+        let now = SystemTime::now();
+        let stale = Duration::from_secs(120);
+
+        assert_eq!(
+            WorkerPool::heartbeat_age_during_startup(
+                Some(&(now + Duration::from_secs(1))),
+                now,
+                stale,
+            ),
+            Duration::ZERO,
+        );
+        assert_eq!(
+            WorkerPool::heartbeat_age_during_startup(Some(&now), now, stale),
+            stale,
+        );
+    }
+
+    #[test]
+    fn startup_grace_is_bounded_for_fast_and_slow_polls() {
+        assert_eq!(WorkerPool::startup_grace(5), Duration::from_secs(30));
+        assert_eq!(WorkerPool::startup_grace(90), Duration::from_secs(120));
     }
 }

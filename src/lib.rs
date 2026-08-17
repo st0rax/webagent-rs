@@ -45,6 +45,7 @@ pub mod canary;
 pub mod capability;
 pub mod capability_proof;
 pub mod controller;
+pub mod goal_plan;
 pub mod counting;
 pub mod knockout;
 pub mod prompts;
