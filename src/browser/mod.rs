@@ -991,4 +991,26 @@ mod tests {
             "Nachrichtenlimit erreicht. Ihr Limit wird in 9 Minuten zurückgesetzt."
         ));
     }
+
+    #[test]
+    fn identifier_dump_is_not_a_provider_banner() {
+        // Lauf 17.08.2026, perplexity: der Seitenscan schnitt Identifier
+        // um `is_cloudflare_blocked` aus und sperrte das Brain 6 h.
+        let dump = "ntion, is_clean, is_cloudflare_blocked, is_decided, \
+                    is_empty, is_expanded, is_external_block, is_improvement, \
+                    is_limit_response_text, is_log";
+        assert!(blocking::is_technical_block_phrase_list(dump));
+        assert_eq!(block_phrase_in_text(dump), None);
+    }
+
+    #[test]
+    fn rate_limiting_title_is_not_a_rate_limit_banner() {
+        // Lauf 17.08.2026, qwen: Vorschlagstitel "Rate Limiting Enhancements"
+        // enthielt `rate limit` als Teilstring.
+        let title = "at Brain Safety and Rate Limiting Enhancements Rust \
+                     Webagent Projektverbesserungen Timeout-Gate \
+                     Implementierung in brain.rs";
+        assert!(blocking::is_technical_block_phrase_list(title));
+        assert_eq!(block_phrase_in_text(title), None);
+    }
 }

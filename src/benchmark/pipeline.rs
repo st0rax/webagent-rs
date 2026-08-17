@@ -12,7 +12,7 @@ use crate::code_score::CodeEvent;
 
 use super::git::{
     build_no_change_prompt, build_repair_prompt, capture_patch, reset_repo, run_eval_detail,
-    tree_changed,
+    tree_changed, ChangeVerdict,
 };
 use super::handoff::HandoffQueue;
 use super::harvest::{harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope};
@@ -75,7 +75,8 @@ const MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS: usize = 2;
 const OUTAGE_COOLDOWN_SECS: u64 = 300;
 
 /// Ein Brain baut die Aufgabe über den normalen Controller-Pfad (mit Wall-Timeout
-/// und grosszuegigem Cycle-Circuit-Breaker). Liefert `(status, cycles)`.
+/// und grosszuegigem Cycle-Circuit-Breaker). Liefert
+/// `(status, cycles, run_id, file_writes_ok)`.
 #[cfg(feature = "webview")]
 fn bench_run(
     brain_id: &str,
@@ -85,7 +86,7 @@ fn bench_run(
     headless: bool,
     note: Option<crate::StageNote>,
     verbose: bool,
-) -> Result<(String, u32, String), String> {
+) -> Result<(String, u32, String, u32), String> {
     use crate::browser::WebBrainBackend;
     use crate::controller::{AgentController, RunOptions};
     use crate::executor::PlatformShellExecutor;
@@ -114,7 +115,12 @@ fn bench_run(
     } else {
         controller.run_with_options(task, brain_id, None, headless, options)?
     };
-    Ok((meta.status, meta.cycles, meta.run_id))
+    let writes_ok = meta
+        .extra
+        .get("file_writes_ok")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    Ok((meta.status, meta.cycles, meta.run_id, writes_ok))
 }
 
 #[cfg(not(feature = "webview"))]
@@ -126,7 +132,7 @@ fn bench_run(
     _headless: bool,
     _note: Option<crate::StageNote>,
     _verbose: bool,
-) -> Result<(String, u32, String), String> {
+) -> Result<(String, u32, String, u32), String> {
     Err("webview-Feature nicht aktiv — kein Brain-Backend verfügbar".to_string())
 }
 
@@ -696,6 +702,7 @@ where
                     "{brain} Iteration {iter}/{max_iter}: Brain baut"
                 ));
                 let mut terminal_status: Option<String> = None;
+                let mut writes_ok = 0u32;
                 match bench_run(
                     brain,
                     &attempt_task,
@@ -705,11 +712,12 @@ where
                     Some(t.note_handle()),
                     config.verbose,
                 ) {
-                    Ok((status, c, continued_run_id)) => {
+                    Ok((status, c, continued_run_id, w)) => {
                         // `continue_run` liefert kumulative Zyklen derselben
                         // Agent-Session. Nicht über Iterationen doppelt zählen.
                         cycles = c;
                         run_id = Some(continued_run_id);
+                        writes_ok = w;
                         if is_external_block(&status) {
                             unavailable = true;
                             t.finish("Brain nicht verfuegbar (extern)");
@@ -734,7 +742,46 @@ where
                     }
                 }
 
-                did_change = tree_changed(&config.workdir);
+                let tree_dirty = tree_changed(&config.workdir);
+                let mut verdict = ChangeVerdict::from_signals(tree_dirty, writes_ok);
+                // Letzter Versuch: wenn der Executor Edits zaehlt, der Tree
+                // aber leer wirkt, kann `git add -A` den Diff noch heben
+                // (index.lock / assume-unchanged). Ein nichtleerer Patch
+                // macht aus dem Messfehler eine echte Aenderung.
+                if matches!(verdict, ChangeVerdict::WritesWithoutTree) {
+                    match capture_patch(&config.workdir) {
+                        Ok(patch) if !patch.trim().is_empty() => {
+                            verdict = ChangeVerdict::TreeDirty;
+                            bench_say!(
+                                crate::bench_events::Level::Warn,
+                                Some(brain),
+                                "{brain}: {writes_ok} Edit(s) belegt, porcelain war leer — Diff nach `git add -A` gefunden."
+                            );
+                        }
+                        Ok(_) | Err(_) => {
+                            bench_say!(
+                                crate::bench_events::Level::Fail,
+                                Some(brain),
+                                "{brain}: MESSFEHLER — {writes_ok} erfolgreiche Edit/Write, Tree leer \
+                                 (workdir={}, HEAD={}, baseline={}). Kein Nichtstun, keine Ernte.",
+                                config.workdir.display(),
+                                crate::char_prefix(
+                                    &crate::autoresearch::git_head_sha(&config.workdir)
+                                        .unwrap_or_else(|e| format!("<unlesbar: {e}>")),
+                                    12
+                                ),
+                                crate::char_prefix(&baseline, 12)
+                            );
+                            last_gate_failure = Some(format!(
+                                "Messfehler bei {brain}: {writes_ok} Edit(s) ohne Tree-Diff."
+                            ));
+                            did_change = true;
+                            stalled = false;
+                            break;
+                        }
+                    }
+                }
+                did_change = verdict.did_change();
                 if let Some(status) = terminal_status {
                     if super::terminal_status_blocks_evaluation(&status, did_change) {
                         stalled = true;

@@ -2530,3 +2530,25 @@ Beginn des Harnessings beendet - der Schwarm erntet jetzt.
 3. Stand:
    - 1035 Tests grün, Clippy sauber (-D warnings), Binary frisch gebaut.
 
+
+## 17.08. 05:25 - grok - Engpaesse Banner-False-Positive + did_change
+
+Lauf 05:09 (9 Brains, 1 Runde): perplexity und qwen haben Vorschlaege geliefert
+und wurden trotzdem 6 h gesperrt. Gemini bleibt unangetastet.
+
+1. Banner/Breaker nur noch an Wortgrenzen.
+   - `contains_at_word_boundary` in circuit_breaker.rs, genutzt von
+     `is_hard_block`, `is_message_limit_block`, `block_phrase_in_text`.
+   - JS-Scan (`block_banner_expr`) matcht dieselben Grenzen; Identifier
+     (`is_cloudflare_blocked`) und Titel (`Rate Limiting`) sind kein Banner.
+   - `is_technical_block_phrase_list` faengt eingebettete Phrasen ohne
+     Wortgrenze. Live-Gruende vom heutigen Lauf als Tests.
+
+2. `did_change` hoert auf den Executor.
+   - `ChangeVerdict`: TreeDirty / WritesWithoutTree / Unchanged.
+   - `file_writes_ok` kommt aus Run-Meta zurueck nach pipeline.rs.
+   - Edit ok + leerer Tree = Messfehler (laut, keine Ernte, kein
+     Nichtstun-Stall). Wenn `git add -A` den Diff noch hebt, zaehlt er.
+
+3. Breaker perplexity + qwen geraeumt (gemini und das echte mistral-Nachrichtenlimit bleiben).
+   1045 lib-Tests gruen, clippy --all-targets -D warnings sauber.

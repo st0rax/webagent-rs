@@ -7,6 +7,7 @@
 //! Tests in `mod.rs` und externe Aufrufer greifen ueber die Re-Exports aus
 //! `mod.rs` zu.
 
+use crate::circuit_breaker::contains_at_word_boundary;
 use crate::observer::{is_limit_response_text, is_transient_response_text};
 use crate::protocol::is_possibly_truncated;
 
@@ -152,20 +153,32 @@ pub(crate) fn block_phrase_in_text(text: &str) -> Option<&'static str> {
         // normaler Begriff. Echte Challenges werden bereits durch die beiden
         // spezifischen Phrasen sowie den separaten Seiten-/URL-Check erkannt.
         .filter(|phrase| *phrase != "cloudflare")
-        .find(|phrase| low.contains(phrase))
+        .find(|phrase| contains_at_word_boundary(&low, phrase))
 }
 
 /// Erkennt kurze technische Kategorienlisten aus Code/Diagnostik, die der
 /// Ganzseiten-Scan als vermeintlichen Provider-Banner ausschneiden kann.
+///
+/// Ausser Slash-Listen auch der Fall vom 17.08.2026: der Scan schneidet
+/// Identifier (`is_cloudflare_blocked`) oder einen Vorschlagstitel
+/// (`Rate Limiting`) aus. Die Phrase steckt dann nur als Wortbestandteil
+/// drin, nie als eigenes Wort.
 pub(crate) fn is_technical_block_phrase_list(text: &str) -> bool {
     let low = text.to_lowercase();
-    low.contains('/')
-        && BLOCK_PHRASES
-            .iter()
-            .filter(|phrase| low.contains(**phrase))
-            .take(2)
-            .count()
-            >= 2
+    let substring_hits: Vec<&str> = BLOCK_PHRASES
+        .iter()
+        .copied()
+        .filter(|phrase| low.contains(*phrase))
+        .collect();
+    if substring_hits.is_empty() {
+        return false;
+    }
+    if low.contains('/') && substring_hits.len() >= 2 {
+        return true;
+    }
+    !substring_hits
+        .iter()
+        .any(|phrase| contains_at_word_boundary(&low, phrase))
 }
 
 /// Baut das JS der Block-Banner-Suche. Geteilt zwischen Implementierung und
@@ -181,7 +194,9 @@ pub(crate) fn block_banner_expr() -> String {
 var b=(document.body?document.body.innerText:'').replace(/\s+/g,' ');
 var low=b.toLowerCase();
 var pats=[{pats_js}];
-for(var i=0;i<pats.length;i++){{var k=low.indexOf(pats[i]);if(k>=0){{return b.slice(Math.max(0,k-20),k+120);}}}}
+function ident(c){{return /[0-9_]/.test(c)||c.toLowerCase()!==c.toUpperCase();}}
+function atBound(s,i,n){{var before=i===0||!ident(s.charAt(i-1));var after=i+n>=s.length||!ident(s.charAt(i+n));return before&&after;}}
+for(var i=0;i<pats.length;i++){{var p=pats[i];var k=0;while((k=low.indexOf(p,k))>=0){{if(atBound(low,k,p.length)){{return b.slice(Math.max(0,k-20),k+120);}}k+=1;}}}}
 return null;}})()"#
     )
 }

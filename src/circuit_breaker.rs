@@ -203,16 +203,24 @@ pub fn record_failure(brain_id: &str, reason: &str) {
 ///
 /// # Vorsicht: die Einstufung haengt am Wortlaut
 ///
-/// Entschieden wird per Teilstring-Suche. Jede Meldung, in der „login"
-/// vorkommt, wird damit zur harten Sperre — auch eine, die nur ERKLAERT, dass
-/// ein Anmelde-Nachweis fehlt. Am 07.08.2026 hat das alle acht Brains sechs
-/// Stunden lang aus dem Feld genommen, obwohl jedes angemeldet war.
+/// Entschieden wird an Wortgrenzen, nicht per beliebiger Teilstring-Suche.
+/// Am 07.08.2026 hat „login" in einer Erklaerung alle acht Brains sechs
+/// Stunden gesperrt, obwohl jedes angemeldet war. Am 17.08.2026 haben
+/// Identifier (`is_cloudflare_blocked`) und Vorschlagstitel (`Rate Limiting`)
+/// Perplexity und Qwen sofort fuer 6 h aus dem Feld genommen — beides war
+/// kein Anbieter-Banner.
 ///
 /// Wer hier eine Meldung formuliert, entscheidet also ueber sechs Stunden
-/// Sperre. Die Tests unten halten die beiden Faelle auseinander, die sich am
+/// Sperre. Die Tests unten halten die Faelle auseinander, die sich am
 /// leichtesten verwechseln lassen.
 pub(crate) fn is_hard_block(reason: &str) -> bool {
     let low = reason.to_lowercase();
+    // Klassifizierter Relay-Grund: `session_state=LoginRequired` ist ein
+    // Identifier, kein Wort „login". Ohne diesen Treffer faellt der belegte
+    // Anmelde-Fall durch die Wortgrenze.
+    if low.contains("loginrequired") {
+        return true;
+    }
     [
         "login",
         "quota",
@@ -225,7 +233,44 @@ pub(crate) fn is_hard_block(reason: &str) -> bool {
         "blocked",
     ]
     .iter()
-    .any(|p| low.contains(p))
+    .any(|p| contains_at_word_boundary(&low, p))
+}
+
+/// `true`, wenn `needle` in `haystack` als eigenes Wort vorkommt.
+///
+/// Identifier-Zeichen (`_`, Buchstabe, Ziffer) zaehlen nicht als Grenze:
+/// `rate limit` trifft nicht `Rate Limiting`, `blocked` nicht
+/// `is_cloudflare_blocked`. Geteilt mit der Banner-Erkennung.
+pub(crate) fn contains_at_word_boundary(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() || haystack.is_empty() {
+        return false;
+    }
+    let mut from = 0;
+    while let Some(rel) = haystack[from..].find(needle) {
+        let start = from + rel;
+        let end = start + needle.len();
+        let before_ok = start == 0
+            || !haystack[..start]
+                .chars()
+                .next_back()
+                .is_some_and(is_ident_char);
+        let after_ok = end == haystack.len()
+            || !haystack[end..].chars().next().is_some_and(is_ident_char);
+        if before_ok && after_ok {
+            return true;
+        }
+        let step = needle
+            .chars()
+            .next()
+            .map(|c| c.len_utf8())
+            .unwrap_or(1);
+        from = start + step;
+    }
+    false
+}
+
+fn is_ident_char(c: char) -> bool {
+    c == '_' || c.is_alphanumeric()
 }
 
 /// Spezifisch: ein erschoepftes NACHrichtenlimit (nicht jedes "limit").
@@ -247,7 +292,7 @@ fn is_message_limit_block(reason: &str) -> bool {
         "usage limit",
     ]
     .iter()
-    .any(|p| low.contains(p))
+    .any(|p| contains_at_word_boundary(&low, p))
 }
 
 /// Stundenzahl bis zum Reset, wenn die Meldung eines explizit nennt.
@@ -729,6 +774,39 @@ mod tests {
         for r in ["timeout_no_text", "protocol_error", "wall_timeout", ""] {
             assert!(!is_hard_block(r), "faelschlich als harte Sperre: {r}");
         }
+    }
+
+    #[test]
+    fn wortgrenze_unterscheidet_identifier_von_banner() {
+        assert!(contains_at_word_boundary("rate limit exceeded", "rate limit"));
+        assert!(!contains_at_word_boundary("rate limiting enhancements", "rate limit"));
+        assert!(contains_at_word_boundary("cloudflare challenge", "cloudflare"));
+        assert!(!contains_at_word_boundary("is_cloudflare_blocked", "cloudflare"));
+        assert!(!contains_at_word_boundary("is_cloudflare_blocked", "blocked"));
+        assert!(contains_at_word_boundary("blocked: reserve promoted", "blocked"));
+    }
+
+    #[test]
+    fn identifier_und_vorschlagstitel_sperren_nicht_hart() {
+        // Lauf 17.08.2026, Phase Sammeln: der Banner-Scan schnitt Identifier
+        // bzw. einen Vorschlagstitel aus der Seite und der Breaker machte
+        // daraus eine 6-Stunden-Sperre.
+        assert!(
+            !is_hard_block(
+                "blockiert: ntion, is_clean, is_cloudflare_blocked, is_decided, \
+                 is_empty, is_expanded, is_external_block, is_improvement, \
+                 is_limit_response_text, is_log"
+            ),
+            "Identifier-Dump darf keine harte Sperre sein"
+        );
+        assert!(
+            !is_hard_block(
+                "blockiert: at Brain Safety and Rate Limiting Enhancements \
+                 Rust Webagent Projektverbesserungen Timeout-Gate \
+                 Implementierung in brain.rs 1, 5, 10, 18, 2,"
+            ),
+            "Vorschlagstitel 'Rate Limiting' darf keine harte Sperre sein"
+        );
     }
 
     #[test]

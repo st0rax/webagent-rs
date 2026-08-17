@@ -6,6 +6,37 @@ use std::path::Path;
 /// Timeout je Eval-Kommando (`cargo build`/`cargo test`) in Sekunden.
 const EVAL_TIMEOUT_SECS: u64 = 300;
 
+/// Was die Messung über eine Änderung weiss — Tree UND Executor.
+///
+/// `tree_changed` allein hat zweimal echte Edits verschluckt (30.07.2026
+/// deepseek, 12.08.2026 gemini: `edit ok` mit neuer Zeilenzahl, danach
+/// `did_change=nein`). Der Executor zaehlt erfolgreiche Writes getrennt;
+/// beide Signale zusammen ergeben das Urteil.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChangeVerdict {
+    /// Weder Tree noch Write — das Brain hat nichts geaendert.
+    Unchanged,
+    /// `git status` sieht eine Aenderung.
+    TreeDirty,
+    /// Executor hat edit/write mit exit 0 gemeldet, der Tree ist trotzdem
+    /// leer. Das ist ein Messfehler, kein „Brain hat nichts getan".
+    WritesWithoutTree,
+}
+
+impl ChangeVerdict {
+    pub(crate) fn from_signals(tree_dirty: bool, file_writes_ok: u32) -> Self {
+        match (tree_dirty, file_writes_ok > 0) {
+            (true, _) => Self::TreeDirty,
+            (false, true) => Self::WritesWithoutTree,
+            (false, false) => Self::Unchanged,
+        }
+    }
+
+    pub(crate) fn did_change(self) -> bool {
+        !matches!(self, Self::Unchanged)
+    }
+}
+
 /// `true`, wenn der Working Tree Änderungen enthält (inkl. neu angelegter,
 /// untracked Dateien — `git diff --quiet` allein übersähe die von write-Actions
 /// erzeugten neuen Dateien; deshalb `git status --porcelain`).
@@ -226,4 +257,39 @@ pub(crate) fn patch_touched_paths(patch: &str) -> (Vec<String>, Vec<String>) {
     deleted.sort();
     deleted.dedup();
     (paths, deleted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChangeVerdict;
+
+    #[test]
+    fn tree_schlaegt_write_zaehler() {
+        assert_eq!(
+            ChangeVerdict::from_signals(true, 0),
+            ChangeVerdict::TreeDirty
+        );
+        assert_eq!(
+            ChangeVerdict::from_signals(true, 3),
+            ChangeVerdict::TreeDirty
+        );
+    }
+
+    #[test]
+    fn edit_ok_ohne_tree_ist_messfehler_kein_nichtstun() {
+        let v = ChangeVerdict::from_signals(false, 3);
+        assert_eq!(v, ChangeVerdict::WritesWithoutTree);
+        assert!(v.did_change(), "Edits duerfen nicht als Nichtstun gelten");
+        assert!(
+            !matches!(v, ChangeVerdict::TreeDirty),
+            "ohne porcelain darf die Ernte nicht so tun, als liege ein Diff"
+        );
+    }
+
+    #[test]
+    fn weder_tree_noch_write_ist_unveraendert() {
+        let v = ChangeVerdict::from_signals(false, 0);
+        assert_eq!(v, ChangeVerdict::Unchanged);
+        assert!(!v.did_change());
+    }
 }
