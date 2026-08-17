@@ -79,4 +79,20 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn release_workflow_nennt_die_drei_binaries() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(".github/workflows/release.yml");
+        let yml = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        for needle in [
+            "webagent-windows-x86_64.exe",
+            "WebView2Loader.dll",
+            "webagent-linux-x86_64",
+            "webagent-aarch64-linux-android",
+            "--no-default-features --features tui",
+        ] {
+            assert!(yml.contains(needle), "release.yml fehlt {needle}");
+        }
+    }
 }

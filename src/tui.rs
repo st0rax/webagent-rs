@@ -18,13 +18,18 @@
 //! verwendet (3-Pane-Layout, Agentenauswahl, Live-Refresh). Ohne das Feature
 //! fällt die Implementierung auf die ANSI-TUI (readline-basiert) zurück.
 
+#[cfg(feature = "tui")]
 use std::io::{self};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(feature = "tui")]
 use std::thread;
 
+#[cfg(feature = "tui")]
 use crate::config::{available_brain_ids, bot2bot_root};
-use crate::worker_pool::{atomic_write, candidates_with_profile, PoolControl, WorkerPool};
+use crate::worker_pool::{atomic_write, PoolControl};
+#[cfg(feature = "tui")]
+use crate::worker_pool::{candidates_with_profile, WorkerPool};
 
 use crate::tui_ansi::run_tui_ansi;
 
@@ -793,6 +798,34 @@ fn run_tui_ratatui(
                                     }
                                     SessionSlashEffect::Resume(id) => {
                                         apply_session_resume(&mut app, id.as_deref());
+                                    }
+                                    SessionSlashEffect::Evolve(args) => {
+                                        let line = if args.is_empty() {
+                                            "/benchmark".to_string()
+                                        } else {
+                                            format!("/benchmark {args}")
+                                        };
+                                        spawn_benchmark_from_tui(&line, &candidates);
+                                        app.view = View::Bench;
+                                        app.session_status = "evolve".to_string();
+                                    }
+                                    SessionSlashEffect::Brute(url) => {
+                                        match crate::repl::commands::brute_http_url(&url) {
+                                            Some(u) => {
+                                                app.session_status = format!("brute {u}");
+                                                let _ = std::process::Command::new(
+                                                    std::env::current_exe().unwrap_or_else(|_| {
+                                                        std::path::PathBuf::from("webagent")
+                                                    }),
+                                                )
+                                                .args(["probe", "--url", &u, "--write"])
+                                                .spawn();
+                                            }
+                                            None => {
+                                                app.session_status =
+                                                    "brute: /brute <https://url>".to_string();
+                                            }
+                                        }
                                     }
                                     SessionSlashEffect::Unhandled => {
                                         app.session_status = format!("unbekannt: {cmd}");

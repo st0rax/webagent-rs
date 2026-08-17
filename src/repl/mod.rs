@@ -540,6 +540,38 @@ impl ReplSession {
                 let _ = crate::tui::run_tui(2, "", 5, true, None, Some("workers"), false);
                 ReplAction::Continue
             }
+            SlashCommand::Evolve { args } => {
+                println!("[evolve] starte Benchmark (dieselbe Pipeline wie /benchmark).");
+                self.stop_brain();
+                let bench = if args.trim().is_empty() {
+                    None
+                } else {
+                    Some(args.as_str())
+                };
+                let code = crate::tui::run_tui(2, "", 5, true, bench, Some("bench"), false);
+                if code != 0 {
+                    println!("[evolve] TUI beendet mit Code {code}.");
+                }
+                if let Err(e) = self.start_brain() {
+                    eprintln!("[evolve] Brain-Neustart fehlgeschlagen: {e}");
+                }
+                ReplAction::Continue
+            }
+            SlashCommand::Brute { url } => {
+                match crate::repl::commands::brute_http_url(&url) {
+                    None => {
+                        println!("[brute] Nutzung: /brute <https://chat-url>");
+                    }
+                    Some(u) => {
+                        println!("[brute] {u} — starte probe --write (JDownloader-Pfad).");
+                        let code = run_probe_write(&u);
+                        if code != 0 {
+                            println!("[brute] probe beendet mit Code {code}.");
+                        }
+                    }
+                }
+                ReplAction::Continue
+            }
             SlashCommand::Unknown { raw } => {
                 println!("[repl] Unbekannter Befehl: {raw}");
                 ReplAction::Continue
@@ -701,6 +733,27 @@ fn show_welcome() {
     println!("\n  [Enter] weiter zur Eingabe");
     let mut buf = String::new();
     let _ = io::stdin().read_line(&mut buf);
+}
+
+/// `/brute` startet denselben CLI-Pfad wie `webagent probe --url --write`.
+fn run_probe_write(url: &str) -> i32 {
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[brute] eigenes Binary nicht gefunden: {e}");
+            return 2;
+        }
+    };
+    match std::process::Command::new(exe)
+        .args(["probe", "--url", url, "--write"])
+        .status()
+    {
+        Ok(st) => st.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!("[brute] probe starten fehlgeschlagen: {e}");
+            1
+        }
+    }
 }
 
 pub fn run_repl(brain_id: &str, headless: bool) -> i32 {

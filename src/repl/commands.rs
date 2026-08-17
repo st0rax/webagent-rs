@@ -83,6 +83,14 @@ pub enum SlashCommand {
     },
     /// Zur Pool/Wand-Ansicht (`/dashboard`).
     Dashboard,
+    /// Code-Benchmark (`/evolve`, Alias von `/benchmark`).
+    Evolve {
+        args: String,
+    },
+    /// Chat-URL analysieren und als Brain einbinden (`/brute <url>`).
+    Brute {
+        url: String,
+    },
     Unknown {
         raw: String,
     },
@@ -97,7 +105,19 @@ pub enum SessionSlashEffect {
     Status,
     SwitchBrain(Option<String>),
     Dashboard,
+    Evolve(String),
+    Brute(String),
     Unhandled,
+}
+
+/// `/brute` akzeptiert nur echte http(s)-Chat-URLs — sonst kein Probe.
+pub fn brute_http_url(raw: &str) -> Option<String> {
+    let u = raw.trim();
+    if u.starts_with("http://") || u.starts_with("https://") {
+        Some(u.to_string())
+    } else {
+        None
+    }
 }
 
 pub fn session_slash_effect(cmd: &SlashCommand) -> SessionSlashEffect {
@@ -108,6 +128,8 @@ pub fn session_slash_effect(cmd: &SlashCommand) -> SessionSlashEffect {
         SlashCommand::Status => SessionSlashEffect::Status,
         SlashCommand::Switch { target } => SessionSlashEffect::SwitchBrain(target.clone()),
         SlashCommand::Dashboard | SlashCommand::Pool { .. } => SessionSlashEffect::Dashboard,
+        SlashCommand::Evolve { args } => SessionSlashEffect::Evolve(args.clone()),
+        SlashCommand::Brute { url } => SessionSlashEffect::Brute(url.clone()),
         _ => SessionSlashEffect::Unhandled,
     }
 }
@@ -140,6 +162,29 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     }
     if trimmed == "/dashboard" || trimmed == "/sessions" {
         return Some(SlashCommand::Dashboard);
+    }
+    if trimmed == "/evolve" || trimmed == "/benchmark" {
+        return Some(SlashCommand::Evolve {
+            args: String::new(),
+        });
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("/evolve ")
+        .or_else(|| trimmed.strip_prefix("/benchmark "))
+    {
+        return Some(SlashCommand::Evolve {
+            args: rest.trim().to_string(),
+        });
+    }
+    if trimmed == "/brute" {
+        return Some(SlashCommand::Brute {
+            url: String::new(),
+        });
+    }
+    if let Some(rest) = trimmed.strip_prefix("/brute ") {
+        return Some(SlashCommand::Brute {
+            url: rest.trim().to_string(),
+        });
     }
     if trimmed == "/memory" {
         return Some(SlashCommand::Memory { query: None });
@@ -364,6 +409,50 @@ mod tests {
         assert_eq!(
             session_slash_effect(&parse_slash_command("/new").unwrap()),
             SessionSlashEffect::NewSession
+        );
+    }
+
+    #[test]
+    fn evolve_und_brute_nutzen_denselben_parser() {
+        assert_eq!(
+            parse_slash_command("/evolve"),
+            Some(SlashCommand::Evolve {
+                args: String::new()
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/evolve --rounds 1"),
+            Some(SlashCommand::Evolve {
+                args: "--rounds 1".into()
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/benchmark --headed"),
+            Some(SlashCommand::Evolve {
+                args: "--headed".into()
+            })
+        );
+        assert_eq!(
+            session_slash_effect(&parse_slash_command("/evolve").unwrap()),
+            SessionSlashEffect::Evolve(String::new())
+        );
+        assert_eq!(
+            parse_slash_command("/brute https://chat.example.com/app"),
+            Some(SlashCommand::Brute {
+                url: "https://chat.example.com/app".into()
+            })
+        );
+        assert_eq!(
+            brute_http_url("https://chat.example.com/app").as_deref(),
+            Some("https://chat.example.com/app")
+        );
+        assert_eq!(brute_http_url("ftp://x"), None);
+        assert_eq!(brute_http_url(""), None);
+        assert_eq!(
+            session_slash_effect(
+                &parse_slash_command("/brute https://chat.example.com").unwrap()
+            ),
+            SessionSlashEffect::Brute("https://chat.example.com".into())
         );
     }
 }
