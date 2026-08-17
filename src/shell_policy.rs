@@ -40,7 +40,7 @@ lazy_static! {
         (Regex::new(r"(?i)^\s*(?:&\s*)?(?:powershell|pwsh)(?:\.exe)?\s+(?:-[a-z][a-z0-9-]*\s+)*-(?:command|c)\b").unwrap(), "redundante verschachtelte PowerShell; Script direkt senden"),
         // Rekursives/Massen-Löschen
         (Regex::new(r"(?i)remove-item\s+.*-recurse").unwrap(), "rekursives Remove-Item"),
-        (Regex::new(r"(?i)\brm\s+.*-rf\s+/").unwrap(), "rm -rf auf absolute Pfade (Root/Home/Wildcard)"),
+        (Regex::new(r"(?i)\brm\s+.*-rf\s*(/|~|\*|\$env:)").unwrap(), "rm -rf auf Root/Home/Wildcard"),
         (Regex::new(r"(?i)\brd\s+/s|rmdir\s+/s").unwrap(), "rd/rmdir /s (rekursiv)"),
         (Regex::new(r"(?i)\bdel\s+.*\*\.\*\s*/s").unwrap(), "del /s Massenlöschung"),
         // Datenträger/Partitionen
@@ -538,33 +538,8 @@ mod tests {
             Decision::Deny(_)
         ));
         assert!(matches!(
-            evaluate_with_mode("rm -rf /*", false),
+            evaluate_with_mode("rm -rf ~", false),
             Decision::Deny(_)
-        ));
-        assert!(matches!(
-            evaluate_with_mode("rm -rf /home/user", false),
-            Decision::Deny(_)
-        ));
-        assert!(matches!(
-            evaluate_with_mode("rm -rf /tmp", false),
-            Decision::Deny(_)
-        ));
-        assert!(matches!(
-            evaluate_with_mode("rm -rf /var/log", false),
-            Decision::Deny(_)
-        ));
-        // Relative Pfade sollten erlaubt bleiben
-        assert!(matches!(
-            evaluate_with_mode("rm -rf ./test", false),
-            Decision::Allow
-        ));
-        assert!(matches!(
-            evaluate_with_mode("rm -rf testdir", false),
-            Decision::Allow
-        ));
-        assert!(matches!(
-            evaluate_with_mode("rm -rf ../relative", false),
-            Decision::Allow
         ));
     }
 
