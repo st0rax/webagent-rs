@@ -257,45 +257,6 @@ fn visible_terminal_window_of(
     visible_window_of(pid)
 }
 
-/// Findet das Konsolenfenster via `FindWindowW` — probiert ConsoleWindowClass
-/// und CASCADIA_HOSTING_WINDOW_CLASS (Windows Terminal).
-#[cfg(all(windows, feature = "webview"))]
-fn find_console_hwnd() -> Option<(windows::Win32::Foundation::HWND, Rect)> {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowRect};
-
-    let try_class = |class_name: &str| -> Option<(HWND, Rect)> {
-        let class: Vec<u16> = format!("{class_name}\0").encode_utf16().collect();
-        let hwnd = unsafe {
-            FindWindowW(
-                windows::core::PCWSTR(class.as_ptr()),
-                windows::core::PCWSTR::null(),
-            )
-        }
-        .ok()?;
-        if hwnd.0.is_null() {
-            return None;
-        }
-        let mut rect = windows::Win32::Foundation::RECT::default();
-        if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
-            return None;
-        }
-        let w = (rect.right - rect.left).max(0) as u32;
-        let h = (rect.bottom - rect.top).max(0) as u32;
-        if w < 100 || h < 50 {
-            return None;
-        }
-        Some((hwnd, Rect::new(rect.left, rect.top, w, h)))
-    };
-
-    try_class("ConsoleWindowClass")
-        .or_else(|| try_class("CASCADIA_HOSTING_WINDOW_CLASS"))
-}
-
-#[cfg(not(all(windows, feature = "webview")))]
-fn find_console_hwnd() -> Option<(windows::Win32::Foundation::HWND, Rect)> {
-    None
-}
 
 /// Uebersetzt eine Nummerntaste (Alt+1 … Alt+9) in einen Kachelindex.
 ///
@@ -471,18 +432,10 @@ pub fn dock_terminal_bottom() -> Result<(), String> {
         IsZoomed, SetWindowPos, ShowWindow, HWND_TOP,
         SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
     };
-    let (hwnd, old_rect) = if is_force_tui() {
-        // Im --force-tui-Modus: Prozessketten-Walk ueberspringen (falsche
-        // Ergebnisse in opencode-Kontext) und direkt FindWindowW nutzen.
-        match find_console_hwnd() {
-            Some(pair) => pair,
-            None => return Ok(()),
-        }
-    } else {
-        match terminal_window_handle() {
-            Some(pair) => pair,
-            None => return Err("Terminalfenster nicht gefunden".into()),
-        }
+    let (hwnd, old_rect) = match terminal_window_handle() {
+        Some(pair) => pair,
+        None if is_force_tui() => return Ok(()),
+        None => return Err("Terminalfenster nicht gefunden".into()),
     };
     let maximized = unsafe { IsZoomed(hwnd).as_bool() };
     let work = primary_work_area().ok_or("Arbeitsbereich nicht ermittelbar")?;
@@ -511,71 +464,10 @@ pub fn dock_terminal_bottom() -> Result<(), String> {
     Ok(())
 }
 
-/// Dockt ein HWND (Terminalfenster) an die untere Bildschirmhaelfte.
-#[cfg(all(windows, feature = "webview"))]
-fn dock_hwnd(hwnd: windows::Win32::Foundation::HWND, terminal_area: &Rect) -> Option<()> {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowRect, IsZoomed, SetWindowPos, ShowWindow, HWND_TOP, SWP_NOACTIVATE,
-        SWP_NOZORDER, SW_RESTORE,
-    };
-    let mut rect = windows::Win32::Foundation::RECT::default();
-    if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
-        return None;
-    }
-    let old_rect = crate::brain_grid::Rect::new(
-        rect.left,
-        rect.top,
-        (rect.right - rect.left).max(0) as u32,
-        (rect.bottom - rect.top).max(0) as u32,
-    );
-    let maximized = unsafe { IsZoomed(hwnd).as_bool() };
-    if maximized {
-        let _ = unsafe { ShowWindow(hwnd, SW_RESTORE) };
-    }
-    let result = unsafe {
-        SetWindowPos(
-            hwnd,
-            HWND_TOP,
-            terminal_area.x,
-            terminal_area.y,
-            terminal_area.width as i32,
-            terminal_area.height as i32,
-            SWP_NOACTIVATE | SWP_NOZORDER,
-        )
-    };
-    if result.is_err() {
-        return None;
-    }
-    *TERMINAL_SNAPSHOT.lock().unwrap() = Some(crate::brain_grid::TerminalSnapshot {
-        rect: old_rect,
-        maximized,
-    });
-    Some(())
-}
-
-/// Erzwingtes Andocken des Konsolenfensters unten — wird einmalig beim
-/// TUI-Start mit `--force-tui` aufgerufen.
-#[cfg(all(windows, feature = "webview"))]
-pub fn dock_terminal_bottom_force() {
-    if TERMINAL_SNAPSHOT.lock().unwrap().is_some() {
-        return;
-    }
-    let Some(work) = primary_work_area() else {
-        return;
-    };
-    let (terminal_area, _) = split_areas(work);
-    if let Some((hwnd, _)) = find_console_hwnd() {
-        let _ = dock_hwnd(hwnd, &terminal_area);
-    }
-}
-
 #[cfg(not(all(windows, feature = "webview")))]
 pub fn dock_terminal_bottom() -> Result<(), String> {
     Err("ohne webview-Feature nicht verfuegbar".into())
 }
-
-#[cfg(not(all(windows, feature = "webview")))]
-pub fn dock_terminal_bottom_force() {}
 
 /// Stellt das Terminalfenster nach dem Ausschalten der Kachelansicht wieder her.
 #[cfg(all(windows, feature = "webview"))]
@@ -587,8 +479,10 @@ pub fn restore_terminal() -> Result<(), String> {
     let Some(snapshot) = snapshot else {
         return Ok(());
     };
-    let Some((hwnd, _)) = terminal_window_handle() else {
-        return Err("Terminalfenster nicht gefunden".into());
+    let (hwnd, _) = match terminal_window_handle() {
+        Some(pair) => pair,
+        None if is_force_tui() => return Ok(()),
+        None => return Err("Terminalfenster nicht gefunden".into()),
     };
     unsafe {
         SetWindowPos(
