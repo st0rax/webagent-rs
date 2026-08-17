@@ -89,4 +89,23 @@ mod tests {
         assert_eq!(run_brute_write("https://chat.example.com/app", true), 0);
         assert!(SAW_WRITE.load(Ordering::SeqCst));
     }
+
+    #[test]
+    fn brute_und_evolve_pfade_starten_kein_subprozess() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let needle = format!("{}{}", "current", "_exe");
+        for rel in ["src/tui.rs", "src/repl/mod.rs"] {
+            let text = std::fs::read_to_string(root.join(rel)).unwrap();
+            assert!(
+                !text.contains(&needle),
+                "{rel} darf brute/evolve nicht per Subprozess starten"
+            );
+        }
+        let hooks = std::fs::read_to_string(root.join("src/bin_hooks.rs")).unwrap();
+        assert!(hooks.contains("set_probe_fn"));
+        assert!(hooks.contains("run_brute_write"));
+        let tui = std::fs::read_to_string(root.join("src/tui.rs")).unwrap();
+        assert!(tui.contains("run_evolve"));
+        assert!(tui.contains("run_brute_write"));
+    }
 }
