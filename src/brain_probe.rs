@@ -537,6 +537,12 @@ pub fn classify(candidates: &[Candidate]) -> Vec<Proposal> {
 ///
 /// Der Browser-Teil ist absichtlich duenn: einsammeln und deuten lassen. So
 /// bleibt die Logik im testbaren Teil.
+///
+/// Kein Timeout-Parameter an dieser Stelle: weder [`collect`] noch
+/// [`PageDriver::evaluate`] nehmen eine `Duration` entgegen, also gibt es
+/// hier nichts, das gegen `Duration::ZERO` zu validieren oder auf 30 Sekunden
+/// zu begrenzen waere. Sobald ein Timeout-Parameter an dieser Stelle
+/// entsteht, gehoert genau diese Pruefung hierher.
 pub fn probe(driver: &mut dyn PageDriver) -> Result<Vec<Proposal>> {
     Ok(classify(&collect(driver)?))
 }
@@ -1563,5 +1569,85 @@ fn test_empty_webview_response_returns_error() {
             .find(|p| p.selector_key == "send_button")
             .expect("Send-Button");
         assert!(!send.disabled, "{send:?}");
+    }
+
+    // ── Sichere Serialisierung von Selektor-/Eingabewert-Inhalten in JS ───
+    //
+    // `selector_for` kann Beschriftungen (aria-label, Text, Klasse, ...)
+    // woertlich in den Selektor uebernehmen. Enthaelt eine Beschriftung
+    // Anfuehrungszeichen oder Backslashes, darf der daraus gebaute Selektor
+    // beim Umbau in JS (`crate::browser::js::js_selectors`, das intern
+    // `serde_json::to_string` nutzt) nicht aus seinem String-Literal
+    // ausbrechen koennen. Die folgenden Tests belegen das doppelt: der
+    // erzeugte Ausdruck enthaelt den GESAMTEN Selektor als EIN sicher
+    // escaptes JSON-Literal, und die betroffenen Funktionen (`verify`,
+    // `click_point_of`) laufen damit fehlerfrei durch statt an einer
+    // gebrochenen JS-Syntax zu scheitern.
+
+    #[test]
+    fn verify_mit_javascript_sonderzeichen_im_selektor_bleibt_sicher() {
+        let gefaehrlich = Proposal {
+            selector: r#"button[aria-label*='x\'; alert(1); "y' i]"#.to_string(),
+            ..proposal()
+        };
+        let sels = vec![gefaehrlich.selector.clone()];
+        let state_expr = crate::browser::js::toggle_state_expr_for(&sels);
+        let click_expr = crate::browser::js::click_toggle_expr_for(&sels);
+        let expected_literal = serde_json::to_string(&gefaehrlich.selector).unwrap();
+        assert!(state_expr.contains(&expected_literal), "{state_expr}");
+        assert!(click_expr.contains(&expected_literal), "{click_expr}");
+
+        let state = crate::mock_page::MockPageState::new()
+            .on_eval(state_expr, serde_json::json!("|"))
+            .on_eval(click_expr, serde_json::json!(false));
+        let mut driver = crate::mock_page::MockPageDriver::new(state);
+        let verdict = verify(&mut driver, &gefaehrlich)
+            .expect("verify darf an Sonderzeichen im Selektor nicht scheitern");
+        assert!(!verdict.proven);
+        assert!(verdict.note.contains("nicht anklickbar"), "{}", verdict.note);
+    }
+
+    #[test]
+    fn click_point_of_mit_javascript_sonderzeichen_im_selektor_bleibt_sicher() {
+        let sels = vec![r#"button[aria-label*='x\'; alert(1); "y' i]"#.to_string()];
+        let point_expr = crate::browser::js::js_scan(
+            &crate::browser::js::js_selectors(&sels),
+            "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;var r=t.getBoundingClientRect();if(r.width>0&&r.height>0)return {x:r.left+r.width/2,y:r.top+r.height/2};}",
+            "null",
+        );
+        let expected_literal = serde_json::to_string(&sels[0]).unwrap();
+        assert!(point_expr.contains(&expected_literal), "{point_expr}");
+
+        let state = crate::mock_page::MockPageState::new()
+            .on_eval(point_expr, serde_json::json!({"x": 12.0, "y": 34.0}));
+        let mut driver = crate::mock_page::MockPageDriver::new(state);
+        let point = click_point_of(&mut driver, &sels);
+        assert_eq!(point, Some((12.0, 34.0)));
+    }
+
+    #[test]
+    fn probe_liefert_bei_sonderzeichen_im_aria_label_einen_sicher_serialisierbaren_selektor() {
+        // Ende-zu-Ende: eine reale Beschriftung mit Anfuehrungszeichen darf
+        // den von `probe` gelieferten Selektor nicht in einen Selektor
+        // verwandeln, der beim Umbau in JS aus seinem String-Literal
+        // ausbrechen koennte.
+        let dom = serde_json::json!([
+            {"tag": "button", "aria_label": "Roger's \"Chat\" stoppen", "visible": true}
+        ]);
+        let state = crate::mock_page::MockPageState::new().on_eval(PROBE_SCRIPT, dom);
+        let mut driver = crate::mock_page::MockPageDriver::new(state);
+        let found = probe(&mut driver).expect("probe");
+        let stop = found
+            .iter()
+            .find(|p| p.selector_key == "stop_button")
+            .expect("stop_button muss trotz Anfuehrungszeichen im Label gefunden werden");
+
+        let sels = vec![stop.selector.clone()];
+        let state_expr = crate::browser::js::toggle_state_expr_for(&sels);
+        let expected_literal = serde_json::to_string(&stop.selector).unwrap();
+        assert!(
+            state_expr.contains(&expected_literal),
+            "Selektor mit Anfuehrungszeichen muss als EIN sicheres JSON-Literal landen: {state_expr}"
+        );
     }
 }
