@@ -2515,3 +2515,18 @@ zurueck, und das Lint-Gate im Pass machte die Erntekandidaten tragfaehig.
 Je 1 Datei, 7-15 Zeilen, lint- und testgruen, Brain als Autor. Eine Runde
 in der Mitte: 'Nichts zu ernten'. Damit ist die Leerlauf-Periode seit
 Beginn des Harnessings beendet - der Schwarm erntet jetzt.
+
+## 17.08. 05:05 - antigravity - TUI-Docking bereinigt + Claude-Ernte nachgezogen
+
+1. 3d1a0f1: TUI-Terminal-Docking repariert
+   - FindWindowW-Workaround entfernt (hatte blind das oberste Desktop-Fenster / Claude gegriffen).
+   - dock_terminal_bottom() und restore_terminal() nutzen die saubere Eltern-Prozesskette (terminal_window_handle()) und behandeln force-tui-Kontexte ohne hartes Scheitern.
+   - Kachel-Parking / Re-Activation in brain_wall.rs vereinheitlicht.
+
+2. 0c7a3cc - claude: Sichere Serialisierung von Selektoren mit Sonderzeichen
+   - 1786904169_claude.patch aus harvest_pending erfolgreich eingespielt.
+   - src/brain_probe.rs: Absicherung gegen String-Literal-Ausbrüche bei Anführungszeichen/Backslashes in Selektoren/aria-labels.
+
+3. Stand:
+   - 1035 Tests grün, Clippy sauber (-D warnings), Binary frisch gebaut.
+
