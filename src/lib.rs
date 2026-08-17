@@ -23,6 +23,7 @@ pub mod oobe;
 pub mod protocol;
 pub mod run_store;
 pub mod shell_policy;
+pub mod startup;
 pub mod timeouts;
 pub mod transcript;
 
@@ -43,10 +44,10 @@ pub mod canary;
 pub mod capability;
 pub mod capability_proof;
 pub mod controller;
+pub mod counting;
 pub mod knockout;
 pub mod prompts;
 pub mod relay;
-pub mod counting;
 pub mod welcome;
 
 // ── bench: Messung & Selbst-Verbesserung ──
@@ -67,15 +68,16 @@ pub mod wiki_memory;
 // ── workers: Parallelität & Gesundheit ──
 pub mod bot2bot_worker;
 pub mod doctor;
-pub mod watchdog;
 pub mod pool_failover;
 pub mod pool_state;
+pub mod watchdog;
 pub mod worker_pool;
 
 // ── ui: TUI, REPL ──
 pub mod brain_grid;
 pub mod brain_wall;
 pub mod repl;
+pub mod target_check;
 pub mod tui;
 pub mod tui_ansi;
 #[cfg(feature = "tui")]
@@ -91,7 +93,6 @@ pub mod tui_load;
 pub mod tui_mouse;
 #[cfg(feature = "tui")]
 pub mod tui_render;
-pub mod target_check;
 #[cfg(feature = "tui")]
 pub mod tui_state;
 #[cfg(feature = "tui")]

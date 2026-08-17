@@ -521,6 +521,25 @@ impl ReplSession {
                 }
                 ReplAction::Continue
             }
+            SlashCommand::Status => {
+                println!(
+                    "[status] brain={} tasks={}",
+                    self.brain_id, self.stats.tasks
+                );
+                ReplAction::Continue
+            }
+            SlashCommand::Resume { id } => {
+                println!(
+                    "[resume] {}",
+                    id.as_deref()
+                        .unwrap_or("(letzter Lauf — in der Session-TUI)")
+                );
+                ReplAction::Continue
+            }
+            SlashCommand::Dashboard => {
+                let _ = crate::tui::run_tui(2, "", 5, true, None, Some("workers"), false);
+                ReplAction::Continue
+            }
             SlashCommand::Unknown { raw } => {
                 println!("[repl] Unbekannter Befehl: {raw}");
                 ReplAction::Continue

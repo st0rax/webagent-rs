@@ -28,6 +28,42 @@ use crate::worker_pool::{atomic_write, candidates_with_profile, PoolControl, Wor
 
 use crate::tui_ansi::run_tui_ansi;
 
+#[cfg(feature = "tui")]
+use crate::tui_state::App;
+#[cfg(feature = "tui")]
+use std::path::PathBuf;
+
+#[cfg(feature = "tui")]
+fn apply_session_resume(app: &mut App, id: Option<&str>) {
+    let runs = crate::config::data_dir().join("runs");
+    let dir = match id {
+        Some(name) if !name.is_empty() => Some(runs.join(name)),
+        _ => latest_run_dir(&runs),
+    };
+    let Some(dir) = dir else {
+        app.session_status = "kein run".to_string();
+        return;
+    };
+    let text = std::fs::read_to_string(dir.join("transcript.jsonl")).unwrap_or_default();
+    app.session_turns = crate::transcript::session_turns_from_jsonl(&text);
+    let name = dir
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    app.session_status = format!("resume {name} ({} turns)", app.session_turns.len());
+}
+
+#[cfg(feature = "tui")]
+fn latest_run_dir(runs: &std::path::Path) -> Option<PathBuf> {
+    let mut dirs: Vec<_> = std::fs::read_dir(runs)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+    dirs.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+    dirs.into_iter().next().map(|e| e.path())
+}
+
 // ---------------------------------------------------------------------------
 // Gemeinsame Hilfsfunktionen (beide TUI-Varianten)
 // ---------------------------------------------------------------------------
@@ -245,6 +281,9 @@ fn run_tui_ratatui(
         cap_status: String::new(),
         cfg_selected: 0,
         cfg_status: String::new(),
+        session_turns: Vec::new(),
+        session_status: String::new(),
+        session_brain: "chatgpt".to_string(),
     };
     if let Some(arguments) = startup_benchmark.filter(|value| !value.trim().is_empty()) {
         let command = format!("/benchmark {arguments}");
@@ -323,6 +362,7 @@ fn run_tui_ratatui(
                     }
                 }
             }
+            View::Session => {}
         }
     }
 
@@ -726,6 +766,38 @@ fn run_tui_ratatui(
                             let cmd = app.command_input.trim().to_string();
                             if cmd.starts_with("/benchmark") {
                                 spawn_benchmark_from_tui(&cmd, &candidates);
+                            } else if let Some(parsed) = crate::repl::parse_slash_command(&cmd) {
+                                use crate::repl::commands::SessionSlashEffect;
+                                match crate::repl::commands::session_slash_effect(&parsed) {
+                                    SessionSlashEffect::Quit => break 'main 0,
+                                    SessionSlashEffect::Dashboard => {
+                                        app.view = View::Workers;
+                                    }
+                                    SessionSlashEffect::NewSession => {
+                                        app.session_turns.clear();
+                                        app.session_status = "neue session".to_string();
+                                    }
+                                    SessionSlashEffect::Status => {
+                                        app.session_status = format!(
+                                            "brain={} turns={}",
+                                            app.session_brain,
+                                            app.session_turns.len()
+                                        );
+                                    }
+                                    SessionSlashEffect::SwitchBrain(target) => {
+                                        if let Some(b) = target {
+                                            app.session_brain = b;
+                                        }
+                                        app.session_status =
+                                            format!("model {}", app.session_brain);
+                                    }
+                                    SessionSlashEffect::Resume(id) => {
+                                        apply_session_resume(&mut app, id.as_deref());
+                                    }
+                                    SessionSlashEffect::Unhandled => {
+                                        app.session_status = format!("unbekannt: {cmd}");
+                                    }
+                                }
                             }
                             app.input_mode = InputMode::Normal;
                             app.command_input.clear();

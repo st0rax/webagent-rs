@@ -15,9 +15,8 @@ use crate::tui_bench::{bench_status, render_bench, BenchStatus};
 use crate::tui_footer::render_footer;
 use crate::tui_state::{App, CapState, View};
 use crate::tui_widgets::{
-    bar_spans, heartbeat_color, heartbeat_pip, kv_line, status_color, status_glyph,
-    titled_block, titled_block_focus, wrap_text, ACCENT, BAR_WIDTH, HEARTBEAT_TIMEOUT_SEC,
-    LABEL_WIDTH, MUTED,
+    bar_spans, heartbeat_color, heartbeat_pip, kv_line, status_color, status_glyph, titled_block,
+    titled_block_focus, wrap_text, ACCENT, BAR_WIDTH, HEARTBEAT_TIMEOUT_SEC, LABEL_WIDTH, MUTED,
 };
 
 /// Render-Top-Level: 3-Pane Layout.
@@ -36,6 +35,12 @@ pub fn ui(f: &mut Frame, app: &App) {
 
     // Benchmark-Ansicht: der Ereignisstrom fuellt den Koerper. Umschaltbar per
     // `v` / `<>` — dieselbe TUI, andere Sicht auf denselben Lauf.
+    if app.view == View::Session {
+        render_session(f, app, outer[1]);
+        render_footer(f, app, outer[2]);
+        return;
+    }
+
     if app.view == View::Bench {
         render_bench(f, app, outer[1]);
         render_footer(f, app, outer[2]);
@@ -82,6 +87,27 @@ pub fn ui(f: &mut Frame, app: &App) {
     render_tasks(f, app, right[2]);
 
     render_footer(f, app, outer[2]);
+}
+
+fn render_session(f: &mut Frame, app: &App, area: Rect) {
+    use crate::transcript::SessionTurnKind;
+    let items: Vec<ListItem> = app
+        .session_turns
+        .iter()
+        .map(|t| {
+            let (tag, color) = match t.kind {
+                SessionTurnKind::User => ("you ", ACCENT),
+                SessionTurnKind::Brain => ("brain", Color::Green),
+                SessionTurnKind::Tool => ("tool", Color::Yellow),
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{tag} "), Style::default().fg(color)),
+                Span::raw(crate::char_prefix(&t.body, 200)),
+            ]))
+        })
+        .collect();
+    let list = List::new(items).block(titled_block("session"));
+    f.render_widget(list, area);
 }
 
 /// KPI-Kopfleiste: Wortmarke + Live-Kennzahlen des Pools (aktiv/Ziel, bereit,
@@ -136,6 +162,29 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let kpi_rows: Vec<Line> = match app.view {
+        View::Session => {
+            vec![
+                Line::from(vec![
+                    Span::styled(
+                        format!("◇ session · {}", app.session_brain),
+                        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("   "),
+                    Span::styled(
+                        format!("{} turns", app.session_turns.len()),
+                        Style::default().fg(MUTED),
+                    ),
+                ]),
+                Line::from(Span::styled(
+                    if app.session_status.is_empty() {
+                        "/new /resume /status /model /dashboard /quit".to_string()
+                    } else {
+                        app.session_status.clone()
+                    },
+                    Style::default().fg(MUTED),
+                )),
+            ]
+        }
         View::Config => {
             // Der Kopf zaehlt, wie viel vom Zustand nicht mehr Vorgabe ist.
             // Genau das ist die Frage, die man bei einem unerwarteten Verhalten
@@ -300,9 +349,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
                         Span::styled(
                             tally.label(),
                             if tally.is_alarming() {
-                                Style::default()
-                                    .fg(Color::Red)
-                                    .add_modifier(Modifier::BOLD)
+                                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
                             } else {
                                 Style::default().fg(MUTED)
                             },
@@ -330,20 +377,17 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
                     Span::raw("   "),
                     {
                         let last = evs.last().map(|e| e.text.as_str()).unwrap_or("");
-                        let status = bench_status(
-                            n,
-                            crate::bench_events::seconds_since_last_event(),
-                            last,
-                        );
+                        let status =
+                            bench_status(n, crate::bench_events::seconds_since_last_event(), last);
                         Span::styled(
                             status.label(),
                             match status {
                                 BenchStatus::Aktiv => ok,
                                 BenchStatus::Bereit => warn,
                                 BenchStatus::Beendet => Style::default().fg(MUTED),
-                                BenchStatus::Stillstand => Style::default()
-                                    .fg(Color::Red)
-                                    .add_modifier(Modifier::BOLD),
+                                BenchStatus::Stillstand => {
+                                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+                                }
                             },
                         )
                     },
@@ -826,7 +870,9 @@ fn render_capabilities(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let height = inner.height as usize;
-    let first = app.cap_selected.saturating_sub(height.saturating_sub(1) / 2);
+    let first = app
+        .cap_selected
+        .saturating_sub(height.saturating_sub(1) / 2);
     let lines: Vec<Line> = rows
         .iter()
         .enumerate()
@@ -842,10 +888,7 @@ fn render_capabilities(f: &mut Frame, app: &App, area: Rect) {
                 )),
                 Some(_) => {
                     let (symbol, style) = match row.state {
-                        CapState::Driveable => (
-                            "✓",
-                            Style::default().fg(Color::Green),
-                        ),
+                        CapState::Driveable => ("✓", Style::default().fg(Color::Green)),
                         CapState::Quest => ("·", Style::default().fg(Color::Yellow)),
                         CapState::OutOfReach => ("—", Style::default().fg(MUTED)),
                     };
@@ -908,6 +951,9 @@ mod tests {
             cap_status: String::new(),
             cfg_selected: 0,
             cfg_status: String::new(),
+            session_turns: Vec::new(),
+            session_status: String::new(),
+            session_brain: "chatgpt".to_string(),
         }
     }
 

@@ -42,7 +42,11 @@ function Copy-ForProfile([string]$name) {
     }
     $src = Find-Loader $dir
     if (-not $src) {
-        Write-Host "[warn] ${name}: WebView2Loader.dll nicht unter build/webview2-com-sys-*/out/x64 gefunden"
+        $msg = "${name}: WebView2Loader.dll nicht unter build/webview2-com-sys-*/out/x64 gefunden"
+        if ($name -eq "release") {
+            throw $msg
+        }
+        Write-Host "[warn] $msg"
         return
     }
     $dst = Join-Path $dir "WebView2Loader.dll"

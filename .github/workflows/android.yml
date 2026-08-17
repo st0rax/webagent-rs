@@ -1,10 +1,7 @@
-name: Android (build check)
+name: Android (Termux aarch64)
 
-# Hinweis: Der eigentliche Android-Nutzungspfad ist der native Build unter
-# Termux (aarch64-Linux, KEIN NDK/Cross-Toolchain noetig). Siehe README
-# "Android (via GitHub)". Diese Pipeline beweist, dass der plattformneutrale
-# Kern aus dem GitHub-Repo fehlerfrei kompiliert und die Tests gruen sind
-# (äquivalent zum nativen Termux-Build).
+# Beweist den echten Termux-Target, nicht nur den Linux-Host-Kern.
+# Release-Binary entsteht in release.yml beim Tag v*.
 
 on:
   push:
@@ -12,20 +9,25 @@ on:
   pull_request:
 
 jobs:
-  build-check:
+  aarch64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: false
 
-      # --no-default-features schaltet `webview` (wry/tao) ab. Ohne das zog der
-      # Build glib-sys herein und scheiterte auf ubuntu-latest an fehlenden
-      # GTK-Systembibliotheken — der Job pruefte also nie, was sein eigener Name
-      # sagt. Der Termux-Pfad baut denselben Kern ebenfalls ohne WebView.
-      - name: Build (plattformneutraler Kern)
-        run: cargo build --release --no-default-features
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
 
-      - name: Test
-        run: cargo test --quiet --no-default-features
+      - name: Build (Termux, TUI, no WebView)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          CC_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          AR_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+        run: cargo build --release --target aarch64-linux-android --no-default-features --features tui

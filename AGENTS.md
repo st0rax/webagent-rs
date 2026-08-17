@@ -41,10 +41,10 @@ Nach jedem abgeschlossenen Stueck: Build/Tests/`clippy` gruen UND eine kurze
 Fortschrittszeile (Terminal oder Kanal). Uncommittete Arbeit gehoert ueber
 Session-Grenzen in `STATUS_LIVE.md`.
 
-## 5. Commit nur auf Ansage
+## 5. Commit fertiger Scheiben
 
-Niemals committen, pushen oder einen PR bauen, ausser der Nutzer fordert es
-ausdruecklich.
+Fertige, getestete Scheiben werden committet. Push, Tag und GitHub-Release
+nur auf ausdrueckliche Ansage.
 
 ## 6. Benchmark-Monitoring & TUI
 
@@ -70,6 +70,9 @@ powershell -File bench-monitor.ps1
 ```
 
 ### TUI starten
+`webagent` ohne Subcommand oeffnet die Session-TUI (Scrollback + Prompt).
+`webagent repl` bleibt die zeilenweise REPL. `webagent tui` ist Pool/Wand/Bench.
+
 Die TUI braucht ein Terminal mit raw mode. Aus einer Pipe (opencode, viele
 Agenten-CLIs) ist `stdout().is_terminal()` false — dann `--force-tui`.
 Fenster mit Titel, `cmd /c` (nicht `/k`), sonst bleiben tote Konsolen:

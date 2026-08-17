@@ -1,65 +1,132 @@
 name: release
 
-# Builds release binaries on tag push (v*) and attaches them to the GitHub Release.
-#
-# Android (aarch64) release is deliberately NOT built here.
-# Android-Release folgt nach Klärung lokaler-Browser/Termux (siehe MERGE_AND_PARITY.md).
+# Release-Binaries an Tag v* (z.B. v0.9.0).
+# Windows: volle Features + WebView2Loader.dll
+# Linux / Android: Session-TUI + CLI ohne Embedded WebView
+#   (WebView2 und webview2-com sind Windows-only).
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: build ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Nur Windows: webagent baut auf WebView2 (Windows-only). Ein Linux-
-          # Desktop-Binary ist ohne Portierung auf webkitgtk nicht moeglich, weil
-          # `webview2-com-sys` die Windows-API (PCWSTR etc.) unbedingt einbindet.
-          # Der CI-Kern (ci.yml) testet die Nicht-WebView-Logik separat auf Linux
-          # via `--no-default-features`.
-          - name: windows-x86_64
-            # MSVC ist auf windows-latest vorinstalliert (Linker vorhanden); die
-            # rein-Rust-Deps bauen damit ohne MinGW. Robuster als der GNU-Target auf CI.
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            build_flags: --release
-            artifact: target/release/webagent.exe
-
+  windows:
+    name: windows-x86_64
+    runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Build release
-        run: cargo build ${{ matrix.build_flags }}
+        run: cargo build --release
 
-      # Windows: WebView2Loader.dll neben die exe (sonst 0xC0000135 auf manchen PCs)
-      - name: Copy WebView2Loader.dll (Windows)
-        if: runner.os == 'Windows'
+      - name: Copy WebView2Loader.dll
         shell: pwsh
         run: pwsh -File scripts/copy-webview2-loader.ps1 -Profile release
 
-      - name: Attach binary to release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ matrix.artifact }}
+      - name: Stage artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target\release\webagent.exe dist\webagent-windows-x86_64.exe
+          if (Test-Path target\release\WebView2Loader.dll) {
+            Copy-Item target\release\WebView2Loader.dll dist\WebView2Loader.dll
+          }
+          Get-FileHash dist\webagent-windows-x86_64.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  webagent-windows-x86_64.exe" } |
+            Set-Content -NoNewline dist\webagent-windows-x86_64.exe.sha256
 
-      - name: Attach WebView2Loader.dll (Windows)
-        if: runner.os == 'Windows'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist/*
+
+  linux:
+    name: linux-x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Build release (TUI, no WebView)
+        run: cargo build --release --no-default-features --features tui
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p dist
+          cp target/release/webagent dist/webagent-linux-x86_64
+          strip dist/webagent-linux-x86_64
+          (cd dist && sha256sum webagent-linux-x86_64 > webagent-linux-x86_64.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/*
+
+  android:
+    name: android-aarch64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Build Termux binary
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          CC_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+          AR_aarch64_linux_android: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar
+        run: cargo build --release --target aarch64-linux-android --no-default-features --features tui
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p dist
+          cp target/aarch64-linux-android/release/webagent dist/webagent-aarch64-linux-android
+          (cd dist && sha256sum webagent-aarch64-linux-android > webagent-aarch64-linux-android.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-aarch64
+          path: dist/*
+
+  publish:
+    name: github-release
+    needs: [windows, linux, android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Attach binaries to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/WebView2Loader.dll
-        continue-on-error: true
+          generate_release_notes: true
+          files: |
+            artifacts/webagent-windows-x86_64.exe
+            artifacts/webagent-windows-x86_64.exe.sha256
+            artifacts/WebView2Loader.dll
+            artifacts/webagent-linux-x86_64
+            artifacts/webagent-linux-x86_64.sha256
+            artifacts/webagent-aarch64-linux-android
+            artifacts/webagent-aarch64-linux-android.sha256

@@ -74,11 +74,19 @@ pub fn footer_binds(view: View) -> &'static [FooterBind] {
         bind("w", "kacheln", "w"),
         bind("q", "quit", "q"),
     ];
+    const SESSION: [FooterBind; 5] = [
+        bind("v", "ansicht", "v"),
+        bind("/", "befehl", "/"),
+        bind("j/k", "scroll", "j"),
+        bind("w", "kacheln", "w"),
+        bind("q", "quit", "q"),
+    ];
     match view {
         View::Capabilities => &CAPABILITIES,
         View::Workers => &WORKERS,
         View::Bench => &BENCH,
         View::Config => &CONFIG,
+        View::Session => &SESSION,
     }
 }
 
@@ -139,9 +147,7 @@ pub(crate) fn render_footer(f: &mut Frame, app: &App, area: Rect) {
             ),
             _ => (
                 format!("│ STILLSTAND — seit {} kein Ereignis", human_duration(idle)),
-                Style::default()
-                    .fg(Color::Red)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
         };
         spans.push(Span::styled(label, style));

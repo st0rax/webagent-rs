@@ -5,11 +5,11 @@ Werkzeuge (PowerShell/Shell) führen aus. Die Brains sind austauschbare Web-Chat
 (ChatGPT, Claude, DeepSeek, Gemini, Kimi, Qwen, Mistral, Z.ai) — kein API-Key,
 sondern die im Browser angemeldete Session.
 
-Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: plattformunabhängig
-(Windows, Linux), ohne C-Toolchain für den Kern baubar, mit **Embedded WebView**
-(`wry`/`tao`) statt CDP/Playwright.
+Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: Kern und
+Session-TUI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
+(`wry`/`tao`, WebView2) auf Windows.
 
-> **Status (v0.8.0):** Kern vollständig portiert und getestet (`cargo test`
+> **Status (v0.9.0):** Session-TUI ist der Default. Kern getestet (`cargo test`
 > + `cargo clippy --all-targets -D warnings` grün, Linux-CI grün).
 > `comms.rs` (internes Messaging, ersetzt bot2bot für webagent-intern) in CLI/Controller verdrahtet.
 > Browser-Steuerung über Embedded WebView + `BrowserPool`; REPL hält die Session über Turns offen.
@@ -79,16 +79,14 @@ WebView-Deps (`wry`, `tao`) sind optional (`--no-default-features` für headless
 
 ## Nutzung
 
-`webagent` **ohne Parameter startet den Chat** (REPL, Default-Brain chatgpt):
-normale Eingaben laufen als autonome Aufgabe (Plan/Act/Observe mit
-edit/write/shell-Actions), `/chat` für reine Konversation, `/model` wechselt
-das Brain, `/pool` öffnet die Worker-Pool-TUI, `/diff` zeigt git-Änderungen,
-`/wiki` das Langzeit-Wiki, `/autoresearch <eval> :: <goal>` die
-Metrik-Verbesserungsschleife. `/exit` druckt eine Session-Zusammenfassung
-(Anfragen, Zyklen, Brains, Token-Schätzung).
+`webagent` **ohne Parameter startet die Session-TUI** (Scrollback + Prompt).
+`webagent repl` ist die zeilenweise REPL, `webagent tui` Pool/Wand/Bench.
+Aus einer Pipe: `webagent tui --force-tui --view=session`. Unter Windows:
+Brain-Fenster oben, TUI unten — `AGENTS.md` §6.
 
-TUI (eigenes Konsolenfenster, nicht aus einer Pipe): `webagent tui --force-tui --view=bench`.
-Unter Windows liegen die Brain-Fenster oben, die TUI unten — `AGENTS.md` §6.
+In der Session-Ansicht: `/new`, `/resume`, `/status`, `/model`, `/dashboard`,
+`/quit` (derselbe Parser wie die REPL). In der REPL laufen normale Eingaben
+als autonome Aufgabe; `/chat` ist reine Konversation.
 
 ```
 webagent login            --brain <id> [--timeout <sek>] [--force]
@@ -197,6 +195,18 @@ angemeldeten Nutzerkontext ausführen. Nur in vertrauenswürdiger Umgebung nutze
 - Parität vs. Python: [`docs/MERGE_AND_PARITY.md`](docs/MERGE_AND_PARITY.md)
 - Tests: `cargo test --no-default-features` (kein echter Browser in Unit-Tests;
   `MockPageDriver` für Browser-Logik). Live-Provider-Checks: `cargo run --example inspect -- <brain>`.
+
+## Plattformen und Release-Binaries
+
+| Plattform | Artifact | Was darin steckt |
+|---|---|---|
+| Windows x86_64 | `webagent-windows-x86_64.exe` + `WebView2Loader.dll` | Session-TUI, REPL, Pool/Wand, Embedded WebView2 |
+| Linux x86_64 | `webagent-linux-x86_64` | Session-TUI, REPL, CLI (`--no-default-features --features tui`) |
+| Android aarch64 | `webagent-aarch64-linux-android` | dasselbe für Termux, kein Play-Store-APK, kein Embedded WebView |
+
+GitHub-Releases entstehen beim Tag `v*` (`.github/workflows/release.yml`).
+Embedded-WebView-Brains sind Windows; Linux/Android nutzen denselben Kern ohne
+WebView2. Android-CI baut denselben Termux-Target (`.github/workflows/android.yml`).
 
 ## Lizenz
 

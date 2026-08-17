@@ -88,6 +88,10 @@ pub struct App {
     /// Rueckmeldung der zuletzt geaenderten Einstellung — inklusive der Frage,
     /// ob sie sofort oder erst beim naechsten Lauf wirkt.
     pub cfg_status: String,
+    /// Session-TUI: Turns aus dem Transcript.
+    pub session_turns: Vec<crate::transcript::SessionTurn>,
+    pub session_status: String,
+    pub session_brain: String,
 }
 
 /// Die umschaltbaren Hauptansichten.
@@ -108,20 +112,24 @@ pub enum View {
     /// Chat laengst fahren (`webagent toggle`, `model`, `menu`, `mode`). In der
     /// TUI gab es dafuer nichts, obwohl dort der Mensch sitzt.
     Capabilities,
+    /// Chat-Session: Scrollback aus dem Transcript.
+    Session,
 }
 
 impl View {
     pub fn next(self) -> View {
         match self {
+            View::Session => View::Workers,
             View::Workers => View::Bench,
             View::Bench => View::Capabilities,
             View::Capabilities => View::Config,
-            View::Config => View::Workers,
+            View::Config => View::Session,
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
+            View::Session => "Session",
             View::Workers => "Worker",
             View::Bench => "Benchmark",
             View::Capabilities => "Faehigkeiten",
@@ -282,6 +290,7 @@ pub fn fold_bench_events(
 /// der Aufrufer behaelt dann seine Vorauswahl.
 pub fn parse_view(raw: &str) -> Option<View> {
     match raw.trim().to_ascii_lowercase().as_str() {
+        "session" | "chat" => Some(View::Session),
         "workers" | "worker" | "pool" => Some(View::Workers),
         "bench" | "benchmark" => Some(View::Bench),
         "config" | "einstellungen" | "settings" => Some(View::Config),
@@ -659,19 +668,16 @@ mod tests {
             verified: Vec::new(),
         };
         let rows = capability_rows(&[level]);
-        assert!(
-            rows[0].label.contains("unvermessen"),
-            "{}",
-            rows[0].label
-        );
+        assert!(rows[0].label.contains("unvermessen"), "{}", rows[0].label);
     }
 
     #[test]
     fn ansichten_rotieren_durch_alle() {
+        assert_eq!(View::Session.next(), View::Workers);
         assert_eq!(View::Workers.next(), View::Bench);
         assert_eq!(View::Bench.next(), View::Capabilities);
         assert_eq!(View::Capabilities.next(), View::Config);
-        assert_eq!(View::Config.next(), View::Workers);
+        assert_eq!(View::Config.next(), View::Session);
     }
 
     /// Jede Ansicht muss auch ueber `--view` waehlbar sein.
@@ -683,6 +689,7 @@ mod tests {
     #[test]
     fn jede_ansicht_ist_per_view_parameter_waehlbar() {
         for (name, erwartet) in [
+            ("session", View::Session),
             ("workers", View::Workers),
             ("bench", View::Bench),
             ("capabilities", View::Capabilities),
@@ -700,7 +707,13 @@ mod tests {
     /// das ist beim Hinzufuegen von `Config` beinahe passiert.
     #[test]
     fn jede_ansicht_ist_per_v_erreichbar() {
-        let alle = [View::Workers, View::Bench, View::Capabilities, View::Config];
+        let alle = [
+            View::Session,
+            View::Workers,
+            View::Bench,
+            View::Capabilities,
+            View::Config,
+        ];
         let mut gesehen = Vec::new();
         let mut v = View::Workers;
         for _ in 0..alle.len() {
@@ -718,6 +731,7 @@ mod tests {
     fn view_parameter_waehlt_die_startansicht() {
         assert_eq!(parse_view("workers"), Some(View::Workers));
         assert_eq!(parse_view("Worker"), Some(View::Workers));
+        assert_eq!(parse_view("session"), Some(View::Session));
         assert_eq!(parse_view("bench"), Some(View::Bench));
         assert_eq!(parse_view(" BENCHMARK "), Some(View::Bench));
         // Unbekanntes bleibt None, damit der Aufrufer seine Wahl behaelt.
@@ -779,6 +793,9 @@ mod tests {
             cap_status: String::new(),
             cfg_selected: 0,
             cfg_status: String::new(),
+            session_turns: Vec::new(),
+            session_status: String::new(),
+            session_brain: "chatgpt".to_string(),
         }
     }
 
@@ -928,9 +945,7 @@ mod tests {
             level: Level::Info,
             brain: None,
             text: "[shell:step-1] cargo test".into(),
-            detail: Some(
-                "[Terminal-Ausgabe action_id=step-1]\nalles gut\n[exit_code: 0]".into(),
-            ),
+            detail: Some("[Terminal-Ausgabe action_id=step-1]\nalles gut\n[exit_code: 0]".into()),
         };
         let meldung = BenchEvent {
             id: 2,
@@ -1011,7 +1026,10 @@ mod tests {
         );
         assert!(app.is_bench_expanded(events[0].id));
         assert!(app.is_bench_expanded(events[1].id));
-        assert!(!app.is_bench_expanded(events[2].id), "flach hat kein Detail");
+        assert!(
+            !app.is_bench_expanded(events[2].id),
+            "flach hat kein Detail"
+        );
 
         app.bench_toggle_all();
         assert!(

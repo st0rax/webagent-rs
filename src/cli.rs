@@ -513,9 +513,8 @@ pub enum Commands {
         headless: bool,
     },
 
-    /// Terminal-UI (Default): steuert den Worker-Pool sichtbar im Terminal.
-    /// Ohne Subcommand = diese Ansicht; `webagent tui` ist identisch. Zeigt
-    /// Brain-Status + Live-Task-Board und routet Aufgaben an einzelne Worker.
+    /// Pool/Wand/Bench-TUI. Ohne Subcommand startet `webagent` die Session-
+    /// Ansicht (`--view session`); `webagent tui` bleibt diese Pool-Wand.
     #[command(name = "tui")]
     Tui {
         /// Zielanzahl gleichzeitig aktiver Worker (Default 2)
@@ -543,7 +542,7 @@ pub enum Commands {
         #[arg(long)]
         benchmark: Option<String>,
 
-        /// Ansicht, mit der die TUI startet: `workers`, `bench`,
+        /// Ansicht, mit der die TUI startet: `session`, `workers`, `bench`,
         /// `capabilities` oder `config`.
         ///
         /// Ohne Angabe entscheidet der Kontext (mit `--benchmark` startet sie
@@ -555,7 +554,7 @@ pub enum Commands {
         /// schon einmal auseinander: parse_view kannte vier Ansichten, clap
         /// liess zwei zu — die beiden anderen waren ueber die Kommandozeile
         /// unerreichbar, ohne dass irgendetwas gemeckert haette.
-        #[arg(long, value_parser = ["workers", "bench", "capabilities", "config"])]
+        #[arg(long, value_parser = ["session", "workers", "bench", "capabilities", "config"])]
         view: Option<String>,
 
         /// ratatui-TUI erzwingen, auch wenn stdout kein Terminal ist

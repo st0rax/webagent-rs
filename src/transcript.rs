@@ -200,6 +200,65 @@ impl Transcript {
     }
 }
 
+/// Eine Zeile der Session-Ansicht, aus dem echten Transcript abgeleitet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionTurn {
+    pub kind: SessionTurnKind,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionTurnKind {
+    User,
+    Brain,
+    Tool,
+}
+
+/// Liest JSONL so, wie der Controller es schreibt (`role` + `content`).
+pub fn session_turns_from_jsonl(jsonl: &str) -> Vec<SessionTurn> {
+    let mut out = Vec::new();
+    for line in jsonl.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let role = v.get("role").and_then(|x| x.as_str()).unwrap_or("");
+        let content = v
+            .get("content")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        let has_action = v.get("action_id").is_some();
+        let kind = match role {
+            "user" => SessionTurnKind::User,
+            "brain" => SessionTurnKind::Brain,
+            "message" => SessionTurnKind::Brain,
+            "system" if has_action || looks_like_tool(&content) => SessionTurnKind::Tool,
+            _ => continue,
+        };
+        if content.is_empty() && kind != SessionTurnKind::Tool {
+            continue;
+        }
+        out.push(SessionTurn {
+            kind,
+            body: content,
+        });
+    }
+    out
+}
+
+fn looks_like_tool(content: &str) -> bool {
+    let t = content.trim();
+    t == "finish"
+        || t.starts_with("edit")
+        || t.starts_with("write")
+        || t.starts_with("shell")
+        || t.starts_with("WEBAGENT/1")
+}
+
 /// Erzeugt eine einzelne valide JSON-Zeile fuer ein strukturiertes Ereignis.
 ///
 /// Deterministisch: die Felder werden alphabetisch nach Schluessel sortiert
@@ -318,16 +377,33 @@ mod tests {
 
         crate::bench_events::set_echo_bus(false);
         crate::bench_events::clear();
-        transcript.append("brain", "nochmal", HashMap::new()).unwrap();
+        transcript
+            .append("brain", "nochmal", HashMap::new())
+            .unwrap();
         let events = crate::bench_events::snapshot();
         assert!(
-            !events
-                .iter()
-                .any(|e| e.text.starts_with("[t:brain")),
+            !events.iter().any(|e| e.text.starts_with("[t:brain")),
             "ohne Spiegelmodus darf die Konversation nicht in den Bus"
         );
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn session_turns_kommen_aus_controller_rollen() {
+        let jsonl = concat!(
+            "{\"role\":\"user\",\"content\":\"Aendere shell_policy\"}\n",
+            "{\"role\":\"system\",\"content\":\"edit src/shell_policy.rs\",\"action_id\":\"e1\"}\n",
+            "{\"role\":\"brain\",\"content\":\"Fertig.\"}\n",
+            "{\"role\":\"system\",\"content\":\"heartbeat cycle=1\"}\n",
+        );
+        let turns = session_turns_from_jsonl(jsonl);
+        assert_eq!(turns.len(), 3, "{turns:?}");
+        assert_eq!(turns[0].kind, SessionTurnKind::User);
+        assert_eq!(turns[0].body, "Aendere shell_policy");
+        assert_eq!(turns[1].kind, SessionTurnKind::Tool);
+        assert_eq!(turns[2].kind, SessionTurnKind::Brain);
+        assert_eq!(turns[2].body, "Fertig.");
     }
 
     #[test]
@@ -350,7 +426,8 @@ mod tests {
 
     #[test]
     fn emit_structured_log_escaped_sonderzeichen() {
-        let result = emit_structured_log("escape_test", &[("val", "\"quote\"\\backslash\nnewline")]);
+        let result =
+            emit_structured_log("escape_test", &[("val", "\"quote\"\\backslash\nnewline")]);
         assert!(result.contains("\\\"quote\\\""));
         assert!(result.contains("\\\\backslash"));
         assert!(result.contains("\\nnewline"));

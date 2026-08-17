@@ -75,9 +75,41 @@ pub enum SlashCommand {
     Wiki {
         arg: Option<String>,
     },
+    /// Session-Statuszeile (`/status`, `/info`).
+    Status,
+    /// Letzten oder genannten Run wieder laden (`/resume [id]`).
+    Resume {
+        id: Option<String>,
+    },
+    /// Zur Pool/Wand-Ansicht (`/dashboard`).
+    Dashboard,
     Unknown {
         raw: String,
     },
+}
+
+/// Was die Session-TUI mit einem bereits geparsten Slash macht.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionSlashEffect {
+    Quit,
+    NewSession,
+    Resume(Option<String>),
+    Status,
+    SwitchBrain(Option<String>),
+    Dashboard,
+    Unhandled,
+}
+
+pub fn session_slash_effect(cmd: &SlashCommand) -> SessionSlashEffect {
+    match cmd {
+        SlashCommand::Exit => SessionSlashEffect::Quit,
+        SlashCommand::New => SessionSlashEffect::NewSession,
+        SlashCommand::Resume { id } => SessionSlashEffect::Resume(id.clone()),
+        SlashCommand::Status => SessionSlashEffect::Status,
+        SlashCommand::Switch { target } => SessionSlashEffect::SwitchBrain(target.clone()),
+        SlashCommand::Dashboard | SlashCommand::Pool { .. } => SessionSlashEffect::Dashboard,
+        _ => SessionSlashEffect::Unhandled,
+    }
 }
 
 /// Parst eine REPL-Zeile in einen Slash-Befehl oder `None` (autonomer Task).
@@ -94,6 +126,20 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
     }
     if trimmed == "/new" {
         return Some(SlashCommand::New);
+    }
+    if trimmed == "/status" || trimmed == "/info" {
+        return Some(SlashCommand::Status);
+    }
+    if trimmed == "/resume" {
+        return Some(SlashCommand::Resume { id: None });
+    }
+    if let Some(rest) = trimmed.strip_prefix("/resume ") {
+        return Some(SlashCommand::Resume {
+            id: Some(rest.trim().to_string()),
+        });
+    }
+    if trimmed == "/dashboard" || trimmed == "/sessions" {
+        return Some(SlashCommand::Dashboard);
     }
     if trimmed == "/memory" {
         return Some(SlashCommand::Memory { query: None });
@@ -271,6 +317,53 @@ mod tests {
 
     #[test]
     fn parse_facts_command() {
-        assert!(matches!(parse_slash_command("/facts"), Some(SlashCommand::Facts)));
+        assert!(matches!(
+            parse_slash_command("/facts"),
+            Some(SlashCommand::Facts)
+        ));
+    }
+
+    #[test]
+    fn session_pflicht_slash_nutzt_denselben_parser() {
+        assert!(matches!(
+            parse_slash_command("/new"),
+            Some(SlashCommand::New)
+        ));
+        assert!(matches!(
+            parse_slash_command("/quit"),
+            Some(SlashCommand::Exit)
+        ));
+        assert!(matches!(
+            parse_slash_command("/status"),
+            Some(SlashCommand::Status)
+        ));
+        assert_eq!(
+            parse_slash_command("/resume abc"),
+            Some(SlashCommand::Resume {
+                id: Some("abc".into())
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/model claude"),
+            Some(SlashCommand::Switch {
+                target: Some("claude".into())
+            })
+        );
+        assert!(matches!(
+            parse_slash_command("/dashboard"),
+            Some(SlashCommand::Dashboard)
+        ));
+        assert_eq!(
+            session_slash_effect(&SlashCommand::Exit),
+            SessionSlashEffect::Quit
+        );
+        assert_eq!(
+            session_slash_effect(&SlashCommand::Dashboard),
+            SessionSlashEffect::Dashboard
+        );
+        assert_eq!(
+            session_slash_effect(&parse_slash_command("/new").unwrap()),
+            SessionSlashEffect::NewSession
+        );
     }
 }

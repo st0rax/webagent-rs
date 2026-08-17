@@ -56,12 +56,16 @@ fn main() {
     webagent::tui_config::apply_persisted();
 
     let cli = Cli::parse();
-    // Kein Subcommand -> Chat-REPL als Default: `webagent` startet einen Chat,
-    // der auch Aufgaben entgegennimmt (wie andere Coding-Agenten). Der
-    // Worker-Pool bleibt über `webagent tui` / `webagent workers` erreichbar.
-    let command = cli.command.unwrap_or(Commands::Repl {
-        brain: "chatgpt".to_string(),
+    // Kein Subcommand -> Session-TUI. REPL bleibt `webagent repl`,
+    // Pool/Wand bleibt `webagent tui`.
+    let command = cli.command.unwrap_or(Commands::Tui {
+        active: 2,
+        brains: String::new(),
+        poll_secs: 5,
         headless: false,
+        benchmark: None,
+        view: Some(webagent::startup::default_session_view().to_string()),
+        force_tui: false,
     });
 
     let exit_code = if matches!(command, Commands::MaintenanceCheck { .. }) {
@@ -141,13 +145,21 @@ fn dispatch(command: Commands) -> i32 {
             brain,
             cap,
             headless,
-        } => cmd_verify(if brain.is_empty() { None } else { Some(brain) }, cap, headless),
+        } => cmd_verify(
+            if brain.is_empty() { None } else { Some(brain) },
+            cap,
+            headless,
+        ),
 
         Commands::Count {
             brain,
             count,
             headless,
-        } => cmd_count(if brain.is_empty() { None } else { Some(brain) }, count, headless),
+        } => cmd_count(
+            if brain.is_empty() { None } else { Some(brain) },
+            count,
+            headless,
+        ),
 
         Commands::Watchdog {
             bot2bot_root,
