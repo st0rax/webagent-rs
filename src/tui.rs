@@ -536,10 +536,14 @@ fn run_tui_ratatui(
                         app.session_help = !app.session_help;
                     }
                     KeyCode::Char('y') if app.view == View::Session => {
-                        if let Some(text) =
-                            crate::transcript::last_brain_copy_text(&app.session_turns)
-                        {
-                            app.session_status = format!("copy {}c", text.chars().count());
+                        match crate::transcript::copy_last_brain_reply(&app.session_turns) {
+                            Ok(copied) => {
+                                app.session_status =
+                                    format!("copy {}c", copied.text.chars().count());
+                            }
+                            Err(e) => {
+                                app.session_status = format!("copy: {e}");
+                            }
                         }
                     }
                     KeyCode::Char('f') if app.view == View::Session => {
@@ -894,8 +898,7 @@ fn run_tui_ratatui(
                                     }
                                 }
                                 SessionSlashEffect::Swarm { prompt, .. } => {
-                                    let cards =
-                                        crate::transcript::session_turns_from_swarm(&prompt, &[]);
+                                    let cards = crate::bin_hooks::session_swarm_cards(&prompt);
                                     app.session_turns.extend(cards);
                                     crate::transcript::sync_session_folds(
                                         &app.session_turns,

@@ -259,6 +259,75 @@ pub fn last_brain_copy_text(turns: &[SessionTurn]) -> Option<String> {
         .map(|t| t.body.clone())
 }
 
+/// Ergebnis von [`copy_last_brain_reply`]: der kopierte Text plus OSC-52.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionCopy {
+    pub text: String,
+    pub osc52: String,
+}
+
+/// OSC-52-Sequenz, die Terminals in die Zwischenablage legen.
+pub fn osc52_copy_sequence(text: &str) -> String {
+    format!("\x1b]52;c;{}\x07", base64_encode(text.as_bytes()))
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    let mut i = 0;
+    while i < data.len() {
+        let b0 = data[i];
+        let b1 = if i + 1 < data.len() { data[i + 1] } else { 0 };
+        let b2 = if i + 2 < data.len() { data[i + 2] } else { 0 };
+        out.push(T[(b0 >> 2) as usize] as char);
+        out.push(T[(((b0 & 3) << 4) | (b1 >> 4)) as usize] as char);
+        if i + 1 < data.len() {
+            out.push(T[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if i + 2 < data.len() {
+            out.push(T[(b2 & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        i += 3;
+    }
+    out
+}
+
+fn write_copy_sink(text: &str, osc52: &str) -> Result<(), String> {
+    use std::io::Write;
+    std::io::stderr()
+        .write_all(osc52.as_bytes())
+        .map_err(|e| format!("osc52: {e}"))?;
+    #[cfg(windows)]
+    {
+        if let Ok(mut child) = std::process::Command::new("clip")
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = text;
+    }
+    Ok(())
+}
+
+/// Kopiert die letzte Brain-Antwort: OSC-52 an das Terminal, auf Windows zusätzlich `clip`.
+pub fn copy_last_brain_reply(turns: &[SessionTurn]) -> Result<SessionCopy, String> {
+    let text = last_brain_copy_text(turns).ok_or_else(|| "keine brain-antwort".to_string())?;
+    let osc52 = osc52_copy_sequence(&text);
+    write_copy_sink(&text, &osc52)?;
+    Ok(SessionCopy { text, osc52 })
+}
+
 /// Fold-Vektor an die Turn-Liste anpassen. Tool-Karten starten zugeklappt.
 pub fn sync_session_folds(turns: &[SessionTurn], folded: &mut Vec<bool>) {
     if folded.len() == turns.len() {
@@ -484,6 +553,14 @@ mod tests {
         assert_eq!(turns[2].kind, SessionTurnKind::Brain);
         assert_eq!(turns[2].body, "Fertig.");
         assert_eq!(last_brain_copy_text(&turns).as_deref(), Some("Fertig."));
+        let copied = copy_last_brain_reply(&turns).expect("copy");
+        assert_eq!(copied.text, "Fertig.");
+        assert_eq!(copied.osc52, osc52_copy_sequence("Fertig."));
+        assert!(copied.osc52.starts_with("\u{1b}]52;c;"));
+        assert_eq!(
+            copy_last_brain_reply(&[]).unwrap_err(),
+            "keine brain-antwort"
+        );
         let mut folded = Vec::new();
         sync_session_folds(&turns, &mut folded);
         assert_eq!(folded, vec![false, true, false]);

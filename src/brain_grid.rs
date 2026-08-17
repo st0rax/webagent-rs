@@ -623,6 +623,11 @@ mod tests {
     };
 
     #[test]
+    fn terminal_window_rect_ist_geliefert() {
+        let _ = terminal_window_rect();
+    }
+
+    #[test]
     fn host_ist_kein_brain_tab() {
         assert!(is_brain_tab_title("webagent · claude (3)"));
         assert!(is_brain_tab_title("webagent · chatgpt"));

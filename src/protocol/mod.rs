@@ -16,6 +16,14 @@ pub use types::{error_code, Action, ActionType, EditOperation, ParseResult, PROT
 mod tests {
     use super::parser::repair_unescaped_quotes_in_strings;
     use super::*;
+
+    #[test]
+    fn reexports_bleiben_erreichbar() {
+        let _ = ui_control_line_regex();
+        let _ = PROTOCOL_REPAIR_MAX_FAILURES;
+        let _: fn(&str) -> ParseResult = parse;
+        let _ = error_code("unbekanntes Feld");
+    }
     use serde_json::{json, Value};
 
     fn valid_envelope() -> Value {
@@ -177,8 +185,7 @@ mod tests {
 
     #[test]
     fn complete_message_envelope_is_not_truncated() {
-        let text =
-            "WEBAGENT/1 MESSAGE\nid: answer-2\ntext: Fertig und sofort verwertbar.";
+        let text = "WEBAGENT/1 MESSAGE\nid: answer-2\ntext: Fertig und sofort verwertbar.";
         assert!(!is_possibly_truncated(text));
         assert!(parse(text).valid);
     }

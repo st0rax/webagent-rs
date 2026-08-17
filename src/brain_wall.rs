@@ -446,8 +446,8 @@ fn hwnd_is_iconic(hwnd: isize) -> bool {
 fn place_window(hwnd: isize, rect: Rect, on_screen: bool) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE,
-        SWP_NOZORDER, SW_RESTORE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOZORDER,
+        SW_RESTORE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
     let hwnd = HWND(hwnd as *mut core::ffi::c_void);
     unsafe {
@@ -530,6 +530,16 @@ fn set_tile_focus(hwnd: isize, focus: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apply_wall_und_discover_count_sind_geliefert() {
+        assert_eq!(discover_owned_count(), discover_owned().len());
+        let via_wrap = apply_wall(false);
+        match apply_wall_checked(false) {
+            Ok(ok) => assert_eq!(via_wrap, ok),
+            Err(err) => assert_eq!(via_wrap, err),
+        }
+    }
 
     #[test]
     fn titel_webagent_punkt_name_id() {
