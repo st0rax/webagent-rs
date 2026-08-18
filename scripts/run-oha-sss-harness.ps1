@@ -123,6 +123,7 @@ try {
     [System.IO.Directory]::CreateDirectory((Join-Path $Root 'agents\oha_harness\inbox')) | Out-Null
 
     $workerBody = $Task
+    $workerBody += "`n`nIMPORTANT RESULT PROTOCOL: Complete this task through a structured WebAgent final result action. The action text must contain the requested result. Plain visible chat text alone is not an accepted result and will be rejected."
     $workerQueued = Get-Date
     Write-Utf8NoBom (Join-Path $Root "agents\$Worker\inbox\${stamp}_from_oha_harness.msg.txt") `
         (New-Message $Worker 'OHA-SSS Advisory Worker Task' 'oha-sss > harness > worker' $workerBody)
