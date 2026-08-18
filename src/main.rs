@@ -429,6 +429,11 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
             headless,
             api_key_env,
         } => {
+            if max_cycles == 0 {
+                eprintln!("[api] --max-cycles muss mindestens 1 sein.");
+                return 2;
+            }
+
             let ip: std::net::IpAddr = match bind.parse::<std::net::IpAddr>() {
                 Ok(ip) if ip.is_loopback() => ip,
                 Ok(_) => {

@@ -37,6 +37,10 @@ pub struct BridgeConfig {
 /// Ein Browserprofil darf nicht gleichzeitig von mehreren Controller-Runs
 /// gesteuert werden.
 pub fn serve(config: BridgeConfig) -> Result<(), String> {
+    if config.max_cycles == 0 {
+        return Err("--max-cycles muss mindestens 1 sein.".to_string());
+    }
+
     if !config.bind.ip().is_loopback() {
         return Err("API-Bridge darf nur an eine Loopback-Adresse binden.".to_string());
     }
@@ -73,7 +77,11 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
         Err(error) => {
             write_http_response(
                 stream,
-                api_error(ApiFlavor::OpenAi, 400, &format!("Ungueltige HTTP-Anfrage: {error}")),
+                api_error(
+                    ApiFlavor::OpenAi,
+                    400,
+                    &format!("Ungueltige HTTP-Anfrage: {error}"),
+                ),
             )?;
             return Ok(());
         }
@@ -85,19 +93,25 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
         ApiFlavor::OpenAi
     };
     let response = match (request.method.as_str(), request.path.as_str()) {
-        ("GET", "/health") => HttpResponse::json(200, json!({
-            "status": "ok",
-            "service": "webagent-provider-bridge"
-        })),
+        ("GET", "/health") => HttpResponse::json(
+            200,
+            json!({
+                "status": "ok",
+                "service": "webagent-provider-bridge"
+            }),
+        ),
         ("GET", "/v1/models") => {
             if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
                 response
             } else {
                 let model = model_id(&config.brain);
-                HttpResponse::json(200, json!({
-                    "object": "list",
-                    "data": [{"id": model, "object": "model", "owned_by": "webagent"}]
-                }))
+                HttpResponse::json(
+                    200,
+                    json!({
+                        "object": "list",
+                        "data": [{"id": model, "object": "model", "owned_by": "webagent"}]
+                    }),
+                )
             }
         }
         ("POST", "/v1/chat/completions") => handle_openai(&request, config),
@@ -130,18 +144,21 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
     if payload.stream.unwrap_or(false) {
         return openai_sse(&id, &payload.model, &answer);
     }
-    HttpResponse::json(200, json!({
-        "id": id,
-        "object": "chat.completion",
-        "created": unix_seconds(),
-        "model": payload.model,
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": answer},
-            "finish_reason": "stop"
-        }],
-        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    }))
+    HttpResponse::json(
+        200,
+        json!({
+            "id": id,
+            "object": "chat.completion",
+            "created": unix_seconds(),
+            "model": payload.model,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": answer},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        }),
+    )
 }
 
 fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
@@ -153,7 +170,11 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
     };
     if payload.max_tokens == 0 {
-        return api_error(ApiFlavor::Anthropic, 400, "max_tokens muss groesser als 0 sein.");
+        return api_error(
+            ApiFlavor::Anthropic,
+            400,
+            "max_tokens muss groesser als 0 sein.",
+        );
     }
     if let Err(error) = validate_model(&payload.model, &config.brain) {
         return api_error(ApiFlavor::Anthropic, 400, &error);
@@ -170,16 +191,19 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     if payload.stream.unwrap_or(false) {
         return anthropic_sse(&id, &payload.model, &answer);
     }
-    HttpResponse::json(200, json!({
-        "id": id,
-        "type": "message",
-        "role": "assistant",
-        "model": payload.model,
-        "content": [{"type": "text", "text": answer}],
-        "stop_reason": "end_turn",
-        "stop_sequence": null,
-        "usage": {"input_tokens": 0, "output_tokens": 0}
-    }))
+    HttpResponse::json(
+        200,
+        json!({
+            "id": id,
+            "type": "message",
+            "role": "assistant",
+            "model": payload.model,
+            "content": [{"type": "text", "text": answer}],
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {"input_tokens": 0, "output_tokens": 0}
+        }),
+    )
 }
 
 fn run_task_blocking(config: &BridgeConfig, task: &str) -> Result<String, String> {
@@ -284,7 +308,11 @@ fn conversation_task(
     for message in messages {
         match message.role.as_str() {
             "system" | "developer" | "user" | "assistant" => {}
-            other => return Err(format!("Rolle '{other}' wird von der Text-Bridge nicht unterstuetzt.")),
+            other => {
+                return Err(format!(
+                    "Rolle '{other}' wird von der Text-Bridge nicht unterstuetzt."
+                ))
+            }
         }
         let content = text_content(&message.content)?;
         task.push_str(&format!("[{}]\n{}\n\n", message.role, content));
@@ -352,7 +380,11 @@ fn authorize(
     if provided.is_some_and(|token| constant_time_equal(token, &config.api_key)) {
         return Ok(());
     }
-    Err(api_error(flavor, 401, "Ungueltiger oder fehlender API-Token."))
+    Err(api_error(
+        flavor,
+        401,
+        "Ungueltiger oder fehlender API-Token.",
+    ))
 }
 
 fn constant_time_equal(left: &str, right: &str) -> bool {
@@ -446,7 +478,8 @@ struct HttpResponse {
 
 impl HttpResponse {
     fn json(status: u16, value: Value) -> Self {
-        let body = serde_json::to_vec(&value).unwrap_or_else(|_| b"{\"error\":\"serialization\"}".to_vec());
+        let body = serde_json::to_vec(&value)
+            .unwrap_or_else(|_| b"{\"error\":\"serialization\"}".to_vec());
         Self {
             status,
             content_type: "application/json; charset=utf-8",
@@ -525,7 +558,11 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     }
     let content_length = headers
         .get("content-length")
-        .map(|value| value.parse::<usize>().map_err(|_| "Ungueltige Content-Length.".to_string()))
+        .map(|value| {
+            value
+                .parse::<usize>()
+                .map_err(|_| "Ungueltige Content-Length.".to_string())
+        })
         .transpose()?
         .unwrap_or(0);
     if content_length > MAX_REQUEST_BYTES {
@@ -551,7 +588,9 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn write_http_response(stream: &mut TcpStream, response: HttpResponse) -> Result<(), String> {
@@ -665,5 +704,33 @@ mod tests {
         let anthropic = String::from_utf8(api_error(ApiFlavor::Anthropic, 401, "x").body).unwrap();
         assert!(openai.contains("\"error\":{"));
         assert!(anthropic.contains("\"type\":\"error\""));
+    }
+
+    #[test]
+    fn accepts_x_api_key_header() {
+        let config = BridgeConfig {
+            bind: "127.0.0.1:0".parse().unwrap(),
+            brain: "chatgpt".to_string(),
+            max_cycles: 3,
+            headless: true,
+            api_key: "test-secret".to_string(),
+        };
+        let headers = BTreeMap::from([("x-api-key".to_string(), "test-secret".to_string())]);
+
+        assert!(authorize(&headers, &config, ApiFlavor::OpenAi).is_ok());
+    }
+
+    #[test]
+    fn rejects_zero_max_cycles_before_binding() {
+        let error = serve(BridgeConfig {
+            bind: "127.0.0.1:0".parse().unwrap(),
+            brain: "chatgpt".to_string(),
+            max_cycles: 0,
+            headless: true,
+            api_key: "test-secret".to_string(),
+        })
+        .unwrap_err();
+
+        assert!(error.contains("--max-cycles muss mindestens 1 sein"));
     }
 }
