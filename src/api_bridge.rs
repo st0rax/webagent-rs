@@ -12,11 +12,52 @@ use std::{
     collections::BTreeMap,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex, OnceLock,
+    },
+    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 const MAX_REQUEST_BYTES: usize = 1_048_576;
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_CONCURRENT_CONNECTIONS: usize = 8;
+
+static BROWSER_RUN_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+#[derive(Default)]
+struct ConnectionLimiter {
+    active: AtomicUsize,
+}
+
+impl ConnectionLimiter {
+    fn try_acquire(self: &Arc<Self>) -> Option<ConnectionPermit> {
+        let mut active = self.active.load(Ordering::Acquire);
+        loop {
+            if active >= MAX_CONCURRENT_CONNECTIONS {
+                return None;
+            }
+            match self.active.compare_exchange_weak(
+                active,
+                active + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return Some(ConnectionPermit(Arc::clone(self))),
+                Err(current) => active = current,
+            }
+        }
+    }
+}
+
+struct ConnectionPermit(Arc<ConnectionLimiter>);
+
+impl Drop for ConnectionPermit {
+    fn drop(&mut self) {
+        self.0.active.fetch_sub(1, Ordering::Release);
+    }
+}
 
 /// Laufzeitkonfiguration des lokalen Dienstes.
 ///
@@ -44,24 +85,53 @@ pub fn serve(config: BridgeConfig) -> Result<(), String> {
     if !config.bind.ip().is_loopback() {
         return Err("API-Bridge darf nur an eine Loopback-Adresse binden.".to_string());
     }
-    let listener = TcpListener::bind(config.bind)
-        .map_err(|error| format!("API-Bridge kann {} nicht binden: {error}", config.bind))?;
-    eprintln!(
-        "[api] lokale Provider-Bridge auf http://{}/v1 (Token erforderlich)",
-        config.bind
-    );
 
-    for incoming in listener.incoming() {
-        match incoming {
-            Ok(mut stream) => {
-                if let Err(error) = handle_connection(&mut stream, &config) {
-                    eprintln!("[api] Anfrage verworfen: {error}");
-                }
+    let listener = TcpListener::bind(config.bind)
+        .map_err(|error| format!("API-Bridge nicht bindbar: {error}"))?;
+    eprintln!("[api] Bridge aktiv auf http://{}", config.bind);
+
+    let config = Arc::new(config);
+    let limiter = Arc::new(ConnectionLimiter::default());
+    for stream in listener.incoming() {
+        let mut stream = match stream {
+            Ok(stream) => stream,
+            Err(error) => {
+                eprintln!("[api] Verbindung nicht annehmbar: {error}");
+                continue;
             }
-            Err(error) => eprintln!("[api] Verbindungsfehler: {error}"),
-        }
+        };
+
+        let Some(permit) = limiter.try_acquire() else {
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+            if let Err(error) = write_http_response(&mut stream, overload_response()) {
+                eprintln!("[api] Ueberlastungsantwort nicht schreibbar: {error}");
+            }
+            continue;
+        };
+
+        let config = Arc::clone(&config);
+        thread::spawn(move || {
+            let _permit = permit;
+            if let Err(error) = handle_connection(&mut stream, &config) {
+                eprintln!("[api] Anfrage verworfen: {error}");
+            }
+        });
     }
+
     Ok(())
+}
+
+fn overload_response() -> HttpResponse {
+    HttpResponse::json(
+        503,
+        json!({
+            "error": {
+                "message": "API-Bridge ist ausgelastet; bitte Anfrage wiederholen.",
+                "type": "server_error",
+                "code": "overloaded"
+            }
+        }),
+    )
 }
 
 fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<(), String> {
@@ -207,6 +277,10 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
 }
 
 fn run_task_blocking(config: &BridgeConfig, task: &str) -> Result<String, String> {
+    let _browser_run = BROWSER_RUN_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     use crate::browser::WebBrainBackend;
     use crate::controller::AgentController;
     use crate::executor::PlatformShellExecutor;
@@ -610,6 +684,7 @@ fn render_http_response(response: &HttpResponse) -> Vec<u8> {
         401 => "Unauthorized",
         404 => "Not Found",
         502 => "Bad Gateway",
+        503 => "Service Unavailable",
         _ => "Internal Server Error",
     };
     let headers = format!(
@@ -732,5 +807,17 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("--max-cycles muss mindestens 1 sein"));
+    }
+
+    #[test]
+    fn connection_limiter_rejects_excess_and_recovers_after_release() {
+        let limiter = Arc::new(ConnectionLimiter::default());
+        let mut permits: Vec<_> = (0..MAX_CONCURRENT_CONNECTIONS)
+            .map(|_| limiter.try_acquire().expect("Kapazitaet verfuegbar"))
+            .collect();
+
+        assert!(limiter.try_acquire().is_none());
+        drop(permits.pop());
+        assert!(limiter.try_acquire().is_some());
     }
 }
