@@ -704,9 +704,40 @@ pub enum Commands {
         command: PlanCommands,
     },
 
+    /// Lokale OpenAI-/Anthropic-kompatible Provider-Bridge fuer Pi starten.
+    Api {
+        #[command(subcommand)]
+        command: ApiCommands,
+    },
+
 }
 
 /// Argumente des `autoresearch`-Subcommands (Spec: docs/AUTORESEARCH_PLAN.md §6).
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ApiCommands {
+    /// Startet einen token-geschuetzten Loopback-Dienst.
+    Serve {
+        /// Lokale Bind-Adresse; nur Loopback-Adressen werden akzeptiert.
+        #[arg(long, default_value = "127.0.0.1")]
+        bind: String,
+        /// TCP-Port des lokalen Dienstes.
+        #[arg(long, default_value_t = 8787)]
+        port: u16,
+        /// Browser-Brain, das die Provider-Anfragen bearbeitet.
+        #[arg(long, default_value = "chatgpt")]
+        brain: String,
+        /// Maximale Agentenzyklen pro API-Anfrage.
+        #[arg(long, default_value_t = 100)]
+        max_cycles: u32,
+        /// Browser ohne sichtbares Fenster ausfuehren.
+        #[arg(long)]
+        headless: bool,
+        /// Name der Umgebungsvariable mit dem lokalen Bearer-Token.
+        #[arg(long, default_value = "WEBAGENT_API_KEY")]
+        api_key_env: String,
+    },
+}
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum GoalCommands {

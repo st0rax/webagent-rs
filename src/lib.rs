@@ -55,6 +55,7 @@ pub mod welcome;
 
 // ── bench: Messung & Selbst-Verbesserung ──
 pub mod autoresearch;
+pub mod api_bridge;
 pub mod bench_events;
 pub(crate) mod bench_harvest;
 pub(crate) mod bench_scoring;

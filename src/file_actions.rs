@@ -560,6 +560,14 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         dir
     }
+    fn unique_test_root(label: &str) -> PathBuf {
+        static NEXT: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+        let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = test_root().join(format!("{}_{}_{}", label, std::process::id(), sequence));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     fn temp_file(name: &str, content: &str) -> PathBuf {
         let dir = test_root();
@@ -810,7 +818,7 @@ mod tests {
 
     #[test]
     fn file_actions_allow_absolute_path_inside_root() {
-        let root = test_root().join(format!("{}_absolute_inside", std::process::id()));
+        let root = unique_test_root("absolute_inside");
         fs::create_dir_all(&root).unwrap();
         let existing = root.join("existing.txt");
         fs::write(&existing, "alt").unwrap();

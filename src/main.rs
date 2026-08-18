@@ -401,7 +401,8 @@ fn dispatch(command: Commands) -> i32 {
         } => cmd_maintenance_check(json, pytest, pytest_timeout),
 
         Commands::Goal { command } => cmd_goal(command),
-        Commands::Plan { command } => cmd_plan(command),        Commands::SyncMaster => cmd_sync_master(),
+        Commands::Plan { command } => cmd_plan(command),
+        Commands::Api { command } => cmd_api(command),        Commands::SyncMaster => cmd_sync_master(),
     }
 }
 
@@ -414,6 +415,53 @@ fn print_goal_plan_result(result: Result<String, String>) -> i32 {
         Err(error) => {
             eprintln!("Plan-/Ziel-Fehler: {error}");
             2
+        }
+    }
+}
+
+fn cmd_api(command: cli::ApiCommands) -> i32 {
+    match command {
+        cli::ApiCommands::Serve {
+            bind,
+            port,
+            brain,
+            max_cycles,
+            headless,
+            api_key_env,
+        } => {
+            let ip: std::net::IpAddr = match bind.parse::<std::net::IpAddr>() {
+                Ok(ip) if ip.is_loopback() => ip,
+                Ok(_) => {
+                    eprintln!("[api] Sicherheitsgrenze: --bind muss eine Loopback-Adresse sein.");
+                    return 2;
+                }
+                Err(error) => {
+                    eprintln!("[api] Ungueltige Bind-Adresse {bind}: {error}");
+                    return 2;
+                }
+            };
+            let api_key = match std::env::var(&api_key_env) {
+                Ok(value) if !value.trim().is_empty() => value,
+                _ => {
+                    eprintln!("[api] Token fehlt: setze die Umgebungsvariable {api_key_env}.");
+                    return 2;
+                }
+            };
+            let config = webagent::api_bridge::BridgeConfig {
+                bind: std::net::SocketAddr::new(ip, port),
+                brain,
+                max_cycles,
+                headless,
+                api_key,
+            };
+
+            match webagent::api_bridge::serve(config) {
+                Ok(()) => 0,
+                Err(error) => {
+                    eprintln!("[api] {error}");
+                    1
+                }
+            }
         }
     }
 }
