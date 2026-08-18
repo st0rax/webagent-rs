@@ -39,7 +39,7 @@ pub enum SlashCommand {
     Score,
     /// Canary-Health-Tabelle (`/canary`).
     Canary,
-    /// Einheitliches Login für alle Brains (sequenziell), schreibt profiles/<brain>.
+    /// Einheitliches Login für alle Brains (sequenziell), schreibt profiles/{brain}.
     LoginAll,
     /// Stehendes Ziel setzen/anzeigen/löschen (fließt in autonome Aufgaben ein).
     Goal {

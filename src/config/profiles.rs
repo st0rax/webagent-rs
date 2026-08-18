@@ -230,7 +230,7 @@ fn copy_profile(src: &PathBuf, dst: &PathBuf, sparse: bool) -> std::io::Result<(
 }
 
 /// Wie [`copy_dir_all`], laesst aber die Verzeichnisse aus
-/// [`FULL_COPY_SKIP_DIRS`] weg. Bewusst eine eigene Funktion: `copy_dir_all`
+/// ``FULL_COPY_SKIP_DIRS`` weg. Bewusst eine eigene Funktion: `copy_dir_all`
 /// bleibt der wortwoertliche Kopierer fuer alle anderen Aufrufer.
 pub fn copy_dir_without_caches(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;

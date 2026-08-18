@@ -1,4 +1,4 @@
-//! Freie Funktionen über [`PageDriver`] + [`Selectors`] — der Arbeitsteil der
+//! Freie Funktionen über ``PageDriver`` + ``Selectors`` — der Arbeitsteil der
 //! Diagnose, ohne Backend-`&self`.
 //!
 //! Schritt 2 des Entkoppelns: `is_logged_in`, `any_visible`, `assistant_count`,

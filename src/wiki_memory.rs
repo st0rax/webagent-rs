@@ -89,7 +89,7 @@ pub fn slugify(title: &str) -> String {
     }
 }
 
-/// Extrahiert alle Wiki-Links im Format [[slug]] aus dem Text.
+/// Extrahiert alle Wiki-Links im Format ``slug`` aus dem Text.
 /// - Links dürfen NICHT über Zeilengrenzen gehen.
 /// - Verschachtelte oder kaputte Klammern werden ignoriert.
 /// - Die Ergebnisliste ist in der Reihenfolge des Auftretens und dedupliziert.

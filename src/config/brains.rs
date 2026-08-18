@@ -175,7 +175,7 @@ pub fn shared_debug_port() -> u16 {
         .unwrap_or(9222)
 }
 
-/// selectors/-Verzeichnis (ROOT/selectors/<brain>.json), wie SELECTORS_DIR in config.py.
+/// selectors/-Verzeichnis (ROOT/selectors/{brain}.json), wie SELECTORS_DIR in config.py.
 pub fn selectors_dir() -> PathBuf {
     root_dir().join("selectors")
 }
@@ -195,8 +195,8 @@ pub const BRAIN_TABLE: &[(&str, &str)] = &[
 /// Brain-Definitionen: ID -> {url, selectors, profile_dir}.
 ///
 /// Portiert aus BRAINS-Dict in config.py. Selektoren liegen unter
-/// ROOT/selectors/<brain>.json; jedes Brain erhaelt ein eigenes Profil unter
-/// profiles/<brain> (Referenzprofil-Ansatz), das doctor prueft.
+/// ROOT/selectors/{brain}.json; jedes Brain erhaelt ein eigenes Profil unter
+/// profiles/{brain} (Referenzprofil-Ansatz), das doctor prueft.
 /// Nutzer-Selektoren am stabilen Ort: `<stable_root>/selectors/<brain>.json`.
 ///
 /// `selectors_dir()` zeigt auf CARGO_MANIFEST_DIR, also den Build-Pfad — dort
@@ -241,7 +241,7 @@ pub fn sanitize_brain_id(s: &str) -> String {
 /// Welche Selektor-Datei eines Brains obenauf liegt: Nutzer-Version, sonst
 /// mitgelieferte. Rein fuer Anzeige und Existenzpruefungen (doctor, canary,
 /// brains-health) — GELADEN wird nicht diese eine Datei, sondern beide
-/// uebereinander, siehe [`load_selectors`].
+/// uebereinander, siehe ``load_selectors``.
 pub fn resolve_selectors_path(brain_id: &str) -> PathBuf {
     let user = user_selectors_dir().join(format!("{brain_id}.json"));
     if user.is_file() {

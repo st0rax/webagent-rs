@@ -348,7 +348,7 @@ return null;}})()"#,
         Ok(proposals)
     }
 
-    /// Wie [`probe_surface`], gibt aber auch die rohen DOM-Kandidaten mit
+    /// Wie ``probe_surface``, gibt aber auch die rohen DOM-Kandidaten mit
     /// zurueck — fuer die Analyse von Fehlfunden (Warum wurde der Absende-
     /// Knopf nicht erkannt?).
     pub fn probe_surface_with_raw(
@@ -370,7 +370,7 @@ return null;}})()"#,
         result
     }
 
-    /// Faehrt einen Vorschlag aus [`probe_surface`] live an der offenen Seite:
+    /// Faehrt einen Vorschlag aus ``probe_surface`` live an der offenen Seite:
     /// klicken, messbarer Zustandswechsel als Beleg, Rueckweg wiederherstellen.
     /// Passt zu `probe_surface`, weil dort derselbe (eigene) Browser laeuft.
     pub fn verify_surface(
@@ -392,7 +392,7 @@ return null;}})()"#,
         verdict
     }
 
-    /// Oberflaechen-Analyse wie [`probe_surface`], aber mit einer zweiten Runde:
+    /// Oberflaechen-Analyse wie ``probe_surface``, aber mit einer zweiten Runde:
     /// wird ein Composer gefunden, aber kein Absende-Knopf, fuellt ein
     /// Testwort den Editor und scannt erneut. Viele SPAs (z.B. Perplexity)
     /// rendern den Send-Button erst, wenn Text drinsteht.

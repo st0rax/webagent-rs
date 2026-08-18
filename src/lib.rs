@@ -127,7 +127,7 @@ impl StageNote {
 /// im Viertelsekundentakt und zeigt Stadium, Laufzeit und — via [`StageNote`] —
 /// den gerade laufenden Schritt. Jede Zeile traegt einen absoluten Zeitstempel.
 /// Geht stdout in eine Pipe, bleibt es beim Zeilenumbruch alle
-/// [`PIPE_TICKER_INTERVAL_MS`], weil ein Wagenruecklauf in Logdateien nur Brei
+/// ``PIPE_TICKER_INTERVAL_MS``, weil ein Wagenruecklauf in Logdateien nur Brei
 /// erzeugt.
 pub struct StageTimer {
     started: Instant,

@@ -539,7 +539,7 @@ pub fn classify(candidates: &[Candidate]) -> Vec<Proposal> {
 /// bleibt die Logik im testbaren Teil.
 ///
 /// Kein Timeout-Parameter an dieser Stelle: weder [`collect`] noch
-/// [`PageDriver::evaluate`] nehmen eine `Duration` entgegen, also gibt es
+/// ``PageDriver::evaluate`` nehmen eine `Duration` entgegen, also gibt es
 /// hier nichts, das gegen `Duration::ZERO` zu validieren oder auf 30 Sekunden
 /// zu begrenzen waere. Sobald ein Timeout-Parameter an dieser Stelle
 /// entsteht, gehoert genau diese Pruefung hierher.
@@ -574,7 +574,7 @@ fn stop_diff_key(c: &Candidate) -> (String, i32, i32, i32, i32) {
 /// Der Stop-Knopf traegt bei manchen Oberflaechen kein unterscheidendes
 /// Attribut und ist statisch nicht findbar — wohl aber an seiner *zeitlichen*
 /// Signatur: er ist da, solange die Antwort laeuft, und verschwindet danach.
-/// [`WebBrainBackend::probe_stop_by_disappearance`] macht zwei Abzuege und
+/// ``WebBrainBackend::probe_stop_by_disappearance`` macht zwei Abzuege und
 /// reicht sie hierher; unter den Rueckgaeben muss der Stop-Knopf sein.
 ///
 /// Zwei Muster:

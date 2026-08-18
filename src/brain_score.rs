@@ -158,7 +158,7 @@ fn load_events(path: &PathBuf) -> Vec<Event> {
 /// p95 der Latenz ERFOLGREICHER Aufrufe eines Brains, in Sekunden.
 ///
 /// Grundlage fuer datenbasierte Timeouts: die fest verdrahtete
-/// Multiplikatoren-Tabelle in [`crate::timeouts`] war nachweislich in beide
+/// Multiplikatoren-Tabelle in ``crate::timeouts`` war nachweislich in beide
 /// Richtungen falsch (Messung 2026-07-26 ueber 2072 Erfolgslaeufe: claude 1.8
 /// verdrahtet vs. 0.9 gemessen, kimi 1.3 vs. 2.2). Fehlschlaege bleiben
 /// draussen — deren Dauer ist ein Timeout, kein Antwortverhalten, und wuerde
@@ -248,7 +248,7 @@ fn leaderboard_at(path: &PathBuf) -> Vec<BrainStats> {
 ///
 /// Gewichtet Task-Erfolgsquote (50 %), Antwortzeit (30 %) und Robustheit
 /// (20 %, Abzuege fuer JSON-Fehler und Reparaturen). Reine Funktion — nichts
-/// wird gelesen oder geschrieben; das Ergebnis liegt immer in [0,1] und ist
+/// wird gelesen oder geschrieben; das Ergebnis liegt immer in `0,1` und ist
 /// deterministisch (gleiche Eingabe → gleiche Gewichtung).
 pub fn calculate_brain_routing_weight(
     response_ms: u64,

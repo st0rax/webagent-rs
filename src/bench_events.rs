@@ -251,7 +251,7 @@ pub fn emit(level: Level, brain: Option<&str>, text: &str) {
 }
 
 /// Haengt eine Meldung mit ausklappbarem Detailblock an — nur an den Bus,
-/// nicht an die Konsole. Die Verteilung selbst macht [`dispatch`].
+/// nicht an die Konsole. Die Verteilung selbst macht ``dispatch``.
 pub fn emit_detailed(level: Level, brain: Option<&str>, text: &str, detail: Option<&str>) {
     dispatch(level, brain, text, detail, true, Console::Aus);
 }

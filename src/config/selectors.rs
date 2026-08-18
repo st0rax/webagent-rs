@@ -164,7 +164,7 @@ pub(crate) fn fnv1a(s: &str) -> u32 {
     h
 }
 
-/// profiles/encapsulated/<brain>_<runstamp> — gekapselte, isolierte Laufzeit-
+/// profiles/encapsulated/{brain}_{runstamp} — gekapselte, isolierte Laufzeit-
 /// Instanz (Linked-Clone/Delta des kanonischen Shared-Profils) fuer den Fallback,
 /// wenn der geteilte Browser fuer ein Brain nicht startbar ist.
 pub fn encapsulated_profile_dir(brain_id: &str, runstamp: &str) -> PathBuf {

@@ -399,7 +399,7 @@ fn belege_teil(refined: &str) -> Option<&str> {
 /// das Brain am falschen Ort arbeiten.
 ///
 /// Geprueft wird nur der Aufgabenkoerper vor `Lokale Belege:` — siehe
-/// [`koerper_teil`].
+/// ``koerper_teil``.
 pub fn task_is_misdirected(refined: &str, root: &Path) -> bool {
     let target = target_file_of(refined).unwrap_or_default();
     crate::target_check::pruefe(&target, koerper_teil(refined), &crate::target_check::quelldateien(root))

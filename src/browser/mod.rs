@@ -1,7 +1,7 @@
 //! browser — konkretes BrainBackend, das ein Embedded WebView (wry/tao) steuert.
 //!
 //! Spiegelt `../src/webagent/brains/playwright_base.py`, ersetzt Playwright aber
-//! durch [`crate::page_driver::PageDriver`]. DOM-Operationen laufen über JS-Eval;
+//! durch ``crate::page_driver::PageDriver``. DOM-Operationen laufen über JS-Eval;
 //! Tastendrücke/Maus über WebView-Injection.
 
 pub mod backend;

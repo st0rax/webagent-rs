@@ -4,7 +4,7 @@
 //! Ablauf (Storax-Wunsch 2026-07-21, „kick vote jede Runde ein Vorschlag"):
 //! 1. **Sammeln:** jedes Brain liefert EIN konkretes Design zum Thema.
 //! 2. **Ausscheiden:** Runde für Runde nennt jedes lebende Brain den Vorschlag,
-//!    der RAUS soll; der meistgenannte fliegt ([`crate::knockout::Bracket`]).
+//!    der RAUS soll; der meistgenannte fliegt (``crate::knockout::Bracket``).
 //! 3. **Gewinner:** der letzte Überlebende. Ein Brain darf ihn umsetzen (der
 //!    Live-Teil in `main`, hier nur die Auswahl).
 //!

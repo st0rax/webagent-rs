@@ -11,7 +11,7 @@
 //!   (mit Wall-Timeout + Cycle-Circuit-Breaker) DENSELBEN Abstimmungssieger bauen
 //!   lassen, dann objektiv evaluieren (`did_change` →
 //!   `cargo build --lib` → `cargo test --lib`), das
-//!   [`CodeEvent`](crate::code_score::CodeEvent) speichern und den Tree hart auf
+//!   ``CodeEvent``(crate::code_score::CodeEvent) speichern und den Tree hart auf
 //!   die Baseline zurücksetzen (`git reset --hard` + `git clean -fd`). Jedes
 //!   Brain startet identisch.
 //! - **Phase C (Ernten):** der beste Diff eines BESTANDENEN Brains wird vor dem
