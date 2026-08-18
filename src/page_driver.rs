@@ -97,6 +97,7 @@ pub fn webview_unavailable() -> PageDriverError {
 /// in order and returns the first successful match. If no exact match is found, it applies a
 /// simple drift heuristic: if any selector appears as a substring in the DOM (e.g., class name
 /// without prefix), it returns that selector as a drift hit. Returns `None` if no selector matches.
+#[cfg(test)]
 pub fn select_with_fallback(
     primary: &str,
     secondary: &[&str],

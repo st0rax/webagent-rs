@@ -56,7 +56,6 @@ pub fn load_state(_force: bool) -> Vec<AgentView> {
                 tasks_pending: pending,
                 tasks_done: done,
                 last_log_line: log.clone(),
-                last_response: None, // TODO: aus history.jsonl extrahieren
                 detail: recent_log_lines(&root, brain, DETAIL_HISTORY),
             }
         })
@@ -167,7 +166,6 @@ fn overlay_bench_activity(agents: &mut Vec<AgentView>) {
             tasks_pending: 0,
             tasks_done: 0,
             last_log_line: None,
-            last_response: None,
             detail: Vec::new(),
         };
         apply(&mut a);
@@ -265,7 +263,6 @@ mod tests {
             tasks_pending: 0,
             tasks_done: 0,
             last_log_line: None,
-            last_response: None,
             detail: Vec::new(),
         }];
         crate::bench_events::emit(
@@ -302,7 +299,6 @@ mod tests {
             tasks_pending: 3,
             tasks_done: 7,
             last_log_line: None,
-            last_response: None,
             detail: Vec::new(),
         }];
         overlay_bench_activity(&mut u);

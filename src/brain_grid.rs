@@ -46,10 +46,12 @@ impl Rect {
         }
     }
 
+    #[cfg(test)]
     pub fn right(&self) -> i32 {
         self.x + self.width as i32
     }
 
+    #[cfg(test)]
     pub fn bottom(&self) -> i32 {
         self.y + self.height as i32
     }
@@ -59,6 +61,7 @@ impl Rect {
     }
 
     /// Ueberlappen sich zwei Kacheln? Beruehrende Kanten zaehlen nicht.
+    #[cfg(test)]
     pub fn overlaps(&self, other: &Rect) -> bool {
         if self.is_empty() || other.is_empty() {
             return false;
@@ -70,6 +73,7 @@ impl Rect {
     }
 
     /// Liegt `self` vollstaendig in `outer`?
+    #[cfg(test)]
     pub fn contained_in(&self, outer: &Rect) -> bool {
         self.x >= outer.x
             && self.y >= outer.y
@@ -178,11 +182,13 @@ pub fn split_areas(work: Rect) -> (Rect, Rect) {
 /// `webagent.exe -> pwsh.exe -> WindowsTerminal.exe`, und erst der letzte hat
 /// ein Fenster.
 #[cfg(all(windows, feature = "webview"))]
+#[cfg(test)]
 pub fn terminal_window_rect() -> Option<Rect> {
     terminal_window_handle().map(|(_, rect)| rect)
 }
 
 #[cfg(not(all(windows, feature = "webview")))]
+#[cfg(test)]
 pub fn terminal_window_rect() -> Option<Rect> {
     None
 }

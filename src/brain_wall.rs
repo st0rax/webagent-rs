@@ -181,6 +181,7 @@ pub fn layout_for_count(area: Rect, n: usize) -> Vec<Option<Rect>> {
 }
 
 /// Anzahl sichtbarer Brain-Fenster der von diesem Prozess gestarteten Worker.
+#[cfg(test)]
 pub fn discover_owned_count() -> usize {
     discover_owned().len()
 }
@@ -220,6 +221,7 @@ pub fn discover_owned() -> Vec<OwnedBrainWindow> {
 }
 
 /// Wall an: Terminal unten andocken, Worker-Fenster kacheln.
+#[cfg(test)]
 pub fn apply_wall(on: bool) -> String {
     apply_wall_checked(on).unwrap_or_else(|error| error)
 }

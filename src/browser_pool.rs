@@ -368,10 +368,12 @@ impl BrowserPool {
     }
 
     /// Wie `stop_brain(..., persist=true)` — Tab bleibt für den nächsten Hop offen.
+    #[cfg(test)]
     pub fn detach_brain(&mut self, brain_id: &str) -> Result<(), String> {
         self.stop_brain(brain_id, Some(true))
     }
 
+    #[cfg(test)]
     pub fn has_tab(&self, brain_id: &str) -> bool {
         self.tabs.contains_key(&brain_id.to_lowercase())
     }
@@ -482,6 +484,7 @@ impl BrowserPool {
         Ok(count)
     }
 
+    #[cfg(test)]
     pub fn tab_ref_count(&self, brain_id: &str) -> u32 {
         self.tabs
             .get(&brain_id.to_lowercase())

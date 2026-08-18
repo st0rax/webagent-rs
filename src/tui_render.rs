@@ -945,7 +945,6 @@ mod tests {
             tasks_pending: 5,
             tasks_done: 3,
             last_log_line: Some("Test log".to_string()),
-            last_response: Some("Test response".to_string()),
             detail,
         }
     }
@@ -965,7 +964,6 @@ mod tests {
             log_filter: crate::tui_state::LogFilter::All,
             activity_history: std::collections::VecDeque::new(),
             view: crate::tui_state::View::Workers,
-            bench_scroll: 0,
             bench_expanded: std::collections::HashSet::new(),
             bench_selected: 0,
             command_input: String::new(),

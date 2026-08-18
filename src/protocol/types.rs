@@ -100,6 +100,7 @@ impl ParseResult {
 /// Bildet eine Fehlermeldung (die deutschen Strings aus ParseResult::invalid)
 /// auf einen stabilen, maschinenlesbaren Slug ab.
 /// Teilstring-Match case-insensitive, erste Regel gewinnt.
+#[cfg(test)]
 pub fn error_code(error: &str) -> &'static str {
     let lower = error.to_lowercase();
     if lower.contains("unbekannt") {

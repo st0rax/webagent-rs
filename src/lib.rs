@@ -16,29 +16,30 @@ pub(crate) mod circuit_breaker;
 pub mod comms;
 pub mod config;
 pub mod executor;
-pub mod file_actions;
+pub(crate) mod file_actions;
 pub(crate) mod loop_guard;
-pub mod memory;
-pub mod observer;
+pub(crate) mod memory;
+pub(crate) mod observer;
 pub mod oobe;
-pub mod protocol;
+pub(crate) mod protocol;
 pub mod run_store;
-pub mod shell_policy;
+pub(crate) mod shell_policy;
 pub mod startup;
-pub mod timeouts;
-pub mod transcript;
+pub(crate) mod timeouts;
+pub(crate) mod transcript;
 
 // ── brain: Gehirn-Abstraktion + Browser-Anbindung ──
-pub mod brain;
+pub(crate) mod brain;
 pub mod brain_limits;
 pub mod brain_probe;
 pub mod browser;
-pub mod browser_pool;
+pub(crate) mod browser_pool;
 pub mod login;
-pub mod mock_page;
-pub mod page_driver;
+#[cfg(test)]
+pub(crate) mod mock_page;
+pub(crate) mod page_driver;
 #[cfg(feature = "webview")]
-pub mod webview_runtime;
+pub(crate) mod webview_runtime;
 
 // ── agent: Steuerung & Agent-Schleife ──
 pub mod canary;
@@ -47,8 +48,8 @@ pub mod capability_proof;
 pub mod controller;
 pub mod goal_plan;
 pub mod counting;
-pub mod knockout;
-pub mod prompts;
+pub(crate) mod knockout;
+pub(crate) mod prompts;
 pub mod relay;
 pub mod welcome;
 
@@ -76,29 +77,29 @@ pub mod watchdog;
 pub mod worker_pool;
 
 // ── ui: TUI, REPL ──
-pub mod brain_grid;
-pub mod brain_wall;
+pub(crate) mod brain_grid;
+pub(crate) mod brain_wall;
 pub mod repl;
-pub mod target_check;
+pub(crate) mod target_check;
 pub mod tui;
-pub mod tui_ansi;
+pub(crate) mod tui_ansi;
 #[cfg(feature = "tui")]
-pub mod tui_bench;
+pub(crate) mod tui_bench;
 pub mod tui_config;
 #[cfg(feature = "tui")]
-pub mod tui_footer;
+pub(crate) mod tui_footer;
 #[cfg(feature = "tui")]
-pub mod tui_keys;
+pub(crate) mod tui_keys;
 #[cfg(feature = "tui")]
-pub mod tui_load;
+pub(crate) mod tui_load;
 #[cfg(feature = "tui")]
-pub mod tui_mouse;
+pub(crate) mod tui_mouse;
 #[cfg(feature = "tui")]
-pub mod tui_render;
+pub(crate) mod tui_render;
 #[cfg(feature = "tui")]
-pub mod tui_state;
+pub(crate) mod tui_state;
 #[cfg(feature = "tui")]
-pub mod tui_widgets;
+pub(crate) mod tui_widgets;
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 

@@ -73,6 +73,7 @@ impl Bracket {
     }
 
     /// Wie viele Runden noch bis zur Entscheidung.
+    #[cfg(test)]
     pub fn rounds_remaining(&self) -> usize {
         self.alive.len().saturating_sub(1)
     }

@@ -4,26 +4,20 @@ mod parser;
 mod text;
 mod types;
 
-pub use parser::{parse, ui_control_line_regex};
+pub use parser::parse;
 pub use text::{
     format_observation, format_observations_bundle, format_protocol_error,
     format_protocol_error_for, is_possibly_truncated, should_abort_protocol_repair,
-    should_attempt_protocol_repair, PROTOCOL_REPAIR_MAX_FAILURES,
+    should_attempt_protocol_repair,
 };
-pub use types::{error_code, Action, ActionType, EditOperation, ParseResult, PROTOCOL_VERSION};
+pub use types::{Action, ActionType, EditOperation, PROTOCOL_VERSION};
 
 #[cfg(test)]
 mod tests {
     use super::parser::repair_unescaped_quotes_in_strings;
     use super::*;
-
-    #[test]
-    fn reexports_bleiben_erreichbar() {
-        let _ = ui_control_line_regex();
-        let _ = PROTOCOL_REPAIR_MAX_FAILURES;
-        let _: fn(&str) -> ParseResult = parse;
-        let _ = error_code("unbekanntes Feld");
-    }
+    use super::text::PROTOCOL_REPAIR_MAX_FAILURES;
+    use super::types::error_code;
     use serde_json::{json, Value};
 
     fn valid_envelope() -> Value {

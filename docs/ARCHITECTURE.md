@@ -186,3 +186,9 @@ offline navigierbare Ontologie-Studio-Ansicht des Graphen.
 - `graph.json` — Rohdaten (Knoten mit `community`-Attribut)
 - `GRAPH_REPORT.md` — Audit: God-Nodes, überraschende Kanten, offene Fragen
 - `memory/` — beantwortete Graph-Fragen
+
+## P1 umgesetzt: interne Root-Grenze
+
+Stand 2026-08-17 ist die oeffentliche Root-Modulflaeche in src/lib.rs von 60 auf **34** Module reduziert. 26 nur vom Binary und seinen Commands nicht referenzierte Module sind pub(crate); mock_page ist zusaetzlich test-only. Damit liegt die Flaeche unter der Zielgrenze von 36 Modulen.
+
+Die Sichtbarkeitsscheibe hat tote Reexports, rein testgenutzte Helfer und ungenutzten TUI-Zustand offengelegt. Die produktive Brain-Shell-Pruefung bleibt ueber shell_policy::evaluate im Controller aktiv; die alternative parameterisierte Policy-API ist test-only. Nachweis: cargo test --lib (1088 Tests), cargo test --lib --no-default-features (1022 Tests) und cargo clippy --all-targets -- -D warnings bestehen mit der GNU-Windows-Toolchain.

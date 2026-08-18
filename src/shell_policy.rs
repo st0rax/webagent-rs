@@ -129,6 +129,7 @@ pub const PFLICHT_DENY: &[&str] = &[
 ];
 
 /// Eintraege aus [`PFLICHT_DENY`], die die aktuelle Policy durchlassen.
+#[cfg(test)]
 pub fn pflicht_deny_verletzt() -> Vec<&'static str> {
     PFLICHT_DENY
         .iter()
@@ -182,6 +183,7 @@ fn evaluate_with_mode(command: &str, strict: bool) -> Decision {
 /// missbrauchstypische Befehle aus der Denylist. Bewusst KEIN zweites,
 /// paralleles Muster-Set (das waere eine zweite Wahrheit neben `DENY_PATTERNS`);
 /// der Rueckweg geht ueber denselben Auswertepfad wie der Block selbst.
+#[cfg(test)]
 pub fn requires_confirmation(command: &str) -> bool {
     matches!(evaluate_with_mode(command, false), Decision::Deny(_))
 }
@@ -526,6 +528,7 @@ fn statements_set(command: &str) -> Vec<String> {
 /// Agent hat also das blockierte Statement fallengelassen und den Rest
 /// wiederverwendet (genau der 13:28-Vorfall: Schluss-Statement
 /// `Remove-Item -Recurse -Force $tmp` weggelassen, Rest identisch).
+#[cfg(test)]
 pub fn is_circumvention(previous: &str, now: &str) -> bool {
     let prev_set = statements_set(previous);
     let now_set = statements_set(now);
@@ -591,6 +594,7 @@ fn strict_syntax_violation(command: &str) -> Option<&'static str> {
 /// Formatiert eine strukturierte Audit-Zeile für einen Shell-Befehl.
 /// Liefert eine JSON-Zeile mit den Feldern ts, allowed, command.
 /// Der command-Wert wird korrekt JSON-escaped (via serde_json).
+#[cfg(test)]
 pub fn format_audit_line(command: &str, allowed: bool, ts: &str) -> String {
     let obj = serde_json::json!({
         "ts": ts,
@@ -603,6 +607,7 @@ pub fn format_audit_line(command: &str, allowed: bool, ts: &str) -> String {
 /// Prüft, ob ein Pfad nach Kanonisierung innerhalb eines der erlaubten
 /// Basisverzeichnisse liegt und keine Traversal- oder Escape-Muster enthält.
 /// Symlinks werden aufgelöst, und alle Pfadkomponenten werden validiert.
+#[cfg(test)]
 pub fn validate_path_allowlist_recursive(
     path: &std::path::Path,
     allowlist: &[&std::path::Path],
@@ -673,6 +678,7 @@ pub fn validate_path_allowlist_recursive(
 /// 3. Im `dry_run`-Modus wird nie zur Ausführung freigegeben (immer
 ///    `false`), die Nachricht macht aber kenntlich, dass simuliert wurde und
 ///    ob der Befehl ansonsten erlaubt gewesen wäre.
+#[cfg(test)]
 pub fn evaluate_command_policy(
     command: &str,
     allowlist: &[&str],

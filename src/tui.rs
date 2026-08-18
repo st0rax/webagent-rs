@@ -293,7 +293,6 @@ fn run_tui_ratatui(
         log_filter: LogFilter::All,
         activity_history: std::collections::VecDeque::new(),
         view: View::Workers,
-        bench_scroll: 0,
         bench_expanded: std::collections::HashSet::new(),
         bench_selected: 0,
         command_input: String::new(),
@@ -935,11 +934,6 @@ fn run_tui_ratatui(
                     KeyCode::Char(c) => {
                         app.command_input.push(c);
                     }
-                    _ => {}
-                },
-                InputMode::ConfirmQuit => match key.code {
-                    KeyCode::Char('y') | KeyCode::Enter => break 'main 0,
-                    KeyCode::Char('n') | KeyCode::Esc => app.input_mode = InputMode::Normal,
                     _ => {}
                 },
             }

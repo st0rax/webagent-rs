@@ -2,7 +2,9 @@
 
 use crate::run_store::RunMeta;
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+#[cfg(test)]
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -378,6 +380,7 @@ pub fn latest_session_run_dir(runs: &Path) -> Option<PathBuf> {
 }
 
 /// Turns aus `dir/transcript.jsonl` — ohne `/resume`, ohne TUI.
+#[cfg(test)]
 pub fn session_turns_from_run_dir(dir: &Path) -> Vec<SessionTurn> {
     let text = std::fs::read_to_string(dir.join("transcript.jsonl")).unwrap_or_default();
     session_turns_from_jsonl(&text)
@@ -412,6 +415,7 @@ fn looks_like_tool(content: &str) -> bool {
 /// Deterministisch: die Felder werden alphabetisch nach Schluessel sortiert
 /// (BTreeMap), und Sonderzeichen werden von serde_json korrekt escaped.
 /// `event` ist immer dabei; weitere Felder kommen aus `fields`.
+#[cfg(test)]
 pub fn emit_structured_log(event: &str, fields: &[(&str, &str)]) -> String {
     let mut map = BTreeMap::new();
     map.insert("event".to_string(), event.to_string());

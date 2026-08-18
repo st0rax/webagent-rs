@@ -19,7 +19,6 @@ pub struct AgentView {
     pub tasks_pending: usize,
     pub tasks_done: usize,
     pub last_log_line: Option<String>,
-    pub last_response: Option<String>,
     /// Ausklapp-Inhalt: die letzten Ereignisse dieses Agenten im Klartext.
     ///
     /// Zusammengeklappt zeigt die Liste eine Zeile je Agent; das reicht für den
@@ -64,7 +63,6 @@ pub struct App {
     /// Ansichten auf denselben Zustand.
     pub view: View,
     /// Scroll-Offset der Benchmark-Ansicht (0 = am unteren Rand mitlaufen).
-    pub bench_scroll: usize,
     /// Aufgeklappte Knoten der Benchmark-Baumansicht (stabile Event-IDs).
     pub bench_expanded: std::collections::HashSet<u64>,
     /// Cursor-Position in der gefalteten Baum-Zeilenliste (0 = unterste Zeile).
@@ -392,8 +390,6 @@ pub enum InputMode {
     TaskInput,
     /// Kommando-Eingabe (/ getippt).
     CommandInput,
-    /// Quit bestätigen.
-    ConfirmQuit,
 }
 
 /// Wrap-around Selektion (Pfeil hoch/runter in Liste).
@@ -770,7 +766,6 @@ mod tests {
             tasks_pending: 0,
             tasks_done: 0,
             last_log_line: None,
-            last_response: None,
             detail,
         }
     }
@@ -790,7 +785,6 @@ mod tests {
             log_filter: LogFilter::All,
             activity_history: std::collections::VecDeque::new(),
             view: View::Workers,
-            bench_scroll: 0,
             bench_expanded: std::collections::HashSet::new(),
             bench_selected: 0,
             command_input: String::new(),
