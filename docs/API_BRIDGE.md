@@ -128,6 +128,8 @@ Die Bridge ist ein **lokaler Adapter**, keine öffentliche API-Plattform. Sie be
 
 Der Service serialisiert Browserruns und rendert SSE erst nach Abschluss des Agentenlaufs. Damit erfüllt die Response-Semantik die Providerformate, aber nicht tokenweises Echtzeitstreaming. Tool-Calls, multimodale Eingaben und OpenAI Responses werden derzeit absichtlich abgelehnt beziehungsweise nicht angeboten. Diese Begrenzung hält die erste Pi-Integration überprüfbar und verhindert semantische Datenverluste.
 
+HTTP-Verbindungen werden bis zu einer festen Grenze von **acht** gleichzeitig bearbeitet. Uebersteigt die Zahl aktiver Verbindungen diese Grenze, antwortet die Bridge sofort mit **503 Service Unavailable** und dem Fehlercode overloaded; Clients sollen die Anfrage nach kurzer Wartezeit erneut stellen. Die Grenze schuetzt den lokalen Dienst gegen blockierte oder unvollstaendige HTTP-Anfragen, ohne parallele Browserruns zuzulassen.
+
 ## References
 
 [1] [Pi: Custom Providers](https://pi.dev/docs/latest/custom-provider)
