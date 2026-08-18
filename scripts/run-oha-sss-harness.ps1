@@ -162,7 +162,7 @@ IMPORTANT RESULT PROTOCOL: Complete this review through a structured WebAgent re
     }
 
     if ($reviewParsed.status -ne 'done' -or -not $reviewParsed.answer_present -or [string]::IsNullOrWhiteSpace($reviewParsed.result)) {
-        throw "Review-Ergebnis ist nicht verwertbar: status=$($reviewParsed.status), answer_present=$($reviewParsed.answer_present), source=$($reviewParsed.result_source)."
+        throw "NOT_ASSESSABLE: Review-Ergebnis ist nicht verwertbar: status=$($reviewParsed.status), answer_present=$($reviewParsed.answer_present), source=$($reviewParsed.result_source)."
     }
 
     $verdict = if ($reviewParsed.result -match '(?m)^VERDICT:\s*(PASS|FAIL)\s*$') { $Matches[1] } else { 'INVALID' }
@@ -170,7 +170,7 @@ IMPORTANT RESULT PROTOCOL: Complete this review through a structured WebAgent re
     if ($verdict -eq 'PASS') { $evidence.status = 'PASS' }
     elseif ($verdict -eq 'FAIL' -and $AllowReviewFail) { $evidence.status = 'REVIEW_FAIL_ALLOWED' }
     elseif ($verdict -eq 'FAIL') { throw 'Unabhängiger Reviewer hat das Ergebnis abgelehnt.' }
-    else { throw 'Reviewer lieferte kein gültiges VERDICT.' }
+    else { throw 'NOT_ASSESSABLE: Reviewer lieferte kein gültiges VERDICT.' }
 }
 catch {
     $evidence.status = if ($_.Exception.Message -like 'NOT_ASSESSABLE:*') { 'NOT_ASSESSABLE' } else { 'FAIL' }
