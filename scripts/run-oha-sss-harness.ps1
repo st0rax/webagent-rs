@@ -132,6 +132,12 @@ try {
     $workerParsed = Parse-Reply $workerRaw
     $evidence.worker_reply = [ordered]@{ path = $workerReplyPath.FullName; raw = $workerRaw; parsed = $workerParsed }
 
+    if ($workerParsed.status -eq 'loginrequired') {
+
+        throw "NOT_ASSESSABLE: Worker $Worker meldet loginrequired."
+
+    }
+
     if ($workerParsed.status -ne 'done' -or -not $workerParsed.answer_present -or [string]::IsNullOrWhiteSpace($workerParsed.result)) {
         throw "Worker-Ergebnis ist nicht verwertbar: status=$($workerParsed.status), answer_present=$($workerParsed.answer_present), source=$($workerParsed.result_source)."
     }
@@ -146,6 +152,12 @@ try {
     $reviewParsed = Parse-Reply $reviewRaw
     $evidence.reviewer_reply = [ordered]@{ path = $reviewReplyPath.FullName; raw = $reviewRaw; parsed = $reviewParsed }
 
+    if ($reviewParsed.status -eq 'loginrequired') {
+
+        throw "NOT_ASSESSABLE: Reviewer $Reviewer meldet loginrequired."
+
+    }
+
     if ($reviewParsed.status -ne 'done' -or -not $reviewParsed.answer_present -or [string]::IsNullOrWhiteSpace($reviewParsed.result)) {
         throw "Review-Ergebnis ist nicht verwertbar: status=$($reviewParsed.status), answer_present=$($reviewParsed.answer_present), source=$($reviewParsed.result_source)."
     }
@@ -158,7 +170,7 @@ try {
     else { throw 'Reviewer lieferte kein gültiges VERDICT.' }
 }
 catch {
-    $evidence.status = 'FAIL'
+    $evidence.status = if ($_.Exception.Message -like 'NOT_ASSESSABLE:*') { 'NOT_ASSESSABLE' } else { 'FAIL' }
     $evidence.error = $_.Exception.Message
 }
 finally {
