@@ -427,7 +427,12 @@ struct WorkerProfileGuard {
 
 impl Drop for WorkerProfileGuard {
     fn drop(&mut self) {
-        let _ = crate::config::cleanup_swarm_profiles(&self.run_id);
+        if let Err(error) = crate::config::cleanup_swarm_profiles(&self.run_id) {
+            crate::bench_events::eprint_line(&format!(
+                "[bot2bot-worker] Laufzeitprofil {} konnte nicht vollstÃ¤ndig bereinigt werden: {error}",
+                self.run_id
+            ));
+        }
     }
 }
 

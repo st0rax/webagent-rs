@@ -202,7 +202,12 @@ pub fn prepare_swarm_profile_in(
 
     // Alte Kopie dieses Runs entfernen, falls vorhanden (idempotent).
     if dst.exists() {
-        let _ = std::fs::remove_dir_all(&dst);
+        if let Err(error) = remove_runtime_profile(&dst) {
+            crate::bench_events::eprint_line(&format!(
+                "[profile] alte Laufzeitkopie {:?} blieb vor Wiederverwendung bestehen: {error}",
+                dst
+            ));
+        }
     }
 
     if reference.is_dir() {
@@ -262,6 +267,33 @@ pub fn copy_dir_without_caches(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Windows gibt WebView2-Dateien gelegentlich erst kurz nach `backend.stop()`
+/// frei. Bereinigt daher eine reine Laufzeitkopie mit kleinen, begrenzten
+/// Wiederholungen statt einen einzelnen Lock-Fehler dauerhaft zu verschlucken.
+const RUNTIME_PROFILE_DELETE_ATTEMPTS: u32 = 20;
+
+fn remove_runtime_profile(path: &Path) -> std::io::Result<()> {
+    for attempt in 0..RUNTIME_PROFILE_DELETE_ATTEMPTS {
+        // `fs::copy` kann das Read-only-Attribut aus dem Master übernehmen;
+        // unter Windows muss es vor `remove_dir_all` entfernt werden.
+        clear_readonly_recursive(path);
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt + 1 == RUNTIME_PROFILE_DELETE_ATTEMPTS => {
+                return Err(error);
+            }
+            Err(_) => {
+                // Der Browser-Prozessbaum wurde bereits angehalten. Die kurze
+                // Wartezeit deckt den Nachlauf von WebView2-Dateihandles ab.
+                std::thread::sleep(std::time::Duration::from_millis(
+                    50 * u64::from(attempt + 1),
+                ));
+            }
+        }
+    }
+    unreachable!("mindestens ein Löschversuch wird ausgeführt")
+}
+
 /// Entfernt alle abgeschlossenen Swarm-Laufzeit-Profile (aufräumen nach einem Run).
 pub fn cleanup_swarm_profiles(run_id: &str) -> std::io::Result<()> {
     cleanup_swarm_profiles_in(&profiles_dir(), run_id)
@@ -277,7 +309,7 @@ pub fn cleanup_swarm_profiles_in(base: &Path, run_id: &str) -> std::io::Result<(
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with(&format!("{}_", run_id)) {
-            let _ = std::fs::remove_dir_all(entry.path());
+            remove_runtime_profile(&entry.path())?;
         }
     }
     Ok(())
@@ -325,7 +357,7 @@ pub fn sweep_stale_runtime_profiles_in(base: &Path, max_age_secs: u64) -> usize 
             let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
             // Ohne lesbare mtime lieber stehen lassen als fremde Daten löschen.
             if let Some(m) = modified {
-                if m < cutoff && std::fs::remove_dir_all(&path).is_ok() {
+                if m < cutoff && remove_runtime_profile(&path).is_ok() {
                     removed += 1;
                 }
             }
