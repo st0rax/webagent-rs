@@ -53,9 +53,27 @@ function Invoke-Once([string]$Brain, [string]$LogPath) {
     $stderrLog = "$LogPath.stderr"
     try {
         [Environment]::SetEnvironmentVariable('WEBAGENT_BOT2BOT_ROOT', $script:Root, 'Process')
-        $process = Start-Process -FilePath $WebAgentExe -ArgumentList @(
-            'bot2bot-worker', '--brain', $Brain, '--once', '--poll-secs', '1', '--headless'
-        ) -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru -Wait
+        $exitCodePath = "$LogPath.exitcode"
+        $invokePath = "$LogPath.invoke.cmd"
+        $workerCommand = "call `"$WebAgentExe`" bot2bot-worker --brain $Brain --once --poll-secs 1 --headless"
+        $invokeScript = @"
+@echo off
+$workerCommand 1>"$stdoutLog" 2>"$stderrLog"
+set "worker_exit=%ERRORLEVEL%"
+echo %worker_exit% > "$exitCodePath"
+exit /b %worker_exit%
+"@
+        Write-Utf8NoBom $invokePath $invokeScript
+        $process = Start-Process -FilePath $invokePath -PassThru
+        $timeoutMilliseconds = [int][Math]::Min([Math]::Max([int64]1, [int64]$TimeoutSeconds) * 1000, [int]::MaxValue)
+        if (-not $process.WaitForExit($timeoutMilliseconds)) {
+            # Start-Process -Wait hat keine bindende Frist. Beende nur den vom
+            # Harness gestarteten Workerbaum, damit ein Browser-Runtime-Haenger
+            # weder den Harness noch die Qualifikation dauerhaft blockiert.
+            & taskkill.exe /PID $process.Id /T /F | Out-Null
+            $process.WaitForExit()
+            throw "Worker '$Brain' ueberschritt die Frist von $TimeoutSeconds Sekunden und wurde mit seinem Prozessbaum beendet."
+        }
         @(
             "=== stdout ===",
             (Get-Content -LiteralPath $stdoutLog -ErrorAction SilentlyContinue),
@@ -63,7 +81,15 @@ function Invoke-Once([string]$Brain, [string]$LogPath) {
             (Get-Content -LiteralPath $stderrLog -ErrorAction SilentlyContinue)
         ) | Set-Content -LiteralPath $LogPath -Encoding utf8
         Get-Content -LiteralPath $LogPath | Out-Host
-        if ($process.ExitCode -ne 0) { throw "Worker '$Brain' endete mit Exit-Code $($process.ExitCode)." }
+        if (-not (Test-Path -LiteralPath $exitCodePath -PathType Leaf)) {
+            throw "Worker '$Brain' beendete sich ohne Exitcode-Sentinel."
+        }
+        $exitCodeText = [System.IO.File]::ReadAllText($exitCodePath).Trim()
+        [int]$workerExitCode = 0
+        if (-not [int]::TryParse($exitCodeText, [ref]$workerExitCode)) {
+            throw "Worker '$Brain' schrieb einen ungueltigen Exitcode-Sentinel: '$exitCodeText'."
+        }
+        if ($workerExitCode -ne 0) { throw "Worker '$Brain' endete mit Exit-Code $workerExitCode." }
     }
     finally {
         [Environment]::SetEnvironmentVariable('WEBAGENT_BOT2BOT_ROOT', $previous, 'Process')
