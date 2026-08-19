@@ -281,17 +281,25 @@ impl RunStore {
         let json = serde_json::to_string_pretty(meta)
             .map_err(|e| format!("Fehler beim Serialisieren: {}", e))?;
 
-        fs::write(&tmp_path, json)
+        fs::write(&tmp_path, &json)
             .map_err(|e| format!("Fehler beim Schreiben von {}: {}", tmp_path.display(), e))?;
 
-        fs::rename(&tmp_path, &path).map_err(|e| {
-            format!(
-                "Fehler beim Umbenennen von {} nach {}: {}",
-                tmp_path.display(),
-                path.display(),
-                e
-            )
-        })?;
+        // Der Rename bleibt der bevorzugte atomare Weg. Unter Windows kann er
+        // jedoch bei einem bereits vorhandenen Ziel (oder kurzem Scanner-/Handle-
+        // Nachlauf) scheitern. Dann schreibt der Fallback denselben vollständig
+        // serialisierten Zustand direkt und entfernt die Temp-Datei best effort.
+        if let Err(rename_error) = fs::rename(&tmp_path, &path) {
+            fs::write(&path, &json).map_err(|write_error| {
+                format!(
+                    "Fehler beim Umbenennen von {} nach {}: {}; direkter Windows-Fallback schlug fehl: {}",
+                    tmp_path.display(),
+                    path.display(),
+                    rename_error,
+                    write_error
+                )
+            })?;
+            let _ = fs::remove_file(&tmp_path);
+        }
 
         Ok(())
     }
@@ -847,6 +855,20 @@ mod tests {
         assert_eq!(loaded.status, "running");
 
         // Cleanup
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn login_required_persists_over_existing_running_meta() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let mut meta = store.create("gemini", "login status").unwrap();
+
+        meta.status = "login_required".to_string();
+        store.save(&meta).unwrap();
+
+        let loaded = store.load(&meta.run_id).unwrap();
+        assert_eq!(loaded.status, "login_required");
         fs::remove_dir_all(&tmp).ok();
     }
 

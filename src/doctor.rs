@@ -315,10 +315,8 @@ pub fn infer_login_state(
     list_runs_fn: Option<&dyn Fn() -> Vec<String>>,
     load_fn: Option<&RunMetaLoader<'_>>,
 ) -> String {
-    if !last_done_run.is_empty() && (0.0..48.0).contains(&last_done_run_age_hours) {
-        return "ready".to_string();
-    }
-
+    // Der jüngste beobachtete Lauf ist maßgeblich: Ein frischer `login_required`
+    // darf niemals hinter einem älteren erfolgreichen Lauf verborgen bleiben.
     let (run_id, meta_opt, age) = find_recent_run_meta(runs_dir, brain_id, list_runs_fn, load_fn);
 
     if let Some(meta) = meta_opt {
@@ -375,6 +373,9 @@ pub fn infer_login_state(
         }
     }
 
+    if !last_done_run.is_empty() && (0.0..48.0).contains(&last_done_run_age_hours) {
+        return "ready".to_string();
+    }
     if !last_done_run.is_empty() && last_done_run_age_hours >= 48.0 {
         return "stale".to_string();
     }
@@ -874,7 +875,10 @@ mod tests {
         .unwrap();
 
         let (run_id, _) = find_last_done_run(runs_dir.to_str().unwrap(), "chatgpt", None, None);
-        assert_eq!(run_id, "", "suspect_no_actions darf nicht als last_done gelten");
+        assert_eq!(
+            run_id, "",
+            "suspect_no_actions darf nicht als last_done gelten"
+        );
     }
 
     // --- find_recent_run_meta and infer_login_state ---
@@ -1068,6 +1072,49 @@ mod tests {
             None,
         );
         assert!(state == "stale" || state == "unknown (old)");
+    }
+
+    #[test]
+    fn test_newer_login_required_overrides_fresh_last_done() {
+        let tmp = unique_tmp();
+        let runs_dir = tmp.join("runs");
+        fs::create_dir_all(&runs_dir).unwrap();
+
+        let older_done = "20260712_100000_done";
+        let newer_login_required = "20260712_110000_login";
+        for (run_id, status) in [
+            (older_done, "done"),
+            (newer_login_required, "login_required"),
+        ] {
+            let run_dir = runs_dir.join(run_id);
+            fs::create_dir_all(&run_dir).unwrap();
+            let meta = RunMeta {
+                run_id: run_id.to_string(),
+                brain_id: "chatgpt".to_string(),
+                status: status.to_string(),
+                created_at: "2026-07-12T12:00:00+00:00".to_string(),
+                task: "test".to_string(),
+                extra: HashMap::new(),
+                completed_actions: HashMap::new(),
+                conversation_ref: None,
+                cycles: 0,
+            };
+            fs::write(
+                run_dir.join("meta.json"),
+                serde_json::to_string(&meta).unwrap(),
+            )
+            .unwrap();
+        }
+
+        let state = infer_login_state(
+            older_done,
+            1.0,
+            runs_dir.to_str().unwrap(),
+            "chatgpt",
+            None,
+            None,
+        );
+        assert_eq!(state, "login_required");
     }
 
     #[test]

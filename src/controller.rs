@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use std::env;
 
-use crate::brain::BrainBackend;
+use crate::brain::{BrainBackend, SessionState};
 use crate::comms::CommsStore;
 use crate::executor::ShellExecutor;
 use crate::loop_guard::{
@@ -54,6 +54,19 @@ fn protocol_completes_unstable_response(
         && !protocol::is_possibly_truncated(text)
         && protocol::parse(text).valid
 }
+
+/// Kanonische Run-Store-Statuswerte für beobachtete Browser-Sitzungszustände.
+/// Debug-Darstellungen wie `LoginRequired` sind kein Persistenzvertrag.
+fn session_state_run_status(state: SessionState) -> &'static str {
+    match state {
+        SessionState::Ready => "running",
+        SessionState::LoginRequired => "login_required",
+        SessionState::Cloudflare => "cloudflare",
+        SessionState::Unbestimmt => "brain_incomplete",
+        SessionState::Error => "error",
+    }
+}
+
 /// Nach so vielen reinen Leseaktionen ohne erfolgreichen Datei-Write wird das
 /// Brain aus variierender Exploration in die Umsetzung geschoben.
 const READ_BUDGET_ACTIONS: u32 = 5;
@@ -964,10 +977,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         "\n\n[Controller] Die ursprüngliche Aufgabe ist weiterhin offen; ",
                     );
                     repair_prompt.push_str(
-                        "warte nicht auf eine neue Nutzeranweisung und liefere keine reine "
+                        "warte nicht auf eine neue Nutzeranweisung und liefere keine reine ",
                     );
                     repair_prompt.push_str(
-                        "Zusammenfassung. Setze sie autonom mit der naechsten gueltigen "
+                        "Zusammenfassung. Setze sie autonom mit der naechsten gueltigen ",
                     );
                     repair_prompt.push_str(&format!(
                         "WEBAGENT/1-Action fort.\n<ORIGINAL_TASK>{task}</ORIGINAL_TASK>"
@@ -1228,7 +1241,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         );
 
         if state != crate::brain::SessionState::Ready {
-            meta.status = format!("{:?}", state).to_lowercase();
+            meta.status = session_state_run_status(state).to_string();
             self.run_store.save(&meta).ok();
             let _ = transcript.append(
                 "system",
@@ -1628,6 +1641,24 @@ per edit/write-Action pflegbar):\n",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_state_run_status_uses_canonical_run_store_values() {
+        assert_eq!(session_state_run_status(SessionState::Ready), "running");
+        assert_eq!(
+            session_state_run_status(SessionState::LoginRequired),
+            "login_required"
+        );
+        assert_eq!(
+            session_state_run_status(SessionState::Cloudflare),
+            "cloudflare"
+        );
+        assert_eq!(
+            session_state_run_status(SessionState::Unbestimmt),
+            "brain_incomplete"
+        );
+        assert_eq!(session_state_run_status(SessionState::Error), "error");
+    }
 
     #[test]
     fn complete_protocol_salvages_timeout_unstable() {
@@ -2190,20 +2221,31 @@ mod tests {
             AgentController::with_data_dir(brain, MockExecutor::new(), 5, unique_data_dir());
 
         let meta = controller
-            .run("Liefere einen langen strukturierten Nachweis", "mock", None, false)
+            .run(
+                "Liefere einen langen strukturierten Nachweis",
+                "mock",
+                None,
+                false,
+            )
             .unwrap();
 
         assert_eq!(meta.status, "done");
         assert_eq!(
-            meta.completed_actions.get("final-part-001").map(String::as_str),
+            meta.completed_actions
+                .get("final-part-001")
+                .map(String::as_str),
             Some("erster Nachweis")
         );
         assert_eq!(
-            meta.completed_actions.get("final-part-002").map(String::as_str),
+            meta.completed_actions
+                .get("final-part-002")
+                .map(String::as_str),
             Some("zweiter Nachweis")
         );
         assert_eq!(
-            meta.completed_actions.get("final-complete").map(String::as_str),
+            meta.completed_actions
+                .get("final-complete")
+                .map(String::as_str),
             Some("finish")
         );
     }
@@ -2821,7 +2863,9 @@ mod tests {
             AgentController::with_data_dir(brain, MockExecutor::new(), 5, unique_data_dir());
         controller.set_fresh_chat(true);
 
-        let _meta = controller.run("finish the isolated task", "mock", None, false).unwrap();
+        let _meta = controller
+            .run("finish the isolated task", "mock", None, false)
+            .unwrap();
 
         assert!(
             *new_chat_calls.borrow() >= 1,
