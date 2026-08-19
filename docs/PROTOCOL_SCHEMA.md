@@ -33,8 +33,11 @@ Zusätzliche Envelope-Regeln:
 
 - Die Wurzel muss ein JSON-Objekt sein.
 - Action-`id`s müssen innerhalb der `actions`-Liste eindeutig sein.
-- Eine `finish`-Action muss die **einzige** Action der Antwort sein.
+- Eine `finish`-Action muss die **einzige** Action der Antwort sein, außer sie
+  schließt ausschließlich einen `message_part`-Strom ab.
 - Eine `message`-Action muss die **einzige** Action der Antwort sein.
+- `message_part`-Actions sind nur als lückenlose Folge `final-part-001`,
+  `final-part-002`, ... mit einem abschließenden `finish` erlaubt.
 - `shell`- und `edit`-Actions dürfen in einer Antwort gemischt werden (serielle
   Ausführung).
 
@@ -45,7 +48,7 @@ Jede Action ist ein Objekt. Gemeinsame Pflichtfelder für **alle** Typen:
 | Feld   | Typ    | Constraint                                        |
 |--------|--------|---------------------------------------------------|
 | `id`   | String | Pflicht                                           |
-| `type` | String | einer von: `shell`, `message`, `finish`, `edit`, `edit_batch`, `write` |
+| `type` | String | einer von: `shell`, `message`, `message_part`, `finish`, `edit`, `edit_batch`, `write` |
 
 Über die unten je Typ gelisteten Felder hinaus sind **keine** weiteren Felder
 erlaubt. Ein unbekanntes Feld (Tippfehler oder falscher Typ) → Antwort ungültig.
@@ -73,6 +76,19 @@ Erlaubte Felder: `id`, `type`, `text`.
 
 ```json
 { "id": "answer-1", "type": "message", "text": "Kurze Zusammenfassung." }
+```
+
+### `type: "message_part"` — Teil eines langen Ergebnisnachweises
+
+Erlaubte Felder: `id`, `type`, `text`. Ein `message_part` führt keine lokale
+Aktion aus und beendet den Run nicht. Er ist ausschließlich als Teil eines
+strukturierten Ergebnisstroms erlaubt: Die IDs beginnen bei `final-part-001`,
+steigen lückenlos und enden in derselben JSON-Antwort mit `finish`. Fehlt ein
+Teil, ist die Seriennummer ungültig oder enthält ein Teil keinen Text, liefert
+der Bot-to-Bot-Worker **kein** verwertbares Resultat.
+
+```json
+{ "id": "final-part-001", "type": "message_part", "text": "Erster Abschnitt." }
 ```
 
 ### `type: "finish"` — Run beenden

@@ -49,7 +49,14 @@ Verfügbare Tool-Anforderungen:
   werden vor dem Schreiben validiert, ein Fehler verändert keine Datei.
 - write: Eine neue, noch nicht existierende Datei anlegen.
 - message: Nutzerlesbares Ergebnis mitteilen und den Run beenden.
-- finish: Den Run ohne Nutzertext beenden.
+- message_part: Ein nichtabschließender Resultatteil ohne Nebenwirkung. Nutze ihn
+  nur für einen langen, strukturierten Nachweis: eine JSON-Antwort enthält dann
+  ausschließlich lückenlose IDs final-part-001, final-part-002, ... vom Typ
+  message_part und als letzte Action ein finish. Jeder Teil bleibt kurz; der
+  Worker fügt nur den vollständigen lückenlosen Strom als final-Resultat zusammen.
+  Mische message_part nie mit shell/edit/write/message.
+- finish: Den Run ohne Nutzertext beenden; nach message_part schließt er den
+  Resultatstrom.
 
 Mehrzeilige Dateiaktionen verwendest du robust im Rohformat:
 WEBAGENT/1 WRITE
@@ -261,6 +268,8 @@ mod tests {
         let prompt = autonomous_task_prompt("Arbeite", "");
         assert!(prompt.contains("Markdown-Codeblock"));
         assert!(prompt.contains("Option<u64>"));
+        assert!(prompt.contains("message_part"));
+        assert!(prompt.contains("final-part-001"));
     }
 
     #[test]

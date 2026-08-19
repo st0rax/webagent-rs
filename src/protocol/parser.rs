@@ -353,7 +353,7 @@ fn repair_message_windows_paths(json_text: &str) -> Option<String> {
 fn allowed_fields(action_type: &ActionType) -> &'static [&'static str] {
     match action_type {
         ActionType::Shell => &["id", "type", "command", "timeout_seconds"],
-        ActionType::Message => &["id", "type", "text"],
+        ActionType::Message | ActionType::MessagePart => &["id", "type", "text"],
         ActionType::Finish => &["id", "type"],
         ActionType::Edit => &["id", "type", "path", "old_string", "new_string"],
         ActionType::EditBatch => &["id", "type", "edits"],
@@ -378,6 +378,7 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
     let action_type = match action_type_str {
         "shell" => ActionType::Shell,
         "message" => ActionType::Message,
+        "message_part" => ActionType::MessagePart,
         "finish" => ActionType::Finish,
         "edit" => ActionType::Edit,
         "edit_batch" => ActionType::EditBatch,
@@ -464,7 +465,7 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
             a.timeout_seconds = timeout;
             Ok(a)
         }
-        ActionType::Message => {
+        kind @ (ActionType::Message | ActionType::MessagePart) => {
             let text = obj
                 .get("text")
                 .and_then(|v| v.as_str())
@@ -476,7 +477,7 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
                 return Err(format!("message action {} braucht text", action_id));
             }
 
-            let mut a = Action::base(action_id, ActionType::Message);
+            let mut a = Action::base(action_id, kind);
             a.text = text;
             Ok(a)
         }
@@ -749,25 +750,62 @@ pub fn parse(response_text: &str) -> ParseResult {
         }
     }
 
-    // Validierung: finish muss alleine sein
     let finish_count = actions
         .iter()
         .filter(|a| a.action_type == ActionType::Finish)
         .count();
-    if finish_count > 0 && actions.len() != 1 {
-        return ParseResult::invalid("finish muss die einzige Action der Antwort sein", text);
-    }
-
-    // Validierung: message muss alleine sein
     let message_count = actions
         .iter()
         .filter(|a| a.action_type == ActionType::Message)
         .count();
+    let message_part_count = actions
+        .iter()
+        .filter(|a| a.action_type == ActionType::MessagePart)
+        .count();
+
     if message_count > 0 && actions.len() != 1 {
         return ParseResult::invalid(
             "message muss nach allen Werkzeugbeobachtungen als einzige Action in einer eigenen Antwort stehen",
             text,
         );
+    }
+
+    if message_part_count > 0 {
+        let stream_is_closed = actions.last().is_some_and(|a| a.action_type == ActionType::Finish)
+            && actions[..actions.len() - 1]
+                .iter()
+                .all(|a| a.action_type == ActionType::MessagePart);
+        if !stream_is_closed {
+            return ParseResult::invalid(
+                "message_part braucht ausschließlich message_part-Actions und ein abschließendes finish",
+                text,
+            );
+        }
+        for (position, action) in actions[..actions.len() - 1].iter().enumerate() {
+            let Some(raw_index) = action.id.strip_prefix("final-part-") else {
+                return ParseResult::invalid(
+                    "message_part-IDs müssen final-part-NNN heißen",
+                    text,
+                );
+            };
+            if raw_index.len() != 3 || !raw_index.bytes().all(|byte| byte.is_ascii_digit()) {
+                return ParseResult::invalid(
+                    "message_part-IDs müssen eine dreistellige Seriennummer tragen",
+                    text,
+                );
+            }
+            let Ok(index) = raw_index.parse::<usize>() else {
+                return ParseResult::invalid("message_part-Seriennummer ist ungültig", text);
+            };
+            if index != position + 1 {
+                return ParseResult::invalid(
+                    "message_part-IDs müssen bei 001 beginnen und lückenlos steigen",
+                    text,
+                );
+            }
+        }
+    } else if finish_count > 0 && actions.len() != 1 {
+        return ParseResult::invalid("finish muss die einzige Action der Antwort sein", text);
     }
 
     ParseResult::valid(actions, text)

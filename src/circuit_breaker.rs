@@ -117,8 +117,17 @@ fn save(path: &PathBuf, state: &StateMap) {
         return;
     };
     let tmp = path.with_extension("json.tmp");
-    if fs::write(&tmp, json).is_ok() {
-        let _ = fs::rename(&tmp, path);
+    if fs::write(&tmp, &json).is_err() {
+        return;
+    }
+    // Der Rename bleibt der bevorzugte atomare Weg. Auf Windows kann jedoch ein
+    // gerade geschriebener Temp-Blob durch Scanner kurz exklusiv gehalten werden;
+    // `rename` verwirft den Fehler bisher still, wodurch der Breaker-Zustand nie
+    // persistiert. Der Fallback schreibt denselben vollständig serialisierten
+    // Zustand direkt, statt eine funktionslose Lockdatei zurückzulassen.
+    if fs::rename(&tmp, path).is_err() {
+        let _ = fs::write(path, json);
+        let _ = fs::remove_file(tmp);
     }
 }
 
@@ -513,6 +522,30 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("webagent_breaker_test_{nanos}_{n}.json"))
+    }
+
+    #[test]
+    fn save_roundtrip_persists_when_atomic_rename_is_unavailable() {
+        let path = unique_path();
+        let mut state = StateMap::new();
+        state.insert(
+            "deepseek".to_string(),
+            BrainState {
+                consecutive_failures: 2,
+                open_until: Some(now_secs() + 60),
+                last_reason: Some("timeout".to_string()),
+                ..BrainState::default()
+            },
+        );
+
+        save(&path, &state);
+        let loaded = load(&path);
+        assert_eq!(
+            loaded.get("deepseek").map(|entry| entry.consecutive_failures),
+            Some(2)
+        );
+        assert!(!path.with_extension("json.tmp").exists());
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

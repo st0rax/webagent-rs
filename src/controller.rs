@@ -682,6 +682,26 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     self.record_completed_action(&action.id, "finish");
                     break;
                 }
+                protocol::ActionType::MessagePart => {
+                    let mut extra = HashMap::new();
+                    extra.insert(
+                        "action_id".to_string(),
+                        serde_json::Value::String(action.id.clone()),
+                    );
+                    let _ = transcript.append("message_part", &action.text, extra);
+                    self.report_step("Ergebnis-Teil");
+                    if !self.quiet {
+                        crate::bench_events::print_detailed(
+                            &format!(
+                                "[message-part:{}] {}",
+                                action.id,
+                                crate::char_prefix(&action.text, 60)
+                            ),
+                            Some(&action.text),
+                        );
+                    }
+                    self.record_completed_action(&action.id, &action.text);
+                }
                 protocol::ActionType::Message => {
                     let mut extra = HashMap::new();
                     extra.insert(
@@ -2156,6 +2176,36 @@ mod tests {
         assert!(sent.contains(&workspace.display().to_string()), "{sent}");
         let _ = std::fs::remove_dir_all(data_dir);
         let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn message_part_stream_records_all_parts_before_finish() {
+        let response = r#"{"protocol":"webagent/1","actions":[
+            {"id":"final-part-001","type":"message_part","text":"erster Nachweis"},
+            {"id":"final-part-002","type":"message_part","text":"zweiter Nachweis"},
+            {"id":"final-complete","type":"finish"}
+        ]}"#;
+        let brain = MockBrain::new().with_responses(vec![response], vec![true]);
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, unique_data_dir());
+
+        let meta = controller
+            .run("Liefere einen langen strukturierten Nachweis", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "done");
+        assert_eq!(
+            meta.completed_actions.get("final-part-001").map(String::as_str),
+            Some("erster Nachweis")
+        );
+        assert_eq!(
+            meta.completed_actions.get("final-part-002").map(String::as_str),
+            Some("zweiter Nachweis")
+        );
+        assert_eq!(
+            meta.completed_actions.get("final-complete").map(String::as_str),
+            Some("finish")
+        );
     }
 
     #[test]

@@ -437,16 +437,68 @@ impl Drop for WorkerProfileGuard {
 /// mit einem fachlich verwertbaren Ergebnis verwechselt.
 /// Liefert den letzten kanonischen Arbeitstext samt Quelle. `answer-*` hat
 /// Vorrang; manche Provider schlieÃŸen jedoch nur mit `finish-*` ab.
-fn final_result_text(meta: &crate::run_store::RunMeta) -> Option<(&'static str, &str)> {
-    [("answer", "answer-"), ("finish", "finish-"), ("final", "final-"), ("review", "review-"), ("review", "eval-")]
-        .into_iter()
-        .find_map(|(source, prefix)| {
-            meta.completed_actions
-                .iter()
-                .filter(|(key, value)| key.starts_with(prefix) && !value.trim().is_empty())
-                .max_by_key(|(key, _)| key.as_str())
-                .map(|(_, value)| (source, value.trim()))
-        })
+fn multipart_final_text(meta: &crate::run_store::RunMeta) -> Result<Option<String>, ()> {
+    let mut parts = Vec::new();
+    for (key, value) in &meta.completed_actions {
+        let Some(raw_index) = key.strip_prefix("final-part-") else {
+            continue;
+        };
+        if raw_index.len() != 3 || !raw_index.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(());
+        }
+        let Ok(index) = raw_index.parse::<usize>() else {
+            return Err(());
+        };
+        if index == 0 || value.trim().is_empty() {
+            return Err(());
+        }
+        parts.push((index, value.trim()));
+    }
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    parts.sort_unstable_by_key(|(index, _)| *index);
+    if parts
+        .iter()
+        .enumerate()
+        .any(|(position, (index, _))| *index != position + 1)
+    {
+        return Err(());
+    }
+    Ok(Some(
+        parts
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    ))
+}
+
+fn final_result_text(meta: &crate::run_store::RunMeta) -> Option<(&'static str, String)> {
+    for (source, prefix) in [
+        ("answer", "answer-"),
+        ("finish", "finish-"),
+        ("final", "final-"),
+        ("review", "review-"),
+        ("review", "eval-"),
+    ] {
+        if source == "final" {
+            match multipart_final_text(meta) {
+                Ok(Some(result)) => return Some((source, result)),
+                Err(()) => return None,
+                Ok(None) => {}
+            }
+        }
+        if let Some((_, value)) = meta
+            .completed_actions
+            .iter()
+            .filter(|(key, value)| key.starts_with(prefix) && !value.trim().is_empty())
+            .max_by_key(|(key, _)| key.as_str())
+        {
+            return Some((source, value.trim().to_string()));
+        }
+    }
+    None
 }
 
 /// Rendert die Worker-Rueckgabe aus den kanonischen Run-Metadaten.
@@ -463,7 +515,7 @@ fn render_worker_result(meta: &crate::run_store::RunMeta) -> String {
     );
     if let Some((source, result)) = result {
         body.push_str(&format!("\nresult_source={source}\n\nresult:\n"));
-        body.push_str(result);
+        body.push_str(&result);
     }
     body
 }
@@ -667,6 +719,52 @@ mod tests {
         assert!(body.contains("result_source=final"));
         assert!(body.ends_with("result:\nfinales Ergebnis"));
     }
+    #[test]
+    fn render_worker_result_joins_contiguous_final_parts() {
+        let mut meta = crate::run_store::RunMeta {
+            run_id: "multipart-1".into(),
+            brain_id: "deepseek".into(),
+            task: "advisory".into(),
+            created_at: "t".into(),
+            status: "done".into(),
+            cycles: 1,
+            conversation_ref: None,
+            completed_actions: std::collections::HashMap::new(),
+            extra: std::collections::HashMap::new(),
+        };
+        meta.completed_actions
+            .insert("final-part-002".into(), "zweiter Teil".into());
+        meta.completed_actions
+            .insert("final-part-001".into(), "erster Teil".into());
+
+        let body = render_worker_result(&meta);
+        assert!(body.contains("result_source=final"));
+        assert!(body.ends_with("result:\nerster Teil\nzweiter Teil"));
+    }
+
+    #[test]
+    fn render_worker_result_rejects_gapped_final_parts() {
+        let mut meta = crate::run_store::RunMeta {
+            run_id: "multipart-gap".into(),
+            brain_id: "deepseek".into(),
+            task: "advisory".into(),
+            created_at: "t".into(),
+            status: "done".into(),
+            cycles: 1,
+            conversation_ref: None,
+            completed_actions: std::collections::HashMap::new(),
+            extra: std::collections::HashMap::new(),
+        };
+        meta.completed_actions
+            .insert("final-part-001".into(), "erster Teil".into());
+        meta.completed_actions
+            .insert("final-part-003".into(), "dritter Teil".into());
+
+        let body = render_worker_result(&meta);
+        assert!(body.contains("answer_present=false"));
+        assert!(!body.contains("result:\n"));
+    }
+
     #[test]
     fn render_worker_result_carries_review_text() {
         let mut meta = crate::run_store::RunMeta {

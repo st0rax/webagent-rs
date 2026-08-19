@@ -7,6 +7,10 @@ pub const PROTOCOL_VERSION: &str = "webagent/1";
 pub enum ActionType {
     Shell,
     Message,
+    /// Nichtabschließender Teil eines strukturierten Ergebnisses.
+    /// Nur im lückenlosen final-part-NNN-Strom vor finish zulässig.
+    #[serde(rename = "message_part")]
+    MessagePart,
     Finish,
     /// Eindeutiger Anker-Ersatz in einer Bestandsdatei (path/old_string/new_string).
     Edit,

@@ -423,6 +423,48 @@ Write-Output $html
     }
 
     #[test]
+    fn message_parts_require_a_closed_pure_stream() {
+        let valid = json!({
+            "protocol": "webagent/1",
+            "actions": [
+                {"id": "final-part-001", "type": "message_part", "text": "erster Teil"},
+                {"id": "final-part-002", "type": "message_part", "text": "zweiter Teil"},
+                {"id": "final-complete", "type": "finish"}
+            ]
+        });
+        let parsed = parse(&serde_json::to_string(&valid).unwrap());
+        assert!(parsed.valid, "{}", parsed.error);
+        assert_eq!(parsed.actions[0].action_type, ActionType::MessagePart);
+        assert_eq!(parsed.actions.len(), 3);
+
+        for invalid in [
+            json!({"protocol":"webagent/1","actions":[
+                {"id":"final-part-001","type":"message_part","text":"offen"}
+            ]}),
+            json!({"protocol":"webagent/1","actions":[
+                {"id":"final-part-001","type":"message_part","text":"Teil"},
+                {"id":"work","type":"shell","command":"Get-Date"},
+                {"id":"final-complete","type":"finish"}
+            ]}),
+            json!({"protocol":"webagent/1","actions":[
+                {"id":"final-part-001","type":"message_part","text":"Teil"},
+                {"id":"answer","type":"message","text":"falsch"}
+            ]}),
+            json!({"protocol":"webagent/1","actions":[
+                {"id":"part-001","type":"message_part","text":"Teil"},
+                {"id":"final-complete","type":"finish"}
+            ]}),
+            json!({"protocol":"webagent/1","actions":[
+                {"id":"final-part-001","type":"message_part","text":"Teil eins"},
+                {"id":"final-part-003","type":"message_part","text":"Teil drei"},
+                {"id":"final-complete","type":"finish"}
+            ]}),
+        ] {
+            assert!(!parse(&serde_json::to_string(&invalid).unwrap()).valid);
+        }
+    }
+
+    #[test]
     fn test_reject_text_outside_block() {
         let text = format!(
             "Hier:\n```json\n{}\n```",

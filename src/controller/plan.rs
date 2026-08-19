@@ -19,7 +19,8 @@ pub fn validate_action_plan(actions: &[crate::protocol::Action]) -> Result<(), S
                     ));
                 }
             }
-            crate::protocol::ActionType::Message => {
+            crate::protocol::ActionType::Message
+            | crate::protocol::ActionType::MessagePart => {
                 if action.text.trim().is_empty() {
                     return Err(format!(
                         "Message-Action '{}' hat keinen Text (text)",
@@ -97,6 +98,23 @@ mod validate_action_plan_tests {
                 edits: Vec::new(),
             },
         ];
+        assert!(validate_action_plan(&plan).is_ok());
+    }
+
+    #[test]
+    fn test_message_part_with_text_is_accepted() {
+        let plan = vec![Action {
+            id: "final-part-001".to_string(),
+            action_type: ActionType::MessagePart,
+            command: "".to_string(),
+            text: "belegbarer Teil".to_string(),
+            timeout_seconds: 30.0,
+            path: "".to_string(),
+            old_string: "".to_string(),
+            new_string: "".to_string(),
+            content: "".to_string(),
+            edits: Vec::new(),
+        }];
         assert!(validate_action_plan(&plan).is_ok());
     }
 
