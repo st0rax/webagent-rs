@@ -5,6 +5,7 @@
 //! und einem expliziten unabhängigen PASS-Urteil.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -114,6 +115,86 @@ fn require_active_goal(data_dir: &Path) -> Result<GoalRecord, String> {
     })
 }
 
+fn looks_like_artifact_reference(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with("note:") {
+        return false;
+    }
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return true;
+    }
+    if let Some(path) = lower.strip_prefix("file:") {
+        return !path.trim().is_empty();
+    }
+    if value.contains('/') || value.contains('\\') {
+        return true;
+    }
+    [
+        ".json", ".jsonl", ".md", ".txt", ".log", ".png", ".pdf", ".html", ".csv",
+    ]
+    .iter()
+    .any(|suffix| lower.ends_with(suffix))
+}
+
+fn contains_unverified_hash_marker(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    ["sha256=", "sha=", "md5=", "digest="]
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
+fn normalize_evidence(evidence: Vec<String>) -> Result<Vec<String>, String> {
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::new();
+    for raw in evidence {
+        let value = raw.trim();
+        if value.is_empty() {
+            continue;
+        }
+        if contains_unverified_hash_marker(value) {
+            return Err("Evidenz darf keine nicht verifizierten Hashmarker enthalten.".to_string());
+        }
+        if !seen.insert(value.to_string()) {
+            return Err(format!("Evidenzverweis ist doppelt: {value}"));
+        }
+        normalized.push(value.to_string());
+    }
+    if normalized.is_empty() {
+        return Err("Ein Zielabschluss benÃ¶tigt mindestens einen Evidenzverweis.".to_string());
+    }
+    if !normalized
+        .iter()
+        .any(|value| looks_like_artifact_reference(value))
+    {
+        return Err(
+            "Ein Zielabschluss benÃ¶tigt mindestens einen Artefaktverweis (Datei oder URL)."
+                .to_string(),
+        );
+    }
+    Ok(normalized)
+}
+
+fn require_finished_plan(data_dir: &Path, goal_id: &str) -> Result<(), String> {
+    let Some(plan) = active_plan(data_dir)? else {
+        return Ok(());
+    };
+    if plan.goal_id != goal_id {
+        return Err("Der aktive Plan gehÃ¶rt nicht zum aktiven Ziel.".to_string());
+    }
+    let open_items: Vec<String> = plan
+        .items
+        .iter()
+        .filter(|item| !item.done)
+        .map(|item| format!("#{} {}", item.id, item.description))
+        .collect();
+    if !open_items.is_empty() {
+        return Err(format!(
+            "Ein Zielabschluss ist mit unerledigten Arbeitsscheiben nicht zulÃ¤ssig: {}",
+            open_items.join(", ")
+        ));
+    }
+    Ok(())
+}
 pub fn create_goal(
     data_dir: &Path,
     objective: String,
@@ -158,18 +239,17 @@ pub fn complete_goal(
     reviewer: String,
     verdict: String,
 ) -> Result<GoalRecord, String> {
-    if evidence.is_empty() {
-        return Err("Ein Zielabschluss benötigt mindestens einen Evidenzverweis.".to_string());
-    }
+    let mut goal = require_active_goal(data_dir)?;
+    require_finished_plan(data_dir, &goal.id)?;
+    let evidence = normalize_evidence(evidence)?;
     if reviewer.trim().is_empty() {
-        return Err("Ein Zielabschluss benötigt einen unabhängigen Reviewer.".to_string());
+        return Err("Ein Zielabschluss benÃ¶tigt einen unabhÃ¤ngigen Reviewer.".to_string());
     }
     if !verdict.trim().eq_ignore_ascii_case("PASS") {
         return Err(
-            "Ein Ziel darf nur mit dem unabhängigen Urteil PASS abgeschlossen werden.".to_string(),
+            "Ein Ziel darf nur mit dem unabhÃ¤ngigen Urteil PASS abgeschlossen werden.".to_string(),
         );
     }
-    let mut goal = require_active_goal(data_dir)?;
     goal.status = GoalStatus::Completed;
     goal.evidence = evidence;
     goal.reviewer = Some(reviewer.trim().to_string());
@@ -180,7 +260,6 @@ pub fn complete_goal(
     let _ = fs::remove_file(active_plan_path(data_dir));
     Ok(goal)
 }
-
 pub fn abandon_goal(data_dir: &Path, reason: String) -> Result<GoalRecord, String> {
     if reason.trim().is_empty() {
         return Err("Ein abgebrochenes Ziel benötigt einen Grund.".to_string());
@@ -298,6 +377,101 @@ mod tests {
         assert!(active_goal(&root).unwrap().is_none());
     }
 
+    #[test]
+    fn completed_goal_rejects_note_only_duplicate_and_fake_hash_evidence() {
+        let root = temp_root("evidence_rules");
+        create_goal(
+            &root,
+            "Harness finalisieren".into(),
+            vec!["Review PASS".into()],
+            vec![],
+        )
+        .unwrap();
+        assert!(complete_goal(
+            &root,
+            vec!["note: manuelle SichtprÃ¼fung".into()],
+            "reviewer".into(),
+            "PASS".into(),
+        )
+        .unwrap_err()
+        .contains("Artefaktverweis"));
+        assert!(complete_goal(
+            &root,
+            vec!["evidence.json".into(), "evidence.json".into()],
+            "reviewer".into(),
+            "PASS".into(),
+        )
+        .unwrap_err()
+        .contains("doppelt"));
+        assert!(complete_goal(
+            &root,
+            vec!["file:evidence.json sha256=deadbeef".into()],
+            "reviewer".into(),
+            "PASS".into(),
+        )
+        .unwrap_err()
+        .contains("Hashmarker"));
+    }
+
+    #[test]
+    fn completed_goal_requires_all_active_plan_items_done() {
+        let root = temp_root("plan_gate");
+        create_goal(
+            &root,
+            "Harness finalisieren".into(),
+            vec!["Review PASS".into()],
+            vec![],
+        )
+        .unwrap();
+        create_plan(
+            &root,
+            "Harness".into(),
+            vec!["Build".into(), "Review".into()],
+        )
+        .unwrap();
+        complete_plan_item(&root, 1).unwrap();
+        assert!(complete_goal(
+            &root,
+            vec!["evidence.json".into()],
+            "reviewer".into(),
+            "PASS".into(),
+        )
+        .unwrap_err()
+        .contains("unerledigten Arbeitsscheiben"));
+        complete_plan_item(&root, 2).unwrap();
+        let goal = complete_goal(
+            &root,
+            vec![" note: geprÃ¼ft ".into(), "evidence.json".into()],
+            "reviewer".into(),
+            "PASS".into(),
+        )
+        .unwrap();
+        assert_eq!(goal.evidence, vec!["note: geprÃ¼ft", "evidence.json"]);
+    }
+
+    #[test]
+    fn completed_goal_rejects_plan_bound_to_another_goal() {
+        let root = temp_root("wrong_plan");
+        create_goal(
+            &root,
+            "Harness finalisieren".into(),
+            vec!["Review PASS".into()],
+            vec![],
+        )
+        .unwrap();
+        create_plan(&root, "Harness".into(), vec!["Build".into()]).unwrap();
+        let mut plan = active_plan(&root).unwrap().unwrap();
+        plan.goal_id = "goal-fremd".into();
+        write_json(&active_plan_path(&root), &plan).unwrap();
+        assert!(complete_goal(
+            &root,
+            vec!["evidence.json".into()],
+            "reviewer".into(),
+            "PASS".into(),
+        )
+        .unwrap_err()
+        .contains("gehÃ¶rt nicht"));
+    }
     #[test]
     fn plan_binds_to_active_goal_and_marks_items_done() {
         let root = temp_root("plan");

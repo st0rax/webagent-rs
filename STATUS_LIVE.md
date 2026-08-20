@@ -2575,3 +2575,15 @@ und wurden trotzdem 6 h gesperrt. Gemini bleibt unangetastet.
 
 - Nutzervorgabe: Eine belegte, stabile lokale Scheibe wird fÃ¼r eine jederzeit abrufbare Versionshistorie **ohne zusÃ¤tzliche Commitfrage** committed und nach sicherer Remote-/DivergenzprÃ¼fung auf den vorgesehenen GitHub-Branch gespiegelt.
 - Der fehlende OpenCode-Schlussbefund bleibt als Nachreview offen und wird nicht als PASS ausgegeben. Er blockiert diese vollstÃ¤ndig lokal abgeprÃ¼fte, testinterne HÃ¤rtung jedoch nicht mehr; Claude Opus PASS und die vollstÃ¤ndige lokale Matrix liegen vor.
+## 2026-08-20 â€” OFFEN: Goal-Abschlussvertrag (noch nicht committen)
+
+- **Eigene Ã„nderung:** `src/goal_plan.rs` erzwingt vor `complete_goal` nun einen zum Ziel passenden, vollstÃ¤ndig erledigten aktiven Plan sowie normalisierte, eindeutige Evidenz mit mindestens einem plausiblen Datei-/URL-Artefaktverweis. Freitext-`note:` allein reicht nicht; unprÃ¼fbare Hashmarker werden abgelehnt. Der strikte bestehende Verdict-Vertrag `PASS` und das JSON-Schema bleiben unverÃ¤ndert.
+- **DesignprÃ¼fung:** Claude Opus empfahl zunÃ¤chst strukturierte Hashbindung; ein unabhÃ¤ngiger GPT-5-Gegenreview lehnte diese ohne tatsÃ¤chliche HashprÃ¼fung als Scheinsicherheit ab. Die Ã¼bernommene MinimalhÃ¤rtung kombiniert Plan-Gate, Artefaktpflicht, Duplikatverbot und unverÃ¤ndertes PASS-Gate ohne neue Persistenzschicht.
+- **Regressionen:** offene Planitems, fremde Planbindung, note-only-Evidenz, Duplikate und Hashmarker werden abgewiesen; erledigter Plan plus normalisierte `note:`/Dateievidenz wird angenommen. Format, Diff-Check und vier gezielte Unit-Tests sind grÃ¼n.
+- **Herkunft:** keine fremden, Build- oder Formatter-NebenÃ¤nderungen auÃŸerhalb von `src/goal_plan.rs`. Vor Commit folgen vollstÃ¤ndige lokale Matrix und unabhÃ¤ngige Finalreviews.
+### Finaler Reviewnachweis 2026-08-20
+
+- **Claude Opus 4.7:** PASS, Risiko niedrig; Planbindung, Artefakt-Heuristik, Gate-Reihenfolge und rÃ¼ckwÃ¤rtskompatible `evidence.json`-Akzeptanz geprÃ¼ft; isolierter Commit empfohlen.
+- **GPT-5:** PASS, Risiko niedrig; keine versteckten Datei-/Prozess-/Netzwerkzugriffe, keine Statusmutation vor erfÃ¼llten Gates, kein Schema-Bump und ausreichende Regressionen bestÃ¤tigt; isolierter Commit empfohlen.
+- **Bekannte bewusste Grenze:** Die ArtefaktprÃ¼fung bleibt syntaktisch und liest keine Datei; sie erzwingt einen nachvollziehbaren lokalen Verweis, behauptet aber keine kryptografische IntegritÃ¤t.
+- **Zusatzreview Grok Build 1.0.4:** Der lokal verfÃ¼gbare Headless-Read-only-Aufruf wurde gegen denselben Diff gestartet, lieferte im begrenzten Wartefenster jedoch keine Abschlussausgabe und wurde ohne ProjektÃ¤nderung beendet. Kein Grok-Verdict wird behauptet; Claude Opus PASS und GPT-5 PASS bleiben die committragenden unabhÃ¤ngigen Reviews.
