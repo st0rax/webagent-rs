@@ -103,6 +103,113 @@ pub enum RouteDecision {
     ManualOnly { model_id: String, reason: String },
     Unavailable { model_id: String, reason: String },
 }
+/// Stable identifier for the in-process reference adapter. It is deliberately
+/// not part of the public cloud registry and cannot be mistaken for a provider.
+pub const DETERMINISTIC_MOCK_MODEL_ID: &str = "webagent/local-mock-stream";
+
+/// A normalized input to a text-stream adapter. The model is explicit so every
+/// adapter must honor the central routing decision before emitting data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextStreamRequest {
+    pub model: CloudModel,
+    pub prompt: String,
+    pub free_only: bool,
+}
+
+/// Provider-neutral events for the first textchat contract slice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "event")]
+pub enum TextStreamEvent {
+    Started { model_id: String },
+    Token { text: String },
+    Completed { model_id: String },
+}
+
+/// Explicit adapter failure. A denied route never produces partial events.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "error")]
+pub enum TextStreamError {
+    RouteDenied { decision: RouteDecision },
+    InvalidRequest { reason: String },
+}
+
+impl std::fmt::Display for TextStreamError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RouteDenied { decision } => write!(formatter, "route denied: {decision:?}"),
+            Self::InvalidRequest { reason } => {
+                write!(formatter, "invalid text stream request: {reason}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for TextStreamError {}
+
+/// Contract that every future external adapter must implement before use.
+pub trait TextStreamAdapter {
+    fn stream(&self, request: &TextStreamRequest) -> Result<Vec<TextStreamEvent>, TextStreamError>;
+}
+
+/// Deterministic local reference adapter for contract, CLI and regression tests.
+/// It cannot access a network, browser, credential, or third-party model.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DeterministicMockAdapter;
+
+/// Returns the only model accepted by the local reference adapter.
+pub fn deterministic_mock_model() -> CloudModel {
+    CloudModel {
+        model_id: DETERMINISTIC_MOCK_MODEL_ID.to_string(),
+        display_name: "WebAgent local deterministic mock".to_string(),
+        provider: "WebAgent local test adapter".to_string(),
+        source_url: "local://webagent/mock-stream".to_string(),
+        profiles: vec![ModelProfile::Auto, ModelProfile::Custom],
+        languages: vec!["de".to_string(), "en".to_string()],
+        tags: vec![
+            "local".to_string(),
+            "deterministic".to_string(),
+            "mock".to_string(),
+        ],
+        access: AccessMode::VerifiedFree,
+        adapter_compatible: true,
+        last_verified_at: Some("local-contract".to_string()),
+    }
+}
+
+impl TextStreamAdapter for DeterministicMockAdapter {
+    fn stream(&self, request: &TextStreamRequest) -> Result<Vec<TextStreamEvent>, TextStreamError> {
+        if request.prompt.trim().is_empty() {
+            return Err(TextStreamError::InvalidRequest {
+                reason: "prompt must not be empty".to_string(),
+            });
+        }
+        let decision = decide_route(&request.model, request.free_only);
+        if !matches!(decision, RouteDecision::Auto { .. }) {
+            return Err(TextStreamError::RouteDenied { decision });
+        }
+        Ok(vec![
+            TextStreamEvent::Started {
+                model_id: request.model.model_id.clone(),
+            },
+            TextStreamEvent::Token {
+                text: format!("Local mock reply: {}", request.prompt.trim()),
+            },
+            TextStreamEvent::Completed {
+                model_id: request.model.model_id.clone(),
+            },
+        ])
+    }
+}
+
+/// Convenience entry point for the CLI demo and integration tests.
+pub fn stream_deterministic_mock(prompt: &str) -> Result<Vec<TextStreamEvent>, TextStreamError> {
+    let model = deterministic_mock_model();
+    DeterministicMockAdapter.stream(&TextStreamRequest {
+        model,
+        prompt: prompt.to_string(),
+        free_only: true,
+    })
+}
 
 /// Versionierte Startregistry. Sie enthält absichtlich nur konservative
 /// Einträge; Inference-Provider werden nicht als gratis beworben.
@@ -409,5 +516,44 @@ mod tests {
         .score;
 
         assert!(three > two);
+    }
+    #[test]
+    fn deterministic_mock_streams_only_after_the_free_only_route() {
+        let events = stream_deterministic_mock("Hallo Vertrag").unwrap();
+        assert_eq!(events.len(), 3);
+        assert!(
+            matches!(events.first(), Some(TextStreamEvent::Started { model_id }) if model_id == DETERMINISTIC_MOCK_MODEL_ID)
+        );
+        assert!(
+            matches!(events.get(1), Some(TextStreamEvent::Token { text }) if text == "Local mock reply: Hallo Vertrag")
+        );
+        assert!(
+            matches!(events.last(), Some(TextStreamEvent::Completed { model_id }) if model_id == DETERMINISTIC_MOCK_MODEL_ID)
+        );
+    }
+
+    #[test]
+    fn mock_adapter_denies_a_credit_limited_route_before_emitting_events() {
+        let mut model = deterministic_mock_model();
+        model.access = AccessMode::ExplicitCredits;
+        let error = DeterministicMockAdapter
+            .stream(&TextStreamRequest {
+                model,
+                prompt: "must stay local".to_string(),
+                free_only: true,
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            TextStreamError::RouteDenied {
+                decision: RouteDecision::ManualOnly { .. }
+            }
+        ));
+    }
+
+    #[test]
+    fn mock_adapter_rejects_an_empty_prompt_without_events() {
+        let error = stream_deterministic_mock("   ").unwrap_err();
+        assert!(matches!(error, TextStreamError::InvalidRequest { .. }));
     }
 }

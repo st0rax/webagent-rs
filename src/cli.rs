@@ -741,6 +741,11 @@ pub enum CloudCommands {
         #[arg(long)]
         allow_credits: bool,
     },
+    /// Demonstriert den lokalen Adaptervertrag ohne Netz- oder Providerzugriff.
+    MockStream {
+        #[arg(long)]
+        prompt: String,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]

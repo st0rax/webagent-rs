@@ -435,7 +435,7 @@ fn print_goal_plan_result(result: Result<String, String>) -> i32 {
 
 fn cmd_cloud(command: cli::CloudCommands) -> i32 {
     use webagent::free_cloud_chat::{
-        decide_route, default_registry, search_registry, ModelProfile,
+        decide_route, default_registry, search_registry, stream_deterministic_mock, ModelProfile,
     };
 
     fn profile(value: &str) -> Result<ModelProfile, String> {
@@ -487,6 +487,15 @@ fn cmd_cloud(command: cli::CloudCommands) -> i32 {
                 }))
             })
             .unwrap_or_else(|| Err(format!("Unbekannte Registry-ID '{model_id}'."))),
+        cli::CloudCommands::MockStream { prompt } => stream_deterministic_mock(&prompt)
+            .map(|events| {
+                serde_json::json!({
+                    "adapter": "deterministic_local_mock",
+                    "network_access": false,
+                    "events": events,
+                })
+            })
+            .map_err(|error| error.to_string()),
     };
 
     match result {

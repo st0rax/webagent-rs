@@ -4,7 +4,7 @@
 
 > **Stand:** 20. August 2026  
 > **Arbeitsbaum:** `C:\Users\storax\Documents\Codex\2026-08-12\kann\work\webagent-harness-abnahme`  
-> **Status:** Die lokale Registry-/Policy-Scheibe ist implementiert, vollstÃ¤ndig getestet und Ã¼ber die lokale CLI nachgewiesen. Sie ist **noch keine vollstÃ¤ndige Cloud-Chat-ProduktionseinfÃ¼hrung**, weil externe Inferenz, Streaming und Browser-/Space-Adapter bewusst noch nicht implementiert sind.
+> **Status:** Die lokale Registry-/Policy-Scheibe und ihr deterministischer Adaptervertrag sind implementiert, getestet und Ã¼ber die lokale CLI nachgewiesen. Sie ist **noch keine vollstÃ¤ndige Cloud-Chat-ProduktionseinfÃ¼hrung**, weil reale externe Inferenz, Browser-/Space-Adapter und Credential-Routen bewusst noch nicht implementiert sind.
 
 ## Umgesetzte Scheibe
 
@@ -46,9 +46,14 @@ Die vollstÃ¤ndige PrÃ¼fung lief mit dem Windows-GNU-Linker und ergab ein erf
 
 Der vormals blockierende Baselinefehler wurde durch eine isolierte Ursachenanalyse behoben: Das Generieren der groÃŸen Clap-Command-Struktur Ã¼berlief im Windows-GNU-Main-Thread, ist aber auf einem ausdrÃ¼cklich 64 MiB groÃŸen Rust-Worker-Stack vollstÃ¤ndig terminierend. Der Nicht-WebView-Programmeinstieg startet `run()` daher auf diesem Worker-Stack; der WebView-Pfad bleibt auf dem Hauptthread. Danach liefen `webagent --version`, `webagent cloud search --profile custom --query "huggingface api"` und `webagent cloud decide --model-id huggingface/inference-providers` erfolgreich. Die letzte Ausgabe bestÃ¤tigt dabei `manual_only` fÃ¼r den kreditpflichtigen Provider.
 
+## Lokaler Adaptervertrag
+
+`src/free_cloud_chat.rs` enthÃ¤lt jetzt den providerneutralen `TextStreamAdapter`-Vertrag, `TextStreamRequest`, `TextStreamEvent` und klar typisierte Fehler. Als einzige Implementierung existiert `DeterministicMockAdapter` fÃ¼r `webagent/local-mock-stream`. Der Adapter verwendet ausschlieÃŸlich In-Memory-Strings und hat weder HTTP-, Browser-, Credential- noch Providerzugriff. Vor jedem Event erzwingt er `decide_route`; eine verweigerte Free-only-Route liefert einen Fehler und keine Teilereignisse.
+
+Der explizite CLI-Nachweis lautet `webagent cloud mock-stream --prompt "Hallo Vertrag"`. Die Ausgabe benennt `deterministic_local_mock` und `network_access: false`. Ein Leerzeichenprompt endet mit Code 2. Unit-Tests decken den erfolgreichen Stream, die verweigerte Credit-Route und den leeren Prompt ab. Claude Opus und OpenCode bewerteten die Scheibe unabhÃ¤ngig ohne Hoch- oder Mittelrisikofund.
 ## NÃ¤chste Abnahmeschritte
 
-Die nÃ¤chste technische Scheibe ist ein versionierter Hub-Metadatenadapter mit explizitem Opt-in fÃ¼r Nutzer-Credentials, Healthcheck/Circuit-Breaker und anschlieÃŸend ein Streaming-Adapter. Kostenpflichtige Fallbacks bleiben im Free-only-Modus deaktiviert. Jede neue Adapterklasse benÃ¶tigt vor einer automatischen Route aktuelle technische Frei-/Kosten- und Gesundheitsnachweise.
+Die nÃ¤chste externe Scheibe ist ein versionierter Hub-Metadatenadapter mit explizitem Opt-in fÃ¼r Nutzer-Credentials und Healthcheck/Circuit-Breaker. Erst danach kann ein realer Streaming-Adapter geprÃ¼ft werden. Kostenpflichtige Fallbacks bleiben im Free-only-Modus deaktiviert. Jede neue Adapterklasse benÃ¶tigt vor einer automatischen Route aktuelle technische Frei-/Kosten- und Gesundheitsnachweise.
 
 ## Quellen
 
