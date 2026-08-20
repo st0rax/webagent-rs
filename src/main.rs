@@ -49,17 +49,27 @@ fn main() {
     // Muss vor der ersten Ausgabe laufen, sonst ist die erste Zeile Mojibake.
     init_console_utf8();
 
-    // Gespeicherte Einstellungen in die Prozessumgebung legen — VOR dem ersten
-    // Lesen, denn der uebrige Code fragt die Umgebung. Eine ausdrueckliche
-    // Variable beim Start bleibt unangetastet: wer sie setzt, meint es so.
-    // Ohne diesen Aufruf waere die Einstellungen-Ansicht eine Attrappe.
-    webagent::tui_config::apply_persisted();
-    webagent::bin_hooks::set_probe_fn(cmd_probe);
 
     let cli = Cli::parse();
+    // Lokale Diagnose-/Registry-Befehle benÃ¶tigen weder persistierte
+    // TUI-Einstellungen noch den Browser-Probe-Hook. Der frÃ¼he RÃ¼ckweg
+    // hÃ¤lt ihre Zusage "kein Browser, kein Profil, kein Netz" ein.
+    if matches!(
+        &cli.command,
+        Some(Commands::MaintenanceCheck { .. } | Commands::Cloud { .. })
+    ) {
+        process::exit(dispatch(cli.command.expect("geprÃ¼fter lokaler Befehl fehlt")));
+    }
+
+    // Gespeicherte Einstellungen werden vor dem ersten regulÃ¤ren Ablauf
+    // in die Umgebung gelegt; eine beim Start gesetzte Variable bleibt
+    // unverÃ¤ndert. Ohne diesen Schritt wÃ¤re die Einstellungen-Ansicht
+    // eine Attrappe.
+    webagent::tui_config::apply_persisted();
+    webagent::bin_hooks::set_probe_fn(cmd_probe);
     // Kein Subcommand -> Session-TUI. REPL bleibt `webagent repl`,
     // Pool/Wand bleibt `webagent tui`.
-    let command = cli.command.unwrap_or(Commands::Tui {
+    let command = cli.command.unwrap_or_else(|| Commands::Tui {
         active: 2,
         brains: String::new(),
         poll_secs: 5,
@@ -69,7 +79,7 @@ fn main() {
         force_tui: false,
     });
 
-    let exit_code = if matches!(command, Commands::MaintenanceCheck { .. }) {
+    let exit_code = if matches!(command, Commands::MaintenanceCheck { .. } | Commands::Cloud { .. }) {
         dispatch(command)
     } else {
         webagent::config::ensure_stable_layout();
@@ -402,7 +412,8 @@ fn dispatch(command: Commands) -> i32 {
 
         Commands::Goal { command } => cmd_goal(command),
         Commands::Plan { command } => cmd_plan(command),
-        Commands::Api { command } => cmd_api(command),        Commands::SyncMaster => cmd_sync_master(),
+        Commands::Api { command } => cmd_api(command),
+        Commands::Cloud { command } => cmd_cloud(command),        Commands::SyncMaster => cmd_sync_master(),
     }
 }
 
@@ -419,6 +430,75 @@ fn print_goal_plan_result(result: Result<String, String>) -> i32 {
     }
 }
 
+fn cmd_cloud(command: cli::CloudCommands) -> i32 {
+    use webagent::free_cloud_chat::{
+        decide_route, default_registry, search_registry, ModelProfile,
+    };
+
+    fn profile(value: &str) -> Result<ModelProfile, String> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "auto" => Ok(ModelProfile::Auto),
+            "fast" | "schnell" => Ok(ModelProfile::Fast),
+            "german" | "deutsch" => Ok(ModelProfile::German),
+            "reasoning" | "code" | "reasoning-code" | "reasoning_code" => {
+                Ok(ModelProfile::ReasoningCode)
+            }
+            "creative" | "kreativ" => Ok(ModelProfile::Creative),
+            "privacy" | "datensparsam" => Ok(ModelProfile::Privacy),
+            "custom" => Ok(ModelProfile::Custom),
+            other => Err(format!(
+                "Unbekanntes Profil '{other}'. Erlaubt: auto, schnell, deutsch, reasoning-code, kreativ, datensparsam, custom."
+            )),
+        }
+    }
+
+    let registry = default_registry();
+    let result = match command {
+        cli::CloudCommands::List => Ok(serde_json::json!({
+            "schema_version": webagent::free_cloud_chat::REGISTRY_SCHEMA_VERSION,
+            "free_only_default": true,
+            "models": registry,
+        })),
+        cli::CloudCommands::Search {
+            profile: requested_profile,
+            query,
+            allow_credits,
+        } => profile(&requested_profile).map(|selected_profile| serde_json::json!({
+            "profile": selected_profile.label(),
+            "query": query,
+            "free_only": !allow_credits,
+            "results": search_registry(&registry, selected_profile, &query, !allow_credits),
+        })),
+        cli::CloudCommands::Decide {
+            model_id,
+            allow_credits,
+        } => registry
+            .iter()
+            .find(|model| model.model_id == model_id)
+            .map(|model| Ok(serde_json::json!({
+                "free_only": !allow_credits,
+                "decision": decide_route(model, !allow_credits),
+            })))
+            .unwrap_or_else(|| Err(format!("Unbekannte Registry-ID '{model_id}'."))),
+    };
+
+    match result {
+        Ok(value) => match serde_json::to_string_pretty(&value) {
+            Ok(text) => {
+                println!("{text}");
+                0
+            }
+            Err(error) => {
+                eprintln!("[cloud] JSON-Ausgabe fehlgeschlagen: {error}");
+                2
+            }
+        },
+        Err(error) => {
+            eprintln!("[cloud] {error}");
+            2
+        }
+    }
+}
 fn cmd_api(command: cli::ApiCommands) -> i32 {
     match command {
         cli::ApiCommands::Serve {

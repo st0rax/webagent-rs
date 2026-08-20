@@ -710,9 +710,39 @@ pub enum Commands {
         command: ApiCommands,
     },
 
+
+    /// Lokale Registry und Free-only-Entscheidungen fÃ¼r optionale Cloud-Textchats.
+    Cloud {
+        #[command(subcommand)]
+        command: CloudCommands,
+    },
 }
 
 /// Argumente des `autoresearch`-Subcommands (Spec: docs/AUTORESEARCH_PLAN.md §6).
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum CloudCommands {
+    /// Listet die versionierte lokale Cloud-Registry ohne Netz- oder Providerzugriff.
+    List,
+    /// Durchsucht die lokale Registry und erklÃ¤rt jede Trefferentscheidung.
+    Search {
+        #[arg(long, default_value = "custom")]
+        profile: String,
+        #[arg(long, default_value = "")]
+        query: String,
+        /// Erlaubt Modelle mit explizit bestÃ¤tigten Credits; Standard bleibt Free-only.
+        #[arg(long)]
+        allow_credits: bool,
+    },
+    /// Zeigt fÃ¼r einen Registry-Eintrag die konkrete Routerentscheidung.
+    Decide {
+        #[arg(long)]
+        model_id: String,
+        /// Erlaubt Modelle mit explizit bestÃ¤tigten Credits; Standard bleibt Free-only.
+        #[arg(long)]
+        allow_credits: bool,
+    },
+}
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum ApiCommands {

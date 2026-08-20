@@ -585,3 +585,5 @@ mod snapshot_tests {
         assert!(!ProcessSnapshot::from_pids([0]).is_alive(0));
     }
 }
+
+pub mod free_cloud_chat;
