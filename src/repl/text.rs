@@ -4,15 +4,23 @@
 //! Aus `repl::mod` extrahiert (Schritt 7) — reine Moves, keine Logikänderung.
 
 pub(crate) fn get_facts_string() -> String {
-    let readme = std::fs::read_to_string("README.md").unwrap_or_else(|_| "README nicht gefunden".to_string());
-    let progress = std::fs::read_to_string("PROGRESS.md").unwrap_or_else(|_| "PROGRESS nicht gefunden".to_string());
+    let readme = std::fs::read_to_string("README.md")
+        .unwrap_or_else(|_| "README nicht gefunden".to_string());
+    let progress = std::fs::read_to_string("PROGRESS.md")
+        .unwrap_or_else(|_| "PROGRESS nicht gefunden".to_string());
     let mut modules = Vec::new();
     if let Ok(entries) = std::fs::read_dir("src") {
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             if path.extension().map(|s| s == "rs").unwrap_or(false) {
-                if let Some(name) = path.file_name().and_then(|s| s.to_str()).map(|s| s.to_string()) {
-                    let size = std::fs::metadata(&path).map(|m| m.len() as usize).unwrap_or(0);
+                if let Some(name) = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+                {
+                    let size = std::fs::metadata(&path)
+                        .map(|m| m.len() as usize)
+                        .unwrap_or(0);
                     modules.push((name, size));
                 }
             }

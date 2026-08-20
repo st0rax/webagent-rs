@@ -44,9 +44,7 @@ pub fn harvest_rejection(patch: &str) -> Option<String> {
         return Some(e);
     }
     if !has_substantive_change(patch) {
-        return Some(
-            "keine inhaltliche Änderung — nur Leerzeilen/Whitespace".to_string(),
-        );
+        return Some("keine inhaltliche Änderung — nur Leerzeilen/Whitespace".to_string());
     }
     let removed = count_marker(patch, '-', "#[test]");
     let added = count_marker(patch, '+', "#[test]");
@@ -174,4 +172,3 @@ fn patch_uses_any(patch: &str, names: &[String]) -> bool {
     }
     false
 }
-

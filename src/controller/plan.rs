@@ -19,8 +19,7 @@ pub fn validate_action_plan(actions: &[crate::protocol::Action]) -> Result<(), S
                     ));
                 }
             }
-            crate::protocol::ActionType::Message
-            | crate::protocol::ActionType::MessagePart => {
+            crate::protocol::ActionType::Message | crate::protocol::ActionType::MessagePart => {
                 if action.text.trim().is_empty() {
                     return Err(format!(
                         "Message-Action '{}' hat keinen Text (text)",

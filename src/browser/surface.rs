@@ -50,9 +50,7 @@ impl WebBrainBackend {
     pub(crate) fn dismiss_consent(&self) -> bool {
         let mut guard = self.driver.borrow_mut();
         match guard.as_mut() {
-            Some(driver) => {
-                operations::dismiss_consent(driver.as_mut(), &self.selectors)
-            }
+            Some(driver) => operations::dismiss_consent(driver.as_mut(), &self.selectors),
             None => false,
         }
     }
@@ -343,7 +341,10 @@ return null;}})()"#,
     /// Seite nach Bedienelementen scannen und sie per [`crate::brain_probe`]
     /// deutet. Der Aufrufer entscheidet, ob die Funde als Selektoren
     /// uebernommen werden.
-    pub fn probe_surface(&mut self, headless: bool) -> Result<Vec<crate::brain_probe::Proposal>, String> {
+    pub fn probe_surface(
+        &mut self,
+        headless: bool,
+    ) -> Result<Vec<crate::brain_probe::Proposal>, String> {
         let (_, proposals) = self.probe_surface_with_raw(headless, None)?;
         Ok(proposals)
     }
@@ -355,7 +356,13 @@ return null;}})()"#,
         &mut self,
         headless: bool,
         open_key: Option<&str>,
-    ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+    ) -> Result<
+        (
+            Vec<crate::brain_probe::Candidate>,
+            Vec<crate::brain_probe::Proposal>,
+        ),
+        String,
+    > {
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
@@ -404,7 +411,13 @@ return null;}})()"#,
         &mut self,
         headless: bool,
         open_key: Option<&str>,
-    ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+    ) -> Result<
+        (
+            Vec<crate::brain_probe::Candidate>,
+            Vec<crate::brain_probe::Proposal>,
+        ),
+        String,
+    > {
         self.start(headless)?;
         self.dismiss_consent();
         let _ = self.ensure_ready(15.0);
@@ -438,7 +451,13 @@ return null;}})()"#,
         &mut self,
         headless: bool,
         probe: &str,
-    ) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+    ) -> Result<
+        (
+            Vec<crate::brain_probe::Candidate>,
+            Vec<crate::brain_probe::Proposal>,
+        ),
+        String,
+    > {
         use std::time::{Duration, Instant};
 
         self.start(headless)?;

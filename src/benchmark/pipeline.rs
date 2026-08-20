@@ -15,14 +15,15 @@ use super::git::{
     tree_changed, ChangeVerdict,
 };
 use super::handoff::HandoffQueue;
-use super::harvest::{harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope};
+use super::harvest::{
+    harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope,
+};
 use super::report::{format_benchmark_report, print_leaderboard};
 use super::tasks::{
     assign_tasks, build_refine_prompt, file_outline, misdirection_detail, parse_test_count,
     phantom_detail, proposed_fn_name, ranked_from_report, refinement_has_evidence,
-    repair_focus_from_failures, suggestion_target, target_file_of, task_id,
-    task_has_phantom_anchors, task_is_misdirected, task_is_redundant, task_targets_missing_file,
-    usable_refinement,
+    repair_focus_from_failures, suggestion_target, target_file_of, task_has_phantom_anchors,
+    task_id, task_is_misdirected, task_is_redundant, task_targets_missing_file, usable_refinement,
 };
 use super::types::{BenchmarkConfig, BenchmarkReport, HarvestCandidate};
 use super::{
@@ -528,11 +529,7 @@ where
         // gebaut und alle Brains bauten gegen die falsche Datei.
         let winner_target = crate::benchmark::tasks::suggestion_target(&winner);
         if let Some(target) = &winner_target {
-            let base = target
-                .rsplit('/')
-                .next()
-                .unwrap_or(target)
-                .to_string();
+            let base = target.rsplit('/').next().unwrap_or(target).to_string();
             if !consensus_plan.contains(target) && !consensus_plan.contains(&base) {
                 bench_say!(
                     crate::bench_events::Level::Warn,
@@ -1106,10 +1103,7 @@ where
                 policy_event.compiled = false;
                 policy_event.tests_passed = false;
                 crate::code_score::record(&policy_event);
-                let compensation = scope_compensation_count(
-                    passed,
-                    scope_lint_ok,
-                );
+                let compensation = scope_compensation_count(passed, scope_lint_ok);
                 for n in 0..compensation {
                     let mut benefit_event = event.clone();
                     benefit_event.task_id = format!("{}:scope-benefit-{}", tid, n + 1);
@@ -1188,11 +1182,7 @@ where
                                 // Crash-Sicherheit: der Patch liegt sofort auf Platte,
                                 // damit ein Prozessabbruch vor der Ernte die Arbeit
                                 // nicht verwirft (real beobachtet 2026-08-14 Runde 5).
-                                match persist_candidate(
-                                    brain,
-                                    effective,
-                                    &patch,
-                                ) {
+                                match persist_candidate(brain, effective, &patch) {
                                     Ok(path) => bench_say!(
                                         crate::bench_events::Level::Info,
                                         Some(brain),
@@ -1220,11 +1210,15 @@ where
                             ),
                         }
                     }
-                    Some((patch, None)) if !crate::bench_harvest::has_substantive_change(&patch) => bench_say!(
-                        crate::bench_events::Level::Warn,
-                        Some(brain),
-                        "  {brain}: leerer Patch — nichts zu ernten"
-                    ),
+                    Some((patch, None))
+                        if !crate::bench_harvest::has_substantive_change(&patch) =>
+                    {
+                        bench_say!(
+                            crate::bench_events::Level::Warn,
+                            Some(brain),
+                            "  {brain}: leerer Patch — nichts zu ernten"
+                        )
+                    }
                     Some((_patch, None)) => bench_say!(
                         crate::bench_events::Level::Warn,
                         Some(brain),

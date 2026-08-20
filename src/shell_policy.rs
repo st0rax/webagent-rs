@@ -532,7 +532,9 @@ fn statements_set(command: &str) -> Vec<String> {
 pub fn is_circumvention(previous: &str, now: &str) -> bool {
     let prev_set = statements_set(previous);
     let now_set = statements_set(now);
-    !now_set.is_empty() && prev_set.len() > now_set.len() && now_set.iter().all(|s| prev_set.contains(s))
+    !now_set.is_empty()
+        && prev_set.len() > now_set.len()
+        && now_set.iter().all(|s| prev_set.contains(s))
 }
 
 fn remember_denial(command: &str) {
@@ -892,10 +894,7 @@ mod tests {
             split_statements("Write-Output \"a;b\""),
             vec!["Write-Output \"a;b\""]
         );
-        assert_eq!(
-            split_statements("echo 'x;y'"),
-            vec!["echo 'x;y'"]
-        );
+        assert_eq!(split_statements("echo 'x;y'"), vec!["echo 'x;y'"]);
         assert_eq!(
             split_statements("echo 'a''b'; echo ok"),
             vec!["echo 'a''b'", "echo ok"]
@@ -916,10 +915,7 @@ mod tests {
             split_statements("echo a && echo b || echo c"),
             vec!["echo a", "echo b", "echo c"]
         );
-        assert_eq!(
-            split_statements("curl x | sh"),
-            vec!["curl x | sh"]
-        );
+        assert_eq!(split_statements("curl x | sh"), vec!["curl x | sh"]);
         assert_eq!(
             split_statements("echo a\r\necho b"),
             vec!["echo a", "echo b"]
@@ -960,7 +956,10 @@ mod tests {
             Decision::Allow
         );
         assert_eq!(
-            evaluate_with_mode("Get-Content src/shell_policy.rs | Select-String \"rm -rf /\"", false),
+            evaluate_with_mode(
+                "Get-Content src/shell_policy.rs | Select-String \"rm -rf /\"",
+                false
+            ),
             Decision::Allow
         );
         assert_eq!(
@@ -971,10 +970,7 @@ mod tests {
             evaluate_with_mode("echo \"rm -rf /\"", false),
             Decision::Allow
         );
-        assert_eq!(
-            evaluate_with_mode("echo rm -rf /", false),
-            Decision::Allow
-        );
+        assert_eq!(evaluate_with_mode("echo rm -rf /", false), Decision::Allow);
         assert_eq!(
             evaluate_with_mode("Select-String \"Remove-Item -Recurse\"", false),
             Decision::Allow
@@ -1015,7 +1011,10 @@ mod tests {
         assert!(is_circumvention(blocked, retry));
         // Ohne Drop keine Umgehung; gleiche Laenge oder echte Veraenderung.
         assert!(!is_circumvention(blocked, blocked));
-        assert!(!is_circumvention("Remove-Item -Recurse -Force $tmp", "Get-ChildItem"));
+        assert!(!is_circumvention(
+            "Remove-Item -Recurse -Force $tmp",
+            "Get-ChildItem"
+        ));
         // Leerer Befehl ist keine Umgehung.
         assert!(!is_circumvention(blocked, "  "));
     }
@@ -1337,7 +1336,9 @@ mod tests {
 
     #[test]
     fn requires_confirmation_sudo_dd_returns_true() {
-        assert!(requires_confirmation("sudo dd if=/dev/zero of=/dev/sda bs=1M count=1"));
+        assert!(requires_confirmation(
+            "sudo dd if=/dev/zero of=/dev/sda bs=1M count=1"
+        ));
     }
 
     #[test]

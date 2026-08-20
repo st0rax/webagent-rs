@@ -158,7 +158,10 @@ mod tests {
         let _g = env_guard();
         let chatgpt = resolve_from("wait_response", "chatgpt", "hi", None, None);
         let claude = resolve_from("wait_response", "claude", "hi", None, None);
-        assert_eq!(claude, chatgpt, "brain-spezifische Multiplikatoren sind entfernt");
+        assert_eq!(
+            claude, chatgpt,
+            "brain-spezifische Multiplikatoren sind entfernt"
+        );
     }
 
     /// Sobald Messwerte vorliegen, schlagen sie die Schaetzung — und das

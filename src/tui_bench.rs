@@ -123,9 +123,8 @@ fn level_color(level: Level) -> Color {
 /// Space/Rechts eingerueckt unter ihm aufklappt. Navigation: Up/Down oder j/k
 /// bewegen den Cursor, `g` springt ans untere Ende des frischen Stroms.
 pub(crate) fn render_bench(f: &mut Frame, app: &App, area: Rect) {
-    let block = titled_block(
-        "Benchmark — Ereignisbaum (▸/▾: Space, aufklappen: →, zuklappen: ←, Ende: g)",
-    );
+    let block =
+        titled_block("Benchmark — Ereignisbaum (▸/▾: Space, aufklappen: →, zuklappen: ←, Ende: g)");
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -188,11 +187,17 @@ pub(crate) fn render_bench(f: &mut Frame, app: &App, area: Rect) {
                 "  "
             };
             spans.push(Span::styled(marker, base.fg(Color::DarkGray)));
-            spans.push(Span::styled(format!("{} ", ln.ts), base.fg(Color::DarkGray)));
+            spans.push(Span::styled(
+                format!("{} ", ln.ts),
+                base.fg(Color::DarkGray),
+            ));
             if let Some(b) = &ln.brain {
                 spans.push(Span::styled(format!("{b:<9} "), base.fg(ACCENT)));
             }
-            spans.push(Span::styled(ln.text.clone(), base.fg(level_color(ln.level))));
+            spans.push(Span::styled(
+                ln.text.clone(),
+                base.fg(level_color(ln.level)),
+            ));
         } else {
             spans.push(Span::styled(ln.text.clone(), base.fg(Color::DarkGray)));
         }
@@ -248,6 +253,9 @@ mod tests {
         // Wegsehen. 10 min ist der Kompromiss; dieser Test haelt die
         // Begruendung fest, damit die Zahl nicht unbemerkt verrutscht.
         const _: () = assert!(STALL_WARN_SECONDS >= 300, "zu nervoes");
-        const _: () = assert!(STALL_WARN_SECONDS <= 1800, "zu traege - 3h Stillstand fiel so durch");
+        const _: () = assert!(
+            STALL_WARN_SECONDS <= 1800,
+            "zu traege - 3h Stillstand fiel so durch"
+        );
     }
 }

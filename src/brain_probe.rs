@@ -89,7 +89,13 @@ impl Candidate {
         // dieser Fall und war beim ersten Wurf ein stiller Fehlschlag.
         format!(
             "{} {} {} {} {} {} {}",
-            self.aria_label, self.text, self.test_id, self.id, self.placeholder, self.class, self.title
+            self.aria_label,
+            self.text,
+            self.test_id,
+            self.id,
+            self.placeholder,
+            self.class,
+            self.title
         )
         .to_lowercase()
         .replace(['-', '_', '.'], " ")
@@ -159,8 +165,13 @@ const RULES: &[Rule] = &[
         "chat",
         "send_button",
         &[
-            "send", "senden", "absenden", "abschicken", "nachricht senden",
-            "send prompt", "send message",
+            "send",
+            "senden",
+            "absenden",
+            "abschicken",
+            "nachricht senden",
+            "send prompt",
+            "send message",
         ],
         &["sprach", "voice", "audio"],
     ),
@@ -168,8 +179,14 @@ const RULES: &[Rule] = &[
         "stop_generation",
         "stop_button",
         &[
-            "stop", "stopp", "stoppen", "abbrechen", "beenden",
-            "antwort stoppen", "generierung beenden", "stop streaming",
+            "stop",
+            "stopp",
+            "stoppen",
+            "abbrechen",
+            "beenden",
+            "antwort stoppen",
+            "generierung beenden",
+            "stop streaming",
         ],
         &["sprach", "voice"],
     ),
@@ -177,8 +194,13 @@ const RULES: &[Rule] = &[
         "new_chat",
         "new_chat_button",
         &[
-            "new chat", "neuer chat", "neue unterhaltung", "neuer thread",
-            "new conversation", "neues gespraech", "neues gespräch",
+            "new chat",
+            "neuer chat",
+            "neue unterhaltung",
+            "neuer thread",
+            "new conversation",
+            "neues gespraech",
+            "neues gespräch",
         ],
         &["temporary", "temporaer", "temporär"],
     ),
@@ -186,8 +208,14 @@ const RULES: &[Rule] = &[
         "temporary_chat",
         "temporary_chat_button",
         &[
-            "temporary chat", "temporaerer chat", "temporärer chat",
-            "temporary", "temporaer", "temporär", "incognito", "inkognito",
+            "temporary chat",
+            "temporaerer chat",
+            "temporärer chat",
+            "temporary",
+            "temporaer",
+            "temporär",
+            "incognito",
+            "inkognito",
         ],
         &[],
     ),
@@ -195,8 +223,12 @@ const RULES: &[Rule] = &[
         "deep_research",
         "deep_research_toggle",
         &[
-            "deep research", "deepresearch", "tiefe recherche",
-            "tiefenrecherche", "ausfuehrliche recherche", "ausführliche recherche",
+            "deep research",
+            "deepresearch",
+            "tiefe recherche",
+            "tiefenrecherche",
+            "ausfuehrliche recherche",
+            "ausführliche recherche",
         ],
         &[],
     ),
@@ -204,8 +236,12 @@ const RULES: &[Rule] = &[
         "web_search",
         "web_search_toggle",
         &[
-            "web search", "websuche", "web-suche", "im internet suchen",
-            "search the web", "internetsuche",
+            "web search",
+            "websuche",
+            "web-suche",
+            "im internet suchen",
+            "search the web",
+            "internetsuche",
         ],
         &["deep"],
     ),
@@ -219,8 +255,12 @@ const RULES: &[Rule] = &[
         "regenerate",
         "regenerate_button",
         &[
-            "regenerate", "neu erzeugen", "neu generieren", "erneut versuchen",
-            "try again", "wiederholen",
+            "regenerate",
+            "neu erzeugen",
+            "neu generieren",
+            "erneut versuchen",
+            "try again",
+            "wiederholen",
         ],
         &[],
     ),
@@ -233,8 +273,12 @@ const RULES: &[Rule] = &[
         "chat",
         "google_sso_button",
         &[
-            "mit google", "with google", "continue with google",
-            "weiter mit google", "google fortfahren", "google-konto",
+            "mit google",
+            "with google",
+            "continue with google",
+            "weiter mit google",
+            "google fortfahren",
+            "google-konto",
         ],
         &[],
     ),
@@ -242,18 +286,37 @@ const RULES: &[Rule] = &[
         "chat",
         "login_button",
         &[
-            "anmelden", "log in", "sign in", "signin", "einloggen",
-            "login", "se connecter", "sich anmelden",
+            "anmelden",
+            "log in",
+            "sign in",
+            "signin",
+            "einloggen",
+            "login",
+            "se connecter",
+            "sich anmelden",
         ],
         // Anbieter-Anmeldungen sind eigene Knoepfe, keine Login-Knoepfe.
-        &["ab", "aus", "logout", "abmelden", "google", "apple", "microsoft"],
+        &[
+            "ab",
+            "aus",
+            "logout",
+            "abmelden",
+            "google",
+            "apple",
+            "microsoft"
+        ],
     ),
     rule!(
         "model_switch",
         "model_menu",
         &[
-            "modell", "model selector", "choose model", "switch model",
-            "modell wählen", "change model", "model",
+            "modell",
+            "model selector",
+            "choose model",
+            "switch model",
+            "modell wählen",
+            "change model",
+            "model",
         ],
         // „item"/„entry" bezeichnet einen EINTRAG in der Liste, nicht den
         // Knopf, der sie oeffnet. Von der Gegenprobe gegen selectors/zai.json
@@ -267,28 +330,63 @@ const RULES: &[Rule] = &[
         // DOM gemessen, wo der echte Modell-Knopf deshalb nie als model_menu
         // klassifiziert wurde.
         &[
-            "option", "model item", "model entry", "einstellung",
-            "vereinbarung", "dienste", "richtlinie", "bedingungen", "nutzung",
+            "option",
+            "model item",
+            "model entry",
+            "einstellung",
+            "vereinbarung",
+            "dienste",
+            "richtlinie",
+            "bedingungen",
+            "nutzung",
         ],
     ),
     rule!(
         "model_switch",
         "model_option",
         &[
-            "gpt", "o3", "o4", "claude", "sonnet", "opus", "haiku",
-            "deepseek", "reasoner", "kimi", "moonshot", "mistral", "mixtral",
-            "gemini", "flash", "qwen", "max", "plus", "turbo", "glm",
-            "llama", "perplexity", "sonar",
+            "gpt",
+            "o3",
+            "o4",
+            "claude",
+            "sonnet",
+            "opus",
+            "haiku",
+            "deepseek",
+            "reasoner",
+            "kimi",
+            "moonshot",
+            "mistral",
+            "mixtral",
+            "gemini",
+            "flash",
+            "qwen",
+            "max",
+            "plus",
+            "turbo",
+            "glm",
+            "llama",
+            "perplexity",
+            "sonar",
         ],
-        &["modell wählen", "model selector", "switch model", "change model"],
+        &[
+            "modell wählen",
+            "model selector",
+            "switch model",
+            "change model"
+        ],
         &["option", "menuitem", "radio"],
     ),
     rule!(
         "projects",
         "projects_button",
         &[
-            "projekte", "projects", "arbeitsbereiche", "workspaces",
-            "projektübersicht", "projektuebersicht",
+            "projekte",
+            "projects",
+            "arbeitsbereiche",
+            "workspaces",
+            "projektübersicht",
+            "projektuebersicht",
         ],
         &[],
     ),
@@ -296,8 +394,15 @@ const RULES: &[Rule] = &[
         "file_attach",
         "attach_button",
         &[
-            "datei", "dateien", "anhängen", "anhaengen", "hinzufügen",
-            "hinzufuegen", "attach", "upload", "hochladen",
+            "datei",
+            "dateien",
+            "anhängen",
+            "anhaengen",
+            "hinzufügen",
+            "hinzufuegen",
+            "attach",
+            "upload",
+            "hochladen",
         ],
         &["tool"],
     ),
@@ -305,7 +410,10 @@ const RULES: &[Rule] = &[
         "voice_input",
         "voice_input_button",
         &[
-            "mikrofon", "spracheingabe", "diktiermodus", "voice input",
+            "mikrofon",
+            "spracheingabe",
+            "diktiermodus",
+            "voice input",
             "diktieren",
         ],
         &[],
@@ -314,7 +422,10 @@ const RULES: &[Rule] = &[
         "voice_mode",
         "voice_mode_button",
         &[
-            "sprachmodus", "voice mode", "sprachdialog", "sprachmodus verwenden",
+            "sprachmodus",
+            "voice mode",
+            "sprachdialog",
+            "sprachmodus verwenden",
         ],
         &[],
     ),
@@ -326,8 +437,12 @@ const RULES: &[Rule] = &[
         "chat",
         "consent_reject_button",
         &[
-            "nur notwendige", "ablehnen", "reject all", "tout refuser",
-            "nur notwendige cookies", "nicht akzeptieren",
+            "nur notwendige",
+            "ablehnen",
+            "reject all",
+            "tout refuser",
+            "nur notwendige cookies",
+            "nicht akzeptieren",
         ],
         &["alle", "zulassen", "akzeptieren", "accept"],
     ),
@@ -400,7 +515,10 @@ fn selector_for(candidate: &Candidate) -> Option<(String, u8, String)> {
         // `i` = ohne Ruecksicht auf Gross-/Kleinschreibung; die Oberflaechen
         // sind darin nicht konsistent.
         return Some((
-            format!("{}[aria-label*='{}' i]", candidate.tag, candidate.aria_label),
+            format!(
+                "{}[aria-label*='{}' i]",
+                candidate.tag, candidate.aria_label
+            ),
             70,
             format!("aria-label={}", candidate.aria_label),
         ));
@@ -411,7 +529,10 @@ fn selector_for(candidate: &Candidate) -> Option<(String, u8, String)> {
         // Composer traegt placeholder='Message DeepSeek', waehrend seine
         // Klassen Hash-Fragmente sind, die beim naechsten Deploy verfallen.
         return Some((
-            format!("{}[placeholder*='{}' i]", candidate.tag, candidate.placeholder),
+            format!(
+                "{}[placeholder*='{}' i]",
+                candidate.tag, candidate.placeholder
+            ),
             60,
             format!("placeholder={}", candidate.placeholder),
         ));
@@ -522,7 +643,10 @@ pub fn classify(candidates: &[Candidate]) -> Vec<Proposal> {
                 disabled: candidate.disabled,
                 evidence,
             };
-            if best.as_ref().is_none_or(|b| b.confidence < proposal.confidence) {
+            if best
+                .as_ref()
+                .is_none_or(|b| b.confidence < proposal.confidence)
+            {
                 best = Some(proposal);
             }
         }
@@ -625,7 +749,13 @@ pub fn looks_like_login(candidates: &[Candidate], url: &str) -> bool {
     // bedienbaren Gast-Chat (perplexity). Erst wenn KEIN Eingabefeld fuer eine
     // Nachricht da ist, ist die Anmeldung wirklich der einzige Weg weiter.
     const LOGIN_WORDS: &[&str] = &[
-        "log in", "login", "sign in", "anmelden", "einloggen", "passwort", "password",
+        "log in",
+        "login",
+        "sign in",
+        "anmelden",
+        "einloggen",
+        "passwort",
+        "password",
     ];
     let has_login = candidates
         .iter()
@@ -806,7 +936,10 @@ pub fn verify(driver: &mut dyn PageDriver, proposal: &Proposal) -> Result<Verdic
 /// Mittelpunkt des klickbaren Vorfahren im Viewport — die Koordinaten fuer
 /// den echten Mausklick, den [`verify`] als zweiten Anlauf faehrt, wenn der
 /// synthetische Klick keinen Zustandswechsel bringt.
-pub(crate) fn click_point_of(driver: &mut dyn PageDriver, selectors: &[String]) -> Option<(f64, f64)> {
+pub(crate) fn click_point_of(
+    driver: &mut dyn PageDriver,
+    selectors: &[String],
+) -> Option<(f64, f64)> {
     let expr = crate::browser::js::js_scan(
         &crate::browser::js::js_selectors(selectors),
         "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;var r=t.getBoundingClientRect();if(r.width>0&&r.height>0)return {x:r.left+r.width/2,y:r.top+r.height/2};}",
@@ -859,7 +992,10 @@ mod tests {
             },
         ];
         let found = classify(&candidates);
-        let send = found.iter().find(|p| p.selector_key == "send_button").unwrap();
+        let send = found
+            .iter()
+            .find(|p| p.selector_key == "send_button")
+            .unwrap();
         assert_eq!(send.selector, "[data-testid='send-button']");
         assert!(send.confidence >= 95);
     }
@@ -988,12 +1124,30 @@ mod tests {
             .iter()
             .map(|p| (p.capability_key.to_string(), p.selector_key.to_string()))
             .collect();
-        assert!(keys.contains(&("model_switch".into(), "model_menu".into())), "{keys:?}");
-        assert!(keys.contains(&("projects".into(), "projects_button".into())), "{keys:?}");
-        assert!(keys.contains(&("chat".into(), "login_button".into())), "{keys:?}");
-        assert!(keys.contains(&("temporary_chat".into(), "temporary_chat_button".into())), "{keys:?}");
-        assert!(keys.contains(&("voice_input".into(), "voice_input_button".into())), "{keys:?}");
-        assert!(keys.contains(&("chat".into(), "consent_reject_button".into())), "{keys:?}");
+        assert!(
+            keys.contains(&("model_switch".into(), "model_menu".into())),
+            "{keys:?}"
+        );
+        assert!(
+            keys.contains(&("projects".into(), "projects_button".into())),
+            "{keys:?}"
+        );
+        assert!(
+            keys.contains(&("chat".into(), "login_button".into())),
+            "{keys:?}"
+        );
+        assert!(
+            keys.contains(&("temporary_chat".into(), "temporary_chat_button".into())),
+            "{keys:?}"
+        );
+        assert!(
+            keys.contains(&("voice_input".into(), "voice_input_button".into())),
+            "{keys:?}"
+        );
+        assert!(
+            keys.contains(&("chat".into(), "consent_reject_button".into())),
+            "{keys:?}"
+        );
     }
 
     #[test]
@@ -1002,7 +1156,9 @@ mod tests {
         // Ablehnen-Selektor muss es uebersehen.
         let found = classify(&[button("Alle zulassen")]);
         assert!(
-            found.iter().all(|p| p.selector_key != "consent_reject_button"),
+            found
+                .iter()
+                .all(|p| p.selector_key != "consent_reject_button"),
             "{found:?}"
         );
     }
@@ -1051,13 +1207,16 @@ mod tests {
         }
     }
 
-#[test]
-fn test_empty_webview_response_returns_error() {
-    let mut driver = crate::mock_page::MockPageDriver::new(crate::mock_page::MockPageState::new());
-    let result = probe(&mut driver);
-    assert!(result.is_err(), "probe sollte bei leerer Webview-Antwort einen Fehler liefern, bekam aber: {result:?}");
-}
-
+    #[test]
+    fn test_empty_webview_response_returns_error() {
+        let mut driver =
+            crate::mock_page::MockPageDriver::new(crate::mock_page::MockPageState::new());
+        let result = probe(&mut driver);
+        assert!(
+            result.is_err(),
+            "probe sollte bei leerer Webview-Antwort einen Fehler liefern, bekam aber: {result:?}"
+        );
+    }
 
     #[test]
     fn probe_faehrt_ueber_den_page_driver() {
@@ -1123,11 +1282,10 @@ fn test_empty_webview_response_returns_error() {
             }
         }
         if let Some(v) = selector.split_once('#') {
-            c.id = v
-                .1
-                .chars()
-                .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
-                .collect();
+            c.id =
+                v.1.chars()
+                    .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '-' || *ch == '_')
+                    .collect();
         }
         if selector.contains("contenteditable") {
             c.contenteditable = true;
@@ -1232,7 +1390,9 @@ fn test_empty_webview_response_returns_error() {
         for (brain, sel) in selector_files() {
             let Some(obj) = sel.as_object() else { continue };
             for (key, list) in obj {
-                let Some(list) = list.as_array() else { continue };
+                let Some(list) = list.as_array() else {
+                    continue;
+                };
                 for raw in list.iter().filter_map(|v| v.as_str()) {
                     let Some(c) = candidate_from_selector(raw) else {
                         continue;
@@ -1307,7 +1467,14 @@ fn test_empty_webview_response_returns_error() {
     #[test]
     fn verify_belegt_zustandswechsel_und_raeumt_auf() {
         // vorher / nachher / nach dem Rueckklick wieder wie vorher.
-        let mut driver = mock(vec!["aria-pressed=false|", "aria-pressed=true|", "aria-pressed=false|"], true);
+        let mut driver = mock(
+            vec![
+                "aria-pressed=false|",
+                "aria-pressed=true|",
+                "aria-pressed=false|",
+            ],
+            true,
+        );
         let verdict = verify(&mut driver, &proposal()).expect("verify");
         assert!(verdict.proven);
         assert_eq!(verdict.restored, Some(true));
@@ -1331,10 +1498,15 @@ fn test_empty_webview_response_returns_error() {
         let state = crate::mock_page::MockPageState::new()
             .on_eval_seq(
                 state_expr,
-                ["aria-pressed=false|", "aria-pressed=false|", "aria-pressed=true|", "aria-pressed=false|"]
-                    .into_iter()
-                    .map(|s| serde_json::json!(s))
-                    .collect(),
+                [
+                    "aria-pressed=false|",
+                    "aria-pressed=false|",
+                    "aria-pressed=true|",
+                    "aria-pressed=false|",
+                ]
+                .into_iter()
+                .map(|s| serde_json::json!(s))
+                .collect(),
             )
             .on_eval(click_expr, serde_json::json!(true))
             .on_eval(point_expr, serde_json::json!({"x": 100.0, "y": 50.0}));
@@ -1342,7 +1514,11 @@ fn test_empty_webview_response_returns_error() {
         let verdict = verify(&mut driver, &proposal()).expect("verify");
         assert!(verdict.proven, "{verdict:?}");
         assert_eq!(verdict.restored, Some(true));
-        assert!(verdict.note.contains("echtem Mausklick"), "{}", verdict.note);
+        assert!(
+            verdict.note.contains("echtem Mausklick"),
+            "{}",
+            verdict.note
+        );
     }
 
     #[test]
@@ -1363,11 +1539,22 @@ fn test_empty_webview_response_returns_error() {
         // Der dritte Wert bleibt beim geaenderten Zustand: der Rueckklick hat
         // nicht zurueckgeschaltet. Belegt ist die Faehigkeit trotzdem — aber
         // die Nebenwirkung muss sichtbar sein.
-        let mut driver = mock(vec!["aria-pressed=false|", "aria-pressed=true|", "aria-pressed=true|"], true);
+        let mut driver = mock(
+            vec![
+                "aria-pressed=false|",
+                "aria-pressed=true|",
+                "aria-pressed=true|",
+            ],
+            true,
+        );
         let verdict = verify(&mut driver, &proposal()).expect("verify");
         assert!(verdict.proven);
         assert_eq!(verdict.restored, Some(false));
-        assert!(verdict.note.contains("Rueckweg misslungen"), "{}", verdict.note);
+        assert!(
+            verdict.note.contains("Rueckweg misslungen"),
+            "{}",
+            verdict.note
+        );
     }
 
     #[test]
@@ -1375,7 +1562,11 @@ fn test_empty_webview_response_returns_error() {
         let mut driver = mock(vec!["aria-pressed=false|"], false);
         let verdict = verify(&mut driver, &proposal()).expect("verify");
         assert!(!verdict.proven);
-        assert!(verdict.note.contains("nicht anklickbar"), "{}", verdict.note);
+        assert!(
+            verdict.note.contains("nicht anklickbar"),
+            "{}",
+            verdict.note
+        );
     }
 
     #[test]
@@ -1406,10 +1597,7 @@ fn test_empty_webview_response_returns_error() {
     /// danach — das ist seine zeitliche Signatur auf Icon-only-Oberflaechen.
     #[test]
     fn stop_diff_findet_das_verschwundene_element() {
-        let during = vec![
-            at("div", 10, 20, 30, 40),
-            at("button", 5, 5, 20, 20),
-        ];
+        let during = vec![at("div", 10, 20, 30, 40), at("button", 5, 5, 20, 20)];
         // Der Button bleibt, das div verschwindet (der Stop-Knopf).
         let after = vec![at("button", 5, 5, 20, 20)];
         let found = stop_diff_candidates(&during, &after);
@@ -1506,7 +1694,10 @@ fn test_empty_webview_response_returns_error() {
         let (sel, conf, ev) = selector_for(&c).expect("placeholder muss einen Selektor liefern");
         assert_eq!(sel, "textarea[placeholder*='Message DeepSeek' i]");
         assert_eq!(ev, "placeholder=Message DeepSeek");
-        assert!((55..65).contains(&conf), "Placeholder ist ein starker Anker: {conf}");
+        assert!(
+            (55..65).contains(&conf),
+            "Placeholder ist ein starker Anker: {conf}"
+        );
     }
 
     /// role-qualifizierter Text gewinnt gegen die Klassenkette (deepseek:
@@ -1525,7 +1716,10 @@ fn test_empty_webview_response_returns_error() {
         let (sel, conf, ev) = selector_for(&c).expect("role+text muss einen Selektor liefern");
         assert_eq!(sel, "[role='radio']:has-text('Instant')");
         assert_eq!(ev, "role=radio text=Instant");
-        assert!((50..60).contains(&conf), "role+text ist praeziser als nackter Text: {conf}");
+        assert!(
+            (50..60).contains(&conf),
+            "role+text ist praeziser als nackter Text: {conf}"
+        );
     }
 
     /// role ohne Text ist kein Selektor — ein blosser `[role=radio]` traefe
@@ -1604,7 +1798,11 @@ fn test_empty_webview_response_returns_error() {
         let verdict = verify(&mut driver, &gefaehrlich)
             .expect("verify darf an Sonderzeichen im Selektor nicht scheitern");
         assert!(!verdict.proven);
-        assert!(verdict.note.contains("nicht anklickbar"), "{}", verdict.note);
+        assert!(
+            verdict.note.contains("nicht anklickbar"),
+            "{}",
+            verdict.note
+        );
     }
 
     #[test]

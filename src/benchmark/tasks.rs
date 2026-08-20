@@ -174,7 +174,12 @@ pub fn suggestion_target(text: &str) -> Option<String> {
 /// True, wenn beide Treffer dieselbe Zieldatei meinen — egal, ob einer die
 /// "src/"-Schreibweise nutzt und der andere den relativen Pfad nennt.
 pub fn same_target(a: &str, b: &str) -> bool {
-    let strip = |t: &str| t.trim().strip_prefix("src/").unwrap_or(t.trim()).to_string();
+    let strip = |t: &str| {
+        t.trim()
+            .strip_prefix("src/")
+            .unwrap_or(t.trim())
+            .to_string()
+    };
     strip(a) == strip(b)
 }
 
@@ -402,15 +407,23 @@ fn belege_teil(refined: &str) -> Option<&str> {
 /// ``koerper_teil``.
 pub fn task_is_misdirected(refined: &str, root: &Path) -> bool {
     let target = target_file_of(refined).unwrap_or_default();
-    crate::target_check::pruefe(&target, koerper_teil(refined), &crate::target_check::quelldateien(root))
-        .irrefuehrend()
+    crate::target_check::pruefe(
+        &target,
+        koerper_teil(refined),
+        &crate::target_check::quelldateien(root),
+    )
+    .irrefuehrend()
 }
 
 /// Abstoß-Grund einer Fehlweisung: die Symbole des Aufgabenkoerpers, die
 /// nachweislich in anderen Dateien stehen, samt Fundstellen — fuer das Log.
 pub fn misdirection_detail(refined: &str, root: &Path) -> String {
     let target = target_file_of(refined).unwrap_or_default();
-    let p = crate::target_check::pruefe(&target, koerper_teil(refined), &crate::target_check::quelldateien(root));
+    let p = crate::target_check::pruefe(
+        &target,
+        koerper_teil(refined),
+        &crate::target_check::quelldateien(root),
+    );
     p.befunde
         .iter()
         .filter_map(|b| match b {
@@ -871,7 +884,10 @@ mod tests_symbol_hinweis {
 
     #[test]
     fn same_target_ignoriert_src_praefix() {
-        assert!(same_target("browser/blocking.rs", "src/browser/blocking.rs"));
+        assert!(same_target(
+            "browser/blocking.rs",
+            "src/browser/blocking.rs"
+        ));
         assert!(same_target("brain.rs", "brain.rs"));
         assert!(!same_target("blocking.rs", "other/blocking.rs"));
         assert!(!same_target("repl/commands.rs", "browser/blocking.rs"));

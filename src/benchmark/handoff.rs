@@ -22,7 +22,6 @@ pub(crate) struct HandoffQueue {
     max_handoffs: usize,
 }
 
-
 impl HandoffQueue {
     pub(crate) fn new(plan: &[(String, String)], brains: &[String], max_handoffs: usize) -> Self {
         Self {
@@ -90,13 +89,12 @@ impl HandoffQueue {
         match next {
             Some(nb) => {
                 already.push(nb.clone());
-                self.queue
-                    .push_back((
-                        nb.clone(),
-                        effective.to_string(),
-                        Some(brain.to_string()),
-                        context,
-                    ));
+                self.queue.push_back((
+                    nb.clone(),
+                    effective.to_string(),
+                    Some(brain.to_string()),
+                    context,
+                ));
                 Some(nb)
             }
             None => {

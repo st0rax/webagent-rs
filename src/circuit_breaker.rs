@@ -263,16 +263,12 @@ pub(crate) fn contains_at_word_boundary(haystack: &str, needle: &str) -> bool {
                 .chars()
                 .next_back()
                 .is_some_and(is_ident_char);
-        let after_ok = end == haystack.len()
-            || !haystack[end..].chars().next().is_some_and(is_ident_char);
+        let after_ok =
+            end == haystack.len() || !haystack[end..].chars().next().is_some_and(is_ident_char);
         if before_ok && after_ok {
             return true;
         }
-        let step = needle
-            .chars()
-            .next()
-            .map(|c| c.len_utf8())
-            .unwrap_or(1);
+        let step = needle.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
         from = start + step;
     }
     false
@@ -511,7 +507,9 @@ mod tests {
     /// Test faengt eine spaetere, gut gemeinte Umformulierung ab.
     #[test]
     fn erklaerender_meldungstext_bleibt_weich() {
-        assert!(!is_hard_block("Seite nicht bereit — kein Anmelde-Nachweis gefunden"));
+        assert!(!is_hard_block(
+            "Seite nicht bereit — kein Anmelde-Nachweis gefunden"
+        ));
     }
 
     fn unique_path() -> PathBuf {
@@ -541,7 +539,9 @@ mod tests {
         save(&path, &state);
         let loaded = load(&path);
         assert_eq!(
-            loaded.get("deepseek").map(|entry| entry.consecutive_failures),
+            loaded
+                .get("deepseek")
+                .map(|entry| entry.consecutive_failures),
             Some(2)
         );
         assert!(!path.with_extension("json.tmp").exists());
@@ -811,12 +811,30 @@ mod tests {
 
     #[test]
     fn wortgrenze_unterscheidet_identifier_von_banner() {
-        assert!(contains_at_word_boundary("rate limit exceeded", "rate limit"));
-        assert!(!contains_at_word_boundary("rate limiting enhancements", "rate limit"));
-        assert!(contains_at_word_boundary("cloudflare challenge", "cloudflare"));
-        assert!(!contains_at_word_boundary("is_cloudflare_blocked", "cloudflare"));
-        assert!(!contains_at_word_boundary("is_cloudflare_blocked", "blocked"));
-        assert!(contains_at_word_boundary("blocked: reserve promoted", "blocked"));
+        assert!(contains_at_word_boundary(
+            "rate limit exceeded",
+            "rate limit"
+        ));
+        assert!(!contains_at_word_boundary(
+            "rate limiting enhancements",
+            "rate limit"
+        ));
+        assert!(contains_at_word_boundary(
+            "cloudflare challenge",
+            "cloudflare"
+        ));
+        assert!(!contains_at_word_boundary(
+            "is_cloudflare_blocked",
+            "cloudflare"
+        ));
+        assert!(!contains_at_word_boundary(
+            "is_cloudflare_blocked",
+            "blocked"
+        ));
+        assert!(contains_at_word_boundary(
+            "blocked: reserve promoted",
+            "blocked"
+        ));
     }
 
     #[test]
@@ -863,13 +881,22 @@ mod tests {
     #[test]
     fn implied_window_secs_liest_reset_fenster() {
         // Stunden — Wortlaute aus brain_score/events.jsonl.
-        assert_eq!(implied_window_secs("... um in 3 Stunden zurueckgesetzt."), Some(3 * 3600));
-        assert_eq!(implied_window_secs("daily usage limit, please wait 7 hours"), Some(7 * 3600));
+        assert_eq!(
+            implied_window_secs("... um in 3 Stunden zurueckgesetzt."),
+            Some(3 * 3600)
+        );
+        assert_eq!(
+            implied_window_secs("daily usage limit, please wait 7 hours"),
+            Some(7 * 3600)
+        );
         assert_eq!(implied_window_secs("... in 1 Stunde ..."), Some(3600));
         // Minuten zaehlen jetzt mit: circuit_breaker/state.json fuehrte fuer
         // mistral woertlich "in 35 Minuten". Vorher fiel das auf den Standard
         // zurueck und sperrte entweder zu kurz oder sechs Stunden lang.
-        assert_eq!(implied_window_secs("Ihr Limit wird um in 35 Minuten zurueckgesetzt."), Some(35 * 60));
+        assert_eq!(
+            implied_window_secs("Ihr Limit wird um in 35 Minuten zurueckgesetzt."),
+            Some(35 * 60)
+        );
         assert_eq!(implied_window_secs("please wait 45 minutes"), Some(45 * 60));
         // "within" ist kein "in " — die Wortgrenze muss halten.
         assert_eq!(implied_window_secs("within 30 minutes you are good"), None);
@@ -888,7 +915,10 @@ mod tests {
         );
         let state = load(&path);
         let e = state.get("mistral").expect("Eintrag fehlt");
-        assert_eq!(e.consecutive_failures, 1, "oeffnet sofort, nicht nach Max-Failures");
+        assert_eq!(
+            e.consecutive_failures, 1,
+            "oeffnet sofort, nicht nach Max-Failures"
+        );
         assert_eq!(e.message_blocks, 1);
         assert_eq!(e.message_window_secs, Some(3 * 3600));
         assert!(e.last_message_block_at.is_some());
@@ -907,11 +937,7 @@ mod tests {
     #[test]
     fn qwen_nachrichtenlimit_wartet_das_gemeldete_fenster() {
         let path = unique_path();
-        record_failure_at(
-            "qwen",
-            "daily usage limit, please wait 7 hours",
-            &path,
-        );
+        record_failure_at("qwen", "daily usage limit, please wait 7 hours", &path);
         let rest = check_at("qwen", &path).expect("Breaker muss offen sein");
         assert!(
             rest <= 7 * 3600,
@@ -945,7 +971,10 @@ mod tests {
         let path = unique_path();
         record_failure_at("mistral", "Nachrichtenlimit erreicht. in 3 Stunden", &path);
         let snaps = snapshots_at(&path);
-        let s = snaps.iter().find(|s| s.brain_id == "mistral").expect("mistral");
+        let s = snaps
+            .iter()
+            .find(|s| s.brain_id == "mistral")
+            .expect("mistral");
         assert_eq!(s.message_blocks, 1);
         assert_eq!(s.message_window_secs, Some(3 * 3600));
         assert!(s.last_message_block_at.is_some());

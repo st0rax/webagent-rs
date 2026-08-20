@@ -325,7 +325,11 @@ pub(crate) fn cookies_db_path(dir: &Path) -> Option<PathBuf> {
             let p = e.path();
             if ty.is_dir() {
                 stack.push(p);
-            } else if e.file_name().to_string_lossy().eq_ignore_ascii_case("Cookies") {
+            } else if e
+                .file_name()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("Cookies")
+            {
                 return Some(p);
             }
         }
@@ -347,7 +351,10 @@ pub(crate) fn cookies_db_bytes(dir: &Path) -> Vec<u8> {
 /// aus ed802aa sieht genau das nicht — am 08.08.2026 fehlten einem ~90-KB-
 /// Cookie-Vorrat ein paar hundert Bytes (kimi-auth) und die Schranke schwieg.
 /// Reine Funktion auf den Rohbytes, damit ohne Dateisystem pruefbar.
-pub(crate) fn runtime_lost_sessions(master_cookies: &[u8], runtime_cookies: &[u8]) -> Vec<&'static str> {
+pub(crate) fn runtime_lost_sessions(
+    master_cookies: &[u8],
+    runtime_cookies: &[u8],
+) -> Vec<&'static str> {
     SESSION_PROOF_COOKIES
         .iter()
         .filter_map(|(brain, needles)| {
@@ -370,7 +377,10 @@ pub(crate) fn runtime_lost_sessions(master_cookies: &[u8], runtime_cookies: &[u8
 // kanonisches Profil und kann diesen Kern deshalb nicht direkt nutzen;
 // hier bleibt er als pruefbare Fassung der Regel.
 #[cfg(test)]
-pub(crate) fn master_missing_sessions(canonical_cookies: &[u8], master_cookies: &[u8]) -> Vec<&'static str> {
+pub(crate) fn master_missing_sessions(
+    canonical_cookies: &[u8],
+    master_cookies: &[u8],
+) -> Vec<&'static str> {
     SESSION_PROOF_COOKIES
         .iter()
         .filter_map(|(brain, needles)| {
@@ -460,4 +470,3 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
         }
     }
 }
-

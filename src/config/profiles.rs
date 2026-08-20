@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use super::brains::{
-    reference_profile_dir_in, swarm_profile_dir_in, use_sparse_profile_copy,
-    FULL_COPY_SKIP_DIRS, SPARSE_COPY_WHITELIST, SPARSE_SKIP_DIRS,
+    reference_profile_dir_in, swarm_profile_dir_in, use_sparse_profile_copy, FULL_COPY_SKIP_DIRS,
+    SPARSE_COPY_WHITELIST, SPARSE_SKIP_DIRS,
 };
 use super::paths::*;
 

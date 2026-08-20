@@ -561,8 +561,7 @@ mod tests {
         dir
     }
     fn unique_test_root(label: &str) -> PathBuf {
-        static NEXT: std::sync::atomic::AtomicUsize =
-            std::sync::atomic::AtomicUsize::new(0);
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = test_root().join(format!("{}_{}_{}", label, std::process::id(), sequence));
         fs::create_dir_all(&dir).unwrap();

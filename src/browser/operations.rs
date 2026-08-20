@@ -27,7 +27,8 @@ use crate::page_driver::PageDriver;
 
 /// Rumpf der Sichtbarkeitsprüfung: das erste Element, das eine reale Fläche
 /// hat, gewinnt.
-const VISIBLE_BODY: &str = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}";
+const VISIBLE_BODY: &str =
+    "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}";
 
 /// Ist mindestens ein Selektor aus der Liste im DOM sichtbar?
 pub fn any_visible(driver: &mut dyn PageDriver, sel: &Selectors, key: &str) -> bool {
@@ -138,7 +139,11 @@ pub(crate) fn live_diagnose_with_shot(
         assistant_count: assistant_count(driver, sel),
         session_state,
     };
-    let shot = if with_shot { driver.capture_png().ok() } else { None };
+    let shot = if with_shot {
+        driver.capture_png().ok()
+    } else {
+        None
+    };
     Ok((diag, shot))
 }
 
@@ -157,7 +162,10 @@ pub(crate) fn eval_bool(driver: &mut dyn PageDriver, expr: &str) -> bool {
 
 /// Wie [`eval`], aber `0` statt Fehler.
 pub(crate) fn eval_i64(driver: &mut dyn PageDriver, expr: &str) -> i64 {
-    eval(driver, expr).ok().and_then(|v| v.as_i64()).unwrap_or(0)
+    eval(driver, expr)
+        .ok()
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0)
 }
 
 /// Klickt das erste sichtbare Element aus der Selektorliste.
@@ -238,14 +246,22 @@ pub(crate) fn wait_for_labeled_controls(driver: &mut dyn PageDriver) {
     }
     if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
         let t = start.elapsed().as_secs_f64();
-        println!("[verify] trace +{t:>7.2}s  wait_labeled: DEADLINE (letzte Zaehlung {last_labeled})");
+        println!(
+            "[verify] trace +{t:>7.2}s  wait_labeled: DEADLINE (letzte Zaehlung {last_labeled})"
+        );
     }
 }
 
 /// Ein einzelner Scan gegen die offene Seite (Browser muss laufen).
 pub(crate) fn scan_once(
     driver: &mut dyn PageDriver,
-) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+) -> Result<
+    (
+        Vec<crate::brain_probe::Candidate>,
+        Vec<crate::brain_probe::Proposal>,
+    ),
+    String,
+> {
     let raw = driver
         .evaluate(crate::brain_probe::PROBE_SCRIPT)
         .map_err(|e| e.to_string())?;
@@ -270,7 +286,13 @@ fn open_and_rescan(
     props: &[crate::brain_probe::Proposal],
     cands: Vec<crate::brain_probe::Candidate>,
     key: &str,
-) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+) -> Result<
+    (
+        Vec<crate::brain_probe::Candidate>,
+        Vec<crate::brain_probe::Proposal>,
+    ),
+    String,
+> {
     let Some(p) = props.iter().find(|p| p.selector_key == key) else {
         eprintln!("[probe] {key}: kein Vorschlag gefunden ({})", cands.len());
         return Ok((cands, props.to_vec()));
@@ -292,9 +314,7 @@ fn open_and_rescan(
     }
     std::thread::sleep(Duration::from_millis(1200));
     if read_state(driver) == before {
-        eprintln!(
-            "[probe] {key}: synthetischer Klick ohne Zustandswechsel — echter Mausklick…"
-        );
+        eprintln!("[probe] {key}: synthetischer Klick ohne Zustandswechsel — echter Mausklick…");
         if let Some((x, y)) = crate::brain_probe::click_point_of(driver, &selectors) {
             if driver.click_at(x, y).is_ok() {
                 std::thread::sleep(Duration::from_millis(1200));
@@ -311,10 +331,7 @@ fn open_and_rescan(
 /// Der Backend-Wrapper delegiert an [`live_survey_with`], deshalb ist diese
 /// Konvenienz-Variante ausserhalb der Tests unbenutzt (nur Test-getrieben).
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn live_survey(
-    driver: &mut dyn PageDriver,
-    sel: &Selectors,
-) -> Result<Value, String> {
+pub(crate) fn live_survey(driver: &mut dyn PageDriver, sel: &Selectors) -> Result<Value, String> {
     live_survey_with(driver, sel, None)
 }
 
@@ -365,7 +382,13 @@ pub(crate) fn probe_surface_with_raw(
     driver: &mut dyn PageDriver,
     sel: &Selectors,
     open_key: Option<&str>,
-) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+) -> Result<
+    (
+        Vec<crate::brain_probe::Candidate>,
+        Vec<crate::brain_probe::Proposal>,
+    ),
+    String,
+> {
     let _ = sel;
     wait_for_labeled_controls(driver);
     let result = scan_once(driver);
@@ -396,7 +419,13 @@ pub(crate) fn probe_surface_with_fill(
     driver: &mut dyn PageDriver,
     sel: &Selectors,
     open_key: Option<&str>,
-) -> Result<(Vec<crate::brain_probe::Candidate>, Vec<crate::brain_probe::Proposal>), String> {
+) -> Result<
+    (
+        Vec<crate::brain_probe::Candidate>,
+        Vec<crate::brain_probe::Proposal>,
+    ),
+    String,
+> {
     let _ = sel;
     wait_for_labeled_controls(driver);
     let first = scan_once(driver);
@@ -575,7 +604,10 @@ mod verify_surface_tests {
         let mut driver = MockPageDriver::new(
             MockPageState::new()
                 .on_eval(LABELED_CONTROLS_EXPR, json!(5))
-                .on_eval_seq(&state_expr, vec![json!("before"), json!("after"), json!("before")])
+                .on_eval_seq(
+                    &state_expr,
+                    vec![json!("before"), json!("after"), json!("before")],
+                )
                 .on_eval(&click_expr, json!(true)),
         );
         let verdict = verify_surface(&mut driver, &proposal()).unwrap();
@@ -610,9 +642,8 @@ mod verify_surface_tests {
 
     #[test]
     fn fehler_wenn_kein_mock_skript_registriert() {
-        let mut driver = MockPageDriver::new(
-            MockPageState::new().on_eval(LABELED_CONTROLS_EXPR, json!(5)),
-        );
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().on_eval(LABELED_CONTROLS_EXPR, json!(5)));
         assert!(verify_surface(&mut driver, &proposal()).is_err());
     }
 }
@@ -630,7 +661,11 @@ mod any_visible_tests {
     #[test]
     fn true_wenn_element_sichtbar() {
         let sel = sel_with("key", &["div.x"]);
-        let expr = js::js_scan(&js::js_selectors(&["div.x".to_string()]), VISIBLE_BODY, "false");
+        let expr = js::js_scan(
+            &js::js_selectors(&["div.x".to_string()]),
+            VISIBLE_BODY,
+            "false",
+        );
         let mut driver = MockPageDriver::new(MockPageState::new().on_eval(&expr, json!(true)));
         assert!(any_visible(&mut driver, &sel, "key"));
     }
@@ -638,7 +673,11 @@ mod any_visible_tests {
     #[test]
     fn false_wenn_nicht_sichtbar() {
         let sel = sel_with("key", &["div.x"]);
-        let expr = js::js_scan(&js::js_selectors(&["div.x".to_string()]), VISIBLE_BODY, "false");
+        let expr = js::js_scan(
+            &js::js_selectors(&["div.x".to_string()]),
+            VISIBLE_BODY,
+            "false",
+        );
         let mut driver = MockPageDriver::new(MockPageState::new().on_eval(&expr, json!(false)));
         assert!(!any_visible(&mut driver, &sel, "key"));
     }
@@ -677,9 +716,8 @@ mod is_logged_in_tests {
     fn true_wenn_login_indicator_sichtbar() {
         let sel = sel_with("login_indicator", &["div.avatar"]);
         let indicator_expr = expr_for(&["div.avatar"]);
-        let mut driver = MockPageDriver::new(
-            MockPageState::new().on_eval(&indicator_expr, json!(true)),
-        );
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().on_eval(&indicator_expr, json!(true)));
         assert!(is_logged_in(&mut driver, &sel));
     }
 
@@ -703,9 +741,8 @@ mod is_logged_in_tests {
     fn fallback_auf_composer_ohne_indikator() {
         let sel = sel_with("composer", &["textarea.prompt"]);
         let composer_expr = expr_for(&["textarea.prompt"]);
-        let mut driver = MockPageDriver::new(
-            MockPageState::new().on_eval(&composer_expr, json!(true)),
-        );
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().on_eval(&composer_expr, json!(true)));
         assert!(is_logged_in(&mut driver, &sel));
     }
 
@@ -713,9 +750,8 @@ mod is_logged_in_tests {
     fn fallback_auf_new_chat_button() {
         let sel = sel_with("new_chat_button", &["button.new-chat"]);
         let new_chat_expr = expr_for(&["button.new-chat"]);
-        let mut driver = MockPageDriver::new(
-            MockPageState::new().on_eval(&new_chat_expr, json!(true)),
-        );
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().on_eval(&new_chat_expr, json!(true)));
         assert!(is_logged_in(&mut driver, &sel));
     }
 
@@ -797,17 +833,15 @@ mod is_cloudflare_blocked_tests {
 
     #[test]
     fn true_wenn_js_true_liefert() {
-        let mut driver = MockPageDriver::new(
-            MockPageState::new().on_eval(CF_CHALLENGE_EXPR, json!(true)),
-        );
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().on_eval(CF_CHALLENGE_EXPR, json!(true)));
         assert!(is_cloudflare_blocked(&mut driver));
     }
 
     #[test]
     fn false_wenn_js_false_liefert() {
-        let mut driver = MockPageDriver::new(
-            MockPageState::new().on_eval(CF_CHALLENGE_EXPR, json!(false)),
-        );
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().on_eval(CF_CHALLENGE_EXPR, json!(false)));
         assert!(!is_cloudflare_blocked(&mut driver));
     }
 
@@ -910,7 +944,8 @@ mod live_diagnose_tests {
         let state = diagnose_state("https://chatgpt.com/c/abc", &sel)
             .on_eval(visibility_expr_for(&sel, "login_button"), json!(true));
         let mut driver = MockPageDriver::new(state);
-        let diag = live_diagnose(&mut driver, &sel, "chatgpt", SessionState::LoginRequired).unwrap();
+        let diag =
+            live_diagnose(&mut driver, &sel, "chatgpt", SessionState::LoginRequired).unwrap();
         assert!(diag.login_button_visible);
         assert!(!diag.logged_in);
     }
@@ -1074,9 +1109,8 @@ mod live_survey_tests {
             "counts": {"composer": 1},
             "buttons": []
         });
-        let mut driver = MockPageDriver::new(
-            wait_only_state().on_eval(dom_report_expr(&sel), canned.clone()),
-        );
+        let mut driver =
+            MockPageDriver::new(wait_only_state().on_eval(dom_report_expr(&sel), canned.clone()));
         assert_eq!(live_survey(&mut driver, &sel), Ok(canned));
     }
 
@@ -1104,9 +1138,7 @@ mod live_survey_tests {
     fn mit_open_key_fehler_wenn_menue_nicht_anklickbar() {
         let sel = sel_with("model_menu", &["button.xyz"]);
         let click_expr = click_expr_for(&["button.xyz"]);
-        let mut driver = MockPageDriver::new(
-            wait_only_state().on_eval(&click_expr, json!(false)),
-        );
+        let mut driver = MockPageDriver::new(wait_only_state().on_eval(&click_expr, json!(false)));
         let err = live_survey_with(&mut driver, &sel, Some("model_menu")).unwrap_err();
         assert!(err.contains("nicht anklickbar"), "err={err}");
     }
@@ -1152,13 +1184,15 @@ mod probe_surface_tests {
         let dom = json!([
             {"tag": "button", "aria_label": "Antwort stoppen", "visible": true}
         ]);
-        let mut driver = MockPageDriver::new(
-            labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, dom),
-        );
+        let mut driver =
+            MockPageDriver::new(labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, dom));
         let proposals = probe_surface(&mut driver, &sel).expect("probe_surface");
         assert_eq!(proposals.len(), 1);
         assert_eq!(proposals[0].selector_key, "stop_button");
-        assert_eq!(proposals[0].selector, "button[aria-label*='Antwort stoppen' i]");
+        assert_eq!(
+            proposals[0].selector,
+            "button[aria-label*='Antwort stoppen' i]"
+        );
     }
 
     #[test]
@@ -1194,8 +1228,8 @@ mod probe_surface_tests {
         let mut driver = MockPageDriver::new(
             labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, nur_send),
         );
-        let (_, props) = probe_surface_with_fill(&mut driver, &sel, None)
-            .expect("probe_surface_with_fill");
+        let (_, props) =
+            probe_surface_with_fill(&mut driver, &sel, None).expect("probe_surface_with_fill");
         assert!(
             props.iter().any(|p| p.selector_key == "send_button"),
             "{props:?}"
@@ -1231,9 +1265,8 @@ mod probe_surface_tests {
     fn open_key_ohne_treffer_gibt_ersten_scan_zurueck() {
         let sel = sel_with("composer", &["div.prose"]);
         let first = json!([{"tag": "button", "aria_label": "Senden", "visible": true}]);
-        let mut driver = MockPageDriver::new(
-            labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, first),
-        );
+        let mut driver =
+            MockPageDriver::new(labeled_state().on_eval(crate::brain_probe::PROBE_SCRIPT, first));
         let (_, props) = probe_surface_with_raw(&mut driver, &sel, Some("stop_button"))
             .expect("probe_surface_with_raw");
         assert!(

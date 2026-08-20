@@ -306,7 +306,9 @@ pub fn proof_state_at(
                     reason: ExpiryReason::TtlElapsed,
                 }
             } else {
-                ProofState::Proven { at: last.ts.clone() }
+                ProofState::Proven {
+                    at: last.ts.clone(),
+                }
             }
         }
         ProofOutcome::Unreachable => unreachable!("oben ausgefiltert"),
@@ -486,7 +488,10 @@ mod tests {
         };
         let rec = record_from_measurement("claude", &m, ProofOutcome::Passed, 7, 120);
         assert!(rec.evidence.contains("Rueckweg misslungen"), "{rec:?}");
-        assert_eq!(rec.winning_selector.as_deref(), Some("[data-testid='think']"));
+        assert_eq!(
+            rec.winning_selector.as_deref(),
+            Some("[data-testid='think']")
+        );
         // Ein misslungener Rueckweg ist ein Aufraeumfehler, kein Beweisfehler:
         // der Record zaehlt als Passed.
         assert_eq!(rec.outcome, ProofOutcome::Passed);

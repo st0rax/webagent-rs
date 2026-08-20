@@ -46,16 +46,16 @@ pub mod canary;
 pub mod capability;
 pub mod capability_proof;
 pub mod controller;
-pub mod goal_plan;
 pub mod counting;
+pub mod goal_plan;
 pub(crate) mod knockout;
 pub(crate) mod prompts;
 pub mod relay;
 pub mod welcome;
 
 // ── bench: Messung & Selbst-Verbesserung ──
-pub mod autoresearch;
 pub mod api_bridge;
+pub mod autoresearch;
 pub mod bench_events;
 pub(crate) mod bench_harvest;
 pub(crate) mod bench_scoring;

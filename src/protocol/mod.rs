@@ -15,9 +15,9 @@ pub use types::{Action, ActionType, EditOperation, PROTOCOL_VERSION};
 #[cfg(test)]
 mod tests {
     use super::parser::repair_unescaped_quotes_in_strings;
-    use super::*;
     use super::text::PROTOCOL_REPAIR_MAX_FAILURES;
     use super::types::error_code;
+    use super::*;
     use serde_json::{json, Value};
 
     fn valid_envelope() -> Value {

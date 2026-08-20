@@ -2554,3 +2554,10 @@ und wurden trotzdem 6 h gesperrt. Gemini bleibt unangetastet.
 
 3. Breaker perplexity + qwen geraeumt (gemini und das echte mistral-Nachrichtenlimit bleiben).
    1045 lib-Tests gruen, clippy --all-targets -D warnings sauber.
+## 2026-08-20 â€” OFFEN: Goal-Baseline / Rustfmt-Drift (vor lokalem Commit)
+
+- **Herkunft:** Vor Beginn war der Worktree sauber. Rustfmt 1.9.0 meldete im unverÃ¤nderten HEAD 230 Stil-DiffblÃ¶cke in 46 Rust-Dateien. Der aktuelle Rust-Diff stammt ausschlieÃŸlich aus `cargo fmt --all`; es ist keine neue Fachlogik.
+- **Lokale Evidenz:** `cargo fmt --all -- --check`, `git diff --check`, `cargo check --all-targets`, `cargo check --all-targets --no-default-features`, `cargo clippy --no-default-features` (Exit 0, 57 vorbestehende No-Default-Warnungen) und die bereinigte vollstÃ¤ndige `cargo test --no-default-features`-Suite sind grÃ¼n. Kritische CLI-Smokes fÃ¼r Version, Goal, Free-only-Entscheidung und netzfreien Mockstream bestehen.
+- **UnabhÃ¤ngige Read-only-Reviews:** Ein `claude-opus-4-7`-Proxyreview ergab **PASS, Risiko niedrig**; die lokale Claude-CLI war wegen eines bis 23:50 Uhr gemeldeten Sitzungslimits nicht nutzbar. OpenCode ergab ebenfalls **PASS** und bestÃ¤tigte inhaltsgleiche Modul-/Reexport-Reihenfolge. Kein Push, Tag, Release, Deployment oder externer Providerzugriff wurde ausgelÃ¶st.
+- **Separater Testbefund:** Ein erster Volltest traf einen stehengebliebenen `%TEMP%\webagent_file_actions_tests\absolute_inside_*`-Rest (`new.txt existiert bereits`); die serielle Einzelprobe und die nach gezielter Restbereinigung wiederholte Vollsuite bestehen. Die PID-/ZÃ¤hler-basierte Testwurzel ohne Vorlaufbereinigung bleibt ein separater Testisolations-HÃ¤rtungspunkt, nicht Teil des Rustfmt-Diffs.
+- **NÃ¤chster Schritt:** Isolierten lokalen Style-Commit erstellen; anschlieÃŸend TestwurzelhÃ¤rtung und No-Default-Warnungsreduktion als getrennte, reviewte Scheiben bearbeiten.

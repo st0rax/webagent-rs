@@ -466,18 +466,12 @@ where
                 config.brains.len()
             ));
         }
-        let mut counts: std::collections::HashMap<usize, u32> =
-            std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
         for &k in &kicks {
             *counts.entry(k).or_default() += 1;
         }
         let mut order = alive_orig.clone();
-        order.sort_by_key(|&i| {
-            (
-                std::cmp::Reverse(counts.get(&i).copied().unwrap_or(0)),
-                i,
-            )
-        });
+        order.sort_by_key(|&i| (std::cmp::Reverse(counts.get(&i).copied().unwrap_or(0)), i));
         for loser in order.into_iter().take(remove_count) {
             if bracket.is_decided() {
                 break;
@@ -899,7 +893,8 @@ mod tests {
         );
         let log = log.into_inner().unwrap();
         assert!(
-            log.iter().any(|line| line.contains("vollstaendige Ranglisten")),
+            log.iter()
+                .any(|line| line.contains("vollstaendige Ranglisten")),
             "Anzahl gueltiger Ranglisten muss im Log stehen: {log:?}"
         );
     }

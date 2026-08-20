@@ -86,8 +86,9 @@ fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let text = serde_json::to_string_pretty(value)
         .map_err(|error| format!("Zielzustand kann nicht serialisiert werden: {error}"))?;
     let temporary = path.with_extension("json.tmp");
-    fs::write(&temporary, format!("{text}\n"))
-        .map_err(|error| format!("Temporärer Zielzustand kann nicht geschrieben werden: {error}"))?;
+    fs::write(&temporary, format!("{text}\n")).map_err(|error| {
+        format!("Temporärer Zielzustand kann nicht geschrieben werden: {error}")
+    })?;
     fs::rename(&temporary, path)
         .map_err(|error| format!("Zielzustand kann nicht atomar ersetzt werden: {error}"))
 }
@@ -96,14 +97,21 @@ fn archive_goal(data_dir: &Path, goal: &GoalRecord) -> Result<(), String> {
     let safe_id = goal
         .id
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect::<String>();
     write_json(&history_dir(data_dir).join(format!("{safe_id}.json")), goal)
 }
 
 fn require_active_goal(data_dir: &Path) -> Result<GoalRecord, String> {
-    read_json(&active_goal_path(data_dir))?
-        .ok_or_else(|| "Kein aktives Ziel vorhanden. Verwende zuerst `webagent goal create`.".to_string())
+    read_json(&active_goal_path(data_dir))?.ok_or_else(|| {
+        "Kein aktives Ziel vorhanden. Verwende zuerst `webagent goal create`.".to_string()
+    })
 }
 
 pub fn create_goal(
@@ -157,7 +165,9 @@ pub fn complete_goal(
         return Err("Ein Zielabschluss benötigt einen unabhängigen Reviewer.".to_string());
     }
     if !verdict.trim().eq_ignore_ascii_case("PASS") {
-        return Err("Ein Ziel darf nur mit dem unabhängigen Urteil PASS abgeschlossen werden.".to_string());
+        return Err(
+            "Ein Ziel darf nur mit dem unabhängigen Urteil PASS abgeschlossen werden.".to_string(),
+        );
     }
     let mut goal = require_active_goal(data_dir)?;
     goal.status = GoalStatus::Completed;
@@ -185,7 +195,11 @@ pub fn abandon_goal(data_dir: &Path, reason: String) -> Result<GoalRecord, Strin
     Ok(goal)
 }
 
-pub fn create_plan(data_dir: &Path, title: String, items: Vec<String>) -> Result<PlanRecord, String> {
+pub fn create_plan(
+    data_dir: &Path,
+    title: String,
+    items: Vec<String>,
+) -> Result<PlanRecord, String> {
     let goal = require_active_goal(data_dir)?;
     if title.trim().is_empty() {
         return Err("Ein Plan benötigt einen nichtleeren Titel.".to_string());
@@ -221,8 +235,9 @@ pub fn active_plan(data_dir: &Path) -> Result<Option<PlanRecord>, String> {
 
 pub fn complete_plan_item(data_dir: &Path, item_id: u32) -> Result<PlanRecord, String> {
     let path = active_plan_path(data_dir);
-    let mut plan = read_json::<PlanRecord>(&path)?
-        .ok_or_else(|| "Kein aktiver Plan vorhanden. Verwende zuerst `webagent plan create`.".to_string())?;
+    let mut plan = read_json::<PlanRecord>(&path)?.ok_or_else(|| {
+        "Kein aktiver Plan vorhanden. Verwende zuerst `webagent plan create`.".to_string()
+    })?;
     let item = plan
         .items
         .iter_mut()
@@ -257,10 +272,28 @@ mod tests {
     #[test]
     fn completed_goal_requires_evidence_and_pass() {
         let root = temp_root("complete");
-        create_goal(&root, "Harness finalisieren".into(), vec!["Review PASS".into()], vec![]).unwrap();
+        create_goal(
+            &root,
+            "Harness finalisieren".into(),
+            vec!["Review PASS".into()],
+            vec![],
+        )
+        .unwrap();
         assert!(complete_goal(&root, vec![], "reviewer".into(), "PASS".into()).is_err());
-        assert!(complete_goal(&root, vec!["evidence.json".into()], "reviewer".into(), "FAIL".into()).is_err());
-        let goal = complete_goal(&root, vec!["evidence.json".into()], "reviewer".into(), "PASS".into()).unwrap();
+        assert!(complete_goal(
+            &root,
+            vec!["evidence.json".into()],
+            "reviewer".into(),
+            "FAIL".into()
+        )
+        .is_err());
+        let goal = complete_goal(
+            &root,
+            vec!["evidence.json".into()],
+            "reviewer".into(),
+            "PASS".into(),
+        )
+        .unwrap();
         assert_eq!(goal.status, GoalStatus::Completed);
         assert!(active_goal(&root).unwrap().is_none());
     }
@@ -269,8 +302,19 @@ mod tests {
     fn plan_binds_to_active_goal_and_marks_items_done() {
         let root = temp_root("plan");
         assert!(create_plan(&root, "Harness".into(), vec!["Test".into()]).is_err());
-        create_goal(&root, "Harness finalisieren".into(), vec!["Review PASS".into()], vec![]).unwrap();
-        let plan = create_plan(&root, "Harness".into(), vec!["Build".into(), "Review".into()]).unwrap();
+        create_goal(
+            &root,
+            "Harness finalisieren".into(),
+            vec!["Review PASS".into()],
+            vec![],
+        )
+        .unwrap();
+        let plan = create_plan(
+            &root,
+            "Harness".into(),
+            vec!["Build".into(), "Review".into()],
+        )
+        .unwrap();
         assert_eq!(plan.goal_id, active_goal(&root).unwrap().unwrap().id);
         let plan = complete_plan_item(&root, 2).unwrap();
         assert!(plan.items[1].done);

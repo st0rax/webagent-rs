@@ -87,7 +87,10 @@ mod tests {
         let s = sample();
         assert_eq!(
             s.list("composer"),
-            vec!["textarea[name=\"prompt\"]".to_string(), "div.prose".to_string()]
+            vec![
+                "textarea[name=\"prompt\"]".to_string(),
+                "div.prose".to_string()
+            ]
         );
     }
 

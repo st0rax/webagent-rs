@@ -373,4 +373,3 @@ pub fn swarm_profile_dir(run_id: &str, brain_id: &str) -> PathBuf {
 pub fn swarm_profile_dir_in(base: &Path, run_id: &str, brain_id: &str) -> PathBuf {
     base.join("swarm").join(format!("{}_{}", run_id, brain_id))
 }
-

@@ -90,7 +90,9 @@ pub fn counting_game(brain_ids: &[String], headless: bool, target: u32) -> i32 {
         let mut backend = match WebBrainBackend::from_config(id) {
             Ok(b) => b,
             Err(e) => {
-                crate::bench_events::eprint_line(&format!("[count] {id}: nicht konfigurierbar: {e}"));
+                crate::bench_events::eprint_line(&format!(
+                    "[count] {id}: nicht konfigurierbar: {e}"
+                ));
                 backends.push((id.clone(), None, false));
                 continue;
             }
@@ -98,7 +100,9 @@ pub fn counting_game(brain_ids: &[String], headless: bool, target: u32) -> i32 {
         match backend.start(headless) {
             Ok(()) => {}
             Err(e) => {
-                crate::bench_events::eprint_line(&format!("[count] {id}: Start fehlgeschlagen: {e}"));
+                crate::bench_events::eprint_line(&format!(
+                    "[count] {id}: Start fehlgeschlagen: {e}"
+                ));
                 backends.push((id.clone(), None, false));
                 continue;
             }
@@ -110,7 +114,9 @@ pub fn counting_game(brain_ids: &[String], headless: bool, target: u32) -> i32 {
         let ready = state == SessionState::Ready;
         if ready {
             if let Err(e) = backend.new_chat() {
-                crate::bench_events::eprint_line(&format!("[count] {id}: new_chat fehlgeschlagen: {e}"));
+                crate::bench_events::eprint_line(&format!(
+                    "[count] {id}: new_chat fehlgeschlagen: {e}"
+                ));
             }
             // deepseek steht standardmaessig auf DeepThink (R1): das streamt ~100 s
             // Reasoning pro Turn und kostet den vollen wait_timeout. Fuer das
@@ -165,7 +171,8 @@ pub fn counting_game(brain_ids: &[String], headless: bool, target: u32) -> i32 {
             );
             match b.send(&prompt) {
                 Ok(baseline) => {
-                    let wait_to = resolve_timeout("wait_response", brain, &prompt, wait_floor(brain));
+                    let wait_to =
+                        resolve_timeout("wait_response", brain, &prompt, wait_floor(brain));
                     match b.wait_response(baseline, wait_to) {
                         Ok(resp) if resp.text.trim().is_empty() => {
                             note = format!(
@@ -261,8 +268,15 @@ pub fn counting_game(brain_ids: &[String], headless: bool, target: u32) -> i32 {
         });
     }
 
-    println!("\n[count] Auswertung — {} Schritte, Gesamtzeit {}s", turns.len(), total_ms / 1000);
-    println!("[count] {:<10} {:>5} {:>5} {:>5} {:>8} {:>7}", "Brain", "Turns", "OK", "Drop", "Total", "Avg");
+    println!(
+        "\n[count] Auswertung — {} Schritte, Gesamtzeit {}s",
+        turns.len(),
+        total_ms / 1000
+    );
+    println!(
+        "[count] {:<10} {:>5} {:>5} {:>5} {:>8} {:>7}",
+        "Brain", "Turns", "OK", "Drop", "Total", "Avg"
+    );
     for s in &stats {
         println!(
             "[count] {:<10} {:>5} {:>5} {:>5} {:>8} {:>7}",
@@ -274,7 +288,9 @@ pub fn counting_game(brain_ids: &[String], headless: bool, target: u32) -> i32 {
     let out = save_trace(&turns, &stats, total_ms);
     match out {
         Ok(path) => println!("[count] Traces: {}", path.display()),
-        Err(e) => crate::bench_events::eprint_line(&format!("[count] Trace nicht speicherbar: {e}")),
+        Err(e) => {
+            crate::bench_events::eprint_line(&format!("[count] Trace nicht speicherbar: {e}"))
+        }
     }
 
     // Exit-Code: 1 nur, wenn der Lauf vorzeitig abgebrochen ist (kein Brain aktiv,

@@ -184,7 +184,11 @@ impl WebViewRuntime {
     /// [`OFFSCREEN_POS`] und wieder aus der Taskleiste. Das Fenster bleibt in
     /// beiden Faellen sichtbar und fokussierbar — `with_visible(false)` wuerde
     /// den Enter-Absendeweg zerstoeren (siehe `open_page`).
-    pub fn set_bounds(&self, view_id: ViewId, bounds: Option<crate::brain_grid::Rect>) -> Result<()> {
+    pub fn set_bounds(
+        &self,
+        view_id: ViewId,
+        bounds: Option<crate::brain_grid::Rect>,
+    ) -> Result<()> {
         let (resp_tx, resp_rx) = mpsc::channel();
         self.tx
             .send(RuntimeMessage::SetBounds {
@@ -637,9 +641,7 @@ fn focus_view(rt: &mut SharedRuntime, view_id: ViewId, focus: bool) -> Result<()
             use windows::Win32::Foundation::HWND;
             use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
             unsafe {
-                let _ = SetForegroundWindow(HWND(
-                    slot.window.hwnd() as *mut core::ffi::c_void
-                ));
+                let _ = SetForegroundWindow(HWND(slot.window.hwnd() as *mut core::ffi::c_void));
             }
         }
     } else {
@@ -823,7 +825,9 @@ fn browser_args() -> String {
                 args.push(' ');
                 args.push_str(&a);
             }
-            crate::bench_events::eprint_line(&format!("[webview] Mikrofon wird aus {path} gespeist"));
+            crate::bench_events::eprint_line(&format!(
+                "[webview] Mikrofon wird aus {path} gespeist"
+            ));
         } else {
             crate::bench_events::eprint_line(&format!(
                 "[webview] WEBAGENT_FAKE_AUDIO zeigt auf keine Datei: {path} — ignoriert"
@@ -1135,12 +1139,11 @@ fn call_cdp(
         let params_wide = HSTRING::from(params);
 
         let (tx, rx) = mpsc::channel();
-        let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
-            move |hr, _json| {
+        let handler =
+            CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |hr, _json| {
                 let _ = tx.send(hr);
                 Ok(())
-            },
-        ));
+            }));
         core.CallDevToolsProtocolMethod(&method_wide, &params_wide, &handler)
             .map_err(|e| proto(e.to_string()))?;
 
@@ -1215,10 +1218,7 @@ mod tests {
     fn cdp_klick_sendet_vollstaendige_pointer_sequenz() {
         let events = cdp_click_events(123.0, 456.0);
         let types: Vec<&str> = events.iter().map(|(t, _)| *t).collect();
-        assert_eq!(
-            types,
-            vec!["mouseMoved", "mousePressed", "mouseReleased"]
-        );
+        assert_eq!(types, vec!["mouseMoved", "mousePressed", "mouseReleased"]);
         for (t, params) in &events {
             assert!(
                 params.contains("\"x\":123") && params.contains("\"y\":456"),

@@ -120,7 +120,11 @@ mod tests {
     fn zaehlt_die_vier_ausgaenge_getrennt() {
         reset();
         assert_eq!(snapshot(), Tally::default());
-        assert_eq!(snapshot().success_percent(), None, "nichts angefragt ist nicht 0%");
+        assert_eq!(
+            snapshot().success_percent(),
+            None,
+            "nichts angefragt ist nicht 0%"
+        );
         assert!(!snapshot().is_alarming(), "ohne Anfragen kein Alarm");
 
         // Der echte Fall vom 02.08.2026: 6 angefragt, 1 verwertbar,

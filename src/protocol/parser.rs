@@ -771,7 +771,9 @@ pub fn parse(response_text: &str) -> ParseResult {
     }
 
     if message_part_count > 0 {
-        let stream_is_closed = actions.last().is_some_and(|a| a.action_type == ActionType::Finish)
+        let stream_is_closed = actions
+            .last()
+            .is_some_and(|a| a.action_type == ActionType::Finish)
             && actions[..actions.len() - 1]
                 .iter()
                 .all(|a| a.action_type == ActionType::MessagePart);
@@ -783,10 +785,7 @@ pub fn parse(response_text: &str) -> ParseResult {
         }
         for (position, action) in actions[..actions.len() - 1].iter().enumerate() {
             let Some(raw_index) = action.id.strip_prefix("final-part-") else {
-                return ParseResult::invalid(
-                    "message_part-IDs müssen final-part-NNN heißen",
-                    text,
-                );
+                return ParseResult::invalid("message_part-IDs müssen final-part-NNN heißen", text);
             };
             if raw_index.len() != 3 || !raw_index.bytes().all(|byte| byte.is_ascii_digit()) {
                 return ParseResult::invalid(

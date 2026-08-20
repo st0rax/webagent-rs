@@ -180,9 +180,16 @@ pub fn detail_excerpt(detail: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut genommen = 0usize;
     let mut uebrig = 0usize;
-    for line in detail.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()) {
+    for line in detail
+        .lines()
+        .map(str::trim_end)
+        .filter(|l| !l.trim().is_empty())
+    {
         if genommen < DETAIL_LOG_LINES {
-            out.push(format!("      {}", crate::char_prefix(line, DETAIL_LOG_WIDTH)));
+            out.push(format!(
+                "      {}",
+                crate::char_prefix(line, DETAIL_LOG_WIDTH)
+            ));
             genommen += 1;
         } else {
             uebrig += 1;
@@ -259,7 +266,10 @@ pub fn emit_detailed(level: Level, brain: Option<&str>, text: &str, detail: Opti
 /// Sekunden seit Prozessstart — monoton, also immun gegen Zeitumstellung.
 fn uptime_seconds() -> u64 {
     static START: OnceLock<std::time::Instant> = OnceLock::new();
-    START.get_or_init(std::time::Instant::now).elapsed().as_secs()
+    START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_secs()
 }
 
 /// Zeitpunkt des letzten Ereignisses, als Sekunden seit Prozessstart.
@@ -413,11 +423,18 @@ mod tests {
             .iter()
             .find(|e| e.text.contains("PANIC") && e.text.contains("kanarienvogel"));
         let found = found.unwrap_or_else(|| {
-            panic!("kein Panic-Ereignis im Bus: {:?}", snap.iter().map(|e| &e.text).collect::<Vec<_>>())
+            panic!(
+                "kein Panic-Ereignis im Bus: {:?}",
+                snap.iter().map(|e| &e.text).collect::<Vec<_>>()
+            )
         });
         assert_eq!(found.level, Level::Fail, "ein Panic ist kein Hinweis");
         assert!(
-            found.detail.as_deref().unwrap_or("").contains("absichtlich gestorben"),
+            found
+                .detail
+                .as_deref()
+                .unwrap_or("")
+                .contains("absichtlich gestorben"),
             "die Panic-Meldung selbst muss im Detail stehen"
         );
         // Und der Totmannschalter muss den Panic als Lebenszeichen zaehlen.
@@ -497,7 +514,8 @@ mod tests {
             "Detailblock muss den Baum fuettern"
         );
         assert_ne!(
-            snapshot()[1].id, snapshot()[0].id,
+            snapshot()[1].id,
+            snapshot()[0].id,
             "Jeder Knoten braucht eine eigene, stabile ID"
         );
 
@@ -522,17 +540,32 @@ Anker: pub fn progress";
         let out = detail_excerpt(d);
         assert_eq!(out.len(), 3, "drei Zeilen, keine verschluckt: {out:?}");
         assert!(out[0].contains("exit_code: 1"));
-        assert!(out[1].contains("old_string nicht gefunden"), "die Ursache MUSS sichtbar sein");
-        assert!(out.iter().all(|l| l.starts_with("      ")), "eingerueckt unter der Kopfzeile");
+        assert!(
+            out[1].contains("old_string nicht gefunden"),
+            "die Ursache MUSS sichtbar sein"
+        );
+        assert!(
+            out.iter().all(|l| l.starts_with("      ")),
+            "eingerueckt unter der Kopfzeile"
+        );
     }
 
     #[test]
     fn lange_beobachtung_wird_gedeckelt_und_der_rest_gezaehlt() {
-        let d = (1..=10).map(|i| format!("zeile {i}")).collect::<Vec<_>>().join("
-");
+        let d = (1..=10)
+            .map(|i| format!("zeile {i}"))
+            .collect::<Vec<_>>()
+            .join(
+                "
+",
+            );
         let out = detail_excerpt(&d);
         assert_eq!(out.len(), 4, "3 Zeilen + Hinweis");
-        assert!(out[3].contains("7 weitere"), "der Rest wird gezaehlt statt still zu verschwinden: {:?}", out[3]);
+        assert!(
+            out[3].contains("7 weitere"),
+            "der Rest wird gezaehlt statt still zu verschwinden: {:?}",
+            out[3]
+        );
     }
 
     #[test]
@@ -546,10 +579,13 @@ Anker: pub fn progress";
     #[test]
     fn leere_beobachtung_erzeugt_keine_zeile() {
         assert!(detail_excerpt("").is_empty());
-        assert!(detail_excerpt("
+        assert!(detail_excerpt(
+            "
 
    
-").is_empty());
+"
+        )
+        .is_empty());
     }
 
     /// Die Zusicherung, die vor dem Umbau fehlte: Bus und Konsole bekommen
@@ -564,8 +600,13 @@ Anker: pub fn progress";
         clear();
         set_echo_bus(true);
 
-        print_detailed("[edit:step-4] src/foo.rs", Some("exit_code: 1
-old_string nicht gefunden"));
+        print_detailed(
+            "[edit:step-4] src/foo.rs",
+            Some(
+                "exit_code: 1
+old_string nicht gefunden",
+            ),
+        );
 
         let evs = snapshot();
         let ev = evs.last().expect("Ereignis im Bus");
@@ -575,7 +616,9 @@ old_string nicht gefunden"));
         let konsole = console_lines(ev);
         assert_eq!(konsole[0], ev.text, "Kopfzeile ist der Ereignistext");
         assert!(
-            konsole.iter().any(|l| l.contains("old_string nicht gefunden")),
+            konsole
+                .iter()
+                .any(|l| l.contains("old_string nicht gefunden")),
             "die Konsole sieht dasselbe wie der Bus: {konsole:?}"
         );
 
@@ -597,7 +640,10 @@ old_string nicht gefunden"));
         // eprint_line geht auf die Konsole, nie in den Bus.
         clear();
         eprint_line("nur konsole");
-        assert!(snapshot().is_empty(), "eprint_line darf den Bus nicht fuellen");
+        assert!(
+            snapshot().is_empty(),
+            "eprint_line darf den Bus nicht fuellen"
+        );
 
         // print_line respektiert weiterhin den Spiegelschalter.
         clear();

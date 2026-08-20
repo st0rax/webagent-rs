@@ -637,7 +637,12 @@ mod tests {
     fn writeback_creates_msg_and_history() {
         let root = tmp_root();
         let w = Bot2BotWorker::new("deepseek".into(), root.clone(), 30, true, 5, true);
-        w.writeback("claude", "RE: GO", "status=done run_id=x cycles=3", "mentor");
+        w.writeback(
+            "claude",
+            "RE: GO",
+            "status=done run_id=x cycles=3",
+            "mentor",
+        );
 
         let inbox = root.join("agents/claude/inbox");
         let files: Vec<_> = fs::read_dir(&inbox).unwrap().flatten().collect();
@@ -674,8 +679,10 @@ mod tests {
             completed_actions: std::collections::HashMap::new(),
             extra: std::collections::HashMap::new(),
         };
-        meta.completed_actions.insert("answer-1".into(), "erste Antwort".into());
-        meta.completed_actions.insert("answer-2".into(), "letzte Antwort".into());
+        meta.completed_actions
+            .insert("answer-1".into(), "erste Antwort".into());
+        meta.completed_actions
+            .insert("answer-2".into(), "letzte Antwort".into());
 
         let body = render_worker_result(&meta);
         assert!(body.contains("status=done run_id=run-1 cycles=2"));
@@ -697,7 +704,8 @@ mod tests {
             completed_actions: std::collections::HashMap::new(),
             extra: std::collections::HashMap::new(),
         };
-        meta.completed_actions.insert("finish-safety-rules".into(), "belegtes Ergebnis".into());
+        meta.completed_actions
+            .insert("finish-safety-rules".into(), "belegtes Ergebnis".into());
 
         let body = render_worker_result(&meta);
         assert!(body.contains("answer_present=true"));
@@ -717,7 +725,8 @@ mod tests {
             completed_actions: std::collections::HashMap::new(),
             extra: std::collections::HashMap::new(),
         };
-        meta.completed_actions.insert("final-safety-rules".into(), "finales Ergebnis".into());
+        meta.completed_actions
+            .insert("final-safety-rules".into(), "finales Ergebnis".into());
 
         let body = render_worker_result(&meta);
         assert!(body.contains("answer_present=true"));
@@ -783,7 +792,8 @@ mod tests {
             completed_actions: std::collections::HashMap::new(),
             extra: std::collections::HashMap::new(),
         };
-        meta.completed_actions.insert("review-1".into(), "VERDICT: PASS".into());
+        meta.completed_actions
+            .insert("review-1".into(), "VERDICT: PASS".into());
 
         let body = render_worker_result(&meta);
         assert!(body.contains("answer_present=true"));
@@ -803,7 +813,8 @@ mod tests {
             completed_actions: std::collections::HashMap::new(),
             extra: std::collections::HashMap::new(),
         };
-        meta.completed_actions.insert("eval-1".into(), "VERDICT: PASS".into());
+        meta.completed_actions
+            .insert("eval-1".into(), "VERDICT: PASS".into());
 
         let body = render_worker_result(&meta);
         assert!(body.contains("answer_present=true"));

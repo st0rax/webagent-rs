@@ -25,16 +25,16 @@ use std::time::{Duration, SystemTime};
 
 use time::OffsetDateTime;
 
-pub(crate) use crate::pool_state::atomic_write;
-pub use crate::pool_state::{
-    BLOCK_COOLDOWN_SECS, PoolControl, PoolEntry, PoolState, RETRY_UNAVAILABLE_AFTER_SECS,
-    STATUS_ACTIVE, STATUS_AVAILABLE, STATUS_COOLDOWN, STATUS_RETIRED, STATUS_UNAVAILABLE,
-};
 pub use crate::pool_failover::{
     candidates_with_profile, compute_block_failover, compute_restore, detect_blocked,
-    has_profile_in, heartbeat_ages, is_worker_stale, reset_orphaned_active,
-    select_auto_recovery, select_expired_cooldowns, select_to_promote, BlockActions,
-    FailoverPhase, FailoverRecord, RestoreActions,
+    has_profile_in, heartbeat_ages, is_worker_stale, reset_orphaned_active, select_auto_recovery,
+    select_expired_cooldowns, select_to_promote, BlockActions, FailoverPhase, FailoverRecord,
+    RestoreActions,
+};
+pub(crate) use crate::pool_state::atomic_write;
+pub use crate::pool_state::{
+    PoolControl, PoolEntry, PoolState, BLOCK_COOLDOWN_SECS, RETRY_UNAVAILABLE_AFTER_SECS,
+    STATUS_ACTIVE, STATUS_AVAILABLE, STATUS_COOLDOWN, STATUS_RETIRED, STATUS_UNAVAILABLE,
 };
 
 /// Maximale Anzahl aufeinanderfolgend fehlgeschlagener Wiederherstellungen, bevor
@@ -332,7 +332,8 @@ impl WorkerPool {
             |brain| match Self::spawn_worker(brain, self.poll_secs, self.headless) {
                 Ok(child) => {
                     self.children.insert(brain.to_string(), child);
-                    startup_grace_until.insert(brain.to_string(), SystemTime::now() + startup_grace);
+                    startup_grace_until
+                        .insert(brain.to_string(), SystemTime::now() + startup_grace);
                     true
                 }
                 Err(_) => false,

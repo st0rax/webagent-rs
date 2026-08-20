@@ -236,7 +236,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         {
             let _ = transcript.append(
                 "system",
-                &format!("resume_phase=restored_ready conversation_ref={}", conv_ref.as_ref().unwrap()),
+                &format!(
+                    "resume_phase=restored_ready conversation_ref={}",
+                    conv_ref.as_ref().unwrap()
+                ),
                 HashMap::new(),
             );
             let prompt =

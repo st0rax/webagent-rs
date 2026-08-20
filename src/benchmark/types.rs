@@ -77,7 +77,6 @@ pub struct HarvestCandidate {
     pub latency_ms: u64,
 }
 
-
 /// Endergebnis eines Benchmark-Laufs.
 #[derive(Debug, Clone)]
 pub struct BenchmarkReport {

@@ -51,8 +51,8 @@ pub use crate::bench_scoring::{
 
 pub use feasibility::{evaluate_work_package, Feasibility, FeasibilityIssue};
 pub use git::{build_no_change_prompt, build_repair_prompt};
-pub use harvest::{scope_compensation_count, validate_harvest_patch, validate_task_scope};
 pub(crate) use harvest::policy_harvest_block;
+pub use harvest::{scope_compensation_count, validate_harvest_patch, validate_task_scope};
 pub use pipeline::run_benchmark;
 pub use report::{format_benchmark_report, format_benchmark_result};
 pub use tasks::{
@@ -189,7 +189,8 @@ mod refine_tests {
             task_is_redundant(sieger, &api),
             "contains_chained_shell_metachar ist split_statements"
         );
-        let echt_neu = "shell_policy.rs: pub fn describe_denial(cmd: &str) -> String. Tests: a, b, c, d.";
+        let echt_neu =
+            "shell_policy.rs: pub fn describe_denial(cmd: &str) -> String. Tests: a, b, c, d.";
         assert!(!task_is_redundant(echt_neu, &api));
     }
 
@@ -435,10 +436,7 @@ mod tests {
             "+    // PFLICHT_DENY gekuerzt",
         ]);
         let err = validate_harvest_patch(&patch).expect_err("Lock-Aenderung kam durch");
-        assert!(
-            err.contains("Pflicht-Deny-Lock"),
-            "falscher Grund: {err}"
-        );
+        assert!(err.contains("Pflicht-Deny-Lock"), "falscher Grund: {err}");
     }
 
     #[test]

@@ -387,7 +387,9 @@ mod tests {
 
     #[test]
     fn deutsche_und_chinesische_ablehnungen_werden_erkannt() {
-        assert!(looks_like_length_rejection("Deine Eingabe ist zu umfangreich — bitte verkürze sie"));
+        assert!(looks_like_length_rejection(
+            "Deine Eingabe ist zu umfangreich — bitte verkürze sie"
+        ));
         assert!(looks_like_length_rejection("Zu viele Zeichen"));
         assert!(looks_like_length_rejection("消息太长，请缩短后重试"));
         assert!(looks_like_length_rejection("输入内容过长"));

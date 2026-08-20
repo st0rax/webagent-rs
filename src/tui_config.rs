@@ -307,7 +307,11 @@ mod tests {
         let s = setting(Kind::Sekunden(&[300, 600, 900]), "600");
         assert_eq!(next_value(&s, "300"), "600");
         assert_eq!(next_value(&s, "600"), "900");
-        assert_eq!(next_value(&s, "900"), "300", "nach der letzten Stufe von vorn");
+        assert_eq!(
+            next_value(&s, "900"),
+            "300",
+            "nach der letzten Stufe von vorn"
+        );
     }
 
     #[test]
@@ -338,7 +342,11 @@ mod tests {
         std::env::set_var(s.key, "1");
         let (value, source) = effective(&s, &stored);
         assert_eq!(value, "1");
-        assert_eq!(source, Source::Umgebung, "vom Menschen gesetzt, nicht gespeichert");
+        assert_eq!(
+            source,
+            Source::Umgebung,
+            "vom Menschen gesetzt, nicht gespeichert"
+        );
         std::env::remove_var(s.key);
     }
 
@@ -370,7 +378,11 @@ mod tests {
         // Eine Stellschraube, deren Wirkung man raten muss, wird nicht benutzt.
         for s in SETTINGS {
             assert!(!s.help.trim().is_empty(), "{} ohne Erklaerung", s.key);
-            assert!(s.key.starts_with("WEBAGENT_"), "{} ist keine Umgebungsvariable", s.key);
+            assert!(
+                s.key.starts_with("WEBAGENT_"),
+                "{} ist keine Umgebungsvariable",
+                s.key
+            );
         }
     }
 

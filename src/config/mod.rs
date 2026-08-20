@@ -11,37 +11,35 @@ mod selectors;
 mod writeback;
 
 pub use brains::{
-    block_cooldown_secs, bot2bot_root, brains, BRAIN_TABLE, consensus_workspace,
-    custom_brains_path, ensure_data_dirs, load_custom_brains, parse_custom_brains,
-    persist_browser_tabs, reference_profile_dir, reference_profile_dir_in,
-    register_custom_brain, resolve_selectors_path, retry_unavailable_secs,
-    sanitize_brain_id, selectors_dir, shared_debug_port, SPARSE_COPY_WHITELIST,
-    stale_heartbeat_secs, swarm_profile_dir, swarm_profile_dir_in,
-    use_shared_browser, use_sparse_profile_copy, user_selectors_dir,
+    block_cooldown_secs, bot2bot_root, brains, consensus_workspace, custom_brains_path,
+    ensure_data_dirs, load_custom_brains, parse_custom_brains, persist_browser_tabs,
+    reference_profile_dir, reference_profile_dir_in, register_custom_brain, resolve_selectors_path,
+    retry_unavailable_secs, sanitize_brain_id, selectors_dir, shared_debug_port,
+    stale_heartbeat_secs, swarm_profile_dir, swarm_profile_dir_in, use_shared_browser,
+    use_sparse_profile_copy, user_selectors_dir, BRAIN_TABLE, SPARSE_COPY_WHITELIST,
 };
 pub use clone::{CloneEntry, DryRunReport, ProfileClonePlan, ProfileClonePlanner};
 pub use limits::{
-    max_observation_chars, max_observation_chars_for, max_run_wall_secs,
-    resolve_max_run_wall_secs, DEFAULT_MAX_OBSERVATION_CHARS, LOOP_GUARD_ABORT_COUNT,
-    LOOP_GUARD_WARN_COUNT, MAX_RUN_WALL_SECONDS,
+    max_observation_chars, max_observation_chars_for, max_run_wall_secs, resolve_max_run_wall_secs,
+    DEFAULT_MAX_OBSERVATION_CHARS, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT,
+    MAX_RUN_WALL_SECONDS,
 };
 pub use paths::{
-    data_dir, memory_dir, profiles_dir, root_dir, runs_dir, shared_profile_dir,
-    src_dir, webagent_root_stable,
+    data_dir, memory_dir, profiles_dir, root_dir, runs_dir, shared_profile_dir, src_dir,
+    webagent_root_stable,
 };
 pub use profiles::{
     cleanup_swarm_profiles, cleanup_swarm_profiles_in, copy_dir_all, copy_dir_sparse,
-    copy_dir_without_caches, ensure_stable_layout, prepare_swarm_profile,
-    prepare_swarm_profile_in, sweep_stale_runtime_profiles,
-    sweep_stale_runtime_profiles_in,
+    copy_dir_without_caches, ensure_stable_layout, prepare_swarm_profile, prepare_swarm_profile_in,
+    sweep_stale_runtime_profiles, sweep_stale_runtime_profiles_in,
 };
 pub use selectors::{
-    available_brain_ids, debug_port, embedded_selector, encapsulated_profile_dir,
-    load_selectors, shipped_selector_table, shipped_selectors, user_selectors,
+    available_brain_ids, debug_port, embedded_selector, encapsulated_profile_dir, load_selectors,
+    shipped_selector_table, shipped_selectors, user_selectors,
 };
 pub use writeback::{
-    runtime_pool_profile_dir, seal_master_profile, unseal_master_profile,
-    write_back_dir_to_master, write_back_session_to_master,
+    runtime_pool_profile_dir, seal_master_profile, unseal_master_profile, write_back_dir_to_master,
+    write_back_session_to_master,
 };
 
 pub(crate) use selectors::fnv1a;
@@ -219,7 +217,10 @@ mod tests {
     #[test]
     fn leere_kopie_wird_immer_abgelehnt() {
         assert!(!write_back_is_safe(0, 108 * 1024));
-        assert!(!write_back_is_safe(0, 0), "nichts zu schreiben ist kein Fortschritt");
+        assert!(
+            !write_back_is_safe(0, 0),
+            "nichts zu schreiben ist kein Fortschritt"
+        );
     }
 
     #[test]
@@ -250,7 +251,10 @@ mod tests {
     #[test]
     fn bytes_contain_findet_und_vermisst() {
         assert!(bytes_contain(b"a b kimi-auth c", "kimi-auth"));
-        assert!(bytes_contain(b"prefix __Secure-next-auth.session-token.0", "__Secure-next-auth.session-token"));
+        assert!(bytes_contain(
+            b"prefix __Secure-next-auth.session-token.0",
+            "__Secure-next-auth.session-token"
+        ));
         assert!(!bytes_contain(b"a b c", "kimi-auth"));
         assert!(bytes_contain(b"", ""));
         assert!(!bytes_contain(b"", "kimi-auth"));
@@ -1070,26 +1074,38 @@ mod tests {
         std::fs::create_dir_all(src.join("EBWebView/Default/Network")).unwrap();
         std::fs::write(src.join("EBWebView/Default/Network/Cookies"), b"x").unwrap();
         std::fs::write(src.join("EBWebView/Default/Local State"), b"y").unwrap();
-        for f in ["EBWebView/Default/Network/Cookies", "EBWebView/Default/Local State"] {
+        for f in [
+            "EBWebView/Default/Network/Cookies",
+            "EBWebView/Default/Local State",
+        ] {
             let mut perm = std::fs::metadata(src.join(f)).unwrap().permissions();
             perm.set_readonly(true);
             std::fs::set_permissions(src.join(f), perm).unwrap();
             assert!(
-                std::fs::metadata(src.join(f)).unwrap().permissions().readonly(),
+                std::fs::metadata(src.join(f))
+                    .unwrap()
+                    .permissions()
+                    .readonly(),
                 "Vorbedingung: Master-Datei ist versiegelt"
             );
         }
 
         copy_dir_sparse(&src, &dst).unwrap();
 
-        for f in ["EBWebView/Default/Network/Cookies", "EBWebView/Default/Local State"] {
+        for f in [
+            "EBWebView/Default/Network/Cookies",
+            "EBWebView/Default/Local State",
+        ] {
             let dst_file = dst.join(f);
             assert!(
                 dst_file.exists(),
                 "Klon muss die Datei enthalten (rekursive Kopie)"
             );
             assert!(
-                !std::fs::metadata(&dst_file).unwrap().permissions().readonly(),
+                !std::fs::metadata(&dst_file)
+                    .unwrap()
+                    .permissions()
+                    .readonly(),
                 "Klon darf nicht read-only sein: {f}"
             );
         }

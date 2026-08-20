@@ -17,8 +17,7 @@ use time::OffsetDateTime;
 
 use crate::circuit_breaker::BreakerSnapshot;
 use crate::pool_state::{
-    PoolState, STATUS_ACTIVE, STATUS_AVAILABLE, STATUS_COOLDOWN, STATUS_RETIRED,
-    STATUS_UNAVAILABLE,
+    PoolState, STATUS_ACTIVE, STATUS_AVAILABLE, STATUS_COOLDOWN, STATUS_RETIRED, STATUS_UNAVAILABLE,
 };
 
 /// Phase eines BLOCK-Failovers (rein informativ; der Eintrag wird nach dem
@@ -519,10 +518,7 @@ mod tests {
         state.set("a", STATUS_ACTIVE, "");
         state.set("b", STATUS_UNAVAILABLE, "boom");
         let running: HashSet<String> = ["a".to_string()].into_iter().collect();
-        assert_eq!(
-            select_to_promote(&candidates, &state, &running),
-            None
-        );
+        assert_eq!(select_to_promote(&candidates, &state, &running), None);
     }
 
     #[test]

@@ -145,7 +145,10 @@ pub fn resolve_verify_targets(
 /// Reine Umwandlung: `VerifyResult`-Befunde → Store-Records, 1:1 — inklusive
 /// `Unreachable`, die `proof_state` zwar ignoriert, die aber geschrieben
 /// werden, damit die Drift-Historie vollständig bleibt.
-pub fn verify_records(brain_id: &str, results: &[VerifyResult]) -> Vec<crate::capability_proof::ProofRecord> {
+pub fn verify_records(
+    brain_id: &str,
+    results: &[VerifyResult],
+) -> Vec<crate::capability_proof::ProofRecord> {
     results
         .iter()
         .map(|r| {
@@ -194,7 +197,9 @@ pub fn verify_capabilities(
     }
     backend.dismiss_consent();
     tr.step("ensure_ready (Login/Cloudflare-Check)");
-    let state = backend.ensure_ready(preflight_secs).unwrap_or(SessionState::Error);
+    let state = backend
+        .ensure_ready(preflight_secs)
+        .unwrap_or(SessionState::Error);
     tr.step("ensure_ready fertig");
     let results = match state {
         SessionState::Ready => verify_session(backend, targets, probe),
@@ -295,7 +300,14 @@ fn all_unreachable(
         .map(|cap| {
             let hash = hash_for(backend, cap);
             VerifyResult::new(
-                measure(cap.key, String::new(), String::new(), false, reason.to_string(), None),
+                measure(
+                    cap.key,
+                    String::new(),
+                    String::new(),
+                    false,
+                    reason.to_string(),
+                    None,
+                ),
                 ProofOutcome::Unreachable,
                 hash,
                 started,
@@ -422,7 +434,9 @@ fn verify_reasoning_effort(backend: &mut WebBrainBackend, cap: &Capability) -> V
     let last_step = path[path.len() - 1];
     match backend.select_in_menu_path(menu_key, "model_option", &path) {
         Ok(after) => {
-            let proven = after.to_lowercase().contains(&last_step.trim().to_lowercase());
+            let proven = after
+                .to_lowercase()
+                .contains(&last_step.trim().to_lowercase());
             let note = if after.contains("bereits aktiv") {
                 after.clone()
             } else {
@@ -526,7 +540,11 @@ fn navigate_back(backend: &WebBrainBackend) -> Result<(), String> {
 /// WELCHES Kriterium getragen hat. Ein blankes ODER würde verdecken, dass ein
 /// Brain nur noch über den Ersatzweg belegt wird — und damit die beginnende
 /// Selektor-Drift unsichtbar machen.
-fn new_chat_outcome(url_changed: bool, count_before: i32, count_after: i32) -> (ProofOutcome, String) {
+fn new_chat_outcome(
+    url_changed: bool,
+    count_before: i32,
+    count_after: i32,
+) -> (ProofOutcome, String) {
     let history_cleared = count_before > 0 && count_after == 0;
     match (url_changed, history_cleared) {
         (true, true) => (
@@ -610,7 +628,9 @@ fn generation_sequence(
     let chat_driveable = cap_chat
         .map(|c| has_sel(&backend.selectors, c.needs))
         .unwrap_or(false);
-    let stop_driveable = cap_stop.map(|_| !backend.sel("stop_button").is_empty()).unwrap_or(false);
+    let stop_driveable = cap_stop
+        .map(|_| !backend.sel("stop_button").is_empty())
+        .unwrap_or(false);
     if do_chat && !chat_driveable {
         return results; // chat bleibt Quest — ohne chat kein Stop-Lauf
     }
@@ -660,7 +680,8 @@ fn generation_sequence(
     let assistant_js = backend.sel_js("assistant_message", &["div.prose"]);
     let stop_js = WebBrainBackend::js_selectors(&backend.sel("stop_button"));
     let baseline_text = backend.baseline_text.borrow().clone();
-    let deadline = crate::timeouts::resolve_timeout("wait_response", &backend.brain_id, probe, None);
+    let deadline =
+        crate::timeouts::resolve_timeout("wait_response", &backend.brain_id, probe, None);
     let deadline = Instant::now() + Duration::from_secs_f64(deadline);
 
     let mut chat_proven = false;
@@ -764,12 +785,26 @@ fn generation_sequence(
         // (§10), nicht Failed — die Fähigkeit war gar nicht im Spiel.
         let reason = "blocked".to_string();
         if do_chat {
-            let m = measure("chat", String::new(), String::new(), false, reason.clone(), None);
+            let m = measure(
+                "chat",
+                String::new(),
+                String::new(),
+                false,
+                reason.clone(),
+                None,
+            );
             let hash = cap_chat.map(|c| hash_for(backend, c)).unwrap_or(0);
             results.push(VerifyResult::new(m, ProofOutcome::Unreachable, hash, start));
         }
         if do_stop {
-            let m = measure("stop_generation", String::new(), String::new(), false, reason, None);
+            let m = measure(
+                "stop_generation",
+                String::new(),
+                String::new(),
+                false,
+                reason,
+                None,
+            );
             let hash = cap_stop.map(|c| hash_for(backend, c)).unwrap_or(0);
             results.push(VerifyResult::new(m, ProofOutcome::Unreachable, hash, start));
         }
@@ -908,7 +943,12 @@ fn generation_sequence(
                         e,
                         winner,
                     );
-                    results.push(VerifyResult::new(m, ProofOutcome::Unreachable, hash, nc_start));
+                    results.push(VerifyResult::new(
+                        m,
+                        ProofOutcome::Unreachable,
+                        hash,
+                        nc_start,
+                    ));
                 }
             }
         }
@@ -959,7 +999,9 @@ mod tests {
             "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}",
             "false",
         );
-        MockPageState::new().on_eval("1", json!(1)).on_eval(login, json!(true))
+        MockPageState::new()
+            .on_eval("1", json!(1))
+            .on_eval(login, json!(true))
     }
 
     fn composer_coords_expr(sel: &Selectors) -> String {
@@ -1038,7 +1080,10 @@ mod tests {
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
             // dritte belegt das Absenden.
-            .on_eval_seq(assistant_count_expr(&sel), vec![json!(0), json!(0), json!(1)])
+            .on_eval_seq(
+                assistant_count_expr(&sel),
+                vec![json!(0), json!(0), json!(1)],
+            )
             .on_eval(
                 fallback_expr(&sel, cap("chat").needs),
                 json!({"i": 0, "v": "button[aria-label*='Send' i]"}),
@@ -1083,7 +1128,10 @@ mod tests {
         let ch = by("chat");
         assert!(ch.measurement.proven, "chat: {ch:?}");
         assert_eq!(ch.outcome, ProofOutcome::Passed);
-        assert_eq!(ch.measurement.winning_selector.as_deref(), Some("button[aria-label*='Send' i]"));
+        assert_eq!(
+            ch.measurement.winning_selector.as_deref(),
+            Some("button[aria-label*='Send' i]")
+        );
         let st = by("stop_generation");
         assert!(st.measurement.proven, "stop_generation: {st:?}");
         assert_eq!(st.outcome, ProofOutcome::Passed);
@@ -1110,7 +1158,10 @@ mod tests {
         // Beides: darf nicht als „nur URL" verbucht werden.
         let (o, n) = new_chat_outcome(true, 3, 0);
         assert_eq!(o, ProofOutcome::Passed);
-        assert!(n.contains("URL-Wechsel") && n.contains("Verlauf geleert"), "{n}");
+        assert!(
+            n.contains("URL-Wechsel") && n.contains("Verlauf geleert"),
+            "{n}"
+        );
 
         // Nichts von beidem: Failed.
         let (o, n) = new_chat_outcome(false, 2, 2);
@@ -1140,8 +1191,14 @@ mod tests {
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
             // dritte belegt das Absenden.
-            .on_eval_seq(assistant_count_expr(&sel), vec![json!(0), json!(0), json!(1)])
-            .on_eval(fallback_expr(&sel, cap("chat").needs), json!({"i": 0, "v": "b"}))
+            .on_eval_seq(
+                assistant_count_expr(&sel),
+                vec![json!(0), json!(0), json!(1)],
+            )
+            .on_eval(
+                fallback_expr(&sel, cap("chat").needs),
+                json!({"i": 0, "v": "b"}),
+            )
             .on_eval(
                 fallback_expr(&sel, cap("stop_generation").needs),
                 json!({"i": 0, "v": "button[aria-label*='stoppen' i]"}),
@@ -1151,7 +1208,13 @@ mod tests {
                 vec![gen(0, "", false), gen(1, "1\n2", false)],
             );
         let mut backend = qwen_with(state);
-        let results = verify_capabilities(&mut backend, false, &[cap("chat"), cap("stop_generation")], PROBE, 5.0);
+        let results = verify_capabilities(
+            &mut backend,
+            false,
+            &[cap("chat"), cap("stop_generation")],
+            PROBE,
+            5.0,
+        );
 
         assert_eq!(results.len(), 2);
         let st = results
@@ -1161,7 +1224,10 @@ mod tests {
         assert_eq!(st.outcome, ProofOutcome::Failed);
         assert!(!st.measurement.proven);
         assert!(st.measurement.note.contains("nie sichtbar"));
-        let ch = results.iter().find(|r| r.measurement.capability_key == "chat").unwrap();
+        let ch = results
+            .iter()
+            .find(|r| r.measurement.capability_key == "chat")
+            .unwrap();
         assert!(ch.measurement.proven, "chat läuft trotzdem: {ch:?}");
     }
 
@@ -1178,8 +1244,14 @@ mod tests {
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
             // dritte belegt das Absenden.
-            .on_eval_seq(assistant_count_expr(&sel), vec![json!(0), json!(0), json!(1)])
-            .on_eval(fallback_expr(&sel, cap("chat").needs), json!({"i": 0, "v": "b"}))
+            .on_eval_seq(
+                assistant_count_expr(&sel),
+                vec![json!(0), json!(0), json!(1)],
+            )
+            .on_eval(
+                fallback_expr(&sel, cap("chat").needs),
+                json!({"i": 0, "v": "b"}),
+            )
             .on_eval(
                 fallback_expr(&sel, cap("stop_generation").needs),
                 json!({"i": 0, "v": "button[aria-label*='stoppen' i]"}),
@@ -1190,7 +1262,13 @@ mod tests {
                 vec![gen(0, "", false), gen(1, "1\n2", true)],
             );
         let mut backend = qwen_with(state);
-        let results = verify_capabilities(&mut backend, false, &[cap("chat"), cap("stop_generation")], PROBE, 5.0);
+        let results = verify_capabilities(
+            &mut backend,
+            false,
+            &[cap("chat"), cap("stop_generation")],
+            PROBE,
+            5.0,
+        );
 
         let st = results
             .iter()
@@ -1198,7 +1276,10 @@ mod tests {
             .unwrap();
         assert_eq!(st.outcome, ProofOutcome::Unreachable);
         assert!(st.measurement.note.contains("Klick kam nicht an"));
-        let ch = results.iter().find(|r| r.measurement.capability_key == "chat").unwrap();
+        let ch = results
+            .iter()
+            .find(|r| r.measurement.capability_key == "chat")
+            .unwrap();
         assert!(ch.measurement.proven);
     }
 
@@ -1216,16 +1297,31 @@ mod tests {
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
             // dritte belegt das Absenden.
-            .on_eval_seq(assistant_count_expr(&sel), vec![json!(0), json!(0), json!(1)])
-            .on_eval(fallback_expr(&sel, cap("chat").needs), json!({"i": 0, "v": "b"}))
+            .on_eval_seq(
+                assistant_count_expr(&sel),
+                vec![json!(0), json!(0), json!(1)],
+            )
+            .on_eval(
+                fallback_expr(&sel, cap("chat").needs),
+                json!({"i": 0, "v": "b"}),
+            )
             .on_eval(
                 fallback_expr(&sel, cap("stop_generation").needs),
                 json!({"i": 0, "v": "button[aria-label*='stoppen' i]"}),
             )
             // Stop bleibt ewig sichtbar → nie `gone`, nie eingefroren.
-            .on_eval_seq(probe_expr(&sel), vec![gen(0, "", false), gen(1, "1\n2", true)]);
+            .on_eval_seq(
+                probe_expr(&sel),
+                vec![gen(0, "", false), gen(1, "1\n2", true)],
+            );
         let mut backend = qwen_with(state);
-        let results = verify_capabilities(&mut backend, false, &[cap("chat"), cap("stop_generation")], PROBE, 5.0);
+        let results = verify_capabilities(
+            &mut backend,
+            false,
+            &[cap("chat"), cap("stop_generation")],
+            PROBE,
+            5.0,
+        );
 
         let st = results
             .iter()
@@ -1247,7 +1343,10 @@ mod tests {
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Zaehler waechst nie → verify_submitted scheitert 4×, dann Fehler.
             .on_eval(assistant_count_expr(&sel), json!(0))
-            .on_eval(fallback_expr(&sel, cap("chat").needs), json!({"i": 0, "v": "b"}));
+            .on_eval(
+                fallback_expr(&sel, cap("chat").needs),
+                json!({"i": 0, "v": "b"}),
+            );
         let mut backend = qwen_with(state);
         let results = verify_capabilities(&mut backend, false, &[cap("chat")], PROBE, 5.0);
 
@@ -1256,7 +1355,11 @@ mod tests {
         assert_eq!(r.measurement.capability_key, "chat");
         assert_eq!(r.outcome, ProofOutcome::Failed);
         assert!(!r.measurement.proven);
-        assert!(r.measurement.note.contains("Absenden fehlgeschlagen"), "{:?}", r.measurement.note);
+        assert!(
+            r.measurement.note.contains("Absenden fehlgeschlagen"),
+            "{:?}",
+            r.measurement.note
+        );
     }
 
     /// Fehlt ein `needs`-Selektor (new_chat_button), bleibt die Fähigkeit eine
@@ -1266,7 +1369,13 @@ mod tests {
         let sel = json!({
             "login_indicator": ["textarea"],
         });
-        let mut backend = backend_with_selectors("qwen", sel, ready_state(&Selectors::from_value(json!({"login_indicator": ["textarea"]}))));
+        let mut backend = backend_with_selectors(
+            "qwen",
+            sel,
+            ready_state(&Selectors::from_value(
+                json!({"login_indicator": ["textarea"]}),
+            )),
+        );
         let results = verify_capabilities(&mut backend, false, &[cap("new_chat")], PROBE, 0.5);
         assert!(results.is_empty(), "Quest ist kein Eintrag: {results:?}");
     }
@@ -1281,7 +1390,8 @@ mod tests {
         });
         let state = ready_state(&Selectors::from_value(sel.clone()));
         let mut backend = backend_with_selectors("qwen", sel, state);
-        let results = verify_capabilities(&mut backend, false, &[cap("reasoning_effort")], PROBE, 0.5);
+        let results =
+            verify_capabilities(&mut backend, false, &[cap("reasoning_effort")], PROBE, 0.5);
         assert!(results.is_empty(), "Quest ist kein Eintrag: {results:?}");
     }
 
@@ -1296,7 +1406,10 @@ mod tests {
         });
         let state_expr = js::toggle_state_expr_for(&[winner.to_string()]);
         let click_expr = js::click_toggle_expr_for(&[winner.to_string()]);
-        let fallback = fallback_expr(&Selectors::from_value(sel.clone()), cap("reasoning_toggle").needs);
+        let fallback = fallback_expr(
+            &Selectors::from_value(sel.clone()),
+            cap("reasoning_toggle").needs,
+        );
         let mut state = ready_state(&Selectors::from_value(sel.clone()));
         state = state
             .on_eval(labeled_expr(), json!(5))
@@ -1304,7 +1417,8 @@ mod tests {
             .on_eval_seq(state_expr, vec![json!("off"), json!("on"), json!("off")])
             .on_eval(click_expr, json!(true));
         let mut backend = backend_with_selectors("qwen", sel, state);
-        let results = verify_capabilities(&mut backend, false, &[cap("reasoning_toggle")], PROBE, 0.5);
+        let results =
+            verify_capabilities(&mut backend, false, &[cap("reasoning_toggle")], PROBE, 0.5);
 
         assert_eq!(results.len(), 1);
         let r = &results[0];
@@ -1328,7 +1442,9 @@ mod tests {
             "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}",
             "false",
         );
-        let state = MockPageState::new().on_eval("1", json!(1)).on_eval(login_btn, json!(true));
+        let state = MockPageState::new()
+            .on_eval("1", json!(1))
+            .on_eval(login_btn, json!(true));
         let mut backend = backend_with_selectors("qwen", sel, state);
         let results = verify_capabilities(
             &mut backend,

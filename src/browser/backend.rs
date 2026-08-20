@@ -45,17 +45,15 @@ impl BrainBackend for WebBrainBackend {
                 .map_err(|e| e.to_string())?;
             let nav_start = Instant::now();
             let nav_timeout = Duration::from_secs(15);
-            driver
-                .navigate(&self.url, nav_timeout)
-                .map_err(|e| {
-                    let elapsed = nav_start.elapsed();
-                    format!(
-                        "Navigation timeout after {:.2}s to {} (limit 15s): {}",
-                        elapsed.as_secs_f64(),
-                        self.url,
-                        e
-                    )
-                })?;
+            driver.navigate(&self.url, nav_timeout).map_err(|e| {
+                let elapsed = nav_start.elapsed();
+                format!(
+                    "Navigation timeout after {:.2}s to {} (limit 15s): {}",
+                    elapsed.as_secs_f64(),
+                    self.url,
+                    e
+                )
+            })?;
             *self.runtime.borrow_mut() = Some(runtime);
             *self.driver.borrow_mut() = Some(Box::new(driver));
             Ok(())

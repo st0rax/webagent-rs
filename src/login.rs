@@ -171,12 +171,16 @@ fn login_one(
     let mut backend = match WebBrainBackend::from_config(brain_id) {
         Ok(b) => b,
         Err(e) => {
-            return finish_login(shared_mode, None, LoginResult {
-                brain_id: brain_id.to_string(),
-                ok: false,
-                skipped: false,
-                message: format!("Backend-Fehler: {e}"),
-            });
+            return finish_login(
+                shared_mode,
+                None,
+                LoginResult {
+                    brain_id: brain_id.to_string(),
+                    ok: false,
+                    skipped: false,
+                    message: format!("Backend-Fehler: {e}"),
+                },
+            );
         }
     };
     if let Some(p) = profile_override {
@@ -196,12 +200,16 @@ fn login_one(
             // 06.08.2026 eingetreten — `login-all` meldete Erfolg, das Master
             // blieb auf dem Stand vom 3. August.
             sync_login_to_master(brain_id);
-            return finish_login(shared_mode, Some(backend), LoginResult {
-                brain_id: brain_id.to_string(),
-                ok: true,
-                skipped: true,
-                message: "bereits eingeloggt — übersprungen (--force zum erzwingen)".into(),
-            });
+            return finish_login(
+                shared_mode,
+                Some(backend),
+                LoginResult {
+                    brain_id: brain_id.to_string(),
+                    ok: true,
+                    skipped: true,
+                    message: "bereits eingeloggt — übersprungen (--force zum erzwingen)".into(),
+                },
+            );
         }
     }
 

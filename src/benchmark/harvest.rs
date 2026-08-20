@@ -66,11 +66,18 @@ const PFLICHT_LOCK_MARKERS: &[&str] = &[
 ];
 
 fn patch_entfernt_pflicht_befehl(patch: &str) -> Option<&'static str> {
-    crate::shell_policy::PFLICHT_DENY.iter().copied().find(|cmd| {
-        let entfernt = patch.lines().any(|line| ist_diff_inhalt(line, '-') && line.contains(cmd));
-        let bleibt = patch.lines().any(|line| ist_diff_inhalt(line, '+') && line.contains(cmd));
-        entfernt && !bleibt
-    })
+    crate::shell_policy::PFLICHT_DENY
+        .iter()
+        .copied()
+        .find(|cmd| {
+            let entfernt = patch
+                .lines()
+                .any(|line| ist_diff_inhalt(line, '-') && line.contains(cmd));
+            let bleibt = patch
+                .lines()
+                .any(|line| ist_diff_inhalt(line, '+') && line.contains(cmd));
+            entfernt && !bleibt
+        })
 }
 
 fn ist_diff_inhalt(line: &str, mark: char) -> bool {
@@ -141,7 +148,9 @@ pub(crate) fn persist_candidate(
     task: &str,
     patch: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let dir = crate::config::data_dir().join("benchmark").join("harvest_pending");
+    let dir = crate::config::data_dir()
+        .join("benchmark")
+        .join("harvest_pending");
     std::fs::create_dir_all(&dir).map_err(|e| format!("harvest_pending: {e}"))?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -243,8 +252,12 @@ mod tests {
 
     #[test]
     fn persist_candidate_legt_patch_und_task_ab() {
-        let path = persist_candidate("deepseek", "Zieldatei: src/observer.rs.", "+fn neuer_test() {}")
-            .expect("persistiert");
+        let path = persist_candidate(
+            "deepseek",
+            "Zieldatei: src/observer.rs.",
+            "+fn neuer_test() {}",
+        )
+        .expect("persistiert");
         let file_name = path.file_name().unwrap().to_string_lossy().to_string();
         assert!(path.to_string_lossy().contains("harvest_pending"));
         assert!(file_name.ends_with("_deepseek.patch"), "{file_name}");

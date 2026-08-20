@@ -1100,10 +1100,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(
             mods,
-            vec![
-                ("brain.rs".to_string(), 1),
-                ("repl/mod.rs".to_string(), 2),
-            ]
+            vec![("brain.rs".to_string(), 1), ("repl/mod.rs".to_string(), 2),]
         );
     }
 

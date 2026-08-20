@@ -142,7 +142,11 @@ mod tests {
 
     #[test]
     fn scan_indexed_leere_objekte_geben_default() {
-        let expr = js_scan_indexed(&serde_json::json!({}), FALLBACK_VISIBLE_BODY, "{i:-1,v:null}");
+        let expr = js_scan_indexed(
+            &serde_json::json!({}),
+            FALLBACK_VISIBLE_BODY,
+            "{i:-1,v:null}",
+        );
         assert!(expr.contains("var S=[];"));
         assert!(expr.contains("return {i:-1,v:null};"));
     }

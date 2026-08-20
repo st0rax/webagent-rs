@@ -546,7 +546,12 @@ impl BrainLevel {
         let unproven = self
             .quests
             .iter()
-            .filter(|q| matches!(q.blocker, QuestBlocker::NeedsProof | QuestBlocker::ProofExpired))
+            .filter(|q| {
+                matches!(
+                    q.blocker,
+                    QuestBlocker::NeedsProof | QuestBlocker::ProofExpired
+                )
+            })
             .count();
         match self.max_level() {
             Some(m) => {
@@ -804,21 +809,13 @@ mod tests {
     /// Fake-Beleg: jede fahrbare Fähigkeit gilt als bewiesen. Damit prüfen
     /// Tests, die nur den selektor-Teil messen, genau das — und bleiben ohne
     /// Store und Browser lauffähig (§11 des Plans).
-    fn always_proven(
-        _brain: &str,
-        _cap: &str,
-        _hash: u32,
-    ) -> crate::capability_proof::ProofState {
+    fn always_proven(_brain: &str, _cap: &str, _hash: u32) -> crate::capability_proof::ProofState {
         ProofState::Proven {
             at: "2026-01-01T00:00:00Z".into(),
         }
     }
 
-    fn never_proven(
-        _brain: &str,
-        _cap: &str,
-        _hash: u32,
-    ) -> crate::capability_proof::ProofState {
+    fn never_proven(_brain: &str, _cap: &str, _hash: u32) -> crate::capability_proof::ProofState {
         ProofState::Never
     }
 
@@ -1075,10 +1072,19 @@ mod tests {
         // treffen, sonst landen Beweise aus verschiedenen Kommandos am falschen
         // Eintrag.
         assert_eq!(capability_for_route("chat"), Some("chat"));
-        assert_eq!(capability_for_route("web_search_toggle"), Some("web_search"));
-        assert_eq!(capability_for_route("reasoning_toggle"), Some("reasoning_toggle"));
+        assert_eq!(
+            capability_for_route("web_search_toggle"),
+            Some("web_search")
+        );
+        assert_eq!(
+            capability_for_route("reasoning_toggle"),
+            Some("reasoning_toggle")
+        );
         assert_eq!(capability_for_route("model_menu"), Some("model_switch"));
-        assert_eq!(capability_for_route("reasoning_effort_menu"), Some("reasoning_effort"));
+        assert_eq!(
+            capability_for_route("reasoning_effort_menu"),
+            Some("reasoning_effort")
+        );
         // Nicht-fahrbar: kein Beweis fuer etwas, das nie ins Level zaehlt.
         assert_eq!(capability_for_route("temporary_chat"), None);
         assert_eq!(capability_for_route("canvas_button"), None);
@@ -1145,7 +1151,10 @@ mod tests {
         });
         let lvl = level_from_selectors_with("t", &sel, &always_proven);
         assert_eq!(lvl.level(), 1);
-        assert_eq!(lvl.verified, vec![("chat".to_string(), "2026-01-01T00:00:00Z".into())]);
+        assert_eq!(
+            lvl.verified,
+            vec![("chat".to_string(), "2026-01-01T00:00:00Z".into())]
+        );
     }
 
     #[test]

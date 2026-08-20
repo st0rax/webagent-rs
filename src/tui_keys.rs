@@ -24,9 +24,7 @@ pub fn parse_key(name: &str) -> Option<KeyEvent> {
     let (modifiers, rest) = match raw.split_once('+') {
         // `"+"` selbst ist eine Taste, kein Modifikator-Trenner — und
         // `"+/-"`-artige Reste ebenso. Nur ein bekannter Modifikator zaehlt.
-        Some((m, r)) if m.eq_ignore_ascii_case("alt") && !r.is_empty() => {
-            (KeyModifiers::ALT, r)
-        }
+        Some((m, r)) if m.eq_ignore_ascii_case("alt") && !r.is_empty() => (KeyModifiers::ALT, r),
         Some((m, r)) if m.eq_ignore_ascii_case("ctrl") && !r.is_empty() => {
             (KeyModifiers::CONTROL, r)
         }
