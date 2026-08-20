@@ -78,7 +78,11 @@ pub mod watchdog;
 pub mod worker_pool;
 
 // ── ui: TUI, REPL ──
+// Brain-Windowing is only needed by the TUI/WebView runtime. Unit tests keep
+// geometry and Wall state logic available in the reduced headless build.
+#[cfg(any(feature = "webview", feature = "tui", test))]
 pub(crate) mod brain_grid;
+#[cfg(any(feature = "webview", feature = "tui", test))]
 pub(crate) mod brain_wall;
 pub mod repl;
 pub(crate) mod target_check;

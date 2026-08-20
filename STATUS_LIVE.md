@@ -2587,3 +2587,30 @@ und wurden trotzdem 6 h gesperrt. Gemini bleibt unangetastet.
 - **GPT-5:** PASS, Risiko niedrig; keine versteckten Datei-/Prozess-/Netzwerkzugriffe, keine Statusmutation vor erfÃ¼llten Gates, kein Schema-Bump und ausreichende Regressionen bestÃ¤tigt; isolierter Commit empfohlen.
 - **Bekannte bewusste Grenze:** Die ArtefaktprÃ¼fung bleibt syntaktisch und liest keine Datei; sie erzwingt einen nachvollziehbaren lokalen Verweis, behauptet aber keine kryptografische IntegritÃ¤t.
 - **Zusatzreview Grok Build 1.0.4:** Der lokal verfÃ¼gbare Headless-Read-only-Aufruf wurde gegen denselben Diff gestartet, lieferte im begrenzten Wartefenster jedoch keine Abschlussausgabe und wurde ohne ProjektÃ¤nderung beendet. Kein Grok-Verdict wird behauptet; Claude Opus PASS und GPT-5 PASS bleiben die committragenden unabhÃ¤ngigen Reviews.
+## Phase 6 checkpoint: feature-boundary hardening (2026-08-21)
+
+- **Scope and origin:** `src/lib.rs` only. The unconditional `brain_grid` and
+  `brain_wall` module declarations now compile only for `webview`, `tui`, or
+  unit tests. This keeps the geometry and Wall-state unit tests available in
+  `--no-default-features` test builds while excluding the unused UI/windowing
+  module surface from the headless production build.
+- **Independent review:** Claude Opus 4.7 PASS (5/5 after schema normalization;
+  no blocking issue, no repair) and GPT-5 PASS (no blocking issue, no repair).
+  Both confirm that `cfg(test)` preserves unit-test coverage and that `tui` and
+  `webview` production paths remain available. Review artefacts are held outside
+  the worktree in the coordinator evidence area.
+- **Verification:** Grok Build ran `cargo test --no-default-features`, default
+  `cargo test`, and `cargo test --no-default-features --features tui` successfully.
+  `cargo clippy --no-default-features` exited 0; `cargo fmt --all -- --check`
+  exited 0; and `git diff --check` is clean. A strict supplementary
+  `RUSTFLAGS=-Dwarnings cargo check --no-default-features` reduced the prior
+  19 warnings-as-errors to 13 remaining findings, with none in `brain_grid.rs`
+  or `brain_wall.rs`.
+- **Known remaining boundary:** the strict headless gate is not yet globally
+  warning-free because 13 pre-existing dead-code findings remain in
+  `src/transcript.rs` and `src/browser_pool.rs`. They are intentionally outside
+  this Browser-Brain/Wall feature-boundary slice and require a separate,
+  reviewable headless-surface audit; do not suppress them with broad `allow`.
+- **Operator evidence:** Grok completed the long Cargo commands but sometimes
+  kept its response UI open after the process finished. The coordinator verified
+  the actual exit/result evidence and cleaned only the finished operator process.
