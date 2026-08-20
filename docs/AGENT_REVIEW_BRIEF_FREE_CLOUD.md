@@ -1,5 +1,7 @@
 # WebAgent – unabhängiges Reviewbriefing
 
+> **Referenz.** Dieses Dokument beschreibt die aktuelle Free-Cloud-Arbeitsscheibe und ist zusammen mit dem getesteten Repositorystand zu lesen.
+
 > **Status:** Arbeitsdokument für vier unabhängige Read-only-Reviews.  
 > **Arbeitsbaum:** `C:\Users\storax\Documents\Codex\2026-08-12\kann\work\webagent-harness-abnahme`  
 > **Geltung:** Nur die neue Free-Cloud-Textchat-Scheibe und ihre direkte CLI-Anbindung.

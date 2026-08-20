@@ -252,12 +252,13 @@ fn score_model(model: &CloudModel, terms: &[String], free_only: bool) -> SearchR
     let mut score = 0_u32;
     let mut reasons = Vec::new();
     let haystack = format!(
-        "{} {} {} {} {}",
+        "{} {} {} {} {} {}",
         model.model_id,
         model.display_name,
         model.provider,
         model.tags.join(" "),
-        format!("{} {}", model.languages.join(" "), model.source_url)
+        model.languages.join(" "),
+        model.source_url,
     )
     .to_lowercase();
 

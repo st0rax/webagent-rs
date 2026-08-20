@@ -45,10 +45,9 @@ fn init_console_utf8() {
 #[cfg(not(all(windows, feature = "webview")))]
 fn init_console_utf8() {}
 
-fn main() {
+fn run() -> i32 {
     // Muss vor der ersten Ausgabe laufen, sonst ist die erste Zeile Mojibake.
     init_console_utf8();
-
 
     let cli = Cli::parse();
     // Lokale Diagnose-/Registry-Befehle benÃ¶tigen weder persistierte
@@ -58,7 +57,7 @@ fn main() {
         &cli.command,
         Some(Commands::MaintenanceCheck { .. } | Commands::Cloud { .. })
     ) {
-        process::exit(dispatch(cli.command.expect("geprÃ¼fter lokaler Befehl fehlt")));
+        return dispatch(cli.command.expect("geprÃ¼fter lokaler Befehl fehlt"));
     }
 
     // Gespeicherte Einstellungen werden vor dem ersten regulÃ¤ren Ablauf
@@ -79,7 +78,10 @@ fn main() {
         force_tui: false,
     });
 
-    let exit_code = if matches!(command, Commands::MaintenanceCheck { .. } | Commands::Cloud { .. }) {
+    let exit_code = if matches!(
+        command,
+        Commands::MaintenanceCheck { .. } | Commands::Cloud { .. }
+    ) {
         dispatch(command)
     } else {
         webagent::config::ensure_stable_layout();
@@ -110,7 +112,7 @@ fn main() {
         dispatch(command)
     };
 
-    process::exit(exit_code);
+    exit_code
 }
 
 fn dispatch(command: Commands) -> i32 {
@@ -413,7 +415,8 @@ fn dispatch(command: Commands) -> i32 {
         Commands::Goal { command } => cmd_goal(command),
         Commands::Plan { command } => cmd_plan(command),
         Commands::Api { command } => cmd_api(command),
-        Commands::Cloud { command } => cmd_cloud(command),        Commands::SyncMaster => cmd_sync_master(),
+        Commands::Cloud { command } => cmd_cloud(command),
+        Commands::SyncMaster => cmd_sync_master(),
     }
 }
 
@@ -463,22 +466,26 @@ fn cmd_cloud(command: cli::CloudCommands) -> i32 {
             profile: requested_profile,
             query,
             allow_credits,
-        } => profile(&requested_profile).map(|selected_profile| serde_json::json!({
-            "profile": selected_profile.label(),
-            "query": query,
-            "free_only": !allow_credits,
-            "results": search_registry(&registry, selected_profile, &query, !allow_credits),
-        })),
+        } => profile(&requested_profile).map(|selected_profile| {
+            serde_json::json!({
+                "profile": selected_profile.label(),
+                "query": query,
+                "free_only": !allow_credits,
+                "results": search_registry(&registry, selected_profile, &query, !allow_credits),
+            })
+        }),
         cli::CloudCommands::Decide {
             model_id,
             allow_credits,
         } => registry
             .iter()
             .find(|model| model.model_id == model_id)
-            .map(|model| Ok(serde_json::json!({
-                "free_only": !allow_credits,
-                "decision": decide_route(model, !allow_credits),
-            })))
+            .map(|model| {
+                Ok(serde_json::json!({
+                    "free_only": !allow_credits,
+                    "decision": decide_route(model, !allow_credits),
+                }))
+            })
             .unwrap_or_else(|| Err(format!("Unbekannte Registry-ID '{model_id}'."))),
     };
 
@@ -605,4 +612,28 @@ fn cmd_plan(command: cli::PlanCommands) -> i32 {
                 .and_then(|plan| webagent::goal_plan::render_json(&plan)),
         ),
     }
+}
+
+#[cfg(all(windows, feature = "webview"))]
+fn main() {
+    process::exit(run());
+}
+
+#[cfg(not(all(windows, feature = "webview")))]
+fn main() {
+    let exit_code = match std::thread::Builder::new()
+        .name("webagent-main".to_string())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(run)
+    {
+        Ok(handle) => handle.join().unwrap_or_else(|_| {
+            eprintln!("[startup] WebAgent-Hauptthread ist unerwartet abgebrochen.");
+            70
+        }),
+        Err(error) => {
+            eprintln!("[startup] GroÃŸer WebAgent-Hauptthread konnte nicht starten: {error}");
+            70
+        }
+    };
+    process::exit(exit_code);
 }

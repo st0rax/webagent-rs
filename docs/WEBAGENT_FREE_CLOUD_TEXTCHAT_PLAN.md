@@ -1,5 +1,7 @@
 # WebAgent: Plan für kostenlose Cloud-Textchats mit offenen Modellen
 
+> **Referenz.** Dieses Dokument beschreibt die aktuelle Free-Cloud-Arbeitsscheibe und ist zusammen mit dem getesteten Repositorystand zu lesen.
+
 > **Finale Fassung — Stand: 20. August 2026**
 
 ## Ziel

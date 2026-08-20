@@ -1,8 +1,10 @@
 # Free-Cloud-Textchat: Implementierungs- und Abnahmestatus
 
+> **Referenz.** Dieses Dokument beschreibt die aktuelle Free-Cloud-Arbeitsscheibe und ist zusammen mit dem getesteten Repositorystand zu lesen.
+
 > **Stand:** 20. August 2026  
 > **Arbeitsbaum:** `C:\Users\storax\Documents\Codex\2026-08-12\kann\work\webagent-harness-abnahme`  
-> **Status:** Die lokale Registry-/Policy-Scheibe ist implementiert und gezielt getestet. Sie ist **noch keine vollständige Cloud-Chat-Produktionseinführung**, weil ein bereits im Baseline-Commit vorhandener Windows-/GNU-Startfehler jeden Binary-Smoke-Test (`--version`) blockiert.
+> **Status:** Die lokale Registry-/Policy-Scheibe ist implementiert, vollstÃ¤ndig getestet und Ã¼ber die lokale CLI nachgewiesen. Sie ist **noch keine vollstÃ¤ndige Cloud-Chat-ProduktionseinfÃ¼hrung**, weil externe Inferenz, Streaming und Browser-/Space-Adapter bewusst noch nicht implementiert sind.
 
 ## Umgesetzte Scheibe
 
@@ -40,13 +42,13 @@ Claude Opus hat die aktuelle Kerninvariante explizit geprüft und bestätigt: `U
 
 ## Testnachweise
 
-Die zielgerichtete Prüfung lief mit dem Windows-GNU-Linker und ergab ein erfolgreiches `cargo test --no-default-features free_cloud`; sechs Modultests bestanden. `rustfmt --check src\free_cloud_chat.rs` bestand ebenfalls. Vorbestehende Warnungen in nicht verwandten TUI-/Brain-Wall-Modulen wurden protokolliert, aber nicht als Teil dieser Scheibe geändert.
+Die vollstÃ¤ndige PrÃ¼fung lief mit dem Windows-GNU-Linker und ergab ein erfolgreiches `cargo test --no-default-features`: **1.047 Tests bestanden**. `rustfmt --check src\\free_cloud_chat.rs` sowie `cargo clippy --no-default-features` liefen ebenfalls erfolgreich; vorbestehende Warnungen in nicht verwandten TUI-/Brain-Wall-Modulen wurden nicht ausgeweitet.
 
-Der geplante CLI-Smoke-Test kann gegenwärtig nicht als Erfolg belegt werden. In einem **frisch erzeugten, unveränderten** Worktree auf Commit `b764d49` schlug bereits `cargo run --no-default-features -- --version` mit `STATUS_STACK_OVERFLOW (0xc00000fd)` fehl. Derselbe Fehler tritt im Abnahmearbeitsbaum auf. Damit ist der Ausfall unabhängig von der Cloud-Diff und muss als eigenständige Windows-/GNU-Harness-Lücke behandelt werden.
+Der vormals blockierende Baselinefehler wurde durch eine isolierte Ursachenanalyse behoben: Das Generieren der groÃŸen Clap-Command-Struktur Ã¼berlief im Windows-GNU-Main-Thread, ist aber auf einem ausdrÃ¼cklich 64 MiB groÃŸen Rust-Worker-Stack vollstÃ¤ndig terminierend. Der Nicht-WebView-Programmeinstieg startet `run()` daher auf diesem Worker-Stack; der WebView-Pfad bleibt auf dem Hauptthread. Danach liefen `webagent --version`, `webagent cloud search --profile custom --query "huggingface api"` und `webagent cloud decide --model-id huggingface/inference-providers` erfolgreich. Die letzte Ausgabe bestÃ¤tigt dabei `manual_only` fÃ¼r den kreditpflichtigen Provider.
 
-## Nächste Abnahmeschritte
+## NÃ¤chste Abnahmeschritte
 
-Die nächste technische Scheibe ist nicht ein Live-Provider, sondern eine isolierte Reparatur des Baseline-Stack-Overflows mit einem minimalen `--version`-Regressionstest. Erst nach diesem Nachweis dürfen `cloud list`, `cloud search` und `cloud decide` als Binary-Smoke-Test freigegeben werden. Danach folgen ein versionierter Hub-Metadatenadapter, ein expliciter Opt-in für Nutzer-Credentials, Healthcheck/Circuit-Breaker und schließlich ein Streaming-Adapter. Kostenpflichtige Fallbacks bleiben im Free-only-Modus deaktiviert.
+Die nÃ¤chste technische Scheibe ist ein versionierter Hub-Metadatenadapter mit explizitem Opt-in fÃ¼r Nutzer-Credentials, Healthcheck/Circuit-Breaker und anschlieÃŸend ein Streaming-Adapter. Kostenpflichtige Fallbacks bleiben im Free-only-Modus deaktiviert. Jede neue Adapterklasse benÃ¶tigt vor einer automatischen Route aktuelle technische Frei-/Kosten- und Gesundheitsnachweise.
 
 ## Quellen
 
