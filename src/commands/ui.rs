@@ -595,9 +595,8 @@ pub fn cmd_probe(
             .probe_stop_by_disappearance(headless, &probe_message(&webagent::now_rfc3339()))
         {
             Ok((during, after, only_during)) => {
-                let vis = |v: &[webagent::brain_probe::Candidate]| {
-                    v.iter().filter(|c| c.visible).count()
-                };
+                let vis =
+                    |v: &[webagent::brain_probe::Candidate]| v.iter().filter(|c| c.visible).count();
                 println!(
                     "  --- {id}: waehrend {} sichtbar, danach {} sichtbar ---",
                     vis(&during),
@@ -718,11 +717,7 @@ pub fn cmd_probe(
         let disabled = if p.disabled { " [deaktiviert]" } else { "" };
         println!(
             "   {marker} {:<22} {:>3}%  {:<14} {}{}",
-            p.selector_key,
-            p.confidence,
-            p.evidence,
-            p.selector,
-            disabled
+            p.selector_key, p.confidence, p.evidence, p.selector, disabled
         );
     }
 
@@ -861,7 +856,10 @@ pub fn cmd_probe(
         eprintln!("[probe] {id}: schreiben fehlgeschlagen: {e}");
         return 1;
     }
-    println!("             Selektoren geschrieben nach {}", path.display());
+    println!(
+        "             Selektoren geschrieben nach {}",
+        path.display()
+    );
 
     if is_new {
         match webagent::config::register_custom_brain(&id, &url.unwrap_or_default()) {
@@ -893,9 +891,11 @@ pub fn cmd_probe(
         for v in &verdicts {
             let m: webagent::capability_proof::Measurement = v.into();
             let hash = webagent::capability::capability(v.capability_key)
-                .and_then(|c| sel_now.as_ref().map(|s| {
-                    webagent::capability_proof::selector_hash_for(c, s)
-                }))
+                .and_then(|c| {
+                    sel_now
+                        .as_ref()
+                        .map(|s| webagent::capability_proof::selector_hash_for(c, s))
+                })
                 .unwrap_or(0);
             let outcome = if v.proven {
                 webagent::capability_proof::ProofOutcome::Passed
@@ -1070,7 +1070,10 @@ mod tests {
 
     #[test]
     fn brain_id_wird_aus_url_abgeleitet() {
-        assert_eq!(brain_id_from_url("https://www.perplexity.ai/"), "perplexity");
+        assert_eq!(
+            brain_id_from_url("https://www.perplexity.ai/"),
+            "perplexity"
+        );
         assert_eq!(brain_id_from_url("https://chat.deepseek.com/"), "chat");
         assert_eq!(brain_id_from_url("https://gemini.google.com/app"), "gemini");
         assert_eq!(brain_id_from_url("https://chat.qwen.ai/"), "chat");
@@ -1119,7 +1122,10 @@ mod tests {
             disabled: false,
             evidence: "test".into(),
         };
-        let json = selectors_from_proposals(&[p("composer", "[contenteditable]"), p("send_button", "button.send")]);
+        let json = selectors_from_proposals(&[
+            p("composer", "[contenteditable]"),
+            p("send_button", "button.send"),
+        ]);
         let obj = json.as_object().unwrap();
         assert_eq!(obj["composer"][0], "[contenteditable]");
         assert_eq!(obj["send_button"][0], "button.send");

@@ -37,7 +37,10 @@ pub fn cmd_sync_master() -> i32 {
         Err(_) => Vec::new(),
     };
     if pools.is_empty() {
-        println!("[sync-master] keine Laufzeit-Kopien unter {}", base.display());
+        println!(
+            "[sync-master] keine Laufzeit-Kopien unter {}",
+            base.display()
+        );
         return 2;
     }
     // Juengste zuerst: die mtime der Kopie ist der letzte Browser-Schreibzugriff.
@@ -511,13 +514,7 @@ pub fn cmd_run(
         ..RunOptions::default()
     };
     let result = match resume {
-        Some(run_id) => controller.continue_run(
-            run_id,
-            task,
-            brain,
-            headless,
-            opts,
-        ),
+        Some(run_id) => controller.continue_run(run_id, task, brain, headless, opts),
         None => controller.run_with_options(task, brain, None, headless, opts),
     };
     match result {
@@ -1006,7 +1003,9 @@ pub fn cmd_maintenance_check(json: bool, pytest: bool, pytest_timeout: f64) -> i
 /// Unreachable sind); != 0 nur bei Konfigurations-/Store-Fehlern.
 pub fn cmd_verify(brain_ids: Option<Vec<String>>, caps: Vec<String>, headless: bool) -> i32 {
     use std::io::Write;
-    use webagent::browser::verify::{probe_message, resolve_verify_targets, verify_capabilities, verify_records};
+    use webagent::browser::verify::{
+        probe_message, resolve_verify_targets, verify_capabilities, verify_records,
+    };
     use webagent::capability_proof::{record_proof, ProofOutcome};
 
     const PREFLIGHT_SECS: f64 = 15.0;
@@ -1062,8 +1061,7 @@ pub fn cmd_verify(brain_ids: Option<Vec<String>>, caps: Vec<String>, headless: b
                 continue;
             }
         };
-        let results =
-            verify_capabilities(&mut backend, headless, &targets, &probe, PREFLIGHT_SECS);
+        let results = verify_capabilities(&mut backend, headless, &targets, &probe, PREFLIGHT_SECS);
         for rec in verify_records(id, &results) {
             record_proof(rec);
         }

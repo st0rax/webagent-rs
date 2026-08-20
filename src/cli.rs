@@ -710,7 +710,6 @@ pub enum Commands {
         command: ApiCommands,
     },
 
-
     /// Lokale Registry und Free-only-Entscheidungen fÃ¼r optionale Cloud-Textchats.
     Cloud {
         #[command(subcommand)]
@@ -779,7 +778,10 @@ pub enum GoalCommands {
         #[arg(long = "scope")]
         scope: Vec<String>,
     },
-    Get { #[arg(long)] json: bool },
+    Get {
+        #[arg(long)]
+        json: bool,
+    },
     Complete {
         #[arg(long = "evidence", required = true)]
         evidence: Vec<String>,
@@ -788,7 +790,10 @@ pub enum GoalCommands {
         #[arg(long)]
         verdict: String,
     },
-    Abandon { #[arg(long)] reason: String },
+    Abandon {
+        #[arg(long)]
+        reason: String,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -799,8 +804,14 @@ pub enum PlanCommands {
         #[arg(long = "item", required = true)]
         item: Vec<String>,
     },
-    Get { #[arg(long)] json: bool },
-    Done { #[arg(long)] id: u32 },
+    Get {
+        #[arg(long)]
+        json: bool,
+    },
+    Done {
+        #[arg(long)]
+        id: u32,
+    },
 }
 
 #[derive(Args)]
