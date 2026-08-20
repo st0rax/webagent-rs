@@ -122,6 +122,7 @@ pub struct TextStreamRequest {
 pub enum TextStreamEvent {
     Started { model_id: String },
     Token { text: String },
+    Metadata { metadata: HubModelMetadata },
     Completed { model_id: String },
 }
 
@@ -129,8 +130,22 @@ pub enum TextStreamEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "error")]
 pub enum TextStreamError {
-    RouteDenied { decision: RouteDecision },
-    InvalidRequest { reason: String },
+    RouteDenied {
+        decision: RouteDecision,
+    },
+    InvalidRequest {
+        reason: String,
+    },
+    AdapterFailure {
+        adapter: String,
+        reason: String,
+    },
+    StaleMetadata {
+        model_id: String,
+        last_verified_at: i64,
+        now_unix_seconds: i64,
+        max_age_seconds: i64,
+    },
 }
 
 impl std::fmt::Display for TextStreamError {
@@ -140,6 +155,18 @@ impl std::fmt::Display for TextStreamError {
             Self::InvalidRequest { reason } => {
                 write!(formatter, "invalid text stream request: {reason}")
             }
+            Self::AdapterFailure { adapter, reason } => {
+                write!(formatter, "{adapter} adapter failed: {reason}")
+            }
+            Self::StaleMetadata {
+                model_id,
+                last_verified_at,
+                now_unix_seconds,
+                max_age_seconds,
+            } => write!(
+                formatter,
+                "metadata for {model_id} is stale: verified at {last_verified_at}, now {now_unix_seconds}, maximum age {max_age_seconds} seconds"
+            ),
         }
     }
 }
@@ -213,6 +240,273 @@ pub fn stream_deterministic_mock(prompt: &str) -> Result<Vec<TextStreamEvent>, T
 
 /// Versionierte Startregistry. Sie enthält absichtlich nur konservative
 /// Einträge; Inference-Provider werden nicht als gratis beworben.
+/// Schema for the local-only Hub metadata transport contract.
+pub const HUB_METADATA_ADAPTER_SCHEMA_VERSION: u32 = 1;
+/// Stable identity of the adapter capability, separate from Hub model IDs.
+pub const HUB_METADATA_ADAPTER_MODEL_ID: &str = "huggingface/hub-metadata";
+/// A conservative freshness window used by the metadata adapter.
+pub const DEFAULT_HUB_METADATA_MAX_AGE_SECONDS: i64 = 86_400;
+
+/// The metadata transport is public by default. A later credential-capable
+/// transport must receive an explicit opt-in and still owns no token here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HubMetadataAccess {
+    #[default]
+    PublicOnly,
+    UserCredentialOptIn,
+}
+
+/// Input for a versioned Hub metadata transport. It carries an access policy,
+/// never a credential.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HubMetadataRequest {
+    pub schema_version: u32,
+    pub model_id: String,
+    pub access: HubMetadataAccess,
+}
+
+/// Normalized Hub metadata returned by an injected transport.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HubModelMetadata {
+    pub schema_version: u32,
+    pub model_id: String,
+    pub revision: Option<String>,
+    pub pipeline_tag: Option<String>,
+    pub tags: Vec<String>,
+    /// Unix seconds at which this exact metadata record was last verified.
+    pub last_verified_at: i64,
+}
+
+/// Failure returned by a transport seam. It intentionally does not expose a
+/// network implementation in this local-only slice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "error")]
+pub enum HubMetadataTransportError {
+    Unavailable { reason: String },
+    Malformed { reason: String },
+}
+
+impl std::fmt::Display for HubMetadataTransportError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable { reason } => write!(formatter, "metadata unavailable: {reason}"),
+            Self::Malformed { reason } => write!(formatter, "malformed metadata: {reason}"),
+        }
+    }
+}
+
+impl std::error::Error for HubMetadataTransportError {}
+
+/// Transport seam for future Hub metadata retrieval. The current slice provides
+/// only the in-memory fixture below; it has no HTTP, browser, or credential use.
+pub trait HubMetadataTransport {
+    fn fetch(
+        &self,
+        request: &HubMetadataRequest,
+    ) -> Result<HubModelMetadata, HubMetadataTransportError>;
+}
+
+/// In-memory fixture transport for deterministic local tests and CLI evidence.
+#[derive(Debug, Clone)]
+pub struct StaticHubMetadataTransport {
+    metadata: HubModelMetadata,
+}
+
+impl StaticHubMetadataTransport {
+    pub fn new(metadata: HubModelMetadata) -> Self {
+        Self { metadata }
+    }
+}
+
+impl HubMetadataTransport for StaticHubMetadataTransport {
+    fn fetch(
+        &self,
+        request: &HubMetadataRequest,
+    ) -> Result<HubModelMetadata, HubMetadataTransportError> {
+        if request.schema_version != HUB_METADATA_ADAPTER_SCHEMA_VERSION {
+            return Err(HubMetadataTransportError::Malformed {
+                reason: format!(
+                    "unsupported request schema version {}",
+                    request.schema_version
+                ),
+            });
+        }
+        Ok(self.metadata.clone())
+    }
+}
+
+/// Versioned Hub metadata adapter. Routing, freshness and schema checks happen
+/// before any text event is emitted. The transport is injected for testability.
+#[derive(Debug, Clone)]
+pub struct HubMetadataAdapter<T> {
+    transport: T,
+    now_unix_seconds: i64,
+    max_age_seconds: i64,
+    access: HubMetadataAccess,
+}
+
+impl<T> HubMetadataAdapter<T> {
+    pub fn new(transport: T, now_unix_seconds: i64, max_age_seconds: i64) -> Self {
+        Self {
+            transport,
+            now_unix_seconds,
+            max_age_seconds,
+            access: HubMetadataAccess::PublicOnly,
+        }
+    }
+
+    /// This opt-in selects a future transport policy but cannot inject or store
+    /// credentials in the adapter contract itself.
+    pub fn with_user_credential_opt_in(mut self) -> Self {
+        self.access = HubMetadataAccess::UserCredentialOptIn;
+        self
+    }
+}
+
+impl<T: HubMetadataTransport> HubMetadataAdapter<T> {
+    /// Fetches and validates a metadata snapshot without emitting stream events.
+    pub fn fetch_metadata(
+        &self,
+        request: &TextStreamRequest,
+    ) -> Result<HubModelMetadata, TextStreamError> {
+        let decision = decide_route(&request.model, request.free_only);
+        if !matches!(decision, RouteDecision::Auto { .. }) {
+            return Err(TextStreamError::RouteDenied { decision });
+        }
+        if request.model.model_id != HUB_METADATA_ADAPTER_MODEL_ID {
+            return Err(TextStreamError::InvalidRequest {
+                reason: format!(
+                    "Hub metadata adapter requires model {}",
+                    HUB_METADATA_ADAPTER_MODEL_ID
+                ),
+            });
+        }
+        let model_id = request.prompt.trim();
+        if model_id.is_empty() {
+            return Err(TextStreamError::InvalidRequest {
+                reason: "Hub model id must not be empty".to_string(),
+            });
+        }
+        if self.max_age_seconds <= 0 {
+            return Err(TextStreamError::InvalidRequest {
+                reason: "metadata max age must be positive".to_string(),
+            });
+        }
+
+        let metadata = self
+            .transport
+            .fetch(&HubMetadataRequest {
+                schema_version: HUB_METADATA_ADAPTER_SCHEMA_VERSION,
+                model_id: model_id.to_string(),
+                access: self.access,
+            })
+            .map_err(|error| TextStreamError::AdapterFailure {
+                adapter: HUB_METADATA_ADAPTER_MODEL_ID.to_string(),
+                reason: error.to_string(),
+            })?;
+
+        if metadata.schema_version != HUB_METADATA_ADAPTER_SCHEMA_VERSION {
+            return Err(TextStreamError::AdapterFailure {
+                adapter: HUB_METADATA_ADAPTER_MODEL_ID.to_string(),
+                reason: format!(
+                    "unsupported metadata schema version {}",
+                    metadata.schema_version
+                ),
+            });
+        }
+        if metadata.model_id != model_id {
+            return Err(TextStreamError::AdapterFailure {
+                adapter: HUB_METADATA_ADAPTER_MODEL_ID.to_string(),
+                reason: format!(
+                    "metadata model id {} does not match requested model {model_id}",
+                    metadata.model_id
+                ),
+            });
+        }
+        if metadata.last_verified_at > self.now_unix_seconds {
+            return Err(TextStreamError::AdapterFailure {
+                adapter: HUB_METADATA_ADAPTER_MODEL_ID.to_string(),
+                reason: "metadata verification timestamp is in the future".to_string(),
+            });
+        }
+        if self
+            .now_unix_seconds
+            .saturating_sub(metadata.last_verified_at)
+            > self.max_age_seconds
+        {
+            return Err(TextStreamError::StaleMetadata {
+                model_id: metadata.model_id.clone(),
+                last_verified_at: metadata.last_verified_at,
+                now_unix_seconds: self.now_unix_seconds,
+                max_age_seconds: self.max_age_seconds,
+            });
+        }
+        Ok(metadata)
+    }
+}
+
+impl<T: HubMetadataTransport> TextStreamAdapter for HubMetadataAdapter<T> {
+    fn stream(&self, request: &TextStreamRequest) -> Result<Vec<TextStreamEvent>, TextStreamError> {
+        let metadata = self.fetch_metadata(request)?;
+        Ok(vec![
+            TextStreamEvent::Started {
+                model_id: request.model.model_id.clone(),
+            },
+            TextStreamEvent::Metadata { metadata },
+            TextStreamEvent::Completed {
+                model_id: request.model.model_id.clone(),
+            },
+        ])
+    }
+}
+
+/// Conservative capability record for the local metadata adapter contract.
+pub fn hub_metadata_adapter_model() -> CloudModel {
+    CloudModel {
+        model_id: HUB_METADATA_ADAPTER_MODEL_ID.to_string(),
+        display_name: "Hugging Face Hub metadata adapter".to_string(),
+        provider: "WebAgent local metadata contract".to_string(),
+        source_url: "local://webagent/hub-metadata".to_string(),
+        profiles: vec![ModelProfile::Auto, ModelProfile::Custom],
+        languages: vec!["metadata".to_string()],
+        tags: vec![
+            "local".to_string(),
+            "hub".to_string(),
+            "metadata".to_string(),
+            "fixture".to_string(),
+        ],
+        access: AccessMode::VerifiedFree,
+        adapter_compatible: true,
+        last_verified_at: Some("local-contract".to_string()),
+    }
+}
+
+/// Deterministic local Hub metadata fixture. It is not a claim about a live Hub
+/// record and does not contact a provider.
+pub fn stream_hub_metadata_fixture(
+    model_id: &str,
+) -> Result<Vec<TextStreamEvent>, TextStreamError> {
+    const FIXTURE_TIMESTAMP: i64 = 1_725_000_000;
+    let metadata = HubModelMetadata {
+        schema_version: HUB_METADATA_ADAPTER_SCHEMA_VERSION,
+        model_id: model_id.trim().to_string(),
+        revision: Some("local-fixture".to_string()),
+        pipeline_tag: Some("text-generation".to_string()),
+        tags: vec!["fixture".to_string(), "metadata-only".to_string()],
+        last_verified_at: FIXTURE_TIMESTAMP,
+    };
+    HubMetadataAdapter::new(
+        StaticHubMetadataTransport::new(metadata),
+        FIXTURE_TIMESTAMP,
+        DEFAULT_HUB_METADATA_MAX_AGE_SECONDS,
+    )
+    .stream(&TextStreamRequest {
+        model: hub_metadata_adapter_model(),
+        prompt: model_id.to_string(),
+        free_only: true,
+    })
+}
 pub fn default_registry() -> Vec<CloudModel> {
     vec![
         CloudModel {
@@ -532,6 +826,161 @@ mod tests {
         );
     }
 
+    #[test]
+    fn hub_metadata_adapter_streams_a_fresh_mocked_snapshot() {
+        let timestamp = 1_725_000_000;
+        let model_id = "HuggingFaceH4/zephyr-7b-beta";
+        let metadata = HubModelMetadata {
+            schema_version: HUB_METADATA_ADAPTER_SCHEMA_VERSION,
+            model_id: model_id.to_string(),
+            revision: Some("mock-revision".to_string()),
+            pipeline_tag: Some("text-generation".to_string()),
+            tags: vec!["mocked".to_string()],
+            last_verified_at: timestamp,
+        };
+        let events = HubMetadataAdapter::new(
+            StaticHubMetadataTransport::new(metadata.clone()),
+            timestamp + 10,
+            60,
+        )
+        .stream(&TextStreamRequest {
+            model: hub_metadata_adapter_model(),
+            prompt: model_id.to_string(),
+            free_only: true,
+        })
+        .unwrap();
+
+        assert!(
+            matches!(events.first(), Some(TextStreamEvent::Started { model_id }) if model_id == HUB_METADATA_ADAPTER_MODEL_ID)
+        );
+        let TextStreamEvent::Metadata { metadata: returned } = &events[1] else {
+            panic!("second event must be Hub metadata");
+        };
+        assert_eq!(returned, &metadata);
+        assert!(
+            matches!(events.last(), Some(TextStreamEvent::Completed { model_id }) if model_id == HUB_METADATA_ADAPTER_MODEL_ID)
+        );
+    }
+
+    #[test]
+    fn hub_metadata_adapter_denies_a_credit_limited_route_before_transport() {
+        struct PanickingTransport;
+        impl HubMetadataTransport for PanickingTransport {
+            fn fetch(
+                &self,
+                _request: &HubMetadataRequest,
+            ) -> Result<HubModelMetadata, HubMetadataTransportError> {
+                panic!("transport must not run after a denied route");
+            }
+        }
+
+        let timestamp = 1_725_000_000;
+        let mut adapter_model = hub_metadata_adapter_model();
+        adapter_model.access = AccessMode::ExplicitCredits;
+        let error = HubMetadataAdapter::new(PanickingTransport, timestamp, 60)
+            .stream(&TextStreamRequest {
+                model: adapter_model,
+                prompt: "any/model".to_string(),
+                free_only: true,
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            TextStreamError::RouteDenied {
+                decision: RouteDecision::ManualOnly { .. }
+            }
+        ));
+    }
+
+    #[test]
+    fn hub_metadata_adapter_rejects_a_stale_mocked_snapshot_without_events() {
+        let timestamp = 1_725_000_000;
+        let error = HubMetadataAdapter::new(
+            StaticHubMetadataTransport::new(HubModelMetadata {
+                schema_version: HUB_METADATA_ADAPTER_SCHEMA_VERSION,
+                model_id: "stale/model".to_string(),
+                revision: None,
+                pipeline_tag: None,
+                tags: Vec::new(),
+                last_verified_at: timestamp,
+            }),
+            timestamp + 61,
+            60,
+        )
+        .stream(&TextStreamRequest {
+            model: hub_metadata_adapter_model(),
+            prompt: "stale/model".to_string(),
+            free_only: true,
+        })
+        .unwrap_err();
+
+        assert!(matches!(error, TextStreamError::StaleMetadata { .. }));
+    }
+
+    #[test]
+    fn hub_metadata_adapter_handles_extreme_old_timestamps_without_overflow() {
+        let error = HubMetadataAdapter::new(
+            StaticHubMetadataTransport::new(HubModelMetadata {
+                schema_version: HUB_METADATA_ADAPTER_SCHEMA_VERSION,
+                model_id: "extreme/model".to_string(),
+                revision: None,
+                pipeline_tag: None,
+                tags: Vec::new(),
+                last_verified_at: i64::MIN,
+            }),
+            i64::MAX,
+            60,
+        )
+        .stream(&TextStreamRequest {
+            model: hub_metadata_adapter_model(),
+            prompt: "extreme/model".to_string(),
+            free_only: true,
+        })
+        .unwrap_err();
+        assert!(matches!(error, TextStreamError::StaleMetadata { .. }));
+    }
+    #[test]
+    fn hub_metadata_adapter_rejects_a_future_verification_timestamp() {
+        let error = HubMetadataAdapter::new(
+            StaticHubMetadataTransport::new(HubModelMetadata {
+                schema_version: HUB_METADATA_ADAPTER_SCHEMA_VERSION,
+                model_id: "future/model".to_string(),
+                revision: None,
+                pipeline_tag: None,
+                tags: Vec::new(),
+                last_verified_at: i64::MAX,
+            }),
+            0,
+            60,
+        )
+        .stream(&TextStreamRequest {
+            model: hub_metadata_adapter_model(),
+            prompt: "future/model".to_string(),
+            free_only: true,
+        })
+        .unwrap_err();
+        assert!(matches!(error, TextStreamError::AdapterFailure { .. }));
+    }
+    #[test]
+    fn hub_metadata_adapter_requires_explicit_credential_opt_in() {
+        let adapter = HubMetadataAdapter::new(
+            StaticHubMetadataTransport::new(HubModelMetadata {
+                schema_version: HUB_METADATA_ADAPTER_SCHEMA_VERSION,
+                model_id: "any/model".to_string(),
+                revision: None,
+                pipeline_tag: None,
+                tags: Vec::new(),
+                last_verified_at: 1_725_000_000,
+            }),
+            1_725_000_000,
+            60,
+        );
+        assert_eq!(adapter.access, HubMetadataAccess::PublicOnly);
+        assert_eq!(
+            adapter.with_user_credential_opt_in().access,
+            HubMetadataAccess::UserCredentialOptIn
+        );
+    }
     #[test]
     fn mock_adapter_denies_a_credit_limited_route_before_emitting_events() {
         let mut model = deterministic_mock_model();
