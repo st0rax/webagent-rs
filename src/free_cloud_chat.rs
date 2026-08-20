@@ -146,6 +146,10 @@ pub enum TextStreamError {
         now_unix_seconds: i64,
         max_age_seconds: i64,
     },
+    CircuitOpen {
+        adapter: String,
+        retry_at: i64,
+    },
 }
 
 impl std::fmt::Display for TextStreamError {
@@ -167,6 +171,9 @@ impl std::fmt::Display for TextStreamError {
                 formatter,
                 "metadata for {model_id} is stale: verified at {last_verified_at}, now {now_unix_seconds}, maximum age {max_age_seconds} seconds"
             ),
+            Self::CircuitOpen { adapter, retry_at } => {
+                write!(formatter, "{adapter} health circuit is open until {retry_at}")
+            }
         }
     }
 }
@@ -238,6 +245,209 @@ pub fn stream_deterministic_mock(prompt: &str) -> Result<Vec<TextStreamEvent>, T
     })
 }
 
+/// Schema for the deterministic local Free-Cloud health contract.
+pub const FREE_CLOUD_HEALTH_SCHEMA_VERSION: u32 = 1;
+
+/// Observable breaker state for one future external adapter. This is deliberately
+/// separate from `crate::circuit_breaker`, which tracks swarm brain sessions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FreeCloudCircuitState {
+    Closed,
+    Open,
+    HalfOpen,
+}
+
+/// Deterministic policy for a Free-Cloud adapter health breaker. Time is passed
+/// by the caller, so production clocks and unit tests share the same semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreeCloudHealthPolicy {
+    pub schema_version: u32,
+    pub failure_threshold: u32,
+    pub cooldown_seconds: i64,
+}
+
+impl Default for FreeCloudHealthPolicy {
+    fn default() -> Self {
+        Self {
+            schema_version: FREE_CLOUD_HEALTH_SCHEMA_VERSION,
+            failure_threshold: 2,
+            cooldown_seconds: 60,
+        }
+    }
+}
+
+impl FreeCloudHealthPolicy {
+    fn validate(self) -> Result<(), TextStreamError> {
+        if self.schema_version != FREE_CLOUD_HEALTH_SCHEMA_VERSION {
+            return Err(TextStreamError::InvalidRequest {
+                reason: format!(
+                    "unsupported Free-Cloud health schema version {}",
+                    self.schema_version
+                ),
+            });
+        }
+        if self.failure_threshold == 0 {
+            return Err(TextStreamError::InvalidRequest {
+                reason: "health failure threshold must be at least one".to_string(),
+            });
+        }
+        if self.cooldown_seconds <= 0 {
+            return Err(TextStreamError::InvalidRequest {
+                reason: "health cooldown must be positive".to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Result of a local adapter health probe. A probe may later call a provider,
+/// but this contract ships no such implementation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum AdapterHealthProbeResult {
+    Healthy,
+    Unhealthy { reason: String },
+}
+
+/// Injectable seam for future external adapter health probes. The implementation
+/// decides its own I/O; the current local slice uses only static fixtures.
+pub trait AdapterHealthProbe {
+    fn probe(&self) -> AdapterHealthProbeResult;
+}
+
+/// A deterministic in-memory probe used by local tests and contract examples.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticAdapterHealthProbe {
+    result: AdapterHealthProbeResult,
+}
+
+impl StaticAdapterHealthProbe {
+    pub fn healthy() -> Self {
+        Self {
+            result: AdapterHealthProbeResult::Healthy,
+        }
+    }
+
+    pub fn unhealthy(reason: impl Into<String>) -> Self {
+        Self {
+            result: AdapterHealthProbeResult::Unhealthy {
+                reason: reason.into(),
+            },
+        }
+    }
+}
+
+impl AdapterHealthProbe for StaticAdapterHealthProbe {
+    fn probe(&self) -> AdapterHealthProbeResult {
+        self.result.clone()
+    }
+}
+
+/// Persistent-in-memory state for one future external adapter. It intentionally
+/// has no disk, browser, credential, or network dependency.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct FreeCloudCircuitBreaker {
+    consecutive_failures: u32,
+    opened_at: Option<i64>,
+}
+
+/// Auditable result of one permitted health probe.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdapterHealthReport {
+    pub schema_version: u32,
+    pub adapter: String,
+    pub checked_at: i64,
+    pub admitted_as: FreeCloudCircuitState,
+    pub state_after: FreeCloudCircuitState,
+    pub consecutive_failures: u32,
+    pub retry_at: Option<i64>,
+    pub result: AdapterHealthProbeResult,
+}
+
+impl FreeCloudCircuitBreaker {
+    pub fn state_at(
+        &self,
+        policy: FreeCloudHealthPolicy,
+        now_unix_seconds: i64,
+    ) -> FreeCloudCircuitState {
+        match self.opened_at {
+            None => FreeCloudCircuitState::Closed,
+            Some(opened_at)
+                if now_unix_seconds >= opened_at.saturating_add(policy.cooldown_seconds) =>
+            {
+                FreeCloudCircuitState::HalfOpen
+            }
+            Some(_) => FreeCloudCircuitState::Open,
+        }
+    }
+
+    pub fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures
+    }
+
+    /// Runs exactly one injected health probe when the breaker admits it. An open
+    /// circuit returns before the probe is evaluated, so it cannot trigger I/O.
+    pub fn check<P: AdapterHealthProbe>(
+        &mut self,
+        adapter: &str,
+        policy: FreeCloudHealthPolicy,
+        now_unix_seconds: i64,
+        probe: &P,
+    ) -> Result<AdapterHealthReport, TextStreamError> {
+        policy.validate()?;
+        if adapter.trim().is_empty() {
+            return Err(TextStreamError::InvalidRequest {
+                reason: "health adapter identifier must not be empty".to_string(),
+            });
+        }
+
+        let admitted_as = self.state_at(policy, now_unix_seconds);
+        if admitted_as == FreeCloudCircuitState::Open {
+            let retry_at = self
+                .opened_at
+                .expect("open circuit always has an opening timestamp")
+                .saturating_add(policy.cooldown_seconds);
+            return Err(TextStreamError::CircuitOpen {
+                adapter: adapter.to_string(),
+                retry_at,
+            });
+        }
+
+        let result = probe.probe();
+        match &result {
+            AdapterHealthProbeResult::Healthy => {
+                self.consecutive_failures = 0;
+                self.opened_at = None;
+            }
+            AdapterHealthProbeResult::Unhealthy { .. } => {
+                self.record_failure(policy, now_unix_seconds);
+            }
+        }
+        let state_after = self.state_at(policy, now_unix_seconds);
+        let retry_at = self
+            .opened_at
+            .map(|opened_at| opened_at.saturating_add(policy.cooldown_seconds));
+        Ok(AdapterHealthReport {
+            schema_version: FREE_CLOUD_HEALTH_SCHEMA_VERSION,
+            adapter: adapter.to_string(),
+            checked_at: now_unix_seconds,
+            admitted_as,
+            state_after,
+            consecutive_failures: self.consecutive_failures,
+            retry_at,
+            result,
+        })
+    }
+
+    fn record_failure(&mut self, policy: FreeCloudHealthPolicy, now_unix_seconds: i64) {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        if self.opened_at.is_some() || self.consecutive_failures >= policy.failure_threshold {
+            // A failed half-open probe re-opens the breaker from this exact check.
+            self.opened_at = Some(now_unix_seconds);
+        }
+    }
+}
 /// Versionierte Startregistry. Sie enthält absichtlich nur konservative
 /// Einträge; Inference-Provider werden nicht als gratis beworben.
 /// Schema for the local-only Hub metadata transport contract.
@@ -826,6 +1036,157 @@ mod tests {
         );
     }
 
+    #[test]
+    fn health_breaker_reports_a_healthy_local_probe() {
+        let mut breaker = FreeCloudCircuitBreaker::default();
+        let report = breaker
+            .check(
+                "hub-metadata",
+                FreeCloudHealthPolicy::default(),
+                1_725_000_000,
+                &StaticAdapterHealthProbe::healthy(),
+            )
+            .unwrap();
+
+        assert_eq!(report.admitted_as, FreeCloudCircuitState::Closed);
+        assert_eq!(report.state_after, FreeCloudCircuitState::Closed);
+        assert_eq!(report.consecutive_failures, 0);
+        assert_eq!(report.result, AdapterHealthProbeResult::Healthy);
+    }
+
+    #[test]
+    fn health_breaker_opens_after_threshold_and_skips_the_next_probe() {
+        struct PanickingProbe;
+        impl AdapterHealthProbe for PanickingProbe {
+            fn probe(&self) -> AdapterHealthProbeResult {
+                panic!("open breaker must not execute the probe");
+            }
+        }
+
+        let policy = FreeCloudHealthPolicy {
+            failure_threshold: 2,
+            cooldown_seconds: 60,
+            ..FreeCloudHealthPolicy::default()
+        };
+        let mut breaker = FreeCloudCircuitBreaker::default();
+        let failed_probe = StaticAdapterHealthProbe::unhealthy("fixture unavailable");
+        let first = breaker
+            .check("hub-metadata", policy, 100, &failed_probe)
+            .unwrap();
+        assert_eq!(first.state_after, FreeCloudCircuitState::Closed);
+        let second = breaker
+            .check("hub-metadata", policy, 101, &failed_probe)
+            .unwrap();
+        assert_eq!(second.state_after, FreeCloudCircuitState::Open);
+
+        let error = breaker
+            .check("hub-metadata", policy, 102, &PanickingProbe)
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            TextStreamError::CircuitOpen { retry_at: 161, .. }
+        ));
+    }
+
+    #[test]
+    fn health_breaker_half_open_success_resets_failure_state() {
+        let policy = FreeCloudHealthPolicy {
+            failure_threshold: 1,
+            cooldown_seconds: 60,
+            ..FreeCloudHealthPolicy::default()
+        };
+        let mut breaker = FreeCloudCircuitBreaker::default();
+        breaker
+            .check(
+                "hub-metadata",
+                policy,
+                100,
+                &StaticAdapterHealthProbe::unhealthy("fixture unavailable"),
+            )
+            .unwrap();
+        let blocked = breaker
+            .check(
+                "hub-metadata",
+                policy,
+                159,
+                &StaticAdapterHealthProbe::healthy(),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            blocked,
+            TextStreamError::CircuitOpen { retry_at: 160, .. }
+        ));
+
+        let recovered = breaker
+            .check(
+                "hub-metadata",
+                policy,
+                160,
+                &StaticAdapterHealthProbe::healthy(),
+            )
+            .unwrap();
+        assert_eq!(recovered.admitted_as, FreeCloudCircuitState::HalfOpen);
+        assert_eq!(recovered.state_after, FreeCloudCircuitState::Closed);
+        assert_eq!(breaker.consecutive_failures(), 0);
+    }
+
+    #[test]
+    fn health_breaker_half_open_failure_reopens_the_full_cooldown() {
+        let policy = FreeCloudHealthPolicy {
+            failure_threshold: 1,
+            cooldown_seconds: 60,
+            ..FreeCloudHealthPolicy::default()
+        };
+        let mut breaker = FreeCloudCircuitBreaker::default();
+        let failed_probe = StaticAdapterHealthProbe::unhealthy("fixture unavailable");
+        breaker
+            .check("hub-metadata", policy, 100, &failed_probe)
+            .unwrap();
+        let reopened = breaker
+            .check("hub-metadata", policy, 160, &failed_probe)
+            .unwrap();
+        assert_eq!(reopened.admitted_as, FreeCloudCircuitState::HalfOpen);
+        assert_eq!(reopened.state_after, FreeCloudCircuitState::Open);
+        assert_eq!(reopened.consecutive_failures, 2);
+        assert_eq!(reopened.retry_at, Some(220));
+
+        let blocked = breaker
+            .check(
+                "hub-metadata",
+                policy,
+                219,
+                &StaticAdapterHealthProbe::healthy(),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            blocked,
+            TextStreamError::CircuitOpen { retry_at: 220, .. }
+        ));
+    }
+
+    #[test]
+    fn health_breaker_rejects_invalid_policy_before_running_a_probe() {
+        struct PanickingProbe;
+        impl AdapterHealthProbe for PanickingProbe {
+            fn probe(&self) -> AdapterHealthProbeResult {
+                panic!("invalid policy must not execute the probe");
+            }
+        }
+
+        let mut breaker = FreeCloudCircuitBreaker::default();
+        let error = breaker
+            .check(
+                "hub-metadata",
+                FreeCloudHealthPolicy {
+                    failure_threshold: 0,
+                    ..FreeCloudHealthPolicy::default()
+                },
+                100,
+                &PanickingProbe,
+            )
+            .unwrap_err();
+        assert!(matches!(error, TextStreamError::InvalidRequest { .. }));
+    }
     #[test]
     fn hub_metadata_adapter_streams_a_fresh_mocked_snapshot() {
         let timestamp = 1_725_000_000;
