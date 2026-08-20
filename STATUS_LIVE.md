@@ -2561,3 +2561,17 @@ und wurden trotzdem 6 h gesperrt. Gemini bleibt unangetastet.
 - **UnabhÃ¤ngige Read-only-Reviews:** Ein `claude-opus-4-7`-Proxyreview ergab **PASS, Risiko niedrig**; die lokale Claude-CLI war wegen eines bis 23:50 Uhr gemeldeten Sitzungslimits nicht nutzbar. OpenCode ergab ebenfalls **PASS** und bestÃ¤tigte inhaltsgleiche Modul-/Reexport-Reihenfolge. Kein Push, Tag, Release, Deployment oder externer Providerzugriff wurde ausgelÃ¶st.
 - **Separater Testbefund:** Ein erster Volltest traf einen stehengebliebenen `%TEMP%\webagent_file_actions_tests\absolute_inside_*`-Rest (`new.txt existiert bereits`); die serielle Einzelprobe und die nach gezielter Restbereinigung wiederholte Vollsuite bestehen. Die PID-/ZÃ¤hler-basierte Testwurzel ohne Vorlaufbereinigung bleibt ein separater Testisolations-HÃ¤rtungspunkt, nicht Teil des Rustfmt-Diffs.
 - **NÃ¤chster Schritt:** Isolierten lokalen Style-Commit erstellen; anschlieÃŸend TestwurzelhÃ¤rtung und No-Default-Warnungsreduktion als getrennte, reviewte Scheiben bearbeiten.
+## 2026-08-20 â€” OFFEN: TestwurzelhÃ¤rtung (noch nicht committen)
+
+- **Eigene Ã„nderung:** `src/file_actions.rs` ergÃ¤nzt ausschlieÃŸlich den testinternen Helfer `reset_test_root`. Er entfernt vor der Wiederverwendung einen mÃ¶glichen PID-/ZÃ¤hlergleichen Vorlaufrest und wird von `unique_test_root` verwendet.
+- **Regression:** `reset_test_root_entfernt_vorlaufreste` erzeugt absichtlich einen verschachtelten Rest und belegt, dass die nÃ¤chste Wiederverwendung ihn entfernt. Die gezielte Regression und `file_actions_allow_absolute_path_inside_root` bestehen seriell; `cargo fmt --check` und `git diff --check` sind grÃ¼n.
+- **Herkunft:** keine Agenten-, Build- oder fremde Ã„nderung. Der vorherige Volltestfehler wird als vorbestehende TestisolationslÃ¼cke adressiert. Vor Commit folgen vollstÃ¤ndige Suite, Clippy und getrennte Claude-Opus-/OpenCode-Read-only-Reviews.
+### Aktualisierung 2026-08-20 â€” Reviewstatus TestwurzelhÃ¤rtung
+
+- Der finale `claude-opus-4-7`-Read-only-Review ergab **PASS, Risiko niedrig**. Die anschlieÃŸend ergÃ¤nzte Parent-Assertion ist eine rein zusÃ¤tzliche TesthÃ¤rtung und wurde gezielt grÃ¼n geprÃ¼ft.
+- Zwei enge OpenCode-Read-only-Aufrufe lasen den Diff, lieferten jedoch trotz begrenzter Wartefenster keine Schlussbewertung; die Prozesse wurden kontrolliert beendet. Die lokale Sessionhistorie enthÃ¤lt keinen abschlieÃŸbaren Ergebnisdatensatz.
+- **Kein OpenCode-PASS wird behauptet; kein Commit erfolgt**, bis ein unabhÃ¤ngiger OpenCode-Review oder eine ausdrÃ¼cklich geÃ¤nderte Reviewvorgabe vorliegt.
+### Aktualisierung 2026-08-20 â€” Lieferkettenentscheidung
+
+- Nutzervorgabe: Eine belegte, stabile lokale Scheibe wird fÃ¼r eine jederzeit abrufbare Versionshistorie **ohne zusÃ¤tzliche Commitfrage** committed und nach sicherer Remote-/DivergenzprÃ¼fung auf den vorgesehenen GitHub-Branch gespiegelt.
+- Der fehlende OpenCode-Schlussbefund bleibt als Nachreview offen und wird nicht als PASS ausgegeben. Er blockiert diese vollstÃ¤ndig lokal abgeprÃ¼fte, testinterne HÃ¤rtung jedoch nicht mehr; Claude Opus PASS und die vollstÃ¤ndige lokale Matrix liegen vor.

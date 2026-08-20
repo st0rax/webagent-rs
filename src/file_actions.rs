@@ -560,12 +560,20 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         dir
     }
+    /// Entfernt einen stehengebliebenen Testlaufrest, bevor derselbe Pfad erneut
+    /// verwendet wird. Das schÃ¼tzt gegen Windows-PID-Wiederverwendung zwischen
+    /// zwei Testprozessen; innerhalb eines Prozesses bleibt der ZÃ¤hler eindeutig.
+    fn reset_test_root(dir: &Path) -> PathBuf {
+        let _ = fs::remove_dir_all(dir);
+        fs::create_dir_all(dir).unwrap();
+        dir.to_path_buf()
+    }
+
     fn unique_test_root(label: &str) -> PathBuf {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = test_root().join(format!("{}_{}_{}", label, std::process::id(), sequence));
-        fs::create_dir_all(&dir).unwrap();
-        dir
+        reset_test_root(&dir)
     }
 
     fn temp_file(name: &str, content: &str) -> PathBuf {
@@ -574,6 +582,28 @@ mod tests {
         let _ = fs::remove_file(&p);
         fs::write(&p, content).unwrap();
         p
+    }
+
+    #[test]
+    fn reset_test_root_entfernt_vorlaufreste() {
+        let dir = test_root().join(format!("stale_root_{}", std::process::id()));
+        let parent = dir.parent().unwrap().to_path_buf();
+        let cleaned = reset_test_root(&dir);
+        let stale = cleaned.join("sub").join("stale.txt");
+        fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        fs::write(&stale, "alt").unwrap();
+
+        let cleaned = reset_test_root(&dir);
+        assert_eq!(cleaned, dir);
+        assert!(cleaned.is_dir());
+        assert!(
+            parent.is_dir(),
+            "Gemeinsame Testwurzel darf bestehen bleiben"
+        );
+        assert!(
+            !stale.exists(),
+            "Vorlaufrest muss vor Wiederverwendung weg sein"
+        );
     }
 
     #[test]
