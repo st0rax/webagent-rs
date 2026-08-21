@@ -217,6 +217,7 @@ pub enum SessionTurnKind {
 }
 
 /// Liest JSONL so, wie der Controller es schreibt (`role` + `content`).
+#[cfg(any(feature = "tui", test))]
 pub fn session_turns_from_jsonl(jsonl: &str) -> Vec<SessionTurn> {
     let mut out = Vec::new();
     for line in jsonl.lines() {
@@ -253,6 +254,7 @@ pub fn session_turns_from_jsonl(jsonl: &str) -> Vec<SessionTurn> {
 }
 
 /// Letzte Brain-Antwort im Scrollback — das ist der Copy-Inhalt.
+#[cfg(any(feature = "tui", test))]
 pub fn last_brain_copy_text(turns: &[SessionTurn]) -> Option<String> {
     turns
         .iter()
@@ -262,6 +264,7 @@ pub fn last_brain_copy_text(turns: &[SessionTurn]) -> Option<String> {
 }
 
 /// Ergebnis von [`copy_last_brain_reply`]: der kopierte Text plus OSC-52.
+#[cfg(any(feature = "tui", test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionCopy {
     pub text: String,
@@ -269,10 +272,12 @@ pub struct SessionCopy {
 }
 
 /// OSC-52-Sequenz, die Terminals in die Zwischenablage legen.
+#[cfg(any(feature = "tui", test))]
 pub fn osc52_copy_sequence(text: &str) -> String {
     format!("\x1b]52;c;{}\x07", base64_encode(text.as_bytes()))
 }
 
+#[cfg(any(feature = "tui", test))]
 fn base64_encode(data: &[u8]) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
@@ -298,6 +303,7 @@ fn base64_encode(data: &[u8]) -> String {
     out
 }
 
+#[cfg(any(feature = "tui", test))]
 fn write_copy_sink(text: &str, osc52: &str) -> Result<(), String> {
     use std::io::Write;
     std::io::stderr()
@@ -323,6 +329,7 @@ fn write_copy_sink(text: &str, osc52: &str) -> Result<(), String> {
 }
 
 /// Kopiert die letzte Brain-Antwort: OSC-52 an das Terminal, auf Windows zusätzlich `clip`.
+#[cfg(any(feature = "tui", test))]
 pub fn copy_last_brain_reply(turns: &[SessionTurn]) -> Result<SessionCopy, String> {
     let text = last_brain_copy_text(turns).ok_or_else(|| "keine brain-antwort".to_string())?;
     let osc52 = osc52_copy_sequence(&text);
@@ -331,6 +338,7 @@ pub fn copy_last_brain_reply(turns: &[SessionTurn]) -> Result<SessionCopy, Strin
 }
 
 /// Fold-Vektor an die Turn-Liste anpassen. Tool-Karten starten zugeklappt.
+#[cfg(any(feature = "tui", test))]
 pub fn sync_session_folds(turns: &[SessionTurn], folded: &mut Vec<bool>) {
     if folded.len() == turns.len() {
         return;
@@ -342,6 +350,7 @@ pub fn sync_session_folds(turns: &[SessionTurn], folded: &mut Vec<bool>) {
 }
 
 /// Klappt die Karte `idx` um. Unbekannter Index ist ein No-Op.
+#[cfg(any(feature = "tui", test))]
 pub fn toggle_session_fold(folded: &mut [bool], idx: usize) {
     if let Some(flag) = folded.get_mut(idx) {
         *flag = !*flag;
@@ -401,6 +410,7 @@ pub fn compact_run_dir(dir: &Path) -> Result<String, String> {
     transcript.compact_summary(12, 2000)
 }
 
+#[cfg(any(feature = "tui", test))]
 fn looks_like_tool(content: &str) -> bool {
     let t = content.trim();
     t == "finish"

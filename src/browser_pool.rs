@@ -1,6 +1,8 @@
 //! Shared browser pool — ein WebView-Runtime, ein Tab pro Brain (Python `browser_pool.py`).
 
+#[cfg(any(feature = "webview", test))]
 use std::collections::HashMap;
+#[cfg(any(feature = "webview", test))]
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "webview")]
@@ -8,7 +10,9 @@ use std::time::Duration;
 
 #[cfg(feature = "webview")]
 use crate::brain::BrainBackend;
+#[cfg(any(feature = "webview", test))]
 use crate::browser::WebBrainBackend;
+#[cfg(any(feature = "webview", test))]
 use crate::config::persist_browser_tabs;
 #[cfg(feature = "webview")]
 use crate::config::{
@@ -23,9 +27,10 @@ use crate::webview_runtime::{WebViewPageDriver, WebViewRuntime};
 /// Max. Versuche den geteilten Browser zu nutzen, bevor ein Brain auf die
 /// gekapselte Fallback-Instanz faellt. Spiegelt circuit_breaker::DEFAULT_MAX_FAILURES.
 /// Nur im `webview`-Pfad referenziert; ohne das Feature (CI-Kernbuild) ungenutzt.
-#[cfg_attr(not(feature = "webview"), allow(dead_code))]
+#[cfg(any(feature = "webview", test))]
 const POOL_FALLBACK_RETRIES: u32 = 3;
 
+#[cfg(any(feature = "webview", test))]
 struct PooledTab {
     #[cfg_attr(not(feature = "webview"), allow(dead_code))]
     view_id: u64,
@@ -50,6 +55,7 @@ struct EncapsulatedInstance {
 pub struct BrowserPool {
     #[cfg(feature = "webview")]
     runtime: Option<WebViewRuntime>,
+    #[cfg(any(feature = "webview", test))]
     tabs: HashMap<String, PooledTab>,
     #[cfg(feature = "webview")]
     encapsulated: HashMap<String, EncapsulatedInstance>,
@@ -66,7 +72,7 @@ pub struct BrowserPool {
 /// `PooledTab`: dessen `driver_proto` haengt an `feature = "webview"`, eine
 /// Methode waere ohne echten Browser nicht pruefbar. So laeuft im Test
 /// GENAU der Code, den auch der Produktionspfad aufruft.
-#[cfg_attr(not(feature = "webview"), allow(dead_code))]
+#[cfg(any(feature = "webview", test))]
 pub(crate) fn note_navigation(refs: &mut u32, navigated: Result<(), String>) -> Result<(), String> {
     navigated?;
     *refs = refs.saturating_add(1);
@@ -77,7 +83,7 @@ pub(crate) fn note_navigation(refs: &mut u32, navigated: Result<(), String>) -> 
 /// Referenz mehr davon abhaengt. Persistierte Tabs mit `refs == 0` duerfen
 /// waehrend einer noch aktiven Shared-Ausfuehrung offen bleiben; sie duerfen
 /// aber nicht den letzten Stop am erforderlichen Write-back vorbeileiten.
-#[cfg_attr(not(feature = "webview"), allow(dead_code))]
+#[cfg(any(feature = "webview", test))]
 fn complete_required_teardown<F>(
     owns_runtime: bool,
     has_live_refs: bool,
@@ -104,12 +110,12 @@ where
 ///
 /// Bewusst NICHT hinter `#[cfg(feature = "webview")]`: so ist die Invariante
 /// ohne echten Browser pruefbar.
-#[cfg_attr(not(feature = "webview"), allow(dead_code))]
+#[cfg(any(feature = "webview", test))]
 pub(crate) struct CloneGuard {
     dir: Option<PathBuf>,
 }
 
-#[cfg_attr(not(feature = "webview"), allow(dead_code))]
+#[cfg(any(feature = "webview", test))]
 impl CloneGuard {
     pub(crate) fn new(dir: PathBuf) -> Self {
         Self { dir: Some(dir) }
@@ -126,6 +132,7 @@ impl CloneGuard {
     }
 }
 
+#[cfg(any(feature = "webview", test))]
 impl Drop for CloneGuard {
     fn drop(&mut self) {
         if let Some(dir) = self.dir.take() {
@@ -141,6 +148,7 @@ impl BrowserPool {
             runtime: None,
             #[cfg(feature = "webview")]
             encapsulated: HashMap::new(),
+            #[cfg(any(feature = "webview", test))]
             tabs: HashMap::new(),
         }
     }
@@ -163,6 +171,7 @@ impl BrowserPool {
     /// `profile_override` erlaubt es, statt des Shared-Profils ein isoliertes
     /// Laufzeit-Profil zu nutzen (z.B. eine Swarm-Teilkopie aus
     /// `config::prepare_swarm_profile`). `None` → `shared_profile_dir()`.
+    #[cfg(any(feature = "webview", test))]
     pub fn start_brain(
         &mut self,
         backend: &WebBrainBackend,
@@ -269,7 +278,7 @@ impl BrowserPool {
     }
 
     /// Wie `start_brain`, aber ohne Shared-Pool — Fehlerpfad ohne WebView.
-    #[cfg(not(feature = "webview"))]
+    #[cfg(all(not(feature = "webview"), test))]
     pub fn start_brain_resilient(
         &mut self,
         backend: &WebBrainBackend,
@@ -340,6 +349,7 @@ impl BrowserPool {
     /// Gibt eine Referenz frei. Persistierte Tabs bleiben offen, solange noch
     /// eine Shared-Referenz laeuft; beim vollstaendig idle gewordenen, besessenen
     /// Runtime-Klon folgen dagegen immer Teardown und Master-Write-back.
+    #[cfg(any(feature = "webview", test))]
     pub fn stop_brain(&mut self, brain_id: &str, persist: Option<bool>) -> Result<(), String> {
         let bid = brain_id.to_lowercase();
         let keep = persist.unwrap_or_else(persist_browser_tabs);
@@ -415,6 +425,7 @@ impl BrowserPool {
     /// Stabile Reihenfolge, damit eine Kachel beim erneuten Anordnen nicht
     /// springt — ein Raster, in dem die Brains bei jedem Aufruf die Plaetze
     /// tauschen, ist unbrauchbar.
+    #[cfg(any(feature = "webview", test))]
     pub fn open_brains(&self) -> Vec<String> {
         let mut names: Vec<String> = self.tabs.keys().cloned().collect();
         names.sort();
