@@ -2662,3 +2662,19 @@ Die Slice vereinheitlicht die Pre-Clone-Recovery mit OS-Sperre, durablem PENDING
 Geschlossene Fehlerpfade: Post-Unseal-Rollback und Reseal, verschachtelte Baum- und Parent-Fsyncs, journalweise Löschdauerhaftigkeit, Pending-Unseal-Reseal, REPL/PersistentBrain/isolated_query-Fehlerpropagierung sowie verpflichtendes Teardown/Write-back des letzten besessenen Shared-Runtime-Klons.
 
 Nächster Schritt: finalen Diff committen und per Fast-Forward nach origin/master pushen.
+
+
+## 2026-08-21 16:30 UTC+2 — Phase 6 Slice: fail-closed Swarmprofil-Lease commitbereit
+
+Die Slice ersetzt die infallible Swarmprofil-Vorbereitung durch einen transaktionalen, run- und braingebundenen SwarmProfileLease-Vertrag. Eine fehlgeschlagene Clone-/Owner-Initialisierung hinterlässt keine aktive Lease und verhindert Worker- bzw. Research-Start; Release und Cleanup bleiben idempotent und auf die eigene Owner-Scope begrenzt.
+
+| Nachweis | Ergebnis |
+|---|---|
+| Format und Index-Diff | cargo fmt --all -- --check sowie git diff --cached --check bestanden |
+| Clippy | Exit 0; 13 bekannte Baseline-Warnungen, keine neue Lease-Warnung |
+| Headless-Matrix | 1.093 bestanden, 0 fehlgeschlagen |
+| Standard-Matrix | 1.159 bestanden, 0 fehlgeschlagen |
+| Claude-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_claude_lease_review_retry_20260821_162029\\final_review.txt |
+| Grok-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_grok_lease_review_20260821_162233\\stderr.log |
+
+Aktualisierte Aufrufer sind ot2bot_worker, Research-Swarm und autonome REPL-Swarmlogik. Alle propagieren Vorbereitungs- und Releasefehler. Bewusst nicht in dieser Slice: eine Cross-Brain-Konversationsübernahme; sie folgt als getrennte Session-Handoff-Slice.

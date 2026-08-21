@@ -371,5 +371,33 @@ pub fn swarm_profile_dir(run_id: &str, brain_id: &str) -> PathBuf {
 
 /// Wie `swarm_profile_dir`, aber mit expliziter Profil-Basis (für Tests).
 pub fn swarm_profile_dir_in(base: &Path, run_id: &str, brain_id: &str) -> PathBuf {
-    base.join("swarm").join(format!("{}_{}", run_id, brain_id))
+    let run_label = sanitize_brain_id(run_id);
+    let brain_label = sanitize_brain_id(brain_id);
+    let run_label = if run_label.is_empty() {
+        "run"
+    } else {
+        &run_label
+    };
+    let brain_label = if brain_label.is_empty() {
+        "brain"
+    } else {
+        &brain_label
+    };
+    base.join("swarm").join(format!(
+        "{run_label}_{brain_label}_{}",
+        swarm_profile_scope_key(run_id, brain_id)
+    ))
+}
+
+/// Stable, non-secret key for the exact `(run, brain)` profile scope. Length
+/// prefixes make ambiguous pairs such as `(a_b, c)` and `(a, b_c)` distinct.
+pub(super) fn swarm_profile_scope_key(run_id: &str, brain_id: &str) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for bytes in [run_id.as_bytes(), brain_id.as_bytes()] {
+        for byte in (bytes.len() as u64).to_le_bytes().iter().chain(bytes) {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    }
+    format!("{hash:016x}")
 }

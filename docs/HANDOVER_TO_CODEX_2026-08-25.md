@@ -335,3 +335,19 @@ Die Phase-6-Slice für fail-closed Profil-Write-back ist commitbereit. Sie schü
 Der finale Umfang umfasst durable Journal- und Baum-Synchronisation, Reseal nach jedem fehlgeschlagenen Unseal, Fehlerpropagierung durch REPL/Pools/isolated_query und verpflichtendes Teardown/Write-back eines besessenen finalen Runtime-Klons bei weiterhin sicheren aktiven Shared-Tab-Referenzen.
 
 Weiterhin offen in Phase 6: Swarm-/Worker-Topologieverträge, Profilpersistenz und Session-Handoff-Verifikation. Externe Providerzugriffe und Releases bleiben außerhalb dieser lokalen Slice.
+
+
+## Swarmprofil-Lease-Evidenzcheckpoint — 2026-08-21 16:30 UTC+2
+
+Die Profilpersistenz-Slice ist commitbereit. SwarmProfileLease bindet Lauf und Brain über nicht geheime Owner-Metadaten, arbeitet transaktional und verhindert bei jeder Vorbereitungsstörung den Start eines isolierten Workers oder einer Query. Owner-geprüfter Release und Cleanup sind idempotent und löschen niemals fremde Profilscopes.
+
+| Kategorie | Nachweis |
+|---|---|
+| Format und Index-Diff | bestanden |
+| Clippy | Exit 0 mit 13 bekannten Baseline-Warnungen |
+| Reduzierte Features | 1.093 Tests bestanden, 0 fehlgeschlagen |
+| Standardfeatures | 1.159 Tests bestanden, 0 fehlgeschlagen |
+| Review 1 | Claude VERDICT=PASS, keine Blocker |
+| Review 2 | Grok VERDICT=PASS, keine Blocker |
+
+Die nächste getrennte Phase-6-Slice ist die Cross-Brain-Session-Handoff-Abstraktion. Sie darf das bestehende Same-Brain-Resume nicht aufweichen und muss die profilgebundene Lease-Eigentümerschaft respektieren.

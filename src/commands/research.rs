@@ -3,6 +3,46 @@
 
 use crate::cli::AutoresearchArgs;
 
+fn prepare_profile_leases(
+    run_id: &str,
+    targets: &[String],
+) -> Result<Vec<webagent::config::SwarmProfileLease>, String> {
+    prepare_profile_leases_with(run_id, targets, webagent::config::prepare_swarm_profile)
+}
+
+fn prepare_profile_leases_with<F>(
+    run_id: &str,
+    targets: &[String],
+    mut prepare: F,
+) -> Result<Vec<webagent::config::SwarmProfileLease>, String>
+where
+    F: FnMut(&str, &str) -> std::io::Result<webagent::config::SwarmProfileLease>,
+{
+    let mut leases = Vec::with_capacity(targets.len());
+    for brain in targets {
+        let lease = prepare(run_id, brain).map_err(|error| {
+            format!("profile preparation failed for run={run_id} brain={brain}: {error}")
+        })?;
+        leases.push(lease);
+    }
+    Ok(leases)
+}
+
+fn release_profile_leases(
+    leases: &mut [webagent::config::SwarmProfileLease],
+) -> Result<(), String> {
+    for lease in leases {
+        lease.release().map_err(|error| {
+            format!(
+                "profile release failed for run={} brain={}: {error}",
+                lease.run_id(),
+                lease.brain_id()
+            )
+        })?;
+    }
+    Ok(())
+}
+
 pub fn cmd_autoresearch(args: AutoresearchArgs) -> i32 {
     use webagent::autoresearch::{self, AutoResearchConfig, Direction};
 
@@ -76,20 +116,18 @@ pub fn cmd_autoresearch_self(
     }
 
     let run_id = webagent::now_run_stamp();
-    let profiles: Vec<(String, std::path::PathBuf)> = targets
-        .iter()
-        .map(|tb| {
-            (
-                tb.clone(),
-                webagent::config::prepare_swarm_profile(&run_id, tb),
-            )
-        })
-        .collect();
+    let mut profiles = match prepare_profile_leases(&run_id, &targets) {
+        Ok(profiles) => profiles,
+        Err(error) => {
+            eprintln!("[self-research] {error}");
+            return 1;
+        }
+    };
     let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
         profiles
             .iter()
-            .find(|(b, _)| b == brain)
-            .map(|(_, p)| p.clone())
+            .find(|lease| lease.brain_id() == brain)
+            .map(|lease| lease.profile_dir().to_path_buf())
     };
 
     // Fakten: --facts-Datei überschreibt, sonst aus dem Repo-Root sammeln.
@@ -114,7 +152,10 @@ pub fn cmd_autoresearch_self(
         |b, p| webagent::repl::isolated_query(b, p, headless, profile_of(b)),
     );
 
-    let _ = webagent::config::cleanup_swarm_profiles(&run_id);
+    if let Err(error) = release_profile_leases(&mut profiles) {
+        eprintln!("[self-research] {error}");
+        return 1;
+    }
 
     if !report.catalog.is_empty() {
         let wiki = webagent::wiki_memory::WikiMemory::new(
@@ -163,20 +204,18 @@ pub fn cmd_design_vote(
     }
 
     let run_id = webagent::now_run_stamp();
-    let profiles: Vec<(String, std::path::PathBuf)> = targets
-        .iter()
-        .map(|tb| {
-            (
-                tb.clone(),
-                webagent::config::prepare_swarm_profile(&run_id, tb),
-            )
-        })
-        .collect();
+    let mut profiles = match prepare_profile_leases(&run_id, &targets) {
+        Ok(profiles) => profiles,
+        Err(error) => {
+            eprintln!("[design-vote] {error}");
+            return 1;
+        }
+    };
     let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
         profiles
             .iter()
-            .find(|(b, _)| b == brain)
-            .map(|(_, p)| p.clone())
+            .find(|lease| lease.brain_id() == brain)
+            .map(|lease| lease.profile_dir().to_path_buf())
     };
 
     let config = webagent::design_vote::DesignVoteConfig {
@@ -192,7 +231,10 @@ pub fn cmd_design_vote(
         |b, p| webagent::repl::isolated_query(b, p, headless, profile_of(b)),
     );
 
-    let _ = webagent::config::cleanup_swarm_profiles(&run_id);
+    if let Err(error) = release_profile_leases(&mut profiles) {
+        eprintln!("[design-vote] {error}");
+        return 1;
+    }
 
     println!("\n[design-vote] === Ergebnis ===");
     println!(
@@ -219,9 +261,31 @@ pub fn cmd_design_vote(
     // Gewinner umsetzen — über denselben Controller-Pfad wie der Benchmark.
     println!("[design-vote] {implement_brain} setzt den Gewinner um …");
     let task = webagent::design_vote::build_implement_prompt(approved);
-    let impl_profile = webagent::config::prepare_swarm_profile(&run_id, &implement_brain);
-    let code = run_implement(&implement_brain, &task, headless, Some(impl_profile));
-    let _ = webagent::config::cleanup_swarm_profiles(&run_id);
+    let implement_run_id = format!("{run_id}_implement");
+    let mut impl_lease = match webagent::config::prepare_swarm_profile(
+        &implement_run_id,
+        &implement_brain,
+    ) {
+        Ok(lease) => lease,
+        Err(error) => {
+            eprintln!(
+                "[design-vote] profile preparation failed for run={implement_run_id} brain={implement_brain}: {error}"
+            );
+            return 1;
+        }
+    };
+    let code = run_implement(
+        &implement_brain,
+        &task,
+        headless,
+        Some(impl_lease.profile_dir().to_path_buf()),
+    );
+    if let Err(error) = impl_lease.release() {
+        eprintln!(
+            "[design-vote] profile release failed for run={implement_run_id} brain={implement_brain}: {error}"
+        );
+        return 1;
+    }
     code
 }
 
@@ -322,20 +386,18 @@ pub fn cmd_benchmark(
     };
 
     let run_id = webagent::now_run_stamp();
-    let profiles: Vec<(String, std::path::PathBuf)> = targets
-        .iter()
-        .map(|tb| {
-            (
-                tb.clone(),
-                webagent::config::prepare_swarm_profile(&run_id, tb),
-            )
-        })
-        .collect();
+    let mut profiles = match prepare_profile_leases(&run_id, &targets) {
+        Ok(profiles) => profiles,
+        Err(error) => {
+            eprintln!("[benchmark] {error}");
+            return 1;
+        }
+    };
     let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
         profiles
             .iter()
-            .find(|(b, _)| b == brain)
-            .map(|(_, p)| p.clone())
+            .find(|lease| lease.brain_id() == brain)
+            .map(|lease| lease.profile_dir().to_path_buf())
     };
 
     let config = webagent::benchmark::BenchmarkConfig {
@@ -361,7 +423,10 @@ pub fn cmd_benchmark(
         webagent::repl::isolated_query(b, p, headless, profile_of(b))
     });
 
-    let _ = webagent::config::cleanup_swarm_profiles(&run_id);
+    if let Err(error) = release_profile_leases(&mut profiles) {
+        eprintln!("[benchmark] {error}");
+        return 1;
+    }
 
     match result {
         Ok(report) => {
@@ -375,5 +440,26 @@ pub fn cmd_benchmark(
             eprintln!("[benchmark] Fehler: {e}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn research_preparation_error_is_surfaced_before_queries() {
+        let targets = vec!["chatgpt".to_string()];
+        let mut prepare_calls = 0;
+        let result = prepare_profile_leases_with("research-run", &targets, |_, _| {
+            prepare_calls += 1;
+            Err(std::io::Error::other("injected preparation failure"))
+        });
+
+        let error = result.expect_err("preparation failure must abort research setup");
+        assert_eq!(prepare_calls, 1);
+        assert!(error.contains("run=research-run"));
+        assert!(error.contains("brain=chatgpt"));
+        assert!(error.contains("injected preparation failure"));
     }
 }

@@ -63,31 +63,24 @@ impl ReplSession {
         }
 
         let run_id = crate::now_run_stamp();
-        // Cleanup immer, auch bei early return (Drop-Guard über Scope-Ende).
-        struct SwarmCleanup {
-            run_id: String,
-        }
-        impl Drop for SwarmCleanup {
-            fn drop(&mut self) {
-                let _ = crate::config::cleanup_swarm_profiles(&self.run_id);
+        let mut profiles = Vec::with_capacity(targets.len());
+        for brain in &targets {
+            match crate::config::prepare_swarm_profile(&run_id, brain) {
+                Ok(lease) => profiles.push(lease),
+                Err(error) => {
+                    eprintln!(
+                        "[swarm] profile preparation failed for run={run_id} brain={brain}: {error}"
+                    );
+                    let _ = self.start_brain();
+                    return;
+                }
             }
         }
-        let _cleanup = SwarmCleanup {
-            run_id: run_id.clone(),
-        };
-
-        let profiles: Vec<(String, std::path::PathBuf)> = targets
-            .iter()
-            .map(|tb| {
-                let p = crate::config::prepare_swarm_profile(&run_id, tb);
-                (tb.clone(), p)
-            })
-            .collect();
         let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
             profiles
                 .iter()
-                .find(|(b, _)| b == brain)
-                .map(|(_, p)| p.clone())
+                .find(|lease| lease.brain_id() == brain)
+                .map(|lease| lease.profile_dir().to_path_buf())
         };
 
         // Stehendes /goal analog zu run_autonomous voranstellen (leer wenn keins).
@@ -256,7 +249,7 @@ impl ReplSession {
             }
         }
 
-        // _cleanup Drop räumt Profile; REPL-Brain wieder
+        // Lease-Drops räumen Profile; REPL-Brain wieder starten.
         let _ = self.start_brain();
         println!("[swarm] fertig. Aktiv weiterhin: {}", self.brain_id);
     }
@@ -335,32 +328,24 @@ impl ReplSession {
         }
 
         let run_id = crate::now_run_stamp();
-        // Profile immer aufräumen, auch bei early return.
-        struct SwarmCleanup {
-            run_id: String,
-        }
-        impl Drop for SwarmCleanup {
-            fn drop(&mut self) {
-                let _ = crate::config::cleanup_swarm_profiles(&self.run_id);
+        let mut profiles = Vec::with_capacity(targets.len());
+        for brain in &targets {
+            match crate::config::prepare_swarm_profile(&run_id, brain) {
+                Ok(lease) => profiles.push(lease),
+                Err(error) => {
+                    eprintln!(
+                        "[self-research] profile preparation failed for run={run_id} brain={brain}: {error}"
+                    );
+                    let _ = self.start_brain();
+                    return;
+                }
             }
         }
-        let _cleanup = SwarmCleanup {
-            run_id: run_id.clone(),
-        };
-        let profiles: Vec<(String, std::path::PathBuf)> = targets
-            .iter()
-            .map(|tb| {
-                (
-                    tb.clone(),
-                    crate::config::prepare_swarm_profile(&run_id, tb),
-                )
-            })
-            .collect();
         let profile_of = |brain: &str| -> Option<std::path::PathBuf> {
             profiles
                 .iter()
-                .find(|(b, _)| b == brain)
-                .map(|(_, p)| p.clone())
+                .find(|lease| lease.brain_id() == brain)
+                .map(|lease| lease.profile_dir().to_path_buf())
         };
 
         // Projektfakten aus dem Repo-Root (Fallback: aktuelles Verzeichnis).
@@ -384,7 +369,7 @@ impl ReplSession {
             }
         }
 
-        // _cleanup Drop räumt die Profile; REPL-Brain wieder starten.
+        // Lease-Drops räumen die Profile; REPL-Brain wieder starten.
         let _ = self.start_brain();
         println!("[self-research] fertig. Aktiv weiterhin: {}", self.brain_id);
     }

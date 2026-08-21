@@ -31,7 +31,7 @@ pub use paths::{
 pub use profiles::{
     cleanup_swarm_profiles, cleanup_swarm_profiles_in, copy_dir_all, copy_dir_sparse,
     copy_dir_without_caches, ensure_stable_layout, prepare_swarm_profile, prepare_swarm_profile_in,
-    sweep_stale_runtime_profiles, sweep_stale_runtime_profiles_in,
+    sweep_stale_runtime_profiles, sweep_stale_runtime_profiles_in, SwarmProfileLease,
 };
 pub use selectors::{
     available_brain_ids, debug_port, embedded_selector, encapsulated_profile_dir, load_selectors,
@@ -723,7 +723,8 @@ mod tests {
         let _ = fs::write(default.join("SingletonLock"), b"pid");
         let _ = fs::write(default.join("lockfile"), b"x");
 
-        let dst = prepare_swarm_profile_in(&base, &run_id, brain, false);
+        let mut lease = prepare_swarm_profile_in(&base, &run_id, brain, false).unwrap();
+        let dst = lease.profile_dir().to_path_buf();
         assert!(dst.is_dir(), "swarm profile dir");
         assert!(
             dst.join("_grok_swarm_marker.txt").is_file(),
@@ -735,7 +736,7 @@ mod tests {
         );
         assert!(!dst.join("lockfile").exists());
 
-        cleanup_swarm_profiles_in(&base, &run_id).expect("cleanup");
+        lease.release().expect("cleanup");
         assert!(!dst.exists(), "cleaned after run");
 
         let _ = fs::remove_dir_all(&base);
@@ -1160,7 +1161,8 @@ mod tests {
         fs::write(reference.join("SingletonLock"), b"pid").unwrap();
 
         // explizit sparse (kein globales Env -> nebenlaeufig sicher)
-        let dst = prepare_swarm_profile_in(&base, &run_id, brain, true);
+        let mut lease = prepare_swarm_profile_in(&base, &run_id, brain, true).unwrap();
+        let dst = lease.profile_dir().to_path_buf();
         assert!(dst.join("Cookies").is_file(), "sparse: Cookies kopiert");
         assert!(
             !dst.join("History").exists(),
@@ -1171,7 +1173,7 @@ mod tests {
             "sparse: Lock nicht kopiert"
         );
 
-        cleanup_swarm_profiles_in(&base, &run_id).unwrap();
+        lease.release().unwrap();
         let _ = fs::remove_dir_all(&base);
     }
 

@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use super::brains::{
-    reference_profile_dir_in, swarm_profile_dir_in, use_sparse_profile_copy, FULL_COPY_SKIP_DIRS,
-    SPARSE_COPY_WHITELIST, SPARSE_SKIP_DIRS,
+    reference_profile_dir_in, swarm_profile_dir_in, swarm_profile_scope_key,
+    use_sparse_profile_copy, FULL_COPY_SKIP_DIRS, SPARSE_COPY_WHITELIST, SPARSE_SKIP_DIRS,
 };
 use super::paths::*;
 
@@ -320,14 +322,85 @@ fn copy_sparse_rec(
     Ok(())
 }
 
+const SWARM_OWNER_FILE: &str = ".webagent-swarm-owner.json";
+const SWARM_OWNER_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct SwarmProfileOwner {
+    version: u32,
+    run_id: String,
+    brain_id: String,
+    scope_key: String,
+}
+
+impl SwarmProfileOwner {
+    fn new(run_id: &str, brain_id: &str) -> Self {
+        Self {
+            version: SWARM_OWNER_VERSION,
+            run_id: run_id.to_string(),
+            brain_id: brain_id.to_string(),
+            scope_key: swarm_profile_scope_key(run_id, brain_id),
+        }
+    }
+}
+
+/// Exclusive ownership of one isolated swarm profile. The on-disk owner marker
+/// binds cleanup to the exact run and brain; `release` is safe to call more
+/// than once, and `Drop` provides best-effort cleanup on early returns.
+#[derive(Debug)]
+pub struct SwarmProfileLease {
+    owner: SwarmProfileOwner,
+    profile_dir: PathBuf,
+    released: bool,
+}
+
+impl SwarmProfileLease {
+    pub fn profile_dir(&self) -> &Path {
+        &self.profile_dir
+    }
+
+    pub fn run_id(&self) -> &str {
+        &self.owner.run_id
+    }
+
+    pub fn brain_id(&self) -> &str {
+        &self.owner.brain_id
+    }
+
+    pub fn scope_key(&self) -> &str {
+        &self.owner.scope_key
+    }
+
+    pub fn release(&mut self) -> std::io::Result<()> {
+        if self.released {
+            return Ok(());
+        }
+        release_swarm_profile(&self.profile_dir, &self.owner)?;
+        self.released = true;
+        Ok(())
+    }
+}
+
+impl Drop for SwarmProfileLease {
+    fn drop(&mut self) {
+        if let Err(error) = self.release() {
+            crate::bench_events::eprint_line(&format!(
+                "[profile] lease cleanup failed for run={} brain={}: {error}",
+                self.owner.run_id, self.owner.brain_id
+            ));
+        }
+    }
+}
+
 /// Bereitet das Profil für einen Swarm-Teilnehmer vor:
 /// 1. Falls `profiles/reference/<brain_id>` existiert → Teilkopie nach
-///    `profiles/swarm/<run_id>_<brain_id>`.
+///    `profiles/swarm/<run>_<brain>_<scope-key>`.
 /// 2. Sonst Fallback auf das bestehende `profiles/<brain_id>` (falls vorhanden).
 /// 3. Sonst leeres Verzeichnis (Neuanlage durch Browser).
 ///
-/// Rückgabe: Pfad zum isolierten Profil für diesen Lauf.
-pub fn prepare_swarm_profile(run_id: &str, brain_id: &str) -> PathBuf {
+/// Preparation is transactional and fail-closed: no lease is returned unless
+/// cloning and durable ownership metadata both succeeded.
+pub fn prepare_swarm_profile(run_id: &str, brain_id: &str) -> std::io::Result<SwarmProfileLease> {
     prepare_swarm_profile_in(&profiles_dir(), run_id, brain_id, use_sparse_profile_copy())
 }
 
@@ -340,42 +413,131 @@ pub fn prepare_swarm_profile_in(
     run_id: &str,
     brain_id: &str,
     sparse: bool,
-) -> PathBuf {
+) -> std::io::Result<SwarmProfileLease> {
+    prepare_swarm_profile_in_with(base, run_id, brain_id, sparse, copy_profile_strict)
+}
+
+fn prepare_swarm_profile_in_with<F>(
+    base: &Path,
+    run_id: &str,
+    brain_id: &str,
+    sparse: bool,
+    clone_profile: F,
+) -> std::io::Result<SwarmProfileLease>
+where
+    F: FnOnce(&Path, &Path, bool) -> std::io::Result<()>,
+{
+    if run_id.trim().is_empty() || brain_id.trim().is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "swarm profile requires non-empty run_id and brain_id",
+        ));
+    }
     let reference = reference_profile_dir_in(base, brain_id);
     let default = base.join(brain_id);
     let dst = swarm_profile_dir_in(base, run_id, brain_id);
 
-    // Alte Kopie dieses Runs entfernen, falls vorhanden (idempotent).
-    if dst.exists() {
-        if let Err(error) = remove_runtime_profile(&dst) {
-            crate::bench_events::eprint_line(&format!(
-                "[profile] alte Laufzeitkopie {:?} blieb vor Wiederverwendung bestehen: {error}",
-                dst
-            ));
+    // Atomically reserve the scope. Never reclaim an existing path here: it
+    // may be an active lease, and deleting it would invalidate another caller.
+    let parent = dst.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "swarm profile path has no parent",
+        )
+    })?;
+    std::fs::create_dir_all(parent)?;
+    std::fs::create_dir(&dst).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("swarm profile scope is already leased: {}", dst.display()),
+            )
+        } else {
+            error
         }
+    })?;
+
+    let prepared = if reference.is_dir() {
+        clone_profile(&reference, &dst, sparse)
+    } else if default.is_dir() {
+        clone_profile(&default, &dst, sparse)
+    } else {
+        // Weder Referenz noch Default: leeres Verzeichnis für den Browser.
+        Ok(())
+    };
+    if let Err(error) = prepared {
+        remove_partial_profile(&dst);
+        return Err(error);
     }
 
-    if reference.is_dir() {
-        let _ = copy_profile(&reference, &dst, sparse);
-        return dst;
+    let owner = SwarmProfileOwner::new(run_id, brain_id);
+    if let Err(error) = write_swarm_owner(&dst, &owner) {
+        remove_partial_profile(&dst);
+        return Err(error);
     }
-    if default.is_dir() {
-        let _ = copy_profile(&default, &dst, sparse);
-        return dst;
-    }
-    // Weder Referenz noch Default: leeres Verzeichnis anlegen.
-    let _ = std::fs::create_dir_all(&dst);
-    dst
+    Ok(SwarmProfileLease {
+        owner,
+        profile_dir: dst,
+        released: false,
+    })
 }
 
-/// Kopiert ein Profil je nach Modus: sparse (nur Whitelist-Artefakte) oder voll.
-/// „Voll" heisst vollstaendig bis auf reine Caches — siehe
-/// [`FULL_COPY_SKIP_DIRS`].
-fn copy_profile(src: &PathBuf, dst: &PathBuf, sparse: bool) -> std::io::Result<()> {
+fn copy_profile_strict(src: &Path, dst: &Path, sparse: bool) -> std::io::Result<()> {
     if sparse {
-        copy_dir_sparse(src, dst)
+        copy_dir_sparse_strict(src, dst)
     } else {
-        copy_dir_without_caches(src, dst)
+        copy_dir_without_caches_strict(src, dst)
+    }
+}
+
+fn copy_dir_without_caches_strict(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let target = dst.join(entry.file_name());
+        if ty.is_dir() {
+            if FULL_COPY_SKIP_DIRS
+                .iter()
+                .any(|skip| skip.eq_ignore_ascii_case(&name))
+            {
+                continue;
+            }
+            copy_dir_without_caches_strict(&entry.path(), &target)?;
+        } else {
+            let lower = name.to_lowercase();
+            if lower.contains("lock")
+                || lower == "singletoncookie"
+                || lower == "singletonsocket"
+                || lower == "lockfile"
+            {
+                continue;
+            }
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    clear_readonly_recursive_strict(dst)
+}
+
+fn write_swarm_owner(dir: &Path, owner: &SwarmProfileOwner) -> std::io::Result<()> {
+    let marker = dir.join(SWARM_OWNER_FILE);
+    let pending = dir.join(format!("{SWARM_OWNER_FILE}.pending"));
+    let bytes = serde_json::to_vec(owner)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    std::fs::write(&pending, bytes)?;
+    std::fs::rename(pending, marker)
+}
+
+fn read_swarm_owner(dir: &Path) -> std::io::Result<SwarmProfileOwner> {
+    let bytes = std::fs::read(dir.join(SWARM_OWNER_FILE))?;
+    serde_json::from_slice(&bytes)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+}
+
+fn remove_partial_profile(path: &Path) {
+    if path.exists() {
+        let _ = remove_runtime_profile(path);
     }
 }
 
@@ -444,7 +606,8 @@ pub fn cleanup_swarm_profiles(run_id: &str) -> std::io::Result<()> {
     cleanup_swarm_profiles_in(&profiles_dir(), run_id)
 }
 
-/// Wie `cleanup_swarm_profiles`, aber mit expliziter Profil-Basis (für Tests).
+/// Compatibility cleanup for a whole run. Directory names are never trusted:
+/// only profiles whose owner marker contains the exact run are removed.
 pub fn cleanup_swarm_profiles_in(base: &Path, run_id: &str) -> std::io::Result<()> {
     let swarm_root = base.join("swarm");
     if !swarm_root.is_dir() {
@@ -452,12 +615,159 @@ pub fn cleanup_swarm_profiles_in(base: &Path, run_id: &str) -> std::io::Result<(
     }
     for entry in std::fs::read_dir(&swarm_root)? {
         let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with(&format!("{}_", run_id)) {
-            remove_runtime_profile(&entry.path())?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let path = entry.path();
+        let owner = match read_swarm_owner(&path) {
+            Ok(owner) => owner,
+            // Missing or malformed ownership is not authority to delete.
+            Err(_) => continue,
+        };
+        if owner.version == SWARM_OWNER_VERSION
+            && owner.run_id == run_id
+            && owner.scope_key == swarm_profile_scope_key(&owner.run_id, &owner.brain_id)
+            && swarm_profile_dir_in(base, &owner.run_id, &owner.brain_id) == path
+        {
+            release_swarm_profile(&path, &owner)?;
         }
     }
     Ok(())
+}
+
+fn release_swarm_profile(path: &Path, expected: &SwarmProfileOwner) -> std::io::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let actual = read_swarm_owner(path).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing cleanup without readable ownership marker at {}: {error}",
+                path.display()
+            ),
+        )
+    })?;
+    if &actual != expected
+        || actual.version != SWARM_OWNER_VERSION
+        || actual.scope_key != swarm_profile_scope_key(&actual.run_id, &actual.brain_id)
+        || path
+            .parent()
+            .and_then(Path::parent)
+            .map(|base| swarm_profile_dir_in(base, &actual.run_id, &actual.brain_id) != path)
+            .unwrap_or(true)
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing cleanup of profile owned by run={} brain={}",
+                actual.run_id, actual.brain_id
+            ),
+        ));
+    }
+    remove_runtime_profile(path)
+}
+
+#[cfg(test)]
+mod lease_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn temp_base(label: &str) -> PathBuf {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "webagent_swarm_lease_{label}_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    #[test]
+    fn failed_clone_returns_no_lease_and_removes_partial_profile() {
+        let base = temp_base("clone_failure");
+        let source = reference_profile_dir_in(&base, "chatgpt");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("Cookies"), b"login").unwrap();
+        let expected = swarm_profile_dir_in(&base, "run-a", "chatgpt");
+
+        let result = prepare_swarm_profile_in_with(
+            &base,
+            "run-a",
+            "chatgpt",
+            false,
+            |_src, dst, _sparse| {
+                std::fs::create_dir_all(dst)?;
+                std::fs::write(dst.join("partial"), b"x")?;
+                Err(std::io::Error::other("injected clone failure"))
+            },
+        );
+
+        assert!(result.is_err());
+        assert!(
+            !expected.exists(),
+            "partial clone must not remain launchable"
+        );
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn run_and_brain_scopes_cannot_collide() {
+        let base = temp_base("scope_collision");
+        let scopes = [("a_b", "c"), ("a", "b_c"), ("a_b", "d"), ("z", "c")];
+        let mut leases = Vec::new();
+        for (run, brain) in scopes {
+            leases.push(prepare_swarm_profile_in(&base, run, brain, false).unwrap());
+        }
+        let paths: std::collections::HashSet<_> = leases
+            .iter()
+            .map(|lease| lease.profile_dir().to_path_buf())
+            .collect();
+        assert_eq!(paths.len(), scopes.len());
+        let keys: std::collections::HashSet<_> = leases
+            .iter()
+            .map(|lease| lease.scope_key().to_string())
+            .collect();
+        assert_eq!(keys.len(), scopes.len());
+        assert!(
+            prepare_swarm_profile_in(&base, "a_b", "c", false).is_err(),
+            "an active run+brain scope is exclusive"
+        );
+        drop(leases);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn release_is_idempotent_and_refuses_foreign_owner() {
+        let base = temp_base("safe_release");
+        let mut lease = prepare_swarm_profile_in(&base, "run-a", "chatgpt", false).unwrap();
+        let path = lease.profile_dir().to_path_buf();
+        lease.release().unwrap();
+        lease.release().unwrap();
+        assert!(!path.exists());
+
+        let mut guarded = prepare_swarm_profile_in(&base, "run-b", "claude", false).unwrap();
+        let guarded_path = guarded.profile_dir().to_path_buf();
+        write_swarm_owner(
+            &guarded_path,
+            &SwarmProfileOwner::new("different-run", "different-brain"),
+        )
+        .unwrap();
+        assert!(guarded.release().is_err());
+        assert!(
+            guarded_path.exists(),
+            "foreign-owned profile must be spared"
+        );
+
+        // Run-wide compatibility cleanup is marker-scoped too.
+        cleanup_swarm_profiles_in(&base, "run-b").unwrap();
+        assert!(guarded_path.exists());
+        cleanup_swarm_profiles_in(&base, "different-run").unwrap();
+        assert!(
+            guarded_path.exists(),
+            "a foreign marker cannot re-scope a profile for cleanup"
+        );
+        let _ = std::fs::remove_dir_all(base);
+    }
 }
 
 /// Ein Wegwerf-Profil, das älter als das hier ist, kann keinem laufenden Run

@@ -395,6 +395,13 @@ impl Bot2BotWorker {
     /// Einstiegspunkt: `--once` = ein Durchlauf; sonst Poll-Loop mit `poll_secs`.
     /// Event-getrieben: nur bei neuen Tasks Aktion; bei leer still (kein Spam).
     pub fn run(&self) -> i32 {
+        self.run_with_profile_preparer(crate::config::prepare_swarm_profile)
+    }
+
+    fn run_with_profile_preparer<F>(&self, prepare: F) -> i32
+    where
+        F: FnOnce(&str, &str) -> std::io::Result<crate::config::SwarmProfileLease>,
+    {
         // Isoliertes Laufzeit-Profil vorbereiten (Q5/Swarm-Mechanik), damit N
         // Worker-Prozesse parallel ohne Chromium-SingletonLock-Konflikt laufen.
         let run_id = format!(
@@ -403,35 +410,34 @@ impl Bot2BotWorker {
             std::process::id(),
             crate::now_run_stamp()
         );
-        let profile = crate::config::prepare_swarm_profile(&run_id, &self.brain_id);
-        let _guard = WorkerProfileGuard {
-            run_id: run_id.clone(),
+        let mut lease = match prepare(&run_id, &self.brain_id) {
+            Ok(lease) => lease,
+            Err(error) => {
+                crate::bench_events::eprint_line(&format!(
+                    "[bot2bot-worker] profile preparation failed for run={run_id} brain={}: {error}",
+                    self.brain_id
+                ));
+                return 1;
+            }
         };
+        let profile = lease.profile_dir().to_path_buf();
 
         if self.once {
             self.poll_once(&profile);
-            return 0;
+            return match lease.release() {
+                Ok(()) => 0,
+                Err(error) => {
+                    crate::bench_events::eprint_line(&format!(
+                        "[bot2bot-worker] profile release failed for run={run_id} brain={}: {error}",
+                        self.brain_id
+                    ));
+                    1
+                }
+            };
         }
         loop {
             self.poll_once(&profile);
             thread::sleep(Duration::from_secs(self.poll_secs));
-        }
-    }
-}
-
-/// Räumt das isolierte Worker-Profil beim Ende des Worker-Prozesses auf
-/// (Entspricht dem `SwarmCleanup`-Guard in `repl.rs`).
-struct WorkerProfileGuard {
-    run_id: String,
-}
-
-impl Drop for WorkerProfileGuard {
-    fn drop(&mut self) {
-        if let Err(error) = crate::config::cleanup_swarm_profiles(&self.run_id) {
-            crate::bench_events::eprint_line(&format!(
-                "[bot2bot-worker] Laufzeitprofil {} konnte nicht vollstÃ¤ndig bereinigt werden: {error}",
-                self.run_id
-            ));
         }
     }
 }
@@ -666,6 +672,23 @@ mod tests {
             root.join("agents").join("deepseek").join("workspace")
         );
     }
+
+    #[test]
+    fn preparation_error_is_surfaced_without_poll_or_launch() {
+        let root = tmp_root();
+        let worker = Bot2BotWorker::new("deepseek".into(), root.clone(), 30, true, 5, true);
+
+        let code = worker.run_with_profile_preparer(|_, _| {
+            Err(std::io::Error::other("injected preparation failure"))
+        });
+
+        assert_eq!(code, 1);
+        assert!(
+            !root.join("workers/heartbeat_deepseek.json").exists(),
+            "polling/browser launch path must not start after preparation failure"
+        );
+    }
+
     #[test]
     fn render_worker_result_carries_latest_answer() {
         let mut meta = crate::run_store::RunMeta {
