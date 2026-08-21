@@ -2710,3 +2710,15 @@ Der Worker-Pool behandelt eine fehlende Heartbeat-Datei nach Ablauf der bestehen
 | Grok-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_grok_topology_review_20260821_174119\\stderr.log |
 
 Die Slice ergänzt nur src/worker_pool.rs; sie nutzt die vorhandenen Spawn-, Reap- und Promotionpfade und führt keinen parallelen Supervisor oder State-Store ein.
+
+
+## 2026-08-21 18:00 UTC+2 — Goal-Audit: Git- und externe Restgrenzen verifiziert
+
+Die aktive Goal-Karte bleibt bewusst offen. Der direkte Git-Nachweis ist gültig: HEAD und origin/master zeigen beide auf 1afbfbf (ix: fail closed on missing worker heartbeat after grace), Arbeitsbaum sauber. Der gemeinsame Gitdir liegt im archivierten Repositorypfad, ist jedoch erreichbar; die gegenteilige Read-only-Auditannahme war kein Projektfehler.
+
+| Restpunkt | Status |
+|---|---|
+| ChatGPT-E2E-Worktree | uncommitteter src/repl/pool.rs-Diff; strikt getrennt, kein Integrationskandidat |
+| Claude-E2E-Worktree | sauber, aber hinter origin/master; kein Integrationskandidat |
+| Echter OHA-SSS-Worker-/Reviewer-Harness | technisch vorbereitet, aber provider-/browserseitiger Livezugriff; nur nach ausdrücklicher Freigabe starten |
+| Goal-Abschluss | erst nach einer frischen, repräsentativen Finalabnahme und einer Entscheidung zu den explizit deferierten Livegrenzen |
