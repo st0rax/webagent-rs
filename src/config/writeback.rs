@@ -1322,6 +1322,108 @@ mod writeback_durability_tests {
     }
 
     #[test]
+    fn writeback_post_verify_failure_restores_master_from_backup() {
+        let _hook = sync_test_hooks::install();
+        let base = unique_base("writeback_post_verify_restore");
+        let master = base.join("shared");
+        let runtime = base.join("runtime");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(runtime.join("Cache")).unwrap();
+        fs::write(master.join("Cookies"), b"master-cookie-jar").unwrap();
+        fs::write(master.join("Local State"), b"master-state").unwrap();
+        fs::write(runtime.join("Cookies"), b"runtime-cookie-jar").unwrap();
+        fs::write(runtime.join("Local State"), b"runtime-state").unwrap();
+        // `Cache` is a sparse-copy skip dir, so this weight counts towards the
+        // source but can never reach the master. That is exactly the shape of a
+        // write-back that passes the pre-checks and still lands too light:
+        // post-verify must catch it and restore.
+        fs::write(runtime.join("Cache").join("Cookies"), vec![b'x'; 64 * 1024]).unwrap();
+
+        let error = write_back_dir_to_master_at(&runtime, &master, &backup).unwrap_err();
+
+        assert!(
+            error.contains("Post-Verify fehlgeschlagen"),
+            "a master that lands under the minimum ratio must fail post-verify: {error}"
+        );
+        assert!(
+            error.contains("wiederhergestellt"),
+            "post-verify failure must restore the master from backup: {error}"
+        );
+        assert_eq!(
+            fs::read(master.join("Cookies")).unwrap(),
+            b"master-cookie-jar",
+            "restore must undo the partial write-back"
+        );
+        assert_eq!(
+            fs::read(master.join("Local State")).unwrap(),
+            b"master-state",
+            "restore must undo the partial write-back"
+        );
+        assert!(
+            !write_back_journal_pending_path(&master).exists(),
+            "a completed post-verify rollback must clear the pending journal"
+        );
+        assert!(
+            !write_back_journal_committed_path(&master).exists(),
+            "a rolled-back write-back must never be journalled as committed"
+        );
+
+        let _ = set_profile_readonly_strict(&master, false);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_restore_failure_after_sync_failure_reports_both() {
+        let _hook = sync_test_hooks::install();
+        let base = unique_base("writeback_double_restore_fail");
+        let master = base.join("shared");
+        let runtime = base.join("runtime");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        fs::write(master.join("Cookies"), b"master-cookie-jar").unwrap();
+        fs::write(master.join("Local State"), b"master-state").unwrap();
+        fs::write(runtime.join("Cookies"), b"runtime-cookie-jar").unwrap();
+        fs::write(runtime.join("Local State"), b"runtime-state").unwrap();
+
+        // The same master tree stays undurable for the write-back AND for the
+        // rollback, so the restore path itself fails. The caller must learn
+        // both failures instead of seeing a reassuring "restored" message.
+        sync_test_hooks::fail_always(master.clone());
+        let error = write_back_dir_to_master_at(&runtime, &master, &backup).unwrap_err();
+
+        assert!(
+            error.contains("injected"),
+            "the original durability failure must survive the failed rollback: {error}"
+        );
+        assert!(
+            error.contains("Backup-Restore ebenfalls fehlgeschlagen"),
+            "a failed restore must be reported, not masked as a successful rollback: {error}"
+        );
+        assert!(
+            !error.contains("wiederhergestellt"),
+            "a failed restore must never claim the master was restored: {error}"
+        );
+        assert!(
+            write_back_journal_pending_path(&master).exists(),
+            "an unrecovered master must keep its pending journal for crash recovery"
+        );
+        assert_eq!(
+            fs::read_to_string(write_back_journal_pending_path(&master)).unwrap(),
+            format!("{}\n", backup.display()),
+            "the journal must still point at the backup that recovery needs"
+        );
+        assert!(
+            !write_back_journal_committed_path(&master).exists(),
+            "a failed write-back must never be journalled as committed"
+        );
+
+        let _ = set_profile_readonly_strict(&master, false);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn writeback_cleanup_second_parent_fsync_failure_restores_committed_journal() {
         let _hook = sync_test_hooks::install();
         let base = unique_base("writeback_cleanup_parent_sync");
