@@ -1,6 +1,7 @@
 //! Handoff-Warteschlange der Phase B samt Fehlversuchs-Buchhaltung.
 
 use super::bench_say;
+use crate::run_store::CrossBrainHandoffEnvelope;
 
 /// Arbeitsschlange der Phase B samt Handoff-Buchhaltung.
 ///
@@ -11,9 +12,8 @@ use super::bench_say;
 /// Aufgabe fuer jeden weiteren Eintrag erneut durch einen vollen Brain-Run.
 /// Als reine Datenstruktur ist das ohne Netzwerk und ohne Brains testbar.
 pub(crate) struct HandoffQueue {
-    /// (Brain, Aufgabentext, abgebendes Brain — None = frischer Plan-Eintrag,
-    ///  Kontext der Vorarbeit)
-    queue: std::collections::VecDeque<(String, String, Option<String>, Option<String>)>,
+    /// (Brain, Aufgabentext, validierter Handoff — None = frischer Plan-Eintrag)
+    queue: std::collections::VecDeque<(String, String, Option<CrossBrainHandoffEnvelope>)>,
     tried: std::collections::HashMap<String, Vec<String>>,
     dropped: std::collections::HashSet<String>,
     #[allow(dead_code)]
@@ -27,7 +27,7 @@ impl HandoffQueue {
         Self {
             queue: plan
                 .iter()
-                .map(|(b, t)| (b.clone(), t.clone(), None, None))
+                .map(|(b, t)| (b.clone(), t.clone(), None))
                 .collect(),
             tried: std::collections::HashMap::new(),
             dropped: std::collections::HashSet::new(),
@@ -38,8 +38,8 @@ impl HandoffQueue {
 
     /// Naechster Auftrag. Ausgefallene Aufgaben werden hier verworfen, damit
     /// sie keinen weiteren Brain-Run kosten.
-    pub(crate) fn next(&mut self) -> Option<(String, String, Option<String>, Option<String>)> {
-        while let Some((brain, effective, from, context)) = self.queue.pop_front() {
+    pub(crate) fn next(&mut self) -> Option<(String, String, Option<CrossBrainHandoffEnvelope>)> {
+        while let Some((brain, effective, handoff)) = self.queue.pop_front() {
             if self.dropped.contains(&effective) {
                 bench_say!(
                     crate::bench_events::Level::Warn,
@@ -50,7 +50,7 @@ impl HandoffQueue {
             }
             // Handoffs sind bereits beim Einreihen vermerkt; nur frische
             // Plan-Eintraege muessen hier nachgetragen werden.
-            if from.is_none() {
+            if handoff.is_none() {
                 let tried = self.tried.entry(effective.clone()).or_default();
                 if tried.contains(&brain) {
                     bench_say!(
@@ -62,7 +62,7 @@ impl HandoffQueue {
                 }
                 tried.push(brain.clone());
             }
-            return Some((brain, effective, from, context));
+            return Some((brain, effective, handoff));
         }
         None
     }
@@ -77,29 +77,33 @@ impl HandoffQueue {
         &mut self,
         brain: &str,
         effective: &str,
-        context: Option<String>,
-    ) -> Option<String> {
+        source_run_id: &str,
+        context: &str,
+    ) -> Result<Option<String>, String> {
         let already = self.tried.entry(effective.to_string()).or_default();
         let cap = self.max_handoffs.max(1) + 1;
         let next = if already.len() < cap {
-            self.brains.iter().find(|b| !already.contains(b)).cloned()
+            self.brains
+                .iter()
+                .find(|b| b.as_str() != brain && !already.contains(b))
+                .cloned()
         } else {
             None
         };
         match next {
             Some(nb) => {
+                let attempt = u32::try_from(already.len())
+                    .map_err(|_| "Handoff-attempt passt nicht in u32".to_string())?;
+                let envelope =
+                    CrossBrainHandoffEnvelope::new(source_run_id, brain, &nb, attempt, context)?;
                 already.push(nb.clone());
-                self.queue.push_back((
-                    nb.clone(),
-                    effective.to_string(),
-                    Some(brain.to_string()),
-                    context,
-                ));
-                Some(nb)
+                self.queue
+                    .push_back((nb.clone(), effective.to_string(), Some(envelope)));
+                Ok(Some(nb))
             }
             None => {
                 self.dropped.insert(effective.to_string());
-                None
+                Ok(None)
             }
         }
     }

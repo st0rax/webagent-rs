@@ -351,3 +351,19 @@ Die Profilpersistenz-Slice ist commitbereit. SwarmProfileLease bindet Lauf und B
 | Review 2 | Grok VERDICT=PASS, keine Blocker |
 
 Die nächste getrennte Phase-6-Slice ist die Cross-Brain-Session-Handoff-Abstraktion. Sie darf das bestehende Same-Brain-Resume nicht aufweichen und muss die profilgebundene Lease-Eigentümerschaft respektieren.
+
+
+## Cross-Brain-Session-Handoff-Evidenzcheckpoint — 2026-08-21 17:15 UTC+2
+
+Die Session-Handoff-Slice ist commitbereit. Der versionierte CrossBrainHandoffEnvelope transportiert ausschließlich begrenzte Textmetadaten und validiert Source/Target-Brain, Run und Handoff-Kontext fail-closed. Er übernimmt keine conversation_ref; der Zielbrain startet frisch. Same-Brain-Resume behält seine bestehende, eigene Referenzsemantik.
+
+| Kategorie | Nachweis |
+|---|---|
+| Format und Index-Diff | bestanden |
+| Clippy | Exit 0 mit 13 bekannten Baseline-Warnungen |
+| Reduzierte Features | 1.097 Tests bestanden, 0 fehlgeschlagen |
+| Standardfeatures | 1.163 Tests bestanden, 0 fehlgeschlagen |
+| Review 1 | Claude VERDICT=PASS, keine Blocker |
+| Review 2 | Grok VERDICT=PASS, keine Blocker |
+
+Offener weiterer Phase-6-Schritt: Parallel-Worktree-Ergebnisse von ChatGPT und Claude erst an expliziten Commitgrenzen bewerten und konfliktfrei integrieren. Keine uncommitteten externen Diffs übernehmen.

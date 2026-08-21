@@ -9,6 +9,7 @@
 use std::time::Instant;
 
 use crate::code_score::CodeEvent;
+use crate::run_store::CrossBrainHandoffEnvelope;
 
 use super::git::{
     build_no_change_prompt, build_repair_prompt, capture_patch, reset_repo, run_eval_detail,
@@ -75,6 +76,13 @@ const MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS: usize = 2;
 /// dass er nicht heiss gegen die Sperre laeuft.
 const OUTAGE_COOLDOWN_SECS: u64 = 300;
 
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
+enum BenchRunStart<'a> {
+    Fresh,
+    Continuation(&'a str),
+    CrossBrain(&'a CrossBrainHandoffEnvelope),
+}
+
 /// Ein Brain baut die Aufgabe über den normalen Controller-Pfad (mit Wall-Timeout
 /// und grosszuegigem Cycle-Circuit-Breaker). Liefert
 /// `(status, cycles, run_id, file_writes_ok)`.
@@ -82,7 +90,7 @@ const OUTAGE_COOLDOWN_SECS: u64 = 300;
 fn bench_run(
     brain_id: &str,
     task: &str,
-    resume_id: Option<&str>,
+    start: BenchRunStart<'_>,
     workdir: &std::path::Path,
     headless: bool,
     note: Option<crate::StageNote>,
@@ -111,10 +119,16 @@ fn bench_run(
         suppress_memory_context: true,
         ..RunOptions::default()
     };
-    let meta = if let Some(run_id) = resume_id {
-        controller.continue_run(run_id, task, brain_id, headless, options)?
-    } else {
-        controller.run_with_options(task, brain_id, None, headless, options)?
+    let meta = match start {
+        BenchRunStart::Continuation(run_id) => {
+            controller.continue_run(run_id, task, brain_id, headless, options)?
+        }
+        BenchRunStart::CrossBrain(handoff) => {
+            controller.run_cross_brain_handoff(task, brain_id, handoff, headless, options)?
+        }
+        BenchRunStart::Fresh => {
+            controller.run_with_options(task, brain_id, None, headless, options)?
+        }
     };
     let writes_ok = meta
         .extra
@@ -128,7 +142,7 @@ fn bench_run(
 fn bench_run(
     _brain_id: &str,
     _task: &str,
-    _resume_id: Option<&str>,
+    _start: BenchRunStart<'_>,
     _workdir: &std::path::Path,
     _headless: bool,
     _note: Option<crate::StageNote>,
@@ -644,22 +658,39 @@ where
         // NICHT extern blockiert waren). Siehe Auswertung am Rundenende.
         let mut round_attempted = 0usize;
         let mut hq = HandoffQueue::new(&plan, &round_brains, config.max_handoffs);
-        while let Some((brain_owned, effective_owned, handoff_from, handoff_context)) = hq.next() {
+        while let Some((brain_owned, effective_owned, handoff)) = hq.next() {
             let brain = &brain_owned;
             let effective = &effective_owned;
+            let handoff_from = handoff
+                .as_ref()
+                .map(|envelope| envelope.source_brain_id().to_string());
+            let handoff_context = handoff.as_ref().map(CrossBrainHandoffEnvelope::context);
 
-            if let Some(prev) = &handoff_from {
+            if let Some(envelope) = &handoff {
                 bench_say!(
                     crate::bench_events::Level::Warn,
                     Some(brain),
-                    "{brain} uebernimmt die Aufgabe von {prev}."
+                    "{brain} uebernimmt die Aufgabe von {} ({} v{}, Quell-Run {}, Versuch {}).",
+                    envelope.source_brain_id(),
+                    envelope.kind(),
+                    envelope.version(),
+                    envelope.source_run_id(),
+                    envelope.attempt()
                 );
+                if let Ok(detail) = serde_json::to_string(envelope) {
+                    crate::bench_events::emit_detailed(
+                        crate::bench_events::Level::Warn,
+                        Some(brain),
+                        "Cross-Brain-Handoff-Provenienz",
+                        Some(&detail),
+                    );
+                }
             }
             let task = crate::benchmark::tasks::build_task_prompt_for_brain_in(
                 effective,
                 &config.workdir,
                 brain,
-                handoff_context.as_deref(),
+                handoff_context,
             );
             let tid = task_id(effective);
             crate::autoresearch::guard_clean_tree(&config.workdir)
@@ -700,10 +731,17 @@ where
                 ));
                 let mut terminal_status: Option<String> = None;
                 let mut writes_ok = 0u32;
+                let run_start = match run_id.as_deref() {
+                    Some(run_id) => BenchRunStart::Continuation(run_id),
+                    None => match handoff.as_ref() {
+                        Some(handoff) => BenchRunStart::CrossBrain(handoff),
+                        None => BenchRunStart::Fresh,
+                    },
+                };
                 match bench_run(
                     brain,
                     &attempt_task,
-                    run_id.as_deref(),
+                    run_start,
                     &config.workdir,
                     config.headless,
                     Some(t.note_handle()),
@@ -1149,11 +1187,16 @@ where
             );
 
             if stalled {
-                let context = Some(format!(
+                let context = format!(
                     "Vorarbeit: Brain {brain} blieb bei '{effective}' stehen mit {}.",
                     last_gate_failure.as_deref().unwrap_or("unbekanntem Gate")
-                ));
-                match hq.on_stall(brain, effective, context) {
+                );
+                let source_run_id = run_id.as_deref().ok_or_else(|| {
+                    format!(
+                        "Cross-Brain-Handoff von {brain} abgelehnt: kein persistierter Quell-Run"
+                    )
+                })?;
+                match hq.on_stall(brain, effective, source_run_id, &context)? {
                     Some(next_brain) => bench_say!(
                         crate::bench_events::Level::Warn,
                         Some(brain),

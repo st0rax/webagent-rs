@@ -2678,3 +2678,19 @@ Die Slice ersetzt die infallible Swarmprofil-Vorbereitung durch einen transaktio
 | Grok-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_grok_lease_review_20260821_162233\\stderr.log |
 
 Aktualisierte Aufrufer sind ot2bot_worker, Research-Swarm und autonome REPL-Swarmlogik. Alle propagieren Vorbereitungs- und Releasefehler. Bewusst nicht in dieser Slice: eine Cross-Brain-Konversationsübernahme; sie folgt als getrennte Session-Handoff-Slice.
+
+
+## 2026-08-21 17:15 UTC+2 — Phase 6 Slice: safe Cross-Brain-Session-Handoff commitbereit
+
+Die Slice ergänzt den bestehenden Benchmark-Handoff um ein versioniertes, begrenztes CrossBrainHandoffEnvelope. Es bindet Source- und Target-Brain, Run- und Handoff-Provenienz sowie Textkontext, lehnt gleiche oder ungültige Brains und zu große Kontexte fail-closed ab und übergibt niemals eine fremde conversation_ref. Das Ziel startet deshalb frisch; das bestehende Same-Brain-Resume bleibt unverändert.
+
+| Nachweis | Ergebnis |
+|---|---|
+| Format und Index-Diff | cargo fmt --all -- --check sowie git diff --cached --check bestanden |
+| Clippy | Exit 0; 13 bekannte Baseline-Warnungen, keine neue Handoff-Warnung |
+| Headless-Matrix | 1.097 bestanden, 0 fehlgeschlagen |
+| Standard-Matrix | 1.163 bestanden, 0 fehlgeschlagen |
+| Claude-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_claude_handoff_review_20260821_170619\\final_review.txt |
+| Grok-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_grok_handoff_review_20260821_170725\\stderr.log |
+
+Der Envelope wird über bestehende Benchmark-Queue, Pipeline, Controller und Run-Metadaten weitergereicht; die Provenienz ist dauerhaft auswertbar. Bewusst ausgeschlossen bleiben Providerkonten, Cookies und jede browserseitige Übernahme einer fremden Konversation.

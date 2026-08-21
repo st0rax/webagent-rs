@@ -474,11 +474,17 @@ mod tests {
     fn leerfahren(q: &mut HandoffQueue) -> Vec<(String, String)> {
         let mut gesehen = Vec::new();
         let mut n = 0;
-        while let Some((brain, effective, _, _)) = q.next() {
+        while let Some((brain, effective, _)) = q.next() {
             n += 1;
             assert!(n < 100, "Endlosschleife: {n} Durchlaeufe ohne Ende");
             gesehen.push((brain.clone(), effective.clone()));
-            q.on_stall(&brain, &effective, None);
+            q.on_stall(
+                &brain,
+                &effective,
+                &format!("run-{brain}-{n}"),
+                "bounded textual context",
+            )
+            .unwrap();
         }
         gesehen
     }
@@ -517,16 +523,24 @@ mod tests {
         let mut q = HandoffQueue::new(&plan_alle_gleiche_aufgabe(), &acht_brains(), 3);
         // Bis zum ersten endgueltigen Ausfall fahren.
         let mut n = 0;
-        while let Some((brain, effective, _, _)) = q.next() {
+        while let Some((brain, effective, _)) = q.next() {
             n += 1;
             assert!(n < 100, "Endlosschleife");
-            if q.on_stall(&brain, &effective, None).is_none() {
+            if q.on_stall(
+                &brain,
+                &effective,
+                &format!("run-{brain}-{n}"),
+                "bounded textual context",
+            )
+            .unwrap()
+            .is_none()
+            {
                 break;
             }
         }
         assert!(q.is_dropped("T"));
         // Danach darf "T" nicht noch einmal ausgegeben werden.
-        while let Some((_, effective, _, _)) = q.next() {
+        while let Some((_, effective, _)) = q.next() {
             assert_ne!(effective, "T", "ausgefallene Aufgabe wurde neu eingereiht");
         }
     }
@@ -545,6 +559,29 @@ mod tests {
             brains_fuer_t.len() <= 3,
             "zu viele Brains an derselben Aufgabe: {brains_fuer_t:?}"
         );
+    }
+
+    #[test]
+    fn handoff_queue_traegt_quelle_ziel_attempt_und_nur_textkontext() {
+        let plan = vec![("source".to_string(), "T".to_string())];
+        let brains = vec!["source".to_string(), "target".to_string()];
+        let mut q = HandoffQueue::new(&plan, &brains, 1);
+        let (source, effective, initial) = q.next().unwrap();
+        assert!(initial.is_none());
+
+        assert_eq!(
+            q.on_stall(&source, &effective, "source-run-1", "compiler error E0425")
+                .unwrap(),
+            Some("target".to_string())
+        );
+        let (target, _, handoff) = q.next().unwrap();
+        let handoff = handoff.expect("cross-brain envelope");
+        assert_eq!(target, "target");
+        assert_eq!(handoff.source_run_id(), "source-run-1");
+        assert_eq!(handoff.source_brain_id(), "source");
+        assert_eq!(handoff.target_brain_id(), "target");
+        assert_eq!(handoff.attempt(), 1);
+        assert_eq!(handoff.context(), "compiler error E0425");
     }
 
     fn stats(brain: &str, attempts: usize, wilson: f64) -> CodeStats {

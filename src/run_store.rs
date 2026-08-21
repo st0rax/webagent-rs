@@ -8,6 +8,156 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
+pub const CROSS_BRAIN_HANDOFF_KIND: &str = "cross_brain_session_handoff";
+pub const CROSS_BRAIN_HANDOFF_VERSION: u32 = 1;
+pub const CROSS_BRAIN_HANDOFF_MAX_CONTEXT_CHARS: usize = 4_000;
+const CROSS_BRAIN_HANDOFF_MAX_ID_CHARS: usize = 160;
+const CROSS_BRAIN_HANDOFF_MAX_BRAIN_CHARS: usize = 80;
+const CROSS_BRAIN_HANDOFF_MAX_ATTEMPT: u32 = 64;
+
+/// Bounded, textual metadata passed between two different brains.
+///
+/// Deliberately has no `conversation_ref`: a cross-brain target gets a new run
+/// and a new provider conversation. Unknown serialized fields are rejected so
+/// a caller cannot smuggle a foreign session reference through this contract.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CrossBrainHandoffEnvelope {
+    kind: String,
+    version: u32,
+    source_run_id: String,
+    source_brain_id: String,
+    target_brain_id: String,
+    attempt: u32,
+    context: String,
+}
+
+impl CrossBrainHandoffEnvelope {
+    pub fn new(
+        source_run_id: &str,
+        source_brain_id: &str,
+        target_brain_id: &str,
+        attempt: u32,
+        context: &str,
+    ) -> Result<Self, String> {
+        let envelope = Self {
+            kind: CROSS_BRAIN_HANDOFF_KIND.to_string(),
+            version: CROSS_BRAIN_HANDOFF_VERSION,
+            source_run_id: source_run_id.trim().to_string(),
+            source_brain_id: source_brain_id.trim().to_string(),
+            target_brain_id: target_brain_id.trim().to_string(),
+            attempt,
+            context: context.trim().to_string(),
+        };
+        envelope.validate()?;
+        Ok(envelope)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.kind != CROSS_BRAIN_HANDOFF_KIND {
+            return Err(format!("Unbekannte Handoff-Art {:?}", self.kind));
+        }
+        if self.version != CROSS_BRAIN_HANDOFF_VERSION {
+            return Err(format!(
+                "Nicht unterstuetzte Handoff-Version {}",
+                self.version
+            ));
+        }
+        validate_bounded_field(
+            "source_run_id",
+            &self.source_run_id,
+            CROSS_BRAIN_HANDOFF_MAX_ID_CHARS,
+        )?;
+        validate_bounded_field(
+            "source_brain_id",
+            &self.source_brain_id,
+            CROSS_BRAIN_HANDOFF_MAX_BRAIN_CHARS,
+        )?;
+        validate_bounded_field(
+            "target_brain_id",
+            &self.target_brain_id,
+            CROSS_BRAIN_HANDOFF_MAX_BRAIN_CHARS,
+        )?;
+        if self.source_brain_id == self.target_brain_id {
+            return Err("Cross-Brain-Handoff erfordert verschiedene Brains".to_string());
+        }
+        if !(1..=CROSS_BRAIN_HANDOFF_MAX_ATTEMPT).contains(&self.attempt) {
+            return Err(format!(
+                "Handoff-attempt muss zwischen 1 und {CROSS_BRAIN_HANDOFF_MAX_ATTEMPT} liegen"
+            ));
+        }
+        validate_bounded_field(
+            "context",
+            &self.context,
+            CROSS_BRAIN_HANDOFF_MAX_CONTEXT_CHARS,
+        )
+    }
+
+    pub fn validate_for(&self, source: &RunMeta, target_brain_id: &str) -> Result<(), String> {
+        self.validate()?;
+        if source.run_id != self.source_run_id {
+            return Err(format!(
+                "Handoff-Quelle erwartet Run {:?}, erhalten {:?}",
+                self.source_run_id, source.run_id
+            ));
+        }
+        if source.brain_id != self.source_brain_id {
+            return Err(format!(
+                "Handoff-Quelle erwartet Brain {:?}, Run gehoert {:?}",
+                self.source_brain_id, source.brain_id
+            ));
+        }
+        if target_brain_id != self.target_brain_id {
+            return Err(format!(
+                "Handoff-Ziel erwartet Brain {:?}, erhalten {:?}",
+                self.target_brain_id, target_brain_id
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn source_run_id(&self) -> &str {
+        &self.source_run_id
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+
+    pub fn source_brain_id(&self) -> &str {
+        &self.source_brain_id
+    }
+
+    pub fn target_brain_id(&self) -> &str {
+        &self.target_brain_id
+    }
+
+    pub fn attempt(&self) -> u32 {
+        self.attempt
+    }
+
+    pub fn context(&self) -> &str {
+        &self.context
+    }
+}
+
+fn validate_bounded_field(name: &str, value: &str, max_chars: usize) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("Handoff-Feld {name} darf nicht leer sein"));
+    }
+    let chars = value.chars().count();
+    if chars > max_chars {
+        return Err(format!(
+            "Handoff-Feld {name} ist mit {chars} Zeichen groesser als das Limit {max_chars}"
+        ));
+    }
+    Ok(())
+}
+
 /// Terminal-Status, die nicht mehr geändert werden können.
 const TERMINAL_STATUSES: &[&str] = &[
     "done",
@@ -151,6 +301,16 @@ impl RunMeta {
     pub fn dir(&self, runs_dir: &Path) -> PathBuf {
         runs_dir.join(&self.run_id)
     }
+
+    pub fn cross_brain_handoff(&self) -> Result<Option<CrossBrainHandoffEnvelope>, String> {
+        let Some(value) = self.extra.get("cross_brain_handoff") else {
+            return Ok(None);
+        };
+        let envelope: CrossBrainHandoffEnvelope = serde_json::from_value(value.clone())
+            .map_err(|e| format!("Ungueltige Cross-Brain-Provenienz in RunMeta: {e}"))?;
+        envelope.validate()?;
+        Ok(Some(envelope))
+    }
 }
 
 pub struct RunStore {
@@ -167,6 +327,29 @@ impl RunStore {
 
     /// Erstellt einen neuen Run.
     pub fn create(&self, brain_id: &str, task: &str) -> Result<RunMeta, String> {
+        self.create_internal(brain_id, task, None)
+    }
+
+    /// Erstellt den frischen Ziel-Run fuer einen validierten Cross-Brain-Handoff.
+    /// Der Quell-Run wird nur zur Provenienzpruefung geladen; seine Browser-
+    /// Konversation und sein sonstiger Zustand werden nicht uebernommen.
+    pub fn create_cross_brain_handoff(
+        &self,
+        brain_id: &str,
+        task: &str,
+        handoff: &CrossBrainHandoffEnvelope,
+    ) -> Result<RunMeta, String> {
+        let source = self.load(handoff.source_run_id())?;
+        handoff.validate_for(&source, brain_id)?;
+        self.create_internal(brain_id, task, Some(handoff))
+    }
+
+    fn create_internal(
+        &self,
+        brain_id: &str,
+        task: &str,
+        handoff: Option<&CrossBrainHandoffEnvelope>,
+    ) -> Result<RunMeta, String> {
         // Einfache Zufalls-ID ohne uuid-Crate: Timestamp + Prozess-ID + Zufallszahl
         let random_suffix = {
             let nanos = SystemTime::now()
@@ -177,7 +360,7 @@ impl RunStore {
             format!("{:08x}", (nanos ^ pid).wrapping_mul(0x9e3779b9))
         };
         let run_id = format!("{}_{}", crate::now_run_stamp(), random_suffix);
-        let meta = RunMeta {
+        let mut meta = RunMeta {
             run_id: run_id.clone(),
             brain_id: brain_id.to_string(),
             task: task.to_string(),
@@ -188,6 +371,13 @@ impl RunStore {
             completed_actions: HashMap::new(),
             extra: HashMap::new(),
         };
+        if let Some(handoff) = handoff {
+            meta.extra.insert(
+                "cross_brain_handoff".to_string(),
+                serde_json::to_value(handoff)
+                    .map_err(|e| format!("Fehler beim Serialisieren des Handoffs: {e}"))?,
+            );
+        }
 
         let run_dir = meta.dir(&self.runs_dir);
         fs::create_dir_all(&run_dir)
@@ -199,6 +389,14 @@ impl RunStore {
 
         self.save_internal(&meta)?;
         self.append_event(&meta, "created", serde_json::json!({"status": meta.status}))?;
+        if let Some(handoff) = handoff {
+            self.append_event(
+                &meta,
+                "cross_brain_handoff_received",
+                serde_json::to_value(handoff)
+                    .map_err(|e| format!("Fehler beim Serialisieren des Handoffs: {e}"))?,
+            )?;
+        }
 
         Ok(meta)
     }
@@ -715,6 +913,91 @@ mod tests {
             crate::now_run_stamp(),
             id
         ))
+    }
+
+    #[test]
+    fn cross_brain_envelope_rejects_same_brain_malformed_and_oversized_input() {
+        assert!(
+            CrossBrainHandoffEnvelope::new("run-1", "alpha", "alpha", 1, "context")
+                .unwrap_err()
+                .contains("verschiedene Brains")
+        );
+        assert!(
+            CrossBrainHandoffEnvelope::new("run-1", "alpha", "beta", 0, "context")
+                .unwrap_err()
+                .contains("attempt")
+        );
+        let oversized = "x".repeat(CROSS_BRAIN_HANDOFF_MAX_CONTEXT_CHARS + 1);
+        assert!(
+            CrossBrainHandoffEnvelope::new("run-1", "alpha", "beta", 1, &oversized)
+                .unwrap_err()
+                .contains("context")
+        );
+
+        let with_foreign_ref = serde_json::json!({
+            "kind": CROSS_BRAIN_HANDOFF_KIND,
+            "version": CROSS_BRAIN_HANDOFF_VERSION,
+            "source_run_id": "run-1",
+            "source_brain_id": "alpha",
+            "target_brain_id": "beta",
+            "attempt": 1,
+            "context": "text only",
+            "conversation_ref": "https://foreign.example/session/1"
+        });
+        assert!(
+            serde_json::from_value::<CrossBrainHandoffEnvelope>(with_foreign_ref).is_err(),
+            "a foreign conversation_ref must not fit the envelope contract"
+        );
+
+        let valid = CrossBrainHandoffEnvelope::new("run-1", "alpha", "beta", 1, "context").unwrap();
+        let mut malformed_kind = valid.clone();
+        malformed_kind.kind = "same_brain_continuation".to_string();
+        assert!(malformed_kind.validate().is_err());
+        let mut malformed_version = valid;
+        malformed_version.version = CROSS_BRAIN_HANDOFF_VERSION + 1;
+        assert!(malformed_version.validate().is_err());
+    }
+
+    #[test]
+    fn cross_brain_target_validates_source_and_persists_provenance_without_session_ref() {
+        let tmp = unique_tmp();
+        let runs_dir = tmp.join("runs");
+        let store = RunStore::new(runs_dir.clone(), tmp.join("logs"));
+        let mut source = store.create("alpha", "source task").unwrap();
+        source.conversation_ref = Some("https://chatgpt.com/c/foreign-source".to_string());
+        store.save(&source).unwrap();
+
+        let wrong_source =
+            CrossBrainHandoffEnvelope::new(&source.run_id, "gamma", "beta", 1, "compiler output")
+                .unwrap();
+        assert!(store
+            .create_cross_brain_handoff("beta", "target task", &wrong_source)
+            .unwrap_err()
+            .contains("Run gehoert"));
+
+        let handoff =
+            CrossBrainHandoffEnvelope::new(&source.run_id, "alpha", "beta", 1, "compiler output")
+                .unwrap();
+        assert!(store
+            .create_cross_brain_handoff("gamma", "target task", &handoff)
+            .unwrap_err()
+            .contains("Handoff-Ziel"));
+
+        let target = store
+            .create_cross_brain_handoff("beta", "target task", &handoff)
+            .unwrap();
+        assert_ne!(target.run_id, source.run_id);
+        assert_eq!(target.brain_id, "beta");
+        assert_eq!(target.conversation_ref, None);
+        assert_eq!(target.cross_brain_handoff().unwrap(), Some(handoff));
+
+        let events =
+            fs::read_to_string(runs_dir.join(&target.run_id).join("events.jsonl")).unwrap();
+        assert!(events.contains("cross_brain_handoff_received"));
+        assert!(events.contains(&source.run_id));
+        assert!(events.contains(CROSS_BRAIN_HANDOFF_KIND));
+
+        fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

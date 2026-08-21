@@ -14,7 +14,7 @@ use crate::loop_guard::{
 use crate::memory::MemoryStore;
 use crate::prompts::autonomous_task_prompt;
 use crate::protocol::{self, Action};
-use crate::run_store::{RunMeta, RunStore};
+use crate::run_store::{CrossBrainHandoffEnvelope, RunMeta, RunStore};
 use crate::transcript::Transcript;
 
 mod action_engine;
@@ -70,6 +70,15 @@ fn session_state_run_status(state: SessionState) -> &'static str {
 /// Nach so vielen reinen Leseaktionen ohne erfolgreichen Datei-Write wird das
 /// Brain aus variierender Exploration in die Umsetzung geschoben.
 const READ_BUDGET_ACTIONS: u32 = 5;
+
+enum RunStart<'a> {
+    Fresh,
+    Resume {
+        run_id: &'a str,
+        continuation: Option<&'a str>,
+    },
+    CrossBrain(&'a CrossBrainHandoffEnvelope),
+}
 
 /// AgentController orchestriert Brain + Executor im Plan/Act/Observe-Loop.
 pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
@@ -1065,7 +1074,31 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         headless: bool,
         opts: RunOptions,
     ) -> Result<RunMeta, String> {
-        self.run_with_continuation(task, brain_id, resume_id, None, headless, opts)
+        let start = resume_id.map_or(RunStart::Fresh, |run_id| RunStart::Resume {
+            run_id,
+            continuation: None,
+        });
+        self.run_with_continuation(task, brain_id, start, headless, opts)
+    }
+
+    /// Startet einen neuen Ziel-Run aus einem validierten Cross-Brain-Handoff.
+    /// Anders als [`Self::continue_run`] wird weder der Quell-Run fortgesetzt
+    /// noch dessen `conversation_ref` wiederhergestellt.
+    pub fn run_cross_brain_handoff(
+        &mut self,
+        task: &str,
+        brain_id: &str,
+        handoff: &CrossBrainHandoffEnvelope,
+        headless: bool,
+        opts: RunOptions,
+    ) -> Result<RunMeta, String> {
+        self.run_with_continuation(
+            task,
+            brain_id,
+            RunStart::CrossBrain(handoff),
+            headless,
+            opts,
+        )
     }
 
     /// Setzt einen bestehenden Run mit einer konkreten neuen Beobachtung fort.
@@ -1086,8 +1119,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         self.run_with_continuation(
             "",
             brain_id,
-            Some(run_id),
-            Some(instruction),
+            RunStart::Resume {
+                run_id,
+                continuation: Some(instruction),
+            },
             headless,
             opts,
         )
@@ -1097,8 +1132,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         &mut self,
         task: &str,
         brain_id: &str,
-        resume_id: Option<&str>,
-        continuation: Option<&str>,
+        start: RunStart<'_>,
         headless: bool,
         opts: RunOptions,
     ) -> Result<RunMeta, String> {
@@ -1110,6 +1144,15 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         self.shell_reads_since_write = 0;
         self.read_budget_warned = false;
         self.no_change_nudges = 0;
+
+        let (resume_id, continuation, handoff) = match start {
+            RunStart::Fresh => (None, None, None),
+            RunStart::Resume {
+                run_id,
+                continuation,
+            } => (Some(run_id), continuation, None),
+            RunStart::CrossBrain(handoff) => (None, None, Some(handoff)),
+        };
 
         let (mut meta, mut transcript, task) = if let Some(rid) = resume_id {
             let meta = self.run_store.load(rid)?;
@@ -1123,7 +1166,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             let task = meta.task.clone();
             (meta, transcript, task)
         } else {
-            let meta = self.run_store.create(brain_id, task)?;
+            let meta = match handoff {
+                Some(handoff) => self
+                    .run_store
+                    .create_cross_brain_handoff(brain_id, task, handoff)?,
+                None => self.run_store.create(brain_id, task)?,
+            };
             let transcript = Transcript::new(&meta, &runs_dir);
             (meta, transcript, task.to_string())
         };
@@ -2114,6 +2162,49 @@ mod tests {
         assert_eq!(
             reloaded.conversation_ref,
             Some("https://example.test/chat/new".to_string())
+        );
+    }
+
+    #[test]
+    fn cross_brain_handoff_starts_fresh_run_without_restoring_source_conversation() {
+        let data_dir = unique_data_dir();
+        let store = RunStore::new(data_dir.join("runs"), data_dir.join("logs"));
+        let mut source = store.create("source", "source task").unwrap();
+        source.conversation_ref = Some("https://chatgpt.com/c/source-session".to_string());
+        store.save(&source).unwrap();
+        let handoff = CrossBrainHandoffEnvelope::new(
+            &source.run_id,
+            "source",
+            "mock",
+            1,
+            "cargo test failed with E0425",
+        )
+        .unwrap();
+
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let messages = brain.messages.clone();
+        let restore_calls = brain.restore_calls.clone();
+        let new_chat_calls = brain.new_chat_calls.clone();
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
+        let target_task = format!(
+            "Implement target task\n\nBounded handoff context:\n{}",
+            handoff.context()
+        );
+
+        let target = controller
+            .run_cross_brain_handoff(&target_task, "mock", &handoff, false, RunOptions::default())
+            .unwrap();
+
+        assert_ne!(target.run_id, source.run_id);
+        assert!(restore_calls.borrow().is_empty());
+        assert!(*new_chat_calls.borrow() >= 1);
+        assert!(messages.borrow()[0].contains(handoff.context()));
+        assert_eq!(target.cross_brain_handoff().unwrap(), Some(handoff.clone()));
+        assert_ne!(target.conversation_ref, source.conversation_ref);
+        assert_eq!(
+            store.load(&source.run_id).unwrap().conversation_ref,
+            source.conversation_ref
         );
     }
 
