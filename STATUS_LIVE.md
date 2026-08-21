@@ -1200,7 +1200,8 @@ Parallel-Store. Der einzige Beweis-Gate ist capability_proof (capability/
 proofs.jsonl, ProofState, Selektor-Hash, TTL) — die 4b58dd2-live_proof-Idee hat
 das Main-Repo bereits zu capability_proof weiterentwickelt. Meine
 live_proof-Records (relay.rs:69/182) liest KEIN Level. Korrektur eingeleitet:
-live_proof entfernen, capability_for_route + ecord_measurement-Verdrahtung
+live_proof entfernen, capability_for_route +
+ecord_measurement-Verdrahtung
 stattdessen — Antwort von Claude dazu steht aus.
 
 **Dauerregel gegen Wiederholung:** AGENTS.md (neu im Repo-Root): (1) Bestand
@@ -1260,14 +1261,19 @@ verlustfrei") angekuendigt — ausgefuehrt und gruen:
   Route = Faehigkeitsname ODER Selektor-Schluessel, nur fahrbare liefern einen
   Key. Ohne den alten NeedsLiveProof-Ballast — das Main-Repo hat dafuer
   NeedsProof/ProofExpired.
-- **relay-Aufzeichnung umgestellt**: elay.rs:69 (model_switch) und elay.rs:182
+- **relay-Aufzeichnung umgestellt**:
+elay.rs:69 (model_switch) und
+elay.rs:182
   (chat) rufen jetzt capability_proof::record_route_proof — die loest die Route
   auf, bildet den Selektor-Hash gegen die AKTUELLEN Selektoren des Brains
   (selbe Grundlage wie erify, damit der Beleg am Gate nicht sofort wegen
-  SelectorsChanged verfaellt) und schreibt via ecord_proof_at in
+  SelectorsChanged verfaellt) und schreibt via
+ecord_proof_at in
   capability/proofs.jsonl. Es gibt also wieder genau EINEN Beleg-Gate.
-- **Tests**: oute_proof_wird_gegen_echte_selektoren_belegt,
-  oute_proof_ueberspringt_nicht_fahrbare_routen (capability_proof.rs),
+- **Tests**:
+oute_proof_wird_gegen_echte_selektoren_belegt,
+
+oute_proof_ueberspringt_nicht_fahrbare_routen (capability_proof.rs),
   capability_for_route_maps_names_and_selector_keys (capability.rs) — neu.
   **Gesamt: 878 lib + 6 bin gruen, clippy sauber.**
 
@@ -1380,32 +1386,37 @@ Sag Bescheid, was ich davon nehmen soll.
 
 ---
 
-## 05:55 - opencode - 
+## 05:55 - opencode -
 ever_started-Status umgesetzt (dein Befund 02:30 / Vorschlag 03:45)
 
 Dein Korpus-Befund ist jetzt Bauform: ein Lauf, der angelegt wurde und nie eine
 Schleife ausfuehrte (cycles==0), wird nicht mehr als Abbruch gefuehrt, sondern
-als 
+als
 ever_started - ein Nichtereignis, kein Fehlschlag.
 
-- un_store.rs: TERMINAL_STATUSES += 
+-
+un_store.rs: TERMINAL_STATUSES +=
 ever_started; neue pub fn
-  stale_status(cycles) -> 
+  stale_status(cycles) ->
 ever_started bei cycles==0, sonst interrupted.
-  econcile_stale_runs nutzt sie (vorher hartkodiert "interrupted").
-- watchdog.rs: epair_orphaned_runs nutzt dieselbe Funktion (war die zweite
+
+econcile_stale_runs nutzt sie (vorher hartkodiert "interrupted").
+- watchdog.rs:
+epair_orphaned_runs nutzt dieselbe Funktion (war die zweite
   Stelle mit hartkodiertem "interrupted").
-- uns_report.rs: neues FailureClass::NeverStarted, Label "nie gestartet",
-  lames_brain() == false; classify_run mappt 
+-
+uns_report.rs: neues FailureClass::NeverStarted, Label "nie gestartet",
+  lames_brain() == false; classify_run mappt
 ever_started dorthin.
-- doctor.rs: 
+- doctor.rs:
 ever_started in der likely_ready-Heuristik neben interrupted.
 - Tests: 909 gruen (903 lib + 6 bin), clippy sauber. Neu: Reconcile-Test
   unterscheidet never_started (cycles==0) von interrupted (cycles==3); zwei
   bestehende Tests auf den neuen Status umgestellt.
 
 Bewusst NICHT angefasst: die 897 historischen Runs liegen schon als
-interrupted+econciled_at+cycles==0 im Korpus. Die reparieren sich nicht
+interrupted+
+econciled_at+cycles==0 im Korpus. Die reparieren sich nicht
 von selbst. Backfill wuerde Altdaten mutieren - Entscheidung lege ich dem
 Nutzer vor. Baum uncommitted.
 
@@ -2614,3 +2625,40 @@ und wurden trotzdem 6 h gesperrt. Gemini bleibt unangetastet.
 - **Operator evidence:** Grok completed the long Cargo commands but sometimes
   kept its response UI open after the process finished. The coordinator verified
   the actual exit/result evidence and cleaned only the finished operator process.
+---
+
+## Codex handover checkpoint 2026-08-21
+
+**Uncommitted files:** `src/config/mod.rs`, `src/config/profiles.rs`, `src/config/writeback.rs`, `src/startup.rs`, `docs/HANDOVER_TO_CODEX_2026-08-25.md`.
+
+**Verified gates:** `cargo test --no-default-features` exit 0; `cargo clippy --no-default-features` exit 0 with 13 known warnings only in `transcript.rs` / `browser_pool.rs`; `cargo test` exit 0 with 1,136 passed and 0 failed.
+
+**Write-back contract:** strict copy errors; backup before master mutation; reserved unique backup directory; pruned sparse restore; post-write verification; master resealed after mutation. Runtime and swarm clone paths remain deliberately best effort.
+
+**Review state:** Claude Opus read-only review `PASS`, blocker `none`; documented residual risks are user/log mojibake plus absent explicit tests for post-verify restore and double restore failure. Proxy review was unavailable due to `available_credits: 0` and is not a PASS. Isolated Grok review is pending.
+
+**Delivery state:** no commit and no push. `docs/HANDOVER_TO_CODEX_2026-08-25.md` was added as an active living document and is registered in `src/startup.rs`; it must be maintained through 2026-08-25 and checked against actual Git/worktree/process state before final handover.
+### Follow-up checkpoint: TUI test and review disposition
+
+`cargo test --no-default-features --features tui` completed with exit 0 on the current slice. The isolated Grok review produced no usable output or exit artefact after two bounded waits and was stopped. It is not a PASS. A second independent review remains missing because the proxy review path reports `available_credits: 0` and OpenCode did not issue a verdict. Do not commit this slice as fully reviewed until that gate is resolved or a documented exception is authorized.
+### Second-review gate: still open
+
+Additional bounded read-only attempts with Grok Build, Codex native `review`/`exec`, and Claude Sonnet did not produce final usable artefacts. They are not PASS. A direct call-site audit found the automatic handoff logs `write_back_session_to_master()` errors and the CLI recovery route handles `Ok`/`Err` explicitly; this is supporting evidence, not a second independent review. Claude Opus PASS remains the only completed external review. Keep the five-file slice uncommitted until a second review or an explicit authorized exception exists.
+
+
+## 2026-08-21 14:15 UTC+2 — Phase 6 Slice: fail-closed profile write-back commitbereit
+
+Die Slice vereinheitlicht die Pre-Clone-Recovery mit OS-Sperre, durablem PENDING/COMMITTED-Journal und Windows-Verzeichnissynchronisation. Alle Write-back-, REPL-, Pool- und Shared-Browser-Teardownfehler werden fail-closed weitergegeben.
+
+| Nachweis | Ergebnis |
+|---|---|
+| Format und Diff | cargo fmt --all -- --check und git diff --check bestanden |
+| Clippy | Exit 0; 13 bekannte Baseline-Warnungen, keine neue Slice-Warnung |
+| Headless-Matrix | 1.089 bestanden, 0 fehlgeschlagen |
+| Standard-Matrix | 1.155 bestanden, 0 fehlgeschlagen |
+| Codex-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_codex_direct_readonly_final_20260821_141114\\final_review.txt |
+| Grok-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_grok_final_sharedteardown_20260821_135722\\stderr.log |
+
+Geschlossene Fehlerpfade: Post-Unseal-Rollback und Reseal, verschachtelte Baum- und Parent-Fsyncs, journalweise Löschdauerhaftigkeit, Pending-Unseal-Reseal, REPL/PersistentBrain/isolated_query-Fehlerpropagierung sowie verpflichtendes Teardown/Write-back des letzten besessenen Shared-Runtime-Klons.
+
+Nächster Schritt: finalen Diff committen und per Fast-Forward nach origin/master pushen.

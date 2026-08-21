@@ -77,7 +77,152 @@ pub fn copy_dir_sparse(src: &PathBuf, dst: &PathBuf) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Strikte Variante der Sparse-Kopie fuer irreversible Write-back-Pfade.
+///
+/// Laufzeit- und Swarm-Klone duerfen bewusst best effort bleiben: Lock-Dateien
+/// und noch offene WebView-Handles werden dort neu erzeugt. Beim Ueberschreiben
+/// des Master-Profils waere ein stiller Teilfehler dagegen Datenverlust. Diese
+/// Variante propagiert deshalb jeden nicht absichtlich uebersprungenen I/O-Fehler.
+pub(super) fn copy_dir_sparse_strict(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    copy_sparse_rec_strict(src, dst, 0)?;
+    clear_readonly_recursive_strict(dst)?;
+    Ok(())
+}
+
+/// Stellt einen zuvor strikt gesicherten Sparse-Profilzustand vollstÃ¤ndig wieder her.
+///
+/// Der normale strikte Kopierer arbeitet absichtlich als Overlay. Beim Rollback
+/// wÃ¤re das unzureichend: Artefakte, die der fehlgeschlagene Runtime-Write-back
+/// zusÃ¤tzlich angelegt hat, dÃ¼rften nicht neben dem Backup bestehen bleiben.
+pub(super) fn restore_sparse_backup(src: &Path, dst: &Path) -> std::io::Result<()> {
+    clear_sparse_targets(dst, 0)?;
+    copy_dir_sparse_strict(src, dst)
+}
+
+fn clear_sparse_targets(dir: &Path, depth: usize) -> std::io::Result<()> {
+    if depth > 6 || !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let ty = entry.file_type()?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let hit = SPARSE_COPY_WHITELIST
+            .iter()
+            .any(|whitelist| whitelist.eq_ignore_ascii_case(&name));
+        if ty.is_dir() {
+            if SPARSE_SKIP_DIRS
+                .iter()
+                .any(|skip| skip.eq_ignore_ascii_case(&name))
+            {
+                continue;
+            }
+            if hit {
+                std::fs::remove_dir_all(path)?;
+            } else {
+                clear_sparse_targets(&path, depth + 1)?;
+            }
+        } else if hit {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+fn copy_dir_all_strict(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let target = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all_strict(&entry.path(), &target)?;
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        if name.contains("lock")
+            || name == "singletoncookie"
+            || name == "singletonsocket"
+            || name.ends_with(".lock")
+            || name == "lockfile"
+        {
+            continue;
+        }
+        std::fs::copy(entry.path(), target)?;
+    }
+    Ok(())
+}
+
+fn copy_sparse_rec_strict(src: &Path, dst: &Path, depth: usize) -> std::io::Result<()> {
+    if depth > 6 {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let target = dst.join(entry.file_name());
+        let hit = SPARSE_COPY_WHITELIST
+            .iter()
+            .any(|whitelist| whitelist.eq_ignore_ascii_case(&name));
+        if ty.is_dir() {
+            if SPARSE_SKIP_DIRS
+                .iter()
+                .any(|skip| skip.eq_ignore_ascii_case(&name))
+            {
+                continue;
+            }
+            if hit {
+                copy_dir_all_strict(&entry.path(), &target)?;
+            } else {
+                copy_sparse_rec_strict(&entry.path(), &target, depth + 1)?;
+            }
+            continue;
+        }
+        let lower = name.to_lowercase();
+        if lower.contains("lock")
+            || lower == "singletoncookie"
+            || lower == "singletonsocket"
+            || lower.ends_with(".lock")
+            || lower == "lockfile"
+        {
+            continue;
+        }
+        if hit {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
 /// Entfernt das Read-only-Attribut rekursiv (Klon muss beschreibbar sein).
+/// Strict counterpart to the best-effort runtime clone permission reset.
+#[cfg(windows)]
+fn clear_readonly_recursive_strict(dir: &Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            clear_readonly_recursive_strict(&path)?;
+        }
+        let metadata = entry.metadata()?;
+        if metadata.permissions().readonly() {
+            let mut permissions = metadata.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            permissions.set_readonly(false);
+            std::fs::set_permissions(path, permissions)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn clear_readonly_recursive_strict(_dir: &Path) -> std::io::Result<()> {
+    Ok(())
+}
 #[cfg(windows)]
 fn clear_readonly_recursive(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else {

@@ -1,8 +1,11 @@
+use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
+
+use fs2::FileExt;
 use std::sync::OnceLock;
 
 use super::paths::{profiles_dir, shared_profile_dir};
-use super::profiles::copy_dir_sparse;
+use super::profiles::{copy_dir_sparse, copy_dir_sparse_strict, restore_sparse_backup};
 use super::selectors::encapsulated_profile_dir;
 
 /// Laufzeit-Kopie des Master-Profils, einmal pro Prozess (`OnceLock`).
@@ -19,19 +22,25 @@ use super::selectors::encapsulated_profile_dir;
 /// Start erneut aus dem unangetasteten Master.
 static RUNTIME_POOL_PROFILE: OnceLock<PathBuf> = OnceLock::new();
 
-pub fn runtime_pool_profile_dir() -> PathBuf {
+pub fn runtime_pool_profile_dir() -> Result<PathBuf, String> {
     if let Some(p) = RUNTIME_POOL_PROFILE.get() {
-        return p.clone();
+        return Ok(p.clone());
     }
     let master = shared_profile_dir();
+    let _lock = prepare_master_for_runtime_clone(&master)?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos()
         .to_string();
     let dst = encapsulated_profile_dir("pool", &stamp);
-    let copied = copy_dir_sparse(&master, &dst).is_ok();
-    if copied && has_login_artifacts(&dst) {
+    copy_dir_sparse(&master, &dst).map_err(|error| {
+        format!(
+            "[master-profile] Laufzeit-Kopie von {:?} fehlgeschlagen: {error}",
+            master
+        )
+    })?;
+    if has_login_artifacts(&dst) {
         crate::bench_events::eprint_line(&format!(
             "[master-profile] Laufzeit-Kopie des Hauptprofils → {:?}",
             dst
@@ -57,7 +66,7 @@ pub fn runtime_pool_profile_dir() -> PathBuf {
         ));
     }
     let _ = RUNTIME_POOL_PROFILE.set(dst.clone());
-    dst
+    Ok(RUNTIME_POOL_PROFILE.get().cloned().unwrap_or(dst))
 }
 
 /// Spielt die aufgefrischte Sitzung aus der Laufzeit-Kopie ins Master zurueck.
@@ -108,26 +117,60 @@ pub fn write_back_session_to_master() -> Result<(), String> {
 /// Lauf, der frueh scheitert oder mit leerem Profil startet, darf das Master
 /// nicht ueberschreiben — sonst zerstoert genau dieser Rueckweg die
 /// Anmeldung, die er schuetzen soll.
+/// Writes a verified runtime session back to the shared master profile.
+///
+/// The runtime source is validated before a backup name is reserved. Invalid or
+/// empty clones therefore cannot leave misleading empty backup directories.
 pub fn write_back_dir_to_master(dir: &Path) -> Result<(), String> {
+    let master = shared_profile_dir();
+    let _lock = acquire_write_back_lock(&master)?;
+    recover_pending_write_back_transaction(&master)?;
+    validate_write_back_source(dir)?;
+    let backup = reserve_unique_backup_dir(&master)?;
+    write_back_dir_to_master_locked(dir, &master, &backup)
+}
+
+/// Testable write-back entry point with explicit paths. It takes the same
+/// fail-closed lock as the production path.
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
+pub(crate) fn prepare_shared_profile_for_clone() -> Result<WriteBackLock, String> {
+    let master = shared_profile_dir();
+    prepare_master_for_runtime_clone(&master)
+}
+
+pub(crate) fn prepare_master_for_runtime_clone(master: &Path) -> Result<WriteBackLock, String> {
+    let lock = acquire_write_back_lock(master)?;
+    recover_pending_write_back_transaction(master)?;
+    Ok(lock)
+}
+#[allow(dead_code)]
+pub(crate) fn write_back_dir_to_master_at(
+    dir: &Path,
+    master: &Path,
+    backup: &Path,
+) -> Result<(), String> {
+    let _lock = acquire_write_back_lock(master)?;
+    recover_pending_write_back_transaction(master)?;
+    write_back_dir_to_master_locked(dir, master, backup)
+}
+
+fn validate_write_back_source(dir: &Path) -> Result<(), String> {
     if !dir.is_dir() {
         return Err(format!("{:?} ist kein Verzeichnis", dir));
     }
     if !has_login_artifacts(dir) {
         return Err(format!(
-            "Laufzeit-Kopie {:?} hat keine Login-Artefakte — nicht zurueckgeschrieben, \
-             sonst wuerde das Master ueberschrieben",
+            "Laufzeit-Kopie {:?} hat keine Login-Artefakte - nicht zurueckschreiben",
             dir
         ));
     }
-    let master = shared_profile_dir();
+    Ok(())
+}
 
-    // Zweite, schaerfere Bedingung: die Kopie darf nicht AERMER sein als das
-    // Master. Die blosse Existenz von Login-Dateien genuegt nicht — eine Kopie
-    // mit einer einzigen Sitzung besteht diese Pruefung und wuerde ein Master
-    // mit acht Sitzungen ueberschreiben. Gemessen am 07.08.2026: `Cookies` fiel
-    // von 108 KB auf 40 KB, danach meldete der halbe Lauf „Login noetig".
+fn write_back_dir_to_master_locked(dir: &Path, master: &Path, backup: &Path) -> Result<(), String> {
+    validate_write_back_source(dir)?;
     let source_weight = login_artifact_weight(dir);
-    let target_weight = login_artifact_weight(&master);
+    let target_weight = login_artifact_weight(master);
     if !write_back_is_safe(source_weight, target_weight) {
         let msg = format!(
             "[master-profile] Rueckschreiben ABGELEHNT: Laufzeit-Kopie traegt {} KB \
@@ -141,14 +184,7 @@ pub fn write_back_dir_to_master(dir: &Path) -> Result<(), String> {
         return Err(msg);
     }
 
-    // Dritte, pro-Brain Bedingung: eine Kopie, die eine Sitzung verloren hat,
-    // darf das Master mit dieser Sitzung nicht ueberschreiben. Gemessen am
-    // 08.08.2026: kimi und chatgpt waren im Master angemeldet (kanonische
-    // Profile trugen kimi-auth bzw. session-token), die Laufzeit-Kopie hatte
-    // die Cookies verloren - und der Pool meldete "Login nötig" trotz
-    // gueltiger Session. Das Gewichts-Mass sieht den Verlust eines einzelnen
-    // Brains nicht.
-    let lost = runtime_lost_sessions(&cookies_db_bytes(&master), &cookies_db_bytes(dir));
+    let lost = runtime_lost_sessions(&cookies_db_bytes(master), &cookies_db_bytes(dir));
     if !lost.is_empty() {
         let msg = format!(
             "[master-profile] Rueckschreiben ABGELEHNT: Laufzeit-Kopie hat die Sitzung \
@@ -161,43 +197,538 @@ pub fn write_back_dir_to_master(dir: &Path) -> Result<(), String> {
         return Err(msg);
     }
 
-    // Vor dem Ueberschreiben sichern. Auch eine bestandene Pruefung kann
-    // danebenliegen (Groesse ist ein Mass, kein Beweis) — und eine verlorene
-    // Anmeldung kostet den Menschen davor echte Zeit. Die Sicherung ist die
-    // Versicherung gegen genau diesen Irrtum.
-    let backup = master.with_file_name(format!(
-        "shared.session-bak-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0)
-    ));
-    if let Err(e) = copy_dir_sparse(&master, &backup) {
-        crate::bench_events::emit(
-            crate::bench_events::Level::Warn,
-            None,
-            &format!("[master-profile] Sicherung vor dem Rueckschreiben fehlgeschlagen: {e}"),
+    // Even a zero-weight master can contain sparse artifacts. Snapshot it before
+    // every mutation so failure always has a restore source.
+    if !master.exists() {
+        std::fs::create_dir_all(master)
+            .map_err(|error| format!("[master-profile] master create failed: {error}"))?;
+    }
+    copy_dir_sparse_strict(master, backup).map_err(|error| {
+        let msg = format!(
+            "[master-profile] Sicherung vor dem Rueckschreiben fehlgeschlagen; Master bleibt unveraendert: {error}"
+        );
+        crate::bench_events::emit(crate::bench_events::Level::Warn, None, &msg);
+        msg
+    })?;
+
+    set_profile_readonly_strict(backup, false)?;
+    sync_profile_tree_and_parent(backup)?;
+    begin_write_back_transaction(master, backup)?;
+    if let Err(unseal_error) = set_profile_readonly_strict(master, false) {
+        // A strict unseal can fail after changing a prefix of files. Always
+        // attempt to reseal the complete tree before returning that failure.
+        let detail = match set_profile_readonly_strict(master, true) {
+            Ok(()) => {
+                format!("Master vor Write-back nicht vollstaendig entsiegelbar: {unseal_error}")
+            }
+            Err(reseal_error) => format!(
+                "Master vor Write-back nicht vollstaendig entsiegelbar: {unseal_error}; Reseal ebenfalls fehlgeschlagen: {reseal_error}"
+            ),
+        };
+        crate::bench_events::emit(crate::bench_events::Level::Warn, None, &detail);
+        return Err(detail);
+    }
+    let copy_result = copy_dir_sparse_strict(dir, master).map_err(|error| error.to_string());
+    // Copy already mutated an unsealed master. Any durability failure here must
+    // roll back and reseal; `?` would leave a partial unsealed tree.
+    let sync_result = sync_profile_tree_and_parent(master);
+    let reseal_result = set_profile_readonly_strict(master, true);
+    if let Some(error) = copy_result.err().or_else(|| sync_result.err()) {
+        let detail = match reseal_result {
+            Ok(()) => error,
+            Err(reseal_error) => format!("{error}; reseal failed: {reseal_error}"),
+        };
+        return fail_and_restore_master(master, backup, detail);
+    }
+    if let Err(reseal_error) = reseal_result {
+        return fail_and_restore_master(master, backup, format!("reseal failed: {reseal_error}"));
+    }
+    let post_weight = login_artifact_weight(master);
+    let missing_after = runtime_lost_sessions(&cookies_db_bytes(dir), &cookies_db_bytes(master));
+    if !has_login_artifacts(master)
+        || !write_back_is_safe(post_weight, source_weight)
+        || !missing_after.is_empty()
+    {
+        return fail_and_restore_master(
+            master,
+            backup,
+            format!(
+                "Post-Verify fehlgeschlagen ({} KB statt mindestens {} KB, fehlende Nachweise: {})",
+                post_weight / 1024,
+                (source_weight as f64 * WRITE_BACK_MIN_RATIO / 1024.0).ceil() as u64,
+                if missing_after.is_empty() {
+                    "keine".to_string()
+                } else {
+                    missing_after.join(", ")
+                }
+            ),
         );
     }
 
-    unseal_master_profile();
-    let result = copy_dir_sparse(&dir.to_path_buf(), &master).map_err(|e| e.to_string());
-    seal_master_profile();
-    match &result {
-        Ok(()) => crate::bench_events::emit(
-            crate::bench_events::Level::Info,
-            None,
-            "[master-profile] aufgefrischte Sitzung ins Hauptprofil zurueckgeschrieben",
-        ),
-        Err(e) => crate::bench_events::emit(
-            crate::bench_events::Level::Warn,
-            None,
-            &format!("[master-profile] Rueckschreiben fehlgeschlagen: {e}"),
-        ),
-    }
-    result
+    crate::bench_events::emit(
+        crate::bench_events::Level::Info,
+        None,
+        "[master-profile] aufgefrischte Sitzung ins Hauptprofil zurueckgeschrieben",
+    );
+    commit_write_back_transaction(master, backup)?;
+    clear_write_back_transaction(master)?;
+    Ok(())
 }
 
+fn restore_master_durably(master: &Path, backup: &Path) -> Result<(), String> {
+    restore_sparse_backup(backup, master).map_err(|error| error.to_string())?;
+    // Content must be durable before reseal or journal clear; file fsync after
+    // reseal can fail on Windows because files are read-only.
+    sync_profile_tree_and_parent(master)
+}
+
+fn fail_and_restore_master(master: &Path, backup: &Path, error: String) -> Result<(), String> {
+    let unseal = set_profile_readonly_strict(master, false);
+    let restore = match unseal {
+        Ok(()) => restore_master_durably(master, backup),
+        Err(unseal_error) => Err(format!("unseal before restore failed: {unseal_error}")),
+    };
+    let reseal = set_profile_readonly_strict(master, true);
+    match (restore, reseal) {
+        (Ok(()), Ok(())) => {
+            let msg = format!("[master-profile] Rueckschreiben verworfen ({error}); Master aus Backup wiederhergestellt");
+            crate::bench_events::emit(crate::bench_events::Level::Warn, None, &msg);
+            clear_write_back_transaction(master)?;
+            Err(msg)
+        }
+        (Err(restore_error), Ok(())) => {
+            let msg = format!("[master-profile] Rueckschreiben fehlgeschlagen ({error}); Backup-Restore ebenfalls fehlgeschlagen: {restore_error}");
+            crate::bench_events::emit(crate::bench_events::Level::Warn, None, &msg);
+            Err(msg)
+        }
+        (Ok(()), Err(reseal_error)) => {
+            let msg = format!("[master-profile] Rueckschreiben fehlgeschlagen ({error}); Restore gelang, Master konnte aber nicht versiegelt werden: {reseal_error}");
+            crate::bench_events::emit(crate::bench_events::Level::Warn, None, &msg);
+            Err(msg)
+        }
+        (Err(restore_error), Err(reseal_error)) => {
+            let msg = format!("[master-profile] Rueckschreiben fehlgeschlagen ({error}); Restore: {restore_error}; Versiegelung: {reseal_error}");
+            crate::bench_events::emit(crate::bench_events::Level::Warn, None, &msg);
+            Err(msg)
+        }
+    }
+}
+/// OS-managed cross-process lock for the irreversible shared-profile mutation.
+/// The advisory file lock is released by the operating system on process exit,
+/// so no stale-directory heuristic can steal a fresh writer or wedge recovery.
+pub(crate) struct WriteBackLock {
+    file: File,
+}
+
+impl Drop for WriteBackLock {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
+    }
+}
+
+fn acquire_write_back_lock(master: &Path) -> Result<WriteBackLock, String> {
+    let path = master.with_file_name("shared.session-writeback.lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| {
+            format!(
+                "[master-profile] Write-back-Sperre {:?} nicht oeffenbar: {error}",
+                path
+            )
+        })?;
+    file.try_lock_exclusive().map_err(|error| {
+        format!(
+            "[master-profile] Rueckschreiben gesperrt unter {:?}: {error}",
+            path
+        )
+    })?;
+    Ok(WriteBackLock { file })
+}
+
+fn write_back_journal_pending_path(master: &Path) -> PathBuf {
+    master.with_file_name("shared.session-writeback.journal.pending")
+}
+
+fn write_back_journal_committed_path(master: &Path) -> PathBuf {
+    master.with_file_name("shared.session-writeback.journal.committed")
+}
+
+fn sync_profile_tree(dir: &Path) -> Result<(), String> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        if entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_dir()
+        {
+            sync_profile_tree(&path)?;
+        } else {
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path)
+                .and_then(|file| file.sync_all())
+                .map_err(|error| {
+                    format!(
+                        "[master-profile] Datei {:?} nicht synchronisierbar: {error}",
+                        path
+                    )
+                })?;
+        }
+    }
+    // Directory entries (creates, replaces, deletes) are only durable after the
+    // directory itself is fsynced. Recurse first, then fsync this directory.
+    sync_parent_dir(dir)
+}
+
+fn sync_profile_tree_and_parent(dir: &Path) -> Result<(), String> {
+    sync_profile_tree(dir)?;
+    match dir.parent() {
+        Some(parent) => sync_parent_dir(parent),
+        None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod sync_test_hooks {
+    use std::cell::RefCell;
+    use std::path::{Path, PathBuf};
+
+    #[derive(Default)]
+    struct State {
+        synced: Vec<PathBuf>,
+        fail: Option<(PathBuf, i8)>,
+        fail_after_matches: usize,
+    }
+
+    thread_local! {
+        static STATE: RefCell<State> = RefCell::new(State::default());
+    }
+
+    pub struct Guard;
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset();
+        }
+    }
+
+    pub fn install() -> Guard {
+        reset();
+        Guard
+    }
+
+    fn reset() {
+        STATE.with(|state| *state.borrow_mut() = State::default());
+    }
+
+    pub fn fail_once(path: PathBuf) {
+        STATE.with(|state| state.borrow_mut().fail = Some((path, 1)));
+    }
+
+    pub fn fail_always(path: PathBuf) {
+        STATE.with(|state| state.borrow_mut().fail = Some((path, -1)));
+    }
+
+    pub fn fail_on_nth(path: PathBuf, call: usize) {
+        STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.fail = Some((path, 1));
+            state.fail_after_matches = call.saturating_sub(1);
+        });
+    }
+
+    pub fn synced() -> Vec<PathBuf> {
+        STATE.with(|state| state.borrow().synced.clone())
+    }
+
+    pub fn observe(path: &Path) -> Result<(), String> {
+        STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.synced.push(path.to_path_buf());
+            let matches = state
+                .fail
+                .as_ref()
+                .is_some_and(|(fail_path, remaining)| fail_path == path && *remaining != 0);
+            if matches && state.fail_after_matches > 0 {
+                state.fail_after_matches -= 1;
+                return Ok(());
+            }
+            let hit = matches;
+            if !hit {
+                return Ok(());
+            }
+            if let Some((_, remaining)) = state.fail.as_mut() {
+                if *remaining > 0 {
+                    *remaining -= 1;
+                }
+            }
+            if state
+                .fail
+                .as_ref()
+                .is_some_and(|(_, remaining)| *remaining == 0)
+            {
+                state.fail = None;
+            }
+            Err(format!(
+                "[master-profile] Dateibaum {:?} nicht synchronisierbar: injected",
+                path
+            ))
+        })
+    }
+}
+
+fn sync_parent_dir(path: &Path) -> Result<(), String> {
+    #[cfg(test)]
+    sync_test_hooks::observe(path)?;
+    sync_directory_durably(path)
+}
+
+#[cfg(windows)]
+fn sync_directory_durably(path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, FlushFileBuffers, FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // SAFETY: `wide` is NUL-terminated and lives through the Win32 calls; the
+    // acquired directory handle is closed on every path below.
+    let handle = unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(format!(
+            "[master-profile] Journal-Verzeichnis {:?} nicht oeffenbar: {}",
+            path,
+            std::io::Error::last_os_error()
+        ));
+    }
+    let flushed = unsafe { FlushFileBuffers(handle) } != 0;
+    let close = unsafe { CloseHandle(handle) } != 0;
+    if !flushed {
+        return Err(format!(
+            "[master-profile] Journal-Verzeichnis {:?} nicht synchronisierbar: {}",
+            path,
+            std::io::Error::last_os_error()
+        ));
+    }
+    if !close {
+        return Err(format!(
+            "[master-profile] Journal-Verzeichnis {:?} nicht schliessbar: {}",
+            path,
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn sync_directory_durably(path: &Path) -> Result<(), String> {
+    File::open(path)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| {
+            format!(
+                "[master-profile] Journal-Verzeichnis {:?} nicht synchronisierbar: {error}",
+                path
+            )
+        })
+}
+
+fn durable_publish_journal(path: &Path, backup: &Path) -> Result<(), String> {
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    let payload = format!("{}\n", backup.to_string_lossy());
+    let write_result = (|| -> std::io::Result<()> {
+        let mut file = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        use std::io::Write;
+        file.write_all(payload.as_bytes())?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    })();
+    if let Err(error) = write_result {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!(
+            "[master-profile] Journal {:?} nicht dauerhaft publizierbar: {error}",
+            path
+        ));
+    }
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| {
+            format!(
+                "[master-profile] Journal {:?} nicht synchronisierbar: {error}",
+                path
+            )
+        })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("[master-profile] Journal {:?} ohne Elternverzeichnis", path))?;
+    sync_parent_dir(parent)?;
+    Ok(())
+}
+fn begin_write_back_transaction(master: &Path, backup: &Path) -> Result<(), String> {
+    durable_publish_journal(&write_back_journal_pending_path(master), backup)
+}
+
+fn commit_write_back_transaction(master: &Path, backup: &Path) -> Result<(), String> {
+    durable_publish_journal(&write_back_journal_committed_path(master), backup)
+}
+
+fn remove_write_back_journal_durably(path: &Path, parent: &Path) -> Result<(), String> {
+    let backup = match std::fs::read_to_string(path) {
+        Ok(text) => Some(PathBuf::from(text.lines().next().unwrap_or_default())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            return Err(format!(
+                "[master-profile] Write-back-Journal {:?} vor Cleanup nicht lesbar: {error}",
+                path
+            ))
+        }
+    };
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "[master-profile] Write-back-Journal {:?} nicht entfernbar: {error}",
+                path
+            ))
+        }
+    }
+    if let Err(sync_error) = sync_parent_dir(parent) {
+        let Some(backup) = backup else {
+            return Err(sync_error);
+        };
+        return match durable_publish_journal(path, &backup) {
+            Ok(()) => Err(format!(
+                "{sync_error}; Recovery-Journal {:?} wurde wiederhergestellt",
+                path
+            )),
+            Err(restore_error) => Err(format!(
+                "{sync_error}; Recovery-Journal {:?} konnte nicht wiederhergestellt werden: {restore_error}",
+                path
+            )),
+        };
+    }
+    Ok(())
+}
+
+fn clear_write_back_transaction(master: &Path) -> Result<(), String> {
+    let parent = master.parent().ok_or_else(|| {
+        format!(
+            "[master-profile] Master {:?} ohne Elternverzeichnis",
+            master
+        )
+    })?;
+    let pending = write_back_journal_pending_path(master);
+    remove_write_back_journal_durably(&pending, parent)?;
+
+    let committed = write_back_journal_committed_path(master);
+    remove_write_back_journal_durably(&committed, parent)?;
+    Ok(())
+}
+
+fn recover_pending_write_back_transaction(master: &Path) -> Result<(), String> {
+    let pending = write_back_journal_pending_path(master);
+    let committed = write_back_journal_committed_path(master);
+    // A separately synchronized commit marker is decisive: the verified new
+    // master wins, even if cleanup was interrupted after the commit.
+    if committed.exists() {
+        return clear_write_back_transaction(master);
+    }
+    let backup = match std::fs::read_to_string(&pending) {
+        Ok(text) => PathBuf::from(text.lines().next().unwrap_or_default()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "[master-profile] Write-back-Journal {:?} nicht lesbar: {error}",
+                pending
+            ))
+        }
+    };
+    if !backup.is_dir() {
+        return Err(format!(
+            "[master-profile] Journal-Backup {:?} fehlt",
+            backup
+        ));
+    }
+    if let Err(unseal) = set_profile_readonly_strict(master, false) {
+        // Strict unsealing can fail after making a prefix of the tree writable.
+        // Fail closed by attempting to reseal the complete tree before returning.
+        return match set_profile_readonly_strict(master, true) {
+            Ok(()) => Err(format!(
+                "[master-profile] Crash-Recovery konnte Master nicht entsiegeln: {unseal}"
+            )),
+            Err(reseal) => Err(format!(
+                "[master-profile] Crash-Recovery konnte Master nicht entsiegeln: {unseal}; Reseal ebenfalls fehlgeschlagen: {reseal}"
+            )),
+        };
+    }
+    let restore = restore_master_durably(master, &backup);
+    let reseal = set_profile_readonly_strict(master, true);
+    match (restore, reseal) {
+        (Ok(()), Ok(())) => clear_write_back_transaction(master),
+        (Err(restore), Ok(())) => Err(format!(
+            "[master-profile] Crash-Recovery fehlgeschlagen: {restore}"
+        )),
+        (Ok(()), Err(reseal)) => Err(format!(
+            "[master-profile] Crash-Recovery versiegelt Master nicht: {reseal}"
+        )),
+        (Err(restore), Err(reseal)) => Err(format!(
+            "[master-profile] Crash-Recovery fehlgeschlagen: {restore}; Reseal: {reseal}"
+        )),
+    }
+}
+
+/// Reserviert ein prozess- und zeitlich eindeutiges Backup-Verzeichnis, bevor
+/// der Master-Write-back beginnt. `create_dir` ist die Kollisionssicherung: ein
+/// vorhandenes Backup wird niemals Ã¼berlagert oder wiederverwendet.
+pub(crate) fn reserve_unique_backup_dir(master: &Path) -> Result<PathBuf, String> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    for attempt in 0..128u32 {
+        let candidate =
+            master.with_file_name(format!("shared.session-bak-{nanos}-{pid}-{attempt}"));
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "[master-profile] Sicherungsordner {:?} nicht reservierbar: {error}",
+                    candidate
+                ));
+            }
+        }
+    }
+    Err("[master-profile] kein eindeutiger Sicherungsordner nach 128 Versuchen".to_string())
+}
 /// Gesamtgroesse aller Login-Dateien in `dir` — ein grobes Mass dafuer, wie
 /// viele Sitzungen ein Profil traegt.
 ///
@@ -425,20 +956,125 @@ pub fn unseal_master_profile() {
     set_master_readonly(false);
 }
 
+fn set_profile_readonly_strict(root: &Path, readonly: bool) -> Result<(), String> {
+    if !root.exists() {
+        return Ok(());
+    }
+    if !root.is_dir() {
+        return Err(format!("profile path {:?} is not a directory", root));
+    }
+    let mut files = Vec::new();
+    collect_files_strict(root, &mut files).map_err(|error| error.to_string())?;
+    for file in files {
+        #[cfg(test)]
+        readonly_test_hooks::observe(readonly)?;
+        let metadata = std::fs::metadata(&file).map_err(|error| error.to_string())?;
+        let mut permissions = metadata.permissions();
+        permissions.set_readonly(readonly);
+        std::fs::set_permissions(&file, permissions)
+            .map_err(|error| format!("permissions for {:?} not settable: {error}", file))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod readonly_test_hooks {
+    use std::cell::RefCell;
+
+    #[derive(Default)]
+    struct State {
+        fail_unseal_after: Option<usize>,
+        fail_reseal: bool,
+        reseal_attempted: bool,
+    }
+
+    thread_local! {
+        static STATE: RefCell<State> = RefCell::new(State::default());
+    }
+
+    pub struct Guard;
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            reset();
+        }
+    }
+
+    pub fn install() -> Guard {
+        reset();
+        Guard
+    }
+
+    fn reset() {
+        STATE.with(|state| *state.borrow_mut() = State::default());
+    }
+
+    pub fn fail_unseal_after(successful_files: usize, fail_reseal: bool) {
+        STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            state.fail_unseal_after = Some(successful_files);
+            state.fail_reseal = fail_reseal;
+        });
+    }
+
+    pub fn reseal_attempted() -> bool {
+        STATE.with(|state| state.borrow().reseal_attempted)
+    }
+
+    pub fn observe(readonly: bool) -> Result<(), String> {
+        STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            if readonly {
+                state.reseal_attempted = true;
+                if state.fail_reseal {
+                    state.fail_reseal = false;
+                    return Err("injected reseal permission failure".to_string());
+                }
+                return Ok(());
+            }
+
+            let Some(remaining) = state.fail_unseal_after.as_mut() else {
+                return Ok(());
+            };
+            if *remaining > 0 {
+                *remaining -= 1;
+                return Ok(());
+            }
+            state.fail_unseal_after = None;
+            Err("injected unseal permission failure".to_string())
+        })
+    }
+}
+
+fn collect_files_strict(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_files_strict(&path, out)?;
+        } else {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
 fn set_master_readonly(readonly: bool) {
-    let root = shared_profile_dir();
+    set_profile_readonly(&shared_profile_dir(), readonly);
+}
+
+fn set_profile_readonly(root: &Path, readonly: bool) {
     if !root.is_dir() {
         return;
     }
     let mut files = Vec::new();
-    collect_files(&root, &mut files);
+    collect_files(root, &mut files);
     let mut ok = 0usize;
     let mut failed = 0usize;
-    for f in &files {
-        if let Ok(md) = std::fs::metadata(f) {
-            let mut perms = md.permissions();
-            perms.set_readonly(readonly);
-            if std::fs::set_permissions(f, perms).is_ok() {
+    for file in &files {
+        if let Ok(metadata) = std::fs::metadata(file) {
+            let mut permissions = metadata.permissions();
+            permissions.set_readonly(readonly);
+            if std::fs::set_permissions(file, permissions).is_ok() {
                 ok += 1;
             } else {
                 failed += 1;
@@ -446,7 +1082,8 @@ fn set_master_readonly(readonly: bool) {
         }
     }
     crate::bench_events::eprint_line(&format!(
-        "[master-profile] Hauptprofil {}: {ok} Dateien ({failed} Fehler)",
+        "[master-profile] Profil {:?} {}: {ok} Dateien ({failed} Fehler)",
+        root,
         if readonly {
             "versiegelt (read-only)"
         } else {
@@ -454,7 +1091,6 @@ fn set_master_readonly(readonly: bool) {
         }
     ));
 }
-
 fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -468,5 +1104,255 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
         } else {
             out.push(e.path());
         }
+    }
+}
+
+#[cfg(test)]
+mod writeback_durability_tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_base(tag: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("webagent_{tag}_{stamp}"))
+    }
+
+    #[test]
+    fn writeback_sync_profile_tree_fsyncs_nested_directories() {
+        let _hook = sync_test_hooks::install();
+        let base = unique_base("writeback_nested_sync");
+        let root = base.join("profile");
+        let nested = root.join("Default").join("Network");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("Cookies"), b"kimi-auth").unwrap();
+
+        sync_profile_tree(&root).unwrap();
+        let synced = sync_test_hooks::synced();
+        assert!(
+            synced.iter().any(|path| path == &nested),
+            "nested dir with changed entries must be fsynced: {synced:?}"
+        );
+        assert!(
+            synced.iter().any(|path| path == &root.join("Default")),
+            "intermediate nested dir must be fsynced: {synced:?}"
+        );
+        assert!(
+            synced.iter().any(|path| path == &root),
+            "tree root dir must be fsynced: {synced:?}"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_post_unseal_sync_failure_rolls_back_master() {
+        let _hook = sync_test_hooks::install();
+        let base = unique_base("writeback_post_unseal_sync");
+        let master = base.join("shared");
+        let runtime = base.join("runtime");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        fs::write(master.join("Cookies"), b"kimi-auth master").unwrap();
+        fs::write(master.join("Local State"), b"master-state").unwrap();
+        fs::write(runtime.join("Cookies"), b"kimi-auth runtime").unwrap();
+        fs::write(runtime.join("Local State"), b"runtime-state").unwrap();
+
+        sync_test_hooks::fail_once(master.clone());
+        let error = write_back_dir_to_master_at(&runtime, &master, &backup).unwrap_err();
+        assert!(
+            error.contains("wiederhergestellt"),
+            "post-unseal sync failure must roll back: {error}"
+        );
+        assert!(
+            error.contains("injected"),
+            "rollback must preserve the sync failure: {error}"
+        );
+        assert_eq!(
+            fs::read(master.join("Cookies")).unwrap(),
+            b"kimi-auth master"
+        );
+        assert_eq!(
+            fs::read(master.join("Local State")).unwrap(),
+            b"master-state"
+        );
+        assert!(
+            !write_back_journal_pending_path(&master).exists(),
+            "successful rollback must clear the pending journal after durable restore"
+        );
+        let master_syncs = sync_test_hooks::synced()
+            .into_iter()
+            .filter(|path| path == &master)
+            .count();
+        assert!(
+            master_syncs >= 2,
+            "mutated tree and restored tree must both be fsynced"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_pending_recovery_fsync_failure_keeps_journal() {
+        let _hook = sync_test_hooks::install();
+        let base = unique_base("writeback_pending_sync_fail");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&backup).unwrap();
+        fs::write(master.join("Cookies"), b"corrupted").unwrap();
+        fs::write(backup.join("Cookies"), b"last-good").unwrap();
+        let pending = write_back_journal_pending_path(&master);
+        fs::write(&pending, format!("{}\n", backup.display())).unwrap();
+
+        sync_test_hooks::fail_always(master.clone());
+        let error = recover_pending_write_back_transaction(&master).unwrap_err();
+        assert!(
+            error.contains("Crash-Recovery"),
+            "pending recovery must fail closed when restored tree is not durable: {error}"
+        );
+        assert!(
+            pending.exists(),
+            "journal must remain until restored tree and parent are fsynced"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_pending_recovery_unseal_failure_reseals_master() {
+        let base = unique_base("writeback_pending_unseal_fail");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&backup).unwrap();
+        fs::write(master.join("Cookies"), b"current").unwrap();
+        fs::write(master.join("Local State"), b"current-state").unwrap();
+        fs::write(backup.join("Cookies"), b"last-good").unwrap();
+        set_profile_readonly_strict(&master, true).unwrap();
+        let pending = write_back_journal_pending_path(&master);
+        fs::write(&pending, format!("{}\n", backup.display())).unwrap();
+
+        let _hook = readonly_test_hooks::install();
+        readonly_test_hooks::fail_unseal_after(1, false);
+        let error = recover_pending_write_back_transaction(&master).unwrap_err();
+
+        assert!(
+            error.contains("injected unseal permission failure"),
+            "recovery must preserve the unseal failure: {error}"
+        );
+        assert!(
+            readonly_test_hooks::reseal_attempted(),
+            "recovery must attempt to reseal after a partial unseal"
+        );
+        assert!(
+            fs::read_dir(&master).unwrap().all(|entry| entry
+                .unwrap()
+                .metadata()
+                .unwrap()
+                .permissions()
+                .readonly()),
+            "the complete master must be read-only after successful reseal"
+        );
+        assert_eq!(fs::read(master.join("Cookies")).unwrap(), b"current");
+        assert!(pending.exists(), "failed recovery must keep its journal");
+
+        set_profile_readonly_strict(&master, false).unwrap();
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_pending_recovery_reports_unseal_and_reseal_failures() {
+        let base = unique_base("writeback_pending_unseal_reseal_fail");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&backup).unwrap();
+        fs::write(master.join("Cookies"), b"current").unwrap();
+        fs::write(master.join("Local State"), b"current-state").unwrap();
+        fs::write(backup.join("Cookies"), b"last-good").unwrap();
+        set_profile_readonly_strict(&master, true).unwrap();
+        let pending = write_back_journal_pending_path(&master);
+        fs::write(&pending, format!("{}\n", backup.display())).unwrap();
+
+        let _hook = readonly_test_hooks::install();
+        readonly_test_hooks::fail_unseal_after(1, true);
+        let error = recover_pending_write_back_transaction(&master).unwrap_err();
+
+        assert!(
+            error.contains("injected unseal permission failure"),
+            "combined failure must report unseal: {error}"
+        );
+        assert!(
+            error.contains("injected reseal permission failure"),
+            "combined failure must report reseal: {error}"
+        );
+        assert!(pending.exists(), "failed recovery must keep its journal");
+
+        set_profile_readonly_strict(&master, false).unwrap();
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_pending_recovery_parent_fsync_failure_keeps_journal() {
+        let _hook = sync_test_hooks::install();
+        let base = unique_base("writeback_pending_parent_sync");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&backup).unwrap();
+        fs::write(master.join("Cookies"), b"corrupted").unwrap();
+        fs::write(backup.join("Cookies"), b"last-good").unwrap();
+        let pending = write_back_journal_pending_path(&master);
+        fs::write(&pending, format!("{}\n", backup.display())).unwrap();
+
+        let parent = master.parent().unwrap().to_path_buf();
+        sync_test_hooks::fail_always(parent);
+        let error = recover_pending_write_back_transaction(&master).unwrap_err();
+        assert!(
+            error.contains("Crash-Recovery"),
+            "pending recovery must fail closed when parent dir is not durable: {error}"
+        );
+        assert!(
+            pending.exists(),
+            "journal must remain until parent dir is fsynced"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_cleanup_second_parent_fsync_failure_restores_committed_journal() {
+        let _hook = sync_test_hooks::install();
+        let base = unique_base("writeback_cleanup_parent_sync");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&backup).unwrap();
+        let pending = write_back_journal_pending_path(&master);
+        let committed = write_back_journal_committed_path(&master);
+        fs::write(&pending, format!("{}\n", backup.display())).unwrap();
+        fs::write(&committed, format!("{}\n", backup.display())).unwrap();
+
+        let parent = master.parent().unwrap().to_path_buf();
+        sync_test_hooks::fail_on_nth(parent, 2);
+        let error = clear_write_back_transaction(&master).unwrap_err();
+        assert!(
+            error.contains("Recovery-Journal") && error.contains("wiederhergestellt"),
+            "cleanup must report that it restored recovery evidence: {error}"
+        );
+        assert!(
+            !pending.exists(),
+            "pending deletion must be fsynced before committed cleanup starts"
+        );
+        assert!(
+            committed.exists(),
+            "a parent fsync failure after committed deletion must restore discoverable evidence"
+        );
+        assert_eq!(
+            fs::read_to_string(&committed).unwrap(),
+            format!("{}\n", backup.display())
+        );
+        let _ = fs::remove_dir_all(&base);
     }
 }

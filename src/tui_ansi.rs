@@ -361,8 +361,19 @@ pub(crate) fn run_tui_ansi(
     // der naechste Start klont wieder den alten Login-Stand.
     // Der Benchmark-Thread laeuft detached weiter; seine naechste
     // Pool-Operation wartet kurz auf der Sperre, waehrend wir hier beenden.
-    if let Ok(mut pool) = crate::browser_pool::BrowserPool::global().lock() {
-        pool.shutdown();
+    match crate::browser_pool::BrowserPool::global().lock() {
+        Ok(mut pool) => {
+            if let Err(error) = pool.shutdown_with_result() {
+                eprintln!(
+                    "[master-profile] geordneter Browserpool-Shutdown fehlgeschlagen: {error}"
+                );
+                return 1;
+            }
+        }
+        Err(error) => {
+            eprintln!("[master-profile] Browserpool-Sperre vergiftet: {error}");
+            return 1;
+        }
     }
     0
 }

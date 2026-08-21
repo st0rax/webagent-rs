@@ -434,7 +434,7 @@ fn run_tui_ratatui(
     // Worker-Fenster und haelt Tastatur/Rendering frei.
     let wall_discovery_ticks = 13u64;
 
-    let exit_code = 'main: loop {
+    let mut exit_code = 'main: loop {
         // Eingaben einsammeln. Tastatur und Maus laufen bewusst in DIESELBE
         // Warteschlange: ein Klick wird zu der Taste, die ein Mensch gedrueckt
         // haette, und durchlaeuft danach denselben `match`. Ein eigener
@@ -1043,8 +1043,19 @@ fn run_tui_ratatui(
     // der naechste Start klont wieder den alten Login-Stand.
     // Der Benchmark-Thread laeuft detached weiter; seine naechste
     // Pool-Operation wartet kurz auf der Sperre, waehrend wir hier beenden.
-    if let Ok(mut pool) = crate::browser_pool::BrowserPool::global().lock() {
-        pool.shutdown();
+    match crate::browser_pool::BrowserPool::global().lock() {
+        Ok(mut pool) => {
+            if let Err(error) = pool.shutdown_with_result() {
+                eprintln!(
+                    "[master-profile] geordneter Browserpool-Shutdown fehlgeschlagen: {error}"
+                );
+                exit_code = 1;
+            }
+        }
+        Err(error) => {
+            eprintln!("[master-profile] Browserpool-Sperre vergiftet: {error}");
+            exit_code = 1;
+        }
     }
     // Mauserfassung ZUERST zuruecknehmen: bleibt sie an, schluckt das Terminal
     // nach dem Beenden weiter jede Mausgeste — Markieren und Kopieren gingen

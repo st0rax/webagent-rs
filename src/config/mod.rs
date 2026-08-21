@@ -37,6 +37,8 @@ pub use selectors::{
     available_brain_ids, debug_port, embedded_selector, encapsulated_profile_dir, load_selectors,
     shipped_selector_table, shipped_selectors, user_selectors,
 };
+#[cfg(feature = "webview")]
+pub(crate) use writeback::prepare_shared_profile_for_clone;
 pub use writeback::{
     runtime_pool_profile_dir, seal_master_profile, unseal_master_profile, write_back_dir_to_master,
     write_back_session_to_master,
@@ -46,10 +48,12 @@ pub(crate) use selectors::fnv1a;
 
 #[cfg(test)]
 mod tests {
+    use super::profiles::restore_sparse_backup;
     use super::selectors::{merge_selectors, EMBEDDED_SELECTORS};
     use super::writeback::{
         bytes_contain, cookies_db_bytes, cookies_db_path, has_login_artifacts,
-        master_missing_sessions, runtime_lost_sessions, write_back_is_safe,
+        master_missing_sessions, reserve_unique_backup_dir, runtime_lost_sessions,
+        write_back_dir_to_master_at, write_back_is_safe,
     };
     use super::*;
     use std::env;
@@ -308,6 +312,354 @@ mod tests {
         std::fs::remove_dir_all(&tmp).unwrap();
     }
 
+    #[test]
+    fn writeback_rollback_restores_master_after_strict_copy_failure() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_writeback_rollback_{stamp}"));
+        let master = base.join("master");
+        let runtime = base.join("runtime");
+        let backup = base.join("backup");
+        fs::create_dir_all(master.join("Cookies")).unwrap();
+        fs::write(master.join("Local State"), b"master-state").unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        fs::write(runtime.join("Cookies"), b"kimi-auth runtime").unwrap();
+        fs::write(runtime.join("Local State"), b"runtime-state").unwrap();
+
+        let error = write_back_dir_to_master_at(&runtime, &master, &backup).unwrap_err();
+        assert!(error.contains("wiederhergestellt"), "{error}");
+        assert!(
+            master.join("Cookies").is_dir(),
+            "Kollision bleibt Verzeichnis"
+        );
+        assert_eq!(
+            fs::read(master.join("Local State")).unwrap(),
+            b"master-state"
+        );
+        assert!(
+            backup.is_dir(),
+            "erfolgreiches Backup bleibt als Evidenz erhalten"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_backup_failure_blocks_master_update() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_writeback_backup_{stamp}"));
+        let master = base.join("master");
+        let runtime = base.join("runtime");
+        let backup = base.join("backup-is-file");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        fs::write(master.join("Cookies"), b"kimi-auth master").unwrap();
+        fs::write(runtime.join("Cookies"), b"kimi-auth runtime").unwrap();
+        fs::write(&backup, b"block backup directory").unwrap();
+
+        let error = write_back_dir_to_master_at(&runtime, &master, &backup).unwrap_err();
+        assert!(error.contains("Sicherung"), "{error}");
+        assert_eq!(
+            fs::read(master.join("Cookies")).unwrap(),
+            b"kimi-auth master"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_strict_happy_path_updates_master_after_backup() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_writeback_happy_{stamp}"));
+        let master = base.join("master");
+        let runtime = base.join("runtime");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        fs::write(master.join("Cookies"), b"kimi-auth master").unwrap();
+        fs::write(master.join("Local State"), b"master-state").unwrap();
+        fs::write(runtime.join("Cookies"), b"kimi-auth refreshed").unwrap();
+        fs::write(runtime.join("Local State"), b"runtime-state").unwrap();
+
+        write_back_dir_to_master_at(&runtime, &master, &backup).unwrap();
+        assert_eq!(
+            fs::read(master.join("Cookies")).unwrap(),
+            b"kimi-auth refreshed"
+        );
+        assert_eq!(
+            fs::read(master.join("Local State")).unwrap(),
+            b"runtime-state"
+        );
+        assert!(
+            backup.is_dir(),
+            "vorheriger Master-Zustand bleibt gesichert"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+    #[test]
+    fn writeback_invalid_runtime_leaves_master_and_backup_untouched() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_writeback_prevalidate_{stamp}"));
+        let runtime = base.join("runtime");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&runtime).unwrap();
+        fs::create_dir_all(&master).unwrap();
+        fs::write(master.join("Cookies"), b"master-login-state").unwrap();
+
+        let error = write_back_dir_to_master_at(&runtime, &master, &backup).unwrap_err();
+        assert!(error.contains("keine Login-Artefakte"), "{error}");
+        assert_eq!(
+            fs::read(master.join("Cookies")).unwrap(),
+            b"master-login-state"
+        );
+        assert!(
+            !backup.exists(),
+            "ungÃ¼ltige Laufzeitquelle darf keinen Backup-Pfad anlegen"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+    #[test]
+    fn writeback_zero_weight_master_still_receives_backup_snapshot() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_zero_weight_backup_{stamp}"));
+        let runtime = base.join("runtime");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&runtime).unwrap();
+        fs::create_dir_all(&master).unwrap();
+        fs::write(master.join("Local State"), b"").unwrap();
+        fs::write(runtime.join("Cookies"), b"runtime-login").unwrap();
+        fs::write(runtime.join("Local State"), b"runtime-state").unwrap();
+
+        write_back_dir_to_master_at(&runtime, &master, &backup).unwrap();
+        assert!(
+            backup.join("Local State").exists(),
+            "zero-weight master requires a snapshot"
+        );
+        assert_eq!(fs::read(master.join("Cookies")).unwrap(), b"runtime-login");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_os_file_lock_blocks_master_mutation() {
+        use fs2::FileExt;
+        use std::fs::{self, OpenOptions};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_os_lock_{stamp}"));
+        let runtime = base.join("runtime");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&runtime).unwrap();
+        fs::create_dir_all(&master).unwrap();
+        fs::write(runtime.join("Cookies"), b"runtime-login").unwrap();
+        fs::write(runtime.join("Local State"), b"runtime-state").unwrap();
+        fs::write(master.join("Cookies"), b"master-login").unwrap();
+        let lock = master.with_file_name("shared.session-writeback.lock");
+        let holder = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&lock)
+            .unwrap();
+        holder.lock_exclusive().unwrap();
+
+        let error = write_back_dir_to_master_at(&runtime, &master, &backup).unwrap_err();
+        assert!(error.contains("gesperrt"), "{error}");
+        assert_eq!(fs::read(master.join("Cookies")).unwrap(), b"master-login");
+        assert!(
+            !backup.exists(),
+            "held OS lock must block before backup mutation"
+        );
+        holder.unlock().unwrap();
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_pending_journal_recovers_before_new_validation() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_journal_recovery_{stamp}"));
+        let runtime = base.join("runtime");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&runtime).unwrap();
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&backup).unwrap();
+        fs::write(master.join("Cookies"), b"corrupted").unwrap();
+        fs::write(backup.join("Cookies"), b"last-good").unwrap();
+        fs::write(
+            master.with_file_name("shared.session-writeback.journal.pending"),
+            format!("{}\n", backup.display()),
+        )
+        .unwrap();
+
+        let error =
+            write_back_dir_to_master_at(&runtime, &master, &base.join("new-backup")).unwrap_err();
+        assert!(error.contains("keine Login-Artefakte"), "{error}");
+        assert_eq!(fs::read(master.join("Cookies")).unwrap(), b"last-good");
+        assert!(!master
+            .with_file_name("shared.session-writeback.journal")
+            .exists());
+        let _ = fs::remove_dir_all(&base);
+    }
+    #[test]
+    fn runtime_clone_preparation_recovers_pending_master_before_read() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_preclone_recovery_{stamp}"));
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&backup).unwrap();
+        fs::write(master.join("Cookies"), b"partial-master").unwrap();
+        fs::write(backup.join("Cookies"), b"last-good").unwrap();
+        fs::write(
+            master.with_file_name("shared.session-writeback.journal.pending"),
+            format!("{}\n", backup.display()),
+        )
+        .unwrap();
+
+        let lock = super::writeback::prepare_master_for_runtime_clone(&master).unwrap();
+        assert_eq!(fs::read(master.join("Cookies")).unwrap(), b"last-good");
+        assert!(!master
+            .with_file_name("shared.session-writeback.journal.pending")
+            .exists());
+        drop(lock);
+        let _ = fs::remove_dir_all(&base);
+    }
+    #[test]
+    fn writeback_committed_journal_preserves_verified_master() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_journal_commit_{stamp}"));
+        let runtime = base.join("runtime");
+        let master = base.join("shared");
+        let backup = base.join("backup");
+        fs::create_dir_all(&runtime).unwrap();
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&backup).unwrap();
+        fs::write(master.join("Cookies"), b"verified-new").unwrap();
+        fs::write(backup.join("Cookies"), b"old-backup").unwrap();
+        fs::write(
+            master.with_file_name("shared.session-writeback.journal.committed"),
+            format!("{}\n", backup.display()),
+        )
+        .unwrap();
+
+        let error =
+            write_back_dir_to_master_at(&runtime, &master, &base.join("new-backup")).unwrap_err();
+        assert!(error.contains("keine Login-Artefakte"), "{error}");
+        assert_eq!(fs::read(master.join("Cookies")).unwrap(), b"verified-new");
+        assert!(!master
+            .with_file_name("shared.session-writeback.journal.committed")
+            .exists());
+        let _ = fs::remove_dir_all(&base);
+    }
+    #[test]
+    fn writeback_backup_reservations_are_unique() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_backup_reserve_{stamp}"));
+        let master = base.join("shared");
+        fs::create_dir_all(&master).unwrap();
+        let first = reserve_unique_backup_dir(&master).unwrap();
+        let second = reserve_unique_backup_dir(&master).unwrap();
+        assert_ne!(first, second, "zwei Backups duerfen keinen Pfad teilen");
+        assert!(
+            first.is_dir() && second.is_dir(),
+            "beide Pfade sind reserviert"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_restore_prunes_runtime_only_sparse_artifacts() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("webagent_restore_prune_{stamp}"));
+        let backup = base.join("backup");
+        let master = base.join("master");
+        fs::create_dir_all(&backup).unwrap();
+        fs::create_dir_all(&master).unwrap();
+        fs::write(backup.join("Cookies"), b"kimi-auth backup").unwrap();
+        fs::write(backup.join("Local State"), b"backup-state").unwrap();
+        fs::write(master.join("Cookies"), b"kimi-auth runtime").unwrap();
+        fs::write(master.join("Local State"), b"runtime-state").unwrap();
+        fs::write(master.join("Preferences"), b"runtime-only").unwrap();
+
+        restore_sparse_backup(&backup, &master).unwrap();
+        assert_eq!(
+            fs::read(master.join("Cookies")).unwrap(),
+            b"kimi-auth backup"
+        );
+        assert_eq!(
+            fs::read(master.join("Local State")).unwrap(),
+            b"backup-state"
+        );
+        assert!(
+            !master.join("Preferences").exists(),
+            "runtime-only sparse artifact entfernt"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
     #[test]
     fn test_persist_browser_tabs_defaults() {
         let shared_key = "WEBAGENT_USE_SHARED_BROWSER";

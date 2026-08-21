@@ -12,7 +12,8 @@ use crate::browser::WebBrainBackend;
 use crate::config::persist_browser_tabs;
 #[cfg(feature = "webview")]
 use crate::config::{
-    encapsulated_profile_dir, runtime_pool_profile_dir, shared_profile_dir, ProfileClonePlanner,
+    encapsulated_profile_dir, prepare_shared_profile_for_clone, runtime_pool_profile_dir,
+    shared_profile_dir, ProfileClonePlanner,
 };
 #[cfg(feature = "webview")]
 use crate::page_driver::PageDriver;
@@ -69,6 +70,25 @@ pub struct BrowserPool {
 pub(crate) fn note_navigation(refs: &mut u32, navigated: Result<(), String>) -> Result<(), String> {
     navigated?;
     *refs = refs.saturating_add(1);
+    Ok(())
+}
+
+/// Schliesst einen vom Pool besessenen Runtime-Klon, sobald keine laufende
+/// Referenz mehr davon abhaengt. Persistierte Tabs mit `refs == 0` duerfen
+/// waehrend einer noch aktiven Shared-Ausfuehrung offen bleiben; sie duerfen
+/// aber nicht den letzten Stop am erforderlichen Write-back vorbeileiten.
+#[cfg_attr(not(feature = "webview"), allow(dead_code))]
+fn complete_required_teardown<F>(
+    owns_runtime: bool,
+    has_live_refs: bool,
+    teardown: F,
+) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    if owns_runtime && !has_live_refs {
+        teardown()?;
+    }
     Ok(())
 }
 
@@ -177,7 +197,10 @@ impl BrowserPool {
             // Master-Hauptprofil NIE direkt öffnen: der Betrieb arbeitet in
             // einer frischen Laufzeit-Kopie (siehe runtime_pool_profile_dir),
             // damit die Logins im Master unangetastet bleiben.
-            let profile = profile_override.unwrap_or_else(runtime_pool_profile_dir);
+            let profile = match profile_override {
+                Some(profile) => profile,
+                None => runtime_pool_profile_dir()?,
+            };
             let mut driver = runtime
                 .open_page(&profile, backend.brain_url(), headless, &brain_id)
                 .map_err(|e| e.to_string())?;
@@ -280,11 +303,14 @@ impl BrowserPool {
 
         let runstamp = crate::now_run_stamp();
         let clone_dir = encapsulated_profile_dir(brain_id, &runstamp);
-        // Linked-Clone/Delta des kanonischen Shared-Profils (Login-Bild, read-only Quelle).
-        let plan =
-            ProfileClonePlanner::plan_canonical(&shared_profile_dir(), &clone_dir, &runstamp);
+        // Der gemeinsame Master darf erst nach OS-Lock und Pending-Recovery gelesen
+        // werden; ansonsten kÃ¶nnte ein Crashzustand in den Fallback geklont werden.
+        let shared_profile_lock = prepare_shared_profile_for_clone()?;
+        let master = shared_profile_dir();
+        let plan = ProfileClonePlanner::plan_canonical(&master, &clone_dir, &runstamp);
         ProfileClonePlanner::materialize(&plan)
             .map_err(|e| format!("Profil-Klon fuer Brain '{brain_id}' fehlgeschlagen: {e}"))?;
+        drop(shared_profile_lock);
 
         // Ab hier liegt ein Profil-Klon auf der Platte. Der Guard entfernt ihn
         // auf JEDEM Rueckkehrpfad; nur der Erfolgsfall gibt ihn per keep() frei.
@@ -311,32 +337,38 @@ impl BrowserPool {
         Ok(())
     }
 
-    /// Gibt eine Referenz frei; schließt den Tab wenn letzte Ref und nicht persist.
+    /// Gibt eine Referenz frei. Persistierte Tabs bleiben offen, solange noch
+    /// eine Shared-Referenz laeuft; beim vollstaendig idle gewordenen, besessenen
+    /// Runtime-Klon folgen dagegen immer Teardown und Master-Write-back.
     pub fn stop_brain(&mut self, brain_id: &str, persist: Option<bool>) -> Result<(), String> {
         let bid = brain_id.to_lowercase();
         let keep = persist.unwrap_or_else(persist_browser_tabs);
 
         // Shared-Pool-Tab?
         if let Some(tab) = self.tabs.get_mut(&bid) {
-            if tab.refs == 0 {
-                return Ok(());
-            }
-            tab.refs -= 1;
             if tab.refs > 0 {
-                return Ok(());
+                tab.refs -= 1;
             }
-            if keep {
+            if tab.refs > 0 {
                 return Ok(());
             }
             #[cfg(feature = "webview")]
             let view_id = tab.view_id;
-            self.tabs.remove(&bid);
-            #[cfg(feature = "webview")]
-            if let Some(rt) = self.runtime.as_ref() {
-                let _ = rt.close_page(view_id);
+            if !keep {
+                self.tabs.remove(&bid);
+                #[cfg(feature = "webview")]
+                if let Some(rt) = self.runtime.as_ref() {
+                    let _ = rt.close_page(view_id);
+                }
             }
-            if self.tabs.is_empty() {
-                self.teardown_runtime();
+
+            #[cfg(feature = "webview")]
+            {
+                let owns_runtime = self.runtime.is_some();
+                let has_live_refs = self.tabs.values().any(|tab| tab.refs > 0);
+                complete_required_teardown(owns_runtime, has_live_refs, || {
+                    self.shutdown_shared_runtime_with_result()
+                })?;
             }
             return Ok(());
         }
@@ -497,67 +529,69 @@ impl BrowserPool {
         if self.runtime.is_some() {
             return Ok(());
         }
-        let profile = shared_profile_dir();
+        let profile = runtime_pool_profile_dir()?;
         let rt = WebViewRuntime::launch(&profile, headless).map_err(|e| e.to_string())?;
         self.runtime = Some(rt);
         Ok(())
     }
 
-    fn teardown_runtime(&mut self) {
+    fn teardown_runtime(&mut self) -> Result<(), String> {
         #[cfg(feature = "webview")]
         {
-            // Erst den Browser schliessen, DANN zurueckschreiben: solange er
-            // laeuft, haelt WebView2 Cookies und Local State teilweise im
-            // Speicher und schreibt sie erst beim Beenden weg. Wer vorher
-            // kopiert, sichert genau den alten Stand, der das Problem ist.
-            let was_active = self.runtime.is_some();
-            self.runtime.take();
-            // Die msedgewebview2.exe-Prozesse sind SEPARATE OS-Prozesse: sie
-            // beenden sich asynchron nach dem letzten freigegebenen Controller
-            // und committen Cookies/Local State erst dabei. Wuerden wir sofort
-            // zurueckschreiben, kaeme dieser Flush zu spaet. Ein Warteintervall
-            // statt eines Prozess-Polls: schnell genug fuer den Exit-Pfad,
-            // robust gegenueber der asynchronen Browserbeendigung.
-            if was_active {
-                std::thread::sleep(std::time::Duration::from_secs(5));
-            }
-            // Ohne diesen Rueckweg friert das Master-Profil ein: der Browser
-            // erneuert die Sitzung in der Laufzeit-Kopie, und der naechste
-            // Start klont wieder den alten Stand. Gemessen am 05.08.2026 stand
-            // das Master seit dem 03.08. still, waehrend die Kopie lief — 6 von
-            // 8 Brains waren dadurch abgemeldet.
-            if let Err(e) = crate::config::write_back_session_to_master() {
+            let Some(runtime) = self.runtime.take() else {
+                // Kein von diesem Pool besessener Runtime-Klon: insbesondere
+                // darf ein wiederholter Shutdown keinen fremden/alten OnceLock-
+                // Pfad erneut zurueckschreiben.
+                return Ok(());
+            };
+            drop(runtime);
+            // WebView2 flushes Cookies/Local State asynchronously during
+            // Runtime drop. Retain the established grace period before
+            // copying the profile back to the master.
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            crate::config::write_back_session_to_master().map_err(|error| {
                 crate::bench_events::emit(
                     crate::bench_events::Level::Warn,
                     None,
-                    &format!("[master-profile] {e}"),
+                    &format!("[master-profile] {error}"),
                 );
+                error
+            })
+        }
+        #[cfg(not(feature = "webview"))]
+        {
+            Ok(())
+        }
+    }
+
+    /// Schliesst ausschliesslich den Shared-Pool samt besessenem Runtime-Klon.
+    /// Gekapselte Fallbacks haben eigene Runtimes/Profile und duerfen von einem
+    /// letzten Shared-Stop nicht mitgerissen werden.
+    #[cfg(feature = "webview")]
+    fn shutdown_shared_runtime_with_result(&mut self) -> Result<(), String> {
+        self.close_shared_tabs();
+        self.teardown_runtime()
+    }
+
+    #[cfg(feature = "webview")]
+    fn close_shared_tabs(&mut self) {
+        for (_bid, tab) in self.tabs.drain() {
+            if let Some(rt) = self.runtime.as_ref() {
+                let _ = rt.close_page(tab.view_id);
             }
         }
     }
 
-    /// Faehrt den gesamten Pool sauber herunter: alle Tabs einzeln schliessen
-    /// (WebView2 schreibt Sitzungsdaten erst beim geordneten Beenden des
-    /// Browser-Prozesses weg), dann Runtime-Teardown und die Sitzung ins
-    /// Master-Profil zurueckspielen.
+    /// Geordneter, beobachtbarer Browserpool-Abschluss.
     ///
-    /// Das ist der fehlende Rueckweg am TUI-Exit: ohne den Aufruf bleiben die
-    /// Tabs offen, `teardown_runtime` feuert nie und das Master-Profil friert
-    /// beim Stand des letzten sauberen Beendens ein. Gemessen 07.08.2026: das
-    /// Master stand seit dem 03.08., waehrend die Laufzeit-Kopie lief.
+    /// Explizite Aufrufer erhalten den Master-Write-back-Fehler als `Result`.
+    /// [`Self::shutdown`] bleibt als Kompatibilitaetswrapper fuer Drop- und
+    /// bestehende Testpfade erhalten.
     #[cfg_attr(not(feature = "webview"), allow(dead_code))]
-    pub fn shutdown(&mut self) {
+    pub fn shutdown_with_result(&mut self) -> Result<(), String> {
         #[cfg(feature = "webview")]
         {
-            // Tabs einzeln schliessen statt das Runtime abrupt zu zerren: ein
-            // haertes Drop verliert die erst beim geordneten Beenden
-            // geschriebenen Cookies/Local State (siehe `teardown_runtime`).
-            for (_bid, tab) in self.tabs.drain() {
-                if let Some(rt) = self.runtime.as_ref() {
-                    let _ = rt.close_page(tab.view_id);
-                }
-            }
-            // Gekapselte Instanzen ebenfalls entsorgen (Runtime drop + Klon-Verzeichnis).
+            self.close_shared_tabs();
             for (_bid, inst) in self.encapsulated.drain() {
                 let EncapsulatedInstance {
                     runtime: _rt,
@@ -567,8 +601,24 @@ impl BrowserPool {
                 let _ = _rt;
                 let _ = std::fs::remove_dir_all(&profile_dir);
             }
+            return self.teardown_runtime();
         }
-        self.teardown_runtime();
+        #[cfg(not(feature = "webview"))]
+        {
+            self.teardown_runtime()
+        }
+    }
+
+    /// Kompatibilitaetswrapper fuer nicht beobachtbare Drop-/Testpfade.
+    #[allow(dead_code)]
+    pub fn shutdown(&mut self) {
+        if let Err(error) = self.shutdown_with_result() {
+            crate::bench_events::emit(
+                crate::bench_events::Level::Warn,
+                None,
+                &format!("[master-profile] geordneter Shutdown fehlgeschlagen: {error}"),
+            );
+        }
     }
 
     #[cfg(test)]
@@ -576,7 +626,8 @@ impl BrowserPool {
         // Der Produktionspfad (TUI-Exit) schliesst die Tabs geordnet und
         // spielt die Sitzung ins Master zurueck — exakt das, was Tests nach
         // einem Lauf brauchen.
-        self.shutdown();
+        self.shutdown_with_result()
+            .expect("Pool-Shutdown darf im Test nicht scheitern");
     }
 }
 
@@ -605,6 +656,62 @@ mod tests {
         let mut refs = u32::MAX;
         note_navigation(&mut refs, Ok(())).unwrap();
         assert_eq!(refs, u32::MAX, "saturating_add verletzt");
+    }
+
+    #[test]
+    fn letzter_stop_mit_runtime_muss_teardown_ausfuehren() {
+        let calls = std::cell::Cell::new(0);
+        complete_required_teardown(true, false, || {
+            calls.set(calls.get() + 1);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(
+            calls.get(),
+            1,
+            "erforderliches Teardown wurde uebersprungen"
+        );
+    }
+
+    #[test]
+    fn letzter_stop_propagiert_writeback_fehler() {
+        let result =
+            complete_required_teardown(
+                true,
+                false,
+                || Err("write-back fehlgeschlagen".to_string()),
+            );
+
+        assert_eq!(result, Err("write-back fehlgeschlagen".to_string()));
+    }
+
+    #[test]
+    fn persistierte_tabs_bleiben_bei_aktiven_referenzen_offen() {
+        let calls = std::cell::Cell::new(0);
+        complete_required_teardown(true, true, || {
+            calls.set(calls.get() + 1);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(
+            calls.get(),
+            0,
+            "aktive Shared-Session wurde trotz laufender Referenz beendet"
+        );
+    }
+
+    #[test]
+    fn stop_ohne_besessenen_runtime_klon_schreibt_nicht_zurueck() {
+        let calls = std::cell::Cell::new(0);
+        complete_required_teardown(false, false, || {
+            calls.set(calls.get() + 1);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(calls.get(), 0, "Write-back ohne besessenen Runtime-Klon");
     }
 
     fn temp_klon() -> std::path::PathBuf {

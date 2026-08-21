@@ -48,17 +48,20 @@ pub fn isolated_query(
         .ensure_ready(ready_to)
         .unwrap_or(SessionState::Error);
     if state != SessionState::Ready {
-        let _ = backend.stop();
         let label = ReplSession::state_label(state).to_string();
-        crate::circuit_breaker::record_failure(brain_id, &label);
+        let out = result_after_stop(Err(label), backend.stop());
+        let error = out
+            .as_ref()
+            .expect_err("a not-ready session must remain an error after stop");
+        crate::circuit_breaker::record_failure(brain_id, error);
         crate::brain_score::record_event(
             brain_id,
             false,
-            Some(&label),
+            Some(error),
             started.elapsed().as_millis() as u64,
             prompt_chars,
         );
-        return Err(label);
+        return out;
     }
     crate::bench_events::emit(
         crate::bench_events::Level::Progress,
@@ -66,9 +69,10 @@ pub fn isolated_query(
         "Sitzung bereit; Eingabe wird gesendet…",
     );
     let _ = backend.new_chat();
-    let baseline = backend.send(prompt).inspect_err(|_| {
-        let _ = backend.stop();
-    })?;
+    let baseline = match backend.send(prompt) {
+        Ok(baseline) => baseline,
+        Err(error) => return result_after_stop(Err(error), backend.stop()),
+    };
     let wait_to = resolve_timeout("wait_response", brain_id, prompt, None);
     crate::bench_events::emit(
         crate::bench_events::Level::Progress,
@@ -86,7 +90,7 @@ pub fn isolated_query(
         Ok(resp) => Err(format!("keine Antwort (status={})", resp.backend_status)),
         Err(e) => Err(e),
     };
-    let _ = backend.stop();
+    let out = result_after_stop(out, backend.stop());
     let latency_ms = started.elapsed().as_millis() as u64;
     match &out {
         Ok(_) => {
@@ -99,6 +103,16 @@ pub fn isolated_query(
         }
     }
     out
+}
+
+fn result_after_stop<T>(primary: Result<T, String>, stop: Result<(), String>) -> Result<T, String> {
+    match (primary, stop) {
+        (result, Ok(())) => result,
+        (Ok(_), Err(stop_error)) => Err(format!("Stop fehlgeschlagen: {stop_error}")),
+        (Err(primary_error), Err(stop_error)) => Err(format!(
+            "{primary_error}; Stop fehlgeschlagen: {stop_error}"
+        )),
+    }
 }
 
 /// Langlebiger Abfrage-Pool für einen Benchmark-Run. Jeder Brain besitzt genau
@@ -149,7 +163,11 @@ impl PersistentQueryPool {
                         PersistentCommand::Shutdown => break,
                     }
                 }
-                session.shutdown();
+                if let Err(error) = session.shutdown() {
+                    crate::bench_events::eprint_line(&format!(
+                        "[pool] Persistentes Brain {brain_id} konnte nicht gestoppt werden: {error}"
+                    ));
+                }
             });
             workers.insert(brain.clone(), tx);
             joins.push(join);
@@ -263,17 +281,20 @@ impl PersistentBrain {
             .ensure_ready(ready_to)
             .unwrap_or(SessionState::Error);
         if state != SessionState::Ready {
-            self.shutdown();
             let label = ReplSession::state_label(state).to_string();
-            crate::circuit_breaker::record_failure(&self.brain_id, &label);
+            let error = match self.shutdown() {
+                Ok(()) => label,
+                Err(stop_error) => format!("{label}; Stop fehlgeschlagen: {stop_error}"),
+            };
+            crate::circuit_breaker::record_failure(&self.brain_id, &error);
             crate::brain_score::record_event(
                 &self.brain_id,
                 false,
-                Some(&label),
+                Some(&error),
                 started_at.elapsed().as_millis() as u64,
                 prompt_chars,
             );
-            return Err(label);
+            return Err(error);
         }
         crate::bench_events::emit(
             crate::bench_events::Level::Progress,
@@ -313,13 +334,14 @@ impl PersistentBrain {
         out
     }
 
-    fn shutdown(&mut self) {
+    fn shutdown(&mut self) -> Result<(), String> {
         if self.started {
             if let Some(backend) = self.backend.as_mut() {
-                let _ = backend.stop();
+                backend.stop()?;
             }
             self.started = false;
         }
+        Ok(())
     }
 }
 
@@ -330,6 +352,29 @@ fn should_trigger_new_chat(mode: ChatMode) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn result_after_stop_propagates_stop_failure_after_success() {
+        let result = result_after_stop(Ok("answer"), Err("write-back failed".to_string()));
+
+        assert_eq!(
+            result,
+            Err("Stop fehlgeschlagen: write-back failed".to_string())
+        );
+    }
+
+    #[test]
+    fn result_after_stop_preserves_primary_and_stop_failures() {
+        let result = result_after_stop::<String>(
+            Err("send failed".to_string()),
+            Err("write-back failed".to_string()),
+        );
+
+        assert_eq!(
+            result,
+            Err("send failed; Stop fehlgeschlagen: write-back failed".to_string())
+        );
+    }
 
     #[test]
     fn test_should_trigger_new_chat_routing() {

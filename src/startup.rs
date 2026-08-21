@@ -89,6 +89,7 @@ mod tests {
             "CONVENTIONS.md",
             "docs/OVERVIEW.md",
             "docs/PROTOCOL_SCHEMA.md",
+            "docs/HANDOVER_TO_CODEX_2026-08-25.md",
         ];
         for rel in living {
             let text = std::fs::read_to_string(root.join(rel)).unwrap();

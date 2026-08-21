@@ -92,15 +92,16 @@ impl ReplSession {
             .unwrap_or(SessionState::Error))
     }
 
-    fn stop_brain(&mut self) {
+    fn stop_brain(&mut self) -> Result<(), String> {
         if self.brain_open {
-            let _ = self.brain_mut().stop();
+            self.brain_mut().stop()?;
             self.brain_open = false;
         }
+        Ok(())
     }
 
-    fn shutdown(&mut self) {
-        self.stop_brain();
+    fn shutdown(&mut self) -> Result<(), String> {
+        self.stop_brain()
     }
 
     /// Kurzbeschreibung des Login-/Session-Zustands eines Brains.
@@ -353,7 +354,10 @@ impl ReplSession {
                     return ReplAction::Continue;
                 }
                 let old = self.brain_id.clone();
-                self.stop_brain();
+                if let Err(e) = self.stop_brain() {
+                    eprintln!("[switch] Aktives Brain konnte nicht gestoppt werden: {e}");
+                    return ReplAction::Continue;
+                }
                 let backend = match WebBrainBackend::from_config(&target) {
                     Ok(b) => b,
                     Err(e) => {
@@ -392,7 +396,10 @@ impl ReplSession {
             SlashCommand::LoginAll => {
                 // Pausiert die REPL-Session, loggt alle Brains sequenziell ein,
                 // startet das aktive Brain danach wieder.
-                self.stop_brain();
+                if let Err(e) = self.stop_brain() {
+                    eprintln!("[login-all] Aktives Brain konnte nicht gestoppt werden: {e}");
+                    return ReplAction::Continue;
+                }
                 println!("[login-all] Sequentielles Login für alle Brains (profiles/<brain>)…");
                 let results =
                     crate::login::login_all(std::time::Duration::from_secs(300), 0, false);
@@ -478,7 +485,10 @@ impl ReplSession {
                 // freigeben, danach wieder starten.
                 let n = active.unwrap_or(8);
                 println!("[pool] Starte Worker-Pool-TUI ({n} aktiv, headless) — 'q' kehrt zum Chat zurück.");
-                self.stop_brain();
+                if let Err(e) = self.stop_brain() {
+                    eprintln!("[pool] Aktives Brain konnte nicht gestoppt werden: {e}");
+                    return ReplAction::Continue;
+                }
                 let code = crate::tui::run_tui(n, "", 5, true, None, None, false);
                 if code != 0 {
                     println!("[pool] TUI beendet mit Code {code}.");
@@ -751,6 +761,7 @@ pub fn run_repl(brain_id: &str, headless: bool) -> i32 {
     }
 
     let stdin = io::stdin();
+    let mut read_error = None;
     loop {
         print!("\n> ");
         let _ = io::stdout().flush();
@@ -759,7 +770,10 @@ pub fn run_repl(brain_id: &str, headless: bool) -> i32 {
         match stdin.lock().read_line(&mut line) {
             Ok(0) => break,
             Ok(_) => {}
-            Err(_) => break,
+            Err(error) => {
+                read_error = Some(error);
+                break;
+            }
         }
 
         if session.handle_line(line.trim()) == ReplAction::Exit {
@@ -768,7 +782,18 @@ pub fn run_repl(brain_id: &str, headless: bool) -> i32 {
     }
 
     session.print_summary(session_start.elapsed().as_secs());
-    session.shutdown();
+    let shutdown_error = session.shutdown().err();
+    if let Some(error) = read_error {
+        eprintln!("[repl] Eingabe fehlgeschlagen: {error}");
+        if let Some(error) = shutdown_error {
+            eprintln!("[repl] Shutdown fehlgeschlagen: {error}");
+        }
+        return 2;
+    }
+    if let Some(error) = shutdown_error {
+        eprintln!("[repl] Shutdown fehlgeschlagen: {error}");
+        return 2;
+    }
     println!("[repl] beendet.");
     0
 }

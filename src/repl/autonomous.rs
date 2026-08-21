@@ -57,7 +57,10 @@ impl ReplSession {
                 return;
             }
         }
-        self.stop_brain(); // aktives REPL-Brain pausieren
+        if let Err(error) = self.stop_brain() {
+            eprintln!("[swarm] Aktives Brain konnte nicht gestoppt werden: {error}");
+            return;
+        }
 
         let run_id = crate::now_run_stamp();
         // Cleanup immer, auch bei early return (Drop-Guard über Scope-Ende).
@@ -279,7 +282,10 @@ impl ReplSession {
         };
         // Der Modify-Schritt öffnet ein eigenes Backend auf demselben Profil —
         // das Session-Brain vorher freigeben, danach wieder starten (wie /pool).
-        self.stop_brain();
+        if let Err(error) = self.stop_brain() {
+            eprintln!("[autoresearch] Aktives Brain konnte nicht gestoppt werden: {error}");
+            return;
+        }
         let config = crate::autoresearch::AutoResearchConfig {
             brain_id: self.brain_id.clone(),
             goal: goal.to_string(),
@@ -323,7 +329,10 @@ impl ReplSession {
             return;
         }
         self.stats.swarms += 1;
-        self.stop_brain(); // aktives REPL-Brain pausieren
+        if let Err(error) = self.stop_brain() {
+            eprintln!("[self-research] Aktives Brain konnte nicht gestoppt werden: {error}");
+            return;
+        }
 
         let run_id = crate::now_run_stamp();
         // Profile immer aufräumen, auch bei early return.
