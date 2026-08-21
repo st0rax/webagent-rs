@@ -2694,3 +2694,19 @@ Die Slice ergänzt den bestehenden Benchmark-Handoff um ein versioniertes, begre
 | Grok-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_grok_handoff_review_20260821_170725\\stderr.log |
 
 Der Envelope wird über bestehende Benchmark-Queue, Pipeline, Controller und Run-Metadaten weitergereicht; die Provenienz ist dauerhaft auswertbar. Bewusst ausgeschlossen bleiben Providerkonten, Cookies und jede browserseitige Übernahme einer fremden Konversation.
+
+
+## 2026-08-21 17:50 UTC+2 — Phase 6 Slice: fail-closed fehlender Worker-Heartbeat commitbereit
+
+Der Worker-Pool behandelt eine fehlende Heartbeat-Datei nach Ablauf der bestehenden Startup-Grace nun fail-closed als stale. Vor Ablauf bleibt sie toleriert, genau an der Grenze und danach wird das Kind beendet, als unavailable markiert und über die vorhandene Promotionlogik im selben Tick ersetzt. Künftige Heartbeat-Zeitstempel bleiben frisch.
+
+| Nachweis | Ergebnis |
+|---|---|
+| Format und Index-Diff | cargo fmt --all -- --check sowie git diff --cached --check bestanden |
+| Clippy | Exit 0; 13 bekannte Baseline-Warnungen, keine neue Topologie-Warnung |
+| Headless-Matrix | 1.100 Bibliothekstests plus 7 Binärtests bestanden, 0 fehlgeschlagen |
+| Standard-Matrix | 1.166 Bibliothekstests plus 7 Binärtests bestanden, 0 fehlgeschlagen |
+| Claude-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_claude_topology_review_20260821_174000\\final_review.txt |
+| Grok-Endreview | VERDICT=PASS, keine Blocker; %TEMP%\\webagent_grok_topology_review_20260821_174119\\stderr.log |
+
+Die Slice ergänzt nur src/worker_pool.rs; sie nutzt die vorhandenen Spawn-, Reap- und Promotionpfade und führt keinen parallelen Supervisor oder State-Store ein.

@@ -367,3 +367,19 @@ Die Session-Handoff-Slice ist commitbereit. Der versionierte CrossBrainHandoffEn
 | Review 2 | Grok VERDICT=PASS, keine Blocker |
 
 Offener weiterer Phase-6-Schritt: Parallel-Worktree-Ergebnisse von ChatGPT und Claude erst an expliziten Commitgrenzen bewerten und konfliktfrei integrieren. Keine uncommitteten externen Diffs übernehmen.
+
+
+## Worker-Topologie-Evidenzcheckpoint — 2026-08-21 17:50 UTC+2
+
+Die verbleibende fail-closed Topologielücke ist geschlossen: fehlende Heartbeats sind ausschließlich während der begrenzten Startup-Grace frisch. An oder nach deren Ende wird der Worker stale, beendet und als unavailable markiert; ein vorhandener Reservebrain kann noch im selben Tick übernommen werden. Künftige Heartbeat-Zeitstempel lösen keinen Fehlalarm aus.
+
+| Kategorie | Nachweis |
+|---|---|
+| Format und Index-Diff | bestanden |
+| Clippy | Exit 0 mit 13 bekannten Baseline-Warnungen |
+| Reduzierte Features | 1.100 Bibliothekstests und 7 Binärtests bestanden |
+| Standardfeatures | 1.166 Bibliothekstests und 7 Binärtests bestanden |
+| Review 1 | Claude VERDICT=PASS, keine Blocker |
+| Review 2 | Grok VERDICT=PASS, keine Blocker |
+
+Nächste Integrationsgrenze: Nur committe Ergebnisse aus den parallelen ChatGPT- und Claude-Worktrees prüfen; uncommittete Diffs bleiben strikt getrennt.

@@ -18,7 +18,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -104,11 +104,43 @@ impl WorkerPool {
         }
     }
 
-    fn mark_worker_spawned(&mut self, brain: &str) {
-        self.startup_grace_until.insert(
-            brain.to_string(),
-            SystemTime::now() + Self::startup_grace(self.poll_secs),
-        );
+    /// Ein Zeitstempel in der Zukunft darf nicht als fehlender Heartbeat und
+    /// damit fail-closed als stale eingeordnet werden. Er ist bis zur
+    /// Systemuhr-Korrektur effektiv frisch.
+    fn heartbeat_age_from_modified(modified: SystemTime, now: SystemTime) -> Duration {
+        now.duration_since(modified).unwrap_or(Duration::ZERO)
+    }
+
+    fn heartbeat_age(workers_dir: &Path, brain: &str, now: SystemTime) -> Option<Duration> {
+        fs::metadata(workers_dir.join(format!("heartbeat_{brain}.json")))
+            .and_then(|meta| meta.modified())
+            .ok()
+            .map(|modified| Self::heartbeat_age_from_modified(modified, now))
+    }
+
+    /// Fehlend ist nur strikt vor dem Grace-Ende erlaubt. Genau am Ende gilt
+    /// der Worker fail-closed als stale.
+    fn missing_heartbeat_is_stale(
+        heartbeat_age: Option<Duration>,
+        startup_grace_until: Option<&SystemTime>,
+        now: SystemTime,
+    ) -> bool {
+        heartbeat_age.is_none() && !startup_grace_until.is_some_and(|until| *until > now)
+    }
+
+    /// Jeder erfolgreiche Spawn wird ueber genau diesen Pfad erfasst. Damit
+    /// gelten Initial-, Crash-, Restore- und Reserve-Spawns identisch als
+    /// gestartet und bekommen dieselbe begrenzte Heartbeat-Grace.
+    fn record_spawned_child(
+        children: &mut HashMap<String, Child>,
+        startup_grace_until: &mut HashMap<String, SystemTime>,
+        brain: &str,
+        child: Child,
+        spawned_at: SystemTime,
+        startup_grace: Duration,
+    ) {
+        children.insert(brain.to_string(), child);
+        startup_grace_until.insert(brain.to_string(), spawned_at + startup_grace);
     }
 
     pub fn kill_all_children(&mut self) -> usize {
@@ -261,6 +293,39 @@ impl WorkerPool {
         let now = SystemTime::now();
         let stale = Duration::from_secs(crate::config::stale_heartbeat_secs());
 
+        // Ein gestarteter Worker ohne Heartbeat ist nur waehrend seiner
+        // Startup-Grace zulaessig. Danach wird er fail-closed beendet, geerntet
+        // und unavailable markiert. Der normale Promote-Loop am Tick-Ende
+        // fuellt den freien Slot noch in diesem Tick mit einer Reserve auf.
+        let hb_dir = self.control_path.parent().map(|p| p.to_path_buf());
+        let missing_stale: Vec<String> = self
+            .children
+            .keys()
+            .filter(|brain| {
+                let heartbeat_age = hb_dir
+                    .as_deref()
+                    .and_then(|dir| Self::heartbeat_age(dir, brain, now));
+                Self::missing_heartbeat_is_stale(
+                    heartbeat_age,
+                    self.startup_grace_until.get(*brain),
+                    now,
+                )
+            })
+            .cloned()
+            .collect();
+        for brain in missing_stale {
+            if let Some(mut child) = self.children.remove(&brain) {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            self.startup_grace_until.remove(&brain);
+            state.set(
+                &brain,
+                STATUS_UNAVAILABLE,
+                "missing heartbeat after startup grace",
+            );
+        }
+
         // Signal A (zukunftssicher): Circuit-Breaker-Snapshots — ein offener
         // Breaker fuer ein aktives Brain signalisiert Block. (Workers fuettern
         // den Breaker derzeit noch nicht; daher in der Praxis meist `open ==
@@ -271,25 +336,20 @@ impl WorkerPool {
         // Signal B (verdrahtet): Heartbeat-Alter der laufenden Worker ueber das
         // Aenderungsdatum der `heartbeat_<brain>.json`. Idle, aber pollende
         // Worker schreiben regelmaessig -> frisch -> nicht blockiert (idle-sicher).
-        let hb_dir = self.control_path.parent().map(|p| p.to_path_buf());
         let running_set: HashSet<String> = self.children.keys().cloned().collect();
-        let running_ages: Vec<(String, Duration)> = match &hb_dir {
-            Some(d) => heartbeat_ages(d, &self.candidates, now)
-                .into_iter()
-                .filter(|(b, _)| running_set.contains(b))
-                .collect(),
-            None => Vec::new(),
-        };
-
-        let running_ages: Vec<(String, Duration)> = running_ages
-            .into_iter()
-            .map(|(brain, age)| {
+        let running_ages: Vec<(String, Duration)> = running_set
+            .iter()
+            .cloned()
+            .filter_map(|brain| {
+                let age = hb_dir
+                    .as_deref()
+                    .and_then(|dir| Self::heartbeat_age(dir, &brain, now))?;
                 let effective_age = Self::heartbeat_age_during_startup(
                     self.startup_grace_until.get(&brain),
-                    SystemTime::now(),
+                    now,
                     age,
                 );
-                (brain, effective_age)
+                Some((brain, effective_age))
             })
             .collect();
         let blocked = detect_blocked(&running_ages, &snaps, stale);
@@ -331,9 +391,14 @@ impl WorkerPool {
             MAX_FAILED_RESTORES,
             |brain| match Self::spawn_worker(brain, self.poll_secs, self.headless) {
                 Ok(child) => {
-                    self.children.insert(brain.to_string(), child);
-                    startup_grace_until
-                        .insert(brain.to_string(), SystemTime::now() + startup_grace);
+                    Self::record_spawned_child(
+                        &mut self.children,
+                        startup_grace_until,
+                        brain,
+                        child,
+                        SystemTime::now(),
+                        startup_grace,
+                    );
                     true
                 }
                 Err(_) => false,
@@ -344,8 +409,14 @@ impl WorkerPool {
         for b in &block_actions.spawn {
             match Self::spawn_worker(b, self.poll_secs, self.headless) {
                 Ok(child) => {
-                    self.children.insert(b.clone(), child);
-                    self.mark_worker_spawned(b);
+                    Self::record_spawned_child(
+                        &mut self.children,
+                        &mut self.startup_grace_until,
+                        b,
+                        child,
+                        SystemTime::now(),
+                        startup_grace,
+                    );
                 }
                 Err(e) => {
                     state.set(b, STATUS_UNAVAILABLE, &format!("spawn failed: {e}"));
@@ -366,7 +437,14 @@ impl WorkerPool {
             match select_to_promote(&self.candidates, &state, &running) {
                 Some(b) => match Self::spawn_worker(&b, self.poll_secs, self.headless) {
                     Ok(child) => {
-                        self.children.insert(b.clone(), child);
+                        Self::record_spawned_child(
+                            &mut self.children,
+                            &mut self.startup_grace_until,
+                            &b,
+                            child,
+                            SystemTime::now(),
+                            startup_grace,
+                        );
                         state.set(&b, STATUS_ACTIVE, "");
                     }
                     Err(e) => {
@@ -587,21 +665,72 @@ mod tests {
     }
 
     #[test]
-    fn startup_grace_masks_only_the_missing_first_heartbeat() {
+    fn missing_heartbeat_is_tolerated_before_startup_grace_expires() {
         let now = SystemTime::now();
-        let stale = Duration::from_secs(120);
+        let grace_until = now + Duration::from_secs(1);
+
+        assert!(
+            !WorkerPool::missing_heartbeat_is_stale(None, Some(&grace_until), now),
+            "missing heartbeat is allowed strictly before grace expiry"
+        );
+    }
+
+    #[test]
+    fn missing_heartbeat_is_stale_at_and_after_startup_grace_expiry() {
+        let now = SystemTime::now();
+        let before = now - Duration::from_secs(1);
+
+        assert!(WorkerPool::missing_heartbeat_is_stale(
+            None,
+            Some(&now),
+            now
+        ));
+        assert!(WorkerPool::missing_heartbeat_is_stale(
+            None,
+            Some(&before),
+            now
+        ));
+    }
+
+    #[test]
+    fn future_heartbeat_timestamp_is_fresh_not_missing_or_stale() {
+        let now = SystemTime::now();
+        let age = WorkerPool::heartbeat_age_from_modified(now + Duration::from_secs(60), now);
+
+        assert_eq!(age, Duration::ZERO);
+        assert!(!WorkerPool::missing_heartbeat_is_stale(
+            Some(age),
+            Some(&now),
+            now,
+        ));
+        assert!(detect_blocked(&[("a".into(), age)], &[], Duration::ZERO).is_empty());
+    }
+
+    #[test]
+    fn expired_missing_heartbeat_allows_reserve_promotion_in_same_tick() {
+        let now = SystemTime::now();
+        let candidates = vec!["primary".to_string(), "reserve".to_string()];
+        let mut state = PoolState::default();
+        state.set("primary", STATUS_ACTIVE, "");
+        state.set("reserve", STATUS_AVAILABLE, "");
+        let mut running = HashSet::from(["primary".to_string()]);
+
+        assert!(WorkerPool::missing_heartbeat_is_stale(
+            None,
+            Some(&now),
+            now,
+        ));
+        running.remove("primary");
+        state.set(
+            "primary",
+            STATUS_UNAVAILABLE,
+            "missing heartbeat after startup grace",
+        );
 
         assert_eq!(
-            WorkerPool::heartbeat_age_during_startup(
-                Some(&(now + Duration::from_secs(1))),
-                now,
-                stale,
-            ),
-            Duration::ZERO,
-        );
-        assert_eq!(
-            WorkerPool::heartbeat_age_during_startup(Some(&now), now, stale),
-            stale,
+            select_to_promote(&candidates, &state, &running),
+            Some("reserve".to_string()),
+            "the existing promotion pass can refill the freed slot immediately"
         );
     }
 
