@@ -184,7 +184,11 @@ pub fn selectors_dir() -> PathBuf {
 pub const BRAIN_TABLE: &[(&str, &str)] = &[
     ("chatgpt", "https://chatgpt.com/"),
     ("deepseek", "https://chat.deepseek.com/"),
-    ("kimi", "https://www.kimi.com/"),
+    // Umfirmierung 2026-08: die App lebt auf kimi.ai. Gemessen am
+    // 2026-08-22: heutige Anmeldungen hinterlassen Cookies ausschliesslich
+    // auf `www.kimi.ai`, waehrend der einzige `kimi-auth` auf `www.kimi.com`
+    // vom 2026-07-20 stammt und nie erneuert wurde.
+    ("kimi", "https://www.kimi.ai/"),
     ("gemini", "https://gemini.google.com/app"),
     ("qwen", "https://chat.qwen.ai/"),
     ("claude", "https://claude.ai/new"),
