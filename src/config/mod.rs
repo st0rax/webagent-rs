@@ -490,6 +490,7 @@ mod tests {
         let lock = master.with_file_name("shared.session-writeback.lock");
         let holder = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(&lock)

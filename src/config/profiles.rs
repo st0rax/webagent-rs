@@ -668,6 +668,104 @@ fn release_swarm_profile(path: &Path, expected: &SwarmProfileOwner) -> std::io::
     remove_runtime_profile(path)
 }
 
+/// Ein Wegwerf-Profil, das älter als das hier ist, kann keinem laufenden Run
+/// mehr gehören — ein Swarm-Turn dauert Minuten, nicht Stunden.
+const STALE_RUNTIME_PROFILE_SECS: u64 = 12 * 60 * 60;
+
+/// Profil-Unterverzeichnisse, die ausschliesslich Wegwerf-Laufzeitkopien
+/// enthalten. Beide werden im Normalfall von einem `Drop`-Guard aufgeräumt
+/// (`cleanup_swarm_profiles` bzw. `CloneGuard`/`stop_brain`) — und beide
+/// lecken bei Absturz, Kill oder Stromausfall, weil der Guard dann nie läuft.
+/// Kanonische Profile (`shared`, `<brain>`, `reference`) stehen bewusst NICHT
+/// hier: dort liegen die Logins.
+const DISPOSABLE_PROFILE_ROOTS: [&str; 2] = ["swarm", "encapsulated"];
+
+/// Entfernt Wegwerf-Profile verwaister Runs. Netz unter den `Drop`-Guards, die
+/// bei Absturz oder Kill nicht laufen — real hatten sich so 161 Profile /
+/// 33,6 GB angesammelt. Gibt die Anzahl der entfernten Profile zurück.
+pub fn sweep_stale_runtime_profiles() -> usize {
+    sweep_stale_runtime_profiles_in(&profiles_dir(), STALE_RUNTIME_PROFILE_SECS)
+}
+
+/// Wie `sweep_stale_runtime_profiles`, aber mit expliziter Profil-Basis und
+/// Altersgrenze (für Tests).
+pub fn sweep_stale_runtime_profiles_in(base: &Path, max_age_secs: u64) -> usize {
+    let cutoff = match std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(max_age_secs))
+    {
+        Some(c) => c,
+        None => return 0,
+    };
+    let mut removed = 0;
+    for root in DISPOSABLE_PROFILE_ROOTS {
+        let entries = match std::fs::read_dir(base.join(root)) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
+            // Ohne lesbare mtime lieber stehen lassen als fremde Daten löschen.
+            if let Some(m) = modified {
+                if m < cutoff && remove_runtime_profile(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+    }
+    removed
+}
+
+/// Einmalige Migration der Legacy-Profile/Data (CARGO_MANIFEST_DIR) an den
+/// stabilen Ort. Idempotent + abort-sicher: pro Kindverzeichnis wird
+/// copy_dir_all aufgerufen und danach remove (NICHT rename — rename scheitert
+/// über Laufwerksgrenzen). Eine unterbrochene Migration ist beim nächsten Start
+/// reparierbar (die Quelle wird bei Erfolg entfernt, bei Fehlschlag belassen
+/// und erneut versucht).
+pub fn ensure_stable_layout() {
+    migrate_legacy_dir(&root_dir().join("profiles"), &profiles_dir());
+    migrate_legacy_dir(&root_dir().join("data"), &data_dir());
+}
+
+fn migrate_legacy_dir(legacy: &Path, target: &Path) {
+    if !legacy.is_dir() {
+        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(target) {
+        crate::bench_events::eprint_line(&format!(
+            "[migrate] Ziel {:?} nicht anlegbar: {e}",
+            target
+        ));
+        return;
+    }
+    let entries = match std::fs::read_dir(legacy) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let src = entry.path();
+        if !src.is_dir() {
+            continue;
+        }
+        let name = match src.file_name() {
+            Some(n) => n.to_string_lossy().into_owned(),
+            None => continue,
+        };
+        let dst = target.join(&name);
+        if copy_dir_all(&src, &dst).is_ok() {
+            let _ = std::fs::remove_dir_all(&src);
+        } else {
+            crate::bench_events::eprint_line(&format!(
+                "[migrate] Kopie von {:?} fehlgeschlagen, naechster Start erneut",
+                src
+            ));
+        }
+    }
+}
+
 #[cfg(test)]
 mod lease_tests {
     use super::*;
@@ -767,103 +865,5 @@ mod lease_tests {
             "a foreign marker cannot re-scope a profile for cleanup"
         );
         let _ = std::fs::remove_dir_all(base);
-    }
-}
-
-/// Ein Wegwerf-Profil, das älter als das hier ist, kann keinem laufenden Run
-/// mehr gehören — ein Swarm-Turn dauert Minuten, nicht Stunden.
-const STALE_RUNTIME_PROFILE_SECS: u64 = 12 * 60 * 60;
-
-/// Profil-Unterverzeichnisse, die ausschliesslich Wegwerf-Laufzeitkopien
-/// enthalten. Beide werden im Normalfall von einem `Drop`-Guard aufgeräumt
-/// (`cleanup_swarm_profiles` bzw. `CloneGuard`/`stop_brain`) — und beide
-/// lecken bei Absturz, Kill oder Stromausfall, weil der Guard dann nie läuft.
-/// Kanonische Profile (`shared`, `<brain>`, `reference`) stehen bewusst NICHT
-/// hier: dort liegen die Logins.
-const DISPOSABLE_PROFILE_ROOTS: [&str; 2] = ["swarm", "encapsulated"];
-
-/// Entfernt Wegwerf-Profile verwaister Runs. Netz unter den `Drop`-Guards, die
-/// bei Absturz oder Kill nicht laufen — real hatten sich so 161 Profile /
-/// 33,6 GB angesammelt. Gibt die Anzahl der entfernten Profile zurück.
-pub fn sweep_stale_runtime_profiles() -> usize {
-    sweep_stale_runtime_profiles_in(&profiles_dir(), STALE_RUNTIME_PROFILE_SECS)
-}
-
-/// Wie `sweep_stale_runtime_profiles`, aber mit expliziter Profil-Basis und
-/// Altersgrenze (für Tests).
-pub fn sweep_stale_runtime_profiles_in(base: &Path, max_age_secs: u64) -> usize {
-    let cutoff = match std::time::SystemTime::now()
-        .checked_sub(std::time::Duration::from_secs(max_age_secs))
-    {
-        Some(c) => c,
-        None => return 0,
-    };
-    let mut removed = 0;
-    for root in DISPOSABLE_PROFILE_ROOTS {
-        let entries = match std::fs::read_dir(base.join(root)) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
-            // Ohne lesbare mtime lieber stehen lassen als fremde Daten löschen.
-            if let Some(m) = modified {
-                if m < cutoff && remove_runtime_profile(&path).is_ok() {
-                    removed += 1;
-                }
-            }
-        }
-    }
-    removed
-}
-
-/// Einmalige Migration der Legacy-Profile/Data (CARGO_MANIFEST_DIR) an den
-/// stabilen Ort. Idempotent + abort-sicher: pro Kindverzeichnis wird
-/// copy_dir_all aufgerufen und danach remove (NICHT rename — rename scheitert
-/// über Laufwerksgrenzen). Eine unterbrochene Migration ist beim nächsten Start
-/// reparierbar (die Quelle wird bei Erfolg entfernt, bei Fehlschlag belassen
-/// und erneut versucht).
-pub fn ensure_stable_layout() {
-    migrate_legacy_dir(&root_dir().join("profiles"), &profiles_dir());
-    migrate_legacy_dir(&root_dir().join("data"), &data_dir());
-}
-
-fn migrate_legacy_dir(legacy: &Path, target: &Path) {
-    if !legacy.is_dir() {
-        return;
-    }
-    if let Err(e) = std::fs::create_dir_all(target) {
-        crate::bench_events::eprint_line(&format!(
-            "[migrate] Ziel {:?} nicht anlegbar: {e}",
-            target
-        ));
-        return;
-    }
-    let entries = match std::fs::read_dir(legacy) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let src = entry.path();
-        if !src.is_dir() {
-            continue;
-        }
-        let name = match src.file_name() {
-            Some(n) => n.to_string_lossy().into_owned(),
-            None => continue,
-        };
-        let dst = target.join(&name);
-        if copy_dir_all(&src, &dst).is_ok() {
-            let _ = std::fs::remove_dir_all(&src);
-        } else {
-            crate::bench_events::eprint_line(&format!(
-                "[migrate] Kopie von {:?} fehlgeschlagen, naechster Start erneut",
-                src
-            ));
-        }
     }
 }

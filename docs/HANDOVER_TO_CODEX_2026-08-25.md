@@ -1,6 +1,9 @@
 # Projektübergabe an Codex: `webagent-rs`
 
-> **Dokumentstatus:** Laufend gepflegte, dateibasierte Übergabe. Diese Fassung wurde am **21. August 2026** gegen den tatsächlich abgefragten Git- und Worktree-Zustand erstellt. Sie ist kein Ersatz für `AGENTS.md`, `STATUS_LIVE.md` oder den Quelltext; sie ist der Einstieg, der Codex ohne Chatverlauf handlungsfähig machen soll.
+> **Archiv seit 2026-08-22.** Diese Manus→Codex-Übergabe wird nicht weiter
+> gepflegt. Aktueller Einstieg: [`../START_HERE.md`](../START_HERE.md), laufende
+> Arbeitsübergabe: [`CURRENT_WORK.md`](CURRENT_WORK.md). Angaben unten sind nur
+> historische Evidenz vom 21. August 2026.
 >
 > **Wichtig:** Dieser Stand enthält eine **uncommittete Sicherheitsreparatur** im aktiven Worktree. Weder sie noch diese Übergabedatei dürfen als fertig, geprüft oder zur Veröffentlichung freigegeben gelten, bevor die unten genannten Restgates tatsächlich bestanden und dokumentiert sind.
 
@@ -430,3 +433,35 @@ Der aktive Zielvertrag goal-2026-08-20T19-19-20.587795-00-00 wurde lokal erfolgr
 | Produktabnahme | deepseek Worker -> qwen Reviewer: status PASS, SCORE 5 |
 
 Die ChatGPT- und Browserquarantaene bleibt trotz des lokalen Goal-Abschlusses bestehen. Sie war fuer die Qwen-/Perplexity-basierte Evidenz und die lokale GNU-Abnahme nicht erforderlich.
+
+## Codex hat übernommen - 2026-08-22
+
+Der Manus-Prozess läuft nicht mehr. Codex führt das Projekt ab `origin/master` (`9bf57f5`) im getrennten Branch `codex/project-takeover` weiter. Der erste Übernahmecommit `3ef693b` ersetzt die 13 bekannten Headless-Baselinewarnungen in `transcript.rs` und `browser_pool.rs` durch echte Featuregrenzen; alle zugehörigen Testflächen bleiben über `cfg(test)` verfügbar.
+
+| Nachweis | Ergebnis |
+| --- | --- |
+| `RUSTFLAGS=-Dwarnings cargo check --no-default-features` | Exit 0 |
+| `cargo clippy --no-default-features -- -D warnings` | Exit 0 |
+| `cargo test --no-default-features` | 1.100 Bibliotheks- und 7 Binärtests bestanden |
+| Format-/Diffprüfung | bestanden |
+
+Der nicht commitreife `src/repl/pool.rs`-Diff im alten `webagent-final-verification`-Worktree bleibt unverändert erhalten und ist kein Integrationsbestandteil. Er kapselt nur die bereits vor Backend-Erzeugung ausgeführte Circuit-Breaker-Prüfung für Tests und belegt keine neue Produktfähigkeit. Push, Tag und Release bleiben weiterhin explizite Entscheidungen.
+
+## Projektabschluss-Audit - 2026-08-22
+
+Die abgeschlossene Goal-Karte darf nicht als Abschluss des Gesamtprojekts
+gelesen werden. Sie belegt nur die darin gebundene Harness-Härtung. Beim ersten
+aktuellen Vollfeature-Lint wurden drei Baseline-Befunde sichtbar und in Commit
+`e8658b8` ohne Produktverhaltensänderung behoben.
+
+Nach dem Commit bestehen `cargo clippy --all-targets -- -D warnings`,
+`cargo clippy --no-default-features -- -D warnings`, `cargo fmt --all --
+--check` und `git diff --check`. Der erneute Defaultfeature-Test umfasst 1.166
+Bibliotheks- und 7 Binärtests ohne Fehler.
+
+Das Gesamtprojekt bleibt dennoch offen: aktuelle Provider-/WebView-
+Rezertifizierung, ein konsolidierter realer Mehr-Brain-Szenariolauf, ein
+reproduzierbarer Benchmark-/Repair-/Harvest-Lauf und die bewusste
+Integrations-/Releaseentscheidung fehlen. Die aktuelle Abschlussmatrix und
+Priorisierung stehen in `docs/OVERVIEW.md`. Externe Provider-, Login-, Kosten-
+oder Releasepfade benötigen weiterhin ausdrückliche Nutzerfreigabe.

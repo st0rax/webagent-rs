@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Einstieg und Übernahme
+    url: https://github.com/st0rax/webagent-rs/blob/master/START_HERE.md
+    about: Vor Übernahme einer Aufgabe die verbindliche Einstiegskette lesen.
+  - name: Produktstand und Roadmap
+    url: https://github.com/st0rax/webagent-rs/blob/master/docs/OVERVIEW.md
+    about: Reifegrade, Systemgrenzen und priorisierte Roadmap prüfen.

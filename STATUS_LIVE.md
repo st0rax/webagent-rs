@@ -2762,3 +2762,49 @@ Der aktive Zielvertrag goal-2026-08-20T19-19-20.587795-00-00 wurde lokal erfolgr
 | Produktabnahme | deepseek Worker -> qwen Reviewer: status PASS, SCORE 5 |
 
 Die ChatGPT- und Browserquarantaene bleibt trotz des lokalen Goal-Abschlusses bestehen. Sie war fuer die Qwen-/Perplexity-basierte Evidenz und die lokale GNU-Abnahme nicht erforderlich.
+
+## Codex-Übernahmecheckpoint - 2026-08-22
+
+Codex hat die Projektkoordination nach dem Ende des Manus-Prozesses in einem frischen Worktree auf Basis von `origin/master` (`9bf57f5`) übernommen. Der getrennt geprüfte Commit `3ef693b` schließt die 13 bisherigen Headless-Produktionswarnungen in `src/transcript.rs` und `src/browser_pool.rs` durch präzise `tui`-/`webview`-/`test`-Grenzen. Es wurden keine Funktionen gelöscht und keine pauschalen Warnungsfreigaben ergänzt; die test-only Oberflächen bleiben unter `cfg(test)` erhalten.
+
+| Gate | Ergebnis |
+| --- | --- |
+| Strikter Headless-Build | `RUSTFLAGS=-Dwarnings cargo check --no-default-features`: Exit 0 |
+| Headless-Clippy | `cargo clippy --no-default-features -- -D warnings`: Exit 0 |
+| Headless-Tests | 1.100 Bibliotheks- und 7 Binärtests bestanden, 0 fehlgeschlagen |
+| Format und Diff | `cargo fmt --all -- --check` und `git diff --check`: bestanden |
+
+Der alte Worktree `webagent-final-verification` bleibt als Sicherung unangetastet. Sein einzelner uncommitteter Diff in `src/repl/pool.rs` extrahiert lediglich eine bereits vorhandene Circuit-Breaker-Prüfung für zwei Tests, ändert kein Produktverhalten und wurde wegen des zu starken Testversprechens nicht übernommen. Der aktive Übernahmebranch ist `codex/project-takeover`; Push oder Release wurden nicht ausgelöst.
+
+## Projektabschluss-Audit und wiederhergestelltes Voll-Lint-Gate - 2026-08-22
+
+- Eine abgeschlossene Goal-Karte belegt nur ihre gebundene
+  Harness-Härtungsscheibe, nicht den Abschluss des Gesamtprojekts.
+- Der erste aktuelle Lauf von `cargo clippy --all-targets -- -D warnings` fand
+  drei Baseline-Befunde. Commit `e8658b8` behebt sie ohne Änderung des
+  Produktverhaltens: explizit nicht-trunkierende Lockdatei-Semantik, ein
+  cfg-Zweig als Tail-Expression und das Testmodul hinter den Produktionsitems.
+- Nach der Reparatur bestehen der strikte Vollfeature- und Headless-Clippy,
+  Format- und Diffprüfung sowie erneut 1.166 Bibliotheks- und 7 Binärtests mit
+  Defaultfeatures.
+- Der Gesamtabschluss bleibt offen. Es fehlen eine aktuelle Live-
+  Providerrezertifizierung, eine integrierte Mehr-Brain-Abnahme, ein
+  reproduzierbarer Benchmark-/Harvest-Lauf und eine ausdrückliche
+  Integrations-/Releaseentscheidung. Die aktuelle Matrix steht in
+  `docs/OVERVIEW.md`.
+
+## Codex übergibt das Gesamtprojekt an Claude - 2026-08-22
+
+Auf Nutzerwunsch endet die Codex-Integrationsphase nach einer konsolidierten
+Gesamtübergabe an Claude. Claudes Testcommit `3437bfd` wurde konfliktfrei als
+`2cf952e` integriert und unabhängig geprüft. Er ergänzt ausschließlich zwei
+Write-back-Durability-Tests für Post-Verify-Rollback und den selbst
+fehlgeschlagenen Backup-Restore; keine Produktivlogik wurde verändert.
+
+Der konsolidierte Stand besteht mit 1.102 + 7 Tests ohne Defaultfeatures und
+1.168 + 7 Tests mit Defaultfeatures. Beide strikten Clippy-Matrizen sowie Format-
+und Diffprüfung sind grün. Das Projekt ist dennoch nicht als fertig abgenommen.
+Die vollständige Eigentums-, Evidenz-, Worktree- und Restarbeitsübergabe steht in
+`docs/HANDOVER_FROM_CODEX_TO_CLAUDE_2026-08-22.md`. Ab diesem Checkpoint soll nur
+Claude den aktiven Integrationszweig fortführen; Codex beginnt keine neue
+Implementierungsscheibe.

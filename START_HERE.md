@@ -1,161 +1,96 @@
-# START HERE — webagent-rs
+# Hier anfangen
 
-> **Archiv (Stand 2026-07-17).** Keine Pflegepflicht mehr — die widerspricht
-> dem Banner. Aktuell: [`docs/OVERVIEW.md`](docs/OVERVIEW.md), TUI-Betrieb:
-> [`AGENTS.md`](AGENTS.md) §6. Zahlen unten sind Momentaufnahme.
+Dies ist der dauerhafte Einstieg für jeden neuen menschlichen oder KI-
+Entwickler. Nicht mit einer datierten Übergabe oder `STATUS_LIVE.md` beginnen.
 
----
+## Übernahme in fünf Minuten
 
-## 0. Was ist das
+1. Git-Wurzel und Zustand prüfen:
 
-Ein **lokaler, browsergesteuerter Agent**: ein Web-Chat („Brain") plant,
-lokale Werkzeuge (PowerShell/Shell) führen aus. Die Brains sind austauschbare
-Web-Chats (ChatGPT, Claude, DeepSeek, Gemini, Kimi, Qwen, Mistral, Z.ai) —
-kein API-Key, sondern die im Browser angemeldete Session. Rust-Port eines
-ursprünglichen Python-Projekts; Embedded WebView (`wry`/`tao`) statt
-CDP/Playwright.
+   ```powershell
+   git rev-parse --show-toplevel
+   git status --short --branch
+   git log -5 --oneline --decorate
+   ```
 
-## 1. ⚠️ Zwei verschachtelte Git-Repos — nicht eins
+   Vor dem Editieren stoppen, wenn fremde Änderungen vorhanden sind. Nichts
+   überschreiben; erst Eigentümer und Dateizuständigkeit klären.
 
-Dieser Ordner (`webagent-rs/`) ist ein **eigenständiges Repo**
-(`github.com/st0rax/webagent-rs`). Er liegt aber typischerweise verschachtelt
-in einem **anderen, separaten** Repo (`Desktop\webagent\`, Remote
-`github.com/st0rax/webagent`, anderer Account) — der alten
-Python-Referenzimplementierung. `webagent-rs` ist dort als Gitlink (Mode
-`160000`) eingetragen, aber **ohne `.gitmodules`** — ein behelfsmäßiger, kein
-echter Submodule-Verweis. Falls du im Elternordner landest und dich wunderst,
-warum `git log` dort etwas völlig anderes zeigt: das ist erwartbar, es ist
-ein anderes Repo. Details, falls relevant: `CLEANUP_PLAN.md` (in diesem
-Repo) und `docs/struktur.md` im Elternordner. Ein unfertiger Branch
-`origin/docs/deprecate-in-favor-of-rust` im Elternrepo zielt darauf ab, diese
-Verschachtelung aufzulösen — nicht gemerged, vor eigener Aufräumaktion dort
-erst prüfen.
+2. In dieser Reihenfolge lesen:
 
-## 2. Architektur
+   - [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md): aktueller Arbeitsstand,
+     Evidenz und nächste sichere Aktion;
+   - [`docs/OVERVIEW.md`](docs/OVERVIEW.md): Produktwahrheit, Architektur,
+     Reifegrade und Roadmap;
+   - [`AGENTS.md`](AGENTS.md): verbindliche Repo- und Agentenregeln;
+   - [`CONTRIBUTING.md`](CONTRIBUTING.md): Setup, Workflow und Abnahme;
+   - [`docs/COLLABORATION.md`](docs/COLLABORATION.md): GitHub-Auftrag,
+     Zuständigkeit, Review und Entwicklerwechsel;
+   - [`CONVENTIONS.md`](CONVENTIONS.md): Designregeln.
 
-Ein Brain plant im `webagent/1`-Protokoll (JSON), der Controller führt die
-Actions strikt seriell aus, Beobachtungen fließen zurück ins Brain:
+3. Vor einer Codeänderung die lokale Basis feststellen:
 
-```
-Brain (Web-Chat)  ──plan──▶  Controller  ──shell──▶  Executor (PowerShell/sh)
-      ▲                          │
-      └──────── Observation ◀────┘
-```
+   ```powershell
+   cargo fmt --all -- --check
+   cargo clippy --no-default-features --all-targets -- -D warnings
+   cargo test --no-default-features
+   ```
 
-| Modul | Verantwortung |
-|---|---|
-| `protocol` | `webagent/1`-Parser inkl. `WEBAGENT/1 SHELL`-Rohformat |
-| `controller` | Plan/Act/Observe-Zustandsmaschine, Resume, Loop-/Budget-Schutz |
-| `brain` | Trait `BrainBackend` (Browser-neutral) |
-| `browser` + `webview_runtime` + `page_driver` | Embedded WebView-Backend (`wry`/`tao`) |
-| `browser_pool` | Shared-Profil: ein Runtime, ein Tab pro Brain |
-| `executor` | Shell-Ausführung (Windows: PowerShell, Unix: sh/bash) |
-| `shell_policy` | Denylist + Audit vor jeder Shell-Ausführung (Sicherheitsnetz, kein Sandbox) |
-| `circuit_breaker` | Pro-Brain Failure-Tracking, überspringt dauerblockierte Brains statt jedes Mal neu zu warten |
-| `brain_score` | Leistungsindex (Wilson-Score-Reliability aus echten Aufrufen), `/score`-Befehl |
-| `run_store` · `transcript` · `memory` | Persistenz (JSON-Lines) |
-| `comms` | Internes Agent-zu-Agent-Messaging (nichts mit `bot2bot` zu tun — getrenntes System) |
-| `doctor` · `watchdog` · `brains_health` | Diagnose & Pre-flight |
-| `relay` · `oobe` · `repl` | Single-turn Relay, Ersteinrichtungs-Wizard, interaktive REPL |
-| `timeouts` · `loop_guard` · `observer` · `prompts` · `config` | Politik & Heuristiken |
+   Unter Windows zusätzlich, sofern Toolchain und WebView2-Abhängigkeiten
+   vorhanden sind:
 
-Selektoren pro Provider liegen in `selectors/`; Portierungsregeln in
-`CONVENTIONS.md`.
+   ```powershell
+   cargo clippy --all-targets -- -D warnings
+   cargo test
+   ```
 
-## 3. Build/Test
+4. Genau eine begrenzte Aufgabe aus `docs/CURRENT_WORK.md` übernehmen. Vor
+   einem neuen Modul, Store, Protokoll oder CLI-Flag mit `rg` nach dem
+   bestehenden Mechanismus suchen. Dateien und Abnahmetest vorab benennen.
 
-Voraussetzung: eine Rust-Toolchain. Auf Windows **ohne** Visual Studio genügt
-die GNU-Toolchain:
+5. Mit einem fokussierten Commit, proportional grünen Gates, aktualisierter
+   `docs/CURRENT_WORK.md` und einem Push des Arbeitsbranches abschließen — der
+   Stand muss jederzeit über GitHub ziehbar sein. Grüne, abgeschlossene
+   Scheiben merged der Integrator selbst; Tag und Release folgen nach den
+   Abnahmebelegen. Live-Browser/Login und kostenpflichtige Provider laufen nur
+   mit anwesendem Eigentümer, der die Anmeldung selbst vornimmt.
 
-```powershell
-rustup toolchain install stable-x86_64-pc-windows-gnu
-rustup override set stable-x86_64-pc-windows-gnu   # im Projektordner
-cargo build --release
-cargo test --no-default-features   # CI-Parität (ohne WebView/GTK)
-cargo test                         # mit WebView-Feature (lokal)
-cargo clippy --all-targets -- -D warnings
-```
+## Rangfolge der Wahrheitsquellen
 
-Der Kern baut rein-Rust (`serde`, `serde_json`, `regex`, `fancy-regex`,
-`clap`, `time`). WebView-Deps (`wry`, `tao`, `webview2-com`, `windows`) sind
-optional (`--no-default-features` für headless CI).
+Bei Widersprüchen gilt:
 
-**`WebView2Loader.dll`** muss neben `webagent.exe` liegen. Bei `cargo build`
-kopiert `webview2-com-sys`s eigenes `build.rs` das automatisch nach
-`target/release/`. Der **GitHub-Release-Workflow tut das aktuell nicht**
-(`.github/workflows/release.yml` lädt nur die lose `.exe` hoch) — wer sich
-nur die Release-`.exe` von GitHub runterlädt, bekommt vermutlich einen
-Absturz. Ungefixt, siehe §6.
+1. ausführbarer Code und Tests;
+2. `docs/CURRENT_WORK.md` für aktuelle Arbeit und Evidenz;
+3. `docs/OVERVIEW.md` für Produktstand und Roadmap;
+4. `AGENTS.md`, `CONTRIBUTING.md`, `docs/COLLABORATION.md` und
+   `CONVENTIONS.md` für Arbeitsregeln;
+5. `README.md` und `docs/PROTOCOL_SCHEMA.md` für Bedienung und Verträge;
+6. datierte Übergaben, Pläne, Reviews und `STATUS_LIVE.md` nur als Historie.
 
-## 4. Wo was liegt
+Historische Providerwerte sind kein aktueller Verfügbarkeitsbeleg. Ein
+abgeschlossenes Goal oder grüne Unit-Tests sind keine Gesamtproduktabnahme.
 
-- `src/` — siehe Architektur-Tabelle oben
-- `selectors/*.json` — pro-Provider CSS/Playwright-Text-Selektoren
-- `data/` — Runtime-State (Runs, Memory, Circuit-Breaker, Brain-Score, Audit-Log); gitignored
-- `docs/` — Konzept-/Planungsdokumente (siehe §5)
-- `.github/workflows/` — CI (`ci.yml`, `android.yml`) + Release (`release.yml`)
-- Root-`.md`-Dateien: `README.md` (öffentliche Übersicht), `CONVENTIONS.md`
-  (Code-Konventionen), `docs/PROVIDER_STATUS.md` (Provider-Messwerte, mit
-  Historie); externe Reviews + Roadmap in `docs/` (`CODE_REVIEW.md`/
-  `CLAUDE_PROPOSALS.md`, siehe §6)
+## Kurzbild des Projekts
 
-## 5. Konzept-/Planungsdokumente
+Webagent ist ein lokaler Rust-Harness: Web-Chat-„Brains“ planen, während ein
+Controller über einen Plan-Act-Observe-Loop Werkzeuge im Workspace ausführt.
+`BrainBackend` hält den Kern providerunabhängig. Das produktive Browserbackend
+nutzt angemeldete Embedded-WebView2-Sitzungen unter Windows; Kern, REPL und TUI
+besitzen zusätzlich browserfreie Pfade.
 
-- `docs/AUTORESEARCH_PLAN.md` — vollständiger, **noch nicht umgesetzter**
-  Implementierungsplan für einen autonomen Verbesserungs-Loop (Karpathys
-  `autoresearch`-Muster: Modify→Verify→Keep/Discard→Repeat). Bewusst so
-  geschrieben, dass jemand ohne Vorwissen direkt einsteigen kann.
-- `docs/GENIUS_COUNCIL_CONCEPT.md` — Multi-Brain-Council-Idee, **bewusst
-  zurückgestellt** (Status im Dokument), teilweise durch `/swarm` (§6) ersetzt.
+Das Repo kann neben oder innerhalb alter Python- und Experiment-Worktrees
+liegen. Maßgeblich sind ausschließlich die von `git rev-parse --show-toplevel`
+ausgegebene Git-Wurzel, der ausgecheckte Branch und dessen eigenes `origin`.
 
-## 6. Aktueller Stand (2026-07-17, nachgemessen)
+## Übergaberegel
 
-v0.8.1. **8/8 Provider antworten headless mit echten Antworten** (chatgpt,
-deepseek, kimi, gemini, qwen, claude, mistral, zai) — gemessen per REPL mit
-gehaltener Session (siehe Methodik-Hinweis unten), nicht per Kaltstart-Loop.
-`cargo test --lib`: 186+ grün, `clippy --all-targets -D warnings` clean.
+Wer eine Aufgabe abgibt, aktualisiert `docs/CURRENT_WORK.md` mit:
 
-**REPL-Befehle:** `/model <brain>` (= `/switch`), `/chat <text>`, `/goal
-<text>` (stehendes Ziel, fließt in autonome Aufgaben ein), `/swarm [n]
-<text>` (alle Brains antworten, ein Orchestrator — fest gewählt oder per
-Konsens — führt zusammen), `/score` (Leistungsindex-Tabelle), `/whoami`,
-`/brains`, `/new`, `/memory`, `/login`.
+- exaktem Branch und Commit;
+- eigenen oder schmutzigen Dateien samt Grund;
+- erledigter Arbeit und offenen Abnahmekriterien;
+- tatsächlich ausgeführten Befehlen und Ergebnissen;
+- genau einer sichersten nächsten Aktion;
+- weiterhin freigabepflichtigen externen Aktionen.
 
-**Sicherheit:** `shell_policy.rs` prüft jeden Shell-Befehl vor Ausführung
-gegen eine Denylist (rekursives Löschen, Formatieren, Fork-Bombs,
-Download-Cradles) + Audit-Log (`data/audit/shell.jsonl`). Kein
-Allowlist-only — die Shell ist by Design offen (Single-User-Local-Agent),
-das ist ein Sicherheitsnetz, keine Sandbox.
-
-**Externer Review vorhanden:** `docs/CODE_REVIEW.md` + `docs/CLAUDE_PROPOSALS.md`
-(Qwen/Grok, 2026-07-16) mit priorisierter Roadmap. ⚠️ Der darin behauptete
-P0-Blocker („7 rote Executor-Tests") war zum Zeitpunkt der Review nicht
-reproduzierbar (mehrfach 186/186 grün gemessen) — die eigentliche Ursache
-war Prozess-Spawn-Kontention unter Voll-Parallel-Läufen, inzwischen per
-Mutex-Serialisierung behoben. Zahlen in Review-Dokumenten vor Gebrauch selbst
-nachmessen, nicht blind übernehmen.
-
-**Methodik-Lektion (wichtig für jede künftige Stabilitätsmessung):** ein
-Kaltstart-Relay-Loop (viele Sessions im Sekundentakt starten/stoppen)
-erzeugt selbst die Rate-Limits, die er messen soll. Immer so testen, wie das
-Produkt benutzt wird (REPL, gehaltene Session) — nicht per Kaltstart-Hämmern.
-
-**Offene Punkte:**
-- Release-Workflow bündelt `WebView2Loader.dll` nicht mit der `.exe` (§3)
-- Canary (periodischer 8-Brain-Health-Check), Protocol-Repair-Loop,
-  Controller-Split (`controller.rs` ~1150 Zeilen) — in `docs/CLAUDE_PROPOSALS.md`
-  skizziert, nicht begonnen
-- Fähigkeitsprofil-Teil des Leistungsindex (`/benchmark`, Stärken/Schwächen
-  je Kategorie, maximale Prompt-Länge) — bewusst nicht mitgebaut, siehe
-  Commit-Historie von `brain_score.rs`
-- `docs/AUTORESEARCH_PLAN.md` — geplant, nicht implementiert
-
-## 7. Nicht verwechseln
-
-`Desktop\webagent\` (der Elternordner, Python) ist die **Alt-Referenz**,
-kein Pflegeziel — nur als Verhaltensvorlage beim Rust-Port relevant, siehe §1.
-Zwei weitere, komplett unabhängige Projekte existieren daneben:
-`bot2bot` (`github.com/st0rax/bot2bot`, dateibasiertes Agent-Messaging —
-hat nichts mit diesem Repos `comms.rs` zu tun) und `presence-monitor`
-(`github.com/st0rax/presence-monitor`). Keine Schnittmenge, keine
-Abhängigkeit — jedes Projekt hat seine eigene `START_HERE.md`.
+Chatverlauf ist optionale Zusatzinformation, nie die einzige Übergabe.
