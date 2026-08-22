@@ -20,7 +20,8 @@ Entwicklungsscheibe aktualisieren. Git-Angaben vor Verwendung lokal prüfen.
   `8e6ea50` führt ihn vollständig nach. Lehre: fremde Evidenz nachmessen, und
   eine Evidenztabelle nie in denselben Commit schreiben, den sie belegt.
 - Der Arbeitsbranch wird nach GitHub gepusht, damit der aktuelle Stand jederzeit
-  ziehbar ist. Merge nach `master`, Tag, Release und Deployment sind offen.
+  ziehbar ist. Grüne Scheiben merged der Integrator selbst über einen PR; Tag,
+  Release und Deployment bleiben Eigentümerentscheidungen.
 
 Die datierten Details bleiben in
 `HANDOVER_FROM_CODEX_TO_CLAUDE_2026-08-22.md` erhalten. Für künftige operative

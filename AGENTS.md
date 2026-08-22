@@ -59,8 +59,10 @@ Session-Grenzen mit Pfad, Zweck und Eigentuemerschaft in
 
 Fertige, getestete Scheiben werden committet und auf ihren Arbeitsbranch
 gepusht: Der Eigentuemer muss den aktuellen Stand jederzeit ueber GitHub ziehen
-koennen, ohne dass jemand ihn dafuer erst freigibt. Merge nach `master`, Tag und
-GitHub-Release bleiben ausdrueckliche Entscheidungen.
+koennen, ohne dass jemand ihn dafuer erst freigibt. Gruene, abgeschlossene
+Scheiben merged der Integrator selbst nach `master`. Tag, GitHub-Release,
+Deployment und jeder Live-/Kostenpfad bleiben ausdrueckliche
+Eigentuemerentscheidungen.
 
 ## 6. Benchmark-Monitoring & TUI
 

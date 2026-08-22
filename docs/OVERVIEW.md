@@ -168,7 +168,7 @@ Stufe vortäuschen.
 4. Bei Unterbrechung dieselbe Run-ID fortsetzen. Ein Repair soll den vorhandenen
    Diff und die konkrete Gate-Ausgabe erhalten, nicht die Aufgabe neu beginnen.
 5. Benchmark nur auf sauberem Git-Tree ausführen. Kandidaten erst nach den
-   konfigurierten Gates ernten; Merge bleibt eine menschliche Entscheidung.
+   konfigurierten Gates ernten; der Merge folgt erst nach grünen Gates.
 
 Sicherheitsgrenze: Das System ist ein lokaler Coding-Agent mit weitreichender
 Shell. Die Policy blockiert bekannte gefährliche Muster, ersetzt aber weder OS-
@@ -228,9 +228,10 @@ Nachweis, wenn die Schutzgitter ihn aus dem richtigen Grund fail-closed stoppen.
 ### 4. Konsolidierung und Release-Entscheidung
 
 Nach den End-to-End-Gates werden README, Übersicht, Providerstatus und Übergabe
-auf denselben Stand gebracht. Merge, Tag und Release bleiben ausdrückliche
+auf denselben Stand gebracht. Tag und Release bleiben ausdrückliche
 menschliche Entscheidungen; vorhandene Workflows allein sind kein Releasebeleg.
-Der Push des Arbeitsbranches ist davon getrennt und erfolgt laufend.
+Push und Merge des Arbeitsbranches sind davon getrennt und Aufgabe des
+Integrators.
 
 ### Optional: realer Free-Cloud-Adapter
 

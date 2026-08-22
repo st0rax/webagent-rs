@@ -35,8 +35,15 @@ personenbezogene Daten oder Inhalte aus `.env`.
    nicht vollständig hinein.
 5. Pull Request mit `Closes #<issue>` öffnen. Das PR-Template verlangt Scope,
    tatsächlich ausgeführte Gates, Risiken und Übergabestatus.
-6. Erst nach Review und grünen erforderlichen Checks mergen. Merge, Tag,
-   Release und Deployment bleiben getrennte Entscheidungen des Eigentümers.
+6. Erst nach Review und grünen erforderlichen Checks mergen; den Merge führt
+   der Integrator selbst aus. Tag, Release und Deployment bleiben getrennte
+   Entscheidungen des Eigentümers.
+
+Arbeitet nur ein einziger Integrator am Projekt, gibt es kein zweites
+Augenpaar. Dann ersetzt die vollständige, im PR belegte Gate-Matrix das Review
+— nicht die Behauptung, es habe eines stattgefunden. Der PR bleibt auch dann
+Pflicht: Er ist die nachlesbare Spur, was aus welchem Grund nach `master`
+gelangt ist.
 
 Der Arbeitsbranch wird dagegen laufend gepusht, spätestens am Ende jeder
 Scheibe und vor jeder Unterbrechung. Der Eigentümer muss den aktuellen Stand
