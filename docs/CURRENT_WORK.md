@@ -28,13 +28,58 @@ Die datierten Details bleiben in
 `HANDOVER_FROM_CODEX_TO_CLAUDE_2026-08-22.md` erhalten. Für künftige operative
 Updates ersetzt diese Datei die alte Übergabe.
 
+## Offene Baustelle: beschädigtes Master-Profil
+
+**Stand 2026-08-22 23:00:** `profiles/shared` trägt nur noch `z.ai`. Ein
+`login-all` über neun Brains hat die Cookie-Datenbank neunmal überschrieben —
+der letzte Brain gewinnt. Ursache und Reparatur des Mechanismus stehen in
+`db8e357`; **der Datenschaden selbst ist nicht behoben.**
+
+Nicht betroffen: die neun kanonischen Profile unter `profiles/<brain>` sind
+vollständig und aktuell. `verify`, `login` und `probe` arbeiten auf ihnen und
+funktionieren. Betroffen sind nur Pool, TUI und Benchmark, die aus dem Master
+klonen.
+
+Drei Wege, bewusst noch nicht gegangen:
+
+| Weg | Ergebnis | Kosten |
+|---|---|---|
+| Sicherung `shared.bak-20260807-153635` zurückspielen | alle neun Brains, aber Sitzungen vom 07.08. | keine; Sitzungen wahrscheinlich rotiert und tot |
+| `WEBAGENT_USE_SHARED_BROWSER=1 login-all` | korrektes, aktuelles Master | neun Anmeldungen von Hand |
+| nichts tun | Master bleibt unbrauchbar | keine, solange Pool/TUI/Bench ruhen |
+
+Der Shared-Betrieb ist der einzige Weg, der ein vollständiges Master erzeugt:
+Nur dort laufen alle Anmeldungen von vornherein in dieselbe Cookie-Datenbank.
+Eine Spiegelung einzelner Profile kann das prinzipiell nicht leisten, weil
+Chromium die Cookies mit einem Schlüssel aus dem `Local State` desselben
+Profils verschlüsselt.
+
+## Kimi: Umfirmierung auf kimi.ai
+
+`chat` und `new_chat` bestehen wieder live. Drei Ursachen hatten sich
+überlagert: die Domain (`BRAIN_TABLE` zeigte auf `kimi.com`), Selektoren, bei
+denen Anmeldewand und Anmeldenachweis auf dasselbe Element zeigten, und eine
+fehlende Gnadenfrist beim Schließen des Browsers.
+
+Offen und **nicht** anmeldebezogen: `model_switch` findet keinen Selektor,
+`stop_generation` ist über `--stop-diff` nicht auffindbar (55 Elemente vor und
+nach der Generierung identisch — vermutlich zu spät gescannt, Kimi antwortet
+in Sekunden), `projects` klappt nur eine Sidebar-Sektion auf statt zu
+navigieren. Letzteres ist womöglich gar kein Defekt, sondern eine entfallene
+Fähigkeit.
+
+Beim Vermessen aufgefallen, nicht angefasst: Die kanonischen Profile sind
+durchmischt — `claude`, `gemini`, `mistral` und `qwen` tragen ChatGPT- und
+Kimi-Cookies bei identischen Byte-Längen, was auf Kopien statt Anmeldungen
+hindeutet.
+
 ## Evidenz dieser Basis
 
 | Gate | Ergebnis |
 |---|---|
 | fokussierte Write-back-Durability-Tests | 9 bestanden |
-| `cargo test --no-default-features` | 1.102 Bibliotheks- + 7 Binärtests bestanden |
-| `cargo test` | 1.168 Bibliotheks- + 7 Binärtests bestanden |
+| `cargo test --no-default-features` | 1.104 Bibliotheks- + 7 Binärtests bestanden |
+| `cargo test` | 1.170 Bibliotheks- + 7 Binärtests bestanden |
 | striktes Headless-Clippy | bestanden |
 | striktes Vollfeature-Clippy | bestanden |
 | Format und `git diff --check` | bestanden |
@@ -65,7 +110,15 @@ Die providerfreie Benchmark-/Harvest-Systemabnahme aus `OVERVIEW.md` umsetzen:
   `run_benchmark_with`); der Produktionspfad reicht unverändert an `bench_run`
   durch;
 - ein geparstes, `Ready` bewertetes Work-Package in den echten Git-/Eval-/
-  Harvestpfad führen;
+  Harvestpfad führen — **Befund 2026-08-22:** `allowed_paths` erreicht den
+  Harvest heute gar nicht. `validate_harvest_patch` prüft nur eine generische
+  Policy (bestehende `.rs` unter `src/`, höchstens vier Dateien, keine
+  Löschungen), und `validate_task_scope` leitet aus dem **Freitext** der
+  Aufgabe einen einzigen erwarteten Funktionsnamen ab. Der typisierte
+  `WorkPackage`-Scope wird nie konsultiert. Der geforderte Nachweis „Patch
+  außerhalb `allowed_paths` wird fail-closed verworfen" kann deshalb noch gar
+  nicht gelingen; die Scheibe muss den Scope zuerst bis in den Harvest
+  durchreichen;
 - ein temporäres Mini-Git-Repo verwenden;
 - Fresh -> Continuation mit gleicher Run-ID -> Stall -> begrenztes Cross-Brain-
   Handoff belegen;
