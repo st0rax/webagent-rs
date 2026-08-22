@@ -961,16 +961,33 @@ mod tests {
 
     #[test]
     fn brain_datei_gewinnt_die_maske_pro_schluessel() {
-        // Der Brain-Selektor ueberschreibt die Maske je Oberschluessel komplett:
-        // kimi's Composer-Anker (lexical editor) schlaegt den generischen.
+        // Der Brain-Selektor ueberschreibt die Maske je Oberschluessel komplett.
+        //
+        // Geprueft wird die Regel, NICHT ein bestimmter Anker: Der Test stand
+        // bis 2026-08-22 auf kimis lexical-Editor und brach, als die
+        // Umfirmierung auf kimi.ai den Composer zu `chat-input-editor` machte.
+        // Ein Test, der bei jedem Website-Umbau rot wird, misst die Website
+        // statt der Aufloesungsregel.
         let sel = load_selectors("kimi").expect("kimi ist mitgeliefert");
         let composer = sel
             .get("composer")
             .and_then(|v| v.as_array())
             .expect("composer-Liste");
-        assert_eq!(
-            composer[0], "div[data-lexical-editor=\"true\"]",
+        let mask =
+            load_selectors("__unbekanntes_brain_ohne_datei__").expect("Maske traegt jedes Brain");
+        let mask_composer = mask
+            .get("composer")
+            .and_then(|v| v.as_array())
+            .expect("Masken-composer");
+        assert_ne!(
+            composer[0], mask_composer[0],
             "kimi gewinnt ueber die Maske"
+        );
+        assert!(
+            composer
+                .iter()
+                .any(|v| v.as_str().is_some_and(|s| s.contains("chat-input-editor"))),
+            "kimis eigener Composer-Anker muss aus der Brain-Datei stammen: {composer:?}"
         );
     }
 
