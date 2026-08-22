@@ -14,9 +14,11 @@ Session-TUI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
 > `comms.rs` (internes Messaging, ersetzt bot2bot für webagent-intern) in CLI/Controller verdrahtet.
 > Browser-Steuerung über Embedded WebView + `BrowserPool`; REPL hält die Session über Turns offen.
 >
-> **Provider: 8 von 8 antworten headless** — chatgpt, deepseek, kimi, gemini, qwen,
-> claude, mistral, zai. Gemessen per `relay` mit echten Antworten (nicht per
-> Exit-Code), zwei volle Runden 8/8. Messwerte und Historie:
+> **Historischer Provider-Nachweis:** Am 2026-07-16 antworteten 8 von 8 Brains
+> headless — chatgpt, deepseek, kimi, gemini, qwen, claude, mistral und zai.
+> Das waren echte `relay`-Antworten, nicht nur erfolgreiche Exit-Codes. Wegen
+> veränderlicher Web-UIs, Sessions und Quoten ist dies keine aktuelle
+> Verfügbarkeitszusage. Messwerte und spätere Capability-Historie:
 > [`docs/PROVIDER_STATUS.md`](docs/PROVIDER_STATUS.md).
 >
 > ⚠️ Die frühere Aussage „5/8 headless, chatgpt/claude/mistral scheitern an Cloudflare"

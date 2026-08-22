@@ -443,3 +443,22 @@ Der Manus-Prozess läuft nicht mehr. Codex führt das Projekt ab `origin/master`
 | Format-/Diffprüfung | bestanden |
 
 Der nicht commitreife `src/repl/pool.rs`-Diff im alten `webagent-final-verification`-Worktree bleibt unverändert erhalten und ist kein Integrationsbestandteil. Er kapselt nur die bereits vor Backend-Erzeugung ausgeführte Circuit-Breaker-Prüfung für Tests und belegt keine neue Produktfähigkeit. Push, Tag und Release bleiben weiterhin explizite Entscheidungen.
+
+## Projektabschluss-Audit - 2026-08-22
+
+Die abgeschlossene Goal-Karte darf nicht als Abschluss des Gesamtprojekts
+gelesen werden. Sie belegt nur die darin gebundene Harness-Härtung. Beim ersten
+aktuellen Vollfeature-Lint wurden drei Baseline-Befunde sichtbar und in Commit
+`e8658b8` ohne Produktverhaltensänderung behoben.
+
+Nach dem Commit bestehen `cargo clippy --all-targets -- -D warnings`,
+`cargo clippy --no-default-features -- -D warnings`, `cargo fmt --all --
+--check` und `git diff --check`. Der erneute Defaultfeature-Test umfasst 1.166
+Bibliotheks- und 7 Binärtests ohne Fehler.
+
+Das Gesamtprojekt bleibt dennoch offen: aktuelle Provider-/WebView-
+Rezertifizierung, ein konsolidierter realer Mehr-Brain-Szenariolauf, ein
+reproduzierbarer Benchmark-/Repair-/Harvest-Lauf und die bewusste
+Integrations-/Releaseentscheidung fehlen. Die aktuelle Abschlussmatrix und
+Priorisierung stehen in `docs/OVERVIEW.md`. Externe Provider-, Login-, Kosten-
+oder Releasepfade benötigen weiterhin ausdrückliche Nutzerfreigabe.

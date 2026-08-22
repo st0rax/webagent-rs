@@ -2775,3 +2775,20 @@ Codex hat die Projektkoordination nach dem Ende des Manus-Prozesses in einem fri
 | Format und Diff | `cargo fmt --all -- --check` und `git diff --check`: bestanden |
 
 Der alte Worktree `webagent-final-verification` bleibt als Sicherung unangetastet. Sein einzelner uncommitteter Diff in `src/repl/pool.rs` extrahiert lediglich eine bereits vorhandene Circuit-Breaker-Prüfung für zwei Tests, ändert kein Produktverhalten und wurde wegen des zu starken Testversprechens nicht übernommen. Der aktive Übernahmebranch ist `codex/project-takeover`; Push oder Release wurden nicht ausgelöst.
+
+## Projektabschluss-Audit und wiederhergestelltes Voll-Lint-Gate - 2026-08-22
+
+- Eine abgeschlossene Goal-Karte belegt nur ihre gebundene
+  Harness-Härtungsscheibe, nicht den Abschluss des Gesamtprojekts.
+- Der erste aktuelle Lauf von `cargo clippy --all-targets -- -D warnings` fand
+  drei Baseline-Befunde. Commit `e8658b8` behebt sie ohne Änderung des
+  Produktverhaltens: explizit nicht-trunkierende Lockdatei-Semantik, ein
+  cfg-Zweig als Tail-Expression und das Testmodul hinter den Produktionsitems.
+- Nach der Reparatur bestehen der strikte Vollfeature- und Headless-Clippy,
+  Format- und Diffprüfung sowie erneut 1.166 Bibliotheks- und 7 Binärtests mit
+  Defaultfeatures.
+- Der Gesamtabschluss bleibt offen. Es fehlen eine aktuelle Live-
+  Providerrezertifizierung, eine integrierte Mehr-Brain-Abnahme, ein
+  reproduzierbarer Benchmark-/Harvest-Lauf und eine ausdrückliche
+  Integrations-/Releaseentscheidung. Die aktuelle Matrix steht in
+  `docs/OVERVIEW.md`.

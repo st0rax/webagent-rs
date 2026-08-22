@@ -1,6 +1,6 @@
 # Webagent: Systemüberblick
 
-**Stand:** 2026-08-17. Diese Datei ist die aktuelle Produkt- und
+**Stand:** 2026-08-22. Diese Datei ist die aktuelle Produkt- und
 Architekturübersicht.
 
 Nicht jede `.md` im Repo ist Soll-Zustand. `*_PLAN.md`, `*_CONCEPT.md`,
@@ -35,6 +35,25 @@ Ziel, keine Behauptung über jede beliebige Chat-Seite.
   von Web-UIs, Sessions oder noch nicht abgeschlossener Integration ab.
 - **Geplant:** Entwurf oder isolierter Baustein; nicht als Produktfähigkeit
   behandeln.
+
+## Aktueller Abnahmestand
+
+Das Projekt ist **nicht als insgesamt fertig abgenommen**. Ein abgeschlossener
+Goal-Datensatz belegt nur den darin gebundenen Arbeitsauftrag, nicht die
+Produktabnahme. Der lokale Harness-Kern ist umfangreich getestet; die
+veränderlichen Live- und Integrationspfade brauchen dagegen neue End-to-End-
+Evidenz.
+
+| Bereich | Stand am 2026-08-22 | Fehlender Abschlussbeleg |
+|---|---|---|
+| Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.166 Bibliotheks- und 7 Binärtests mit Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures | Integration des geprüften Zweigs in den maßgeblichen Upstream |
+| Provider-/WebView-Livebetrieb | Experimentell; die öffentliche 8/8-Messung stammt vom 2026-07-16, spätere Capability-Messungen sind ebenfalls datierte Einzelbelege | aktuelle Diagnose-/Verify-/Relay-Matrix auf den tatsächlich angemeldeten Sessions |
+| Pool, Worker und Cross-Brain-Handoff | Verträge und Fehlergrenzen lokal getestet | konsolidierter realer Mehr-Brain-Lauf inklusive Abbruch, Handoff und Wiederaufnahme |
+| Benchmark/Autoresearch/Harvest | Pipeline und Schutzgitter implementiert | reproduzierbarer Lauf auf sauberem Worktree vom Auftrag bis zum akzeptierten oder korrekt verworfenen Kandidaten |
+| Free-Cloud-Textchat | Registry, Policy, Mock-Stream, Metadaten- und Breaker-Verträge lokal implementiert | kein echter HTTP-/Provideradapter; externe Inferenz bleibt bis zur ausdrücklichen Freigabe außerhalb des Lieferstands |
+| Release | Workflows und Buildskripte vorhanden | aktueller Artefaktlauf sowie bewusstes Push/Tag/Release |
+
+Damit bedeutet „lokale Gates grün“ derzeit **nicht** „Produkt fertig“.
 
 ## Kernarchitektur
 
@@ -172,8 +191,41 @@ als Daten behandelt und in Prompts markiert.
 
 ## Priorisierte Roadmap
 
-### API: lokale Provider-Bridge fuer externe Agentenoberflaechen
+### 0. Erledigter Meilenstein: lokale Provider-Bridge
 
 **Status:** umgesetzt als lokaler, token-geschuetzter Loopback-Dienst. Der Befehl webagent api serve bietet einen OpenAI-Chat-Completions- und einen Anthropic-Messages-Adapter, einen token-geschuetzten Modellkatalog sowie dokumentierte Text- und Streaminggrenzen.
 
 Der verbindliche Betriebsvertrag, Pi-Konfigurationsbeispiele und die Sicherheitsgrenzen stehen in [API_BRIDGE.md](API_BRIDGE.md).
+
+### 1. Aktuelle Live-Rezertifizierung des Browser-Harness
+
+Diagnose, Capability-Verify und ein enger Relay-/Run-Nachweis müssen gegen die
+heutigen Web-UIs und vorhandenen Sessions wiederholt werden. Historische
+Providerzahlen dürfen dafür nicht hochgezählt werden. Browser-, Login- und
+Accountzugriffe erfolgen nur nach ausdrücklicher Nutzerfreigabe.
+
+### 2. Integrierte Mehr-Brain-Abnahme
+
+Ein nachvollziehbarer Szenariolauf muss Poolstart, Worker-Heartbeat,
+Same-Brain-Continuation, Cross-Brain-Handoff, Profil-Lease/Write-back und
+geordneten Shutdown gemeinsam belegen. Unit-Tests der Einzelverträge ersetzen
+diesen Systemnachweis nicht.
+
+### 3. Benchmark-/Autoresearch-Abnahme
+
+Auf einem sauberen, isolierten Worktree ist mindestens ein vollständiger Lauf
+vom Work-Package über Agentenarbeit, Repair und Eval bis zur korrekten
+Harvest-Entscheidung zu protokollieren. Ein verworfener Kandidat ist ein gültiger
+Nachweis, wenn die Schutzgitter ihn aus dem richtigen Grund fail-closed stoppen.
+
+### 4. Konsolidierung und Release-Entscheidung
+
+Nach den End-to-End-Gates werden README, Übersicht, Providerstatus und Übergabe
+auf denselben Stand gebracht. Push, Merge, Tag und Release bleiben ausdrückliche
+menschliche Entscheidungen; vorhandene Workflows allein sind kein Releasebeleg.
+
+### Optional: realer Free-Cloud-Adapter
+
+Der externe Adapter ist kein stiller Folgeschritt. Kosten-, Credential-,
+Datenschutz- und Anbieterbedingungen müssen vor jedem realen Providerzugriff
+erneut geprüft und vom Nutzer freigegeben werden.
