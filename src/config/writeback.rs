@@ -823,10 +823,27 @@ pub(crate) fn has_login_artifacts(dir: &Path) -> bool {
 ///
 /// Bewusst keine Vollstaendigkeit: ein Brain ohne bekannten, eindeutigen
 /// Sitzungs-Cookie faellt einfach unter den Gewichts-Schutz.
+/// Namentliche Sitzungs-Nachweise je Brain.
+///
+/// Gemessen am 2026-08-22 in den kanonischen Profilen: pro Brain wurden die
+/// `httpOnly`-Cookies der EIGENEN Domain gelesen und der Traeger der Sitzung
+/// uebernommen. Namen mit variablem Suffix stehen als Praefix drin, weil
+/// [`bytes_contain`] auf Teilstrings sucht (`ory_session_<instanz>`,
+/// `__Secure-pplx.session.<uuid>`).
+///
+/// Bewusst NICHT enthalten, weil ein Byte-Scan sie nicht sicher belegt:
+/// `deepseek` traegt ueberhaupt keinen eigenen `httpOnly`-Cookie (die Sitzung
+/// liegt anderswo), `qwen` nennt seinen schlicht `token` — zu generisch, das
+/// waere ein Fehlalarm auf beliebigen Fremddaten — und `zai` fuehrt nur
+/// `cdn_sec_tc`, einen CDN-Schutzcookie ohne Anmeldebezug. Fuer diese drei
+/// traegt allein der Gewichtsvergleich [`write_back_is_safe`].
 const SESSION_PROOF_COOKIES: &[(&str, &[&str])] = &[
     ("kimi", &["kimi-auth"]),
     ("chatgpt", &["__Secure-next-auth.session-token"]),
     ("mistral", &["ory_session"]),
+    ("claude", &["sessionKey"]),
+    ("perplexity", &["__Secure-pplx.session"]),
+    ("gemini", &["COMPASS"]),
 ];
 
 /// Enthaelt der Byte-Haufen `hay` den ASCII-Text `needle`?

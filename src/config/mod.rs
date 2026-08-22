@@ -275,6 +275,41 @@ mod tests {
         assert_eq!(runtime_lost_sessions(master, runtime), vec!["kimi"]);
     }
 
+    /// Der Nachweis deckt sechs der neun Brains ab — und nur die, deren
+    /// Cookie-Name eindeutig genug fuer einen Byte-Scan ist.
+    ///
+    /// Gemessen am 2026-08-22 in den kanonischen Profilen. `deepseek` traegt
+    /// keinen eigenen `httpOnly`-Cookie, `qwen` nennt seinen `token` und `zai`
+    /// fuehrt nur einen CDN-Cookie; fuer diese drei gibt es bewusst keinen
+    /// Eintrag, weil ein zu generischer Name auf beliebigen Fremddaten
+    /// anschlaegt und damit gueltige Rueckwege blockieren wuerde.
+    #[test]
+    fn sitzungs_nachweise_decken_die_belegbaren_brains_ab() {
+        let master =
+            b"kimi-auth __Secure-next-auth.session-token ory_session_abc sessionKey               __Secure-pplx.session.uuid COMPASS";
+        let leer = b"nichts davon";
+        let mut verloren = runtime_lost_sessions(master, leer);
+        verloren.sort_unstable();
+        assert_eq!(
+            verloren,
+            vec![
+                "chatgpt",
+                "claude",
+                "gemini",
+                "kimi",
+                "mistral",
+                "perplexity"
+            ],
+            "jeder gemessene Nachweis muss einen Verlust melden koennen"
+        );
+        // Praefix-Treffer: der Instanz-/UUID-Suffix darf den Nachweis nicht
+        // entwerten.
+        assert_eq!(
+            runtime_lost_sessions(b"ory_session_coolcurranf83m3srkfl", b"nichts"),
+            vec!["mistral"]
+        );
+    }
+
     #[test]
     fn kopie_mit_rotierter_sitzung_ist_kein_verlust() {
         // Sitzung erneuert: der Cookie-Name bleibt, nur der Wert ist neu.
