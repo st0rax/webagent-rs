@@ -430,3 +430,16 @@ Der aktive Zielvertrag goal-2026-08-20T19-19-20.587795-00-00 wurde lokal erfolgr
 | Produktabnahme | deepseek Worker -> qwen Reviewer: status PASS, SCORE 5 |
 
 Die ChatGPT- und Browserquarantaene bleibt trotz des lokalen Goal-Abschlusses bestehen. Sie war fuer die Qwen-/Perplexity-basierte Evidenz und die lokale GNU-Abnahme nicht erforderlich.
+
+## Codex hat übernommen - 2026-08-22
+
+Der Manus-Prozess läuft nicht mehr. Codex führt das Projekt ab `origin/master` (`9bf57f5`) im getrennten Branch `codex/project-takeover` weiter. Der erste Übernahmecommit `3ef693b` ersetzt die 13 bekannten Headless-Baselinewarnungen in `transcript.rs` und `browser_pool.rs` durch echte Featuregrenzen; alle zugehörigen Testflächen bleiben über `cfg(test)` verfügbar.
+
+| Nachweis | Ergebnis |
+| --- | --- |
+| `RUSTFLAGS=-Dwarnings cargo check --no-default-features` | Exit 0 |
+| `cargo clippy --no-default-features -- -D warnings` | Exit 0 |
+| `cargo test --no-default-features` | 1.100 Bibliotheks- und 7 Binärtests bestanden |
+| Format-/Diffprüfung | bestanden |
+
+Der nicht commitreife `src/repl/pool.rs`-Diff im alten `webagent-final-verification`-Worktree bleibt unverändert erhalten und ist kein Integrationsbestandteil. Er kapselt nur die bereits vor Backend-Erzeugung ausgeführte Circuit-Breaker-Prüfung für Tests und belegt keine neue Produktfähigkeit. Push, Tag und Release bleiben weiterhin explizite Entscheidungen.
