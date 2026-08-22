@@ -185,6 +185,22 @@ return null;}})()"#,
         )
     }
 
+    /// Schliesst den Browser und laesst ihn die Sitzung fertig schreiben.
+    ///
+    /// WebView2 schreibt Cookies, Local Storage und IndexedDB NICHT waehrend
+    /// des Betriebs, sondern asynchron BEIM Schliessen — derselbe Grund, aus
+    /// dem `teardown_runtime` nach dem Drop wartet, bevor es zurueckschreibt.
+    /// Vorher zu warten hilft deshalb nichts: Zum Zeitpunkt des Wartens hat
+    /// der Browser noch gar nichts zu schreiben begonnen.
+    ///
+    /// Gemessen 2026-08-22 an kimi: Nach jeder Anmeldung blieb im Profil nur
+    /// ein `anonymous_refresh_token` zurueck — die Sitzung starb mit dem
+    /// Fenster, und der naechste Lauf verlangte erneut eine Anmeldung.
+    fn stop_and_flush(&mut self) {
+        let _ = self.stop();
+        std::thread::sleep(Duration::from_secs(5));
+    }
+
     pub fn interactive_login(&mut self, timeout: Duration) -> Result<bool, String> {
         self.start(false)?; // headed — Login erfordert Nutzerinteraktion
         let start = Instant::now();
@@ -200,14 +216,24 @@ return null;}})()"#,
         loop {
             self.dismiss_consent();
             if self.is_logged_in() {
-                // Kurz warten, damit Chrome Cookies/Session ins Profil flusht.
-                std::thread::sleep(Duration::from_secs(2));
-                let _ = self.stop();
+                self.stop_and_flush();
                 return Ok(true);
             }
             if start.elapsed() >= timeout {
-                let _ = self.stop();
-                return Ok(false);
+                // Auch eine NICHT erkannte Anmeldung hat Sitzungsdaten erzeugt:
+                // Chromium haelt sie noch im Speicher und schreibt sie erst beim
+                // geordneten Schliessen. Hart zu schliessen wirft genau die
+                // Anmeldung weg, auf die hier gerade Minuten gewartet wurde.
+                //
+                // Bei einem Brain, dessen Indikator nach einem Website-Umbau
+                // nicht mehr trifft, passiert das JEDES Mal: anmelden, Timeout,
+                // Sitzung verworfen, beim naechsten Lauf wieder "Login noetig"
+                // (gemessen 2026-08-22 an kimi). Dieselbe Gnadenfrist wie im
+                // Erfolgsfall — danach ein letzter Blick, denn wer sich kurz vor
+                // Schluss angemeldet hat, wird so noch als Erfolg erkannt.
+                let logged_in_late = self.is_logged_in();
+                self.stop_and_flush();
+                return Ok(logged_in_late);
             }
             std::thread::sleep(Duration::from_secs(2));
         }
