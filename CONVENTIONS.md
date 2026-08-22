@@ -1,6 +1,8 @@
 # WebAgent Rust — Design-Konventionen
 
-> Aktuell: [`docs/OVERVIEW.md`](docs/OVERVIEW.md), TUI: [`AGENTS.md`](AGENTS.md) §6.
+> Einstieg: [`START_HERE.md`](START_HERE.md), aktueller Arbeitsstand:
+> [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md), Produktwahrheit:
+> [`docs/OVERVIEW.md`](docs/OVERVIEW.md), TUI: [`AGENTS.md`](AGENTS.md) §6.
 > Regeln, die der Code heute braucht. Kein Port-Auftrag, kein zweites
 > Betriebsdokument.
 
@@ -30,7 +32,8 @@
 ## Was nicht gilt
 
 - Python-Tests unter `../tests/` sind nicht die Spezifikation.
-- `START_HERE.md` / `docs/MISSION.md` sind Archiv, kein Einstieg.
+- `docs/MISSION.md` ist Archiv, kein Einstieg. `START_HERE.md` ist der
+  verbindliche, stabile Einstieg.
 - Keine 30. lebende Spezifikation. Betrieb: `README.md`, `AGENTS.md` §6,
   `docs/OVERVIEW.md`, `docs/PROTOCOL_SCHEMA.md`.
 - Keine `async`-Runtime, solange der synchrone Loop reicht.
@@ -41,6 +44,7 @@
 
 | Rolle | Dateien |
 |---|---|
+| Einstieg/Arbeit | `START_HERE.md`, `CONTRIBUTING.md`, `docs/CURRENT_WORK.md` |
 | Betrieb | `README.md`, `AGENTS.md`, `docs/OVERVIEW.md`, `docs/PROTOCOL_SCHEMA.md` |
 | Regeln | diese Datei |
 | Referenz | `docs/ARCHITECTURE.md`, `docs/PROVIDER_STATUS.md` (Zahlen nachmessen) |

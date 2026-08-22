@@ -1,5 +1,10 @@
 # Gesamtübergabe von Codex an Claude
 
+> **Archiv seit 2026-08-22.** Der dauerhafte Einstieg ist
+> [`../START_HERE.md`](../START_HERE.md), der laufende Stand steht in
+> [`CURRENT_WORK.md`](CURRENT_WORK.md). Dieses Dokument bleibt als datierter
+> Übergabebeleg erhalten und wird nicht fortgeschrieben.
+
 **Datum:** 2026-08-22
 **Projekt:** `webagent-rs`
 **Status:** konsolidierter lokaler Übergabestand; Gesamtprojekt nicht fertig

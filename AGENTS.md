@@ -1,7 +1,20 @@
-# Regeln fuer jede opencode-Session in diesem Repo
+# Regeln fuer jede Entwickler- und Agenten-Session in diesem Repo
 
 Diese Regeln existieren, weil Fehler wiederholt auftraten (Stand 2026-08-12). Sie
 sind verbindlich, keine Absichtserklaerung.
+
+## 0. Einstieg und Uebergabe
+
+Jede neue Session beginnt mit `START_HERE.md` und `docs/CURRENT_WORK.md`, dann
+mit `git status --short --branch`. Unbekannte Aenderungen werden nicht
+ueberschrieben. Bei paralleler Arbeit gelten getrennte Worktrees oder explizit
+disjunkte Dateizustaendigkeiten.
+
+Der aktuelle Arbeitsstand wird ausschliesslich in `docs/CURRENT_WORK.md`
+fortgeschrieben. Datierte Uebergaben und `STATUS_LIVE.md` sind Historie. Eine
+Session endet mit einem sauberen Commit oder einem dort dokumentierten,
+absichtlich unsauberen Zustand. Der Empfaenger muss ohne Chatverlauf fortsetzen
+koennen.
 
 ## 1. Bestand zuerst pruefen, nie parallel bauen
 
@@ -39,7 +52,8 @@ sofort aussprechen, sobald sie auftauchen — nicht stumm verrechnen.
 
 Nach jedem abgeschlossenen Stueck: Build/Tests/`clippy` gruen UND eine kurze
 Fortschrittszeile (Terminal oder Kanal). Uncommittete Arbeit gehoert ueber
-Session-Grenzen in `STATUS_LIVE.md`.
+Session-Grenzen mit Pfad, Zweck und Eigentuemerschaft in
+`docs/CURRENT_WORK.md`.
 
 ## 5. Commit fertiger Scheiben
 

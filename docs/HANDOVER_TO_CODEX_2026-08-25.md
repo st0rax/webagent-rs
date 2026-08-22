@@ -1,6 +1,9 @@
 # Projektübergabe an Codex: `webagent-rs`
 
-> **Dokumentstatus:** Laufend gepflegte, dateibasierte Übergabe. Diese Fassung wurde am **21. August 2026** gegen den tatsächlich abgefragten Git- und Worktree-Zustand erstellt. Sie ist kein Ersatz für `AGENTS.md`, `STATUS_LIVE.md` oder den Quelltext; sie ist der Einstieg, der Codex ohne Chatverlauf handlungsfähig machen soll.
+> **Archiv seit 2026-08-22.** Diese Manus→Codex-Übergabe wird nicht weiter
+> gepflegt. Aktueller Einstieg: [`../START_HERE.md`](../START_HERE.md), laufende
+> Arbeitsübergabe: [`CURRENT_WORK.md`](CURRENT_WORK.md). Angaben unten sind nur
+> historische Evidenz vom 21. August 2026.
 >
 > **Wichtig:** Dieser Stand enthält eine **uncommittete Sicherheitsreparatur** im aktiven Worktree. Weder sie noch diese Übergabedatei dürfen als fertig, geprüft oder zur Veröffentlichung freigegeben gelten, bevor die unten genannten Restgates tatsächlich bestanden und dokumentiert sind.
 

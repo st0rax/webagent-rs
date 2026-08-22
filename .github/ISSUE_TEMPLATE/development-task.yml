@@ -1,0 +1,62 @@
+name: Entwicklungsauftrag
+description: Eine begrenzte, übernehmbare Entwicklungsscheibe definieren
+title: "[Task] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dieses Issue ist der dauerhafte Auftrag. Vor Arbeitsbeginn `START_HERE.md`, `docs/CURRENT_WORK.md` und `AGENTS.md` lesen. Das Repository ist öffentlich: keine Credentials, Cookies, privaten Transkripte oder lokalen Profildaten einfügen.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Gewünschtes Ergebnis
+      description: Welches beobachtbare Ergebnis soll nach dem Merge vorhanden sein?
+      placeholder: Ein konkretes Ergebnis, keine allgemeine Aktivität.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Ausgangslage und Evidenz
+      description: Relevante Commits, Dateien, Fehlerausgaben oder bestehende Tests.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Welche Dateien oder Komponenten gehören hinein, welche ausdrücklich nicht?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Abnahmekriterien
+      description: Als prüfbare Checkliste formulieren.
+      placeholder: |
+        - [ ] Beobachtbares Verhalten A
+        - [ ] Regressionstest B
+        - [ ] Relevante Gatematrix grün
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Grenzen und Freigaben
+      description: Sicherheits-, Plattform-, Provider-, Login-, Kosten- oder Releasegrenzen.
+  - type: dropdown
+    id: external_actions
+    attributes:
+      label: Externe Aktionen freigegeben?
+      description: Live-Browser, Login, Provider, Push, Release und Deployment sind getrennte Entscheidungen.
+      options:
+        - Nein; nur lokale/read-only Arbeit
+        - Teilweise; Details stehen unter Grenzen und Freigaben
+        - Ja; Details stehen unter Grenzen und Freigaben
+    validations:
+      required: true
+  - type: textarea
+    id: handoff
+    attributes:
+      label: Bekannte Übergabehinweise
+      description: Vorhandene Branches, Worktrees, Dirty Files, Blocker oder nächste sichere Aktion.

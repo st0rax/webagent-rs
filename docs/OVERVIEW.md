@@ -3,8 +3,9 @@
 **Stand:** 2026-08-22. Diese Datei ist die aktuelle Produkt- und
 Architekturübersicht.
 
-Nicht jede `.md` im Repo ist Soll-Zustand. `*_PLAN.md`, `*_CONCEPT.md`,
-`PROGRESS.md`, `TUI_DESIGN.md`, `START_HERE.md`, `STATUS_LIVE.md` und die
+Nicht jede `.md` im Repo ist Soll-Zustand. `START_HERE.md` ist der stabile
+Einstieg und `docs/CURRENT_WORK.md` die kurze operative Übergabe. `*_PLAN.md`,
+`*_CONCEPT.md`, `PROGRESS.md`, `TUI_DESIGN.md`, `STATUS_LIVE.md` und datierte
 Übergaben sind Log oder Entwurf. Betrieb der TUI steht in `AGENTS.md` §6. `webagent` ohne Subcommand
 oeffnet die Session-Ansicht; `webagent repl` und `webagent tui` bleiben.
 
@@ -176,6 +177,11 @@ als Daten behandelt und in Prompts markiert.
 
 ## Dokumentenlandkarte
 
+- `START_HERE.md`: verbindlicher Einstieg für neue Entwickler und Agenten.
+- `CONTRIBUTING.md`: reproduzierbarer Entwicklungs- und Abnahmeprozess.
+- `docs/COLLABORATION.md`: dauerhafte Kommunikation über Issue, Branch und PR.
+- `docs/CURRENT_WORK.md`: kurzer aktueller Arbeitsstand, Evidenz und nächste
+  sichere Aktion.
 - `README.md`: Installation und öffentliche Bedienung.
 - `docs/OVERVIEW.md`: aktuelle Produktarchitektur, Reifegrade und Betrieb
   (dieses Dokument).
@@ -185,7 +191,8 @@ als Daten behandelt und in Prompts markiert.
 - `docs/PROTOCOL_SCHEMA.md`: Aktionsprotokoll; gegen `src/protocol/` prüfen,
   falls sich beide widersprechen.
 - `docs/PROVIDER_STATUS.md`: datiertes Live-Messjournal.
-- `STATUS_LIVE.md`: chronologisches Arbeitsjournal, keine Architekturquelle.
+- `STATUS_LIVE.md`: archiviertes chronologisches Arbeitsjournal, keine
+  Architektur- oder Übergabequelle.
 - `*_PLAN.md`, `*_CONCEPT.md`, `CODE_REVIEW.md`, `CLAUDE_PROPOSALS.md`:
   historische Entwürfe/Reviews; nur explizit belegte Teile gelten als umgesetzt.
 

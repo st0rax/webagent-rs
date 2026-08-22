@@ -9,8 +9,16 @@ Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: Kern und
 Session-TUI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
 (`wry`/`tao`, WebView2) auf Windows.
 
-> **Status (v0.9.0):** Session-TUI ist der Default. Kern getestet (`cargo test`
-> + `cargo clippy --all-targets -D warnings` grün, Linux-CI grün).
+> **Neu im Projekt?** Beginne mit [`START_HERE.md`](START_HERE.md). Der kurze
+> aktuelle Arbeitsstand steht in
+> [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md), der Entwicklungsprozess in
+> [`CONTRIBUTING.md`](CONTRIBUTING.md) und die Zusammenarbeit in
+> [`docs/COLLABORATION.md`](docs/COLLABORATION.md).
+
+> **Status (v0.9.2):** Session-TUI ist der Default. Der genaue aktuelle
+> Abnahme- und Arbeitsstand steht in
+> [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md); lokale Testergebnisse sind
+> immer an den dort genannten Commit gebunden.
 > `comms.rs` (internes Messaging, ersetzt bot2bot für webagent-intern) in CLI/Controller verdrahtet.
 > Browser-Steuerung über Embedded WebView + `BrowserPool`; REPL hält die Session über Turns offen.
 >
@@ -188,11 +196,17 @@ in `profiles/` — beide sind per `.gitignore` ausgeschlossen (enthalten Cookies
 
 ## Sicherheitsmodell
 
-Bewusst **kein** Befehlsfilter: das Brain darf beliebige Shell-Befehle im
-angemeldeten Nutzerkontext ausführen. Nur in vertrauenswürdiger Umgebung nutzen.
+Das Brain führt Shell-Befehle im angemeldeten Nutzerkontext aus.
+`shell_policy` blockiert bekannte gefährliche Muster und protokolliert
+Ausführungen, ist aber keine Betriebssystem-Sandbox. Nur in einer
+vertrauenswürdigen Umgebung und mit angemessen begrenzten Nutzerrechten nutzen.
 
 ## Entwicklung
 
+- Einstieg und Übernahme: [`START_HERE.md`](START_HERE.md)
+- Workflow und Abnahme: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Aktuelle Arbeit: [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md)
+- GitHub-Kommunikation: [`docs/COLLABORATION.md`](docs/COLLABORATION.md)
 - Portierungskonventionen: [`CONVENTIONS.md`](CONVENTIONS.md)
 - Parität vs. Python: [`docs/MERGE_AND_PARITY.md`](docs/MERGE_AND_PARITY.md)
 - Tests: `cargo test --no-default-features` (kein echter Browser in Unit-Tests;
