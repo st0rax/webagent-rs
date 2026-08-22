@@ -2792,3 +2792,19 @@ Der alte Worktree `webagent-final-verification` bleibt als Sicherung unangetaste
   reproduzierbarer Benchmark-/Harvest-Lauf und eine ausdrückliche
   Integrations-/Releaseentscheidung. Die aktuelle Matrix steht in
   `docs/OVERVIEW.md`.
+
+## Codex übergibt das Gesamtprojekt an Claude - 2026-08-22
+
+Auf Nutzerwunsch endet die Codex-Integrationsphase nach einer konsolidierten
+Gesamtübergabe an Claude. Claudes Testcommit `3437bfd` wurde konfliktfrei als
+`2cf952e` integriert und unabhängig geprüft. Er ergänzt ausschließlich zwei
+Write-back-Durability-Tests für Post-Verify-Rollback und den selbst
+fehlgeschlagenen Backup-Restore; keine Produktivlogik wurde verändert.
+
+Der konsolidierte Stand besteht mit 1.102 + 7 Tests ohne Defaultfeatures und
+1.168 + 7 Tests mit Defaultfeatures. Beide strikten Clippy-Matrizen sowie Format-
+und Diffprüfung sind grün. Das Projekt ist dennoch nicht als fertig abgenommen.
+Die vollständige Eigentums-, Evidenz-, Worktree- und Restarbeitsübergabe steht in
+`docs/HANDOVER_FROM_CODEX_TO_CLAUDE_2026-08-22.md`. Ab diesem Checkpoint soll nur
+Claude den aktiven Integrationszweig fortführen; Codex beginnt keine neue
+Implementierungsscheibe.

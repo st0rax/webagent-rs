@@ -46,7 +46,7 @@ Evidenz.
 
 | Bereich | Stand am 2026-08-22 | Fehlender Abschlussbeleg |
 |---|---|---|
-| Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.166 Bibliotheks- und 7 Binärtests mit Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures | Integration des geprüften Zweigs in den maßgeblichen Upstream |
+| Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.168 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.102 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures | Integration des geprüften Zweigs in den maßgeblichen Upstream |
 | Provider-/WebView-Livebetrieb | Experimentell; die öffentliche 8/8-Messung stammt vom 2026-07-16, spätere Capability-Messungen sind ebenfalls datierte Einzelbelege | aktuelle Diagnose-/Verify-/Relay-Matrix auf den tatsächlich angemeldeten Sessions |
 | Pool, Worker und Cross-Brain-Handoff | Verträge und Fehlergrenzen lokal getestet | konsolidierter realer Mehr-Brain-Lauf inklusive Abbruch, Handoff und Wiederaufnahme |
 | Benchmark/Autoresearch/Harvest | Pipeline und Schutzgitter implementiert | reproduzierbarer Lauf auf sauberem Worktree vom Auftrag bis zum akzeptierten oder korrekt verworfenen Kandidaten |
