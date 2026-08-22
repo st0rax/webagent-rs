@@ -612,7 +612,7 @@ impl BrowserPool {
                 let _ = _rt;
                 let _ = std::fs::remove_dir_all(&profile_dir);
             }
-            return self.teardown_runtime();
+            self.teardown_runtime()
         }
         #[cfg(not(feature = "webview"))]
         {
