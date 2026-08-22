@@ -57,8 +57,10 @@ Session-Grenzen mit Pfad, Zweck und Eigentuemerschaft in
 
 ## 5. Commit fertiger Scheiben
 
-Fertige, getestete Scheiben werden committet. Push, Tag und GitHub-Release
-nur auf ausdrueckliche Ansage.
+Fertige, getestete Scheiben werden committet und auf ihren Arbeitsbranch
+gepusht: Der Eigentuemer muss den aktuellen Stand jederzeit ueber GitHub ziehen
+koennen, ohne dass jemand ihn dafuer erst freigibt. Merge nach `master`, Tag und
+GitHub-Release bleiben ausdrueckliche Entscheidungen.
 
 ## 6. Benchmark-Monitoring & TUI
 

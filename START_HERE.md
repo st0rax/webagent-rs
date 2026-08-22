@@ -48,10 +48,11 @@ Entwickler. Nicht mit einer datierten Übergabe oder `STATUS_LIVE.md` beginnen.
    einem neuen Modul, Store, Protokoll oder CLI-Flag mit `rg` nach dem
    bestehenden Mechanismus suchen. Dateien und Abnahmetest vorab benennen.
 
-5. Mit einem fokussierten Commit, proportional grünen Gates und aktualisierter
-   `docs/CURRENT_WORK.md` abschließen. Push, Merge, Tag, Release, Live-Browser/
-   Login und externe oder kostenpflichtige Provider brauchen die ausdrückliche
-   Freigabe des Eigentümers.
+5. Mit einem fokussierten Commit, proportional grünen Gates, aktualisierter
+   `docs/CURRENT_WORK.md` und einem Push des Arbeitsbranches abschließen — der
+   Stand muss jederzeit über GitHub ziehbar sein. Merge, Tag, Release,
+   Live-Browser/Login und externe oder kostenpflichtige Provider brauchen die
+   ausdrückliche Freigabe des Eigentümers.
 
 ## Rangfolge der Wahrheitsquellen
 

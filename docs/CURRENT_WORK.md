@@ -6,13 +6,21 @@ Entwicklungsscheibe aktualisieren. Git-Angaben vor Verwendung lokal prüfen.
 
 ## Zuletzt verifizierte Basis
 
-- Produktbasis: `ef23170` auf `codex/project-takeover`, aufgebaut auf
+- Produktbasis: `8e6ea50` auf `codex/project-takeover`, aufgebaut auf
   `origin/master` bei `9bf57f5`.
-- `ef23170` enthält nur Dokumentation über Produktcommit `2cf952e`.
-- Bei Anlage des Onboarding-Worktrees war der Branch sauber und sechs Commits
-  vor `origin/master`.
-- Nichts aus dieser Übergabe wurde gepusht, gemergt, getaggt, released oder
-  deployed.
+- Seit der Übergabe kamen hinzu: `3b7d935` (Phase-B-Ausführung injizierbar),
+  `f51c31b` (Entwickler-Onboarding, von `codex/developer-onboarding`
+  übernommen), `8e6ea50` (Vertrag der lebenden Dokumente nachgezogen) sowie
+  dieser Dokumentationscommit.
+- **Der Übergabecommit `ef23170` war selbst rot.** Er fügte sein eigenes
+  Handover ohne Archivbanner hinzu und brach damit
+  `startup::tests::betriebs_markdown_hat_eine_wahrheit`. Die dort notierte
+  Evidenz wurde auf `2cf952e` erhoben und galt für `ef23170` nie. `f51c31b`
+  reparierte das Dokument, verletzte den Vertrag aber an fünf weiteren Stellen;
+  `8e6ea50` führt ihn vollständig nach. Lehre: fremde Evidenz nachmessen, und
+  eine Evidenztabelle nie in denselben Commit schreiben, den sie belegt.
+- Der Arbeitsbranch wird nach GitHub gepusht, damit der aktuelle Stand jederzeit
+  ziehbar ist. Merge nach `master`, Tag, Release und Deployment sind offen.
 
 Die datierten Details bleiben in
 `HANDOVER_FROM_CODEX_TO_CLAUDE_2026-08-22.md` erhalten. Für künftige operative
@@ -50,8 +58,10 @@ Die vollständige Reifegradmatrix und Roadmap stehen in `OVERVIEW.md`.
 
 Die providerfreie Benchmark-/Harvest-Systemabnahme aus `OVERVIEW.md` umsetzen:
 
-- Phase-B-Brainausführung hinter einen crate-privaten injizierbaren Runner
-  legen;
+- ~~Phase-B-Brainausführung hinter einen crate-privaten injizierbaren Runner
+  legen~~ — erledigt in `3b7d935` (`PhaseBRunner`, `BenchRunRequest`,
+  `run_benchmark_with`); der Produktionspfad reicht unverändert an `bench_run`
+  durch;
 - ein geparstes, `Ready` bewertetes Work-Package in den echten Git-/Eval-/
   Harvestpfad führen;
 - ein temporäres Mini-Git-Repo verwenden;

@@ -9,7 +9,7 @@ noch Projektgedächtnis.
 | Kanal | Verbindlicher Inhalt |
 |---|---|
 | GitHub Issue | Auftrag, Scope, Abnahmekriterien, Freigaben und laufender Status |
-| Branch/Worktree | isolierte Umsetzung eines Issues |
+| Branch/Worktree | isolierte Umsetzung eines Issues, laufend nach GitHub gepusht |
 | Pull Request | Diff, Review, Gateresultate, Risiken und Mergeentscheidung |
 | `docs/CURRENT_WORK.md` | kurzer lokaler Wiederanlauf- und Notfallcheckpoint |
 | Commit | unveränderlicher technischer Checkpoint |
@@ -35,8 +35,14 @@ personenbezogene Daten oder Inhalte aus `.env`.
    nicht vollständig hinein.
 5. Pull Request mit `Closes #<issue>` öffnen. Das PR-Template verlangt Scope,
    tatsächlich ausgeführte Gates, Risiken und Übergabestatus.
-6. Erst nach Review und grünen erforderlichen Checks mergen. Push, Merge, Tag,
+6. Erst nach Review und grünen erforderlichen Checks mergen. Merge, Tag,
    Release und Deployment bleiben getrennte Entscheidungen des Eigentümers.
+
+Der Arbeitsbranch wird dagegen laufend gepusht, spätestens am Ende jeder
+Scheibe und vor jeder Unterbrechung. Der Eigentümer muss den aktuellen Stand
+jederzeit über GitHub ziehen können, ohne auf eine Freigabe oder eine laufende
+Sitzung angewiesen zu sein. Ein nur lokal liegender Stand ist bei Ausfall des
+Entwicklers verloren — genau das ist am 2026-08-22 beinahe passiert.
 
 ## Unterbrechung oder Entwicklerwechsel
 

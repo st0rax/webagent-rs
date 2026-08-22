@@ -88,9 +88,10 @@ Eine Scheibe ist fertig, wenn:
 - `docs/CURRENT_WORK.md` Commit, Evidenz und nächste Aktion wiedergibt;
 - die Arbeit lokal committet ist.
 
-Push, Merge, Tag, Release, Deployment, echter Browser-/Login-/Accountzugriff
-und externe Inferenz mit Kosten- oder Datenabflussrisiko bleiben davon getrennte
-Eigentümerentscheidungen.
+Der Push des Arbeitsbranches gehört zur fertigen Scheibe: Der aktuelle Stand
+muss jederzeit über GitHub abrufbar sein. Merge, Tag, Release, Deployment,
+echter Browser-/Login-/Accountzugriff und externe Inferenz mit Kosten- oder
+Datenabflussrisiko bleiben davon getrennte Eigentümerentscheidungen.
 
 ## Plattform- und Sicherheitsgrenzen
 
@@ -124,9 +125,10 @@ werden in eine der lebenden Dateien übernommen.
 
 ## Commit und Übergabe
 
-Bevorzugt wird ein getesteter Commit je kohärenter Scheibe. Ohne ausdrückliche
-Freigabe weder pushen noch gemeinsame Historie umschreiben oder Worktrees
-löschen.
+Bevorzugt wird ein getesteter Commit je kohärenter Scheibe, der anschließend
+auf seinen Arbeitsbranch gepusht wird. Ohne ausdrückliche Freigabe weder
+gemeinsame Historie umschreiben noch Worktrees löschen; ein Push auf einen
+fremden Arbeitsbranch bleibt ebenfalls tabu.
 
 Eine Übergabe hinterlässt entweder einen sauberen Tree mit dokumentierter
 nächster Aufgabe oder einen absichtlich unsauberen Tree, dessen jeder Pfad,
