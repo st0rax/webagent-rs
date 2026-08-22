@@ -72,6 +72,7 @@
     "button.next-sidebar-section__title:has-text('Projects')"
   ],
   "login_indicator": [
+    ".user-profile-trigger",
     "[id*='next-sidebar-history-section-title']",
     ".next-sidebar__section-text-action",
     ".next-sidebar-history-item__link"
