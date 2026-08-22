@@ -77,10 +77,52 @@ const MAX_CONSECUTIVE_UNPRODUCTIVE_ROUNDS: usize = 2;
 const OUTAGE_COOLDOWN_SECS: u64 = 300;
 
 #[cfg_attr(not(feature = "webview"), allow(dead_code))]
-enum BenchRunStart<'a> {
+pub(crate) enum BenchRunStart<'a> {
     Fresh,
     Continuation(&'a str),
     CrossBrain(&'a CrossBrainHandoffEnvelope),
+}
+
+/// Ergebnis eines Phase-B-Brain-Laufs: `(status, cycles, run_id, file_writes_ok)`.
+pub(crate) type BenchRunOutcome = (String, u32, String, u32);
+
+/// Ausfuehrungsvertrag der Phase B.
+///
+/// Phase A war ueber `query` schon injizierbar, Phase B nicht: Der Lauf ging
+/// fest an `bench_run` und damit an WebView2. Genau deshalb konnte der
+/// vollstaendige Auftrag-Repair-Handoff-Harvest-Ablauf nie ohne Browser
+/// belegt werden — die vielen gruenen Einzeltests decken jeweils nur ein
+/// Teilstueck ab. Der Vertrag hebt nur die Brain-Ausfuehrung heraus; Gates,
+/// Git-Capture und Harvest bleiben real.
+pub(crate) struct BenchRunRequest<'a> {
+    pub(crate) brain_id: &'a str,
+    pub(crate) task: &'a str,
+    pub(crate) start: BenchRunStart<'a>,
+    pub(crate) workdir: &'a std::path::Path,
+    pub(crate) headless: bool,
+    pub(crate) note: Option<crate::StageNote>,
+    pub(crate) verbose: bool,
+}
+
+pub(crate) trait PhaseBRunner: Sync {
+    fn run(&self, request: BenchRunRequest<'_>) -> Result<BenchRunOutcome, String>;
+}
+
+/// Produktionsadapter: unveraenderte Semantik, reicht 1:1 an `bench_run` durch.
+pub(crate) struct ControllerPhaseBRunner;
+
+impl PhaseBRunner for ControllerPhaseBRunner {
+    fn run(&self, request: BenchRunRequest<'_>) -> Result<BenchRunOutcome, String> {
+        bench_run(
+            request.brain_id,
+            request.task,
+            request.start,
+            request.workdir,
+            request.headless,
+            request.note,
+            request.verbose,
+        )
+    }
 }
 
 /// Ein Brain baut die Aufgabe über den normalen Controller-Pfad (mit Wall-Timeout
@@ -274,6 +316,21 @@ WICHTIG: Dein vorheriger Vorschlag wurde abgelehnt — er verlangte etwas, das e
 pub fn run_benchmark<Q>(config: &BenchmarkConfig, query: Q) -> Result<BenchmarkReport, String>
 where
     Q: Fn(&str, &str) -> Result<String, String> + Sync,
+{
+    run_benchmark_with(config, query, &ControllerPhaseBRunner)
+}
+
+/// Gleiche Pipeline mit explizitem Phase-B-Runner. Der Produktionspfad ruft sie
+/// mit [`ControllerPhaseBRunner`] auf; Systemtests setzen einen eigenen Runner
+/// ein und lassen Gates, Git-Capture und Harvest echt laufen.
+pub(crate) fn run_benchmark_with<Q, R>(
+    config: &BenchmarkConfig,
+    query: Q,
+    runner: &R,
+) -> Result<BenchmarkReport, String>
+where
+    Q: Fn(&str, &str) -> Result<String, String> + Sync,
+    R: PhaseBRunner + ?Sized,
 {
     // Sicherheitsmodell §5: nur auf sauberem Git-Tree starten.
     crate::autoresearch::guard_clean_tree(&config.workdir)?;
@@ -738,15 +795,15 @@ where
                         None => BenchRunStart::Fresh,
                     },
                 };
-                match bench_run(
-                    brain,
-                    &attempt_task,
-                    run_start,
-                    &config.workdir,
-                    config.headless,
-                    Some(t.note_handle()),
-                    config.verbose,
-                ) {
+                match runner.run(BenchRunRequest {
+                    brain_id: brain,
+                    task: &attempt_task,
+                    start: run_start,
+                    workdir: &config.workdir,
+                    headless: config.headless,
+                    note: Some(t.note_handle()),
+                    verbose: config.verbose,
+                }) {
                     Ok((status, c, continued_run_id, w)) => {
                         // `continue_run` liefert kumulative Zyklen derselben
                         // Agent-Session. Nicht über Iterationen doppelt zählen.
