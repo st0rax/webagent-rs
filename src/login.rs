@@ -113,16 +113,32 @@ fn sync_login_to_master(brain_id: &str) {
     if !src.is_dir() {
         return;
     }
-    let master = crate::config::shared_profile_dir();
-    crate::config::unseal_master_profile();
-    let result = crate::config::copy_dir_sparse(&src, &master);
-    crate::config::seal_master_profile();
-    match result {
+    // Ueber den abgesicherten Rueckweg statt per roher Kopie.
+    //
+    // `copy_dir_sparse` legt die Cookie-Datenbank des Brains STUMPF ueber die
+    // des Masters. Bei mehreren Brains hintereinander gewinnt schlicht der
+    // letzte: Am 2026-08-22 lief `login-all` ueber neun Brains und hinterliess
+    // ein Master, das nur noch `z.ai` kannte — 98 KB Sitzungsdaten auf 40 KB
+    // geschrumpft, ohne Sicherung und ohne Warnung.
+    //
+    // Additiv KANN diese Spiegelung nicht sein: Chromium verschluesselt Cookies
+    // mit einem Schluessel aus `Local State` DESSELBEN Profils, weshalb Datei
+    // und Schluessel nur gemeinsam sinnvoll sind. Ein Master mit allen Brains
+    // entsteht deshalb nur im Shared-Betrieb, wo alle Anmeldungen von
+    // vornherein in dieselbe Datenbank laufen.
+    //
+    // `write_back_dir_to_master` bringt die Waechter mit, die hier fehlten:
+    // Sicherung vor jeder Mutation, Gewichtsvergleich, Abgleich der
+    // Sitzungsnachweise und Rollback. Eine Spiegelung, die dem Master Brains
+    // NEHMEN wuerde, wird damit abgelehnt statt ausgefuehrt.
+    match crate::config::write_back_dir_to_master(&src) {
         Ok(()) => println!("[login] {brain_id}: Sitzung ins Hauptprofil gespiegelt."),
-        Err(e) => eprintln!(
-            "[login] {brain_id}: Spiegelung ins Hauptprofil fehlgeschlagen: {e} \
-             (der Worker-Pool bleibt dann auf dem alten Stand)"
-        ),
+        Err(e) => {
+            eprintln!("[login] {brain_id}: Spiegelung ins Hauptprofil abgelehnt: {e}");
+            eprintln!(
+                "[login] Das Hauptprofil bleibt unveraendert. Ein Master mit ALLEN                  Brains entsteht nur ueber WEBAGENT_USE_SHARED_BROWSER=1 login-all                  — dort landen alle Anmeldungen in derselben Cookie-Datenbank."
+            );
+        }
     }
 }
 
