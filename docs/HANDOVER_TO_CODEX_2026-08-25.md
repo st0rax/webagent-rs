@@ -390,3 +390,30 @@ Nächste Integrationsgrenze: Nur committe Ergebnisse aus den parallelen ChatGPT-
 Direkter Git-Nachweis: Aktiver HEAD und origin/master sind beide 1afbfbf962ab856d894c02d1a249cff548729ab9; der Arbeitsbaum ist sauber. Das gemeinsame Gitdir unter dem Archivpfad ist erreichbar und kein Integritätsfehler.
 
 Die Goal-Karte bleibt aktiv, weil der projektinterne Abschlussstatus noch keine eigene Evidenz speichert und ein echter OHA-SSS-Harnesslauf Provider-/Browserzugriff auslösen kann. Dieser Lauf wird ausschließlich nach ausdrücklicher Freigabe ausgeführt. Parallelworktrees liefern aktuell keine commitbereiten Kandidaten: ChatGPT besitzt einen uncommitteten Pool-Diff, Claude ist sauber, aber hinter origin/master.
+
+## GNU-Stack- und alternative OHA-SSS-Evidenzcheckpoint - 2026-08-22
+
+Die Windows-GNU-Konfigurationsscheibe ist lokal erneut verifiziert. Der x86_64-pc-windows-gnu-Block behaelt link-self-contained und fuegt nur das GNU-Linkerargument -Wl,--stack=67108864 hinzu. Die PE-Header-Evidenz weist eine Main-Stackreserve von 67.108.864 Byte aus.
+
+| Gate | Nachweis |
+| --- | --- |
+| GNU Headless | cargo test --no-default-features: 1.100 Bibliotheks- und 7 Binaertests bestanden |
+| GNU Standardfeatures | cargo test: 1.166 Bibliotheks- und 7 Binaertests bestanden |
+| GNU Clippy | Exit 0; 13 bekannte Altwarnungen ausschliesslich in transcript.rs und browser_pool.rs |
+| TOML und Diff | cargo metadata --no-deps akzeptiert die Konfiguration; git diff --check bestanden |
+| Isolierter OHA-SSS-Lauf | deepseek Worker und qwen Reviewer: status PASS, Worker done mit finalem Resultat, Reviewer done mit review-Resultat, VERDICT PASS, SCORE 5 |
+
+Der erfolgreiche Qwen-Lauf ersetzte den ChatGPT-Reviewer waehrend der Cloudflare-Quarantaene. ChatGPT und Browser bleiben unangetastet. Die lokale Gegenpruefung zeigt keine ChatGPT-spezifische Start- oder Cloudflare-Sonderverzweigung; ChatGPT hat jedoch weniger Selector-Fallbacks als Qwen und ein seit 2026-08-17 nicht aktualisiertes lokales Profil.
+
+**Offene Commit-Gates:** Der Qwen-Harness-PASS ist eine unabhaengige Produktabnahme, aber noch kein Ersatz fuer die geforderten zwei unabhaengigen Code-Reviews der GNU-Linker-Scheibe. Diese Reviews sowie Dokument-Diffpruefung bleiben vor Commit offen.
+
+## GNU-Stack-Code-Review-Gate abgeschlossen - 2026-08-22
+
+Die zuvor offenen zwei unabhaengigen Code-Review-Gates fuer die eingefrorene Windows-GNU-Linker-Scheibe sind abgeschlossen. Beide Reviews bewerteten ausschliesslich das im Prompt enthaltene Faktenpaket; es wurden keine Dateien, Browserzustaende, Providerkonfigurationen oder ChatGPT-Sitzungen veraendert.
+
+| Review | Getrennte Rollen | Vertrag und Urteil |
+| --- | --- | --- |
+| Review 1 | deepseek Worker -> qwen Reviewer | status PASS; Worker done/final; Reviewer done/review; VERDICT PASS; SCORE 4 |
+| Review 2 | deepseek Worker -> perplexity Reviewer | status PASS; Worker done/final; Reviewer done/review; VERDICT PASS; SCORE 5; REPAIR none |
+
+**Gateentscheidung:** Die beiden unabhaengigen Reviewer bestaetigen den GNU-only Scope, die 64-MiB-PE-Main-Stack-Absicht, die Linkersyntax und das Fehlen eines belegten Release-Blockers. ChatGPT bleibt wegen der Cloudflare-Quarantaene unangetastet. Der Worktree ist damit fuer die abschliessende lokale Diff-, Build- und Goal-Pruefung vorbereitet.

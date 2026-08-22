@@ -1,8 +1,5 @@
-# Die aktive Toolchain hier ist x86_64-pc-windows-gnu (rustup directory override).
-# Auf PATH liegt llvm-mingws gcc, das clang/lld als Linker-Treiber benutzt und statt
-# libgcc auf compiler-rt setzt — dadurch scheitert das Linken der Test-Targets an
-# "unable to find library -lgcc_eh". Rust liefert die passenden MinGW-Libs in
-# lib/rustlib/x86_64-pc-windows-gnu/lib/self-contained/ selbst mit; link-self-contained
-# weist den Linker dorthin. Ohne das linkt `cargo test` auf dieser Maschine nicht.
+# Die aktive Toolchain hier ist x86_64-pc-windows-gnu.
+# Rust liefert die passenden MinGW-Libs selbst; link-self-contained weist den Linker darauf hin.
+# WebView2 muss auf dem Windows-Main-Thread bleiben. Die PE-Stackreserve verhindert einen Main-Stack-Ueberlauf.
 [target.x86_64-pc-windows-gnu]
-rustflags = ["-C", "link-self-contained=yes"]
+rustflags = ["-C", "link-self-contained=yes", "-C", "link-arg=-Wl,--stack=67108864"]
