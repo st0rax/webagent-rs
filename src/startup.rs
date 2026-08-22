@@ -83,13 +83,20 @@ mod tests {
     #[test]
     fn betriebs_markdown_hat_eine_wahrheit() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        // Lebende Betriebsdokumente. Datierte Uebergaben gehoeren NICHT hierher:
+        // sie werden nach ihrer Uebergabe archiviert und duerfen dann ein
+        // Archiv-Banner tragen. Der dauerhafte Einstieg ist `START_HERE.md`,
+        // der laufende Stand `docs/CURRENT_WORK.md`.
         let living = [
             "README.md",
             "AGENTS.md",
             "CONVENTIONS.md",
+            "CONTRIBUTING.md",
+            "START_HERE.md",
             "docs/OVERVIEW.md",
             "docs/PROTOCOL_SCHEMA.md",
-            "docs/HANDOVER_TO_CODEX_2026-08-25.md",
+            "docs/COLLABORATION.md",
+            "docs/CURRENT_WORK.md",
         ];
         for rel in living {
             let text = std::fs::read_to_string(root.join(rel)).unwrap();
@@ -114,7 +121,10 @@ mod tests {
                 let p = e.path();
                 if p.is_dir() {
                     let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    if name == "target" || name == ".git" {
+                    // `.github` traegt Issue-/PR-Vorlagen, also Werkzeug der
+                    // Plattform statt Projektdokumentation. Ein Banner darin
+                    // wuerde in jedem erzeugten Issue und PR mitlaufen.
+                    if name == "target" || name == ".git" || name == ".github" {
                         continue;
                     }
                     walk(&p, acc);
