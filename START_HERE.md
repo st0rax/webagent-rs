@@ -51,9 +51,9 @@ Entwickler. Nicht mit einer datierten Übergabe oder `STATUS_LIVE.md` beginnen.
 5. Mit einem fokussierten Commit, proportional grünen Gates, aktualisierter
    `docs/CURRENT_WORK.md` und einem Push des Arbeitsbranches abschließen — der
    Stand muss jederzeit über GitHub ziehbar sein. Grüne, abgeschlossene
-   Scheiben merged der Integrator selbst. Tag, Release, Live-Browser/Login und
-   externe oder kostenpflichtige Provider brauchen die ausdrückliche Freigabe
-   des Eigentümers.
+   Scheiben merged der Integrator selbst; Tag und Release folgen nach den
+   Abnahmebelegen. Live-Browser/Login und kostenpflichtige Provider laufen nur
+   mit anwesendem Eigentümer, der die Anmeldung selbst vornimmt.
 
 ## Rangfolge der Wahrheitsquellen
 

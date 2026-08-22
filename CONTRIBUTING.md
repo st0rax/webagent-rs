@@ -89,11 +89,13 @@ Eine Scheibe ist fertig, wenn:
 - die Arbeit lokal committet ist.
 
 Der Push des Arbeitsbranches gehört zur fertigen Scheibe: Der aktuelle Stand
-muss jederzeit über GitHub abrufbar sein. Den Merge einer grünen,
-abgeschlossenen Scheibe nach `master` führt der Integrator selbst aus. Tag,
-Release, Deployment, echter Browser-/Login-/Accountzugriff und externe Inferenz
-mit Kosten- oder Datenabflussrisiko bleiben davon getrennte
-Eigentümerentscheidungen.
+muss jederzeit über GitHub abrufbar sein. Merge nach `master`, Tag, Release und
+Deployment führt der Integrator selbst aus, sobald die jeweiligen Abnahmebelege
+vorliegen.
+
+Davon getrennt bleibt jeder Pfad mit echten Zugangsdaten oder Kosten. Ein
+Live-Lauf wird vom Integrator gestartet; die Anmeldung selbst nimmt immer der
+Eigentümer im wartenden Browserfenster vor.
 
 ## Plattform- und Sicherheitsgrenzen
 

@@ -60,9 +60,14 @@ Session-Grenzen mit Pfad, Zweck und Eigentuemerschaft in
 Fertige, getestete Scheiben werden committet und auf ihren Arbeitsbranch
 gepusht: Der Eigentuemer muss den aktuellen Stand jederzeit ueber GitHub ziehen
 koennen, ohne dass jemand ihn dafuer erst freigibt. Gruene, abgeschlossene
-Scheiben merged der Integrator selbst nach `master`. Tag, GitHub-Release,
-Deployment und jeder Live-/Kostenpfad bleiben ausdrueckliche
-Eigentuemerentscheidungen.
+Scheiben merged der Integrator selbst nach `master`; Tag, GitHub-Release und
+Deployment fuehrt er ebenfalls aus, sobald die Abnahmebelege vorliegen.
+
+Nicht uebernehmbar ist dagegen alles, was echte Zugangsdaten braucht. Bei der
+Live-Rezertifizierung startet der Integrator die TUI, die WebView-Fenster
+oeffnen sich, und wo eine Sitzung abgelaufen ist, wartet das Fenster auf den
+Login des Eigentuemers. Der Integrator tippt keine Zugangsdaten und liest keine
+Profile aus; er protokolliert nur das Ergebnis.
 
 ## 6. Benchmark-Monitoring & TUI
 

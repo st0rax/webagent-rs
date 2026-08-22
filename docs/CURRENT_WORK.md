@@ -21,7 +21,8 @@ Entwicklungsscheibe aktualisieren. Git-Angaben vor Verwendung lokal prüfen.
   eine Evidenztabelle nie in denselben Commit schreiben, den sie belegt.
 - Der Arbeitsbranch wird nach GitHub gepusht, damit der aktuelle Stand jederzeit
   ziehbar ist. Grüne Scheiben merged der Integrator selbst über einen PR; Tag,
-  Release und Deployment bleiben Eigentümerentscheidungen.
+  Release und Deployment führt er nach den Abnahmebelegen ebenfalls aus. Nur die
+  Anmeldung im Live-Lauf nimmt der Eigentümer selbst vor.
 
 Die datierten Details bleiben in
 `HANDOVER_FROM_CODEX_TO_CLAUDE_2026-08-22.md` erhalten. Für künftige operative

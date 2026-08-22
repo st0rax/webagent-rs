@@ -228,10 +228,15 @@ Nachweis, wenn die Schutzgitter ihn aus dem richtigen Grund fail-closed stoppen.
 ### 4. Konsolidierung und Release-Entscheidung
 
 Nach den End-to-End-Gates werden README, Übersicht, Providerstatus und Übergabe
-auf denselben Stand gebracht. Tag und Release bleiben ausdrückliche
-menschliche Entscheidungen; vorhandene Workflows allein sind kein Releasebeleg.
-Push und Merge des Arbeitsbranches sind davon getrennt und Aufgabe des
-Integrators.
+auf denselben Stand gebracht. Push, Merge, Tag und Release führt der Integrator
+aus; vorhandene Workflows allein sind kein Releasebeleg. Ein Release setzt die
+vier Abnahmebelege voraus — ohne sie behauptet es eine Reife, für die kein
+Nachweis existiert.
+
+Die Live-Rezertifizierung ist dabei der einzige Schritt, der den Eigentümer
+zwingend erfordert: Der Integrator startet die TUI, die WebView-Fenster öffnen
+sich, und abgelaufene Sitzungen warten auf dessen Anmeldung. Das ist keine
+Freigabehürde, sondern ein gemeinsamer Termin.
 
 ### Optional: realer Free-Cloud-Adapter
 
