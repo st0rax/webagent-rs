@@ -103,7 +103,23 @@ fn patch_angelt_pflicht_lock(patch: &str) -> bool {
 /// Testfunktionen sind normal; eine neue öffentliche API ist dagegen nur dann
 /// im Scope, wenn die verfeinerte Aufgabe genau diese Funktion verlangt.
 pub fn validate_task_scope(patch: &str, task: &str) -> Result<Vec<String>, String> {
+    validate_task_scope_in(patch, task, None)
+}
+
+/// Wie [`validate_task_scope`], zusaetzlich gegen den zugesagten Datei-Scope.
+///
+/// `allowed_paths` stammt aus dem typisierten Auftrag (`WorkPackage`). Ist er
+/// `None`, gilt weiterhin nur die generische Policy — der Zustand vor dem
+/// 2026-08-22, als der Scope den Harvest gar nicht erreichte.
+pub fn validate_task_scope_in(
+    patch: &str,
+    task: &str,
+    allowed_paths: Option<&[String]>,
+) -> Result<Vec<String>, String> {
     let paths = validate_harvest_patch(patch)?;
+    if let Some(allowed) = allowed_paths {
+        paths_within_scope(&paths, allowed)?;
+    }
     let expected = proposed_fn_name(task);
     let added_public: Vec<String> = patch
         .lines()
@@ -129,6 +145,41 @@ pub fn validate_task_scope(patch: &str, task: &str) -> Result<Vec<String>, Strin
         }
     }
     Ok(paths)
+}
+
+/// Liegt jeder vom Patch beruehrte Pfad im zugesagten Scope?
+///
+/// Der typisierte Auftrag (`WorkPackage.allowed_paths`) nennt die Dateien, die
+/// ein Brain anfassen darf. Bis 2026-08-22 erreichte diese Zusage den Harvest
+/// nicht: [`validate_harvest_patch`] prueft nur eine generische Policy
+/// (bestehende `.rs` unter `src/`, hoechstens vier Dateien, keine Loeschungen)
+/// und [`validate_task_scope`] leitet aus dem FREITEXT der Aufgabe einen
+/// einzigen erwarteten Funktionsnamen ab. Ein technisch gruener Patch, der eine
+/// voellig andere Datei umbaut, kam damit durch.
+///
+/// Fail-closed und rein: kein Dateisystem, keine Git-Aufrufe. Ein leerer Scope
+/// ist KEINE Freigabe fuer alles, sondern ein Auftrag ohne zugesagte Dateien —
+/// dann darf nichts geerntet werden.
+pub fn paths_within_scope(touched: &[String], allowed: &[String]) -> Result<(), String> {
+    if allowed.is_empty() {
+        return Err(
+            "Auftrag nennt keine erlaubten Pfade — ohne zugesagten Scope wird nicht geerntet"
+                .to_string(),
+        );
+    }
+    let outside: Vec<&str> = touched
+        .iter()
+        .filter(|p| !allowed.iter().any(|a| a == *p))
+        .map(|p| p.as_str())
+        .collect();
+    if outside.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "Patch verlaesst den zugesagten Scope: {} (erlaubt waren: {})",
+        outside.join(", "),
+        allowed.join(", ")
+    ))
 }
 
 /// Zahl der zusätzlichen positiven Score-Ereignisse für einen Scope-Verstoß.
