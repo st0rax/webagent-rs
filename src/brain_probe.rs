@@ -487,6 +487,147 @@ pub const PROBE_SCRIPT: &str = r#"
 })()
 "#;
 
+/// Sammelt TEXTCONTAINER statt Bedienelemente.
+///
+/// [`PROBE_SCRIPT`] sieht nur Interaktives — `button`, `a[href]`, `role=*`,
+/// Eingabefelder. Ein Antwortbereich ist nichts davon, deshalb kann `probe`
+/// einen `assistant_message`-Selektor prinzipiell nicht finden, fuer kein
+/// Brain. Genau daran scheiterte die Vermessung von perplexity am 2026-08-23:
+/// Das Brain antwortete sichtbar, der Scan meldete den Container nie, und der
+/// Relay-Lauf wartete bis zum Timeout auf Text, den er nicht sehen konnte.
+///
+/// Die Heuristik ist bewusst grob: Blattnahe Elemente mit spuerbar Text, ohne
+/// interaktive Rolle. Was davon der Antwortcontainer ist, entscheidet ein
+/// Mensch beim Lesen der Ausgabe — das Skript liefert die Kandidatenliste,
+/// nicht das Urteil.
+pub const TEXT_PROBE_SCRIPT: &str = r#"
+(() => {
+  const out = [];
+  const skip = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'BUTTON', 'A', 'INPUT']);
+  for (const el of document.querySelectorAll('div, p, article, section, main, li, span')) {
+    if (skip.has(el.tagName)) { continue; }
+    // Nur echte Eingabe- und Knopfflaechen ausschliessen. Ein Antwortbereich
+    // liegt bei manchen Oberflaechen INNERHALB eines klickbaren Containers
+    // (Perplexity macht Antwortkarten anfassbar) — wer auf `a[href]` oder
+    // `[role=button]` filtert, wirft genau den gesuchten Text weg.
+    if (el.closest('button, [contenteditable=true]')) { continue; }
+    const text = (el.innerText || '').trim();
+    // Schwelle bewusst niedrig: Eine Antwort auf eine Testfrage ist KURZ
+    // ("BEREIT"). Mit 40 Zeichen Mindestlaenge warf der erste Wurf genau den
+    // gesuchten Container weg und zeigte nur die langen eigenen Prompts —
+    // eine Suche, die ihr Ziel per Konstruktion nicht finden konnte.
+    if (text.length < 3) { continue; }
+    const r = el.getBoundingClientRect();
+    if (r.width < 20 || r.height < 8) { continue; }
+    let eigen = 0;
+    for (const kind of el.childNodes) {
+      if (kind.nodeType === 3) { eigen += (kind.textContent || '').trim().length; }
+    }
+    // Elternkette mitgeben: Bei zeilenweise gerenderten Antworten traegt das
+    // einzelne Element (Perplexity: `p.my-2` je Zeile) den Text, der SELEKTOR
+    // muss aber den umschliessenden Container treffen. Ohne die Kette sieht
+    // man die Blaetter und nie den Ast.
+    const eltern = [];
+    let auf = el.parentElement;
+    for (let i = 0; i < 3 && auf; i++) {
+      const k = (typeof auf.className === 'string' ? auf.className : '').trim().split(/\s+/)[0] || '';
+      eltern.push(auf.tagName.toLowerCase() + (auf.id ? '#' + auf.id : (k ? '.' + k : '')));
+      auf = auf.parentElement;
+    }
+    out.push({
+      tag: el.tagName.toLowerCase(),
+      id: el.id || '',
+      test_id: el.getAttribute('data-testid') || '',
+      role: el.getAttribute('role') || '',
+      parents: eltern.join(' < '),
+      class: (typeof el.className === 'string' ? el.className : '').trim().slice(0, 200),
+      len: text.length,
+      own_text: eigen,
+      kids: el.children.length,
+      text: text.slice(0, 120),
+      y: Math.round(r.top),
+      h: Math.round(r.height)
+    });
+  }
+  // Zwei Sichten, weil eine nicht reicht: Nach Textmenge sortiert dominieren
+  // die eigenen Prompts (sie sind laenger als jede Antwort), nach Position
+  // sortiert steht die JUENGSTE Antwort unten. Beides zusammen zeigt den
+  // Antwortcontainer auch dann, wenn er kurz ist.
+  const nachText = [...out].sort((a, b) => b.own_text - a.own_text);
+  const nachLage = [...out].sort((a, b) => b.y - a.y);
+  const gesehen = new Set();
+  const misch = [];
+  for (const el of [...nachLage.slice(0, 14), ...nachText.slice(0, 14)]) {
+    const key = el.tag + '|' + el.class + '|' + el.y + '|' + el.len;
+    if (gesehen.has(key)) { continue; }
+    gesehen.add(key);
+    misch.push(el);
+  }
+  return misch;
+})()
+"#;
+
+/// Ein Textcontainer-Kandidat aus [`TEXT_PROBE_SCRIPT`].
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct TextCandidate {
+    pub tag: String,
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub test_id: String,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub class: String,
+    /// Bis zu drei Ebenen Elternkette, aeusserste zuletzt.
+    #[serde(default)]
+    pub parents: String,
+    #[serde(default)]
+    pub len: usize,
+    #[serde(default)]
+    pub own_text: usize,
+    #[serde(default)]
+    pub kids: usize,
+    #[serde(default)]
+    pub text: String,
+}
+
+/// Fuehrt [`TEXT_PROBE_SCRIPT`] aus und liefert die Kandidaten.
+pub fn collect_text(driver: &mut dyn PageDriver) -> Result<Vec<TextCandidate>> {
+    let raw = driver.evaluate(TEXT_PROBE_SCRIPT)?;
+    Ok(serde_json::from_value(raw).unwrap_or_default())
+}
+
+/// Schlaegt fuer einen Textcontainer den stabilsten Selektor vor — dieselbe
+/// Rangfolge wie [`selector_for`]: `data-testid`, `id`, dann eine einzelne
+/// Klasse. Klassenketten aus Utility-Frameworks (Tailwind) taugen nicht, also
+/// wird die erste Klasse genommen, die nicht wie eine Utility aussieht.
+pub fn text_selector_for(candidate: &TextCandidate) -> Option<String> {
+    if !candidate.test_id.is_empty() {
+        return Some(format!("[data-testid='{}']", candidate.test_id));
+    }
+    if !candidate.id.is_empty() {
+        // Perplexity nummeriert Antworten durch (`markdown-content-0`), eine
+        // exakte id taugt dann nur fuer die erste. Der Praefix bleibt stabil.
+        if let Some(stamm) = candidate.id.rsplit_once('-').map(|(kopf, _)| kopf) {
+            if stamm.len() >= 4
+                && candidate
+                    .id
+                    .rsplit_once('-')
+                    .is_some_and(|(_, z)| z.chars().all(|c| c.is_ascii_digit()))
+            {
+                return Some(format!("[id^='{stamm}-']"));
+            }
+        }
+        return Some(format!("#{}", candidate.id));
+    }
+    candidate
+        .class
+        .split_whitespace()
+        .find(|c| c.len() >= 4 && !c.contains('[') && !c.contains(':') && !c.contains('/'))
+        .map(|c| format!("{}.{}", candidate.tag, c))
+}
+
 /// Baut den stabilsten Selektor fuer ein Element.
 ///
 /// Reihenfolge nach Haltbarkeit: `data-testid` ueberlebt Umbauten am ehesten,
@@ -1205,6 +1346,79 @@ mod tests {
                 number + 1
             );
         }
+    }
+
+    #[test]
+    fn text_probe_script_hat_keine_zeilenuebergreifenden_stringliterale() {
+        // Gleiche Falle wie beim PROBE_SCRIPT: kein Unit-Test fuehrt das JS
+        // aus, ein gebrochenes Literal stirbt erst im Browser.
+        for (number, line) in TEXT_PROBE_SCRIPT.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or(line);
+            assert_eq!(
+                code.matches('\'').count() % 2,
+                0,
+                "Zeile {}: unpaarige Anfuehrungszeichen — {line}",
+                number + 1
+            );
+        }
+    }
+
+    fn text_kandidat(id: &str, test_id: &str, class: &str) -> TextCandidate {
+        TextCandidate {
+            tag: "div".into(),
+            id: id.into(),
+            test_id: test_id.into(),
+            role: String::new(),
+            class: class.into(),
+            parents: String::new(),
+            len: 200,
+            own_text: 180,
+            kids: 0,
+            text: "Antwort".into(),
+        }
+    }
+
+    /// Rangfolge wie bei Bedienelementen: `data-testid` vor `id` vor Klasse.
+    #[test]
+    fn text_selector_bevorzugt_das_haltbarste_merkmal() {
+        assert_eq!(
+            text_selector_for(&text_kandidat("x", "answer", "prose")),
+            Some("[data-testid='answer']".to_string())
+        );
+        assert_eq!(
+            text_selector_for(&text_kandidat("", "", "prose dark")),
+            Some("div.prose".to_string())
+        );
+        assert_eq!(text_selector_for(&text_kandidat("", "", "")), None);
+    }
+
+    /// Durchnummerierte Antworten: die exakte `id` traefe nur die erste,
+    /// deshalb der Praefix. Perplexity vergibt `markdown-content-0`, `-1`, …
+    #[test]
+    fn durchnummerierte_id_wird_zum_praefix_selektor() {
+        assert_eq!(
+            text_selector_for(&text_kandidat("markdown-content-0", "", "")),
+            Some("[id^='markdown-content-']".to_string())
+        );
+        // Ohne Zahlenendung bleibt es bei der exakten id.
+        assert_eq!(
+            text_selector_for(&text_kandidat("haupttext", "", "")),
+            Some("#haupttext".to_string())
+        );
+    }
+
+    /// Utility-Klassen (Tailwind) taugen nicht als Anker — sie tragen
+    /// Doppelpunkte, Klammern und Schraegstriche und wechseln mit jedem Theme.
+    #[test]
+    fn utility_klassen_werden_uebersprungen() {
+        assert_eq!(
+            text_selector_for(&text_kandidat(
+                "",
+                "",
+                "md:flex hover:bg-soft w-1/2 antwort"
+            )),
+            Some("div.antwort".to_string())
+        );
     }
 
     #[test]

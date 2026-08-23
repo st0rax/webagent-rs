@@ -10,5 +10,9 @@
     "[role=menuitem]",
     "[role=menuitemradio]",
     "[role=option]"
+  ],
+  "assistant_message": [
+    "div.prose",
+    "div.prose p.my-2"
   ]
 }

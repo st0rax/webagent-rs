@@ -533,6 +533,87 @@ return null;}})()"#,
         result
     }
 
+    /// Wie [`Self::probe_surface_generating`], liefert aber TEXTCONTAINER
+    /// statt Bedienelemente — die Kandidaten für `assistant_message`.
+    ///
+    /// Der reguläre Scan sieht nur Interaktives, ein Antwortbereich ist nichts
+    /// davon. Deshalb war der Container für jedes Brain unsichtbar, und ein
+    /// fehlender `assistant_message`-Selektor ließ sich nicht vermessen,
+    /// sondern nur raten.
+    pub fn probe_text_generating(
+        &mut self,
+        headless: bool,
+        probe: &str,
+    ) -> Result<Vec<crate::brain_probe::TextCandidate>, String> {
+        use std::time::Duration;
+
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+
+        let baseline_text = self.baseline_text.borrow().clone();
+        if let Err(e) = self.send(probe) {
+            let _ = self.stop();
+            return Err(format!("Probe nicht absendbar: {e}"));
+        }
+
+        // Auf Text warten, NICHT auf `assistant_message`: Wer den Selektor
+        // sucht, kann ihn nicht zur Voraussetzung machen. Der Vergleich gegen
+        // den Seitentext vor dem Senden kommt ohne ihn aus.
+        // Feste Wartezeit statt Wachstumserkennung. Ein Vergleich der
+        // Textmenge vorher/nachher taugt hier nicht: Die Seite traegt oft
+        // schon einen langen Verlauf (gemessen: 100.237 Zeichen Eigentext vor
+        // dem Senden), in dem eine neue Antwort untergeht. Und ein Warten auf
+        // `assistant_message` verbietet sich, weil genau dieser Selektor
+        // gesucht wird. Fuer ein Diagnosewerkzeug ist die schlichte Wartezeit
+        // die ehrlichere Loesung — sie behauptet kein Signal, das es nicht
+        // gibt.
+        let _ = &baseline_text;
+        let url_jetzt = |backend: &Self| -> String {
+            let mut guard = backend.driver.borrow_mut();
+            guard
+                .as_mut()
+                .and_then(|d| d.eval_string("location.href").ok())
+                .unwrap_or_default()
+        };
+        // Perplexity navigiert beim Absenden in einen neuen Thread
+        // (`/search/new/<id>` → `/search/<andere-id>`, gemessen 2026-08-23).
+        // Wer sofort scannt, liest die Seite VOR der Navigation. Erst auf eine
+        // stabile URL warten, dann die Antwort ausschreiben lassen.
+        let mut letzte = url_jetzt(self);
+        let mut ruhig = 0;
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_millis(500));
+            let jetzt = url_jetzt(self);
+            if jetzt == letzte {
+                ruhig += 1;
+                if ruhig >= 6 {
+                    break;
+                }
+            } else {
+                letzte = jetzt;
+                ruhig = 0;
+            }
+        }
+        let warte: u64 = std::env::var("WEBAGENT_PROBE_WAIT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(35);
+        std::thread::sleep(Duration::from_secs(warte));
+        // Ausschreiben lassen, damit der Container seine endgueltige Form hat.
+        std::thread::sleep(Duration::from_millis(2500));
+
+        let result = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            crate::brain_probe::collect_text(driver.as_mut()).map_err(|e| e.to_string())
+        };
+        let _ = self.stop();
+        result
+    }
+
     /// Zwei Abzüge — während der Generierung und danach — und die Differenz.
     ///
     /// Der Stop-Knopf trägt bei manchen Oberflächen **kein** unterscheidendes

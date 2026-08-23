@@ -390,6 +390,62 @@ Shared-Modus für diese drei Brains — Anmeldung durch den Eigentümer. Nicht n
 Anmeldungen, wie ich am 23.08. zuerst schätzte, und auch nicht null, wie ich
 danach behauptete: drei.
 
+## Die zwei Release-Defekte — behoben am 2026-08-23
+
+**perplexity antwortet wieder.** Drei Relay-Laeufe `ok:true` (33,8 s, dann 14,6
+und 16,2 s); vorher lief jeder in den Timeout, waehrend die Antwort sichtbar auf
+dem Schirm stand.
+
+**mistral liefert nur noch die Antwort.** Statt
+`BEREIT
+
+4:42
+War das hilfreich?
+Ueberspringen` jetzt `BEREIT`, drei
+Laeufe um 17 s.
+
+### Die Ursache lag im Messinstrument
+
+`PROBE_SCRIPT` sammelt ausschliesslich Interaktives — Knoepfe, Links,
+Eingabefelder. Ein Antwortbereich ist nichts davon, also konnte `probe` einen
+`assistant_message`-Selektor **fuer kein einziges Brain** finden. Dass
+`selectors/perplexity.json` diesen Schluessel nie hatte, war kein Versehen,
+sondern die Folge.
+
+`--dump-text` (`c0fddd3`) schliesst die Luecke: Textcontainer statt
+Bedienelemente, mit Elternkette und Selektorvorschlag.
+
+### Gefunden wurde
+
+| Brain | Antwortcontainer | vorher |
+|---|---|---|
+| perplexity | `div.prose` (Zeilen als `p.my-2`) | gar keiner |
+| mistral | `div.markdown-container-style` | `div.prose` — zu weit, zog Zeitstempel und Feedback-Widget mit |
+
+Bei perplexity liegen Nutzernachrichten in `div.flex-1` unter anderer
+Elternkette; `div.prose` trennt also sauber.
+
+### Drei Stolperstellen, zwei davon selbstgemacht
+
+Die Mindesttextlaenge von 40 Zeichen warf genau das weg, was gesucht war — eine
+Antwort auf eine Testfrage ist kurz, `BEREIT` hat sechs Zeichen. Und der Scan
+lief, bevor perplexity mit dem Navigieren fertig war: Beim Absenden wechselt die
+Seite von `/search/new/<id>` zu `/search/<andere-id>`, wer sofort scannt liest
+die Seite von vorher. Der Prober wartet jetzt auf eine ruhige URL.
+
+Offen geblieben: `div.prose` steht laengst in der generischen Maske, und
+`load_selectors` mischt sie unter die Brain-Datei — es haette also ohne Eintrag
+greifen muessen. Tat es nicht. Vermutlich trifft einer der fuenf Maskeneintraege
+davor auf dieser Oberflaeche etwas Leeres. Der Defekt ist so oder so behoben,
+die Maskenfrage bleibt.
+
+### zai bleibt offen
+
+Derselbe Fehlertyp (vorangestelltes `Thought Process`), in diesem Durchgang
+nicht behebbar: Der Anbieter meldet das Modell als ueberlastet, der
+Circuit-Breaker hat zai fuer sechs Stunden gesperrt. Die Sperre ist richtiges
+Verhalten und wurde nicht umgangen.
+
 ## Aktiver Edit
 
 - **Entwickler:** Claude (vom Eigentümer als aktueller Produktintegrator benannt)

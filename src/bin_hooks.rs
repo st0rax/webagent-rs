@@ -15,6 +15,7 @@ pub type ProbeFn = fn(
     bool,
     bool,
     bool,
+    bool,
 ) -> i32;
 
 static PROBE: Mutex<Option<ProbeFn>> = Mutex::new(None);
@@ -91,6 +92,7 @@ pub fn run_brute_write(url: &str, headless: bool) -> i32 {
             false,
             false,
             false,
+            false,
             headless,
         ),
         None => {
@@ -124,13 +126,14 @@ mod tests {
             verify: bool,
             _open: Option<&str>,
             dump: bool,
+            dump_text: bool,
             generating: bool,
             stop_diff: bool,
             _headless: bool,
         ) -> i32 {
             assert_eq!(url, Some("https://chat.example.com/app"));
             assert!(write);
-            assert!(!verify && !dump && !generating && !stop_diff);
+            assert!(!verify && !dump && !dump_text && !generating && !stop_diff);
             SAW_WRITE.store(true, Ordering::SeqCst);
             0
         }

@@ -539,6 +539,7 @@ pub fn cmd_probe(
     verify: bool,
     open: Option<&str>,
     dump: bool,
+    dump_text: bool,
     generating: bool,
     stop_diff: bool,
     headless: bool,
@@ -630,6 +631,46 @@ pub fn cmd_probe(
     }
 
     eprintln!("[probe] {id}: oeffne Oberflaeche (headless={headless})…");
+    // `--dump-text` ist ein eigener Lauf: Er sucht den ANTWORT-Container, den
+    // der regulaere Scan strukturell nicht sehen kann, und endet danach.
+    if dump_text {
+        eprintln!("[probe] {id}: sende Probe und sammle Textcontainer…");
+        let kandidaten = match backend
+            .probe_text_generating(headless, &probe_message(&webagent::now_rfc3339()))
+        {
+            Ok(k) => k,
+            Err(e) => {
+                eprintln!("[probe] {id}: Fehler: {e}");
+                return 1;
+            }
+        };
+        if kandidaten.is_empty() {
+            eprintln!("[probe] {id}: kein Textcontainer gefunden.");
+            return 1;
+        }
+        println!("  --- {id}: Textcontainer ({}) ---", kandidaten.len());
+        println!(
+            "  {:>6} {:>6} {:>4}  {:<34} Textanfang",
+            "eigen", "gesamt", "kids", "Selektor-Vorschlag"
+        );
+        for k in kandidaten.iter().take(20) {
+            let sel = webagent::brain_probe::text_selector_for(k)
+                .unwrap_or_else(|| format!("{} (ohne Anker)", k.tag));
+            let text: String = k.text.chars().take(48).collect();
+            println!(
+                "  {:>6} {:>6} {:>4}  {:<34} {}",
+                k.own_text,
+                k.len,
+                k.kids,
+                sel,
+                text.replace('\n', " ")
+            );
+            if !k.parents.is_empty() {
+                println!("           ^ in: {}", k.parents);
+            }
+        }
+        return 0;
+    }
     // `--dump` zeigt die Rohehebung (ohne Fill-Runde, sonst ist der Composer
     // schon gefuellt und die Antwort verdraengt die echten Bedienelemente).
     let (candidates, proposals) = if generating {
