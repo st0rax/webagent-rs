@@ -504,11 +504,18 @@ fn open_page(
 Object.defineProperty(navigator, 'webdriver', { get: function() { return undefined; } });
 "#;
 
-    let webview = WebViewBuilder::with_web_context(&mut web_context)
+    let builder = WebViewBuilder::with_web_context(&mut web_context)
         .with_visible(true)
-        .with_additional_browser_args(browser_args())
         .with_initialization_script(init_script)
-        .with_url(url)
+        .with_url(url);
+    // `with_additional_browser_args` gibt es nur fuer WebView2. Unter Linux
+    // fuehrt WebKitGTK keine Kommandozeile, die Argumente entfallen ersatzlos.
+    #[cfg(windows)]
+    let builder = {
+        use wry::WebViewBuilderExtWindows;
+        builder.with_additional_browser_args(browser_args())
+    };
+    let webview = builder
         .build(&window)
         .map_err(|e| PageDriverError::Launch(e.to_string()))?;
 
@@ -709,6 +716,7 @@ fn set_bounds(
 /// WebView2 liefert dann sofort einen Default-Wert statt eine native Modal zu
 /// zeigen -- ohne Nutzer da, um sie wegzuklicken, wuerde sie sonst die geteilte
 /// Event-Loop (ein Thread fuer alle Tabs) dauerhaft blockieren.
+#[cfg(windows)]
 fn disable_native_script_dialogs(webview: &wry::WebView) -> std::result::Result<(), String> {
     use wry::WebViewExtWindows;
     unsafe {
@@ -719,6 +727,16 @@ fn disable_native_script_dialogs(webview: &wry::WebView) -> std::result::Result<
             .SetAreDefaultScriptDialogsEnabled(false)
             .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+/// Unter WebKitGTK gibt es keinen Einstieg, der dem WebView2-Setting
+/// entspraeche. Die Dialoge werden dort vom `script-dialog`-Signal des
+/// Widgets behandelt, an das wry nicht durchreicht — ein Nachbau waere ein
+/// eigener Patch an wry, kein Aufruf. Bis dahin: nichts abschalten und das
+/// ehrlich benennen, statt Erfolg zu melden.
+#[cfg(not(windows))]
+fn disable_native_script_dialogs(_webview: &wry::WebView) -> std::result::Result<(), String> {
     Ok(())
 }
 
@@ -838,6 +856,7 @@ fn browser_args() -> String {
     args
 }
 
+#[cfg(windows)]
 /// Nimmt den Seiteninhalt als PNG auf (`ICoreWebView2::CapturePreview`).
 ///
 /// Bewusst der WebView2-eigene Weg statt eines Fenster-Screenshots per GDI:
@@ -1109,6 +1128,7 @@ return true;}})()"#
     Ok(())
 }
 
+#[cfg(windows)]
 /// CDP-Methode aufrufen und auf den Completion-Handler warten (on-device:
 /// `CallDevToolsProtocolMethod` spricht denselben CDP-Kanal wie die
 /// Remote-Debugging-Session, aber in-prozess — kein Port, kein WebSocket).
@@ -1306,4 +1326,31 @@ mod tests {
             "leeres Objekt darf keinen Wert vortaeuschen"
         );
     }
+}
+
+/// Screenshot ueber die WebView2-eigene CapturePreview-Schnittstelle. Unter
+/// WebKitGTK gibt es keine Entsprechung, die ohne sichtbares Fenster
+/// auskaeme — `shot` bleibt dort unverfuegbar, statt ein leeres PNG zu
+/// liefern und Erfolg zu behaupten.
+#[cfg(not(windows))]
+fn capture_png(_webview: &wry::WebView, _event_loop: &mut EventLoop<()>) -> Result<Vec<u8>> {
+    Err(PageDriverError::NotAvailable(
+        "Screenshot: unter Linux nicht verfuegbar (WebView2-CapturePreview fehlt in WebKitGTK)"
+            .into(),
+    ))
+}
+
+/// DevTools-Protokoll ueber WebView2. WebKitGTK bietet keinen In-Prozess-CDP-
+/// Kanal; wer echte Maus-/Tastatureingaben braucht, faellt unter Linux auf die
+/// JS-Pfade zurueck.
+#[cfg(not(windows))]
+fn call_cdp(
+    _webview: &wry::WebView,
+    _method: &str,
+    _params: &str,
+    _event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    Err(PageDriverError::NotAvailable(
+        "DevTools-Protokoll: unter Linux nicht verfuegbar (kein CDP in WebKitGTK)".into(),
+    ))
 }
