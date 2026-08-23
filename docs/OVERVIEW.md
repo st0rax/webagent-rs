@@ -49,7 +49,7 @@ Evidenz.
 |---|---|---|
 | Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.189 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.123 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures. **CI seit `51d196f` wieder grün** — sie war vom 22.08. bis dahin auf jedem Push rot, auch auf `master` | Integration des geprüften Zweigs in den maßgeblichen Upstream |
 | Provider-/WebView-Livebetrieb | **Rezertifiziert am 2026-08-23** mit anwesendem Eigentümer: Diagnose 9/9 (alle angemeldet, bereit, keine Cloudflare-Wand), Relay 8/9 gegen echte Browser. `perplexity` fällt aus — es antwortet, aber kein `assistant_message`-Selektor findet die Antwort | Reparatur des perplexity-Selektors; `mistral` und `zai` liefern UI-Beiwerk im extrahierten Text |
-| Pool, Worker und Cross-Brain-Handoff | Verträge und Fehlergrenzen lokal getestet; Continuation, Stall und Cross-Brain-Handoff sind seit dem 2026-08-23 im Benchmark-Pfad end-to-end belegt | Poolstart, Worker-Heartbeat, Profil-Lease/Write-back und geordneter Shutdown im GEMEINSAMEN Szenariolauf — braucht eine Injektionsschicht für den BrowserPool oder einen Livelauf mit dem Eigentümer |
+| Pool, Worker und Cross-Brain-Handoff | Continuation, Stall und Cross-Brain-Handoff im Benchmark-Pfad end-to-end belegt. Live am 2026-08-23: Poolstart, Auto-Recovery und Profil-Lease über neun Brains im Parallelbetrieb; das Master-Profil blieb bei beiden Läufen unverändert — erste Live-Erprobung des reparierten Write-back | Geordneter Shutdown und der tatsächliche Write-back ins Master (beide Läufe endeten am Timeout); Worker-Heartbeat unter echter Last |
 | Benchmark/Autoresearch/Harvest | **Abgenommen** (2026-08-23, `src/benchmark/e2e_tests.rs`): providerfreier Lauf auf echtem temporärem Git-Repo, Auftrag → Bau → Gates → Ernte, mit Fresh, Continuation gleicher Run-ID, Stall, Cross-Brain-Handoff und fail-closed verworfenem Scope-Verstoß | — |
 | Free-Cloud-Textchat | Registry, Policy, Mock-Stream, Metadaten- und Breaker-Verträge lokal implementiert | kein echter HTTP-/Provideradapter; externe Inferenz bleibt bis zur ausdrücklichen Freigabe außerhalb des Lieferstands |
 | Release | Workflows und Buildskripte vorhanden | aktueller Artefaktlauf sowie bewusstes Push/Tag/Release |
@@ -221,12 +221,17 @@ antwortet, der Harness sieht es nicht) und das UI-Beiwerk bei `mistral` und
 Historische Providerzahlen bleiben ungültig als Ersatz; Browser-, Login- und
 Accountzugriffe weiterhin nur nach ausdrücklicher Nutzerfreigabe.
 
-### 2. Integrierte Mehr-Brain-Abnahme
+### 2. Integrierte Mehr-Brain-Abnahme — teilweise erbracht (2026-08-23)
 
-Ein nachvollziehbarer Szenariolauf muss Poolstart, Worker-Heartbeat,
-Same-Brain-Continuation, Cross-Brain-Handoff, Profil-Lease/Write-back und
-geordneten Shutdown gemeinsam belegen. Unit-Tests der Einzelverträge ersetzen
-diesen Systemnachweis nicht.
+Belegt: Poolstart, Auto-Recovery, Profil-Lease über neun Brains im
+Parallelbetrieb, und dass das Master-Profil beide Läufe unverändert übersteht.
+
+Offen: geordneter Shutdown und der Write-back ins Master (beide Läufe endeten
+am Timeout, der Rückweg wurde also nie gegangen), sowie der Worker-Heartbeat
+unter echter Last statt an einer leeren Inbox. Einzelheiten in
+`CURRENT_WORK.md`.
+
+Unit-Tests der Einzelverträge ersetzen den fehlenden Rest nicht.
 
 ### 3. Benchmark-/Autoresearch-Abnahme — erledigt am 2026-08-23
 

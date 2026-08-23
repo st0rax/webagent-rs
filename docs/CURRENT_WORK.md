@@ -242,6 +242,45 @@ ist die Ursache belegt: `selectors/mistral.json` endet unter
 Nachbarelemente einsammelt, weil die spezifischen Selektoren davor nicht mehr
 greifen. Für den bot2bot-Betrieb ist das relevant.
 
+## Mehr-Brain-Abnahme (Roadmap 2) — Teilnachweis 2026-08-23
+
+Zwei reale Läufe mit anwesendem Eigentümer, Master-Profil vorher gesichert
+(`shared.bak-vor-pool-20260823-051522`, 531 MB).
+
+**Belegt:**
+
+- Poolstart und Auto-Recovery: `workers --active 2 --brains deepseek,qwen`
+  startete den Supervisor, ein als unavailable geführtes Brain wurde nach
+  Ablauf der Sperre selbsttätig wieder aufgenommen.
+- Profil-Lease über neun Brains: `autoresearch-self` zog für jedes Brain einen
+  Klon (`profiles/swarm/<runstamp>_<brain>_<hash>`) und fuhr sie im
+  Parallelbetrieb, vier gleichzeitig.
+- Acht der neun Brains antworteten — unabhängige Bestätigung des
+  perplexity-Defekts aus der Relay-Matrix.
+- **Der reparierte Write-back hält.** Das Master-Profil war nach BEIDEN Läufen
+  unverändert: 23 Hosts, jede Cookie-Zahl identisch, byteweise gegen die
+  vorher gezogene Referenz verglichen. Das ist die erste Live-Erprobung des
+  Mechanismus seit dem Schaden vom 22.08.
+
+**Nicht belegt, und deshalb bleibt Roadmap 2 offen:**
+
+- Geordneter Shutdown. Beide Läufe endeten am Timeout, nicht am regulären Ende.
+  Damit fand auch kein Write-back ins Master statt — dass das Master heil
+  blieb, belegt also die Schutzlogik, nicht den erfolgreichen Rückweg.
+- Worker-Heartbeat unter echter Last: die Worker pollten eine leere Inbox.
+- Same-Brain-Continuation und Cross-Brain-Handoff sind im Benchmarkpfad
+  belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
+
+**Befund: abgebrochene Läufe lassen ihre Profil-Klone stehen.** Die beiden
+Läufe hinterließen 780 MB in `profiles/swarm/`, ein weiterer Rest stammt vom
+22.08. Bei sauberem Ende räumt der Lease auf, beim Abbruch nicht. Auf einer
+chronisch vollen Platte ist das kein Schönheitsfehler.
+
+Nebenbefund zur Kopierstrategie: Die Sparse-Klone lagen bei 24–51 MB
+(perplexity 147 MB), die Klone des Pool-Laufs ohne `WEBAGENT_SPARSE_COPY` bei
+107–166 MB. Der Lease-Lauf lief bewusst sparse, weil neun volle Klone à 531 MB
+die Platte gesprengt hätten; der Standardpfad ist damit nicht mitgemessen.
+
 ## Aktiver Edit
 
 Diesen Abschnitt vor Änderungen an gemeinsamen Dateien erneut verifizieren:
