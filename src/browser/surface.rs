@@ -533,6 +533,57 @@ return null;}})()"#,
         result
     }
 
+    /// Wie [`Self::probe_surface_generating`], liefert aber TEXTCONTAINER
+    /// statt Bedienelemente — die Kandidaten für `assistant_message`.
+    ///
+    /// Der reguläre Scan sieht nur Interaktives, ein Antwortbereich ist nichts
+    /// davon. Deshalb war der Container für jedes Brain unsichtbar, und ein
+    /// fehlender `assistant_message`-Selektor ließ sich nicht vermessen,
+    /// sondern nur raten.
+    pub fn probe_text_generating(
+        &mut self,
+        headless: bool,
+        probe: &str,
+    ) -> Result<Vec<crate::brain_probe::TextCandidate>, String> {
+        use std::time::Duration;
+
+        self.start(headless)?;
+        self.dismiss_consent();
+        let _ = self.ensure_ready(15.0);
+
+        let baseline_text = self.baseline_text.borrow().clone();
+        if let Err(e) = self.send(probe) {
+            let _ = self.stop();
+            return Err(format!("Probe nicht absendbar: {e}"));
+        }
+
+        // Auf Text warten, NICHT auf `assistant_message`: Wer den Selektor
+        // sucht, kann ihn nicht zur Voraussetzung machen. Der Vergleich gegen
+        // den Seitentext vor dem Senden kommt ohne ihn aus.
+        // Feste Wartezeit statt Wachstumserkennung. Ein Vergleich der
+        // Textmenge vorher/nachher taugt hier nicht: Die Seite traegt oft
+        // schon einen langen Verlauf (gemessen: 100.237 Zeichen Eigentext vor
+        // dem Senden), in dem eine neue Antwort untergeht. Und ein Warten auf
+        // `assistant_message` verbietet sich, weil genau dieser Selektor
+        // gesucht wird. Fuer ein Diagnosewerkzeug ist die schlichte Wartezeit
+        // die ehrlichere Loesung — sie behauptet kein Signal, das es nicht
+        // gibt.
+        let _ = &baseline_text;
+        std::thread::sleep(Duration::from_secs(35));
+        // Ausschreiben lassen, damit der Container seine endgueltige Form hat.
+        std::thread::sleep(Duration::from_millis(2500));
+
+        let result = {
+            let mut guard = self.driver.borrow_mut();
+            let driver = guard
+                .as_mut()
+                .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+            crate::brain_probe::collect_text(driver.as_mut()).map_err(|e| e.to_string())
+        };
+        let _ = self.stop();
+        result
+    }
+
     /// Zwei Abzüge — während der Generierung und danach — und die Differenz.
     ///
     /// Der Stop-Knopf trägt bei manchen Oberflächen **kein** unterscheidendes

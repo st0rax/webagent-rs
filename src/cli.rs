@@ -375,6 +375,16 @@ pub enum Commands {
         /// Rohe DOM-Kandidaten ausgeben (fuer die Analyse von Fehlfunden)
         #[arg(long)]
         dump: bool,
+
+        /// TEXTCONTAINER statt Bedienelemente auflisten — die Kandidaten fuer
+        /// `assistant_message`.
+        ///
+        /// Der normale Scan sieht nur Interaktives; ein Antwortbereich ist
+        /// nichts davon und blieb deshalb fuer jedes Brain unsichtbar. Am
+        /// sinnvollsten zusammen mit `--generating`, damit ueberhaupt eine
+        /// Antwort auf der Seite steht.
+        #[arg(long)]
+        dump_text: bool,
         /// Waehrend einer laufenden Generierung scannen: sendet eine Probe und
         /// scannt erst, wenn die Antwort laeuft. Noetig fuer `stop_button` —
         /// den gibt es im Ruhezustand nicht. Schreibt eine echte Nachricht.
