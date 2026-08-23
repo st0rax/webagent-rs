@@ -198,6 +198,102 @@ fn bench_run(
 /// wäre der Bauauftrag wertlos ("ist schon implementiert" → keine Änderung →
 /// fälschlich FAIL). Fällt die Verfeinerung aus, wird der unbelegte Vorschlag
 /// verworfen statt als teurer Bauauftrag durchgereicht.
+/// Aus dem verfeinerten Freitext-Auftrag einen TYPISIERTEN Auftrag gewinnen.
+///
+/// Phase A.5 lieferte bisher nur Prosa. `parse_work_package` und
+/// `evaluate_work_package` lagen fertig daneben, wurden aber nirgends
+/// aufgerufen — der Datei-Scope am Ernte-Tor blieb deshalb immer leer.
+///
+/// Das `objective` setzt die Pipeline selbst, nicht das Brain. Der Scope wird
+/// spaeter ueber genau diesen Text der laufenden Aufgabe zugeordnet; formuliert
+/// das Brain ihn um, findet die Zuordnung nichts und der Scope fiele still weg
+/// — ein Schutz, der lautlos verschwindet, ist schlimmer als keiner.
+///
+/// `None` heisst: kein belastbarer Auftrag. Der Lauf geht dann OHNE Scope
+/// weiter, wie vor dieser Stufe. Ein unbrauchbares JSON ist eine
+/// Verfuegbarkeitsstoerung des Refiners und darf die Runde nicht anhalten;
+/// fail-closed sitzt am Ernte-Tor, wo ein vorhandener Scope gilt.
+fn derive_work_package<Q>(
+    objective: &str,
+    refiner: &str,
+    src_files: &[String],
+    root: &std::path::Path,
+    query: &Q,
+) -> Option<crate::benchmark::work_package::WorkPackage>
+where
+    Q: Fn(&str, &str) -> Result<String, String> + Sync,
+{
+    if refiner.is_empty() || objective.trim().is_empty() {
+        return None;
+    }
+    let dateien = src_files.join(
+        "
+",
+    );
+    let prompt = format!(
+        "Fasse den folgenden Auftrag als WorkPackage-JSON.
+
+         AUFTRAG:
+{objective}
+
+         ERLAUBTE DATEIEN (nur aus dieser Liste, exakt so geschrieben):
+{dateien}
+
+         Antworte mit GENAU EINEM JSON-Objekt, ohne Markdown-Zaun und ohne          Begleittext, mit diesen Feldern:
+         - \"id\": kurze Kennung
+         - \"objective\": der Auftrag in einem Satz
+         - \"allowed_paths\": Liste der Dateien, die der Auftrag anfassen darf
+         - \"anchors\": Liste aus {{\"symbol\",\"path\",\"requirement\"}} mit          requirement \"must_exist\" oder \"must_not_exist\"; \"path\" muss in          allowed_paths stehen
+         - \"acceptance\": Liste aus {{\"command\",\"purpose\"}}
+
+         Nenne in allowed_paths NUR Dateien, die der Auftrag wirklich braucht."
+    );
+    let text = match query(refiner, &prompt) {
+        Ok(t) => t,
+        Err(e) => {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "Auftrags-Typisierung: {refiner} nicht erreichbar ({e}) — Lauf ohne Datei-Scope."
+            );
+            return None;
+        }
+    };
+    let mut package = match crate::benchmark::work_package::parse_work_package(&text) {
+        Ok(p) => p,
+        Err(e) => {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "Auftrags-Typisierung verworfen ({e}) — Lauf ohne Datei-Scope."
+            );
+            return None;
+        }
+    };
+    // Die Zuordnung haengt am Wortlaut, also setzt ihn die Pipeline.
+    package.objective = objective.to_string();
+
+    match crate::benchmark::feasibility::evaluate_work_package(&package, root) {
+        f if f.is_ready() => {
+            bench_say!(
+                crate::bench_events::Level::Pass,
+                None,
+                "Auftrag typisiert: Scope = {}",
+                package.allowed_paths.join(", ")
+            );
+            Some(package)
+        }
+        f => {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "Auftrag nicht belegbar ({f:?}) — Lauf ohne Datei-Scope."
+            );
+            None
+        }
+    }
+}
+
 fn refine_one<Q>(
     winner: &str,
     facts: &str,
@@ -621,6 +717,12 @@ where
         // nur einmal verfeinern (bei weniger Vorschlaegen als Brains).
         let mut refined_cache: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
+        // Typisierter Auftrag je Aufgabe. Traegt den zugesagten Datei-Scope bis
+        // ans Ernte-Tor; leer = kein Scope, wie vor Phase A.5.
+        let mut task_packages: std::collections::HashMap<
+            String,
+            crate::benchmark::work_package::WorkPackage,
+        > = std::collections::HashMap::new();
         let mut plan: Vec<(String, String)> = Vec::new();
         for (brain, raw) in &assignments {
             let eff = match refined_cache.get(raw) {
@@ -652,6 +754,17 @@ where
                     };
                     t.finish(crate::char_prefix(&refined, 90));
                     refined_cache.insert(raw.clone(), refined.clone());
+                    if !refined.trim().is_empty() {
+                        if let Some(package) = derive_work_package(
+                            &refined,
+                            &refiner,
+                            &src_files,
+                            &config.workdir,
+                            &query,
+                        ) {
+                            task_packages.insert(refined.clone(), package);
+                        }
+                    }
                     refined
                 }
             };
@@ -1158,8 +1271,12 @@ where
             };
             let scope_error = patch_scope.as_ref().and_then(|(patch, capture_error)| {
                 capture_error.clone().or_else(|| {
-                    validate_task_scope_in(patch, effective, scope_for_task(config, effective))
-                        .err()
+                    validate_task_scope_in(
+                        patch,
+                        effective,
+                        scope_for_task(config, &task_packages, effective),
+                    )
+                    .err()
                 })
             });
             let scope_lint_ok =
@@ -1275,7 +1392,7 @@ where
                         match validate_task_scope_in(
                             &patch,
                             effective,
-                            scope_for_task(config, effective),
+                            scope_for_task(config, &task_packages, effective),
                         ) {
                             Ok(paths) => {
                                 bench_say!(
@@ -1540,12 +1657,24 @@ fn ok_x(b: bool) -> &'static str {
 /// mehreren Aufgaben, darf der Scope des einen Pakets die anderen nicht
 /// einschnueren — deshalb der Abgleich ueber `objective`. Passt er nicht,
 /// bleibt es beim bisherigen Verhalten (nur generische Policy).
-fn scope_for_task<'a>(config: &'a BenchmarkConfig, task: &str) -> Option<&'a [String]> {
-    let package = config.work_package.as_ref()?;
-    if package.objective.trim() != task.trim() {
-        return None;
+fn scope_for_task<'a>(
+    config: &'a BenchmarkConfig,
+    derived: &'a std::collections::HashMap<String, crate::benchmark::work_package::WorkPackage>,
+    task: &str,
+) -> Option<&'a [String]> {
+    // Ein vom Aufrufer vorgegebenes Paket hat Vorrang: es kommt von aussen
+    // (CLI, Systemabnahme) und soll nicht von einer Brain-Ableitung
+    // ueberstimmt werden.
+    if let Some(package) = config.work_package.as_ref() {
+        if package.objective.trim() == task.trim() {
+            return Some(package.allowed_paths.as_slice());
+        }
     }
-    Some(package.allowed_paths.as_slice())
+    // Sonst der in Phase A.5 typisierte Auftrag dieser Aufgabe.
+    derived
+        .get(task.trim())
+        .or_else(|| derived.get(task))
+        .map(|p| p.allowed_paths.as_slice())
 }
 
 #[cfg(test)]
@@ -1576,6 +1705,10 @@ mod scope_wiring_tests {
         }
     }
 
+    fn empty() -> std::collections::HashMap<String, WorkPackage> {
+        std::collections::HashMap::new()
+    }
+
     fn package(objective: &str) -> WorkPackage {
         WorkPackage {
             id: "wp1".into(),
@@ -1593,14 +1726,16 @@ mod scope_wiring_tests {
     /// prueft nur die generische Policy.
     #[test]
     fn kein_paket_kein_scope() {
-        assert!(scope_for_task(&config_with(None), "irgendeine Aufgabe").is_none());
+        let cfg = config_with(None);
+        assert!(scope_for_task(&cfg, &empty(), "irgendeine Aufgabe").is_none());
     }
 
     /// Der Scope greift fuer die Aufgabe, die das Paket beschreibt.
     #[test]
     fn passendes_paket_liefert_scope() {
         let cfg = config_with(Some(package("Baue X um")));
-        let scope = scope_for_task(&cfg, "Baue X um").expect("Scope erwartet");
+        let leer = empty();
+        let scope = scope_for_task(&cfg, &leer, "Baue X um").expect("Scope erwartet");
         assert_eq!(scope, ["src/config.rs".to_string()]);
     }
 
@@ -1612,7 +1747,7 @@ mod scope_wiring_tests {
             "  Baue X um
 ",
         )));
-        assert!(scope_for_task(&cfg, "Baue X um").is_some());
+        assert!(scope_for_task(&cfg, &empty(), "Baue X um").is_some());
     }
 
     /// Der entscheidende Fall: laeuft eine ANDERE Aufgabe, gilt der Scope des
@@ -1621,7 +1756,32 @@ mod scope_wiring_tests {
     #[test]
     fn fremde_aufgabe_erbt_den_scope_nicht() {
         let cfg = config_with(Some(package("Baue X um")));
-        assert!(scope_for_task(&cfg, "Baue Y um").is_none());
+        assert!(scope_for_task(&cfg, &empty(), "Baue Y um").is_none());
+    }
+
+    /// Ohne vorgegebenes Paket zieht der in Phase A.5 typisierte Auftrag.
+    #[test]
+    fn abgeleiteter_auftrag_liefert_scope() {
+        let mut derived = empty();
+        derived.insert("Baue X um".into(), package("Baue X um"));
+        let cfg = config_with(None);
+        let scope =
+            scope_for_task(&cfg, &derived, "Baue X um").expect("abgeleiteter Scope erwartet");
+        assert_eq!(scope, ["src/config.rs".to_string()]);
+    }
+
+    /// Ein von aussen gesetztes Paket schlaegt die Brain-Ableitung. Sonst
+    /// koennte eine Runde den Scope aufweichen, den der Aufrufer vorgab.
+    #[test]
+    fn vorgegebenes_paket_schlaegt_die_ableitung() {
+        let mut abweichend = package("Baue X um");
+        abweichend.allowed_paths = vec!["src/ganz_woanders.rs".into()];
+        let mut derived = empty();
+        derived.insert("Baue X um".into(), abweichend);
+
+        let cfg = config_with(Some(package("Baue X um")));
+        let scope = scope_for_task(&cfg, &derived, "Baue X um").expect("Scope erwartet");
+        assert_eq!(scope, ["src/config.rs".to_string()]);
     }
 }
 
