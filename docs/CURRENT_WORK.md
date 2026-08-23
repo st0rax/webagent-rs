@@ -115,34 +115,44 @@ getestet; folgende Systembelege fehlen:
 
 Die vollständige Reifegradmatrix und Roadmap stehen in `OVERVIEW.md`.
 
-## Sicherste nächste Produktscheibe
+## Benchmark-/Harvest-Systemabnahme — erbracht
 
-Die providerfreie Benchmark-/Harvest-Systemabnahme aus `OVERVIEW.md` umsetzen:
+Die Scheibe aus `OVERVIEW.md` ist providerfrei belegt. `src/benchmark/e2e_tests.rs`
+faehrt die volle Pipeline auf einem echten temporaeren Git-Repo mit echten
+Eval-Kommandos; nur die Brain-Ausfuehrung ist gedoppelt (Phase A ueber `query`,
+Phase B ueber `PhaseBRunner`).
 
-- ~~Phase-B-Brainausführung hinter einen crate-privaten injizierbaren Runner
-  legen~~ — erledigt in `3b7d935` (`PhaseBRunner`, `BenchRunRequest`,
-  `run_benchmark_with`); der Produktionspfad reicht unverändert an `bench_run`
-  durch;
-- ein geparstes, `Ready` bewertetes Work-Package in den echten Git-/Eval-/
-  Harvestpfad führen — **Befund 2026-08-22:** `allowed_paths` erreicht den
-  Harvest heute gar nicht. `validate_harvest_patch` prüft nur eine generische
-  Policy (bestehende `.rs` unter `src/`, höchstens vier Dateien, keine
-  Löschungen), und `validate_task_scope` leitet aus dem **Freitext** der
-  Aufgabe einen einzigen erwarteten Funktionsnamen ab. Der typisierte
-  `WorkPackage`-Scope wird nie konsultiert. Der geforderte Nachweis „Patch
-  außerhalb `allowed_paths` wird fail-closed verworfen" kann deshalb noch gar
-  nicht gelingen; die Scheibe muss den Scope zuerst bis in den Harvest
-  durchreichen;
-- ein temporäres Mini-Git-Repo verwenden;
-- Fresh -> Continuation mit gleicher Run-ID -> Stall -> begrenztes Cross-Brain-
-  Handoff belegen;
-- Brain B einen technisch grünen Patch außerhalb `allowed_paths` erzeugen
-  lassen;
-- Fail-closed-Verwerfung, unveränderten HEAD, sauberen Worktree und erwartete
-  Handoff-/Reject-Events belegen.
+| Gefordert | Beleg |
+|---|---|
+| Phase B injizierbar | `3b7d935` (`PhaseBRunner`, `run_benchmark_with`) |
+| Scope bis in den Harvest | `de1959c`, `0b24ad0`, `ab32795` |
+| temporaeres Mini-Git-Repo | `e2e_tests::repo` |
+| Ernte eines gueltigen Patches | `e2e_lauf_in_scope_wird_geerntet` |
+| Fail-closed ausserhalb `allowed_paths` | `e2e_patch_ausserhalb_scope_wird_fail_closed_verworfen` |
+| unveraenderter HEAD, sauberer Worktree | ebenda, beide zugesichert |
+| Stall und begrenztes Cross-Brain-Handoff | `e2e_stall_fuehrt_zu_cross_brain_handoff` |
+| Fresh → Continuation mit gleicher Run-ID | `e2e_zweite_iteration_ist_continuation_derselben_run_id` |
 
-BrowserPool, echte Provider, Liveprofile und Release gehören nicht in diese
-Scheibe.
+Zwei Dinge, die dabei gelernt wurden und die kuenftige Nachweise betreffen:
+
+**Ein Ablehnungsnachweis braucht seinen Gegenprobe-Test.** Der erste
+Out-of-Scope-Patch fuegte eine oeffentliche Funktion hinzu und wurde schon von
+`validate_task_scope` am Aufgaben-Freitext verworfen — der Test war gruen und
+belegte ueber den Datei-Scope nichts. Er aendert jetzt nur einen bestehenden
+Funktionsrumpf, und `ohne_typisierten_auftrag_passiert_derselbe_patch` faehrt
+denselben Patch ohne Scope und verlangt, dass er durchgeht. Faellt diese
+Gegenprobe, ist die Abnahme wertlos, nicht die Gegenprobe kaputt.
+
+**Der Handoff ist reihenfolgeabhaengig.** `assign_tasks` rotiert um die
+Rundennummer; laeuft das bauende Brain zuerst, ist die Aufgabe geloest, bevor
+ein Stall eintreten kann, und es gibt nichts weiterzureichen. Der Test setzt
+die Brainliste deshalb bewusst so, dass das stille Brain zuerst zieht.
+
+**Die Laeufe sind serialisiert.** Sie teilen sich prozessweiten Zustand —
+Statistik-Store, Ablage der Erntekandidaten, Ereignisbus. Parallel gefahren war
+`e2e_lauf_in_scope_wird_geerntet` sporadisch rot und allein immer gruen. Ein
+`static SERIELL` in `e2e_tests.rs` haelt sie auseinander; wer dort einen Test
+ergaenzt, muss die Sperre mitnehmen.
 
 ## Aktiver Edit
 
