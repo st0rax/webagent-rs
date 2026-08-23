@@ -6,7 +6,7 @@ Entwicklungsscheibe aktualisieren. Git-Angaben vor Verwendung lokal prüfen.
 
 ## Zuletzt verifizierte Basis
 
-- Produktbasis: `51d196f` auf `codex/project-takeover`, aufgebaut auf
+- Produktbasis: `9f46ec4` auf `codex/project-takeover`, aufgebaut auf
   `origin/master` bei `9bf57f5`. **CI grün** (beide Jobs, Run `32610085285`) —
   erstmals seit dem 22.08.
 - Seit der Übergabe kamen hinzu: `3b7d935` (Phase-B-Ausführung injizierbar),
@@ -92,8 +92,8 @@ hindeutet.
 | Gate | Ergebnis |
 |---|---|
 | fokussierte Write-back-Durability-Tests | 9 bestanden |
-| `cargo test --no-default-features` | 1.104 Bibliotheks- + 7 Binärtests bestanden |
-| `cargo test` | 1.170 Bibliotheks- + 7 Binärtests bestanden |
+| `cargo test --no-default-features` | 1.123 Bibliotheks- + 7 Binärtests bestanden |
+| `cargo test` | 1.189 Bibliotheks- + 7 Binärtests bestanden |
 | striktes Headless-Clippy | bestanden |
 | striktes Vollfeature-Clippy | bestanden |
 | Format und `git diff --check` | bestanden |
@@ -159,27 +159,30 @@ ergaenzt, muss die Sperre mitnehmen.
 Diesen Abschnitt vor Änderungen an gemeinsamen Dateien erneut verifizieren:
 
 - **Entwickler:** Claude (vom Eigentümer als aktueller Produktintegrator benannt)
-- **Branch und Commit:** `codex/project-takeover` bei `51d196f`, gepusht
-- **Ergebnis:** Der Datei-Scope reicht jetzt vom typisierten Auftrag bis ans
-  Ernte-Tor. `de1959c` baute die Prüfung, `0b24ad0` verdrahtete sie in die
-  Pipeline, `2557eee` belegte sie auf echtem Git, `ab32795` gibt Phase A.5 einen
-  typisierten Auftrag — vorher war `allowed_paths` in Produktion immer leer.
-  `51d196f` macht den Headless-Lint wieder grün.
-- **Geänderte Dateien:** `src/benchmark/{pipeline,types,harvest,mod}.rs`,
-  `src/{lib,brain_wall}.rs`, `src/commands/research.rs`, `src/tui.rs`
-- **Ausgeführte Befehle:** `cargo fmt --all -- --check`, `cargo clippy
-  --no-default-features --all-targets -- -D warnings`, `cargo clippy
-  --all-targets -- -D warnings`, `cargo test --no-default-features`,
-  `cargo test` — alle grün; 1.118 headless, 1.184 volle Tests. CI-Run
-  `32610085285` grün.
+- **Branch und Commit:** `codex/project-takeover` bei `9f46ec4`, gepusht
+- **Ergebnis:** Die Benchmark-/Harvest-Systemabnahme (Roadmap 3) ist erbracht.
+  Der Datei-Scope reicht vom typisierten Auftrag bis ans Ernte-Tor
+  (`de1959c`, `0b24ad0`, `ab32795`), belegt auf echtem Git (`2557eee`) und im
+  vollen Lauf (`5ed8839`, `7e0357d`). `51d196f` hat die seit dem 22.08. rote CI
+  repariert.
+- **Geänderte Dateien:** `src/benchmark/{pipeline,types,harvest,mod,e2e_tests}.rs`,
+  `src/{lib,brain_wall}.rs`, `src/commands/research.rs`, `src/tui.rs`,
+  `docs/{CURRENT_WORK,OVERVIEW}.md`
+- **Ausgeführte Befehle:** `cargo fmt --all -- --check`, striktes Clippy mit und
+  ohne Defaultfeatures, `cargo test --no-default-features` (1.123 + 7),
+  `cargo test` (1.189 + 7) — alle grün. Vier aufeinanderfolgende
+  Headless-Gesamtläufe grün (Flakiness-Prüfung).
 - **Schmutzige Pfade:** sauber
-- **Bekannte Grenzen:** Der Auftrag-Repair-Handoff-Harvest-Lauf über
-  `run_benchmark_with` ist noch nicht als Ganzes belegt — die Brain-Choreografie
-  (Vorschlag, Turnier, Treueprobe) fehlt im Test. Belegt ist das Scope-Tor
-  einzeln, auf echtem Git.
-- **Genau eine sicherste nächste Aktion:** einen `PhaseBRunner`-Doppelgänger
-  bauen und den vollen Lauf durch `run_benchmark_with` fahren, mit einem Patch
-  außerhalb `allowed_paths` als Abnahme.
+- **Bekannte Grenzen:** Roadmap 1 (Live-Rezertifizierung) und der Rest von
+  Roadmap 2 (Poolstart, Heartbeat, Profil-Lease/Write-back, Shutdown im
+  gemeinsamen Szenariolauf) sind NICHT erbracht. Beide brauchen entweder den
+  anwesenden Eigentümer oder eine Injektionsschicht für den `BrowserPool` —
+  ein Eingriff in genau den Profil-/Browserpfad, der am 22.08. das Master-Profil
+  zerstört hat, und ohne Livelauf nicht verifizierbar. Deshalb bewusst nicht
+  autonom begonnen.
+- **Genau eine sicherste nächste Aktion:** Die grüne Scheibe als PR nach
+  `master` integrieren — `master` ist aus demselben Lint-Grund noch rot, den
+  `51d196f` behebt.
 - **Externe Freigaben:** Live-Browser, Login und kostenpflichtige Provider
   weiterhin nur mit anwesendem Eigentümer.
 
