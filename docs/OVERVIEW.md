@@ -39,10 +39,10 @@ Ziel, keine Behauptung über jede beliebige Chat-Seite.
 
 ## Aktueller Abnahmestand
 
-**Stand 2026-08-23:** Die drei technischen Abnahmebelege der Roadmap sind
-erbracht — Live-Rezertifizierung (1), integrierte Mehr-Brain-Abnahme (2) und
-Benchmark-/Harvest-Systemabnahme (3). Offen ist allein die bewusste
-Release-Entscheidung (4), die dem Eigentümer gehört.
+**Stand 2026-08-23:** Alle vier Abnahmebelege der Roadmap liegen vor —
+Live-Rezertifizierung (1), integrierte Mehr-Brain-Abnahme (2),
+Benchmark-/Harvest-Systemabnahme (3) sowie Upstream-Integration und Release
+(4, `v0.10.0`).
 
 Ein abgeschlossener Goal-Datensatz belegt weiterhin nur den darin gebundenen
 Arbeitsauftrag. Zwei bekannte Defekte stehen einem Release nicht im Weg, aber
@@ -57,7 +57,7 @@ Antwort findet (fehlender `assistant_message`-Selektor), und `mistral` wie
 | Pool, Worker und Cross-Brain-Handoff | **Abgenommen am 2026-08-23**: Poolstart, Auto-Recovery, Profil-Lease über neun Brains im Parallelbetrieb, geordneter Shutdown, Write-back ins Master (23→33 Hosts, additiv) und Worker-Heartbeat unter echter Last. Continuation, Stall und Cross-Brain-Handoff im Benchmark-Pfad end-to-end belegt | — |
 | Benchmark/Autoresearch/Harvest | **Abgenommen** (2026-08-23, `src/benchmark/e2e_tests.rs`): providerfreier Lauf auf echtem temporärem Git-Repo, Auftrag → Bau → Gates → Ernte, mit Fresh, Continuation gleicher Run-ID, Stall, Cross-Brain-Handoff und fail-closed verworfenem Scope-Verstoß | — |
 | Free-Cloud-Textchat | Registry, Policy, Mock-Stream, Metadaten- und Breaker-Verträge lokal implementiert | kein echter HTTP-/Provideradapter; externe Inferenz bleibt bis zur ausdrücklichen Freigabe außerhalb des Lieferstands |
-| Release | Workflows und Buildskripte vorhanden | aktueller Artefaktlauf sowie bewusstes Push/Tag/Release |
+| Release | **`v0.10.0` am 2026-08-23**: Artefaktlauf auf `master` grün für Windows, Linux und Android, danach Tag und Release mit angehängten Binaries | — |
 
 Damit bedeutet „lokale Gates grün“ weiterhin **nicht** „Produkt fertig“ — wohl
 aber sind die Systembelege da, auf die ein Release sich stützen kann.
@@ -256,7 +256,14 @@ richtigen Grund fail-closed verworfene. Dass der Grund wirklich der Datei-Scope
 ist, hält ein Gegenprobe-Test fest, der denselben Patch ohne Auftrag durchgehen
 lässt; ohne ihn wäre die Verwerfung auch von der Freitextprüfung erklärbar.
 
-### 4. Konsolidierung und Release-Entscheidung
+### 4. Konsolidierung und Release — erledigt am 2026-08-23 (`v0.10.0`)
+
+Ausgeführt nach den drei technischen Abnahmebelegen: Artefaktlauf auf `master`
+grün für alle drei Ziele, Version auf 0.10.0, Tag `v0.10.0`, Release mit
+angehängten Binaries. Die beiden bekannten Defekte stehen in der Release-Notiz,
+statt von der nächsten Person entdeckt zu werden.
+
+Ursprünglicher Auftrag:
 
 Nach den End-to-End-Gates werden README, Übersicht, Providerstatus und Übergabe
 auf denselben Stand gebracht. Push, Merge, Tag und Release führt der Integrator
