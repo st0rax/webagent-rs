@@ -464,6 +464,25 @@ nicht behebbar: Der Anbieter meldet das Modell als ueberlastet, der
 Circuit-Breaker hat zai fuer sechs Stunden gesperrt. Die Sperre ist richtiges
 Verhalten und wurde nicht umgangen.
 
+## harvest_pending: die Absturzsicherung hatte keine zweite Haelfte
+
+`persist_candidate` legt jeden bestandenen Patch sofort auf Platte, begruendet
+mit Crash-Sicherheit — "damit ein Prozessabbruch vor der Ernte die Arbeit nicht
+verwirft". Im ganzen Quellbaum gab es dafuer **keinen Leser**: kein `read_dir`,
+keine Wiederherstellung. Die Dateien sammelten sich an (33 Stueck am
+2026-08-23) und niemand erfuhr je von ihnen. Die Sicherung sicherte nichts, sie
+schrieb nur.
+
+`pending_candidates(max_age_days)` schliesst das: Beim Benchmarkstart werden
+liegengebliebene Kandidaten gemeldet, Aelteres als 14 Tage wird weggeraeumt.
+
+**Bewusst nicht automatisch eingespielt.** Ein Patch aus einem abgebrochenen
+Lauf gehoert nicht ungefragt in den Baum — die Baseline kann eine andere sein.
+Melden statt handeln; die Entscheidung bleibt beim Menschen.
+
+**Unlesbares Alter zaehlt als frisch, nicht als alt.** Lieber eine Datei zu
+viel behalten als fremde Arbeit loeschen, deren Zeitstempel klemmt.
+
 ## Aktiver Edit
 
 - **Entwickler:** Claude (vom Eigentümer als aktueller Produktintegrator benannt)

@@ -213,6 +213,61 @@ pub(crate) fn persist_candidate(
     Ok(dir.join(format!("{base}.patch")))
 }
 
+/// Meldet liegengebliebene Erntekandidaten und raeumt ausgediente weg.
+///
+/// [`persist_candidate`] legt jeden bestandenen Patch sofort auf Platte, damit
+/// ein Prozessabbruch vor der Ernte die Arbeit nicht verwirft. Die zweite
+/// Haelfte dieses Versprechens fehlte: Es gab im ganzen Quellbaum keinen
+/// Leser. Die Dateien sammelten sich an (33 Stueck am 2026-08-23) und niemand
+/// erfuhr je von ihnen — die Absturzsicherung sicherte nichts, sie schrieb nur.
+///
+/// Automatisch einspielen waere falsch: Ein Patch aus einem abgebrochenen Lauf
+/// gehoert nicht ungefragt in den Baum, schon weil die Baseline eine andere
+/// sein kann. Also melden statt handeln — und alles wegraeumen, was aelter ist
+/// als `max_age_days`, damit das Verzeichnis nicht unbegrenzt waechst.
+///
+/// Liefert die Pfade der noch frischen `.patch`-Dateien, aelteste zuerst.
+pub(crate) fn pending_candidates(max_age_days: u64) -> Vec<std::path::PathBuf> {
+    let dir = crate::config::data_dir()
+        .join("benchmark")
+        .join("harvest_pending");
+    let Ok(eintraege) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let grenze = std::time::Duration::from_secs(max_age_days.saturating_mul(86_400));
+    let jetzt = std::time::SystemTime::now();
+    let mut frisch: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
+    for eintrag in eintraege.flatten() {
+        let pfad = eintrag.path();
+        let alter = eintrag
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|m| jetzt.duration_since(m).ok());
+        // Unlesbares Alter NICHT als "alt" behandeln: Lieber eine Datei zu viel
+        // behalten als eine fremde Arbeit loeschen, deren Zeitstempel klemmt.
+        match alter {
+            Some(a) if a > grenze => {
+                let _ = std::fs::remove_file(&pfad);
+            }
+            _ => {
+                if pfad.extension().is_some_and(|e| e == "patch") {
+                    frisch.push((
+                        eintrag
+                            .metadata()
+                            .ok()
+                            .and_then(|m| m.modified().ok())
+                            .unwrap_or(std::time::UNIX_EPOCH),
+                        pfad,
+                    ));
+                }
+            }
+        }
+    }
+    frisch.sort_by_key(|(zeit, _)| *zeit);
+    frisch.into_iter().map(|(_, pfad)| pfad).collect()
+}
+
 /// Spielt einen geernteten Patch wieder ein, verifiziert ihn erneut (Build +
 /// Tests) und committet ihn mit dem Brain als Autor.
 ///
@@ -325,5 +380,68 @@ mod tests {
         );
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(&task_path);
+    }
+
+    /// Frisch Abgelegtes wird gemeldet, nicht weggeraeumt.
+    #[test]
+    fn frische_kandidaten_bleiben_und_werden_gemeldet() {
+        let pfad = persist_candidate(
+            "qwen",
+            "Zieldatei: src/a.rs.",
+            "diff --git a b
++x
+",
+        )
+        .expect("ablegen");
+        let gemeldet = super::pending_candidates(14);
+        assert!(
+            gemeldet.iter().any(|p| p == &pfad),
+            "der eben abgelegte Patch muss gemeldet werden: {gemeldet:?}"
+        );
+        let _ = std::fs::remove_file(&pfad);
+    }
+
+    /// Nur `.patch` wird gemeldet — die `.task`-Datei ist Beiwerk und wuerde
+    /// die Zahl der Funde verdoppeln.
+    #[test]
+    fn nur_patchdateien_werden_gemeldet() {
+        let pfad = persist_candidate(
+            "kimi",
+            "Zieldatei: src/b.rs.",
+            "diff --git a b
++y
+",
+        )
+        .expect("ablegen");
+        assert!(
+            super::pending_candidates(14)
+                .iter()
+                .all(|p| p.extension().is_some_and(|e| e == "patch")),
+            "keine Nicht-Patch-Datei in der Meldung"
+        );
+        let _ = std::fs::remove_file(&pfad);
+        let _ = std::fs::remove_file(pfad.with_extension("task"));
+    }
+
+    /// Ein Alter von 0 Tagen raeumt alles weg — die Grenze wirkt also
+    /// ueberhaupt. Ohne diesen Test koennte `pending_candidates` still nie
+    /// loeschen und niemand merkte es.
+    #[test]
+    fn abgelaufene_werden_entfernt() {
+        let pfad = persist_candidate(
+            "zai",
+            "Zieldatei: src/c.rs.",
+            "diff --git a b
++z
+",
+        )
+        .expect("ablegen");
+        // Alles aelter als "0 Tage" gilt als abgelaufen.
+        let uebrig = super::pending_candidates(0);
+        assert!(
+            !uebrig.iter().any(|p| p == &pfad),
+            "abgelaufene Datei darf nicht mehr gemeldet werden"
+        );
+        assert!(!pfad.exists(), "abgelaufene Datei muss geloescht sein");
     }
 }

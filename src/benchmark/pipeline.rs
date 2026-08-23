@@ -431,6 +431,28 @@ where
     // Sicherheitsmodell §5: nur auf sauberem Git-Tree starten.
     crate::autoresearch::guard_clean_tree(&config.workdir)?;
 
+    // Liegengebliebene Kandidaten eines abgebrochenen Laufs sichtbar machen.
+    // Sie werden NICHT eingespielt — die Baseline kann eine andere sein —,
+    // aber wer sie nicht meldet, hat die Arbeit trotzdem verworfen, nur
+    // stiller. Aelteres als 14 Tage raeumt der Aufruf gleich mit weg.
+    let liegengeblieben = super::harvest::pending_candidates(14);
+    if !liegengeblieben.is_empty() {
+        bench_say!(
+            crate::bench_events::Level::Warn,
+            None,
+            "{} Erntekandidat(en) aus abgebrochenen Laeufen liegen noch da — pruefen oder loeschen:",
+            liegengeblieben.len()
+        );
+        for pfad in liegengeblieben.iter().take(5) {
+            bench_say!(
+                crate::bench_events::Level::Info,
+                None,
+                "  {}",
+                pfad.display()
+            );
+        }
+    }
+
     // Mit `--verbose` spiegeln die Schritt-Zeilen des Controllers
     // (shell/edit/write/message) in den Ereignisbus — in der TUI wird der
     // "Ereignisstrom" sonst von den unterdrueckten stdout-Zeilen nichts sehen.
