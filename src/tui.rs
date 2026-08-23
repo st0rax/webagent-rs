@@ -177,6 +177,7 @@ fn run_tui_ratatui(
     brains: &str,
     poll_secs: u64,
     headless: bool,
+    run_secs: u64,
     startup_benchmark: Option<&str>,
     startup_view: Option<&str>,
 ) -> i32 {
@@ -434,7 +435,17 @@ fn run_tui_ratatui(
     // Worker-Fenster und haelt Tastatur/Rendering frei.
     let wall_discovery_ticks = 13u64;
 
+    // Reguläres Zeitende: dieselbe Ausstiegsstelle wie `q`, damit der
+    // Shutdown-Pfad (Pool herunterfahren, Write-back) identisch bleibt. Ein
+    // eigener Beendigungsweg waere ein zweiter Pfad, der auseinanderlaufen
+    // koennte — genau das vermeidet die TUI schon bei Maus und Tastatur.
+    let deadline = (run_secs > 0)
+        .then(|| std::time::Instant::now() + std::time::Duration::from_secs(run_secs));
+
     let mut exit_code = 'main: loop {
+        if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+            break 'main 0;
+        }
         // Eingaben einsammeln. Tastatur und Maus laufen bewusst in DIESELBE
         // Warteschlange: ein Klick wird zu der Taste, die ein Mensch gedrueckt
         // haette, und durchlaeuft danach denselben `match`. Ein eigener
@@ -1333,11 +1344,17 @@ fn release_brain_focus() -> String {
 
 /// Einstiegspunkt der TUI (Default, wenn `webagent` ohne Subcommand läuft).
 #[cfg_attr(not(feature = "tui"), allow(unused_variables))]
+// Die Parameterliste war mit sieben Argumenten schon an der Grenze; `run_secs`
+// stoesst sie darueber. Ein Options-Struct waere die saubere Antwort, betrifft
+// aber drei Aufrufer und gehoert damit in eine eigene Scheibe — nicht in einen
+// Commit, der einen fehlenden Shutdown-Pfad nachruestet.
+#[allow(clippy::too_many_arguments)]
 pub fn run_tui(
     active: usize,
     brains: &str,
     poll_secs: u64,
     headless: bool,
+    run_secs: u64,
     startup_benchmark: Option<&str>,
     startup_view: Option<&str>,
     force_tui: bool,
@@ -1355,6 +1372,7 @@ pub fn run_tui(
                 brains,
                 poll_secs,
                 headless,
+                run_secs,
                 startup_benchmark,
                 startup_view,
             );
