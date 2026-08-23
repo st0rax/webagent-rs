@@ -392,35 +392,23 @@ danach behauptete: drei.
 
 ## Aktiver Edit
 
-Diesen Abschnitt vor Änderungen an gemeinsamen Dateien erneut verifizieren:
-
 - **Entwickler:** Claude (vom Eigentümer als aktueller Produktintegrator benannt)
-- **Branch und Commit:** `codex/project-takeover` bei `9f46ec4`, gepusht
-- **Ergebnis:** Die Benchmark-/Harvest-Systemabnahme (Roadmap 3) ist erbracht.
-  Der Datei-Scope reicht vom typisierten Auftrag bis ans Ernte-Tor
-  (`de1959c`, `0b24ad0`, `ab32795`), belegt auf echtem Git (`2557eee`) und im
-  vollen Lauf (`5ed8839`, `7e0357d`). `51d196f` hat die seit dem 22.08. rote CI
-  repariert.
-- **Geänderte Dateien:** `src/benchmark/{pipeline,types,harvest,mod,e2e_tests}.rs`,
-  `src/{lib,brain_wall}.rs`, `src/commands/research.rs`, `src/tui.rs`,
-  `docs/{CURRENT_WORK,OVERVIEW}.md`
-- **Ausgeführte Befehle:** `cargo fmt --all -- --check`, striktes Clippy mit und
-  ohne Defaultfeatures, `cargo test --no-default-features` (1.123 + 7),
-  `cargo test` (1.189 + 7) — alle grün. Vier aufeinanderfolgende
-  Headless-Gesamtläufe grün (Flakiness-Prüfung).
+- **Branch und Commit:** `master` bei `9b214da`; PR #6–#10 integriert
+- **Ergebnis:** Die drei technischen Abnahmebelege sind erbracht — Roadmap 1
+  (Live-Rezertifizierung), 2 (Mehr-Brain-Abnahme inkl. Write-back und
+  Heartbeat) und 3 (Benchmark-/Harvest-Systemabnahme). Nebenbei zwei echte
+  Fehler behoben: die seit dem 22.08. rote CI (`51d196f`) und eine
+  Endlosschleife im ANSI-Fallback der TUI bei geschlossenem stdin (`6f81f6b`).
+- **Gates:** fmt, striktes Clippy mit und ohne Defaultfeatures, 1.189 + 7 und
+  1.123 + 7 Tests — alle grün; CI auf `master` grün.
 - **Schmutzige Pfade:** sauber
-- **Bekannte Grenzen:** Roadmap 1 (Live-Rezertifizierung) und der Rest von
-  Roadmap 2 (Poolstart, Heartbeat, Profil-Lease/Write-back, Shutdown im
-  gemeinsamen Szenariolauf) sind NICHT erbracht. Beide brauchen entweder den
-  anwesenden Eigentümer oder eine Injektionsschicht für den `BrowserPool` —
-  ein Eingriff in genau den Profil-/Browserpfad, der am 22.08. das Master-Profil
-  zerstört hat, und ohne Livelauf nicht verifizierbar. Deshalb bewusst nicht
-  autonom begonnen.
-- **Integriert:** PR #6 ist am 2026-08-23 nach `master` gemerged (`77c45d9`).
-  Damit traegt `master` auch die CI-Reparatur aus `51d196f`.
-- **Genau eine sicherste nächste Aktion:** Roadmap 1 — die Live-Rezertifizierung
-  gemeinsam mit dem Eigentümer. Sie ist der einzige verbleibende Schritt, der
-  ohne neuen Produktionscode auskommt, und blockiert Roadmap 4.
+- **Offen:** Roadmap 4, die bewusste Release-Entscheidung. Sie gehört dem
+  Eigentümer. Zwei bekannte Defekte gehören in die Release-Notiz:
+  `perplexity` antwortet, ohne dass der Harness die Antwort findet, und
+  `mistral`/`zai` liefern UI-Beiwerk im extrahierten Text.
+- **Genau eine sicherste nächste Aktion:** Release-Entscheidung treffen. Fällt
+  sie positiv aus: Artefaktlauf, Tag, Release — mit den beiden Defekten in den
+  Notizen.
 - **Externe Freigaben:** Live-Browser, Login und kostenpflichtige Provider
   weiterhin nur mit anwesendem Eigentümer.
 
