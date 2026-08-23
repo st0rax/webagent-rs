@@ -1,13 +1,14 @@
 # Aktueller Arbeitsstand
 
-**Aktualisiert:** 2026-08-22
+**Aktualisiert:** 2026-08-23
 **Zweck:** kurze operative Übergabe. Nach jeder fertigen oder unterbrochenen
 Entwicklungsscheibe aktualisieren. Git-Angaben vor Verwendung lokal prüfen.
 
 ## Zuletzt verifizierte Basis
 
-- Produktbasis: `8e6ea50` auf `codex/project-takeover`, aufgebaut auf
-  `origin/master` bei `9bf57f5`.
+- Produktbasis: `51d196f` auf `codex/project-takeover`, aufgebaut auf
+  `origin/master` bei `9bf57f5`. **CI grün** (beide Jobs, Run `32610085285`) —
+  erstmals seit dem 22.08.
 - Seit der Übergabe kamen hinzu: `3b7d935` (Phase-B-Ausführung injizierbar),
   `f51c31b` (Entwickler-Onboarding, von `codex/developer-onboarding`
   übernommen), `8e6ea50` (Vertrag der lebenden Dokumente nachgezogen) sowie
@@ -30,7 +31,20 @@ Updates ersetzt diese Datei die alte Übergabe.
 
 ## Offene Baustelle: beschädigtes Master-Profil
 
-**Stand 2026-08-22 23:00:** `profiles/shared` trägt nur noch `z.ai`. Ein
+**Behoben am 2026-08-23.** `profiles/shared` wurde aus dem vollständigen
+Klon `profiles/qwen` wiederhergestellt — mitsamt `Local State`, ohne den die
+verschlüsselten Cookies unlesbar wären. Die Cookie-Datenbank trägt jetzt alle
+neun Dienste mit Ablauf 2027; der alte Stand liegt als
+`shared.bak-20260823-024140`. **Nicht belegt ist, dass die Sitzungen live
+tragen**: `brains-health` prüft Selektoren und Profilverzeichnis, keinen Login.
+Der Nachweis braucht einen Live-Lauf mit anwesendem Eigentümer.
+
+Die Tabelle unten ist damit historisch. Sie hielt eine Spiegelung für
+prinzipiell unmöglich — das galt für das Kopieren einzelner Cookie-Dateien,
+nicht für die Übernahme des ganzen Profilverzeichnisses samt Schlüssel.
+
+**Ursprünglicher Stand 2026-08-22 23:00:** `profiles/shared` trug nur noch
+`z.ai`. Ein
 `login-all` über neun Brains hat die Cookie-Datenbank neunmal überschrieben —
 der letzte Brain gewinnt. Ursache und Reparatur des Mechanismus stehen in
 `db8e357`; **der Datenschaden selbst ist nicht behoben.**
@@ -135,16 +149,29 @@ Scheibe.
 Diesen Abschnitt vor Änderungen an gemeinsamen Dateien erneut verifizieren:
 
 - **Entwickler:** Claude (vom Eigentümer als aktueller Produktintegrator benannt)
-- **Branch/Worktree:** `codex/project-takeover` im Worktree
-  `webagent-codex-takeover`
-- **Aufgabe:** offenbar die priorisierte Benchmark-/Harvest-Scheibe; vor der
-  Übernahme dieses Dokuments von Claude bestätigen
-- **Eigene Dateien:** `src/benchmark/pipeline.rs`
-- **Schmutzige Dateien:** `src/benchmark/pipeline.rs` war beim letzten
-  read-only Check am 2026-08-22 modifiziert
-- **Blocker:** keiner bekannt
-- **Nächster Schritt:** Claude beendet oder checkpointet seine Scheibe und
-  ersetzt diesen Abschnitt mit seinem exakten Commit- und Gatestand
+- **Branch und Commit:** `codex/project-takeover` bei `51d196f`, gepusht
+- **Ergebnis:** Der Datei-Scope reicht jetzt vom typisierten Auftrag bis ans
+  Ernte-Tor. `de1959c` baute die Prüfung, `0b24ad0` verdrahtete sie in die
+  Pipeline, `2557eee` belegte sie auf echtem Git, `ab32795` gibt Phase A.5 einen
+  typisierten Auftrag — vorher war `allowed_paths` in Produktion immer leer.
+  `51d196f` macht den Headless-Lint wieder grün.
+- **Geänderte Dateien:** `src/benchmark/{pipeline,types,harvest,mod}.rs`,
+  `src/{lib,brain_wall}.rs`, `src/commands/research.rs`, `src/tui.rs`
+- **Ausgeführte Befehle:** `cargo fmt --all -- --check`, `cargo clippy
+  --no-default-features --all-targets -- -D warnings`, `cargo clippy
+  --all-targets -- -D warnings`, `cargo test --no-default-features`,
+  `cargo test` — alle grün; 1.118 headless, 1.184 volle Tests. CI-Run
+  `32610085285` grün.
+- **Schmutzige Pfade:** sauber
+- **Bekannte Grenzen:** Der Auftrag-Repair-Handoff-Harvest-Lauf über
+  `run_benchmark_with` ist noch nicht als Ganzes belegt — die Brain-Choreografie
+  (Vorschlag, Turnier, Treueprobe) fehlt im Test. Belegt ist das Scope-Tor
+  einzeln, auf echtem Git.
+- **Genau eine sicherste nächste Aktion:** einen `PhaseBRunner`-Doppelgänger
+  bauen und den vollen Lauf durch `run_benchmark_with` fahren, mit einem Patch
+  außerhalb `allowed_paths` als Abnahme.
+- **Externe Freigaben:** Live-Browser, Login und kostenpflichtige Provider
+  weiterhin nur mit anwesendem Eigentümer.
 
 Bei einem aktiven zweiten Entwickler einen eigenen Worktree und disjunkte
 Dateien verwenden oder die Zuständigkeit vorher ausdrücklich abstimmen.
