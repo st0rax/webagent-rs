@@ -154,6 +154,72 @@ Statistik-Store, Ablage der Erntekandidaten, Ereignisbus. Parallel gefahren war
 `static SERIELL` in `e2e_tests.rs` haelt sie auseinander; wer dort einen Test
 ergaenzt, muss die Sperre mitnehmen.
 
+## Live-Rezertifizierung 2026-08-23 (Roadmap 1)
+
+Mit anwesendem Eigentümer gemessen, sichtbarer Browser, kanonische
+Per-Brain-Profile (`shared_browser=false`).
+
+### Diagnose — 9/9
+
+Alle neun Brains: `logged_in=true`, `session_state=Ready`, `composer=ok`, keine
+Cloudflare-Wand. **Keine einzige Anmeldung war nötig.**
+
+Damit ist auch belegt, dass die Wiederherstellung des am 22.08. beschädigten
+Master-Profils trägt. `brains-health` konnte das nicht zeigen — es prüft
+Selektordateien und Profilverzeichnis, nie einen Login.
+
+### Relay (send+wait gegen echten Browser) — 8/9
+
+| Brain | Ergebnis | Latenz |
+|---|---|---|
+| chatgpt | BEREIT | 20,4 s |
+| claude | BEREIT | 17,8 s |
+| deepseek | BEREIT | 15,5 s |
+| gemini | BEREIT | 17,4 s |
+| kimi | BEREIT | 25,6 s |
+| mistral | BEREIT (mit UI-Beiwerk) | 24,2 s |
+| perplexity | **Fehlschlag** | Timeout |
+| qwen | BEREIT | 30,6 s |
+| zai | BEREIT (mit UI-Beiwerk) | 24,4 s im 2. Anlauf |
+
+`claude` und `mistral` hatten vorher **nie** einen Relay-Beleg; jetzt haben ihn
+acht von neun. Die Belege stehen in `data/capability/proofs.jsonl`.
+
+`zai` scheiterte im ersten Lauf nach 193 s und bestand den zweiten in 24 s —
+transient, kein Defekt, aber als Flackern notiert statt geglättet.
+
+### Defekt: perplexity liefert, wir sehen es nicht
+
+Der Eigentümer beobachtete am Bildschirm, dass perplexity längst geantwortet
+hatte, während der Relay-Lauf weiter wartete. Der Fehler liegt also bei uns,
+nicht beim Anbieter.
+
+`selectors/perplexity.json` enthält ausschliesslich `model_menu` und
+`model_option` — keinen `assistant_message`-Selektor. Die generische Maske
+(sieben Kandidaten von `[data-message-author-role='assistant']` bis
+`div.markdown`) greift bei der heutigen Oberfläche nicht. `probe --brain
+perplexity` findet Composer, Modellmenü, Projekte und Anhang-Knopf, aber
+**weder `assistant_message` noch `stop_button`** — auch nicht mit
+`--generating`, also während eine Antwort läuft.
+
+Folge: Der Lauf wartet auf eine Antwort, die er nicht sehen kann, bis der
+Timeout greift. Die Reparatur braucht manuelles DOM-Studium der
+Perplexity-Oberfläche und ist eine eigene Scheibe.
+
+### Befund: mistral und zai liefern UI-Beiwerk mit
+
+`mistral` antwortete `BEREIT
+
+4:42
+War das hilfreich?
+Überspringen`,
+`zai` mit vorangestelltem `Thought Process`. Beide Läufe gelten als bestanden,
+der extrahierte Text stammt aber nicht mehr allein vom Modell. Bei `mistral`
+ist die Ursache belegt: `selectors/mistral.json` endet unter
+`assistant_message` auf `div.prose`, einen sehr breiten Fallback, der
+Nachbarelemente einsammelt, weil die spezifischen Selektoren davor nicht mehr
+greifen. Für den bot2bot-Betrieb ist das relevant.
+
 ## Aktiver Edit
 
 Diesen Abschnitt vor Änderungen an gemeinsamen Dateien erneut verifizieren:
