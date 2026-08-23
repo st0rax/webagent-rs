@@ -271,6 +271,22 @@ Zwei reale Läufe mit anwesendem Eigentümer, Master-Profil vorher gesichert
 - Same-Brain-Continuation und Cross-Brain-Handoff sind im Benchmarkpfad
   belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
 
+**Befund: die TUI lässt sich nicht fernsteuernd beenden.** Ein dritter Lauf
+(`tui --active 1 --brains deepseek` mit `WEBAGENT_USE_SHARED_BROWSER=1`) sollte
+den geordneten Shutdown auslösen. Die Datei-IPC `pool_control.json` kennt dafür
+`stop` — "Supervisor sauber beenden". Die Datei wurde nachweislich abgeholt
+(atomares Rename, sie verschwand), der Prozess lief aber weiter: `stop` beendet
+den Worker-Supervisor, nicht die TUI-Hauptschleife. Die wartet auf `q` von der
+Tastatur, und `taskkill` ohne `/F` weist sie ab.
+
+Damit ist der Write-back-Pfad nicht automatisiert erreichbar. Wer den
+Systemnachweis ohne Hand am Terminal führen will, braucht entweder ein
+`stop`, das auch die TUI beendet, oder einen anderen Auslöser für
+`BrowserPool::shutdown_with_result` — heute ruft nur die TUI ihn auf.
+
+Immerhin: Das Master-Profil blieb auch bei diesem dritten Lauf unverändert,
+diesmal sogar nach einem erzwungenen `taskkill /F` im Shared-Browser-Modus.
+
 **Befund: abgebrochene Läufe lassen ihre Profil-Klone stehen.** Die beiden
 Läufe hinterließen 780 MB in `profiles/swarm/`, ein weiterer Rest stammt vom
 22.08. Bei sauberem Ende räumt der Lease auf, beim Abbruch nicht. Auf einer
