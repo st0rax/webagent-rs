@@ -281,6 +281,48 @@ Nebenbefund zur Kopierstrategie: Die Sparse-Klone lagen bei 24–51 MB
 107–166 MB. Der Lease-Lauf lief bewusst sparse, weil neun volle Klone à 531 MB
 die Platte gesprengt hätten; der Standardpfad ist damit nicht mitgemessen.
 
+## Korrektur 2026-08-23: das Master-Profil ist NICHT vollständig
+
+Beim TUI-Lauf meldete der Harness von sich aus:
+
+> Master kennt claude, perplexity, gemini nicht, obwohl die kanonischen Profile
+> eingeloggt sind. Der Pool wuerde Login nötig melden trotz gueltiger Session.
+> Abhilfe: login-all
+
+Unabhängig nachgemessen (Rohbyte-Scan der Cookie-Datenbanken auf die
+Nachweis-Cookies aus `SESSION_PROOF_COOKIES`):
+
+| Brain | Nachweis-Cookie | kanonisch | Master |
+|---|---|---|---|
+| kimi | `kimi-auth` | ja | ja |
+| chatgpt | `__Secure-next-auth.session-token` | ja | ja |
+| mistral | `ory_session` | ja | ja |
+| claude | `sessionKey` | ja | **nein** |
+| perplexity | `__Secure-pplx.session` | ja | **nein** |
+| gemini | `COMPASS` | ja | **nein** |
+
+**Was das für die Wiederherstellung vom 23.08. heisst.** Der Klon aus
+`profiles/qwen` hob das Master von "nur z.ai" auf sechs von neun Brains — aber
+nicht auf neun. Ein kanonisches Profil trägt auch Cookies der Nachbarn aus
+gemeinsamen Login-Runden; die *Domain* ist deshalb vorhanden, der eigene
+Sitzungsnachweis aber nicht. Genau diese Unterscheidung macht
+`master_missing_sessions_from_canonical`, und genau sie habe ich beim Zählen
+der Cookie-Domains übersehen.
+
+Damit gilt beides nebeneinander, was vorher wie ein Widerspruch aussah:
+
+- Die **kanonischen Profile** sind vollständig und live belegt — Diagnose 9/9,
+  Relay 8/9. `verify`, `login`, `probe`, `relay` und `diagnose` arbeiten auf
+  ihnen und funktionieren.
+- Das **Master** (`profiles/shared`) ist für den Shared-Betrieb (Pool, TUI,
+  Benchmark) unvollständig. Dort würden claude, perplexity und gemini als
+  "Login nötig" gemeldet, obwohl gültige Sitzungen existieren.
+
+**Abhilfe, wenn der Shared-Betrieb gebraucht wird:** `login-all` im
+Shared-Modus für diese drei Brains — Anmeldung durch den Eigentümer. Nicht neun
+Anmeldungen, wie ich am 23.08. zuerst schätzte, und auch nicht null, wie ich
+danach behauptete: drei.
+
 ## Aktiver Edit
 
 Diesen Abschnitt vor Änderungen an gemeinsamen Dateien erneut verifizieren:
