@@ -32,10 +32,10 @@
     "button[aria-label='Stop generation']"
   ],
   "assistant_message": [
+    "div.markdown-container-style",
     "[data-message-author-role='assistant']",
     "[data-testid='assistant-message']",
-    "article[data-role='assistant']",
-    "div.prose"
+    "article[data-role='assistant']"
   ],
   "new_chat_button": [
     "a[href='/chat']",
