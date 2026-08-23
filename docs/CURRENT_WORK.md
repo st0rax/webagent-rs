@@ -486,22 +486,52 @@ viel behalten als fremde Arbeit loeschen, deren Zeitstempel klemmt.
 ## Aktiver Edit
 
 - **Entwickler:** Claude (vom Eigentümer als aktueller Produktintegrator benannt)
-- **Branch und Commit:** `master`, Release `v0.10.0`
-- **Ergebnis:** Alle vier Abnahmebelege der Roadmap liegen vor. Nebenbei zwei
-  echte Fehler behoben: die seit dem 22.08. rote CI (`51d196f`) und eine
-  Endlosschleife im ANSI-Fallback der TUI bei geschlossenem stdin (`6f81f6b`).
-- **Gates:** fmt, striktes Clippy mit und ohne Defaultfeatures, 1.189 + 7 und
-  1.123 + 7 Tests — grün; CI auf `master` grün; Artefaktlauf für Windows,
-  Linux und Android grün.
+- **Branch und Stand:** `master`, Release `v0.10.1`, PR #6–#17 integriert
+- **Gates:** fmt, striktes Clippy mit und ohne Defaultfeatures, 1.196 + 7 Tests
+  — grün; CI auf `master` grün; Artefaktläufe für Windows, Linux und Android
+  grün.
 - **Schmutzige Pfade:** sauber
-- **Bekannte Defekte (in der Release-Notiz):** `perplexity` antwortet, ohne dass
-  der Harness die Antwort findet (fehlender `assistant_message`-Selektor);
-  `mistral` und `zai` liefern UI-Beiwerk im extrahierten Text.
-- **Genau eine sicherste nächste Aktion:** den `perplexity`-Antwortselektor
-  reparieren — die Oberfläche live vermessen, Selektor eintragen, mit einem
-  Relay-Lauf belegen. Braucht den anwesenden Eigentümer.
-- **Externe Freigaben:** Live-Browser, Login und kostenpflichtige Provider
-  weiterhin nur mit anwesendem Eigentümer.
+
+### Erledigt am 2026-08-23
+
+Alle vier Abnahmebelege der Roadmap. Dazu vier echte Fehler:
+
+| Fehler | Behoben in |
+|---|---|
+| CI seit 22.08. auf jedem Push rot — am Befehl, den `START_HERE.md` Neuen als erste Prüfung nennt | `51d196f` |
+| Endlosschleife im ANSI-Fallback der TUI bei geschlossenem stdin (636 s statt 150) | `6f81f6b` |
+| `mistral` lieferte Zeitstempel und Feedback-Widget im Antworttext | `de8aa89` |
+| Absturzsicherung des Benchmarks schrieb, ohne je gelesen zu werden | PR #17 |
+
+Neu: `probe --dump-text` vermisst Textcontainer. Der reguläre Scan sieht nur
+Interaktives, weshalb `assistant_message` **für kein Brain** auffindbar war.
+
+### Offen — beides wartet auf Anbieter, nicht auf Arbeit
+
+**`zai` stellt der Antwort ein `Thought Process` voran.** Nicht messbar: Der
+Anbieter meldet das Modell als überlastet, der Circuit-Breaker sperrte es für
+sechs Stunden. Die Sperre ist richtiges Verhalten und wurde nicht umgangen.
+
+**Warum `perplexity` in Timeouts lief, ist unbekannt.** Der von mir gemeldete
+Selektor-Fix hielt der Gegenprobe nicht stand — ohne den Eintrag antwortet
+perplexity genauso. Zwei Erklärungsversuche sind ebenfalls widerlegt: Die
+generische Maske greift doch, und der Composer wird auf beiden Füllwegen vor
+dem Tippen geleert. Ein Rückfall ist damit nicht ausgeschlossen.
+
+`mistral` hat sein Nachrichtenlimit erreicht — verbraucht durch die Testläufe
+dieser Sitzung, Rücksetzung etwa zwei Stunden nach 13:00 UTC.
+
+### Genau eine sicherste nächste Aktion
+
+Nach Ablauf der Sperren: `zai` mit `probe --brain zai --dump-text` vermessen und
+den Antwortcontainer eintragen — **mit Gegenprobe**, also alter Selektor gegen
+neuer, sonst belegt der grüne Lauf nichts. Dieselbe Vorgehensweise hat heute
+zwei Scheinerfolge von mir aufgedeckt.
+
+### Externe Freigaben
+
+Live-Browser, Login und kostenpflichtige Provider weiterhin nur mit anwesendem
+Eigentümer.
 
 Bei einem aktiven zweiten Entwickler einen eigenen Worktree und disjunkte
 Dateien verwenden oder die Zuständigkeit vorher ausdrücklich abstimmen.
