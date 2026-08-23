@@ -665,6 +665,9 @@ pub fn cmd_probe(
                 sel,
                 text.replace('\n', " ")
             );
+            if !k.parents.is_empty() {
+                println!("           ^ in: {}", k.parents);
+            }
         }
         return 0;
     }

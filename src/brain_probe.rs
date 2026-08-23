@@ -506,20 +506,40 @@ pub const TEXT_PROBE_SCRIPT: &str = r#"
   const skip = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'BUTTON', 'A', 'INPUT']);
   for (const el of document.querySelectorAll('div, p, article, section, main, li, span')) {
     if (skip.has(el.tagName)) { continue; }
-    if (el.closest('button, a[href], [role=button], [contenteditable=true]')) { continue; }
+    // Nur echte Eingabe- und Knopfflaechen ausschliessen. Ein Antwortbereich
+    // liegt bei manchen Oberflaechen INNERHALB eines klickbaren Containers
+    // (Perplexity macht Antwortkarten anfassbar) — wer auf `a[href]` oder
+    // `[role=button]` filtert, wirft genau den gesuchten Text weg.
+    if (el.closest('button, [contenteditable=true]')) { continue; }
     const text = (el.innerText || '').trim();
-    if (text.length < 40) { continue; }
+    // Schwelle bewusst niedrig: Eine Antwort auf eine Testfrage ist KURZ
+    // ("BEREIT"). Mit 40 Zeichen Mindestlaenge warf der erste Wurf genau den
+    // gesuchten Container weg und zeigte nur die langen eigenen Prompts —
+    // eine Suche, die ihr Ziel per Konstruktion nicht finden konnte.
+    if (text.length < 3) { continue; }
     const r = el.getBoundingClientRect();
-    if (r.width < 40 || r.height < 10) { continue; }
+    if (r.width < 20 || r.height < 8) { continue; }
     let eigen = 0;
     for (const kind of el.childNodes) {
       if (kind.nodeType === 3) { eigen += (kind.textContent || '').trim().length; }
+    }
+    // Elternkette mitgeben: Bei zeilenweise gerenderten Antworten traegt das
+    // einzelne Element (Perplexity: `p.my-2` je Zeile) den Text, der SELEKTOR
+    // muss aber den umschliessenden Container treffen. Ohne die Kette sieht
+    // man die Blaetter und nie den Ast.
+    const eltern = [];
+    let auf = el.parentElement;
+    for (let i = 0; i < 3 && auf; i++) {
+      const k = (typeof auf.className === 'string' ? auf.className : '').trim().split(/\s+/)[0] || '';
+      eltern.push(auf.tagName.toLowerCase() + (auf.id ? '#' + auf.id : (k ? '.' + k : '')));
+      auf = auf.parentElement;
     }
     out.push({
       tag: el.tagName.toLowerCase(),
       id: el.id || '',
       test_id: el.getAttribute('data-testid') || '',
       role: el.getAttribute('role') || '',
+      parents: eltern.join(' < '),
       class: (typeof el.className === 'string' ? el.className : '').trim().slice(0, 200),
       len: text.length,
       own_text: eigen,
@@ -559,6 +579,9 @@ pub struct TextCandidate {
     pub role: String,
     #[serde(default)]
     pub class: String,
+    /// Bis zu drei Ebenen Elternkette, aeusserste zuletzt.
+    #[serde(default)]
+    pub parents: String,
     #[serde(default)]
     pub len: usize,
     #[serde(default)]
@@ -1347,6 +1370,7 @@ mod tests {
             test_id: test_id.into(),
             role: String::new(),
             class: class.into(),
+            parents: String::new(),
             len: 200,
             own_text: 180,
             kids: 0,

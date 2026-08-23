@@ -569,7 +569,37 @@ return null;}})()"#,
         // die ehrlichere Loesung — sie behauptet kein Signal, das es nicht
         // gibt.
         let _ = &baseline_text;
-        std::thread::sleep(Duration::from_secs(35));
+        let url_jetzt = |backend: &Self| -> String {
+            let mut guard = backend.driver.borrow_mut();
+            guard
+                .as_mut()
+                .and_then(|d| d.eval_string("location.href").ok())
+                .unwrap_or_default()
+        };
+        // Perplexity navigiert beim Absenden in einen neuen Thread
+        // (`/search/new/<id>` → `/search/<andere-id>`, gemessen 2026-08-23).
+        // Wer sofort scannt, liest die Seite VOR der Navigation. Erst auf eine
+        // stabile URL warten, dann die Antwort ausschreiben lassen.
+        let mut letzte = url_jetzt(self);
+        let mut ruhig = 0;
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_millis(500));
+            let jetzt = url_jetzt(self);
+            if jetzt == letzte {
+                ruhig += 1;
+                if ruhig >= 6 {
+                    break;
+                }
+            } else {
+                letzte = jetzt;
+                ruhig = 0;
+            }
+        }
+        let warte: u64 = std::env::var("WEBAGENT_PROBE_WAIT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(35);
+        std::thread::sleep(Duration::from_secs(warte));
         // Ausschreiben lassen, damit der Container seine endgueltige Form hat.
         std::thread::sleep(Duration::from_millis(2500));
 
