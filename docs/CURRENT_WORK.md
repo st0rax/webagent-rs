@@ -206,6 +206,28 @@ Folge: Der Lauf wartet auf eine Antwort, die er nicht sehen kann, bis der
 Timeout greift. Die Reparatur braucht manuelles DOM-Studium der
 Perplexity-Oberfläche und ist eine eigene Scheibe.
 
+### Run-Nachweis — bestanden
+
+Der volle Controller-Loop (Plan → Act → Observe) gegen ein echtes Brain,
+in einem isolierten Workspace ausserhalb des Repos:
+
+    cd %TEMP%/webagent-run-nachweis
+    webagent.exe run --brain deepseek --max-cycles 8 --no-memory       --task "Lege nachweis.txt mit genau dem Wort BEREIT an und pruefe danach
+              per Shell, dass Datei und Inhalt stimmen."
+
+Ergebnis: `status=done`, 3 Zyklen. Das Brain schickte eine `write`-Action, dann
+eine `shell`-Action zur Selbstprüfung (`EXISTS` + `CONTENT_OK`), dann die
+Abschlussmeldung.
+
+Die Behauptung des Brains wurde NICHT geglaubt, sondern nachgemessen: die Datei
+liegt mit exakt 6 Byte und dem Inhalt `BEREIT` auf Platte, ohne Zeilenumbruch
+oder verborgene Zeichen (`od -c`). Ein Agent, der Erfolg meldet, ist kein
+Beleg — die Platte ist einer.
+
+Der Workspace lag bewusst unter `%TEMP%`: `cmd_run` startet die Shell im
+aktuellen Verzeichnis, ein Lauf aus dem Repo heraus hätte das Brain im
+Projektbaum arbeiten lassen.
+
 ### Befund: mistral und zai liefern UI-Beiwerk mit
 
 `mistral` antwortete `BEREIT

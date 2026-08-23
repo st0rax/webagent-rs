@@ -210,9 +210,13 @@ Diagnose und Relay wurden mit anwesendem Eigentümer gegen die heutigen Web-UIs
 neu gemessen; die Einzelheiten stehen in `CURRENT_WORK.md`. Diagnose 9/9,
 Relay 8/9, frische Belege in `data/capability/proofs.jsonl`.
 
+Der Run-Nachweis über den vollen Controller-Loop ist ebenfalls erbracht
+(`write` + `shell`-Selbstprüfung, `status=done`, Ergebnis auf Platte
+nachgemessen statt der Erfolgsmeldung geglaubt).
+
 Offen aus dieser Messung: der `perplexity`-Antwortselektor (das Brain
 antwortet, der Harness sieht es nicht) und das UI-Beiwerk bei `mistral` und
-`zai`. Ein Run-Nachweis über den vollen Controller-Loop steht noch aus.
+`zai`.
 
 Historische Providerzahlen bleiben ungültig als Ersatz; Browser-, Login- und
 Accountzugriffe weiterhin nur nach ausdrücklicher Nutzerfreigabe.
