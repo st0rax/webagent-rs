@@ -48,8 +48,8 @@ Evidenz.
 | Bereich | Stand am 2026-08-23 | Fehlender Abschlussbeleg |
 |---|---|---|
 | Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.189 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.123 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures. **CI seit `51d196f` wieder grün** — sie war vom 22.08. bis dahin auf jedem Push rot, auch auf `master` | Integration des geprüften Zweigs in den maßgeblichen Upstream |
-| Provider-/WebView-Livebetrieb | Experimentell; die öffentliche 8/8-Messung stammt vom 2026-07-16, spätere Capability-Messungen sind ebenfalls datierte Einzelbelege | aktuelle Diagnose-/Verify-/Relay-Matrix auf den tatsächlich angemeldeten Sessions |
-| Pool, Worker und Cross-Brain-Handoff | Verträge und Fehlergrenzen lokal getestet; Continuation, Stall und Cross-Brain-Handoff sind seit dem 2026-08-23 im Benchmark-Pfad end-to-end belegt | Poolstart, Worker-Heartbeat, Profil-Lease/Write-back und geordneter Shutdown im GEMEINSAMEN Szenariolauf — braucht eine Injektionsschicht für den BrowserPool oder einen Livelauf mit dem Eigentümer |
+| Provider-/WebView-Livebetrieb | **Rezertifiziert am 2026-08-23** mit anwesendem Eigentümer: Diagnose 9/9 (alle angemeldet, bereit, keine Cloudflare-Wand), Relay 8/9 gegen echte Browser. `perplexity` fällt aus — es antwortet, aber kein `assistant_message`-Selektor findet die Antwort | Reparatur des perplexity-Selektors; `mistral` und `zai` liefern UI-Beiwerk im extrahierten Text |
+| Pool, Worker und Cross-Brain-Handoff | Continuation, Stall und Cross-Brain-Handoff im Benchmark-Pfad end-to-end belegt. Live am 2026-08-23: Poolstart, Auto-Recovery und Profil-Lease über neun Brains im Parallelbetrieb; das Master-Profil blieb bei beiden Läufen unverändert — erste Live-Erprobung des reparierten Write-back | Geordneter Shutdown und der tatsächliche Write-back ins Master (beide Läufe endeten am Timeout); Worker-Heartbeat unter echter Last |
 | Benchmark/Autoresearch/Harvest | **Abgenommen** (2026-08-23, `src/benchmark/e2e_tests.rs`): providerfreier Lauf auf echtem temporärem Git-Repo, Auftrag → Bau → Gates → Ernte, mit Fresh, Continuation gleicher Run-ID, Stall, Cross-Brain-Handoff und fail-closed verworfenem Scope-Verstoß | — |
 | Free-Cloud-Textchat | Registry, Policy, Mock-Stream, Metadaten- und Breaker-Verträge lokal implementiert | kein echter HTTP-/Provideradapter; externe Inferenz bleibt bis zur ausdrücklichen Freigabe außerhalb des Lieferstands |
 | Release | Workflows und Buildskripte vorhanden | aktueller Artefaktlauf sowie bewusstes Push/Tag/Release |
@@ -204,19 +204,34 @@ als Daten behandelt und in Prompts markiert.
 
 Der verbindliche Betriebsvertrag, Pi-Konfigurationsbeispiele und die Sicherheitsgrenzen stehen in [API_BRIDGE.md](API_BRIDGE.md).
 
-### 1. Aktuelle Live-Rezertifizierung des Browser-Harness
+### 1. Live-Rezertifizierung — durchgeführt am 2026-08-23
 
-Diagnose, Capability-Verify und ein enger Relay-/Run-Nachweis müssen gegen die
-heutigen Web-UIs und vorhandenen Sessions wiederholt werden. Historische
-Providerzahlen dürfen dafür nicht hochgezählt werden. Browser-, Login- und
-Accountzugriffe erfolgen nur nach ausdrücklicher Nutzerfreigabe.
+Diagnose und Relay wurden mit anwesendem Eigentümer gegen die heutigen Web-UIs
+neu gemessen; die Einzelheiten stehen in `CURRENT_WORK.md`. Diagnose 9/9,
+Relay 8/9, frische Belege in `data/capability/proofs.jsonl`.
 
-### 2. Integrierte Mehr-Brain-Abnahme
+Der Run-Nachweis über den vollen Controller-Loop ist ebenfalls erbracht
+(`write` + `shell`-Selbstprüfung, `status=done`, Ergebnis auf Platte
+nachgemessen statt der Erfolgsmeldung geglaubt).
 
-Ein nachvollziehbarer Szenariolauf muss Poolstart, Worker-Heartbeat,
-Same-Brain-Continuation, Cross-Brain-Handoff, Profil-Lease/Write-back und
-geordneten Shutdown gemeinsam belegen. Unit-Tests der Einzelverträge ersetzen
-diesen Systemnachweis nicht.
+Offen aus dieser Messung: der `perplexity`-Antwortselektor (das Brain
+antwortet, der Harness sieht es nicht) und das UI-Beiwerk bei `mistral` und
+`zai`.
+
+Historische Providerzahlen bleiben ungültig als Ersatz; Browser-, Login- und
+Accountzugriffe weiterhin nur nach ausdrücklicher Nutzerfreigabe.
+
+### 2. Integrierte Mehr-Brain-Abnahme — teilweise erbracht (2026-08-23)
+
+Belegt: Poolstart, Auto-Recovery, Profil-Lease über neun Brains im
+Parallelbetrieb, und dass das Master-Profil beide Läufe unverändert übersteht.
+
+Offen: geordneter Shutdown und der Write-back ins Master (beide Läufe endeten
+am Timeout, der Rückweg wurde also nie gegangen), sowie der Worker-Heartbeat
+unter echter Last statt an einer leeren Inbox. Einzelheiten in
+`CURRENT_WORK.md`.
+
+Unit-Tests der Einzelverträge ersetzen den fehlenden Rest nicht.
 
 ### 3. Benchmark-/Autoresearch-Abnahme — erledigt am 2026-08-23
 

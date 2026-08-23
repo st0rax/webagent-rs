@@ -154,6 +154,133 @@ Statistik-Store, Ablage der Erntekandidaten, Ereignisbus. Parallel gefahren war
 `static SERIELL` in `e2e_tests.rs` haelt sie auseinander; wer dort einen Test
 ergaenzt, muss die Sperre mitnehmen.
 
+## Live-Rezertifizierung 2026-08-23 (Roadmap 1)
+
+Mit anwesendem Eigentümer gemessen, sichtbarer Browser, kanonische
+Per-Brain-Profile (`shared_browser=false`).
+
+### Diagnose — 9/9
+
+Alle neun Brains: `logged_in=true`, `session_state=Ready`, `composer=ok`, keine
+Cloudflare-Wand. **Keine einzige Anmeldung war nötig.**
+
+Damit ist auch belegt, dass die Wiederherstellung des am 22.08. beschädigten
+Master-Profils trägt. `brains-health` konnte das nicht zeigen — es prüft
+Selektordateien und Profilverzeichnis, nie einen Login.
+
+### Relay (send+wait gegen echten Browser) — 8/9
+
+| Brain | Ergebnis | Latenz |
+|---|---|---|
+| chatgpt | BEREIT | 20,4 s |
+| claude | BEREIT | 17,8 s |
+| deepseek | BEREIT | 15,5 s |
+| gemini | BEREIT | 17,4 s |
+| kimi | BEREIT | 25,6 s |
+| mistral | BEREIT (mit UI-Beiwerk) | 24,2 s |
+| perplexity | **Fehlschlag** | Timeout |
+| qwen | BEREIT | 30,6 s |
+| zai | BEREIT (mit UI-Beiwerk) | 24,4 s im 2. Anlauf |
+
+`claude` und `mistral` hatten vorher **nie** einen Relay-Beleg; jetzt haben ihn
+acht von neun. Die Belege stehen in `data/capability/proofs.jsonl`.
+
+`zai` scheiterte im ersten Lauf nach 193 s und bestand den zweiten in 24 s —
+transient, kein Defekt, aber als Flackern notiert statt geglättet.
+
+### Defekt: perplexity liefert, wir sehen es nicht
+
+Der Eigentümer beobachtete am Bildschirm, dass perplexity längst geantwortet
+hatte, während der Relay-Lauf weiter wartete. Der Fehler liegt also bei uns,
+nicht beim Anbieter.
+
+`selectors/perplexity.json` enthält ausschliesslich `model_menu` und
+`model_option` — keinen `assistant_message`-Selektor. Die generische Maske
+(sieben Kandidaten von `[data-message-author-role='assistant']` bis
+`div.markdown`) greift bei der heutigen Oberfläche nicht. `probe --brain
+perplexity` findet Composer, Modellmenü, Projekte und Anhang-Knopf, aber
+**weder `assistant_message` noch `stop_button`** — auch nicht mit
+`--generating`, also während eine Antwort läuft.
+
+Folge: Der Lauf wartet auf eine Antwort, die er nicht sehen kann, bis der
+Timeout greift. Die Reparatur braucht manuelles DOM-Studium der
+Perplexity-Oberfläche und ist eine eigene Scheibe.
+
+### Run-Nachweis — bestanden
+
+Der volle Controller-Loop (Plan → Act → Observe) gegen ein echtes Brain,
+in einem isolierten Workspace ausserhalb des Repos:
+
+    cd %TEMP%/webagent-run-nachweis
+    webagent.exe run --brain deepseek --max-cycles 8 --no-memory       --task "Lege nachweis.txt mit genau dem Wort BEREIT an und pruefe danach
+              per Shell, dass Datei und Inhalt stimmen."
+
+Ergebnis: `status=done`, 3 Zyklen. Das Brain schickte eine `write`-Action, dann
+eine `shell`-Action zur Selbstprüfung (`EXISTS` + `CONTENT_OK`), dann die
+Abschlussmeldung.
+
+Die Behauptung des Brains wurde NICHT geglaubt, sondern nachgemessen: die Datei
+liegt mit exakt 6 Byte und dem Inhalt `BEREIT` auf Platte, ohne Zeilenumbruch
+oder verborgene Zeichen (`od -c`). Ein Agent, der Erfolg meldet, ist kein
+Beleg — die Platte ist einer.
+
+Der Workspace lag bewusst unter `%TEMP%`: `cmd_run` startet die Shell im
+aktuellen Verzeichnis, ein Lauf aus dem Repo heraus hätte das Brain im
+Projektbaum arbeiten lassen.
+
+### Befund: mistral und zai liefern UI-Beiwerk mit
+
+`mistral` antwortete `BEREIT
+
+4:42
+War das hilfreich?
+Überspringen`,
+`zai` mit vorangestelltem `Thought Process`. Beide Läufe gelten als bestanden,
+der extrahierte Text stammt aber nicht mehr allein vom Modell. Bei `mistral`
+ist die Ursache belegt: `selectors/mistral.json` endet unter
+`assistant_message` auf `div.prose`, einen sehr breiten Fallback, der
+Nachbarelemente einsammelt, weil die spezifischen Selektoren davor nicht mehr
+greifen. Für den bot2bot-Betrieb ist das relevant.
+
+## Mehr-Brain-Abnahme (Roadmap 2) — Teilnachweis 2026-08-23
+
+Zwei reale Läufe mit anwesendem Eigentümer, Master-Profil vorher gesichert
+(`shared.bak-vor-pool-20260823-051522`, 531 MB).
+
+**Belegt:**
+
+- Poolstart und Auto-Recovery: `workers --active 2 --brains deepseek,qwen`
+  startete den Supervisor, ein als unavailable geführtes Brain wurde nach
+  Ablauf der Sperre selbsttätig wieder aufgenommen.
+- Profil-Lease über neun Brains: `autoresearch-self` zog für jedes Brain einen
+  Klon (`profiles/swarm/<runstamp>_<brain>_<hash>`) und fuhr sie im
+  Parallelbetrieb, vier gleichzeitig.
+- Acht der neun Brains antworteten — unabhängige Bestätigung des
+  perplexity-Defekts aus der Relay-Matrix.
+- **Der reparierte Write-back hält.** Das Master-Profil war nach BEIDEN Läufen
+  unverändert: 23 Hosts, jede Cookie-Zahl identisch, byteweise gegen die
+  vorher gezogene Referenz verglichen. Das ist die erste Live-Erprobung des
+  Mechanismus seit dem Schaden vom 22.08.
+
+**Nicht belegt, und deshalb bleibt Roadmap 2 offen:**
+
+- Geordneter Shutdown. Beide Läufe endeten am Timeout, nicht am regulären Ende.
+  Damit fand auch kein Write-back ins Master statt — dass das Master heil
+  blieb, belegt also die Schutzlogik, nicht den erfolgreichen Rückweg.
+- Worker-Heartbeat unter echter Last: die Worker pollten eine leere Inbox.
+- Same-Brain-Continuation und Cross-Brain-Handoff sind im Benchmarkpfad
+  belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
+
+**Befund: abgebrochene Läufe lassen ihre Profil-Klone stehen.** Die beiden
+Läufe hinterließen 780 MB in `profiles/swarm/`, ein weiterer Rest stammt vom
+22.08. Bei sauberem Ende räumt der Lease auf, beim Abbruch nicht. Auf einer
+chronisch vollen Platte ist das kein Schönheitsfehler.
+
+Nebenbefund zur Kopierstrategie: Die Sparse-Klone lagen bei 24–51 MB
+(perplexity 147 MB), die Klone des Pool-Laufs ohne `WEBAGENT_SPARSE_COPY` bei
+107–166 MB. Der Lease-Lauf lief bewusst sparse, weil neun volle Klone à 531 MB
+die Platte gesprengt hätten; der Standardpfad ist damit nicht mitgemessen.
+
 ## Aktiver Edit
 
 Diesen Abschnitt vor Änderungen an gemeinsamen Dateien erneut verifizieren:
