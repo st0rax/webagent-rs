@@ -229,6 +229,9 @@ pub fn apply_wall(on: bool) -> String {
 /// Wie [`apply_wall`], aber mit belastbarem Erfolgssignal fuer den
 /// Auto-Wall-Zustandsautomaten. Ein Fehler darf nicht als angeordnet quittiert
 /// werden, sonst gibt es bei unveraenderter Fensterliste keinen Retry.
+// `return` statt Ausdruck: in der anderen cfg-Variante folgt darunter
+// echter Code, der Ausdruck waere dann nicht mehr der letzte.
+#[allow(clippy::needless_return)]
 pub fn apply_wall_checked(on: bool) -> Result<String, String> {
     #[cfg(not(all(windows, feature = "webview")))]
     {
@@ -282,6 +285,9 @@ pub fn apply_wall_checked(on: bool) -> Result<String, String> {
 /// Fuer TUI-Minimize: `apply_wall_checked(false)` wuerde
 /// [`brain_grid::restore_terminal`] aufrufen und das minimierte Terminal
 /// wieder aufklappen.
+// `return` statt Ausdruck: in der anderen cfg-Variante folgt darunter
+// echter Code, der Ausdruck waere dann nicht mehr der letzte.
+#[allow(clippy::needless_return)]
 pub fn park_owned() -> Result<usize, String> {
     #[cfg(not(all(windows, feature = "webview")))]
     {
@@ -305,6 +311,9 @@ impl Drop for WallCleanupGuard {
     }
 }
 
+// `return` statt Ausdruck: in der anderen cfg-Variante folgt darunter
+// echter Code, der Ausdruck waere dann nicht mehr der letzte.
+#[allow(clippy::needless_return)]
 pub fn focus_tile(index: usize) -> String {
     #[cfg(not(all(windows, feature = "webview")))]
     {
@@ -324,6 +333,9 @@ pub fn focus_tile(index: usize) -> String {
     }
 }
 
+// `return` statt Ausdruck: in der anderen cfg-Variante folgt darunter
+// echter Code, der Ausdruck waere dann nicht mehr der letzte.
+#[allow(clippy::needless_return)]
 pub fn release_focus() -> String {
     #[cfg(not(all(windows, feature = "webview")))]
     {
