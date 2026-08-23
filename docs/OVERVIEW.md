@@ -45,12 +45,12 @@ Produktabnahme. Der lokale Harness-Kern ist umfangreich getestet; die
 veränderlichen Live- und Integrationspfade brauchen dagegen neue End-to-End-
 Evidenz.
 
-| Bereich | Stand am 2026-08-22 | Fehlender Abschlussbeleg |
+| Bereich | Stand am 2026-08-23 | Fehlender Abschlussbeleg |
 |---|---|---|
-| Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.168 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.102 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures | Integration des geprüften Zweigs in den maßgeblichen Upstream |
+| Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.189 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.123 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures. **CI seit `51d196f` wieder grün** — sie war vom 22.08. bis dahin auf jedem Push rot, auch auf `master` | Integration des geprüften Zweigs in den maßgeblichen Upstream |
 | Provider-/WebView-Livebetrieb | Experimentell; die öffentliche 8/8-Messung stammt vom 2026-07-16, spätere Capability-Messungen sind ebenfalls datierte Einzelbelege | aktuelle Diagnose-/Verify-/Relay-Matrix auf den tatsächlich angemeldeten Sessions |
-| Pool, Worker und Cross-Brain-Handoff | Verträge und Fehlergrenzen lokal getestet | konsolidierter realer Mehr-Brain-Lauf inklusive Abbruch, Handoff und Wiederaufnahme |
-| Benchmark/Autoresearch/Harvest | Pipeline und Schutzgitter implementiert | reproduzierbarer Lauf auf sauberem Worktree vom Auftrag bis zum akzeptierten oder korrekt verworfenen Kandidaten |
+| Pool, Worker und Cross-Brain-Handoff | Verträge und Fehlergrenzen lokal getestet; Continuation, Stall und Cross-Brain-Handoff sind seit dem 2026-08-23 im Benchmark-Pfad end-to-end belegt | Poolstart, Worker-Heartbeat, Profil-Lease/Write-back und geordneter Shutdown im GEMEINSAMEN Szenariolauf — braucht eine Injektionsschicht für den BrowserPool oder einen Livelauf mit dem Eigentümer |
+| Benchmark/Autoresearch/Harvest | **Abgenommen** (2026-08-23, `src/benchmark/e2e_tests.rs`): providerfreier Lauf auf echtem temporärem Git-Repo, Auftrag → Bau → Gates → Ernte, mit Fresh, Continuation gleicher Run-ID, Stall, Cross-Brain-Handoff und fail-closed verworfenem Scope-Verstoß | — |
 | Free-Cloud-Textchat | Registry, Policy, Mock-Stream, Metadaten- und Breaker-Verträge lokal implementiert | kein echter HTTP-/Provideradapter; externe Inferenz bleibt bis zur ausdrücklichen Freigabe außerhalb des Lieferstands |
 | Release | Workflows und Buildskripte vorhanden | aktueller Artefaktlauf sowie bewusstes Push/Tag/Release |
 
@@ -218,19 +218,23 @@ Same-Brain-Continuation, Cross-Brain-Handoff, Profil-Lease/Write-back und
 geordneten Shutdown gemeinsam belegen. Unit-Tests der Einzelverträge ersetzen
 diesen Systemnachweis nicht.
 
-### 3. Benchmark-/Autoresearch-Abnahme
+### 3. Benchmark-/Autoresearch-Abnahme — erledigt am 2026-08-23
 
-Auf einem sauberen, isolierten Worktree ist mindestens ein vollständiger Lauf
-vom Work-Package über Agentenarbeit, Repair und Eval bis zur korrekten
-Harvest-Entscheidung zu protokollieren. Ein verworfener Kandidat ist ein gültiger
-Nachweis, wenn die Schutzgitter ihn aus dem richtigen Grund fail-closed stoppen.
+Belegt in `src/benchmark/e2e_tests.rs`: die volle Pipeline auf einem echten
+temporären Git-Repo mit echten Eval-Kommandos; gedoppelt ist nur die
+Brain-Ausführung (Phase A über `query`, Phase B über `PhaseBRunner`).
+
+Beide geforderten Ausgänge sind belegt — der geerntete Kandidat und der aus dem
+richtigen Grund fail-closed verworfene. Dass der Grund wirklich der Datei-Scope
+ist, hält ein Gegenprobe-Test fest, der denselben Patch ohne Auftrag durchgehen
+lässt; ohne ihn wäre die Verwerfung auch von der Freitextprüfung erklärbar.
 
 ### 4. Konsolidierung und Release-Entscheidung
 
 Nach den End-to-End-Gates werden README, Übersicht, Providerstatus und Übergabe
 auf denselben Stand gebracht. Push, Merge, Tag und Release führt der Integrator
 aus; vorhandene Workflows allein sind kein Releasebeleg. Ein Release setzt die
-vier Abnahmebelege voraus — ohne sie behauptet es eine Reife, für die kein
+vier Abnahmebelege voraus (der dritte liegt seit dem 2026-08-23 vor) — ohne sie behauptet es eine Reife, für die kein
 Nachweis existiert.
 
 Die Live-Rezertifizierung ist dabei der einzige Schritt, der den Eigentümer
