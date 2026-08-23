@@ -39,22 +39,28 @@ Ziel, keine Behauptung über jede beliebige Chat-Seite.
 
 ## Aktueller Abnahmestand
 
-Das Projekt ist **nicht als insgesamt fertig abgenommen**. Ein abgeschlossener
-Goal-Datensatz belegt nur den darin gebundenen Arbeitsauftrag, nicht die
-Produktabnahme. Der lokale Harness-Kern ist umfangreich getestet; die
-veränderlichen Live- und Integrationspfade brauchen dagegen neue End-to-End-
-Evidenz.
+**Stand 2026-08-23:** Die drei technischen Abnahmebelege der Roadmap sind
+erbracht — Live-Rezertifizierung (1), integrierte Mehr-Brain-Abnahme (2) und
+Benchmark-/Harvest-Systemabnahme (3). Offen ist allein die bewusste
+Release-Entscheidung (4), die dem Eigentümer gehört.
+
+Ein abgeschlossener Goal-Datensatz belegt weiterhin nur den darin gebundenen
+Arbeitsauftrag. Zwei bekannte Defekte stehen einem Release nicht im Weg, aber
+gehören in die Release-Notiz: `perplexity` antwortet, ohne dass der Harness die
+Antwort findet (fehlender `assistant_message`-Selektor), und `mistral` wie
+`zai` liefern die Antwort mit UI-Beiwerk vermischt.
 
 | Bereich | Stand am 2026-08-23 | Fehlender Abschlussbeleg |
 |---|---|---|
-| Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.189 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.123 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures. **CI seit `51d196f` wieder grün** — sie war vom 22.08. bis dahin auf jedem Push rot, auch auf `master` | Integration des geprüften Zweigs in den maßgeblichen Upstream |
+| Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `master`; 1.189 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.123 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures. CI seit `51d196f` wieder grün — sie war vom 22.08. bis dahin auf jedem Push rot, auch auf `master`. **Integriert** über PR #6–#10 | — |
 | Provider-/WebView-Livebetrieb | **Rezertifiziert am 2026-08-23** mit anwesendem Eigentümer: Diagnose 9/9 (alle angemeldet, bereit, keine Cloudflare-Wand), Relay 8/9 gegen echte Browser. `perplexity` fällt aus — es antwortet, aber kein `assistant_message`-Selektor findet die Antwort | Reparatur des perplexity-Selektors; `mistral` und `zai` liefern UI-Beiwerk im extrahierten Text |
 | Pool, Worker und Cross-Brain-Handoff | **Abgenommen am 2026-08-23**: Poolstart, Auto-Recovery, Profil-Lease über neun Brains im Parallelbetrieb, geordneter Shutdown, Write-back ins Master (23→33 Hosts, additiv) und Worker-Heartbeat unter echter Last. Continuation, Stall und Cross-Brain-Handoff im Benchmark-Pfad end-to-end belegt | — |
 | Benchmark/Autoresearch/Harvest | **Abgenommen** (2026-08-23, `src/benchmark/e2e_tests.rs`): providerfreier Lauf auf echtem temporärem Git-Repo, Auftrag → Bau → Gates → Ernte, mit Fresh, Continuation gleicher Run-ID, Stall, Cross-Brain-Handoff und fail-closed verworfenem Scope-Verstoß | — |
 | Free-Cloud-Textchat | Registry, Policy, Mock-Stream, Metadaten- und Breaker-Verträge lokal implementiert | kein echter HTTP-/Provideradapter; externe Inferenz bleibt bis zur ausdrücklichen Freigabe außerhalb des Lieferstands |
 | Release | Workflows und Buildskripte vorhanden | aktueller Artefaktlauf sowie bewusstes Push/Tag/Release |
 
-Damit bedeutet „lokale Gates grün“ derzeit **nicht** „Produkt fertig“.
+Damit bedeutet „lokale Gates grün“ weiterhin **nicht** „Produkt fertig“ — wohl
+aber sind die Systembelege da, auf die ein Release sich stützen kann.
 
 ## Kernarchitektur
 
