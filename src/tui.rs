@@ -1209,6 +1209,7 @@ pub(crate) fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
             lint_eval: String::new(),
             vetoes,
             loop_forever,
+            work_package: None,
         };
         let queries = crate::repl::PersistentQueryPool::new(&brains, headless);
         match crate::benchmark::run_benchmark(&config, |b, p| queries.query(b, p)) {

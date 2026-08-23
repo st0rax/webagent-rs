@@ -17,7 +17,7 @@ use super::git::{
 };
 use super::handoff::HandoffQueue;
 use super::harvest::{
-    harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope,
+    harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope_in,
 };
 use super::report::{format_benchmark_report, print_leaderboard};
 use super::tasks::{
@@ -1157,9 +1157,10 @@ where
                 None
             };
             let scope_error = patch_scope.as_ref().and_then(|(patch, capture_error)| {
-                capture_error
-                    .clone()
-                    .or_else(|| validate_task_scope(patch, effective).err())
+                capture_error.clone().or_else(|| {
+                    validate_task_scope_in(patch, effective, scope_for_task(config, effective))
+                        .err()
+                })
             });
             let scope_lint_ok =
                 if scope_error.is_some() && is_pass(did_change, compiled, tests_passed) {
@@ -1271,7 +1272,11 @@ where
             if config.harvest && passed {
                 match patch_scope {
                     Some((patch, None)) if crate::bench_harvest::has_substantive_change(&patch) => {
-                        match validate_task_scope(&patch, effective) {
+                        match validate_task_scope_in(
+                            &patch,
+                            effective,
+                            scope_for_task(config, effective),
+                        ) {
                             Ok(paths) => {
                                 bench_say!(
                                 crate::bench_events::Level::Pass,
@@ -1526,5 +1531,96 @@ fn ok_x(b: bool) -> &'static str {
         "ok"
     } else {
         "x"
+    }
+}
+
+/// Der zugesagte Datei-Scope fuer GENAU diese Aufgabe, sofern einer vorliegt.
+///
+/// Ein `WorkPackage` beschreibt eine einzelne Aufgabe. Laeuft eine Runde mit
+/// mehreren Aufgaben, darf der Scope des einen Pakets die anderen nicht
+/// einschnueren — deshalb der Abgleich ueber `objective`. Passt er nicht,
+/// bleibt es beim bisherigen Verhalten (nur generische Policy).
+fn scope_for_task<'a>(config: &'a BenchmarkConfig, task: &str) -> Option<&'a [String]> {
+    let package = config.work_package.as_ref()?;
+    if package.objective.trim() != task.trim() {
+        return None;
+    }
+    Some(package.allowed_paths.as_slice())
+}
+
+#[cfg(test)]
+mod scope_wiring_tests {
+    use super::*;
+    use crate::benchmark::work_package::{AcceptanceCheck, WorkPackage};
+    use std::path::PathBuf;
+
+    fn config_with(package: Option<WorkPackage>) -> BenchmarkConfig {
+        BenchmarkConfig {
+            brains: vec![],
+            rounds: 1,
+            suggestions: 1,
+            build_eval: String::new(),
+            test_eval: String::new(),
+            workdir: PathBuf::from("."),
+            headless: true,
+            max_iterations: 1,
+            harvest: false,
+            verbose: false,
+            parallel: 1,
+            stall_limit: 1,
+            max_handoffs: 0,
+            lint_eval: String::new(),
+            vetoes: vec![],
+            loop_forever: false,
+            work_package: package,
+        }
+    }
+
+    fn package(objective: &str) -> WorkPackage {
+        WorkPackage {
+            id: "wp1".into(),
+            objective: objective.into(),
+            allowed_paths: vec!["src/config.rs".into()],
+            anchors: vec![],
+            acceptance: vec![AcceptanceCheck {
+                command: "cargo test --lib".into(),
+                purpose: "Regressionen".into(),
+            }],
+        }
+    }
+
+    /// Ohne Auftrag bleibt es beim bisherigen Verhalten: kein Scope, das Tor
+    /// prueft nur die generische Policy.
+    #[test]
+    fn kein_paket_kein_scope() {
+        assert!(scope_for_task(&config_with(None), "irgendeine Aufgabe").is_none());
+    }
+
+    /// Der Scope greift fuer die Aufgabe, die das Paket beschreibt.
+    #[test]
+    fn passendes_paket_liefert_scope() {
+        let cfg = config_with(Some(package("Baue X um")));
+        let scope = scope_for_task(&cfg, "Baue X um").expect("Scope erwartet");
+        assert_eq!(scope, ["src/config.rs".to_string()]);
+    }
+
+    /// Umgebender Leerraum aus der Aufgabenaufbereitung darf den Abgleich nicht
+    /// kippen — sonst faellt der Scope still weg statt zu greifen.
+    #[test]
+    fn leerraum_kippt_den_abgleich_nicht() {
+        let cfg = config_with(Some(package(
+            "  Baue X um
+",
+        )));
+        assert!(scope_for_task(&cfg, "Baue X um").is_some());
+    }
+
+    /// Der entscheidende Fall: laeuft eine ANDERE Aufgabe, gilt der Scope des
+    /// Pakets nicht. Ohne diesen Abgleich wuerde der Scope einer Aufgabe alle
+    /// uebrigen Aufgaben der Runde faelschlich einschnueren.
+    #[test]
+    fn fremde_aufgabe_erbt_den_scope_nicht() {
+        let cfg = config_with(Some(package("Baue X um")));
+        assert!(scope_for_task(&cfg, "Baue Y um").is_none());
     }
 }

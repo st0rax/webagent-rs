@@ -417,6 +417,7 @@ pub fn cmd_benchmark(
         lint_eval,
         vetoes: Vec::new(),
         loop_forever,
+        work_package: None,
     };
 
     let result = webagent::benchmark::run_benchmark(&config, |b, p| {

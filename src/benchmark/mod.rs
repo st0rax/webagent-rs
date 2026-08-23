@@ -933,6 +933,7 @@ mod tests {
             lint_eval: String::new(),
             vetoes: Vec::new(),
             loop_forever: false,
+            work_package: None,
         }
     }
 
