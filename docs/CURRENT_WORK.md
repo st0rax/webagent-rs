@@ -271,6 +271,38 @@ Zwei reale Läufe mit anwesendem Eigentümer, Master-Profil vorher gesichert
 - Same-Brain-Continuation und Cross-Brain-Handoff sind im Benchmarkpfad
   belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
 
+## Der Write-back ist belegt (2026-08-23, 07:25 UTC)
+
+Der Rückweg ins Master-Profil funktioniert. Gemessen an einem REPL-Lauf im
+Shared-Modus mit geschlossenem stdin:
+
+| | vorher | nachher |
+|---|---|---|
+| Hosts im Master | 23 | 33 |
+| Cookies | 102 | 144 |
+| `COMPASS` (gemini-Sitzungsnachweis) | fehlt | vorhanden |
+| Zeitstempel der Cookie-DB | — | 07:25:51, also während des Laufs |
+
+Das Master wurde **erweitert, nicht ersetzt**: Kein Host verschwand, keine
+Cookie-Zahl sank. Genau das ist das Verhalten, das der Schaden vom 22.08.
+vermissen liess, als ein `login-all` die Datenbank neunmal überschrieb und der
+letzte Brain gewann.
+
+**Der Weg dorthin, weil er nicht offensichtlich ist.** `stop_brain` löst beim
+letzten Tab `shutdown_shared_runtime_with_result` aus — den Write-back. Er
+läuft aber nur, wenn `persist_browser_tabs()` false ist, und die Funktion
+liefert im Shared-Modus per Default **true**. Ohne `WEBAGENT_PERSIST_TABS=0`
+bleibt der Tab offen, der Teardown unterbleibt und der Rückweg wird nie
+gegangen. Ein Lauf, der nur den Supervisor fährt oder gar keine Anfrage stellt,
+öffnet ausserdem keinen Tab — dann gibt es nichts zu stoppen.
+
+Damit sind für Roadmap 2 belegt: Poolstart, Auto-Recovery, Profil-Lease über
+neun Brains, Parallelbetrieb, geordneter Shutdown und der Write-back ins
+Master. Offen bleibt allein der **Worker-Heartbeat unter echter Last** — die
+Worker pollten in allen Läufen eine leere Inbox.
+
+**Frühere Notiz, jetzt überholt:**
+
 **Der Write-back bleibt ungetestet — aus einem anderen Grund als gedacht.**
 Nach dem EOF-Fix (`6f81f6b`) endet ein TUI-Lauf mit geschlossenem stdin
 regulär, der Shutdown-Pfad läuft also. Trotzdem entstand kein Write-back: Ein
