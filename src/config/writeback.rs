@@ -823,10 +823,27 @@ pub(crate) fn has_login_artifacts(dir: &Path) -> bool {
 ///
 /// Bewusst keine Vollstaendigkeit: ein Brain ohne bekannten, eindeutigen
 /// Sitzungs-Cookie faellt einfach unter den Gewichts-Schutz.
+/// Namentliche Sitzungs-Nachweise je Brain.
+///
+/// Gemessen am 2026-08-22 in den kanonischen Profilen: pro Brain wurden die
+/// `httpOnly`-Cookies der EIGENEN Domain gelesen und der Traeger der Sitzung
+/// uebernommen. Namen mit variablem Suffix stehen als Praefix drin, weil
+/// [`bytes_contain`] auf Teilstrings sucht (`ory_session_<instanz>`,
+/// `__Secure-pplx.session.<uuid>`).
+///
+/// Bewusst NICHT enthalten, weil ein Byte-Scan sie nicht sicher belegt:
+/// `deepseek` traegt ueberhaupt keinen eigenen `httpOnly`-Cookie (die Sitzung
+/// liegt anderswo), `qwen` nennt seinen schlicht `token` — zu generisch, das
+/// waere ein Fehlalarm auf beliebigen Fremddaten — und `zai` fuehrt nur
+/// `cdn_sec_tc`, einen CDN-Schutzcookie ohne Anmeldebezug. Fuer diese drei
+/// traegt allein der Gewichtsvergleich [`write_back_is_safe`].
 const SESSION_PROOF_COOKIES: &[(&str, &[&str])] = &[
     ("kimi", &["kimi-auth"]),
     ("chatgpt", &["__Secure-next-auth.session-token"]),
     ("mistral", &["ory_session"]),
+    ("claude", &["sessionKey"]),
+    ("perplexity", &["__Secure-pplx.session"]),
+    ("gemini", &["COMPASS"]),
 ];
 
 /// Enthaelt der Byte-Haufen `hay` den ASCII-Text `needle`?
@@ -1318,6 +1335,43 @@ mod writeback_durability_tests {
             pending.exists(),
             "journal must remain until parent dir is fsynced"
         );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn writeback_refuses_single_brain_mirror_that_would_shrink_master() {
+        let _hook = sync_test_hooks::install();
+        let base = unique_base("writeback_login_mirror_refused");
+        let master = base.join("shared");
+        let brain = base.join("kimi");
+        let backup = base.join("backup");
+        fs::create_dir_all(&master).unwrap();
+        fs::create_dir_all(&brain).unwrap();
+        // Master traegt die gesammelten Sitzungen mehrerer Brains ...
+        fs::write(master.join("Cookies"), vec![b'm'; 98 * 1024]).unwrap();
+        fs::write(master.join("Local State"), b"master-key").unwrap();
+        // ... das einzelne Brain-Profil nur seine eigene.
+        fs::write(brain.join("Cookies"), vec![b'k'; 45 * 1024]).unwrap();
+        fs::write(brain.join("Local State"), b"kimi-key").unwrap();
+
+        let error = write_back_dir_to_master_at(&brain, &master, &backup).unwrap_err();
+
+        assert!(
+            error.contains("ABGELEHNT"),
+            "eine Spiegelung, die dem Master Sitzungen nimmt, muss abgelehnt werden: {error}"
+        );
+        assert_eq!(
+            fs::read(master.join("Cookies")).unwrap().len(),
+            98 * 1024,
+            "der Master darf dabei nicht angefasst werden"
+        );
+        assert_eq!(
+            fs::read(master.join("Local State")).unwrap(),
+            b"master-key",
+            "auch der Entschluesselungs-Schluessel bleibt unberuehrt"
+        );
+
+        let _ = set_profile_readonly_strict(&master, false);
         let _ = fs::remove_dir_all(&base);
     }
 

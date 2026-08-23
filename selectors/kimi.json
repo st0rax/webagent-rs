@@ -1,13 +1,8 @@
 {
   "composer": [
-    "div[data-lexical-editor=\"true\"]",
-    "div[contenteditable=\"true\"][data-lexical-editor]",
-    "div[contenteditable=\"true\"]",
-    "div[role='textbox']",
-    "div.km-editor",
-    "div[class*='chat-input'] [contenteditable]",
-    "div[class*='InputArea'] [contenteditable]",
-    "textarea"
+    "div.chat-input-editor[contenteditable='true']",
+    "[class*='chat-input-editor' i][contenteditable='true']",
+    "div[contenteditable='true'][role='textbox']"
   ],
   "send_button": [
     "button[aria-label*='Send' i]",
@@ -45,34 +40,15 @@
     "div[class*='chat-message']:not([class*='user'])"
   ],
   "new_chat_button": [
+    "a[aria-label*='New Chat' i]",
     "a[aria-label*='Neuer Chat' i]",
-    "[aria-label*='Neuer Chat' i]",
-    "[aria-label*='New Chat' i]",
-    "button:has-text('New chat')",
-    "button:has-text('Neuer Chat')",
-    "button:has-text('New')",
-    "button:has-text('新建')",
-    "a[href*='/new']",
-    "button[aria-label*='new' i]",
-    "button[class*='new-chat']"
+    "a.new-chat-btn",
+    "[class*='new-chat-btn']"
   ],
   "login_button": [
-    "button:has-text('Log in')",
-    "button:has-text('Sign in')",
-    "button:has-text('登录')",
-    "button:has-text('Anmelden')",
-    "a:has-text('Log in')",
-    "a:has-text('Sign in')",
-    "a:has-text('登录')",
-    "button[class*='login' i]:not([class*='user' i])",
-    "button[class*='sign-in' i]"
-  ],
-  "login_indicator": [
-    "nav[class*='sidebar']",
-    "div[class*='user-info']",
-    "div[class*='avatar']",
-    "button[class*='user' i]",
-    "a[href*='/settings']"
+    "button.user-area__main:has-text('Log in')",
+    "button.user-area__main:has-text('Anmelden')",
+    ".next-sidebar-history-list__login"
   ],
   "google_sso_button": [
     "button:has-text('Continue with Google')",
@@ -90,5 +66,15 @@
     "file_attach",
     "stop_generation",
     "new_chat"
+  ],
+  "projects_button": [
+    "#v-0-next-sidebar-project-section-title",
+    "button.next-sidebar-section__title:has-text('Projects')"
+  ],
+  "login_indicator": [
+    ".user-profile-trigger",
+    "[id*='next-sidebar-history-section-title']",
+    ".next-sidebar__section-text-action",
+    ".next-sidebar-history-item__link"
   ]
 }

@@ -33,6 +33,10 @@ pub(crate) mod brain;
 pub mod brain_limits;
 pub mod brain_probe;
 pub mod browser;
+// Ohne `webview`/`tui` gibt es die Aufrufer dieser Fenster- und
+// Pool-Logik nicht; die Tests halten sie trotzdem verfuegbar. Das ist
+// gewollt und darf den strikten Headless-Lint nicht rot faerben.
+#[cfg_attr(not(any(feature = "webview", feature = "tui")), allow(dead_code))]
 pub(crate) mod browser_pool;
 pub mod login;
 #[cfg(test)]
@@ -81,8 +85,16 @@ pub mod worker_pool;
 // Brain-Windowing is only needed by the TUI/WebView runtime. Unit tests keep
 // geometry and Wall state logic available in the reduced headless build.
 #[cfg(any(feature = "webview", feature = "tui", test))]
+// Ohne `webview`/`tui` gibt es die Aufrufer dieser Fenster- und
+// Pool-Logik nicht; die Tests halten sie trotzdem verfuegbar. Das ist
+// gewollt und darf den strikten Headless-Lint nicht rot faerben.
+#[cfg_attr(not(any(feature = "webview", feature = "tui")), allow(dead_code))]
 pub(crate) mod brain_grid;
 #[cfg(any(feature = "webview", feature = "tui", test))]
+// Ohne `webview`/`tui` gibt es die Aufrufer dieser Fenster- und
+// Pool-Logik nicht; die Tests halten sie trotzdem verfuegbar. Das ist
+// gewollt und darf den strikten Headless-Lint nicht rot faerben.
+#[cfg_attr(not(any(feature = "webview", feature = "tui")), allow(dead_code))]
 pub(crate) mod brain_wall;
 pub mod repl;
 pub(crate) mod target_check;

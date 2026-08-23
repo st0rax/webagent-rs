@@ -275,6 +275,41 @@ mod tests {
         assert_eq!(runtime_lost_sessions(master, runtime), vec!["kimi"]);
     }
 
+    /// Der Nachweis deckt sechs der neun Brains ab — und nur die, deren
+    /// Cookie-Name eindeutig genug fuer einen Byte-Scan ist.
+    ///
+    /// Gemessen am 2026-08-22 in den kanonischen Profilen. `deepseek` traegt
+    /// keinen eigenen `httpOnly`-Cookie, `qwen` nennt seinen `token` und `zai`
+    /// fuehrt nur einen CDN-Cookie; fuer diese drei gibt es bewusst keinen
+    /// Eintrag, weil ein zu generischer Name auf beliebigen Fremddaten
+    /// anschlaegt und damit gueltige Rueckwege blockieren wuerde.
+    #[test]
+    fn sitzungs_nachweise_decken_die_belegbaren_brains_ab() {
+        let master =
+            b"kimi-auth __Secure-next-auth.session-token ory_session_abc sessionKey               __Secure-pplx.session.uuid COMPASS";
+        let leer = b"nichts davon";
+        let mut verloren = runtime_lost_sessions(master, leer);
+        verloren.sort_unstable();
+        assert_eq!(
+            verloren,
+            vec![
+                "chatgpt",
+                "claude",
+                "gemini",
+                "kimi",
+                "mistral",
+                "perplexity"
+            ],
+            "jeder gemessene Nachweis muss einen Verlust melden koennen"
+        );
+        // Praefix-Treffer: der Instanz-/UUID-Suffix darf den Nachweis nicht
+        // entwerten.
+        assert_eq!(
+            runtime_lost_sessions(b"ory_session_coolcurranf83m3srkfl", b"nichts"),
+            vec!["mistral"]
+        );
+    }
+
     #[test]
     fn kopie_mit_rotierter_sitzung_ist_kein_verlust() {
         // Sitzung erneuert: der Cookie-Name bleibt, nur der Wert ist neu.
@@ -961,16 +996,33 @@ mod tests {
 
     #[test]
     fn brain_datei_gewinnt_die_maske_pro_schluessel() {
-        // Der Brain-Selektor ueberschreibt die Maske je Oberschluessel komplett:
-        // kimi's Composer-Anker (lexical editor) schlaegt den generischen.
+        // Der Brain-Selektor ueberschreibt die Maske je Oberschluessel komplett.
+        //
+        // Geprueft wird die Regel, NICHT ein bestimmter Anker: Der Test stand
+        // bis 2026-08-22 auf kimis lexical-Editor und brach, als die
+        // Umfirmierung auf kimi.ai den Composer zu `chat-input-editor` machte.
+        // Ein Test, der bei jedem Website-Umbau rot wird, misst die Website
+        // statt der Aufloesungsregel.
         let sel = load_selectors("kimi").expect("kimi ist mitgeliefert");
         let composer = sel
             .get("composer")
             .and_then(|v| v.as_array())
             .expect("composer-Liste");
-        assert_eq!(
-            composer[0], "div[data-lexical-editor=\"true\"]",
+        let mask =
+            load_selectors("__unbekanntes_brain_ohne_datei__").expect("Maske traegt jedes Brain");
+        let mask_composer = mask
+            .get("composer")
+            .and_then(|v| v.as_array())
+            .expect("Masken-composer");
+        assert_ne!(
+            composer[0], mask_composer[0],
             "kimi gewinnt ueber die Maske"
+        );
+        assert!(
+            composer
+                .iter()
+                .any(|v| v.as_str().is_some_and(|s| s.contains("chat-input-editor"))),
+            "kimis eigener Composer-Anker muss aus der Brain-Datei stammen: {composer:?}"
         );
     }
 

@@ -17,7 +17,7 @@ use super::git::{
 };
 use super::handoff::HandoffQueue;
 use super::harvest::{
-    harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope,
+    harvest_commit, persist_candidate, scope_compensation_count, validate_task_scope_in,
 };
 use super::report::{format_benchmark_report, print_leaderboard};
 use super::tasks::{
@@ -198,6 +198,102 @@ fn bench_run(
 /// wäre der Bauauftrag wertlos ("ist schon implementiert" → keine Änderung →
 /// fälschlich FAIL). Fällt die Verfeinerung aus, wird der unbelegte Vorschlag
 /// verworfen statt als teurer Bauauftrag durchgereicht.
+/// Aus dem verfeinerten Freitext-Auftrag einen TYPISIERTEN Auftrag gewinnen.
+///
+/// Phase A.5 lieferte bisher nur Prosa. `parse_work_package` und
+/// `evaluate_work_package` lagen fertig daneben, wurden aber nirgends
+/// aufgerufen — der Datei-Scope am Ernte-Tor blieb deshalb immer leer.
+///
+/// Das `objective` setzt die Pipeline selbst, nicht das Brain. Der Scope wird
+/// spaeter ueber genau diesen Text der laufenden Aufgabe zugeordnet; formuliert
+/// das Brain ihn um, findet die Zuordnung nichts und der Scope fiele still weg
+/// — ein Schutz, der lautlos verschwindet, ist schlimmer als keiner.
+///
+/// `None` heisst: kein belastbarer Auftrag. Der Lauf geht dann OHNE Scope
+/// weiter, wie vor dieser Stufe. Ein unbrauchbares JSON ist eine
+/// Verfuegbarkeitsstoerung des Refiners und darf die Runde nicht anhalten;
+/// fail-closed sitzt am Ernte-Tor, wo ein vorhandener Scope gilt.
+fn derive_work_package<Q>(
+    objective: &str,
+    refiner: &str,
+    src_files: &[String],
+    root: &std::path::Path,
+    query: &Q,
+) -> Option<crate::benchmark::work_package::WorkPackage>
+where
+    Q: Fn(&str, &str) -> Result<String, String> + Sync,
+{
+    if refiner.is_empty() || objective.trim().is_empty() {
+        return None;
+    }
+    let dateien = src_files.join(
+        "
+",
+    );
+    let prompt = format!(
+        "Fasse den folgenden Auftrag als WorkPackage-JSON.
+
+         AUFTRAG:
+{objective}
+
+         ERLAUBTE DATEIEN (nur aus dieser Liste, exakt so geschrieben):
+{dateien}
+
+         Antworte mit GENAU EINEM JSON-Objekt, ohne Markdown-Zaun und ohne          Begleittext, mit diesen Feldern:
+         - \"id\": kurze Kennung
+         - \"objective\": der Auftrag in einem Satz
+         - \"allowed_paths\": Liste der Dateien, die der Auftrag anfassen darf
+         - \"anchors\": Liste aus {{\"symbol\",\"path\",\"requirement\"}} mit          requirement \"must_exist\" oder \"must_not_exist\"; \"path\" muss in          allowed_paths stehen
+         - \"acceptance\": Liste aus {{\"command\",\"purpose\"}}
+
+         Nenne in allowed_paths NUR Dateien, die der Auftrag wirklich braucht."
+    );
+    let text = match query(refiner, &prompt) {
+        Ok(t) => t,
+        Err(e) => {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "Auftrags-Typisierung: {refiner} nicht erreichbar ({e}) — Lauf ohne Datei-Scope."
+            );
+            return None;
+        }
+    };
+    let mut package = match crate::benchmark::work_package::parse_work_package(&text) {
+        Ok(p) => p,
+        Err(e) => {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "Auftrags-Typisierung verworfen ({e}) — Lauf ohne Datei-Scope."
+            );
+            return None;
+        }
+    };
+    // Die Zuordnung haengt am Wortlaut, also setzt ihn die Pipeline.
+    package.objective = objective.to_string();
+
+    match crate::benchmark::feasibility::evaluate_work_package(&package, root) {
+        f if f.is_ready() => {
+            bench_say!(
+                crate::bench_events::Level::Pass,
+                None,
+                "Auftrag typisiert: Scope = {}",
+                package.allowed_paths.join(", ")
+            );
+            Some(package)
+        }
+        f => {
+            bench_say!(
+                crate::bench_events::Level::Warn,
+                None,
+                "Auftrag nicht belegbar ({f:?}) — Lauf ohne Datei-Scope."
+            );
+            None
+        }
+    }
+}
+
 fn refine_one<Q>(
     winner: &str,
     facts: &str,
@@ -621,6 +717,12 @@ where
         // nur einmal verfeinern (bei weniger Vorschlaegen als Brains).
         let mut refined_cache: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
+        // Typisierter Auftrag je Aufgabe. Traegt den zugesagten Datei-Scope bis
+        // ans Ernte-Tor; leer = kein Scope, wie vor Phase A.5.
+        let mut task_packages: std::collections::HashMap<
+            String,
+            crate::benchmark::work_package::WorkPackage,
+        > = std::collections::HashMap::new();
         let mut plan: Vec<(String, String)> = Vec::new();
         for (brain, raw) in &assignments {
             let eff = match refined_cache.get(raw) {
@@ -652,6 +754,17 @@ where
                     };
                     t.finish(crate::char_prefix(&refined, 90));
                     refined_cache.insert(raw.clone(), refined.clone());
+                    if !refined.trim().is_empty() {
+                        if let Some(package) = derive_work_package(
+                            &refined,
+                            &refiner,
+                            &src_files,
+                            &config.workdir,
+                            &query,
+                        ) {
+                            task_packages.insert(refined.clone(), package);
+                        }
+                    }
                     refined
                 }
             };
@@ -1157,9 +1270,14 @@ where
                 None
             };
             let scope_error = patch_scope.as_ref().and_then(|(patch, capture_error)| {
-                capture_error
-                    .clone()
-                    .or_else(|| validate_task_scope(patch, effective).err())
+                capture_error.clone().or_else(|| {
+                    validate_task_scope_in(
+                        patch,
+                        effective,
+                        scope_for_task(config, &task_packages, effective),
+                    )
+                    .err()
+                })
             });
             let scope_lint_ok =
                 if scope_error.is_some() && is_pass(did_change, compiled, tests_passed) {
@@ -1271,7 +1389,11 @@ where
             if config.harvest && passed {
                 match patch_scope {
                     Some((patch, None)) if crate::bench_harvest::has_substantive_change(&patch) => {
-                        match validate_task_scope(&patch, effective) {
+                        match validate_task_scope_in(
+                            &patch,
+                            effective,
+                            scope_for_task(config, &task_packages, effective),
+                        ) {
                             Ok(paths) => {
                                 bench_say!(
                                 crate::bench_events::Level::Pass,
@@ -1354,6 +1476,21 @@ where
                     None,
                     "Nichts zu ernten — kein Brain hat bestanden."
                 );
+            }
+            // Ein nicht leerer Vorrat, aus dem `pick_harvest` nichts waehlt,
+            // blieb bisher stumm: die Runde endete ohne Ernte und ohne Grund,
+            // ununterscheidbar von "es gab nichts zu ernten".
+            if !harvest_pool.is_empty() && pick_harvest(&harvest_pool).is_none() {
+                for cand in &harvest_pool {
+                    let grund = crate::bench_harvest::harvest_rejection(&cand.patch)
+                        .unwrap_or_else(|| "ohne inhaltliche Aenderung".to_string());
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(&cand.brain),
+                        "  {}: bestanden, aber nicht erntbar — {grund}",
+                        cand.brain
+                    );
+                }
             }
             if let Some(cand) = pick_harvest(&harvest_pool) {
                 let t = crate::StageTimer::start(format!(
@@ -1526,5 +1663,297 @@ fn ok_x(b: bool) -> &'static str {
         "ok"
     } else {
         "x"
+    }
+}
+
+/// Der zugesagte Datei-Scope fuer GENAU diese Aufgabe, sofern einer vorliegt.
+///
+/// Ein `WorkPackage` beschreibt eine einzelne Aufgabe. Laeuft eine Runde mit
+/// mehreren Aufgaben, darf der Scope des einen Pakets die anderen nicht
+/// einschnueren — deshalb der Abgleich ueber `objective`. Passt er nicht,
+/// bleibt es beim bisherigen Verhalten (nur generische Policy).
+fn scope_for_task<'a>(
+    config: &'a BenchmarkConfig,
+    derived: &'a std::collections::HashMap<String, crate::benchmark::work_package::WorkPackage>,
+    task: &str,
+) -> Option<&'a [String]> {
+    // Ein vom Aufrufer vorgegebenes Paket hat Vorrang: es kommt von aussen
+    // (CLI, Systemabnahme) und soll nicht von einer Brain-Ableitung
+    // ueberstimmt werden.
+    if let Some(package) = config.work_package.as_ref() {
+        if package.objective.trim() == task.trim() {
+            return Some(package.allowed_paths.as_slice());
+        }
+    }
+    // Sonst der in Phase A.5 typisierte Auftrag dieser Aufgabe.
+    derived
+        .get(task.trim())
+        .or_else(|| derived.get(task))
+        .map(|p| p.allowed_paths.as_slice())
+}
+
+#[cfg(test)]
+mod scope_wiring_tests {
+    use super::*;
+    use crate::benchmark::work_package::{AcceptanceCheck, WorkPackage};
+    use std::path::PathBuf;
+
+    fn config_with(package: Option<WorkPackage>) -> BenchmarkConfig {
+        BenchmarkConfig {
+            brains: vec![],
+            rounds: 1,
+            suggestions: 1,
+            build_eval: String::new(),
+            test_eval: String::new(),
+            workdir: PathBuf::from("."),
+            headless: true,
+            max_iterations: 1,
+            harvest: false,
+            verbose: false,
+            parallel: 1,
+            stall_limit: 1,
+            max_handoffs: 0,
+            lint_eval: String::new(),
+            vetoes: vec![],
+            loop_forever: false,
+            work_package: package,
+        }
+    }
+
+    fn empty() -> std::collections::HashMap<String, WorkPackage> {
+        std::collections::HashMap::new()
+    }
+
+    fn package(objective: &str) -> WorkPackage {
+        WorkPackage {
+            id: "wp1".into(),
+            objective: objective.into(),
+            allowed_paths: vec!["src/config.rs".into()],
+            anchors: vec![],
+            acceptance: vec![AcceptanceCheck {
+                command: "cargo test --lib".into(),
+                purpose: "Regressionen".into(),
+            }],
+        }
+    }
+
+    /// Ohne Auftrag bleibt es beim bisherigen Verhalten: kein Scope, das Tor
+    /// prueft nur die generische Policy.
+    #[test]
+    fn kein_paket_kein_scope() {
+        let cfg = config_with(None);
+        assert!(scope_for_task(&cfg, &empty(), "irgendeine Aufgabe").is_none());
+    }
+
+    /// Der Scope greift fuer die Aufgabe, die das Paket beschreibt.
+    #[test]
+    fn passendes_paket_liefert_scope() {
+        let cfg = config_with(Some(package("Baue X um")));
+        let leer = empty();
+        let scope = scope_for_task(&cfg, &leer, "Baue X um").expect("Scope erwartet");
+        assert_eq!(scope, ["src/config.rs".to_string()]);
+    }
+
+    /// Umgebender Leerraum aus der Aufgabenaufbereitung darf den Abgleich nicht
+    /// kippen — sonst faellt der Scope still weg statt zu greifen.
+    #[test]
+    fn leerraum_kippt_den_abgleich_nicht() {
+        let cfg = config_with(Some(package(
+            "  Baue X um
+",
+        )));
+        assert!(scope_for_task(&cfg, &empty(), "Baue X um").is_some());
+    }
+
+    /// Der entscheidende Fall: laeuft eine ANDERE Aufgabe, gilt der Scope des
+    /// Pakets nicht. Ohne diesen Abgleich wuerde der Scope einer Aufgabe alle
+    /// uebrigen Aufgaben der Runde faelschlich einschnueren.
+    #[test]
+    fn fremde_aufgabe_erbt_den_scope_nicht() {
+        let cfg = config_with(Some(package("Baue X um")));
+        assert!(scope_for_task(&cfg, &empty(), "Baue Y um").is_none());
+    }
+
+    /// Ohne vorgegebenes Paket zieht der in Phase A.5 typisierte Auftrag.
+    #[test]
+    fn abgeleiteter_auftrag_liefert_scope() {
+        let mut derived = empty();
+        derived.insert("Baue X um".into(), package("Baue X um"));
+        let cfg = config_with(None);
+        let scope =
+            scope_for_task(&cfg, &derived, "Baue X um").expect("abgeleiteter Scope erwartet");
+        assert_eq!(scope, ["src/config.rs".to_string()]);
+    }
+
+    /// Ein von aussen gesetztes Paket schlaegt die Brain-Ableitung. Sonst
+    /// koennte eine Runde den Scope aufweichen, den der Aufrufer vorgab.
+    #[test]
+    fn vorgegebenes_paket_schlaegt_die_ableitung() {
+        let mut abweichend = package("Baue X um");
+        abweichend.allowed_paths = vec!["src/ganz_woanders.rs".into()];
+        let mut derived = empty();
+        derived.insert("Baue X um".into(), abweichend);
+
+        let cfg = config_with(Some(package("Baue X um")));
+        let scope = scope_for_task(&cfg, &derived, "Baue X um").expect("Scope erwartet");
+        assert_eq!(scope, ["src/config.rs".to_string()]);
+    }
+}
+
+/// Systemabnahme des Scope-Tors auf ECHTEM Git: kein Mock-Patch, sondern der
+/// Diff, den `capture_patch` aus einem realen Arbeitsbaum zieht.
+///
+/// Die Unit-Tests weiter oben pruefen `scope_for_task` und `paths_within_scope`
+/// je fuer sich. Was sie NICHT belegen: dass der Pfad, den git tatsaechlich in
+/// den Diff schreibt (`b/src/...`, Vorwaerts-Schraegstriche, `--no-renames`),
+/// zu der Form passt, in der `allowed_paths` notiert ist. Genau dort waere ein
+/// stiller Fehlschlag am teuersten — das Tor wuerde jeden Patch durchlassen und
+/// sein Gruen waere wertlos.
+#[cfg(test)]
+mod scope_gate_system_tests {
+    use super::*;
+    use crate::benchmark::harvest::validate_task_scope_in;
+    use crate::benchmark::work_package::{AcceptanceCheck, WorkPackage};
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git startet");
+        assert!(
+            out.status.success(),
+            "git {:?} scheiterte: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// Angelegtes Repo mit zwei Dateien unter `src/`, Baseline committet.
+    /// Rueckgabe ist der Repo-Pfad; der Aufrufer raeumt ihn wieder ab.
+    fn repo(stamp: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("webagent-scope-gate-{stamp}"));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).expect("src anlegen");
+        std::fs::write(
+            root.join("src/config.rs"),
+            "pub fn zugesagt() -> u8 {
+    1
+}
+",
+        )
+        .expect("config.rs");
+        std::fs::write(
+            root.join("src/fremd.rs"),
+            "pub fn ausserhalb() -> u8 {
+    1
+}
+",
+        )
+        .expect("fremd.rs");
+        git(&root, &["init", "--quiet"]);
+        git(&root, &["config", "user.email", "test@example.invalid"]);
+        git(&root, &["config", "user.name", "Scope Gate Test"]);
+        git(&root, &["add", "-A"]);
+        git(&root, &["commit", "--quiet", "-m", "baseline"]);
+        root
+    }
+
+    fn package(objective: &str) -> WorkPackage {
+        WorkPackage {
+            id: "wp-system".into(),
+            objective: objective.into(),
+            allowed_paths: vec!["src/config.rs".into()],
+            anchors: vec![],
+            acceptance: vec![AcceptanceCheck {
+                command: "cargo test --lib".into(),
+                purpose: "Regressionen".into(),
+            }],
+        }
+    }
+
+    /// Ein Patch, der NUR die zugesagte Datei anfasst, passiert das Tor — mit
+    /// dem Pfad genau so, wie git ihn schreibt.
+    #[test]
+    fn echter_diff_in_scope_passiert() {
+        let root = repo("in-scope");
+        std::fs::write(
+            root.join("src/config.rs"),
+            "pub fn zugesagt() -> u8 {
+    2
+}
+",
+        )
+        .expect("aendern");
+        let patch = capture_patch(&root).expect("Diff");
+        assert!(
+            patch.contains("src/config.rs"),
+            "Vorbedingung: der Diff nennt die Datei — {patch}"
+        );
+
+        let paths = validate_task_scope_in(
+            &patch,
+            "zugesagt anpassen",
+            Some(package("x").allowed_paths.as_slice()),
+        )
+        .expect("in-scope-Patch muss passieren");
+        assert_eq!(paths, ["src/config.rs".to_string()]);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Der Fall, den die Benchmark-Scheibe als Abnahme verlangt: ein technisch
+    /// sauberer Patch, der eine NICHT zugesagte Datei umbaut, wird abgelehnt.
+    #[test]
+    fn echter_diff_ausserhalb_scope_wird_abgelehnt() {
+        let root = repo("out-of-scope");
+        std::fs::write(
+            root.join("src/fremd.rs"),
+            "pub fn ausserhalb() -> u8 {
+    2
+}
+",
+        )
+        .expect("aendern");
+        let patch = capture_patch(&root).expect("Diff");
+
+        let err = validate_task_scope_in(
+            &patch,
+            "zugesagt anpassen",
+            Some(package("x").allowed_paths.as_slice()),
+        )
+        .expect_err("Patch ausserhalb des Scopes muss abgelehnt werden");
+        assert!(
+            err.contains("src/fremd.rs"),
+            "die Meldung muss die verletzende Datei nennen: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Ohne Scope bleibt derselbe Patch zulaessig. Das haelt fest, dass die
+    /// Ablehnung oben WIRKLICH vom Scope kommt und nicht von der generischen
+    /// Policy — sonst gruente der Test auch bei kaputtem Scope-Vergleich.
+    #[test]
+    fn ohne_scope_bleibt_derselbe_patch_zulaessig() {
+        let root = repo("no-scope");
+        std::fs::write(
+            root.join("src/fremd.rs"),
+            "pub fn ausserhalb() -> u8 {
+    2
+}
+",
+        )
+        .expect("aendern");
+        let patch = capture_patch(&root).expect("Diff");
+
+        assert!(
+            validate_task_scope_in(&patch, "zugesagt anpassen", None).is_ok(),
+            "ohne Scope greift nur die generische Policy"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

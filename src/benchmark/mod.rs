@@ -28,6 +28,8 @@
 //! der Live-Teil (echtes Brain + `cargo` + Git) wird vom Orchestrator end-to-end
 //! geprüft, nicht im Unit-Test.
 
+#[cfg(test)]
+mod e2e_tests;
 mod feasibility;
 mod git;
 mod handoff;
@@ -52,7 +54,10 @@ pub use crate::bench_scoring::{
 pub use feasibility::{evaluate_work_package, Feasibility, FeasibilityIssue};
 pub use git::{build_no_change_prompt, build_repair_prompt};
 pub(crate) use harvest::policy_harvest_block;
-pub use harvest::{scope_compensation_count, validate_harvest_patch, validate_task_scope};
+pub use harvest::{
+    paths_within_scope, scope_compensation_count, validate_harvest_patch, validate_task_scope,
+    validate_task_scope_in,
+};
 pub use pipeline::run_benchmark;
 pub use report::{format_benchmark_report, format_benchmark_result};
 pub use tasks::{
@@ -930,6 +935,7 @@ mod tests {
             lint_eval: String::new(),
             vetoes: Vec::new(),
             loop_forever: false,
+            work_package: None,
         }
     }
 
@@ -1234,5 +1240,96 @@ mod format_benchmark_result_tests {
             format_benchmark_result("large_output", u64::MAX, "bytes"),
             expected
         );
+    }
+    #[test]
+    fn scope_erlaubt_nur_die_zugesagten_dateien() {
+        let allowed = vec![
+            "src/protocol/parser.rs".to_string(),
+            "src/protocol/mod.rs".to_string(),
+        ];
+        assert!(paths_within_scope(&["src/protocol/parser.rs".to_string()], &allowed).is_ok());
+        assert!(
+            paths_within_scope(&[], &allowed).is_ok(),
+            "leerer Patch ist kein Scope-Bruch"
+        );
+
+        let err = paths_within_scope(
+            &[
+                "src/protocol/parser.rs".to_string(),
+                "src/controller.rs".to_string(),
+            ],
+            &allowed,
+        )
+        .expect_err("Datei ausserhalb des Auftrags kam durch");
+        // Die Meldung nennt den Verstoss zuerst und die erlaubten Pfade danach:
+        // Ein Brain soll erfahren, was zulaessig gewesen waere. Geprueft wird
+        // deshalb, dass nur die verletzende Datei ANGEKLAGT wird — nicht, dass
+        // der erlaubte Pfad ueberhaupt nicht vorkommt.
+        let (klage, erlaubt) = err
+            .split_once("(erlaubt waren:")
+            .expect("zweiteilige Meldung");
+        assert!(klage.contains("src/controller.rs"), "{err}");
+        assert!(
+            !klage.contains("src/protocol/parser.rs"),
+            "eine erlaubte Datei darf nicht als Verstoss gemeldet werden: {err}"
+        );
+        assert!(erlaubt.contains("src/protocol/parser.rs"), "{err}");
+    }
+
+    /// Ein Auftrag ohne zugesagte Dateien darf nicht als Freibrief gelten.
+    ///
+    /// Der bequeme Weg waere, einen leeren Scope als "alles erlaubt" zu lesen —
+    /// dann waere jede Ernte ohne Work-Package wieder ungeprueft, und der Schutz
+    /// verschwaende genau dort, wo er gebraucht wird.
+    #[test]
+    fn leerer_scope_ist_kein_freibrief() {
+        let err = paths_within_scope(&["src/lib.rs".to_string()], &[])
+            .expect_err("leerer Scope wurde als Freigabe gelesen");
+        assert!(err.contains("keine erlaubten Pfade"), "{err}");
+    }
+
+    /// Praefix-Aehnlichkeit ist keine Zugehoerigkeit.
+    #[test]
+    fn scope_trifft_exakt_und_nicht_per_praefix() {
+        let allowed = vec!["src/config.rs".to_string()];
+        let err = paths_within_scope(&["src/config_backup.rs".to_string()], &allowed)
+            .expect_err("Praefix-Treffer wurde als im Scope gewertet");
+        assert!(err.contains("src/config_backup.rs"), "{err}");
+    }
+    /// Der Scope-Durchgriff wirkt im echten Ernte-Tor, nicht nur als reine
+    /// Funktion: Ein technisch einwandfreier Patch, der eine nicht zugesagte
+    /// Datei umbaut, muss am Tor scheitern.
+    #[test]
+    fn ernte_tor_verwirft_patch_ausserhalb_der_zugesagten_pfade() {
+        let patch = "--- a/src/controller.rs
++++ b/src/controller.rs
+@@
++fn helfer() {}
+";
+        let task = "controller aufraeumen";
+        // Ohne Scope: die generische Policy laesst ihn durch (bestehende .rs unter src/).
+        assert!(
+            validate_task_scope(patch, task).is_ok(),
+            "Vorbedingung: ohne Auftrags-Scope greift nur die generische Policy"
+        );
+        // Mit Scope: dieselbe Aenderung ist ein Verstoss.
+        let allowed = vec!["src/protocol/parser.rs".to_string()];
+        let err = validate_task_scope_in(patch, task, Some(&allowed))
+            .expect_err("Patch ausserhalb des Auftrags kam durch das Ernte-Tor");
+        assert!(err.contains("src/controller.rs"), "{err}");
+        assert!(err.contains("verlaesst den zugesagten Scope"), "{err}");
+    }
+
+    #[test]
+    fn ernte_tor_laesst_zugesagte_pfade_durch() {
+        let patch = "--- a/src/protocol/parser.rs
++++ b/src/protocol/parser.rs
+@@
++fn helfer() {}
+";
+        let allowed = vec!["src/protocol/parser.rs".to_string()];
+        let paths = validate_task_scope_in(patch, "parser haerten", Some(&allowed))
+            .expect("zugesagter Pfad wurde abgelehnt");
+        assert_eq!(paths, vec!["src/protocol/parser.rs".to_string()]);
     }
 }

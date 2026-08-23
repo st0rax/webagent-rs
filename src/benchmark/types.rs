@@ -60,6 +60,14 @@ pub struct BenchmarkConfig {
     pub vetoes: Vec<String>,
     /// Endlos-Schleife: nach der letzten Runde sofort wieder von vorne.
     pub loop_forever: bool,
+    /// Typisierter Auftrag fuer die EINE Aufgabe, die dieser Lauf baut.
+    ///
+    /// Traegt den zugesagten Datei-Scope (`allowed_paths`) bis ans Ernte-Tor.
+    /// Der Scope greift nur fuer die Aufgabe, die das Paket auch beschreibt
+    /// (Abgleich ueber `objective`) — ein Lauf mit mehreren Aufgaben darf den
+    /// Scope der einen nicht den anderen aufzwingen. `None` ⇒ wie bisher, das
+    /// Tor prueft nur die generische Policy.
+    pub work_package: Option<crate::benchmark::work_package::WorkPackage>,
 }
 
 /// Ein bestandener Brain-Lauf, dessen Diff für die spätere Ernte aufbewahrt wird.
