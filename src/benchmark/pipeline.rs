@@ -1477,6 +1477,21 @@ where
                     "Nichts zu ernten — kein Brain hat bestanden."
                 );
             }
+            // Ein nicht leerer Vorrat, aus dem `pick_harvest` nichts waehlt,
+            // blieb bisher stumm: die Runde endete ohne Ernte und ohne Grund,
+            // ununterscheidbar von "es gab nichts zu ernten".
+            if !harvest_pool.is_empty() && pick_harvest(&harvest_pool).is_none() {
+                for cand in &harvest_pool {
+                    let grund = crate::bench_harvest::harvest_rejection(&cand.patch)
+                        .unwrap_or_else(|| "ohne inhaltliche Aenderung".to_string());
+                    bench_say!(
+                        crate::bench_events::Level::Warn,
+                        Some(&cand.brain),
+                        "  {}: bestanden, aber nicht erntbar — {grund}",
+                        cand.brain
+                    );
+                }
+            }
             if let Some(cand) = pick_harvest(&harvest_pool) {
                 let t = crate::StageTimer::start(format!(
                     "Ernte: {} einspielen + nachpruefen",

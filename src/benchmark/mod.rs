@@ -28,6 +28,8 @@
 //! der Live-Teil (echtes Brain + `cargo` + Git) wird vom Orchestrator end-to-end
 //! geprüft, nicht im Unit-Test.
 
+#[cfg(test)]
+mod e2e_tests;
 mod feasibility;
 mod git;
 mod handoff;
