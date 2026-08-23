@@ -271,6 +271,23 @@ Zwei reale Läufe mit anwesendem Eigentümer, Master-Profil vorher gesichert
 - Same-Brain-Continuation und Cross-Brain-Handoff sind im Benchmarkpfad
   belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
 
+**Der Write-back bleibt ungetestet — aus einem anderen Grund als gedacht.**
+Nach dem EOF-Fix (`6f81f6b`) endet ein TUI-Lauf mit geschlossenem stdin
+regulär, der Shutdown-Pfad läuft also. Trotzdem entstand kein Write-back: Ein
+erfolgreicher Rückweg legt über `reserve_unique_backup_dir` immer eine
+Sicherung an, und deren Zahl blieb unverändert.
+
+Die Ursache ist strukturell. `write_back_session_to_master` schreibt nur, wenn
+`RUNTIME_POOL_PROFILE` im EIGENEN Prozess gesetzt ist. Die Logzeile
+"Laufzeit-Kopie des Hauptprofils" stammte vom Benchmark-KINDPROZESS, dessen
+Ausgabe im selben Log landet — der TUI-Prozess selbst hat nie ein Brain
+geöffnet. Der ANSI-Fallback fährt nur den Worker-Supervisor; Brains im eigenen
+Prozess öffnet allein die interaktive ratatui-Ansicht.
+
+Für den Nachweis fehlt also ein Lauf, in dem DERSELBE Prozess ein Brain öffnet
+und geordnet herunterfährt: die interaktive TUI mit `q`, oder ein zweiter
+Auslöser für `BrowserPool::shutdown_with_result`.
+
 **Befund: abgebrochene Läufe lassen ihre Profil-Klone stehen.** Die beiden
 Läufe hinterließen 780 MB in `profiles/swarm/`, ein weiterer Rest stammt vom
 22.08. Bei sauberem Ende räumt der Lease auf, beim Abbruch nicht. Auf einer
