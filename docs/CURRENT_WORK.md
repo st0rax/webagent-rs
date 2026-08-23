@@ -180,9 +180,11 @@ Diesen Abschnitt vor Änderungen an gemeinsamen Dateien erneut verifizieren:
   ein Eingriff in genau den Profil-/Browserpfad, der am 22.08. das Master-Profil
   zerstört hat, und ohne Livelauf nicht verifizierbar. Deshalb bewusst nicht
   autonom begonnen.
-- **Genau eine sicherste nächste Aktion:** Die grüne Scheibe als PR nach
-  `master` integrieren — `master` ist aus demselben Lint-Grund noch rot, den
-  `51d196f` behebt.
+- **Integriert:** PR #6 ist am 2026-08-23 nach `master` gemerged (`77c45d9`).
+  Damit traegt `master` auch die CI-Reparatur aus `51d196f`.
+- **Genau eine sicherste nächste Aktion:** Roadmap 1 — die Live-Rezertifizierung
+  gemeinsam mit dem Eigentümer. Sie ist der einzige verbleibende Schritt, der
+  ohne neuen Produktionscode auskommt, und blockiert Roadmap 4.
 - **Externe Freigaben:** Live-Browser, Login und kostenpflichtige Provider
   weiterhin nur mit anwesendem Eigentümer.
 
