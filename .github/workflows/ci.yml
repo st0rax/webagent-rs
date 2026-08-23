@@ -34,6 +34,27 @@ jobs:
         run: cargo test --no-default-features --verbose
         # Kern-Unit-Tests ohne Embedded WebView (kein GTK/WebView2 in CI).
 
+  linux-webview:
+    name: build (Linux, WebView via WebKitGTK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      # wry nutzt unter Linux WebKitGTK statt WebView2. Ohne diese Pakete
+      # scheitert schon das Kompilieren, nicht erst der Start.
+      - name: WebKitGTK-Abhaengigkeiten
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev pkg-config
+      # Eigener Job, damit ein Bruch der Linux-WebView-Variante hier auffaellt
+      # und nicht erst beim Release-Tag. Bauen genuegt: Ein WebView laesst sich
+      # ohne Anzeige nicht sinnvoll starten, und ein gruener Testlauf wuerde
+      # eine Funktionsfaehigkeit behaupten, die er nicht geprueft hat.
+      - name: Build (tui + webview)
+        run: cargo build --no-default-features --features tui,webview --verbose
+
   windows:
     name: build & test (Windows, volle Features)
     runs-on: windows-latest

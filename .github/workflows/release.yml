@@ -60,8 +60,15 @@ jobs:
       - name: Rust toolchain
         run: rustup update stable && rustup default stable
 
-      - name: Build release (TUI, no WebView)
-        run: cargo build --release --no-default-features --features tui
+      # wry nutzt unter Linux WebKitGTK statt WebView2. Ohne diese Pakete
+      # scheitert schon das Kompilieren, nicht erst der Start.
+      - name: WebKitGTK-Abhaengigkeiten
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev pkg-config
+
+      - name: Build release (TUI + WebView via WebKitGTK)
+        run: cargo build --release --no-default-features --features tui,webview
 
       - name: Stage artifacts
         run: |

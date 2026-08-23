@@ -7,7 +7,64 @@ sondern die im Browser angemeldete Session.
 
 Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: Kern und
 Session-TUI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
-(`wry`/`tao`, WebView2) auf Windows.
+(`wry`/`tao`) auf Windows über WebView2 und auf Linux über WebKitGTK.
+
+## Schnellstart (Benutzen, nicht Entwickeln)
+
+Du brauchst **kein** Rust und keinen Quellcode — nur das fertige Programm aus
+[Releases](https://github.com/st0rax/webagent-rs/releases/latest) und ein
+Nutzerkonto bei mindestens einem der Chat-Dienste.
+
+**1. Herunterladen und ausführbar machen**
+
+```bash
+# Linux
+chmod +x webagent-linux-x86_64
+```
+
+Unter Windows: `webagent-windows-x86_64.exe` und `WebView2Loader.dll` in
+denselben Ordner legen.
+
+**2. Systempakete (nur Linux)**
+
+Der eingebettete Browser nutzt WebKitGTK. Unter Debian/Ubuntu:
+
+```bash
+sudo apt update && sudo apt install -y libwebkit2gtk-4.1-0
+```
+
+Unter Windows ist WebView2 in aktuellen Systemen bereits vorhanden.
+
+**3. Einrichten und anmelden**
+
+```bash
+./webagent-linux-x86_64 oobe
+./webagent-linux-x86_64 login --brain chatgpt
+```
+
+`login` öffnet ein Browserfenster. **Du meldest dich dort selbst an** — das
+Programm fragt nie nach Zugangsdaten und speichert keine. Die Sitzung bleibt
+im eigenen Profil erhalten, eine Anmeldung je Dienst genügt.
+
+**4. Erste Aufgabe**
+
+```bash
+./webagent-linux-x86_64 run --brain chatgpt --task "Liste die Dateien hier auf und fasse zusammen, worum es geht"
+```
+
+Der Chat plant, dein Rechner führt aus. Prüfen, ob eine Oberfläche fahrbar ist:
+`diagnose --brain chatgpt`.
+
+> **Stand Linux:** Der WebView-Build für Linux ist neu und bisher nur *gebaut*,
+> nicht auf einem Linux-Desktop *erprobt*. Unter Windows läuft er im täglichen
+> Gebrauch. Wenn unter Linux etwas klemmt, ist das kein Bedienfehler — bitte ein
+> Issue aufmachen.
+
+> **Android/Termux:** Das aarch64-Binary enthält Kern, REPL und CLI, aber
+> **keinen** eingebetteten Browser — dafür bräuchte es ein APK. Brains lassen
+> sich dort nicht fahren.
+
+---
 
 > **Neu im Projekt?** Beginne mit [`START_HERE.md`](START_HERE.md). Der kurze
 > aktuelle Arbeitsstand steht in
@@ -15,7 +72,7 @@ Session-TUI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
 > [`CONTRIBUTING.md`](CONTRIBUTING.md) und die Zusammenarbeit in
 > [`docs/COLLABORATION.md`](docs/COLLABORATION.md).
 
-> **Status (v0.9.2):** Session-TUI ist der Default. Der genaue aktuelle
+> **Status (v0.10.1):** Session-TUI ist der Default. Der genaue aktuelle
 > Abnahme- und Arbeitsstand steht in
 > [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md); lokale Testergebnisse sind
 > immer an den dort genannten Commit gebunden.
@@ -217,12 +274,13 @@ vertrauenswürdigen Umgebung und mit angemessen begrenzten Nutzerrechten nutzen.
 | Plattform | Artifact | Was darin steckt |
 |---|---|---|
 | Windows x86_64 | `webagent-windows-x86_64.exe` + `WebView2Loader.dll` | Session-TUI, REPL, Pool/Wand, Embedded WebView2 |
-| Linux x86_64 | `webagent-linux-x86_64` | Session-TUI, REPL, CLI (`--no-default-features --features tui`) |
+| Linux x86_64 | `webagent-linux-x86_64` | Session-TUI, REPL, CLI **und Embedded WebView über WebKitGTK** (`--features tui,webview`); braucht `libwebkit2gtk-4.1-0` |
 | Android aarch64 | `webagent-aarch64-linux-android` | dasselbe für Termux, kein Play-Store-APK, kein Embedded WebView |
 
 GitHub-Releases entstehen beim Tag `v*` (`.github/workflows/release.yml`).
-Embedded-WebView-Brains sind Windows; Linux/Android nutzen denselben Kern ohne
-WebView2. Android-CI baut denselben Termux-Target (`.github/workflows/android.yml`).
+Embedded-WebView-Brains laufen unter Windows (WebView2) und Linux (WebKitGTK).
+Android/Termux nutzt denselben Kern **ohne** eingebetteten Browser — dafür
+bräuchte es ein APK, kein CLI-Binary. Android-CI baut denselben Termux-Target (`.github/workflows/android.yml`).
 
 ## Lizenz
 
