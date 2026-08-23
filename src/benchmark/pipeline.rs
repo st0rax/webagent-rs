@@ -1624,3 +1624,161 @@ mod scope_wiring_tests {
         assert!(scope_for_task(&cfg, "Baue Y um").is_none());
     }
 }
+
+/// Systemabnahme des Scope-Tors auf ECHTEM Git: kein Mock-Patch, sondern der
+/// Diff, den `capture_patch` aus einem realen Arbeitsbaum zieht.
+///
+/// Die Unit-Tests weiter oben pruefen `scope_for_task` und `paths_within_scope`
+/// je fuer sich. Was sie NICHT belegen: dass der Pfad, den git tatsaechlich in
+/// den Diff schreibt (`b/src/...`, Vorwaerts-Schraegstriche, `--no-renames`),
+/// zu der Form passt, in der `allowed_paths` notiert ist. Genau dort waere ein
+/// stiller Fehlschlag am teuersten — das Tor wuerde jeden Patch durchlassen und
+/// sein Gruen waere wertlos.
+#[cfg(test)]
+mod scope_gate_system_tests {
+    use super::*;
+    use crate::benchmark::harvest::validate_task_scope_in;
+    use crate::benchmark::work_package::{AcceptanceCheck, WorkPackage};
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git startet");
+        assert!(
+            out.status.success(),
+            "git {:?} scheiterte: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// Angelegtes Repo mit zwei Dateien unter `src/`, Baseline committet.
+    /// Rueckgabe ist der Repo-Pfad; der Aufrufer raeumt ihn wieder ab.
+    fn repo(stamp: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("webagent-scope-gate-{stamp}"));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).expect("src anlegen");
+        std::fs::write(
+            root.join("src/config.rs"),
+            "pub fn zugesagt() -> u8 {
+    1
+}
+",
+        )
+        .expect("config.rs");
+        std::fs::write(
+            root.join("src/fremd.rs"),
+            "pub fn ausserhalb() -> u8 {
+    1
+}
+",
+        )
+        .expect("fremd.rs");
+        git(&root, &["init", "--quiet"]);
+        git(&root, &["config", "user.email", "test@example.invalid"]);
+        git(&root, &["config", "user.name", "Scope Gate Test"]);
+        git(&root, &["add", "-A"]);
+        git(&root, &["commit", "--quiet", "-m", "baseline"]);
+        root
+    }
+
+    fn package(objective: &str) -> WorkPackage {
+        WorkPackage {
+            id: "wp-system".into(),
+            objective: objective.into(),
+            allowed_paths: vec!["src/config.rs".into()],
+            anchors: vec![],
+            acceptance: vec![AcceptanceCheck {
+                command: "cargo test --lib".into(),
+                purpose: "Regressionen".into(),
+            }],
+        }
+    }
+
+    /// Ein Patch, der NUR die zugesagte Datei anfasst, passiert das Tor — mit
+    /// dem Pfad genau so, wie git ihn schreibt.
+    #[test]
+    fn echter_diff_in_scope_passiert() {
+        let root = repo("in-scope");
+        std::fs::write(
+            root.join("src/config.rs"),
+            "pub fn zugesagt() -> u8 {
+    2
+}
+",
+        )
+        .expect("aendern");
+        let patch = capture_patch(&root).expect("Diff");
+        assert!(
+            patch.contains("src/config.rs"),
+            "Vorbedingung: der Diff nennt die Datei — {patch}"
+        );
+
+        let paths = validate_task_scope_in(
+            &patch,
+            "zugesagt anpassen",
+            Some(package("x").allowed_paths.as_slice()),
+        )
+        .expect("in-scope-Patch muss passieren");
+        assert_eq!(paths, ["src/config.rs".to_string()]);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Der Fall, den die Benchmark-Scheibe als Abnahme verlangt: ein technisch
+    /// sauberer Patch, der eine NICHT zugesagte Datei umbaut, wird abgelehnt.
+    #[test]
+    fn echter_diff_ausserhalb_scope_wird_abgelehnt() {
+        let root = repo("out-of-scope");
+        std::fs::write(
+            root.join("src/fremd.rs"),
+            "pub fn ausserhalb() -> u8 {
+    2
+}
+",
+        )
+        .expect("aendern");
+        let patch = capture_patch(&root).expect("Diff");
+
+        let err = validate_task_scope_in(
+            &patch,
+            "zugesagt anpassen",
+            Some(package("x").allowed_paths.as_slice()),
+        )
+        .expect_err("Patch ausserhalb des Scopes muss abgelehnt werden");
+        assert!(
+            err.contains("src/fremd.rs"),
+            "die Meldung muss die verletzende Datei nennen: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Ohne Scope bleibt derselbe Patch zulaessig. Das haelt fest, dass die
+    /// Ablehnung oben WIRKLICH vom Scope kommt und nicht von der generischen
+    /// Policy — sonst gruente der Test auch bei kaputtem Scope-Vergleich.
+    #[test]
+    fn ohne_scope_bleibt_derselbe_patch_zulaessig() {
+        let root = repo("no-scope");
+        std::fs::write(
+            root.join("src/fremd.rs"),
+            "pub fn ausserhalb() -> u8 {
+    2
+}
+",
+        )
+        .expect("aendern");
+        let patch = capture_patch(&root).expect("Diff");
+
+        assert!(
+            validate_task_scope_in(&patch, "zugesagt anpassen", None).is_ok(),
+            "ohne Scope greift nur die generische Policy"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
