@@ -1379,7 +1379,14 @@ pub fn run_tui(
         }
         eprintln!("[tui] Kein interaktives Terminal (umgeleitet/detached) — ANSI-Fallback.");
     }
-    run_tui_ansi(active, brains, poll_secs, headless, startup_benchmark)
+    run_tui_ansi(
+        active,
+        brains,
+        poll_secs,
+        headless,
+        run_secs,
+        startup_benchmark,
+    )
 }
 
 #[cfg(test)]
