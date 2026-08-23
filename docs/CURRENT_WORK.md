@@ -296,10 +296,29 @@ bleibt der Tab offen, der Teardown unterbleibt und der Rückweg wird nie
 gegangen. Ein Lauf, der nur den Supervisor fährt oder gar keine Anfrage stellt,
 öffnet ausserdem keinen Tab — dann gibt es nichts zu stoppen.
 
+## Worker-Heartbeat unter Last (2026-08-23, 05:35 UTC)
+
+Der letzte offene Punkt aus Roadmap 2. Eine echte Aufgabe wurde in
+`agents/qwen/inbox/` abgelegt und von einem laufenden `workers`-Supervisor
+abgeholt:
+
+- `heartbeat_qwen.json` wird bei JEDEM Poll neu geschrieben und tickte
+  durchgehend (05:33:02 → 05:35:10), auch während der Worker arbeitete;
+- die Nachricht wanderte aus der Inbox nach `_read/`;
+- `state.json` führt sie unter `processed`, mit `registered`, `last_seen` und
+  `last_lineage: "claude -> qwen"`.
+
+Eine Randnotiz, die Zeit gekostet hat: Der erste Versuch blieb liegen, weil das
+Nachrichtenformat nicht stimmte. `Msg::parse` verlangt die Header `From`, `To`
+und `Time` in genau dieser Schreibweise, gefolgt von einer Leerzeile. Eine
+Datei mit abweichenden Headern wird stillschweigend übersprungen — sie bleibt
+in der Inbox liegen, ohne Meldung, und sieht von aussen aus wie ein hängender
+Worker.
+
 Damit sind für Roadmap 2 belegt: Poolstart, Auto-Recovery, Profil-Lease über
-neun Brains, Parallelbetrieb, geordneter Shutdown und der Write-back ins
-Master. Offen bleibt allein der **Worker-Heartbeat unter echter Last** — die
-Worker pollten in allen Läufen eine leere Inbox.
+neun Brains, Parallelbetrieb, geordneter Shutdown, der Write-back ins Master
+und der Worker-Heartbeat unter Last. Same-Brain-Continuation und
+Cross-Brain-Handoff sind im Benchmarkpfad belegt (`e2e_tests.rs`).
 
 **Frühere Notiz, jetzt überholt:**
 

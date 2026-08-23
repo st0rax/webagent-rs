@@ -49,7 +49,7 @@ Evidenz.
 |---|---|---|
 | Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `codex/project-takeover`; 1.189 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.123 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures. **CI seit `51d196f` wieder grün** — sie war vom 22.08. bis dahin auf jedem Push rot, auch auf `master` | Integration des geprüften Zweigs in den maßgeblichen Upstream |
 | Provider-/WebView-Livebetrieb | **Rezertifiziert am 2026-08-23** mit anwesendem Eigentümer: Diagnose 9/9 (alle angemeldet, bereit, keine Cloudflare-Wand), Relay 8/9 gegen echte Browser. `perplexity` fällt aus — es antwortet, aber kein `assistant_message`-Selektor findet die Antwort | Reparatur des perplexity-Selektors; `mistral` und `zai` liefern UI-Beiwerk im extrahierten Text |
-| Pool, Worker und Cross-Brain-Handoff | Continuation, Stall und Cross-Brain-Handoff im Benchmark-Pfad end-to-end belegt. Live am 2026-08-23: Poolstart, Auto-Recovery, Profil-Lease über neun Brains im Parallelbetrieb, geordneter Shutdown **und der Write-back ins Master** (23→33 Hosts, additiv, nichts überschrieben) | Worker-Heartbeat unter echter Last — die Worker pollten stets eine leere Inbox |
+| Pool, Worker und Cross-Brain-Handoff | **Abgenommen am 2026-08-23**: Poolstart, Auto-Recovery, Profil-Lease über neun Brains im Parallelbetrieb, geordneter Shutdown, Write-back ins Master (23→33 Hosts, additiv) und Worker-Heartbeat unter echter Last. Continuation, Stall und Cross-Brain-Handoff im Benchmark-Pfad end-to-end belegt | — |
 | Benchmark/Autoresearch/Harvest | **Abgenommen** (2026-08-23, `src/benchmark/e2e_tests.rs`): providerfreier Lauf auf echtem temporärem Git-Repo, Auftrag → Bau → Gates → Ernte, mit Fresh, Continuation gleicher Run-ID, Stall, Cross-Brain-Handoff und fail-closed verworfenem Scope-Verstoß | — |
 | Free-Cloud-Textchat | Registry, Policy, Mock-Stream, Metadaten- und Breaker-Verträge lokal implementiert | kein echter HTTP-/Provideradapter; externe Inferenz bleibt bis zur ausdrücklichen Freigabe außerhalb des Lieferstands |
 | Release | Workflows und Buildskripte vorhanden | aktueller Artefaktlauf sowie bewusstes Push/Tag/Release |
@@ -221,16 +221,21 @@ antwortet, der Harness sieht es nicht) und das UI-Beiwerk bei `mistral` und
 Historische Providerzahlen bleiben ungültig als Ersatz; Browser-, Login- und
 Accountzugriffe weiterhin nur nach ausdrücklicher Nutzerfreigabe.
 
-### 2. Integrierte Mehr-Brain-Abnahme — erbracht bis auf den Heartbeat (2026-08-23)
+### 2. Integrierte Mehr-Brain-Abnahme — erledigt am 2026-08-23
 
 Belegt: Poolstart, Auto-Recovery, Profil-Lease über neun Brains im
-Parallelbetrieb, geordneter Shutdown und der Write-back ins Master-Profil
-(23→33 Hosts, 102→144 Cookies, rein additiv). Der Rückweg läuft nur mit
-`WEBAGENT_PERSIST_TABS=0`, weil `persist_browser_tabs()` im Shared-Modus per
-Default `true` liefert und der Tab dann offen bleibt.
+Parallelbetrieb, geordneter Shutdown, der Write-back ins Master-Profil
+(23→33 Hosts, 102→144 Cookies, rein additiv) und der Worker-Heartbeat unter
+echter Last — eine Aufgabe aus der Inbox wurde aufgenommen, in `_read/`
+verschoben und in `state.json` als verarbeitet geführt, während der Heartbeat
+durchlief.
 
-Offen bleibt der Worker-Heartbeat unter echter Last — in allen Läufen pollten
-die Worker eine leere Inbox. Einzelheiten in `CURRENT_WORK.md`.
+Zwei Stolperstellen, die dokumentiert bleiben, weil sie jeden künftigen Lauf
+kosten: Der Rückweg läuft nur mit `WEBAGENT_PERSIST_TABS=0`, weil
+`persist_browser_tabs()` im Shared-Modus per Default `true` liefert. Und
+`Msg::parse` verlangt die Header `From`, `To`, `Time` exakt so — eine Nachricht
+mit abweichenden Headern bleibt still in der Inbox liegen und sieht von aussen
+wie ein hängender Worker aus. Einzelheiten in `CURRENT_WORK.md`.
 
 Unit-Tests der Einzelverträge ersetzen den fehlenden Rest nicht.
 
