@@ -511,10 +511,7 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
     // `with_additional_browser_args` gibt es nur fuer WebView2. Unter Linux
     // fuehrt WebKitGTK keine Kommandozeile, die Argumente entfallen ersatzlos.
     #[cfg(windows)]
-    let builder = {
-        use wry::WebViewBuilderExtWindows;
-        builder.with_additional_browser_args(browser_args())
-    };
+    let builder = builder.with_additional_browser_args(browser_args());
     let webview = builder
         .build(&window)
         .map_err(|e| PageDriverError::Launch(e.to_string()))?;
