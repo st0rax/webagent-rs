@@ -1,6 +1,6 @@
 [package]
 name = "webagent"
-version = "0.10.1"
+version = "0.11.0"
 edition = "2021"
 description = "WebAgent — lokaler, browserbasierter Agent (Rust-Port). Web-Chats als Gehirn, lokale Shell als Werkzeug."
 license = "MIT"
