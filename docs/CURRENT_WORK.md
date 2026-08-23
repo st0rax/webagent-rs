@@ -262,14 +262,11 @@ Zwei reale Läufe mit anwesendem Eigentümer, Master-Profil vorher gesichert
   vorher gezogene Referenz verglichen. Das ist die erste Live-Erprobung des
   Mechanismus seit dem Schaden vom 22.08.
 
-**Nicht belegt, und deshalb bleibt Roadmap 2 offen:**
-
-- Geordneter Shutdown. Beide Läufe endeten am Timeout, nicht am regulären Ende.
-  Damit fand auch kein Write-back ins Master statt — dass das Master heil
-  blieb, belegt also die Schutzlogik, nicht den erfolgreichen Rückweg.
-- Worker-Heartbeat unter echter Last: die Worker pollten eine leere Inbox.
-- Same-Brain-Continuation und Cross-Brain-Handoff sind im Benchmarkpfad
-  belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
+**Nach diesen zwei Läufen noch offen — inzwischen alles nachgeholt, siehe
+unten:** geordneter Shutdown, Write-back und Heartbeat unter Last. Beide Läufe
+endeten am Timeout; dass das Master dabei heil blieb, belegte die Schutzlogik,
+nicht den Rückweg. Same-Brain-Continuation und Cross-Brain-Handoff sind im
+Benchmarkpfad belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
 
 ## Der Write-back ist belegt (2026-08-23, 07:25 UTC)
 
@@ -320,24 +317,26 @@ neun Brains, Parallelbetrieb, geordneter Shutdown, der Write-back ins Master
 und der Worker-Heartbeat unter Last. Same-Brain-Continuation und
 Cross-Brain-Handoff sind im Benchmarkpfad belegt (`e2e_tests.rs`).
 
-**Frühere Notiz, jetzt überholt:**
+**Weiterhin gültig: die TUI lässt sich nicht fernsteuernd beenden.** Der
+Write-back oben lief über die REPL, nicht über die TUI. Für die TUI bleibt es
+dabei:
 
-**Der Write-back bleibt ungetestet — aus einem anderen Grund als gedacht.**
-Nach dem EOF-Fix (`6f81f6b`) endet ein TUI-Lauf mit geschlossenem stdin
-regulär, der Shutdown-Pfad läuft also. Trotzdem entstand kein Write-back: Ein
-erfolgreicher Rückweg legt über `reserve_unique_backup_dir` immer eine
-Sicherung an, und deren Zahl blieb unverändert.
+**Befund: die TUI lässt sich nicht fernsteuernd beenden.** Ein dritter Lauf
+(`tui --active 1 --brains deepseek` mit `WEBAGENT_USE_SHARED_BROWSER=1`) sollte
+den geordneten Shutdown auslösen. Die Datei-IPC `pool_control.json` kennt dafür
+`stop` — "Supervisor sauber beenden". Die Datei wurde nachweislich abgeholt
+(atomares Rename, sie verschwand), der Prozess lief aber weiter: `stop` beendet
+den Worker-Supervisor, nicht die TUI-Hauptschleife. Die wartet auf `q` von der
+Tastatur, und `taskkill` ohne `/F` weist sie ab.
 
-Die Ursache ist strukturell. `write_back_session_to_master` schreibt nur, wenn
-`RUNTIME_POOL_PROFILE` im EIGENEN Prozess gesetzt ist. Die Logzeile
-"Laufzeit-Kopie des Hauptprofils" stammte vom Benchmark-KINDPROZESS, dessen
-Ausgabe im selben Log landet — der TUI-Prozess selbst hat nie ein Brain
-geöffnet. Der ANSI-Fallback fährt nur den Worker-Supervisor; Brains im eigenen
-Prozess öffnet allein die interaktive ratatui-Ansicht.
+Damit ist der Write-back-Pfad nicht automatisiert erreichbar. Wer den
+Systemnachweis ohne Hand am Terminal führen will, braucht entweder ein
+`stop`, das auch die TUI beendet, oder einen anderen Auslöser für
+`BrowserPool::shutdown_with_result` — heute ruft nur die TUI ihn auf.
 
-Für den Nachweis fehlt also ein Lauf, in dem DERSELBE Prozess ein Brain öffnet
-und geordnet herunterfährt: die interaktive TUI mit `q`, oder ein zweiter
-Auslöser für `BrowserPool::shutdown_with_result`.
+Immerhin: Das Master-Profil blieb auch bei diesem dritten Lauf unverändert,
+diesmal sogar nach einem erzwungenen `taskkill /F` im Shared-Browser-Modus.
+
 
 **Befund: abgebrochene Läufe lassen ihre Profil-Klone stehen.** Die beiden
 Läufe hinterließen 780 MB in `profiles/swarm/`, ein weiterer Rest stammt vom
