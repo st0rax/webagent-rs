@@ -262,14 +262,64 @@ Zwei reale Läufe mit anwesendem Eigentümer, Master-Profil vorher gesichert
   vorher gezogene Referenz verglichen. Das ist die erste Live-Erprobung des
   Mechanismus seit dem Schaden vom 22.08.
 
-**Nicht belegt, und deshalb bleibt Roadmap 2 offen:**
+**Nach diesen zwei Läufen noch offen — inzwischen alles nachgeholt, siehe
+unten:** geordneter Shutdown, Write-back und Heartbeat unter Last. Beide Läufe
+endeten am Timeout; dass das Master dabei heil blieb, belegte die Schutzlogik,
+nicht den Rückweg. Same-Brain-Continuation und Cross-Brain-Handoff sind im
+Benchmarkpfad belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
 
-- Geordneter Shutdown. Beide Läufe endeten am Timeout, nicht am regulären Ende.
-  Damit fand auch kein Write-back ins Master statt — dass das Master heil
-  blieb, belegt also die Schutzlogik, nicht den erfolgreichen Rückweg.
-- Worker-Heartbeat unter echter Last: die Worker pollten eine leere Inbox.
-- Same-Brain-Continuation und Cross-Brain-Handoff sind im Benchmarkpfad
-  belegt (`e2e_tests.rs`), nicht im Pool-Kontext.
+## Der Write-back ist belegt (2026-08-23, 07:25 UTC)
+
+Der Rückweg ins Master-Profil funktioniert. Gemessen an einem REPL-Lauf im
+Shared-Modus mit geschlossenem stdin:
+
+| | vorher | nachher |
+|---|---|---|
+| Hosts im Master | 23 | 33 |
+| Cookies | 102 | 144 |
+| `COMPASS` (gemini-Sitzungsnachweis) | fehlt | vorhanden |
+| Zeitstempel der Cookie-DB | — | 07:25:51, also während des Laufs |
+
+Das Master wurde **erweitert, nicht ersetzt**: Kein Host verschwand, keine
+Cookie-Zahl sank. Genau das ist das Verhalten, das der Schaden vom 22.08.
+vermissen liess, als ein `login-all` die Datenbank neunmal überschrieb und der
+letzte Brain gewann.
+
+**Der Weg dorthin, weil er nicht offensichtlich ist.** `stop_brain` löst beim
+letzten Tab `shutdown_shared_runtime_with_result` aus — den Write-back. Er
+läuft aber nur, wenn `persist_browser_tabs()` false ist, und die Funktion
+liefert im Shared-Modus per Default **true**. Ohne `WEBAGENT_PERSIST_TABS=0`
+bleibt der Tab offen, der Teardown unterbleibt und der Rückweg wird nie
+gegangen. Ein Lauf, der nur den Supervisor fährt oder gar keine Anfrage stellt,
+öffnet ausserdem keinen Tab — dann gibt es nichts zu stoppen.
+
+## Worker-Heartbeat unter Last (2026-08-23, 05:35 UTC)
+
+Der letzte offene Punkt aus Roadmap 2. Eine echte Aufgabe wurde in
+`agents/qwen/inbox/` abgelegt und von einem laufenden `workers`-Supervisor
+abgeholt:
+
+- `heartbeat_qwen.json` wird bei JEDEM Poll neu geschrieben und tickte
+  durchgehend (05:33:02 → 05:35:10), auch während der Worker arbeitete;
+- die Nachricht wanderte aus der Inbox nach `_read/`;
+- `state.json` führt sie unter `processed`, mit `registered`, `last_seen` und
+  `last_lineage: "claude -> qwen"`.
+
+Eine Randnotiz, die Zeit gekostet hat: Der erste Versuch blieb liegen, weil das
+Nachrichtenformat nicht stimmte. `Msg::parse` verlangt die Header `From`, `To`
+und `Time` in genau dieser Schreibweise, gefolgt von einer Leerzeile. Eine
+Datei mit abweichenden Headern wird stillschweigend übersprungen — sie bleibt
+in der Inbox liegen, ohne Meldung, und sieht von aussen aus wie ein hängender
+Worker.
+
+Damit sind für Roadmap 2 belegt: Poolstart, Auto-Recovery, Profil-Lease über
+neun Brains, Parallelbetrieb, geordneter Shutdown, der Write-back ins Master
+und der Worker-Heartbeat unter Last. Same-Brain-Continuation und
+Cross-Brain-Handoff sind im Benchmarkpfad belegt (`e2e_tests.rs`).
+
+**Weiterhin gültig: die TUI lässt sich nicht fernsteuernd beenden.** Der
+Write-back oben lief über die REPL, nicht über die TUI. Für die TUI bleibt es
+dabei:
 
 **Befund: die TUI lässt sich nicht fernsteuernd beenden.** Ein dritter Lauf
 (`tui --active 1 --brains deepseek` mit `WEBAGENT_USE_SHARED_BROWSER=1`) sollte
@@ -287,6 +337,7 @@ Systemnachweis ohne Hand am Terminal führen will, braucht entweder ein
 Immerhin: Das Master-Profil blieb auch bei diesem dritten Lauf unverändert,
 diesmal sogar nach einem erzwungenen `taskkill /F` im Shared-Browser-Modus.
 
+
 **Befund: abgebrochene Läufe lassen ihre Profil-Klone stehen.** Die beiden
 Läufe hinterließen 780 MB in `profiles/swarm/`, ein weiterer Rest stammt vom
 22.08. Bei sauberem Ende räumt der Lease auf, beim Abbruch nicht. Auf einer
@@ -296,6 +347,48 @@ Nebenbefund zur Kopierstrategie: Die Sparse-Klone lagen bei 24–51 MB
 (perplexity 147 MB), die Klone des Pool-Laufs ohne `WEBAGENT_SPARSE_COPY` bei
 107–166 MB. Der Lease-Lauf lief bewusst sparse, weil neun volle Klone à 531 MB
 die Platte gesprengt hätten; der Standardpfad ist damit nicht mitgemessen.
+
+## Korrektur 2026-08-23: das Master-Profil ist NICHT vollständig
+
+Beim TUI-Lauf meldete der Harness von sich aus:
+
+> Master kennt claude, perplexity, gemini nicht, obwohl die kanonischen Profile
+> eingeloggt sind. Der Pool wuerde Login nötig melden trotz gueltiger Session.
+> Abhilfe: login-all
+
+Unabhängig nachgemessen (Rohbyte-Scan der Cookie-Datenbanken auf die
+Nachweis-Cookies aus `SESSION_PROOF_COOKIES`):
+
+| Brain | Nachweis-Cookie | kanonisch | Master |
+|---|---|---|---|
+| kimi | `kimi-auth` | ja | ja |
+| chatgpt | `__Secure-next-auth.session-token` | ja | ja |
+| mistral | `ory_session` | ja | ja |
+| claude | `sessionKey` | ja | **nein** |
+| perplexity | `__Secure-pplx.session` | ja | **nein** |
+| gemini | `COMPASS` | ja | **nein** |
+
+**Was das für die Wiederherstellung vom 23.08. heisst.** Der Klon aus
+`profiles/qwen` hob das Master von "nur z.ai" auf sechs von neun Brains — aber
+nicht auf neun. Ein kanonisches Profil trägt auch Cookies der Nachbarn aus
+gemeinsamen Login-Runden; die *Domain* ist deshalb vorhanden, der eigene
+Sitzungsnachweis aber nicht. Genau diese Unterscheidung macht
+`master_missing_sessions_from_canonical`, und genau sie habe ich beim Zählen
+der Cookie-Domains übersehen.
+
+Damit gilt beides nebeneinander, was vorher wie ein Widerspruch aussah:
+
+- Die **kanonischen Profile** sind vollständig und live belegt — Diagnose 9/9,
+  Relay 8/9. `verify`, `login`, `probe`, `relay` und `diagnose` arbeiten auf
+  ihnen und funktionieren.
+- Das **Master** (`profiles/shared`) ist für den Shared-Betrieb (Pool, TUI,
+  Benchmark) unvollständig. Dort würden claude, perplexity und gemini als
+  "Login nötig" gemeldet, obwohl gültige Sitzungen existieren.
+
+**Abhilfe, wenn der Shared-Betrieb gebraucht wird:** `login-all` im
+Shared-Modus für diese drei Brains — Anmeldung durch den Eigentümer. Nicht neun
+Anmeldungen, wie ich am 23.08. zuerst schätzte, und auch nicht null, wie ich
+danach behauptete: drei.
 
 ## Aktiver Edit
 

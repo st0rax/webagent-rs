@@ -533,6 +533,18 @@ pub enum Commands {
         #[arg(long)]
         headless: bool,
 
+        /// Nach dieser Laufzeit (Sekunden) regulaer beenden, als haette jemand
+        /// `q` gedrueckt — inklusive Pool-Shutdown und Write-back ins
+        /// Master-Profil. 0 = laeuft bis zur Eingabe.
+        ///
+        /// Ohne das ist der Rueckweg ins Master ueberhaupt nicht ohne Hand am
+        /// Terminal erreichbar: `shutdown_with_result` hat genau einen
+        /// Aufrufer, und der sitzt hinter der Tastenabfrage. Die Datei-IPC
+        /// (`pool_control.json`) hilft nicht — ihr `stop` beendet den
+        /// Worker-Supervisor, nicht die TUI-Schleife (gemessen 2026-08-23).
+        #[arg(long, default_value = "0")]
+        run_secs: u64,
+
         /// Startet beim Öffnen der TUI sofort diesen Benchmark-Argumentstring.
         ///
         /// Der Wert beginnt selbst mit `--`, deshalb MUSS die Gleichheitszeichen-

@@ -489,7 +489,7 @@ impl ReplSession {
                     eprintln!("[pool] Aktives Brain konnte nicht gestoppt werden: {e}");
                     return ReplAction::Continue;
                 }
-                let code = crate::tui::run_tui(n, "", 5, true, None, None, false);
+                let code = crate::tui::run_tui(n, "", 5, true, 0, None, None, false);
                 if code != 0 {
                     println!("[pool] TUI beendet mit Code {code}.");
                 }
@@ -547,7 +547,7 @@ impl ReplSession {
                 ReplAction::Continue
             }
             SlashCommand::Dashboard => {
-                let _ = crate::tui::run_tui(2, "", 5, true, None, Some("workers"), false);
+                let _ = crate::tui::run_tui(2, "", 5, true, 0, None, Some("workers"), false);
                 ReplAction::Continue
             }
             SlashCommand::Evolve { args } => {

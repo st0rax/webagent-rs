@@ -203,6 +203,7 @@ pub(crate) fn run_tui_ansi(
     brains: &str,
     poll_secs: u64,
     headless: bool,
+    run_secs: u64,
     startup_benchmark: Option<&str>,
 ) -> i32 {
     let all = available_brain_ids();
@@ -258,7 +259,39 @@ pub(crate) fn run_tui_ansi(
 
     println!("{CLEAR}webagent TUI startet Worker-Pool … (q zum Beenden)");
     let mut target_active = active.min(candidates.len());
+    let deadline = (run_secs > 0)
+        .then(|| std::time::Instant::now() + std::time::Duration::from_secs(run_secs));
+    // Eingabe in einen eigenen Thread: `read_line` blockiert, bis eine Zeile
+    // kommt. Eine Deadline-Pruefung am Schleifenanfang waere damit wirkungslos,
+    // solange niemand tippt — gemessen 2026-08-23: 301 s bei angeforderten 25.
+    // Ein Flag, das in einem Pfad nicht wirkt, ist schlimmer als keines.
+    let (eingabe_tx, eingabe_rx) = std::sync::mpsc::channel::<Option<String>>();
+    std::thread::spawn(move || loop {
+        let mut zeile = String::new();
+        match io::stdin().lock().read_line(&mut zeile) {
+            // `Ok(0)` ist EOF, kein Fehler.
+            Ok(0) | Err(_) => {
+                let _ = eingabe_tx.send(None);
+                return;
+            }
+            Ok(_) => {
+                if eingabe_tx.send(Some(zeile)).is_err() {
+                    return;
+                }
+            }
+        }
+    });
     loop {
+        if deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+            write_control(
+                &control_path,
+                &PoolControl {
+                    stop: true,
+                    ..Default::default()
+                },
+            );
+            break;
+        }
         render(
             &root,
             &state_path,
@@ -269,18 +302,29 @@ pub(crate) fn run_tui_ansi(
         print!("> ");
         io::stdout().flush().ok();
 
-        let mut line = String::new();
-        if io::stdin().lock().read_line(&mut line).is_err() {
-            // Eingabe unterbrochen -> sauber beenden.
-            write_control(
-                &control_path,
-                &PoolControl {
-                    stop: true,
-                    ..Default::default()
-                },
-            );
-            break;
-        }
+        // Auf Eingabe warten, aber nur bis zur Deadline. EOF und Abbruch der
+        // Eingabe beenden ebenfalls sauber — frueher pruefte der Code nur auf
+        // `is_err()`, und `Ok(0)` (EOF) rutschte durch: bei geschlossenem
+        // stdin drehte die Schleife mit voller CPU weiter, bis jemand den
+        // Prozess abschoss (gemessen 2026-08-23: 636 s statt 150).
+        let wartezeit = match deadline {
+            Some(d) => d.saturating_duration_since(std::time::Instant::now()),
+            None => std::time::Duration::from_secs(3600),
+        };
+        let line = match eingabe_rx.recv_timeout(wartezeit) {
+            Ok(Some(zeile)) => zeile,
+            Ok(None) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                write_control(
+                    &control_path,
+                    &PoolControl {
+                        stop: true,
+                        ..Default::default()
+                    },
+                );
+                break;
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+        };
         let input = line.trim();
         let mut parts = input.splitn(3, ' ');
         let cmd = parts.next().unwrap_or("");
