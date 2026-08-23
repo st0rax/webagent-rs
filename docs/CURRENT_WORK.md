@@ -392,9 +392,22 @@ danach behauptete: drei.
 
 ## Die zwei Release-Defekte — behoben am 2026-08-23
 
-**perplexity antwortet wieder.** Drei Relay-Laeufe `ok:true` (33,8 s, dann 14,6
-und 16,2 s); vorher lief jeder in den Timeout, waehrend die Antwort sichtbar auf
-dem Schirm stand.
+**perplexity antwortet wieder — aber NICHT wegen meines Selektors.** Die
+Gegenprobe hat meine eigene Erfolgsmeldung widerlegt: Nach dem Entfernen des
+Eintrags aus `selectors/perplexity.json` antwortete perplexity genauso
+(`ok:true`, 17,8 s und 15,8 s). Die generische Maske greift also, wie
+dokumentiert; mein Eintrag war nicht die Ursache.
+
+Was den Timeout tatsaechlich verursachte, ist damit **offen**. Ein Verdacht,
+nicht mehr: Bei den frueheren Fehllaeufen stand ein 14.000 Zeichen langer
+Prompt aus einem abgebrochenen Lauf im Composer — sichtbar in den
+`--dump-text`-Ausgaben als `aria-label` des Sendeknopfs. Die vielen Probe-Laeufe
+haben den Seitenzustand seither veraendert. Belegt ist das nicht.
+
+Der Eintrag bleibt trotzdem stehen, aber als **Praezisierung**, nicht als
+Reparatur: `div.prose` ist der nachweislich richtige Container (gemessen, siehe
+unten), und ein Brain-eigener Selektor ist haltbarer als der Zufall, dass
+gerade kein Maskeneintrag davor stoert.
 
 **mistral liefert nur noch die Antwort.** Statt
 `BEREIT
@@ -419,7 +432,7 @@ Bedienelemente, mit Elternkette und Selektorvorschlag.
 
 | Brain | Antwortcontainer | vorher |
 |---|---|---|
-| perplexity | `div.prose` (Zeilen als `p.my-2`) | gar keiner |
+| perplexity | `div.prose` (Zeilen als `p.my-2`) | keiner in der Brain-Datei; die Maske trug ihn bereits |
 | mistral | `div.markdown-container-style` | `div.prose` — zu weit, zog Zeitstempel und Feedback-Widget mit |
 
 Bei perplexity liegen Nutzernachrichten in `div.flex-1` unter anderer
@@ -433,11 +446,16 @@ lief, bevor perplexity mit dem Navigieren fertig war: Beim Absenden wechselt die
 Seite von `/search/new/<id>` zu `/search/<andere-id>`, wer sofort scannt liest
 die Seite von vorher. Der Prober wartet jetzt auf eine ruhige URL.
 
-Offen geblieben: `div.prose` steht laengst in der generischen Maske, und
-`load_selectors` mischt sie unter die Brain-Datei — es haette also ohne Eintrag
-greifen muessen. Tat es nicht. Vermutlich trifft einer der fuenf Maskeneintraege
-davor auf dieser Oberflaeche etwas Leeres. Der Defekt ist so oder so behoben,
-die Maskenfrage bleibt.
+**Die Maskenfrage ist beantwortet — zu meinen Ungunsten.** Ich hatte vermutet,
+die generische Maske greife nicht. Die Gegenprobe zeigt das Gegenteil: Sie
+greift. Auch die zweite Vermutung, eine Nutzer-Datei unter
+`%LOCALAPPDATA%\webagent\selectors\perplexity.json` ueberschreibe den
+Schluessel, ist falsch — die Datei existiert, enthaelt aber gar kein
+`assistant_message`.
+
+Lehre fuer den naechsten Selektor-"Fix": Erst die Gegenprobe, dann die
+Erfolgsmeldung. Ein gruener Lauf nach einer Aenderung belegt nicht, dass die
+Aenderung ihn gruen gemacht hat.
 
 ### zai bleibt offen
 

@@ -45,16 +45,17 @@ Benchmark-/Harvest-Systemabnahme (3) sowie Upstream-Integration und Release
 (4, `v0.10.0`).
 
 Ein abgeschlossener Goal-Datensatz belegt weiterhin nur den darin gebundenen
-Arbeitsauftrag. Von den zwei Defekten, die `v0.10.0` in seinen Notizen nennt,
-sind beide behoben: `perplexity` antwortet wieder über den Relay, `mistral`
-liefert die Antwort ohne Zeitstempel und Feedback-Widget. Offen bleibt allein
-das vorangestellte `Thought Process` bei `zai`, das mangels Anbieterkapazität
-nicht vermessen werden konnte.
+Arbeitsauftrag. Von den zwei Defekten aus den `v0.10.0`-Notizen ist einer
+belegt behoben — `mistral` liefert die Antwort ohne Zeitstempel und
+Feedback-Widget, mit Gegenprobe. `perplexity` antwortet wieder, aber die
+Ursache ist unbekannt: Die Gegenprobe zeigte, dass der vermutete Selektor-Fix
+nicht kausal war. Ein Rückfall ist damit nicht ausgeschlossen. Offen bleibt
+ausserdem das `Thought Process` bei `zai`.
 
 | Bereich | Stand am 2026-08-23 | Fehlender Abschlussbeleg |
 |---|---|---|
 | Lokaler Rust-Kern | Voll- und Headless-Gates grün auf `master`; 1.189 Bibliotheks- und 7 Binärtests mit Defaultfeatures sowie 1.123 + 7 ohne Defaultfeatures, striktes Clippy mit und ohne Defaultfeatures. CI seit `51d196f` wieder grün — sie war vom 22.08. bis dahin auf jedem Push rot, auch auf `master`. **Integriert** über PR #6–#10 | — |
-| Provider-/WebView-Livebetrieb | **Rezertifiziert am 2026-08-23** mit anwesendem Eigentümer: Diagnose 9/9, Relay gegen echte Browser. `perplexity` und `mistral` waren defekt und sind behoben (Antwortselektoren mit `--dump-text` vermessen) | `zai` stellt der Antwort ein `Thought Process` voran — beim Anbieter derzeit überlastet, deshalb nicht vermessbar |
+| Provider-/WebView-Livebetrieb | **Rezertifiziert am 2026-08-23**: Diagnose 9/9, Relay gegen echte Browser. `mistral` ist behoben (Zeitstempel und Feedback-Widget nicht mehr im Antworttext, per Gegenprobe belegt). `perplexity` antwortet wieder, **die Ursache ist aber unbekannt** — der vermutete Selektor-Fix hielt der Gegenprobe nicht stand | `zai` stellt ein `Thought Process` voran (Anbieter überlastet, nicht vermessbar); bei `perplexity` fehlt die Erklärung, warum die Timeouts aufhörten |
 | Pool, Worker und Cross-Brain-Handoff | **Abgenommen am 2026-08-23**: Poolstart, Auto-Recovery, Profil-Lease über neun Brains im Parallelbetrieb, geordneter Shutdown, Write-back ins Master (23→33 Hosts, additiv) und Worker-Heartbeat unter echter Last. Continuation, Stall und Cross-Brain-Handoff im Benchmark-Pfad end-to-end belegt | — |
 | Benchmark/Autoresearch/Harvest | **Abgenommen** (2026-08-23, `src/benchmark/e2e_tests.rs`): providerfreier Lauf auf echtem temporärem Git-Repo, Auftrag → Bau → Gates → Ernte, mit Fresh, Continuation gleicher Run-ID, Stall, Cross-Brain-Handoff und fail-closed verworfenem Scope-Verstoß | — |
 | Free-Cloud-Textchat | Registry, Policy, Mock-Stream, Metadaten- und Breaker-Verträge lokal implementiert | kein echter HTTP-/Provideradapter; externe Inferenz bleibt bis zur ausdrücklichen Freigabe außerhalb des Lieferstands |
