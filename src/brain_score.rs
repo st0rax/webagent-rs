@@ -33,8 +33,8 @@ use std::sync::Mutex;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
-use crate::bench_scoring::wilson_lower_bound;
 use crate::config::data_dir;
+use crate::scoring::wilson_lower_bound;
 
 /// Wie viele der letzten Ereignisse pro Brain in den Score einfliessen. Aeltere
 /// Ereignisse bleiben im Log (Historie), zaehlen aber nicht mehr fuer den
@@ -158,7 +158,7 @@ fn load_events(path: &PathBuf) -> Vec<Event> {
 /// p95 der Latenz ERFOLGREICHER Aufrufe eines Brains, in Sekunden.
 ///
 /// Grundlage fuer datenbasierte Timeouts: die fest verdrahtete
-/// Multiplikatoren-Tabelle in ``crate::timeouts`` war nachweislich in beide
+/// Multiplikatoren-Tabelle in [`crate::timeouts`] war nachweislich in beide
 /// Richtungen falsch (Messung 2026-07-26 ueber 2072 Erfolgslaeufe: claude 1.8
 /// verdrahtet vs. 0.9 gemessen, kimi 1.3 vs. 2.2). Fehlschlaege bleiben
 /// draussen — deren Dauer ist ein Timeout, kein Antwortverhalten, und wuerde
@@ -248,7 +248,7 @@ fn leaderboard_at(path: &PathBuf) -> Vec<BrainStats> {
 ///
 /// Gewichtet Task-Erfolgsquote (50 %), Antwortzeit (30 %) und Robustheit
 /// (20 %, Abzuege fuer JSON-Fehler und Reparaturen). Reine Funktion — nichts
-/// wird gelesen oder geschrieben; das Ergebnis liegt immer in `0,1` und ist
+/// wird gelesen oder geschrieben; das Ergebnis liegt immer in [0,1] und ist
 /// deterministisch (gleiche Eingabe → gleiche Gewichtung).
 pub fn calculate_brain_routing_weight(
     response_ms: u64,
@@ -285,22 +285,6 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("webagent_score_test_{nanos}_{n}.jsonl"))
-    }
-
-    #[test]
-    fn wilson_no_data_is_uncertain_not_zero() {
-        assert_eq!(wilson_lower_bound(0, 0), 0.5);
-    }
-
-    #[test]
-    fn wilson_prefers_more_evidence_at_same_ratio() {
-        // 90% aus 10 Versuchen ist weniger sicher als 90% aus 100 -- der Score
-        // muss das widerspiegeln (weniger Daten -> vorsichtigerer, niedrigerer
-        // Lower Bound), sonst waere ein frueher Zufallstreffer genauso viel wert
-        // wie eine belastbare Historie.
-        let few = wilson_lower_bound(9, 10);
-        let many = wilson_lower_bound(90, 100);
-        assert!(many > few, "many={many} sollte > few={few} sein");
     }
 
     #[test]
@@ -391,10 +375,7 @@ mod tests {
     fn routing_weight_ist_deterministisch() {
         let a = calculate_brain_routing_weight(500, 1, 1, 8, 2);
         let b = calculate_brain_routing_weight(500, 1, 1, 8, 2);
-        assert_eq!(
-            a, b,
-            "identische Eingaben muessen identische Scores liefern"
-        );
+        assert_eq!(a, b, "identische Eingaben muessen identische Scores liefern");
     }
 
     #[test]
@@ -417,8 +398,7 @@ mod tests {
 
     #[test]
     fn routing_weight_extremwerte_ohne_overflow() {
-        let score =
-            calculate_brain_routing_weight(u64::MAX, u32::MAX, u32::MAX, u32::MAX, u32::MAX);
+        let score = calculate_brain_routing_weight(u64::MAX, u32::MAX, u32::MAX, u32::MAX, u32::MAX);
         assert!(!score.is_nan());
         assert!(!score.is_infinite());
         assert!((0.0..=1.0).contains(&score));

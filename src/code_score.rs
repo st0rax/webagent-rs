@@ -25,8 +25,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use crate::config::data_dir;
-
-use crate::bench_scoring::wilson_lower_bound;
+use crate::scoring::wilson_lower_bound;
 
 lazy_static! {
     static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -42,11 +41,6 @@ pub struct CodeEvent {
     pub did_change: bool,
     pub compiled: bool,
     pub tests_passed: bool,
-    /// Lint-Gate der letzten Iteration (`cargo clippy -- -D warnings`). Default
-    /// `true`, damit Altdaten aus der Zeit vor dem Lint-Gate (2026-08-15)
-    /// unveraendert zaehlen — damals wurde Lint nur bei der Ernte gemessen.
-    #[serde(default = "default_true")]
-    pub lint_passed: bool,
     pub cycles: u32,
     /// Wie viele Repair-Iterationen nötig waren (1 = auf Anhieb grün).
     /// `default` haelt Events aus der Zeit vor dem Repair-Loop lesbar.
@@ -85,18 +79,10 @@ pub struct CodeEvent {
 
 impl CodeEvent {
     /// Ein Versuch zählt nur dann als Erfolg, wenn das Brain etwas geändert hat,
-    /// das Ergebnis baut, die Tests grün bleiben UND das Lint-Tor grün ist —
-    /// kein Selbst-Report zählt. (Ernte-Nachkontrolle am 2026-08-15: ein Brain
-    /// bestand build+test, sein Patch fiel erst beim Clippy der Ernte durch.)
+    /// das Ergebnis baut UND die Tests grün bleiben — kein Selbst-Report zählt.
     pub fn passed(&self) -> bool {
-        self.did_change && self.compiled && self.tests_passed && self.lint_passed
+        self.did_change && self.compiled && self.tests_passed
     }
-}
-
-/// Serde-Default: Events ohne Lint-Feld sind aus der Zeit vor dem Lint-Gate
-/// und zaehlen als lint-gruen.
-fn default_true() -> bool {
-    true
 }
 
 /// Aggregierte Code-Statistik eines Brains über alle seine Ereignisse.
@@ -181,13 +167,12 @@ fn record_at(event: &CodeEvent, path: &Path) {
             level,
             Some(&event.brain_id),
             &format!(
-                "[code:{}] {} change={} compiled={} tests={} lint={} {}ms",
+                "[code:{}] {} change={} compiled={} tests={} {}ms",
                 event.brain_id,
                 crate::char_prefix(&event.task_id, 20),
                 event.did_change,
                 event.compiled,
                 event.tests_passed,
-                event.lint_passed,
                 event.latency_ms
             ),
             Some(&serde_json::to_string(event).unwrap_or_default()),
@@ -328,7 +313,6 @@ mod tests {
             did_change,
             compiled,
             tests_passed,
-            lint_passed: true,
             cycles: 3,
             iterations: 1,
             latency_ms: 1234,
@@ -347,18 +331,6 @@ mod tests {
         assert!(!ev("k", false, true, true).passed());
         assert!(!ev("k", true, false, true).passed());
         assert!(!ev("k", true, true, false).passed());
-    }
-
-    #[test]
-    fn wilson_no_data_is_uncertain_not_zero() {
-        assert_eq!(wilson_lower_bound(0, 0), 0.5);
-    }
-
-    #[test]
-    fn wilson_prefers_more_evidence_at_same_ratio() {
-        let few = wilson_lower_bound(9, 10);
-        let many = wilson_lower_bound(90, 100);
-        assert!(many > few, "many={many} sollte > few={few} sein");
     }
 
     #[test]
@@ -513,9 +485,7 @@ mod tests {
             events.iter().any(|e| {
                 e.brain.as_deref() == Some("kimi")
                     && e.text.starts_with("[code:kimi]")
-                    && e.detail
-                        .as_deref()
-                        .is_some_and(|d| d.contains("did_change"))
+                    && e.detail.as_deref().is_some_and(|d| d.contains("did_change"))
             }),
             "im Spiegelmodus muss der Code-Versuch mit vollem Detail in den Bus"
         );

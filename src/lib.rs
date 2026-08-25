@@ -6,69 +6,63 @@
 //! siehe dort) und *geparst* über `time` — das ist ohnehin Dependency.
 
 // Modul-Übersicht, gruppiert nach Schicht (siehe docs/ARCHITECTURE.md).
-// `pub` ist Absicht. Crate-interne Schicht (Wilson, Harvest-Helfer, Loop-Guard)
-// ist `pub(crate)`. Weitere Fläche nur schließen, wenn tote `pub`-Items
-// vorher gelöscht oder getestet sind — sonst wird Clippy zum Lärm.
+// Alle Module `pub`: die echte API-Fläche ist kleiner (nur das Binary nutzt
+// ~31 Module direkt) — Verschlankung ist als P1 notiert, sie erfordert das
+// Löschen toter Items (siehe docs/ARCHITECTURE.md → "API-Fläche").
 
 // ── core: plattformreiner Kern (keine UI/Browser-Abhängigkeiten) ──
-pub mod bin_hooks;
-pub(crate) mod circuit_breaker;
+pub mod circuit_breaker;
 pub mod comms;
 pub mod config;
 pub mod executor;
-pub(crate) mod file_actions;
-pub(crate) mod loop_guard;
-pub(crate) mod memory;
-pub(crate) mod observer;
+pub mod file_actions;
+pub mod loop_guard;
+pub mod memory;
+pub mod observer;
 pub mod oobe;
-pub(crate) mod protocol;
+pub mod protocol;
 pub mod run_store;
-pub(crate) mod shell_policy;
-pub mod startup;
-pub(crate) mod timeouts;
-pub(crate) mod transcript;
+pub mod scoring;
+pub mod shell_policy;
+pub mod timeouts;
+pub mod transcript;
 
 // ── brain: Gehirn-Abstraktion + Browser-Anbindung ──
-pub(crate) mod brain;
+pub mod brain;
 pub mod brain_limits;
 pub mod brain_probe;
 pub mod browser;
-// Ohne `webview`/`tui` gibt es die Aufrufer dieser Fenster- und
-// Pool-Logik nicht; die Tests halten sie trotzdem verfuegbar. Das ist
-// gewollt und darf den strikten Headless-Lint nicht rot faerben.
-#[cfg_attr(not(any(feature = "webview", feature = "tui")), allow(dead_code))]
-pub(crate) mod browser_pool;
+pub mod browser_pool;
 pub mod login;
-#[cfg(test)]
-pub(crate) mod mock_page;
-pub(crate) mod page_driver;
+pub mod mock_page;
+pub mod page_driver;
 #[cfg(feature = "webview")]
-pub(crate) mod webview_runtime;
+pub mod webview_runtime;
 
 // ── agent: Steuerung & Agent-Schleife ──
-pub mod canary;
 pub mod capability;
 pub mod capability_proof;
 pub mod controller;
-pub mod counting;
-pub mod goal_plan;
-pub(crate) mod knockout;
-pub(crate) mod prompts;
+pub mod knockout;
+pub mod prompts;
 pub mod relay;
+pub mod counting;
 pub mod welcome;
 
+// Autoresearch: Canary-Tests für Brain-Erreichbarkeit
+pub mod canary;
+
 // ── bench: Messung & Selbst-Verbesserung ──
-pub mod api_bridge;
 pub mod autoresearch;
 pub mod bench_events;
-pub(crate) mod bench_harvest;
-pub(crate) mod bench_scoring;
+pub mod bench_harvest;
+pub mod bench_scoring;
 pub mod benchmark;
 pub mod brain_score;
 pub mod brains_health;
-pub(crate) mod code_score;
+pub mod code_score;
 pub mod design_vote;
-pub(crate) mod round_tally;
+pub mod round_tally;
 pub mod runs_report;
 pub mod self_research;
 pub mod wiki_memory;
@@ -76,47 +70,35 @@ pub mod wiki_memory;
 // ── workers: Parallelität & Gesundheit ──
 pub mod bot2bot_worker;
 pub mod doctor;
-pub(crate) mod pool_failover;
-pub(crate) mod pool_state;
 pub mod watchdog;
+pub mod pool_failover;
+pub mod pool_state;
 pub mod worker_pool;
 
 // ── ui: TUI, REPL ──
-// Brain-Windowing is only needed by the TUI/WebView runtime. Unit tests keep
-// geometry and Wall state logic available in the reduced headless build.
-#[cfg(any(feature = "webview", feature = "tui", test))]
-// Ohne `webview`/`tui` gibt es die Aufrufer dieser Fenster- und
-// Pool-Logik nicht; die Tests halten sie trotzdem verfuegbar. Das ist
-// gewollt und darf den strikten Headless-Lint nicht rot faerben.
-#[cfg_attr(not(any(feature = "webview", feature = "tui")), allow(dead_code))]
-pub(crate) mod brain_grid;
-#[cfg(any(feature = "webview", feature = "tui", test))]
-// Ohne `webview`/`tui` gibt es die Aufrufer dieser Fenster- und
-// Pool-Logik nicht; die Tests halten sie trotzdem verfuegbar. Das ist
-// gewollt und darf den strikten Headless-Lint nicht rot faerben.
-#[cfg_attr(not(any(feature = "webview", feature = "tui")), allow(dead_code))]
-pub(crate) mod brain_wall;
+pub mod brain_grid;
+pub mod brain_wall;
 pub mod repl;
-pub(crate) mod target_check;
 pub mod tui;
-pub(crate) mod tui_ansi;
+pub mod tui_ansi;
 #[cfg(feature = "tui")]
-pub(crate) mod tui_bench;
+pub mod tui_bench;
 pub mod tui_config;
 #[cfg(feature = "tui")]
-pub(crate) mod tui_footer;
+pub mod tui_footer;
 #[cfg(feature = "tui")]
-pub(crate) mod tui_keys;
+pub mod tui_keys;
 #[cfg(feature = "tui")]
-pub(crate) mod tui_load;
+pub mod tui_load;
 #[cfg(feature = "tui")]
-pub(crate) mod tui_mouse;
+pub mod tui_mouse;
 #[cfg(feature = "tui")]
-pub(crate) mod tui_render;
+pub mod tui_render;
 #[cfg(feature = "tui")]
-pub(crate) mod tui_state;
+pub mod target_check;
+pub mod tui_state;
 #[cfg(feature = "tui")]
-pub(crate) mod tui_widgets;
+pub mod tui_widgets;
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -143,7 +125,7 @@ impl StageNote {
 /// im Viertelsekundentakt und zeigt Stadium, Laufzeit und — via [`StageNote`] —
 /// den gerade laufenden Schritt. Jede Zeile traegt einen absoluten Zeitstempel.
 /// Geht stdout in eine Pipe, bleibt es beim Zeilenumbruch alle
-/// ``PIPE_TICKER_INTERVAL_MS``, weil ein Wagenruecklauf in Logdateien nur Brei
+/// [`PIPE_TICKER_INTERVAL_MS`], weil ein Wagenruecklauf in Logdateien nur Brei
 /// erzeugt.
 pub struct StageTimer {
     started: Instant,
@@ -601,5 +583,3 @@ mod snapshot_tests {
         assert!(!ProcessSnapshot::from_pids([0]).is_alive(0));
     }
 }
-
-pub mod free_cloud_chat;

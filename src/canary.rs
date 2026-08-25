@@ -71,14 +71,14 @@ pub fn run_canary() -> Vec<CanaryResult> {
     run_canary_with(default_probe)
 }
 
-/// True wenn jeder Brain `ok` ist.
-pub fn all_ok(results: &[CanaryResult]) -> bool {
-    !results.is_empty() && results.iter().all(|r| r.ok)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// True wenn jeder Brain `ok` ist (nur für Tests).
+    fn all_ok(results: &[CanaryResult]) -> bool {
+        !results.is_empty() && results.iter().all(|r| r.ok)
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
