@@ -1,5 +1,7 @@
 # webagent (Rust)
 
+> **Verbindliche Arbeitsgrundlage:** Vor jeder Arbeit ist [`AGENTS.md`](AGENTS.md) vollständig zu lesen und strikt zu befolgen. Projektspezifische Regeln gelten ergänzend; bei Konflikten gilt die strengere Schutzregel.
+
 Ein **lokaler, browsergesteuerter Agent**: ein Web-Chat („Brain") plant, lokale
 Werkzeuge (PowerShell/Shell) führen aus. Die Brains sind austauschbare Web-Chats
 (ChatGPT, Claude, DeepSeek, Gemini, Kimi, Qwen, Mistral, Z.ai) — kein API-Key,
