@@ -34,13 +34,12 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use crate::config::data_dir;
+use crate::scoring::wilson_lower_bound;
 
 /// Wie viele der letzten Ereignisse pro Brain in den Score einfliessen. Aeltere
 /// Ereignisse bleiben im Log (Historie), zaehlen aber nicht mehr fuer den
 /// aktuellen Score -- das ist die "Recency"-Komponente ohne Decay-Formel.
 const WINDOW_SIZE: usize = 40;
-/// 95%-Konfidenz-Z-Wert fuer den Wilson-Score.
-const Z: f64 = 1.96;
 
 lazy_static! {
     static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -152,22 +151,6 @@ fn load_events(path: &PathBuf) -> Vec<Event> {
         .map_while(Result::ok)
         .filter_map(|line| serde_json::from_str(&line).ok())
         .collect()
-}
-
-/// Wilson-Score-Lower-Bound fuer `successes` von `n` Versuchen. `n == 0` liefert
-/// 0.5 (voelliger Unsicherheit) statt 0.0 oder 1.0 -- ein Brain ohne Daten ist
-/// nicht "schlecht", es ist unbekannt.
-fn wilson_lower_bound(successes: usize, n: usize) -> f64 {
-    if n == 0 {
-        return 0.5;
-    }
-    let n = n as f64;
-    let p = successes as f64 / n;
-    let z2 = Z * Z;
-    let denom = 1.0 + z2 / n;
-    let center = p + z2 / (2.0 * n);
-    let margin = Z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt();
-    ((center - margin) / denom).clamp(0.0, 1.0)
 }
 
 /// Statistik fuer ein Brain aus dem rollierenden Fenster der letzten
@@ -302,22 +285,6 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("webagent_score_test_{nanos}_{n}.jsonl"))
-    }
-
-    #[test]
-    fn wilson_no_data_is_uncertain_not_zero() {
-        assert_eq!(wilson_lower_bound(0, 0), 0.5);
-    }
-
-    #[test]
-    fn wilson_prefers_more_evidence_at_same_ratio() {
-        // 90% aus 10 Versuchen ist weniger sicher als 90% aus 100 -- der Score
-        // muss das widerspiegeln (weniger Daten -> vorsichtigerer, niedrigerer
-        // Lower Bound), sonst waere ein frueher Zufallstreffer genauso viel wert
-        // wie eine belastbare Historie.
-        let few = wilson_lower_bound(9, 10);
-        let many = wilson_lower_bound(90, 100);
-        assert!(many > few, "many={many} sollte > few={few} sein");
     }
 
     #[test]

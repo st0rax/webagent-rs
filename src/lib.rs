@@ -22,6 +22,7 @@ pub mod observer;
 pub mod oobe;
 pub mod protocol;
 pub mod run_store;
+pub mod scoring;
 pub mod shell_policy;
 pub mod timeouts;
 pub mod transcript;
@@ -39,7 +40,6 @@ pub mod page_driver;
 pub mod webview_runtime;
 
 // ── agent: Steuerung & Agent-Schleife ──
-pub mod canary;
 pub mod capability;
 pub mod capability_proof;
 pub mod controller;
@@ -48,6 +48,9 @@ pub mod prompts;
 pub mod relay;
 pub mod counting;
 pub mod welcome;
+
+// Autoresearch: Canary-Tests für Brain-Erreichbarkeit
+pub mod canary;
 
 // ── bench: Messung & Selbst-Verbesserung ──
 pub mod autoresearch;

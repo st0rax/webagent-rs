@@ -25,9 +25,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use crate::config::data_dir;
-
-/// 95%-Konfidenz-Z-Wert für den Wilson-Score (identisch zu brain_score).
-const Z: f64 = 1.96;
+use crate::scoring::wilson_lower_bound;
 
 lazy_static! {
     static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -193,22 +191,6 @@ fn load_events(path: &Path) -> Vec<CodeEvent> {
         .collect()
 }
 
-/// Wilson-Score-Lower-Bound für `successes` von `n` Versuchen. `n == 0` liefert
-/// 0.5 (völlige Unsicherheit) — ein Brain ohne Daten ist nicht „schlecht",
-/// sondern unbekannt (gleiche Konvention wie brain_score).
-fn wilson_lower_bound(successes: usize, n: usize) -> f64 {
-    if n == 0 {
-        return 0.5;
-    }
-    let n = n as f64;
-    let p = successes as f64 / n;
-    let z2 = Z * Z;
-    let denom = 1.0 + z2 / n;
-    let center = p + z2 / (2.0 * n);
-    let margin = Z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt();
-    ((center - margin) / denom).clamp(0.0, 1.0)
-}
-
 /// Reine Aggregation eines Ereignis-Slices zu einer nach `wilson_pass`
 /// absteigend sortierten Rangliste (Tiebreak: brain_id alphabetisch, für
 /// deterministische Reihenfolge). Kein I/O — direkt unit-getestet.
@@ -349,18 +331,6 @@ mod tests {
         assert!(!ev("k", false, true, true).passed());
         assert!(!ev("k", true, false, true).passed());
         assert!(!ev("k", true, true, false).passed());
-    }
-
-    #[test]
-    fn wilson_no_data_is_uncertain_not_zero() {
-        assert_eq!(wilson_lower_bound(0, 0), 0.5);
-    }
-
-    #[test]
-    fn wilson_prefers_more_evidence_at_same_ratio() {
-        let few = wilson_lower_bound(9, 10);
-        let many = wilson_lower_bound(90, 100);
-        assert!(many > few, "many={many} sollte > few={few} sein");
     }
 
     #[test]
