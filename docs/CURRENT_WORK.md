@@ -5,7 +5,7 @@
 
 ## Aktueller Repositoryzustand
 
-Die Arbeit läuft auf `task/v1-release-baseline`, ausgehend von `origin/master` bei `1d214e8`. Die erste abgeschlossene Baseline-Scheibe ist als `2659baf` (`fix: restore headless release baseline`) committet. Sie stellte den browserfreien Releasezustand wieder her: fehlende Bibliotheksmodule wurden registriert, der Root-Eintrag in `Cargo.lock` wurde auf `0.11.1` korrigiert, reine Kernmodule wurden von unnötigen TUI-Gates entkoppelt, strikte Lint-/Testdrift wurde behoben und die alte Wilson-Dublette wird auf die gemeinsame Implementierung zurückgeführt.
+Die Arbeit läuft auf `task/v1-release-baseline`, ausgehend von `origin/master` bei `1d214e8`. Die erste abgeschlossene Baseline-Scheibe ist als `2659baf` (`fix: restore headless release baseline`) committet; der Scope-Freeze und die Definition of Done folgen in `4fdb068` (`docs: define v1 release completion`). Beide Commits sind auf `origin/task/v1-release-baseline` gepusht. Die Baseline-Scheibe stellte den browserfreien Releasezustand wieder her: fehlende Bibliotheksmodule wurden registriert, der Root-Eintrag in `Cargo.lock` wurde auf `0.11.1` korrigiert, reine Kernmodule wurden von unnötigen TUI-Gates entkoppelt, strikte Lint-/Testdrift wurde behoben und die alte Wilson-Dublette wird auf die gemeinsame Implementierung zurückgeführt.
 
 Besonders wichtig ist die Korrektur von `capture_patch`: Eine globale Git-Einstellung wie `color.ui=always` lieferte ANSI-Sequenzen in `git diff` und machte die Scope- sowie Harvest-Prüfung blind. Der maschinell verarbeitete Patch wird nun explizit ohne Farbe erzeugt; reale Gegenproben auf einem temporären Git-Repository belegen In-Scope-Harvest und fail-closed Out-of-Scope-Ablehnung.
 
@@ -62,7 +62,7 @@ Die nächste sichere Aktion ist eine **read-only Provider- und Evidenzinventur**
 ## Übergabe
 
 - **Branch:** `task/v1-release-baseline`
-- **Abgeschlossene Scheibe:** `2659baf` plus nachfolgender, noch zu commitender Scope-/DRY-Checkpoint
+- **Abgeschlossene Scheiben:** `2659baf` (Baseline) und `4fdb068` (v1.0-Scope und Definition of Done), beide auf `origin/task/v1-release-baseline`.
 - **Eigentümerschaft:** aktueller Integrator bearbeitet Baseline und v1.0-Abschluss; Live-Anmeldungen bleiben beim Eigentümer.
 - **Externe Freigaben:** erforderlich für Live-Browser, Logins, kostenpflichtige Providerpfade, Merge, Tag und GitHub-Release.
 - **Arbeitsbaum:** nach Commit dieses Checkpoints erneut prüfen und den Branch pushen.
