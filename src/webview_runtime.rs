@@ -805,6 +805,7 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
 /// verdecktes Fenster wird als "backgrounded" behandelt — Timer und
 /// Streaming-JS werden gedrosselt, und ein Verify-Lauf wirkte eingefroren, bis
 /// die Maus das Fenster aktivierte (beobachtet 2026-08-11, alle Brains).
+#[cfg(windows)]
 fn browser_args() -> String {
     // `CalculateNativeWinOcclusion` ist die Windows-Occlusion-Erkennung von
     // Chromium selbst: verdeckte Fenster gelten als "hintergrund", und Timer/
@@ -1222,6 +1223,33 @@ fn click_at_trusted_cdp(
     Ok(())
 }
 
+/// Screenshot ueber die WebView2-eigene CapturePreview-Schnittstelle. Unter
+/// WebKitGTK gibt es keine Entsprechung, die ohne sichtbares Fenster
+/// auskaeme — `shot` bleibt dort unverfuegbar, statt ein leeres PNG zu
+/// liefern und Erfolg zu behaupten.
+#[cfg(not(windows))]
+fn capture_png(_webview: &wry::WebView, _event_loop: &mut EventLoop<()>) -> Result<Vec<u8>> {
+    Err(PageDriverError::NotAvailable(
+        "Screenshot: unter Linux nicht verfuegbar (WebView2-CapturePreview fehlt in WebKitGTK)"
+            .into(),
+    ))
+}
+
+/// DevTools-Protokoll ueber WebView2. WebKitGTK bietet keinen In-Prozess-CDP-
+/// Kanal; wer echte Maus-/Tastatureingaben braucht, faellt unter Linux auf die
+/// JS-Pfade zurueck.
+#[cfg(not(windows))]
+fn call_cdp(
+    _webview: &wry::WebView,
+    _method: &str,
+    _params: &str,
+    _event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    Err(PageDriverError::NotAvailable(
+        "DevTools-Protokoll: unter Linux nicht verfuegbar (kein CDP in WebKitGTK)".into(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{cdp_click_events, parse_eval_result, press_key_script, wrap_eval};
@@ -1323,31 +1351,4 @@ mod tests {
             "leeres Objekt darf keinen Wert vortaeuschen"
         );
     }
-}
-
-/// Screenshot ueber die WebView2-eigene CapturePreview-Schnittstelle. Unter
-/// WebKitGTK gibt es keine Entsprechung, die ohne sichtbares Fenster
-/// auskaeme — `shot` bleibt dort unverfuegbar, statt ein leeres PNG zu
-/// liefern und Erfolg zu behaupten.
-#[cfg(not(windows))]
-fn capture_png(_webview: &wry::WebView, _event_loop: &mut EventLoop<()>) -> Result<Vec<u8>> {
-    Err(PageDriverError::NotAvailable(
-        "Screenshot: unter Linux nicht verfuegbar (WebView2-CapturePreview fehlt in WebKitGTK)"
-            .into(),
-    ))
-}
-
-/// DevTools-Protokoll ueber WebView2. WebKitGTK bietet keinen In-Prozess-CDP-
-/// Kanal; wer echte Maus-/Tastatureingaben braucht, faellt unter Linux auf die
-/// JS-Pfade zurueck.
-#[cfg(not(windows))]
-fn call_cdp(
-    _webview: &wry::WebView,
-    _method: &str,
-    _params: &str,
-    _event_loop: &mut EventLoop<()>,
-) -> Result<()> {
-    Err(PageDriverError::NotAvailable(
-        "DevTools-Protokoll: unter Linux nicht verfuegbar (kein CDP in WebKitGTK)".into(),
-    ))
 }

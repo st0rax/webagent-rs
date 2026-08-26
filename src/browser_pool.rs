@@ -125,6 +125,13 @@ impl CloneGuard {
     pub(crate) fn keep(mut self) -> PathBuf {
         self.dir.take().unwrap_or_default()
     }
+
+    /// Der WebView-Pfad benötigt den Profilort bis zur Runtime-Übergabe;
+    /// der Headless-Kern kennt diese Zugriffsmethode absichtlich nicht.
+    #[cfg(feature = "webview")]
+    pub(crate) fn path(&self) -> &std::path::Path {
+        self.dir.as_deref().expect("CloneGuard ohne Profilpfad")
+    }
 }
 
 #[cfg(any(feature = "webview", test))]
