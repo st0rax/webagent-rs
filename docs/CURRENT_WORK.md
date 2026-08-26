@@ -75,19 +75,20 @@ Der aktuell bekannte spezifische Providerrest ist `zai`: Die Antwort kann einen 
 | Abhängigkeit | Status | Umgang |
 |---|---|---|
 | Eigentümer für Live-Browser/Anmeldung | erforderlich | Vor der tatsächlichen Live-Rezertifizierung gezielt um Freigabe bitten; bis dahin nur lokale Vorbereitung. |
-| Windows-WebView2-Gates | offen | Über Windows-Runner bzw. Windows-CI nachweisen; Linux-Headless-Gates sind kein Ersatz. |
-| Release/Merge/Tag | offen | Erst nach vollständiger Evidenz und Eigentümerfreigabe vorbereiten; keine Veröffentlichung vorab. |
+| Windows-WebView2-Gates | CI bestanden, Live-Abnahme offen | Windows-CI `33002148599` ist vollständig grün; reale WebView2-Sitzungen und Profile bleiben separat zu prüfen. |
+| Merge | abgeschlossen | Die geprüften Baseline- und Plattformkorrekturen wurden per Fast-Forward nach `master` integriert. |
+| Tag/GitHub-Release | offen | Erst nach vollständiger Live-Evidenz und Eigentümerfreigabe vorbereiten; keine Veröffentlichung vorab. |
 
 ## Nächste sichere Aktion
 
-Die nächste sichere Aktion ist eine **read-only Provider- und Evidenzinventur**: aktive Provider, Selektorstände, Capability-Proofs, vorhandene Fehlersignaturen und die exakte Testmatrix für die anstehende Eigentümer-Session zusammenstellen. Dabei werden weder Browserfenster geöffnet noch Logins, Quoten oder Provideraktionen ausgelöst.
+Die nächste sichere Aktion ist die **Live-Abnahme am erreichbaren Desktop-Arbeitsstand**: je aktivem Provider denselben harmlosen Sende-/Antwortpfad prüfen, Zustände klassifizieren und die Windows-WebView2-/Write-back-Gegenprobe dokumentieren. Der aktuelle Windows-Desktop-Arbeitsordner ist aus dieser Sitzung nicht erreichbar; bis eine erreichbare Verbindung besteht, werden weder unbefugte Logins noch Ersatzsitzungen als Projektevidenz verwendet.
 
 ## Übergabe
 
-- **Branch:** `task/v1-release-baseline`
-- **Abgeschlossene Scheiben:** `2659baf` (Baseline), `4fdb068` (v1.0-Scope und Definition of Done) sowie der nachfolgende Provider-/Desktop-Checkpoint, jeweils auf `origin/task/v1-release-baseline`.
-- **Eigentümerschaft:** aktueller Integrator bearbeitet Baseline und v1.0-Abschluss; Live-Anmeldungen bleiben beim Eigentümer.
-- **Externe Freigaben:** erforderlich für Live-Browser, Logins, kostenpflichtige Providerpfade, Merge, Tag und GitHub-Release.
-- **Arbeitsbaum:** nach Commit dieses Checkpoints erneut prüfen und den Branch pushen.
+- **Branch:** `master` auf `f51acd6`; der frühere Arbeitsbranch `task/v1-release-baseline` zeigt auf denselben Commit.
+- **Abgeschlossene Scheiben:** `2659baf` (Headless-Baseline), `4fdb068` (v1.0-Definition), `d32b8d0` (Linux-WebView-Feature-Gates) und `f51acd6` (Linux-/Windows-Abnahmestände); alle per Fast-Forward in `origin/master` integriert.
+- **Eigentümerschaft:** aktueller Integrator bearbeitet den v1.0-Abschluss; Live-Anmeldungen bleiben beim Eigentümer.
+- **Externe Freigaben:** erforderlich für Live-Browser, Logins, kostenpflichtige Providerpfade, Tag und GitHub-Release.
+- **Arbeitsbaum:** nach diesem Übergabecommit erneut prüfen; `master` direkt pushen, keine History umschreiben.
 
 > **Hinweis zur Wahrheitspflege:** Historische Live-Befunde aus August 2026 sind nützlich für die Diagnose, aber kein aktueller Verfügbarkeitsbeleg. Maßgeblich für v1.0 sind frische, reproduzierbare Belege am Release Candidate.
