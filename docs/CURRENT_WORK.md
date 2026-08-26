@@ -18,6 +18,7 @@ Besonders wichtig ist die Korrektur von `capture_patch`: Eine globale Git-Einste
 | Reale Scope-/Harvest-Gegenprobe | bestanden; ANSI-farbige Git-Diffs werden sicher verarbeitet |
 | `cargo clippy --locked --all-targets -- -D warnings` auf Linux/WebKitGTK | bestanden |
 | `cargo test --locked` auf Linux/WebKitGTK | **1.196 Bibliotheks-, 7 Binärtests bestanden; 1 Test bewusst ignoriert** |
+| Windows-CI `33001615724` auf `e1e5a74` | Formatcheck, Vollfeature-Clippy, Vollfeature-Build und Vollfeature-Tests vollständig bestanden |
 
 ## v1.0-Ziel und Definition of Done
 
@@ -57,7 +58,7 @@ Der vom Nutzer getestete Windows-Desktop-Arbeitsordner ist in dieser Sitzung nic
 
 Die Vollfeature-Abnahme auf Linux legte eine echte Konfigurationsregression offen: Die vorherige Headless-Bereinigung hatte `CloneGuard::path` entfernt, obwohl der WebView-Pfad sie bei der Runtime-Übergabe benötigt. Zusätzlich war `browser_args` unter WebKitGTK ungenutzt und zwei Linux-Stubs lagen hinter dem Testmodul. Commit `d32b8d0` grenzt die Windows-Argumente sauber ein, stellt den WebView-gateten Zugriff wieder her und ordnet die Plattformstubs lintkonform vor den Tests an. Nach Installation der notwendigen lokalen GTK-/WebKit-Entwicklungspakete sind die strikten Headless- und Vollfeature-Lints sowie beide vollständigen Test-Suiten grün.
 
-Diese Evidenz bestätigt den Linux-WebKitGTK-Build und seine Tests, ersetzt jedoch weder den Windows-WebView2-Build noch eine Live-Sitzungs- oder Providerabnahme.
+Diese Evidenz bestätigt den Linux-WebKitGTK-Build und seine Tests. Ergänzend hat die Windows-CI `33001615724` auf dem aktuellen Branch die Vollfeature-Gates vollständig bestanden. Beide Belegketten ersetzen jedoch keine Live-Sitzungs- oder Providerabnahme auf dem tatsächlichen Desktop-Arbeitsstand.
 
 ## Betriebshärtung: aktueller Stand
 
