@@ -43,6 +43,14 @@ Der v1.0-Kritische Pfad umfasst ausschließlich die nachfolgenden Arbeiten. Jede
 | End-to-End-Abnahme für Pool, Continuation, Cross-Brain-Handoff und Harvest | Genius Council, zusätzliche Agentenrollen und größere UX-Erweiterungen |
 | Dokumentierte Release-Candidate- und Freigabevorbereitung | Neue Provider, neue Persistenz- oder Protokollmechanismen ohne Abschlussbezug |
 
+## Providerbereitschaft und Desktop-Grenze
+
+Die aktiven Standardprovider sind aktuell `chatgpt`, `deepseek`, `kimi`, `gemini`, `qwen`, `claude`, `mistral` und `zai`. Die ausgelieferten Selektoren für alle acht Anbieter werden eingebettet, sind valides JSON und bestehen die beiden providerfreien Verträge `test_embedded_selectors_cover_all_brains_and_parse` sowie `all_configured_brains_have_selectors`. `perplexity` besitzt eine ausgelieferte Selektordatei, ist jedoch nicht Teil des aktuellen statischen `BRAIN_TABLE` und damit kein v1.0-Standardprovider.
+
+Eine manuelle Browser-Gegenprobe auf ChatGPT im verbundenen Browser lieferte den erwarteten Antworttext `BEREIT.`. Sie ist **keine Webagent-WebView-Evidenz**, weil sie nicht aus dem vom Nutzer getesteten Desktop-Arbeitsordner stammt. Der anschließende DeepSeek-Aufruf leitete in diesem separaten Browserprofil auf `/sign_in` um; auch das ist kein Befund über die projektseitigen Profile.
+
+Der vom Nutzer getestete Windows-Desktop-Arbeitsordner ist in dieser Sitzung nicht erreichbar: Der Sandbox-Desktop enthält keinen Webagent-Ordner, die Browserverbindung blockiert lokale `file:///`-Pfade, der Remote enthält keinen neueren Desktop-Commit und es ist keine Desktop-/Computer-Verbindung konfiguriert. Das ist ein technischer Zugriffsblocker, keine fehlende Bereitschaft des Nutzers und keine Providerbewertung. Bis zu einem erreichbaren Desktop-Stand bleiben echte WebView-, Profil- und Providerbelege offen.
+
 ## Kritischer Pfad und Blocker
 
 Die nächste technische Scheibe ist die **Provider-Rezertifizierung**. Vor dem Live-Lauf werden die bestehenden Selektoren, Capability-Proofs und Fehlerbilder lokal inventarisiert. Die eigentliche Messung darf nur stattfinden, wenn der Eigentümer anwesend ist: Browserfenster können sich öffnen, aber Anmeldungen, Einmalcodes, CAPTCHAs und Zugangsdaten verbleiben vollständig beim Eigentümer. Der Integrator protokolliert ausschließlich die beobachteten Zustände und nutzt keine Geheimnisse.
@@ -62,7 +70,7 @@ Die nächste sichere Aktion ist eine **read-only Provider- und Evidenzinventur**
 ## Übergabe
 
 - **Branch:** `task/v1-release-baseline`
-- **Abgeschlossene Scheiben:** `2659baf` (Baseline) und `4fdb068` (v1.0-Scope und Definition of Done), beide auf `origin/task/v1-release-baseline`.
+- **Abgeschlossene Scheiben:** `2659baf` (Baseline), `4fdb068` (v1.0-Scope und Definition of Done) sowie der nachfolgende Provider-/Desktop-Checkpoint, jeweils auf `origin/task/v1-release-baseline`.
 - **Eigentümerschaft:** aktueller Integrator bearbeitet Baseline und v1.0-Abschluss; Live-Anmeldungen bleiben beim Eigentümer.
 - **Externe Freigaben:** erforderlich für Live-Browser, Logins, kostenpflichtige Providerpfade, Merge, Tag und GitHub-Release.
 - **Arbeitsbaum:** nach Commit dieses Checkpoints erneut prüfen und den Branch pushen.
