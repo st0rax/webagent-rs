@@ -1,4 +1,5 @@
 # Changelog
+> **Referenz:** Versionshistorie. Der aktuelle Produktzustand steht in `docs/OVERVIEW.md`, der operative Arbeitsstand in `docs/CURRENT_WORK.md`.
 
 ## [0.11.1] - 2026-08-25
 

@@ -1319,7 +1319,6 @@ where
                 did_change,
                 compiled,
                 tests_passed,
-                lint_passed: lint_ok,
                 cycles,
                 iterations,
                 latency_ms,
@@ -1913,6 +1912,12 @@ mod scope_gate_system_tests {
         assert!(
             patch.contains("src/config.rs"),
             "Vorbedingung: der Diff nennt die Datei — {patch}"
+        );
+        let (touched, deleted) = crate::benchmark::git::patch_touched_paths(&patch);
+        assert_eq!(touched, ["src/config.rs".to_string()], "Patch: {patch}");
+        assert!(
+            deleted.is_empty(),
+            "Patch darf keine Datei loeschen: {patch}"
         );
 
         let paths = validate_task_scope_in(

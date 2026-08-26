@@ -125,7 +125,7 @@ impl WorkerPool {
         startup_grace_until: Option<&SystemTime>,
         now: SystemTime,
     ) -> bool {
-        heartbeat_age.is_none() && !startup_grace_until.is_some_and(|until| *until > now)
+        heartbeat_age.is_none() && startup_grace_until.is_none_or(|until| *until <= now)
     }
 
     /// Jeder erfolgreiche Spawn wird ueber genau diesen Pfad erfasst. Damit

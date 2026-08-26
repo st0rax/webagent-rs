@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn code_score_und_brain_score_teilen_eine_wilson_rechnung() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let needle = format!("{}::{}", "bench_scoring", "wilson_lower_bound");
+        let needle = format!("{}::{}", "scoring", "wilson_lower_bound");
         for rel in ["src/code_score.rs", "src/brain_score.rs"] {
             let text = std::fs::read_to_string(root.join(rel)).unwrap();
             let cut = text.find("#[cfg(test)]").unwrap_or(text.len());
@@ -163,7 +163,7 @@ mod tests {
                 "{rel} muss {needle} nutzen, keine zweite Kopie"
             );
         }
-        let shared = std::fs::read_to_string(root.join("src/bench_scoring.rs")).unwrap();
+        let shared = std::fs::read_to_string(root.join("src/scoring.rs")).unwrap();
         assert!(
             shared.contains("pub fn wilson_lower_bound"),
             "wilson_lower_bound muss die gelieferte Funktion sein"

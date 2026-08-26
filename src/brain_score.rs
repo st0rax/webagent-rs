@@ -375,7 +375,10 @@ mod tests {
     fn routing_weight_ist_deterministisch() {
         let a = calculate_brain_routing_weight(500, 1, 1, 8, 2);
         let b = calculate_brain_routing_weight(500, 1, 1, 8, 2);
-        assert_eq!(a, b, "identische Eingaben muessen identische Scores liefern");
+        assert_eq!(
+            a, b,
+            "identische Eingaben muessen identische Scores liefern"
+        );
     }
 
     #[test]
@@ -398,7 +401,8 @@ mod tests {
 
     #[test]
     fn routing_weight_extremwerte_ohne_overflow() {
-        let score = calculate_brain_routing_weight(u64::MAX, u32::MAX, u32::MAX, u32::MAX, u32::MAX);
+        let score =
+            calculate_brain_routing_weight(u64::MAX, u32::MAX, u32::MAX, u32::MAX, u32::MAX);
         assert!(!score.is_nan());
         assert!(!score.is_infinite());
         assert!((0.0..=1.0).contains(&score));

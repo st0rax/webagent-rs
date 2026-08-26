@@ -189,7 +189,13 @@ pub(crate) fn capture_patch(workdir: &Path) -> Result<String, String> {
     // `+++ b/`-Zeile — beide betroffenen Pfade waeren fuer die Validierung
     // unsichtbar. Die Erkennung in `validate_harvest_patch` faengt die
     // Rename-Form zusaetzlich ab, falls die Option einmal wegfaellt.
-    git_checked(workdir, &["diff", "--cached", "--binary", "--no-renames"])
+    // Der Patch wird maschinell geparst. Eine globale Git-Einstellung wie
+    // `color.ui=always` darf deshalb keine ANSI-Sequenzen in die Kopfzeilen
+    // schreiben und die Scope-/Harvest-Prüfung blind machen.
+    git_checked(
+        workdir,
+        &["diff", "--cached", "--binary", "--no-renames", "--no-color"],
+    )
 }
 
 /// Schutzgitter für autonom geernteten Code. Ein Benchmark darf kleine,
@@ -250,6 +256,18 @@ pub(crate) fn patch_touched_paths(patch: &str) -> (Vec<String>, Vec<String>) {
             deleted.push(p);
         } else if let Some(rest) = line.strip_prefix("rename to ") {
             paths.push(rest.trim().to_string());
+        } else if let Some(rest) = line.strip_prefix("diff --git ") {
+            // Die Git-Kopfzeile ist auch bei Binärpatches und ungewöhnlichen
+            // Dateiheadern vorhanden. Sie ist deshalb eine defensive zweite
+            // Quelle für die berührten Pfade; `---`/`+++` bleiben für die
+            // explizite Löschungserkennung maßgeblich.
+            let mut names = rest.split_whitespace();
+            if let Some(old) = names.next().and_then(|p| diff_path(p, 'a')) {
+                paths.push(old);
+            }
+            if let Some(new) = names.next().and_then(|p| diff_path(p, 'b')) {
+                paths.push(new);
+            }
         }
     }
     paths.sort();
@@ -261,7 +279,30 @@ pub(crate) fn patch_touched_paths(patch: &str) -> (Vec<String>, Vec<String>) {
 
 #[cfg(test)]
 mod tests {
-    use super::ChangeVerdict;
+    use super::{patch_touched_paths, ChangeVerdict};
+
+    #[test]
+    fn patch_pfade_aus_standard_git_header() {
+        let patch = concat!(
+            "diff --git a/src/config.rs b/src/config.rs\n",
+            "--- a/src/config.rs\n",
+            "+++ b/src/config.rs\n",
+            "@@ -1 +1 @@\n",
+            "-    1\n",
+            "+    2\n",
+        );
+        let (paths, deleted) = patch_touched_paths(patch);
+        assert_eq!(paths, ["src/config.rs".to_string()]);
+        assert!(deleted.is_empty());
+    }
+
+    #[test]
+    fn diff_kopfzeile_liefert_fallback_pfade() {
+        let patch = "diff --git a/src/config.rs b/src/config.rs\n";
+        let (paths, deleted) = patch_touched_paths(patch);
+        assert_eq!(paths, ["src/config.rs".to_string()]);
+        assert!(deleted.is_empty());
+    }
 
     #[test]
     fn tree_schlaegt_write_zaehler() {

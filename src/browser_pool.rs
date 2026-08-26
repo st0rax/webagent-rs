@@ -3,7 +3,7 @@
 #[cfg(any(feature = "webview", test))]
 use std::collections::HashMap;
 #[cfg(any(feature = "webview", test))]
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "webview")]
 use std::time::Duration;
@@ -119,11 +119,6 @@ pub(crate) struct CloneGuard {
 impl CloneGuard {
     pub(crate) fn new(dir: PathBuf) -> Self {
         Self { dir: Some(dir) }
-    }
-
-    /// Pfad zum Lesen, ohne den Besitz abzugeben.
-    pub(crate) fn path(&self) -> &Path {
-        self.dir.as_deref().unwrap_or(Path::new(""))
     }
 
     /// Uebernimmt den Klon endgueltig: ab hier wird NICHT mehr geloescht.

@@ -485,7 +485,9 @@ mod tests {
             events.iter().any(|e| {
                 e.brain.as_deref() == Some("kimi")
                     && e.text.starts_with("[code:kimi]")
-                    && e.detail.as_deref().is_some_and(|d| d.contains("did_change"))
+                    && e.detail
+                        .as_deref()
+                        .is_some_and(|d| d.contains("did_change"))
             }),
             "im Spiegelmodus muss der Code-Versuch mit vollem Detail in den Bus"
         );

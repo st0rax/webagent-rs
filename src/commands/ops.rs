@@ -1119,8 +1119,7 @@ mod tests {
     #[test]
     fn test_maintenance_healthy_does_not_panic() {
         // Übt den Gate-Pfad (doctor + watchdog) ohne pytest aus.
-        // Assertiert primär, dass die Funktion ohne Panic ein bool liefert.
-        let result = maintenance_healthy(false, 60.0);
-        assert!(result || !result);
+        // Der Test besteht, wenn die Prüfung ohne Panic durchläuft.
+        maintenance_healthy(false, 60.0);
     }
 }

@@ -11,11 +11,14 @@
 // Löschen toter Items (siehe docs/ARCHITECTURE.md → "API-Fläche").
 
 // ── core: plattformreiner Kern (keine UI/Browser-Abhängigkeiten) ──
+pub mod api_bridge;
 pub mod circuit_breaker;
 pub mod comms;
 pub mod config;
 pub mod executor;
 pub mod file_actions;
+pub mod free_cloud_chat;
+pub mod goal_plan;
 pub mod loop_guard;
 pub mod memory;
 pub mod observer;
@@ -24,10 +27,12 @@ pub mod protocol;
 pub mod run_store;
 pub mod scoring;
 pub mod shell_policy;
+pub mod startup;
 pub mod timeouts;
 pub mod transcript;
 
 // ── brain: Gehirn-Abstraktion + Browser-Anbindung ──
+pub mod bin_hooks;
 pub mod brain;
 pub mod brain_limits;
 pub mod brain_probe;
@@ -43,10 +48,10 @@ pub mod webview_runtime;
 pub mod capability;
 pub mod capability_proof;
 pub mod controller;
+pub mod counting;
 pub mod knockout;
 pub mod prompts;
 pub mod relay;
-pub mod counting;
 pub mod welcome;
 
 // Autoresearch: Canary-Tests für Brain-Erreichbarkeit
@@ -70,15 +75,16 @@ pub mod wiki_memory;
 // ── workers: Parallelität & Gesundheit ──
 pub mod bot2bot_worker;
 pub mod doctor;
-pub mod watchdog;
 pub mod pool_failover;
 pub mod pool_state;
+pub mod watchdog;
 pub mod worker_pool;
 
 // ── ui: TUI, REPL ──
 pub mod brain_grid;
 pub mod brain_wall;
 pub mod repl;
+pub mod target_check;
 pub mod tui;
 pub mod tui_ansi;
 #[cfg(feature = "tui")]
@@ -88,14 +94,11 @@ pub mod tui_config;
 pub mod tui_footer;
 #[cfg(feature = "tui")]
 pub mod tui_keys;
-#[cfg(feature = "tui")]
 pub mod tui_load;
 #[cfg(feature = "tui")]
 pub mod tui_mouse;
 #[cfg(feature = "tui")]
 pub mod tui_render;
-#[cfg(feature = "tui")]
-pub mod target_check;
 pub mod tui_state;
 #[cfg(feature = "tui")]
 pub mod tui_widgets;
