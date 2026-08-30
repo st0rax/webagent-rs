@@ -1167,13 +1167,45 @@ fn responses_messages(input: &Value) -> Result<Vec<ConversationMessage>, String>
                     let output = object.get("output").cloned().unwrap_or(Value::Null);
                     return Ok(ConversationMessage {
                         role: "tool".to_string(),
-                        content: if output.is_string() {
-                            output
-                        } else {
-                            Value::String(output.to_string())
-                        },
+                        content: responses_function_output(&output)?,
                         tool_calls: Vec::new(),
                         tool_call_id: Some(id.to_string()),
+                    });
+                }
+                if object.get("type").and_then(Value::as_str) == Some("function_call") {
+                    let id = object
+                        .get("call_id")
+                        .and_then(Value::as_str)
+                        .filter(|id| !id.trim().is_empty())
+                        .ok_or_else(|| "function_call benoetigt call_id.".to_string())?;
+                    let name = object
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .filter(|name| !name.trim().is_empty())
+                        .ok_or_else(|| "function_call benoetigt name.".to_string())?;
+                    let arguments = object
+                        .get("arguments")
+                        .cloned()
+                        .unwrap_or_else(|| json!({}));
+                    let arguments = if let Some(arguments) = arguments.as_str() {
+                        arguments.to_string()
+                    } else {
+                        serde_json::to_string(&arguments).map_err(|error| {
+                            format!("function_call arguments nicht serialisierbar: {error}")
+                        })?
+                    };
+                    return Ok(ConversationMessage {
+                        role: "assistant".to_string(),
+                        content: Value::Null,
+                        tool_calls: vec![OpenAiAssistantToolCall {
+                            id: id.to_string(),
+                            kind: "function".to_string(),
+                            function: OpenAiAssistantFunction {
+                                name: name.to_string(),
+                                arguments,
+                            },
+                        }],
+                        tool_call_id: None,
                     });
                 }
                 let role = object
@@ -1216,6 +1248,16 @@ fn responses_content(value: &Value) -> Result<Value, String> {
         text.push_str(part_text);
     }
     Ok(Value::String(text))
+}
+
+fn responses_function_output(value: &Value) -> Result<Value, String> {
+    if value.is_string() {
+        return Ok(value.clone());
+    }
+    if value.is_array() {
+        return responses_content(value);
+    }
+    Ok(Value::String(value.to_string()))
 }
 
 fn responses_tools(tools: &[Value]) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
@@ -1397,6 +1439,11 @@ fn openai_tool_choice(
         .and_then(Value::as_str)
         .filter(|name| !name.trim().is_empty())
         .ok_or_else(|| "Objekt-tool_choice benoetigt function.name.".to_string())?;
+    if !tools.iter().any(|tool| tool.name == name) {
+        return Err(format!(
+            "tool_choice verweist auf unbekanntes Tool '{name}'."
+        ));
+    }
     Ok(BrowserToolChoice::Function(name.to_string()))
 }
 
@@ -2052,6 +2099,11 @@ mod tests {
             choice,
             crate::browser_inference::BrowserToolChoice::Required
         );
+        assert!(openai_tool_choice(
+            Some(&json!({"type":"function","function":{"name":"missing"}})),
+            &tools
+        )
+        .is_err());
     }
 
     #[test]
@@ -2205,6 +2257,30 @@ mod tests {
         };
         let task = responses_task(&request).unwrap();
         assert!(task.contains("[tool id=call_7]\n{\"ok\":true}"));
+
+        let continuation = ResponsesRequest {
+            model: "webagent/chatgpt".to_string(),
+            input: json!([{
+                "type":"function_call",
+                "call_id":"call_7",
+                "name":"read_file",
+                "arguments":{"path":"README.md"}
+            }, {
+                "type":"function_call_output",
+                "call_id":"call_7",
+                "output":[{"type":"input_text","text":"Dateiinhalt"}]
+            }]),
+            instructions: None,
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+            previous_response_id: None,
+            store: true,
+        };
+        let continuation_task = responses_task(&continuation).unwrap();
+        assert!(continuation_task.contains("[assistant tool_calls]"));
+        assert!(continuation_task.contains("read_file"));
+        assert!(continuation_task.contains("[tool id=call_7]\nDateiinhalt"));
     }
 
     #[test]
