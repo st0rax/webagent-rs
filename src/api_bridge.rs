@@ -181,6 +181,12 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
     {
         return handle_responses_incremental(stream, &request, config);
     }
+    if request.method == "POST"
+        && request.path == "/v1/chat/completions"
+        && is_incremental_chat_request(&request.body)
+    {
+        return handle_openai_incremental(stream, &request, config);
+    }
 
     let flavor = if request.path == "/v1/messages" {
         ApiFlavor::Anthropic
@@ -269,6 +275,21 @@ fn is_incremental_text_request(body: &[u8]) -> bool {
     no_tools || tools_disabled
 }
 
+fn is_incremental_chat_request(body: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return false;
+    };
+    if value.get("stream").and_then(Value::as_bool) != Some(true) {
+        return false;
+    }
+    let no_tools = value
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty);
+    let tools_disabled = value.get("tool_choice").and_then(Value::as_str) == Some("none");
+    no_tools || tools_disabled
+}
+
 fn handle_response_retrieve(
     request: &HttpRequest,
     config: &BridgeConfig,
@@ -339,6 +360,118 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         }),
     )
+}
+
+fn handle_openai_incremental(
+    stream: &mut TcpStream,
+    request: &HttpRequest,
+    config: &BridgeConfig,
+) -> Result<(), String> {
+    if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return write_http_response(stream, response);
+    }
+    let payload: OpenAiRequest = match decode_json(&request.body) {
+        Ok(payload) => payload,
+        Err(error) => {
+            return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
+        }
+    };
+    let brain = match resolve_model(&payload.model, &config.brain) {
+        Ok(brain) => brain,
+        Err(error) => {
+            return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
+        }
+    };
+    let task = match openai_task(&payload) {
+        Ok(task) => task,
+        Err(error) => {
+            return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
+        }
+    };
+    let tools = openai_tools(&payload.tools)
+        .map_err(|error| format!("Inkrementeller Tool-Request unerwartet: {error}"))?;
+    let choice = openai_tool_choice(payload.tool_choice.as_ref(), &tools)
+        .map_err(|error| format!("Inkrementeller tool_choice unerwartet: {error}"))?;
+    if !tools.is_empty() && !matches!(choice, crate::browser_inference::BrowserToolChoice::None) {
+        return write_http_response(stream, handle_openai(request, config));
+    }
+
+    let id = completion_id("chatcmpl");
+    write_sse_headers(stream)?;
+    write_data_frame(
+        stream,
+        json!({"id":id,"object":"chat.completion.chunk","created":unix_seconds(),"model":payload.model,"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}),
+    )?;
+
+    let mut last_sent = String::new();
+    let mut last_keepalive = Instant::now();
+    let mut stream_error: Option<String> = None;
+    let answer = {
+        let mut on_update = |snapshot: &str| {
+            if stream_error.is_some() {
+                return;
+            }
+            if snapshot == last_sent {
+                if last_keepalive.elapsed() >= Duration::from_secs(5) {
+                    if let Err(error) = write_sse_comment(stream, "keep-alive") {
+                        stream_error = Some(error);
+                    } else {
+                        last_keepalive = Instant::now();
+                    }
+                }
+                return;
+            }
+            if let Some(delta) = snapshot.strip_prefix(&last_sent) {
+                if !delta.is_empty() {
+                    if let Err(error) = write_data_frame(
+                        stream,
+                        json!({"id":id,"object":"chat.completion.chunk","created":unix_seconds(),"model":payload.model,"choices":[{"index":0,"delta":{"content":delta},"finish_reason":null}]}),
+                    ) {
+                        stream_error = Some(error);
+                        return;
+                    }
+                }
+                last_sent = snapshot.to_string();
+                last_keepalive = Instant::now();
+            }
+        };
+        run_task_streaming(config, &brain, &task, &mut on_update)
+    };
+    let answer = match answer {
+        Ok(answer) => answer,
+        Err(error) => {
+            if stream_error.is_none() {
+                let _ = write_data_frame(
+                    stream,
+                    json!({"id":id,"object":"chat.completion.chunk","created":unix_seconds(),"model":payload.model,"choices":[{"index":0,"delta":{},"finish_reason":"error"}],"error":{"message":error,"type":"server_error"}}),
+                );
+            }
+            return Ok(());
+        }
+    };
+    let text = answer.text.as_deref().unwrap_or_default();
+    if let Some(delta) = text
+        .strip_prefix(&last_sent)
+        .filter(|delta| !delta.is_empty())
+    {
+        write_data_frame(
+            stream,
+            json!({"id":id,"object":"chat.completion.chunk","created":unix_seconds(),"model":payload.model,"choices":[{"index":0,"delta":{"content":delta},"finish_reason":null}]}),
+        )?;
+    }
+    if let Some(error) = stream_error {
+        return Err(error);
+    }
+    write_data_frame(
+        stream,
+        json!({"id":id,"object":"chat.completion.chunk","created":unix_seconds(),"model":payload.model,"choices":[{"index":0,"delta":{},"finish_reason":answer.finish_reason()}]}),
+    )?;
+    stream
+        .write_all(b"data: [DONE]\n\n")
+        .map_err(|error| format!("Chat-SSE-Abschluss nicht schreibbar: {error}"))?;
+    stream
+        .flush()
+        .map_err(|error| format!("Chat-SSE-Abschluss nicht flushbar: {error}"))
 }
 
 fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
@@ -634,6 +767,16 @@ fn write_sse_event(stream: &mut TcpStream, event: &str, data: Value) -> Result<(
     stream
         .flush()
         .map_err(|error| format!("SSE-Event nicht flushbar: {error}"))
+}
+
+fn write_data_frame(stream: &mut TcpStream, data: Value) -> Result<(), String> {
+    let frame = format!("data: {data}\n\n");
+    stream
+        .write_all(frame.as_bytes())
+        .map_err(|error| format!("SSE-Datenframe nicht schreibbar: {error}"))?;
+    stream
+        .flush()
+        .map_err(|error| format!("SSE-Datenframe nicht flushbar: {error}"))
 }
 
 fn write_sse_comment(stream: &mut TcpStream, comment: &str) -> Result<(), String> {
