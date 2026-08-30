@@ -200,6 +200,28 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
                 )
             }
         }
+        ("GET", path) if path.starts_with("/v1/models/") => {
+            if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+                response
+            } else {
+                let requested = path.trim_start_matches("/v1/models/");
+                match resolve_model(requested, &config.brain) {
+                    Ok(brain) => HttpResponse::json(
+                        200,
+                        json!({
+                            "id": model_id(&brain),
+                            "object": "model",
+                            "created": unix_seconds(),
+                            "owned_by": "webagent",
+                            "brain": brain,
+                            "context_window": 128000,
+                            "max_tokens": 16384
+                        }),
+                    ),
+                    Err(error) => api_error(ApiFlavor::OpenAi, 404, &error),
+                }
+            }
+        }
         ("POST", "/v1/chat/completions") => handle_openai(&request, config),
         ("POST", "/v1/messages") => handle_anthropic(&request, config),
         _ => api_error(flavor, 404, "Endpoint nicht gefunden."),
