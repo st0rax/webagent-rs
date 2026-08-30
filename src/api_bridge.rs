@@ -1180,7 +1180,7 @@ fn responses_messages(input: &Value) -> Result<Vec<ConversationMessage>, String>
                     .get("role")
                     .and_then(Value::as_str)
                     .ok_or_else(|| "Responses-Input-Item benoetigt role.".to_string())?;
-                let content = object.get("content").cloned().unwrap_or(Value::Null);
+                let content = responses_content(object.get("content").unwrap_or(&Value::Null))?;
                 Ok(ConversationMessage {
                     role: role.to_string(),
                     content,
@@ -1192,6 +1192,30 @@ fn responses_messages(input: &Value) -> Result<Vec<ConversationMessage>, String>
         _ => return Err("Responses-Input muss ein String oder ein Array sein.".to_string()),
     };
     Ok(messages)
+}
+
+fn responses_content(value: &Value) -> Result<Value, String> {
+    if value.is_string() {
+        return Ok(value.clone());
+    }
+    let Some(parts) = value.as_array() else {
+        return Err("Responses-content muss String oder Textblock-Array sein.".to_string());
+    };
+    let mut text = String::new();
+    for part in parts {
+        let part_type = part.get("type").and_then(Value::as_str).unwrap_or("");
+        if !matches!(part_type, "text" | "input_text" | "output_text") {
+            return Err(format!(
+                "Responses-Inhaltstyp '{part_type}' wird nicht unterstuetzt."
+            ));
+        }
+        let part_text = part
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Responses-Textblock ohne String-Feld 'text'.".to_string())?;
+        text.push_str(part_text);
+    }
+    Ok(Value::String(text))
 }
 
 fn responses_tools(tools: &[Value]) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
@@ -2096,6 +2120,24 @@ mod tests {
         assert!(responses_task(&message_request)
             .unwrap()
             .contains("[user]\nPing"));
+
+        let block_request = ResponsesRequest {
+            model: "webagent/chatgpt".to_string(),
+            input: json!([{"role":"user","content":[{"type":"input_text","text":"Teil 1"},{"type":"input_text","text":" Teil 2"}]}]),
+            instructions: None,
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+            previous_response_id: None,
+            store: true,
+        };
+        assert!(responses_task(&block_request)
+            .unwrap()
+            .contains("[user]\nTeil 1 Teil 2"));
+        assert!(responses_content(
+            &json!([{"type":"input_image","image_url":"https://example.invalid/x"}])
+        )
+        .is_err());
     }
 
     #[test]

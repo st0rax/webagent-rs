@@ -18,7 +18,7 @@ Die Bridge akzeptiert die für Pi relevanten Formate **OpenAI Chat Completions**
 | Nebenläufigkeit | Eine Anfrage zur Zeit pro Dienstprozess |
 | Ergebnisquelle | Direkt beobachteter Antworttext des einzelnen Browser-Modellturns |
 | Streaming | SSE-Abschlussformat nach vollständig beendetem Browserturn, nicht tokeninkrementell |
-| Unterstützter Inhalt | Textnachrichten und Textblöcke; OpenAI-Function-Tools experimentell; andere Inhaltsarten werden mit HTTP 400 abgelehnt |
+| Unterstützter Inhalt | Textnachrichten und Responses-Textblöcke (`input_text`/`output_text`); OpenAI-Function-Tools experimentell; andere Inhaltsarten werden mit HTTP 400 abgelehnt |
 
 ## Dienst starten
 
@@ -60,7 +60,7 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
 
 OpenAI Chat Completions modelliert eine Unterhaltung als Nachrichtenliste und kann eine reguläre Completion oder gestreamte Chunks liefern.[3] Die Bridge implementiert genau diesen textbasierten Teil. Anthropic Messages erwartet `messages` und `max_tokens`; Systeminstruktionen liegen dort auf Top-Level statt in einer `system`-Rolle.[4]
 
-Nicht unterstützte Bild-, Audio-, Dokument-, Thinking- und Tool-Blöcke werden nie stillschweigend entfernt. Sie führen zu einer providerkonformen `400 invalid_request_error`-Antwort. Das verhindert, dass ein Client irrtümlich annimmt, nicht verarbeitete Daten seien beim Agenten angekommen.
+Responses-Message-Inhalte dürfen als String oder als Textblock-Array übergeben werden. Die Bridge normalisiert `input_text` und `output_text` in den Browser-Prompt. Nicht unterstützte Bild-, Audio-, Dokument-, Thinking- und Tool-Blöcke werden nie stillschweigend entfernt. Sie führen zu einer providerkonformen `400 invalid_request_error`-Antwort. Das verhindert, dass ein Client irrtümlich annimmt, nicht verarbeitete Daten seien beim Agenten angekommen.
 
 ## Pi-Konfiguration
 
