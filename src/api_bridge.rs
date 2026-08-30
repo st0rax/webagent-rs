@@ -1145,13 +1145,30 @@ fn responses_sse_with_object(
         json!({"type":"response.in_progress","response":created})
     ));
     if answer.tool_calls.is_empty() {
+        let item_id = format!("{id}_msg");
+        body.push_str(&format!(
+            "event: response.output_item.added\ndata: {}\n\n",
+            json!({"type":"response.output_item.added","output_index":0,"item":{"id":item_id,"type":"message","status":"in_progress","role":"assistant","content":[]}})
+        ));
+        body.push_str(&format!(
+            "event: response.content_part.added\ndata: {}\n\n",
+            json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}})
+        ));
         body.push_str(&format!(
             "event: response.output_text.delta\ndata: {}\n\n",
-            json!({"type":"response.output_text.delta","item_id":format!("{id}_msg"),"output_index":0,"content_index":0,"delta":text})
+            json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":text})
         ));
         body.push_str(&format!(
             "event: response.output_text.done\ndata: {}\n\n",
-            json!({"type":"response.output_text.done","item_id":format!("{id}_msg"),"output_index":0,"content_index":0,"text":text})
+            json!({"type":"response.output_text.done","item_id":item_id,"output_index":0,"content_index":0,"text":text})
+        ));
+        body.push_str(&format!(
+            "event: response.content_part.done\ndata: {}\n\n",
+            json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":text,"annotations":[]}})
+        ));
+        body.push_str(&format!(
+            "event: response.output_item.done\ndata: {}\n\n",
+            json!({"type":"response.output_item.done","output_index":0,"item":completed["output"][0]})
         ));
     } else {
         for (index, call) in answer.tool_calls.iter().enumerate() {
@@ -1162,6 +1179,10 @@ fn responses_sse_with_object(
             ));
             let arguments =
                 serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string());
+            body.push_str(&format!(
+                "event: response.function_call_arguments.delta\ndata: {}\n\n",
+                json!({"type":"response.function_call_arguments.delta","item_id":call.id,"output_index":index,"delta":arguments})
+            ));
             body.push_str(&format!(
                 "event: response.function_call_arguments.done\ndata: {}\n\n",
                 json!({"type":"response.function_call_arguments.done","item_id":call.id,"output_index":index,"arguments":arguments})
@@ -1585,6 +1606,14 @@ mod tests {
         assert!(sse.contains("response.created"));
         assert!(sse.contains("response.output_text.delta"));
         assert!(sse.contains("response.completed"));
+        assert!(
+            sse.find("event: response.output_item.added").unwrap()
+                < sse.find("event: response.content_part.added").unwrap()
+        );
+        assert!(
+            sse.find("event: response.content_part.added").unwrap()
+                < sse.find("event: response.output_text.delta").unwrap()
+        );
     }
 
     #[test]
@@ -1640,6 +1669,7 @@ mod tests {
         let sse = String::from_utf8(responses_sse("resp_tool", "webagent/chatgpt", &answer).body)
             .unwrap();
         assert!(sse.contains("response.output_item.added"));
+        assert!(sse.contains("response.function_call_arguments.delta"));
         assert!(sse.contains("response.function_call_arguments.done"));
         assert!(sse.contains("response.output_item.done"));
         assert!(!sse.contains("response.output_text.delta"));

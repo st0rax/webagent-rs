@@ -188,6 +188,8 @@ Der Service serialisiert Browserturns pro Brain und rendert SSE erst nach deren 
 
 Responses werden standardmäßig in einem auf 256 Einträge begrenzten In-Memory-Store abgelegt und können über `GET /v1/responses/{id}` abgerufen werden.[5] `previous_response_id` lädt den normalisierten Nachrichtenverlauf der referenzierten Response und stellt ihn dem nächsten Browserturn voran; neue `instructions` gelten nur für den neuen Turn.[6] `store=false` verhindert sowohl Retrieval als auch eine spätere Verknüpfung. Der Store ist absichtlich pro Prozess und nicht dauerhaft: Nach einem Neustart sind die IDs nicht mehr verfügbar.
 
+Der Wire-Vertrag ist zusätzlich mit dem offiziellen OpenAI-Python-SDK 3.6.0 live geprüft: Modellliste, Response-Retrieval, gepufferter Textstream und gepufferter Function-Call-Stream werden vom SDK ohne Sonderadapter geparst; `get_final_response()` liefert jeweils das vollständige Ergebnis. Die SSE-Reihenfolge enthält dafür die kanonischen `output_item`-, `content_part`-, Delta-, Done- und Completion-Ereignisse.
+
 `--timeout-secs` setzt optional das Zeitlimit für den einzelnen Browserturn. Ohne Angabe verwendet WebAgent die bestehende dynamische Timeout-Auflösung des ausgewählten Brains.
 
 ## OpenAI-Tool-Calling
