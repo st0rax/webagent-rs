@@ -1,10 +1,11 @@
 //! Lokale Provider-Bridge fuer Pi-kompatible OpenAI- und Anthropic-Anfragen.
 //!
 //! Der Dienst bindet ausschliesslich an Loopback, verlangt einen Bearer- oder
-//! Anthropic-kompatiblen x-api-key-Token und akzeptiert in der ersten Scheibe
-//! ausschliesslich textuelle Gespraechsinhalte. Der bewusst synchrone HTTP-Kern
-//! serialisiert Browserruns und vermeidet eine zweite parallele Laufzeit neben
-//! dem bestehenden WebAgent-Controller.
+//! Anthropic-kompatiblen x-api-key-Token und akzeptiert textuelle
+//! Gespraechsinhalte sowie OpenAI-Function-Tools. Der synchrone HTTP-Kern
+//! serialisiert Browserruns. Jeder Provideraufruf fuehrt genau einen
+//! harnessfreien Browser-Inference-Turn aus; `AgentController`, `webagent/1`
+//! und lokale Werkzeuge bleiben ausserhalb dieser Schicht.
 
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
@@ -67,19 +68,19 @@ impl Drop for ConnectionPermit {
 pub struct BridgeConfig {
     pub bind: SocketAddr,
     pub brain: String,
-    pub max_cycles: u32,
+    pub timeout_secs: Option<f64>,
     pub headless: bool,
     pub api_key: String,
 }
 
 /// Startet den lokalen Dienst und blockiert, bis der Prozess beendet wird.
 ///
-/// Der Dienst verarbeitet genau eine Anfrage zur Zeit. Das ist beabsichtigt:
-/// Ein Browserprofil darf nicht gleichzeitig von mehreren Controller-Runs
-/// gesteuert werden.
+/// Der Dienst verarbeitet genau einen Browserturn zur Zeit. Das ist
+/// beabsichtigt: Ein Browserprofil darf nicht gleichzeitig von mehreren
+/// Inference-Anfragen gesteuert werden.
 pub fn serve(config: BridgeConfig) -> Result<(), String> {
-    if config.max_cycles == 0 {
-        return Err("--max-cycles muss mindestens 1 sein.".to_string());
+    if config.timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
+        return Err("--timeout-secs muss groesser als 0 sein.".to_string());
     }
 
     if !config.bind.ip().is_loopback() {
@@ -206,7 +207,15 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
         Ok(task) => task,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    let answer = match run_task_blocking(config, &task) {
+    let tools = match openai_tools(&payload.tools) {
+        Ok(tools) => tools,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    let tool_choice = match openai_tool_choice(payload.tool_choice.as_ref(), &tools) {
+        Ok(choice) => choice,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    let answer = match run_task_blocking(config, &task, &tools, tool_choice) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
     };
@@ -214,6 +223,7 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
     if payload.stream.unwrap_or(false) {
         return openai_sse(&id, &payload.model, &answer);
     }
+    let message = openai_message(&answer);
     HttpResponse::json(
         200,
         json!({
@@ -223,8 +233,8 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
             "model": payload.model,
             "choices": [{
                 "index": 0,
-                "message": {"role": "assistant", "content": answer},
-                "finish_reason": "stop"
+                "message": message,
+                "finish_reason": answer.finish_reason()
             }],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         }),
@@ -253,13 +263,25 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(task) => task,
         Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
     };
-    let answer = match run_task_blocking(config, &task) {
+    let answer = match run_task_blocking(
+        config,
+        &task,
+        &[],
+        crate::browser_inference::BrowserToolChoice::None,
+    ) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::Anthropic, 502, &error),
     };
+    let Some(text) = answer.text else {
+        return api_error(
+            ApiFlavor::Anthropic,
+            502,
+            "Anthropic-Textpfad erhielt unerwartet einen Tool Call.",
+        );
+    };
     let id = completion_id("msg");
     if payload.stream.unwrap_or(false) {
-        return anthropic_sse(&id, &payload.model, &answer);
+        return anthropic_sse(&id, &payload.model, &text);
     }
     HttpResponse::json(
         200,
@@ -268,7 +290,7 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
             "type": "message",
             "role": "assistant",
             "model": payload.model,
-            "content": [{"type": "text", "text": answer}],
+            "content": [{"type": "text", "text": text}],
             "stop_reason": "end_turn",
             "stop_sequence": null,
             "usage": {"input_tokens": 0, "output_tokens": 0}
@@ -276,49 +298,27 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     )
 }
 
-fn run_task_blocking(config: &BridgeConfig, task: &str) -> Result<String, String> {
+fn run_task_blocking(
+    config: &BridgeConfig,
+    task: &str,
+    tools: &[crate::browser_inference::BrowserTool],
+    tool_choice: crate::browser_inference::BrowserToolChoice,
+) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
     let _browser_run = BROWSER_RUN_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    use crate::browser::WebBrainBackend;
-    use crate::controller::AgentController;
-    use crate::executor::PlatformShellExecutor;
 
-    let backend = WebBrainBackend::from_config(&config.brain)
-        .map_err(|error| format!("Brain '{}' nicht verfuegbar: {error}", config.brain))?;
-    let workspace = std::env::current_dir()
-        .map_err(|error| format!("API-Workspace nicht bestimmbar: {error}"))?;
-    let executor = PlatformShellExecutor::new_in(&workspace);
-    let mut controller = AgentController::new(backend, executor, config.max_cycles as usize);
-    controller.set_fresh_chat(true);
-    let meta = controller
-        .run(task, &config.brain, None, config.headless)
-        .map_err(|error| format!("WebAgent-Run fehlgeschlagen: {error}"))?;
-
-    final_result_text(&meta).ok_or_else(|| {
-        format!(
-            "WebAgent-Run {} endete ohne kanonische Abschlussantwort (status={}).",
-            meta.run_id, meta.status
-        )
+    crate::browser_inference::complete(crate::browser_inference::BrowserInferenceRequest {
+        brain: &config.brain,
+        prompt: task,
+        tools,
+        tool_choice,
+        headless: config.headless,
+        timeout_secs: config.timeout_secs,
+        model: None,
     })
-}
-
-/// Liest ausschliesslich strukturierte Abschlussaktionen, nie Browser-Transcript.
-fn final_result_text(meta: &crate::run_store::RunMeta) -> Option<String> {
-    let priorities = ["answer-", "finish-", "final-", "review-", "eval-"];
-    for prefix in priorities {
-        let result = meta
-            .completed_actions
-            .iter()
-            .filter(|(id, value)| id.starts_with(prefix) && !value.trim().is_empty())
-            .min_by(|(left, _), (right, _)| left.cmp(right))
-            .map(|(_, value)| value.trim().to_string());
-        if result.is_some() {
-            return result;
-        }
-    }
-    None
+    .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
 }
 
 #[derive(Deserialize)]
@@ -327,6 +327,10 @@ struct OpenAiRequest {
     messages: Vec<ConversationMessage>,
     #[serde(default)]
     stream: Option<bool>,
+    #[serde(default)]
+    tools: Vec<OpenAiTool>,
+    #[serde(default)]
+    tool_choice: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -345,6 +349,40 @@ struct ConversationMessage {
     role: String,
     #[serde(default)]
     content: Value,
+    #[serde(default)]
+    tool_calls: Vec<OpenAiAssistantToolCall>,
+    #[serde(default)]
+    tool_call_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OpenAiTool {
+    #[serde(rename = "type")]
+    kind: String,
+    function: OpenAiFunction,
+}
+
+#[derive(Deserialize)]
+struct OpenAiFunction {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    parameters: Value,
+}
+
+#[derive(Deserialize, serde::Serialize)]
+struct OpenAiAssistantToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+    function: OpenAiAssistantFunction,
+}
+
+#[derive(Deserialize, serde::Serialize)]
+struct OpenAiAssistantFunction {
+    name: String,
+    arguments: String,
 }
 
 fn decode_json<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
@@ -372,7 +410,7 @@ fn conversation_task(
         return Err("messages darf nicht leer sein.".to_string());
     }
     let mut task = format!(
-        "Du bearbeitest eine textuelle Anfrage, die ueber die {source}-Provider-Bridge eingegangen ist.\n\n"
+        "Die folgende Unterhaltung wurde ueber die {source}-Provider-Bridge uebermittelt. Antworte auf die letzte Nutzerfrage. Gib nur die eigentliche Antwort fuer den API-Client aus; verwende nicht das lokale WEBAGENT/1-Agent-Aktionsprotokoll. Ein eventuell spaeter angefuegter WEBAGENT_INFERENCE/1-Tool-Umschlag ist davon getrennt.\n\n"
     );
     if let Some(system) = system.filter(|value| !value.trim().is_empty()) {
         task.push_str("[system]\n");
@@ -381,20 +419,124 @@ fn conversation_task(
     }
     for message in messages {
         match message.role.as_str() {
-            "system" | "developer" | "user" | "assistant" => {}
+            "system" | "developer" | "user" => {
+                if !message.tool_calls.is_empty() || message.tool_call_id.is_some() {
+                    return Err(format!(
+                        "Rolle '{}' darf keine Tool-Call-Felder enthalten.",
+                        message.role
+                    ));
+                }
+                let content = text_content(&message.content)?;
+                task.push_str(&format!("[{}]\n{}\n\n", message.role, content));
+            }
+            "assistant" => {
+                if message.tool_call_id.is_some() {
+                    return Err("Assistant-Nachricht darf keine tool_call_id tragen.".to_string());
+                }
+                if !message.content.is_null() {
+                    let content = text_content(&message.content)?;
+                    if !content.is_empty() {
+                        task.push_str(&format!("[assistant]\n{content}\n\n"));
+                    }
+                }
+                if !message.tool_calls.is_empty() {
+                    let calls = serde_json::to_string(&message.tool_calls).map_err(|error| {
+                        format!("Assistant-Tool-Calls nicht serialisierbar: {error}")
+                    })?;
+                    task.push_str(&format!("[assistant tool_calls]\n{calls}\n\n"));
+                }
+            }
+            "tool" => {
+                if !message.tool_calls.is_empty() {
+                    return Err("Tool-Nachricht darf keine weiteren tool_calls tragen.".to_string());
+                }
+                let id = message
+                    .tool_call_id
+                    .as_deref()
+                    .filter(|id| !id.trim().is_empty())
+                    .ok_or_else(|| "Tool-Nachricht benoetigt tool_call_id.".to_string())?;
+                let content = text_content(&message.content)?;
+                task.push_str(&format!("[tool id={id}]\n{content}\n\n"));
+            }
             other => {
                 return Err(format!(
                     "Rolle '{other}' wird von der Text-Bridge nicht unterstuetzt."
                 ))
             }
         }
-        let content = text_content(&message.content)?;
-        task.push_str(&format!("[{}]\n{}\n\n", message.role, content));
     }
-    task.push_str(
-        "Antworte auf die letzte Nutzerfrage. Schliesse zwingend mit einer strukturierten webagent/1 MESSAGE-Aktion ab: id muss mit 'final-' beginnen, type ist 'message', und text enthaelt ausschliesslich die Antwort fuer den API-Client. Fuehre keine Tools oder Shell-Befehle aus, ausser die Anfrage erfordert sie explizit.",
-    );
     Ok(task)
+}
+
+fn openai_tools(
+    tools: &[OpenAiTool],
+) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
+    tools
+        .iter()
+        .map(|tool| {
+            if tool.kind != "function" {
+                return Err(format!(
+                    "Tool-Typ '{}' wird nicht unterstuetzt; erwartet wird 'function'.",
+                    tool.kind
+                ));
+            }
+            Ok(crate::browser_inference::BrowserTool {
+                name: tool.function.name.clone(),
+                description: tool.function.description.clone(),
+                parameters: tool.function.parameters.clone(),
+            })
+        })
+        .collect()
+}
+
+fn openai_tool_choice(
+    choice: Option<&Value>,
+    tools: &[crate::browser_inference::BrowserTool],
+) -> Result<crate::browser_inference::BrowserToolChoice, String> {
+    use crate::browser_inference::BrowserToolChoice;
+    let Some(choice) = choice else {
+        return Ok(if tools.is_empty() {
+            BrowserToolChoice::None
+        } else {
+            BrowserToolChoice::Auto
+        });
+    };
+    if let Some(choice) = choice.as_str() {
+        return match choice {
+            "auto" => Ok(BrowserToolChoice::Auto),
+            "none" => Ok(BrowserToolChoice::None),
+            "required" => Ok(BrowserToolChoice::Required),
+            other => Err(format!("Unbekannter tool_choice '{other}'.")),
+        };
+    }
+    let name = choice
+        .get("function")
+        .and_then(|function| function.get("name"))
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .ok_or_else(|| "Objekt-tool_choice benoetigt function.name.".to_string())?;
+    Ok(BrowserToolChoice::Function(name.to_string()))
+}
+
+fn openai_message(answer: &crate::browser_inference::BrowserInferenceResponse) -> Value {
+    if answer.tool_calls.is_empty() {
+        return json!({"role": "assistant", "content": answer.text});
+    }
+    let tool_calls: Vec<Value> = answer
+        .tool_calls
+        .iter()
+        .map(|call| {
+            json!({
+                "id": call.id,
+                "type": "function",
+                "function": {
+                    "name": call.name,
+                    "arguments": serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string())
+                }
+            })
+        })
+        .collect();
+    json!({"role": "assistant", "content": null, "tool_calls": tool_calls})
 }
 
 fn text_content(value: &Value) -> Result<String, String> {
@@ -490,20 +632,45 @@ fn api_error(flavor: ApiFlavor, status: u16, message: &str) -> HttpResponse {
     HttpResponse::json(status, body)
 }
 
-fn openai_sse(id: &str, model: &str, answer: &str) -> HttpResponse {
+fn openai_sse(
+    id: &str,
+    model: &str,
+    answer: &crate::browser_inference::BrowserInferenceResponse,
+) -> HttpResponse {
+    let delta = if answer.tool_calls.is_empty() {
+        json!({"role": "assistant", "content": answer.text})
+    } else {
+        let tool_calls: Vec<Value> = answer
+            .tool_calls
+            .iter()
+            .enumerate()
+            .map(|(index, call)| {
+                json!({
+                    "index": index,
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.name,
+                        "arguments": serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string())
+                    }
+                })
+            })
+            .collect();
+        json!({"role": "assistant", "tool_calls": tool_calls})
+    };
     let first = json!({
         "id": id,
         "object": "chat.completion.chunk",
         "created": unix_seconds(),
         "model": model,
-        "choices": [{"index": 0, "delta": {"role": "assistant", "content": answer}, "finish_reason": null}]
+        "choices": [{"index": 0, "delta": delta, "finish_reason": null}]
     });
     let last = json!({
         "id": id,
         "object": "chat.completion.chunk",
         "created": unix_seconds(),
         "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+        "choices": [{"index": 0, "delta": {}, "finish_reason": answer.finish_reason()}]
     });
     HttpResponse::sse(format!("data: {first}\n\ndata: {last}\n\ndata: [DONE]\n\n"))
 }
@@ -745,16 +912,111 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsupported_roles_before_agent_execution() {
+    fn rejects_unsupported_roles_before_browser_execution() {
         let request = OpenAiRequest {
             model: "webagent".to_string(),
             stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
             messages: vec![ConversationMessage {
-                role: "tool".to_string(),
+                role: "invalid".to_string(),
                 content: json!("unsafe"),
+                tool_calls: Vec::new(),
+                tool_call_id: None,
             }],
         };
-        assert!(openai_task(&request).unwrap_err().contains("Rolle 'tool'"));
+        assert!(openai_task(&request)
+            .unwrap_err()
+            .contains("Rolle 'invalid'"));
+    }
+
+    #[test]
+    fn plain_inference_prompt_does_not_request_webagent_actions() {
+        let request = OpenAiRequest {
+            model: "webagent".to_string(),
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+            messages: vec![ConversationMessage {
+                role: "user".to_string(),
+                content: json!("Hallo"),
+                tool_calls: Vec::new(),
+                tool_call_id: None,
+            }],
+        };
+
+        let prompt = openai_task(&request).unwrap();
+        assert!(prompt.contains("[user]\nHallo"));
+        assert!(prompt.contains("verwende nicht das lokale WEBAGENT/1"));
+        assert!(!prompt.contains("final-"));
+    }
+
+    #[test]
+    fn openai_tools_and_choice_are_normalized() {
+        let request = OpenAiRequest {
+            model: "webagent".to_string(),
+            stream: None,
+            tools: vec![OpenAiTool {
+                kind: "function".to_string(),
+                function: OpenAiFunction {
+                    name: "read_file".to_string(),
+                    description: Some("Datei lesen".to_string()),
+                    parameters: json!({"type": "object"}),
+                },
+            }],
+            tool_choice: Some(json!("required")),
+            messages: vec![ConversationMessage {
+                role: "user".to_string(),
+                content: json!("Lies eine Datei"),
+                tool_calls: Vec::new(),
+                tool_call_id: None,
+            }],
+        };
+
+        let tools = openai_tools(&request.tools).unwrap();
+        let choice = openai_tool_choice(request.tool_choice.as_ref(), &tools).unwrap();
+        assert_eq!(tools[0].name, "read_file");
+        assert_eq!(
+            choice,
+            crate::browser_inference::BrowserToolChoice::Required
+        );
+    }
+
+    #[test]
+    fn tool_result_is_preserved_in_browser_prompt() {
+        let request = OpenAiRequest {
+            model: "webagent".to_string(),
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+            messages: vec![ConversationMessage {
+                role: "tool".to_string(),
+                content: json!("Dateiinhalt"),
+                tool_calls: Vec::new(),
+                tool_call_id: Some("call_1".to_string()),
+            }],
+        };
+
+        let prompt = openai_task(&request).unwrap();
+        assert!(prompt.contains("[tool id=call_1]\nDateiinhalt"));
+    }
+
+    #[test]
+    fn browser_tool_call_maps_to_openai_response() {
+        let answer = crate::browser_inference::BrowserInferenceResponse {
+            text: None,
+            tool_calls: vec![crate::browser_inference::BrowserToolCall {
+                id: "call_1".to_string(),
+                name: "read_file".to_string(),
+                arguments: json!({"path": "README.md"}),
+            }],
+        };
+
+        let message = openai_message(&answer);
+        assert!(message["content"].is_null());
+        assert_eq!(message["tool_calls"][0]["id"], "call_1");
+        assert_eq!(message["tool_calls"][0]["function"]["name"], "read_file");
+        assert_eq!(answer.finish_reason(), "tool_calls");
     }
 
     #[test]
@@ -786,7 +1048,7 @@ mod tests {
         let config = BridgeConfig {
             bind: "127.0.0.1:0".parse().unwrap(),
             brain: "chatgpt".to_string(),
-            max_cycles: 3,
+            timeout_secs: None,
             headless: true,
             api_key: "test-secret".to_string(),
         };
@@ -796,17 +1058,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_zero_max_cycles_before_binding() {
+    fn rejects_non_positive_timeout_before_binding() {
         let error = serve(BridgeConfig {
             bind: "127.0.0.1:0".parse().unwrap(),
             brain: "chatgpt".to_string(),
-            max_cycles: 0,
+            timeout_secs: Some(0.0),
             headless: true,
             api_key: "test-secret".to_string(),
         })
         .unwrap_err();
 
-        assert!(error.contains("--max-cycles muss mindestens 1 sein"));
+        assert!(error.contains("--timeout-secs muss groesser als 0 sein"));
     }
 
     #[test]

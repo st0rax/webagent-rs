@@ -1,7 +1,27 @@
 # Aktueller Arbeitsstand
 
-**Aktualisiert:** 2026-08-26
+**Aktualisiert:** 2026-08-29
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
+
+## Browser-Inference-Provider-Scheibe vom 29.08.2026
+
+Die aktuelle Arbeit liegt isoliert auf `feat/browser-inference-provider`, ausgehend von `master` bei `a0cd00b7`. `api_bridge` startet nicht mehr den vollständigen `AgentController`, sondern ruft die neue harnessfreie Grenze `browser_inference::complete()` auf. Dadurch sind WEBAGENT/1, Shell-/Dateiaktionen, Controller-Memory und der Plan-Act-Observe-Loop nicht mehr Teil eines Providerrequests. Der bestehende Rust-Harness bleibt unverändert als separater Consumer erhalten.
+
+Der OpenAI-Adapter normalisiert Function-Tools, `tool_choice`, Assistant-`tool_calls` und `role=tool`-Ergebnisse. Browsermodelle geben Tool Calls über einen strikten `WEBAGENT_INFERENCE/1`-Umschlag zurück; unbekannte Tools, doppelte IDs und verletzte erzwungene Toolwahl scheitern fail-closed. Die Bridge führt Tools ausdrücklich nicht selbst aus. Anthropic Messages bleibt in dieser Scheibe textbasiert; SSE bleibt gepuffert statt tokeninkrementell.
+
+| Gate | Ergebnis dieser Scheibe |
+|---|---|
+| `cargo fmt --all -- --check` | bestanden |
+| `cargo clippy --locked --no-default-features --all-targets -- -D warnings` | bestanden |
+| `cargo test --locked --no-default-features` | 1.168 Bibliotheks-, 7 Binärtests bestanden; 1 Test bewusst ignoriert |
+| `cargo clippy --locked --all-targets -- -D warnings` | bestanden |
+| `cargo build --locked --release` | bestanden; `webagent.exe` 7.041.536 Bytes (6,72 MiB) |
+| Lokaler API-Smoke | `/health=ok`, geschütztes `/v1/models=webagent/chatgpt`, kontrollierter Shutdown bestanden |
+| Vollfeature-Test | nicht abgeschlossen: Windows-Linker lief bei nur 1,2 GB freiem C:-Speicher in `os error 112`; kein Code-/Testfehler |
+| Live-Textturn ChatGPT | nicht bestanden: zwei Antwortversuche blieben ohne erkannten Text (`timeout_no_text`); danach kontrolliert abgebrochen |
+| Live-Tool-Call | nicht ausgeführt, weil bereits der harmlose Textturn keine Antwort lieferte |
+
+Vor dem Release fehlen damit zwei Belege: eine erfolgreiche reale Browser-Textantwort über den neuen Providerpfad und anschließend ein nichtausgeführter Tool-Call-Roundtrip (`tools` → `tool_calls`). Beides erfordert eine erreichbare, angemeldete und aktuell funktionierende WebView-Sitzung. Der lokale API-Vertrag und seine fail-closed Parser sind unabhängig davon durch Unit-Tests belegt.
 
 ## Aktueller Repositoryzustand
 

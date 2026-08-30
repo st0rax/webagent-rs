@@ -783,9 +783,9 @@ pub enum ApiCommands {
         /// Browser-Brain, das die Provider-Anfragen bearbeitet.
         #[arg(long, default_value = "chatgpt")]
         brain: String,
-        /// Maximale Agentenzyklen pro API-Anfrage.
-        #[arg(long, default_value_t = 100)]
-        max_cycles: u32,
+        /// Optionales Zeitlimit fuer den einzelnen Browser-Inference-Turn.
+        #[arg(long)]
+        timeout_secs: Option<f64>,
         /// Browser ohne sichtbares Fenster ausfuehren.
         #[arg(long)]
         headless: bool,

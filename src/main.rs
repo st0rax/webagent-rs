@@ -526,12 +526,12 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
             bind,
             port,
             brain,
-            max_cycles,
+            timeout_secs,
             headless,
             api_key_env,
         } => {
-            if max_cycles == 0 {
-                eprintln!("[api] --max-cycles muss mindestens 1 sein.");
+            if timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
+                eprintln!("[api] --timeout-secs muss groesser als 0 sein.");
                 return 2;
             }
 
@@ -556,7 +556,7 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
             let config = webagent::api_bridge::BridgeConfig {
                 bind: std::net::SocketAddr::new(ip, port),
                 brain,
-                max_cycles,
+                timeout_secs,
                 headless,
                 api_key,
             };

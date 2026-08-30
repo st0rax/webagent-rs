@@ -12,6 +12,7 @@
 
 // ── core: plattformreiner Kern (keine UI/Browser-Abhängigkeiten) ──
 pub mod api_bridge;
+pub mod browser_inference;
 pub mod circuit_breaker;
 pub mod comms;
 pub mod config;

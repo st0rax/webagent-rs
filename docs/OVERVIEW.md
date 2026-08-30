@@ -208,7 +208,7 @@ als Daten behandelt und in Prompts markiert.
 
 ### 0. Erledigter Meilenstein: lokale Provider-Bridge
 
-**Status:** umgesetzt als lokaler, token-geschuetzter Loopback-Dienst. Der Befehl webagent api serve bietet einen OpenAI-Chat-Completions- und einen Anthropic-Messages-Adapter, einen token-geschuetzten Modellkatalog sowie dokumentierte Text- und Streaminggrenzen.
+**Status:** umgesetzt als lokaler, token-geschuetzter Loopback-Dienst. Der Befehl `webagent api serve` bietet einen OpenAI-Chat-Completions- und einen Anthropic-Messages-Adapter, einen token-geschuetzten Modellkatalog sowie dokumentierte Text- und Streaminggrenzen. Seit der Browser-Inference-Scheibe vom 29.08.2026 startet dieser Pfad keinen `AgentController` mehr, sondern genau einen harnessfreien Browserturn. OpenAI-Function-Tools werden als experimentelle, fail-closed `tool_calls` normalisiert; ihre Live-Zuverlaessigkeit ist noch nicht belegt.
 
 Der verbindliche Betriebsvertrag, Pi-Konfigurationsbeispiele und die Sicherheitsgrenzen stehen in [API_BRIDGE.md](API_BRIDGE.md).
 
