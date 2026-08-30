@@ -115,6 +115,12 @@ pub fn relay_single_turn(
             Ok(b) => b,
             Err(e) => {
                 last_err = e;
+                if is_deterministic_send_failure(&last_err) {
+                    crate::bench_events::eprint_line(&format!(
+                        "[relay] {brain_id}: kein Retry fuer deterministischen Sendefehler"
+                    ));
+                    break;
+                }
                 continue;
             }
         };
@@ -202,6 +208,26 @@ pub fn relay_single_turn(
     }
 }
 
+/// Manche Sendefehler beschreiben einen stabilen UI-Zustand, bei dem ein
+/// weiterer kompletter Browserturn nur Zeit verbraucht: sichtbare Blockade,
+/// deaktivierter Sendeknopf oder fehlender Absende-Beweis. Transiente CDP- und
+/// Navigationsfehler bleiben dagegen retry-faehig.
+fn is_deterministic_send_failure(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    [
+        "kein absende-beweis",
+        "absendeknopf ist deaktiviert",
+        "blockiert:",
+        "usage limit",
+        "nachrichtenlimit",
+        "rate limit",
+        "cloudflare",
+        "login required",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,5 +236,19 @@ mod tests {
     fn relay_error_on_bad_brain_id() {
         let err = relay_single_turn("nonexistent_brain_xyz", "hi", true, None, None);
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn deterministic_send_failures_are_not_retried() {
+        assert!(is_deterministic_send_failure(
+            "Absenden fehlgeschlagen: kein Absende-Beweis nach 5 Versuchen"
+        ));
+        assert!(is_deterministic_send_failure(
+            "blockiert: kein Absende-Beweis -- Seite zeigt: Login required"
+        ));
+        assert!(is_deterministic_send_failure(
+            "Absendeknopf ist deaktiviert, obwohl der Text vollstaendig im Composer steht"
+        ));
+        assert!(!is_deterministic_send_failure("CDP connection reset"));
     }
 }
