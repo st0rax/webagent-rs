@@ -351,39 +351,30 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(brain) => brain,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    if !payload.tools.is_empty() {
-        return api_error(
-            ApiFlavor::OpenAi,
-            400,
-            "Responses-Tools werden in dieser Scheibe noch nicht unterstuetzt.",
-        );
-    }
+    let tools = match responses_tools(&payload.tools) {
+        Ok(tools) => tools,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    let tool_choice = match responses_tool_choice(payload.tool_choice.as_ref(), &tools) {
+        Ok(choice) => choice,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
     let task = match responses_task(&payload) {
         Ok(task) => task,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    let answer = match run_task_blocking(
-        config,
-        &brain,
-        &task,
-        &[],
-        crate::browser_inference::BrowserToolChoice::None,
-    ) {
+    let answer = match run_task_blocking(config, &brain, &task, &tools, tool_choice) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
     };
-    let Some(text) = answer.text else {
-        return api_error(
-            ApiFlavor::OpenAi,
-            502,
-            "Responses-Textpfad erhielt unerwartet einen Tool Call.",
-        );
-    };
     let id = completion_id("resp");
     if payload.stream.unwrap_or(false) {
-        return responses_sse(&id, &payload.model, &text);
+        return responses_sse(&id, &payload.model, &answer);
     }
-    HttpResponse::json(200, response_object(&id, &payload.model, &text))
+    HttpResponse::json(
+        200,
+        response_object_from_answer(&id, &payload.model, &answer),
+    )
 }
 
 fn run_task_blocking(
@@ -447,6 +438,8 @@ struct ResponsesRequest {
     stream: Option<bool>,
     #[serde(default)]
     tools: Vec<Value>,
+    #[serde(default)]
+    tool_choice: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -520,6 +513,24 @@ fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
                 let object = item
                     .as_object()
                     .ok_or_else(|| "Responses-Input-Items muessen Objekte sein.".to_string())?;
+                if object.get("type").and_then(Value::as_str) == Some("function_call_output") {
+                    let id = object
+                        .get("call_id")
+                        .and_then(Value::as_str)
+                        .filter(|id| !id.trim().is_empty())
+                        .ok_or_else(|| "function_call_output benoetigt call_id.".to_string())?;
+                    let output = object.get("output").cloned().unwrap_or(Value::Null);
+                    return Ok(ConversationMessage {
+                        role: "tool".to_string(),
+                        content: if output.is_string() {
+                            output
+                        } else {
+                            Value::String(output.to_string())
+                        },
+                        tool_calls: Vec::new(),
+                        tool_call_id: Some(id.to_string()),
+                    });
+                }
                 let role = object
                     .get("role")
                     .and_then(Value::as_str)
@@ -536,6 +547,71 @@ fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
         _ => return Err("Responses-Input muss ein String oder ein Array sein.".to_string()),
     };
     conversation_task(request.instructions.clone(), &messages, "OpenAI Responses")
+}
+
+fn responses_tools(tools: &[Value]) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
+    tools
+        .iter()
+        .map(|tool| {
+            let object = tool
+                .as_object()
+                .ok_or_else(|| "Responses-Tool muss ein Objekt sein.".to_string())?;
+            if object.get("type").and_then(Value::as_str) != Some("function") {
+                return Err("Responses unterstuetzt derzeit nur function-Tools.".to_string());
+            }
+            let name = object
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|name| !name.trim().is_empty())
+                .ok_or_else(|| "Responses-function-Tool benoetigt name.".to_string())?;
+            Ok(crate::browser_inference::BrowserTool {
+                name: name.to_string(),
+                description: object
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                parameters: object
+                    .get("parameters")
+                    .cloned()
+                    .unwrap_or_else(|| json!({})),
+            })
+        })
+        .collect()
+}
+
+fn responses_tool_choice(
+    choice: Option<&Value>,
+    tools: &[crate::browser_inference::BrowserTool],
+) -> Result<crate::browser_inference::BrowserToolChoice, String> {
+    let Some(choice) = choice else {
+        return Ok(if tools.is_empty() {
+            crate::browser_inference::BrowserToolChoice::None
+        } else {
+            crate::browser_inference::BrowserToolChoice::Auto
+        });
+    };
+    if let Some(value) = choice.as_str() {
+        return match value {
+            "auto" => Ok(crate::browser_inference::BrowserToolChoice::Auto),
+            "none" => Ok(crate::browser_inference::BrowserToolChoice::None),
+            "required" => Ok(crate::browser_inference::BrowserToolChoice::Required),
+            other => Err(format!("Unbekannter Responses-tool_choice '{other}'.")),
+        };
+    }
+    let name = choice
+        .get("name")
+        .or_else(|| choice.get("function").and_then(|f| f.get("name")))
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .ok_or_else(|| "Responses-tool_choice benoetigt name.".to_string())?;
+    if !tools.iter().any(|tool| tool.name == name) {
+        return Err(format!(
+            "tool_choice verweist auf unbekanntes Tool '{name}'."
+        ));
+    }
+    Ok(crate::browser_inference::BrowserToolChoice::Function(
+        name.to_string(),
+    ))
 }
 
 fn conversation_task(
@@ -857,8 +933,54 @@ fn response_object(id: &str, model: &str, text: &str) -> Value {
     })
 }
 
-fn responses_sse(id: &str, model: &str, text: &str) -> HttpResponse {
-    let created = response_object(id, model, "");
+fn response_object_from_answer(
+    id: &str,
+    model: &str,
+    answer: &crate::browser_inference::BrowserInferenceResponse,
+) -> Value {
+    if answer.tool_calls.is_empty() {
+        return response_object(id, model, answer.text.as_deref().unwrap_or_default());
+    }
+    let output: Vec<Value> = answer
+        .tool_calls
+        .iter()
+        .map(|call| {
+            json!({
+                "id": call.id,
+                "type": "function_call",
+                "status": "completed",
+                "call_id": call.id,
+                "name": call.name,
+                "arguments": serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string())
+            })
+        })
+        .collect();
+    json!({
+        "id": id,
+        "object": "response",
+        "created_at": unix_seconds(),
+        "status": "completed",
+        "error": null,
+        "incomplete_details": null,
+        "instructions": null,
+        "model": model,
+        "output": output,
+        "output_text": "",
+        "parallel_tool_calls": false,
+        "tool_choice": "auto",
+        "tools": [],
+        "usage": null,
+        "metadata": {}
+    })
+}
+
+fn responses_sse(
+    id: &str,
+    model: &str,
+    answer: &crate::browser_inference::BrowserInferenceResponse,
+) -> HttpResponse {
+    let text = answer.text.as_deref().unwrap_or_default();
+    let created = response_object_from_answer(id, model, answer);
     let mut body = format!(
         "event: response.created\ndata: {}\n\n",
         json!({"type":"response.created","response":created})
@@ -877,7 +999,7 @@ fn responses_sse(id: &str, model: &str, text: &str) -> HttpResponse {
     ));
     body.push_str(&format!(
         "event: response.completed\ndata: {}\n\n",
-        json!({"type":"response.completed","response":response_object(id, model, text)})
+        json!({"type":"response.completed","response":response_object_from_answer(id, model, answer)})
     ));
     HttpResponse::sse(body)
 }
@@ -1248,6 +1370,7 @@ mod tests {
             instructions: Some("Antworte kurz.".to_string()),
             stream: Some(false),
             tools: Vec::new(),
+            tool_choice: None,
         };
         let string_task = responses_task(&string_request).unwrap();
         assert!(string_task.contains("[system]\nAntworte kurz."));
@@ -1259,6 +1382,7 @@ mod tests {
             instructions: None,
             stream: None,
             tools: Vec::new(),
+            tool_choice: None,
         };
         assert!(responses_task(&message_request)
             .unwrap()
@@ -1273,8 +1397,12 @@ mod tests {
         assert_eq!(response["output"][0]["type"], "message");
         assert_eq!(response["output"][0]["content"][0]["text"], "OK");
 
-        let sse =
-            String::from_utf8(responses_sse("resp_test", "webagent/chatgpt", "OK").body).unwrap();
+        let answer = crate::browser_inference::BrowserInferenceResponse {
+            text: Some("OK".to_string()),
+            tool_calls: Vec::new(),
+        };
+        let sse = String::from_utf8(responses_sse("resp_test", "webagent/chatgpt", &answer).body)
+            .unwrap();
         assert!(sse.contains("response.created"));
         assert!(sse.contains("response.output_text.delta"));
         assert!(sse.contains("response.completed"));
