@@ -9,6 +9,11 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
+// Browser chat UIs are substantially less tolerant of a giant tool prompt
+// than their HTTP APIs. Keep the serialized schema block bounded while still
+// retaining every tool name and its argument shape for the model.
+const MAX_TOOL_SCHEMA_BYTES: usize = 64 * 1024;
+const TOOL_DESCRIPTION_LIMITS: &[usize] = &[1024, 512, 256, 128, 0];
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BrowserTool {
@@ -200,8 +205,7 @@ fn prompt_with_tools(
         return Ok(prompt.to_string());
     }
 
-    let tools_json = serde_json::to_string(tools)
-        .map_err(|error| format!("Tooldefinitionen nicht serialisierbar: {error}"))?;
+    let tools_json = compact_tool_json(tools)?;
     let choice_text = match choice {
         BrowserToolChoice::Auto => "Waehle selbst, ob ein Tool erforderlich ist. Wenn die Nutzeranfrage ein Tool ausdruecklich verlangt oder die Antwort von lokalen, aktuellen oder dir nicht vorliegenden Daten abhaengt, musst du das passende Tool aufrufen; behaupte in diesem Fall nicht, du haettest es ohne Tool benutzt.".to_string(),
         BrowserToolChoice::Required => "Du musst mindestens ein Tool aufrufen.".to_string(),
@@ -212,6 +216,75 @@ fn prompt_with_tools(
     Ok(format!(
         "{prompt}\n\n[Externe Client-Tools]\n{tools_json}\n\nDiese Tools gehoeren dem aufrufenden API-Client und nicht der Browseroberflaeche. Sie sind verfuegbar: Du rufst sie auf, indem du den unten definierten Maschinenumschlag ausgibst. Versuche nicht, sie als eingebaute Browser-Tools zu bedienen, und behaupte niemals, sie seien in dieser Umgebung nicht verfuegbar. {choice_text} Wenn du ein Tool aufrufst, gib ausschliesslich diesen Maschinenumschlag aus:\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_eindeutig\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\nKein Markdown und kein weiterer Text. Wenn kein Tool erforderlich ist, antworte normal ohne Maschinenumschlag."
     ))
+}
+
+/// Serialisiert Client-Tools in einer browservertraeglichen Groesse.
+///
+/// ZCode kann viele MCP-Werkzeuge mit sehr langen Erklaerungen mitsenden. Die
+/// ChatGPT-Weboberflaeche quittiert einen solchen Prompt nicht mit einem
+/// strukturierten Fehler, sondern nur mit „Something went wrong“. Namen und
+/// Schema bleiben deshalb erhalten; nur Beschreibungen werden stufenweise
+/// gekuerzt. Falls selbst die beschreibungsfreie Form zu gross waere, melden
+/// wir einen klaren lokalen Fehler statt eine unvollstaendige Werkzeugliste zu
+/// senden.
+fn compact_tool_json(tools: &[BrowserTool]) -> Result<String, String> {
+    for &description_limit in TOOL_DESCRIPTION_LIMITS {
+        let compacted = tools
+            .iter()
+            .map(|tool| {
+                let mut parameters = tool.parameters.clone();
+                compact_json_descriptions(&mut parameters, description_limit);
+                BrowserTool {
+                    name: tool.name.clone(),
+                    description: tool
+                        .description
+                        .as_deref()
+                        .map(|description| truncate_chars(description, description_limit)),
+                    parameters,
+                }
+            })
+            .collect::<Vec<_>>();
+        let json = serde_json::to_string(&compacted)
+            .map_err(|error| format!("Tooldefinitionen nicht serialisierbar: {error}"))?;
+        if json.len() <= MAX_TOOL_SCHEMA_BYTES {
+            return Ok(json);
+        }
+    }
+    Err(format!(
+        "Tooldefinitionen sind zu gross fuer den Browserprompt (Maximum {} KiB).",
+        MAX_TOOL_SCHEMA_BYTES / 1024
+    ))
+}
+
+fn compact_json_descriptions(value: &mut Value, limit: usize) {
+    match value {
+        Value::Object(object) => {
+            if let Some(Value::String(description)) = object.get_mut("description") {
+                *description = truncate_chars(description, limit);
+            }
+            for child in object.values_mut() {
+                compact_json_descriptions(child, limit);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                compact_json_descriptions(item, limit);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn truncate_chars(value: &str, limit: usize) -> String {
+    if value.chars().count() <= limit {
+        return value.to_string();
+    }
+    if limit <= 3 {
+        return value.chars().take(limit).collect();
+    }
+    let mut truncated: String = value.chars().take(limit - 3).collect();
+    truncated.push_str("...");
+    truncated
 }
 
 #[derive(Deserialize)]
@@ -364,5 +437,24 @@ mod tests {
         assert!(prompt.contains("gehoeren dem aufrufenden API-Client"));
         assert!(prompt.contains("niemals, sie seien in dieser Umgebung nicht verfuegbar"));
         assert!(prompt.contains("WEBAGENT_INFERENCE/1"));
+    }
+
+    #[test]
+    fn large_tool_descriptions_are_compacted_without_dropping_names_or_schema() {
+        let long = "x".repeat(MAX_TOOL_SCHEMA_BYTES);
+        let tools = vec![BrowserTool {
+            name: "keep_this_tool".to_string(),
+            description: Some(long.clone()),
+            parameters: serde_json::json!({
+                "type": "object",
+                "description": long,
+                "properties": {"path": {"type": "string", "description": "path"}}
+            }),
+        }];
+        let serialized = compact_tool_json(&tools).unwrap();
+        assert!(serialized.len() <= MAX_TOOL_SCHEMA_BYTES);
+        assert!(serialized.contains("keep_this_tool"));
+        assert!(serialized.contains("\"path\""));
+        assert!(!serialized.contains(&"x".repeat(2048)));
     }
 }

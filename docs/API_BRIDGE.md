@@ -218,6 +218,15 @@ Der Wire-Vertrag ist zusätzlich mit dem offiziellen OpenAI-Python-SDK 3.6.0 liv
 
 Der OpenAI-Adapter normalisiert Function-Tools und die Varianten `tool_choice=auto`, `none`, `required` sowie eine erzwungene Function. Für einen Tool-Aufruf fordert die Browser-Inference-Schicht vom Web-LLM einen strikten `WEBAGENT_INFERENCE/1`-Umschlag an und wandelt diesen anschließend in reguläre OpenAI-`tool_calls` um. Tool-Ergebnisse können im nächsten Request als `role=tool` mit `tool_call_id` zurückgegeben werden.
 
+Viele Coding-Clients senden gleichzeitig mehrere Dutzend MCP-Werkzeuge mit sehr
+langen Beschreibungen. Vor dem Browserturn wird der serialisierte Toolblock
+deshalb stufenweise auf höchstens 64 KiB kompaktisiert: Werkzeugnamen und
+Parameterschemata bleiben erhalten, nur Beschreibungstexte werden gekürzt. Das
+verhindert den generischen Web-UI-Fehler „Something went wrong“, den ChatGPT
+bei einem ungekürzten ZCode-Request mit 53 Werkzeugen reproduzierbar zeigte.
+Falls selbst die beschreibungsfreie Schemaform zu groß ist, wird der Request
+fail-closed mit einem erklärenden Providerfehler beendet.
+
 Diese Schicht **führt das Tool nicht aus**. Die Ausführung gehört dem aufrufenden Harness, beispielsweise Deep Agents. Unbekannte Toolnamen, doppelte Call-IDs, ein falsches erzwungenes Tool oder reine Textausgabe bei `tool_choice=required` werden fail-closed als Providerfehler behandelt.
 
 Die JSON- und API-Semantik ist lokal getestet. Fuer ChatGPT sind ein Webturn, ein Pi-0.84.4-Textturn und der vollstaendige Pi-`read`-Tool-Loop live belegt: Tooldefinition zum Browser, `tool_calls` zurueck zu Pi, lokale Ausfuehrung, `role=tool` zum Browser und finale Antwort mit einem zufaelligen Dateiinhalt. Der mitgelieferte Smoke-Test macht diese weiterhin provider- und modellabhaengige Formatstabilitaet reproduzierbar pruefbar. Ein anderes Brain oder Webmodell gilt erst nach demselben Tool-Smoke als belegt. Der Anthropic-Adapter nutzt denselben Browser-Uploadpfad fuer Base64-Bild-/Audio-Blöcke.

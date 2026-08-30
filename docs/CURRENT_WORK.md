@@ -3,6 +3,35 @@
 **Aktualisiert:** 2026-08-30
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
+## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
+
+**Aktualisiert:** 2026-08-31
+**Branch:** `feat/browser-inference-provider`
+**Commit:** folgt nach den lokalen Gates dieser Scheibe
+
+Ein ZCode-Request mit 53 Werkzeugen und rund 124 KiB JSON reproduzierte bei
+ChatGPT die Web-UI-Antwort „Something went wrong“. Die folgenden Claude- und
+DeepSeek-Versuche liefen dadurch im Client in `ECONNREFUSED`, weil der lokale
+Endpoint während des vorherigen Neustarts nicht erreichbar war; ein frischer
+Textturn gegen beide Brains ist danach erfolgreich durchgelaufen.
+
+`browser_inference::prompt_with_tools` kompaktisiert den Toolblock nun
+stufenweise auf höchstens 64 KiB. Werkzeugnamen und Parameterschemata bleiben
+vollständig erhalten, Beschreibungstexte werden nur bei Bedarf gekürzt.
+
+| Gate | Ergebnis |
+|---|---|
+| Kompakter Unit-Test | bestanden |
+| ZCode-Request mit 53 Tools, normal | HTTP 200, kein Web-UI-Fehler |
+| Derselbe Request über SSE | HTTP 200, gültiges `data: [DONE]` |
+| Claude nach dem ChatGPT-Request | HTTP 200, `CLAUDE_CHECK_42` |
+| DeepSeek nach dem ChatGPT-Request | HTTP 200, `deepseek_OK` |
+| `cargo clippy --locked --all-targets --no-default-features -- -D warnings` | bestanden |
+| `cargo test --locked --no-default-features` | 1.186 bestanden, 1 ignoriert |
+
+Der laufende Release-Endpoint verwendet die neue Binary auf `127.0.0.1:8787`
+und antwortet auf `/health` mit `status=ok`.
+
 ## Browser-Inference-Provider-Scheibe vom 29.08.2026
 
 Die aktuelle Arbeit liegt isoliert auf `feat/browser-inference-provider`, ausgehend von `master` bei `a0cd00b7`. `api_bridge` startet nicht mehr den vollständigen `AgentController`, sondern ruft die neue harnessfreie Grenze `browser_inference::complete()` auf. Dadurch sind WEBAGENT/1, Shell-/Dateiaktionen, Controller-Memory und der Plan-Act-Observe-Loop nicht mehr Teil eines Providerrequests. Der bestehende Rust-Harness bleibt unverändert als separater Consumer erhalten.
