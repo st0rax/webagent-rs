@@ -4,7 +4,7 @@
 //! Browser-Sitzung aus. Sie startet absichtlich keinen `AgentController`,
 //! interpretiert kein `webagent/1` und fuehrt keine lokalen Werkzeuge aus.
 
-use crate::relay::relay_single_turn;
+use crate::relay::relay_single_turn_streaming;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -65,18 +65,36 @@ impl BrowserInferenceResponse {
 
 /// Fuehrt genau einen Browser-Modellturn ohne Agent-Harness aus.
 pub fn complete(request: BrowserInferenceRequest<'_>) -> Result<BrowserInferenceResponse, String> {
+    complete_streaming(request, &mut |_| {})
+}
+
+/// Wie `complete`, liefert bei reinen Textturns bereits wachsende Snapshots.
+/// Tool-Umschlaege bleiben bis zur finalen Validierung intern, damit niemals
+/// ein halbes Maschinenprotokoll als Nutztext zum Client gelangt.
+pub fn complete_streaming(
+    request: BrowserInferenceRequest<'_>,
+    on_update: &mut dyn FnMut(&str),
+) -> Result<BrowserInferenceResponse, String> {
     if request.prompt.trim().is_empty() {
         return Err("Inference-Prompt darf nicht leer sein.".to_string());
     }
     validate_tools(request.tools, &request.tool_choice)?;
 
     let prompt = prompt_with_tools(request.prompt, request.tools, &request.tool_choice)?;
-    let text = relay_single_turn(
+    let forward_updates =
+        request.tools.is_empty() || matches!(request.tool_choice, BrowserToolChoice::None);
+    let mut relay_update = |snapshot: &str| {
+        if forward_updates {
+            on_update(snapshot);
+        }
+    };
+    let text = relay_single_turn_streaming(
         request.brain,
         &prompt,
         request.headless,
         request.timeout_secs,
         request.model,
+        &mut relay_update,
     )
     .map_err(|error| error.0)?;
 

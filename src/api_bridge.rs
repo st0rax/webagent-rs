@@ -18,7 +18,7 @@ use std::{
         Arc, Mutex, OnceLock,
     },
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 const MAX_REQUEST_BYTES: usize = 1_048_576;
@@ -175,6 +175,13 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
         }
     };
 
+    if request.method == "POST"
+        && request.path == "/v1/responses"
+        && is_incremental_text_request(&request.body)
+    {
+        return handle_responses_incremental(stream, &request, config);
+    }
+
     let flavor = if request.path == "/v1/messages" {
         ApiFlavor::Anthropic
     } else {
@@ -245,6 +252,21 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
         _ => api_error(flavor, 404, "Endpoint nicht gefunden."),
     };
     write_http_response(stream, response)
+}
+
+fn is_incremental_text_request(body: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return false;
+    };
+    if value.get("stream").and_then(Value::as_bool) != Some(true) {
+        return false;
+    }
+    let no_tools = value
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty);
+    let tools_disabled = value.get("tool_choice").and_then(Value::as_str) == Some("none");
+    no_tools || tools_disabled
 }
 
 fn handle_response_retrieve(
@@ -398,28 +420,9 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    let mut messages = match payload.previous_response_id.as_deref() {
-        Some(id) => match retrieve_response(id) {
-            Some(stored) => stored.messages,
-            None => {
-                return api_error(
-                    ApiFlavor::OpenAi,
-                    404,
-                    &format!("Previous response '{id}' nicht gefunden."),
-                )
-            }
-        },
-        None => Vec::new(),
-    };
-    let current_messages = match responses_messages(&payload.input) {
-        Ok(messages) => messages,
-        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
-    };
-    messages.extend(current_messages);
-    let task = match conversation_task(payload.instructions.clone(), &messages, "OpenAI Responses")
-    {
-        Ok(task) => task,
-        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    let (mut messages, task) = match responses_context(&payload) {
+        Ok(context) => context,
+        Err((status, error)) => return api_error(ApiFlavor::OpenAi, status, &error),
     };
     let answer = match run_task_blocking(config, &brain, &task, &tools, tool_choice) {
         Ok(answer) => answer,
@@ -442,6 +445,221 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         return responses_sse_with_object(&id, &payload.model, &answer, response);
     }
     HttpResponse::json(200, response)
+}
+
+fn handle_responses_incremental(
+    stream: &mut TcpStream,
+    request: &HttpRequest,
+    config: &BridgeConfig,
+) -> Result<(), String> {
+    if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return write_http_response(stream, response);
+    }
+    let payload: ResponsesRequest = match decode_json(&request.body) {
+        Ok(payload) => payload,
+        Err(error) => {
+            return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
+        }
+    };
+    let brain = match resolve_model(&payload.model, &config.brain) {
+        Ok(brain) => brain,
+        Err(error) => {
+            return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
+        }
+    };
+    let tools = responses_tools(&payload.tools)
+        .map_err(|error| format!("Inkrementeller Tool-Request unerwartet: {error}"))?;
+    let choice = responses_tool_choice(payload.tool_choice.as_ref(), &tools)
+        .map_err(|error| format!("Inkrementeller tool_choice unerwartet: {error}"))?;
+    if !tools.is_empty() && !matches!(choice, crate::browser_inference::BrowserToolChoice::None) {
+        return write_http_response(stream, handle_responses(request, config));
+    }
+    let (mut messages, task) = match responses_context(&payload) {
+        Ok(context) => context,
+        Err((status, error)) => {
+            return write_http_response(stream, api_error(ApiFlavor::OpenAi, status, &error))
+        }
+    };
+
+    let id = completion_id("resp");
+    let item_id = format!("{id}_msg");
+    let mut started = response_with_state(
+        response_object(&id, &payload.model, ""),
+        payload.previous_response_id.as_deref(),
+    );
+    started["status"] = json!("in_progress");
+    started["output"] = json!([]);
+    started["output_text"] = json!("");
+    write_sse_headers(stream)?;
+    write_sse_event(
+        stream,
+        "response.created",
+        json!({"type":"response.created","response":started}),
+    )?;
+    write_sse_event(
+        stream,
+        "response.in_progress",
+        json!({"type":"response.in_progress","response":started}),
+    )?;
+    write_sse_event(
+        stream,
+        "response.output_item.added",
+        json!({"type":"response.output_item.added","output_index":0,"item":{"id":item_id,"type":"message","status":"in_progress","role":"assistant","content":[]}}),
+    )?;
+    write_sse_event(
+        stream,
+        "response.content_part.added",
+        json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}),
+    )?;
+
+    let mut last_sent = String::new();
+    let mut last_keepalive = Instant::now();
+    let mut stream_error: Option<String> = None;
+    let answer = {
+        let mut on_update = |snapshot: &str| {
+            if stream_error.is_some() {
+                return;
+            }
+            if snapshot == last_sent {
+                if last_keepalive.elapsed() >= Duration::from_secs(5) {
+                    if let Err(error) = write_sse_comment(stream, "keep-alive") {
+                        stream_error = Some(error);
+                    } else {
+                        last_keepalive = Instant::now();
+                    }
+                }
+                return;
+            }
+            if let Some(delta) = snapshot.strip_prefix(&last_sent) {
+                if !delta.is_empty() {
+                    if let Err(error) = write_sse_event(
+                        stream,
+                        "response.output_text.delta",
+                        json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":delta}),
+                    ) {
+                        stream_error = Some(error);
+                        return;
+                    }
+                }
+                last_sent = snapshot.to_string();
+                last_keepalive = Instant::now();
+            }
+        };
+        run_task_streaming(config, &brain, &task, &mut on_update)
+    };
+
+    let answer = match answer {
+        Ok(answer) => answer,
+        Err(error) => {
+            let mut failed = started;
+            failed["status"] = json!("failed");
+            failed["error"] = json!({"code":"server_error","message":error});
+            if stream_error.is_none() {
+                write_sse_event(
+                    stream,
+                    "response.failed",
+                    json!({"type":"response.failed","response":failed}),
+                )?;
+            }
+            return Ok(());
+        }
+    };
+    let text = answer.text.as_deref().unwrap_or_default();
+    if let Some(delta) = text
+        .strip_prefix(&last_sent)
+        .filter(|delta| !delta.is_empty())
+    {
+        write_sse_event(
+            stream,
+            "response.output_text.delta",
+            json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":delta}),
+        )?;
+    }
+    if let Some(error) = stream_error {
+        return Err(error);
+    }
+
+    append_response_message(&mut messages, &answer);
+    let completed = response_with_state(
+        response_object_from_answer(&id, &payload.model, &answer),
+        payload.previous_response_id.as_deref(),
+    );
+    if payload.store {
+        store_response(
+            id.clone(),
+            StoredResponse {
+                response: completed.clone(),
+                messages,
+            },
+        );
+    }
+    write_sse_event(
+        stream,
+        "response.output_text.done",
+        json!({"type":"response.output_text.done","item_id":item_id,"output_index":0,"content_index":0,"text":text}),
+    )?;
+    write_sse_event(
+        stream,
+        "response.content_part.done",
+        json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":text,"annotations":[]}}),
+    )?;
+    write_sse_event(
+        stream,
+        "response.output_item.done",
+        json!({"type":"response.output_item.done","output_index":0,"item":completed["output"][0]}),
+    )?;
+    write_sse_event(
+        stream,
+        "response.completed",
+        json!({"type":"response.completed","response":completed}),
+    )
+}
+
+fn write_sse_headers(stream: &mut TcpStream) -> Result<(), String> {
+    stream
+        .write_all(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+        )
+        .map_err(|error| format!("SSE-Header nicht schreibbar: {error}"))?;
+    stream
+        .flush()
+        .map_err(|error| format!("SSE-Header nicht flushbar: {error}"))
+}
+
+fn write_sse_event(stream: &mut TcpStream, event: &str, data: Value) -> Result<(), String> {
+    let frame = format!("event: {event}\ndata: {data}\n\n");
+    stream
+        .write_all(frame.as_bytes())
+        .map_err(|error| format!("SSE-Event nicht schreibbar: {error}"))?;
+    stream
+        .flush()
+        .map_err(|error| format!("SSE-Event nicht flushbar: {error}"))
+}
+
+fn write_sse_comment(stream: &mut TcpStream, comment: &str) -> Result<(), String> {
+    let frame = format!(": {comment}\n\n");
+    stream
+        .write_all(frame.as_bytes())
+        .map_err(|error| format!("SSE-Keepalive nicht schreibbar: {error}"))?;
+    stream
+        .flush()
+        .map_err(|error| format!("SSE-Keepalive nicht flushbar: {error}"))
+}
+
+fn responses_context(
+    payload: &ResponsesRequest,
+) -> Result<(Vec<ConversationMessage>, String), (u16, String)> {
+    let mut messages = match payload.previous_response_id.as_deref() {
+        Some(id) => retrieve_response(id).map_or_else(
+            || Err((404, format!("Previous response '{id}' nicht gefunden."))),
+            |stored| Ok(stored.messages),
+        )?,
+        None => Vec::new(),
+    };
+    messages.extend(responses_messages(&payload.input).map_err(|error| (400, error))?);
+    let task = conversation_task(payload.instructions.clone(), &messages, "OpenAI Responses")
+        .map_err(|error| (400, error))?;
+    Ok((messages, task))
 }
 
 fn run_task_blocking(
@@ -469,6 +687,36 @@ fn run_task_blocking(
         timeout_secs: config.timeout_secs,
         model: None,
     })
+    .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
+}
+
+fn run_task_streaming(
+    config: &BridgeConfig,
+    brain: &str,
+    task: &str,
+    on_update: &mut dyn FnMut(&str),
+) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
+    let lock = BROWSER_RUN_LOCKS
+        .get_or_init(|| Mutex::new(BTreeMap::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .entry(brain.to_ascii_lowercase())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone();
+    let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    crate::browser_inference::complete_streaming(
+        crate::browser_inference::BrowserInferenceRequest {
+            brain,
+            prompt: task,
+            tools: &[],
+            tool_choice: crate::browser_inference::BrowserToolChoice::None,
+            headless: config.headless,
+            timeout_secs: config.timeout_secs,
+            model: None,
+        },
+        on_update,
+    )
     .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
 }
 
@@ -1724,6 +1972,22 @@ mod tests {
             Some("resp_parent"),
         );
         assert_eq!(chained["previous_response_id"], "resp_parent");
+    }
+
+    #[test]
+    fn incremental_route_is_only_used_for_text_streams() {
+        assert!(is_incremental_text_request(
+            br#"{"model":"webagent/chatgpt","input":"x","stream":true}"#
+        ));
+        assert!(!is_incremental_text_request(
+            br#"{"model":"webagent/chatgpt","input":"x","stream":false}"#
+        ));
+        assert!(!is_incremental_text_request(
+            br#"{"model":"webagent/chatgpt","input":"x","stream":true,"tools":[{"type":"function","name":"f"}]}"#
+        ));
+        assert!(is_incremental_text_request(
+            br#"{"model":"webagent/chatgpt","input":"x","stream":true,"tools":[{"type":"function","name":"f"}],"tool_choice":"none"}"#
+        ));
     }
 
     #[test]

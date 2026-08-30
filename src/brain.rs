@@ -84,6 +84,22 @@ pub trait BrainBackend {
     fn wait_response(&mut self, baseline_count: i32, timeout: f64)
         -> Result<BrainResponse, String>;
 
+    /// Wie `wait_response`, meldet aber wachsende Antwort-Snapshots bereits
+    /// waehrend der Generierung. Backends ohne inkrementelle Beobachtung
+    /// liefern mindestens den finalen Snapshot.
+    fn wait_response_streaming(
+        &mut self,
+        baseline_count: i32,
+        timeout: f64,
+        on_update: &mut dyn FnMut(&str),
+    ) -> Result<BrainResponse, String> {
+        let response = self.wait_response(baseline_count, timeout)?;
+        if !response.text.is_empty() {
+            on_update(&response.text);
+        }
+        Ok(response)
+    }
+
     /// Prüft, ob der Benutzer eingeloggt ist.
     fn is_logged_in(&self) -> bool;
 

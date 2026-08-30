@@ -29,6 +29,25 @@ pub fn relay_single_turn(
     timeout_override: Option<f64>,
     model: Option<&str>,
 ) -> Result<String, RelayError> {
+    relay_single_turn_streaming(
+        brain_id,
+        message,
+        headless,
+        timeout_override,
+        model,
+        &mut |_| {},
+    )
+}
+
+/// Single-Turn-Relay mit wachsenden Text-Snapshots fuer Transport-Streaming.
+pub fn relay_single_turn_streaming(
+    brain_id: &str,
+    message: &str,
+    headless: bool,
+    timeout_override: Option<f64>,
+    model: Option<&str>,
+    on_update: &mut dyn FnMut(&str),
+) -> Result<String, RelayError> {
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
     // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
     if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
@@ -124,7 +143,7 @@ pub fn relay_single_turn(
                 continue;
             }
         };
-        let response = match backend.wait_response(baseline, wait_timeout) {
+        let response = match backend.wait_response_streaming(baseline, wait_timeout, on_update) {
             Ok(r) => r,
             Err(e) => {
                 last_err = e;

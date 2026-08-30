@@ -163,6 +163,15 @@ impl BrainBackend for WebBrainBackend {
         baseline_count: i32,
         timeout: f64,
     ) -> Result<BrainResponse, String> {
+        self.wait_response_streaming(baseline_count, timeout, &mut |_| {})
+    }
+
+    fn wait_response_streaming(
+        &mut self,
+        baseline_count: i32,
+        timeout: f64,
+        on_update: &mut dyn FnMut(&str),
+    ) -> Result<BrainResponse, String> {
         let start = Instant::now();
         // Selektor-Literale einmal bauen (ändern sich zur Laufzeit nie), dann pro
         // Poll-Iteration nur einen einzigen CDP-Roundtrip fahren.
@@ -231,6 +240,7 @@ impl BrainBackend for WebBrainBackend {
             // sonst bleibt der Antwort-Container leer und die Erkennung timeoutet.
             self.handle_interruptions();
             let (count, current, stop_raw) = self.probe_generation(&assistant_js, &stop_js, target);
+            on_update(&current);
             target = latest_response_target(count);
             let stop_visible = has_stop && stop_raw;
             stop_seen_ever |= stop_visible;
@@ -262,6 +272,9 @@ impl BrainBackend for WebBrainBackend {
                     }
                 }
                 last_text = current.clone();
+                if !current.trim().is_empty() {
+                    on_update(&current);
+                }
                 stable_since = Instant::now();
             }
             let stable_secs = stable_since.elapsed().as_secs_f64();
