@@ -4,7 +4,7 @@
 
 ## Zweck und Betriebsgrenze
 
-`webagent api serve` stellt WebAgent **ausschließlich auf dem lokalen Rechner** als Browser-Inference-Provider bereit. Der Dienst bindet nur an IPv4- oder IPv6-Loopback-Adressen, verlangt für alle Provider-Endpunkte einen API-Token und führt pro Anfrage genau einen frischen Browser-Modellturn aus. Anfragen werden bewusst serialisiert, damit ein Browserprofil nicht konkurrierend von mehreren Inference-Aufrufen gesteuert wird. Der Providerpfad startet keinen `AgentController`, interpretiert kein `webagent/1` und führt keine lokalen Shell- oder Dateiwerkzeuge aus.
+`webagent api serve` stellt WebAgent **ausschließlich auf dem lokalen Rechner** als Browser-Inference-Provider bereit. Der Dienst bindet nur an IPv4- oder IPv6-Loopback-Adressen, verlangt für alle Provider-Endpunkte einen API-Token und führt pro Anfrage genau einen frischen Browser-Modellturn aus. Anfragen desselben Brains werden bewusst serialisiert, damit ein Browserprofil nicht konkurrierend von mehreren Inference-Aufrufen gesteuert wird; unterschiedliche Brains können parallel arbeiten. Der Providerpfad startet keinen `AgentController`, interpretiert kein `webagent/1` und führt keine lokalen Shell- oder Dateiwerkzeuge aus.
 
 > **Sicherheitsinvariante:** Eine Adresse wie `0.0.0.0` wird vor dem Listener-Start abgelehnt. Der Token wird nur über eine Umgebungsvariable gelesen und nie in CLI-Argumenten, Logs oder Konfigurationsdateien gespeichert.
 
@@ -181,7 +181,7 @@ Für den Anthropic-Adapter wird derselbe Token verwendet. Die `baseUrl` endet **
 
 Die Bridge ist ein **lokaler Adapter**, keine öffentliche API-Plattform. Sie besitzt weder TLS-Termination noch Benutzerverwaltung, Request-Pooling oder automatische Tokenrotation. Ein Dienst darf deshalb nicht über Portweiterleitung, Reverse Proxy oder Cloud-Tunnel freigegeben werden, ohne einen separaten Sicherheitsentwurf.
 
-Der Service serialisiert Browserturns und rendert SSE erst nach deren Abschluss. Damit erfüllt die Response-Semantik die Providerformate, aber nicht tokenweises Echtzeitstreaming. Multimodale Eingaben und OpenAI Responses werden nicht angeboten. Diese Begrenzung hält die harnessfreie Inference-Scheibe überprüfbar und verhindert semantische Datenverluste.
+Der Service serialisiert Browserturns pro Brain und rendert SSE erst nach deren Abschluss. Damit erfüllt die Response-Semantik die Providerformate, aber nicht tokenweises Echtzeitstreaming. Multimodale Eingaben und OpenAI Responses werden nicht angeboten. Diese Begrenzung hält die harnessfreie Inference-Scheibe überprüfbar und verhindert semantische Datenverluste.
 
 `--timeout-secs` setzt optional das Zeitlimit für den einzelnen Browserturn. Ohne Angabe verwendet WebAgent die bestehende dynamische Timeout-Auflösung des ausgewählten Brains.
 

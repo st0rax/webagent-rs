@@ -25,7 +25,7 @@ const MAX_REQUEST_BYTES: usize = 1_048_576;
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_CONNECTIONS: usize = 8;
 
-static BROWSER_RUN_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static BROWSER_RUN_LOCKS: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 
 #[derive(Default)]
 struct ConnectionLimiter {
@@ -75,9 +75,10 @@ pub struct BridgeConfig {
 
 /// Startet den lokalen Dienst und blockiert, bis der Prozess beendet wird.
 ///
-/// Der Dienst verarbeitet genau einen Browserturn zur Zeit. Das ist
+/// Der Dienst verarbeitet pro Brain genau einen Browserturn zur Zeit. Das ist
 /// beabsichtigt: Ein Browserprofil darf nicht gleichzeitig von mehreren
-/// Inference-Anfragen gesteuert werden.
+/// Inference-Anfragen gesteuert werden; unterschiedliche Brains blockieren
+/// sich dagegen nicht gegenseitig.
 pub fn serve(config: BridgeConfig) -> Result<(), String> {
     if config.timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
         return Err("--timeout-secs muss groesser als 0 sein.".to_string());
@@ -322,10 +323,14 @@ fn run_task_blocking(
     tools: &[crate::browser_inference::BrowserTool],
     tool_choice: crate::browser_inference::BrowserToolChoice,
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
-    let _browser_run = BROWSER_RUN_LOCK
-        .get_or_init(|| Mutex::new(()))
+    let lock = BROWSER_RUN_LOCKS
+        .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .entry(brain.to_ascii_lowercase())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone();
+    let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
     crate::browser_inference::complete(crate::browser_inference::BrowserInferenceRequest {
         brain,
