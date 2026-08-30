@@ -10,7 +10,7 @@
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
@@ -24,8 +24,22 @@ use std::{
 const MAX_REQUEST_BYTES: usize = 1_048_576;
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_CONNECTIONS: usize = 8;
+const MAX_STORED_RESPONSES: usize = 256;
 
 static BROWSER_RUN_LOCKS: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+static RESPONSE_STORE: OnceLock<Mutex<ResponseStore>> = OnceLock::new();
+
+#[derive(Clone)]
+struct StoredResponse {
+    response: Value,
+    messages: Vec<ConversationMessage>,
+}
+
+#[derive(Default)]
+struct ResponseStore {
+    entries: BTreeMap<String, StoredResponse>,
+    order: VecDeque<String>,
+}
 
 #[derive(Default)]
 struct ConnectionLimiter {
@@ -222,12 +236,37 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
                 }
             }
         }
+        ("GET", path) if path.starts_with("/v1/responses/") => {
+            handle_response_retrieve(&request, config, path)
+        }
         ("POST", "/v1/chat/completions") => handle_openai(&request, config),
         ("POST", "/v1/responses") => handle_responses(&request, config),
         ("POST", "/v1/messages") => handle_anthropic(&request, config),
         _ => api_error(flavor, 404, "Endpoint nicht gefunden."),
     };
     write_http_response(stream, response)
+}
+
+fn handle_response_retrieve(
+    request: &HttpRequest,
+    config: &BridgeConfig,
+    path: &str,
+) -> HttpResponse {
+    if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return response;
+    }
+    let id = path.trim_start_matches("/v1/responses/");
+    if id.is_empty() || id.contains('/') {
+        return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
+    }
+    match retrieve_response(id) {
+        Some(stored) => HttpResponse::json(200, stored.response),
+        None => api_error(
+            ApiFlavor::OpenAi,
+            404,
+            &format!("Response '{id}' nicht gefunden."),
+        ),
+    }
 }
 
 fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
@@ -359,7 +398,26 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    let task = match responses_task(&payload) {
+    let mut messages = match payload.previous_response_id.as_deref() {
+        Some(id) => match retrieve_response(id) {
+            Some(stored) => stored.messages,
+            None => {
+                return api_error(
+                    ApiFlavor::OpenAi,
+                    404,
+                    &format!("Previous response '{id}' nicht gefunden."),
+                )
+            }
+        },
+        None => Vec::new(),
+    };
+    let current_messages = match responses_messages(&payload.input) {
+        Ok(messages) => messages,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    messages.extend(current_messages);
+    let task = match conversation_task(payload.instructions.clone(), &messages, "OpenAI Responses")
+    {
         Ok(task) => task,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
@@ -368,13 +426,22 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
     };
     let id = completion_id("resp");
-    if payload.stream.unwrap_or(false) {
-        return responses_sse(&id, &payload.model, &answer);
+    append_response_message(&mut messages, &answer);
+    let response = response_object_from_answer(&id, &payload.model, &answer);
+    let response = response_with_state(response, payload.previous_response_id.as_deref());
+    if payload.store {
+        store_response(
+            id.clone(),
+            StoredResponse {
+                response: response.clone(),
+                messages,
+            },
+        );
     }
-    HttpResponse::json(
-        200,
-        response_object_from_answer(&id, &payload.model, &answer),
-    )
+    if payload.stream.unwrap_or(false) {
+        return responses_sse_with_object(&id, &payload.model, &answer, response);
+    }
+    HttpResponse::json(200, response)
 }
 
 fn run_task_blocking(
@@ -403,6 +470,61 @@ fn run_task_blocking(
         model: None,
     })
     .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
+}
+
+fn response_store() -> &'static Mutex<ResponseStore> {
+    RESPONSE_STORE.get_or_init(|| Mutex::new(ResponseStore::default()))
+}
+
+fn retrieve_response(id: &str) -> Option<StoredResponse> {
+    response_store()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .entries
+        .get(id)
+        .cloned()
+}
+
+fn store_response(id: String, response: StoredResponse) {
+    let mut store = response_store()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !store.entries.contains_key(&id) {
+        store.order.push_back(id.clone());
+    }
+    store.entries.insert(id, response);
+    while store.order.len() > MAX_STORED_RESPONSES {
+        if let Some(expired) = store.order.pop_front() {
+            store.entries.remove(&expired);
+        }
+    }
+}
+
+fn append_response_message(
+    messages: &mut Vec<ConversationMessage>,
+    answer: &crate::browser_inference::BrowserInferenceResponse,
+) {
+    messages.push(ConversationMessage {
+        role: "assistant".to_string(),
+        content: answer
+            .text
+            .as_ref()
+            .map_or(Value::Null, |text| Value::String(text.clone())),
+        tool_calls: answer
+            .tool_calls
+            .iter()
+            .map(|call| OpenAiAssistantToolCall {
+                id: call.id.clone(),
+                kind: "function".to_string(),
+                function: OpenAiAssistantFunction {
+                    name: call.name.clone(),
+                    arguments: serde_json::to_string(&call.arguments)
+                        .unwrap_or_else(|_| "{}".to_string()),
+                },
+            })
+            .collect(),
+        tool_call_id: None,
+    });
 }
 
 #[derive(Deserialize)]
@@ -440,9 +562,13 @@ struct ResponsesRequest {
     tools: Vec<Value>,
     #[serde(default)]
     tool_choice: Option<Value>,
+    #[serde(default)]
+    previous_response_id: Option<String>,
+    #[serde(default = "default_true")]
+    store: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct ConversationMessage {
     role: String,
     #[serde(default)]
@@ -469,7 +595,7 @@ struct OpenAiFunction {
     parameters: Value,
 }
 
-#[derive(Deserialize, serde::Serialize)]
+#[derive(Clone, Deserialize, serde::Serialize)]
 struct OpenAiAssistantToolCall {
     id: String,
     #[serde(rename = "type")]
@@ -477,7 +603,7 @@ struct OpenAiAssistantToolCall {
     function: OpenAiAssistantFunction,
 }
 
-#[derive(Deserialize, serde::Serialize)]
+#[derive(Clone, Deserialize, serde::Serialize)]
 struct OpenAiAssistantFunction {
     name: String,
     arguments: String,
@@ -485,6 +611,10 @@ struct OpenAiAssistantFunction {
 
 fn decode_json<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
     serde_json::from_slice(body).map_err(|error| format!("Ungueltiger JSON-Body: {error}"))
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn openai_task(request: &OpenAiRequest) -> Result<String, String> {
@@ -499,8 +629,14 @@ fn anthropic_task(request: &AnthropicRequest) -> Result<String, String> {
     conversation_task(system, &request.messages, "Anthropic Messages")
 }
 
+#[cfg(test)]
 fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
-    let messages = match &request.input {
+    let messages = responses_messages(&request.input)?;
+    conversation_task(request.instructions.clone(), &messages, "OpenAI Responses")
+}
+
+fn responses_messages(input: &Value) -> Result<Vec<ConversationMessage>, String> {
+    let messages = match input {
         Value::String(text) => vec![ConversationMessage {
             role: "user".to_string(),
             content: Value::String(text.clone()),
@@ -546,7 +682,7 @@ fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
             .collect::<Result<Vec<_>, String>>()?,
         _ => return Err("Responses-Input muss ein String oder ein Array sein.".to_string()),
     };
-    conversation_task(request.instructions.clone(), &messages, "OpenAI Responses")
+    Ok(messages)
 }
 
 fn responses_tools(tools: &[Value]) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
@@ -974,13 +1110,28 @@ fn response_object_from_answer(
     })
 }
 
+fn response_with_state(mut response: Value, previous_response_id: Option<&str>) -> Value {
+    response["previous_response_id"] = previous_response_id.map_or(Value::Null, |id| json!(id));
+    response
+}
+
+#[cfg(test)]
 fn responses_sse(
     id: &str,
     model: &str,
     answer: &crate::browser_inference::BrowserInferenceResponse,
 ) -> HttpResponse {
+    let response = response_with_state(response_object_from_answer(id, model, answer), None);
+    responses_sse_with_object(id, model, answer, response)
+}
+
+fn responses_sse_with_object(
+    id: &str,
+    _model: &str,
+    answer: &crate::browser_inference::BrowserInferenceResponse,
+    completed: Value,
+) -> HttpResponse {
     let text = answer.text.as_deref().unwrap_or_default();
-    let completed = response_object_from_answer(id, model, answer);
     let mut created = completed.clone();
     created["status"] = json!("in_progress");
     created["output"] = json!([]);
@@ -1395,6 +1546,8 @@ mod tests {
             stream: Some(false),
             tools: Vec::new(),
             tool_choice: None,
+            previous_response_id: None,
+            store: true,
         };
         let string_task = responses_task(&string_request).unwrap();
         assert!(string_task.contains("[system]\nAntworte kurz."));
@@ -1407,6 +1560,8 @@ mod tests {
             stream: None,
             tools: Vec::new(),
             tool_choice: None,
+            previous_response_id: None,
+            store: true,
         };
         assert!(responses_task(&message_request)
             .unwrap()
@@ -1465,6 +1620,8 @@ mod tests {
             stream: None,
             tools: Vec::new(),
             tool_choice: None,
+            previous_response_id: None,
+            store: true,
         };
         let task = responses_task(&request).unwrap();
         assert!(task.contains("[tool id=call_7]\n{\"ok\":true}"));
@@ -1486,6 +1643,102 @@ mod tests {
         assert!(sse.contains("response.function_call_arguments.done"));
         assert!(sse.contains("response.output_item.done"));
         assert!(!sse.contains("response.output_text.delta"));
+    }
+
+    #[test]
+    fn responses_state_is_stored_and_can_extend_context() {
+        let id = "resp_state_contract".to_string();
+        let mut messages = responses_messages(&json!("Mein Codewort ist Otter.")).unwrap();
+        append_response_message(
+            &mut messages,
+            &crate::browser_inference::BrowserInferenceResponse {
+                text: Some("Verstanden.".to_string()),
+                tool_calls: Vec::new(),
+            },
+        );
+        let response = response_with_state(
+            response_object("resp_state_contract", "webagent/chatgpt", "Verstanden."),
+            None,
+        );
+        store_response(
+            id.clone(),
+            StoredResponse {
+                response: response.clone(),
+                messages,
+            },
+        );
+
+        let mut stored = retrieve_response(&id).unwrap();
+        stored
+            .messages
+            .extend(responses_messages(&json!("Wie lautet es?")).unwrap());
+        let task = conversation_task(None, &stored.messages, "OpenAI Responses").unwrap();
+        assert!(task.contains("[user]\nMein Codewort ist Otter."));
+        assert!(task.contains("[assistant]\nVerstanden."));
+        assert!(task.contains("[user]\nWie lautet es?"));
+        assert!(response["previous_response_id"].is_null());
+    }
+
+    #[test]
+    fn responses_request_defaults_to_stored() {
+        let request: ResponsesRequest = serde_json::from_value(json!({
+            "model": "webagent/chatgpt",
+            "input": "Hallo"
+        }))
+        .unwrap();
+        assert!(request.store);
+        assert!(request.previous_response_id.is_none());
+
+        let chained = response_with_state(
+            response_object("resp_child", "webagent/chatgpt", "OK"),
+            Some("resp_parent"),
+        );
+        assert_eq!(chained["previous_response_id"], "resp_parent");
+    }
+
+    #[test]
+    fn response_retrieval_requires_auth_and_returns_stored_object() {
+        let id = "resp_retrieve_contract";
+        store_response(
+            id.to_string(),
+            StoredResponse {
+                response: response_with_state(
+                    response_object(id, "webagent/chatgpt", "Gespeichert"),
+                    None,
+                ),
+                messages: Vec::new(),
+            },
+        );
+        let config = BridgeConfig {
+            bind: "127.0.0.1:0".parse().unwrap(),
+            brain: "chatgpt".to_string(),
+            timeout_secs: None,
+            headless: true,
+            api_key: "test-secret".to_string(),
+        };
+        let authorized = HttpRequest {
+            method: "GET".to_string(),
+            path: format!("/v1/responses/{id}"),
+            headers: BTreeMap::from([(
+                "authorization".to_string(),
+                "Bearer test-secret".to_string(),
+            )]),
+            body: Vec::new(),
+        };
+        let response = handle_response_retrieve(&authorized, &config, &authorized.path);
+        assert_eq!(response.status, 200);
+        let body: Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(body["id"], id);
+        assert_eq!(body["output_text"], "Gespeichert");
+
+        let unauthorized = HttpRequest {
+            headers: BTreeMap::new(),
+            ..authorized
+        };
+        assert_eq!(
+            handle_response_retrieve(&unauthorized, &config, &unauthorized.path).status,
+            401
+        );
     }
 
     #[test]

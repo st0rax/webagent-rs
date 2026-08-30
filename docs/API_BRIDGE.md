@@ -52,7 +52,8 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
 | `GET /v1/models` | OpenAI-Modellliste | Liefert automatisch alle aktuell konfigurierten eingebauten und Custom-Brains als `webagent/<brain>` |
 | `GET /v1/models/{id}` | OpenAI-Modellobjekt | Liefert das einzelne konfigurierte Brain; unbekannte IDs werden mit 404 abgelehnt |
 | `POST /v1/chat/completions` | OpenAI Chat Completions | Akzeptiert Textrollen, Function-Tools, Assistant-`tool_calls` und `role=tool`-Ergebnisse |
-| `POST /v1/responses` | OpenAI Responses (erste Scheibe) | Akzeptiert String-/Message-Input, Responses-Function-Tools und `function_call_output`; liefert Response-Objekt sowie gepufferten Responses-SSE-Eventstrom; State folgt in einem weiteren Gate |
+| `POST /v1/responses` | OpenAI Responses | Akzeptiert String-/Message-Input, Responses-Function-Tools, `function_call_output`, `store` und `previous_response_id`; liefert Response-Objekt sowie gepufferten Responses-SSE-Eventstrom |
+| `GET /v1/responses/{id}` | OpenAI Response-Retrieval | Liefert eine gespeicherte Response; unbekannte oder mit `store=false` erzeugte IDs werden mit 404 abgelehnt |
 | `POST /v1/messages` | Anthropic Messages | Akzeptiert `max_tokens`, top-level `system` sowie Textrollen `user` und `assistant` |
 
 OpenAI Chat Completions modelliert eine Unterhaltung als Nachrichtenliste und kann eine reguläre Completion oder gestreamte Chunks liefern.[3] Die Bridge implementiert genau diesen textbasierten Teil. Anthropic Messages erwartet `messages` und `max_tokens`; Systeminstruktionen liegen dort auf Top-Level statt in einer `system`-Rolle.[4]
@@ -183,7 +184,9 @@ Für den Anthropic-Adapter wird derselbe Token verwendet. Die `baseUrl` endet **
 
 Die Bridge ist ein **lokaler Adapter**, keine öffentliche API-Plattform. Sie besitzt weder TLS-Termination noch Benutzerverwaltung, Request-Pooling oder automatische Tokenrotation. Ein Dienst darf deshalb nicht über Portweiterleitung, Reverse Proxy oder Cloud-Tunnel freigegeben werden, ohne einen separaten Sicherheitsentwurf.
 
-Der Service serialisiert Browserturns pro Brain und rendert SSE erst nach deren Abschluss. Damit erfüllen Chat Completions und Responses die jeweiligen Abschlussformate, inklusive Responses-Function-Tools und der zugehörigen Output-Item-Events, aber noch kein tokenweises Echtzeitstreaming. Multimodale Eingaben und Conversation-State folgen als separate Kompatibilitäts-Gates. Diese Begrenzung hält die harnessfreie Inference-Scheibe überprüfbar und verhindert semantische Datenverluste.
+Der Service serialisiert Browserturns pro Brain und rendert SSE erst nach deren Abschluss. Damit erfüllen Chat Completions und Responses die jeweiligen Abschlussformate, inklusive Responses-Function-Tools, Output-Item-Events und lokalem Conversation-State, aber noch kein tokenweises Echtzeitstreaming. Multimodale Eingaben folgen als separates Kompatibilitäts-Gate. Diese Begrenzung hält die harnessfreie Inference-Scheibe überprüfbar und verhindert semantische Datenverluste.
+
+Responses werden standardmäßig in einem auf 256 Einträge begrenzten In-Memory-Store abgelegt und können über `GET /v1/responses/{id}` abgerufen werden.[5] `previous_response_id` lädt den normalisierten Nachrichtenverlauf der referenzierten Response und stellt ihn dem nächsten Browserturn voran; neue `instructions` gelten nur für den neuen Turn.[6] `store=false` verhindert sowohl Retrieval als auch eine spätere Verknüpfung. Der Store ist absichtlich pro Prozess und nicht dauerhaft: Nach einem Neustart sind die IDs nicht mehr verfügbar.
 
 `--timeout-secs` setzt optional das Zeitlimit für den einzelnen Browserturn. Ohne Angabe verwendet WebAgent die bestehende dynamische Timeout-Auflösung des ausgewählten Brains.
 
@@ -208,3 +211,7 @@ HTTP-Verbindungen werden bis zu einer festen Grenze von **acht** gleichzeitig be
 [3] [OpenAI: Create chat completion](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create/)
 
 [4] [Anthropic: Messages API](https://platform.claude.com/docs/en/api/messages)
+
+[5] [OpenAI: Retrieve a response](https://developers.openai.com/api/reference/cli/resources/responses/methods/retrieve)
+
+[6] [OpenAI: Create a response](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)

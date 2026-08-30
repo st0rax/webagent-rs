@@ -982,6 +982,15 @@ fn eval_js(
     expression: &str,
     event_loop: &mut EventLoop<()>,
 ) -> Result<Value> {
+    eval_js_with_timeout(webview, expression, event_loop, Duration::from_secs(35))
+}
+
+fn eval_js_with_timeout(
+    webview: &wry::WebView,
+    expression: &str,
+    event_loop: &mut EventLoop<()>,
+    timeout: Duration,
+) -> Result<Value> {
     let (tx, rx) = mpsc::channel();
     let js = wrap_eval(expression);
     webview
@@ -989,7 +998,7 @@ fn eval_js(
             let _ = tx.send(result);
         })
         .map_err(|e| PageDriverError::Protocol(e.to_string()))?;
-    let deadline = Instant::now() + Duration::from_secs(35);
+    let deadline = Instant::now() + timeout;
     let raw = loop {
         if let Ok(r) = rx.try_recv() {
             break r;
@@ -1014,7 +1023,12 @@ fn navigate_url(
         .map_err(|e| PageDriverError::Protocol(e.to_string()))?;
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        match eval_js(webview, "document.readyState", event_loop) {
+        match eval_js_with_timeout(
+            webview,
+            "document.readyState",
+            event_loop,
+            Duration::from_secs(1),
+        ) {
             Ok(v) if v.as_str() == Some("complete") || v.as_str() == Some("interactive") => {
                 return Ok(());
             }
