@@ -223,6 +223,7 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             }
         }
         ("POST", "/v1/chat/completions") => handle_openai(&request, config),
+        ("POST", "/v1/responses") => handle_responses(&request, config),
         ("POST", "/v1/messages") => handle_anthropic(&request, config),
         _ => api_error(flavor, 404, "Endpoint nicht gefunden."),
     };
@@ -338,6 +339,53 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     )
 }
 
+fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
+    if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return response;
+    }
+    let payload: ResponsesRequest = match decode_json(&request.body) {
+        Ok(payload) => payload,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    let brain = match resolve_model(&payload.model, &config.brain) {
+        Ok(brain) => brain,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    if !payload.tools.is_empty() {
+        return api_error(
+            ApiFlavor::OpenAi,
+            400,
+            "Responses-Tools werden in dieser Scheibe noch nicht unterstuetzt.",
+        );
+    }
+    let task = match responses_task(&payload) {
+        Ok(task) => task,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    let answer = match run_task_blocking(
+        config,
+        &brain,
+        &task,
+        &[],
+        crate::browser_inference::BrowserToolChoice::None,
+    ) {
+        Ok(answer) => answer,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
+    };
+    let Some(text) = answer.text else {
+        return api_error(
+            ApiFlavor::OpenAi,
+            502,
+            "Responses-Textpfad erhielt unerwartet einen Tool Call.",
+        );
+    };
+    let id = completion_id("resp");
+    if payload.stream.unwrap_or(false) {
+        return responses_sse(&id, &payload.model, &text);
+    }
+    HttpResponse::json(200, response_object(&id, &payload.model, &text))
+}
+
 fn run_task_blocking(
     config: &BridgeConfig,
     brain: &str,
@@ -387,6 +435,18 @@ struct AnthropicRequest {
     system: Option<Value>,
     #[serde(default)]
     stream: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct ResponsesRequest {
+    model: String,
+    input: Value,
+    #[serde(default)]
+    instructions: Option<String>,
+    #[serde(default)]
+    stream: Option<bool>,
+    #[serde(default)]
+    tools: Vec<Value>,
 }
 
 #[derive(Deserialize)]
@@ -444,6 +504,38 @@ fn anthropic_task(request: &AnthropicRequest) -> Result<String, String> {
         None => None,
     };
     conversation_task(system, &request.messages, "Anthropic Messages")
+}
+
+fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
+    let messages = match &request.input {
+        Value::String(text) => vec![ConversationMessage {
+            role: "user".to_string(),
+            content: Value::String(text.clone()),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+        }],
+        Value::Array(items) => items
+            .iter()
+            .map(|item| {
+                let object = item
+                    .as_object()
+                    .ok_or_else(|| "Responses-Input-Items muessen Objekte sein.".to_string())?;
+                let role = object
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "Responses-Input-Item benoetigt role.".to_string())?;
+                let content = object.get("content").cloned().unwrap_or(Value::Null);
+                Ok(ConversationMessage {
+                    role: role.to_string(),
+                    content,
+                    tool_calls: Vec::new(),
+                    tool_call_id: None,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+        _ => return Err("Responses-Input muss ein String oder ein Array sein.".to_string()),
+    };
+    conversation_task(request.instructions.clone(), &messages, "OpenAI Responses")
 }
 
 fn conversation_task(
@@ -737,6 +829,57 @@ fn openai_sse(
         "choices": [{"index": 0, "delta": {}, "finish_reason": answer.finish_reason()}]
     });
     HttpResponse::sse(format!("data: {first}\n\ndata: {last}\n\ndata: [DONE]\n\n"))
+}
+
+fn response_object(id: &str, model: &str, text: &str) -> Value {
+    json!({
+        "id": id,
+        "object": "response",
+        "created_at": unix_seconds(),
+        "status": "completed",
+        "error": null,
+        "incomplete_details": null,
+        "instructions": null,
+        "model": model,
+        "output": [{
+            "id": format!("{id}_msg"),
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": text, "annotations": []}]
+        }],
+        "output_text": text,
+        "parallel_tool_calls": false,
+        "tool_choice": "none",
+        "tools": [],
+        "usage": null,
+        "metadata": {}
+    })
+}
+
+fn responses_sse(id: &str, model: &str, text: &str) -> HttpResponse {
+    let created = response_object(id, model, "");
+    let mut body = format!(
+        "event: response.created\ndata: {}\n\n",
+        json!({"type":"response.created","response":created})
+    );
+    body.push_str(&format!(
+        "event: response.in_progress\ndata: {}\n\n",
+        json!({"type":"response.in_progress","response":created})
+    ));
+    body.push_str(&format!(
+        "event: response.output_text.delta\ndata: {}\n\n",
+        json!({"type":"response.output_text.delta","item_id":format!("{id}_msg"),"output_index":0,"content_index":0,"delta":text})
+    ));
+    body.push_str(&format!(
+        "event: response.output_text.done\ndata: {}\n\n",
+        json!({"type":"response.output_text.done","item_id":format!("{id}_msg"),"output_index":0,"content_index":0,"text":text})
+    ));
+    body.push_str(&format!(
+        "event: response.completed\ndata: {}\n\n",
+        json!({"type":"response.completed","response":response_object(id, model, text)})
+    ));
+    HttpResponse::sse(body)
 }
 
 fn anthropic_sse(id: &str, model: &str, answer: &str) -> HttpResponse {
@@ -1095,6 +1238,46 @@ mod tests {
         assert_eq!(message["tool_calls"][0]["id"], "call_1");
         assert_eq!(message["tool_calls"][0]["function"]["name"], "read_file");
         assert_eq!(answer.finish_reason(), "tool_calls");
+    }
+
+    #[test]
+    fn responses_task_accepts_string_and_message_input() {
+        let string_request = ResponsesRequest {
+            model: "webagent/chatgpt".to_string(),
+            input: json!("Hallo"),
+            instructions: Some("Antworte kurz.".to_string()),
+            stream: Some(false),
+            tools: Vec::new(),
+        };
+        let string_task = responses_task(&string_request).unwrap();
+        assert!(string_task.contains("[system]\nAntworte kurz."));
+        assert!(string_task.contains("[user]\nHallo"));
+
+        let message_request = ResponsesRequest {
+            model: "webagent/chatgpt".to_string(),
+            input: json!([{"role":"user","content":"Ping"}]),
+            instructions: None,
+            stream: None,
+            tools: Vec::new(),
+        };
+        assert!(responses_task(&message_request)
+            .unwrap()
+            .contains("[user]\nPing"));
+    }
+
+    #[test]
+    fn responses_renderer_emits_completion_contract() {
+        let response = response_object("resp_test", "webagent/chatgpt", "OK");
+        assert_eq!(response["object"], "response");
+        assert_eq!(response["status"], "completed");
+        assert_eq!(response["output"][0]["type"], "message");
+        assert_eq!(response["output"][0]["content"][0]["text"], "OK");
+
+        let sse =
+            String::from_utf8(responses_sse("resp_test", "webagent/chatgpt", "OK").body).unwrap();
+        assert!(sse.contains("response.created"));
+        assert!(sse.contains("response.output_text.delta"));
+        assert!(sse.contains("response.completed"));
     }
 
     #[test]
