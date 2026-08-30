@@ -14,7 +14,7 @@ Die Bridge akzeptiert die für Pi relevanten Formate **OpenAI Chat Completions**
 |---|---|
 | Bindung | `127.0.0.1:8787` als Standard; ausschließlich Loopback zugelassen |
 | Authentifizierung | `Authorization: Bearer <token>`; Anthropic-kompatibel zusätzlich `x-api-key: <token>` |
-| Brain | `chatgpt` als Standard, über `--brain` austauschbar |
+| Brain | `chatgpt` als Standard; `model=webagent/<brain>` routet jede Anfrage auf das gewaehlte eingebaute oder Custom-Brain |
 | Nebenläufigkeit | Eine Anfrage zur Zeit pro Dienstprozess |
 | Ergebnisquelle | Direkt beobachteter Antworttext des einzelnen Browser-Modellturns |
 | Streaming | SSE-Abschlussformat nach vollständig beendetem Browserturn, nicht tokeninkrementell |
@@ -49,7 +49,7 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
 | Methode und Pfad | Format | Verhalten |
 |---|---|---|
 | `GET /health` | JSON | Lokaler Liveness-Check ohne Browserturn |
-| `GET /v1/models` | OpenAI-Modellliste | Liefert `webagent/<brain>` nach erfolgreicher Tokenprüfung |
+| `GET /v1/models` | OpenAI-Modellliste | Liefert automatisch alle aktuell konfigurierten eingebauten und Custom-Brains als `webagent/<brain>` |
 | `POST /v1/chat/completions` | OpenAI Chat Completions | Akzeptiert Textrollen, Function-Tools, Assistant-`tool_calls` und `role=tool`-Ergebnisse |
 | `POST /v1/messages` | Anthropic Messages | Akzeptiert `max_tokens`, top-level `system` sowie Textrollen `user` und `assistant` |
 
@@ -66,7 +66,9 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 pi --version
 ```
 
-Zum Ausprobieren ohne Eingriff in eine vorhandene Pi-Konfiguration liegt unter `examples/pi/models.json` eine isoliert nutzbare Vorlage. `scripts/test-pi-provider.ps1` setzt `PI_CODING_AGENT_DIR` nur fuer seinen eigenen Prozess auf dieses Verzeichnis, prueft einen echten Textturn und danach einen echten `read`-Tool-Loop mit einer zufaelligen temporaeren Datei.
+Zum Ausprobieren ohne Eingriff in eine vorhandene Pi-Konfiguration liegt unter `examples/pi/models.json` eine isoliert nutzbare Ein-Modell-Vorlage. `scripts/test-pi-provider.ps1` setzt `PI_CODING_AGENT_DIR` nur fuer seinen eigenen Prozess auf dieses Verzeichnis, prueft einen echten Textturn und danach einen echten `read`-Tool-Loop mit einer zufaelligen temporaeren Datei.
+
+Fuer den normalen Multi-Brain-Betrieb ist `examples/pi/extensions/webagent-models.ts` massgeblich. Die Pi-Erweiterung fragt `/v1/models` beim Start ab, registriert alle gelieferten Brains dynamisch und aktualisiert sie bei `/models` erneut. Damit erscheinen auch spaeter hinzugefuegte Custom-Brains ohne manuelle Pflege einer Pi-Modellliste.
 
 ### OpenAI Chat Completions
 
@@ -105,7 +107,28 @@ Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kom
 }
 ```
 
-Der Modellname muss dem beim gestarteten Dienst ausgewählten Brain entsprechen. Beispielsweise liefert `--brain deepseek` das Modell `webagent/deepseek`.
+`--brain` bestimmt nur noch das Standard-Brain fuer den Alias `model=webagent`. Eine explizite Modell-ID routet den einzelnen Request: `webagent/deepseek` verwendet DeepSeek, `webagent/claude` Claude usw. Unbekannte Modell-IDs scheitern vor dem Browserstart.
+
+### Automatischer Pi-Modellkatalog und `/models`
+
+Installiere die Erweiterung in Pis globales Erweiterungsverzeichnis und entferne eine eventuell alte statische `webagent`-Modellliste aus `models.json`, da diese den dynamischen Katalog sonst wieder ueberschreiben kann:
+
+```powershell
+New-Item -ItemType Directory "$env:USERPROFILE\.pi\agent\extensions" -Force | Out-Null
+Copy-Item examples\pi\extensions\webagent-models.ts `
+  "$env:USERPROFILE\.pi\agent\extensions\webagent-models.ts"
+```
+
+Danach stehen in Pi beide Wege zur Verfuegung:
+
+```text
+/models             # Katalog aktualisieren und Brain-Auswahl oeffnen
+/models claude      # direkt auf Claude wechseln
+/models gemini      # direkt auf Gemini wechseln
+/model              # Pis eingebaute allgemeine Modellauswahl funktioniert ebenfalls
+```
+
+Ausserhalb des TUI zeigt `pi --list-models webagent` denselben automatisch geladenen Katalog. Ist der Endpoint beim Pi-Start noch nicht erreichbar, registriert die Erweiterung zunaechst die acht Standard-Brains; der naechste `/models`-Aufruf aktualisiert sie vom laufenden Endpoint und nimmt dabei auch Custom-Brains auf.
 
 ### Reproduzierbarer lokaler Smoke-Test
 

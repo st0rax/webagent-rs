@@ -780,7 +780,7 @@ pub enum ApiCommands {
         /// TCP-Port des lokalen Dienstes.
         #[arg(long, default_value_t = 8787)]
         port: u16,
-        /// Browser-Brain, das die Provider-Anfragen bearbeitet.
+        /// Standard-Brain fuer den Modell-Alias `webagent`.
         #[arg(long, default_value = "chatgpt")]
         brain: String,
         /// Optionales Zeitlimit fuer den einzelnen Browser-Inference-Turn.

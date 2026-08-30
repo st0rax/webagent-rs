@@ -87,6 +87,8 @@ pub fn serve(config: BridgeConfig) -> Result<(), String> {
         return Err("API-Bridge darf nur an eine Loopback-Adresse binden.".to_string());
     }
 
+    resolve_model(&model_id(&config.brain), &config.brain)?;
+
     let listener = TcpListener::bind(config.bind)
         .map_err(|error| format!("API-Bridge nicht bindbar: {error}"))?;
     eprintln!("[api] Bridge aktiv auf http://{}", config.bind);
@@ -175,12 +177,24 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
                 response
             } else {
-                let model = model_id(&config.brain);
+                let models: Vec<Value> = available_brains()
+                    .into_iter()
+                    .map(|brain| {
+                        json!({
+                            "id": model_id(&brain),
+                            "object": "model",
+                            "owned_by": "webagent",
+                            "brain": brain,
+                            "context_window": 128000,
+                            "max_tokens": 16384
+                        })
+                    })
+                    .collect();
                 HttpResponse::json(
                     200,
                     json!({
                         "object": "list",
-                        "data": [{"id": model, "object": "model", "owned_by": "webagent"}]
+                        "data": models
                     }),
                 )
             }
@@ -200,9 +214,10 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
         Ok(payload) => payload,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    if let Err(error) = validate_model(&payload.model, &config.brain) {
-        return api_error(ApiFlavor::OpenAi, 400, &error);
-    }
+    let brain = match resolve_model(&payload.model, &config.brain) {
+        Ok(brain) => brain,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
     let task = match openai_task(&payload) {
         Ok(task) => task,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
@@ -215,7 +230,7 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    let answer = match run_task_blocking(config, &task, &tools, tool_choice) {
+    let answer = match run_task_blocking(config, &brain, &task, &tools, tool_choice) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
     };
@@ -256,15 +271,17 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
             "max_tokens muss groesser als 0 sein.",
         );
     }
-    if let Err(error) = validate_model(&payload.model, &config.brain) {
-        return api_error(ApiFlavor::Anthropic, 400, &error);
-    }
+    let brain = match resolve_model(&payload.model, &config.brain) {
+        Ok(brain) => brain,
+        Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
+    };
     let task = match anthropic_task(&payload) {
         Ok(task) => task,
         Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
     };
     let answer = match run_task_blocking(
         config,
+        &brain,
         &task,
         &[],
         crate::browser_inference::BrowserToolChoice::None,
@@ -300,6 +317,7 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
 
 fn run_task_blocking(
     config: &BridgeConfig,
+    brain: &str,
     task: &str,
     tools: &[crate::browser_inference::BrowserTool],
     tool_choice: crate::browser_inference::BrowserToolChoice,
@@ -310,7 +328,7 @@ fn run_task_blocking(
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     crate::browser_inference::complete(crate::browser_inference::BrowserInferenceRequest {
-        brain: &config.brain,
+        brain,
         prompt: task,
         tools,
         tool_choice,
@@ -563,15 +581,34 @@ fn text_content(value: &Value) -> Result<String, String> {
     Ok(out)
 }
 
-fn validate_model(requested: &str, brain: &str) -> Result<(), String> {
-    let expected = model_id(brain);
-    if requested == expected || requested == "webagent" {
-        Ok(())
+fn available_brains() -> Vec<String> {
+    let mut brains: Vec<String> = crate::config::brains().into_keys().collect();
+    brains.sort();
+    brains
+}
+
+fn resolve_model(requested: &str, default_brain: &str) -> Result<String, String> {
+    let brain = if requested == "webagent" {
+        default_brain
     } else {
-        Err(format!(
-            "Unbekanntes Modell '{requested}'. Dieser Server bietet nur '{expected}' an."
-        ))
+        requested
+            .strip_prefix("webagent/")
+            .ok_or_else(|| format!("Ungueltige WebAgent-Modell-ID '{requested}'."))?
+    };
+    if available_brains()
+        .iter()
+        .any(|candidate| candidate == brain)
+    {
+        return Ok(brain.to_string());
     }
+    Err(format!(
+        "Unbekanntes Modell '{requested}'. Verfuegbar: {}.",
+        available_brains()
+            .iter()
+            .map(|brain| model_id(brain))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
 }
 
 fn model_id(brain: &str) -> String {
@@ -905,10 +942,24 @@ mod tests {
     }
 
     #[test]
-    fn model_validation_accepts_only_bridge_aliases() {
-        assert!(validate_model("webagent", "chatgpt").is_ok());
-        assert!(validate_model("webagent/chatgpt", "chatgpt").is_ok());
-        assert!(validate_model("gpt-5", "chatgpt").is_err());
+    fn model_resolution_routes_each_available_brain() {
+        assert_eq!(resolve_model("webagent", "chatgpt").unwrap(), "chatgpt");
+        assert_eq!(
+            resolve_model("webagent/claude", "chatgpt").unwrap(),
+            "claude"
+        );
+        assert!(resolve_model("gpt-5", "chatgpt").is_err());
+        assert!(resolve_model("webagent/not-configured", "chatgpt").is_err());
+    }
+
+    #[test]
+    fn model_catalog_contains_all_builtin_brains() {
+        let brains = available_brains();
+        for expected in [
+            "chatgpt", "claude", "deepseek", "gemini", "kimi", "mistral", "qwen", "zai",
+        ] {
+            assert!(brains.contains(&expected.to_string()), "{expected} fehlt");
+        }
     }
 
     #[test]
