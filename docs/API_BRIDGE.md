@@ -59,6 +59,15 @@ Nicht unterstützte Bild-, Audio-, Dokument-, Thinking- und Tool-Blöcke werden 
 
 ## Pi-Konfiguration
 
+Die aktuelle Pi-Version wird laut Pi-Dokumentation unter Windows so installiert (Node.js **22.19 oder neuer**):
+
+```powershell
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+pi --version
+```
+
+Zum Ausprobieren ohne Eingriff in eine vorhandene Pi-Konfiguration liegt unter `examples/pi/models.json` eine isoliert nutzbare Vorlage. `scripts/test-pi-provider.ps1` setzt `PI_CODING_AGENT_DIR` nur fuer seinen eigenen Prozess auf dieses Verzeichnis, prueft einen echten Textturn und danach einen echten `read`-Tool-Loop mit einer zufaelligen temporaeren Datei.
+
 ### OpenAI Chat Completions
 
 Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kompatible Providerdefinition an. Pi kann Provider über `models.json` konfigurieren und löst Umgebungsvariablen in `apiKey` auf.[1] [2]
@@ -72,9 +81,13 @@ Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kom
       "apiKey": "$WEBAGENT_API_KEY",
       "authHeader": true,
       "compat": {
+        "supportsStore": false,
         "supportsDeveloperRole": true,
         "supportsReasoningEffort": false,
-        "supportsUsageInStreaming": false
+        "supportsUsageInStreaming": false,
+        "supportsFinishReason": true,
+        "supportsStrictMode": false,
+        "maxTokensField": "max_tokens"
       },
       "models": [
         {
@@ -93,6 +106,25 @@ Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kom
 ```
 
 Der Modellname muss dem beim gestarteten Dienst ausgewählten Brain entsprechen. Beispielsweise liefert `--brain deepseek` das Modell `webagent/deepseek`.
+
+### Reproduzierbarer lokaler Smoke-Test
+
+Terminal 1 startet die Bridge. Der Token bleibt lokal und muss in beiden Terminals identisch sein:
+
+```powershell
+$env:WEBAGENT_API_KEY = [guid]::NewGuid().ToString("N")
+pwsh -File scripts/build-release.ps1
+target\release\webagent.exe api serve --brain chatgpt --headless --timeout-secs 120
+```
+
+Terminal 2 bekommt denselben Token und die lokale Pi-Installation. Bei einer Installation ausserhalb von `PATH` kann `-PiCommand` auf `pi.cmd` oder `pi.exe` zeigen.
+
+```powershell
+$env:WEBAGENT_API_KEY = "<derselbe Token aus Terminal 1>"
+pwsh -File scripts/test-pi-provider.ps1 -PiCommand pi
+```
+
+Erfolg endet mit `PASS: Textturn und echter Pi-read-Tool-Loop sind gruen.` Der Test fuehrt nur Pis eingebautes `read`-Tool in einem neu erzeugten Temp-Verzeichnis aus. Er schreibt weder in das Repository noch nach `%USERPROFILE%\.pi` und entfernt sein Temp-Verzeichnis wieder.
 
 ### Anthropic Messages
 
@@ -130,13 +162,13 @@ Der Service serialisiert Browserturns und rendert SSE erst nach deren Abschluss.
 
 `--timeout-secs` setzt optional das Zeitlimit für den einzelnen Browserturn. Ohne Angabe verwendet WebAgent die bestehende dynamische Timeout-Auflösung des ausgewählten Brains.
 
-## Experimentelles OpenAI-Tool-Calling
+## OpenAI-Tool-Calling
 
 Der OpenAI-Adapter normalisiert Function-Tools und die Varianten `tool_choice=auto`, `none`, `required` sowie eine erzwungene Function. Für einen Tool-Aufruf fordert die Browser-Inference-Schicht vom Web-LLM einen strikten `WEBAGENT_INFERENCE/1`-Umschlag an und wandelt diesen anschließend in reguläre OpenAI-`tool_calls` um. Tool-Ergebnisse können im nächsten Request als `role=tool` mit `tool_call_id` zurückgegeben werden.
 
 Diese Schicht **führt das Tool nicht aus**. Die Ausführung gehört dem aufrufenden Harness, beispielsweise Deep Agents. Unbekannte Toolnamen, doppelte Call-IDs, ein falsches erzwungenes Tool oder reine Textausgabe bei `tool_choice=required` werden fail-closed als Providerfehler behandelt.
 
-Die JSON- und API-Semantik ist lokal getestet. Die tatsächliche Formatstabilität eines Consumer-Web-LLMs ist provider- und modellabhängig und gilt erst nach einer Live-Gegenprobe als belegt. Bis dahin ist Tool Calling experimentell. Der Anthropic-Adapter bleibt in dieser Scheibe textbasiert.
+Die JSON- und API-Semantik ist lokal getestet. Fuer ChatGPT sind ein Webturn, ein Pi-0.84.4-Textturn und der vollstaendige Pi-`read`-Tool-Loop live belegt: Tooldefinition zum Browser, `tool_calls` zurueck zu Pi, lokale Ausfuehrung, `role=tool` zum Browser und finale Antwort mit einem zufaelligen Dateiinhalt. Der mitgelieferte Smoke-Test macht diese weiterhin provider- und modellabhaengige Formatstabilitaet reproduzierbar pruefbar. Ein anderes Brain oder Webmodell gilt erst nach demselben Tool-Smoke als belegt. Der Anthropic-Adapter bleibt in dieser Scheibe textbasiert.
 
 Ein Deep-Agents-Client kann nach erfolgreicher Live-Gegenprobe einen `ChatOpenAI`-Adapter mit `base_url=http://127.0.0.1:8787/v1` verwenden. Der dort konfigurierte API-Key ist lediglich der lokale `WEBAGENT_API_KEY`; er ersetzt keinen Login der Browser-Sitzung.
 

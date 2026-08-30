@@ -148,6 +148,8 @@ WebView-Deps (`wry`, `tao`) sind optional (`--no-default-features` für headless
 
 ## Nutzung
 
+Die lokale Browser-Inference-Bridge fuer Pi wird mit `webagent api serve` gestartet. Eine fertige Pi-Konfiguration und ein isolierter End-to-End-Smoke-Test liegen in [`examples/pi/models.json`](examples/pi/models.json) und [`scripts/test-pi-provider.ps1`](scripts/test-pi-provider.ps1); die vollstaendige Anleitung steht in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
+
 `webagent` **ohne Parameter startet die Session-TUI** (Scrollback + Prompt).
 `webagent repl` ist die zeilenweise REPL, `webagent tui` Pool/Wand/Bench.
 Aus einer Pipe: `webagent tui --force-tui --view=session`. Unter Windows:

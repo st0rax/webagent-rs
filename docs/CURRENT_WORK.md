@@ -1,6 +1,6 @@
 # Aktueller Arbeitsstand
 
-**Aktualisiert:** 2026-08-29
+**Aktualisiert:** 2026-08-30
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
 ## Browser-Inference-Provider-Scheibe vom 29.08.2026
@@ -13,15 +13,18 @@ Der OpenAI-Adapter normalisiert Function-Tools, `tool_choice`, Assistant-`tool_c
 |---|---|
 | `cargo fmt --all -- --check` | bestanden |
 | `cargo clippy --locked --no-default-features --all-targets -- -D warnings` | bestanden |
-| `cargo test --locked --no-default-features` | 1.168 Bibliotheks-, 7 Binärtests bestanden; 1 Test bewusst ignoriert |
+| `cargo test --locked --no-default-features` | 1.169 Bibliotheks-, 7 Binaertests bestanden; 1 Test bewusst ignoriert |
 | `cargo clippy --locked --all-targets -- -D warnings` | bestanden |
-| `cargo build --locked --release` | bestanden; `webagent.exe` 7.041.536 Bytes (6,72 MiB) |
+| `cargo test --locked` | 1.208 Bibliotheks-, 7 Binaertests bestanden; 1 Test bewusst ignoriert |
+| `cargo build --locked --release` | bestanden; `webagent.exe` 7.042.048 Bytes (6,72 MiB) |
 | Lokaler API-Smoke | `/health=ok`, geschütztes `/v1/models=webagent/chatgpt`, kontrollierter Shutdown bestanden |
-| Vollfeature-Test | nicht abgeschlossen: Windows-Linker lief bei nur 1,2 GB freiem C:-Speicher in `os error 112`; kein Code-/Testfehler |
-| Live-Textturn ChatGPT | nicht bestanden: zwei Antwortversuche blieben ohne erkannten Text (`timeout_no_text`); danach kontrolliert abgebrochen |
-| Live-Tool-Call | nicht ausgeführt, weil bereits der harmlose Textturn keine Antwort lieferte |
+| Live-Textturn ChatGPT | bestanden am 30.08.2026: `BRIDGE_OK` in 20,8 Sekunden |
+| Pi 0.84.4 Textturn | bestanden: Provider entdeckt, `PI_BRIDGE_OK` ueber SSE, `stopReason=stop` |
+| Live-Tool-Call | bestanden: Pi 0.84.4 fuehrte `read` auf einer Zufallsdatei aus, `role=tool` wurde zurueckgesendet und der exakte Nonce-Inhalt final ausgegeben |
 
-Vor dem Release fehlen damit zwei Belege: eine erfolgreiche reale Browser-Textantwort über den neuen Providerpfad und anschließend ein nichtausgeführter Tool-Call-Roundtrip (`tools` → `tool_calls`). Beides erfordert eine erreichbare, angemeldete und aktuell funktionierende WebView-Sitzung. Der lokale API-Vertrag und seine fail-closed Parser sind unabhängig davon durch Unit-Tests belegt.
+`webagent relay` lieferte live `BRIDGE_OK` in 20,8 Sekunden; Pi 0.84.4 entdeckte den Beispielprovider und erhielt ueber gepuffertes SSE `PI_BRIDGE_OK` mit `stopReason=stop`. Der erste Pi-Toolversuch zeigte zusaetzlich, dass eine weiche `auto`-Instruktion das Browsermodell nicht sicher zum explizit verlangten Tool zwingt und externe Client-Tools mit eingebauten Browserwerkzeugen verwechselt. Die Browser-Inference-Anweisung trennt beides jetzt explizit und verlangt Tools fuer ausdrueckliche Toolauftraege sowie lokale/aktuelle/unbekannte Daten. Der erneute zufallsbasierte Pi-read-Smoke bestand den kompletten Loop: Tool Call, lokale Pi-Ausfuehrung, Tool-Ergebnis-Rueckgabe und finale Nonce-Antwort.
+
+Die reproduzierbare Nutzerstrecke liegt in `examples/pi/models.json` und `scripts/test-pi-provider.ps1`. Sie nutzt die aktuelle Pi-Paketlinie `@earendil-works/pi-coding-agent`, isoliert `PI_CODING_AGENT_DIR`, prueft erst Text und dann einen echten Tool-Loop und veraendert weder die regulaere Pi-Konfiguration noch das Repository.
 
 ## Aktueller Repositoryzustand
 
