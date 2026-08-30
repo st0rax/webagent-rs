@@ -52,7 +52,7 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
 | `GET /v1/models` | OpenAI-Modellliste | Liefert automatisch alle aktuell konfigurierten eingebauten und Custom-Brains als `webagent/<brain>` |
 | `GET /v1/models/{id}` | OpenAI-Modellobjekt | Liefert das einzelne konfigurierte Brain; unbekannte IDs werden mit 404 abgelehnt |
 | `POST /v1/chat/completions` | OpenAI Chat Completions | Akzeptiert Textrollen, Function-Tools, Assistant-`tool_calls` und `role=tool`-Ergebnisse |
-| `POST /v1/responses` | OpenAI Responses (erste Scheibe) | Akzeptiert String-/Message-Input, liefert Response-Objekt und gepufferten Responses-SSE-Eventstrom; Tools und State folgen in weiteren Gates |
+| `POST /v1/responses` | OpenAI Responses (erste Scheibe) | Akzeptiert String-/Message-Input, Responses-Function-Tools und `function_call_output`; liefert Response-Objekt sowie gepufferten Responses-SSE-Eventstrom; State folgt in einem weiteren Gate |
 | `POST /v1/messages` | Anthropic Messages | Akzeptiert `max_tokens`, top-level `system` sowie Textrollen `user` und `assistant` |
 
 OpenAI Chat Completions modelliert eine Unterhaltung als Nachrichtenliste und kann eine reguläre Completion oder gestreamte Chunks liefern.[3] Die Bridge implementiert genau diesen textbasierten Teil. Anthropic Messages erwartet `messages` und `max_tokens`; Systeminstruktionen liegen dort auf Top-Level statt in einer `system`-Rolle.[4]
@@ -183,7 +183,7 @@ Für den Anthropic-Adapter wird derselbe Token verwendet. Die `baseUrl` endet **
 
 Die Bridge ist ein **lokaler Adapter**, keine öffentliche API-Plattform. Sie besitzt weder TLS-Termination noch Benutzerverwaltung, Request-Pooling oder automatische Tokenrotation. Ein Dienst darf deshalb nicht über Portweiterleitung, Reverse Proxy oder Cloud-Tunnel freigegeben werden, ohne einen separaten Sicherheitsentwurf.
 
-Der Service serialisiert Browserturns pro Brain und rendert SSE erst nach deren Abschluss. Damit erfüllt die Chat-Completions- und die erste Responses-Scheibe die jeweiligen Abschlussformate, aber noch kein tokenweises Echtzeitstreaming. Multimodale Eingaben, Responses-Tools und Conversation-State folgen als separate Kompatibilitäts-Gates. Diese Begrenzung hält die harnessfreie Inference-Scheibe überprüfbar und verhindert semantische Datenverluste.
+Der Service serialisiert Browserturns pro Brain und rendert SSE erst nach deren Abschluss. Damit erfüllen Chat Completions und Responses die jeweiligen Abschlussformate, inklusive Responses-Function-Tools und der zugehörigen Output-Item-Events, aber noch kein tokenweises Echtzeitstreaming. Multimodale Eingaben und Conversation-State folgen als separate Kompatibilitäts-Gates. Diese Begrenzung hält die harnessfreie Inference-Scheibe überprüfbar und verhindert semantische Datenverluste.
 
 `--timeout-secs` setzt optional das Zeitlimit für den einzelnen Browserturn. Ohne Angabe verwendet WebAgent die bestehende dynamische Timeout-Auflösung des ausgewählten Brains.
 

@@ -980,7 +980,11 @@ fn responses_sse(
     answer: &crate::browser_inference::BrowserInferenceResponse,
 ) -> HttpResponse {
     let text = answer.text.as_deref().unwrap_or_default();
-    let created = response_object_from_answer(id, model, answer);
+    let completed = response_object_from_answer(id, model, answer);
+    let mut created = completed.clone();
+    created["status"] = json!("in_progress");
+    created["output"] = json!([]);
+    created["output_text"] = json!("");
     let mut body = format!(
         "event: response.created\ndata: {}\n\n",
         json!({"type":"response.created","response":created})
@@ -989,17 +993,37 @@ fn responses_sse(
         "event: response.in_progress\ndata: {}\n\n",
         json!({"type":"response.in_progress","response":created})
     ));
-    body.push_str(&format!(
-        "event: response.output_text.delta\ndata: {}\n\n",
-        json!({"type":"response.output_text.delta","item_id":format!("{id}_msg"),"output_index":0,"content_index":0,"delta":text})
-    ));
-    body.push_str(&format!(
-        "event: response.output_text.done\ndata: {}\n\n",
-        json!({"type":"response.output_text.done","item_id":format!("{id}_msg"),"output_index":0,"content_index":0,"text":text})
-    ));
+    if answer.tool_calls.is_empty() {
+        body.push_str(&format!(
+            "event: response.output_text.delta\ndata: {}\n\n",
+            json!({"type":"response.output_text.delta","item_id":format!("{id}_msg"),"output_index":0,"content_index":0,"delta":text})
+        ));
+        body.push_str(&format!(
+            "event: response.output_text.done\ndata: {}\n\n",
+            json!({"type":"response.output_text.done","item_id":format!("{id}_msg"),"output_index":0,"content_index":0,"text":text})
+        ));
+    } else {
+        for (index, call) in answer.tool_calls.iter().enumerate() {
+            let item = json!({"id":call.id,"type":"function_call","status":"in_progress","call_id":call.id,"name":call.name,"arguments":""});
+            body.push_str(&format!(
+                "event: response.output_item.added\ndata: {}\n\n",
+                json!({"type":"response.output_item.added","output_index":index,"item":item})
+            ));
+            let arguments =
+                serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string());
+            body.push_str(&format!(
+                "event: response.function_call_arguments.done\ndata: {}\n\n",
+                json!({"type":"response.function_call_arguments.done","item_id":call.id,"output_index":index,"arguments":arguments})
+            ));
+            body.push_str(&format!(
+                "event: response.output_item.done\ndata: {}\n\n",
+                json!({"type":"response.output_item.done","output_index":index,"item":completed["output"][index]})
+            ));
+        }
+    }
     body.push_str(&format!(
         "event: response.completed\ndata: {}\n\n",
-        json!({"type":"response.completed","response":response_object_from_answer(id, model, answer)})
+        json!({"type":"response.completed","response":completed})
     ));
     HttpResponse::sse(body)
 }
@@ -1406,6 +1430,62 @@ mod tests {
         assert!(sse.contains("response.created"));
         assert!(sse.contains("response.output_text.delta"));
         assert!(sse.contains("response.completed"));
+    }
+
+    #[test]
+    fn responses_tools_and_choice_follow_responses_shape() {
+        let tools = responses_tools(&[json!({
+            "type": "function",
+            "name": "read_file",
+            "description": "Read a file",
+            "parameters": {"type": "object"}
+        })])
+        .unwrap();
+        assert_eq!(tools[0].name, "read_file");
+        assert_eq!(tools[0].description.as_deref(), Some("Read a file"));
+        assert_eq!(
+            responses_tool_choice(Some(&json!({"type":"function","name":"read_file"})), &tools)
+                .unwrap(),
+            crate::browser_inference::BrowserToolChoice::Function("read_file".to_string())
+        );
+        assert_eq!(
+            responses_tool_choice(Some(&json!("required")), &tools).unwrap(),
+            crate::browser_inference::BrowserToolChoice::Required
+        );
+        assert!(responses_tools(&[json!({"type":"computer"})]).is_err());
+        assert!(responses_tool_choice(Some(&json!("read_file")), &tools).is_err());
+    }
+
+    #[test]
+    fn responses_task_accepts_function_call_output_items() {
+        let request = ResponsesRequest {
+            model: "webagent/chatgpt".to_string(),
+            input: json!([{"type":"function_call_output","call_id":"call_7","output":{"ok":true}}]),
+            instructions: None,
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+        };
+        let task = responses_task(&request).unwrap();
+        assert!(task.contains("[tool id=call_7]\n{\"ok\":true}"));
+    }
+
+    #[test]
+    fn responses_tool_call_sse_uses_output_item_events() {
+        let answer = crate::browser_inference::BrowserInferenceResponse {
+            text: None,
+            tool_calls: vec![crate::browser_inference::BrowserToolCall {
+                id: "call_8".to_string(),
+                name: "read_file".to_string(),
+                arguments: json!({"path":"README.md"}),
+            }],
+        };
+        let sse = String::from_utf8(responses_sse("resp_tool", "webagent/chatgpt", &answer).body)
+            .unwrap();
+        assert!(sse.contains("response.output_item.added"));
+        assert!(sse.contains("response.function_call_arguments.done"));
+        assert!(sse.contains("response.output_item.done"));
+        assert!(!sse.contains("response.output_text.delta"));
     }
 
     #[test]
