@@ -17,8 +17,8 @@ Die Bridge akzeptiert die für Pi relevanten Formate **OpenAI Chat Completions**
 | Brain | `chatgpt` als Standard; `model=webagent/<brain>` routet jede Anfrage auf das gewaehlte eingebaute oder Custom-Brain |
 | Nebenläufigkeit | Eine Anfrage zur Zeit pro Dienstprozess |
 | Ergebnisquelle | Direkt beobachteter Antworttext des einzelnen Browser-Modellturns |
-| Streaming | SSE-Abschlussformat nach vollständig beendetem Browserturn, nicht tokeninkrementell |
-| Unterstützter Inhalt | Textnachrichten und Responses-Textblöcke (`input_text`/`output_text`); OpenAI-Function-Tools experimentell; andere Inhaltsarten werden mit HTTP 400 abgelehnt |
+| Streaming | SSE; reine Textturns und multimodale Browserturns liefern wachsende Text-Snapshots, Tool-Streams bleiben bis zur Validierung gepuffert |
+| Unterstützter Inhalt | Text sowie base64-kodierte Bilder und Audiodateien; OpenAI-Function-Tools experimentell; externe Medien-URLs und nicht unterstützte Inhaltsarten werden mit HTTP 400 abgelehnt |
 
 ## Dienst starten
 
@@ -51,16 +51,36 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
 | `GET /health` | JSON | Lokaler Liveness-Check ohne Browserturn |
 | `GET /v1/models` | OpenAI-Modellliste | Liefert automatisch alle aktuell konfigurierten eingebauten und Custom-Brains als `webagent/<brain>` |
 | `GET /v1/models/{id}` | OpenAI-Modellobjekt | Liefert das einzelne konfigurierte Brain; unbekannte IDs werden mit 404 abgelehnt |
-| `POST /v1/chat/completions` | OpenAI Chat Completions | Akzeptiert Textrollen, Function-Tools, Assistant-`tool_calls` und `role=tool`-Ergebnisse; textuelle Streams werden inkrementell übertragen |
-| `POST /v1/responses` | OpenAI Responses | Akzeptiert String-/Message-Input, Responses-Function-Tools, `function_call`/`function_call_output`, `store` und `previous_response_id`; liefert Response-Objekt sowie gepufferten Responses-SSE-Eventstrom |
+| `POST /v1/chat/completions` | OpenAI Chat Completions | Akzeptiert Textrollen, OpenAI-`image_url`-data-URLs, `input_audio`-Base64, Function-Tools, Assistant-`tool_calls` und `role=tool`-Ergebnisse; Streams werden inkrementell übertragen |
+| `POST /v1/responses` | OpenAI Responses | Akzeptiert String-/Message-Input, `input_image`-data-URLs, `input_audio`-Base64, Responses-Function-Tools, `function_call`/`function_call_output`, `store` und `previous_response_id`; liefert Response-Objekt sowie gepufferten Responses-SSE-Eventstrom |
 | `GET /v1/responses/{id}` | OpenAI Response-Retrieval | Liefert eine gespeicherte Response; unbekannte oder mit `store=false` erzeugte IDs werden mit 404 abgelehnt |
 | `GET /v1/responses/{id}/input_items` | OpenAI Input-Item-Liste | Liefert den normalisierten, im lokalen State gespeicherten Verlauf der Response |
 | `DELETE /v1/responses/{id}` | OpenAI Response-Lifecycle | Entfernt eine gespeicherte Response aus dem lokalen In-Memory-Store; Folgezugriffe liefern 404 |
-| `POST /v1/messages` | Anthropic Messages | Akzeptiert `max_tokens`, top-level `system` sowie Textrollen `user` und `assistant` |
+| `POST /v1/messages` | Anthropic Messages | Akzeptiert `max_tokens`, top-level `system`, Textrollen `user`/`assistant` sowie Anthropic-Base64-Bild-/Audio-Blöcke |
 
-OpenAI Chat Completions modelliert eine Unterhaltung als Nachrichtenliste und kann eine reguläre Completion oder gestreamte Chunks liefern.[3] Die Bridge implementiert genau diesen textbasierten Teil. Anthropic Messages erwartet `messages` und `max_tokens`; Systeminstruktionen liegen dort auf Top-Level statt in einer `system`-Rolle.[4]
+OpenAI Chat Completions modelliert eine Unterhaltung als Nachrichtenliste und kann eine reguläre Completion oder gestreamte Chunks liefern.[3] Die Bridge übernimmt dabei Text sowie die beschriebenen Bild-/Audio-Content-Parts. Anthropic Messages erwartet `messages` und `max_tokens`; Systeminstruktionen liegen dort auf Top-Level statt in einer `system`-Rolle.[4]
 
-Responses-Message-Inhalte dürfen als String oder als Textblock-Array übergeben werden. Die Bridge normalisiert `input_text` und `output_text` in den Browser-Prompt. Nicht unterstützte Bild-, Audio-, Dokument-, Thinking- und Tool-Blöcke werden nie stillschweigend entfernt. Sie führen zu einer providerkonformen `400 invalid_request_error`-Antwort. Das verhindert, dass ein Client irrtümlich annimmt, nicht verarbeitete Daten seien beim Agenten angekommen.
+Message-Inhalte dürfen als String oder Content-Array übergeben werden. Textteile werden in den Browser-Prompt übernommen. Bilder werden als `data:image/...;base64,...` (`image_url` bzw. `input_image`) und Audio als OpenAI-`input_audio` mit Base64-Daten plus Format oder als Anthropic-`source: {type: "base64", media_type, data}` akzeptiert. Die dekodierten Bytes werden vor dem Senden in ein vorhandenes `input[type=file]` des Browser-Composers eingesetzt; im Prompt bleibt zusätzlich ein transparenter Attachment-Marker. Externe `http(s)`-URLs, `file_id`-Referenzen sowie Dokument-, Thinking- und unbekannte Blöcke werden nicht automatisch geladen oder stillschweigend entfernt, sondern führen zu einer providerkonformen `400 invalid_request_error`-Antwort.
+
+### Multimodale Requests
+
+Die Bridge lädt Medien nicht aus dem Internet. Der Client liest die lokale Datei, kodiert sie als Base64 und sendet sie im jeweiligen Provider-Content-Block. Ein OpenAI-Chat-Request sieht beispielsweise so aus:
+
+~~~powershell
+$image = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path .\foto.png)))
+$audio = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path .\notiz.wav)))
+$body = @{
+  model = "webagent/chatgpt"
+  messages = @(@{ role = "user"; content = @(
+    @{ type = "text"; text = "Was ist auf dem Bild und was wird gesagt?" }
+    @{ type = "image_url"; image_url = @{ url = "data:image/png;base64,$image" } }
+    @{ type = "input_audio"; input_audio = @{ data = $audio; format = "wav" } }
+  ) })
+} | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/v1/chat/completions -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } -ContentType application/json -Body $body
+~~~
+
+Die Responses-Variante verwendet type input_image mit derselben Data-URL und type input_audio; Anthropic verwendet type image bzw. type audio mit source.type base64. Pro Datei gilt ein dekodiertes Maximum von 8 MiB, pro Request höchstens 16 Dateien. Die Weboberfläche muss ein input[type=file] besitzen; wenn ein Brain diese Upload-Funktion nicht anbietet, antwortet der Endpoint mit einem erklärenden 502 statt die Datei zu verwerfen.
 
 ## Pi-Konfiguration
 
@@ -101,7 +121,7 @@ Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kom
           "id": "webagent/chatgpt",
           "name": "WebAgent ChatGPT",
           "reasoning": false,
-          "input": ["text"],
+          "input": ["text", "image", "audio"],
           "contextWindow": 128000,
           "maxTokens": 16384,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
@@ -171,7 +191,7 @@ Für den Anthropic-Adapter wird derselbe Token verwendet. Die `baseUrl` endet **
           "id": "webagent/chatgpt",
           "name": "WebAgent ChatGPT (Anthropic format)",
           "reasoning": false,
-          "input": ["text"],
+          "input": ["text", "image", "audio"],
           "contextWindow": 128000,
           "maxTokens": 16384,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
@@ -186,9 +206,9 @@ Für den Anthropic-Adapter wird derselbe Token verwendet. Die `baseUrl` endet **
 
 Die Bridge ist ein **lokaler Adapter**, keine öffentliche API-Plattform. Sie besitzt weder TLS-Termination noch Benutzerverwaltung, Request-Pooling oder automatische Tokenrotation. Ein Dienst darf deshalb nicht über Portweiterleitung, Reverse Proxy oder Cloud-Tunnel freigegeben werden, ohne einen separaten Sicherheitsentwurf.
 
-Der Service serialisiert Browserturns pro Brain. Textuelle Chat-Completions- und Responses-Streams übertragen wachsende DOM-Snapshots inkrementell und senden bei längeren Denkpausen SSE-Keepalives; Function-Tool-Streams bleiben bis zur validierten Tool-Antwort gepuffert. Damit erfüllen beide OpenAI-Pfade ihre Abschlussformate, inklusive Responses-Function-Tools, Output-Item-Events und lokalem Conversation-State. Multimodale Eingaben folgen als separates Kompatibilitäts-Gate. Diese Begrenzung hält die harnessfreie Inference-Scheibe überprüfbar und verhindert semantische Datenverluste.
+Der Service serialisiert Browserturns pro Brain. Chat-Completions- und Responses-Streams übertragen wachsende DOM-Snapshots inkrementell und senden bei längeren Denkpausen SSE-Keepalives; Function-Tool-Streams bleiben bis zur validierten Tool-Antwort gepuffert. Damit erfüllen beide OpenAI-Pfade ihre Abschlussformate, inklusive Responses-Function-Tools, Output-Item-Events und lokalem Conversation-State. Multimodale Eingaben werden vor dem Browserturn validiert, dekodiert und als Datei-Upload angehängt; nicht übertragbare Medien werden fail-closed abgelehnt. Diese Begrenzung hält die harnessfreie Inference-Scheibe überprüfbar und verhindert semantische Datenverluste.
 
-Responses werden standardmäßig in einem auf 256 Einträge begrenzten In-Memory-Store abgelegt und können über `GET /v1/responses/{id}` abgerufen werden.[5] `previous_response_id` lädt den normalisierten Nachrichtenverlauf der referenzierten Response und stellt ihn dem nächsten Browserturn voran; neue `instructions` gelten nur für den neuen Turn.[6] `store=false` verhindert sowohl Retrieval als auch eine spätere Verknüpfung. Der Store ist absichtlich pro Prozess und nicht dauerhaft: Nach einem Neustart sind die IDs nicht mehr verfügbar.
+Responses werden standardmäßig in einem auf 256 Einträge und 64 MiB serialisierte Nachrichten begrenzten In-Memory-Store abgelegt und können über `GET /v1/responses/{id}` abgerufen werden.[5] `previous_response_id` lädt den normalisierten Nachrichtenverlauf der referenzierten Response und stellt ihn dem nächsten Browserturn voran; neue `instructions` gelten nur für den neuen Turn.[6] `store=false` verhindert sowohl Retrieval als auch eine spätere Verknüpfung. Der Store ist absichtlich pro Prozess und nicht dauerhaft: Nach einem Neustart sind die IDs nicht mehr verfügbar.
 
 Der Wire-Vertrag ist zusätzlich mit dem offiziellen OpenAI-Python-SDK 3.6.0 live geprüft: Modellliste, Response-Retrieval, inkrementeller Responses-Textstream, Responses-Function-Call-Stream und inkrementeller Chat-Completions-Textstream werden vom SDK ohne Sonderadapter geparst; `get_final_response()` bzw. die Chat-Chunk-Faltung liefern jeweils das vollständige Ergebnis. Die SSE-Reihenfolge enthält dafür die kanonischen `output_item`-, `content_part`-, Delta-, Done- und Completion-Ereignisse.
 
@@ -200,7 +220,7 @@ Der OpenAI-Adapter normalisiert Function-Tools und die Varianten `tool_choice=au
 
 Diese Schicht **führt das Tool nicht aus**. Die Ausführung gehört dem aufrufenden Harness, beispielsweise Deep Agents. Unbekannte Toolnamen, doppelte Call-IDs, ein falsches erzwungenes Tool oder reine Textausgabe bei `tool_choice=required` werden fail-closed als Providerfehler behandelt.
 
-Die JSON- und API-Semantik ist lokal getestet. Fuer ChatGPT sind ein Webturn, ein Pi-0.84.4-Textturn und der vollstaendige Pi-`read`-Tool-Loop live belegt: Tooldefinition zum Browser, `tool_calls` zurueck zu Pi, lokale Ausfuehrung, `role=tool` zum Browser und finale Antwort mit einem zufaelligen Dateiinhalt. Der mitgelieferte Smoke-Test macht diese weiterhin provider- und modellabhaengige Formatstabilitaet reproduzierbar pruefbar. Ein anderes Brain oder Webmodell gilt erst nach demselben Tool-Smoke als belegt. Der Anthropic-Adapter bleibt in dieser Scheibe textbasiert.
+Die JSON- und API-Semantik ist lokal getestet. Fuer ChatGPT sind ein Webturn, ein Pi-0.84.4-Textturn und der vollstaendige Pi-`read`-Tool-Loop live belegt: Tooldefinition zum Browser, `tool_calls` zurueck zu Pi, lokale Ausfuehrung, `role=tool` zum Browser und finale Antwort mit einem zufaelligen Dateiinhalt. Der mitgelieferte Smoke-Test macht diese weiterhin provider- und modellabhaengige Formatstabilitaet reproduzierbar pruefbar. Ein anderes Brain oder Webmodell gilt erst nach demselben Tool-Smoke als belegt. Der Anthropic-Adapter nutzt denselben Browser-Uploadpfad fuer Base64-Bild-/Audio-Blöcke.
 
 Ein Deep-Agents-Client kann nach erfolgreicher Live-Gegenprobe einen `ChatOpenAI`-Adapter mit `base_url=http://127.0.0.1:8787/v1` verwenden. Der dort konfigurierte API-Key ist lediglich der lokale `WEBAGENT_API_KEY`; er ersetzt keinen Login der Browser-Sitzung.
 

@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use crate::brain::{BrainBackend, SessionState};
 use crate::browser::WebBrainBackend;
+use crate::browser_inference::BrowserAttachment;
 use crate::timeouts::resolve_timeout;
 
 #[derive(Debug)]
@@ -46,6 +47,29 @@ pub fn relay_single_turn_streaming(
     headless: bool,
     timeout_override: Option<f64>,
     model: Option<&str>,
+    on_update: &mut dyn FnMut(&str),
+) -> Result<String, RelayError> {
+    relay_single_turn_with_attachments_streaming(
+        brain_id,
+        message,
+        headless,
+        timeout_override,
+        model,
+        &[],
+        on_update,
+    )
+}
+
+/// Single-Turn-Relay mit Dateien, die vor dem Senden an den Browser-Composer
+/// angehaengt werden. Der leere Slice ist der identische Textpfad aus
+/// [`relay_single_turn_streaming`].
+pub fn relay_single_turn_with_attachments_streaming(
+    brain_id: &str,
+    message: &str,
+    headless: bool,
+    timeout_override: Option<f64>,
+    model: Option<&str>,
+    attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
 ) -> Result<String, RelayError> {
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
@@ -130,7 +154,7 @@ pub fn relay_single_turn_streaming(
             last_err = e;
             continue;
         }
-        let baseline = match backend.send(message) {
+        let baseline = match backend.send_with_attachments(message, attachments) {
             Ok(b) => b,
             Err(e) => {
                 last_err = e;

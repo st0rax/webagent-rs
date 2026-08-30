@@ -19,7 +19,7 @@
           "id": "webagent/chatgpt",
           "name": "WebAgent ChatGPT",
           "reasoning": false,
-          "input": ["text"],
+          "input": ["text", "image", "audio"],
           "contextWindow": 128000,
           "maxTokens": 16384,
           "cost": {

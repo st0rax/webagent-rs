@@ -17,6 +17,7 @@ type CatalogEntry = {
   brain?: string;
   context_window?: number;
   max_tokens?: number;
+  modalities?: { input?: string[]; output?: string[] };
 };
 
 function modelConfig(entry: CatalogEntry) {
@@ -25,7 +26,7 @@ function modelConfig(entry: CatalogEntry) {
     id: entry.id,
     name: `WebAgent ${brain}`,
     reasoning: false,
-    input: ["text"] as ["text"],
+    input: (entry.modalities?.input?.length ? entry.modalities.input : ["text", "image", "audio"]) as Array<"text" | "image" | "audio">,
     contextWindow: entry.context_window ?? 128000,
     maxTokens: entry.max_tokens ?? 16384,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

@@ -9,6 +9,8 @@
 use std::time::{Duration, Instant};
 
 use crate::brain::BrainBackend;
+use crate::browser_inference::BrowserAttachment;
+use serde_json::{json, Value};
 
 use super::blocking::{banner_is_prompt_echo, block_banner_expr, is_technical_block_phrase_list};
 use super::WebBrainBackend;
@@ -65,6 +67,77 @@ fn submission_is_proven(
 }
 
 impl WebBrainBackend {
+    /// Haengt optionale Dateien an den Composer und sendet danach die
+    /// Nachricht ueber den provider-spezifischen Pfad. Die Dateiuebergabe
+    /// erfolgt bewusst ueber ein vorhandenes `input[type=file]`: dadurch wird
+    /// kein nativer Dateidialog geoeffnet, der den WebView blockieren wuerde.
+    pub(crate) fn send_with_attachments(
+        &mut self,
+        text: &str,
+        attachments: &[BrowserAttachment],
+    ) -> Result<i32, String> {
+        if !attachments.is_empty() {
+            self.attach_files(attachments)?;
+        }
+        self.send(text)
+    }
+
+    fn attach_files(&self, attachments: &[BrowserAttachment]) -> Result<(), String> {
+        if attachments.is_empty() {
+            return Ok(());
+        }
+        let files: Vec<Value> = attachments
+            .iter()
+            .map(|attachment| {
+                json!({
+                    "name": attachment.file_name,
+                    "mime": attachment.mime_type,
+                    "data": base64_encode(&attachment.data),
+                })
+            })
+            .collect();
+        let serialized = serde_json::to_string(&files)
+            .map_err(|error| format!("Dateianhaenge nicht serialisierbar: {error}"))?;
+        let expression = format!(
+            r#"(function(files){{
+                try {{
+                    var inputs=Array.from(document.querySelectorAll('input[type=file]'));
+                    if(!inputs.length) return {{ok:false,error:'no_file_input'}};
+                    var input=inputs.find(function(candidate){{return candidate.multiple;}})||inputs[0];
+                    if(typeof DataTransfer==='undefined') return {{ok:false,error:'no_data_transfer'}};
+                    var transfer=new DataTransfer();
+                    for(var i=0;i<files.length;i++){{
+                        var binary=atob(files[i].data), bytes=new Uint8Array(binary.length);
+                        for(var j=0;j<binary.length;j++) bytes[j]=binary.charCodeAt(j);
+                        transfer.items.add(new File([bytes],files[i].name,{{type:files[i].mime}}));
+                    }}
+                    input.files=transfer.files;
+                    input.dispatchEvent(new Event('input',{{bubbles:true}}));
+                    input.dispatchEvent(new Event('change',{{bubbles:true}}));
+                    return {{ok:true,count:transfer.files.length}};
+                }} catch(error) {{ return {{ok:false,error:String(error)}}; }}
+            }})({serialized})"#
+        );
+        let result = self.eval(&expression)?;
+        if result.get("ok").and_then(Value::as_bool) != Some(true) {
+            let reason = result
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            return Err(format!(
+                "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit ({reason})"
+            ));
+        }
+        let count = result.get("count").and_then(Value::as_u64).unwrap_or(0);
+        if count != attachments.len() as u64 {
+            return Err(format!(
+                "Browseroberflaeche hat nur {count} von {} Dateien uebernommen",
+                attachments.len()
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn send_generic(&mut self, text: &str) -> Result<i32, String> {
         let baseline = self.prepare_send_baseline();
         let user_baseline = self.user_message_count();
@@ -452,6 +525,31 @@ return best?best.slice(0,300):null;})()"#;
             .and_then(|value| value.as_i64())
             .and_then(|count| i32::try_from(count).ok())
     }
+}
+
+/// Kleine, dependency-freie Base64-Kodierung fuer den Transfer in den
+/// JavaScript-Seitenkontext. Die API-Schicht validiert die Eingabegroesse vorab.
+fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        let second = chunk.get(1).copied().unwrap_or(0);
+        let third = chunk.get(2).copied().unwrap_or(0);
+        out.push(ALPHABET[(first >> 2) as usize] as char);
+        out.push(ALPHABET[((first & 0x03) << 4 | second >> 4) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(ALPHABET[((second & 0x0f) << 2 | third >> 6) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(ALPHABET[(third & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
 }
 
 #[cfg(test)]

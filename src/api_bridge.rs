@@ -1,13 +1,13 @@
 //! Lokale Provider-Bridge fuer Pi-kompatible OpenAI- und Anthropic-Anfragen.
 //!
 //! Der Dienst bindet ausschliesslich an Loopback, verlangt einen Bearer- oder
-//! Anthropic-kompatiblen x-api-key-Token und akzeptiert textuelle
-//! Gespraechsinhalte sowie OpenAI-Function-Tools. Der synchrone HTTP-Kern
+//! Anthropic-kompatiblen x-api-key-Token und akzeptiert Text-, Bild- und
+//! Audio-Content sowie OpenAI-Function-Tools. Der synchrone HTTP-Kern
 //! serialisiert Browserruns. Jeder Provideraufruf fuehrt genau einen
 //! harnessfreien Browser-Inference-Turn aus; `AgentController`, `webagent/1`
 //! und lokale Werkzeuge bleiben ausserhalb dieser Schicht.
 
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -21,10 +21,14 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-const MAX_REQUEST_BYTES: usize = 1_048_576;
+/// Request envelope limit. Multimodal data is base64-encoded in JSON, so the
+/// transport needs more room than the historical text-only 1 MiB cap. Each
+/// decoded attachment is still capped independently in `browser_inference`.
+const MAX_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_CONNECTIONS: usize = 8;
 const MAX_STORED_RESPONSES: usize = 256;
+const MAX_STORED_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
 
 static BROWSER_RUN_LOCKS: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 static RESPONSE_STORE: OnceLock<Mutex<ResponseStore>> = OnceLock::new();
@@ -33,6 +37,12 @@ static RESPONSE_STORE: OnceLock<Mutex<ResponseStore>> = OnceLock::new();
 struct StoredResponse {
     response: Value,
     messages: Vec<ConversationMessage>,
+}
+
+#[derive(Debug)]
+struct PromptBundle {
+    text: String,
+    attachments: Vec<crate::browser_inference::BrowserAttachment>,
 }
 
 #[derive(Default)]
@@ -214,7 +224,8 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
                             "owned_by": "webagent",
                             "brain": brain,
                             "context_window": 128000,
-                            "max_tokens": 16384
+                            "max_tokens": 16384,
+                            "modalities": {"input": ["text", "image", "audio"], "output": ["text"]}
                         })
                     })
                     .collect();
@@ -242,7 +253,8 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
                             "owned_by": "webagent",
                             "brain": brain,
                             "context_window": 128000,
-                            "max_tokens": 16384
+                            "max_tokens": 16384,
+                            "modalities": {"input": ["text", "image", "audio"], "output": ["text"]}
                         }),
                     ),
                     Err(error) => api_error(ApiFlavor::OpenAi, 404, &error),
@@ -389,8 +401,8 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
         Ok(brain) => brain,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    let task = match openai_task(&payload) {
-        Ok(task) => task,
+    let prompt = match openai_prompt(&payload) {
+        Ok(prompt) => prompt,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
     let tools = match openai_tools(&payload.tools) {
@@ -401,7 +413,14 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    let answer = match run_task_blocking(config, &brain, &task, &tools, tool_choice) {
+    let answer = match run_task_blocking(
+        config,
+        &brain,
+        &prompt.text,
+        &prompt.attachments,
+        &tools,
+        tool_choice,
+    ) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
     };
@@ -447,8 +466,8 @@ fn handle_openai_incremental(
             return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
         }
     };
-    let task = match openai_task(&payload) {
-        Ok(task) => task,
+    let prompt = match openai_prompt(&payload) {
+        Ok(prompt) => prompt,
         Err(error) => {
             return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
         }
@@ -500,7 +519,13 @@ fn handle_openai_incremental(
                 last_keepalive = Instant::now();
             }
         };
-        run_task_streaming(config, &brain, &task, &mut on_update)
+        run_task_streaming(
+            config,
+            &brain,
+            &prompt.text,
+            &prompt.attachments,
+            &mut on_update,
+        )
     };
     let answer = match answer {
         Ok(answer) => answer,
@@ -558,14 +583,15 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(brain) => brain,
         Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
     };
-    let task = match anthropic_task(&payload) {
-        Ok(task) => task,
+    let prompt = match anthropic_prompt(&payload) {
+        Ok(prompt) => prompt,
         Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
     };
     let answer = match run_task_blocking(
         config,
         &brain,
-        &task,
+        &prompt.text,
+        &prompt.attachments,
         &[],
         crate::browser_inference::BrowserToolChoice::None,
     ) {
@@ -618,11 +644,18 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    let (mut messages, task) = match responses_context(&payload) {
+    let (mut messages, prompt) = match responses_context(&payload) {
         Ok(context) => context,
         Err((status, error)) => return api_error(ApiFlavor::OpenAi, status, &error),
     };
-    let answer = match run_task_blocking(config, &brain, &task, &tools, tool_choice) {
+    let answer = match run_task_blocking(
+        config,
+        &brain,
+        &prompt.text,
+        &prompt.attachments,
+        &tools,
+        tool_choice,
+    ) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
     };
@@ -672,7 +705,7 @@ fn handle_responses_incremental(
     if !tools.is_empty() && !matches!(choice, crate::browser_inference::BrowserToolChoice::None) {
         return write_http_response(stream, handle_responses(request, config));
     }
-    let (mut messages, task) = match responses_context(&payload) {
+    let (mut messages, prompt) = match responses_context(&payload) {
         Ok(context) => context,
         Err((status, error)) => {
             return write_http_response(stream, api_error(ApiFlavor::OpenAi, status, &error))
@@ -743,7 +776,13 @@ fn handle_responses_incremental(
                 last_keepalive = Instant::now();
             }
         };
-        run_task_streaming(config, &brain, &task, &mut on_update)
+        run_task_streaming(
+            config,
+            &brain,
+            &prompt.text,
+            &prompt.attachments,
+            &mut on_update,
+        )
     };
 
     let answer = match answer {
@@ -856,7 +895,7 @@ fn write_sse_comment(stream: &mut TcpStream, comment: &str) -> Result<(), String
 
 fn responses_context(
     payload: &ResponsesRequest,
-) -> Result<(Vec<ConversationMessage>, String), (u16, String)> {
+) -> Result<(Vec<ConversationMessage>, PromptBundle), (u16, String)> {
     let mut messages = match payload.previous_response_id.as_deref() {
         Some(id) => retrieve_response(id).map_or_else(
             || Err((404, format!("Previous response '{id}' nicht gefunden."))),
@@ -865,15 +904,16 @@ fn responses_context(
         None => Vec::new(),
     };
     messages.extend(responses_messages(&payload.input).map_err(|error| (400, error))?);
-    let task = conversation_task(payload.instructions.clone(), &messages, "OpenAI Responses")
+    let prompt = conversation_prompt(payload.instructions.clone(), &messages, "OpenAI Responses")
         .map_err(|error| (400, error))?;
-    Ok((messages, task))
+    Ok((messages, prompt))
 }
 
 fn run_task_blocking(
     config: &BridgeConfig,
     brain: &str,
     task: &str,
+    attachments: &[crate::browser_inference::BrowserAttachment],
     tools: &[crate::browser_inference::BrowserTool],
     tool_choice: crate::browser_inference::BrowserToolChoice,
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
@@ -886,15 +926,19 @@ fn run_task_blocking(
         .clone();
     let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    crate::browser_inference::complete(crate::browser_inference::BrowserInferenceRequest {
-        brain,
-        prompt: task,
-        tools,
-        tool_choice,
-        headless: config.headless,
-        timeout_secs: config.timeout_secs,
-        model: None,
-    })
+    crate::browser_inference::complete_with_attachments(
+        crate::browser_inference::BrowserInferenceRequest {
+            brain,
+            prompt: task,
+            tools,
+            tool_choice,
+            headless: config.headless,
+            timeout_secs: config.timeout_secs,
+            model: None,
+        },
+        attachments,
+        &mut |_| {},
+    )
     .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
 }
 
@@ -902,6 +946,7 @@ fn run_task_streaming(
     config: &BridgeConfig,
     brain: &str,
     task: &str,
+    attachments: &[crate::browser_inference::BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
     let lock = BROWSER_RUN_LOCKS
@@ -913,7 +958,7 @@ fn run_task_streaming(
         .clone();
     let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    crate::browser_inference::complete_streaming(
+    crate::browser_inference::complete_streaming_with_attachments(
         crate::browser_inference::BrowserInferenceRequest {
             brain,
             prompt: task,
@@ -923,6 +968,7 @@ fn run_task_streaming(
             timeout_secs: config.timeout_secs,
             model: None,
         },
+        attachments,
         on_update,
     )
     .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
@@ -949,9 +995,20 @@ fn store_response(id: String, response: StoredResponse) {
         store.order.push_back(id.clone());
     }
     store.entries.insert(id, response);
-    while store.order.len() > MAX_STORED_RESPONSES {
+    let mut stored_bytes: usize = store.entries.values().fold(0, |total, entry| {
+        total.saturating_add(
+            serde_json::to_vec(&entry.messages).map_or(usize::MAX, |bytes| bytes.len()),
+        )
+    });
+    while store.order.len() > MAX_STORED_RESPONSES || stored_bytes > MAX_STORED_RESPONSE_BYTES {
         if let Some(expired) = store.order.pop_front() {
-            store.entries.remove(&expired);
+            if let Some(removed) = store.entries.remove(&expired) {
+                let removed_bytes =
+                    serde_json::to_vec(&removed.messages).map_or(usize::MAX, |bytes| bytes.len());
+                stored_bytes = stored_bytes.saturating_sub(removed_bytes);
+            }
+        } else {
+            break;
         }
     }
 }
@@ -992,7 +1049,6 @@ fn response_input_items(messages: &[ConversationMessage]) -> Vec<Value> {
             }
             continue;
         }
-        let text = text_content(&message.content).unwrap_or_else(|_| message.content.to_string());
         let content_type = if message.role == "assistant" {
             "output_text"
         } else {
@@ -1003,10 +1059,42 @@ fn response_input_items(messages: &[ConversationMessage]) -> Vec<Value> {
             "type": "message",
             "status": "completed",
             "role": message.role,
-            "content": [{"type":content_type,"text":text,"annotations":[]}]
+            "content": response_content_parts(&message.content, content_type)
         }));
     }
     items
+}
+
+fn response_content_parts(value: &Value, default_text_type: &str) -> Vec<Value> {
+    if let Some(text) = value.as_str() {
+        return vec![json!({
+            "type": default_text_type,
+            "text": text,
+            "annotations": []
+        })];
+    }
+    let Some(parts) = value.as_array() else {
+        return vec![json!({
+            "type": default_text_type,
+            "text": value.to_string(),
+            "annotations": []
+        })];
+    };
+    parts
+        .iter()
+        .map(|part| {
+            let part_type = part.get("type").and_then(Value::as_str).unwrap_or("");
+            if matches!(part_type, "text" | "input_text" | "output_text") {
+                json!({
+                    "type": default_text_type,
+                    "text": part.get("text").and_then(Value::as_str).unwrap_or_default(),
+                    "annotations": []
+                })
+            } else {
+                part.clone()
+            }
+        })
+        .collect()
 }
 
 fn append_response_message(
@@ -1077,7 +1165,7 @@ struct ResponsesRequest {
     store: bool,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 struct ConversationMessage {
     role: String,
     #[serde(default)]
@@ -1126,22 +1214,27 @@ fn default_true() -> bool {
     true
 }
 
+#[cfg(test)]
 fn openai_task(request: &OpenAiRequest) -> Result<String, String> {
-    conversation_task(None, &request.messages, "OpenAI Chat Completions")
+    Ok(openai_prompt(request)?.text)
 }
 
-fn anthropic_task(request: &AnthropicRequest) -> Result<String, String> {
+fn openai_prompt(request: &OpenAiRequest) -> Result<PromptBundle, String> {
+    conversation_prompt(None, &request.messages, "OpenAI Chat Completions")
+}
+
+fn anthropic_prompt(request: &AnthropicRequest) -> Result<PromptBundle, String> {
     let system = match &request.system {
         Some(content) => Some(text_content(content)?),
         None => None,
     };
-    conversation_task(system, &request.messages, "Anthropic Messages")
+    conversation_prompt(system, &request.messages, "Anthropic Messages")
 }
 
 #[cfg(test)]
 fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
     let messages = responses_messages(&request.input)?;
-    conversation_task(request.instructions.clone(), &messages, "OpenAI Responses")
+    Ok(conversation_prompt(request.instructions.clone(), &messages, "OpenAI Responses")?.text)
 }
 
 fn responses_messages(input: &Value) -> Result<Vec<ConversationMessage>, String> {
@@ -1231,23 +1324,34 @@ fn responses_content(value: &Value) -> Result<Value, String> {
         return Ok(value.clone());
     }
     let Some(parts) = value.as_array() else {
-        return Err("Responses-content muss String oder Textblock-Array sein.".to_string());
+        return Err("Responses-content muss String oder Content-Array sein.".to_string());
     };
-    let mut text = String::new();
     for part in parts {
+        if !part.is_object() {
+            return Err("Responses-Content-Parts muessen Objekte sein.".to_string());
+        }
         let part_type = part.get("type").and_then(Value::as_str).unwrap_or("");
-        if !matches!(part_type, "text" | "input_text" | "output_text") {
+        if !matches!(
+            part_type,
+            "text"
+                | "input_text"
+                | "output_text"
+                | "input_image"
+                | "image_url"
+                | "input_audio"
+                | "audio"
+        ) {
             return Err(format!(
                 "Responses-Inhaltstyp '{part_type}' wird nicht unterstuetzt."
             ));
         }
-        let part_text = part
-            .get("text")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "Responses-Textblock ohne String-Feld 'text'.".to_string())?;
-        text.push_str(part_text);
+        if matches!(part_type, "text" | "input_text" | "output_text")
+            && part.get("text").and_then(Value::as_str).is_none()
+        {
+            return Err("Responses-Textblock ohne String-Feld 'text'.".to_string());
+        }
     }
-    Ok(Value::String(text))
+    Ok(value.clone())
 }
 
 fn responses_function_output(value: &Value) -> Result<Value, String> {
@@ -1325,11 +1429,20 @@ fn responses_tool_choice(
     ))
 }
 
+#[cfg(test)]
 fn conversation_task(
     system: Option<String>,
     messages: &[ConversationMessage],
     source: &str,
 ) -> Result<String, String> {
+    Ok(conversation_prompt(system, messages, source)?.text)
+}
+
+fn conversation_prompt(
+    system: Option<String>,
+    messages: &[ConversationMessage],
+    source: &str,
+) -> Result<PromptBundle, String> {
     if messages.is_empty() {
         return Err("messages darf nicht leer sein.".to_string());
     }
@@ -1341,6 +1454,7 @@ fn conversation_task(
         task.push_str(&system);
         task.push_str("\n\n");
     }
+    let mut attachments = Vec::new();
     for message in messages {
         match message.role.as_str() {
             "system" | "developer" | "user" => {
@@ -1350,7 +1464,7 @@ fn conversation_task(
                         message.role
                     ));
                 }
-                let content = text_content(&message.content)?;
+                let content = content_to_prompt(&message.content, &mut attachments)?;
                 task.push_str(&format!("[{}]\n{}\n\n", message.role, content));
             }
             "assistant" => {
@@ -1358,7 +1472,7 @@ fn conversation_task(
                     return Err("Assistant-Nachricht darf keine tool_call_id tragen.".to_string());
                 }
                 if !message.content.is_null() {
-                    let content = text_content(&message.content)?;
+                    let content = content_to_prompt(&message.content, &mut attachments)?;
                     if !content.is_empty() {
                         task.push_str(&format!("[assistant]\n{content}\n\n"));
                     }
@@ -1379,7 +1493,7 @@ fn conversation_task(
                     .as_deref()
                     .filter(|id| !id.trim().is_empty())
                     .ok_or_else(|| "Tool-Nachricht benoetigt tool_call_id.".to_string())?;
-                let content = text_content(&message.content)?;
+                let content = content_to_prompt(&message.content, &mut attachments)?;
                 task.push_str(&format!("[tool id={id}]\n{content}\n\n"));
             }
             other => {
@@ -1389,7 +1503,273 @@ fn conversation_task(
             }
         }
     }
-    Ok(task)
+    Ok(PromptBundle {
+        text: task,
+        attachments,
+    })
+}
+
+/// Rendert einen Provider-Content-Block in den textuellen Browser-Prompt und
+/// sammelt Bild-/Audio-Daten fuer den separaten Upload in die Weboberflaeche.
+fn content_to_prompt(
+    value: &Value,
+    attachments: &mut Vec<crate::browser_inference::BrowserAttachment>,
+) -> Result<String, String> {
+    if let Some(text) = value.as_str() {
+        return Ok(text.to_string());
+    }
+    let Some(parts) = value.as_array() else {
+        return Err("content muss ein Text oder ein Content-Array sein.".to_string());
+    };
+    let mut out = String::new();
+    for part in parts {
+        let object = part
+            .as_object()
+            .ok_or_else(|| "Content-Parts muessen Objekte sein.".to_string())?;
+        let part_type = object.get("type").and_then(Value::as_str).unwrap_or("");
+        match part_type {
+            "text" | "input_text" | "output_text" => {
+                let text = object
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "Textblock ohne String-Feld 'text'.".to_string())?;
+                out.push_str(text);
+            }
+            "image_url" => {
+                let url = object
+                    .get("image_url")
+                    .and_then(|value| {
+                        value
+                            .as_str()
+                            .or_else(|| value.get("url").and_then(Value::as_str))
+                    })
+                    .ok_or_else(|| "image_url benoetigt ein String-Feld 'url'.".to_string())?;
+                let (mime, data) =
+                    parse_data_url(url, crate::browser_inference::BrowserAttachmentKind::Image)?;
+                out.push_str(&append_attachment(
+                    attachments,
+                    crate::browser_inference::BrowserAttachmentKind::Image,
+                    mime,
+                    data,
+                ));
+            }
+            "input_image" => {
+                let url = object
+                    .get("image_url")
+                    .and_then(Value::as_str)
+                    .or_else(|| object.get("image_url").and_then(|value| value.get("url")).and_then(Value::as_str))
+                    .ok_or_else(|| {
+                        if object.get("file_id").is_some() {
+                            "input_image mit file_id wird von der Browser-Bridge nicht unterstuetzt; sende eine data-URL."
+                                .to_string()
+                        } else {
+                            "input_image benoetigt image_url als data-URL.".to_string()
+                        }
+                    })?;
+                let (mime, data) =
+                    parse_data_url(url, crate::browser_inference::BrowserAttachmentKind::Image)?;
+                out.push_str(&append_attachment(
+                    attachments,
+                    crate::browser_inference::BrowserAttachmentKind::Image,
+                    mime,
+                    data,
+                ));
+            }
+            "input_audio" => {
+                let audio = object
+                    .get("input_audio")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| {
+                        "input_audio benoetigt ein Objekt mit data und format.".to_string()
+                    })?;
+                let encoded = audio
+                    .get("data")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "input_audio benoetigt ein Base64-Feld 'data'.".to_string())?;
+                let format = audio.get("format").and_then(Value::as_str).ok_or_else(|| {
+                    "input_audio benoetigt ein Format (z.B. wav oder mp3).".to_string()
+                })?;
+                let mime = audio_mime(format)?;
+                let data = decode_base64(encoded)?;
+                out.push_str(&append_attachment(
+                    attachments,
+                    crate::browser_inference::BrowserAttachmentKind::Audio,
+                    mime,
+                    data,
+                ));
+            }
+            "image" | "audio" => {
+                let kind = if part_type == "image" {
+                    crate::browser_inference::BrowserAttachmentKind::Image
+                } else {
+                    crate::browser_inference::BrowserAttachmentKind::Audio
+                };
+                let source = object
+                    .get("source")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| format!("{part_type}-Block benoetigt source."))?;
+                let source_type = source.get("type").and_then(Value::as_str).unwrap_or("");
+                if source_type == "url" {
+                    return Err(format!(
+                        "{part_type}-URLs werden von der Browser-Bridge nicht automatisch heruntergeladen; sende Base64/data-URL."
+                    ));
+                }
+                if source_type != "base64" {
+                    return Err(format!("{part_type}-source benoetigt type 'base64'."));
+                }
+                let encoded = source
+                    .get("data")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("{part_type}-source benoetigt Base64-Feld 'data'."))?;
+                let mime = source
+                    .get("media_type")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("{part_type}-source benoetigt media_type."))?
+                    .to_string();
+                validate_mime(&mime, kind)?;
+                let data = decode_base64(encoded)?;
+                out.push_str(&append_attachment(attachments, kind, mime, data));
+            }
+            other => {
+                return Err(format!(
+                    "Inhaltstyp '{other}' wird von der Browser-Bridge nicht unterstuetzt."
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn append_attachment(
+    attachments: &mut Vec<crate::browser_inference::BrowserAttachment>,
+    kind: crate::browser_inference::BrowserAttachmentKind,
+    mime_type: String,
+    data: Vec<u8>,
+) -> String {
+    let index = attachments.len() + 1;
+    let prefix = match kind {
+        crate::browser_inference::BrowserAttachmentKind::Image => "image",
+        crate::browser_inference::BrowserAttachmentKind::Audio => "audio",
+    };
+    let extension = mime_type
+        .split('/')
+        .nth(1)
+        .unwrap_or("bin")
+        .split(';')
+        .next()
+        .unwrap_or("bin")
+        .replace(['+', ' '], "_");
+    let file_name = format!("{prefix}-{index}.{extension}");
+    let byte_count = data.len();
+    attachments.push(crate::browser_inference::BrowserAttachment {
+        kind,
+        file_name,
+        mime_type: mime_type.clone(),
+        data,
+    });
+    format!("[{prefix} attachment: {mime_type}, {byte_count} bytes]")
+}
+
+fn parse_data_url(
+    url: &str,
+    expected: crate::browser_inference::BrowserAttachmentKind,
+) -> Result<(String, Vec<u8>), String> {
+    let Some(payload) = url.strip_prefix("data:") else {
+        return Err("Remote Bild-/Audio-URLs werden nicht automatisch heruntergeladen; sende eine data-URL.".to_string());
+    };
+    let (metadata, encoded) = payload
+        .split_once(',')
+        .ok_or_else(|| "Data-URL ohne Nutzdaten.".to_string())?;
+    if !metadata
+        .split(';')
+        .any(|flag| flag.eq_ignore_ascii_case("base64"))
+    {
+        return Err("Data-URL muss ;base64 verwenden.".to_string());
+    }
+    let mime = metadata
+        .split(';')
+        .next()
+        .filter(|mime| !mime.is_empty())
+        .ok_or_else(|| "Data-URL benoetigt einen MIME-Typ.".to_string())?
+        .to_string();
+    validate_mime(&mime, expected)?;
+    Ok((mime, decode_base64(encoded)?))
+}
+
+fn validate_mime(
+    mime: &str,
+    expected: crate::browser_inference::BrowserAttachmentKind,
+) -> Result<(), String> {
+    let valid = match expected {
+        crate::browser_inference::BrowserAttachmentKind::Image => mime.starts_with("image/"),
+        crate::browser_inference::BrowserAttachmentKind::Audio => mime.starts_with("audio/"),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(format!("MIME-Typ '{mime}' passt nicht zum Content-Block."))
+    }
+}
+
+fn audio_mime(format: &str) -> Result<String, String> {
+    let normalized = format.trim().trim_start_matches('.').to_ascii_lowercase();
+    let mime = match normalized.as_str() {
+        "wav" => "audio/wav",
+        "mp3" => "audio/mpeg",
+        "m4a" | "mp4" => "audio/mp4",
+        "ogg" | "opus" => "audio/ogg",
+        "flac" => "audio/flac",
+        "webm" => "audio/webm",
+        other => return Err(format!("Audioformat '{other}' wird nicht unterstuetzt.")),
+    };
+    Ok(mime.to_string())
+}
+
+fn decode_base64(encoded: &str) -> Result<Vec<u8>, String> {
+    let bytes: Vec<u8> = encoded
+        .bytes()
+        .filter(|byte| !byte.is_ascii_whitespace())
+        .collect();
+    if bytes.is_empty() || !bytes.len().is_multiple_of(4) {
+        return Err("Ungueltige Base64-Nutzdaten.".to_string());
+    }
+    let mut output = Vec::with_capacity(bytes.len() / 4 * 3);
+    for chunk in bytes.chunks_exact(4) {
+        let a = base64_value(chunk[0]).ok_or_else(|| "Ungueltiges Base64-Zeichen.".to_string())?;
+        let b = base64_value(chunk[1]).ok_or_else(|| "Ungueltiges Base64-Zeichen.".to_string())?;
+        let c = if chunk[2] == b'=' {
+            0
+        } else {
+            base64_value(chunk[2]).ok_or_else(|| "Ungueltiges Base64-Zeichen.".to_string())?
+        };
+        let d = if chunk[3] == b'=' {
+            0
+        } else {
+            base64_value(chunk[3]).ok_or_else(|| "Ungueltiges Base64-Zeichen.".to_string())?
+        };
+        output.push((a << 2) | (b >> 4));
+        if chunk[2] != b'=' {
+            output.push((b << 4) | (c >> 2));
+        }
+        if chunk[3] != b'=' {
+            output.push((c << 6) | d);
+        }
+        if chunk[2] == b'=' && chunk[3] != b'=' {
+            return Err("Ungueltige Base64-Padding.".to_string());
+        }
+    }
+    Ok(output)
+}
+
+fn base64_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
 }
 
 fn openai_tools(
@@ -2004,6 +2384,85 @@ mod tests {
     }
 
     #[test]
+    fn extracts_openai_image_and_audio_parts_for_browser_upload() {
+        let request = OpenAiRequest {
+            model: "webagent/chatgpt".to_string(),
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+            messages: vec![ConversationMessage {
+                role: "user".to_string(),
+                content: json!([
+                    {"type":"text","text":"Beschreibe die Dateien:"},
+                    {"type":"image_url","image_url":{"url":"data:image/png;base64,AQI="}},
+                    {"type":"input_audio","input_audio":{"data":"SGk=","format":"wav"}}
+                ]),
+                tool_calls: Vec::new(),
+                tool_call_id: None,
+            }],
+        };
+        let prompt = openai_prompt(&request).unwrap();
+        assert!(prompt
+            .text
+            .contains("[image attachment: image/png, 2 bytes]"));
+        assert!(prompt
+            .text
+            .contains("[audio attachment: audio/wav, 2 bytes]"));
+        assert_eq!(prompt.attachments.len(), 2);
+        assert_eq!(prompt.attachments[0].file_name, "image-1.png");
+        assert_eq!(prompt.attachments[0].data, vec![1, 2]);
+        assert_eq!(prompt.attachments[1].file_name, "audio-2.wav");
+        assert_eq!(prompt.attachments[1].data, b"Hi");
+    }
+
+    #[test]
+    fn extracts_anthropic_base64_image_part() {
+        let content = json!([{
+            "type":"image",
+            "source":{"type":"base64","media_type":"image/jpeg","data":"AQI="}
+        }]);
+        let mut attachments = Vec::new();
+        let text = content_to_prompt(&content, &mut attachments).unwrap();
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].mime_type, "image/jpeg");
+        assert_eq!(attachments[0].data, vec![1, 2]);
+        assert!(text.contains("image attachment"));
+    }
+
+    #[test]
+    fn remote_media_and_invalid_base64_fail_closed() {
+        let mut attachments = Vec::new();
+        let error = content_to_prompt(
+            &json!([{"type":"image_url","image_url":"https://example.invalid/x.png"}]),
+            &mut attachments,
+        )
+        .unwrap_err();
+        assert!(error.contains("data-URL"));
+        assert!(decode_base64("not-base64!").is_err());
+        assert!(decode_base64("a===").is_err());
+    }
+
+    #[test]
+    fn response_input_items_keep_multimodal_content_shape() {
+        let messages = vec![ConversationMessage {
+            role: "user".to_string(),
+            content: json!([
+                {"type":"input_text","text":"Sehen"},
+                {"type":"input_image","image_url":"data:image/png;base64,AQI="}
+            ]),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+        }];
+        let items = response_input_items(&messages);
+        assert_eq!(items[0]["content"][0]["type"], "input_text");
+        assert_eq!(items[0]["content"][1]["type"], "input_image");
+        assert_eq!(
+            items[0]["content"][1]["image_url"],
+            "data:image/png;base64,AQI="
+        );
+    }
+
+    #[test]
     fn rejects_non_text_content() {
         let error = text_content(&json!([{"type": "image", "source": {}}])).unwrap_err();
         assert!(error.contains("nicht unterstuetzt"));
@@ -2187,9 +2646,20 @@ mod tests {
             .unwrap()
             .contains("[user]\nTeil 1 Teil 2"));
         assert!(responses_content(
-            &json!([{"type":"input_image","image_url":"https://example.invalid/x"}])
+            &json!([{"type":"input_image","image_url":"data:image/png;base64,SGk="}])
         )
-        .is_err());
+        .is_ok());
+        let remote_image_request = ResponsesRequest {
+            model: "webagent/chatgpt".to_string(),
+            input: json!([{"role":"user","content":[{"type":"input_image","image_url":"https://example.invalid/x"}]}]),
+            instructions: None,
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+            previous_response_id: None,
+            store: true,
+        };
+        assert!(responses_task(&remote_image_request).is_err());
     }
 
     #[test]

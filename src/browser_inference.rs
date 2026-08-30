@@ -4,7 +4,6 @@
 //! Browser-Sitzung aus. Sie startet absichtlich keinen `AgentController`,
 //! interpretiert kein `webagent/1` und fuehrt keine lokalen Werkzeuge aus.
 
-use crate::relay::relay_single_turn_streaming;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -25,6 +24,24 @@ pub enum BrowserToolChoice {
     None,
     Required,
     Function(String),
+}
+
+/// Eine vom API-Client eingereichte Multimodal-Datei.
+///
+/// Die Datei wird nach der Browser-Navigation in ein `input[type=file]` gesetzt;
+/// der textuelle Prompt enthält nur einen transparenten Attachment-Marker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrowserAttachment {
+    pub kind: BrowserAttachmentKind,
+    pub file_name: String,
+    pub mime_type: String,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BrowserAttachmentKind {
+    Image,
+    Audio,
 }
 
 /// Providerneutraler Auftrag fuer genau einen Browser-Modellturn.
@@ -65,7 +82,17 @@ impl BrowserInferenceResponse {
 
 /// Fuehrt genau einen Browser-Modellturn ohne Agent-Harness aus.
 pub fn complete(request: BrowserInferenceRequest<'_>) -> Result<BrowserInferenceResponse, String> {
-    complete_streaming(request, &mut |_| {})
+    complete_with_attachments(request, &[], &mut |_| {})
+}
+
+/// Wie [`complete`], jedoch mit Dateien, die vor dem Senden an den Browser-
+/// Composer angehängt werden.
+pub fn complete_with_attachments(
+    request: BrowserInferenceRequest<'_>,
+    attachments: &[BrowserAttachment],
+    on_update: &mut dyn FnMut(&str),
+) -> Result<BrowserInferenceResponse, String> {
+    complete_streaming_with_attachments(request, attachments, on_update)
 }
 
 /// Wie `complete`, liefert bei reinen Textturns bereits wachsende Snapshots.
@@ -75,10 +102,20 @@ pub fn complete_streaming(
     request: BrowserInferenceRequest<'_>,
     on_update: &mut dyn FnMut(&str),
 ) -> Result<BrowserInferenceResponse, String> {
+    complete_streaming_with_attachments(request, &[], on_update)
+}
+
+/// Streaming-Variante mit optionalen Bild-/Audio-Anhängen.
+pub fn complete_streaming_with_attachments(
+    request: BrowserInferenceRequest<'_>,
+    attachments: &[BrowserAttachment],
+    on_update: &mut dyn FnMut(&str),
+) -> Result<BrowserInferenceResponse, String> {
     if request.prompt.trim().is_empty() {
         return Err("Inference-Prompt darf nicht leer sein.".to_string());
     }
     validate_tools(request.tools, &request.tool_choice)?;
+    validate_attachments(attachments)?;
 
     let prompt = prompt_with_tools(request.prompt, request.tools, &request.tool_choice)?;
     let forward_updates =
@@ -88,17 +125,47 @@ pub fn complete_streaming(
             on_update(snapshot);
         }
     };
-    let text = relay_single_turn_streaming(
+    let text = crate::relay::relay_single_turn_with_attachments_streaming(
         request.brain,
         &prompt,
         request.headless,
         request.timeout_secs,
         request.model,
+        attachments,
         &mut relay_update,
     )
     .map_err(|error| error.0)?;
 
     parse_response(&text, request.tools, &request.tool_choice)
+}
+
+fn validate_attachments(attachments: &[BrowserAttachment]) -> Result<(), String> {
+    const MAX_ATTACHMENT_BYTES: usize = 8 * 1024 * 1024;
+    if attachments.len() > 16 {
+        return Err("Maximal 16 Bild-/Audio-Anhaenge pro Anfrage erlaubt.".to_string());
+    }
+    for attachment in attachments {
+        if attachment.data.is_empty() {
+            return Err(format!("Anhang '{}' ist leer.", attachment.file_name));
+        }
+        if attachment.data.len() > MAX_ATTACHMENT_BYTES {
+            return Err(format!(
+                "Anhang '{}' ist zu gross (Maximum 8 MiB).",
+                attachment.file_name
+            ));
+        }
+        let valid = match attachment.kind {
+            BrowserAttachmentKind::Image => attachment.mime_type.starts_with("image/"),
+            BrowserAttachmentKind::Audio => attachment.mime_type.starts_with("audio/"),
+        };
+        if !valid {
+            return Err(format!(
+                "MIME-Typ '{}' passt nicht zum Anhang '{}'.",
+                attachment.mime_type, attachment.file_name
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_tools(tools: &[BrowserTool], choice: &BrowserToolChoice) -> Result<(), String> {
