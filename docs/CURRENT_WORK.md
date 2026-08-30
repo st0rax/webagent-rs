@@ -7,7 +7,7 @@
 
 **Aktualisiert:** 2026-08-31
 **Branch:** `feat/browser-inference-provider`
-**Commit:** folgt nach den lokalen Gates dieser Scheibe
+**Commit:** `7bd1881` (`fix: compact large browser tool prompts`)
 
 Ein ZCode-Request mit 53 Werkzeugen und rund 124 KiB JSON reproduzierte bei
 ChatGPT die Web-UI-Antwort „Something went wrong“. Die folgenden Claude- und
