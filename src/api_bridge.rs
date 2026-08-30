@@ -249,8 +249,14 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
                 }
             }
         }
+        ("GET", path) if path.starts_with("/v1/responses/") && path.ends_with("/input_items") => {
+            handle_response_input_items(&request, config, path)
+        }
         ("GET", path) if path.starts_with("/v1/responses/") => {
             handle_response_retrieve(&request, config, path)
+        }
+        ("DELETE", path) if path.starts_with("/v1/responses/") => {
+            handle_response_delete(&request, config, path)
         }
         ("POST", "/v1/chat/completions") => handle_openai(&request, config),
         ("POST", "/v1/responses") => handle_responses(&request, config),
@@ -310,6 +316,65 @@ fn handle_response_retrieve(
             &format!("Response '{id}' nicht gefunden."),
         ),
     }
+}
+
+fn handle_response_delete(
+    request: &HttpRequest,
+    config: &BridgeConfig,
+    path: &str,
+) -> HttpResponse {
+    if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return response;
+    }
+    let id = path.trim_start_matches("/v1/responses/");
+    if id.is_empty() || id.contains('/') {
+        return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
+    }
+    if delete_response(id) {
+        HttpResponse::json(200, json!({"id":id,"object":"response","deleted":true}))
+    } else {
+        api_error(
+            ApiFlavor::OpenAi,
+            404,
+            &format!("Response '{id}' nicht gefunden."),
+        )
+    }
+}
+
+fn handle_response_input_items(
+    request: &HttpRequest,
+    config: &BridgeConfig,
+    path: &str,
+) -> HttpResponse {
+    if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return response;
+    }
+    let suffix = "/input_items";
+    let id = path
+        .strip_prefix("/v1/responses/")
+        .and_then(|value| value.strip_suffix(suffix))
+        .unwrap_or_default();
+    if id.is_empty() || id.contains('/') {
+        return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
+    }
+    let Some(stored) = retrieve_response(id) else {
+        return api_error(
+            ApiFlavor::OpenAi,
+            404,
+            &format!("Response '{id}' nicht gefunden."),
+        );
+    };
+    let data = response_input_items(&stored.messages);
+    HttpResponse::json(
+        200,
+        json!({
+            "object": "list",
+            "data": data,
+            "has_more": false,
+            "first_id": data.first().and_then(|item| item.get("id")),
+            "last_id": data.last().and_then(|item| item.get("id"))
+        }),
+    )
 }
 
 fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
@@ -889,6 +954,59 @@ fn store_response(id: String, response: StoredResponse) {
             store.entries.remove(&expired);
         }
     }
+}
+
+fn delete_response(id: &str) -> bool {
+    let mut store = response_store()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let removed = store.entries.remove(id).is_some();
+    if removed {
+        store.order.retain(|entry| entry != id);
+    }
+    removed
+}
+
+fn response_input_items(messages: &[ConversationMessage]) -> Vec<Value> {
+    let mut items = Vec::new();
+    for (index, message) in messages.iter().enumerate() {
+        if message.role == "tool" {
+            items.push(json!({
+                "id": format!("item_{index}"),
+                "type": "function_call_output",
+                "call_id": message.tool_call_id,
+                "output": message.content
+            }));
+            continue;
+        }
+        if message.role == "assistant" && !message.tool_calls.is_empty() {
+            for call in &message.tool_calls {
+                items.push(json!({
+                    "id": call.id,
+                    "type": "function_call",
+                    "status": "completed",
+                    "call_id": call.id,
+                    "name": call.function.name,
+                    "arguments": call.function.arguments
+                }));
+            }
+            continue;
+        }
+        let text = text_content(&message.content).unwrap_or_else(|_| message.content.to_string());
+        let content_type = if message.role == "assistant" {
+            "output_text"
+        } else {
+            "input_text"
+        };
+        items.push(json!({
+            "id": format!("item_{index}"),
+            "type": "message",
+            "status": "completed",
+            "role": message.role,
+            "content": [{"type":content_type,"text":text,"annotations":[]}]
+        }));
+    }
+    items
 }
 
 fn append_response_message(
@@ -2176,6 +2294,53 @@ mod tests {
             handle_response_retrieve(&unauthorized, &config, &unauthorized.path).status,
             401
         );
+    }
+
+    #[test]
+    fn response_input_items_and_delete_follow_lifecycle_contract() {
+        let messages = vec![
+            ConversationMessage {
+                role: "user".to_string(),
+                content: json!("Hallo"),
+                tool_calls: Vec::new(),
+                tool_call_id: None,
+            },
+            ConversationMessage {
+                role: "assistant".to_string(),
+                content: Value::Null,
+                tool_calls: vec![OpenAiAssistantToolCall {
+                    id: "call_lifecycle".to_string(),
+                    kind: "function".to_string(),
+                    function: OpenAiAssistantFunction {
+                        name: "read_file".to_string(),
+                        arguments: "{\"path\":\"README.md\"}".to_string(),
+                    },
+                }],
+                tool_call_id: None,
+            },
+            ConversationMessage {
+                role: "tool".to_string(),
+                content: json!("Inhalt"),
+                tool_calls: Vec::new(),
+                tool_call_id: Some("call_lifecycle".to_string()),
+            },
+        ];
+        let items = response_input_items(&messages);
+        assert_eq!(items[0]["type"], "message");
+        assert_eq!(items[0]["content"][0]["type"], "input_text");
+        assert_eq!(items[1]["type"], "function_call");
+        assert_eq!(items[2]["type"], "function_call_output");
+        let id = "resp_delete_contract";
+        store_response(
+            id.to_string(),
+            StoredResponse {
+                response: response_object(id, "webagent/chatgpt", "x"),
+                messages,
+            },
+        );
+        assert!(delete_response(id));
+        assert!(retrieve_response(id).is_none());
+        assert!(!delete_response(id));
     }
 
     #[test]
