@@ -1441,14 +1441,20 @@ fn conversation_task(
 fn conversation_prompt(
     system: Option<String>,
     messages: &[ConversationMessage],
-    source: &str,
+    _source: &str,
 ) -> Result<PromptBundle, String> {
     if messages.is_empty() {
         return Err("messages darf nicht leer sein.".to_string());
     }
-    let mut task = format!(
-        "Die folgende Unterhaltung wurde ueber die {source}-Provider-Bridge uebermittelt. Antworte auf die letzte Nutzerfrage. Gib nur die eigentliche Antwort fuer den API-Client aus; verwende nicht das lokale WEBAGENT/1-Agent-Aktionsprotokoll. Ein eventuell spaeter angefuegter WEBAGENT_INFERENCE/1-Tool-Umschlag ist davon getrennt.\n\n"
-    );
+    // Der Browser kann keine echte providerseitige system-Rolle setzen. Die
+    // Einleitung muss deshalb wie eine neutrale Transcript-Anweisung wirken:
+    // Begriffe wie "Provider-Bridge" oder WEBAGENT/1 laden das Modell sonst
+    // dazu ein, ueber Transport und Identitaet zu diskutieren, statt die
+    // eigentliche Nutzerfrage zu beantworten.
+    let mut task = String::from(concat!(
+        "Behandle den folgenden Inhalt als Gespraechsverlauf eines API-Clients. ",
+        "Beantworte die letzte Nutzeranfrage direkt. Gib ausschliesslich die Antwort fuer den API-Client zurueck und erwaehne weder Browser, Transport, Provider noch interne Protokolle.\n\n",
+    ));
     if let Some(system) = system.filter(|value| !value.trim().is_empty()) {
         task.push_str("[system]\n");
         task.push_str(&system);
@@ -2384,6 +2390,25 @@ mod tests {
     }
 
     #[test]
+    fn browser_prompt_does_not_expose_transport_identity() {
+        let task = conversation_task(
+            None,
+            &[ConversationMessage {
+                role: "user".to_string(),
+                content: json!("Hallo"),
+                tool_calls: Vec::new(),
+                tool_call_id: None,
+            }],
+            "Anthropic Messages",
+        )
+        .unwrap();
+
+        assert!(task.contains("Beantworte die letzte Nutzeranfrage direkt"));
+        assert!(!task.contains("Provider-Bridge"));
+        assert!(!task.contains("WEBAGENT_INFERENCE/1"));
+    }
+
+    #[test]
     fn extracts_openai_image_and_audio_parts_for_browser_upload() {
         let request = OpenAiRequest {
             model: "webagent/chatgpt".to_string(),
@@ -2525,7 +2550,8 @@ mod tests {
 
         let prompt = openai_task(&request).unwrap();
         assert!(prompt.contains("[user]\nHallo"));
-        assert!(prompt.contains("verwende nicht das lokale WEBAGENT/1"));
+        assert!(prompt.contains("Beantworte die letzte Nutzeranfrage direkt"));
+        assert!(!prompt.contains("WEBAGENT_INFERENCE/1"));
         assert!(!prompt.contains("final-"));
     }
 

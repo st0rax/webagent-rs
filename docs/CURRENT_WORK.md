@@ -32,6 +32,19 @@ vollständig erhalten, Beschreibungstexte werden nur bei Bedarf gekürzt.
 Der laufende Release-Endpoint verwendet die neue Binary auf `127.0.0.1:8787`
 und antwortet auf `/health` mit `status=ok`.
 
+Die Browser-Einleitung wurde anschließend neutralisiert: Sie beschreibt den
+Inhalt als Gesprächsverlauf eines API-Clients und vermeidet sichtbare
+`Provider-Bridge`-/`WEBAGENT_INFERENCE/1`-Identitätsdiskussionen. Der
+Tool-Umschlag bleibt für echte Client-Werkzeuge strikt und fail-closed, ist aber
+kurz als Client-Werkzeugliste formuliert. Das verhindert unnötige Claude-
+Metaantworten, ohne providerseitige Sicherheitsablehnungen zu verändern oder
+zu umgehen.
+
+Die Fähigkeitsgrenze bleibt bewusst dokumentiert: Bild-/Audio-Eingaben werden
+hochgeladen, die Ausgabe wird derzeit ausschließlich als Text extrahiert.
+Generierte Bildartefakte aus der ChatGPT-Weboberfläche sind noch kein
+API-`image`-Output.
+
 ## Browser-Inference-Provider-Scheibe vom 29.08.2026
 
 Die aktuelle Arbeit liegt isoliert auf `feat/browser-inference-provider`, ausgehend von `master` bei `a0cd00b7`. `api_bridge` startet nicht mehr den vollständigen `AgentController`, sondern ruft die neue harnessfreie Grenze `browser_inference::complete()` auf. Dadurch sind WEBAGENT/1, Shell-/Dateiaktionen, Controller-Memory und der Plan-Act-Observe-Loop nicht mehr Teil eines Providerrequests. Der bestehende Rust-Harness bleibt unverändert als separater Consumer erhalten.

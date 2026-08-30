@@ -82,6 +82,23 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/v1/chat/completions -H
 
 Die Responses-Variante verwendet type input_image mit derselben Data-URL und type input_audio; Anthropic verwendet type image bzw. type audio mit source.type base64. Pro Datei gilt ein dekodiertes Maximum von 8 MiB, pro Request höchstens 16 Dateien. Die Weboberfläche muss ein input[type=file] besitzen; wenn ein Brain diese Upload-Funktion nicht anbietet, antwortet der Endpoint mit einem erklärenden 502 statt die Datei zu verwerfen.
 
+### Ausgabegrenzen und Providerverhalten
+
+Die aktuelle Bridge extrahiert den beobachteten Browserturn als **Text**. Deshalb
+melden `/v1/models` und die Responses-Ausgabe derzeit nur `output: ["text"]`;
+Bild- und Audio-Inputs werden unterstützt, generierte Bildartefakte aber noch
+nicht als `image`-Output aus der Weboberfläche übernommen. Eine ChatGPT-Webantwort
+mit Bildgenerierung kann daher höchstens als Textstatus erscheinen, nicht als
+downloadbares Bild im API-Response. Das ist eine bewusst ehrliche
+Fähigkeitsangabe und keine fehlende Client-Konfiguration.
+
+Providerseitige Ablehnungen bleiben unverändert erhalten. Insbesondere Claude
+kann eine Anfrage aus Sicherheitsgründen ablehnen; die Bridge versucht nicht,
+solche Regeln zu umgehen. Die Browser-Einleitung verwendet dafür nur noch einen
+neutralen Gesprächsrahmen und erwähnt weder Bridge-Identität noch internes
+Transportprotokoll. Das reduziert Meta-Diskussionen über die Übertragung, ändert
+aber nichts an der Sicherheitsentscheidung des jeweiligen Providers.
+
 ## Pi-Konfiguration
 
 Die aktuelle Pi-Version wird laut Pi-Dokumentation unter Windows so installiert (Node.js **22.19 oder neuer**):

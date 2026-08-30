@@ -207,14 +207,14 @@ fn prompt_with_tools(
 
     let tools_json = compact_tool_json(tools)?;
     let choice_text = match choice {
-        BrowserToolChoice::Auto => "Waehle selbst, ob ein Tool erforderlich ist. Wenn die Nutzeranfrage ein Tool ausdruecklich verlangt oder die Antwort von lokalen, aktuellen oder dir nicht vorliegenden Daten abhaengt, musst du das passende Tool aufrufen; behaupte in diesem Fall nicht, du haettest es ohne Tool benutzt.".to_string(),
-        BrowserToolChoice::Required => "Du musst mindestens ein Tool aufrufen.".to_string(),
-        BrowserToolChoice::Function(name) => format!("Du musst das Tool '{name}' aufrufen."),
+        BrowserToolChoice::Auto => "Waehle selbst, ob ein Tool erforderlich ist. Wenn die Nutzeranfrage ein Tool ausdruecklich verlangt oder die Antwort von lokalen, aktuellen oder dir nicht vorliegenden Daten abhaengt, rufe das passende Tool auf.".to_string(),
+        BrowserToolChoice::Required => "Rufe mindestens ein Tool auf.".to_string(),
+        BrowserToolChoice::Function(name) => format!("Rufe das Tool '{name}' auf."),
         BrowserToolChoice::None => unreachable!("oben behandelt"),
     };
 
     Ok(format!(
-        "{prompt}\n\n[Externe Client-Tools]\n{tools_json}\n\nDiese Tools gehoeren dem aufrufenden API-Client und nicht der Browseroberflaeche. Sie sind verfuegbar: Du rufst sie auf, indem du den unten definierten Maschinenumschlag ausgibst. Versuche nicht, sie als eingebaute Browser-Tools zu bedienen, und behaupte niemals, sie seien in dieser Umgebung nicht verfuegbar. {choice_text} Wenn du ein Tool aufrufst, gib ausschliesslich diesen Maschinenumschlag aus:\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_eindeutig\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\nKein Markdown und kein weiterer Text. Wenn kein Tool erforderlich ist, antworte normal ohne Maschinenumschlag."
+        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus (ohne Markdown oder weiteren Text):\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_eindeutig\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
     ))
 }
 
@@ -434,8 +434,9 @@ mod tests {
 
         assert!(prompt.contains("ein Tool ausdruecklich verlangt"));
         assert!(prompt.contains("dir nicht vorliegenden Daten"));
-        assert!(prompt.contains("gehoeren dem aufrufenden API-Client"));
-        assert!(prompt.contains("niemals, sie seien in dieser Umgebung nicht verfuegbar"));
+        assert!(prompt.contains("[Client-Werkzeuge]"));
+        assert!(!prompt.contains("gehoeren dem aufrufenden API-Client"));
+        assert!(!prompt.contains("niemals, sie seien in dieser Umgebung nicht verfuegbar"));
         assert!(prompt.contains("WEBAGENT_INFERENCE/1"));
     }
 
