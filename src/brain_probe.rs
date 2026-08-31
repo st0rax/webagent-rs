@@ -1627,12 +1627,16 @@ mod tests {
         // Erwartete, harmlose Ueberschneidungen: `login_indicator` und
         // `login_button` zeigen bewusst auf dieselben Elemente wie composer
         // bzw. der Anmeldeknopf — das sind Zeiger, keine eigenen Knoepfe.
+        // `file_upload_button` ist der Mistral-spezifische zweite Menü-Schritt
+        // (Plus-Knopf -> "Upload files"), der dieselbe `attach_button`-
+        // Faehigkeit bedient und daher als dessen Name klassifiziert wird.
         let benign = |s: &String| {
             s.contains("/login_indicator")
                 || s.contains("/login_button")
                 || s.contains("/reasoning_effort_menu")
                 || s.contains("/model_menu")
                 || s.contains("/mode_option")
+                || s.contains("/file_upload_button")
         };
         let real: Vec<&String> = wrong.iter().filter(|s| !benign(s)).collect();
         assert!(real.is_empty(), "falsche Zuordnungen: {real:#?}");

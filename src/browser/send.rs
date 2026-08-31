@@ -67,6 +67,54 @@ fn submission_is_proven(
 }
 
 impl WebBrainBackend {
+    /// Aktiviert in ChatGPT den expliziten Bildgenerator aus dem Composer-
+    /// Werkzeugmenue. Ein normaler Textprompt routet im aktuell ausgewaehlten
+    /// Webmodell nicht zwingend zum Bildtool.
+    pub fn enable_image_generation_mode(&self) -> Result<(), String> {
+        if self.brain_id != "chatgpt" {
+            return Ok(());
+        }
+        if !self.open_attachment_surface() {
+            return Err("ChatGPT-Werkzeugmenue konnte nicht geoeffnet werden".into());
+        }
+        std::thread::sleep(Duration::from_millis(500));
+        let target = self.eval(
+            r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const labels=['bild erstellen','create image','generate image','image erstellen'];const candidates=[...document.querySelectorAll('button,[role="menuitem"],[role="option"]')].filter(visible);for(const e of candidates){const text=((e.innerText||e.textContent||'')+' '+(e.getAttribute('aria-label')||'')).trim().toLowerCase();if(!labels.some(label=>text.includes(label)))continue;const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2,disabled:e.disabled===true||e.getAttribute('aria-disabled')==='true',text:text.slice(0,160)}}return null})()"#,
+        )?;
+        if target.is_null() {
+            return Err("ChatGPT bietet im Werkzeugmenue kein 'Bild erstellen' an".into());
+        }
+        if target
+            .get("disabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            return Err(format!(
+                "ChatGPT-Bildgenerator ist in diesem Profil/Modell nicht verfuegbar ({})",
+                target
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+            ));
+        }
+        let x = target
+            .get("x")
+            .and_then(Value::as_f64)
+            .ok_or_else(|| "Bildtool-Ziel ohne x-Koordinate".to_string())?;
+        let y = target
+            .get("y")
+            .and_then(Value::as_f64)
+            .ok_or_else(|| "Bildtool-Ziel ohne y-Koordinate".to_string())?;
+        let mut guard = self.driver.borrow_mut();
+        guard
+            .as_mut()
+            .ok_or_else(|| "Backend nicht gestartet".to_string())?
+            .click_at_trusted(x, y)
+            .map_err(|error| format!("ChatGPT-Bildtool nicht anklickbar: {error}"))?;
+        std::thread::sleep(Duration::from_millis(500));
+        Ok(())
+    }
+
     /// Haengt optionale Dateien an den Composer und sendet danach die
     /// Nachricht ueber den provider-spezifischen Pfad. Die Dateiuebergabe
     /// erfolgt bewusst ueber ein vorhandenes `input[type=file]`: dadurch wird

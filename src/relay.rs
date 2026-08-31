@@ -10,10 +10,112 @@ use crate::timeouts::resolve_timeout;
 #[derive(Debug)]
 pub struct RelayError(pub String);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratedImage {
+    pub mime_type: String,
+    pub base64: String,
+}
+
 impl std::fmt::Display for RelayError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
+}
+
+/// Fuehrt einen Browserturn aus und wartet auf ein echtes Bildartefakt statt
+/// auf Text. Das ist bewusst ein eigener Pfad: Bildgeneratoren koennen ein Bild
+/// fertigstellen, ohne jemals eine auswertbare Assistenten-Textnachricht zu
+/// erzeugen.
+pub fn relay_image_generation(
+    brain_id: &str,
+    prompt: &str,
+    headless: bool,
+    timeout_override: Option<f64>,
+) -> Result<GeneratedImage, RelayError> {
+    let trace = std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some();
+    if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
+        return Err(RelayError(format!(
+            "circuit_open: {brain_id} uebersprungen, noch {remaining}s Cooldown"
+        )));
+    }
+    let started = Instant::now();
+    let mut backend = WebBrainBackend::from_config(brain_id).map_err(RelayError)?;
+    let ready_timeout = resolve_timeout("ensure_ready", brain_id, "", timeout_override);
+    let wait_timeout = resolve_timeout("wait_response", brain_id, prompt, timeout_override);
+    backend.start(headless).map_err(RelayError)?;
+    if trace {
+        eprintln!(
+            "[image] browser started after {:.1}s",
+            started.elapsed().as_secs_f64()
+        );
+    }
+    let state = backend
+        .ensure_ready(ready_timeout)
+        .unwrap_or(SessionState::Error);
+    if state != SessionState::Ready {
+        let _ = backend.stop();
+        return Err(RelayError(format!("session_state={state:?}")));
+    }
+    if trace {
+        eprintln!(
+            "[image] ready after {:.1}s",
+            started.elapsed().as_secs_f64()
+        );
+    }
+    if let Err(error) = backend.new_chat() {
+        let _ = backend.stop();
+        return Err(RelayError(error));
+    }
+    if let Err(error) = backend.mark_image_generation_baseline() {
+        let _ = backend.stop();
+        return Err(RelayError(error));
+    }
+    if let Err(error) = backend.enable_image_generation_mode() {
+        let _ = backend.stop();
+        return Err(RelayError(error));
+    }
+    if let Err(error) = backend.send(prompt) {
+        let _ = backend.stop();
+        return Err(RelayError(error));
+    }
+    if trace {
+        eprintln!(
+            "[image] submitted after {:.1}s",
+            started.elapsed().as_secs_f64()
+        );
+    }
+    let total_budget = std::time::Duration::from_secs_f64(wait_timeout.max(1.0));
+    let remaining = total_budget.saturating_sub(started.elapsed());
+    let deadline = Instant::now() + remaining;
+    let result = loop {
+        backend.wake_offscreen_renderer();
+        match backend.latest_generated_image() {
+            Ok(Some((mime_type, base64))) => {
+                if trace {
+                    eprintln!(
+                        "[image] artifact after {:.1}s",
+                        started.elapsed().as_secs_f64()
+                    );
+                }
+                break Ok(GeneratedImage { mime_type, base64 });
+            }
+            Ok(None) => {}
+            Err(error) => break Err(RelayError(error)),
+        }
+        if Instant::now() >= deadline {
+            let report = backend.image_generation_report();
+            if trace {
+                eprintln!("[image] timeout report: {report}");
+            }
+            break Err(RelayError(format!(
+                "kein generiertes Bild innerhalb des absoluten Budgets von {:.1}s gefunden; {report}",
+                wait_timeout,
+            )));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(750));
+    };
+    let _ = backend.stop();
+    result
 }
 
 /// Eine Send+Wait-Runde gegen ein Brain; kein Controller, keine Shell-Actions.

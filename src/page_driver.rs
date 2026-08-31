@@ -33,6 +33,16 @@ pub trait PageDriver: Send {
     /// Wertet JS in der Seite aus (`awaitPromise`, Rückgabewert als JSON-Value).
     fn evaluate(&mut self, expression: &str) -> Result<Value>;
 
+    /// Wertet einen Ausdruck aus, wartet auf ein eventuell zurueckgegebenes
+    /// Promise und gibt dessen Wert zurueck. WebView2 braucht diesen separaten
+    /// CDP-Pfad fuer Browser-Ressourcen wie `blob:`-Bilder; die normale
+    /// Callback-Auswertung serialisiert Promises lediglich als `{}`.
+    fn evaluate_async(&mut self, _expression: &str) -> Result<Value> {
+        Err(PageDriverError::NotAvailable(
+            "Asynchrone Seitenauswertung ist nicht verfuegbar".into(),
+        ))
+    }
+
     /// Convenience: JS auswerten und als String zurückgeben ("" bei null).
     fn eval_string(&mut self, expression: &str) -> Result<String> {
         Ok(self
@@ -77,6 +87,14 @@ pub trait PageDriver: Send {
     /// ueber `CallDevToolsProtocolMethod` statt ueber Port/WebSocket.
     fn click_at_trusted(&mut self, x: f64, y: f64) -> Result<()>;
 
+    /// Bewegt den Browser-Pointer ohne Klick. Das haelt offscreen gerenderte
+    /// SPAs bei langen Generierungen aktiv, ohne Seitenelemente auszuloesen.
+    fn move_pointer(&mut self, _x: f64, _y: f64) -> Result<()> {
+        Err(PageDriverError::NotAvailable(
+            "Pointer-Bewegung ist nicht verfuegbar".into(),
+        ))
+    }
+
     /// Setzt lokale Bytes in das aktive `input[type=file]`, sofern der
     /// konkrete Treiber einen vertrauenswürdigen Upload-Kanal anbietet.
     ///
@@ -114,6 +132,22 @@ pub trait PageDriver: Send {
     fn capture_png(&mut self) -> Result<Vec<u8>> {
         Err(PageDriverError::NotAvailable(
             "Dieser PageDriver kann keine Screenshots aufnehmen".into(),
+        ))
+    }
+
+    /// Nimmt einen rechteckigen CSS-Pixel-Bereich als PNG auf und liefert die
+    /// vom Browser erzeugten Base64-Daten. Gedacht als CORS-unabhaengiger
+    /// Fallback fuer gerenderte Bildartefakte.
+    fn capture_png_clip_base64(
+        &mut self,
+        _x: f64,
+        _y: f64,
+        _width: f64,
+        _height: f64,
+        _scale: f64,
+    ) -> Result<String> {
+        Err(PageDriverError::NotAvailable(
+            "Ausschnitt-Screenshot ist nicht verfuegbar".into(),
         ))
     }
 }

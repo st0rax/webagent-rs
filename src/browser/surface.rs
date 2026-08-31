@@ -25,6 +25,13 @@ pub type StopDiff = (
 );
 
 impl WebBrainBackend {
+    pub fn mark_image_generation_baseline(&self) -> Result<(), String> {
+        self.eval_js(
+            r#"(()=>{for(const img of document.images)img.dataset.webagentBaselineSrc=img.currentSrc||img.src||'';for(const canvas of document.querySelectorAll('canvas'))canvas.dataset.webagentBaselineCanvas='1';return true})()"#,
+        )
+        .map(|_| ())
+    }
+
     pub fn dom_report(&self) -> Result<Value, String> {
         let mut guard = self.driver.borrow_mut();
         let driver = guard
@@ -37,6 +44,100 @@ impl WebBrainBackend {
     /// `examples/`/Tools zur Selektor-Analyse gedacht — nicht im Agentenpfad nutzen.
     pub fn eval_js(&self, expr: &str) -> Result<Value, String> {
         self.eval(expr)
+    }
+
+    /// Holt das neueste grosse, sichtbare Bild aus einer Assistentenantwort
+    /// als Base64. Der Fetch laeuft im angemeldeten Browserkontext, damit auch
+    /// `blob:`-URLs und cookie-geschuetzte Provider-Ressourcen funktionieren.
+    pub fn latest_generated_image(&self) -> Result<Option<(String, String)>, String> {
+        let expression = r#"(async()=>{
+          const visible=e=>{const r=e.getBoundingClientRect();const s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};
+          const isNewImage=img=>(img.dataset.webagentBaselineSrc||'')!==(img.currentSrc||img.src||'');
+          const images=[...document.querySelectorAll('img')].filter(img=>visible(img)&&img.naturalWidth>=256&&img.naturalHeight>=256&&isNewImage(img));
+          for(let i=images.length-1;i>=0;i--){
+            const img=images[i];
+            if(img.closest('form,[data-attachment],[class*=avatar i]')) continue;
+            const src=img.currentSrc||img.src;
+            if(!src) continue;
+            try{
+              const response=await fetch(src,{credentials:'include'});
+              if(!response.ok) continue;
+              const blob=await response.blob();
+              if(!blob.type.startsWith('image/')) continue;
+              const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)});
+              const comma=data.indexOf(',');
+              return {mime_type:blob.type||'image/png',base64:data.slice(comma+1)};
+            }catch(e){}
+          }
+          const canvases=[...document.querySelectorAll('canvas')].filter(c=>visible(c)&&c.width>=256&&c.height>=256&&!c.dataset.webagentBaselineCanvas);
+          for(let i=canvases.length-1;i>=0;i--){
+            try{const data=canvases[i].toDataURL('image/png');return {mime_type:'image/png',base64:data.slice(data.indexOf(',')+1)}}catch(e){}
+          }
+          const elements=[...document.querySelectorAll('main *')].filter(e=>visible(e)&&!e.dataset.webagentBaselineBackground).reverse();
+          for(const element of elements){
+            const match=getComputedStyle(element).backgroundImage.match(/^url\(["']?(.*?)["']?\)$/);
+            if(!match) continue;
+            const r=element.getBoundingClientRect();if(r.width<256||r.height<256) continue;
+            try{const response=await fetch(match[1],{credentials:'include'});if(!response.ok)continue;const blob=await response.blob();if(!blob.type.startsWith('image/'))continue;const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)});return {mime_type:blob.type||'image/png',base64:data.slice(data.indexOf(',')+1)}}catch(e){}
+          }
+          return null;
+        })()"#;
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard
+            .as_mut()
+            .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+        let value = driver
+            .evaluate_async(expression)
+            .map_err(|e| e.to_string())?;
+        if value.is_null() {
+            let box_value = driver
+                .evaluate(r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};const images=[...document.querySelectorAll('img')].filter(i=>visible(i)&&i.naturalWidth>=256&&i.naturalHeight>=256&&(i.dataset.webagentBaselineSrc||'')!==(i.currentSrc||i.src||'')&&!i.closest('form,[data-attachment],[class*=avatar i]'));const image=images.at(-1);if(!image)return null;const r=image.getBoundingClientRect();return{x:r.left+scrollX,y:r.top+scrollY,width:r.width,height:r.height,scale:Math.max(1,Math.min(2,image.naturalWidth/r.width))}})()"#)
+                .map_err(|e| e.to_string())?;
+            if box_value.is_null() {
+                return Ok(None);
+            }
+            let number = |name: &str| {
+                box_value
+                    .get(name)
+                    .and_then(Value::as_f64)
+                    .ok_or_else(|| format!("Bild-Ausschnitt ohne {name}"))
+            };
+            let base64 = driver
+                .capture_png_clip_base64(
+                    number("x")?,
+                    number("y")?,
+                    number("width")?,
+                    number("height")?,
+                    number("scale")?,
+                )
+                .map_err(|e| e.to_string())?;
+            return Ok(Some(("image/png".to_string(), base64)));
+        }
+        let mime = value
+            .get("mime_type")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Bildartefakt ohne MIME-Typ".to_string())?;
+        let base64 = value
+            .get("base64")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Bildartefakt ohne Base64-Daten".to_string())?;
+        if base64.len() < 128 {
+            return Err("Bildartefakt ist unerwartet klein".to_string());
+        }
+        Ok(Some((mime.to_string(), base64.to_string())))
+    }
+
+    pub fn image_generation_report(&self) -> String {
+        let expression = r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};const imgs=[...document.images].filter(visible);const large=imgs.filter(i=>i.naturalWidth>=256&&i.naturalHeight>=256);const canvases=[...document.querySelectorAll('canvas')].filter(visible);const assistant=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-testid*="assistant" i],article')].filter(visible);const composer=[...document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')].filter(visible).at(-1);const draft=('value' in (composer||{})?composer.value:composer?.innerText)||'';return {url:location.href,images:imgs.length,large_images:large.length,large_details:large.slice(-6).map(i=>({src:(i.currentSrc||i.src||'').slice(0,180),baseline:(i.dataset.webagentBaselineSrc||'').slice(0,80),new_image:(i.dataset.webagentBaselineSrc||'')!==(i.currentSrc||i.src||''),size:[i.naturalWidth,i.naturalHeight],class:((i.className||'')+'').slice(0,120),parent:((i.parentElement?.className||'')+'').slice(0,160),in_form:!!i.closest('form'),in_composer:!!i.closest('[class*=composer i]'),in_avatar:!!i.closest('[class*=avatar i]')})),assistant_large_images:large.filter(i=>i.closest('[data-message-author-role="assistant"],[data-testid*="assistant" i],article')).length,canvases:canvases.length,large_canvases:canvases.filter(c=>c.width>=256&&c.height>=256).length,draft:draft.trim().slice(-300),last_assistant:(assistant.at(-1)?.innerText||'').trim().slice(-500),page_tail:(document.body.innerText||'').trim().slice(-800)}})()"#;
+        self.eval_js(expression)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|error| format!("Diagnose fehlgeschlagen: {error}"))
+    }
+
+    pub fn wake_offscreen_renderer(&self) {
+        if let Some(driver) = self.driver.borrow_mut().as_mut() {
+            let _ = driver.move_pointer(1.0, 1.0);
+        }
     }
 
     pub(crate) fn is_cloudflare_blocked(&self) -> bool {

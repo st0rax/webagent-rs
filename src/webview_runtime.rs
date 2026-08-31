@@ -68,6 +68,10 @@ pub(crate) enum PageMessage {
         expression: String,
         respond: Sender<Result<Value>>,
     },
+    EvaluateAsync {
+        expression: String,
+        respond: Sender<Result<Value>>,
+    },
     Navigate {
         url: String,
         timeout: Duration,
@@ -101,6 +105,11 @@ pub(crate) enum PageMessage {
         y: f64,
         respond: Sender<Result<()>>,
     },
+    MovePointer {
+        x: f64,
+        y: f64,
+        respond: Sender<Result<()>>,
+    },
     SetFileInputFiles {
         files: Vec<(String, Vec<u8>)>,
         respond: Sender<Result<Vec<PathBuf>>>,
@@ -112,6 +121,14 @@ pub(crate) enum PageMessage {
     },
     CapturePng {
         respond: Sender<Result<Vec<u8>>>,
+    },
+    CapturePngClipBase64 {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        scale: f64,
+        respond: Sender<Result<String>>,
     },
 }
 
@@ -316,6 +333,13 @@ impl PageDriver for WebViewPageDriver {
         })
     }
 
+    fn evaluate_async(&mut self, expression: &str) -> Result<Value> {
+        self.call(|respond| PageMessage::EvaluateAsync {
+            expression: expression.to_string(),
+            respond,
+        })
+    }
+
     fn navigate(&mut self, url: &str, timeout: Duration) -> Result<()> {
         self.call(|respond| PageMessage::Navigate {
             url: url.to_string(),
@@ -360,6 +384,10 @@ impl PageDriver for WebViewPageDriver {
         self.call(|respond| PageMessage::ClickAtTrusted { x, y, respond })
     }
 
+    fn move_pointer(&mut self, x: f64, y: f64) -> Result<()> {
+        self.call(|respond| PageMessage::MovePointer { x, y, respond })
+    }
+
     fn set_file_input_files(&mut self, files: &[(String, Vec<u8>)]) -> Result<()> {
         let paths = self.call(|respond| PageMessage::SetFileInputFiles {
             files: files.to_vec(),
@@ -382,6 +410,24 @@ impl PageDriver for WebViewPageDriver {
 
     fn capture_png(&mut self) -> Result<Vec<u8>> {
         self.call(|respond| PageMessage::CapturePng { respond })
+    }
+
+    fn capture_png_clip_base64(
+        &mut self,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        scale: f64,
+    ) -> Result<String> {
+        self.call(|respond| PageMessage::CapturePngClipBase64 {
+            x,
+            y,
+            width,
+            height,
+            scale,
+            respond,
+        })
     }
 }
 
@@ -823,6 +869,13 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
             let r = eval_js(&slot.webview, &expression, event_loop);
             let _ = respond.send(r);
         }
+        PageMessage::EvaluateAsync {
+            expression,
+            respond,
+        } => {
+            let r = eval_js_async(&slot.webview, &expression, event_loop);
+            let _ = respond.send(r);
+        }
         PageMessage::Navigate {
             url,
             timeout,
@@ -861,6 +914,10 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
             let r = click_at_trusted_cdp(&slot.webview, x, y, event_loop);
             let _ = respond.send(r);
         }
+        PageMessage::MovePointer { x, y, respond } => {
+            let r = move_pointer_cdp(&slot.webview, x, y, event_loop);
+            let _ = respond.send(r);
+        }
         PageMessage::SetFileInputFiles { files, respond } => {
             let r = set_file_input_files_cdp(&slot.webview, &files, event_loop);
             let _ = respond.send(r);
@@ -881,6 +938,17 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
         }
         PageMessage::CapturePng { respond } => {
             let r = capture_png(&slot.webview, event_loop);
+            let _ = respond.send(r);
+        }
+        PageMessage::CapturePngClipBase64 {
+            x,
+            y,
+            width,
+            height,
+            scale,
+            respond,
+        } => {
+            let r = capture_png_clip_base64(&slot.webview, x, y, width, height, scale, event_loop);
             let _ = respond.send(r);
         }
     }
@@ -1626,6 +1694,91 @@ fn call_cdp_json(
 }
 
 #[cfg(windows)]
+fn capture_png_clip_base64(
+    webview: &wry::WebView,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    scale: f64,
+    event_loop: &mut EventLoop<()>,
+) -> Result<String> {
+    let params = serde_json::json!({
+        "format": "png",
+        "captureBeyondViewport": true,
+        "fromSurface": true,
+        "clip": {"x": x, "y": y, "width": width, "height": height, "scale": scale}
+    });
+    call_cdp_json(
+        webview,
+        "Page.captureScreenshot",
+        &params.to_string(),
+        event_loop,
+    )
+    .and_then(|value| {
+        value
+            .pointer("/result/data")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| PageDriverError::Protocol("Screenshot ohne Daten".into()))
+    })
+}
+
+#[cfg(not(windows))]
+fn capture_png_clip_base64(
+    _webview: &wry::WebView,
+    _x: f64,
+    _y: f64,
+    _width: f64,
+    _height: f64,
+    _scale: f64,
+    _event_loop: &mut EventLoop<()>,
+) -> Result<String> {
+    Err(PageDriverError::NotAvailable(
+        "Ausschnitt-Screenshot ist auf diesem Backend nicht verfuegbar".into(),
+    ))
+}
+
+#[cfg(windows)]
+fn eval_js_async(
+    webview: &wry::WebView,
+    expression: &str,
+    event_loop: &mut EventLoop<()>,
+) -> Result<Value> {
+    let params = serde_json::json!({
+        "expression": expression,
+        "awaitPromise": true,
+        "returnByValue": true,
+        "userGesture": true
+    });
+    let response = call_cdp_json(webview, "Runtime.evaluate", &params.to_string(), event_loop)?;
+    if let Some(details) = response.get("exceptionDetails") {
+        return Err(PageDriverError::Protocol(format!(
+            "JS-Ausnahme: {}",
+            details
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("unbekannter Fehler")
+        )));
+    }
+    Ok(response
+        .pointer("/result/result/value")
+        .cloned()
+        .unwrap_or(Value::Null))
+}
+
+#[cfg(not(windows))]
+fn eval_js_async(
+    _webview: &wry::WebView,
+    _expression: &str,
+    _event_loop: &mut EventLoop<()>,
+) -> Result<Value> {
+    Err(PageDriverError::NotAvailable(
+        "Asynchrone Seitenauswertung ist auf diesem Backend nicht verfuegbar".into(),
+    ))
+}
+
+#[cfg(windows)]
 fn replace_multiline_text_cdp(
     webview: &wry::WebView,
     text: &str,
@@ -2242,6 +2395,27 @@ fn click_at_trusted_cdp(
         }
     }
     Ok(())
+}
+
+fn move_pointer_cdp(
+    webview: &wry::WebView,
+    x: f64,
+    y: f64,
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    let params = serde_json::json!({
+        "type": "mouseMoved",
+        "x": x.round(),
+        "y": y.round(),
+        "buttons": 0,
+        "pointerType": "mouse"
+    });
+    call_cdp(
+        webview,
+        "Input.dispatchMouseEvent",
+        &params.to_string(),
+        event_loop,
+    )
 }
 
 /// Screenshot ueber die WebView2-eigene CapturePreview-Schnittstelle. Unter

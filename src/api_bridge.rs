@@ -271,6 +271,7 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             handle_response_delete(&request, config, path)
         }
         ("POST", "/v1/chat/completions") => handle_openai(&request, config),
+        ("POST", "/v1/images/generations") => handle_image_generation(&request, config),
         ("POST", "/v1/responses") => handle_responses(&request, config),
         ("POST", "/v1/messages") => handle_anthropic(&request, config),
         _ => api_error(flavor, 404, "Endpoint nicht gefunden."),
@@ -444,6 +445,67 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         }),
     )
+}
+
+fn handle_image_generation(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
+    if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return response;
+    }
+    let payload: ImageGenerationRequest = match decode_json(&request.body) {
+        Ok(payload) => payload,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    if payload.prompt.trim().is_empty() {
+        return api_error(ApiFlavor::OpenAi, 400, "prompt darf nicht leer sein.");
+    }
+    if payload.n.unwrap_or(1) != 1 {
+        return api_error(
+            ApiFlavor::OpenAi,
+            400,
+            "Die Browser-Bridge unterstuetzt derzeit genau ein Bild pro Request (n=1).",
+        );
+    }
+    // Aktuelle GPT-Image-Antworten liefern `data[].b64_json` standardmaessig.
+    // `url` bleibt als tolerierte Legacy-Kompatibilitaet fuer aeltere Clients.
+    let response_format = payload.response_format.as_deref().unwrap_or("b64_json");
+    if !matches!(response_format, "url" | "b64_json") {
+        return api_error(
+            ApiFlavor::OpenAi,
+            400,
+            "response_format muss 'url' oder 'b64_json' sein.",
+        );
+    }
+    let requested_model = payload
+        .model
+        .clone()
+        .unwrap_or_else(|| model_id(&config.brain));
+    let brain = match resolve_model(&requested_model, &config.brain) {
+        Ok(brain) => brain,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+    };
+    let generation_prompt = match payload.size.as_deref() {
+        Some(size) => format!(
+            "Generate an image from this request. Required output size/aspect: {size}. Do not merely describe it.\n\n{}",
+            payload.prompt.trim()
+        ),
+        None => format!(
+            "Generate an image from this request. Do not merely describe it.\n\n{}",
+            payload.prompt.trim()
+        ),
+    };
+    let image = match run_image_generation_blocking(config, &brain, &generation_prompt) {
+        Ok(image) => image,
+        Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
+    };
+    let item = if response_format == "b64_json" {
+        json!({"b64_json": image.base64, "revised_prompt": Value::Null})
+    } else {
+        json!({
+            "url": format!("data:{};base64,{}", image.mime_type, image.base64),
+            "revised_prompt": Value::Null
+        })
+    };
+    HttpResponse::json(200, json!({"created": unix_seconds(), "data": [item]}))
 }
 
 fn handle_openai_incremental(
@@ -909,6 +971,23 @@ fn responses_context(
     Ok((messages, prompt))
 }
 
+fn run_image_generation_blocking(
+    config: &BridgeConfig,
+    brain: &str,
+    prompt: &str,
+) -> Result<crate::relay::GeneratedImage, String> {
+    let lock = BROWSER_RUN_LOCKS
+        .get_or_init(|| Mutex::new(BTreeMap::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .entry(brain.to_ascii_lowercase())
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone();
+    let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::relay::relay_image_generation(brain, prompt, config.headless, config.timeout_secs)
+        .map_err(|error| format!("Browser-Bildgenerierung fehlgeschlagen: {error}"))
+}
+
 fn run_task_blocking(
     config: &BridgeConfig,
     brain: &str,
@@ -1134,6 +1213,19 @@ struct OpenAiRequest {
     tools: Vec<OpenAiTool>,
     #[serde(default)]
     tool_choice: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct ImageGenerationRequest {
+    prompt: String,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    n: Option<u32>,
+    #[serde(default)]
+    size: Option<String>,
+    #[serde(default)]
+    response_format: Option<String>,
 }
 
 #[derive(Deserialize)]
