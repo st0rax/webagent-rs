@@ -31,13 +31,12 @@ Providerfunktion.
 Der Windows-Treiber versucht deshalb neben dem bestehenden Paste/Drop-Weg einen
 nativen WebView2-CDP-Upload (`DOM.setFileInputFiles`) und akzeptiert sowohl die
 direkte WebView2-Antwortform als auch den üblichen `result`-Wrapper. Dieser Weg
-wurde live mit DeepSeek (23,33 s) und Gemini (26,06 s) als Bild-Requests bis zur
-Antwort `IMAGE_INPUT_OK` verifiziert. Bei Kimi wurden zusätzlich die tatsächlich
-sichtbaren Attachment-Zustände erfasst: die ersten zwei Karten sind rote
-Fehlerkarten und deaktivieren den Senden-Knopf; dafür sind gezielte
-`.image-delete-container`-/`.image-delete-icon`-Selektoren ergänzt. Kimi bleibt
-bis zum erfolgreichen Wiederholungssmoke bewusst unverifiziert. Mistral und
-Audio sind ebenfalls noch offen.
+wurde live mit DeepSeek (23,33 s), Gemini (26,06 s) und Kimi als Bild-Request bis
+zur Antwort `IMAGE_INPUT_OK` verifiziert. Kimi verwendet dafür eine echte
+Windows-Dateiübergabe (`CF_HDROP`) mit abgefangenem WebView2-Dateichooser und
+den realen Pfeil-Button seines Lexical-Composers. Ein Submit gilt erst als
+bewiesen, wenn Kimi den Composer tatsächlich konsumiert hat. Mistral und Audio
+sind weiterhin offen.
 
 Die generische Selektormaske enthält dafür providerneutrale Attach-Signale
 (`aria-label`, `data-testid`, `data-tooltip`, Datei-/Upload-Beschriftungen). Die
@@ -54,26 +53,14 @@ Textturns eines betroffenen Brains bleiben davon unberührt.
 | Live-Bild-Input-Smoke `webagent/chatgpt` (1x1 PNG, exakte Antwort `IMAGE_INPUT_OK.`) | bestanden |
 | Live-Bild-Input-Smoke `webagent/deepseek` (30 KB PNG, `IMAGE_INPUT_OK`) | bestanden (23,33 s) |
 | Live-Bild-Input-Smoke `webagent/gemini` (30 KB PNG, `IMAGE_INPUT_OK`) | bestanden (26,06 s) |
+| Live-Bild-Input-Smoke `webagent/kimi` (512x512 PNG, `IMAGE_INPUT_OK`) | bestanden (HTTP 200) |
 
-Kimi benötigt vor der nächsten Gegenprobe einen sauberen Composer-Zustand ohne
-die beiden alten roten Fehlerkarten; der Transport selbst ist dort noch nicht
-freigegeben. Commit `7aa9496` (`feat: add native clipboard image path for kimi`)
-bereinigt diese Altanhaenge nun automatisch. Lassen sie sich in Kimis
-fehlgeschlagenem Vue-Uploadzustand nicht entfernen, wird nur der verunreinigte
-Entwurf einmalig in einen frischen Chat zurueckgesetzt. Ein Bildrequest faellt
-anschliessend nicht mehr auf den nachweislich defekte rote Karten erzeugenden
-synthetischen `DataTransfer`-Pfad zurueck.
-
-Der neue Windows-Pfad decodiert das Eingabebild vor der Uebergabe, schreibt es
-als echtes Clipboard-Bild, fokussiert den WebView2-Controller und sendet einen
-nativen `Ctrl+V`-Tastenweg. Mit einem lokal erzeugten, gueltigen 64x64-PNG blieb
-der Composer danach sauber; Kimi bestaetigte den Bildanhang in der off-screen
-WebView2-Sitzung jedoch noch nicht als versandfaehig. Deshalb ist Kimi weiterhin
-**nicht verifiziert**. Ein echter Windows-Dateiauswahl-Gegenversuch ist derzeit
-durch den lokalen UI-Automationsrunner blockiert, der schon vor der
-Fensterinventarisierung mit `failed to write kernel assets` / `os error 3`
-abbricht. Das ist ein Testinfrastruktur-Blocker und kein positiver
-Providerbeleg.
+Die Kimi-Korrekturen sind in `e668ff0` und `8f4e074` enthalten. Alte rote
+Fehlerkarten werden entfernt bzw. der verunreinigte Draft wird einmalig
+zurueckgesetzt. Der Upload faellt nicht mehr auf den rote Karten erzeugenden
+synthetischen `DataTransfer`-Pfad zurueck. Der finale Smoke lief mit einem
+512x512-PNG ueber `/v1/chat/completions` und lieferte HTTP 200 sowie exakt
+`IMAGE_INPUT_OK`; Kimi-Bildinput ist damit freigegeben.
 
 Mistral und Audio bleiben ebenfalls offen. Die bisherigen Smokes belegen nur
 den jeweiligen Bild-Input-Transport; Bildgenerierung bzw. andere binäre
