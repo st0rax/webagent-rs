@@ -86,6 +86,23 @@ impl WebBrainBackend {
         if attachments.is_empty() {
             return Ok(());
         }
+        // Viele UIs rendern das Datei-Input erst nach einem Klick auf die
+        // Büroklammer. Dieser Klick darf nicht über den nativen Dateidialog
+        // laufen: ein solcher Dialog würde den gemeinsamen WebView-Eventloop
+        // blockieren. Wir lösen deshalb nur den DOM-Handler (untrusted
+        // `click()`) aus und warten anschließend auf das dynamisch gerenderte
+        // Input. Wenn die Oberfläche überhaupt kein Input rendert, versuchen
+        // wir noch den browserüblichen Paste/Drop-Pfad.
+        if self.file_input_count() == 0 {
+            let _ = self.open_attachment_surface();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                if self.file_input_count() > 0 {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+        }
         let files: Vec<Value> = attachments
             .iter()
             .map(|attachment| {
@@ -98,6 +115,16 @@ impl WebBrainBackend {
             .collect();
         let serialized = serde_json::to_string(&files)
             .map_err(|error| format!("Dateianhaenge nicht serialisierbar: {error}"))?;
+        if self.file_input_count() == 0 {
+            if self.inject_attachments_via_paste_or_drop(&serialized) {
+                return Ok(());
+            }
+            return Err(
+                "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit \
+                 (no_file_input_and_paste_not_confirmed)"
+                    .into(),
+            );
+        }
         let expression = format!(
             r#"(function(files){{
                 try {{
@@ -136,6 +163,153 @@ impl WebBrainBackend {
             ));
         }
         Ok(())
+    }
+
+    /// Liefert die Anzahl der Datei-Inputs im aktuellen DOM. Das ist absichtlich
+    /// kein Selektor-Proof: ein Input kann unsichtbar sein, aber trotzdem der
+    /// korrekte React-Upload-Kanal der Seite.
+    fn file_input_count(&self) -> usize {
+        self.eval("document.querySelectorAll('input[type=file]').length")
+            .ok()
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0) as usize
+    }
+
+    /// Öffnet die Upload-Oberfläche über konfigurierte, provider-spezifische
+    /// Attach-Selektoren. Der Aufruf bleibt bewusst untrusted, damit kein
+    /// nativer Dateidialog geöffnet wird; anschließend übernimmt der
+    /// `DataTransfer`- bzw. Paste-Pfad die eigentliche Dateiübergabe.
+    fn open_attachment_surface(&self) -> bool {
+        let selectors = self.sel("attach_button");
+        if selectors.is_empty() {
+            return false;
+        }
+        let serialized = match serde_json::to_string(&selectors) {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+        let expression = format!(
+            r#"(function(selectors){{
+                function visible(el){{
+                    if(!el)return false;
+                    var r=el.getBoundingClientRect(),s=window.getComputedStyle(el);
+                    return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';
+                }}
+                for(var i=0;i<selectors.length;i++){{
+                    try{{
+                        var found=document.querySelectorAll(selectors[i]);
+                        for(var j=0;j<found.length;j++){{
+                            var el=found[j];
+                            if(!visible(el))continue;
+                            var target=el.closest('button,[role=button],label')||el;
+                            if(!visible(target))continue;
+                            target.click();
+                            return {{ok:true,selector:selectors[i]}};
+                        }}
+                    }}catch(e){{}}
+                }}
+                return {{ok:false,error:'no_attach_control'}};
+            }})({serialized})"#
+        );
+        self.eval(&expression)
+            .ok()
+            .and_then(|value| value.get("ok").and_then(Value::as_bool))
+            .unwrap_or(false)
+    }
+
+    /// Fallback für Provider, die Uploads über `paste`/`drop` am Composer
+    /// annehmen, aber kein dauerhaftes `input[type=file]` im DOM halten. Das
+    /// Ergebnis wird nicht blind als Erfolg gewertet: erst ein sichtbares
+    /// Attachment-Signal nach dem Dispatch darf den Turn fortsetzen.
+    fn inject_attachments_via_paste_or_drop(&self, serialized: &str) -> bool {
+        let composer = self.sel_js(
+            "composer",
+            &[
+                "div[contenteditable='true']",
+                "textarea",
+                "[role='textbox']",
+            ],
+        );
+        let before = self.attachment_signal_count();
+        let expression = format!(
+            r#"(function(files,composerSelectors){{
+                try{{
+                    if(typeof DataTransfer==='undefined')return {{ok:false,error:'no_data_transfer'}};
+                    var transfer=new DataTransfer();
+                    for(var i=0;i<files.length;i++){{
+                        var raw=atob(files[i].data),bytes=new Uint8Array(raw.length);
+                        for(var j=0;j<raw.length;j++)bytes[j]=raw.charCodeAt(j);
+                        transfer.items.add(new File([bytes],files[i].name,{{type:files[i].mime}}));
+                    }}
+                    var target=null;
+                    for(var s=0;s<composerSelectors.length&&!target;s++){{
+                        try{{
+                            var els=document.querySelectorAll(composerSelectors[s]);
+                            for(var k=0;k<els.length;k++){{
+                                var r=els[k].getBoundingClientRect();
+                                if(r.width>0&&r.height>0){{target=els[k];break;}}
+                            }}
+                        }}catch(e){{}}
+                    }}
+                    if(!target)return {{ok:false,error:'no_composer'}};
+                    try{{target.focus();}}catch(e){{}}
+                    var pasted=false;
+                    try{{pasted=target.dispatchEvent(new ClipboardEvent('paste',{{bubbles:true,cancelable:true,clipboardData:transfer}}))||pasted;}}catch(e){{
+                        try{{var pe=new Event('paste',{{bubbles:true,cancelable:true}});Object.defineProperty(pe,'clipboardData',{{value:transfer}});pasted=target.dispatchEvent(pe)||pasted;}}catch(e2){{}}
+                    }}
+                    try{{pasted=target.dispatchEvent(new DragEvent('drop',{{bubbles:true,cancelable:true,dataTransfer:transfer}}))||pasted;}}catch(e){{
+                        try{{var de=new Event('drop',{{bubbles:true,cancelable:true}});Object.defineProperty(de,'dataTransfer',{{value:transfer}});pasted=target.dispatchEvent(de)||pasted;}}catch(e2){{}}
+                    }}
+                    return {{ok:true,dispatched:pasted,count:transfer.files.length}};
+                }}catch(error){{return {{ok:false,error:String(error)}};}}
+            }})({serialized},{composer})"#
+        );
+        let dispatched = self
+            .eval(&expression)
+            .ok()
+            .and_then(|value| value.get("ok").and_then(Value::as_bool))
+            .unwrap_or(false);
+        if !dispatched {
+            return false;
+        }
+        let deadline = Instant::now() + Duration::from_secs(4);
+        while Instant::now() < deadline {
+            // Einige UIs bündeln mehrere Dateien in einem einzigen Preview-
+            // Container. Ein neues sichtbares Signal belegt deshalb den
+            // Paste/Drop-Kanal; die exakte Dateianzahl kann nur der native
+            // `input.files`-Pfad sicher bestätigen.
+            if self.attachment_signal_count() > before {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        false
+    }
+
+    /// Konservatives, providerneutrales Signal für ein angehängtes Vorschau-
+    /// Element. Bestehende History wird über den Vorher-Nachher-Vergleich
+    /// herausgerechnet; reine Datei-Inputs zählen nicht als Vorschau.
+    fn attachment_signal_count(&self) -> usize {
+        let expression = r#"(function(){
+            var sels=[
+                '[data-attachment]','[data-testid*="attachment" i]',
+                '[data-testid*="file" i]','[class*="attachment" i]',
+                '[class*="file-preview" i]','img[src^="blob:"]',
+                '[aria-label*="attachment" i]','[aria-label*="angehängt" i]'
+            ],n=0;
+            for(var i=0;i<sels.length;i++)try{
+                var els=document.querySelectorAll(sels[i]);
+                for(var j=0;j<els.length;j++){
+                    var e=els[j],r=e.getBoundingClientRect(),s=window.getComputedStyle(e);
+                    if(r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden')n++;
+                }
+            }catch(e){}
+            return n;
+        })()"#;
+        self.eval(expression)
+            .ok()
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0) as usize
     }
 
     pub(crate) fn send_generic(&mut self, text: &str) -> Result<i32, String> {

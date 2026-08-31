@@ -287,6 +287,7 @@ fn is_attachment_capability_failure(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
     [
         "no_file_input",
+        "no_file_input_and_paste_not_confirmed",
         "keinen nutzbaren datei-upload",
         "kein nutzbarer datei-upload",
     ]
@@ -324,6 +325,10 @@ mod tests {
             "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit (no_file_input)";
         assert!(is_attachment_capability_failure(error));
         assert!(is_deterministic_send_failure(error));
+        assert!(is_attachment_capability_failure(
+            "Browseroberflaeche stellt keinen nutzbaren Datei-Upload \
+             (no_file_input_and_paste_not_confirmed)"
+        ));
         assert!(!is_attachment_capability_failure("CDP connection reset"));
     }
 }

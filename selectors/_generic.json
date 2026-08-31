@@ -38,6 +38,25 @@
     "a[href*='/new']",
     "a[href='/']"
   ],
+  "attach_button": [
+    "button[aria-label*='attach' i]",
+    "button[aria-label*='upload' i]",
+    "button[aria-label*='add file' i]",
+    "button[aria-label*='add files' i]",
+    "button[aria-label*='image' i]",
+    "[role='button'][aria-label*='attach' i]",
+    "[role='button'][aria-label*='upload' i]",
+    "[data-testid*='attach' i]",
+    "[data-testid*='upload' i]",
+    "[data-testid*='file' i]",
+    "[data-tooltip*='attach' i]",
+    "[data-tooltip*='upload' i]",
+    "label[for*='file' i]",
+    "button:has-text('Upload')",
+    "button:has-text('Datei')",
+    "button:has-text('Add files')",
+    "button:has-text('添')"
+  ],
   "login_button": [
     "button[data-testid='login-button']",
     "button:has-text('Log in')",

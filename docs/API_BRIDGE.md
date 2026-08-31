@@ -60,7 +60,7 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
 
 OpenAI Chat Completions modelliert eine Unterhaltung als Nachrichtenliste und kann eine reguläre Completion oder gestreamte Chunks liefern.[3] Die Bridge übernimmt dabei Text sowie die beschriebenen Bild-/Audio-Content-Parts. Anthropic Messages erwartet `messages` und `max_tokens`; Systeminstruktionen liegen dort auf Top-Level statt in einer `system`-Rolle.[4]
 
-Message-Inhalte dürfen als String oder Content-Array übergeben werden. Textteile werden in den Browser-Prompt übernommen. Bilder werden als `data:image/...;base64,...` (`image_url` bzw. `input_image`) und Audio als OpenAI-`input_audio` mit Base64-Daten plus Format oder als Anthropic-`source: {type: "base64", media_type, data}` akzeptiert. Die dekodierten Bytes werden vor dem Senden in ein vorhandenes `input[type=file]` des Browser-Composers eingesetzt; im Prompt bleibt zusätzlich ein transparenter Attachment-Marker. Externe `http(s)`-URLs, `file_id`-Referenzen sowie Dokument-, Thinking- und unbekannte Blöcke werden nicht automatisch geladen oder stillschweigend entfernt, sondern führen zu einer providerkonformen `400 invalid_request_error`-Antwort.
+Message-Inhalte dürfen als String oder Content-Array übergeben werden. Textteile werden in den Browser-Prompt übernommen. Bilder werden als `data:image/...;base64,...` (`image_url` bzw. `input_image`) und Audio als OpenAI-`input_audio` mit Base64-Daten plus Format oder als Anthropic-`source: {type: "base64", media_type, data}` akzeptiert. Die dekodierten Bytes werden vor dem Senden über den providerneutralen Uploadpfad in den Browser-Composer eingesetzt; im Prompt bleibt zusätzlich ein transparenter Attachment-Marker. Der Uploadpfad prüft zuerst ein vorhandenes `input[type=file]`, öffnet bei dynamischen UIs vorsichtig die konfigurierte Attach-Oberfläche und wartet auf das nachgerenderte Input. Wo ein Brain stattdessen Paste/Drop verarbeitet, wird dieser Weg nur nach einer sichtbaren Attachment-Vorschau als erfolgreich gewertet. Externe `http(s)`-URLs, `file_id`-Referenzen sowie Dokument-, Thinking- und unbekannte Blöcke werden nicht automatisch geladen oder stillschweigend entfernt, sondern führen zu einer providerkonformen `400 invalid_request_error`-Antwort.
 
 ### Multimodale Requests
 
@@ -80,9 +80,9 @@ $body = @{
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/v1/chat/completions -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } -ContentType application/json -Body $body
 ~~~
 
-Die Responses-Variante verwendet type input_image mit derselben Data-URL und type input_audio; Anthropic verwendet type image bzw. type audio mit source.type base64. Pro Datei gilt ein dekodiertes Maximum von 8 MiB, pro Request höchstens 16 Dateien. Die Weboberfläche muss ein input[type=file] besitzen; wenn ein Brain diese Upload-Funktion nicht anbietet, antwortet der Endpoint mit einem erklärenden 502 statt die Datei zu verwerfen.
+Die Responses-Variante verwendet type input_image mit derselben Data-URL und type input_audio; Anthropic verwendet type image bzw. type audio mit source.type base64. Pro Datei gilt ein dekodiertes Maximum von 8 MiB, pro Request höchstens 16 Dateien. Wenn ein Brain weder ein Datei-Input noch eine bestätigte Paste/Drop-Vorschau anbietet, antwortet der Endpoint mit einem erklärenden 502 statt die Datei zu verwerfen.
 
-Ein solcher `no_file_input`-Fehler gilt nur für den jeweiligen multimodalen
+Ein solcher `no_file_input`- bzw. `no_file_input_and_paste_not_confirmed`-Fehler gilt nur für den jeweiligen multimodalen
 Request. Er öffnet nicht den allgemeinen Text-Circuit-Breaker und verschlechtert
 nicht den Brain-Score; ein späterer text-only Request an dasselbe Brain bleibt
 damit möglich. Bei einem Client, der eine Bildnachricht im vollständigen Verlauf
@@ -96,8 +96,13 @@ melden `/v1/models` und die Responses-Ausgabe derzeit nur `output: ["text"]`;
 Bild- und Audio-Inputs werden unterstützt, generierte Bildartefakte aber noch
 nicht als `image`-Output aus der Weboberfläche übernommen. Eine ChatGPT-Webantwort
 mit Bildgenerierung kann daher höchstens als Textstatus erscheinen, nicht als
-downloadbares Bild im API-Response. Das ist eine bewusst ehrliche
-Fähigkeitsangabe und keine fehlende Client-Konfiguration.
+downloadbares Bild im API-Response. Für die Katalogmetadaten werden Bild-/Audio-
+Inputs außerdem nur bei ChatGPT und Claude als belegt angezeigt; DeepSeek,
+Gemini, Kimi, Mistral, Qwen, Z.ai und Custom-Brains bleiben bis zu einer
+frischen Upload-Gegenprobe text-only. Ein manueller Medien-Request darf den
+Fallback trotzdem ausprobieren und wird bei fehlender Bestätigung mit 502
+abgelehnt. Das ist eine bewusst ehrliche Fähigkeitsangabe und keine fehlende
+Client-Konfiguration.
 
 Providerseitige Ablehnungen bleiben unverändert erhalten. Insbesondere Claude
 kann eine Anfrage aus Sicherheitsgründen ablehnen; die Bridge versucht nicht,

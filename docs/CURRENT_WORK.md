@@ -3,6 +3,38 @@
 **Aktualisiert:** 2026-08-30
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
+## Aktueller Fix: multimodaler Upload-Fallback für dynamische Browser-UIs
+
+**Aktualisiert:** 2026-08-31
+**Branch:** `feat/browser-inference-provider`
+
+Die bisherige Bild-/Audio-Strecke setzte ausschließlich ein bereits vorhandenes
+`input[type=file]` voraus. Genau das führte bei DeepSeek, Gemini, Kimi und Mistral
+zu `no_file_input`, sobald eine alte Bildnachricht im ZCode-Verlauf mitgesendet
+wurde. `browser::send::attach_files` öffnet jetzt zunächst vorsichtig die
+konfigurierte Attach-Oberfläche (untrusted DOM-Klick), wartet auf ein dynamisch
+gerendertes Datei-Input und fällt danach auf Paste/Drop zurück. Der Fallback gilt
+nur bei einer sichtbaren neuen Attachment-Vorschau als erfolgreich; andernfalls
+kommt weiterhin ein erklärender 502. Native Dateidialoge werden nicht geöffnet.
+
+Die generische Selektormaske enthält dafür providerneutrale Attach-Signale
+(`aria-label`, `data-testid`, `data-tooltip`, Datei-/Upload-Beschriftungen). Die
+Text-Circuit-Breaker-Behandlung klassifiziert sowohl `no_file_input` als auch
+`no_file_input_and_paste_not_confirmed` als request-spezifische Fähigkeitsgrenze;
+Textturns eines betroffenen Brains bleiben davon unberührt.
+
+| Gate | Ergebnis |
+|---|---|
+| `cargo fmt --all -- --check` | bestanden |
+| fokussierte Upload-/Relay-Tests (`cargo test --locked --no-default-features send --lib`) | 12 bestanden |
+| `cargo clippy --locked --no-default-features --all-targets -- -D warnings` | bestanden |
+| `cargo check --locked` (WebView2-Feature) | bestanden |
+
+Eine Live-Abnahme mit echten Bild-/Audio-Requests auf DeepSeek, Gemini, Kimi und
+Mistral steht noch aus; dafür muss der Eigentümer die jeweiligen Browserprofile
+erreichbar und angemeldet lassen. Bis zu dieser Gegenprobe werden diese Provider
+nicht als multimodal verifiziert bewertet.
+
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
 
 **Aktualisiert:** 2026-08-31

@@ -225,7 +225,7 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
                             "brain": brain,
                             "context_window": 128000,
                             "max_tokens": 16384,
-                            "modalities": {"input": ["text", "image", "audio"], "output": ["text"]}
+                            "modalities": {"input": advertised_input_modalities(&brain), "output": ["text"]}
                         })
                     })
                     .collect();
@@ -254,7 +254,7 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
                             "brain": brain,
                             "context_window": 128000,
                             "max_tokens": 16384,
-                            "modalities": {"input": ["text", "image", "audio"], "output": ["text"]}
+                            "modalities": {"input": advertised_input_modalities(&brain), "output": ["text"]}
                         }),
                     ),
                     Err(error) => api_error(ApiFlavor::OpenAi, 404, &error),
@@ -1912,6 +1912,22 @@ fn model_id(brain: &str) -> String {
     format!("webagent/{brain}")
 }
 
+/// Konservative Modellmetadaten: Ein `file_attach`-Eintrag in einem
+/// Selektorprofil ist nur ein UI-Hinweis, kein Beleg dafür, dass dieser Brain
+/// Medien tatsächlich annimmt. Bis ein Live-Upload auf dem jeweiligen
+/// Desktop-Profil bestätigt ist, melden wir für die vier betroffenen bzw.
+/// unbestätigten Provider nur Text. Das verhindert, dass Pi/ZCode automatisch
+/// Bilder in einen bekannten `no_file_input`-Pfad schickt. Manuelle Requests
+/// dürfen den neuen Upload-/Paste-Fallback weiterhin ausprobieren.
+fn advertised_input_modalities(brain: &str) -> &'static [&'static str] {
+    match brain {
+        // Für diese beiden UIs war der Datei-Input im bisherigen Bridgepfad
+        // bereits live vorhanden; die Ausgabe bleibt trotzdem text-only.
+        "chatgpt" | "claude" => &["text", "image", "audio"],
+        _ => &["text"],
+    }
+}
+
 #[derive(Clone, Copy)]
 enum ApiFlavor {
     OpenAi,
@@ -2511,6 +2527,33 @@ mod tests {
             "chatgpt", "claude", "deepseek", "gemini", "kimi", "mistral", "qwen", "zai",
         ] {
             assert!(brains.contains(&expected.to_string()), "{expected} fehlt");
+        }
+    }
+
+    #[test]
+    fn model_catalog_is_conservative_about_unverified_media_inputs() {
+        assert_eq!(
+            advertised_input_modalities("chatgpt"),
+            ["text", "image", "audio"]
+        );
+        assert_eq!(
+            advertised_input_modalities("claude"),
+            ["text", "image", "audio"]
+        );
+        for brain in [
+            "deepseek",
+            "gemini",
+            "kimi",
+            "mistral",
+            "qwen",
+            "zai",
+            "perplexity",
+        ] {
+            assert_eq!(
+                advertised_input_modalities(brain),
+                ["text"],
+                "{brain} darf Medien nicht als belegt melden"
+            );
         }
     }
 
