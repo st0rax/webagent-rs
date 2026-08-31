@@ -1470,6 +1470,7 @@ fn set_file_input_files_cdp(
         .or_else(|| found.pointer("/result/nodeId"))
         .and_then(Value::as_i64)
         .filter(|id| *id > 0)
+        .or_else(|| chooser_backend_node_id.map(|_| 0))
         .ok_or_else(|| {
             let _ = fs::remove_dir_all(&dir);
             PageDriverError::Protocol(
