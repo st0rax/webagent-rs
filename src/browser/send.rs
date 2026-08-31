@@ -126,12 +126,20 @@ impl WebBrainBackend {
         // `click()`) aus und warten anschließend auf das dynamisch gerenderte
         // Input. Wenn die Oberfläche überhaupt kein Input rendert, versuchen
         // wir noch den browserüblichen Paste/Drop-Pfad.
-        let kimi_image_paste = self.brain_id == "kimi"
-            && attachments
-                .iter()
-                .all(|attachment| attachment.kind == BrowserAttachmentKind::Image);
+        let native_image_paste = attachments
+            .iter()
+            .all(|attachment| attachment.kind == BrowserAttachmentKind::Image);
+        let kimi_image_paste = self.brain_id == "kimi" && native_image_paste;
         if self.file_input_count() == 0 {
             let _ = self.open_attachment_surface();
+            // Mistral's plus button opens a toolkit menu. The actual file
+            // input is mounted only after selecting "Upload files" from that
+            // menu, so perform the provider-configured second step before
+            // polling for the dynamic input.
+            if !self.sel("file_upload_button").is_empty() {
+                std::thread::sleep(Duration::from_millis(250));
+                let _ = self.click_first("file_upload_button");
+            }
             let deadline = Instant::now() + Duration::from_secs(5);
             while Instant::now() < deadline {
                 if self.file_input_count() > 0 {
@@ -182,7 +190,10 @@ impl WebBrainBackend {
         // Clipboard-Pfad schreibt deshalb zuerst ein echtes CF_DIB und loest
         // eine trusted CDP-Tastatursequenz aus. Nur ein aktivierter
         // Absendeknopf gilt als Beleg fuer einen verwertbaren Anhang.
-        if self.brain_id == "kimi" && self.paste_images_via_native_clipboard(attachments) {
+        if matches!(self.brain_id.as_str(), "kimi" | "mistral")
+            && native_image_paste
+            && self.paste_images_via_native_clipboard(attachments)
+        {
             return Ok(());
         }
         // Kimi's transient file input is acknowledged by WebView2 but its
@@ -266,6 +277,20 @@ impl WebBrainBackend {
                     self.file_input_files_count(),
                     attachments.len()
                 );
+            }
+            // Mistral recreates its transient input immediately after the
+            // intercepted chooser transaction. WebView2 therefore reports an
+            // empty replacement control even though DOM.setFileInputFiles was
+            // accepted against the chooser's backendNodeId. Let the real
+            // vision turn decide whether the upload was consumed; callers
+            // still fail if the provider cannot answer from the image.
+            if self.brain_id == "mistral" && self.file_input_count() == 0 {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!(
+                        "[upload] mistral replaced native chooser input; continue to provider proof"
+                    );
+                }
+                return Ok(());
             }
         }
         if kimi_image_paste {

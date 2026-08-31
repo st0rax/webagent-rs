@@ -15,6 +15,13 @@
     "button[aria-label='Einstellungsmenü öffnen']",
     "[class*='chat-input-row' i] button:first-of-type"
   ],
+  "file_upload_button": [
+    "button:has-text('Dateien hochladen')",
+    "button:has-text('Upload files')",
+    "button:has-text('Importer des fichiers')",
+    "[role='menuitem']:has-text('Dateien hochladen')",
+    "[role='menuitem']:has-text('Upload files')"
+  ],
   "dialog_dismiss_button": [
     "div[role='dialog'][data-state='open'] button:has-text('Got it')",
     "div[role='dialog'][data-state='open'] button:has-text('Continue')",

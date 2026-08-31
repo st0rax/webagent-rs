@@ -31,12 +31,12 @@ Providerfunktion.
 Der Windows-Treiber versucht deshalb neben dem bestehenden Paste/Drop-Weg einen
 nativen WebView2-CDP-Upload (`DOM.setFileInputFiles`) und akzeptiert sowohl die
 direkte WebView2-Antwortform als auch den üblichen `result`-Wrapper. Dieser Weg
-wurde live mit DeepSeek (23,33 s), Gemini (26,06 s) und Kimi als Bild-Request bis
+wurde live mit DeepSeek (23,33 s), Gemini (26,06 s), Kimi und Mistral als Bild-Request bis
 zur Antwort `IMAGE_INPUT_OK` verifiziert. Kimi verwendet dafür eine echte
 Windows-Dateiübergabe (`CF_HDROP`) mit abgefangenem WebView2-Dateichooser und
 den realen Pfeil-Button seines Lexical-Composers. Ein Submit gilt erst als
-bewiesen, wenn Kimi den Composer tatsächlich konsumiert hat. Mistral und Audio
-sind weiterhin offen.
+bewiesen, wenn Kimi den Composer tatsächlich konsumiert hat. Audio ist
+weiterhin offen.
 
 Die generische Selektormaske enthält dafür providerneutrale Attach-Signale
 (`aria-label`, `data-testid`, `data-tooltip`, Datei-/Upload-Beschriftungen). Die
@@ -54,6 +54,7 @@ Textturns eines betroffenen Brains bleiben davon unberührt.
 | Live-Bild-Input-Smoke `webagent/deepseek` (30 KB PNG, `IMAGE_INPUT_OK`) | bestanden (23,33 s) |
 | Live-Bild-Input-Smoke `webagent/gemini` (30 KB PNG, `IMAGE_INPUT_OK`) | bestanden (26,06 s) |
 | Live-Bild-Input-Smoke `webagent/kimi` (512x512 PNG, `IMAGE_INPUT_OK`) | bestanden (HTTP 200) |
+| Live-Bild-Input-Smoke `webagent/mistral` (512x512 PNG, `IMAGE_INPUT_OK`) | bestanden (HTTP 200) |
 
 Die Kimi-Korrekturen sind in `e668ff0` und `8f4e074` enthalten. Alte rote
 Fehlerkarten werden entfernt bzw. der verunreinigte Draft wird einmalig
@@ -62,7 +63,7 @@ synthetischen `DataTransfer`-Pfad zurueck. Der finale Smoke lief mit einem
 512x512-PNG ueber `/v1/chat/completions` und lieferte HTTP 200 sowie exakt
 `IMAGE_INPUT_OK`; Kimi-Bildinput ist damit freigegeben.
 
-Mistral und Audio bleiben ebenfalls offen. Die bisherigen Smokes belegen nur
+Audio bleibt offen. Die bisherigen Smokes belegen nur
 den jeweiligen Bild-Input-Transport; Bildgenerierung bzw. andere binäre
 API-Ausgaben sind weiterhin nicht implementiert oder live verifiziert. Eine
 Behauptung „100 % API-Kompatibilitaet fuer alle Brains“ ist mit diesem Stand
