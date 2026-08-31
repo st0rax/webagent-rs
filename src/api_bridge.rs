@@ -215,20 +215,8 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
                 response
             } else {
-                let models: Vec<Value> = available_brains()
-                    .into_iter()
-                    .map(|brain| {
-                        json!({
-                            "id": model_id(&brain),
-                            "object": "model",
-                            "owned_by": "webagent",
-                            "brain": brain,
-                            "context_window": 128000,
-                            "max_tokens": 16384,
-                            "modalities": {"input": advertised_input_modalities(&brain), "output": ["text"]}
-                        })
-                    })
-                    .collect();
+                let models: Vec<Value> =
+                    available_brains().into_iter().map(|b| model_metadata(&b)).collect();
                 HttpResponse::json(
                     200,
                     json!({
@@ -244,19 +232,11 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             } else {
                 let requested = path.trim_start_matches("/v1/models/");
                 match resolve_model(requested, &config.brain) {
-                    Ok(brain) => HttpResponse::json(
-                        200,
-                        json!({
-                            "id": model_id(&brain),
-                            "object": "model",
-                            "created": unix_seconds(),
-                            "owned_by": "webagent",
-                            "brain": brain,
-                            "context_window": 128000,
-                            "max_tokens": 16384,
-                            "modalities": {"input": advertised_input_modalities(&brain), "output": ["text"]}
-                        }),
-                    ),
+                    Ok(brain) => {
+                        let mut metadata = model_metadata(&brain);
+                        metadata["created"] = json!(unix_seconds());
+                        HttpResponse::json(200, metadata)
+                    }
                     Err(error) => api_error(ApiFlavor::OpenAi, 404, &error),
                 }
             }
@@ -649,41 +629,76 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(prompt) => prompt,
         Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
     };
+    let tools = match anthropic_tools(&payload.tools) {
+        Ok(tools) => tools,
+        Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
+    };
+    let tool_choice = match anthropic_tool_choice(payload.tool_choice.as_ref(), &tools) {
+        Ok(choice) => choice,
+        Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
+    };
     let answer = match run_task_blocking(
         config,
         &brain,
         &prompt.text,
         &prompt.attachments,
-        &[],
-        crate::browser_inference::BrowserToolChoice::None,
+        &tools,
+        tool_choice,
     ) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::Anthropic, 502, &error),
     };
-    let Some(text) = answer.text else {
-        return api_error(
-            ApiFlavor::Anthropic,
-            502,
-            "Anthropic-Textpfad erhielt unerwartet einen Tool Call.",
-        );
-    };
     let id = completion_id("msg");
+    let response = anthropic_response(&id, &payload.model, &answer);
     if payload.stream.unwrap_or(false) {
-        return anthropic_sse(&id, &payload.model, &text);
+        return anthropic_sse(
+            &id,
+            &payload.model,
+            &answer,
+        );
     }
-    HttpResponse::json(
-        200,
-        json!({
+    HttpResponse::json(200, response)
+}
+
+fn anthropic_response(
+    id: &str,
+    model: &str,
+    answer: &crate::browser_inference::BrowserInferenceResponse,
+) -> Value {
+    if answer.tool_calls.is_empty() {
+        return json!({
             "id": id,
             "type": "message",
             "role": "assistant",
-            "model": payload.model,
-            "content": [{"type": "text", "text": text}],
+            "model": model,
+            "content": [{"type": "text", "text": answer.text.as_deref().unwrap_or_default()}],
             "stop_reason": "end_turn",
             "stop_sequence": null,
             "usage": {"input_tokens": 0, "output_tokens": 0}
-        }),
-    )
+        });
+    }
+    let content: Vec<Value> = answer
+        .tool_calls
+        .iter()
+        .map(|call| {
+            json!({
+                "type": "tool_use",
+                "id": call.id,
+                "name": call.name,
+                "input": call.arguments
+            })
+        })
+        .collect();
+    json!({
+        "id": id,
+        "type": "message",
+        "role": "assistant",
+        "model": model,
+        "content": content,
+        "stop_reason": "tool_use",
+        "stop_sequence": null,
+        "usage": {"input_tokens": 0, "output_tokens": 0}
+    })
 }
 
 fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
@@ -1237,6 +1252,10 @@ struct AnthropicRequest {
     system: Option<Value>,
     #[serde(default)]
     stream: Option<bool>,
+    #[serde(default)]
+    tools: Vec<Value>,
+    #[serde(default)]
+    tool_choice: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -1519,6 +1538,76 @@ fn responses_tool_choice(
     Ok(crate::browser_inference::BrowserToolChoice::Function(
         name.to_string(),
     ))
+}
+
+fn anthropic_tools(
+    tools: &[Value],
+) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
+    tools
+        .iter()
+        .map(|tool| {
+            let object = tool
+                .as_object()
+                .ok_or_else(|| "Anthropic-Tool muss ein Objekt sein.".to_string())?;
+            let name = object
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|name| !name.trim().is_empty())
+                .ok_or_else(|| "Anthropic-Tool benoetigt name.".to_string())?;
+            let input_schema = object
+                .get("input_schema")
+                .or_else(|| object.get("parameters"));
+            Ok(crate::browser_inference::BrowserTool {
+                name: name.to_string(),
+                description: object
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                parameters: input_schema
+                    .cloned()
+                    .unwrap_or_else(|| json!({})),
+            })
+        })
+        .collect()
+}
+
+fn anthropic_tool_choice(
+    choice: Option<&Value>,
+    tools: &[crate::browser_inference::BrowserTool],
+) -> Result<crate::browser_inference::BrowserToolChoice, String> {
+    use crate::browser_inference::BrowserToolChoice;
+    let Some(choice) = choice else {
+        return Ok(if tools.is_empty() {
+            BrowserToolChoice::None
+        } else {
+            BrowserToolChoice::Auto
+        });
+    };
+    let object = choice
+        .as_object()
+        .ok_or_else(|| "Anthropic-tool_choice muss ein Objekt sein.".to_string())?;
+    let kind = object
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Anthropic-tool_choice benoetigt type.".to_string())?;
+    match kind {
+        "auto" => Ok(BrowserToolChoice::Auto),
+        "any" => Ok(BrowserToolChoice::Required),
+        "tool" => {
+            let name = object
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|name| !name.trim().is_empty())
+                .ok_or_else(|| "Anthropic-tool_choice vom Typ tool benoetigt name.".to_string())?;
+            if !tools.iter().any(|tool| tool.name == name) {
+                return Err(format!(
+                    "tool_choice verweist auf unbekanntes Tool '{name}'."
+                ));
+            }
+            Ok(BrowserToolChoice::Function(name.to_string()))
+        }
+        other => Err(format!("Unbekannter Anthropic-tool_choice-Typ '{other}'.")),
+    }
 }
 
 #[cfg(test)]
@@ -2004,20 +2093,55 @@ fn model_id(brain: &str) -> String {
     format!("webagent/{brain}")
 }
 
-/// Konservative Modellmetadaten: Ein `file_attach`-Eintrag in einem
-/// Selektorprofil ist nur ein UI-Hinweis, kein Beleg dafür, dass dieser Brain
-/// Medien tatsächlich annimmt. Bis ein Live-Upload auf dem jeweiligen
-/// Desktop-Profil bestätigt ist, melden wir für die vier betroffenen bzw.
-/// unbestätigten Provider nur Text. Das verhindert, dass Pi/ZCode automatisch
-/// Bilder in einen bekannten `no_file_input`-Pfad schickt. Manuelle Requests
-/// dürfen den neuen Upload-/Paste-Fallback weiterhin ausprobieren.
+/// Eingabe-Modalitäten pro Brain über den Bridge-Endpoint.
+///
+/// Ein `file_attach`-Eintrag im Selektorprofil ist nur ein UI-Hinweis. Erst ein
+/// bestätigter Live-Upload (docs/CURRENT_WORK.md) belegt, dass der jeweilige
+/// Brain Medien tatsächlich annimmt. Basis sind die IMAGE_INPUT_OK- bzw.
+/// AUDIO_INPUT_OK-Smokes: deepseek/gemini/kimi/mistral (Bild), gemini (Audio),
+/// chatgpt/claude (Bild+Audio). Brain ohne bestätigten Smoke (qwen/zai/
+/// perplexity) melden nur Text, damit Clients nicht blind in einen
+/// unbestätigten Pfad senden.
 fn advertised_input_modalities(brain: &str) -> &'static [&'static str] {
     match brain {
-        // Für diese beiden UIs war der Datei-Input im bisherigen Bridgepfad
-        // bereits live vorhanden; die Ausgabe bleibt trotzdem text-only.
-        "chatgpt" | "claude" => &["text", "image", "audio"],
+        "chatgpt" | "claude" | "gemini" => &["text", "image", "audio"],
+        "deepseek" | "kimi" | "mistral" => &["text", "image"],
         _ => &["text"],
     }
+}
+
+/// Ausgabe-Modalitäten pro Brain über den Bridge-Endpoint.
+///
+/// Text beherrscht jeder Brain. Bild-Output ist nur dort belegt, wo eine
+/// funktionierende Generation existiert: chatgpt über `/v1/images/generations`
+/// (relay_image_generation + estuary-Fetch). Die übrigen Brains liefern über
+/// den Endpoint derzeit nur Text, bis eine Bildgeneration tatsächlich
+/// verifiziert ist.
+fn advertised_output_modalities(brain: &str) -> &'static [&'static str] {
+    match brain {
+        "chatgpt" => &["text", "image"],
+        _ => &["text"],
+    }
+}
+
+/// Einheitliche, pro-Brain-Metadaten für den `/v1/models`-Katalog.
+///
+/// `context_window`/`max_tokens` bleiben konservativ als gemeinsame Defaults
+/// (keine verifizierten pro-Brain-Kontingente im Repo); `advertised_*` liefern
+/// die tatsächlich bestätigten Modalitäten.
+fn model_metadata(brain: &str) -> Value {
+    json!({
+        "id": model_id(brain),
+        "object": "model",
+        "owned_by": "webagent",
+        "brain": brain,
+        "context_window": 128000,
+        "max_tokens": 16384,
+        "modalities": {
+            "input": advertised_input_modalities(brain),
+            "output": advertised_output_modalities(brain)
+        }
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -2274,7 +2398,11 @@ fn responses_sse_with_object(
     HttpResponse::sse(body)
 }
 
-fn anthropic_sse(id: &str, model: &str, answer: &str) -> HttpResponse {
+fn anthropic_sse(
+    id: &str,
+    model: &str,
+    answer: &crate::browser_inference::BrowserInferenceResponse,
+) -> HttpResponse {
     let started = json!({
         "type": "message_start",
         "message": {
@@ -2288,19 +2416,43 @@ fn anthropic_sse(id: &str, model: &str, answer: &str) -> HttpResponse {
             "usage": {"input_tokens": 0, "output_tokens": 0}
         }
     });
-    let block_start = json!({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}});
-    let delta = json!({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": answer}});
-    let block_stop = json!({"type": "content_block_stop", "index": 0});
-    let message_delta = json!({"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": null}, "usage": {"output_tokens": 0}});
+    let mut body = format!("event: message_start\ndata: {started}\n\n");
+    if answer.tool_calls.is_empty() {
+        let text = answer.text.as_deref().unwrap_or_default();
+        let block_start = json!({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}});
+        let delta = json!({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}});
+        let block_stop = json!({"type": "content_block_stop", "index": 0});
+        body.push_str(&format!(
+            "event: content_block_start\ndata: {block_start}\n\n\
+             event: content_block_delta\ndata: {delta}\n\n\
+             event: content_block_stop\ndata: {block_stop}\n\n"
+        ));
+    } else {
+        for (index, call) in answer.tool_calls.iter().enumerate() {
+            let block_start = json!({
+                "type": "content_block_start",
+                "index": index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": call.id,
+                    "name": call.name,
+                    "input": call.arguments
+                }
+            });
+            let block_stop = json!({"type": "content_block_stop", "index": index});
+            body.push_str(&format!(
+                "event: content_block_start\ndata: {block_start}\n\n\
+                 event: content_block_stop\ndata: {block_stop}\n\n"
+            ));
+        }
+    }
+    let message_delta = json!({"type": "message_delta", "delta": {"stop_reason": if answer.tool_calls.is_empty() { "end_turn" } else { "tool_use" }, "stop_sequence": null}, "usage": {"output_tokens": 0}});
     let message_stop = json!({"type": "message_stop"});
-    HttpResponse::sse(format!(
-        "event: message_start\ndata: {started}\n\n\
-         event: content_block_start\ndata: {block_start}\n\n\
-         event: content_block_delta\ndata: {delta}\n\n\
-         event: content_block_stop\ndata: {block_stop}\n\n\
-         event: message_delta\ndata: {message_delta}\n\n\
+    body.push_str(&format!(
+        "event: message_delta\ndata: {message_delta}\n\n\
          event: message_stop\ndata: {message_stop}\n\n"
-    ))
+    ));
+    HttpResponse::sse(body)
 }
 
 struct HttpRequest {
@@ -2632,7 +2784,36 @@ mod tests {
             advertised_input_modalities("claude"),
             ["text", "image", "audio"]
         );
+        // Live bestätigt (docs/CURRENT_WORK.md): gemini Bild+Audio, deepseek/
+        // kimi/mistral Bild. qwen/zai/perplexity haben keinen Media-Smoke.
+        assert_eq!(
+            advertised_input_modalities("gemini"),
+            ["text", "image", "audio"]
+        );
+        for brain in ["deepseek", "kimi", "mistral"] {
+            assert_eq!(
+                advertised_input_modalities(brain),
+                ["text", "image"],
+                "{brain} Bild-Input ist live bestätigt"
+            );
+        }
+        for brain in ["qwen", "zai", "perplexity"] {
+            assert_eq!(
+                advertised_input_modalities(brain),
+                ["text"],
+                "{brain} darf Medien nicht als belegt melden"
+            );
+        }
+    }
+
+    #[test]
+    fn model_output_modalities_are_advertised_correctly() {
+        assert_eq!(
+            advertised_output_modalities("chatgpt"),
+            ["text", "image"]
+        );
         for brain in [
+            "claude",
             "deepseek",
             "gemini",
             "kimi",
@@ -2642,11 +2823,24 @@ mod tests {
             "perplexity",
         ] {
             assert_eq!(
-                advertised_input_modalities(brain),
+                advertised_output_modalities(brain),
                 ["text"],
-                "{brain} darf Medien nicht als belegt melden"
+                "{brain} hat keine verifizierte Bild-Generation"
             );
         }
+    }
+
+    #[test]
+    fn model_metadata_has_stable_catalog_shape() {
+        let meta = model_metadata("chatgpt");
+        assert_eq!(meta["id"], "webagent/chatgpt");
+        assert_eq!(meta["context_window"], 128000);
+        assert_eq!(meta["max_tokens"], 16384);
+        assert_eq!(meta["modalities"]["output"][1], "image");
+        let meta = model_metadata("kimi");
+        assert_eq!(meta["modalities"]["input"][1], "image");
+        assert_eq!(meta["modalities"]["output"][0], "text");
+        assert!(meta["modalities"]["output"].as_array().unwrap().len() == 1);
     }
 
     #[test]
@@ -2872,6 +3066,94 @@ mod tests {
         );
         assert!(responses_tools(&[json!({"type":"computer"})]).is_err());
         assert!(responses_tool_choice(Some(&json!("read_file")), &tools).is_err());
+    }
+
+    #[test]
+    fn anthropic_tools_normalizes_input_schema() {
+        let tools = anthropic_tools(&[json!({
+            "name": "read_file",
+            "description": "Datei lesen",
+            "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}}
+        })])
+        .unwrap();
+        assert_eq!(tools[0].name, "read_file");
+        assert_eq!(tools[0].description.as_deref(), Some("Datei lesen"));
+        assert_eq!(tools[0].parameters["type"], "object");
+        assert_eq!(tools[0].parameters["properties"]["path"]["type"], "string");
+
+        let fallback = anthropic_tools(&[json!({"name": "search", "parameters": {"type": "object"}})])
+            .unwrap();
+        assert_eq!(fallback[0].name, "search");
+        assert_eq!(fallback[0].parameters["type"], "object");
+
+        let empty_schema = anthropic_tools(&[json!({"name": "noop"})]).unwrap();
+        assert_eq!(empty_schema[0].parameters, json!({}));
+        assert!(anthropic_tools(&[json!({})]).is_err());
+        assert!(anthropic_tools(&[json!({"name": ""})]).is_err());
+        assert!(anthropic_tools(&[json!("not-an-object")]).is_err());
+    }
+
+    #[test]
+    fn anthropic_tool_choice_maps_anthropic_forms() {
+        let tools = anthropic_tools(&[json!({
+            "name": "read_file",
+            "input_schema": {"type": "object"}
+        })])
+        .unwrap();
+        assert_eq!(
+            anthropic_tool_choice(Some(&json!({"type": "auto"})), &tools).unwrap(),
+            crate::browser_inference::BrowserToolChoice::Auto
+        );
+        assert_eq!(
+            anthropic_tool_choice(Some(&json!({"type": "any"})), &tools).unwrap(),
+            crate::browser_inference::BrowserToolChoice::Required
+        );
+        assert_eq!(
+            anthropic_tool_choice(Some(&json!({"type": "tool", "name": "read_file"})), &tools)
+                .unwrap(),
+            crate::browser_inference::BrowserToolChoice::Function("read_file".to_string())
+        );
+        assert_eq!(
+            anthropic_tool_choice(None, &tools).unwrap(),
+            crate::browser_inference::BrowserToolChoice::Auto
+        );
+        assert_eq!(
+            anthropic_tool_choice(None, &[]).unwrap(),
+            crate::browser_inference::BrowserToolChoice::None
+        );
+        assert!(anthropic_tool_choice(Some(&json!({"type": "tool", "name": "missing"})), &tools)
+            .is_err());
+        assert!(anthropic_tool_choice(Some(&json!("auto")), &tools).is_err());
+        assert!(anthropic_tool_choice(Some(&json!({"type": "unknown"})), &tools).is_err());
+        assert!(anthropic_tool_choice(Some(&json!({})), &tools).is_err());
+    }
+
+    #[test]
+    fn anthropic_response_renders_tool_use_blocks() {
+        let answer = crate::browser_inference::BrowserInferenceResponse {
+            text: None,
+            tool_calls: vec![crate::browser_inference::BrowserToolCall {
+                id: "toolu_1".to_string(),
+                name: "read_file".to_string(),
+                arguments: json!({"path": "README.md"}),
+            }],
+        };
+        let response = anthropic_response("msg_1", "claude-3-5-sonnet", &answer);
+        assert_eq!(response["type"], "message");
+        assert_eq!(response["stop_reason"], "tool_use");
+        assert_eq!(response["content"][0]["type"], "tool_use");
+        assert_eq!(response["content"][0]["id"], "toolu_1");
+        assert_eq!(response["content"][0]["name"], "read_file");
+        assert_eq!(response["content"][0]["input"]["path"], "README.md");
+
+        let text_answer = crate::browser_inference::BrowserInferenceResponse {
+            text: Some("Hallo".to_string()),
+            tool_calls: Vec::new(),
+        };
+        let text_response = anthropic_response("msg_2", "claude-3-5-sonnet", &text_answer);
+        assert_eq!(text_response["stop_reason"], "end_turn");
+        assert_eq!(text_response["content"][0]["type"], "text");
+        assert_eq!(text_response["content"][0]["text"], "Hallo");
     }
 
     #[test]
