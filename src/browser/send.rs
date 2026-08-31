@@ -271,6 +271,33 @@ impl WebBrainBackend {
     }
 
     fn remove_all_attachment_previews(&self) {
+        // Die Kachelleiste ist ein Carousel: mehrere Delete-Container koennen
+        // gleichzeitig sichtbar sein, waehrend ein einfacher Selektor-Klick
+        // immer nur den ersten Treffer erreicht. Koordinaten deshalb in einem
+        // Roundtrip sammeln und jeden sichtbaren Treffer trusted anklicken.
+        for _ in 0..4 {
+            let coords = self
+                .eval(r#"(function(){var a=[];document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(c){var b=c.querySelector('[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');if(!b)b=c;var r=b.getBoundingClientRect();if(r.width>0&&r.height>0)a.push({x:r.left+r.width/2,y:r.top+r.height/2});});return a;})()"#)
+                .unwrap_or(Value::Null);
+            let mut clicked = false;
+            if let Some(items) = coords.as_array() {
+                let mut guard = self.driver.borrow_mut();
+                if let Some(driver) = guard.as_mut() {
+                    for item in items {
+                        if let (Some(x), Some(y)) = (
+                            item.get("x").and_then(Value::as_f64),
+                            item.get("y").and_then(Value::as_f64),
+                        ) {
+                            clicked |= driver.click_at_trusted(x, y).is_ok();
+                        }
+                    }
+                }
+            }
+            if !clicked {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(180));
+        }
         for _ in 0..32 {
             if !self.click_visible_real("attachment_delete")
                 && !self.click_first("attachment_delete")
