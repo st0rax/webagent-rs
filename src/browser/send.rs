@@ -195,7 +195,9 @@ impl WebBrainBackend {
                 // new preview is the relevant proof in that case; do not
                 // reject an otherwise successful browser-native upload solely
                 // because the hidden input is recreated by the SPA.
-                if signal_now > signal_before_native {
+                if signal_now > signal_before_native
+                    && (self.brain_id != "kimi" || self.send_button_is_enabled())
+                {
                     return Ok(());
                 }
                 // Vue/React uploader copy the File into their own state and
@@ -203,10 +205,16 @@ impl WebBrainBackend {
                 // complete FileList followed by zero is therefore stronger
                 // evidence than polling only the final DOM state (observed on
                 // Kimi's current uploader).
-                if native_files_observed && file_count_now == 0 {
+                if native_files_observed
+                    && file_count_now == 0
+                    && (self.brain_id != "kimi" || self.send_button_is_enabled())
+                {
                     return Ok(());
                 }
-                if native_files_observed && Instant::now() >= soft_ready {
+                if native_files_observed
+                    && Instant::now() >= soft_ready
+                    && (self.brain_id != "kimi" || self.send_button_is_enabled())
+                {
                     return Ok(());
                 }
                 std::thread::sleep(Duration::from_millis(150));
@@ -318,6 +326,10 @@ impl WebBrainBackend {
         let _ = self.eval(
             r#"(function(){var n=0;document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(card){var b=card.querySelector('[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');try{if(b){b.click();n++;}}catch(e){}});return n;})()"#,
         );
+    }
+
+    fn send_button_is_enabled(&self) -> bool {
+        self.eval_bool("(function(){var e=document.querySelector('.send-button-container,button[type=submit]');return !!e && !e.classList.contains('disabled') && e.getAttribute('aria-disabled')!=='true' && e.disabled!==true;})()")
     }
 
     fn set_file_input_files_native(&self, files: &[(String, Vec<u8>)]) -> Result<(), String> {
