@@ -82,6 +82,13 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/v1/chat/completions -H
 
 Die Responses-Variante verwendet type input_image mit derselben Data-URL und type input_audio; Anthropic verwendet type image bzw. type audio mit source.type base64. Pro Datei gilt ein dekodiertes Maximum von 8 MiB, pro Request höchstens 16 Dateien. Die Weboberfläche muss ein input[type=file] besitzen; wenn ein Brain diese Upload-Funktion nicht anbietet, antwortet der Endpoint mit einem erklärenden 502 statt die Datei zu verwerfen.
 
+Ein solcher `no_file_input`-Fehler gilt nur für den jeweiligen multimodalen
+Request. Er öffnet nicht den allgemeinen Text-Circuit-Breaker und verschlechtert
+nicht den Brain-Score; ein späterer text-only Request an dasselbe Brain bleibt
+damit möglich. Bei einem Client, der eine Bildnachricht im vollständigen Verlauf
+mitführt, muss für diese Brains entweder ein neuer text-only Verlauf begonnen
+oder ein Brain mit Datei-Upload verwendet werden.
+
 ### Ausgabegrenzen und Providerverhalten
 
 Die aktuelle Bridge extrahiert den beobachteten Browserturn als **Text**. Deshalb

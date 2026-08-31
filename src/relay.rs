@@ -238,14 +238,21 @@ pub fn relay_single_turn_with_attachments_streaming(
             Ok(text)
         }
         None => {
-            crate::circuit_breaker::record_failure(brain_id, &last_err);
-            crate::brain_score::record_event(
-                brain_id,
-                false,
-                Some(&last_err),
-                latency_ms,
-                prompt_chars,
-            );
+            // Fehlender Datei-Upload ist eine bekannte Fähigkeitsgrenze für
+            // multimodale Requests, kein Ausfall des Text-Brains. Er darf
+            // deshalb weder den Circuit Breaker öffnen noch den allgemeinen
+            // Brain-Score verschlechtern: Ein späterer text-only Turn kann
+            // mit demselben Brain problemlos funktionieren.
+            if !is_attachment_capability_failure(&last_err) {
+                crate::circuit_breaker::record_failure(brain_id, &last_err);
+                crate::brain_score::record_event(
+                    brain_id,
+                    false,
+                    Some(&last_err),
+                    latency_ms,
+                    prompt_chars,
+                );
+            }
             Err(RelayError(last_err))
         }
     }
@@ -257,15 +264,31 @@ pub fn relay_single_turn_with_attachments_streaming(
 /// Navigationsfehler bleiben dagegen retry-faehig.
 fn is_deterministic_send_failure(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
+    is_attachment_capability_failure(error)
+        || [
+            "kein absende-beweis",
+            "absendeknopf ist deaktiviert",
+            "blockiert:",
+            "usage limit",
+            "nachrichtenlimit",
+            "rate limit",
+            "cloudflare",
+            "login required",
+        ]
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
+/// Der Brain-Score und der allgemeine Breaker beschreiben Textverfügbarkeit.
+/// Ein Brain ohne Datei-Input ist für eine Anfrage mit Bild/Audio nicht
+/// fehlerhaft; die Capability-Grenze muss als lokaler, nicht wiederholbarer
+/// Requestfehler zurückkommen.
+fn is_attachment_capability_failure(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
     [
-        "kein absende-beweis",
-        "absendeknopf ist deaktiviert",
-        "blockiert:",
-        "usage limit",
-        "nachrichtenlimit",
-        "rate limit",
-        "cloudflare",
-        "login required",
+        "no_file_input",
+        "keinen nutzbaren datei-upload",
+        "kein nutzbarer datei-upload",
     ]
     .iter()
     .any(|marker| lower.contains(marker))
@@ -293,5 +316,14 @@ mod tests {
             "Absendeknopf ist deaktiviert, obwohl der Text vollstaendig im Composer steht"
         ));
         assert!(!is_deterministic_send_failure("CDP connection reset"));
+    }
+
+    #[test]
+    fn missing_file_input_is_a_capability_error_not_a_brain_failure() {
+        let error =
+            "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit (no_file_input)";
+        assert!(is_attachment_capability_failure(error));
+        assert!(is_deterministic_send_failure(error));
+        assert!(!is_attachment_capability_failure("CDP connection reset"));
     }
 }

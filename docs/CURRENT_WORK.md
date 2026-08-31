@@ -45,6 +45,13 @@ hochgeladen, die Ausgabe wird derzeit ausschließlich als Text extrahiert.
 Generierte Bildartefakte aus der ChatGPT-Weboberfläche sind noch kein
 API-`image`-Output.
 
+Ein konkreter Fehlerbefund aus dem ZCode-Test wurde getrennt: DeepSeek, Gemini
+und Kimi hatten wegen eines mitgeführten Bildes `no_file_input` geliefert. Dieser
+Fähigkeitsfehler wird in `relay` jetzt nicht mehr als allgemeiner Brain-Ausfall
+gezählt, nicht wiederholt und nicht in den Text-Circuit-Breaker übernommen. Ein
+späterer text-only Turn bleibt dadurch möglich; die API meldet die
+Multimodalitätsgrenze weiterhin ehrlich mit 502.
+
 ## Browser-Inference-Provider-Scheibe vom 29.08.2026
 
 Die aktuelle Arbeit liegt isoliert auf `feat/browser-inference-provider`, ausgehend von `master` bei `a0cd00b7`. `api_bridge` startet nicht mehr den vollständigen `AgentController`, sondern ruft die neue harnessfreie Grenze `browser_inference::complete()` auf. Dadurch sind WEBAGENT/1, Shell-/Dateiaktionen, Controller-Memory und der Plan-Act-Observe-Loop nicht mehr Teil eines Providerrequests. Der bestehende Rust-Harness bleibt unverändert als separater Consumer erhalten.
