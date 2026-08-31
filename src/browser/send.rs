@@ -113,7 +113,10 @@ impl WebBrainBackend {
         if attachments.is_empty() {
             return Ok(());
         }
-        self.remove_failed_attachment_previews();
+        // Der Composer kann providerseitig persistierte Altanhaenge enthalten.
+        // Diese gehoeren nicht zu diesem API-Request und duerfen weder mitsamt
+        // Fehlerkarten noch als scheinbar gueltige Bilder erneut gesendet werden.
+        self.remove_all_attachment_previews();
         // Viele UIs rendern das Datei-Input erst nach einem Klick auf die
         // Büroklammer. Dieser Klick darf nicht über den nativen Dateidialog
         // laufen: ein solcher Dialog würde den gemeinsamen WebView-Eventloop
@@ -289,6 +292,20 @@ impl WebBrainBackend {
                 });
                 return removed;
             })()"#,
+        );
+    }
+
+    fn remove_all_attachment_previews(&self) {
+        for _ in 0..32 {
+            if !self.click_visible_real("attachment_delete")
+                && !self.click_first("attachment_delete")
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let _ = self.eval(
+            r#"(function(){var n=0;document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(card){var b=card.querySelector('[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');try{if(b){b.click();n++;}}catch(e){}});return n;})()"#,
         );
     }
 

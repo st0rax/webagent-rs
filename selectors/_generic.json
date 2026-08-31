@@ -1,4 +1,13 @@
 {
+  "attachment_delete": [
+    "[class*='image-thumbnail' i] .image-delete-container",
+    "[class*='image-thumbnail' i] .image-delete-icon",
+    "[class*='attachment' i] [class*='delete' i]",
+    "[class*='file-preview' i] [class*='delete' i]",
+    "[data-attachment] [aria-label*='remove' i]",
+    "[data-attachment] [aria-label*='delete' i]",
+    "[data-attachment] [class*='delete' i]"
+  ],
   "failed_attachment_delete": [
     "[class*='image-thumbnail' i].error .image-delete-container",
     "[class*='image-thumbnail' i].error .image-delete-icon",
