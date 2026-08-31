@@ -116,10 +116,6 @@ impl WebBrainBackend {
         // Der Composer kann providerseitig persistierte Altanhaenge enthalten.
         // Diese gehoeren nicht zu diesem API-Request und duerfen weder mitsamt
         // Fehlerkarten noch als scheinbar gueltige Bilder erneut gesendet werden.
-        // Kimi hydriert den gespeicherten Entwurf asynchron nach dem ersten
-        // Composer-Paint; erst danach sind die alten Karten löschbar.
-        std::thread::sleep(Duration::from_millis(1500));
-        self.remove_all_attachment_previews();
         // Viele UIs rendern das Datei-Input erst nach einem Klick auf die
         // Büroklammer. Dieser Klick darf nicht über den nativen Dateidialog
         // laufen: ein solcher Dialog würde den gemeinsamen WebView-Eventloop
@@ -137,6 +133,10 @@ impl WebBrainBackend {
                 std::thread::sleep(Duration::from_millis(150));
             }
         }
+        // Provider wie Kimi hydrieren alte Draft-Karten erst beim Öffnen der
+        // Attach-Oberfläche; erst jetzt sind sie zuverlässig löschbar.
+        std::thread::sleep(Duration::from_millis(1500));
+        self.remove_all_attachment_previews();
         let files: Vec<Value> = attachments
             .iter()
             .map(|attachment| {
