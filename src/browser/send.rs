@@ -277,7 +277,7 @@ impl WebBrainBackend {
         // Roundtrip sammeln und jeden sichtbaren Treffer trusted anklicken.
         for _ in 0..4 {
             let coords = self
-                .eval(r#"(function(){var a=[];document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(c){var b=c.querySelector('[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');if(!b)b=c;var r=b.getBoundingClientRect();if(r.width>0&&r.height>0)a.push({x:r.left+r.width/2,y:r.top+r.height/2});});return a;})()"#)
+                .eval(r#"(function(){var a=[];document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(c){var b=c.querySelector('[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');if(!b)b=c;try{b.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true}));b.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));}catch(e){}var r=b.getBoundingClientRect();if(r.width>0&&r.height>0)a.push({x:r.left+r.width/2,y:r.top+r.height/2});});return a;})()"#)
                 .unwrap_or(Value::Null);
             let mut clicked = false;
             if let Some(items) = coords.as_array() {
