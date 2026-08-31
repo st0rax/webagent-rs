@@ -149,6 +149,15 @@ impl WebBrainBackend {
             .collect();
         let serialized = serde_json::to_string(&files)
             .map_err(|error| format!("Dateianhaenge nicht serialisierbar: {error}"))?;
+        // Kimi's transient file input is acknowledged by WebView2 but its
+        // Vue uploader only enables Send after the editor's paste/drop handler
+        // has seen the File objects. Prefer that browser-native path first.
+        if self.brain_id == "kimi"
+            && self.inject_attachments_via_paste_or_drop(&serialized)
+            && self.send_button_is_enabled()
+        {
+            return Ok(());
+        }
         if self.file_input_count() == 0 {
             if self.inject_attachments_via_paste_or_drop(&serialized) {
                 return Ok(());
