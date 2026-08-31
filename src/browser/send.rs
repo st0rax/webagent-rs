@@ -281,6 +281,12 @@ impl WebBrainBackend {
                 .unwrap_or(Value::Null);
             let mut clicked = false;
             if let Some(items) = coords.as_array() {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!(
+                        "[upload] stale attachment controls visible: {}",
+                        items.len()
+                    );
+                }
                 let mut guard = self.driver.borrow_mut();
                 if let Some(driver) = guard.as_mut() {
                     for item in items {
