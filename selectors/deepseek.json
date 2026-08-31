@@ -9,6 +9,9 @@
     "button[aria-label*='Send']",
     "button:has(svg)"
   ],
+  "attach_button": [
+    "div[role='button'].ds-button--iconLabelPrimary.ds-button--icon.ds-button--capsule.ds-button--s"
+  ],
   "stop_button": [
     "button[aria-label*='stoppen' i]",
     "button[aria-label*='Stop']",

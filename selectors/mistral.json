@@ -11,6 +11,10 @@
     "button[aria-label='Send']",
     "button[aria-label='Senden']"
   ],
+  "attach_button": [
+    "button[aria-label='Einstellungsmenü öffnen']",
+    "[class*='chat-input-row' i] button:first-of-type"
+  ],
   "dialog_dismiss_button": [
     "div[role='dialog'][data-state='open'] button:has-text('Got it')",
     "div[role='dialog'][data-state='open'] button:has-text('Continue')",

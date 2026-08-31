@@ -68,6 +68,19 @@ pub trait PageDriver: Send {
     /// ueber `CallDevToolsProtocolMethod` statt ueber Port/WebSocket.
     fn click_at_trusted(&mut self, x: f64, y: f64) -> Result<()>;
 
+    /// Setzt lokale Bytes in das aktive `input[type=file]`, sofern der
+    /// konkrete Treiber einen vertrauenswürdigen Upload-Kanal anbietet.
+    ///
+    /// Der Embedded-WebView-Treiber nutzt dafür den in-process-CDP-Befehl
+    /// `DOM.setFileInputFiles`. Andere Treiber (z.B. der Linux-Fallback oder
+    /// der Mock) melden die Fähigkeit ehrlich als nicht verfügbar; der
+    /// Browser-Sender kann dann seinen Paste/Drop-Pfad versuchen.
+    fn set_file_input_files(&mut self, _files: &[(String, Vec<u8>)]) -> Result<()> {
+        Err(PageDriverError::NotAvailable(
+            "Datei-Upload über den PageDriver ist nicht verfügbar".into(),
+        ))
+    }
+
     /// Nimmt den sichtbaren Seiteninhalt als PNG auf.
     ///
     /// Warum das hier gebraucht wird: die Fähigkeits-Vermessung über das DOM

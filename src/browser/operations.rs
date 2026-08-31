@@ -486,6 +486,7 @@ fn dom_report_expr(sel: &Selectors) -> String {
             "counts[{k:?}]=(function(){{var S={list};var n=0;for(var i=0;i<S.length;i++){{try{{n+=QA(S[i]).length;}}catch(e){{}}}}return n;}})();"
         ));
     }
+    let composer_selectors = js::js_selectors(&sel.list("composer"));
     format!(
         r#"(function(){{
 {prelude}
@@ -520,7 +521,41 @@ var btns=[],seen=[];
 var msgs=[];document.querySelectorAll('[class*=message]').forEach(function(m){{msgs.push(inf(m));}});
 var cand=[];['[data-message-author-role]','[data-testid]','.markdown','[class*=markdown]','[class*=message]','[class*=assistant]','[class*=chat]','div.prose','[class*=answer]','[class*=response]','[class*=bubble]'].forEach(function(s){{try{{var n=document.querySelectorAll(s).length;if(n>0)cand.push({{sel:s,n:n}});}}catch(e){{}}}});
 var tb=[];document.querySelectorAll('div,p,article,section,li').forEach(function(e){{var t=(e.innerText||'').trim();if(t.length<40)return;var cm=0;for(var k=0;k<e.children.length;k++){{var ct=(e.children[k].innerText||'').length;if(ct>cm)cm=ct;}}if(cm<t.length*0.75){{tb.push(inf(e));}}}});tb.sort(function(a,b){{return b.tl-a.tl;}});
-return {{url:location.href,title:document.title,w:window.innerWidth,h:window.innerHeight,wd:navigator.webdriver,ua:(navigator.userAgent||'').slice(0,90),counts:counts,buttons:btns.slice(0,200),messages:msgs.slice(0,20),candidates:cand,textblocks:tb.slice(0,8)}};
+// Media controls are often neither `button` nor labelled.  DeepSeek, for
+// example, renders icon-only `div.ds-button` elements next to the composer.
+// Keep a separate, deliberately narrow inventory so a normal survey can show
+// those controls without turning the whole page into an unbounded DOM dump.
+function vis(el){{if(!el)return false;var r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';}}
+function mediaInfo(el){{
+  var r=el.getBoundingClientRect(),text=((el.innerText||el.textContent||'')+'').replace(/\s+/g,' ').trim();
+  var attrs={{}};
+  ['aria-label','title','data-testid','data-tooltip','data-tip','for','accept','multiple','name','id','role'].forEach(function(k){{var v=el.getAttribute(k);if(v!==null&&v!=='')attrs[k]=v;}});
+  var svg=el.querySelector('svg'),svgText='';
+  if(svg){{var st=svg.querySelector('title,desc');if(st)svgText=(st.textContent||'').trim();}}
+  var parents=[];var p=el.parentElement;
+  for(var pi=0;p&&pi<3;pi++,p=p.parentElement){{parents.push(((p.tagName||'')+'.'+((p.className||'')+'').toString().replace(/\s+/g,'.')).slice(0,120));}}
+  return {{tag:el.tagName,cls:((el.className||'')+'').toString().slice(0,140),attrs:attrs,text:text.slice(0,100),svg:!!svg,svgText:svgText.slice(0,100),x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height),disabled:!!el.disabled,parents:parents}};
+}}
+var mediaInputs=[];document.querySelectorAll('input[type=file]').forEach(function(e){{mediaInputs.push(mediaInfo(e));}});
+var composerRoots=[],CS={composer_selectors};
+// A profile may not yet have a composer selector (or may use Playwright text
+// syntax), hence the generic fallbacks through Q()/QA() below.
+if(!CS.length)CS=['div[contenteditable="true"]','textarea','[role="textbox"]'];
+for(var ci=0;ci<CS.length;ci++){{try{{QA(CS[ci]).forEach(function(e){{if(!vis(e))return;var root=e;for(var up=0;root.parentElement&&up<4;up++)root=root.parentElement;composerRoots.push(root);}});}}catch(e){{}}}}
+function inRoot(el){{for(var ri=0;ri<composerRoots.length;ri++)if(composerRoots[ri]===el||composerRoots[ri].contains(el))return true;return false;}}
+var mediaControls=[],mediaSeen=[];
+var controlSelectors=['button','[role=button]','label','input[type=file]','[aria-label]','[title]','[data-testid]','[data-tooltip]','[class*="button" i]','[class*="upload" i]','[class*="attach" i]','[class*="file" i]','[class*="image" i]'];
+for(var si=0;si<controlSelectors.length;si++){{try{{document.querySelectorAll(controlSelectors[si]).forEach(function(e){{
+  if(mediaSeen.indexOf(e)>=0||!vis(e)||(!inRoot(e)&&mediaControls.length>120))return;
+  var r=e.getBoundingClientRect();
+  // When no composer root was identified, restrict the fallback to the lower
+  // viewport where attachment controls normally live.
+  if(!composerRoots.length&&r.y<window.innerHeight*0.55)return;
+  var text=((e.innerText||e.textContent||'')+'').replace(/\s+/g,' ').trim();
+  if(text.length>120&&!(e.getAttribute('aria-label')||e.getAttribute('title')||e.getAttribute('data-testid')))return;
+  mediaSeen.push(e);mediaControls.push(mediaInfo(e));
+}});}}catch(e){{}}}}
+return {{url:location.href,title:document.title,w:window.innerWidth,h:window.innerHeight,wd:navigator.webdriver,ua:(navigator.userAgent||'').slice(0,90),counts:counts,buttons:btns.slice(0,200),messages:msgs.slice(0,20),candidates:cand,textblocks:tb.slice(0,8),media:{{file_inputs:mediaInputs.slice(0,40),composer_roots:composerRoots.length,controls:mediaControls.slice(0,160)}}}};
 }})()"#,
         prelude = js::JS_SEL_PRELUDE
     )

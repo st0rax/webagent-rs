@@ -125,6 +125,51 @@ impl WebBrainBackend {
                     .into(),
             );
         }
+        // Prefer the native WebView2/CDP file channel whenever the current
+        // PageDriver provides it. This is the trusted path used by DevTools
+        // and avoids the synthetic-FileList rejection seen in several SPAs.
+        let native_files: Vec<(String, Vec<u8>)> = attachments
+            .iter()
+            .map(|attachment| (attachment.file_name.clone(), attachment.data.clone()))
+            .collect();
+        let signal_before_native = self.attachment_signal_count();
+        let native_result = self.set_file_input_files_native(&native_files);
+        if let Err(error) = &native_result {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] native file-input path unavailable: {error}");
+            }
+        }
+        if native_result.is_ok() {
+            let _ = self.dispatch_file_input_events();
+            let deadline = Instant::now() + Duration::from_secs(4);
+            let soft_ready = Instant::now() + Duration::from_millis(1500);
+            while Instant::now() < deadline {
+                // A trusted CDP drag/drop can produce a visible provider
+                // preview even when WebView2 keeps `input.files` empty.  The
+                // new preview is the relevant proof in that case; do not
+                // reject an otherwise successful browser-native upload solely
+                // because the hidden input is recreated by the SPA.
+                if self.attachment_signal_count() > signal_before_native {
+                    return Ok(());
+                }
+                if self.file_input_files_count() >= attachments.len()
+                    && Instant::now() >= soft_ready
+                {
+                    return Ok(());
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            if self.file_input_files_count() >= attachments.len() {
+                return Ok(());
+            }
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!(
+                    "[upload] native path returned but input.files has {} of {} files",
+                    self.file_input_files_count(),
+                    attachments.len()
+                );
+            }
+        }
         let expression = format!(
             r#"(function(files){{
                 try {{
@@ -145,6 +190,7 @@ impl WebBrainBackend {
                 }} catch(error) {{ return {{ok:false,error:String(error)}}; }}
             }})({serialized})"#
         );
+        let signal_before = self.attachment_signal_count();
         let result = self.eval(&expression)?;
         if result.get("ok").and_then(Value::as_bool) != Some(true) {
             let reason = result
@@ -157,12 +203,56 @@ impl WebBrainBackend {
         }
         let count = result.get("count").and_then(Value::as_u64).unwrap_or(0);
         if count != attachments.len() as u64 {
+            // Some WebView/SPA combinations expose DataTransfer but silently
+            // reject assigning its FileList to the hidden input. Give the
+            // page's native paste/drop handler one chance before failing the
+            // request; only a new visible preview is accepted as proof.
+            if self.attachment_signal_count() > signal_before {
+                return Ok(());
+            }
+            if self.inject_attachments_via_paste_or_drop(&serialized) {
+                return Ok(());
+            }
             return Err(format!(
                 "Browseroberflaeche hat nur {count} von {} Dateien uebernommen",
                 attachments.len()
             ));
         }
         Ok(())
+    }
+
+    fn set_file_input_files_native(&self, files: &[(String, Vec<u8>)]) -> Result<(), String> {
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard
+            .as_mut()
+            .ok_or_else(|| "Backend nicht gestartet".to_string())?;
+        driver
+            .set_file_input_files(files)
+            .map_err(|error| error.to_string())
+    }
+
+    fn dispatch_file_input_events(&self) -> bool {
+        self.eval(
+            r#"(function(){
+                var input=document.querySelector('input[type=file]');
+                if(!input)return false;
+                input.dispatchEvent(new Event('input',{bubbles:true}));
+                input.dispatchEvent(new Event('change',{bubbles:true}));
+                return true;
+            })()"#,
+        )
+        .ok()
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+    }
+
+    fn file_input_files_count(&self) -> usize {
+        self.eval(
+            "(function(){var n=0;document.querySelectorAll('input[type=file]').forEach(function(i){n+=i.files?i.files.length:0;});return n;})()",
+        )
+        .ok()
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0) as usize
     }
 
     /// Liefert die Anzahl der Datei-Inputs im aktuellen DOM. Das ist absichtlich
@@ -188,28 +278,54 @@ impl WebBrainBackend {
             Ok(value) => value,
             Err(_) => return false,
         };
+        let composer_selectors = self.sel_js(
+            "composer",
+            &[
+                "div[contenteditable='true']",
+                "textarea",
+                "[role='textbox']",
+            ],
+        );
         let expression = format!(
-            r#"(function(selectors){{
+            r#"(function(selectors,composerSelectors){{
                 function visible(el){{
                     if(!el)return false;
                     var r=el.getBoundingClientRect(),s=window.getComputedStyle(el);
                     return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';
+                }}
+                // A global selector can hit an identically named icon in the
+                // sidebar/header. Prefer controls in the same visual band as
+                // the composer; this is essential for icon-only providers.
+                var composerRects=[];
+                for(var c=0;c<composerSelectors.length;c++){{
+                    try{{var cs=document.querySelectorAll(composerSelectors[c]);
+                        for(var ci=0;ci<cs.length;ci++)if(visible(cs[ci]))composerRects.push(cs[ci].getBoundingClientRect());
+                    }}catch(e){{}}
+                }}
+                function nearComposer(el){{
+                    if(!composerRects.length)return true;
+                    var r=el.getBoundingClientRect();
+                    for(var i=0;i<composerRects.length;i++){{
+                        var c=composerRects[i];
+                        if(r.y>=c.y-120&&r.y<=c.bottom+120&&r.x>=c.x-180&&r.x<=c.right+180)return true;
+                    }}
+                    return false;
                 }}
                 for(var i=0;i<selectors.length;i++){{
                     try{{
                         var found=document.querySelectorAll(selectors[i]);
                         for(var j=0;j<found.length;j++){{
                             var el=found[j];
-                            if(!visible(el))continue;
+                            if(!visible(el)||!nearComposer(el))continue;
                             var target=el.closest('button,[role=button],label')||el;
-                            if(!visible(target))continue;
+                            if(!visible(target)||!nearComposer(target))continue;
                             target.click();
                             return {{ok:true,selector:selectors[i]}};
                         }}
                     }}catch(e){{}}
                 }}
                 return {{ok:false,error:'no_attach_control'}};
-            }})({serialized})"#
+            }})({serialized},{composer_selectors})"#
         );
         self.eval(&expression)
             .ok()

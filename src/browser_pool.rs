@@ -799,6 +799,7 @@ mod tests {
                     WebViewPageDriver {
                         view_id: 1,
                         page_tx: tx,
+                        upload_paths: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
                     }
                 },
             },
@@ -822,6 +823,7 @@ mod tests {
                     WebViewPageDriver {
                         view_id: 2,
                         page_tx: tx,
+                        upload_paths: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
                     }
                 },
             },

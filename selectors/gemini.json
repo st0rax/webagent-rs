@@ -9,6 +9,10 @@
   "send_strategy": [
     "gemini"
   ],
+  "attach_button": [
+    "button[aria-label*='Uploads' i]",
+    "button[aria-label*='Upload' i]"
+  ],
   "send_button": [
     "div[class*='send-button-container'] > button",
     "button[aria-label*='Send' i]",

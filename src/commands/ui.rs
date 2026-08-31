@@ -438,6 +438,34 @@ pub fn cmd_survey(
                     .map(|c| c.to_string())
                     .unwrap_or_default()
             );
+            // Upload controls are frequently icon-only `div`s and therefore
+            // absent from the regular button inventory.  The media inventory
+            // is scoped to the composer area and includes file-input attrs,
+            // coordinates and ancestor classes so provider-specific
+            // selectors can be derived from evidence instead of guesses.
+            if let Some(media) = report.get("media") {
+                let file_inputs = media
+                    .get("file_inputs")
+                    .and_then(|v| v.as_array())
+                    .map(|v| v.len())
+                    .unwrap_or(0);
+                let roots = media
+                    .get("composer_roots")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                println!("  --- {id}: media file_inputs={file_inputs}, composer_roots={roots} ---");
+                if let Some(inputs) = media.get("file_inputs").and_then(|v| v.as_array()) {
+                    for input in inputs.iter().take(40) {
+                        println!("      file-input {input}");
+                    }
+                }
+                if let Some(controls) = media.get("controls").and_then(|v| v.as_array()) {
+                    println!("  --- {id}: media controls={} ---", controls.len());
+                    for control in controls.iter().take(120) {
+                        println!("      media-control {control}");
+                    }
+                }
+            }
             println!("  --- {id}: {} beschriftete Elemente ---", seen.len());
             for l in seen.iter().take(60) {
                 println!("      {l}");

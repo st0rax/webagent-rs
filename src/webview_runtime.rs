@@ -4,8 +4,10 @@
 //! Steuerung über [`PageDriver`].
 
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -94,6 +96,10 @@ pub(crate) enum PageMessage {
         x: f64,
         y: f64,
         respond: Sender<Result<()>>,
+    },
+    SetFileInputFiles {
+        files: Vec<(String, Vec<u8>)>,
+        respond: Sender<Result<Vec<PathBuf>>>,
     },
     CapturePng {
         respond: Sender<Result<Vec<u8>>>,
@@ -244,6 +250,9 @@ impl Drop for WebViewRuntime {
 pub struct WebViewPageDriver {
     pub(crate) view_id: ViewId,
     pub(crate) page_tx: Sender<PageMessage>,
+    /// Temporäre Upload-Dateien bleiben bis zum letzten Driver-Drop liegen:
+    /// Provider laden sie nach `DOM.setFileInputFiles` oft asynchron hoch.
+    pub(crate) upload_paths: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 impl WebViewPageDriver {
@@ -259,6 +268,34 @@ impl WebViewPageDriver {
             .map_err(|_| PageDriverError::Protocol("WebView-Tab beendet".into()))?;
         rx.recv_timeout(Duration::from_secs(45))
             .map_err(|_| PageDriverError::Timeout("Page-Befehl timeout".into()))?
+    }
+}
+
+impl Drop for WebViewPageDriver {
+    fn drop(&mut self) {
+        // Clone-drops dürfen einen noch verwendeten Upload nicht vorzeitig
+        // löschen. Der letzte Driver räumt die Dateien und ihre eindeutigen
+        // Elternverzeichnisse auf.
+        if Arc::strong_count(&self.upload_paths) != 1 {
+            return;
+        }
+        let paths = self
+            .upload_paths
+            .lock()
+            .map(|mut paths| std::mem::take(&mut *paths))
+            .unwrap_or_default();
+        let mut parents = Vec::new();
+        for path in paths {
+            if let Some(parent) = path.parent() {
+                parents.push(parent.to_path_buf());
+            }
+            let _ = fs::remove_file(path);
+        }
+        parents.sort();
+        parents.dedup();
+        for parent in parents {
+            let _ = fs::remove_dir(parent);
+        }
     }
 }
 
@@ -305,6 +342,18 @@ impl PageDriver for WebViewPageDriver {
 
     fn click_at_trusted(&mut self, x: f64, y: f64) -> Result<()> {
         self.call(|respond| PageMessage::ClickAtTrusted { x, y, respond })
+    }
+
+    fn set_file_input_files(&mut self, files: &[(String, Vec<u8>)]) -> Result<()> {
+        let paths = self.call(|respond| PageMessage::SetFileInputFiles {
+            files: files.to_vec(),
+            respond,
+        })?;
+        self.upload_paths
+            .lock()
+            .map_err(|_| PageDriverError::Protocol("Upload-Dateiliste gesperrt".into()))?
+            .extend(paths);
+        Ok(())
     }
 
     fn capture_png(&mut self) -> Result<Vec<u8>> {
@@ -540,7 +589,11 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
         },
     );
 
-    let driver = WebViewPageDriver { view_id, page_tx };
+    let driver = WebViewPageDriver {
+        view_id,
+        page_tx,
+        upload_paths: Arc::new(Mutex::new(Vec::new())),
+    };
 
     Ok((view_id, driver))
 }
@@ -778,6 +831,10 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
         }
         PageMessage::ClickAtTrusted { x, y, respond } => {
             let r = click_at_trusted_cdp(&slot.webview, x, y, event_loop);
+            let _ = respond.send(r);
+        }
+        PageMessage::SetFileInputFiles { files, respond } => {
+            let r = set_file_input_files_cdp(&slot.webview, &files, event_loop);
             let _ = respond.send(r);
         }
         PageMessage::CapturePng { respond } => {
@@ -1153,6 +1210,16 @@ fn call_cdp(
     params: &str,
     event_loop: &mut EventLoop<()>,
 ) -> Result<()> {
+    call_cdp_json(webview, method, params, event_loop).map(|_| ())
+}
+
+#[cfg(windows)]
+fn call_cdp_json(
+    webview: &wry::WebView,
+    method: &str,
+    params: &str,
+    event_loop: &mut EventLoop<()>,
+) -> Result<Value> {
     use std::sync::mpsc;
     use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
     use windows::core::HSTRING;
@@ -1172,8 +1239,9 @@ fn call_cdp(
 
         let (tx, rx) = mpsc::channel();
         let handler =
-            CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |hr, _json| {
-                let _ = tx.send(hr);
+            CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |hr, json| {
+                let payload = json.to_string();
+                let _ = tx.send((hr, payload));
                 Ok(())
             }));
         core.CallDevToolsProtocolMethod(&method_wide, &params_wide, &handler)
@@ -1182,9 +1250,10 @@ fn call_cdp(
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             match rx.try_recv() {
-                Ok(hr) => {
+                Ok((hr, payload)) => {
                     hr.map_err(|e| proto(e.to_string()))?;
-                    break;
+                    return serde_json::from_str(&payload)
+                        .map_err(|e| proto(format!("{method}: ungueltige CDP-Antwort: {e}")));
                 }
                 Err(_) if Instant::now() >= deadline => {
                     return Err(PageDriverError::Timeout(format!(
@@ -1197,7 +1266,320 @@ fn call_cdp(
             thread::sleep(Duration::from_millis(5));
         }
     }
+}
+
+#[cfg(windows)]
+/// Übergibt Dateien über WebView2s vertrauenswürdigen CDP-Kanal. Eine
+/// `DataTransfer`-Zuweisung aus JS sieht für manche SPAs zwar wie ein FileList
+/// aus, wird vom Upload-Backend aber als synthetisch verworfen. `DOM.setFileInputFiles`
+/// ist derselbe native Pfad, den DevTools/Playwright verwenden.
+fn set_file_input_files_cdp(
+    webview: &wry::WebView,
+    files: &[(String, Vec<u8>)],
+    event_loop: &mut EventLoop<()>,
+) -> Result<Vec<PathBuf>> {
+    if files.is_empty() {
+        return Ok(Vec::new());
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("webagent-upload-{}-{stamp}", std::process::id()));
+    fs::create_dir_all(&dir).map_err(|e| {
+        PageDriverError::Protocol(format!(
+            "Upload-Temporaerverzeichnis {}: {e}",
+            dir.display()
+        ))
+    })?;
+    let mut paths = Vec::with_capacity(files.len());
+    for (index, (name, data)) in files.iter().enumerate() {
+        let safe = Path::new(name)
+            .file_name()
+            .and_then(|part| part.to_str())
+            .filter(|part| !part.is_empty())
+            .unwrap_or("upload.bin");
+        let path = dir.join(format!("{index}-{safe}"));
+        if let Err(error) = fs::write(&path, data) {
+            let _ = fs::remove_dir_all(&dir);
+            return Err(PageDriverError::Protocol(format!(
+                "Upload-Datei {}: {error}",
+                path.display()
+            )));
+        }
+        paths.push(path);
+    }
+
+    if let Err(error) = call_cdp_json(webview, "DOM.enable", "{}", event_loop) {
+        let _ = fs::remove_dir_all(&dir);
+        return Err(error);
+    }
+    let document = match call_cdp_json(
+        webview,
+        "DOM.getDocument",
+        r#"{"depth":-1,"pierce":true}"#,
+        event_loop,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&dir);
+            return Err(error);
+        }
+    };
+    // WebView2 returns the CDP payload itself (the `result` wrapper used by
+    // some JSON-RPC clients is omitted).  Accept both shapes so this keeps
+    // working with runtimes that do preserve the wrapper.
+    let root_node_id = document
+        .pointer("/root/nodeId")
+        .or_else(|| document.pointer("/result/root/nodeId"))
+        .and_then(Value::as_i64)
+        .filter(|id| *id > 0)
+        .ok_or_else(|| {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] DOM.getDocument response: {document}");
+            }
+            let _ = fs::remove_dir_all(&dir);
+            PageDriverError::Protocol("DOM.setFileInputFiles: kein DOM-Dokument gefunden".into())
+        })?;
+    let query = serde_json::json!({
+        "nodeId": root_node_id,
+        "selector": "input[type=file]"
+    });
+    let found = match call_cdp_json(webview, "DOM.querySelector", &query.to_string(), event_loop) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&dir);
+            return Err(error);
+        }
+    };
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!("[upload] DOM.querySelector response: {found}");
+    }
+    let node_id = found
+        .pointer("/nodeId")
+        .or_else(|| found.pointer("/result/nodeId"))
+        .and_then(Value::as_i64)
+        .filter(|id| *id > 0)
+        .ok_or_else(|| {
+            let _ = fs::remove_dir_all(&dir);
+            PageDriverError::Protocol(
+                "DOM.setFileInputFiles: kein input[type=file]-Element gefunden".into(),
+            )
+        })?;
+    // WebView2 has shipped runtimes where `nodeId` is accepted by the DOM
+    // command but does not mutate the file control.  Resolve the corresponding
+    // backend id as well and pass it when available; Chromium treats that as
+    // the stable renderer-side identity for a live element.
+    let describe = serde_json::json!({"nodeId": node_id});
+    let backend_node_id = call_cdp_json(
+        webview,
+        "DOM.describeNode",
+        &describe.to_string(),
+        event_loop,
+    )
+    .ok()
+    .and_then(|value| {
+        value
+            .pointer("/node/backendNodeId")
+            .or_else(|| value.pointer("/result/node/backendNodeId"))
+            .and_then(Value::as_i64)
+            .filter(|id| *id > 0)
+    });
+    let path_strings: Vec<String> = paths
+        .iter()
+        // WebView2's CDP implementation expects POSIX separators even on
+        // Windows.  Backslashes are accepted by the JSON parser but are
+        // rejected by the underlying file-input bridge on some runtimes.
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .collect();
+    // Prefer a Runtime object identity when available.  A few WebView2
+    // runtimes acknowledge `nodeId`/`backendNodeId` but leave the control
+    // untouched; the objectId is resolved in the same renderer execution
+    // context as the page script and avoids that stale-node path.
+    let evaluate = serde_json::json!({
+        "expression": "document.querySelector('input[type=file]')",
+        "returnByValue": false,
+        "silent": true
+    });
+    let object_id = call_cdp_json(
+        webview,
+        "Runtime.evaluate",
+        &evaluate.to_string(),
+        event_loop,
+    )
+    .ok()
+    .and_then(|value| {
+        value
+            .pointer("/result/objectId")
+            .or_else(|| value.pointer("/result/result/objectId"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+    });
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!(
+            "[upload] DOM target node={} backend={:?} object={:?}",
+            node_id, backend_node_id, object_id
+        );
+    }
+    let mut params = serde_json::json!({"files": path_strings});
+    if let Some(object_id) = object_id {
+        params["objectId"] = Value::String(object_id);
+    } else {
+        params["nodeId"] = Value::from(node_id);
+        if let Some(backend_node_id) = backend_node_id {
+            params["backendNodeId"] = Value::from(backend_node_id);
+        }
+    }
+    let cdp_response = match call_cdp_json(
+        webview,
+        "DOM.setFileInputFiles",
+        &params.to_string(),
+        event_loop,
+    ) {
+        Ok(response) => response,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&dir);
+            return Err(error);
+        }
+    };
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!("[upload] DOM.setFileInputFiles response: {cdp_response}");
+    }
+    if let Some(error) = cdp_response
+        .get("error")
+        .or_else(|| cdp_response.pointer("/result/error"))
+    {
+        let _ = fs::remove_dir_all(&dir);
+        return Err(PageDriverError::Protocol(format!(
+            "DOM.setFileInputFiles: {error}"
+        )));
+    }
+    // WebView2 releases have historically acknowledged DOM.setFileInputFiles
+    // without updating the renderer-side FileList.  Only invoke the drag/drop
+    // fallback when that renderer-side check still reports zero files; once a
+    // native input is populated, dropping the same paths would duplicate the
+    // attachment in providers that accept both channels.
+    let native_count = {
+        let check = serde_json::json!({
+            "expression": "Array.from(document.querySelectorAll('input[type=file]')).reduce((n,i)=>n+(i.files?i.files.length:0),0)",
+            "returnByValue": true,
+            "silent": true
+        });
+        call_cdp_json(webview, "Runtime.evaluate", &check.to_string(), event_loop)
+            .ok()
+            .and_then(|value| {
+                value
+                    .pointer("/result/value")
+                    .or_else(|| value.pointer("/result/result/value"))
+                    .and_then(Value::as_u64)
+            })
+            .unwrap_or(0)
+    };
+    if native_count == 0 {
+        if let Err(error) = dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] trusted drag fallback unavailable: {error}");
+            }
+        }
+    } else if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!("[upload] native file-input count={native_count}; skip drag fallback");
+    }
+    Ok(paths)
+}
+
+#[cfg(windows)]
+fn dispatch_file_drag_cdp(
+    webview: &wry::WebView,
+    files: &[(String, Vec<u8>)],
+    path_strings: &[String],
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    if files.is_empty() || path_strings.is_empty() {
+        return Ok(());
+    }
+    let point_request = serde_json::json!({
+        "expression": r#"(() => {
+            const candidates = Array.from(document.querySelectorAll(
+                '[contenteditable="true"], textarea, [role="textbox"]'));
+            for (const el of candidates) {
+                const r = el.getBoundingClientRect();
+                const s = getComputedStyle(el);
+                if (r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden')
+                    return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+            }
+            return null;
+        })()"#,
+        "returnByValue": true,
+        "silent": true
+    });
+    let point = call_cdp_json(
+        webview,
+        "Runtime.evaluate",
+        &point_request.to_string(),
+        event_loop,
+    )
+    .ok()
+    .and_then(|value| {
+        value
+            .pointer("/result/value")
+            .or_else(|| value.pointer("/result/result/value"))
+            .cloned()
+    })
+    .and_then(|value| Some((value.get("x")?.as_f64()?, value.get("y")?.as_f64()?)))
+    .ok_or_else(|| PageDriverError::Protocol("kein sichtbarer Composer fuer Drag/Drop".into()))?;
+    let items: Vec<Value> = files
+        .iter()
+        .map(|(name, _)| {
+            // The page receives the actual file through `files`; the item
+            // payload carries the same MIME hint a real OS drag supplies.
+            serde_json::json!({
+                "mimeType": upload_mime_for_name(name),
+                "data": ""
+            })
+        })
+        .collect();
+    let drag_data = serde_json::json!({
+        "items": items,
+        "files": path_strings,
+        "dragOperationsMask": 1
+    });
+    for event_type in ["dragEnter", "dragOver", "drop"] {
+        let params = serde_json::json!({
+            "type": event_type,
+            "x": point.0,
+            "y": point.1,
+            "data": drag_data
+        });
+        call_cdp_json(
+            webview,
+            "Input.dispatchDragEvent",
+            &params.to_string(),
+            event_loop,
+        )?;
+    }
     Ok(())
+}
+
+#[cfg(windows)]
+fn upload_mime_for_name(name: &str) -> &'static str {
+    match Path::new(name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        Some("wav") => "audio/wav",
+        Some("mp3") => "audio/mpeg",
+        Some("m4a") => "audio/mp4",
+        Some("ogg") => "audio/ogg",
+        Some("webm") => "audio/webm",
+        _ => "application/octet-stream",
+    }
 }
 
 /// Die drei Events der vertrauenswuerdigen Pointer-Sequenz, als (Eventtyp,
@@ -1261,6 +1643,17 @@ fn call_cdp(
 ) -> Result<()> {
     Err(PageDriverError::NotAvailable(
         "DevTools-Protokoll: unter Linux nicht verfuegbar (kein CDP in WebKitGTK)".into(),
+    ))
+}
+
+#[cfg(not(windows))]
+fn set_file_input_files_cdp(
+    _webview: &wry::WebView,
+    _files: &[(String, Vec<u8>)],
+    _event_loop: &mut EventLoop<()>,
+) -> Result<Vec<PathBuf>> {
+    Err(PageDriverError::NotAvailable(
+        "Datei-Upload über CDP ist unter Linux nicht verfügbar".into(),
     ))
 }
 

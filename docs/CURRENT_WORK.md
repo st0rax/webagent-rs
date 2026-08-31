@@ -17,6 +17,26 @@ gerendertes Datei-Input und fällt danach auf Paste/Drop zurück. Der Fallback g
 nur bei einer sichtbaren neuen Attachment-Vorschau als erfolgreich; andernfalls
 kommt weiterhin ein erklärender 502. Native Dateidialoge werden nicht geöffnet.
 
+### Korrektur zum Providerbefund vom 31.08.2026
+
+Die frühere Formulierung „kein Datei-Upload“ war für DeepSeek, Gemini, Kimi und
+Mistral zu stark: Eine frische DOM-/Screenshot-Inventarisierung zeigt bei allen
+vier eine Upload-Oberfläche. DeepSeek rendert ein verstecktes
+`input[type=file]` und eine Büroklammer; Gemini erzeugt nach „Uploads & Tools“
+versteckte Inputs; Mistral rendert `input[name=file-upload]`; Kimi zeigt die
+Toolkit-/+-Schaltfläche und Attachment-Zustände. `no_file_input` war dort ein
+Entdeckungsfehler eines vollständigen Verlaufs, kein Beleg für fehlende
+Providerfunktion.
+
+Der Windows-Treiber versucht deshalb neben dem bestehenden Paste/Drop-Weg einen
+nativen WebView2-CDP-Upload (`DOM.setFileInputFiles`) und akzeptiert sowohl die
+direkte WebView2-Antwortform als auch den üblichen `result`-Wrapper. Die aktuelle
+WebView2-Runtime quittiert den Befehl zwar mit `{}`, übernimmt die Datei im
+DeepSeek-Smoke aber noch nicht in `input.files`; der Transport ist damit noch
+nicht providerweise freigegeben. Bis zur erfolgreichen Bild-/Audio-Gegenprobe
+bleiben die vier Modelle im `/v1/models`-Katalog bewusst text-only. Diese Grenze
+trennt sauber UI-Fähigkeit (belegt) von Ende-zu-Ende-Transport (offen).
+
 Die generische Selektormaske enthält dafür providerneutrale Attach-Signale
 (`aria-label`, `data-testid`, `data-tooltip`, Datei-/Upload-Beschriftungen). Die
 Text-Circuit-Breaker-Behandlung klassifiziert sowohl `no_file_input` als auch

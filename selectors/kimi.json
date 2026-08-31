@@ -11,6 +11,10 @@
     "button:has-text('Send')",
     "button:has-text('发送')"
   ],
+  "attach_button": [
+    "div.toolkit-trigger-btn",
+    "[class*='toolkit-trigger' i]"
+  ],
   "stop_button": [
     "[aria-label*='stopp' i]",
     "[aria-label*='stop' i]",

@@ -85,9 +85,11 @@ Die Responses-Variante verwendet type input_image mit derselben Data-URL und typ
 Ein solcher `no_file_input`- bzw. `no_file_input_and_paste_not_confirmed`-Fehler gilt nur für den jeweiligen multimodalen
 Request. Er öffnet nicht den allgemeinen Text-Circuit-Breaker und verschlechtert
 nicht den Brain-Score; ein späterer text-only Request an dasselbe Brain bleibt
-damit möglich. Bei einem Client, der eine Bildnachricht im vollständigen Verlauf
-mitführt, muss für diese Brains entweder ein neuer text-only Verlauf begonnen
-oder ein Brain mit Datei-Upload verwendet werden.
+damit möglich. Wichtig ist die Unterscheidung zwischen sichtbarer Provider-
+Oberfläche und verifiziertem Bridge-Transport: Eine Upload-Schaltfläche kann ein
+dynamisch erzeugtes oder in einem Shadow-Tree verstecktes Input besitzen. Fehlt
+die frische Transportbestätigung, wird die Datei nicht still verworfen, sondern
+der Request fail-closed mit 502 beendet.
 
 ### Ausgabegrenzen und Providerverhalten
 
@@ -97,10 +99,15 @@ Bild- und Audio-Inputs werden unterstützt, generierte Bildartefakte aber noch
 nicht als `image`-Output aus der Weboberfläche übernommen. Eine ChatGPT-Webantwort
 mit Bildgenerierung kann daher höchstens als Textstatus erscheinen, nicht als
 downloadbares Bild im API-Response. Für die Katalogmetadaten werden Bild-/Audio-
-Inputs außerdem nur bei ChatGPT und Claude als belegt angezeigt; DeepSeek,
-Gemini, Kimi, Mistral, Qwen, Z.ai und Custom-Brains bleiben bis zu einer
-frischen Upload-Gegenprobe text-only. Ein manueller Medien-Request darf den
-Fallback trotzdem ausprobieren und wird bei fehlender Bestätigung mit 502
+Inputs weiterhin nur nach einer frischen Transport-Gegenprobe als belegt
+angezeigt. Die UI-Inventarisierung vom 31.08.2026 belegt bereits
+Upload-Oberflächen bei DeepSeek (verstecktes `input[type=file]` plus
+Büroklammer), Gemini (dynamische versteckte Inputs plus „Uploads & Tools“),
+Mistral (verstecktes `file-upload`) und Kimi (Toolkit-/+-Schaltfläche). Das ist
+ein positiver UI-Befund, aber noch kein Beleg dafür, dass WebView2 die Datei im
+jeweiligen SPA-Uploadzustand akzeptiert. Bis zur providerweisen Smoke-Gegenprobe
+bleiben diese Modelle deshalb im Katalog text-only; ein manueller Medien-Request
+darf den Uploadpfad ausprobieren und wird bei fehlender Bestätigung mit 502
 abgelehnt. Das ist eine bewusst ehrliche Fähigkeitsangabe und keine fehlende
 Client-Konfiguration.
 
