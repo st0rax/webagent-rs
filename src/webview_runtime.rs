@@ -105,6 +105,11 @@ pub(crate) enum PageMessage {
         files: Vec<(String, Vec<u8>)>,
         respond: Sender<Result<Vec<PathBuf>>>,
     },
+    PasteImageFromClipboard {
+        mime_type: String,
+        data: Vec<u8>,
+        respond: Sender<Result<()>>,
+    },
     CapturePng {
         respond: Sender<Result<Vec<u8>>>,
     },
@@ -365,6 +370,14 @@ impl PageDriver for WebViewPageDriver {
             .map_err(|_| PageDriverError::Protocol("Upload-Dateiliste gesperrt".into()))?
             .extend(paths);
         Ok(())
+    }
+
+    fn paste_image_from_clipboard(&mut self, mime_type: &str, data: &[u8]) -> Result<()> {
+        self.call(|respond| PageMessage::PasteImageFromClipboard {
+            mime_type: mime_type.to_string(),
+            data: data.to_vec(),
+            respond,
+        })
     }
 
     fn capture_png(&mut self) -> Result<Vec<u8>> {
@@ -852,11 +865,197 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
             let r = set_file_input_files_cdp(&slot.webview, &files, event_loop);
             let _ = respond.send(r);
         }
+        PageMessage::PasteImageFromClipboard {
+            mime_type,
+            data,
+            respond,
+        } => {
+            let r = paste_image_from_clipboard(
+                &slot.webview,
+                &slot.window,
+                &mime_type,
+                &data,
+                event_loop,
+            );
+            let _ = respond.send(r);
+        }
         PageMessage::CapturePng { respond } => {
             let r = capture_png(&slot.webview, event_loop);
             let _ = respond.send(r);
         }
     }
+}
+
+/// Setzt ein Bild in die echte Windows-Zwischenablage und loest danach eine
+/// vertrauenswuerdige Ctrl-V-Sequenz ueber Windows `SendInput` aus.
+///
+/// Kimi verarbeitet Bildanhaenge nicht wie ein gewoehnliches dauerhaftes
+/// `input[type=file]`: der transient gerenderte Input kann von WebView2 zwar
+/// bestaetigt werden, der Vue-Composer schaltet Senden aber erst nach dem
+/// Paste-Handler frei. `arboard` schreibt das von Chromium erwartete CF_DIB;
+/// `SendInput` sorgt dafuer, dass Chromium den gleichen vertrauenswuerdigen
+/// Paste-Weg wie bei einer echten Nutzer-Tastatur sieht. Eine Prozess-Sperre
+/// verhindert, dass parallele Brain-Worker die globale Zwischenablage waehrend
+/// dieser kurzen Sequenz ueberschreiben.
+#[cfg(windows)]
+fn paste_image_from_clipboard(
+    webview: &wry::WebView,
+    window: &tao::window::Window,
+    mime_type: &str,
+    data: &[u8],
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    use arboard::{Clipboard, ImageData};
+    use image::GenericImageView;
+    use std::borrow::Cow;
+    use std::sync::{Mutex, OnceLock};
+
+    if !mime_type.to_ascii_lowercase().starts_with("image/") {
+        return Err(PageDriverError::NotAvailable(format!(
+            "Clipboard-Paste unterstuetzt nur Bildanhaenge, nicht {mime_type}"
+        )));
+    }
+    let decoded = image::load_from_memory(data).map_err(|error| {
+        PageDriverError::Protocol(format!("Bild fuer Clipboard-Paste nicht lesbar: {error}"))
+    })?;
+    let (width, height) = decoded.dimensions();
+    if width == 0 || height == 0 {
+        return Err(PageDriverError::Protocol(
+            "Bild fuer Clipboard-Paste hat keine sichtbaren Pixel".into(),
+        ));
+    }
+
+    static CLIPBOARD_PASTE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let _lock = CLIPBOARD_PASTE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| PageDriverError::Protocol("Clipboard-Paste-Sperre verloren".into()))?;
+
+    let mut clipboard = Clipboard::new().map_err(|error| {
+        PageDriverError::NotAvailable(format!("Windows-Zwischenablage nicht verfuegbar: {error}"))
+    })?;
+    // Best effort: Text bzw. ein vorhandenes Clipboard-Bild nach dem Paste
+    // wiederherstellen, damit der API-Aufruf die Nutzer-Zwischenablage nicht
+    // dauerhaft veraendert. Andere Clipboard-Formate (z.B. Dateilisten)
+    // koennen arboard-seitig nicht verlustfrei gesichert werden.
+    let previous_image = clipboard.get_image().ok().map(|image| ImageData {
+        width: image.width,
+        height: image.height,
+        bytes: Cow::Owned(image.bytes.into_owned()),
+    });
+    let previous_text = if previous_image.is_none() {
+        clipboard.get_text().ok()
+    } else {
+        None
+    };
+    let rgba = decoded.to_rgba8().into_raw();
+    clipboard
+        .set_image(ImageData {
+            width: width as usize,
+            height: height as usize,
+            bytes: Cow::Owned(rgba),
+        })
+        .map_err(|error| {
+            PageDriverError::Protocol(format!("Bild nicht in Clipboard gesetzt: {error}"))
+        })?;
+
+    let previous_foreground =
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
+    let paste_result = (|| -> Result<()> {
+        // Kimi lauscht auf dem echten Windows-Paste-Pfad. Das off-screen
+        // Fenster darf dafuer kurz aktiviert werden; unmittelbar danach geben
+        // wir den Fokus an das vorher aktive Fenster zurueck.
+        use tao::platform::windows::WindowExtWindows;
+        use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+            VK_CONTROL, VK_V,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+        use wry::WebViewExtWindows;
+
+        set_no_activate(window, false);
+        window.set_focus();
+        let hwnd = HWND(window.hwnd() as *mut core::ffi::c_void);
+        unsafe {
+            let _ = SetForegroundWindow(hwnd);
+            // Focusing the Tao parent window alone is not sufficient: the
+            // keyboard target can remain an invisible child.  Ask WebView2 to
+            // focus its own controller before emitting the genuine Ctrl-V.
+            let _ = webview
+                .controller()
+                .MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+        }
+        // Die Aktivierung wird ueber denselben UI-Thread abgearbeitet, auf dem
+        // das WebView-Fenster lebt. Ohne diesen Pump kann SendInput gelegentlich
+        // vor dem Fokuswechsel eintreffen.
+        pump_once(event_loop);
+
+        let keyboard = |vk: VIRTUAL_KEY, flags| INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let inputs = [
+            keyboard(VK_CONTROL, Default::default()),
+            keyboard(VK_V, Default::default()),
+            keyboard(VK_V, KEYEVENTF_KEYUP),
+            keyboard(VK_CONTROL, KEYEVENTF_KEYUP),
+        ];
+        let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+        if sent != inputs.len() as u32 {
+            return Err(PageDriverError::Protocol(format!(
+                "Windows SendInput lieferte nur {sent}/{} Tastaturereignisse",
+                inputs.len()
+            )));
+        }
+        // Die Kimi-Paste-Route verarbeitet die Datei synchron im key event,
+        // aber ein kurzer Puffer verhindert, dass ein asynchroner Vue-Handler
+        // noch auf die bereits restaurierte Clipboard-Instanz trifft.
+        thread::sleep(Duration::from_millis(1200));
+        // Let the WebView process the queued paste before restoring the
+        // global clipboard.  Kimi's Vue handler reads ClipboardItem data one
+        // task after the DOM `paste` event; restoring it immediately turns a
+        // real Ctrl-V into an empty attachment.
+        pump_once(event_loop);
+        Ok(())
+    })();
+
+    set_no_activate(window, true);
+    if !previous_foreground.is_invalid() {
+        unsafe {
+            let _ =
+                windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(previous_foreground);
+        }
+    }
+    if let Some(image) = previous_image {
+        let _ = clipboard.set_image(image);
+    } else if let Some(text) = previous_text {
+        let _ = clipboard.set_text(text);
+    }
+    paste_result
+}
+
+#[cfg(not(windows))]
+fn paste_image_from_clipboard(
+    _webview: &wry::WebView,
+    _window: &tao::window::Window,
+    _mime_type: &str,
+    _data: &[u8],
+    _event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    Err(PageDriverError::NotAvailable(
+        "Bild-Paste ueber die Windows-Zwischenablage ist unter dieser Plattform nicht verfuegbar"
+            .into(),
+    ))
 }
 
 /// Baut die WebView2-Argumente fuer `with_additional_browser_args`.
@@ -1834,30 +2033,49 @@ fn upload_mime_for_name(name: &str) -> &'static str {
     }
 }
 
-/// Die drei Events der vertrauenswuerdigen Pointer-Sequenz, als (Eventtyp,
+/// Die zwei Events der vertrauenswuerdigen Pointer-Sequenz, als (Eventtyp,
 /// CDP-Parameter-JSON). Als eigene Funktion, damit ein Test exakt pruefen kann,
 /// welche Sequenz an die Engine geht — dieselbe Unterscheidung zwischen
 /// Mechanismus-Test und Verhalten, die `press_key_script` schon traegt.
 fn cdp_click_events(x: f64, y: f64) -> Vec<(&'static str, String)> {
-    let base = |extra: &str| {
+    let base = |button: Option<&str>, extra: &str| {
+        let button = button
+            .map(|value| format!(r#""button":"{value}","#))
+            .unwrap_or_default();
         format!(
-            r#"{{"x":{x},"y":{y},"button":"left","pointerType":"mouse",{extra}}}"#,
+            // WebView2's in-process CDP implementation accepts the core
+            // Chromium fields but rejects an explicit button=none on some
+            // runtime revisions with E_INVALIDARG. Omitting button for the
+            // move packet gives the protocol its default without weakening
+            // the trusted pointer sequence.
+            r#"{{"x":{x},"y":{y},{button}{extra}}}"#,
+            button = button,
             extra = extra
         )
     };
     [
-        ("mouseMoved", r#""buttons":0"#),
-        ("mousePressed", r#""buttons":1,"clickCount":1"#),
-        ("mouseReleased", r#""buttons":0,"clickCount":1"#),
+        // A separate mouseMoved packet is unnecessary for a click and is
+        // rejected by WebView2's CDP adapter on older runtimes. The pressed /
+        // released pair already produces the trusted pointerdown/click path.
+        (
+            "mousePressed",
+            Some("left"),
+            r#""buttons":1,"clickCount":1"#,
+        ),
+        (
+            "mouseReleased",
+            Some("left"),
+            r#""buttons":0,"clickCount":1"#,
+        ),
     ]
     .iter()
-    .map(|(e, extra)| (*e, base(extra)))
+    .map(|(e, button, extra)| (*e, base(*button, extra)))
     .collect()
 }
 
 /// Vertrauenswuerdiger Linksklick an Viewport-Koordinaten ueber die
-/// vollstaendige CDP-Pointer-Sequenz (moved -> pressed -> released), wie sie
-/// auch Puppeteer/Playwright senden. Anders als [`click_at_js`] sind diese
+/// CDP-Pointer-Sequenz (pressed -> released), wie sie auch Puppeteer/Playwright
+/// als Kern des Klicks senden. Anders als [`click_at_js`] sind diese
 /// Events `isTrusted=true` — genau das verlangt qwens Denkstufen-Menue.
 fn click_at_trusted_cdp(
     webview: &wry::WebView,
@@ -1865,8 +2083,19 @@ fn click_at_trusted_cdp(
     y: f64,
     event_loop: &mut EventLoop<()>,
 ) -> Result<()> {
-    for (_event, params) in cdp_click_events(x, y) {
-        call_cdp(webview, "Input.dispatchMouseEvent", &params, event_loop)?;
+    // WebView2's CDP adapter historically accepted only integral viewport
+    // coordinates, although Chromium's schema advertises doubles. DOM
+    // bounding boxes routinely produce half-pixels (e.g. 321.5), which the
+    // adapter reports as E_INVALIDARG and silently prevents delete/click
+    // actions. Rounding stays inside the same target pixel and keeps the
+    // trusted sequence valid across both implementations.
+    for (_event, params) in cdp_click_events(x.round(), y.round()) {
+        if let Err(error) = call_cdp(webview, "Input.dispatchMouseEvent", &params, event_loop) {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[cdp] Input.dispatchMouseEvent params={params} error={error}");
+            }
+            return Err(error);
+        }
     }
     Ok(())
 }
@@ -1924,8 +2153,8 @@ fn set_file_input_files_cdp(
 mod tests {
     use super::{cdp_click_events, parse_eval_result, press_key_script, wrap_eval};
 
-    // Der vertrauenswuerdige Klick ist eine vollstaendige Pointer-Sequenz
-    // (moved -> pressed -> released) mit Koordinaten, button und clickCount —
+    // Der vertrauenswuerdige Klick ist eine Pointer-Sequenz
+    // (pressed -> released) mit Koordinaten, button und clickCount —
     // nicht ein einziges synthetisches DOM-Event. Genau daran haengt, ob
     // qwens Denkstufen-Menue aufpoppt: die Oberflaeche lauscht auf trusted
     // pointerdown, und das liefert nur `Input.dispatchMouseEvent` ueber CDP.
@@ -1933,22 +2162,18 @@ mod tests {
     fn cdp_klick_sendet_vollstaendige_pointer_sequenz() {
         let events = cdp_click_events(123.0, 456.0);
         let types: Vec<&str> = events.iter().map(|(t, _)| *t).collect();
-        assert_eq!(types, vec!["mouseMoved", "mousePressed", "mouseReleased"]);
+        assert_eq!(types, vec!["mousePressed", "mouseReleased"]);
         for (t, params) in &events {
             assert!(
                 params.contains("\"x\":123") && params.contains("\"y\":456"),
                 "{t} muss die Koordinaten tragen: {params}"
             );
             assert!(params.contains("\"button\":\"left\""), "{t}: {params}");
-            assert!(
-                params.contains("\"pointerType\":\"mouse\""),
-                "{t}: {params}"
-            );
         }
         assert!(
-            events[1].1.contains("\"clickCount\":1"),
+            events[0].1.contains("\"clickCount\":1"),
             "pressed braucht clickCount: {}",
-            events[1].1
+            events[0].1
         );
     }
 

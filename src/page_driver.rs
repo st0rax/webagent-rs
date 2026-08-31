@@ -90,6 +90,19 @@ pub trait PageDriver: Send {
         ))
     }
 
+    /// Fuegt ein Bild ueber die echte Betriebssystem-Zwischenablage in den
+    /// fokussierten Composer ein. Das ist getrennt vom File-Input-Kanal, weil
+    /// manche SPAs (insbesondere Kimi) den transienten Input zwar bestaetigen,
+    /// den Anhang aber erst nach einem echten Ctrl-V als sendbar markieren.
+    /// Der WebView2-Treiber setzt dafuer CF_DIB und loest eine vertrauenswuerdige
+    /// Ctrl-V-Sequenz aus; Treiber ohne Betriebssystem-Clipboard melden die
+    /// Faehigkeit ehrlich als nicht verfuegbar.
+    fn paste_image_from_clipboard(&mut self, _mime_type: &str, _data: &[u8]) -> Result<()> {
+        Err(PageDriverError::NotAvailable(
+            "Bild-Paste ueber die Betriebssystem-Zwischenablage ist nicht verfuegbar".into(),
+        ))
+    }
+
     /// Nimmt den sichtbaren Seiteninhalt als PNG auf.
     ///
     /// Warum das hier gebraucht wird: die Fähigkeits-Vermessung über das DOM

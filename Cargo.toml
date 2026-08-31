@@ -46,7 +46,12 @@ tui = ["dep:ratatui", "dep:crossterm"]
 webview2-com = "0.33"
 # Win32_UI_WindowsAndMessaging + ToolHelp: die Kachelansicht sucht das
 # Terminalfenster ueber die Elternkette (brain_grid.rs).
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+# Kimi dokumentiert Ctrl-V als den primaeren Bild-Uploadweg.  arboard setzt
+# dafuer das echte Windows-Bildformat (CF_DIB) in die Zwischenablage; image
+# decodiert die vom API-Client gelieferten PNG/JPEG/GIF/BMP/WebP-Bytes in RGBA.
+arboard = "3.6"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 
 [lib]
 name = "webagent"

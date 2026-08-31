@@ -109,7 +109,7 @@ impl WebBrainBackend {
             .map_err(|error| format!("DeepSeek-Vision-Modus nicht aktivierbar: {error}"))
     }
 
-    fn attach_files(&self, attachments: &[BrowserAttachment]) -> Result<(), String> {
+    fn attach_files(&mut self, attachments: &[BrowserAttachment]) -> Result<(), String> {
         if attachments.is_empty() {
             return Ok(());
         }
@@ -123,7 +123,11 @@ impl WebBrainBackend {
         // `click()`) aus und warten anschließend auf das dynamisch gerenderte
         // Input. Wenn die Oberfläche überhaupt kein Input rendert, versuchen
         // wir noch den browserüblichen Paste/Drop-Pfad.
-        if self.file_input_count() == 0 {
+        let kimi_image_paste = self.brain_id == "kimi"
+            && attachments
+                .iter()
+                .all(|attachment| attachment.kind == BrowserAttachmentKind::Image);
+        if self.file_input_count() == 0 && !kimi_image_paste {
             let _ = self.open_attachment_surface();
             let deadline = Instant::now() + Duration::from_secs(5);
             while Instant::now() < deadline {
@@ -137,6 +141,26 @@ impl WebBrainBackend {
         // Attach-Oberfläche; erst jetzt sind sie zuverlässig löschbar.
         std::thread::sleep(Duration::from_millis(1500));
         self.remove_all_attachment_previews();
+        std::thread::sleep(Duration::from_millis(300));
+        // A failed Kimi upload leaves an error tile which disables Send and
+        // cannot always be dismissed while the Vue uploader is still in its
+        // failed state.  This is a stale *draft*, not part of the API
+        // request.  Reset that draft once and continue in a clean chat rather
+        // than replaying the stale files forever.
+        if self.brain_id == "kimi" && self.attachment_signal_count() > 0 {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] Kimi stale failed attachment: reset clean draft");
+            }
+            self.new_chat()?;
+            std::thread::sleep(Duration::from_millis(900));
+            self.remove_all_attachment_previews();
+            if self.attachment_signal_count() > 0 {
+                return Err(
+                    "Kimi konnte einen fehlgeschlagenen Altanhang auch nach dem Chat-Reset nicht verwerfen"
+                        .into(),
+                );
+            }
+        }
         let files: Vec<Value> = attachments
             .iter()
             .map(|attachment| {
@@ -149,6 +173,26 @@ impl WebBrainBackend {
             .collect();
         let serialized = serde_json::to_string(&files)
             .map_err(|error| format!("Dateianhaenge nicht serialisierbar: {error}"))?;
+        // Kimi dokumentiert Ctrl-V aus der Zwischenablage als primaeren
+        // Bildpfad. Der synthetische DataTransfer-Event darunter wird von
+        // Kimi zwar dispatcht, aber als untrusted verworfen; der native
+        // Clipboard-Pfad schreibt deshalb zuerst ein echtes CF_DIB und loest
+        // eine trusted CDP-Tastatursequenz aus. Nur ein aktivierter
+        // Absendeknopf gilt als Beleg fuer einen verwertbaren Anhang.
+        if self.brain_id == "kimi"
+            && self.paste_images_via_native_clipboard(attachments)
+            && self.send_button_is_enabled()
+        {
+            return Ok(());
+        }
+        if kimi_image_paste {
+            // Kimi rejects synthetic File/DataTransfer events.  Crucially, do
+            // not fall through to them: a rejected synthetic event creates a
+            // red tile and poisons the next request's composer as well.
+            return Err(
+                "Kimi hat das Bild nicht über den nativen Zwischenablagepfad übernommen".into(),
+            );
+        }
         // Kimi's transient file input is acknowledged by WebView2 but its
         // Vue uploader only enables Send after the editor's paste/drop handler
         // has seen the File objects. Prefer that browser-native path first.
@@ -297,7 +341,7 @@ impl WebBrainBackend {
         // Roundtrip sammeln und jeden sichtbaren Treffer trusted anklicken.
         for _ in 0..4 {
             let coords = self
-                .eval(r#"(function(){var a=[];document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(c){var b=c.querySelector('[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');if(!b)b=c;try{b.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true}));b.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));}catch(e){}var r=b.getBoundingClientRect();if(r.width>0&&r.height>0)a.push({x:r.left+r.width/2,y:r.top+r.height/2});});return a;})()"#)
+                .eval(r#"(function(){var a=[];document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(c){var b=c.querySelector('[class*="delete-icon" i],[class*="remove-icon" i],[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');if(!b)b=c;try{b.dispatchEvent(new MouseEvent('mouseenter',{bubbles:true}));b.dispatchEvent(new MouseEvent('mouseover',{bubbles:true}));}catch(e){}var r=b.getBoundingClientRect();if(r.width>0&&r.height>0)a.push({x:r.left+r.width/2,y:r.top+r.height/2});});return a;})()"#)
                 .unwrap_or(Value::Null);
             let mut clicked = false;
             if let Some(items) = coords.as_array() {
@@ -314,7 +358,13 @@ impl WebBrainBackend {
                             item.get("x").and_then(Value::as_f64),
                             item.get("y").and_then(Value::as_f64),
                         ) {
-                            clicked |= driver.click_at_trusted(x, y).is_ok();
+                            let result = driver.click_at_trusted(x, y);
+                            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                                eprintln!(
+                                    "[upload] stale control click ({x:.1},{y:.1}): {result:?}"
+                                );
+                            }
+                            clicked |= result.is_ok();
                         }
                     }
                 }
@@ -327,13 +377,27 @@ impl WebBrainBackend {
         for _ in 0..32 {
             if !self.click_visible_real("attachment_delete")
                 && !self.click_first("attachment_delete")
+                // Kimi calls its failed upload tile an `image-thumbnail`,
+                // and intentionally exposes its delete control only through
+                // the provider-specific selector set.  Do not leave those
+                // cards in the composer: they disable Send for the entire
+                // next request.
+                && !self.click_visible_real("failed_attachment_delete")
+                && !self.click_first("failed_attachment_delete")
             {
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
         }
+        // Kimi's current Vue surface wires removal to the small
+        // `.image-delete-icon` child rather than to the surrounding container.
+        // The trusted CDP coordinates above are retained for providers that
+        // require pointerdown, but WebView2 can reject those coordinates with
+        // E_INVALIDARG while the off-screen window is inactive. A direct
+        // bubbling click on the actual icon is the reliable cleanup fallback
+        // and does not open a file dialog.
         let _ = self.eval(
-            r#"(function(){var n=0;document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(card){var b=card.querySelector('[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');try{if(b){b.click();n++;}}catch(e){}});return n;})()"#,
+            r#"(function(){var n=0;document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment]').forEach(function(card){var b=card.querySelector('[class*="delete-icon" i],[class*="remove-icon" i],[class*="delete" i],[class*="remove" i],[aria-label*="remove" i],[aria-label*="löschen" i]');try{if(b){['pointerdown','mousedown','pointerup','mouseup'].forEach(function(t){b.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window,button:0}));});b.click();n++;}}catch(e){}});return n;})()"#,
         );
     }
 
@@ -349,6 +413,98 @@ impl WebBrainBackend {
         driver
             .set_file_input_files(files)
             .map_err(|error| error.to_string())
+    }
+
+    /// Fuegt Kimi-Bilder ueber die echte Zwischenablage ein. Der Aufruf ist
+    /// absichtlich Kimi-spezifisch: andere Anbieter akzeptieren den
+    /// vertrauenswuerdigen File-Input-Kanal und sollen weder die globale
+    /// Nutzer-Zwischenablage ueberschreiben noch eine zweite Preview erzeugen.
+    fn paste_images_via_native_clipboard(&self, attachments: &[BrowserAttachment]) -> bool {
+        let images: Vec<&BrowserAttachment> = attachments
+            .iter()
+            .filter(|attachment| attachment.kind == BrowserAttachmentKind::Image)
+            .collect();
+        if images.is_empty() {
+            return false;
+        }
+        let before = self.attachment_signal_count();
+        for attachment in images {
+            if !self.focus_composer_for_clipboard_paste() {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[upload] Kimi clipboard paste: composer nicht fokussierbar");
+                }
+                return false;
+            }
+            let result = {
+                let mut guard = self.driver.borrow_mut();
+                let Some(driver) = guard.as_mut() else {
+                    return false;
+                };
+                driver.paste_image_from_clipboard(&attachment.mime_type, &attachment.data)
+            };
+            if let Err(error) = result {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[upload] Kimi clipboard paste unavailable: {error}");
+                }
+                return false;
+            }
+            // Kimi rendert die Preview asynchron nach dem trusted key event.
+            // Bei mehreren Bildern reicht ein kurzer Abstand, damit der
+            // zweite Paste nicht in den noch laufenden Vue-Handler faellt.
+            std::thread::sleep(Duration::from_millis(350));
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if self.send_button_is_enabled() && self.attachment_signal_count() > before {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        false
+    }
+
+    /// Fokussiert den aktuellen Composer ohne den off-screen WebView als
+    /// Windows-Fenster zu aktivieren. CDP uebernimmt danach die trusted
+    /// Ctrl-V-Ereignisse; dadurch bleibt die TUI im Vordergrund.
+    fn focus_composer_for_clipboard_paste(&self) -> bool {
+        let composer = self.sel_js(
+            "composer",
+            &[
+                "div[contenteditable='true']",
+                "textarea",
+                "[role='textbox']",
+            ],
+        );
+        let expression = format!(
+            r#"(function(selectors){{
+                for(var i=0;i<selectors.length;i++){{
+                    try{{
+                        var els=document.querySelectorAll(selectors[i]);
+                        for(var j=0;j<els.length;j++){{
+                            var r=els[j].getBoundingClientRect(),s=getComputedStyle(els[j]);
+                            if(r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden){{
+                                // WebView2 can keep document.activeElement on
+                                // the body for an off-screen, WS_EX_NOACTIVATE
+                                // window even though the editor's own focus()
+                                // path is accepted by Chromium. The trusted
+                                // CDP key event below targets this focused
+                                // editor; requiring strict activeElement
+                                // equality here would incorrectly reject the
+                                // working paste path before it is attempted.
+                                els[j].focus();
+                                return true;
+                            }}
+                        }}
+                    }}catch(e){{}}
+                }}
+                return false;
+            }})({composer})"#
+        );
+        let result = self.eval(&expression);
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] Kimi composer focus result: {result:?}");
+        }
+        result.is_ok()
     }
 
     fn dispatch_file_input_events(&self) -> bool {
