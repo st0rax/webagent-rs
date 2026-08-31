@@ -270,31 +270,6 @@ impl WebBrainBackend {
         Ok(())
     }
 
-    /// Entfernt ausschließlich Upload-Kacheln, die die Oberfläche selbst als
-    /// fehlgeschlagen markiert. Kimi lässt solche alten Fehler im Composer
-    /// stehen und deaktiviert dadurch den Senden-Knopf für nachfolgende,
-    /// erfolgreiche Dateien.
-    fn remove_failed_attachment_previews(&self) {
-        for _ in 0..16 {
-            let clicked = self.click_visible_real("failed_attachment_delete")
-                || self.click_first("failed_attachment_delete");
-            if !clicked {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(120));
-        }
-        let _ = self.eval(
-            r#"(function(){
-                var removed=0;
-                document.querySelectorAll('[class*="image-thumbnail" i].error,[class*="attachment" i].error,[class*="file-preview" i].error,[data-attachment].error').forEach(function(card){
-                    var button=card.querySelector('[class*="delete" i],[aria-label*="remove" i],[aria-label*="löschen" i]');
-                    try{(button||card).click();removed++;}catch(e){}
-                });
-                return removed;
-            })()"#,
-        );
-    }
-
     fn remove_all_attachment_previews(&self) {
         for _ in 0..32 {
             if !self.click_visible_real("attachment_delete")
