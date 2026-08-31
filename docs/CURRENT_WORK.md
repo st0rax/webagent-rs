@@ -29,11 +29,13 @@ Textturns eines betroffenen Brains bleiben davon unberührt.
 | fokussierte Upload-/Relay-Tests (`cargo test --locked --no-default-features send --lib`) | 12 bestanden |
 | `cargo clippy --locked --no-default-features --all-targets -- -D warnings` | bestanden |
 | `cargo check --locked` (WebView2-Feature) | bestanden |
+| Live-Bild-Input-Smoke `webagent/chatgpt` (1x1 PNG, exakte Antwort `IMAGE_INPUT_OK.`) | bestanden |
 
 Eine Live-Abnahme mit echten Bild-/Audio-Requests auf DeepSeek, Gemini, Kimi und
 Mistral steht noch aus; dafür muss der Eigentümer die jeweiligen Browserprofile
 erreichbar und angemeldet lassen. Bis zu dieser Gegenprobe werden diese Provider
-nicht als multimodal verifiziert bewertet.
+nicht als multimodal verifiziert bewertet. Der ChatGPT-Smoke belegt nur den
+funktionierenden Upload-Transport, nicht die Bildgenerierung als API-Output.
 
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
 
