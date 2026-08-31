@@ -1,4 +1,13 @@
 {
+  "failed_attachment_delete": [
+    "[class*='image-thumbnail' i].error .image-delete-container",
+    "[class*='image-thumbnail' i].error .image-delete-icon",
+    "[class*='attachment' i].error [class*='delete' i]",
+    "[class*='file-preview' i].error [class*='delete' i]",
+    "[data-attachment].error [aria-label*='remove' i]",
+    "[data-attachment].error [aria-label*='delete' i]",
+    "[data-attachment].error [class*='delete' i]"
+  ],
   "composer": [
     "textarea[data-id='root']",
     "[data-testid='chat-input']",

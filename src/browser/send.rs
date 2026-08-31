@@ -283,7 +283,7 @@ impl WebBrainBackend {
         let _ = self.eval(
             r#"(function(){
                 var removed=0;
-                document.querySelectorAll('[class*="image-thumbnail" i].error,[data-attachment].error').forEach(function(card){
+                document.querySelectorAll('[class*="image-thumbnail" i].error,[class*="attachment" i].error,[class*="file-preview" i].error,[data-attachment].error').forEach(function(card){
                     var button=card.querySelector('[class*="delete" i],[aria-label*="remove" i],[aria-label*="löschen" i]');
                     try{(button||card).click();removed++;}catch(e){}
                 });
