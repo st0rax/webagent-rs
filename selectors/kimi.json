@@ -5,6 +5,8 @@
     "div[contenteditable='true'][role='textbox']"
   ],
   "send_button": [
+    "div.send-button-container button",
+    "div.send-button-container [role='button']",
     "div.send-button-container",
     "button[aria-label*='Send' i]",
     "button[aria-label*='send' i]",

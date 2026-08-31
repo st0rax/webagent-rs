@@ -756,7 +756,15 @@ impl WebBrainBackend {
                 eprintln!("[submit] attempt {} consumed={consumed}", attempt + 1);
             }
             if !consumed {
-                if attempt == 0 || !has_send_button {
+                // Kimi's Lexical editor treats Enter as a line break. Its
+                // actual send affordance is the arrow button inside the
+                // send-button container, so do not spend the first attempt
+                // on a keystroke which can never submit this provider.
+                if self.brain_id == "kimi" && has_send_button {
+                    if !self.click_visible_real("send_button") {
+                        self.click_first("send_button");
+                    }
+                } else if attempt == 0 || !has_send_button {
                     self.press_enter().ok();
                 } else if !self.click_visible_real("send_button") {
                     self.click_first("send_button");
@@ -1141,6 +1149,15 @@ return best?best.slice(0,300):null;})()"#;
                 assistant_grew,
                 url_changed,
             );
+            // Kimi's landing page already contains decorative `.markdown`
+            // nodes.  Their hydration can grow the generic assistant count
+            // before anything was sent.  For this provider an answer/stop
+            // signal only proves submission once the editor consumed text.
+            let proven = if self.brain_id == "kimi" {
+                composer_consumed && (stop_visible || assistant_grew || url_changed)
+            } else {
+                proven
+            };
             if proven {
                 return true;
             }
