@@ -54,6 +54,15 @@ pub trait PageDriver: Send {
     /// Text als echtes Tippen ins fokussierte Element.
     fn insert_text(&mut self, text: &str) -> Result<()>;
 
+    /// Ersetzt den Inhalt des fokussierten Rich-Text-Editors ueber
+    /// vertrauenswuerdige Browser-Eingabe. Der Standardtreiber kann das nicht;
+    /// WebView2 nutzt dafuer in-process CDP (Ctrl+A, Backspace, Shift+Enter).
+    fn replace_multiline_text(&mut self, _text: &str) -> Result<()> {
+        Err(PageDriverError::NotAvailable(
+            "Vertrauenswuerdige Rich-Text-Ersetzung ist nicht verfuegbar".into(),
+        ))
+    }
+
     /// Linksklick an Viewport-Koordinaten.
     fn click_at(&mut self, x: f64, y: f64) -> Result<()>;
 

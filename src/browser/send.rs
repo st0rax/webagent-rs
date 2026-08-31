@@ -9,7 +9,7 @@
 use std::time::{Duration, Instant};
 
 use crate::brain::BrainBackend;
-use crate::browser_inference::BrowserAttachment;
+use crate::browser_inference::{BrowserAttachment, BrowserAttachmentKind};
 use serde_json::{json, Value};
 
 use super::blocking::{banner_is_prompt_echo, block_banner_expr, is_technical_block_phrase_list};
@@ -77,15 +77,43 @@ impl WebBrainBackend {
         attachments: &[BrowserAttachment],
     ) -> Result<i32, String> {
         if !attachments.is_empty() {
+            self.prepare_attachment_mode(attachments)?;
             self.attach_files(attachments)?;
         }
         self.send(text)
+    }
+
+    /// Bringt Oberflaechen, die Uploads nur in einem eigenen Modus annehmen,
+    /// vor der Dateiuebergabe in diesen Zustand. DeepSeek zeigt den
+    /// Datei-Chooser zwar auch in anderen Segmenten, aktiviert den Sendeknopf
+    /// mit einem Bild aber nur in `Vision`.
+    fn prepare_attachment_mode(&mut self, attachments: &[BrowserAttachment]) -> Result<(), String> {
+        let wants_image = attachments
+            .iter()
+            .any(|attachment| attachment.kind == BrowserAttachmentKind::Image);
+        if self.brain_id != "deepseek" || !wants_image {
+            return Ok(());
+        }
+
+        if self.select_segment("mode_option", "Vision").is_ok() {
+            return Ok(());
+        }
+
+        // Wenn Vision bereits aktiv war, gibt es durch einen erneuten Klick
+        // keine Zustandsaenderung und `select_segment` kann den Erfolg nicht
+        // belegen. Ein einmaliger Wechsel ueber Instant erzeugt in diesem Fall
+        // einen messbaren Zustand; anschließend muss Vision belegbar sein.
+        let _ = self.select_segment("mode_option", "Instant");
+        self.select_segment("mode_option", "Vision")
+            .map(|_| ())
+            .map_err(|error| format!("DeepSeek-Vision-Modus nicht aktivierbar: {error}"))
     }
 
     fn attach_files(&self, attachments: &[BrowserAttachment]) -> Result<(), String> {
         if attachments.is_empty() {
             return Ok(());
         }
+        self.remove_failed_attachment_previews();
         // Viele UIs rendern das Datei-Input erst nach einem Klick auf die
         // Büroklammer. Dieser Klick darf nicht über den nativen Dateidialog
         // laufen: ein solcher Dialog würde den gemeinsamen WebView-Eventloop
@@ -143,18 +171,36 @@ impl WebBrainBackend {
             let _ = self.dispatch_file_input_events();
             let deadline = Instant::now() + Duration::from_secs(4);
             let soft_ready = Instant::now() + Duration::from_millis(1500);
+            let mut native_files_observed = false;
             while Instant::now() < deadline {
+                let signal_now = self.attachment_signal_count();
+                let file_count_now = self.file_input_files_count();
+                if file_count_now >= attachments.len() {
+                    native_files_observed = true;
+                }
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!(
+                        "[upload] native proof: files={file_count_now}/{} signal={signal_now} (before={signal_before_native})",
+                        attachments.len()
+                    );
+                }
                 // A trusted CDP drag/drop can produce a visible provider
                 // preview even when WebView2 keeps `input.files` empty.  The
                 // new preview is the relevant proof in that case; do not
                 // reject an otherwise successful browser-native upload solely
                 // because the hidden input is recreated by the SPA.
-                if self.attachment_signal_count() > signal_before_native {
+                if signal_now > signal_before_native {
                     return Ok(());
                 }
-                if self.file_input_files_count() >= attachments.len()
-                    && Instant::now() >= soft_ready
-                {
+                // Vue/React uploader copy the File into their own state and
+                // immediately replace or clear the hidden input. Seeing the
+                // complete FileList followed by zero is therefore stronger
+                // evidence than polling only the final DOM state (observed on
+                // Kimi's current uploader).
+                if native_files_observed && file_count_now == 0 {
+                    return Ok(());
+                }
+                if native_files_observed && Instant::now() >= soft_ready {
                     return Ok(());
                 }
                 std::thread::sleep(Duration::from_millis(150));
@@ -219,6 +265,31 @@ impl WebBrainBackend {
             ));
         }
         Ok(())
+    }
+
+    /// Entfernt ausschließlich Upload-Kacheln, die die Oberfläche selbst als
+    /// fehlgeschlagen markiert. Kimi lässt solche alten Fehler im Composer
+    /// stehen und deaktiviert dadurch den Senden-Knopf für nachfolgende,
+    /// erfolgreiche Dateien.
+    fn remove_failed_attachment_previews(&self) {
+        for _ in 0..16 {
+            let clicked = self.click_visible_real("failed_attachment_delete")
+                || self.click_first("failed_attachment_delete");
+            if !clicked {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(120));
+        }
+        let _ = self.eval(
+            r#"(function(){
+                var removed=0;
+                document.querySelectorAll('[class*="image-thumbnail" i].error,[data-attachment].error').forEach(function(card){
+                    var button=card.querySelector('[class*="delete" i],[aria-label*="remove" i],[aria-label*="löschen" i]');
+                    try{(button||card).click();removed++;}catch(e){}
+                });
+                return removed;
+            })()"#,
+        );
     }
 
     fn set_file_input_files_native(&self, files: &[(String, Vec<u8>)]) -> Result<(), String> {
@@ -410,7 +481,7 @@ impl WebBrainBackend {
             var sels=[
                 '[data-attachment]','[data-testid*="attachment" i]',
                 '[data-testid*="file" i]','[class*="attachment" i]',
-                '[class*="file-preview" i]','img[src^="blob:"]',
+                '[class*="file-preview" i]','[class*="image-thumbnail" i]','img[src^="blob:"]',
                 '[aria-label*="attachment" i]','[aria-label*="angehängt" i]'
             ],n=0;
             for(var i=0;i<sels.length;i++)try{
@@ -443,11 +514,20 @@ impl WebBrainBackend {
         // kimis Lexical-Editor meldete fill_composer frueher Erfolg, obwohl das Feld
         // leer blieb — dann ging Enter ins Leere und verify_submitted meldete
         // faelschlich "abgeschickt". Vor jedem Fuell-Versuch nochmal Modals schliessen.
-        if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.dismiss_consent();
-            s.fill_composer(js, t);
-            s.composer_contains(js, t)
-        }) {
+        let filled = if self.brain_id == "kimi" {
+            self.wait_fill_composer(&composer_js, text, |s, js, t| {
+                s.dismiss_consent();
+                s.fill_composer_rich_multiline(js, t) && s.composer_matches_text(js, t)
+            })
+        } else {
+            self.wait_fill_composer(&composer_js, text, |s, js, t| {
+                s.dismiss_consent();
+                s.fill_composer(js, t);
+                s.composer_contains(js, t)
+            })
+        };
+        if !filled {
+            self.capture_submit_failure_trace();
             return Err("Composer-Feld nicht gefunden (Timeout)".into());
         }
         std::thread::sleep(Duration::from_millis(150));
@@ -492,6 +572,7 @@ impl WebBrainBackend {
     /// Konversations-Vergiftung, die gemini/deepseek im Swarm zeigten
     /// ("gemini lebt um 11:19:06" aus einem alten Chat).
     fn submit_failed_error(&self, attempts: u32) -> String {
+        self.capture_submit_failure_trace();
         if let Some(banner) = self.detect_block_banner() {
             return format!(
                 "blockiert: kein Absende-Beweis nach {attempts} Versuchen -- Seite zeigt: {banner}"
@@ -547,6 +628,55 @@ impl WebBrainBackend {
         )
     }
 
+    /// Schreibt nur im expliziten Verifikationsmodus einen Screenshot und eine
+    /// kompakte DOM-Diagnose. Das hält fehlgeschlagene Upload-Smokes
+    /// untersuchbar, ohne im normalen Betrieb Chat-Inhalte mitzuschneiden.
+    fn capture_submit_failure_trace(&self) {
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_none() {
+            return;
+        }
+        let send_selectors = Self::js_selectors(&self.sel("send_button"));
+        let composer_selectors = Self::js_selectors(&self.sel("composer"));
+        let expression = format!(
+            r#"(function(){{
+                function scan(selectors){{
+                    var out=[];
+                    for(var i=0;i<selectors.length;i++)try{{
+                        var els=QA(selectors[i]);
+                        for(var j=0;j<els.length;j++){{
+                            var e=els[j],r=e.getBoundingClientRect(),s=getComputedStyle(e);
+                            var value=('value' in e)?(e.value||''):(e.innerText||e.textContent||'');
+                            out.push({{selector:selectors[i],tag:e.tagName,cls:((e.className||'')+'').slice(0,180),
+                                aria:e.getAttribute('aria-label'),disabled:e.disabled===true||e.getAttribute('aria-disabled')==='true',
+                                visible:r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden',x:r.x,y:r.y,w:r.width,h:r.height,
+                                textLength:value.length,text:value.slice(0,500)}});
+                        }}
+                    }}catch(error){{}}
+                    return out;
+                }}
+                {prelude}
+                return {{send:scan({send}),composer:scan({composer})}};
+            }})()"#,
+            prelude = Self::JS_SEL_PRELUDE,
+            send = send_selectors,
+            composer = composer_selectors,
+        );
+        if let Ok(details) = self.eval(&expression) {
+            eprintln!("[send] submit failure DOM: {details}");
+        }
+        let path =
+            std::env::temp_dir().join(format!("webagent-{}-submit-failure.png", self.brain_id));
+        if let Some(driver) = self.driver.borrow_mut().as_mut() {
+            match driver.capture_png() {
+                Ok(png) => match std::fs::write(&path, png) {
+                    Ok(()) => eprintln!("[send] submit failure screenshot: {}", path.display()),
+                    Err(error) => eprintln!("[send] submit failure screenshot write: {error}"),
+                },
+                Err(error) => eprintln!("[send] submit failure screenshot capture: {error}"),
+            }
+        }
+    }
+
     /// Ist der Absendeknopf deaktiviert? `None` = kein Knopf gefunden.
     ///
     /// Prueft `disabled`, `aria-disabled` und `pointer-events: none` — die drei
@@ -557,8 +687,9 @@ impl WebBrainBackend {
             &list,
             "var el=Q(S[i]);if(el){var b=el.closest('button')||el;\
              var st=window.getComputedStyle(b);\
+             var cls=((b.className||'')+'').toLowerCase();\
              return (b.disabled===true)||b.getAttribute('aria-disabled')==='true'\
-             ||st.pointerEvents==='none';}",
+             ||st.pointerEvents==='none'||cls.indexOf('disabled')!==-1;}",
             "null",
         );
         self.eval(&js).ok().and_then(|v| v.as_bool())

@@ -87,6 +87,10 @@ pub(crate) enum PageMessage {
         text: String,
         respond: Sender<Result<()>>,
     },
+    ReplaceMultilineText {
+        text: String,
+        respond: Sender<Result<()>>,
+    },
     ClickAt {
         x: f64,
         y: f64,
@@ -331,6 +335,13 @@ impl PageDriver for WebViewPageDriver {
 
     fn insert_text(&mut self, text: &str) -> Result<()> {
         self.call(|respond| PageMessage::InsertText {
+            text: text.to_string(),
+            respond,
+        })
+    }
+
+    fn replace_multiline_text(&mut self, text: &str) -> Result<()> {
+        self.call(|respond| PageMessage::ReplaceMultilineText {
             text: text.to_string(),
             respond,
         })
@@ -825,6 +836,10 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
             let r = insert_text_js(&slot.webview, &text, event_loop);
             let _ = respond.send(r);
         }
+        PageMessage::ReplaceMultilineText { text, respond } => {
+            let r = replace_multiline_text_cdp(&slot.webview, &text, event_loop);
+            let _ = respond.send(r);
+        }
         PageMessage::ClickAt { x, y, respond } => {
             let r = click_at_js(&slot.webview, x, y, event_loop);
             let _ = respond.send(r);
@@ -1269,6 +1284,87 @@ fn call_cdp_json(
 }
 
 #[cfg(windows)]
+fn replace_multiline_text_cdp(
+    webview: &wry::WebView,
+    text: &str,
+    event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    let key = |event_type: &str,
+               key: &str,
+               code: &str,
+               virtual_key: i64,
+               modifiers: i64,
+               text: Option<&str>| {
+        let mut value = serde_json::json!({
+            "type": event_type,
+            "key": key,
+            "code": code,
+            "windowsVirtualKeyCode": virtual_key,
+            "nativeVirtualKeyCode": virtual_key,
+            "modifiers": modifiers
+        });
+        if let Some(text) = text {
+            value["text"] = Value::String(text.to_string());
+            value["unmodifiedText"] = Value::String(text.to_string());
+        }
+        value.to_string()
+    };
+
+    // Trusted Ctrl+A followed by Backspace: unlike DOM mutations this updates
+    // Lexical/ProseMirror's internal editor state and therefore stays cleared.
+    call_cdp(
+        webview,
+        "Input.dispatchKeyEvent",
+        &key("rawKeyDown", "a", "KeyA", 65, 2, None),
+        event_loop,
+    )?;
+    call_cdp(
+        webview,
+        "Input.dispatchKeyEvent",
+        &key("keyUp", "a", "KeyA", 65, 2, None),
+        event_loop,
+    )?;
+    call_cdp(
+        webview,
+        "Input.dispatchKeyEvent",
+        &key("rawKeyDown", "Backspace", "Backspace", 8, 0, None),
+        event_loop,
+    )?;
+    call_cdp(
+        webview,
+        "Input.dispatchKeyEvent",
+        &key("keyUp", "Backspace", "Backspace", 8, 0, None),
+        event_loop,
+    )?;
+
+    let normalized = text.replace("\r\n", "\n");
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    for (index, line) in lines.iter().enumerate() {
+        call_cdp(
+            webview,
+            "Input.insertText",
+            &serde_json::json!({"text": line}).to_string(),
+            event_loop,
+        )?;
+        if index + 1 < lines.len() {
+            call_cdp(
+                webview,
+                "Input.dispatchKeyEvent",
+                &key("keyDown", "Enter", "Enter", 13, 8, Some("\r")),
+                event_loop,
+            )?;
+            call_cdp(
+                webview,
+                "Input.dispatchKeyEvent",
+                &key("keyUp", "Enter", "Enter", 13, 8, None),
+                event_loop,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 /// Übergibt Dateien über WebView2s vertrauenswürdigen CDP-Kanal. Eine
 /// `DataTransfer`-Zuweisung aus JS sieht für manche SPAs zwar wie ein FileList
 /// aus, wird vom Upload-Backend aber als synthetisch verworfen. `DOM.setFileInputFiles`
@@ -1314,6 +1410,20 @@ fn set_file_input_files_cdp(
         let _ = fs::remove_dir_all(&dir);
         return Err(error);
     }
+    // Ask Chromium to create a real file-chooser transaction, but intercept
+    // it before a native Windows dialog is shown.  `DOM.setFileInputFiles`
+    // is reliable against the backendNodeId from this event; setting an
+    // arbitrary hidden input directly is acknowledged as `{}` by some
+    // WebView2 runtimes without changing its FileList.
+    let chooser_backend_node_id = match open_intercepted_file_chooser_cdp(webview, event_loop) {
+        Ok(id) => Some(id),
+        Err(error) => {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] intercepted file chooser unavailable: {error}");
+            }
+            None
+        }
+    };
     let document = match call_cdp_json(
         webview,
         "DOM.getDocument",
@@ -1422,7 +1532,9 @@ fn set_file_input_files_cdp(
         );
     }
     let mut params = serde_json::json!({"files": path_strings});
-    if let Some(object_id) = object_id {
+    if let Some(backend_node_id) = chooser_backend_node_id {
+        params["backendNodeId"] = Value::from(backend_node_id);
+    } else if let Some(object_id) = object_id {
         params["objectId"] = Value::String(object_id);
     } else {
         params["nodeId"] = Value::from(node_id);
@@ -1438,10 +1550,26 @@ fn set_file_input_files_cdp(
     ) {
         Ok(response) => response,
         Err(error) => {
+            if chooser_backend_node_id.is_some() {
+                let _ = call_cdp_json(
+                    webview,
+                    "Page.setInterceptFileChooserDialog",
+                    r#"{"enabled":false}"#,
+                    event_loop,
+                );
+            }
             let _ = fs::remove_dir_all(&dir);
             return Err(error);
         }
     };
+    if chooser_backend_node_id.is_some() {
+        let _ = call_cdp_json(
+            webview,
+            "Page.setInterceptFileChooserDialog",
+            r#"{"enabled":false}"#,
+            event_loop,
+        );
+    }
     if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
         eprintln!("[upload] DOM.setFileInputFiles response: {cdp_response}");
     }
@@ -1485,6 +1613,129 @@ fn set_file_input_files_cdp(
         eprintln!("[upload] native file-input count={native_count}; skip drag fallback");
     }
     Ok(paths)
+}
+
+#[cfg(windows)]
+fn open_intercepted_file_chooser_cdp(
+    webview: &wry::WebView,
+    event_loop: &mut EventLoop<()>,
+) -> Result<i64> {
+    use std::sync::mpsc;
+    use webview2_com::{CoTaskMemPWSTR, DevToolsProtocolEventReceivedEventHandler};
+    use windows::core::{HSTRING, PWSTR};
+    use windows::Win32::System::WinRT::EventRegistrationToken;
+    use wry::WebViewExtWindows;
+
+    let proto = |message: String| PageDriverError::Protocol(message);
+    unsafe {
+        let core = webview
+            .controller()
+            .CoreWebView2()
+            .map_err(|error| proto(error.to_string()))?;
+        let event_name = HSTRING::from("Page.fileChooserOpened");
+        let receiver = core
+            .GetDevToolsProtocolEventReceiver(&event_name)
+            .map_err(|error| proto(error.to_string()))?;
+        let (event_tx, event_rx) = mpsc::channel();
+        let handler =
+            DevToolsProtocolEventReceivedEventHandler::create(Box::new(move |_sender, args| {
+                if let Some(args) = args {
+                    let mut raw = PWSTR::null();
+                    if args.ParameterObjectAsJson(&mut raw).is_ok() {
+                        let json = CoTaskMemPWSTR::from(raw).to_string();
+                        let _ = event_tx.send(json);
+                    }
+                }
+                Ok(())
+            }));
+        let mut token = EventRegistrationToken::default();
+        receiver
+            .add_DevToolsProtocolEventReceived(&handler, &mut token)
+            .map_err(|error| proto(error.to_string()))?;
+
+        let operation = (|| -> Result<i64> {
+            call_cdp_json(
+                webview,
+                "Page.enable",
+                r#"{"enableFileChooserOpenedEvent":true}"#,
+                event_loop,
+            )?;
+            call_cdp_json(
+                webview,
+                "Page.setInterceptFileChooserDialog",
+                r#"{"enabled":true}"#,
+                event_loop,
+            )?;
+            let click = serde_json::json!({
+                "expression": "(() => { const i=document.querySelector('input[type=file]'); if(!i)return false; i.click(); return true; })()",
+                "returnByValue": true,
+                "userGesture": true,
+                "silent": true
+            });
+            let clicked =
+                call_cdp_json(webview, "Runtime.evaluate", &click.to_string(), event_loop)?;
+            let did_click = clicked
+                .pointer("/result/value")
+                .or_else(|| clicked.pointer("/result/result/value"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if !did_click {
+                return Err(PageDriverError::Protocol(
+                    "kein input[type=file] fuer File-Chooser-Interception".into(),
+                ));
+            }
+
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                match event_rx.try_recv() {
+                    Ok(payload) => {
+                        let value: Value = serde_json::from_str(&payload).map_err(|error| {
+                            PageDriverError::Protocol(format!(
+                                "Page.fileChooserOpened: ungueltiges JSON: {error}"
+                            ))
+                        })?;
+                        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                            eprintln!("[upload] Page.fileChooserOpened: {value}");
+                        }
+                        return value
+                            .get("backendNodeId")
+                            .and_then(Value::as_i64)
+                            .filter(|id| *id > 0)
+                            .ok_or_else(|| {
+                                PageDriverError::Protocol(
+                                    "Page.fileChooserOpened ohne backendNodeId".into(),
+                                )
+                            });
+                    }
+                    Err(mpsc::TryRecvError::Empty) if Instant::now() < deadline => {
+                        pump_once(event_loop);
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(mpsc::TryRecvError::Empty) => {
+                        return Err(PageDriverError::Timeout(
+                            "Page.fileChooserOpened blieb aus".into(),
+                        ));
+                    }
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        return Err(PageDriverError::Protocol(
+                            "Page.fileChooserOpened-Kanal geschlossen".into(),
+                        ));
+                    }
+                }
+            }
+        })();
+
+        let _ = receiver.remove_DevToolsProtocolEventReceived(token);
+        if operation.is_err() {
+            let _ = call_cdp_json(
+                webview,
+                "Page.setInterceptFileChooserDialog",
+                r#"{"enabled":false}"#,
+                event_loop,
+            );
+        }
+        operation
+    }
 }
 
 #[cfg(windows)]
@@ -1643,6 +1894,17 @@ fn call_cdp(
 ) -> Result<()> {
     Err(PageDriverError::NotAvailable(
         "DevTools-Protokoll: unter Linux nicht verfuegbar (kein CDP in WebKitGTK)".into(),
+    ))
+}
+
+#[cfg(not(windows))]
+fn replace_multiline_text_cdp(
+    _webview: &wry::WebView,
+    _text: &str,
+    _event_loop: &mut EventLoop<()>,
+) -> Result<()> {
+    Err(PageDriverError::NotAvailable(
+        "Rich-Text-Ersetzung: unter Linux kein CDP in WebKitGTK".into(),
     ))
 }
 

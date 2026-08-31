@@ -8,6 +8,57 @@ use serde_json::Value;
 use std::time::Duration;
 
 impl WebBrainBackend {
+    /// Fuellt einen contenteditable Rich-Text-Editor absatzweise. Lexical
+    /// verwirft bei `Input.insertText` alles hinter dem ersten Zeilenumbruch;
+    /// `execCommand('insertParagraph')` geht dagegen durch seinen Editor-State.
+    pub(super) fn fill_composer_rich_multiline(&self, composer_js: &str, text: &str) -> bool {
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return {x:r.left+r.width/2,y:r.top+r.height/2};}";
+        let coords = self
+            .eval(&Self::js_scan(composer_js, coord_body, "null"))
+            .unwrap_or(Value::Null);
+        if let (Some(x), Some(y)) = (
+            coords.get("x").and_then(Value::as_f64),
+            coords.get("y").and_then(Value::as_f64),
+        ) {
+            let mut guard = self.driver.borrow_mut();
+            if let Some(driver) = guard.as_mut() {
+                let _ = driver.click_at(x, y);
+                std::thread::sleep(Duration::from_millis(80));
+                if driver.replace_multiline_text(text).is_ok() {
+                    return true;
+                }
+            }
+        }
+
+        // Portabler Fallback fuer Treiber ohne in-process CDP.
+        let serialized = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
+        let body = format!(
+            "var el=Q(S[i]);if(el){{var r=el.getBoundingClientRect();if(r.width<=0||r.height<=0)return false;\
+             el.focus();try{{if('value' in el){{el.value='';el.dispatchEvent(new Event('input',{{bubbles:true}}));}}else{{\
+             var selection=window.getSelection(),range=document.createRange();range.selectNodeContents(el);\
+             selection.removeAllRanges();selection.addRange(range);document.execCommand('delete',false,null);}}\
+             var parts={serialized}.replace(/\\r\\n/g,'\\n').split('\\n');\
+             for(var p=0;p<parts.length;p++){{if(parts[p])document.execCommand('insertText',false,parts[p]);\
+             if(p+1<parts.length)document.execCommand('insertParagraph',false,null);}}\
+             el.dispatchEvent(new InputEvent('input',{{bubbles:true,inputType:'insertText'}}));return true;}}catch(error){{return false;}}}}"
+        );
+        self.eval_bool(&Self::js_scan(composer_js, &body, "false"))
+    }
+
+    /// Vergleicht den gesamten sichtbaren Editorinhalt, wobei nur die von
+    /// Rich-Text-Editoren unterschiedlich gerenderte Leerraumstruktur
+    /// normalisiert wird. Ein passender Anfang reicht fuer Maschinenprompts
+    /// nicht: Kimi hatte dadurch still nur Absatz eins uebernommen.
+    pub(super) fn composer_matches_text(&self, composer_js: &str, text: &str) -> bool {
+        let expected = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let expected = serde_json::to_string(&expected).unwrap_or_else(|_| "\"\"".into());
+        let body = format!(
+            "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');\
+             return v.replace(/\\s+/g,' ').trim()==={expected};}}"
+        );
+        self.eval_bool(&Self::js_scan(composer_js, &body, "false"))
+    }
+
     /// Playwright-`fill()`-Äquivalent: DOM setzen + input/change-Events (Angular/React).
     pub(super) fn fill_composer_dom_set(&self, composer_js: &str, text: &str) -> bool {
         let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";

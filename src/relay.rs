@@ -274,6 +274,7 @@ fn is_deterministic_send_failure(error: &str) -> bool {
             "rate limit",
             "cloudflare",
             "login required",
+            "composer-feld nicht gefunden",
         ]
         .iter()
         .any(|marker| lower.contains(marker))

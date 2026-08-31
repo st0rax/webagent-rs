@@ -5,9 +5,10 @@
     "div.ds-editor textarea"
   ],
   "send_button": [
+    "div[role='button'].ds-button--primary.ds-button--filled.ds-button--circle",
+    "div.ds-button--primary.ds-button--filled.ds-button--circle",
     "button[type='submit']",
-    "button[aria-label*='Send']",
-    "button:has(svg)"
+    "button[aria-label*='Send']"
   ],
   "attach_button": [
     "div[role='button'].ds-button--iconLabelPrimary.ds-button--icon.ds-button--capsule.ds-button--s"

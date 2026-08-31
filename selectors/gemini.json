@@ -14,9 +14,10 @@
     "button[aria-label*='Upload' i]"
   ],
   "send_button": [
+    "button[aria-label='Nachricht senden']",
+    "button[aria-label='Send message']",
+    "button[aria-label='Senden']",
     "div[class*='send-button-container'] > button",
-    "button[aria-label*='Send' i]",
-    "button[aria-label*='Nachricht senden' i]",
     "button[type='submit']"
   ],
   "consent_reject_button": [

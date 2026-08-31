@@ -5,6 +5,7 @@
     "div[contenteditable='true'][role='textbox']"
   ],
   "send_button": [
+    "div.send-button-container",
     "button[aria-label*='Send' i]",
     "button[aria-label*='send' i]",
     "button[type='submit']",
@@ -14,6 +15,13 @@
   "attach_button": [
     "div.toolkit-trigger-btn",
     "[class*='toolkit-trigger' i]"
+  ],
+  "failed_attachment_delete": [
+    "[class*='image-thumbnail' i].error .image-delete-container",
+    "[class*='image-thumbnail' i].error .image-delete-icon",
+    "[class*='image-thumbnail' i].error [class*='delete' i]",
+    "[class*='image-thumbnail' i].error [aria-label*='löschen' i]",
+    "[class*='image-thumbnail' i].error [aria-label*='remove' i]"
   ],
   "stop_button": [
     "[aria-label*='stopp' i]",

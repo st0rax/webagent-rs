@@ -16,6 +16,27 @@ use crate::page_driver::PageDriver;
 use crate::webview_runtime::WebViewRuntime;
 use std::time::{Duration, Instant};
 
+fn draft_is_dirty(backend: &WebBrainBackend) -> bool {
+    let composers = backend.sel_js(
+        "composer",
+        &[
+            "div[contenteditable='true']",
+            "textarea",
+            "[role='textbox']",
+        ],
+    );
+    let expression = format!(
+        "(function(){{{prelude}var S={composers};var chars=0;for(var i=0;i<S.length;i++)try{{\
+         var els=QA(S[i]);for(var j=0;j<els.length;j++){{var e=els[j],r=e.getBoundingClientRect();\
+         if(r.width>0&&r.height>0){{var v=('value' in e)?(e.value||''):(e.innerText||e.textContent||'');chars=Math.max(chars,v.trim().length);}}}}}}catch(error){{}}\
+         var previews=document.querySelectorAll('[data-attachment],[class*=\"attachment\" i],[class*=\"image-thumbnail\" i],img[src^=\"blob:\"]');\
+         return chars>0||previews.length>0;}})()",
+        prelude = WebBrainBackend::JS_SEL_PRELUDE,
+        composers = composers,
+    );
+    backend.eval_bool(&expression)
+}
+
 impl BrainBackend for WebBrainBackend {
     fn brain_id(&self) -> &str {
         &self.brain_id
@@ -137,7 +158,14 @@ impl BrainBackend for WebBrainBackend {
         // Bevorzugt einen New-Chat-Button, sonst Navigation zur Start-URL.
         if self.click_first("new_chat_button") {
             std::thread::sleep(Duration::from_millis(800));
-        } else {
+            // Einige SPAs (aktuell Kimi) lassen auf der Startseite einen
+            // fehlgeschlagenen Entwurf samt Uploads trotz New-Chat-Klick
+            // stehen. Ein neuer Turn darf diesen Zustand nicht erben.
+            if !draft_is_dirty(self) {
+                return Ok(());
+            }
+        }
+        {
             let url = self.url.clone();
             let mut guard = self.driver.borrow_mut();
             let driver = guard.as_mut().ok_or("Backend nicht gestartet")?;

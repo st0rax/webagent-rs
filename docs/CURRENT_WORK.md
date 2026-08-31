@@ -30,12 +30,14 @@ Providerfunktion.
 
 Der Windows-Treiber versucht deshalb neben dem bestehenden Paste/Drop-Weg einen
 nativen WebView2-CDP-Upload (`DOM.setFileInputFiles`) und akzeptiert sowohl die
-direkte WebView2-Antwortform als auch den üblichen `result`-Wrapper. Die aktuelle
-WebView2-Runtime quittiert den Befehl zwar mit `{}`, übernimmt die Datei im
-DeepSeek-Smoke aber noch nicht in `input.files`; der Transport ist damit noch
-nicht providerweise freigegeben. Bis zur erfolgreichen Bild-/Audio-Gegenprobe
-bleiben die vier Modelle im `/v1/models`-Katalog bewusst text-only. Diese Grenze
-trennt sauber UI-Fähigkeit (belegt) von Ende-zu-Ende-Transport (offen).
+direkte WebView2-Antwortform als auch den üblichen `result`-Wrapper. Dieser Weg
+wurde live mit DeepSeek (23,33 s) und Gemini (26,06 s) als Bild-Requests bis zur
+Antwort `IMAGE_INPUT_OK` verifiziert. Bei Kimi wurden zusätzlich die tatsächlich
+sichtbaren Attachment-Zustände erfasst: die ersten zwei Karten sind rote
+Fehlerkarten und deaktivieren den Senden-Knopf; dafür sind gezielte
+`.image-delete-container`-/`.image-delete-icon`-Selektoren ergänzt. Kimi bleibt
+bis zum erfolgreichen Wiederholungssmoke bewusst unverifiziert. Mistral und
+Audio sind ebenfalls noch offen.
 
 Die generische Selektormaske enthält dafür providerneutrale Attach-Signale
 (`aria-label`, `data-testid`, `data-tooltip`, Datei-/Upload-Beschriftungen). Die
@@ -50,11 +52,12 @@ Textturns eines betroffenen Brains bleiben davon unberührt.
 | `cargo clippy --locked --no-default-features --all-targets -- -D warnings` | bestanden |
 | `cargo check --locked` (WebView2-Feature) | bestanden |
 | Live-Bild-Input-Smoke `webagent/chatgpt` (1x1 PNG, exakte Antwort `IMAGE_INPUT_OK.`) | bestanden |
+| Live-Bild-Input-Smoke `webagent/deepseek` (30 KB PNG, `IMAGE_INPUT_OK`) | bestanden (23,33 s) |
+| Live-Bild-Input-Smoke `webagent/gemini` (30 KB PNG, `IMAGE_INPUT_OK`) | bestanden (26,06 s) |
 
-Eine Live-Abnahme mit echten Bild-/Audio-Requests auf DeepSeek, Gemini, Kimi und
-Mistral steht noch aus; dafür muss der Eigentümer die jeweiligen Browserprofile
-erreichbar und angemeldet lassen. Bis zu dieser Gegenprobe werden diese Provider
-nicht als multimodal verifiziert bewertet. Der ChatGPT-Smoke belegt nur den
+Kimi benötigt vor der nächsten Gegenprobe einen sauberen Composer-Zustand ohne
+die beiden alten roten Fehlerkarten; der Transport selbst ist dort noch nicht
+freigegeben. Mistral und Audio bleiben offen. Die Smokes belegen nur den
 funktionierenden Upload-Transport, nicht die Bildgenerierung als API-Output.
 
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
