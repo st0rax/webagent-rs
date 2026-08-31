@@ -57,8 +57,29 @@ Textturns eines betroffenen Brains bleiben davon unberührt.
 
 Kimi benötigt vor der nächsten Gegenprobe einen sauberen Composer-Zustand ohne
 die beiden alten roten Fehlerkarten; der Transport selbst ist dort noch nicht
-freigegeben. Mistral und Audio bleiben offen. Die Smokes belegen nur den
-funktionierenden Upload-Transport, nicht die Bildgenerierung als API-Output.
+freigegeben. Commit `7aa9496` (`feat: add native clipboard image path for kimi`)
+bereinigt diese Altanhaenge nun automatisch. Lassen sie sich in Kimis
+fehlgeschlagenem Vue-Uploadzustand nicht entfernen, wird nur der verunreinigte
+Entwurf einmalig in einen frischen Chat zurueckgesetzt. Ein Bildrequest faellt
+anschliessend nicht mehr auf den nachweislich defekte rote Karten erzeugenden
+synthetischen `DataTransfer`-Pfad zurueck.
+
+Der neue Windows-Pfad decodiert das Eingabebild vor der Uebergabe, schreibt es
+als echtes Clipboard-Bild, fokussiert den WebView2-Controller und sendet einen
+nativen `Ctrl+V`-Tastenweg. Mit einem lokal erzeugten, gueltigen 64x64-PNG blieb
+der Composer danach sauber; Kimi bestaetigte den Bildanhang in der off-screen
+WebView2-Sitzung jedoch noch nicht als versandfaehig. Deshalb ist Kimi weiterhin
+**nicht verifiziert**. Ein echter Windows-Dateiauswahl-Gegenversuch ist derzeit
+durch den lokalen UI-Automationsrunner blockiert, der schon vor der
+Fensterinventarisierung mit `failed to write kernel assets` / `os error 3`
+abbricht. Das ist ein Testinfrastruktur-Blocker und kein positiver
+Providerbeleg.
+
+Mistral und Audio bleiben ebenfalls offen. Die bisherigen Smokes belegen nur
+den jeweiligen Bild-Input-Transport; Bildgenerierung bzw. andere binäre
+API-Ausgaben sind weiterhin nicht implementiert oder live verifiziert. Eine
+Behauptung „100 % API-Kompatibilitaet fuer alle Brains“ ist mit diesem Stand
+ausdruecklich nicht zulaessig.
 
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
 

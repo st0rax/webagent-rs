@@ -3231,6 +3231,7 @@ version = "0.11.1"
 dependencies = [
  "arboard",
  "clap",
+ "clipboard-win",
  "crossterm",
  "fancy-regex",
  "fs2",

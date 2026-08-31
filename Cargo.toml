@@ -51,6 +51,7 @@ windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Cons
 # dafuer das echte Windows-Bildformat (CF_DIB) in die Zwischenablage; image
 # decodiert die vom API-Client gelieferten PNG/JPEG/GIF/BMP/WebP-Bytes in RGBA.
 arboard = "3.6"
+clipboard-win = "5.4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 
 [lib]

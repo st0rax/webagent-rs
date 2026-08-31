@@ -898,6 +898,54 @@ fn dispatch_page(slot: &mut PageSlot, msg: PageMessage, event_loop: &mut EventLo
 /// verhindert, dass parallele Brain-Worker die globale Zwischenablage waehrend
 /// dieser kurzen Sequenz ueberschreiben.
 #[cfg(windows)]
+fn post_paste_to_webview_child(
+    parent: windows::Win32::Foundation::HWND,
+) -> std::result::Result<String, String> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_PASTE};
+
+    unsafe fn find_chrome_widget(
+        parent: windows::Win32::Foundation::HWND,
+        depth: u8,
+    ) -> Option<(windows::Win32::Foundation::HWND, String)> {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetClassNameW, GetWindow, GW_CHILD, GW_HWNDNEXT,
+        };
+        if depth > 12 {
+            return None;
+        }
+        let mut child = unsafe { GetWindow(parent, GW_CHILD).ok() };
+        let mut chrome_fallback = None;
+        while let Some(hwnd) = child {
+            let mut class_buf = [0_u16; 256];
+            let len = unsafe { GetClassNameW(hwnd, &mut class_buf) }.max(0) as usize;
+            let class_name = String::from_utf16_lossy(&class_buf[..len]);
+            // Chromium handles edit commands such as WM_PASTE at the widget
+            // window; the renderer child only receives the resulting DOM
+            // event.  Posting WM_PASTE straight to RenderWidgetHost is a
+            // no-op even when the contenteditable itself owns DOM focus.
+            if class_name.eq_ignore_ascii_case("Chrome_WidgetWin_0") {
+                return Some((hwnd, class_name));
+            }
+            if chrome_fallback.is_none() && class_name.starts_with("Chrome_") {
+                chrome_fallback = Some((hwnd, class_name.clone()));
+            }
+            if let Some(found) = unsafe { find_chrome_widget(hwnd, depth + 1) } {
+                return Some(found);
+            }
+            child = unsafe { GetWindow(hwnd, GW_HWNDNEXT).ok() };
+        }
+        chrome_fallback
+    }
+
+    let (target, class_name) = unsafe { find_chrome_widget(parent, 0) }
+        .ok_or_else(|| "kein WebView2-Rendererfenster gefunden".to_string())?;
+    unsafe { PostMessageW(target, WM_PASTE, WPARAM(0), LPARAM(0)) }
+        .map_err(|error| format!("WM_PASTE an {class_name}: {error}"))?;
+    Ok(class_name)
+}
+
+#[cfg(windows)]
 fn paste_image_from_clipboard(
     webview: &wry::WebView,
     window: &tao::window::Window,
@@ -948,19 +996,79 @@ fn paste_image_from_clipboard(
     } else {
         None
     };
-    let rgba = decoded.to_rgba8().into_raw();
-    clipboard
-        .set_image(ImageData {
-            width: width as usize,
-            height: height as usize,
-            bytes: Cow::Owned(rgba),
-        })
-        .map_err(|error| {
-            PageDriverError::Protocol(format!("Bild nicht in Clipboard gesetzt: {error}"))
-        })?;
+    let extension = match mime_type.to_ascii_lowercase().as_str() {
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/gif" => "gif",
+        "image/bmp" => "bmp",
+        "image/webp" => "webp",
+        _ => "png",
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let clipboard_dir = std::env::temp_dir().join(format!(
+        "webagent-clipboard-image-{}-{stamp}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&clipboard_dir).map_err(|error| {
+        PageDriverError::Protocol(format!("Clipboard-Bildverzeichnis: {error}"))
+    })?;
+    let clipboard_file = clipboard_dir.join(format!("image.{extension}"));
+    if let Err(error) = fs::write(&clipboard_file, data) {
+        let _ = fs::remove_dir_all(&clipboard_dir);
+        return Err(PageDriverError::Protocol(format!(
+            "Clipboard-Bilddatei: {error}"
+        )));
+    }
+    let clipboard_path = clipboard_file.to_string_lossy().into_owned();
+    // arboard currently owns the process clipboard handle.  Drop it before
+    // opening the native handle used for CF_HDROP; Windows permits only one
+    // clipboard opener at a time.
+    drop(clipboard);
+    // `FileList` implements `Setter<[T]>`, which must be called through the
+    // raw convenience function because a slice itself is unsized.
+    let file_list_result = (|| {
+        let _clipboard = clipboard_win::Clipboard::new_attempts(10)?;
+        clipboard_win::raw::set_file_list(&[clipboard_path.as_str()])
+    })();
+    if let Err(error) = file_list_result {
+        let _ = fs::remove_dir_all(&clipboard_dir);
+        return Err(PageDriverError::Protocol(format!(
+            "Bilddatei nicht als CF_HDROP in Clipboard gesetzt: {error}"
+        )));
+    }
+    // Kimi consumes the copied file asynchronously. Keep it around beyond the
+    // paste event, then remove only this uniquely named temporary directory.
+    let cleanup_dir = clipboard_dir.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_secs(60));
+        let _ = fs::remove_dir_all(cleanup_dir);
+    });
 
     let previous_foreground =
         unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
+    let current_input_thread = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
+    let foreground_input_thread = if previous_foreground.is_invalid() {
+        0
+    } else {
+        unsafe {
+            windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
+                previous_foreground,
+                None,
+            )
+        }
+    };
+    let input_queues_attached = foreground_input_thread != 0
+        && foreground_input_thread != current_input_thread
+        && unsafe {
+            windows::Win32::System::Threading::AttachThreadInput(
+                current_input_thread,
+                foreground_input_thread,
+                true,
+            )
+            .as_bool()
+        };
     let paste_result = (|| -> Result<()> {
         // Kimi lauscht auf dem echten Windows-Paste-Pfad. Das off-screen
         // Fenster darf dafuer kurz aktiviert werden; unmittelbar danach geben
@@ -978,8 +1086,8 @@ fn paste_image_from_clipboard(
         set_no_activate(window, false);
         window.set_focus();
         let hwnd = HWND(window.hwnd() as *mut core::ffi::c_void);
+        let foreground_activated = unsafe { SetForegroundWindow(hwnd).as_bool() };
         unsafe {
-            let _ = SetForegroundWindow(hwnd);
             // Focusing the Tao parent window alone is not sufficient: the
             // keyboard target can remain an invisible child.  Ask WebView2 to
             // focus its own controller before emitting the genuine Ctrl-V.
@@ -990,6 +1098,20 @@ fn paste_image_from_clipboard(
         // Die Aktivierung wird ueber denselben UI-Thread abgearbeitet, auf dem
         // das WebView-Fenster lebt. Ohne diesen Pump kann SendInput gelegentlich
         // vor dem Fokuswechsel eintreffen.
+        pump_once(event_loop);
+
+        // `MoveFocus` gives the WebView controller keyboard ownership, but it
+        // may also move DOM focus back to the document body.  Focus Kimi's
+        // actual contenteditable *after* that controller transition so the
+        // native WM_PASTE is delivered to the composer rather than nowhere.
+        let composer_focus = eval_js(
+            webview,
+            r#"(function(){var s=["div.chat-input-editor[contenteditable='true']","[class*='chat-input-editor' i][contenteditable='true']","div[contenteditable='true'][role='textbox']","div[contenteditable='true']"];for(var i=0;i<s.length;i++){var a=document.querySelectorAll(s[i]);for(var j=0;j<a.length;j++){var e=a[j],r=e.getBoundingClientRect(),c=getComputedStyle(e);if(r.width>0&&r.height>0&&c.display!=='none'&&c.visibility!=='hidden'){e.focus();return document.activeElement===e;}}}return false;})()"#,
+            event_loop,
+        )?;
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] post-controller composer focus={composer_focus}");
+        }
         pump_once(event_loop);
 
         let keyboard = |vk: VIRTUAL_KEY, flags| INPUT {
@@ -1011,11 +1133,21 @@ fn paste_image_from_clipboard(
             keyboard(VK_CONTROL, KEYEVENTF_KEYUP),
         ];
         let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
-        if sent != inputs.len() as u32 {
-            return Err(PageDriverError::Protocol(format!(
-                "Windows SendInput lieferte nur {sent}/{} Tastaturereignisse",
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!(
+                "[upload] native Ctrl-V foreground={foreground_activated} queues_attached={input_queues_attached} sent={sent}/{}",
                 inputs.len()
-            )));
+            );
+        }
+        if !foreground_activated || sent != inputs.len() as u32 {
+            let direct = post_paste_to_webview_child(hwnd);
+            if direct.is_err() && sent != inputs.len() as u32 {
+                return Err(PageDriverError::Protocol(format!(
+                    "Windows SendInput lieferte nur {sent}/{} Tastaturereignisse; WM_PASTE: {}",
+                    inputs.len(),
+                    direct.unwrap_err()
+                )));
+            }
         }
         // Die Kimi-Paste-Route verarbeitet die Datei synchron im key event,
         // aber ein kurzer Puffer verhindert, dass ein asynchroner Vue-Handler
@@ -1036,10 +1168,21 @@ fn paste_image_from_clipboard(
                 windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(previous_foreground);
         }
     }
-    if let Some(image) = previous_image {
-        let _ = clipboard.set_image(image);
-    } else if let Some(text) = previous_text {
-        let _ = clipboard.set_text(text);
+    if input_queues_attached {
+        unsafe {
+            let _ = windows::Win32::System::Threading::AttachThreadInput(
+                current_input_thread,
+                foreground_input_thread,
+                false,
+            );
+        }
+    }
+    if let Ok(mut clipboard) = Clipboard::new() {
+        if let Some(image) = previous_image {
+            let _ = clipboard.set_image(image);
+        } else if let Some(text) = previous_text {
+            let _ = clipboard.set_text(text);
+        }
     }
     paste_result
 }
@@ -2038,7 +2181,7 @@ fn upload_mime_for_name(name: &str) -> &'static str {
 /// welche Sequenz an die Engine geht — dieselbe Unterscheidung zwischen
 /// Mechanismus-Test und Verhalten, die `press_key_script` schon traegt.
 fn cdp_click_events(x: f64, y: f64) -> Vec<(&'static str, String)> {
-    let base = |button: Option<&str>, extra: &str| {
+    let base = |event_type: &str, button: Option<&str>, extra: &str| {
         let button = button
             .map(|value| format!(r#""button":"{value}","#))
             .unwrap_or_default();
@@ -2048,7 +2191,8 @@ fn cdp_click_events(x: f64, y: f64) -> Vec<(&'static str, String)> {
             // runtime revisions with E_INVALIDARG. Omitting button for the
             // move packet gives the protocol its default without weakening
             // the trusted pointer sequence.
-            r#"{{"x":{x},"y":{y},{button}{extra}}}"#,
+            r#"{{"type":"{event_type}","x":{x},"y":{y},{button}{extra}}}"#,
+            event_type = event_type,
             button = button,
             extra = extra
         )
@@ -2069,7 +2213,7 @@ fn cdp_click_events(x: f64, y: f64) -> Vec<(&'static str, String)> {
         ),
     ]
     .iter()
-    .map(|(e, button, extra)| (*e, base(*button, extra)))
+    .map(|(e, button, extra)| (*e, base(e, *button, extra)))
     .collect()
 }
 

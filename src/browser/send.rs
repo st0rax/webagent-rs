@@ -80,6 +80,9 @@ impl WebBrainBackend {
             self.prepare_attachment_mode(attachments)?;
             self.attach_files(attachments)?;
         }
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] attachment phase complete; entering send path");
+        }
         self.send(text)
     }
 
@@ -127,7 +130,7 @@ impl WebBrainBackend {
             && attachments
                 .iter()
                 .all(|attachment| attachment.kind == BrowserAttachmentKind::Image);
-        if self.file_input_count() == 0 && !kimi_image_paste {
+        if self.file_input_count() == 0 {
             let _ = self.open_attachment_surface();
             let deadline = Instant::now() + Duration::from_secs(5);
             while Instant::now() < deadline {
@@ -179,24 +182,14 @@ impl WebBrainBackend {
         // Clipboard-Pfad schreibt deshalb zuerst ein echtes CF_DIB und loest
         // eine trusted CDP-Tastatursequenz aus. Nur ein aktivierter
         // Absendeknopf gilt als Beleg fuer einen verwertbaren Anhang.
-        if self.brain_id == "kimi"
-            && self.paste_images_via_native_clipboard(attachments)
-            && self.send_button_is_enabled()
-        {
+        if self.brain_id == "kimi" && self.paste_images_via_native_clipboard(attachments) {
             return Ok(());
-        }
-        if kimi_image_paste {
-            // Kimi rejects synthetic File/DataTransfer events.  Crucially, do
-            // not fall through to them: a rejected synthetic event creates a
-            // red tile and poisons the next request's composer as well.
-            return Err(
-                "Kimi hat das Bild nicht über den nativen Zwischenablagepfad übernommen".into(),
-            );
         }
         // Kimi's transient file input is acknowledged by WebView2 but its
         // Vue uploader only enables Send after the editor's paste/drop handler
         // has seen the File objects. Prefer that browser-native path first.
         if self.brain_id == "kimi"
+            && !kimi_image_paste
             && self.inject_attachments_via_paste_or_drop(&serialized)
             && self.send_button_is_enabled()
         {
@@ -248,9 +241,7 @@ impl WebBrainBackend {
                 // new preview is the relevant proof in that case; do not
                 // reject an otherwise successful browser-native upload solely
                 // because the hidden input is recreated by the SPA.
-                if signal_now > signal_before_native
-                    && (self.brain_id != "kimi" || self.send_button_is_enabled())
-                {
+                if signal_now > signal_before_native {
                     return Ok(());
                 }
                 // Vue/React uploader copy the File into their own state and
@@ -258,16 +249,10 @@ impl WebBrainBackend {
                 // complete FileList followed by zero is therefore stronger
                 // evidence than polling only the final DOM state (observed on
                 // Kimi's current uploader).
-                if native_files_observed
-                    && file_count_now == 0
-                    && (self.brain_id != "kimi" || self.send_button_is_enabled())
-                {
+                if native_files_observed && file_count_now == 0 {
                     return Ok(());
                 }
-                if native_files_observed
-                    && Instant::now() >= soft_ready
-                    && (self.brain_id != "kimi" || self.send_button_is_enabled())
-                {
+                if native_files_observed && Instant::now() >= soft_ready {
                     return Ok(());
                 }
                 std::thread::sleep(Duration::from_millis(150));
@@ -282,6 +267,15 @@ impl WebBrainBackend {
                     attachments.len()
                 );
             }
+        }
+        if kimi_image_paste {
+            // Kimi rejects synthetic File/DataTransfer events.  Do not fall
+            // through after both trusted channels failed: a rejected synthetic
+            // event creates a red tile and poisons the next composer state.
+            return Err(
+                "Kimi hat das Bild weder über den nativen Datei- noch den Zwischenablagepfad übernommen"
+                    .into(),
+            );
         }
         let expression = format!(
             r#"(function(files){{
@@ -455,7 +449,11 @@ impl WebBrainBackend {
         }
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
-            if self.send_button_is_enabled() && self.attachment_signal_count() > before {
+            // The prompt text is inserted only after this helper returns, so
+            // Kimi correctly keeps its Send button disabled at this stage.
+            // A new preview/attachment signal is the upload proof; `send()`
+            // performs the separate post-text enabled-button check.
+            if self.attachment_signal_count() > before {
                 return true;
             }
             std::thread::sleep(Duration::from_millis(150));
@@ -713,6 +711,9 @@ impl WebBrainBackend {
         // Werbe-/Consent-Modals wegklicken, bevor gefuellt wird — sonst blockiert
         // z.B. mistrals "Vibe CLI"-Announcement den Composer und jeder Versuch scheitert.
         self.dismiss_consent();
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[submit] composer fill begins");
+        }
         let composer_js = self.sel_js("composer", &[]);
         let has_send_button = !self.sel("send_button").is_empty();
         // Fuellen und **bestaetigen**, dass der Text wirklich im Editor steht: bei
@@ -735,6 +736,9 @@ impl WebBrainBackend {
             self.capture_submit_failure_trace();
             return Err("Composer-Feld nicht gefunden (Timeout)".into());
         }
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[submit] composer fill confirmed; dispatch begins");
+        }
         std::thread::sleep(Duration::from_millis(150));
         let url_before = self.get_conversation_ref();
         // Fuenf Versuche statt drei: das Absenden in Lexical-/contenteditable-Editoren
@@ -748,6 +752,9 @@ impl WebBrainBackend {
             // Send-Registrierung (perplexity/deepseek ~20s) laenger dauert als
             // das Beweisfenster des ersten Versuchs.
             let consumed = !self.composer_contains(&composer_js, text);
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[submit] attempt {} consumed={consumed}", attempt + 1);
+            }
             if !consumed {
                 if attempt == 0 || !has_send_button {
                     self.press_enter().ok();
@@ -756,6 +763,9 @@ impl WebBrainBackend {
                 }
             }
             if self.verify_submitted(baseline, user_baseline, url_before.as_deref()) {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[submit] submission proved");
+                }
                 return Ok(baseline);
             }
         }
