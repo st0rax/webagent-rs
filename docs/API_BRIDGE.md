@@ -14,7 +14,7 @@ Die Bridge akzeptiert die für Pi relevanten Formate **OpenAI Chat Completions**
 |---|---|
 | Bindung | `127.0.0.1:8787` als Standard; ausschließlich Loopback zugelassen |
 | Authentifizierung | `Authorization: Bearer <token>`; Anthropic-kompatibel zusätzlich `x-api-key: <token>` |
-| Brain | `chatgpt` als Standard; `model=webagent/<brain>` routet jede Anfrage auf das gewaehlte eingebaute oder Custom-Brain |
+| Brain | `chatgpt` als Standard; `model=webagent/<brain>` waehlt ein reales Brain, `model=webagent/auto` den virtuellen AutoRouter |
 | Nebenläufigkeit | Eine Anfrage zur Zeit pro Dienstprozess |
 | Ergebnisquelle | Direkt beobachteter Antworttext des einzelnen Browser-Modellturns |
 | Streaming | SSE; reine Textturns und multimodale Browserturns liefern wachsende Text-Snapshots, Tool-Streams bleiben bis zur Validierung gepuffert |
@@ -44,12 +44,51 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
   http://127.0.0.1:8787/v1/models
 ```
 
+## Virtuelles Modell `webagent/auto`
+
+Der Modellkatalog fuehrt `webagent/auto` als erstes, virtuelles Modell. Es ist
+kein Alias fuer das beim Serverstart konfigurierte Brain: Der AutoRouter
+klassifiziert jeden Request vor dem Browserturn und waehlt ein reales,
+konfiguriertes Brain, dessen Circuit Breaker nicht offen ist. Der nach aussen
+sichtbare Modellname bleibt `webagent/auto`; die konkrete Entscheidung wird im
+Serverlog als `[auto-router] selected=<brain> reason=<route>` protokolliert.
+
+Die deterministische Prioritaet lautet:
+
+1. Bildgenerierung: ChatGPT, danach Gemini.
+2. Audio-Input: Gemini.
+3. Bild-Input: Gemini, ChatGPT, Claude.
+4. Function-Tools: ChatGPT, Gemini, Claude.
+5. Coding-Heuristik: Claude, ChatGPT, Gemini.
+6. aktuelle Recherche: Perplexity, Gemini, ChatGPT.
+7. allgemeiner Text: das mit `--brain` konfigurierte Standard-Brain, danach
+   ChatGPT, Gemini, Claude und DeepSeek. Wird der Dienst selbst mit
+   `--brain auto` gestartet, ist ChatGPT der allgemeine Text-Default.
+
+Medien und Tools haben Vorrang vor Text-Schlagwoertern. Damit wird zum Beispiel
+eine Audiodatei mit der Anweisung, darin genannten Code zu untersuchen, dennoch
+zuerst an ein audiofaehiges Brain geroutet. Wenn fuer eine zwingende
+Faehigkeitsklasse kein geeignetes Brain verfuegbar ist, antwortet die Bridge
+mit einem Fehler, statt still auf ein ungeeignetes Text-Brain auszuweichen.
+
+```powershell
+webagent api serve --brain auto --headless
+
+$body = @{
+  model = "webagent/auto"
+  messages = @(@{ role = "user"; content = "Antworte kurz." })
+} | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/v1/chat/completions `
+  -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
+  -ContentType application/json -Body $body
+```
+
 ## Endpunkte
 
 | Methode und Pfad | Format | Verhalten |
 |---|---|---|
 | `GET /health` | JSON | Lokaler Liveness-Check ohne Browserturn |
-| `GET /v1/models` | OpenAI-Modellliste | Liefert automatisch alle aktuell konfigurierten eingebauten und Custom-Brains als `webagent/<brain>` |
+| `GET /v1/models` | OpenAI-Modellliste | Liefert zuerst `webagent/auto`, danach alle aktuell konfigurierten eingebauten und Custom-Brains als `webagent/<brain>` |
 | `GET /v1/models/{id}` | OpenAI-Modellobjekt | Liefert das einzelne konfigurierte Brain; unbekannte IDs werden mit 404 abgelehnt |
 | `POST /v1/chat/completions` | OpenAI Chat Completions | Akzeptiert Textrollen, OpenAI-`image_url`-data-URLs, `input_audio`-Base64, Function-Tools, Assistant-`tool_calls` und `role=tool`-Ergebnisse; Streams werden inkrementell übertragen |
 | `POST /v1/images/generations` | OpenAI Images | Aktiviert bei ChatGPT Web das Bildtool, wartet auf eine neue stabile Estuary-Datei-ID und liefert standardmaessig `data[].b64_json`; `n=1`, optional `size`, Legacy-`response_format=url` als lokale Data-URL |

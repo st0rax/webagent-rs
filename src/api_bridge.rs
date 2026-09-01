@@ -215,9 +215,9 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
                 response
             } else {
-                let models: Vec<Value> = available_brains()
-                    .into_iter()
-                    .map(|b| model_metadata(&b))
+                let models: Vec<Value> = std::iter::once("auto".to_string())
+                    .chain(available_brains())
+                    .map(|brain| model_metadata(&brain))
                     .collect();
                 HttpResponse::json(
                     200,
@@ -1179,6 +1179,11 @@ fn run_image_generation_blocking(
     brain: &str,
     prompt: &str,
 ) -> Result<crate::relay::GeneratedImage, String> {
+    let brain = if brain == "auto" {
+        select_auto_brain(config, prompt, &[], false, AutoPurpose::ImageGeneration)?
+    } else {
+        brain.to_string()
+    };
     let lock = BROWSER_RUN_LOCKS
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
@@ -1187,7 +1192,7 @@ fn run_image_generation_blocking(
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone();
     let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    crate::relay::relay_image_generation(brain, prompt, config.headless, config.timeout_secs)
+    crate::relay::relay_image_generation(&brain, prompt, config.headless, config.timeout_secs)
         .map_err(|error| format!("Browser-Bildgenerierung fehlgeschlagen: {error}"))
 }
 
@@ -1199,6 +1204,17 @@ fn run_task_blocking(
     tools: &[crate::browser_inference::BrowserTool],
     tool_choice: crate::browser_inference::BrowserToolChoice,
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
+    let brain = if brain == "auto" {
+        select_auto_brain(
+            config,
+            task,
+            attachments,
+            !tools.is_empty(),
+            AutoPurpose::Chat,
+        )?
+    } else {
+        brain.to_string()
+    };
     let lock = BROWSER_RUN_LOCKS
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
@@ -1210,7 +1226,7 @@ fn run_task_blocking(
 
     crate::browser_inference::complete_with_attachments(
         crate::browser_inference::BrowserInferenceRequest {
-            brain,
+            brain: &brain,
             prompt: task,
             tools,
             tool_choice,
@@ -1231,6 +1247,11 @@ fn run_task_streaming(
     attachments: &[crate::browser_inference::BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
+    let brain = if brain == "auto" {
+        select_auto_brain(config, task, attachments, false, AutoPurpose::Chat)?
+    } else {
+        brain.to_string()
+    };
     let lock = BROWSER_RUN_LOCKS
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
@@ -1242,7 +1263,7 @@ fn run_task_streaming(
 
     crate::browser_inference::complete_streaming_with_attachments(
         crate::browser_inference::BrowserInferenceRequest {
-            brain,
+            brain: &brain,
             prompt: task,
             tools: &[],
             tool_choice: crate::browser_inference::BrowserToolChoice::None,
@@ -2249,6 +2270,137 @@ fn available_brains() -> Vec<String> {
     brains
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AutoPurpose {
+    Chat,
+    ImageGeneration,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AutoRoute {
+    Default,
+    AudioInput,
+    ImageInput,
+    ImageGeneration,
+    Tools,
+    Coding,
+    CurrentResearch,
+}
+
+fn classify_auto_route(
+    task: &str,
+    attachments: &[crate::browser_inference::BrowserAttachment],
+    has_tools: bool,
+    purpose: AutoPurpose,
+) -> AutoRoute {
+    use crate::browser_inference::BrowserAttachmentKind;
+
+    if purpose == AutoPurpose::ImageGeneration {
+        return AutoRoute::ImageGeneration;
+    }
+    if attachments
+        .iter()
+        .any(|attachment| attachment.kind == BrowserAttachmentKind::Audio)
+    {
+        return AutoRoute::AudioInput;
+    }
+    if attachments
+        .iter()
+        .any(|attachment| attachment.kind == BrowserAttachmentKind::Image)
+    {
+        return AutoRoute::ImageInput;
+    }
+    if has_tools {
+        return AutoRoute::Tools;
+    }
+
+    let lower = task.to_ascii_lowercase();
+    if [
+        "code",
+        "cargo",
+        "rust",
+        "python",
+        "typescript",
+        "javascript",
+        "compile",
+        "debug",
+        "refactor",
+        "implement",
+        "funktion",
+        "klasse",
+        "repository",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+    {
+        return AutoRoute::Coding;
+    }
+    if [
+        "latest",
+        "current",
+        "today",
+        "research",
+        "sources",
+        "web search",
+        "aktuell",
+        "heute",
+        "recherch",
+        "quellen",
+        "internet",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+    {
+        return AutoRoute::CurrentResearch;
+    }
+    AutoRoute::Default
+}
+
+fn first_available_auto_brain(preferences: &[&str]) -> Option<String> {
+    let available = available_brains();
+    preferences
+        .iter()
+        .find(|brain| {
+            available.iter().any(|candidate| candidate == **brain)
+                && crate::circuit_breaker::check(brain).is_none()
+        })
+        .map(|brain| (*brain).to_string())
+}
+
+fn select_auto_brain(
+    config: &BridgeConfig,
+    task: &str,
+    attachments: &[crate::browser_inference::BrowserAttachment],
+    has_tools: bool,
+    purpose: AutoPurpose,
+) -> Result<String, String> {
+    let route = classify_auto_route(task, attachments, has_tools, purpose);
+    let (preferences, reason): (&[&str], &str) = match route {
+        AutoRoute::ImageGeneration => (&["chatgpt", "gemini"], "image-generation"),
+        AutoRoute::AudioInput => (&["gemini"], "audio-input"),
+        AutoRoute::ImageInput => (&["gemini", "chatgpt", "claude"], "image-input"),
+        AutoRoute::Tools => (&["chatgpt", "gemini", "claude"], "tool-call"),
+        AutoRoute::Coding => (&["claude", "chatgpt", "gemini"], "coding"),
+        AutoRoute::CurrentResearch => (&["perplexity", "gemini", "chatgpt"], "current-research"),
+        AutoRoute::Default => {
+            let default = if config.brain == "auto" {
+                "chatgpt"
+            } else {
+                config.brain.as_str()
+            };
+            let preferences = [default, "chatgpt", "gemini", "claude", "deepseek"];
+            let selected = first_available_auto_brain(&preferences)
+                .ok_or_else(|| "AutoRouter findet kein verfuegbares Text-Brain.".to_string())?;
+            eprintln!("[auto-router] selected={selected} reason=default");
+            return Ok(selected);
+        }
+    };
+    let selected = first_available_auto_brain(preferences)
+        .ok_or_else(|| format!("AutoRouter findet kein verfuegbares Brain fuer {reason}."))?;
+    eprintln!("[auto-router] selected={selected} reason={reason}");
+    Ok(selected)
+}
+
 fn resolve_model(requested: &str, default_brain: &str) -> Result<String, String> {
     let brain = if requested == "webagent" {
         default_brain
@@ -2257,6 +2409,9 @@ fn resolve_model(requested: &str, default_brain: &str) -> Result<String, String>
             .strip_prefix("webagent/")
             .ok_or_else(|| format!("Ungueltige WebAgent-Modell-ID '{requested}'."))?
     };
+    if brain == "auto" {
+        return Ok("auto".to_string());
+    }
     if available_brains()
         .iter()
         .any(|candidate| candidate == brain)
@@ -2288,7 +2443,9 @@ fn model_id(brain: &str) -> String {
 /// unbestätigten Pfad senden.
 fn advertised_input_modalities(brain: &str) -> &'static [&'static str] {
     match brain {
-        "chatgpt" | "claude" | "gemini" => &["text", "image", "audio"],
+        "auto" => &["text", "image", "audio"],
+        "gemini" => &["text", "image", "audio"],
+        "chatgpt" | "claude" => &["text", "image"],
         "deepseek" | "kimi" | "mistral" => &["text", "image"],
         _ => &["text"],
     }
@@ -2303,7 +2460,7 @@ fn advertised_input_modalities(brain: &str) -> &'static [&'static str] {
 /// verifiziert ist.
 fn advertised_output_modalities(brain: &str) -> &'static [&'static str] {
     match brain {
-        "chatgpt" => &["text", "image"],
+        "auto" | "chatgpt" => &["text", "image"],
         _ => &["text"],
     }
 }
@@ -2314,7 +2471,7 @@ fn advertised_output_modalities(brain: &str) -> &'static [&'static str] {
 /// (keine verifizierten pro-Brain-Kontingente im Repo); `advertised_*` liefern
 /// die tatsächlich bestätigten Modalitäten.
 fn model_metadata(brain: &str) -> Value {
-    json!({
+    let mut metadata = json!({
         "id": model_id(brain),
         "object": "model",
         "owned_by": "webagent",
@@ -2325,7 +2482,21 @@ fn model_metadata(brain: &str) -> Value {
             "input": advertised_input_modalities(brain),
             "output": advertised_output_modalities(brain)
         }
-    })
+    });
+    if brain == "auto" {
+        metadata["name"] = json!("WebAgent AutoRouter");
+        metadata["virtual"] = json!(true);
+        metadata["routing"] = json!({
+            "audio": "gemini",
+            "image_generation": ["chatgpt", "gemini"],
+            "image_input": ["gemini", "chatgpt", "claude"],
+            "tools": ["chatgpt", "gemini", "claude"],
+            "coding": ["claude", "chatgpt", "gemini"],
+            "current_research": ["perplexity", "gemini", "chatgpt"],
+            "fallback": "configured default brain"
+        });
+    }
+    metadata
 }
 
 #[derive(Clone, Copy)]
@@ -2940,6 +3111,7 @@ mod tests {
     #[test]
     fn model_resolution_routes_each_available_brain() {
         assert_eq!(resolve_model("webagent", "chatgpt").unwrap(), "chatgpt");
+        assert_eq!(resolve_model("webagent/auto", "chatgpt").unwrap(), "auto");
         assert_eq!(
             resolve_model("webagent/claude", "chatgpt").unwrap(),
             "claude"
@@ -2960,14 +3132,8 @@ mod tests {
 
     #[test]
     fn model_catalog_is_conservative_about_unverified_media_inputs() {
-        assert_eq!(
-            advertised_input_modalities("chatgpt"),
-            ["text", "image", "audio"]
-        );
-        assert_eq!(
-            advertised_input_modalities("claude"),
-            ["text", "image", "audio"]
-        );
+        assert_eq!(advertised_input_modalities("chatgpt"), ["text", "image"]);
+        assert_eq!(advertised_input_modalities("claude"), ["text", "image"]);
         // Live bestätigt (docs/CURRENT_WORK.md): gemini Bild+Audio, deepseek/
         // kimi/mistral Bild. qwen/zai/perplexity haben keinen Media-Smoke.
         assert_eq!(
@@ -2992,6 +3158,7 @@ mod tests {
 
     #[test]
     fn model_output_modalities_are_advertised_correctly() {
+        assert_eq!(advertised_output_modalities("auto"), ["text", "image"]);
         assert_eq!(advertised_output_modalities("chatgpt"), ["text", "image"]);
         for brain in [
             "claude",
@@ -3013,6 +3180,11 @@ mod tests {
 
     #[test]
     fn model_metadata_has_stable_catalog_shape() {
+        let auto = model_metadata("auto");
+        assert_eq!(auto["id"], "webagent/auto");
+        assert_eq!(auto["virtual"], true);
+        assert_eq!(auto["routing"]["audio"], "gemini");
+        assert_eq!(auto["modalities"]["input"][2], "audio");
         let meta = model_metadata("chatgpt");
         assert_eq!(meta["id"], "webagent/chatgpt");
         assert_eq!(meta["context_window"], 128000);
@@ -3022,6 +3194,64 @@ mod tests {
         assert_eq!(meta["modalities"]["input"][1], "image");
         assert_eq!(meta["modalities"]["output"][0], "text");
         assert!(meta["modalities"]["output"].as_array().unwrap().len() == 1);
+    }
+
+    #[test]
+    fn auto_router_classifies_requests_deterministically() {
+        use crate::browser_inference::{BrowserAttachment, BrowserAttachmentKind};
+
+        let audio = BrowserAttachment {
+            kind: BrowserAttachmentKind::Audio,
+            file_name: "sample.wav".to_string(),
+            mime_type: "audio/wav".to_string(),
+            data: vec![1, 2, 3],
+        };
+        let image = BrowserAttachment {
+            kind: BrowserAttachmentKind::Image,
+            file_name: "sample.png".to_string(),
+            mime_type: "image/png".to_string(),
+            data: vec![4, 5, 6],
+        };
+
+        assert_eq!(
+            classify_auto_route("anything", &[], false, AutoPurpose::ImageGeneration),
+            AutoRoute::ImageGeneration
+        );
+        assert_eq!(
+            classify_auto_route("debug Rust code", &[audio], true, AutoPurpose::Chat),
+            AutoRoute::AudioInput,
+            "media routing must outrank tools and text heuristics"
+        );
+        assert_eq!(
+            classify_auto_route("debug Rust code", &[image], true, AutoPurpose::Chat),
+            AutoRoute::ImageInput
+        );
+        assert_eq!(
+            classify_auto_route("debug Rust code", &[], true, AutoPurpose::Chat),
+            AutoRoute::Tools
+        );
+        assert_eq!(
+            classify_auto_route(
+                "Please debug this Rust function",
+                &[],
+                false,
+                AutoPurpose::Chat
+            ),
+            AutoRoute::Coding
+        );
+        assert_eq!(
+            classify_auto_route(
+                "Suche aktuelle Quellen im Internet",
+                &[],
+                false,
+                AutoPurpose::Chat
+            ),
+            AutoRoute::CurrentResearch
+        );
+        assert_eq!(
+            classify_auto_route("Sag einfach hallo", &[], false, AutoPurpose::Chat),
+            AutoRoute::Default
+        );
     }
 
     #[test]

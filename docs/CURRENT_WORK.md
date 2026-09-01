@@ -1,7 +1,37 @@
 # Aktueller Arbeitsstand
 
-**Aktualisiert:** 2026-08-30
+**Aktualisiert:** 2026-09-01
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
+
+## Virtuelles AutoRouter-Modell
+
+**Aktualisiert:** 2026-09-01
+**Branch:** `feat/browser-inference-provider`
+
+Der OpenAI-Modellkatalog enthaelt nun an erster Stelle das virtuelle Modell
+`webagent/auto`. Es wird nicht als statischer Alias behandelt: Der zentrale
+Browser-Inference-Pfad klassifiziert Bildgenerierung, Audio- und Bild-Input,
+Function-Tools, Coding, aktuelle Recherche sowie allgemeinen Text und waehlt
+dafuer ein geeignetes reales Brain. Offene Circuit Breaker werden bei der
+Auswahl uebersprungen; fuer zwingende Klassen wie Audio scheitert der Router
+ehrlich, wenn kein geeignetes Brain verfuegbar ist. Die Entscheidung erscheint
+als strukturierte Zeile im Serverlog.
+
+Die Regeln und ihre Reihenfolge sind in `docs/API_BRIDGE.md` dokumentiert. Die
+gleichen Regeln greifen fuer Chat Completions, Responses, Anthropic Messages,
+OpenAI Audio und OpenAI Images, weil die Materialisierung direkt vor dem
+gemeinsamen Browserturn erfolgt.
+
+| Gate | Ergebnis |
+|---|---|
+| fokussierte API-/Router-Tests | 39 bestanden |
+| Vollfeature-Clippy `-D warnings` | bestanden |
+| No-Default-Features-Clippy `-D warnings` | bestanden |
+| vollstaendige No-Default-Features-Suite | 1.198 bestanden, 1 ignoriert; 7 Binaertests bestanden |
+| Windows-GNU-Debug-Build | bestanden |
+| Headless Katalog-Smoke | `webagent/auto` als erstes Modell mit Routingmetadaten |
+| Headless Text-Smoke | zu ChatGPT geroutet, exakt `AUTO_ROUTE_OK`, 18,40 s |
+| Headless WAV-Smoke | zu Gemini geroutet, `Die Pruefziffer lautet 789`, 22,33 s |
 
 ## Aktueller Fix: multimodaler Upload-Fallback für dynamische Browser-UIs
 

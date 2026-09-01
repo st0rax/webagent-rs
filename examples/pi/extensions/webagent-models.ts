@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const BASE_URL = "http://127.0.0.1:8787/v1";
 const FALLBACK_BRAINS = [
+  "auto",
   "chatgpt",
   "claude",
   "deepseek",
