@@ -53,6 +53,9 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
 | `GET /v1/models/{id}` | OpenAI-Modellobjekt | Liefert das einzelne konfigurierte Brain; unbekannte IDs werden mit 404 abgelehnt |
 | `POST /v1/chat/completions` | OpenAI Chat Completions | Akzeptiert Textrollen, OpenAI-`image_url`-data-URLs, `input_audio`-Base64, Function-Tools, Assistant-`tool_calls` und `role=tool`-Ergebnisse; Streams werden inkrementell übertragen |
 | `POST /v1/images/generations` | OpenAI Images | Aktiviert bei ChatGPT Web das Bildtool, wartet auf eine neue stabile Estuary-Datei-ID und liefert standardmaessig `data[].b64_json`; `n=1`, optional `size`, Legacy-`response_format=url` als lokale Data-URL |
+| `POST /v1/audio/transcriptions` | OpenAI Audio | Akzeptiert `multipart/form-data` mit binärem `file`, optionalem `model` und `response_format=json|text|verbose_json`; lädt das Audio in das gewählte Web-Brain und liefert dessen reines Transkript |
+| `POST /v1/audio/translations` | OpenAI Audio | Derselbe Multipart-Transport, fordert aber eine englische Übersetzung an; `json`, `text` und ein konservatives `verbose_json` werden unterstützt |
+| `POST /v1/audio/speech` | OpenAI Audio | Vorhandene Route, die fail-closed mit Providerfehler antwortet, solange kein Web-Brain ein extrahierbares TTS-Audioartefakt liefert |
 | `POST /v1/responses` | OpenAI Responses | Akzeptiert String-/Message-Input, `input_image`-data-URLs, `input_audio`-Base64, Responses-Function-Tools, `function_call`/`function_call_output`, `store` und `previous_response_id`; liefert Response-Objekt sowie gepufferten Responses-SSE-Eventstrom |
 | `GET /v1/responses/{id}` | OpenAI Response-Retrieval | Liefert eine gespeicherte Response; unbekannte oder mit `store=false` erzeugte IDs werden mit 404 abgelehnt |
 | `GET /v1/responses/{id}/input_items` | OpenAI Input-Item-Liste | Liefert den normalisierten, im lokalen State gespeicherten Verlauf der Response |
@@ -82,6 +85,16 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/v1/chat/completions -H
 ~~~
 
 Die Responses-Variante verwendet type input_image mit derselben Data-URL und type input_audio; Anthropic verwendet type image bzw. type audio mit source.type base64. Pro Datei gilt ein dekodiertes Maximum von 8 MiB, pro Request höchstens 16 Dateien. Wenn ein Brain weder ein Datei-Input noch eine bestätigte Paste/Drop-Vorschau anbietet, antwortet der Endpoint mit einem erklärenden 502 statt die Datei zu verwerfen.
+
+Die eigenständigen OpenAI-Audiorouten verwenden dagegen den offiziellen
+Multipart-Vertrag. Ein fremder OpenAI-Audiomodellname wie `whisper-1` wird als
+Wire-Kompatibilitätswert akzeptiert und auf das mit `--brain` konfigurierte
+Web-Brain geroutet; `model=webagent/<brain>` wählt explizit ein anderes Brain.
+Transkription und Übersetzung sind damit echte Browser-Inference-Turns, keine
+lokale Whisper-Emulation. Zeitstempel, Diarisierung, SRT/VTT und TTS werden
+nicht erfunden: nicht belegte Formen scheitern vor beziehungsweise ohne einen
+Browserturn. Der offizielle OpenAI-Vertrag unterscheidet diese drei Routen
+ebenfalls ausdrücklich.[9]
 
 Ein solcher `no_file_input`- bzw. `no_file_input_and_paste_not_confirmed`-Fehler gilt nur für den jeweiligen multimodalen
 Request. Er öffnet nicht den allgemeinen Text-Circuit-Breaker und verschlechtert
@@ -330,3 +343,4 @@ HTTP-Verbindungen werden bis zu einer festen Grenze von **acht** gleichzeitig be
 
 [7] [OpenAI: Image generation](https://developers.openai.com/api/docs/guides/image-generation)
 [8] [Anthropic: Can Claude produce images?](https://support.anthropic.com/en/articles/9002504-can-claude-produce-images)
+[9] [OpenAI: Audio API reference](https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create)

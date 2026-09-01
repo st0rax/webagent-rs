@@ -96,6 +96,15 @@ Perplexity und Z.ai zeigten keinen Bild-/Audio-Generator. Damit sind
 begründet; Claude bestätigt offiziell, dass der Chat nur textbasierten Output
 liefert und Bilder ausschließlich als Input verarbeitet.
 
+Die bislang fehlenden eigenständigen OpenAI-Audiorouten sind anschließend
+ergänzt worden. `/v1/audio/transcriptions` und `/v1/audio/translations` parsen
+den offiziellen binären Multipart-Upload, routen ihn als Audio-Anhang an ein
+Web-Brain und liefern `json`, `text` oder ein konservatives `verbose_json`.
+Binärbytes, Dateiname, MIME-Typ, Modell und Format sind durch Regressionstests
+abgedeckt. `/v1/audio/speech` existiert als ehrliche fail-closed Grenze: Keines
+der aktuell vermessenen Web-Brains liefert einen belegten, extrahierbaren
+TTS-Audiostream, daher werden dort keine synthetischen Audioantworten behauptet.
+
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
 
 **Aktualisiert:** 2026-08-31
