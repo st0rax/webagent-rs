@@ -27,6 +27,15 @@ Außerhalb des Repos (nur lokal relevante Umgebung:
 `C:\AGENTS.md` = Arbeitsdirektive mit den zwölf Direktiven; gilt für alle
 Arbeiten unter `C:\Users`.)
 
+> **Grundmodell (wichtig):** Dieses Repo hat **einen einzigen sichtbaren
+> Branch für Arbeit: `master`.** Alle Docs, der Plan und der Codeleben dort.
+> Wer klont, sieht alles — es gibt keine versteckte Wissens-Schiene.
+> `archive/tui-ui` ist nur ein lesbares Archiv des alten TUI-Stands, kein
+> Entwicklungszweig. Agents committen auf `master` (Gates grün), nie anderswo.
+> Nur temporäre Nebenarbeiten (z. B. ein sauber zu isolierender Test) dürfen
+> kurzfristig einen lokalen Branch verwenden, müssen aber vor der Abgabe in
+> `master` landen.
+
 ## 3. So übernimmst du eine Aufgabe (Claim zuerst)
 
 **Die Aufgabentafel liegt unter `docs/`:**
