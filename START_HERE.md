@@ -57,11 +57,16 @@ Arbeiten unter `C:\Users`.)
    ```json
    "status": "claimed",
    "owner": "claude-code",
-   "branch": "feature/dein-zweig-oder-main",
+   "branch": "master",
    "claimed_at": "2026-09-02"
    ```
-4. Arbeite auf eigenem Zweig vom `origin/feat/browser-inference-provider`
-   (oder main), kleine Commits, Gates grün (Abschnitt 4).
+4. Arbeite auf **`master`** (eine Schiene), kleine Commits mit Gates grün
+   (Abschnitt 4). Jeder Agent committet mit **eigener Identität** — ein Enum:
+   ```pwsh
+   pwsh -File scripts/commit-as-agent.ps1 -Agent claude-code -Message "T-102: tools registry"
+   ```
+   (Agent-Schlüssel & Mapping: `docs/GIT_AGENTS.md`.) Danach separat
+   `git push origin master`.
 5. Beim Abschluss: Belegpfad (Matrix-Zelle) eintragen, Statusdatei
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
    auf `"done"` setzen und `done_at` ergänzen.
