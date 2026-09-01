@@ -124,6 +124,15 @@ Gemini-Audio ist ebenfalls inhaltlich verifiziert. Ein manueller Medienrequest
 an ein noch nicht belegtes Brain darf den Uploadpfad ausprobieren und wird bei
 fehlender Bestätigung fail-closed mit 502 beendet.
 
+Die headless DOM-Vermessung der aktuellen Profile am 01.09.2026 trennt Upload
+und Generierung ausdrücklich: ChatGPT und Gemini zeigen „Bild erstellen“;
+Claude und Qwen zeigen nur Datei-Upload; Mistral akzeptiert über seinen
+Datei-Input zusätzlich `mp3`, `wav`, `m4a`, `ogg` und `flac`; DeepSeek, Kimi,
+Perplexity und Z.ai exponieren in ihrem geöffneten Werkzeugmenü keinen Bild-
+oder Audio-Generator. Das passt für Claude zur offiziellen Produktgrenze:
+Bildinput ja, Bildausgabe nein.[8] Ein fehlender Generator wird daher nicht
+durch Prompting als angeblich vorhandene API-Fähigkeit simuliert.
+
 Ein Images-Request läuft beispielsweise so:
 
 ~~~powershell
@@ -320,3 +329,4 @@ HTTP-Verbindungen werden bis zu einer festen Grenze von **acht** gleichzeitig be
 [6] [OpenAI: Create a response](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)
 
 [7] [OpenAI: Image generation](https://developers.openai.com/api/docs/guides/image-generation)
+[8] [Anthropic: Can Claude produce images?](https://support.anthropic.com/en/articles/9002504-can-claude-produce-images)

@@ -88,6 +88,14 @@ wird daher noch nicht mit Bildausgabe beworben. Alle anderen Brains melden
 weiterhin nur Textausgabe. Eine Behauptung „100 % API-Kompatibilitaet fuer alle
 Brains“ ist mit diesem Stand ausdrücklich nicht zulässig.
 
+Die anschließende headless Werkzeugmenü-Vermessung aller übrigen Profile fand
+keinen weiteren Bildgenerator: Claude und Qwen bieten Datei-Upload, Mistral
+einen Medien-Upload einschließlich verbreiteter Audioformate; DeepSeek, Kimi,
+Perplexity und Z.ai zeigten keinen Bild-/Audio-Generator. Damit sind
+`/v1/images/generations`-Backends aktuell nur für ChatGPT und Gemini sachlich
+begründet; Claude bestätigt offiziell, dass der Chat nur textbasierten Output
+liefert und Bilder ausschließlich als Input verarbeitet.
+
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
 
 **Aktualisiert:** 2026-08-31
