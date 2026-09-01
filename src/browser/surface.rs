@@ -5,6 +5,7 @@
 //! (vom `send`-Pfad gerufen), `account_label_js` ebenso
 //! (Regressionstest in `mod.rs`).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -12,6 +13,11 @@ use serde_json::Value;
 use crate::brain::{BrainBackend, SessionState};
 
 use super::{operations, LiveDiagnosis, WebBrainBackend};
+
+// Repeating the exact same CDP mouseMoved coordinates can be coalesced by the
+// browser. Alternate between two harmless points so background/headless pages
+// receive a real movement while a long-running generation is being polled.
+static OFFSCREEN_POINTER_PHASE: AtomicBool = AtomicBool::new(false);
 
 /// Ergebnis von [`WebBrainBackend::probe_stop_by_disappearance`]:
 /// `(waehrend der Generierung, danach, Stop-Kandidaten)`.
@@ -170,7 +176,9 @@ impl WebBrainBackend {
 
     pub fn wake_offscreen_renderer(&self) {
         if let Some(driver) = self.driver.borrow_mut().as_mut() {
-            let _ = driver.move_pointer(1.0, 1.0);
+            let phase = OFFSCREEN_POINTER_PHASE.fetch_xor(true, Ordering::Relaxed);
+            let coordinate = if phase { 2.0 } else { 1.0 };
+            let _ = driver.move_pointer(coordinate, coordinate);
         }
     }
 
