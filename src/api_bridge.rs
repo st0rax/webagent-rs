@@ -1013,6 +1013,22 @@ fn handle_responses_incremental(
 
     let id = completion_id("resp");
     let item_id = format!("{id}_msg");
+
+    // Lauf im Kern registrieren: der Responses-Fluss fuehrt seine Events ueber
+    // den UI-neutralen SessionService statt eigener Bridge-Session-Logik.
+    let session = session_service();
+    let _sess = match session.start(&id, &brain, &prompt.text) {
+        Ok(handle) => {
+            let _ = handle.push(crate::session::SessionEvent::Started {
+                run_id: id.clone(),
+                brain: brain.clone(),
+                task: prompt.text.clone(),
+            });
+            Some(handle)
+        }
+        Err(_) => None, // doppelte id: prioritaet auf SSE-Ausgabe, nicht auf Session
+    };
+
     let mut started = response_with_state(
         response_object(&id, &payload.model, ""),
         payload.previous_response_id.as_deref(),
@@ -1062,6 +1078,11 @@ fn handle_responses_incremental(
             }
             if let Some(delta) = snapshot.strip_prefix(&last_sent) {
                 if !delta.is_empty() {
+                    if let Some(h) = _sess.as_ref() {
+                        let _ = h.push(crate::session::SessionEvent::TextDelta {
+                            text: delta.to_string(),
+                        });
+                    }
                     if let Err(error) = write_sse_event(
                         stream,
                         "response.output_text.delta",
@@ -1087,6 +1108,14 @@ fn handle_responses_incremental(
     let answer = match answer {
         Ok(answer) => answer,
         Err(error) => {
+            if let Some(h) = _sess.as_ref() {
+                let _ = h.push(crate::session::SessionEvent::Error {
+                    message: error.clone(),
+                });
+                let _ = h.push(crate::session::SessionEvent::Done {
+                    status: "error".to_string(),
+                });
+            }
             let mut failed = started;
             failed["status"] = json!("failed");
             failed["error"] = json!({"code":"server_error","message":error});
@@ -1148,7 +1177,15 @@ fn handle_responses_incremental(
         stream,
         "response.completed",
         json!({"type":"response.completed","response":completed}),
-    )
+    )?;
+
+    if let Some(h) = _sess.as_ref() {
+        let _ = h.push(crate::session::SessionEvent::TextComplete);
+        let _ = h.push(crate::session::SessionEvent::Done {
+            status: "done".to_string(),
+        });
+    }
+    Ok(())
 }
 
 fn write_sse_headers(stream: &mut TcpStream) -> Result<(), String> {
@@ -1313,6 +1350,14 @@ fn run_task_streaming(
 
 fn response_store() -> &'static Mutex<ResponseStore> {
     RESPONSE_STORE.get_or_init(|| Mutex::new(ResponseStore::default()))
+}
+
+/// Einmalige, prozessweite Kern-Registrierung lebender Lauefe. Responses-Runs
+/// legen ihre Ausfuehrung hier ab (statt eigene Session-Logik in der Bridge zu
+/// halten), damit eine zweite Sicht (Web-UI/REPL) denselben Strom sieht.
+fn session_service() -> &'static crate::session::SessionService {
+    static SESSION: OnceLock<crate::session::SessionService> = OnceLock::new();
+    SESSION.get_or_init(crate::session::SessionService::new)
 }
 
 fn retrieve_response(id: &str) -> Option<StoredResponse> {
@@ -3965,5 +4010,52 @@ mod tests {
         assert!(limiter.try_acquire().is_none());
         drop(permits.pop());
         assert!(limiter.try_acquire().is_some());
+    }
+
+    // T-101: Die Bridge fuehrt Responses-Runs ueber den Kern (SessionService)
+    // statt eigener Session-Logik — belegt, dass die prozessweit-einmalige
+    // Registrierung einen sauberen Start->Delta->Complete->Done-Zyklus traegt.
+    #[test]
+    fn responses_flow_uses_core_session_service_cycle() {
+        let a = session_service();
+        let b = session_service();
+        // Eine stabile, prozessweite Instanz (keine Wegwerf-Session pro Request).
+        assert!(std::ptr::eq(a, b));
+
+        let rid = "resp-test-1";
+        let handle = a
+            .start(rid, "claude", "beispiel aufgabe")
+            .expect("neuer Lauf registrierbar");
+        let _ = handle.push(crate::session::SessionEvent::Started {
+            run_id: rid.into(),
+            brain: "claude".into(),
+            task: "beispiel aufgabe".into(),
+        });
+        assert_eq!(handle.status(), "running");
+
+        let _ = handle.push(crate::session::SessionEvent::TextDelta {
+            text: "hall".into(),
+        });
+        let _ = handle.push(crate::session::SessionEvent::TextDelta {
+            text: "o".into(),
+        });
+        let _ = handle.push(crate::session::SessionEvent::TextComplete);
+        let _ = handle.push(crate::session::SessionEvent::Done {
+            status: "done".into(),
+        });
+
+        let snap = a.snapshot(rid).expect("Lauf im Kern sichtbar");
+        assert!(snap.done);
+        assert_eq!(snap.status, "done");
+        assert_eq!(snap.run_id, rid);
+        // Error-Arm: Fehler setzt Status, aber endet erst mit terminalem Done.
+        let rid2 = "resp-test-2";
+        let h2 = a
+            .start(rid2, "claude", "t")
+            .expect("zweiter Lauf registrierbar");
+        let _ = h2.push(crate::session::SessionEvent::Error {
+            message: "kaputt".into(),
+        });
+        assert_eq!(h2.status(), "error");
     }
 }

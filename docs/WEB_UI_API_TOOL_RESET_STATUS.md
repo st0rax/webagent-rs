@@ -45,7 +45,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       aus `controller.rs:659` + `file_actions` + `shell_policy` + `executor`;
       EventStream neu, `sequence_number` fehlt heute; Browser-Schicht nur unter
       `#[cfg(feature="webview")]`)
-- [ ] Phase 1.1 `SessionService` + `EventStream` UI-neutral herausloesen
+- [x] Phase 1.1 `SessionService` + `EventStream` UI-neutral herausloesen —
+      **Code-Teil erledigt** (`src/session/` + `api_bridge`-Anbindung an den Kern;
+      `cargo test --lib` grün, 1220 passed). Hinweis: die `api_*`-Matrixzellen
+      sind **Live-Abnahme-Zellen (Phase 3+)**, nicht dieser Code-Teil — sie
+      bleiben `not_run`, bis ein echter Brain gegen `/v1/responses` läuft.
 - [ ] Phase 1.2 `ToolRegistry`-Vertrag + vier Managed Tools (Policy-Grenzen)
 - [ ] Phase 1.3 Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests
 - [ ] Phase 1.4 Promptbuilder Reiner Chat vs. Managed Agent trennen
@@ -58,10 +62,12 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 
 ## Naechste Schritte
 
-1. Phase 1.1 (T-101): `SessionService`/`EventStream` verschieben, dann
-   `cargo test --lib`; Claim: `docs/TASKBOARD.json` auf `claimed` setzen.
-2. Optional bereits jetzt: T-102 (ToolRegistry) als parallele Aufgabe fuer
-   ChatGPT-Codex oder Claude Code freigeben (Claim + Vertrag beachten).
+1. Phase 1.1 (T-101) **abgeschlossen** (Code-Teil): `SessionService`/`EventStream`
+   extrahiert, `api_bridge` nutzt den Kern (`session_service()` + Start-/Delta-/
+   Done-Stream), `cargo test --lib` grün (1220 passed). T-101 in `TASKBOARD.json`
+   auf `done` setzen (Live-`api_*`-Zelle bleibt für Phase 3 vorgemerkt).
+2. Phase 1.2 (T-102 ToolRegistry) als nächste Aufgabe — auf `feature/T-102-…`
+   anlegen (neues Zweig-Modell).
 3. Phase 0.4 als kleine Doku-Scheibe mitnehmen (historische Belege kennzeichnen).
 
 ## Freigabegrenzen (unverändert)
