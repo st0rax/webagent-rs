@@ -1,0 +1,1334 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-09-01",
+  "plan": "docs/WEB_UI_API_TOOL_RESET.md",
+  "brains": [
+    "chatgpt",
+    "claude",
+    "deepseek",
+    "gemini",
+    "kimi",
+    "mistral",
+    "perplexity",
+    "qwen",
+    "zai",
+    "auto"
+  ],
+  "areas": [
+    "webui_chat",
+    "streaming",
+    "model",
+    "effort",
+    "attachment",
+    "managed_tools",
+    "api_models",
+    "api_chat",
+    "api_responses",
+    "health",
+    "sources",
+    "groups",
+    "security"
+  ],
+  "cells": [
+    {
+      "area": "webui_chat",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "webui_chat",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "streaming",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "model",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "effort",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "attachment",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "managed_tools",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_models",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_chat",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "api_responses",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "health",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "sources",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "groups",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "chatgpt",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "claude",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "deepseek",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "gemini",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "kimi",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "mistral",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "perplexity",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "qwen",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "zai",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    },
+    {
+      "area": "security",
+      "brain": "auto",
+      "status": "not_run",
+      "date": null,
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": null
+    }
+  ]
+}
