@@ -21,6 +21,9 @@ Die Regeln und ihre Reihenfolge sind in `docs/API_BRIDGE.md` dokumentiert. Die
 gleichen Regeln greifen fuer Chat Completions, Responses, Anthropic Messages,
 OpenAI Audio und OpenAI Images, weil die Materialisierung direkt vor dem
 gemeinsamen Browserturn erfolgt.
+Zusätzlich akzeptiert die Modellauflösung neben den kanonischen
+`webagent/...`-IDs auch die sichtbaren ZCode-Aliase `wa/...`; die Antwort des
+Modell-Endpunkts bleibt kanonisch und liefert weiterhin `webagent/...`.
 
 | Gate | Ergebnis |
 |---|---|
