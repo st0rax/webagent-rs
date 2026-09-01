@@ -191,6 +191,76 @@ getarnte Handlungsanweisung.
 Client-eigene Function-Tools werden davon getrennt behandelt. WebAgent fuehrt
 niemals einen beliebigen vom Client gelieferten Funktionsnamen lokal aus.
 
+## Quellen und manueller Hybrid (Free-Provider)
+
+Jeder Brain hat genau eine aktive Quelle pro Session. Die Standardquelle ist
+der Browser-Chat. Zusaetzlich kann jeder Brain eine manuell gewaehlte,
+OpenAI-kompatible Free-Tier- oder offizielle Provider-API als Quelle erhalten.
+Es gibt kein automatisches Routing und keinen versteckten Fallback: Quellen
+wechseln nur auf ausdruecklichen Nutzerwunsch (Web-UI-Schalter oder Befehl),
+und eine explizit vom Nutzer definierte Kette bleibt sichtbar und
+nachvollziehbar.
+
+Moegliche API-Quellen sind beispielsweise OpenRouter (`:free`-Modelle), NVIDIA
+NIM, Groq, Cerebras, Mistral-Experiment, das Gemini-API-Free-Kontingent sowie
+jeder beliebige OpenAI-kompatible Endpunkt (llama.cpp, vLLM, lokales Gateway).
+FreeLLMAPI dient als Beleg, dass sich die freien Kontingente vieler Anbieter
+hinter einem einzigen OpenAI-kompatiblen Vertrag buendeln lassen; sein
+Node-/Docker-Stack wird nicht uebernommen.
+
+### Source-Auswahl
+
+- `data/providers.json` (gitignored, analog `custom_brains.json`): je Brain eine
+  Quelle oder `default` (= Browser). Keys nur als Verweis auf Umgebungsvariablen
+  oder den vorhandenen Key-Mechanismus, niemals als Klartext in der Datei.
+- Session-Scope: Die gewaehlte Quelle gilt fuer die laufende Session. Befehl
+  `/quelle <brain> <quelle|list|default>`, persistiert nur mit ausdruecklichem
+  `--save`.
+- Web-UI: kompakter Quellen-Schalter in der Kopfzeile (Brain, erkanntes Modell,
+  Quelle, Modus).
+
+### Transport und Groessenbudget
+
+- Eigener minimaler HTTPS-Client in Rust (kein `reqwest`/Hyper): HTTP/1.1 ueber
+  `tokio::net::TcpStream` + `tokio-rustls`, CA-Buendel via `webpki-roots`. Kein
+  System-OpenSSL, keine nachzuruestende Abhaengigkeit; laeuft auf Windows,
+  Linux und Android aus einer einzelnen Binary.
+- Budget: Die ausgelieferte Binary bleibt deutlich unter 10 MB (Zuwachs fuer TLS
+  circa 2 MB). Das Budget wird am Release-Artefakt kontrolliert und ist ein
+  Kriterium der Release-Abnahme.
+
+### Vertrag
+
+- API-Quellen sind echte OpenAI-kompatible Endpunkte: Sie durchlaufen dieselben
+  drei veroeffentlichten Profile (Models, Chat Completions, Responses) nativ und
+  ohne erfundene Usage-Werte.
+- Client-Tools werden nie lokal ausgefuehrt; Werkzeugausfuehrung bleibt allein
+  den WebAgent-Managed Tools vorbehalten.
+- Free-Tier-Kontingente, Ratelimit-Kontexte und Modellrotation sind
+  providerabhaengig und werden wie die Model-Auswahl zur Laufzeit ermittelt,
+  nicht als feste Liste kodiert.
+- Rate-/Breaker-Politik je Quelle und Key (RPM/RPD/TPM-Zaehler, fail-offen,
+  Cooldown) analog der bestehenden `FreeCloudHealthPolicy` und dem
+  `circuit_breaker`; der Zustand erscheint im Health-Dashboard und nie als
+  Modelltext.
+
+### Grenze
+
+Offizielle Provider-APIs sind die zulaessige Nutzungssituation fuer einen
+Wechsel weg vom Browser-Chat. Die Anthropic-Consumer-Terms-Grenze fuer den
+unbeaufsichtigten Claude-Browser bleibt davon unberuehrt; Claude bleibt
+Referenz-Brain mit Browser als vorgesehener Quelle.
+
+Quellen:
+
+- [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi)
+- [OpenRouter free Models](https://openrouter.ai/models?q=:free)
+- [NVIDIA NIM / build.nvidia.com](https://build.nvidia.com)
+- [Groq Console](https://console.groq.com)
+- [Cerebras Cloud](https://cloud.cerebras.ai)
+- [Mistral Console](https://console.mistral.ai)
+- [Gemini API](https://ai.google.dev/gemini-api)
+
 ## Zielarchitektur
 
 ```text
@@ -223,10 +293,27 @@ schmalen Fenster.
 
 ### Informationsarchitektur
 
-- **linke, einklappbare Leiste:** Sitzungen, neuer Chat, klarer Status;
-- **ruhige Hauptspalte:** Nutzer-/Brain-Nachrichten und laufende Antwort;
-- **kompakte Kopfzeile:** Brain, tatsaechlich erkanntes Modell, Aufwand und
-  Modus `Chat`/`Systemzugriff`;
+Das Layout orientiert sich an der Grok-Bot-Oberflaeche: eine inhaltlich
+strukturierte linke Leiste, ein ruhiger Chat in der Mitte und ein globaler
+Statusbalken oben. Es gibt drei feste Zonen:
+
+- **oberer Statusbalken (Health-Balken):** relative Balkenanzeige aller
+  verfuegbaren und nicht verfuegbaren Quellen [gruen|rot], zusaetzlich
+  Prozentanteil und Quellenliste. Ein Klick oeffnet die Backend-Detailansicht
+  (Doctor-Report je Brain, Breaker-/Canary-Zustand, naechste Aktion) — der
+  Zustand stammt aus `GET /api/health/brains`, nicht aus Modelltext.
+- **linke, einklappbare Leiste mit System-Kategorien:** alles Systemrelevante
+  ist in sinnvollen Kategorien erreichbar — `Sitzungen`, `Brains & Quellen`,
+  `Gruppen`, `Laeufe`, `System` (Workspace, Profile, Selektoren, Logs). Jede
+  Kategorie ist aufklappbar und versammelt die zugehoerigen Eintraege; der
+  Chat ist nie der einzige Zugang zu einem Systemzustand.
+- **ruhige Hauptspalte:** Nutzer-/Brain-Nachrichten und laufende Antwort.
+
+Darueber hinaus gelten weiterhin:
+
+- **kompakte Kopfzeile:** Brain, tatsaechlich erkanntes Modell, Aufwand,
+  Quelle und Modus `Chat`/`Systemzugriff`; der Quellen-Schalter haengt hier an
+  (manueller Hybrid, siehe oben);
 - **Composer:** mehrzeilige Eingabe, Drag-and-drop, Dateiauswahl,
   Attachment-Vorschau, Senden/Stoppen;
 - **einklappbare Aktivitaetsleiste:** echte Schritte, Werkzeuganforderung,
@@ -256,6 +343,32 @@ Ein Turn besteht nur, wenn:
 Ein Brain, dessen UI Text erst am Ende freigibt, wird als `buffered` markiert und
 besteht das Streaming-Gate nicht. Status- und Toolereignisse bleiben trotzdem
 sofort sichtbar.
+
+### Health-Dashboard (Gesundheit)
+
+Der obere Statusbalken zeigt fuer alle konfigurierten und registrierten Brains,
+welche Quellen verfuegbar und welche nicht verfuegbar sind, ohne einen Browser
+zu starten.
+
+- **Quelle:** das bestehende `doctor`-Modul (`DoctorReport`/`BrainCheck`,
+  dateisystembasiert) plus Breaker-Zustand aus `circuit_breaker`/`canary`.
+  `GET /api/health/brains` liefert den Report als JSON mit Zeitstempel und
+  Abrufalter; kein Browserstart, kein Live-Lauf pro Poll.
+- **Uebersicht:** relative Balkenanzeige in der oberen Statusleiste — gruener
+  Anteil = gesunde Quellen, roter Anteil = nicht verfuegbare; zusaetzlich
+  Prozentwert und Quellenliste. Nie Farbcodierung allein
+  (Barrierefreiheit). Pro Brain eine Zeile mit Balken.
+- **Klick auf einen Balken oder Eintrag:** oeffnet die Backend-Detailansicht
+  (zweite Ebene statt Popup-Stapel) mit den Doctor-Feldern je Brain
+  (Selektoren, Profil und Locks, Login-Zustand, letzter abgeschlossener Lauf
+  inkl. Alter, Recovery-Hinweis) und Breaker-/Canary-Status. Fehler nennen
+  Ursache, Schicht und naechste Aktion.
+- **Quelle waehlen (Klick auf die Quelle):** derselbe Session-Source-Scope wie
+  `/quelle`; die gewaehlte Quelle wird als Aktiv-Zustand markiert. Detail und
+  Auswahl sind getrennte Bedienelemente.
+- **Aktualisierung:** beim Laden der Seite und ueber eine explizite
+  „Neu pruefen"-Aktion; automatische Pruefungen hoechstens in langen
+  Canary-Intervallen, nie innerhalb eines Chat-Streams.
 
 ### Bedien- und Barrierefreiheitsregeln
 
@@ -303,8 +416,9 @@ UX-Referenzen:
 
 1. Eingebettete statische Assets, damit die einzelne portable Binary erhalten
    bleibt.
-2. Session-, Capability-, Upload-, Chat-, Stop- und Event-Endpunkte.
-3. Klickbaren Fake-Prototyp mit responsivem Layout und A11y-Gates abnehmen.
+2. Session-, Capability-, Health-, Upload-, Chat-, Stop- und Event-Endpunkte.
+3. Klickbaren Fake-Prototyp im Grok-Bot-Layout (Health-Balken oben, System-
+   Kategorien links, Chat-Mitte) mit responsivem Layout und A11y-Gates abnehmen.
 4. Defaultstart auf lokale Web-UI umstellen; TUI bleibt Legacy.
 
 ### Phase 3 - Claude-Referenz komplettieren
@@ -349,6 +463,36 @@ Ein Katalogeintrag wird erst beworben, wenn seine Matrix gruen ist. Ein
 providerseitig nicht vorhandenes UI-Feature wird nicht erfunden; eine
 WebAgent-Abbildung muss im UI als solche erkennbar sein.
 
+### Phase 6 - Health-Dashboard und manuelle Quellen
+
+1. `GET /api/health/brains` auf dem bestehenden Doctor-Report aufsetzen, ohne
+   Browserstart.
+2. Health-Balken und Detailansicht in der Web-UI (relative Balken, Detail,
+   Session-Auswahl, A11y-Gates).
+3. Minimalen rustls-HTTPS-Client und `data/providers.json` einfuehren.
+4. `/quelle`-Befehl, Web-UI-Quellen-Schalter und Session-Source-Scope.
+5. Pro-Quelle-Rate- und Breaker-Politik mit Test; Verifikation des
+   Groessenbudgets an der Release-Binary.
+
+### Phase 7 - Grok-Bot-Modus (Gruppen)
+
+Der Grok-Bot-Parallelmodus wird Produkt: Gruppen aus 2-6 Brains, die eine
+Aufgabe in Runden bearbeiten und eine Synthese an den Nutzer zurueckgeben.
+
+1. Gruppen als persistente Kategorie in der linken Leiste (`Gruppen`);
+   Erstellen und Benennen einer Gruppe aus 2-6 registrierten Brains.
+2. Runden-Mechanik auf Basis der bestehenden `/swarm`-Abfrage und der
+   `HandoffQueue`: je Runde eine Nachricht pro Brain, `@Brain`-Erwaehnung fuer
+   gezielten Handoff, Leader-Synthese am Ende.
+3. Gruppenlauf als normale Session: gleicher Eventstream, gleiche Stop-,
+   Fehler- und Anhangregeln wie Einzel-Chats.
+4. Abnahme: eine Gruppe mit Fake-Brains deterministisch getestet, danach eine
+   reale Gruppe (z. B. `claude`+`perplexity`) end-to-end belegt.
+
+Routinen (`when`) und Skills (`how`, Lernen aus Live-Demo) bleiben bewusst
+ausgeklammert, bis der Gruppenmodus abgenommen ist — sie waeren eine eigene
+groessere Scheibe (Scheduler + Skill-Store), kein Einschub in Phase 7.
+
 ## Abnahmematrix
 
 Jede Zelle hat einen Zustand `not_run`, `passed`, `failed`, `unsupported` oder
@@ -366,6 +510,9 @@ Belegpfad.
 | API Models | offizielles SDK | clientunabhaengig |
 | API Chat | nonstream + stream + Negativfelder | je Brain |
 | API Responses | Objekt + Event-Lifecycle + Fehler | je Brain |
+| Gesundheit | Health-Balken, relative Balken, Backend-Detail, Session-Auswahl, keine Farballeincodierung | pro Katalogeintrag |
+| Quellen | `/quelle` manuell, drei Profile nativ, <10-MB-Transport | pro Quelle |
+| Gruppen | 2-6 Brains, Runden, `@Brain`, Leader-Synthese, deterministisch + echte Gruppe | pro Gruppe |
 | Sicherheit | Workspace, Symlink/Junction, Shell, Abort | identische zentrale Policy |
 
 ## Aussagegrenze
