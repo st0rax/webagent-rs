@@ -29,12 +29,15 @@ ratatui = { version = "0.29", optional = true }
 crossterm = { version = "0.28", optional = true }
 
 [features]
-default = ["webview", "tui"]
+default = ["webview"]
 # `webview` traegt nur die plattformfreien Crates. Die Windows-Bindings sitzen
 # in der `cfg(windows)`-Sektion unten und sind dort NICHT optional: So kann
 # derselbe Featurename auf Linux (WebKitGTK ueber wry) und auf Windows
 # (WebView2) gelten, ohne dass Linux an windows-only Crates scheitert.
 webview = ["dep:wry", "dep:tao"]
+# TUI bleibt hinter ihrem Feature als Legacy-Subcommand baubar
+# (docs/WEB_UI_API_TOOL_RESET.md, Phase 0 + 2), ist aber nicht mehr der
+# Defaultstart. Angelegter Stand: archive/tui-ui + tui-ui-preservation-2026-09-01.
 tui = ["dep:ratatui", "dep:crossterm"]
 
 # Nur unter Windows aufgeloest — auf Linux/Android existieren diese Crates gar
