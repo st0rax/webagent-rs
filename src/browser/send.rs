@@ -67,22 +67,46 @@ fn submission_is_proven(
 }
 
 impl WebBrainBackend {
-    /// Aktiviert in ChatGPT den expliziten Bildgenerator aus dem Composer-
-    /// Werkzeugmenue. Ein normaler Textprompt routet im aktuell ausgewaehlten
-    /// Webmodell nicht zwingend zum Bildtool.
+    /// Aktiviert den expliziten Bildgenerator aus dem Composer-Werkzeugmenue.
+    /// ChatGPT und Gemini bieten beide einen sichtbaren Eintrag "Bild
+    /// erstellen"/"Create image" an. Ein normaler Textprompt routet im
+    /// aktuell ausgewaehlten Webmodell nicht zwingend zum Bildtool.
     pub fn enable_image_generation_mode(&self) -> Result<(), String> {
-        if self.brain_id != "chatgpt" {
+        if !matches!(self.brain_id.as_str(), "chatgpt" | "gemini") {
             return Ok(());
         }
-        if !self.open_attachment_surface() {
-            return Err("ChatGPT-Werkzeugmenue konnte nicht geoeffnet werden".into());
+        let provider = if self.brain_id == "gemini" {
+            "Gemini"
+        } else {
+            "ChatGPT"
+        };
+        let surface_opened = if self.brain_id == "gemini" {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let mut opened = false;
+            while Instant::now() < deadline {
+                if self.open_attachment_surface_trusted() {
+                    opened = true;
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(350));
+            }
+            opened
+        } else {
+            self.open_attachment_surface()
+        };
+        if !surface_opened {
+            return Err(format!(
+                "{provider}-Werkzeugmenue konnte nicht geoeffnet werden"
+            ));
         }
         std::thread::sleep(Duration::from_millis(500));
         let target = self.eval(
             r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const labels=['bild erstellen','create image','generate image','image erstellen'];const candidates=[...document.querySelectorAll('button,[role="menuitem"],[role="option"]')].filter(visible);for(const e of candidates){const text=((e.innerText||e.textContent||'')+' '+(e.getAttribute('aria-label')||'')).trim().toLowerCase();if(!labels.some(label=>text.includes(label)))continue;const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2,disabled:e.disabled===true||e.getAttribute('aria-disabled')==='true',text:text.slice(0,160)}}return null})()"#,
         )?;
         if target.is_null() {
-            return Err("ChatGPT bietet im Werkzeugmenue kein 'Bild erstellen' an".into());
+            return Err(format!(
+                "{provider} bietet im Werkzeugmenue kein 'Bild erstellen' an"
+            ));
         }
         if target
             .get("disabled")
@@ -90,7 +114,7 @@ impl WebBrainBackend {
             .unwrap_or(false)
         {
             return Err(format!(
-                "ChatGPT-Bildgenerator ist in diesem Profil/Modell nicht verfuegbar ({})",
+                "{provider}-Bildgenerator ist in diesem Profil/Modell nicht verfuegbar ({})",
                 target
                     .get("text")
                     .and_then(Value::as_str)
@@ -110,7 +134,7 @@ impl WebBrainBackend {
             .as_mut()
             .ok_or_else(|| "Backend nicht gestartet".to_string())?
             .click_at_trusted(x, y)
-            .map_err(|error| format!("ChatGPT-Bildtool nicht anklickbar: {error}"))?;
+            .map_err(|error| format!("{provider}-Bildtool nicht anklickbar: {error}"))?;
         std::thread::sleep(Duration::from_millis(500));
         Ok(())
     }
@@ -678,6 +702,35 @@ impl WebBrainBackend {
             .ok()
             .and_then(|value| value.get("ok").and_then(Value::as_bool))
             .unwrap_or(false)
+    }
+
+    /// Gemini's Angular menu ignores an untrusted DOM `click()`. Image-mode
+    /// activation is safe to open with a trusted pointer because the selected
+    /// control is only the menu trigger; unlike the upload action itself it
+    /// cannot open a native file dialog.
+    fn open_attachment_surface_trusted(&self) -> bool {
+        let selectors = self.sel("attach_button");
+        let serialized = match serde_json::to_string(&selectors) {
+            Ok(value) if !selectors.is_empty() => value,
+            _ => return false,
+        };
+        let target = match self.eval(&format!(
+            r#"(()=>{{const selectors={serialized};const visible=e=>{{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}};for(const selector of selectors){{try{{for(const node of document.querySelectorAll(selector)){{const e=node.closest('button,[role=button],label')||node;if(!visible(e))continue;const r=e.getBoundingClientRect();return{{x:r.left+r.width/2,y:r.top+r.height/2}}}}}}catch(e){{}}}}return null}})()"#
+        )) {
+            Ok(value) if !value.is_null() => value,
+            _ => return false,
+        };
+        let Some((x, y)) = target
+            .get("x")
+            .and_then(Value::as_f64)
+            .zip(target.get("y").and_then(Value::as_f64))
+        else {
+            return false;
+        };
+        self.driver
+            .borrow_mut()
+            .as_mut()
+            .is_some_and(|driver| driver.click_at_trusted(x, y).is_ok())
     }
 
     /// Fallback für Provider, die Uploads über `paste`/`drop` am Composer

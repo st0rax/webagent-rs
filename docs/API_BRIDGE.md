@@ -94,7 +94,7 @@ der Request fail-closed mit 502 beendet.
 
 ### Bildausgabe und Providerverhalten
 
-ChatGPT besitzt einen eigenen Bildausgabepfad über
+ChatGPT besitzt einen belegten Bildausgabepfad über
 `POST /v1/images/generations`. Die Bridge aktiviert vor dem Prompt explizit
 „Bild erstellen / Create image“, nimmt danach eine Baseline der stabilen
 Estuary-`file_...`-IDs auf und akzeptiert nur ein neu entstandenes großes Bild.
@@ -105,8 +105,13 @@ CDP-Ausschnitt-Screenshot die gerenderten PNG-Bytes. Der Standardresponse folgt
 dem aktuellen GPT-Image-Schema mit `data[0].b64_json`; für ältere Clients wird
 `response_format=url` als lokale `data:image/...;base64,...`-URL toleriert.
 
-Der Bildpfad ist derzeit nur für `webagent/chatgpt` implementiert und deshalb
-meldet nur dieses Brain `output: ["text", "image"]`. Andere Brains bleiben bei
+Gemini wird über denselben Endpoint ebenfalls explizit in den sichtbaren
+„Bild erstellen“-Modus geschaltet. Dessen Angular-Werkzeugmenü benötigt einen
+trusted CDP-Pointer-Click und nach `new_chat()` einen begrenzten Remount-Retry.
+Der Moduswechsel und Submit sind headless belegt; die Weboberfläche blieb in
+zwei Live-Läufen jedoch 180 bzw. 300 Sekunden bei „Creating your image“ und
+lieferte kein neues Artefakt. Deshalb meldet weiterhin nur ChatGPT
+`output: ["text", "image"]`. Andere Brains bleiben bei
 `output: ["text"]`, bis deren jeweilige Weboberfläche eine echte Generation
 und Artefaktextraktion bestanden hat. Providerseitige Kontingente bleiben eine
 echte Grenze: Erkennt ChatGPT etwa „Free plan limit for image generations“,

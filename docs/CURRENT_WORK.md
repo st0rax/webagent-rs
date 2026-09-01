@@ -78,9 +78,15 @@ aufgenommene Baseline ausgeschlossen; alte Estuary-Bilder bleiben anhand ihrer
 stabilen `file_...`-ID ausgeschlossen, auch wenn ChatGPT `ts` und `sig` ändert.
 Der aktuell folgende atomare Neu-Generierungs-Smoke scheitert ehrlich am
 providerseitigen Free-Plan-Kontingent (Reset laut UI am 01.09.2026 um 16:57)
-und wird nicht als Erfolg gewertet. Alle anderen Brains melden weiterhin nur
-Textausgabe. Eine Behauptung „100 % API-Kompatibilitaet fuer alle Brains“ ist
-mit diesem Stand ausdrücklich nicht zulässig.
+und wird nicht als Erfolg gewertet. Für Gemini wurde der zuvor fehlende
+provider-spezifische Pfad ergänzt: „Uploads & Tools“ wird nach dem asynchronen
+`new_chat()`-Remount per trusted CDP-Pointer geöffnet und „Bild erstellen“
+aktiviert. Headless waren Moduswechsel („Bilder“), Submit und alternierende
+Renderer-Wakeups belegt; Gemini blieb trotzdem bis zum absoluten 180- bzw.
+300-Sekunden-Budget bei „Creating your image“, ohne neues Bild im DOM. Gemini
+wird daher noch nicht mit Bildausgabe beworben. Alle anderen Brains melden
+weiterhin nur Textausgabe. Eine Behauptung „100 % API-Kompatibilitaet fuer alle
+Brains“ ist mit diesem Stand ausdrücklich nicht zulässig.
 
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
 
