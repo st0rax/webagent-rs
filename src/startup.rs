@@ -97,6 +97,7 @@ mod tests {
             "docs/PROTOCOL_SCHEMA.md",
             "docs/COLLABORATION.md",
             "docs/CURRENT_WORK.md",
+            "docs/WEB_UI_API_TOOL_RESET.md",
         ];
         for rel in living {
             let text = std::fs::read_to_string(root.join(rel)).unwrap();

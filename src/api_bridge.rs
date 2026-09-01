@@ -399,13 +399,16 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
+    if let Err(error) = require_clean_text_tools(&tools, &tool_choice) {
+        return api_error(ApiFlavor::OpenAi, 400, &error);
+    }
     let answer = match run_task_blocking(
         config,
         &brain,
         &prompt.text,
         &prompt.attachments,
-        &tools,
-        tool_choice,
+        &[],
+        crate::browser_inference::BrowserToolChoice::None,
     ) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
@@ -426,8 +429,7 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
                 "index": 0,
                 "message": message,
                 "finish_reason": answer.finish_reason()
-            }],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            }]
         }),
     )
 }
@@ -738,8 +740,8 @@ fn handle_openai_incremental(
         .map_err(|error| format!("Inkrementeller Tool-Request unerwartet: {error}"))?;
     let choice = openai_tool_choice(payload.tool_choice.as_ref(), &tools)
         .map_err(|error| format!("Inkrementeller tool_choice unerwartet: {error}"))?;
-    if !tools.is_empty() && !matches!(choice, crate::browser_inference::BrowserToolChoice::None) {
-        return write_http_response(stream, handle_openai(request, config));
+    if let Err(error) = require_clean_text_tools(&tools, &choice) {
+        return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error));
     }
 
     let id = completion_id("chatcmpl");
@@ -857,13 +859,16 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
     };
+    if let Err(error) = require_clean_text_tools(&tools, &tool_choice) {
+        return api_error(ApiFlavor::Anthropic, 400, &error);
+    }
     let answer = match run_task_blocking(
         config,
         &brain,
         &prompt.text,
         &prompt.attachments,
-        &tools,
-        tool_choice,
+        &[],
+        crate::browser_inference::BrowserToolChoice::None,
     ) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::Anthropic, 502, &error),
@@ -889,8 +894,7 @@ fn anthropic_response(
             "model": model,
             "content": [{"type": "text", "text": answer.text.as_deref().unwrap_or_default()}],
             "stop_reason": "end_turn",
-            "stop_sequence": null,
-            "usage": {"input_tokens": 0, "output_tokens": 0}
+            "stop_sequence": null
         });
     }
     let content: Vec<Value> = answer
@@ -912,8 +916,7 @@ fn anthropic_response(
         "model": model,
         "content": content,
         "stop_reason": "tool_use",
-        "stop_sequence": null,
-        "usage": {"input_tokens": 0, "output_tokens": 0}
+        "stop_sequence": null
     })
 }
 
@@ -937,6 +940,9 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
+    if let Err(error) = require_clean_text_tools(&tools, &tool_choice) {
+        return api_error(ApiFlavor::OpenAi, 400, &error);
+    }
     let (mut messages, prompt) = match responses_context(&payload) {
         Ok(context) => context,
         Err((status, error)) => return api_error(ApiFlavor::OpenAi, status, &error),
@@ -946,8 +952,8 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
         &brain,
         &prompt.text,
         &prompt.attachments,
-        &tools,
-        tool_choice,
+        &[],
+        crate::browser_inference::BrowserToolChoice::None,
     ) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
@@ -995,8 +1001,8 @@ fn handle_responses_incremental(
         .map_err(|error| format!("Inkrementeller Tool-Request unerwartet: {error}"))?;
     let choice = responses_tool_choice(payload.tool_choice.as_ref(), &tools)
         .map_err(|error| format!("Inkrementeller tool_choice unerwartet: {error}"))?;
-    if !tools.is_empty() && !matches!(choice, crate::browser_inference::BrowserToolChoice::None) {
-        return write_http_response(stream, handle_responses(request, config));
+    if let Err(error) = require_clean_text_tools(&tools, &choice) {
+        return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error));
     }
     let (mut messages, prompt) = match responses_context(&payload) {
         Ok(context) => context,
@@ -1197,7 +1203,7 @@ fn responses_context(
         None => Vec::new(),
     };
     messages.extend(responses_messages(&payload.input).map_err(|error| (400, error))?);
-    let prompt = conversation_prompt(payload.instructions.clone(), &messages, "OpenAI Responses")
+    let prompt = conversation_prompt(payload.instructions.clone(), &messages)
         .map_err(|error| (400, error))?;
     Ok((messages, prompt))
 }
@@ -1568,7 +1574,7 @@ fn openai_task(request: &OpenAiRequest) -> Result<String, String> {
 }
 
 fn openai_prompt(request: &OpenAiRequest) -> Result<PromptBundle, String> {
-    conversation_prompt(None, &request.messages, "OpenAI Chat Completions")
+    conversation_prompt(None, &request.messages)
 }
 
 fn anthropic_prompt(request: &AnthropicRequest) -> Result<PromptBundle, String> {
@@ -1576,13 +1582,13 @@ fn anthropic_prompt(request: &AnthropicRequest) -> Result<PromptBundle, String> 
         Some(content) => Some(text_content(content)?),
         None => None,
     };
-    conversation_prompt(system, &request.messages, "Anthropic Messages")
+    conversation_prompt(system, &request.messages)
 }
 
 #[cfg(test)]
 fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
     let messages = responses_messages(&request.input)?;
-    Ok(conversation_prompt(request.instructions.clone(), &messages, "OpenAI Responses")?.text)
+    Ok(conversation_prompt(request.instructions.clone(), &messages)?.text)
 }
 
 fn responses_messages(input: &Value) -> Result<Vec<ConversationMessage>, String> {
@@ -1843,86 +1849,96 @@ fn anthropic_tool_choice(
     }
 }
 
+fn require_clean_text_tools(
+    tools: &[crate::browser_inference::BrowserTool],
+    choice: &crate::browser_inference::BrowserToolChoice,
+) -> Result<(), String> {
+    if tools.is_empty() || matches!(choice, crate::browser_inference::BrowserToolChoice::None) {
+        return Ok(());
+    }
+    Err(concat!(
+        "Aktive Client-Tools sind im sauberen Browser-Textprofil noch nicht unterstuetzt. ",
+        "WebAgent injiziert weder Tool-Schemas noch Skill-/System-Protokolle in die ",
+        "Browser-Unterhaltung; verwaltete WebAgent-Tools folgen separat."
+    )
+    .to_string())
+}
+
 #[cfg(test)]
 fn conversation_task(
     system: Option<String>,
     messages: &[ConversationMessage],
-    source: &str,
 ) -> Result<String, String> {
-    Ok(conversation_prompt(system, messages, source)?.text)
+    Ok(conversation_prompt(system, messages)?.text)
 }
 
 fn conversation_prompt(
     system: Option<String>,
     messages: &[ConversationMessage],
-    _source: &str,
 ) -> Result<PromptBundle, String> {
     if messages.is_empty() {
         return Err("messages darf nicht leer sein.".to_string());
     }
-    // Der Browser kann keine echte providerseitige system-Rolle setzen. Die
-    // Einleitung muss deshalb wie eine neutrale Transcript-Anweisung wirken:
-    // Begriffe wie "Provider-Bridge" oder WEBAGENT/1 laden das Modell sonst
-    // dazu ein, ueber Transport und Identitaet zu diskutieren, statt die
-    // eigentliche Nutzerfrage zu beantworten.
-    let mut task = String::from(concat!(
-        "Behandle den folgenden Inhalt als Gespraechsverlauf eines API-Clients. ",
-        "Beantworte die letzte Nutzeranfrage direkt. Gib ausschliesslich die Antwort fuer den API-Client zurueck und erwaehne weder Browser, Transport, Provider noch interne Protokolle.\n\n",
-    ));
-    if let Some(system) = system.filter(|value| !value.trim().is_empty()) {
-        task.push_str("[system]\n");
-        task.push_str(&system);
-        task.push_str("\n\n");
+    if system.is_some_and(|value| !value.trim().is_empty()) {
+        return Err(concat!(
+            "System-/Instructions-Semantik ist im sauberen Browser-Textprofil noch nicht ",
+            "unterstuetzt; WebAgent schreibt sie nicht als versteckte Nutzernachricht in den Chat."
+        )
+        .to_string());
     }
-    let mut attachments = Vec::new();
+
     for message in messages {
-        match message.role.as_str() {
-            "system" | "developer" | "user" => {
-                if !message.tool_calls.is_empty() || message.tool_call_id.is_some() {
-                    return Err(format!(
-                        "Rolle '{}' darf keine Tool-Call-Felder enthalten.",
-                        message.role
-                    ));
-                }
-                let content = content_to_prompt(&message.content, &mut attachments)?;
-                task.push_str(&format!("[{}]\n{}\n\n", message.role, content));
-            }
-            "assistant" => {
-                if message.tool_call_id.is_some() {
-                    return Err("Assistant-Nachricht darf keine tool_call_id tragen.".to_string());
-                }
-                if !message.content.is_null() {
-                    let content = content_to_prompt(&message.content, &mut attachments)?;
-                    if !content.is_empty() {
-                        task.push_str(&format!("[assistant]\n{content}\n\n"));
-                    }
-                }
-                if !message.tool_calls.is_empty() {
-                    let calls = serde_json::to_string(&message.tool_calls).map_err(|error| {
-                        format!("Assistant-Tool-Calls nicht serialisierbar: {error}")
-                    })?;
-                    task.push_str(&format!("[assistant tool_calls]\n{calls}\n\n"));
-                }
-            }
-            "tool" => {
-                if !message.tool_calls.is_empty() {
-                    return Err("Tool-Nachricht darf keine weiteren tool_calls tragen.".to_string());
-                }
-                let id = message
-                    .tool_call_id
-                    .as_deref()
-                    .filter(|id| !id.trim().is_empty())
-                    .ok_or_else(|| "Tool-Nachricht benoetigt tool_call_id.".to_string())?;
-                let content = content_to_prompt(&message.content, &mut attachments)?;
-                task.push_str(&format!("[tool id={id}]\n{content}\n\n"));
-            }
-            other => {
-                return Err(format!(
-                    "Rolle '{other}' wird von der Text-Bridge nicht unterstuetzt."
-                ))
-            }
+        if !message.tool_calls.is_empty() || message.tool_call_id.is_some() {
+            return Err(concat!(
+                "Tool-Call-Verlaeufe sind im sauberen Browser-Textprofil noch nicht ",
+                "unterstuetzt; WebAgent injiziert keine Tool-Protokolle in den Chat."
+            )
+            .to_string());
+        }
+        if !matches!(message.role.as_str(), "user" | "assistant") {
+            return Err(format!(
+                "Rolle '{}' ist im sauberen Browser-Textprofil nicht unterstuetzt.",
+                message.role
+            ));
         }
     }
+
+    let current = messages
+        .last()
+        .ok_or_else(|| "messages darf nicht leer sein.".to_string())?;
+    if current.role != "user" {
+        return Err(
+            "Die letzte Nachricht muss im sauberen Browser-Textprofil die Rolle 'user' haben."
+                .to_string(),
+        );
+    }
+
+    let mut attachments = Vec::new();
+    let current_text = content_to_prompt(&current.content, &mut attachments)?;
+    if messages.len() == 1 {
+        return Ok(PromptBundle {
+            text: current_text,
+            attachments,
+        });
+    }
+
+    let mut task = String::from("Gespraechsverlauf mit [brain]:\n\n");
+    for message in &messages[..messages.len() - 1] {
+        // Historische Anhaenge werden nur als Textmarker erwaehnt. Sie duerfen
+        // nicht bei jeder Fortsetzung erneut in die Browser-UI hochgeladen
+        // werden und den aktuellen Composer blockieren.
+        let mut historical_attachments = Vec::new();
+        let content = content_to_prompt(&message.content, &mut historical_attachments)?;
+        let label = if message.role == "assistant" {
+            "brain"
+        } else {
+            "user"
+        };
+        task.push_str(&format!("[{label}]\n{content}\n\n"));
+    }
+    task.push_str("Aktuelle Nachricht:\n\n");
+    task.push_str(&current_text);
+
     Ok(PromptBundle {
         text: task,
         attachments,
@@ -2432,6 +2448,12 @@ fn select_auto_brain(
 fn resolve_model(requested: &str, default_brain: &str) -> Result<String, String> {
     let brain = if requested == "webagent" {
         default_brain
+    } else if requested == "auto"
+        || available_brains()
+            .iter()
+            .any(|candidate| candidate == requested)
+    {
+        requested
     } else {
         requested
             .strip_prefix("webagent/")
@@ -2796,8 +2818,7 @@ fn anthropic_sse(
             "model": model,
             "content": [],
             "stop_reason": null,
-            "stop_sequence": null,
-            "usage": {"input_tokens": 0, "output_tokens": 0}
+            "stop_sequence": null
         }
     });
     let mut body = format!("event: message_start\ndata: {started}\n\n");
@@ -2830,7 +2851,7 @@ fn anthropic_sse(
             ));
         }
     }
-    let message_delta = json!({"type": "message_delta", "delta": {"stop_reason": if answer.tool_calls.is_empty() { "end_turn" } else { "tool_use" }, "stop_sequence": null}, "usage": {"output_tokens": 0}});
+    let message_delta = json!({"type": "message_delta", "delta": {"stop_reason": if answer.tool_calls.is_empty() { "end_turn" } else { "tool_use" }, "stop_sequence": null}});
     let message_stop = json!({"type": "message_stop"});
     body.push_str(&format!(
         "event: message_delta\ndata: {message_delta}\n\n\
@@ -3034,7 +3055,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_prompt_does_not_expose_transport_identity() {
+    fn single_user_message_is_forwarded_without_wrapper_or_transport_prompt() {
         let task = conversation_task(
             None,
             &[ConversationMessage {
@@ -3043,11 +3064,10 @@ mod tests {
                 tool_calls: Vec::new(),
                 tool_call_id: None,
             }],
-            "Anthropic Messages",
         )
         .unwrap();
 
-        assert!(task.contains("Beantworte die letzte Nutzeranfrage direkt"));
+        assert_eq!(task, "Hallo");
         assert!(!task.contains("Provider-Bridge"));
         assert!(!task.contains("WEBAGENT_INFERENCE/1"));
     }
@@ -3142,6 +3162,8 @@ mod tests {
         assert_eq!(resolve_model("webagent", "chatgpt").unwrap(), "chatgpt");
         assert_eq!(resolve_model("webagent/auto", "chatgpt").unwrap(), "auto");
         assert_eq!(resolve_model("wa/chatgpt", "chatgpt").unwrap(), "chatgpt");
+        assert_eq!(resolve_model("auto", "chatgpt").unwrap(), "auto");
+        assert_eq!(resolve_model("chatgpt", "claude").unwrap(), "chatgpt");
         assert_eq!(
             resolve_model("webagent/claude", "chatgpt").unwrap(),
             "claude"
@@ -3338,8 +3360,7 @@ mod tests {
         };
 
         let prompt = openai_task(&request).unwrap();
-        assert!(prompt.contains("[user]\nHallo"));
-        assert!(prompt.contains("Beantworte die letzte Nutzeranfrage direkt"));
+        assert_eq!(prompt, "Hallo");
         assert!(!prompt.contains("WEBAGENT_INFERENCE/1"));
         assert!(!prompt.contains("final-"));
     }
@@ -3373,6 +3394,12 @@ mod tests {
             choice,
             crate::browser_inference::BrowserToolChoice::Required
         );
+        assert!(require_clean_text_tools(&tools, &choice).is_err());
+        assert!(require_clean_text_tools(
+            &tools,
+            &crate::browser_inference::BrowserToolChoice::None
+        )
+        .is_ok());
         assert!(openai_tool_choice(
             Some(&json!({"type":"function","function":{"name":"missing"}})),
             &tools
@@ -3381,7 +3408,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_is_preserved_in_browser_prompt() {
+    fn tool_result_is_not_injected_into_clean_browser_prompt() {
         let request = OpenAiRequest {
             model: "webagent".to_string(),
             stream: None,
@@ -3395,8 +3422,8 @@ mod tests {
             }],
         };
 
-        let prompt = openai_task(&request).unwrap();
-        assert!(prompt.contains("[tool id=call_1]\nDateiinhalt"));
+        let error = openai_task(&request).unwrap_err();
+        assert!(error.contains("Tool-Call-Verlaeufe"));
     }
 
     #[test]
@@ -3429,9 +3456,9 @@ mod tests {
             previous_response_id: None,
             store: true,
         };
-        let string_task = responses_task(&string_request).unwrap();
-        assert!(string_task.contains("[system]\nAntworte kurz."));
-        assert!(string_task.contains("[user]\nHallo"));
+        assert!(responses_task(&string_request)
+            .unwrap_err()
+            .contains("System-/Instructions-Semantik"));
 
         let message_request = ResponsesRequest {
             model: "webagent/chatgpt".to_string(),
@@ -3443,9 +3470,7 @@ mod tests {
             previous_response_id: None,
             store: true,
         };
-        assert!(responses_task(&message_request)
-            .unwrap()
-            .contains("[user]\nPing"));
+        assert_eq!(responses_task(&message_request).unwrap(), "Ping");
 
         let block_request = ResponsesRequest {
             model: "webagent/chatgpt".to_string(),
@@ -3457,9 +3482,7 @@ mod tests {
             previous_response_id: None,
             store: true,
         };
-        assert!(responses_task(&block_request)
-            .unwrap()
-            .contains("[user]\nTeil 1 Teil 2"));
+        assert_eq!(responses_task(&block_request).unwrap(), "Teil 1 Teil 2");
         assert!(responses_content(
             &json!([{"type":"input_image","image_url":"data:image/png;base64,SGk="}])
         )
@@ -3620,7 +3643,7 @@ mod tests {
     }
 
     #[test]
-    fn responses_task_accepts_function_call_output_items() {
+    fn responses_task_rejects_function_call_transcript_injection() {
         let request = ResponsesRequest {
             model: "webagent/chatgpt".to_string(),
             input: json!([{"type":"function_call_output","call_id":"call_7","output":{"ok":true}}]),
@@ -3631,8 +3654,9 @@ mod tests {
             previous_response_id: None,
             store: true,
         };
-        let task = responses_task(&request).unwrap();
-        assert!(task.contains("[tool id=call_7]\n{\"ok\":true}"));
+        assert!(responses_task(&request)
+            .unwrap_err()
+            .contains("Tool-Call-Verlaeufe"));
 
         let continuation = ResponsesRequest {
             model: "webagent/chatgpt".to_string(),
@@ -3653,10 +3677,9 @@ mod tests {
             previous_response_id: None,
             store: true,
         };
-        let continuation_task = responses_task(&continuation).unwrap();
-        assert!(continuation_task.contains("[assistant tool_calls]"));
-        assert!(continuation_task.contains("read_file"));
-        assert!(continuation_task.contains("[tool id=call_7]\nDateiinhalt"));
+        assert!(responses_task(&continuation)
+            .unwrap_err()
+            .contains("Tool-Call-Verlaeufe"));
     }
 
     #[test]
@@ -3705,10 +3728,11 @@ mod tests {
         stored
             .messages
             .extend(responses_messages(&json!("Wie lautet es?")).unwrap());
-        let task = conversation_task(None, &stored.messages, "OpenAI Responses").unwrap();
+        let task = conversation_task(None, &stored.messages).unwrap();
+        assert!(task.starts_with("Gespraechsverlauf mit [brain]:"));
         assert!(task.contains("[user]\nMein Codewort ist Otter."));
-        assert!(task.contains("[assistant]\nVerstanden."));
-        assert!(task.contains("[user]\nWie lautet es?"));
+        assert!(task.contains("[brain]\nVerstanden."));
+        assert!(task.ends_with("Aktuelle Nachricht:\n\nWie lautet es?"));
         assert!(response["previous_response_id"].is_null());
     }
 
