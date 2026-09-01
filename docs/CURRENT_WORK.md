@@ -33,6 +33,12 @@ gemeinsamen Browserturn erfolgt.
 | Headless Text-Smoke | zu ChatGPT geroutet, exakt `AUTO_ROUTE_OK`, 18,40 s |
 | Headless WAV-Smoke | zu Gemini geroutet, `Die Pruefziffer lautet 789`, 22,33 s |
 
+Nach dem Live-Befund, dass ChatGPT und Claude bei Audio teils HTTP 200 mit einer
+reinen Absage liefern, klassifiziert die Bridge eindeutige
+Transkriptionsabsagen jetzt als HTTP 502. Damit werden diese Provider nicht
+mehr als scheinbar erfolgreiche Audio-Backends ausgegeben; die beworbene
+Audio-Eingabe bleibt auf `gemini` und `webagent/auto` begrenzt.
+
 ## Aktueller Fix: multimodaler Upload-Fallback für dynamische Browser-UIs
 
 **Aktualisiert:** 2026-08-31

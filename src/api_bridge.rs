@@ -563,6 +563,13 @@ fn handle_audio_transcription(
     if text.is_empty() {
         return api_error(ApiFlavor::OpenAi, 502, "Provider lieferte kein Transkript.");
     }
+    if is_audio_capability_refusal(&text) {
+        return api_error(
+            ApiFlavor::OpenAi,
+            502,
+            "Das ausgewaehlte Web-Brain unterstuetzt keine Audio-Transkription.",
+        );
+    }
     if response_format == "text" {
         return HttpResponse {
             status: 200,
@@ -576,6 +583,27 @@ fn handle_audio_transcription(
         json!({"text": text})
     };
     HttpResponse::json(200, body)
+}
+
+/// Browser-Brains antworten bei nicht unterstuetztem Audio gelegentlich mit
+/// einer hoeflichen Textabsage statt mit einem leeren Ergebnis. Diese Absage
+/// darf nicht als gueltiges OpenAI-Transkript an den Client durchgereicht
+/// werden; die Erkennung bleibt bewusst auf eindeutige Formulierungen begrenzt.
+fn is_audio_capability_refusal(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "nicht zuverlässig transkribieren",
+        "nicht zuverlaessig transkribieren",
+        "unable to transcribe",
+        "cannot transcribe",
+        "can't transcribe",
+        "not able to transcribe",
+        "don't have native audio",
+        "do not have the ability to transcribe",
+        "audio files aren't something i can",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
 }
 
 fn handle_audio_speech(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
@@ -3194,6 +3222,25 @@ mod tests {
         assert_eq!(meta["modalities"]["input"][1], "image");
         assert_eq!(meta["modalities"]["output"][0], "text");
         assert!(meta["modalities"]["output"].as_array().unwrap().len() == 1);
+    }
+
+    #[test]
+    fn audio_capability_refusals_are_not_returned_as_transcripts() {
+        assert!(is_audio_capability_refusal(
+            "Ich kann die Audiodatei in dieser Umgebung nicht zuverlässig transkribieren."
+        ));
+        assert!(is_audio_capability_refusal(
+            "I'm unable to transcribe audio files in this chat."
+        ));
+        assert!(is_audio_capability_refusal(
+            "I don't have native audio transcription in this interface."
+        ));
+        assert!(!is_audio_capability_refusal(
+            "Die Prüfziffer lautet sieben acht neun."
+        ));
+        assert!(!is_audio_capability_refusal(
+            "The transcript contains a clearly spoken number."
+        ));
     }
 
     #[test]
