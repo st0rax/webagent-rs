@@ -284,7 +284,7 @@ Danach stehen in Pi beide Wege zur Verfuegung:
 /model              # Pis eingebaute allgemeine Modellauswahl funktioniert ebenfalls
 ```
 
-Ausserhalb des TUI zeigt `pi --list-models webagent` denselben automatisch geladenen Katalog. Ist der Endpoint beim Pi-Start noch nicht erreichbar, registriert die Erweiterung zunaechst die acht Standard-Brains; der naechste `/models`-Aufruf aktualisiert sie vom laufenden Endpoint und nimmt dabei auch Custom-Brains auf.
+Ausserhalb des TUI zeigt `pi --list-models webagent` denselben automatisch geladenen Katalog. Ist der Endpoint beim Pi-Start noch nicht erreichbar, registriert die Erweiterung zunaechst den AutoRouter und die acht Standard-Brains; der naechste `/models`-Aufruf aktualisiert sie vom laufenden Endpoint und nimmt dabei auch Custom-Brains auf.
 
 ### Reproduzierbarer lokaler Smoke-Test
 
