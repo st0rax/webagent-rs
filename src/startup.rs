@@ -83,10 +83,11 @@ mod tests {
     #[test]
     fn betriebs_markdown_hat_eine_wahrheit() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        // Lebende Betriebsdokumente. Datierte Uebergaben gehoeren NICHT hierher:
+// Lebende Betriebsdokumente. Datierte Uebergaben gehoeren NICHT hierher:
         // sie werden nach ihrer Uebergabe archiviert und duerfen dann ein
         // Archiv-Banner tragen. Der dauerhafte Einstieg ist `START_HERE.md`,
-        // der laufende Stand `docs/CURRENT_WORK.md`.
+        // der laufende Stand `docs/CURRENT_WORK.md`. Aufgabentafel,
+        // Arbeitsvertrag und Umsetzungsstatus sind lebende Multidev-Dokumente.
         let living = [
             "README.md",
             "AGENTS.md",
@@ -97,6 +98,11 @@ mod tests {
             "docs/PROTOCOL_SCHEMA.md",
             "docs/COLLABORATION.md",
             "docs/CURRENT_WORK.md",
+            "docs/API_BRIDGE.md",
+            "docs/REFERENZEN.md",
+            "docs/TASKBOARD.md",
+            "docs/WORK_CONTRACT.md",
+            "docs/WEB_UI_API_TOOL_RESET_STATUS.md",
             "docs/WEB_UI_API_TOOL_RESET.md",
         ];
         for rel in living {

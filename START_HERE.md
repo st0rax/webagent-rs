@@ -1,96 +1,75 @@
-# Hier anfangen
+# START_HERE — Einstieg für neue Entwickler (auch KI)
 
-Dies ist der dauerhafte Einstieg für jeden neuen menschlichen oder KI-
-Entwickler. Nicht mit einer datierten Übergabe oder `STATUS_LIVE.md` beginnen.
+> **Der dauerhafte Einstieg.** Du bist neu im Repo (Mensch oder Agent wie
+> ChatGPT-Codex, Claude Code, Grok, Manus)? Dann starte hier. Diese Datei
+> verweist auf das, was du konkret ansehen und tun sollst.
 
-## Übernahme in fünf Minuten
+## 1. Was ist dieses Repo?
 
-1. Git-Wurzel und Zustand prüfen:
+Ein **lokaler, browserbasierter Agent** (Rust-Port) mit eigener Provider-Bridge:
+Er nutzt echte Chat-Brains (ChatGPT, Claude, Gemini, …) über Browser-Sessions
+und bietet eine lokale, OpenAI-kompatible API. Aktueller Umbau („3 Flächen"):
+lokale **Web-UI**, **OpenAI-kompatibler Endpunkt**, **Managed Tools** — siehe
+`docs/WEB_UI_API_TOOL_RESET.md`.
 
-   ```powershell
-   git rev-parse --show-toplevel
-   git status --short --branch
-   git log -5 --oneline --decorate
-   ```
+## 2. Pflicht-Lese (in dieser Reihenfolge)
 
-   Vor dem Editieren stoppen, wenn fremde Änderungen vorhanden sind. Nichts
-   überschreiben; erst Eigentümer und Dateizuständigkeit klären.
+| Schritt | Datei | Worum es geht |
+|---|---|---|
+| 1 | `AGENTS.md` | Repo-Regeln, Mapping zur Bot-Architektur |
+| 2 | `docs/WEB_UI_API_TOOL_RESET.md` | **Verbindlicher Umsetzungsplan** (Phasen 0–7) |
+| 3 | `docs/WORK_CONTRACT.md` | **Arbeitsvertrag** — verbindlich für jeden, der eine Aufgabe übernimmt |
+| 4 | `docs/TASKBOARD.md` | Aufgabentafel (Spiegel); Claim-Quelle ist `docs/TASKBOARD.json` |
+| 5 | `docs/WEB_UI_API_TOOL_RESET_STATUS.md` | Aktueller Umsetzungsstand / Handover |
+| 6 | `docs/CAPABILITY_MATRIX.json` | Beleg-Matrix (130 Zellen, Status je Fähigkeit) |
 
-2. In dieser Reihenfolge lesen:
+Außerhalb des Repos (nur lokal relevante Umgebung:
+`C:\AGENTS.md` = Arbeitsdirektive mit den zwölf Direktiven; gilt für alle
+Arbeiten unter `C:\Users`.)
 
-   - [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md): aktueller Arbeitsstand,
-     Evidenz und nächste sichere Aktion;
-   - [`docs/OVERVIEW.md`](docs/OVERVIEW.md): Produktwahrheit, Architektur,
-     Reifegrade und Roadmap;
-   - [`AGENTS.md`](AGENTS.md): verbindliche Repo- und Agentenregeln;
-   - [`CONTRIBUTING.md`](CONTRIBUTING.md): Setup, Workflow und Abnahme;
-   - [`docs/COLLABORATION.md`](docs/COLLABORATION.md): GitHub-Auftrag,
-     Zuständigkeit, Review und Entwicklerwechsel;
-   - [`CONVENTIONS.md`](CONVENTIONS.md): Designregeln.
+## 3. So übernimmst du eine Aufgabe (Claim zuerst)
 
-3. Vor einer Codeänderung die lokale Basis feststellen:
+1. Lies `docs/WORK_CONTRACT.md` und akzeptiere ihn.
+2. Wähle eine freie Aufgabe (**Status `free`**) aus `docs/TASKBOARD.json`
+   (menschenlesbar: `docs/TASKBOARD.md`).
+3. Setze dort `status` auf `"claimed"`, `owner`, `branch`, `claimed_at` ein.
+4. Arbeite auf **eigenem Zweig** vom `origin/feat/browser-inference-provider`
+   (oder main), kleine Commits, Gates grün (Abschnitt 4).
+5. Beim Abschluss: Belegpfad (Matrix-Zelle) eintragen, Statusdatei
+   `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, Zelle auf `"done"`.
 
-   ```powershell
-   cargo fmt --all -- --check
-   cargo clippy --no-default-features --all-targets -- -D warnings
-   cargo test --no-default-features
-   ```
+**Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
 
-   Unter Windows zusätzlich, sofern Toolchain und WebView2-Abhängigkeiten
-   vorhanden sind:
+## 4. Verifikationskommandos
 
-   ```powershell
-   cargo clippy --all-targets -- -D warnings
-   cargo test
-   ```
+```pwsh
+# Default-Gate (webview-only, TUI hinter Feature)
+cargo test --lib
 
-4. Genau eine begrenzte Aufgabe aus `docs/CURRENT_WORK.md` übernehmen. Vor
-   einem neuen Modul, Store, Protokoll oder CLI-Flag mit `rg` nach dem
-   bestehenden Mechanismus suchen. Dateien und Abnahmetest vorab benennen.
+# TUI baut weiterhin hinter seinem Feature
+cargo check --features tui
 
-5. Mit einem fokussierten Commit, proportional grünen Gates, aktualisierter
-   `docs/CURRENT_WORK.md` und einem Push des Arbeitsbranches abschließen — der
-   Stand muss jederzeit über GitHub ziehbar sein. Grüne, abgeschlossene
-   Scheiben merged der Integrator selbst; Tag und Release folgen nach den
-   Abnahmebelegen. Live-Browser/Login und kostenpflichtige Provider laufen nur
-   mit anwesendem Eigentümer, der die Anmeldung selbst vornimmt.
+# Ohne Defaultfeatures (CI-Zweig)
+cargo check --no-default-features
 
-## Rangfolge der Wahrheitsquellen
+# (optional) Binärgewicht im Release-Artefakt für das <10-MB-Budget
+```
 
-Bei Widersprüchen gilt:
+Bekannter Stand: 1207 passed / 1 ignored (Stand 2026‑09‑01, vor dem
+`session/`-Modul; aktuelle Zahl steht in der Statusdatei).
 
-1. ausführbarer Code und Tests;
-2. `docs/CURRENT_WORK.md` für aktuelle Arbeit und Evidenz;
-3. `docs/OVERVIEW.md` für Produktstand und Roadmap;
-4. `AGENTS.md`, `CONTRIBUTING.md`, `docs/COLLABORATION.md` und
-   `CONVENTIONS.md` für Arbeitsregeln;
-5. `README.md` und `docs/PROTOCOL_SCHEMA.md` für Bedienung und Verträge;
-6. datierte Übergaben, Pläne, Reviews und `STATUS_LIVE.md` nur als Historie.
+## 5. Nächste offene Scheiben
 
-Historische Providerwerte sind kein aktueller Verfügbarkeitsbeleg. Ein
-abgeschlossenes Goal oder grüne Unit-Tests sind keine Gesamtproduktabnahme.
+- **T-101** (läuft, `local/opencode`): `SessionService`+`EventStream`
+  (`src/session/`) — Fundament steht, es fehlt die Api-Bridge-Anbindung.
+- **T-102**, **T-103**, **T-104**, **T-201** … : freie Aufgaben für dich.
+  Siehe `docs/TASKBOARD.md`.
 
-## Kurzbild des Projekts
+## 6. Grenzen (nicht überschreiten)
 
-Webagent ist ein lokaler Rust-Harness: Web-Chat-„Brains“ planen, während ein
-Controller über einen Plan-Act-Observe-Loop Werkzeuge im Workspace ausführt.
-`BrainBackend` hält den Kern providerunabhängig. Das produktive Browserbackend
-nutzt angemeldete Embedded-WebView2-Sitzungen unter Windows; Kern, REPL und TUI
-besitzen zusätzlich browserfreie Pfade.
-
-Das Repo kann neben oder innerhalb alter Python- und Experiment-Worktrees
-liegen. Maßgeblich sind ausschließlich die von `git rev-parse --show-toplevel`
-ausgegebene Git-Wurzel, der ausgecheckte Branch und dessen eigenes `origin`.
-
-## Übergaberegel
-
-Wer eine Aufgabe abgibt, aktualisiert `docs/CURRENT_WORK.md` mit:
-
-- exaktem Branch und Commit;
-- eigenen oder schmutzigen Dateien samt Grund;
-- erledigter Arbeit und offenen Abnahmekriterien;
-- tatsächlich ausgeführten Befehlen und Ergebnissen;
-- genau einer sichersten nächsten Aktion;
-- weiterhin freigabepflichtigen externen Aktionen.
-
-Chatverlauf ist optionale Zusatzinformation, nie die einzige Übergabe.
+- `C:\Users\storax\.zcode\v2\config.json` **nicht anfassen**.
+- Keine Secrets/Tokens auslesen, kopieren oder committen.
+- Keine Force-Pushes / History-Rewrites; Rücknahmen als neue Commits.
+- Live-Claude-Web-Tests nur im Rahmen zulässiger Nutzung (Anthropic Consumer
+  Terms) und nur nach Freigabe.
+- Keine unbelegten `100 %`-Aussagen; Belege gehören in die Capability-Matrix.
