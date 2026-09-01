@@ -29,14 +29,46 @@ Arbeiten unter `C:\Users`.)
 
 ## 3. So übernimmst du eine Aufgabe (Claim zuerst)
 
+**Die Aufgabentafel liegt unter `docs/`:**
+
+| Datei | Zweck |
+|---|---|
+| `docs/TASKBOARD.md` | menschenlesbare Tabelle zum Durchsehen |
+| `docs/TASKBOARD.json` | **Claim-Quelle der Wahrheit** — hier setzt du dich ein |
+
+**So trägst du dich ein — konkret:**
+
 1. Lies `docs/WORK_CONTRACT.md` und akzeptiere ihn.
-2. Wähle eine freie Aufgabe (**Status `free`**) aus `docs/TASKBOARD.json`
-   (menschenlesbar: `docs/TASKBOARD.md`).
-3. Setze dort `status` auf `"claimed"`, `owner`, `branch`, `claimed_at` ein.
-4. Arbeite auf **eigenem Zweig** vom `origin/feat/browser-inference-provider`
+2. Wähle eine freie Aufgabe (Status `"free"`) aus `docs/TASKBOARD.md`.
+3. Öffne `docs/TASKBOARD.json` und setze bei deiner Aufgabe (`id`, z. B.
+   `"T-102"`):
+   ```json
+   "status": "claimed",
+   "owner": "claude-code",
+   "branch": "feature/dein-zweig-oder-main",
+   "claimed_at": "2026-09-02"
+   ```
+4. Arbeite auf eigenem Zweig vom `origin/feat/browser-inference-provider`
    (oder main), kleine Commits, Gates grün (Abschnitt 4).
 5. Beim Abschluss: Belegpfad (Matrix-Zelle) eintragen, Statusdatei
-   `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, Zelle auf `"done"`.
+   `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
+   auf `"done"` setzen und `done_at` ergänzen.
+
+**Gerade offen für dich:** `T-102`, `T-103`, `T-104`, `T-201`, `T-202`,
+`T-203`, `T-301`, `T-302`, `T-401`–`T-701` — freie Aufgaben ohne `owner`.
+
+**Freie Aufgaben auf einen Blick (Stand heute):**
+
+| ID | Phase | Aufgabe | Typ |
+|---|---|---|---|
+| T-102 | 1 | ToolRegistry + read/bash/edit/write mit Policy-Grenzen | code |
+| T-103 | 1 | Fake-Brain (Textdelta/Toolloop/Abort/Retry/Exactly-once) | code |
+| T-104 | 1 | Promptbuilder trennen (Reiner Chat vs. Managed Agent) | code |
+| T-201 | 2 | Eingebettete Assets + Loopback-Serverstart | code |
+| T-202 | 2 | Endpunkte: Session/Capability/Health/Upload/Chat/Stop/Event | code |
+| T-701 | 7 | Gruppen-Modus (2–6 Brains, Runden, @Brain, Leader) | code |
+
+Vollständige Liste: `docs/TASKBOARD.md`.
 
 **Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
 

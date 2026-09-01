@@ -1,5 +1,10 @@
 # Aufgabentafel (Web-UI-, API- und Tool-Neuschnitt)
 
+> **So übernimmst du eine Aufgabe:** Öffne `docs/TASKBOARD.json` und setze bei
+> deiner `id` (z. B. `"T-102"`) `"status": "claimed"`, `"owner"` (z. B.
+> `"claude-code"`), `"branch"` und `"claimed_at"`. Vollständige Anleitung:
+> `../START_HERE.md` Abschnitt 3.
+
 > **Quelle der Wahrheit:** `docs/TASKBOARD.json` — diese Markdown ist ein
 > Spiegel. Claims werden nur in der JSON-Datei gesetzt (owner, branch,
 > claimed_at). Verbindliche Arbeitsregeln: `docs/WORK_CONTRACT.md`.
