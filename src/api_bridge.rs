@@ -2435,6 +2435,7 @@ fn resolve_model(requested: &str, default_brain: &str) -> Result<String, String>
     } else {
         requested
             .strip_prefix("webagent/")
+            .or_else(|| requested.strip_prefix("wa/"))
             .ok_or_else(|| format!("Ungueltige WebAgent-Modell-ID '{requested}'."))?
     };
     if brain == "auto" {
@@ -3140,6 +3141,7 @@ mod tests {
     fn model_resolution_routes_each_available_brain() {
         assert_eq!(resolve_model("webagent", "chatgpt").unwrap(), "chatgpt");
         assert_eq!(resolve_model("webagent/auto", "chatgpt").unwrap(), "auto");
+        assert_eq!(resolve_model("wa/chatgpt", "chatgpt").unwrap(), "chatgpt");
         assert_eq!(
             resolve_model("webagent/claude", "chatgpt").unwrap(),
             "claude"
