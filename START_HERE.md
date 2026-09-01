@@ -27,17 +27,26 @@ Außerhalb des Repos (nur lokal relevante Umgebung:
 `C:\AGENTS.md` = Arbeitsdirektive mit den zwölf Direktiven; gilt für alle
 Arbeiten unter `C:\Users`.)
 
-> **Grundmodell (wichtig):** Dieses Repo hat **einen einzigen sichtbaren
-> Branch für Arbeit: `master`.** Alle Docs, der Plan und der Codeleben dort.
-> Wer klont, sieht alles — es gibt keine versteckte Wissens-Schiene.
-> `archive/tui-ui` ist nur ein lesbares Archiv des alten TUI-Stands, kein
-> Entwicklungszweig. Agents committen auf `master` (Gates grün), nie anderswo.
-> Nur temporäre Nebenarbeiten (z. B. ein sauber zu isolierender Test) dürfen
-> kurzfristig einen lokalen Branch verwenden, müssen aber vor der Abgabe in
-> `master` landen.
+> **Grundmodell (wichtig):** `master` ist der **Stamm / `main`** und bleibt
+> **immer grün** (baut + testet). Sichtbare Arbeit läuft **nicht direkt** auf
+> dem Stamm, sondern auf **kurzen, klar benannten Arbeits-Zweigen** (Branches):
+> `feature/<T-…>-<kurz>`, `fix/…`, `docs/…`, `chore/…`, `refactor/…`, `test/…`.
+> Regel: nie am Ende einen „Riesen-Branch" pushen — sobald ein Zweig eine
+> **grüne, abgeschlossene Einheit** hat, wird er **häufig & klein** in `master`
+> gemergt. `archive/tui-ui` ist nur ein lesbares Archiv des alten TUI-Stands,
+> kein Entwicklungszweig.
+>
+> **Arbeitsweise je Schritt:**
+> 1. Auf `master`: `git pull` (aktuell), eigenen Zweig anlegen:
+>    `git switch -c feature/T-102-tool-registry`
+> 2. Kleine Commits mit eigener Identität (`scripts/commit-as-agent.ps1`),
+>    Gates vor jedem Commit grün.
+> 3. Sobald eine Einheit grün & in sich abgeschlossen ist: zurück zu `master`
+>    (`git switch master`), Zweig in `master` mergen, prüfen, und `git push`.
 >
 > **Fachbegriffe:** Wer unsicher ist, welche git-Ausdrücke gelten, findet in
-> `docs/GIT_GLOSSAR.md` die verbindliche Kurzliste (Stamm/Branch/Push/…).
+> `docs/GIT_GLOSSAR.md` die verbindliche Kurzliste (Stamm/Branch/Push/Merge)
+> **inkl. Branch-Namensschema**.
 
 ## 3. So übernimmst du eine Aufgabe (Claim zuerst)
 
@@ -57,15 +66,19 @@ Arbeiten unter `C:\Users`.)
    ```json
    "status": "claimed",
    "owner": "claude-code",
-   "branch": "master",
+   "branch": "feature/T-102-tool-registry",
    "claimed_at": "2026-09-02"
    ```
-4. Arbeite auf **`master`** (eine Schiene), kleine Commits mit Gates grün
+4. Lege einen **kurzen, benannten Arbeits-Zweig** an (Namensschema in
+   `docs/GIT_GLOSSAR.md`), arbeite dort mit kleinen Commits, Gates grün
    (Abschnitt 4). Jeder Agent committet mit **eigener Identität** — ein Enum:
    ```pwsh
+   git switch -c feature/T-102-tool-registry
    pwsh -File scripts/commit-as-agent.ps1 -Agent claude-code -Message "T-102: tools registry"
    ```
-   (Agent-Schlüssel & Mapping: `docs/GIT_AGENTS.md`.) Danach separat
+   (Agent-Schlüssel & Mapping: `docs/GIT_AGENTS.md`.) Sobald eine grüne,
+   abgeschlossene Einheit steht: zurück zu `master`, kleinen Merge, prüfen und
+   `git push origin master`. Danach separat
    `git push origin master`.
 5. Beim Abschluss: Belegpfad (Matrix-Zelle) eintragen, Statusdatei
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle

@@ -44,3 +44,26 @@ immer: klein committen, **regelmäßig pushen** (Direktive #9).
 - Verwende die Fachausdrücke aus dieser Tabelle konsequent.
 - Kein „Ästeln/ästen" oder „verzweigen" als Ersatz für `merge`/`branch`.
 - „Brach" gibt es nicht als Git-Begriff — es heißt **Branch**.
+
+## Branch-Namensschema (verbindlich pro Arbeits-Zweig)
+
+Jeder Arbeits-Zweig (kein `main`) wird nach diesem Muster benannt:
+
+```
+<typ>/<kurzbeschreibung>
+```
+
+| Typ | wann nutzen | Beispiel |
+|---|---|---|
+| `feature/` | neue Fähigkeit | `feature/T-102-tool-registry` |
+| `fix/` | Fehlerbehebung | `fix/rollback-panic` |
+| `docs/` | Doku/Wissensarbeit | `docs/glossar` |
+| `chore/` | Wartung, einrichten, Meta | `chore/ci` |
+| `refactor/` | Umbau ohne Verhalten | `refactor/session-extract` |
+| `test/` | Tests/Verifikation | `test/provide-status` |
+
+Regeln:
+- Kürze + Kleinbuchstaben (+ Bindestriche); optional `T-<id>`-Ref davor.
+- **Nie am Ende einen „Riesen-Branch" pushen.** Sobald der Zweig eine grüne,
+  in sich abgeschlossene Einheit ist, klein in `master` mergen und pushen.
+- `master` bleibt immer grün und ist der einzige dauerhafte Zweig.

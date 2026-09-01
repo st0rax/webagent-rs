@@ -32,10 +32,13 @@ Claude Code, Grok, Manus, opencode-Subagent u. a.), der eine Aufgabe aus
      Plan-Inhaber nicht anders vorgegeben.
 3. **Commit-Disziplin (Direktive 9):** kleine, klar beschriebene Commits; nur
    relevante Dateien; keine Geheimnisse, keine unnötigen Binärdateien; keine
-   Force-Pushes oder History-Umschreibungen; Rücknahmen als neue Commits. Nur
-   auf `master` committen, mit eigener Autor-/Committer-Identität
-   (`scripts/commit-as-agent.ps1`; Mapping `docs/GIT_AGENTS.md`) — damit aus
-   jedem Commit ersichtlich ist, welcher Agent ihn erzeugt hat.
+   Force-Pushes oder History-Umschreibungen; Rücknahmen als neue Commits.
+   Arbeiten auf einem kurzen, benannten Arbeits-Zweig
+   (`feature/…`, `fix/…`, `docs/…`; Schema `docs/GIT_GLOSSAR.md`), der klein &
+   häufig in `master` gemergt wird — kein Riesen-Branch. Jeder Commit mit
+   eigener Autor-/Committer-Identität (`scripts/commit-as-agent.ps1`; Mapping
+   `docs/GIT_AGENTS.md`), damit ersichtlich ist, welcher Agent ihn erzeugt hat.
+   `master` bleibt jederzeit grün.
 4. **Keine Außenwirkung ohne Freigabe (Direktive 6):** Veröffentlichungen,
    Löschungen, Rechteänderungen, Käufe, dauerhafte Änderungen an fremden
    Systemen — vorher konkreter Vorschlag, dann Freigabe.

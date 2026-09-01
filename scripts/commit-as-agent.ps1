@@ -19,7 +19,8 @@
     Fuehrt `git commit` mit gesetzten GIT_AUTHOR_*/GIT_COMMITTER_* aus, sodass
     der Commit den uebergebenen Agent als Urheber traegt, ohne die repo-weite
     Git-Config zu veraendern. Gedacht fuer autonome Agents, die auf `master`
-    arbeiten (Gates gruen).
+    oder einem benannten Arbeits-Zweig `feature|fix|docs|chore|refactor|test/*`
+    committen (Gates gruen).
 .PARAMETER Agent
     Erkennbarer Agent-Schluessel (opencode, claude-code, chatgpt-codex, grok-agent, manus).
 .PARAMETER Message
@@ -51,10 +52,16 @@ $Identity = @{
 }
 $id = $Identity[$Agent]
 
-# Commit nur auf master (Schirm gegen Nebenzweig-Verlust).
+# Schirm: Commit nur auf master ODER einem korrekt benannten Arbeits-Zweig
+# (Schema in docs/GIT_GLOSSAR.md), nie auf fremdem/namenlosen Branch.
 $current = git branch --show-current
-if ($LASTEXITCODE -ne 0 -or $current -ne 'master') {
-    throw "Commit nur auf master erlaubt (aktuell: $current). Siehe START_HERE Grundmodell."
+$ok = $false
+if ($lastExitCode -eq 0) {
+    if ($current -eq 'master') { $ok = $true }
+    elseif ($current -match '^(feature|fix|docs|chore|refactor|test)[/-]') { $ok = $true }
+}
+if (-not $ok) {
+    throw "Commit nur auf master oder einem benannten Arbeits-Zweig erlaubt (aktuell: $current). Siehe docs/GIT_GLOSSAR.md."
 }
 
 # Dateien, falls angegeben; sonst alle Aenderungen.
