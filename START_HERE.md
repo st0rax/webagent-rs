@@ -35,6 +35,9 @@ Arbeiten unter `C:\Users`.)
 > Nur temporäre Nebenarbeiten (z. B. ein sauber zu isolierender Test) dürfen
 > kurzfristig einen lokalen Branch verwenden, müssen aber vor der Abgabe in
 > `master` landen.
+>
+> **Fachbegriffe:** Wer unsicher ist, welche git-Ausdrücke gelten, findet in
+> `docs/GIT_GLOSSAR.md` die verbindliche Kurzliste (Stamm/Branch/Push/…).
 
 ## 3. So übernimmst du eine Aufgabe (Claim zuerst)
 
