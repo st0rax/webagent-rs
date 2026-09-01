@@ -51,6 +51,10 @@ mit HTTP 200 in 20,7 s. Die Oberfläche stellte dem Marker den UI-Titel
 `Thought Process` voran; die API-Schicht entfernt diesen Titel jetzt
 konservativ nur für Z.ai und lässt den eigentlichen Antworttext unverändert.
 
+Ein ZCode-kompatibler Streaming-Smoke gegen `webagent/chatgpt` lieferte HTTP
+200, Keep-Alive-Frames, inkrementelle `delta.content`-Chunks und einen
+abschließenden `finish_reason: stop` (18,4 s).
+
 ## Aktueller Fix: multimodaler Upload-Fallback für dynamische Browser-UIs
 
 **Aktualisiert:** 2026-08-31
