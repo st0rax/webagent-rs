@@ -395,6 +395,29 @@ UX-Referenzen:
 
 ## Implementierungsreihenfolge
 
+## Aufgabentafel (wer übernimmt was)
+
+Damit mehrere nichtmenschliche Entwickler parallel arbeiten können, sind die
+Phasen unten nach Eignung markiert. Die einzelne, verlösbare Arbeit liegt auf
+`docs/TASKBOARD.md`; maschinenlesbar und claim-relevant ist `docs/TASKBOARD.json`.
+Verbindliche Arbeitsregeln: `docs/WORK_CONTRACT.md`.
+
+| Phase | bevorzugte Entwickler | Grund |
+|---|---|---|
+| 0 Bestand | local/opencode, chief | Doku/Bestand, Matrix, Handover |
+| 1 Kern | chatgpt-codex, claude-code, local | strukturierte Extraktion + deterministische Tests |
+| 2 Web-UI | claude-code, manus | UI-Prototyp, A11y, eingebettete Assets |
+| 3 Claude-Referenz | claude-code (Live) | Claude-Web-Livebetrieb; Freigabegrenze beachten |
+| 4 OpenAI-Kern | chatgpt-codex (Idealfall) | tiefe OpenAI-Referenztreue, SDK-Blackbox |
+| 5 Alle Brains | claude-code, grok-agent | Live-Provider-Matrix, providerkundig |
+| 6 Health+Quellen | chatgpt-codex, grok-agent | rustls-Client, `/quelle`, Rate-Tracking |
+| 7 Gruppen | chatgpt-codex, claude-code | Runden-/Handoff-Logik auf bestehender Infra |
+
+Claim-Regel: Eine Aufgabe bearbeitet immer genau ein Entwickler; die Übernahme
+wird nur durch den Eintrag in `docs/TASKBOARD.json` wirksam (owner, branch,
+claimed_at). Beim Abschluss: Belegpfad + Handover-Status aktualisieren, Zelle
+auf `done`.
+
 ### Phase 0 - Bestand sichern und Wahrheit korrigieren
 
 1. TUI-Stand als GitHub-Branch und annotiertes Tag erhalten.
