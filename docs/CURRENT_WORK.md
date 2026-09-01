@@ -39,6 +39,17 @@ Transkriptionsabsagen jetzt als HTTP 502. Damit werden diese Provider nicht
 mehr als scheinbar erfolgreiche Audio-Backends ausgegeben; die beworbene
 Audio-Eingabe bleibt auf `gemini` und `webagent/auto` begrenzt.
 
+### Frische headless Text-Rezertifizierung (2026-09-01)
+
+Ein serieller Smoke mit eindeutigen Antwortmarkern lief gegen den aktualisierten
+Release-Endpoint auf `127.0.0.1:8787`; parallele Browserruns wurden vermieden.
+ChatGPT (25,7 s), Claude (29,4 s), DeepSeek (14,3 s), Gemini (34,6 s), Kimi
+(22,8 s), Mistral (48,8 s), Qwen (31,1 s) und Perplexity (16,7 s) antworteten
+jeweils mit dem angeforderten exakten Marker und HTTP 200. Z.ai antwortete nach
+53,3 s mit HTTP 502; `relay` klassifizierte den Befund als deterministischen
+Sendefehler und wiederholte ihn nicht. Z.ai bleibt damit offen und wird nicht
+als vollständig rezertifiziert behauptet.
+
 ## Aktueller Fix: multimodaler Upload-Fallback für dynamische Browser-UIs
 
 **Aktualisiert:** 2026-08-31
