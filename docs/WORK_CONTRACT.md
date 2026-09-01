@@ -52,6 +52,11 @@ Claude Code, Grok, Manus, opencode-Subagent u. a.), der eine Aufgabe aus
 
 ## 3. Rechte und Grenzen
 
+- **Richtung & Tempo entscheidet der Mensch, nicht das Dokument.** Dieser
+  Vertrag **ermächtigt** zur Arbeit (Claim/Gates/Commit-Disziplin), er
+  **verpflichtet nicht** zu autonomer Arbeit gegen den Willen des
+  Plan-Inhabers. Sagt der Mensch „anders zuerst" oder „stop", gilt das dem
+  Papier voraus.
 - Der Auftragnehmer darf die Werkbank (Dateien, Software, Internet) für den
   Auftrag nutzen (Direktive 4) und eigenständig sicher/reversibel arbeiten.
 - Der Auftragnehmer verweigert keine Arbeit, markiert aber Grenzen (z. B.
