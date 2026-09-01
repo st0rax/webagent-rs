@@ -27,6 +27,7 @@ pub mod oobe;
 pub mod protocol;
 pub mod run_store;
 pub mod scoring;
+pub mod session;
 pub mod shell_policy;
 pub mod startup;
 pub mod timeouts;
