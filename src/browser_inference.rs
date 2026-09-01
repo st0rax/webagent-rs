@@ -127,7 +127,8 @@ pub fn complete_streaming_with_attachments(
         request.tools.is_empty() || matches!(request.tool_choice, BrowserToolChoice::None);
     let mut relay_update = |snapshot: &str| {
         if forward_updates {
-            on_update(snapshot);
+            let normalized = normalize_provider_text(request.brain, snapshot);
+            on_update(&normalized);
         }
     };
     let text = crate::relay::relay_single_turn_with_attachments_streaming(
@@ -141,7 +142,34 @@ pub fn complete_streaming_with_attachments(
     )
     .map_err(|error| error.0)?;
 
+    let text = normalize_provider_text(request.brain, &text);
     parse_response(&text, request.tools, &request.tool_choice)
+}
+
+/// Removes provider UI chrome that can be rendered as part of the assistant
+/// message. Z.ai currently prefixes some completed turns with a standalone
+/// `Thought Process` heading. This is not model content and must not leak into
+/// the OpenAI-compatible response. The rule is deliberately scoped to Z.ai
+/// and only removes the heading when non-empty answer text follows it.
+fn normalize_provider_text(brain: &str, text: &str) -> String {
+    if !brain.eq_ignore_ascii_case("zai") {
+        return text.to_string();
+    }
+
+    let trimmed = text.trim();
+    let Some(rest) = trimmed
+        .strip_prefix("Thought Process")
+        .or_else(|| trimmed.strip_prefix("thought process"))
+    else {
+        return text.to_string();
+    };
+
+    let rest = rest.trim_start_matches([' ', '\t', '\r', '\n']);
+    if rest.trim().is_empty() {
+        text.to_string()
+    } else {
+        rest.trim().to_string()
+    }
 }
 
 fn validate_attachments(attachments: &[BrowserAttachment]) -> Result<(), String> {
@@ -387,6 +415,30 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("darf nicht leer sein"));
+    }
+
+    #[test]
+    fn zai_thought_process_heading_is_removed_when_answer_follows() {
+        assert_eq!(
+            normalize_provider_text("zai", "Thought Process\n\nZAI_OK"),
+            "ZAI_OK"
+        );
+        assert_eq!(
+            normalize_provider_text("zai", "  thought process\r\nAntwort  \n"),
+            "Antwort"
+        );
+    }
+
+    #[test]
+    fn provider_normalization_is_scoped_and_never_empties_answer() {
+        assert_eq!(
+            normalize_provider_text("chatgpt", "Thought Process\n\nInhalt"),
+            "Thought Process\n\nInhalt"
+        );
+        assert_eq!(
+            normalize_provider_text("zai", "Thought Process"),
+            "Thought Process"
+        );
     }
 
     #[test]
