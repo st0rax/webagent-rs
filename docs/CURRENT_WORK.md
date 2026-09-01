@@ -104,6 +104,11 @@ Binärbytes, Dateiname, MIME-Typ, Modell und Format sind durch Regressionstests
 abgedeckt. `/v1/audio/speech` existiert als ehrliche fail-closed Grenze: Keines
 der aktuell vermessenen Web-Brains liefert einen belegten, extrahierbaren
 TTS-Audiostream, daher werden dort keine synthetischen Audioantworten behauptet.
+Ein echter headless Multipart-Smoke gegen `webagent/gemini` transkribierte die
+neu synthetisierte Kontrollaufnahme „Die Prüfziffer lautet sieben acht neun“ in
+23,8 Sekunden korrekt zu `{"text":"Die Prüfziffer lautet 789"}`. Ein erster
+englischer Satz aus einer deutschen Windows-Stimme war phonetisch ungeeignet;
+dieser Quellenfehler wird nicht als Provider- oder Endpoint-Erfolg gewertet.
 
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
 

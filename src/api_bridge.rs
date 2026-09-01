@@ -546,7 +546,7 @@ fn handle_audio_transcription(
     let prompt = if translate_to_english {
         "Translate the attached audio into English. Return only the translated text, without commentary or quotation marks."
     } else {
-        "Transcribe the attached audio verbatim in its original language. Return only the transcript, without commentary or quotation marks."
+        "Transcribe the attached audio verbatim. Preserve the original language and the exact spoken words: do not translate them. Return only the transcript, without commentary or quotation marks."
     };
     let answer = match run_task_blocking(
         config,
