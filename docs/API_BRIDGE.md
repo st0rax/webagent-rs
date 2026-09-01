@@ -52,6 +52,7 @@ Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
 | `GET /v1/models` | OpenAI-Modellliste | Liefert automatisch alle aktuell konfigurierten eingebauten und Custom-Brains als `webagent/<brain>` |
 | `GET /v1/models/{id}` | OpenAI-Modellobjekt | Liefert das einzelne konfigurierte Brain; unbekannte IDs werden mit 404 abgelehnt |
 | `POST /v1/chat/completions` | OpenAI Chat Completions | Akzeptiert Textrollen, OpenAI-`image_url`-data-URLs, `input_audio`-Base64, Function-Tools, Assistant-`tool_calls` und `role=tool`-Ergebnisse; Streams werden inkrementell übertragen |
+| `POST /v1/images/generations` | OpenAI Images | Aktiviert bei ChatGPT Web das Bildtool, wartet auf eine neue stabile Estuary-Datei-ID und liefert standardmaessig `data[].b64_json`; `n=1`, optional `size`, Legacy-`response_format=url` als lokale Data-URL |
 | `POST /v1/responses` | OpenAI Responses | Akzeptiert String-/Message-Input, `input_image`-data-URLs, `input_audio`-Base64, Responses-Function-Tools, `function_call`/`function_call_output`, `store` und `previous_response_id`; liefert Response-Objekt sowie gepufferten Responses-SSE-Eventstrom |
 | `GET /v1/responses/{id}` | OpenAI Response-Retrieval | Liefert eine gespeicherte Response; unbekannte oder mit `store=false` erzeugte IDs werden mit 404 abgelehnt |
 | `GET /v1/responses/{id}/input_items` | OpenAI Input-Item-Liste | Liefert den normalisierten, im lokalen State gespeicherten Verlauf der Response |
@@ -91,25 +92,53 @@ dynamisch erzeugtes oder in einem Shadow-Tree verstecktes Input besitzen. Fehlt
 die frische Transportbestätigung, wird die Datei nicht still verworfen, sondern
 der Request fail-closed mit 502 beendet.
 
-### Ausgabegrenzen und Providerverhalten
+### Bildausgabe und Providerverhalten
 
-Die aktuelle Bridge extrahiert den beobachteten Browserturn als **Text**. Deshalb
-melden `/v1/models` und die Responses-Ausgabe derzeit nur `output: ["text"]`;
-Bild- und Audio-Inputs werden unterstützt, generierte Bildartefakte aber noch
-nicht als `image`-Output aus der Weboberfläche übernommen. Eine ChatGPT-Webantwort
-mit Bildgenerierung kann daher höchstens als Textstatus erscheinen, nicht als
-downloadbares Bild im API-Response. Für die Katalogmetadaten werden Bild-/Audio-
-Inputs weiterhin nur nach einer frischen Transport-Gegenprobe als belegt
-angezeigt. Die UI-Inventarisierung vom 31.08.2026 belegt bereits
-Upload-Oberflächen bei DeepSeek (verstecktes `input[type=file]` plus
-Büroklammer), Gemini (dynamische versteckte Inputs plus „Uploads & Tools“),
-Mistral (verstecktes `file-upload`) und Kimi (Toolkit-/+-Schaltfläche). Das ist
-ein positiver UI-Befund, aber noch kein Beleg dafür, dass WebView2 die Datei im
-jeweiligen SPA-Uploadzustand akzeptiert. Bis zur providerweisen Smoke-Gegenprobe
-bleiben diese Modelle deshalb im Katalog text-only; ein manueller Medien-Request
-darf den Uploadpfad ausprobieren und wird bei fehlender Bestätigung mit 502
-abgelehnt. Das ist eine bewusst ehrliche Fähigkeitsangabe und keine fehlende
-Client-Konfiguration.
+ChatGPT besitzt einen eigenen Bildausgabepfad über
+`POST /v1/images/generations`. Die Bridge aktiviert vor dem Prompt explizit
+„Bild erstellen / Create image“, nimmt danach eine Baseline der stabilen
+Estuary-`file_...`-IDs auf und akzeptiert nur ein neu entstandenes großes Bild.
+Wechselnde Signaturen oder React-Re-Renders alter Bilder können dadurch keinen
+falschen Erfolg erzeugen. Das Bild wird zuerst im angemeldeten Browserkontext
+gelesen; falls die Ressource dort nicht als Blob abrufbar ist, liefert ein
+CDP-Ausschnitt-Screenshot die gerenderten PNG-Bytes. Der Standardresponse folgt
+dem aktuellen GPT-Image-Schema mit `data[0].b64_json`; für ältere Clients wird
+`response_format=url` als lokale `data:image/...;base64,...`-URL toleriert.
+
+Der Bildpfad ist derzeit nur für `webagent/chatgpt` implementiert und deshalb
+meldet nur dieses Brain `output: ["text", "image"]`. Andere Brains bleiben bei
+`output: ["text"]`, bis deren jeweilige Weboberfläche eine echte Generation
+und Artefaktextraktion bestanden hat. Providerseitige Kontingente bleiben eine
+echte Grenze: Erkennt ChatGPT etwa „Free plan limit for image generations“,
+antwortet die Bridge früh und transparent mit einem Providerfehler, statt bis
+zum vollen Timeout zu warten oder ein altes Bild zurückzugeben.
+
+Für Input-Modalitäten werden nur frische Transport-Gegenproben beworben.
+Bildinput ist für ChatGPT, Claude, DeepSeek, Gemini, Kimi und Mistral belegt;
+Gemini-Audio ist ebenfalls inhaltlich verifiziert. Ein manueller Medienrequest
+an ein noch nicht belegtes Brain darf den Uploadpfad ausprobieren und wird bei
+fehlender Bestätigung fail-closed mit 502 beendet.
+
+Ein Images-Request läuft beispielsweise so:
+
+~~~powershell
+$body = @{
+  model = "webagent/chatgpt"
+  prompt = "Ein kleiner blauer Roboter winkt auf weißem Hintergrund"
+  n = 1
+  size = "1024x1024"
+} | ConvertTo-Json
+$result = Invoke-RestMethod -Method Post `
+  -Uri http://127.0.0.1:8787/v1/images/generations `
+  -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
+  -ContentType application/json -Body $body
+[IO.File]::WriteAllBytes("robot.png", [Convert]::FromBase64String($result.data[0].b64_json))
+~~~
+
+Für lange Browsergenerierungen sollte die Bridge mit `--headless` laufen. Die
+Live-Abnahme ohne dieses Flag reproduzierte Okklusions-/Navigations-Timeouts;
+headless startete ChatGPT dagegen in rund zwei Sekunden und belegte den Submit
+nach weniger als zehn Sekunden.
 
 Providerseitige Ablehnungen bleiben unverändert erhalten. Insbesondere Claude
 kann eine Anfrage aus Sicherheitsgründen ablehnen; die Bridge versucht nicht,
@@ -284,3 +313,5 @@ HTTP-Verbindungen werden bis zu einer festen Grenze von **acht** gleichzeitig be
 [5] [OpenAI: Retrieve a response](https://developers.openai.com/api/reference/cli/resources/responses/methods/retrieve)
 
 [6] [OpenAI: Create a response](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)
+
+[7] [OpenAI: Image generation](https://developers.openai.com/api/docs/guides/image-generation)

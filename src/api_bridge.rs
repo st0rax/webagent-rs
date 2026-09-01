@@ -215,8 +215,10 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
                 response
             } else {
-                let models: Vec<Value> =
-                    available_brains().into_iter().map(|b| model_metadata(&b)).collect();
+                let models: Vec<Value> = available_brains()
+                    .into_iter()
+                    .map(|b| model_metadata(&b))
+                    .collect();
                 HttpResponse::json(
                     200,
                     json!({
@@ -651,11 +653,7 @@ fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     let id = completion_id("msg");
     let response = anthropic_response(&id, &payload.model, &answer);
     if payload.stream.unwrap_or(false) {
-        return anthropic_sse(
-            &id,
-            &payload.model,
-            &answer,
-        );
+        return anthropic_sse(&id, &payload.model, &answer);
     }
     HttpResponse::json(200, response)
 }
@@ -1540,9 +1538,7 @@ fn responses_tool_choice(
     ))
 }
 
-fn anthropic_tools(
-    tools: &[Value],
-) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
+fn anthropic_tools(tools: &[Value]) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
     tools
         .iter()
         .map(|tool| {
@@ -1563,9 +1559,7 @@ fn anthropic_tools(
                     .get("description")
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                parameters: input_schema
-                    .cloned()
-                    .unwrap_or_else(|| json!({})),
+                parameters: input_schema.cloned().unwrap_or_else(|| json!({})),
             })
         })
         .collect()
@@ -2808,10 +2802,7 @@ mod tests {
 
     #[test]
     fn model_output_modalities_are_advertised_correctly() {
-        assert_eq!(
-            advertised_output_modalities("chatgpt"),
-            ["text", "image"]
-        );
+        assert_eq!(advertised_output_modalities("chatgpt"), ["text", "image"]);
         for brain in [
             "claude",
             "deepseek",
@@ -3081,8 +3072,9 @@ mod tests {
         assert_eq!(tools[0].parameters["type"], "object");
         assert_eq!(tools[0].parameters["properties"]["path"]["type"], "string");
 
-        let fallback = anthropic_tools(&[json!({"name": "search", "parameters": {"type": "object"}})])
-            .unwrap();
+        let fallback =
+            anthropic_tools(&[json!({"name": "search", "parameters": {"type": "object"}})])
+                .unwrap();
         assert_eq!(fallback[0].name, "search");
         assert_eq!(fallback[0].parameters["type"], "object");
 
@@ -3121,8 +3113,10 @@ mod tests {
             anthropic_tool_choice(None, &[]).unwrap(),
             crate::browser_inference::BrowserToolChoice::None
         );
-        assert!(anthropic_tool_choice(Some(&json!({"type": "tool", "name": "missing"})), &tools)
-            .is_err());
+        assert!(
+            anthropic_tool_choice(Some(&json!({"type": "tool", "name": "missing"})), &tools)
+                .is_err()
+        );
         assert!(anthropic_tool_choice(Some(&json!("auto")), &tools).is_err());
         assert!(anthropic_tool_choice(Some(&json!({"type": "unknown"})), &tools).is_err());
         assert!(anthropic_tool_choice(Some(&json!({})), &tools).is_err());

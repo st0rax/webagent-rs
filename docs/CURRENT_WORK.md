@@ -67,10 +67,20 @@ synthetischen `DataTransfer`-Pfad zurueck. Der finale Smoke lief mit einem
 Der identische WAV-Request gegen ChatGPT Web wurde transportiert und mit HTTP
 200 beantwortet, das dort ausgewaehlte Web-Modell verweigerte jedoch selbst die
 Transkription. Das ist eine providerseitige Modellgrenze; der positive
-Gemini-Smoke belegt den gemeinsamen API- und Uploadpfad. Bildgenerierung bzw. andere binäre
-API-Ausgaben sind weiterhin nicht implementiert oder live verifiziert. Eine
-Behauptung „100 % API-Kompatibilitaet fuer alle Brains“ ist mit diesem Stand
-ausdruecklich nicht zulaessig.
+Gemini-Smoke belegt den gemeinsamen API- und Uploadpfad.
+
+ChatGPT-Bildausgabe ist inzwischen als eigener Headless-Pfad über
+`POST /v1/images/generations` implementiert. Ein extrahiertes Resultat wurde als
+808.492-Byte-PNG mit korrekter Signatur und 1254x1254 Pixeln dekodiert und
+visuell geprüft. Weitere Gegenproben deckten zwei False-Positive-Quellen auf und
+schlossen sie: das 104x104-Toolicon wird durch die nach Toolaktivierung
+aufgenommene Baseline ausgeschlossen; alte Estuary-Bilder bleiben anhand ihrer
+stabilen `file_...`-ID ausgeschlossen, auch wenn ChatGPT `ts` und `sig` ändert.
+Der aktuell folgende atomare Neu-Generierungs-Smoke scheitert ehrlich am
+providerseitigen Free-Plan-Kontingent (Reset laut UI am 01.09.2026 um 16:57)
+und wird nicht als Erfolg gewertet. Alle anderen Brains melden weiterhin nur
+Textausgabe. Eine Behauptung „100 % API-Kompatibilitaet fuer alle Brains“ ist
+mit diesem Stand ausdrücklich nicht zulässig.
 
 ## Aktueller Fix: große ZCode-Toolrequests im Browser-Provider
 

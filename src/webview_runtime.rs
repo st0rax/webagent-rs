@@ -1209,12 +1209,14 @@ fn paste_image_from_clipboard(
         }
         if !foreground_activated || sent != inputs.len() as u32 {
             let direct = post_paste_to_webview_child(hwnd);
-            if direct.is_err() && sent != inputs.len() as u32 {
-                return Err(PageDriverError::Protocol(format!(
-                    "Windows SendInput lieferte nur {sent}/{} Tastaturereignisse; WM_PASTE: {}",
-                    inputs.len(),
-                    direct.unwrap_err()
-                )));
+            if sent != inputs.len() as u32 {
+                if let Err(error) = direct {
+                    return Err(PageDriverError::Protocol(format!(
+                        "Windows SendInput lieferte nur {sent}/{} Tastaturereignisse; WM_PASTE: {}",
+                        inputs.len(),
+                        error
+                    )));
+                }
             }
         }
         // Die Kimi-Paste-Route verarbeitet die Datei synchron im key event,
@@ -1717,7 +1719,8 @@ fn capture_png_clip_base64(
     )
     .and_then(|value| {
         value
-            .pointer("/result/data")
+            .pointer("/data")
+            .or_else(|| value.pointer("/result/data"))
             .and_then(Value::as_str)
             .map(str::to_string)
             .ok_or_else(|| PageDriverError::Protocol("Screenshot ohne Daten".into()))
@@ -1762,7 +1765,8 @@ fn eval_js_async(
         )));
     }
     Ok(response
-        .pointer("/result/result/value")
+        .pointer("/result/value")
+        .or_else(|| response.pointer("/result/result/value"))
         .cloned()
         .unwrap_or(Value::Null))
 }

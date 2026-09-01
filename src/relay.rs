@@ -66,11 +66,13 @@ pub fn relay_image_generation(
         let _ = backend.stop();
         return Err(RelayError(error));
     }
-    if let Err(error) = backend.mark_image_generation_baseline() {
+    if let Err(error) = backend.enable_image_generation_mode() {
         let _ = backend.stop();
         return Err(RelayError(error));
     }
-    if let Err(error) = backend.enable_image_generation_mode() {
+    // Das Aktivieren des Bildtools rendert selbst Icons/Previews. Erst danach
+    // markieren, damit diese UI-Bilder nie als Generator-Ergebnis gelten.
+    if let Err(error) = backend.mark_image_generation_baseline() {
         let _ = backend.stop();
         return Err(RelayError(error));
     }
@@ -101,6 +103,11 @@ pub fn relay_image_generation(
             }
             Ok(None) => {}
             Err(error) => break Err(RelayError(error)),
+        }
+        if let Some(error) = backend.image_generation_provider_error() {
+            break Err(RelayError(format!(
+                "provider_unavailable: {brain_id}: {error}"
+            )));
         }
         if Instant::now() >= deadline {
             let report = backend.image_generation_report();

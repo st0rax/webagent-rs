@@ -24,10 +24,27 @@ pub type StopDiff = (
     Vec<crate::brain_probe::Candidate>,
 );
 
+fn is_terminal_image_generation_error(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "limit for image generation",
+        "limit for image generations",
+        "image generation is not available",
+        "can't create more images",
+        "cannot create more images",
+        "keine weiteren bilder erstellen",
+        "bildgenerierung ist nicht verfuegbar",
+        "upgrade your plan",
+        "upgrade dein abo",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
 impl WebBrainBackend {
     pub fn mark_image_generation_baseline(&self) -> Result<(), String> {
         self.eval_js(
-            r#"(()=>{for(const img of document.images)img.dataset.webagentBaselineSrc=img.currentSrc||img.src||'';for(const canvas of document.querySelectorAll('canvas'))canvas.dataset.webagentBaselineCanvas='1';return true})()"#,
+            r#"(()=>{const key=src=>{try{const u=new URL(src,location.href);return u.searchParams.get('id')||u.pathname}catch(e){return src}};window.__webagentImageBaseline=[...document.images].map(img=>key(img.currentSrc||img.src||'')).filter(Boolean);window.__webagentCanvasBaselineCount=document.querySelectorAll('canvas').length;return window.__webagentImageBaseline.length})()"#,
         )
         .map(|_| ())
     }
@@ -52,7 +69,9 @@ impl WebBrainBackend {
     pub fn latest_generated_image(&self) -> Result<Option<(String, String)>, String> {
         let expression = r#"(async()=>{
           const visible=e=>{const r=e.getBoundingClientRect();const s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};
-          const isNewImage=img=>(img.dataset.webagentBaselineSrc||'')!==(img.currentSrc||img.src||'');
+          const imageKey=src=>{try{const u=new URL(src,location.href);return u.searchParams.get('id')||u.pathname}catch(e){return src}};
+          const baseline=new Set(window.__webagentImageBaseline||[]);
+          const isNewImage=img=>!baseline.has(imageKey(img.currentSrc||img.src||''));
           const images=[...document.querySelectorAll('img')].filter(img=>visible(img)&&img.naturalWidth>=256&&img.naturalHeight>=256&&isNewImage(img));
           for(let i=images.length-1;i>=0;i--){
             const img=images[i];
@@ -69,7 +88,7 @@ impl WebBrainBackend {
               return {mime_type:blob.type||'image/png',base64:data.slice(comma+1)};
             }catch(e){}
           }
-          const canvases=[...document.querySelectorAll('canvas')].filter(c=>visible(c)&&c.width>=256&&c.height>=256&&!c.dataset.webagentBaselineCanvas);
+          const canvases=[...document.querySelectorAll('canvas')].slice(window.__webagentCanvasBaselineCount||0).filter(c=>visible(c)&&c.width>=256&&c.height>=256);
           for(let i=canvases.length-1;i>=0;i--){
             try{const data=canvases[i].toDataURL('image/png');return {mime_type:'image/png',base64:data.slice(data.indexOf(',')+1)}}catch(e){}
           }
@@ -91,7 +110,7 @@ impl WebBrainBackend {
             .map_err(|e| e.to_string())?;
         if value.is_null() {
             let box_value = driver
-                .evaluate(r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};const images=[...document.querySelectorAll('img')].filter(i=>visible(i)&&i.naturalWidth>=256&&i.naturalHeight>=256&&(i.dataset.webagentBaselineSrc||'')!==(i.currentSrc||i.src||'')&&!i.closest('form,[data-attachment],[class*=avatar i]'));const image=images.at(-1);if(!image)return null;const r=image.getBoundingClientRect();return{x:r.left+scrollX,y:r.top+scrollY,width:r.width,height:r.height,scale:Math.max(1,Math.min(2,image.naturalWidth/r.width))}})()"#)
+                .evaluate(r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};const key=src=>{try{const u=new URL(src,location.href);return u.searchParams.get('id')||u.pathname}catch(e){return src}};const baseline=new Set(window.__webagentImageBaseline||[]);const images=[...document.querySelectorAll('img')].filter(i=>visible(i)&&i.naturalWidth>=256&&i.naturalHeight>=256&&!baseline.has(key(i.currentSrc||i.src||''))&&!i.closest('form,[data-attachment],[class*=avatar i]'));const image=images.at(-1);if(!image)return null;const r=image.getBoundingClientRect();return{x:r.left+scrollX,y:r.top+scrollY,width:r.width,height:r.height,scale:Math.max(1,Math.min(2,image.naturalWidth/r.width))}})()"#)
                 .map_err(|e| e.to_string())?;
             if box_value.is_null() {
                 return Ok(None);
@@ -128,10 +147,25 @@ impl WebBrainBackend {
     }
 
     pub fn image_generation_report(&self) -> String {
-        let expression = r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};const imgs=[...document.images].filter(visible);const large=imgs.filter(i=>i.naturalWidth>=256&&i.naturalHeight>=256);const canvases=[...document.querySelectorAll('canvas')].filter(visible);const assistant=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-testid*="assistant" i],article')].filter(visible);const composer=[...document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')].filter(visible).at(-1);const draft=('value' in (composer||{})?composer.value:composer?.innerText)||'';return {url:location.href,images:imgs.length,large_images:large.length,large_details:large.slice(-6).map(i=>({src:(i.currentSrc||i.src||'').slice(0,180),baseline:(i.dataset.webagentBaselineSrc||'').slice(0,80),new_image:(i.dataset.webagentBaselineSrc||'')!==(i.currentSrc||i.src||''),size:[i.naturalWidth,i.naturalHeight],class:((i.className||'')+'').slice(0,120),parent:((i.parentElement?.className||'')+'').slice(0,160),in_form:!!i.closest('form'),in_composer:!!i.closest('[class*=composer i]'),in_avatar:!!i.closest('[class*=avatar i]')})),assistant_large_images:large.filter(i=>i.closest('[data-message-author-role="assistant"],[data-testid*="assistant" i],article')).length,canvases:canvases.length,large_canvases:canvases.filter(c=>c.width>=256&&c.height>=256).length,draft:draft.trim().slice(-300),last_assistant:(assistant.at(-1)?.innerText||'').trim().slice(-500),page_tail:(document.body.innerText||'').trim().slice(-800)}})()"#;
+        let expression = r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};const imgs=[...document.images].filter(visible);const large=imgs.filter(i=>i.naturalWidth>=256&&i.naturalHeight>=256);const canvases=[...document.querySelectorAll('canvas')].filter(visible);const assistant=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-testid*="assistant" i],article')].filter(visible);const composer=[...document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]')].filter(visible).at(-1);const draft=('value' in (composer||{})?composer.value:composer?.innerText)||'';return {url:location.href,images:imgs.length,large_images:large.length,assistant_large_images:large.filter(i=>i.closest('[data-message-author-role="assistant"],[data-testid*="assistant" i],article')).length,canvases:canvases.length,large_canvases:canvases.filter(c=>c.width>=256&&c.height>=256).length,draft:draft.trim().slice(-300),last_assistant:(assistant.at(-1)?.innerText||'').trim().slice(-500),page_tail:(document.body.innerText||'').trim().slice(-800)}})()"#;
         self.eval_js(expression)
             .map(|value| value.to_string())
             .unwrap_or_else(|error| format!("Diagnose fehlgeschlagen: {error}"))
+    }
+
+    pub fn image_generation_provider_error(&self) -> Option<String> {
+        let text = self
+            .eval_js(
+                r#"(()=>{const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0};const nodes=[...document.querySelectorAll('[data-message-author-role="assistant"],[data-testid*="assistant" i],article')].filter(visible);return(nodes.at(-1)?.innerText||'').trim().slice(-1000)})()"#,
+            )
+            .ok()?
+            .as_str()?
+            .trim()
+            .to_string();
+        if text.is_empty() {
+            return None;
+        }
+        is_terminal_image_generation_error(&text).then_some(text)
     }
 
     pub fn wake_offscreen_renderer(&self) {
@@ -232,6 +266,7 @@ function imSeitenband(el){
   }
   return false;
 }
+
 ['button','[role=button]'].forEach(function(s){try{
 document.querySelectorAll(s).forEach(function(b){
   if(seen.indexOf(b)>=0)return;seen.push(b);
@@ -855,5 +890,23 @@ return null;}})()"#,
         };
         let _ = self.stop();
         result
+    }
+}
+
+#[cfg(test)]
+mod image_generation_tests {
+    use super::is_terminal_image_generation_error;
+
+    #[test]
+    fn image_generation_quota_messages_are_terminal() {
+        assert!(is_terminal_image_generation_error(
+            "You've hit the Free plan limit for image generations requests."
+        ));
+        assert!(is_terminal_image_generation_error(
+            "Du kannst vorerst keine weiteren Bilder erstellen. Upgrade dein Abo."
+        ));
+        assert!(!is_terminal_image_generation_error(
+            "Your image is being generated."
+        ));
     }
 }
