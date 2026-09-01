@@ -283,3 +283,11 @@ Freigabehürde, sondern ein gemeinsamer Termin.
 Der externe Adapter ist kein stiller Folgeschritt. Kosten-, Credential-,
 Datenschutz- und Anbieterbedingungen müssen vor jedem realen Providerzugriff
 erneut geprüft und vom Nutzer freigegeben werden.
+
+# Aktuelle Zielrichtung
+
+Der verbindliche Produkt-Neuschnitt fuer lokale Web-UI, versionierte
+OpenAI-Inference-Kompatibilitaet und WebAgent-eigene Managed Tools steht in
+[`WEB_UI_API_TOOL_RESET.md`](WEB_UI_API_TOOL_RESET.md). Aeltere Reife- und
+Roadmapaussagen in diesem Dokument sind bis zu ihrer schrittweisen Bereinigung
+historischer Kontext und kein Abnahmebeleg fuer diese drei neuen Ziele.

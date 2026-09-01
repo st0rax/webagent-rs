@@ -3,6 +3,43 @@
 **Aktualisiert:** 2026-09-01
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
+## Verbindlicher Produkt-Neuschnitt vom 01.09.2026
+
+Die bisherigen Teilziele rund um TUI, Browser-Inference-Bridge und einzelne
+OpenAI-foermige Routen werden durch einen neuen, messbaren Produktvertrag
+geordnet. Der vollstaendige Erkenntnisstand, die Zielarchitektur, Phasen und
+Abnahmematrix stehen in [`WEB_UI_API_TOOL_RESET.md`](WEB_UI_API_TOOL_RESET.md).
+
+Kurzfassung:
+
+1. `webagent` erhaelt eine lokale, menschenfreundliche Web-UI als primaere
+   Oberflaeche. Die rund 4.400 Zeilen TUI-Code werden vor dem Umbau durch einen
+   GitHub-Archivbranch und ein Tag erhalten und bleiben bis zur UI-Abnahme als
+   Legacy-Pfad baubar.
+2. Claude ist der strengste Referenz-Brain fuer Chat, Modellwahl, Aufwand,
+   Attachment und Streaming. Dieselbe Funktionsmatrix muss danach jeder
+   beworbene Brain ueber Web-UI und API bestehen.
+3. Der OpenAI-Endpunkt wird nicht mehr ueber einzelne HTTP-200-Smokes bewertet.
+   Er bekommt versionierte Models-, Chat-Completions- und Responses-Profile,
+   offizielle SDK-Black-box-Tests und explizite Fehler fuer nicht umgesetzte
+   Semantik. Client-spezifische Sonderfaelle sind ausgeschlossen.
+4. WebAgent implementiert selbst einen kleinen Managed-Tool-Kern nach dem
+   Umfang von Pi 0.84.4: `read`, `bash`, `edit`, `write`. Pi bleibt reine
+   Referenz und wird weder Abhaengigkeit noch Executor. Web-UI und API verwenden
+   dieselbe Registry, Policy, Execution und Ereignisstrecke.
+5. Der bisherige Prompt, der Systemkontext, Tool-Monster und Verlauf als
+   vermeintliche Browseranweisung vermischt, wird verworfen. Reiner Chat zeigt
+   nur einen gekennzeichneten Gespraechsverlauf; Managed Agent erklaert dem
+   Brain die reale lokale Vermittlung offen und kompakt.
+6. Streaming ist Pflicht: sofortiger sichtbarer Zustand, inkrementelle
+   Textdeltas, Werkzeugereignisse, Stop und reconnectbarer SSE-Strom. Ein erst
+   am Ende sichtbarer Text gilt als `buffered` und besteht das Streaming-Gate
+   nicht.
+
+Die folgenden Abschnitte bleiben als historische Teilbelege erhalten. Sie
+duerfen insbesondere nicht als Nachweis fuer ein fertiges Web-UI, vollstaendige
+OpenAI-Kompatibilitaet oder All-Brain-Toolparitaet gelesen werden.
+
 ## Virtuelles AutoRouter-Modell
 
 **Aktualisiert:** 2026-09-01
