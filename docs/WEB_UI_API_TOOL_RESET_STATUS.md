@@ -26,7 +26,7 @@ cargo check --features tui
 cargo check --no-default-features
 ```
 
-Bekannter Stand Default-Gate (2026-09-02): 1232 passed / 1 ignored / 0 failed.
+Bekannter Stand Default-Gate (2026-09-02): 1236 passed / 1 ignored / 0 failed.
 
 ## Planphasen und Status
 
@@ -51,8 +51,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       sind **Live-Abnahme-Zellen (Phase 3+)**, nicht dieser Code-Teil — sie
       bleiben `not_run`, bis ein echter Brain gegen `/v1/responses` läuft.
 - [x] Phase 1.2 `ToolRegistry`-Vertrag + vier Managed Tools (Policy-Grenzen) —
-      erledigt (`src/tools.rs`, `cargo test --lib` grün, 1232 passed)
-- [ ] Phase 1.3 Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests
+      erledigt (`src/tools.rs`, `cargo test --lib` grün, 1236 passed)
+- [x] Phase 1.3 Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests —
+      erledigt (`src/fakebrain.rs`, Controller-Integrationstests, `cargo test --lib`
+      grün, 1236 passed)
 - [ ] Phase 1.4 Promptbuilder Reiner Chat vs. Managed Agent trennen
 - [ ] Phase 2.x Web-UI-Prototyp + lokaler Server + Health-Endpunkt
 - [ ] Phase 3.x Claude-Referenz komplettieren
@@ -68,9 +70,9 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
    Done-Stream), `cargo test --lib` grün (1232 passed); T-101 ist in
    `TASKBOARD.json` auf `done` gesetzt (Live-`api_*`-Zelle bleibt für Phase 3
    vorgemerkt).
-2. Phase 1.3 (T-103 Fake-Brain) bleibt als nächste Aufgabe offen; der lokale
-   Stand enthält bereits ein uncommitted `src/fakebrain.rs`, erfüllt aber noch
-   nicht nachweislich die vollständige Loop-/Abort-/Retry-Abdeckung.
+2. Phase 1.3 (T-103 Fake-Brain) **abgeschlossen**: `src/fakebrain.rs` bindet
+   den deterministischen Fake an den echten Controller-Loop; Toolloop,
+   Abort, Retry und Exactly-once sind durch isolierte Integrationstests belegt.
 3. Phase 0.4 als kleine Doku-Scheibe mitnehmen (historische Belege kennzeichnen).
 
 ## Freigabegrenzen (unverändert)

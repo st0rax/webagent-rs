@@ -17,6 +17,7 @@ pub mod circuit_breaker;
 pub mod comms;
 pub mod config;
 pub mod executor;
+pub mod fakebrain;
 pub mod file_actions;
 pub mod free_cloud_chat;
 pub mod goal_plan;

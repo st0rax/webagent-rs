@@ -85,14 +85,13 @@ Arbeiten unter `C:\Users`.)
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
    auf `"done"` setzen und `done_at` ergänzen.
 
-**Gerade offen für dich:** `T-103`, `T-104`, `T-201`, `T-202`,
+**Gerade offen für dich:** `T-104`, `T-201`, `T-202`,
 `T-203`, `T-301`, `T-302`, `T-401`–`T-701` — freie Aufgaben ohne `owner`.
 
 **Freie Aufgaben auf einen Blick (Stand heute):**
 
 | ID | Phase | Aufgabe | Typ |
 |---|---|---|---|
-| T-103 | 1 | Fake-Brain (Textdelta/Toolloop/Abort/Retry/Exactly-once) | code |
 | T-104 | 1 | Promptbuilder trennen (Reiner Chat vs. Managed Agent) | code |
 | T-201 | 2 | Eingebettete Assets + Loopback-Serverstart | code |
 | T-202 | 2 | Endpunkte: Session/Capability/Health/Upload/Chat/Stop/Event | code |
@@ -117,13 +116,12 @@ cargo check --no-default-features
 # (optional) Binärgewicht im Release-Artefakt für das <10-MB-Budget
 ```
 
-Bekannter Stand: 1207 passed / 1 ignored (Stand 2026‑09‑01, vor dem
-`session/`-Modul; aktuelle Zahl steht in der Statusdatei).
+Bekannter Stand: 1236 passed / 1 ignored (Stand 2026‑09‑02).
 
 ## 5. Nächste offene Scheiben
 
 - **T-101** und **T-102** sind erledigt (`local/opencode`).
-- **T-103**, **T-104**, **T-201** … : freie Aufgaben für dich.
+- **T-103** ist erledigt (`chatgpt-codex`); **T-104**, **T-201** … bleiben frei.
   Siehe `docs/TASKBOARD.md`.
 
 ## 6. Grenzen (nicht überschreiten)

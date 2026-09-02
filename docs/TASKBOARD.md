@@ -19,7 +19,7 @@
 | T-001 | 0 | Umsetzungsstatus + Capability-Matrix pflegen (Handover) | docs | local, chief | done | local/opencode | feat/browser-inference-provider |
 | T-101 | 1 | SessionService + EventStream UI-neutral herauslösen (monotone sequence_number) | code | codex, claude, local | done | local/opencode | feature/T-101-api-bridge |
 | T-102 | 1 | ToolRegistry + read/bash/edit/write mit Policy-Grenzen | code | codex, claude, local | done | local/opencode | feature/T-102-tool-registry |
-| T-103 | 1 | Fake-Brain (Textdelta/Toolloop/Abort/Retry/Exactly-once) | code | claude, local | free | – | – |
+| T-103 | 1 | Fake-Brain (Textdelta/Toolloop/Abort/Retry/Exactly-once) | code | codex, claude, local | done | chatgpt-codex | feature/T-103-fakebrain |
 | T-104 | 1 | Promptbuilder trennen: Reiner Chat vs. Managed Agent | code | codex, claude, local | free | – | – |
 | T-201 | 2 | Eingebettete Assets + Loopback-Serverstart (eine Binary) | code | claude, manus | free | – | – |
 | T-202 | 2 | Endpunkte: Session/Capability/Health/Upload/Chat/Stop/Event | code | codex, claude | free | – | – |
