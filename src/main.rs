@@ -66,17 +66,12 @@ fn run() -> i32 {
     // eine Attrappe.
     webagent::tui_config::apply_persisted();
     webagent::bin_hooks::set_probe_fn(cmd_probe);
-    // Kein Subcommand -> Session-TUI. REPL bleibt `webagent repl`,
+    // Kein Subcommand -> Web-UI (T-201). REPL bleibt `webagent repl`,
     // Pool/Wand bleibt `webagent tui`.
-    let command = cli.command.unwrap_or_else(|| Commands::Tui {
-        active: 2,
-        brains: String::new(),
-        poll_secs: 5,
-        headless: false,
-        run_secs: 0,
-        benchmark: None,
-        view: Some(webagent::startup::default_session_view().to_string()),
-        force_tui: false,
+    let command = cli.command.unwrap_or_else(|| Commands::Ui {
+        bind: "127.0.0.1".to_string(),
+        port: webagent::web_ui::DEFAULT_PORT,
+        no_open: false,
     });
 
     let exit_code = if matches!(
@@ -323,6 +318,12 @@ fn dispatch(command: Commands) -> i32 {
             headless,
         } => webagent::worker_pool::run_worker_pool(active, &brains, poll_secs, headless),
 
+        Commands::Ui {
+            bind,
+            port,
+            no_open,
+        } => cmd_ui(bind, port, no_open),
+
         Commands::Tui {
             active,
             brains,
@@ -520,6 +521,31 @@ fn cmd_cloud(command: cli::CloudCommands) -> i32 {
         }
     }
 }
+fn cmd_ui(bind: String, port: u16, no_open: bool) -> i32 {
+    let ip: std::net::IpAddr = match bind.parse::<std::net::IpAddr>() {
+        Ok(ip) if ip.is_loopback() => ip,
+        Ok(_) => {
+            eprintln!("[ui] Sicherheitsgrenze: --bind muss eine Loopback-Adresse sein.");
+            return 2;
+        }
+        Err(error) => {
+            eprintln!("[ui] Ungueltige Bind-Adresse {bind}: {error}");
+            return 2;
+        }
+    };
+    let config = webagent::web_ui::UiConfig {
+        bind: std::net::SocketAddr::new(ip, port),
+        open_browser: !no_open,
+    };
+    match webagent::web_ui::serve(config) {
+        Ok(()) => 0,
+        Err(error) => {
+            eprintln!("[ui] {error}");
+            1
+        }
+    }
+}
+
 fn cmd_api(command: cli::ApiCommands) -> i32 {
     match command {
         cli::ApiCommands::Serve {

@@ -5,7 +5,7 @@
 
 ## Repo / Branch / Stand
 
-- Branch: `feature/T-403-persistent-state`
+- Branch: `master`
 - Remote: `https://github.com/st0rax/webagent-rs.git`
 - Letzter Stand (Commit): `8e25d36` (2026-09-02)
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
@@ -26,7 +26,7 @@ cargo check --features tui
 cargo check --no-default-features
 ```
 
-Bekannter Stand Default-Gate (2026-09-02): 1242 passed / 1 ignored / 0 failed (T-403-Zweig, ohne Phase-2-UI).
+Bekannter Stand Default-Gate (2026-09-02): nach Merge Phase 2+4 auf master; `cargo test --lib` vor Push.
 
 ## Planphasen und Status
 
@@ -58,7 +58,18 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 - [x] Phase 1.4 Promptbuilder Reiner Chat vs. Managed Agent trennen —
       erledigt (`src/prompts.rs`, getrennte Builder mit Vertragstests, `cargo test --lib`
       grün, 1238 passed)
-- [ ] Phase 2.x Web-UI-Prototyp + lokaler Server + Health-Endpunkt
+- [x] Phase 2.1 Eingebettete Assets + Loopback-Serverstart (T-201) —
+      erledigt (`src/web_ui.rs`, `web/index.html` via `include_str`, Default ohne
+      Subcommand ist die Loopback-UI, `cargo test --lib` 1242 passed / 1 ignored)
+- [x] Phase 2.2 Server-Endpunkte (T-202) —
+      erledigt (`src/web_ui_api.rs`: Session/Capability/Health/Upload/Chat/Stop/Event
+      auf SessionService + `doctor::run_doctor` ohne Browserstart; HTTP-Wire-Tests;
+      `cargo test --lib` 1248 passed / 1 ignored)
+- [x] Phase 2.3 Fake-Prototyp (T-203) —
+      erledigt (`web/index.html`: Health-Balken oben, System-Kategorien links,
+      Chat-Mitte, Fake-Events ohne `fetch`; A11y: Skip-Link, `:focus-visible`,
+      `aria-live`, `prefers-reduced-motion`, semantische Buttons; `cargo test --lib`
+      1249 passed / 1 ignored)
 - [ ] Phase 3.x Claude-Referenz komplettieren
 - [x] Phase 4.1 DTOs + Responses-SSE `sequence_number` (T-401) —
       erledigt (`src/api_bridge.rs`: monotone `sequence_number` ab 0 auf jedem
@@ -89,8 +100,9 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 3. Phase 1.4 (T-104) **abgeschlossen**: Reiner Chat und Managed Agent haben
    getrennte Promptbuilder; der Plain-Chat-Pfad injiziert keinen
    `WEBAGENT/1`- oder Toolvertrag.
-4. Phase 4.1–4.3 (T-401..T-403) **abgeschlossen**. Naechste Zelle: T-404
-   (SDK-Blackbox). T-201 claimed auf `feature/T-201-web-ui-server`.
+4. Phase 2 (T-201..T-203) **auf master gemergt**. Phase 4.1–4.3 (T-401..T-403)
+   **auf master**. Naechste Code-Zelle: T-404. Naechste Live-Zelle: T-301
+   (Freigabegrenze). Phase 0.4 bleibt Doku-Nachzug.
 
 ## Freigabegrenzen (unverändert)
 

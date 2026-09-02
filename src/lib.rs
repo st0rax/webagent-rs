@@ -34,6 +34,8 @@ pub mod startup;
 pub mod timeouts;
 pub mod tools;
 pub mod transcript;
+pub mod web_ui;
+pub mod web_ui_api;
 
 // ── brain: Gehirn-Abstraktion + Browser-Anbindung ──
 pub mod bin_hooks;

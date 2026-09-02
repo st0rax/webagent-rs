@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebAgent</title>
+  <style>
+    :root {
+      --bg: #0b0c10;
+      --panel: #15171c;
+      --panel-2: #1c1f27;
+      --line: #2a2e38;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --ok: #3d9a64;
+      --bad: #c45c5c;
+      --accent: #7ab8ff;
+      --focus: #ffd166;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font: 15px/1.45 system-ui, sans-serif; }
+    a.skip { position: absolute; left: -999px; top: 0; background: var(--focus); color: #111; padding: .4rem .7rem; }
+    a.skip:focus { left: .5rem; top: .5rem; z-index: 20; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+    button, textarea, select { font: inherit; color: inherit; }
+    button { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .35rem .7rem; cursor: pointer; }
+    button.primary { background: var(--accent); color: #111; border-color: transparent; font-weight: 600; }
+    button[aria-pressed="true"] { border-color: var(--accent); }
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .app { display: grid; grid-template-rows: auto 1fr; min-height: 100%; }
+    .health { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center;
+      padding: .6rem 1rem; background: var(--panel); border-bottom: 1px solid var(--line); }
+    .health h1 { font-size: 1rem; margin: 0 1rem 0 0; }
+    .health-track { display: flex; width: min(16rem, 40vw); height: .7rem; border-radius: 99px; overflow: hidden; background: var(--line); }
+    .health-track .ok { background: var(--ok); }
+    .health-track .bad { background: var(--bad); }
+    .health-meta { color: var(--muted); }
+    .sources { display: flex; flex-wrap: wrap; gap: .35rem; list-style: none; margin: 0; padding: 0; }
+    .sources button { display: inline-flex; align-items: center; gap: .35rem; }
+    .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--muted); }
+    .dot.ok { background: var(--ok); }
+    .dot.bad { background: var(--bad); }
+    .shell { display: grid; grid-template-columns: 16.5rem 1fr; min-height: 0; }
+    .shell.collapsed { grid-template-columns: 2.6rem 1fr; }
+    nav.sys { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: .5rem; }
+    nav.sys h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: .4rem 0; }
+    details { border-bottom: 1px solid var(--line); padding: .25rem 0; }
+    summary { cursor: pointer; font-weight: 600; }
+    .cat { list-style: none; margin: .3rem 0 0; padding: 0; }
+    .cat button { width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; }
+    .cat button[aria-current="true"] { background: var(--panel-2); }
+    main.stage { display: grid; grid-template-rows: auto 1fr auto auto; min-width: 0; min-height: 0; }
+    .chat-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center;
+      padding: .5rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+    .chat-head span, .chat-head label { color: var(--muted); }
+    .messages { overflow: auto; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+    .msg { max-width: 42rem; padding: .7rem .9rem; border-radius: 12px; background: var(--panel); }
+    .msg.user { align-self: flex-end; background: #243044; }
+    .msg .who { font-size: .75rem; color: var(--muted); margin-bottom: .2rem; }
+    .activity { border-top: 1px solid var(--line); background: var(--panel); padding: .4rem .8rem; }
+    .activity[hidden] { display: none; }
+    .activity ol { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); }
+    form.composer { display: grid; grid-template-columns: 1fr auto auto; gap: .5rem; align-items: end;
+      padding: .7rem; border-top: 1px solid var(--line); background: var(--panel); }
+    textarea { width: 100%; min-height: 3.2rem; resize: vertical; background: var(--bg);
+      border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem; }
+    .detail { padding: 1rem; overflow: auto; }
+    .detail dl { display: grid; grid-template-columns: 8rem 1fr; gap: .35rem .8rem; }
+    .detail dt { color: var(--muted); }
+    .warn { border-left: 4px solid var(--bad); padding-left: .6rem; }
+    @media (max-width: 720px) {
+      .shell, .shell.collapsed { grid-template-columns: 1fr; }
+      nav.sys { border-right: 0; border-bottom: 1px solid var(--line); }
+      form.composer { grid-template-columns: 1fr 1fr; }
+      form.composer textarea { grid-column: 1 / -1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#composer-input">Zur Eingabe springen</a>
+  <div class="app">
+    <header class="health" role="banner">
+      <h1>WebAgent</h1>
+      <p class="health-meta" id="health-text">Quellen 3 von 5 bereit (60 %)</p>
+      <div class="health-track" role="img" aria-labelledby="health-text">
+        <span class="ok" style="width:60%"></span>
+        <span class="bad" style="width:40%"></span>
+      </div>
+      <ul class="sources" aria-label="Quellenliste">
+        <li><button type="button" data-brain="chatgpt"><span class="dot ok" aria-hidden="true"></span> chatgpt bereit</button></li>
+        <li><button type="button" data-brain="claude"><span class="dot ok" aria-hidden="true"></span> claude bereit</button></li>
+        <li><button type="button" data-brain="grok"><span class="dot ok" aria-hidden="true"></span> grok bereit</button></li>
+        <li><button type="button" data-brain="perplexity"><span class="dot bad" aria-hidden="true"></span> perplexity nicht verfuegbar</button></li>
+        <li><button type="button" data-brain="gemini"><span class="dot bad" aria-hidden="true"></span> gemini nicht verfuegbar</button></li>
+      </ul>
+    </header>
+    <div class="shell" id="shell">
+      <nav class="sys" aria-label="System-Kategorien">
+        <button type="button" id="toggle-nav" aria-expanded="true" aria-controls="cats">Leiste einklappen</button>
+        <div id="cats">
+          <h2>System</h2>
+          <details open>
+            <summary>Sitzungen</summary>
+            <ul class="cat">
+              <li><button type="button" data-view="chat" aria-current="true">Heute · claude</button></li>
+              <li><button type="button" data-view="chat">Gestern · grok</button></li>
+            </ul>
+          </details>
+          <details>
+            <summary>Brains &amp; Quellen</summary>
+            <ul class="cat">
+              <li><button type="button" data-brain="chatgpt">chatgpt</button></li>
+              <li><button type="button" data-brain="claude">claude</button></li>
+              <li><button type="button" data-brain="grok">grok</button></li>
+            </ul>
+          </details>
+          <details>
+            <summary>Gruppen</summary>
+            <ul class="cat"><li><button type="button" data-view="group">Demo 2er-Gruppe</button></li></ul>
+          </details>
+          <details>
+            <summary>Laeufe</summary>
+            <ul class="cat"><li><button type="button" data-view="run">ui-20260902</button></li></ul>
+          </details>
+          <details>
+            <summary>System</summary>
+            <ul class="cat">
+              <li><button type="button" data-view="sys">Workspace</button></li>
+              <li><button type="button" data-view="sys">Profile</button></li>
+              <li><button type="button" data-view="sys">Selektoren</button></li>
+              <li><button type="button" data-view="sys">Logs</button></li>
+            </ul>
+          </details>
+        </div>
+      </nav>
+      <main class="stage">
+        <div class="chat-head">
+          <strong>Brain:</strong> <span id="brain-label">claude</span>
+          <span>Modell: claude-sonnet (erkannt, Fake)</span>
+          <span>Aufwand: mittel</span>
+          <span>Quelle: Browser-Chat</span>
+          <span>
+            Modus
+            <button type="button" id="mode-chat" aria-pressed="true">Chat</button>
+            <button type="button" id="mode-sys" aria-pressed="false">Systemzugriff</button>
+          </span>
+        </div>
+        <section class="messages" id="messages" aria-label="Unterhaltung">
+          <article class="msg"><div class="who">claude</div><p>Fake-Prototyp ohne Backend. Lokale Binary, eingebettet.</p></article>
+        </section>
+        <section class="detail" id="detail" hidden>
+          <p><button type="button" id="back-chat">Zurueck zum Chat</button></p>
+          <h2 id="detail-title">Backend-Detail</h2>
+          <dl id="detail-dl"></dl>
+        </section>
+        <aside class="activity" id="activity" aria-label="Aktivitaetsleiste">
+          <button type="button" id="toggle-act" aria-expanded="true">Aktivitaet einklappen</button>
+          <ol id="act-list"><li>Bereit (kein Live-Lauf, Fake-Events)</li></ol>
+        </aside>
+        <form class="composer" id="composer">
+          <label class="sr" for="composer-input">Nachricht</label>
+          <textarea id="composer-input" rows="2" placeholder="Nachricht (Fake, kein Server)"></textarea>
+          <button class="primary" type="submit" id="send">Senden</button>
+          <button type="button" id="stop">Stoppen</button>
+        </form>
+        <div class="sr" role="status" aria-live="polite" id="live"></div>
+      </main>
+    </div>
+  </div>
+  <script>
+    const brains = {
+      chatgpt: { status: "bereit", layer: "doctor", next: "keine", login: "ok", last: "vor 2 h" },
+      claude: { status: "bereit", layer: "doctor", next: "keine", login: "ok", last: "vor 12 min" },
+      grok: { status: "bereit", layer: "doctor", next: "keine", login: "ok", last: "vor 1 h" },
+      perplexity: { status: "nicht verfuegbar", layer: "login", next: "Anmeldung pruefen", login: "offen", last: "nie" },
+      gemini: { status: "nicht verfuegbar", layer: "selector", next: "Selektoren vermessen", login: "unbekannt", last: "nie" }
+    };
+    const messages = document.getElementById("messages");
+    const detail = document.getElementById("detail");
+    const live = document.getElementById("live");
+    const act = document.getElementById("act-list");
+    const input = document.getElementById("composer-input");
+    let timer = null;
+    let streaming = false;
+
+    function say(text) { live.textContent = text; }
+    function addAct(text) {
+      const li = document.createElement("li");
+      li.textContent = text;
+      act.prepend(li);
+    }
+    function showChat() {
+      detail.hidden = true;
+      messages.hidden = false;
+    }
+    function showDetail(id) {
+      const b = brains[id] || { status: "unbekannt", layer: "ui", next: "nachpruefen", login: "?", last: "?" };
+      document.getElementById("detail-title").textContent = "Backend-Detail: " + id;
+      document.getElementById("detail-dl").innerHTML =
+        "<dt>Status</dt><dd>" + b.status + "</dd>" +
+        "<dt>Schicht</dt><dd>" + b.layer + "</dd>" +
+        "<dt>Naechste Aktion</dt><dd>" + b.next + "</dd>" +
+        "<dt>Login</dt><dd>" + b.login + "</dd>" +
+        "<dt>Letzter Lauf</dt><dd>" + b.last + "</dd>" +
+        "<dt>Breaker</dt><dd>geschlossen (Fake)</dd>";
+      messages.hidden = true;
+      detail.hidden = false;
+      document.getElementById("back-chat").focus();
+      say("Detailansicht " + id);
+    }
+    document.querySelectorAll("[data-brain]").forEach(btn => {
+      btn.addEventListener("click", () => showDetail(btn.getAttribute("data-brain")));
+    });
+    document.getElementById("back-chat").addEventListener("click", () => { showChat(); say("Chat"); });
+    document.getElementById("toggle-nav").addEventListener("click", () => {
+      const shell = document.getElementById("shell");
+      const open = shell.classList.toggle("collapsed");
+      const expanded = !open;
+      document.getElementById("toggle-nav").setAttribute("aria-expanded", expanded ? "true" : "false");
+      document.getElementById("cats").hidden = !expanded;
+    });
+    document.getElementById("toggle-act").addEventListener("click", () => {
+      const list = document.getElementById("act-list");
+      const hide = !list.hidden;
+      list.hidden = hide;
+      document.getElementById("toggle-act").setAttribute("aria-expanded", hide ? "false" : "true");
+    });
+    document.getElementById("mode-chat").addEventListener("click", () => {
+      document.getElementById("mode-chat").setAttribute("aria-pressed", "true");
+      document.getElementById("mode-sys").setAttribute("aria-pressed", "false");
+    });
+    document.getElementById("mode-sys").addEventListener("click", () => {
+      document.getElementById("mode-sys").setAttribute("aria-pressed", "true");
+      document.getElementById("mode-chat").setAttribute("aria-pressed", "false");
+      addAct("Systemzugriff angefordert — Policy-Freigabe noetig (Fake, nichts ausgefuehrt)");
+      say("Systemzugriff braucht Freigabe");
+    });
+    function stopStream() {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (streaming) { say("Antwort gestoppt"); addAct("Stop: Fake-Stream beendet"); }
+      streaming = false;
+    }
+    document.getElementById("stop").addEventListener("click", stopStream);
+    document.getElementById("composer").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      showChat();
+      const user = document.createElement("article");
+      user.className = "msg user";
+      user.innerHTML = "<div class=\"who\">du</div><p></p>";
+      user.querySelector("p").textContent = text;
+      messages.appendChild(user);
+      input.value = "";
+      const bot = document.createElement("article");
+      bot.className = "msg";
+      bot.innerHTML = "<div class=\"who\">claude</div><p></p>";
+      const p = bot.querySelector("p");
+      messages.appendChild(bot);
+      messages.scrollTop = messages.scrollHeight;
+      say("Antwort laeuft");
+      addAct("Fake-Textdelta");
+      const chunks = ("Echo: " + text + " — nur Prototyp, kein Brain.").split(" ");
+      let i = 0;
+      streaming = true;
+      timer = setInterval(() => {
+        if (i >= chunks.length) { stopStream(); say("Antwort fertig"); return; }
+        p.textContent += (i ? " " : "") + chunks[i];
+        i += 1;
+        if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 48) {
+          messages.scrollTop = messages.scrollHeight;
+        }
+      }, 90);
+    });
+    document.querySelectorAll("[data-view]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-view]").forEach(b => b.removeAttribute("aria-current"));
+        btn.setAttribute("aria-current", "true");
+        showChat();
+        say(btn.textContent.trim());
+      });
+    });
+  </script>
+</body>
+</html>
