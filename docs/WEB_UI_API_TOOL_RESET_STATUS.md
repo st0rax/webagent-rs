@@ -5,7 +5,7 @@
 
 ## Repo / Branch / Stand
 
-- Branch: `master`
+- Branch: `feature/T-401-responses-sse-seq`
 - Remote: `https://github.com/st0rax/webagent-rs.git`
 - Letzter Stand (Commit): `8e25d36` (2026-09-02)
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
@@ -26,7 +26,7 @@ cargo check --features tui
 cargo check --no-default-features
 ```
 
-Bekannter Stand Default-Gate (2026-09-02): 1238 passed / 1 ignored / 0 failed.
+Bekannter Stand Default-Gate (2026-09-02): 1239 passed / 1 ignored / 0 failed (T-401-Zweig, ohne Phase-2-UI).
 
 ## Planphasen und Status
 
@@ -60,7 +60,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       grün, 1238 passed)
 - [ ] Phase 2.x Web-UI-Prototyp + lokaler Server + Health-Endpunkt
 - [ ] Phase 3.x Claude-Referenz komplettieren
-- [ ] Phase 4.x OpenAI-Konformitaetskern (Profile, SSE, State)
+- [x] Phase 4.1 DTOs + Responses-SSE `sequence_number` (T-401) —
+      erledigt (`src/api_bridge.rs`: monotone `sequence_number` ab 0 auf jedem
+      Responses-SSE-Event; Response/Chat/Model-Felder ergaenzt; `usage` bleibt
+      `null`; `cargo test --lib` 1239 passed / 1 ignored). SDK-Blackbox bleibt T-404.
+- [ ] Phase 4.x rest: Negativfelder (T-402), persistenter State (T-403), SDK-Blackbox (T-404)
 - [ ] Phase 5.x Alle Brains
 - [ ] Phase 6.x Health-Dashboard + manuelle Quellen
 - [ ] Phase 7.x Grok-Bot-Modus (Gruppen)
@@ -78,7 +82,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 3. Phase 1.4 (T-104) **abgeschlossen**: Reiner Chat und Managed Agent haben
    getrennte Promptbuilder; der Plain-Chat-Pfad injiziert keinen
    `WEBAGENT/1`- oder Toolvertrag.
-4. Phase 0.4 als kleine Doku-Scheibe mitnehmen (historische Belege kennzeichnen).
+4. Phase 4.1 (T-401) **abgeschlossen**: Responses-SSE traegt lueckenlose
+   `sequence_number`; Usage wird nicht erfunden. Naechste Code-Zelle ohne
+   Live-Freigabe: T-402. Phase 0.4 bleibt Doku-Nachzug. T-701 (Grok-Bot-Modus)
+   ist nicht G-001-identitaet.
 
 ## Freigabegrenzen (unverändert)
 

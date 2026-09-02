@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn betriebs_markdown_hat_eine_wahrheit() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-// Lebende Betriebsdokumente. Datierte Uebergaben gehoeren NICHT hierher:
+        // Lebende Betriebsdokumente. Datierte Uebergaben gehoeren NICHT hierher:
         // sie werden nach ihrer Uebergabe archiviert und duerfen dann ein
         // Archiv-Banner tragen. Der dauerhafte Einstieg ist `START_HERE.md`,
         // der laufende Stand `docs/CURRENT_WORK.md`. Aufgabentafel,

@@ -206,12 +206,12 @@
       "suitable": [
         "chatgpt-codex"
       ],
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
-      "done_at": null,
-      "proof_path": null,
+      "status": "done",
+      "owner": "grok-agent",
+      "branch": "feature/T-401-responses-sse-seq",
+      "claimed_at": "2026-09-02",
+      "done_at": "2026-09-02",
+      "proof_path": "src/api_bridge.rs: Responses-SSE sequence_number 0..n-1; Response/Chat/Model-Felder; usage bleibt null; cargo test --lib 1239 passed / 1 ignored",
       "verification": "cargo test --lib; SDK-Blackbox",
       "dod": "Feldweise Gegenprobe gegen offizielle Referenz; sequence_number pro Event; keine erfundenen Usage"
     },

@@ -428,8 +428,11 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
             "choices": [{
                 "index": 0,
                 "message": message,
-                "finish_reason": answer.finish_reason()
-            }]
+                "finish_reason": answer.finish_reason(),
+                "logprobs": null
+            }],
+            "usage": null,
+            "system_fingerprint": null
         }),
     )
 }
@@ -1037,25 +1040,30 @@ fn handle_responses_incremental(
     started["output"] = json!([]);
     started["output_text"] = json!("");
     write_sse_headers(stream)?;
+    let mut seq = 0u64;
     write_sse_event(
         stream,
         "response.created",
         json!({"type":"response.created","response":started}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.in_progress",
         json!({"type":"response.in_progress","response":started}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.output_item.added",
         json!({"type":"response.output_item.added","output_index":0,"item":{"id":item_id,"type":"message","status":"in_progress","role":"assistant","content":[]}}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.content_part.added",
         json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}),
+        &mut seq,
     )?;
 
     let mut last_sent = String::new();
@@ -1087,6 +1095,7 @@ fn handle_responses_incremental(
                         stream,
                         "response.output_text.delta",
                         json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":delta}),
+                        &mut seq,
                     ) {
                         stream_error = Some(error);
                         return;
@@ -1124,6 +1133,7 @@ fn handle_responses_incremental(
                     stream,
                     "response.failed",
                     json!({"type":"response.failed","response":failed}),
+                    &mut seq,
                 )?;
             }
             return Ok(());
@@ -1138,6 +1148,7 @@ fn handle_responses_incremental(
             stream,
             "response.output_text.delta",
             json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":delta}),
+            &mut seq,
         )?;
     }
     if let Some(error) = stream_error {
@@ -1162,21 +1173,25 @@ fn handle_responses_incremental(
         stream,
         "response.output_text.done",
         json!({"type":"response.output_text.done","item_id":item_id,"output_index":0,"content_index":0,"text":text}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.content_part.done",
         json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":text,"annotations":[]}}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.output_item.done",
         json!({"type":"response.output_item.done","output_index":0,"item":completed["output"][0]}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.completed",
         json!({"type":"response.completed","response":completed}),
+        &mut seq,
     )?;
 
     if let Some(h) = _sess.as_ref() {
@@ -1199,14 +1214,29 @@ fn write_sse_headers(stream: &mut TcpStream) -> Result<(), String> {
         .map_err(|error| format!("SSE-Header nicht flushbar: {error}"))
 }
 
-fn write_sse_event(stream: &mut TcpStream, event: &str, data: Value) -> Result<(), String> {
-    let frame = format!("event: {event}\ndata: {data}\n\n");
+fn write_sse_event(
+    stream: &mut TcpStream,
+    event: &str,
+    data: Value,
+    seq: &mut u64,
+) -> Result<(), String> {
+    let frame = format!("event: {event}\ndata: {}\n\n", sse_data(event, data, seq));
     stream
         .write_all(frame.as_bytes())
         .map_err(|error| format!("SSE-Event nicht schreibbar: {error}"))?;
     stream
         .flush()
         .map_err(|error| format!("SSE-Event nicht flushbar: {error}"))
+}
+
+/// Responses-SSE: `sequence_number` steigt streng monoton ab 0, ohne Luecke.
+fn sse_data(event: &str, mut data: Value, seq: &mut u64) -> Value {
+    if data.get("type").is_none() {
+        data["type"] = json!(event);
+    }
+    data["sequence_number"] = json!(*seq);
+    *seq += 1;
+    data
 }
 
 fn write_data_frame(stream: &mut TcpStream, data: Value) -> Result<(), String> {
@@ -2570,6 +2600,7 @@ fn model_metadata(brain: &str) -> Value {
     let mut metadata = json!({
         "id": model_id(brain),
         "object": "model",
+        "created": 0,
         "owned_by": "webagent",
         "brain": brain,
         "context_window": 128000,
@@ -2680,14 +2711,16 @@ fn openai_sse(
         "object": "chat.completion.chunk",
         "created": unix_seconds(),
         "model": model,
-        "choices": [{"index": 0, "delta": delta, "finish_reason": null}]
+        "choices": [{"index": 0, "delta": delta, "finish_reason": null, "logprobs": null}],
+        "usage": null
     });
     let last = json!({
         "id": id,
         "object": "chat.completion.chunk",
         "created": unix_seconds(),
         "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": answer.finish_reason()}]
+        "choices": [{"index": 0, "delta": {}, "finish_reason": answer.finish_reason(), "logprobs": null}],
+        "usage": null
     });
     HttpResponse::sse(format!("data: {first}\n\ndata: {last}\n\ndata: [DONE]\n\n"))
 }
@@ -2698,9 +2731,12 @@ fn response_object(id: &str, model: &str, text: &str) -> Value {
         "object": "response",
         "created_at": unix_seconds(),
         "status": "completed",
+        "background": false,
         "error": null,
         "incomplete_details": null,
         "instructions": null,
+        "max_output_tokens": null,
+        "max_tool_calls": null,
         "model": model,
         "output": [{
             "id": format!("{id}_msg"),
@@ -2711,9 +2747,17 @@ fn response_object(id: &str, model: &str, text: &str) -> Value {
         }],
         "output_text": text,
         "parallel_tool_calls": false,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "reasoning": null,
+        "store": true,
+        "temperature": null,
         "tool_choice": "none",
         "tools": [],
+        "top_p": null,
+        "truncation": null,
         "usage": null,
+        "user": null,
         "metadata": {}
     })
 }
@@ -2745,16 +2789,27 @@ fn response_object_from_answer(
         "object": "response",
         "created_at": unix_seconds(),
         "status": "completed",
+        "background": false,
         "error": null,
         "incomplete_details": null,
         "instructions": null,
+        "max_output_tokens": null,
+        "max_tool_calls": null,
         "model": model,
         "output": output,
         "output_text": "",
         "parallel_tool_calls": false,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "reasoning": null,
+        "store": true,
+        "temperature": null,
         "tool_choice": "auto",
         "tools": [],
+        "top_p": null,
+        "truncation": null,
         "usage": null,
+        "user": null,
         "metadata": {}
     })
 }
@@ -2785,66 +2840,83 @@ fn responses_sse_with_object(
     created["status"] = json!("in_progress");
     created["output"] = json!([]);
     created["output_text"] = json!("");
+    let mut seq = 0u64;
     let mut body = format!(
         "event: response.created\ndata: {}\n\n",
-        json!({"type":"response.created","response":created})
+        sse_data(
+            "response.created",
+            json!({"type":"response.created","response":created}),
+            &mut seq
+        )
     );
     body.push_str(&format!(
         "event: response.in_progress\ndata: {}\n\n",
-        json!({"type":"response.in_progress","response":created})
+        sse_data(
+            "response.in_progress",
+            json!({"type":"response.in_progress","response":created}),
+            &mut seq
+        )
     ));
     if answer.tool_calls.is_empty() {
         let item_id = format!("{id}_msg");
         body.push_str(&format!(
             "event: response.output_item.added\ndata: {}\n\n",
-            json!({"type":"response.output_item.added","output_index":0,"item":{"id":item_id,"type":"message","status":"in_progress","role":"assistant","content":[]}})
+            sse_data("response.output_item.added", json!({"type":"response.output_item.added","output_index":0,"item":{"id":item_id,"type":"message","status":"in_progress","role":"assistant","content":[]}}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.content_part.added\ndata: {}\n\n",
-            json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}})
+            sse_data("response.content_part.added", json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.output_text.delta\ndata: {}\n\n",
-            json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":text})
+            sse_data("response.output_text.delta", json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":text}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.output_text.done\ndata: {}\n\n",
-            json!({"type":"response.output_text.done","item_id":item_id,"output_index":0,"content_index":0,"text":text})
+            sse_data("response.output_text.done", json!({"type":"response.output_text.done","item_id":item_id,"output_index":0,"content_index":0,"text":text}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.content_part.done\ndata: {}\n\n",
-            json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":text,"annotations":[]}})
+            sse_data("response.content_part.done", json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":text,"annotations":[]}}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.output_item.done\ndata: {}\n\n",
-            json!({"type":"response.output_item.done","output_index":0,"item":completed["output"][0]})
+            sse_data("response.output_item.done", json!({"type":"response.output_item.done","output_index":0,"item":completed["output"][0]}), &mut seq)
         ));
     } else {
         for (index, call) in answer.tool_calls.iter().enumerate() {
             let item = json!({"id":call.id,"type":"function_call","status":"in_progress","call_id":call.id,"name":call.name,"arguments":""});
             body.push_str(&format!(
                 "event: response.output_item.added\ndata: {}\n\n",
-                json!({"type":"response.output_item.added","output_index":index,"item":item})
+                sse_data(
+                    "response.output_item.added",
+                    json!({"type":"response.output_item.added","output_index":index,"item":item}),
+                    &mut seq
+                )
             ));
             let arguments =
                 serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string());
             body.push_str(&format!(
                 "event: response.function_call_arguments.delta\ndata: {}\n\n",
-                json!({"type":"response.function_call_arguments.delta","item_id":call.id,"output_index":index,"delta":arguments})
+                sse_data("response.function_call_arguments.delta", json!({"type":"response.function_call_arguments.delta","item_id":call.id,"output_index":index,"delta":arguments}), &mut seq)
             ));
             body.push_str(&format!(
                 "event: response.function_call_arguments.done\ndata: {}\n\n",
-                json!({"type":"response.function_call_arguments.done","item_id":call.id,"output_index":index,"arguments":arguments})
+                sse_data("response.function_call_arguments.done", json!({"type":"response.function_call_arguments.done","item_id":call.id,"output_index":index,"arguments":arguments}), &mut seq)
             ));
             body.push_str(&format!(
                 "event: response.output_item.done\ndata: {}\n\n",
-                json!({"type":"response.output_item.done","output_index":index,"item":completed["output"][index]})
+                sse_data("response.output_item.done", json!({"type":"response.output_item.done","output_index":index,"item":completed["output"][index]}), &mut seq)
             ));
         }
     }
     body.push_str(&format!(
         "event: response.completed\ndata: {}\n\n",
-        json!({"type":"response.completed","response":completed})
+        sse_data(
+            "response.completed",
+            json!({"type":"response.completed","response":completed}),
+            &mut seq
+        )
     ));
     HttpResponse::sse(body)
 }
@@ -3570,6 +3642,50 @@ mod tests {
             sse.find("event: response.content_part.added").unwrap()
                 < sse.find("event: response.output_text.delta").unwrap()
         );
+        assert_eq!(response["usage"], Value::Null);
+        assert_eq!(response["previous_response_id"], Value::Null);
+        let seqs = sse_sequence_numbers(&sse);
+        assert!(!seqs.is_empty());
+        assert_eq!(seqs, (0..seqs.len() as u64).collect::<Vec<_>>());
+    }
+
+    fn sse_sequence_numbers(sse: &str) -> Vec<u64> {
+        sse.split("\n\n")
+            .filter_map(|frame| {
+                let data = frame.lines().find_map(|l| l.strip_prefix("data: "))?;
+                serde_json::from_str::<Value>(data)
+                    .ok()?
+                    .get("sequence_number")?
+                    .as_u64()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn responses_sse_sequence_numbers_sind_monoton_und_lueckenlos() {
+        let answer = crate::browser_inference::BrowserInferenceResponse {
+            text: Some("OK".to_string()),
+            tool_calls: Vec::new(),
+        };
+        let sse =
+            String::from_utf8(responses_sse("resp_seq", "webagent/chatgpt", &answer).body).unwrap();
+        let seqs = sse_sequence_numbers(&sse);
+        assert!(seqs.len() >= 8, "zu wenige Events: {seqs:?}");
+        assert_eq!(seqs, (0..seqs.len() as u64).collect::<Vec<_>>());
+        assert!(sse.contains("\"sequence_number\":0"));
+        let tool_answer = crate::browser_inference::BrowserInferenceResponse {
+            text: None,
+            tool_calls: vec![crate::browser_inference::BrowserToolCall {
+                id: "call_1".into(),
+                name: "read".into(),
+                arguments: json!({}),
+            }],
+        };
+        let tool_sse =
+            String::from_utf8(responses_sse("resp_tool", "webagent/chatgpt", &tool_answer).body)
+                .unwrap();
+        let tool_seqs = sse_sequence_numbers(&tool_sse);
+        assert_eq!(tool_seqs, (0..tool_seqs.len() as u64).collect::<Vec<_>>());
     }
 
     #[test]
@@ -4036,9 +4152,7 @@ mod tests {
         let _ = handle.push(crate::session::SessionEvent::TextDelta {
             text: "hall".into(),
         });
-        let _ = handle.push(crate::session::SessionEvent::TextDelta {
-            text: "o".into(),
-        });
+        let _ = handle.push(crate::session::SessionEvent::TextDelta { text: "o".into() });
         let _ = handle.push(crate::session::SessionEvent::TextComplete);
         let _ = handle.push(crate::session::SessionEvent::Done {
             status: "done".into(),

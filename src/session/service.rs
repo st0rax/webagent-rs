@@ -119,12 +119,7 @@ impl SessionService {
 
     /// Registriert einen neuen Lauf mit leerem Strom. Schlaegt fehl, wenn der
     /// Lauf bereits registriert ist (eine Session pro Run).
-    pub fn start(
-        &self,
-        run_id: &str,
-        brain: &str,
-        task: &str,
-    ) -> Result<SessionHandle, String> {
+    pub fn start(&self, run_id: &str, brain: &str, task: &str) -> Result<SessionHandle, String> {
         let mut sessions = self.sessions.lock().unwrap();
         if sessions.contains_key(run_id) {
             return Err(format!("Lauf {run_id:?} ist bereits registriert"));
@@ -226,11 +221,13 @@ mod tests {
     fn status_folgt_den_events_runter_auf_terminal() {
         let service = SessionService::new();
         let handle = start_test(&service, "run-s");
-        handle.push(SessionEvent::Started {
-            run_id: "run-s".to_string(),
-            brain: "claude".to_string(),
-            task: "t".to_string(),
-        }).unwrap();
+        handle
+            .push(SessionEvent::Started {
+                run_id: "run-s".to_string(),
+                brain: "claude".to_string(),
+                task: "t".to_string(),
+            })
+            .unwrap();
         assert_eq!(handle.status(), "running");
         handle
             .push(SessionEvent::Status {

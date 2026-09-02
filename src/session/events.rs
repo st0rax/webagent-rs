@@ -32,7 +32,11 @@ pub enum SessionEvent {
     /// Aufruf eines Werkzeugs (read/bash/edit/write).
     ToolStart { tool: String, id: String },
     /// Ergebnis eines Werkzeug-Aufrufs.
-    ToolResult { id: String, ok: bool, summary: String },
+    ToolResult {
+        id: String,
+        ok: bool,
+        summary: String,
+    },
     /// Laufstatuswechsel (running/login_required/cloudflare/...).
     Status { state: String },
     /// Endgueltiger Fehler.
@@ -103,7 +107,10 @@ impl EventStream {
 
     /// Hoeheste ausgegebene Sequenznummer (0 bei leerem, nie gekuerztem Strom).
     pub fn last_seq(&self) -> u64 {
-        self.events.last().map(|e| e.seq).unwrap_or(self.compacted_to)
+        self.events
+            .last()
+            .map(|e| e.seq)
+            .unwrap_or(self.compacted_to)
     }
 
     /// Terminal geschlossen (ein [`SessionEvent::Done`] wurde gepusht)?
@@ -176,7 +183,11 @@ mod tests {
         let mut last = 0;
         for i in 0..10 {
             let seq = stream.push(delta(&format!("t{i}"))).unwrap();
-            assert_eq!(seq, last + 1, "Sequenznummern muessen lueckenlos aufsteigen");
+            assert_eq!(
+                seq,
+                last + 1,
+                "Sequenznummern muessen lueckenlos aufsteigen"
+            );
             last = seq;
         }
         assert_eq!(stream.last_seq(), 10);
@@ -299,6 +310,9 @@ mod tests {
             event: delta("s"),
         };
         let text = serde_json::to_string(&stamped).unwrap();
-        assert_eq!(serde_json::from_str::<StampedEvent>(&text).unwrap(), stamped);
+        assert_eq!(
+            serde_json::from_str::<StampedEvent>(&text).unwrap(),
+            stamped
+        );
     }
 }
