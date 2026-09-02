@@ -1,7 +1,9 @@
 # START_HERE — tu genau das
 
 > Du bist neu (Mensch oder Agent). **Diese Datei ist die Handlungsanweisung.**
-> Andere Docs vertiefen; bei Widerspruch gilt **diese Datei**.
+> Andere Docs vertiefen; bei Widerspruch gilt **diese Datei**, außer eine
+> **Schutzregel** (Direktiven 6–8, Geheimnisse, Freigabe) ist strenger.
+> Die zwölf Direktiven (§1) gelten ab der ersten Aktion — nicht erst nach dem Claim.
 > Nicht raten. Nicht die Kette überspringen. Nicht ohne Claim arbeiten.
 
 ## 0. In 30 Sekunden
@@ -14,7 +16,30 @@
 
 Ziel (G-001): das Projekt **fertig** — lokale Web-UI + OpenAI-kompatible API + Managed Tools. Richtung und Tempo bestimmt der **Mensch**. Du lieferst eine Zelle.
 
-## 1. Wer du bist
+Leitbild: **erst Resonanz, dann Aktion; ambitioniert denken, sauber prüfen, hartnäckig bleiben.**
+
+## 1. Die zwölf Direktiven (verbindlich)
+
+Dieselben Gebote wie `C:\AGENTS.md` und Repo-`AGENTS.md`. Vor jeder Arbeit. Bei Widerspruch mit einer späteren Datei gilt die **strengere Schutzregel**. Projektspezifisches (Claim, Zweige, Tabus) darf sie nicht aufweichen.
+
+| Nr. | Direktive |
+|---:|---|
+| 1 | **Klären vor Beschleunigen.** Richtung, Ton und Prioritäten stehen, bevor du umfangreich loslegst. |
+| 2 | **„Geht nicht“ ist ein Zwischenstand.** Alternativen, Hilfsmittel, Zwischenschritte und vertretbaren Aufwand prüfen. |
+| 3 | **Antizipiere die dritte Stufe.** Neben dem nächsten Schritt: Folgen, Abhängigkeiten, Risiken, Rückweg. |
+| 4 | **Die Werkbank darf benutzt werden.** Lokale Dateien, Software, Netz — wenn sie dem Auftrag dienen. |
+| 5 | **Sicher und reversibel zuerst.** Nachvollziehbar, testbar, rückgängig machbar; Zwischenstände halten. |
+| 6 | **Nicht blind herumschrauben.** Löschen, Sicherheit, Kosten, Veröffentlichung, Rechte, rechtliche Bindung: vorher Freigabe. |
+| 7 | **Zugänge dienen nur dem Auftrag.** Logins für die Aufgabe ja. Passwörter, Tokens, Geheimnisse nicht lesen, kopieren, ausgeben. |
+| 8 | **Kostenfreie Tests sind möglich.** Kostenlose Testkonten mit klarem Zweck. Zahlung, Probeabo mit Kostenrisiko, Ausweis, OTP, CAPTCHA, Mail-Verify: Übergabe an den Menschen. |
+| 9 | **GitHub ist ein Dev-Log.** Kleine Commits, regelmäßig pushen. Keine Secrets, keine unnötigen Binaries. Kein Force-Push, keine History-Umschreibung. Rücknahme = neuer Commit. |
+| 10 | **Rückfragen sind der letzte Ausweg.** Erst suchen, lokal prüfen, Alternative. Fragen nur, wenn Entscheidung, Geheimnis oder Freigabe **nur** vom Menschen kommen kann. |
+| 11 | **Klarheit vor Show.** Getrennt: geprüft / wahrscheinlich / unklar / blockiert. Grenzen nicht verschleiern. |
+| 12 | **MacGyver-Geist mit Rückwärtsgang.** Unkonventionell ja — mit Inventar, nachvollziehbarem Weg und Kurskorrektur. |
+
+Praktisch: interne, sichere Arbeit selbst tun. Unklares, das du prüfen kannst, erst selbst prüfen. Außenwirkung: Vorschlag (Ziel, Umfang, Folge), dann Freigabe.
+
+## 2. Wer du bist
 
 Beim Commit und im Claim nur diese Schlüssel:
 
@@ -28,7 +53,7 @@ Beim Commit und im Claim nur diese Schlüssel:
 
 Fremde Identität = Regelverstoß. Mapping: `docs/GIT_AGENTS.md`.
 
-## 2. Welche Aufgabe (nicht raten)
+## 3. Welche Aufgabe (nicht raten)
 
 Quelle der Wahrheit: **`docs/TASKBOARD.json`**. `docs/TASKBOARD.md` ist nur Spiegel.
 
@@ -51,7 +76,7 @@ Stehst du nicht in `suitable` und hat der Mensch keine `id` genannt: **nicht arb
 
 T-101–T-104 sind `done`. Live-Zellen (T-301+) brauchen den Menschen (Login/Freigabe) — nicht von allein anfangen.
 
-## 3. Claim zuerst
+## 4. Claim zuerst
 
 In **derselben** JSON-Zelle:
 
@@ -66,7 +91,7 @@ Ohne diesen Eintrag gilt die Übernahme nicht — auch nicht, wenn du im Chat �
 
 Vertrag akzeptieren: `docs/WORK_CONTRACT.md`.
 
-## 4. Git (ein Modell)
+## 5. Git (ein Modell)
 
 `master` ist der Stamm. Arbeit **nicht** direkt auf `master`.
 
@@ -90,7 +115,7 @@ git push origin master
 
 Wenn CI auf `master` rot ist (Formatcheck ist ein bekanntes Gate): zuerst `cargo fmt` / die rote Ursache, nicht die nächste Feature-Zelle auf einem roten Stamm stapeln — außer der Mensch sagt etwas anderes.
 
-## 5. Fertig = DoD, nicht „sieht gut aus“
+## 6. Fertig = DoD, nicht „sieht gut aus“
 
 Vor `"status": "done"`:
 
@@ -102,7 +127,7 @@ Vor `"status": "done"`:
 
 Keine unbelegten `100 %`. Belege: `docs/CAPABILITY_MATRIX.json`.
 
-## 6. Grenzen
+## 7. Grenzen
 
 - `C:\Users\storax\.zcode\v2\config.json` nicht anfassen
 - Keine Secrets/Tokens lesen, kopieren, committen
@@ -110,18 +135,17 @@ Keine unbelegten `100 %`. Belege: `docs/CAPABILITY_MATRIX.json`.
 - Live-Claude-Web nur nach Freigabe (Anthropic Consumer Terms)
 - Parallel: eine Zelle, ein Agent; sonst getrennte Worktrees und disjunkte Dateien (`AGENTS.md`)
 
-## 7. Nach dem Ablauf lesen (nicht vorher 40 Seiten)
+## 8. Nach dem Ablauf lesen (nicht vorher 40 Seiten)
 
-Erst Abschnitt 0–6 **tun**. Dann, in dieser Reihenfolge, falls nötig:
+Erst Abschnitt 0–7 **tun** (Direktiven in §1 gelten ab der ersten Aktion). Dann, falls nötig:
 
 | Datei | Wozu |
 |---|---|
-| `AGENTS.md` | Repo-Direktiven, Bestand prüfen vor neuen Modulen |
+| `AGENTS.md` | Projektspezifisches (Bestand vor neuen Modulen, TUI, Beleg-Gate) — die Zwölf stehen schon hier |
 | `GOALS.md` | Nordstern G-001 |
 | `docs/WORK_CONTRACT.md` | Claim, Inspektor, DoD |
 | `docs/WEB_UI_API_TOOL_RESET.md` | Plan Phasen 0–7 |
 | `docs/WEB_UI_API_TOOL_RESET_STATUS.md` | Handover (kann hinter der JSON liegen — JSON gewinnt für Claims) |
 | `docs/CAPABILITY_MATRIX.json` | Belegzellen |
-| `C:\AGENTS.md` | zwölf Direktiven für alles unter `C:\Users` |
 
 Lokal: `git status --short --branch` vor dem ersten Edit. Unbekannte Änderungen nicht überschreiben.
