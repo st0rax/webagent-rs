@@ -882,7 +882,10 @@ return null;}})()"#,
     ) -> Result<(LiveDiagnosis, Option<Vec<u8>>), String> {
         self.start(headless)?;
         self.dismiss_consent();
-        let session_state = self.ensure_ready(15.0).unwrap_or(SessionState::Error);
+        // Profil kann den letzten Chat wiederherstellen (fremde Systemprompts).
+        // Diagnose und Relays sollen auf einem leeren Turn landen.
+        let _ = self.new_chat();
+        let session_state = self.ensure_ready(45.0).unwrap_or(SessionState::Error);
         let result = {
             let mut guard = self.driver.borrow_mut();
             let driver = guard

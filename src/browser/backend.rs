@@ -65,11 +65,11 @@ impl BrainBackend for WebBrainBackend {
                 .open_page(&profile, &self.url, headless, &self.brain_id)
                 .map_err(|e| e.to_string())?;
             let nav_start = Instant::now();
-            let nav_timeout = Duration::from_secs(15);
+            let nav_timeout = Duration::from_secs(60);
             driver.navigate(&self.url, nav_timeout).map_err(|e| {
                 let elapsed = nav_start.elapsed();
                 format!(
-                    "Navigation timeout after {:.2}s to {} (limit 15s): {}",
+                    "Navigation timeout after {:.2}s to {} (limit 60s): {}",
                     elapsed.as_secs_f64(),
                     self.url,
                     e
