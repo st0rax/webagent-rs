@@ -58,7 +58,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 - [x] Phase 1.4 Promptbuilder Reiner Chat vs. Managed Agent trennen —
       erledigt (`src/prompts.rs`, getrennte Builder mit Vertragstests, `cargo test --lib`
       grün, 1238 passed)
-- [ ] Phase 2.x Web-UI-Prototyp + lokaler Server + Health-Endpunkt
+- [x] Phase 2.1 Eingebettete Assets + Loopback-Serverstart (T-201) —
+      erledigt (`src/web_ui.rs`, `web/index.html` via `include_str`, Default ohne
+      Subcommand ist die Loopback-UI, `cargo test --lib` 1242 passed / 1 ignored)
+- [ ] Phase 2.x rest: Endpunkte (T-202), Fake-Prototyp (T-203)
 - [ ] Phase 3.x Claude-Referenz komplettieren
 - [ ] Phase 4.x OpenAI-Konformitaetskern (Profile, SSE, State)
 - [ ] Phase 5.x Alle Brains
@@ -78,7 +81,9 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 3. Phase 1.4 (T-104) **abgeschlossen**: Reiner Chat und Managed Agent haben
    getrennte Promptbuilder; der Plain-Chat-Pfad injiziert keinen
    `WEBAGENT/1`- oder Toolvertrag.
-4. Phase 0.4 als kleine Doku-Scheibe mitnehmen (historische Belege kennzeichnen).
+4. Phase 2.1 (T-201) **abgeschlossen**: eingebettete HTML-Assets, Loopback-only,
+   `webagent` / `webagent ui` startet die lokale UI; TUI bleibt `webagent tui`.
+5. Naechste Zelle: T-202 (HTTP-Endpunkte). Phase 0.4 bleibt Doku-Nachzug.
 
 ## Freigabegrenzen (unverändert)
 

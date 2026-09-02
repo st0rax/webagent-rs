@@ -3,7 +3,9 @@
 /// Was `webagent` ohne Subcommand startet, und was `repl` / `tui` bleiben.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CliEntry {
-    /// Scrollback + Prompt (Default ohne Subcommand).
+    /// Eingebettete Web-UI auf Loopback (Default ohne Subcommand, T-201).
+    WebUi,
+    /// Scrollback + Prompt (`webagent tui --view session`).
     SessionTui,
     /// Zeilenweise REPL (`webagent repl`).
     Repl,
@@ -16,10 +18,11 @@ pub enum CliEntry {
 /// Mappt das erste CLI-Token (oder dessen Fehlen) auf den Einstieg.
 ///
 /// `None` ist der Default nach `Cli::parse()` ohne Subcommand — das muss
-/// die Session-TUI sein, nicht die REPL.
+/// die lokale Web-UI sein (T-201), nicht TUI oder REPL.
 pub fn resolve_cli_entry(subcommand: Option<&str>) -> CliEntry {
     match subcommand {
-        None => CliEntry::SessionTui,
+        None => CliEntry::WebUi,
+        Some("ui") => CliEntry::WebUi,
         Some("repl") => CliEntry::Repl,
         Some("tui") => CliEntry::PoolTui,
         Some(_) => CliEntry::Other,
@@ -36,8 +39,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ohne_subcommand_ist_session_tui() {
-        assert_eq!(resolve_cli_entry(None), CliEntry::SessionTui);
+    fn ohne_subcommand_ist_web_ui() {
+        assert_eq!(resolve_cli_entry(None), CliEntry::WebUi);
+        assert_eq!(resolve_cli_entry(Some("ui")), CliEntry::WebUi);
         assert_eq!(default_session_view(), "session");
     }
 
@@ -83,7 +87,7 @@ mod tests {
     #[test]
     fn betriebs_markdown_hat_eine_wahrheit() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-// Lebende Betriebsdokumente. Datierte Uebergaben gehoeren NICHT hierher:
+        // Lebende Betriebsdokumente. Datierte Uebergaben gehoeren NICHT hierher:
         // sie werden nach ihrer Uebergabe archiviert und duerfen dann ein
         // Archiv-Banner tragen. Der dauerhafte Einstieg ist `START_HERE.md`,
         // der laufende Stand `docs/CURRENT_WORK.md`. Aufgabentafel,

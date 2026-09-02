@@ -523,8 +523,24 @@ pub enum Commands {
         headless: bool,
     },
 
-    /// Pool/Wand/Bench-TUI. Ohne Subcommand startet `webagent` die Session-
-    /// Ansicht (`--view session`); `webagent tui` bleibt diese Pool-Wand.
+    /// Lokale Web-UI (eingebettete Assets, Loopback). Default ohne Subcommand.
+    #[command(name = "ui")]
+    Ui {
+        /// Bind-Adresse (nur Loopback)
+        #[arg(long, default_value = "127.0.0.1")]
+        bind: String,
+
+        /// Port (API-Bridge bleibt 8787)
+        #[arg(long, default_value_t = 8788)]
+        port: u16,
+
+        /// Systembrowser nicht oeffnen
+        #[arg(long)]
+        no_open: bool,
+    },
+
+    /// Pool/Wand/Bench-TUI. Ohne Subcommand startet `webagent` die Web-UI;
+    /// `webagent tui` bleibt diese Pool-Wand (Legacy).
     #[command(name = "tui")]
     Tui {
         /// Zielanzahl gleichzeitig aktiver Worker (Default 2)

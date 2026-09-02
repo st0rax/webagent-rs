@@ -4036,9 +4036,7 @@ mod tests {
         let _ = handle.push(crate::session::SessionEvent::TextDelta {
             text: "hall".into(),
         });
-        let _ = handle.push(crate::session::SessionEvent::TextDelta {
-            text: "o".into(),
-        });
+        let _ = handle.push(crate::session::SessionEvent::TextDelta { text: "o".into() });
         let _ = handle.push(crate::session::SessionEvent::TextComplete);
         let _ = handle.push(crate::session::SessionEvent::Done {
             status: "done".into(),
