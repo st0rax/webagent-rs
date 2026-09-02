@@ -19,7 +19,10 @@
       "phase": "0",
       "title": "Umsetzungsstatus-Datei und Capability-Matrix pflegen (Handover)",
       "type": "docs",
-      "suitable": ["local/opencode", "chief"],
+      "suitable": [
+        "local/opencode",
+        "chief"
+      ],
       "status": "done",
       "owner": "local/opencode",
       "branch": "feat/browser-inference-provider",
@@ -33,7 +36,11 @@
       "phase": "1",
       "title": "SessionService + EventStream UI-neutral herausloesen (um AgentController/run_store/transcript, monotone sequence_number)",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code",
+        "local/opencode"
+      ],
       "status": "done",
       "owner": "local/opencode",
       "branch": "feature/T-101-api-bridge",
@@ -48,7 +55,11 @@
       "phase": "1",
       "title": "ToolRegistry-Vertrag + vier Managed Tools (read/bash/edit/write) mit Policy-Grenzen (aus controller.rs:659/file_actions/shell_policy/executor)",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code",
+        "local/opencode"
+      ],
       "status": "done",
       "owner": "local/opencode",
       "branch": "feature/T-102-tool-registry",
@@ -63,7 +74,11 @@
       "phase": "1",
       "title": "Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code",
+        "local/opencode"
+      ],
       "status": "done",
       "owner": "chatgpt-codex",
       "branch": "feature/T-103-fakebrain",
@@ -78,7 +93,11 @@
       "phase": "1",
       "title": "Promptbuilder trennen: Reiner Chat vs. Managed Agent (keine Tool-Injection in Reiner Chat)",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code",
+        "local/opencode"
+      ],
       "status": "done",
       "owner": "chatgpt-codex",
       "branch": "feature/T-104-prompt-builders",
@@ -93,11 +112,14 @@
       "phase": "2",
       "title": "Eingebettete statische Assets + Loopback-Serverstart (einzelne portable Binary)",
       "type": "code",
-      "suitable": ["claude-code", "manus"],
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "suitable": [
+        "claude-code",
+        "manus"
+      ],
+      "status": "claimed",
+      "owner": "grok-agent",
+      "branch": "feature/T-201-embed-loopback",
+      "claimed_at": "2026-09-02",
       "done_at": null,
       "proof_path": null,
       "verification": "cargo test --lib; Start ohne externe Dateien",
@@ -108,7 +130,10 @@
       "phase": "2",
       "title": "Server-Endpunkte: Session / Capability / Health / Upload / Chat / Stop / Event",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -123,7 +148,11 @@
       "phase": "2",
       "title": "Klickbarer Fake-Prototyp im Grok-Bot-Layout (Health-Balken oben, System-Kategorien links) + A11y-Gates",
       "type": "code",
-      "suitable": ["claude-code", "manus", "local/opencode"],
+      "suitable": [
+        "claude-code",
+        "manus",
+        "local/opencode"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -138,7 +167,10 @@
       "phase": "3",
       "title": "Claude-Referenz: Mehrturn-Chat mit echtem Delta-Streaming (Live, Freigabegrenze beachten)",
       "type": "live-tests",
-      "suitable": ["claude-code", "local/opencode"],
+      "suitable": [
+        "claude-code",
+        "local/opencode"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -153,7 +185,10 @@
       "phase": "3",
       "title": "Claude-Referenz: Modelle und Aufwand zur Laufzeit ermitteln, waehlen, nachpruefen",
       "type": "live-tests",
-      "suitable": ["claude-code", "local/opencode"],
+      "suitable": [
+        "claude-code",
+        "local/opencode"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -168,7 +203,9 @@
       "phase": "4",
       "title": "DTOs feldvollstaendig fuer Models/Chat/Responses; monotone sequence_number in Responses-SSE",
       "type": "code",
-      "suitable": ["chatgpt-codex"],
+      "suitable": [
+        "chatgpt-codex"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -183,7 +220,10 @@
       "phase": "4",
       "title": "Negativfelder/Fehler: seed, logprobs, service_tier, n>1 etc. klar ablehnen (unsupported_*); IDs/Zeitstempel/Header korrigieren",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -198,7 +238,10 @@
       "phase": "4",
       "title": "Persistent State: openai-local-state-v1 auf echtem Store + Restart-Test",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -213,7 +256,10 @@
       "phase": "4",
       "title": "OpenAI-SDK-Blackbox: offizielle Python-/JS-SDKs + zwei reale Clients",
       "type": "tests",
-      "suitable": ["chatgpt-codex", "local/opencode"],
+      "suitable": [
+        "chatgpt-codex",
+        "local/opencode"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -228,7 +274,11 @@
       "phase": "5",
       "title": "Alle-Brains-Matrix: Chat/Streaming/Modell/Aufwand/Anhang/Tools ueber UI und API (je Brain)",
       "type": "live-tests",
-      "suitable": ["claude-code", "grok-agent", "local/opencode"],
+      "suitable": [
+        "claude-code",
+        "grok-agent",
+        "local/opencode"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -243,7 +293,10 @@
       "phase": "6",
       "title": "Minimaler rustls-HTTPS-Client + data/providers.json + Groessenbudget (<10 MB)",
       "type": "code",
-      "suitable": ["chatgpt-codex", "grok-agent"],
+      "suitable": [
+        "chatgpt-codex",
+        "grok-agent"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -258,7 +311,10 @@
       "phase": "6",
       "title": "/quelle-Befehl + Web-UI-Quellen-Schalter + Session-Source-Scope (manueller Hybrid)",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
@@ -273,7 +329,10 @@
       "phase": "7",
       "title": "Grok-Bot-Modus: Gruppen (2-6), Runden, @Brain, Leader-Synthese auf /swarm + HandoffQueue",
       "type": "code",
-      "suitable": ["chatgpt-codex", "claude-code"],
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code"
+      ],
       "status": "free",
       "owner": null,
       "branch": null,
