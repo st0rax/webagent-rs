@@ -5,9 +5,9 @@
 
 ## Repo / Branch / Stand
 
-- Branch: `feat/browser-inference-provider`
+- Branch: `master`
 - Remote: `https://github.com/st0rax/webagent-rs.git`
-- Letzter Stand (Commit): wird beim jeweiligen Update hier eingetragen
+- Letzter Stand (Commit): `8e25d36` (2026-09-02)
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
 - Multidev-Betrieb: `docs/TASKBOARD.json` (Claim-Quelle der Wahrheit),
   `docs/TASKBOARD.md` (Spiegel), `docs/WORK_CONTRACT.md` (verbindlich);
@@ -26,7 +26,7 @@ cargo check --features tui
 cargo check --no-default-features
 ```
 
-Bekannter Stand Default-Gate (2026-09-01): 1207 passed / 1 ignored / 0 failed.
+Bekannter Stand Default-Gate (2026-09-02): 1232 passed / 1 ignored / 0 failed.
 
 ## Planphasen und Status
 

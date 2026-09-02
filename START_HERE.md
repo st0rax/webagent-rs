@@ -85,14 +85,13 @@ Arbeiten unter `C:\Users`.)
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
    auf `"done"` setzen und `done_at` ergänzen.
 
-**Gerade offen für dich:** `T-102`, `T-103`, `T-104`, `T-201`, `T-202`,
+**Gerade offen für dich:** `T-103`, `T-104`, `T-201`, `T-202`,
 `T-203`, `T-301`, `T-302`, `T-401`–`T-701` — freie Aufgaben ohne `owner`.
 
 **Freie Aufgaben auf einen Blick (Stand heute):**
 
 | ID | Phase | Aufgabe | Typ |
 |---|---|---|---|
-| T-102 | 1 | ToolRegistry + read/bash/edit/write mit Policy-Grenzen | code |
 | T-103 | 1 | Fake-Brain (Textdelta/Toolloop/Abort/Retry/Exactly-once) | code |
 | T-104 | 1 | Promptbuilder trennen (Reiner Chat vs. Managed Agent) | code |
 | T-201 | 2 | Eingebettete Assets + Loopback-Serverstart | code |
@@ -123,9 +122,8 @@ Bekannter Stand: 1207 passed / 1 ignored (Stand 2026‑09‑01, vor dem
 
 ## 5. Nächste offene Scheiben
 
-- **T-101** (läuft, `local/opencode`): `SessionService`+`EventStream`
-  (`src/session/`) — Fundament steht, es fehlt die Api-Bridge-Anbindung.
-- **T-102**, **T-103**, **T-104**, **T-201** … : freie Aufgaben für dich.
+- **T-101** und **T-102** sind erledigt (`local/opencode`).
+- **T-103**, **T-104**, **T-201** … : freie Aufgaben für dich.
   Siehe `docs/TASKBOARD.md`.
 
 ## 6. Grenzen (nicht überschreiten)
