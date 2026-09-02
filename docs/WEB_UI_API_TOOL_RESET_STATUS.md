@@ -26,7 +26,7 @@ cargo check --features tui
 cargo check --no-default-features
 ```
 
-Bekannter Stand Default-Gate (2026-09-02): 1236 passed / 1 ignored / 0 failed.
+Bekannter Stand Default-Gate (2026-09-02): 1238 passed / 1 ignored / 0 failed.
 
 ## Planphasen und Status
 
@@ -55,7 +55,9 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 - [x] Phase 1.3 Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests —
       erledigt (`src/fakebrain.rs`, Controller-Integrationstests, `cargo test --lib`
       grün, 1236 passed)
-- [ ] Phase 1.4 Promptbuilder Reiner Chat vs. Managed Agent trennen
+- [x] Phase 1.4 Promptbuilder Reiner Chat vs. Managed Agent trennen —
+      erledigt (`src/prompts.rs`, getrennte Builder mit Vertragstests, `cargo test --lib`
+      grün, 1238 passed)
 - [ ] Phase 2.x Web-UI-Prototyp + lokaler Server + Health-Endpunkt
 - [ ] Phase 3.x Claude-Referenz komplettieren
 - [ ] Phase 4.x OpenAI-Konformitaetskern (Profile, SSE, State)
@@ -73,7 +75,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 2. Phase 1.3 (T-103 Fake-Brain) **abgeschlossen**: `src/fakebrain.rs` bindet
    den deterministischen Fake an den echten Controller-Loop; Toolloop,
    Abort, Retry und Exactly-once sind durch isolierte Integrationstests belegt.
-3. Phase 0.4 als kleine Doku-Scheibe mitnehmen (historische Belege kennzeichnen).
+3. Phase 1.4 (T-104) **abgeschlossen**: Reiner Chat und Managed Agent haben
+   getrennte Promptbuilder; der Plain-Chat-Pfad injiziert keinen
+   `WEBAGENT/1`- oder Toolvertrag.
+4. Phase 0.4 als kleine Doku-Scheibe mitnehmen (historische Belege kennzeichnen).
 
 ## Freigabegrenzen (unverändert)
 
