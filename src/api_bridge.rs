@@ -379,6 +379,9 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return response;
     }
+    if let Err(response) = reject_unsupported_openai_body(&request.body) {
+        return response;
+    }
     let payload: OpenAiRequest = match decode_json(&request.body) {
         Ok(payload) => payload,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
@@ -721,6 +724,9 @@ fn handle_openai_incremental(
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return write_http_response(stream, response);
     }
+    if let Err(response) = reject_unsupported_openai_body(&request.body) {
+        return write_http_response(stream, response);
+    }
     let payload: OpenAiRequest = match decode_json(&request.body) {
         Ok(payload) => payload,
         Err(error) => {
@@ -927,6 +933,9 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return response;
     }
+    if let Err(response) = reject_unsupported_openai_body(&request.body) {
+        return response;
+    }
     let payload: ResponsesRequest = match decode_json(&request.body) {
         Ok(payload) => payload,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
@@ -986,6 +995,9 @@ fn handle_responses_incremental(
     config: &BridgeConfig,
 ) -> Result<(), String> {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return write_http_response(stream, response);
+    }
+    if let Err(response) = reject_unsupported_openai_body(&request.body) {
         return write_http_response(stream, response);
     }
     let payload: ResponsesRequest = match decode_json(&request.body) {
@@ -1206,7 +1218,11 @@ fn handle_responses_incremental(
 fn write_sse_headers(stream: &mut TcpStream) -> Result<(), String> {
     stream
         .write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nConnection: close\r\nX-Request-Id: {}\r\n\r\n",
+                completion_id("req")
+            )
+            .as_bytes(),
         )
         .map_err(|error| format!("SSE-Header nicht schreibbar: {error}"))?;
     stream
@@ -1637,6 +1653,63 @@ struct OpenAiAssistantFunction {
 
 fn decode_json<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
     serde_json::from_slice(body).map_err(|error| format!("Ungueltiger JSON-Body: {error}"))
+}
+
+/// Bekannte, aber nicht umsetzbare Semantikfelder: ablehnen statt still ignorieren.
+fn reject_unsupported_openai_body(body: &[u8]) -> Result<(), HttpResponse> {
+    let value: Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+    reject_unsupported_openai_fields(&value)
+}
+
+fn reject_unsupported_openai_fields(value: &Value) -> Result<(), HttpResponse> {
+    let Some(obj) = value.as_object() else {
+        return Ok(());
+    };
+    const UNSUPPORTED: &[&str] = &[
+        "seed",
+        "service_tier",
+        "logit_bias",
+        "best_of",
+        "echo",
+        "suffix",
+        "top_logprobs",
+    ];
+    for key in UNSUPPORTED {
+        if obj.get(*key).is_some_and(|v| !v.is_null()) {
+            return Err(unsupported_parameter(key));
+        }
+    }
+    if let Some(n) = obj.get("n") {
+        if !n.is_null() && n.as_u64() != Some(1) {
+            return Err(unsupported_value(
+                "n",
+                "n>1 wird nicht unterstuetzt; nur n=1.",
+            ));
+        }
+    }
+    match obj.get("logprobs") {
+        Some(v) if v.as_bool() == Some(true) || v.is_number() => {
+            return Err(unsupported_parameter("logprobs"));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn unsupported_parameter(param: &str) -> HttpResponse {
+    api_error_code(
+        400,
+        &format!("Parameter '{param}' wird nicht unterstuetzt."),
+        param,
+        "unsupported_parameter",
+    )
+}
+
+fn unsupported_value(param: &str, message: &str) -> HttpResponse {
+    api_error_code(400, message, param, "unsupported_value")
 }
 
 fn default_true() -> bool {
@@ -2663,13 +2736,27 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
 }
 
 fn api_error(flavor: ApiFlavor, status: u16, message: &str) -> HttpResponse {
+    api_error_with(flavor, status, message, None, None)
+}
+
+fn api_error_code(status: u16, message: &str, param: &str, code: &str) -> HttpResponse {
+    api_error_with(ApiFlavor::OpenAi, status, message, Some(param), Some(code))
+}
+
+fn api_error_with(
+    flavor: ApiFlavor,
+    status: u16,
+    message: &str,
+    param: Option<&str>,
+    code: Option<&str>,
+) -> HttpResponse {
     let body = match flavor {
         ApiFlavor::OpenAi => json!({
             "error": {
                 "message": message,
                 "type": "invalid_request_error",
-                "param": null,
-                "code": null
+                "param": param,
+                "code": code
             }
         }),
         ApiFlavor::Anthropic => json!({
@@ -3127,12 +3214,14 @@ fn render_http_response(response: &HttpResponse) -> Vec<u8> {
         503 => "Service Unavailable",
         _ => "Internal Server Error",
     };
+    let request_id = completion_id("req");
     let headers = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Request-Id: {}\r\n\r\n",
         response.status,
         reason,
         response.content_type,
-        response.body.len()
+        response.body.len(),
+        request_id
     );
     let mut bytes = headers.into_bytes();
     bytes.extend_from_slice(&response.body);
@@ -3151,7 +3240,11 @@ fn completion_id(prefix: &str) -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
-    format!("{prefix}-{nanos:x}")
+    match prefix {
+        "resp" => format!("resp_{nanos:x}"),
+        "chatcmpl" => format!("chatcmpl-{nanos:x}"),
+        _ => format!("{prefix}_{nanos:x}"),
+    }
 }
 
 #[cfg(test)]
@@ -4035,7 +4128,43 @@ mod tests {
         let text = String::from_utf8(rendered).unwrap();
         assert!(text.starts_with("HTTP/1.1 200 OK\r\n"));
         assert!(text.contains("Content-Type: application/json; charset=utf-8\r\n"));
+        assert!(text.contains("X-Request-Id: req_"));
         assert!(text.ends_with("{\"ok\":true}"));
+    }
+
+    #[test]
+    fn rejects_unsupported_semantic_fields_ohne_sie_zu_ignorieren() {
+        assert!(reject_unsupported_openai_fields(&json!({"model":"webagent/chatgpt"})).is_ok());
+        assert!(reject_unsupported_openai_fields(&json!({"n":1})).is_ok());
+        assert!(reject_unsupported_openai_fields(&json!({"logprobs":false})).is_ok());
+        assert!(reject_unsupported_openai_fields(&json!({"unknown_future":true})).is_ok());
+
+        let seed = reject_unsupported_openai_fields(&json!({"seed":7})).unwrap_err();
+        let seed_body: Value = serde_json::from_slice(&seed.body).unwrap();
+        assert_eq!(seed.status, 400);
+        assert_eq!(seed_body["error"]["code"], "unsupported_parameter");
+        assert_eq!(seed_body["error"]["param"], "seed");
+
+        let n = reject_unsupported_openai_fields(&json!({"n":2})).unwrap_err();
+        let n_body: Value = serde_json::from_slice(&n.body).unwrap();
+        assert_eq!(n_body["error"]["code"], "unsupported_value");
+        assert_eq!(n_body["error"]["param"], "n");
+
+        let logprobs = reject_unsupported_openai_fields(&json!({"logprobs":true})).unwrap_err();
+        let lp: Value = serde_json::from_slice(&logprobs.body).unwrap();
+        assert_eq!(lp["error"]["param"], "logprobs");
+
+        let tier =
+            reject_unsupported_openai_fields(&json!({"service_tier":"default"})).unwrap_err();
+        let tb: Value = serde_json::from_slice(&tier.body).unwrap();
+        assert_eq!(tb["error"]["param"], "service_tier");
+    }
+
+    #[test]
+    fn completion_ids_folgen_openai_praefixen() {
+        assert!(completion_id("resp").starts_with("resp_"));
+        assert!(completion_id("chatcmpl").starts_with("chatcmpl-"));
+        assert!(completion_id("req").starts_with("req_"));
     }
 
     #[test]
