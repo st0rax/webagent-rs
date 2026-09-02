@@ -1,11 +1,14 @@
 //! Lokale Web-UI: eingebettete Assets und Loopback-HTTP.
 //!
-//! T-201: eine portable Binary, kein Dateibaum neben der exe. Endpunkte
-//! (Session/Chat/…) kommen in T-202; das Grok-Layout in T-203.
+//! T-201: eine portable Binary, kein Dateibaum neben der exe.
+//! T-202: `/api/*` sitzt auf SessionService/Doctor (siehe `web_ui_api`).
+//! Das Grok-Layout kommt in T-203.
 
+use crate::web_ui_api::{dispatch, UiState};
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    sync::Arc,
     thread,
     time::Duration,
 };
@@ -58,11 +61,13 @@ pub fn serve(config: UiConfig) -> Result<(), String> {
     if config.open_browser {
         open_browser(&url);
     }
+    let state = Arc::new(UiState::default());
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
+                let state = Arc::clone(&state);
                 thread::spawn(move || {
-                    if let Err(error) = handle_connection(&mut stream) {
+                    if let Err(error) = handle_connection(&mut stream, &state) {
                         eprintln!("[ui] Anfrage verworfen: {error}");
                     }
                 });
@@ -91,43 +96,52 @@ fn open_browser(url: &str) {
     }
 }
 
-fn handle_connection(stream: &mut TcpStream) -> Result<(), String> {
+fn handle_connection(stream: &mut TcpStream, state: &UiState) -> Result<(), String> {
     stream
         .set_read_timeout(Some(READ_TIMEOUT))
         .map_err(|error| format!("Lese-Timeout: {error}"))?;
     stream
         .set_write_timeout(Some(READ_TIMEOUT))
         .map_err(|error| format!("Schreib-Timeout: {error}"))?;
-    let mut buf = [0u8; 2048];
+    let mut buf = [0u8; 8192];
     let n = stream
         .read(&mut buf)
         .map_err(|error| format!("Lesen: {error}"))?;
     let text = std::str::from_utf8(&buf[..n]).unwrap_or("");
-    let path = parse_get_path(text).unwrap_or("/");
-    let (status, ctype, body) = match lookup(path) {
-        Some((ctype, body)) => (200, ctype, body),
-        None => (404, "text/plain; charset=utf-8", b"not found" as &[u8]),
+    let (method, full_path) = parse_request_line(text).unwrap_or(("GET", "/"));
+    let (path, query) = match full_path.split_once('?') {
+        Some((p, q)) => (p, q),
+        None => (full_path, ""),
+    };
+    let body = text
+        .split("\r\n\r\n")
+        .nth(1)
+        .or_else(|| text.split("\n\n").nth(1))
+        .unwrap_or("");
+    let (status, ctype, body_bytes) = if path.starts_with("/api/") {
+        let resp = dispatch(method, path, query, body, state);
+        (resp.status, resp.content_type, resp.body)
+    } else if let Some((ctype, body)) = lookup(path) {
+        (200, ctype, body.to_vec())
+    } else {
+        (404, "text/plain; charset=utf-8", b"not found".to_vec())
     };
     let header = format!(
         "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
+        body_bytes.len()
     );
     stream
         .write_all(header.as_bytes())
-        .and_then(|_| stream.write_all(body))
+        .and_then(|_| stream.write_all(&body_bytes))
         .map_err(|error| format!("Schreiben: {error}"))
 }
 
-fn parse_get_path(request: &str) -> Option<&str> {
+fn parse_request_line(request: &str) -> Option<(&str, &str)> {
     let line = request.lines().next()?;
     let mut parts = line.split_whitespace();
     let method = parts.next()?;
     let path = parts.next()?;
-    if method.eq_ignore_ascii_case("GET") {
-        Some(path)
-    } else {
-        None
-    }
+    Some((method, path))
 }
 
 #[cfg(test)]
@@ -170,7 +184,8 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         thread::spawn(move || {
             if let Ok(mut stream) = listener.accept().map(|(s, _)| s) {
-                let _ = handle_connection(&mut stream);
+                let state = UiState::default();
+                let _ = handle_connection(&mut stream, &state);
             }
         });
         thread::sleep(Duration::from_millis(20));
@@ -183,5 +198,44 @@ mod tests {
         assert!(out.contains("HTTP/1.1 200"));
         assert!(out.contains("WebAgent"));
         assert!(out.contains("eingebettet") || out.contains("Binary"));
+    }
+
+    fn one_shot(request: &[u8]) -> String {
+        let listener = bind_listener("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            if let Ok(mut stream) = listener.accept().map(|(s, _)| s) {
+                let state = UiState::default();
+                let _ = handle_connection(&mut stream, &state);
+            }
+        });
+        thread::sleep(Duration::from_millis(20));
+        let mut client = StdTcp::connect_timeout(&addr, Duration::from_secs(2)).unwrap();
+        client.write_all(request).unwrap();
+        let mut out = String::new();
+        client.read_to_string(&mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn post_session_laeuft_ueber_http_und_session_service() {
+        let body = br#"{"brain":"chatgpt","task":"hi"}"#;
+        let req = format!(
+            "POST /api/sessions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            std::str::from_utf8(body).unwrap()
+        );
+        let out = one_shot(req.as_bytes());
+        assert!(out.contains("HTTP/1.1 201"), "{out}");
+        assert!(out.contains("\"run_id\""), "{out}");
+        assert!(out.contains("chatgpt"), "{out}");
+    }
+
+    #[test]
+    fn health_brains_laeuft_ueber_http_ohne_browser() {
+        let out = one_shot(b"GET /api/health/brains HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(out.contains("HTTP/1.1 200"), "{out}");
+        assert!(out.contains("\"timestamp\""), "{out}");
+        assert!(out.contains("\"brains\""), "{out}");
     }
 }

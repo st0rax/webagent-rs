@@ -5,7 +5,7 @@
 
 ## Repo / Branch / Stand
 
-- Branch: `master`
+- Branch: `feature/T-202-ui-endpoints` (T-201/T-202 noch nicht auf master)
 - Remote: `https://github.com/st0rax/webagent-rs.git`
 - Letzter Stand (Commit): `8e25d36` (2026-09-02)
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
@@ -26,7 +26,7 @@ cargo check --features tui
 cargo check --no-default-features
 ```
 
-Bekannter Stand Default-Gate (2026-09-02): 1238 passed / 1 ignored / 0 failed.
+Bekannter Stand Default-Gate (2026-09-02): 1248 passed / 1 ignored / 0 failed.
 
 ## Planphasen und Status
 
@@ -61,7 +61,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 - [x] Phase 2.1 Eingebettete Assets + Loopback-Serverstart (T-201) —
       erledigt (`src/web_ui.rs`, `web/index.html` via `include_str`, Default ohne
       Subcommand ist die Loopback-UI, `cargo test --lib` 1242 passed / 1 ignored)
-- [ ] Phase 2.x rest: Endpunkte (T-202), Fake-Prototyp (T-203)
+- [x] Phase 2.2 Server-Endpunkte (T-202) —
+      erledigt (`src/web_ui_api.rs`: Session/Capability/Health/Upload/Chat/Stop/Event
+      auf SessionService + `doctor::run_doctor` ohne Browserstart; HTTP-Wire-Tests;
+      `cargo test --lib` 1248 passed / 1 ignored)
+- [ ] Phase 2.x rest: Fake-Prototyp (T-203)
 - [ ] Phase 3.x Claude-Referenz komplettieren
 - [ ] Phase 4.x OpenAI-Konformitaetskern (Profile, SSE, State)
 - [ ] Phase 5.x Alle Brains
@@ -83,7 +87,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
    `WEBAGENT/1`- oder Toolvertrag.
 4. Phase 2.1 (T-201) **abgeschlossen**: eingebettete HTML-Assets, Loopback-only,
    `webagent` / `webagent ui` startet die lokale UI; TUI bleibt `webagent tui`.
-5. Naechste Zelle: T-202 (HTTP-Endpunkte). Phase 0.4 bleibt Doku-Nachzug.
+5. Phase 2.2 (T-202) **abgeschlossen**: `/api/health/brains`, `/api/capability`,
+   Session CRUD, Chat, Stop, Events, Upload (angenommen, nicht gespeichert)
+   sitzen auf SessionService/EventStream und Doctor. Naechste Zelle: T-203
+   (Grok-Layout-Prototyp). Phase 0.4 bleibt Doku-Nachzug.
 
 ## Freigabegrenzen (unverändert)
 
