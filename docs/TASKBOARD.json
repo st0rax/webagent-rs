@@ -297,12 +297,12 @@
         "chatgpt-codex",
         "grok-agent"
       ],
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
-      "done_at": null,
-      "proof_path": null,
+      "status": "done",
+      "owner": "grok-agent",
+      "branch": "feature/T-601-rustls-https",
+      "claimed_at": "2026-09-02",
+      "done_at": "2026-09-02",
+      "proof_path": "src/https_client.rs + docs/providers.example.json; rustls/ring, kein reqwest; cargo test --lib 1259 passed / 1 ignored",
       "verification": "cargo test --lib; Release-Binary wiegen",
       "dod": "Kein reqwest/System-OpenSSL; Budget im Release-Artefakt kontrolliert und dokumentiert"
     },

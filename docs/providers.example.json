@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "brains": {
+    "claude": { "source": "default" },
+    "chatgpt": {
+      "source": "openrouter",
+      "base_url_env": "OPENROUTER_BASE_URL",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "model": "openai/gpt-4o-mini:free"
+    }
+  }
+}
