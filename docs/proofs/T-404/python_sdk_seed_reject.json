@@ -1,0 +1,9 @@
+{
+  "status": 400,
+  "body": {
+    "code": "unsupported_parameter",
+    "message": "Parameter 'seed' wird nicht unterstuetzt.",
+    "param": "seed",
+    "type": "invalid_request_error"
+  }
+}

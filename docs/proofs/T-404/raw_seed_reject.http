@@ -1,0 +1,8 @@
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+Content-Length: 142
+Connection: close
+Cache-Control: no-store
+X-Request-Id: req_18d1995cf4eca19c
+
+{"error":{"code":"unsupported_parameter","message":"Parameter 'seed' wird nicht unterstuetzt.","param":"seed","type":"invalid_request_error"}}

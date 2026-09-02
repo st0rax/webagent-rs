@@ -82,7 +82,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 - [x] Phase 4.3 persistenter State (T-403) —
       erledigt (`openai-local-state-v1` je Mandant auf Platte; Retrieve/Delete/
       previous_response_id nach Cache-Reset; `cargo test --lib` 1242 passed / 1 ignored)
-- [ ] Phase 4.x rest: SDK-Blackbox (T-404)
+- [x] Phase 4.x rest: SDK-Blackbox (T-404) —
+      erledigt (`scripts/t404/`: offizielles OpenAI-Python-SDK, OpenAI-JS-SDK,
+      urllib, Node-fetch; Loopback-Bridge mit `BridgeConfig.fake_reply`;
+      Dumps in `docs/proofs/T-404/`; `cargo test --lib` 1254 passed / 1 ignored).
+      Kein clientbezogener Servercode. Live-`api_*`-Zellen bleiben Phase 3/5.
 - [ ] Phase 5.x Alle Brains
 - [ ] Phase 6.x Health-Dashboard + manuelle Quellen
 - [ ] Phase 7.x Grok-Bot-Modus (Gruppen)
@@ -100,9 +104,9 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 3. Phase 1.4 (T-104) **abgeschlossen**: Reiner Chat und Managed Agent haben
    getrennte Promptbuilder; der Plain-Chat-Pfad injiziert keinen
    `WEBAGENT/1`- oder Toolvertrag.
-4. Phase 2 (T-201..T-203) **auf master gemergt**. Phase 4.1–4.3 (T-401..T-403)
-   **auf master**. Naechste Code-Zelle: T-404. Naechste Live-Zelle: T-301
-   (Freigabegrenze). Phase 0.4 bleibt Doku-Nachzug.
+4. Phase 2 (T-201..T-203) **auf master gemergt**. Phase 4 (T-401..T-404)
+   **erledigt**. Naechste Live-Zelle: T-301 (Freigabegrenze). Naechste
+   Code-Zelle: T-601. Phase 0.4 bleibt Doku-Nachzug.
 
 ## Freigabegrenzen (unverändert)
 

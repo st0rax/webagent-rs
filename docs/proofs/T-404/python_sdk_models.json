@@ -1,0 +1,14 @@
+{
+  "ids": [
+    "webagent/auto",
+    "webagent/chatgpt",
+    "webagent/claude",
+    "webagent/deepseek",
+    "webagent/gemini",
+    "webagent/kimi",
+    "webagent/mistral",
+    "webagent/qwen",
+    "webagent/zai"
+  ],
+  "object": "list"
+}
