@@ -21,3 +21,4 @@ runtime-workers/
 target-gnu/
 *.out
 .graphify/
+scripts/t404/node_modules/

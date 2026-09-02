@@ -1,0 +1,8 @@
+{
+  "name": "webagent-t404",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "openai": "^5.23.2"
+  }
+}

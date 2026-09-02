@@ -109,6 +109,9 @@ pub struct BridgeConfig {
     pub timeout_secs: Option<f64>,
     pub headless: bool,
     pub api_key: String,
+    /// Test double: if set, browser inference is skipped and this text is returned.
+    /// Production (`webagent api serve`) leaves this `None`.
+    pub fake_reply: Option<String>,
 }
 
 /// Startet den lokalen Dienst und blockiert, bis der Prozess beendet wird.
@@ -130,8 +133,13 @@ pub fn serve(config: BridgeConfig) -> Result<(), String> {
 
     let listener = TcpListener::bind(config.bind)
         .map_err(|error| format!("API-Bridge nicht bindbar: {error}"))?;
-    eprintln!("[api] Bridge aktiv auf http://{}", config.bind);
+    let bound = listener.local_addr().unwrap_or(config.bind);
+    eprintln!("[api] Bridge aktiv auf http://{bound}");
 
+    accept_loop(listener, config)
+}
+
+fn accept_loop(listener: TcpListener, config: BridgeConfig) -> Result<(), String> {
     let config = Arc::new(config);
     let limiter = Arc::new(ConnectionLimiter::default());
     for stream in listener.incoming() {
@@ -1332,6 +1340,24 @@ fn run_image_generation_blocking(
         .map_err(|error| format!("Browser-Bildgenerierung fehlgeschlagen: {error}"))
 }
 
+fn fake_inference_response(text: &str) -> crate::browser_inference::BrowserInferenceResponse {
+    crate::browser_inference::BrowserInferenceResponse {
+        text: Some(text.to_string()),
+        tool_calls: Vec::new(),
+    }
+}
+
+fn emit_fake_stream(text: &str, on_update: &mut dyn FnMut(&str)) {
+    let mut acc = String::new();
+    let total = text.chars().count();
+    for (index, ch) in text.chars().enumerate() {
+        acc.push(ch);
+        if (index + 1) % 3 == 0 || index + 1 == total {
+            on_update(&acc);
+        }
+    }
+}
+
 fn run_task_blocking(
     config: &BridgeConfig,
     brain: &str,
@@ -1340,6 +1366,9 @@ fn run_task_blocking(
     tools: &[crate::browser_inference::BrowserTool],
     tool_choice: crate::browser_inference::BrowserToolChoice,
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
+    if let Some(text) = config.fake_reply.as_deref() {
+        return Ok(fake_inference_response(text));
+    }
     let brain = if brain == "auto" {
         select_auto_brain(
             config,
@@ -1383,6 +1412,10 @@ fn run_task_streaming(
     attachments: &[crate::browser_inference::BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
+    if let Some(text) = config.fake_reply.as_deref() {
+        emit_fake_stream(text, on_update);
+        return Ok(fake_inference_response(text));
+    }
     let brain = if brain == "auto" {
         select_auto_brain(config, task, attachments, false, AutoPurpose::Chat)?
     } else {
@@ -4132,6 +4165,7 @@ mod tests {
             timeout_secs: None,
             headless: true,
             api_key: "test-secret".to_string(),
+            fake_reply: None,
         };
         let authorized = HttpRequest {
             method: "GET".to_string(),
@@ -4370,6 +4404,7 @@ mod tests {
             timeout_secs: None,
             headless: true,
             api_key: "test-secret".to_string(),
+            fake_reply: None,
         };
         let headers = BTreeMap::from([("x-api-key".to_string(), "test-secret".to_string())]);
 
@@ -4384,6 +4419,7 @@ mod tests {
             timeout_secs: Some(0.0),
             headless: true,
             api_key: "test-secret".to_string(),
+            fake_reply: None,
         })
         .unwrap_err();
 
@@ -4445,5 +4481,146 @@ mod tests {
             message: "kaputt".into(),
         });
         assert_eq!(h2.status(), "error");
+    }
+
+    fn spawn_fake_bridge(reply: &str) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback bind");
+        let addr = listener.local_addr().expect("local addr");
+        let config = BridgeConfig {
+            bind: addr,
+            brain: "chatgpt".to_string(),
+            timeout_secs: None,
+            headless: true,
+            api_key: "t404-secret".to_string(),
+            fake_reply: Some(reply.to_string()),
+        };
+        thread::spawn(move || {
+            let _ = accept_loop(listener, config);
+        });
+        addr
+    }
+
+    fn http_exchange(addr: SocketAddr, request: &str) -> String {
+        let mut stream =
+            TcpStream::connect_timeout(&addr, Duration::from_secs(5)).expect("connect fake bridge");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(8)))
+            .expect("read timeout");
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .expect("write timeout");
+        stream.write_all(request.as_bytes()).expect("write request");
+        let _ = stream.flush();
+        let mut buf = Vec::new();
+        let _ = stream.read_to_end(&mut buf);
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    fn t404_script_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/t404")
+    }
+
+    fn t404_dump_dir() -> PathBuf {
+        if let Ok(path) = std::env::var("WEBAGENT_T404_DUMP") {
+            let path = PathBuf::from(path);
+            let _ = fs::create_dir_all(&path);
+            return path;
+        }
+        let path = std::env::temp_dir().join(format!("webagent-t404-{}", std::process::id()));
+        let _ = fs::create_dir_all(&path);
+        path
+    }
+
+    fn run_t404_script(program: &str, args: &[&str], addr: SocketAddr, dump_dir: &std::path::Path) {
+        let output = std::process::Command::new(program)
+            .args(args)
+            .current_dir(t404_script_dir())
+            .env("WEBAGENT_T404_BASE", format!("http://{addr}/v1"))
+            .env("WEBAGENT_T404_KEY", "t404-secret")
+            .env("WEBAGENT_T404_EXPECT", "T404_FAKE_OK")
+            .env("WEBAGENT_T404_DUMP", dump_dir)
+            .output()
+            .unwrap_or_else(|error| panic!("{program} nicht startbar: {error}"));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "{program} {:?} failed ({})\nstdout:\n{stdout}\nstderr:\n{stderr}",
+            args,
+            output.status
+        );
+    }
+
+    #[test]
+    fn t404_sdk_blackbox_official_sdks_and_two_clients() {
+        let addr = spawn_fake_bridge("T404_FAKE_OK");
+        let dump_dir = t404_dump_dir();
+
+        let models = http_exchange(
+            addr,
+            "GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer t404-secret\r\nConnection: close\r\n\r\n",
+        );
+        assert!(models.contains("\"object\":\"list\"") || models.contains("\"object\": \"list\""));
+        assert!(models.contains("webagent/chatgpt"));
+        fs::write(dump_dir.join("raw_models.http"), &models).expect("dump models");
+
+        let chat_body =
+            r#"{"model":"webagent/chatgpt","messages":[{"role":"user","content":"ping"}]}"#;
+        let chat = http_exchange(
+            addr,
+            &format!(
+                "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer t404-secret\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{chat_body}",
+                chat_body.len()
+            ),
+        );
+        assert!(chat.contains("T404_FAKE_OK"));
+        assert!(chat.contains("chat.completion"));
+        fs::write(dump_dir.join("raw_chat.http"), &chat).expect("dump chat");
+
+        let stream_body = r#"{"model":"webagent/chatgpt","stream":true,"messages":[{"role":"user","content":"ping"}]}"#;
+        let stream = http_exchange(
+            addr,
+            &format!(
+                "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer t404-secret\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{stream_body}",
+                stream_body.len()
+            ),
+        );
+        assert!(stream.contains("chat.completion.chunk"));
+        assert!(stream.contains("T404_FAKE_OK") || stream.contains("T40"));
+        assert!(stream.contains("[DONE]"));
+        fs::write(dump_dir.join("raw_chat_stream.http"), &stream).expect("dump stream");
+
+        let resp_body = r#"{"model":"webagent/chatgpt","input":"ping"}"#;
+        let responses = http_exchange(
+            addr,
+            &format!(
+                "POST /v1/responses HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer t404-secret\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{resp_body}",
+                resp_body.len()
+            ),
+        );
+        assert!(responses.contains("T404_FAKE_OK"));
+        assert!(
+            responses.contains("\"object\":\"response\"")
+                || responses.contains("\"object\": \"response\"")
+        );
+        fs::write(dump_dir.join("raw_responses.http"), &responses).expect("dump responses");
+
+        let seed_body =
+            r#"{"model":"webagent/chatgpt","seed":7,"messages":[{"role":"user","content":"x"}]}"#;
+        let seed = http_exchange(
+            addr,
+            &format!(
+                "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer t404-secret\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{seed_body}",
+                seed_body.len()
+            ),
+        );
+        assert!(seed.contains("unsupported_parameter"));
+        assert!(seed.contains("seed"));
+        fs::write(dump_dir.join("raw_seed_reject.http"), &seed).expect("dump seed");
+
+        run_t404_script("python", &["openai_python.py"], addr, &dump_dir);
+        run_t404_script("python", &["urllib_client.py"], addr, &dump_dir);
+        run_t404_script("node", &["openai_js.mjs"], addr, &dump_dir);
+        run_t404_script("node", &["fetch_client.mjs"], addr, &dump_dir);
     }
 }

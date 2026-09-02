@@ -260,13 +260,13 @@
         "chatgpt-codex",
         "local/opencode"
       ],
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
-      "done_at": null,
-      "proof_path": null,
-      "verification": "SDK-Skripte gruen",
+      "status": "done",
+      "owner": "grok-agent",
+      "branch": "feature/T-404-sdk-blackbox",
+      "claimed_at": "2026-09-02",
+      "done_at": "2026-09-02",
+      "proof_path": "scripts/t404/ (openai_python.py, openai_js.mjs, urllib_client.py, fetch_client.mjs) + docs/proofs/T-404/; cargo test --lib 1254 passed / 1 ignored",
+      "verification": "cargo test --lib; SDK-Skripte gruen",
       "dod": "Kein clientbezogener Code; Protokoll-Dumps als Beleg"
     },
     {

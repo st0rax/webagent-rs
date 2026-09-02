@@ -1,7 +1,9 @@
 # Aktueller Arbeitsstand
 
-**Aktualisiert:** 2026-09-01
+**Aktualisiert:** 2026-09-02
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
+
+**Board 2026-09-02:** Phase 4 komplett inkl. T-404 SDK-Blackbox (Python/JS-SDK + urllib/fetch, Dumps `docs/proofs/T-404/`). Live T-301/T-302/T-501 ohne Freigabe nicht gegen echte Brains. Naechste Code-Zelle T-601.
 
 ## Verbindlicher Produkt-Neuschnitt vom 01.09.2026
 

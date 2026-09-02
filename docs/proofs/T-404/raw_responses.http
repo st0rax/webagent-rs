@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 684
+Connection: close
+Cache-Control: no-store
+X-Request-Id: req_18d1995cf4d18434
+
+{"background":false,"created_at":1788379151,"error":null,"id":"resp_18d1995cf4b20488","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"webagent/chatgpt","object":"response","output":[{"content":[{"annotations":[],"text":"T404_FAKE_OK","type":"output_text"}],"id":"resp_18d1995cf4b20488_msg","role":"assistant","status":"completed","type":"message"}],"output_text":"T404_FAKE_OK","parallel_tool_calls":false,"previous_response_id":null,"prompt_cache_key":null,"reasoning":null,"status":"completed","store":true,"temperature":null,"tool_choice":"none","tools":[],"top_p":null,"truncation":null,"usage":null,"user":null}

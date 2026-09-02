@@ -585,6 +585,7 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
                 timeout_secs,
                 headless,
                 api_key,
+                fake_reply: None,
             };
 
             match webagent::api_bridge::serve(config) {

@@ -136,7 +136,11 @@ mod tests {
                     // `.github` traegt Issue-/PR-Vorlagen, also Werkzeug der
                     // Plattform statt Projektdokumentation. Ein Banner darin
                     // wuerde in jedem erzeugten Issue und PR mitlaufen.
-                    if name == "target" || name == ".git" || name == ".github" {
+                    if name == "target"
+                        || name == ".git"
+                        || name == ".github"
+                        || name == "node_modules"
+                    {
                         continue;
                     }
                     walk(&p, acc);
