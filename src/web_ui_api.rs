@@ -1,16 +1,124 @@
-//! HTTP-API der lokalen Web-UI (T-202).
+//! HTTP-API der lokalen Web-UI (T-202/T-301).
 //!
-//! Sitzt auf [`SessionService`] / [`EventStream`] und `doctor` ohne Browserstart.
-//! Keine eigene Tool-Implementierung.
+//! Sitzt auf [`SessionService`] / [`EventStream`] und `doctor`. Chat streamt
+//! echte Browser-Deltas (kein Echo). Tests injizieren einen Skript-Runner.
 
 use crate::session::{SessionEvent, SessionService, Since};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+    time::Duration,
+};
+
+/// Liefert wachsende Text-Snapshots eines Modellturns.
+pub trait StreamRunner: Send + Sync {
+    fn stream(
+        &self,
+        brain: &str,
+        prompt: &str,
+        cancel: &AtomicBool,
+        on_snapshot: &mut dyn FnMut(&str),
+    ) -> Result<String, String>;
+}
+
+/// Produktions-Runner: harnessfreie Browser-Inference, sichtbares WebView.
+pub struct RelayStreamRunner;
+
+impl StreamRunner for RelayStreamRunner {
+    fn stream(
+        &self,
+        brain: &str,
+        prompt: &str,
+        cancel: &AtomicBool,
+        on_snapshot: &mut dyn FnMut(&str),
+    ) -> Result<String, String> {
+        crate::browser_inference::complete_streaming(
+            crate::browser_inference::BrowserInferenceRequest {
+                brain,
+                prompt,
+                tools: &[],
+                tool_choice: crate::browser_inference::BrowserToolChoice::None,
+                headless: false,
+                timeout_secs: None,
+                model: None,
+            },
+            &mut |snap| {
+                if !cancel.load(Ordering::SeqCst) {
+                    on_snapshot(snap);
+                }
+            },
+        )
+        .map(|answer| answer.text.unwrap_or_default())
+    }
+}
+
+/// Deterministische Snapshots fuer Unittests (kein Browser).
+pub struct ScriptedStreamRunner {
+    pub snapshots: Vec<String>,
+    pub delay: Duration,
+}
+
+impl StreamRunner for ScriptedStreamRunner {
+    fn stream(
+        &self,
+        _brain: &str,
+        _prompt: &str,
+        cancel: &AtomicBool,
+        on_snapshot: &mut dyn FnMut(&str),
+    ) -> Result<String, String> {
+        let mut last = String::new();
+        for snap in &self.snapshots {
+            if cancel.load(Ordering::SeqCst) {
+                return Ok(last);
+            }
+            if !self.delay.is_zero() {
+                thread::sleep(self.delay);
+            }
+            if cancel.load(Ordering::SeqCst) {
+                return Ok(last);
+            }
+            on_snapshot(snap);
+            last = snap.clone();
+        }
+        Ok(last)
+    }
+}
 
 /// Gemeinsamer Zustand eines UI-Prozesses.
-#[derive(Debug, Default, Clone)]
+#[derive(Clone)]
 pub struct UiState {
     pub sessions: SessionService,
+    inflight: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    runner: Arc<dyn StreamRunner>,
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self::with_runner(Arc::new(RelayStreamRunner))
+    }
+}
+
+impl UiState {
+    pub fn with_runner(runner: Arc<dyn StreamRunner>) -> Self {
+        Self {
+            sessions: SessionService::new(),
+            inflight: Arc::new(Mutex::new(HashMap::new())),
+            runner,
+        }
+    }
+
+    pub fn scripted(snapshots: Vec<String>) -> Self {
+        Self::with_runner(Arc::new(ScriptedStreamRunner {
+            snapshots,
+            delay: Duration::from_millis(0),
+        }))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,16 +296,61 @@ fn chat(state: &UiState, id: &str, body: &str) -> ApiResponse {
     if handle.is_done() {
         return ApiResponse::json(409, json!({"error": "session_done"}));
     }
+    {
+        let inflight = state.inflight.lock().unwrap();
+        if inflight.contains_key(id) {
+            return ApiResponse::json(409, json!({"error": "turn_in_flight"}));
+        }
+    }
     let parsed: ChatBody = serde_json::from_str(body).unwrap_or_default();
     if parsed.text.trim().is_empty() {
         return ApiResponse::json(400, json!({"error": "text_required"}));
     }
-    if let Err(error) = handle.push(SessionEvent::TextDelta { text: parsed.text }) {
-        return ApiResponse::json(409, json!({"error": error}));
-    }
-    let _ = handle.push(SessionEvent::TextComplete);
+    let cancel = Arc::new(AtomicBool::new(false));
+    state
+        .inflight
+        .lock()
+        .unwrap()
+        .insert(id.to_string(), Arc::clone(&cancel));
+    let runner = Arc::clone(&state.runner);
+    let brain = handle.brain();
+    let prompt = parsed.text;
+    let inflight = Arc::clone(&state.inflight);
+    let run_id = id.to_string();
+    let worker = handle.clone();
+    thread::spawn(move || {
+        let mut last = String::new();
+        let result = runner.stream(&brain, &prompt, &cancel, &mut |snapshot| {
+            if cancel.load(Ordering::SeqCst) {
+                return;
+            }
+            if let Some(delta) = snapshot.strip_prefix(&last) {
+                if !delta.is_empty() {
+                    let _ = worker.push(SessionEvent::TextDelta {
+                        text: delta.to_string(),
+                    });
+                    last = snapshot.to_string();
+                }
+            }
+        });
+        inflight.lock().unwrap().remove(&run_id);
+        if cancel.load(Ordering::SeqCst) {
+            let _ = worker.push(SessionEvent::Done {
+                status: "cancelled".into(),
+            });
+            return;
+        }
+        match result {
+            Ok(_) => {
+                let _ = worker.push(SessionEvent::TextComplete);
+            }
+            Err(error) => {
+                let _ = worker.push(SessionEvent::Error { message: error });
+            }
+        }
+    });
     ApiResponse::json(
-        200,
+        202,
         serde_json::to_value(handle.snapshot()).unwrap_or(json!({})),
     )
 }
@@ -208,6 +361,13 @@ fn stop(state: &UiState, id: &str) -> ApiResponse {
     };
     if handle.is_done() {
         return ApiResponse::json(409, json!({"error": "session_done"}));
+    }
+    if let Some(cancel) = state.inflight.lock().unwrap().get(id).cloned() {
+        cancel.store(true, Ordering::SeqCst);
+        return ApiResponse::json(
+            200,
+            serde_json::to_value(handle.snapshot()).unwrap_or(json!({})),
+        );
     }
     if let Err(error) = handle.push(SessionEvent::Done {
         status: "cancelled".into(),
@@ -262,6 +422,31 @@ fn upload(state: &UiState, id: &str, body: &str) -> ApiResponse {
 mod tests {
     use super::*;
 
+    fn wait_text_complete(state: &UiState, id: &str) {
+        for _ in 0..100 {
+            if let Some(Since::Exact { events }) = state.sessions.events_since(id, 0) {
+                if events
+                    .iter()
+                    .any(|e| matches!(e.event, SessionEvent::TextComplete))
+                {
+                    return;
+                }
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("session {id} lieferte kein TextComplete");
+    }
+
+    fn wait_done(state: &UiState, id: &str) {
+        for _ in 0..100 {
+            if state.sessions.get(id).map(|h| h.is_done()).unwrap_or(false) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("session {id} wurde nicht fertig");
+    }
+
     fn post_session(state: &UiState) -> String {
         let resp = dispatch(
             "POST",
@@ -300,16 +485,17 @@ mod tests {
 
     #[test]
     fn session_chat_stop_events() {
-        let state = UiState::default();
+        let state = UiState::scripted(vec!["ha".into(), "hallo".into()]);
         let id = post_session(&state);
         let chat = dispatch(
             "POST",
             &format!("/api/sessions/{id}/chat"),
             "",
-            r#"{"text":"hallo"}"#,
+            r#"{"text":"hi"}"#,
             &state,
         );
-        assert_eq!(chat.status, 200);
+        assert_eq!(chat.status, 202);
+        wait_text_complete(&state, &id);
         let ev = dispatch(
             "GET",
             &format!("/api/sessions/{id}/events"),
@@ -319,11 +505,52 @@ mod tests {
         );
         assert_eq!(ev.status, 200);
         let v: Value = serde_json::from_slice(&ev.body).unwrap();
-        assert!(v["events"].as_array().unwrap().len() >= 2);
+        let events = v["events"].as_array().unwrap();
+        let deltas: Vec<&str> = events
+            .iter()
+            .filter_map(|e| e["event"]["TextDelta"]["text"].as_str())
+            .collect();
+        assert_eq!(deltas, ["ha", "llo"]);
         let stop = dispatch("POST", &format!("/api/sessions/{id}/stop"), "", "", &state);
         assert_eq!(stop.status, 200);
         let again = dispatch("POST", &format!("/api/sessions/{id}/stop"), "", "", &state);
         assert_eq!(again.status, 409);
+        let reconnect = dispatch(
+            "GET",
+            &format!("/api/sessions/{id}/events"),
+            "since=1",
+            "",
+            &state,
+        );
+        let r: Value = serde_json::from_slice(&reconnect.body).unwrap();
+        assert_eq!(r["gap"], false);
+        assert!(!r["events"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stop_bricht_den_stream_ab() {
+        let state = UiState::with_runner(Arc::new(ScriptedStreamRunner {
+            snapshots: vec!["a".into(), "ab".into(), "abc".into(), "abcd".into()],
+            delay: Duration::from_millis(40),
+        }));
+        let id = post_session(&state);
+        assert_eq!(
+            dispatch(
+                "POST",
+                &format!("/api/sessions/{id}/chat"),
+                "",
+                r#"{"text":"x"}"#,
+                &state,
+            )
+            .status,
+            202
+        );
+        thread::sleep(Duration::from_millis(50));
+        let stop = dispatch("POST", &format!("/api/sessions/{id}/stop"), "", "", &state);
+        assert_eq!(stop.status, 200);
+        wait_done(&state, &id);
+        let snap = state.sessions.snapshot(&id).unwrap();
+        assert_eq!(snap.status, "cancelled");
     }
 
     #[test]
