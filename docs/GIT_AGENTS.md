@@ -25,23 +25,23 @@ via `GIT_AUTHOR_*` / `GIT_COMMITTER_*` — nicht global. Genau das macht
 Domain-Suffix `@webagent.local` → nie verwechselbar mit einer echten externen
 Adresse; kein Agent nutzt die Adresse eines anderen.
 
-## So committest du als Agent (auf master)
+## So committest du als Agent
+
+Ablauf und Zweigmodell: **`START_HERE.md`** (bei Widerspruch gilt START_HERE).
 
 ```pwsh
-# ein Agent, ein Commit (Gates gruen!)
+# auf master ODER feature|fix|docs|chore|refactor|test/...
 pwsh -File scripts/commit-as-agent.ps1 -Agent claude-code -Message "T-102: tools registry"
 
-# mehrere Dateien von Hand
 pwsh -File scripts/commit-as-agent.ps1 -Agent grok-agent -Message "fix rollback" -Paths scripts/a.ps1 src/b.rs
 ```
 
-Danach separat `git push origin master` (über den System-Credential-Store).
+Danach den in START_HERE beschriebenen Merge nach `master` und **ein** `git push origin master`.
 
 ## Regeln
 
-- **Nur auf `master`** committen (Schirm im Skript). Temporäre Branches nur für
-  isolierte Tests, vor Abgabe zurück in den Stamm.
-- **Vor dem Commit: Gates grün** (`cargo test --lib` u. ä. je Aufgabe).
+- Commit auf `master` oder einem benannten Arbeits-Zweig (Schirm im Skript, Schema `docs/GIT_GLOSSAR.md`). Sichtbare Abgabe ist immer der Stamm.
+- **Vor dem Commit: Gates grün** (`cargo fmt --all -- --check`, `cargo test --lib` u. ä.).
 - **Nie die Identität eines anderen Agents verwenden.**
 - Dieses Skript/Doku fasst keine Credentials an — Geheimnisse bleiben im
   geteilten Credential-Store.

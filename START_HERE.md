@@ -1,133 +1,127 @@
-# START_HERE — Einstieg für neue Entwickler (auch KI)
+# START_HERE — tu genau das
 
-> **Der dauerhafte Einstieg.** Du bist neu im Repo (Mensch oder Agent wie
-> ChatGPT-Codex, Claude Code, Grok, Manus)? Dann starte hier. Diese Datei
-> verweist auf das, was du konkret ansehen und tun sollst.
+> Du bist neu (Mensch oder Agent). **Diese Datei ist die Handlungsanweisung.**
+> Andere Docs vertiefen; bei Widerspruch gilt **diese Datei**.
+> Nicht raten. Nicht die Kette überspringen. Nicht ohne Claim arbeiten.
 
-## 1. Was ist dieses Repo?
+## 0. In 30 Sekunden
 
-Ein **lokaler, browserbasierter Agent** (Rust-Port) mit eigener Provider-Bridge:
-Er nutzt echte Chat-Brains (ChatGPT, Claude, Gemini, …) über Browser-Sessions
-und bietet eine lokale, OpenAI-kompatible API. Aktueller Umbau („3 Flächen"):
-lokale **Web-UI**, **OpenAI-kompatibler Endpunkt**, **Managed Tools** — siehe
-`docs/WEB_UI_API_TOOL_RESET.md`.
+1. `git pull origin master`
+2. `docs/TASKBOARD.json` öffnen (nicht die Markdown als Claim-Quelle)
+3. **Eine** Zelle mit `"status": "free"` nehmen, in der **du** in `"suitable"` stehst — außer der Mensch hat dir eine `id` genannt
+4. Claim **in der JSON** schreiben, dann erst Code
+5. Kurzer Zweig `feature/T-<id>-<kurz>`, Gates grün, klein nach `master` mergen, **einmal** pushen
 
-## 2. Pflicht-Lese (in dieser Reihenfolge)
+Ziel (G-001): das Projekt **fertig** — lokale Web-UI + OpenAI-kompatible API + Managed Tools. Richtung und Tempo bestimmt der **Mensch**. Du lieferst eine Zelle.
 
-| Schritt | Datei | Worum es geht |
-|---|---|---|
-| 1 | `AGENTS.md` | Repo-Regeln, Mapping zur Bot-Architektur |
-| 2 | `GOALS.md` | **Nordstern (G-001): das Projekt soll fertig werden** — für ALLE Agents, Richtung = Mensch |
-| 3 | `docs/WEB_UI_API_TOOL_RESET.md` | **Verbindlicher Umsetzungsplan** (Phasen 0–7) |
-| 4 | `docs/WORK_CONTRACT.md` | **Arbeitsvertrag** — verbindlich für jeden, der eine Aufgabe übernimmt |
-| 4 | `docs/TASKBOARD.md` | Aufgabentafel (Spiegel); Claim-Quelle ist `docs/TASKBOARD.json` |
-| 5 | `docs/WEB_UI_API_TOOL_RESET_STATUS.md` | Aktueller Umsetzungsstand / Handover |
-| 6 | `docs/CAPABILITY_MATRIX.json` | Beleg-Matrix (130 Zellen, Status je Fähigkeit) |
+## 1. Wer du bist
 
-Außerhalb des Repos (nur lokal relevante Umgebung:
-`C:\AGENTS.md` = Arbeitsdirektive mit den zwölf Direktiven; gilt für alle
-Arbeiten unter `C:\Users`.)
+Beim Commit und im Claim nur diese Schlüssel:
 
-> **Grundmodell (wichtig):** `master` ist der **Stamm / `main`** und bleibt
-> **immer grün** (baut + testet). Sichtbare Arbeit läuft **nicht direkt** auf
-> dem Stamm, sondern auf **kurzen, klar benannten Arbeits-Zweigen** (Branches):
-> `feature/<T-…>-<kurz>`, `fix/…`, `docs/…`, `chore/…`, `refactor/…`, `test/…`.
-> Regel: nie am Ende einen „Riesen-Branch" pushen — sobald ein Zweig eine
-> **grüne, abgeschlossene Einheit** hat, wird er **häufig & klein** in `master`
-> gemergt. `archive/tui-ui` ist nur ein lesbares Archiv des alten TUI-Stands,
-> kein Entwicklungszweig.
->
-> **Arbeitsweise je Schritt:**
-> 1. Auf `master`: `git pull` (aktuell), eigenen Zweig anlegen:
->    `git switch -c feature/T-102-tool-registry`
-> 2. Kleine Commits mit eigener Identität (`scripts/commit-as-agent.ps1`),
->    Gates vor jedem Commit grün.
-> 3. Sobald eine Einheit grün & in sich abgeschlossen ist: zurück zu `master`
->    (`git switch master`), Zweig in `master` mergen, prüfen, und `git push`.
->
-> **Fachbegriffe:** Wer unsicher ist, welche git-Ausdrücke gelten, findet in
-> `docs/GIT_GLOSSAR.md` die verbindliche Kurzliste (Stamm/Branch/Push/Merge)
-> **inkl. Branch-Namensschema**.
-
-## 3. So übernimmst du eine Aufgabe (Claim zuerst)
-
-**Die Aufgabentafel liegt unter `docs/`:**
-
-| Datei | Zweck |
+| Du kommst als | `owner` / `-Agent` |
 |---|---|
-| `docs/TASKBOARD.md` | menschenlesbare Tabelle zum Durchsehen |
-| `docs/TASKBOARD.json` | **Claim-Quelle der Wahrheit** — hier setzt du dich ein |
+| Grok | `grok-agent` |
+| ChatGPT / Codex | `chatgpt-codex` |
+| Claude | `claude-code` |
+| Manus | `manus` |
+| opencode / lokal | `opencode` |
 
-**So trägst du dich ein — konkret:**
+Fremde Identität = Regelverstoß. Mapping: `docs/GIT_AGENTS.md`.
 
-1. Lies `docs/WORK_CONTRACT.md` und akzeptiere ihn.
-2. Wähle eine freie Aufgabe (Status `"free"`) aus `docs/TASKBOARD.md`.
-3. Öffne `docs/TASKBOARD.json` und setze bei deiner Aufgabe (`id`, z. B.
-   `"T-102"`):
-   ```json
-   "status": "claimed",
-   "owner": "claude-code",
-   "branch": "feature/T-102-tool-registry",
-   "claimed_at": "2026-09-02"
-   ```
-4. Lege einen **kurzen, benannten Arbeits-Zweig** an (Namensschema in
-   `docs/GIT_GLOSSAR.md`), arbeite dort mit kleinen Commits, Gates grün
-   (Abschnitt 4). Jeder Agent committet mit **eigener Identität** — ein Enum:
-   ```pwsh
-   git switch -c feature/T-102-tool-registry
-   pwsh -File scripts/commit-as-agent.ps1 -Agent claude-code -Message "T-102: tools registry"
-   ```
-   (Agent-Schlüssel & Mapping: `docs/GIT_AGENTS.md`.) Sobald eine grüne,
-   abgeschlossene Einheit steht: zurück zu `master`, kleinen Merge, prüfen und
-   `git push origin master`. Danach separat
-   `git push origin master`.
-5. Beim Abschluss: Belegpfad (Matrix-Zelle) eintragen, Statusdatei
-   `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
-   auf `"done"` setzen und `done_at` ergänzen.
+## 2. Welche Aufgabe (nicht raten)
 
-**Gerade offen für dich:** `T-201`, `T-202`,
-`T-203`, `T-301`, `T-302`, `T-401`–`T-701` — freie Aufgaben ohne `owner`.
+Quelle der Wahrheit: **`docs/TASKBOARD.json`**. `docs/TASKBOARD.md` ist nur Spiegel.
 
-**Freie Aufgaben auf einen Blick (Stand heute):**
+Eine Aufgabe ist für dich erlaubt, wenn **alle** gelten:
 
-| ID | Phase | Aufgabe | Typ |
-|---|---|---|---|
-| T-201 | 2 | Eingebettete Assets + Loopback-Serverstart | code |
-| T-202 | 2 | Endpunkte: Session/Capability/Health/Upload/Chat/Stop/Event | code |
-| T-701 | 7 | Gruppen-Modus (2–6 Brains, Runden, @Brain, Leader) | code |
+- `"status": "free"` (oder der Mensch hat sie dir zugewiesen)
+- deine `owner`-Id steht in `"suitable"` **oder** der Mensch hat die `id` ausdrücklich genannt
+- du hast **keine** zweite Zelle offen
+- du brichst die Phasenreihe nicht: nimm die **nächste freie Zelle der kleinsten Phase**, nicht T-701 weil sie in einer Tabelle stand
 
-Vollständige Liste: `docs/TASKBOARD.md`.
+**Aktuell (Phase 2, Stand nach T-104):**
 
-**Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
+| ID | Was | `suitable` |
+|---|---|---|
+| T-201 | Eingebettete Assets + Loopback-Server | `claude-code`, `manus` |
+| T-202 | HTTP-Endpunkte Session/Health/Chat/… | `chatgpt-codex`, `claude-code` |
+| T-203 | Klickbarer Fake-Prototyp (Grok-Layout, A11y) | `claude-code`, `manus`, `local/opencode` |
 
-## 4. Verifikationskommandos
+Stehst du nicht in `suitable` und hat der Mensch keine `id` genannt: **nicht arbeiten**. Sag das. Erfinde keine Zelle.
 
-```pwsh
-# Default-Gate (webview-only, TUI hinter Feature)
-cargo test --lib
+T-101–T-104 sind `done`. Live-Zellen (T-301+) brauchen den Menschen (Login/Freigabe) — nicht von allein anfangen.
 
-# TUI baut weiterhin hinter seinem Feature
-cargo check --features tui
+## 3. Claim zuerst
 
-# Ohne Defaultfeatures (CI-Zweig)
-cargo check --no-default-features
+In **derselben** JSON-Zelle:
 
-# (optional) Binärgewicht im Release-Artefakt für das <10-MB-Budget
+```json
+"status": "claimed",
+"owner": "grok-agent",
+"branch": "feature/T-202-api-endpoints",
+"claimed_at": "2026-09-02"
 ```
 
-Bekannter Stand: 1238 passed / 1 ignored (Stand 2026‑09‑02).
+Ohne diesen Eintrag gilt die Übernahme nicht — auch nicht, wenn du im Chat „ich mach T-202“ gesagt hast. Vor dem Claim: `git pull`, JSON nochmal lesen (kein Lock; wer zuerst committed/pushed, hat die Zelle).
 
-## 5. Nächste offene Scheiben
+Vertrag akzeptieren: `docs/WORK_CONTRACT.md`.
 
-- **T-101** und **T-102** sind erledigt (`local/opencode`).
-- **T-103** und **T-104** sind erledigt (`chatgpt-codex`); **T-201** … bleibt frei.
-  Siehe `docs/TASKBOARD.md`.
+## 4. Git (ein Modell)
 
-## 6. Grenzen (nicht überschreiten)
+`master` ist der Stamm. Arbeit **nicht** direkt auf `master`.
 
-- `C:\Users\storax\.zcode\v2\config.json` **nicht anfassen**.
-- Keine Secrets/Tokens auslesen, kopieren oder committen.
-- Keine Force-Pushes / History-Rewrites; Rücknahmen als neue Commits.
-- Live-Claude-Web-Tests nur im Rahmen zulässiger Nutzung (Anthropic Consumer
-  Terms) und nur nach Freigabe.
-- Keine unbelegten `100 %`-Aussagen; Belege gehören in die Capability-Matrix.
+```pwsh
+git pull origin master
+git switch -c feature/T-202-api-endpoints
+# ... Arbeit ...
+cargo fmt --all -- --check
+cargo test --lib
+pwsh -File scripts/commit-as-agent.ps1 -Agent grok-agent -Message "T-202: session health endpoints"
+git switch master
+git pull origin master
+git merge --ff-only feature/T-202-api-endpoints   # wenn ff nicht geht: merge ohne History umzuschreiben
+git push origin master
+```
+
+- Zweigname: `feature|fix|docs|chore|refactor|test/` + Kurzname, oft `T-<id>-…` (`docs/GIT_GLOSSAR.md`)
+- `scripts/commit-as-agent.ps1` committet auf `master` **oder** so einem Zweig
+- **Ein** Push der fertigen Einheit nach `master`. Kein Force-Push, keine History-Umschreibung
+- `archive/tui-ui` ist Archiv, kein Arbeitszweig
+
+Wenn CI auf `master` rot ist (Formatcheck ist ein bekanntes Gate): zuerst `cargo fmt` / die rote Ursache, nicht die nächste Feature-Zelle auf einem roten Stamm stapeln — außer der Mensch sagt etwas anderes.
+
+## 5. Fertig = DoD, nicht „sieht gut aus“
+
+Vor `"status": "done"`:
+
+1. Verifikationsbefehl der Zelle (meist `cargo test --lib`) **und** `cargo fmt --all -- --check`
+2. `proof_path` in der JSON-Zelle
+3. `docs/WEB_UI_API_TOOL_RESET_STATUS.md` an den **aktuellen** HEAD anpassen (Commit-SHA nicht liegen lassen)
+4. `"status": "done"`, `"done_at"` setzen
+5. Working Tree sauber, Push
+
+Keine unbelegten `100 %`. Belege: `docs/CAPABILITY_MATRIX.json`.
+
+## 6. Grenzen
+
+- `C:\Users\storax\.zcode\v2\config.json` nicht anfassen
+- Keine Secrets/Tokens lesen, kopieren, committen
+- Keine Außenwirkung (Release, Tag, Rechte, Bezahltes) ohne Freigabe
+- Live-Claude-Web nur nach Freigabe (Anthropic Consumer Terms)
+- Parallel: eine Zelle, ein Agent; sonst getrennte Worktrees und disjunkte Dateien (`AGENTS.md`)
+
+## 7. Nach dem Ablauf lesen (nicht vorher 40 Seiten)
+
+Erst Abschnitt 0–6 **tun**. Dann, in dieser Reihenfolge, falls nötig:
+
+| Datei | Wozu |
+|---|---|
+| `AGENTS.md` | Repo-Direktiven, Bestand prüfen vor neuen Modulen |
+| `GOALS.md` | Nordstern G-001 |
+| `docs/WORK_CONTRACT.md` | Claim, Inspektor, DoD |
+| `docs/WEB_UI_API_TOOL_RESET.md` | Plan Phasen 0–7 |
+| `docs/WEB_UI_API_TOOL_RESET_STATUS.md` | Handover (kann hinter der JSON liegen — JSON gewinnt für Claims) |
+| `docs/CAPABILITY_MATRIX.json` | Belegzellen |
+| `C:\AGENTS.md` | zwölf Direktiven für alles unter `C:\Users` |
+
+Lokal: `git status --short --branch` vor dem ersten Edit. Unbekannte Änderungen nicht überschreiben.
