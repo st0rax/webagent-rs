@@ -88,7 +88,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       Dumps in `docs/proofs/T-404/`; `cargo test --lib` 1254 passed / 1 ignored).
       Kein clientbezogener Servercode. Live-`api_*`-Zellen bleiben Phase 3/5.
 - [ ] Phase 5.x Alle Brains
-- [ ] Phase 6.x Health-Dashboard + manuelle Quellen
+- [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
+      erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
+      `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`
+      1259 passed / 1 ignored). Release-Gewicht wenn Artefakt existiert <10 MB.
+- [ ] Phase 6.x rest: /quelle (T-602), Health-Balken in der UI
 - [ ] Phase 7.x Grok-Bot-Modus (Gruppen)
 
 ## Naechste Schritte
