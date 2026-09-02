@@ -94,6 +94,7 @@ mod tests {
             "CONVENTIONS.md",
             "CONTRIBUTING.md",
             "START_HERE.md",
+            "GOALS.md",
             "docs/OVERVIEW.md",
             "docs/PROTOCOL_SCHEMA.md",
             "docs/COLLABORATION.md",

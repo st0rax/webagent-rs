@@ -47,10 +47,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       `#[cfg(feature="webview")]`)
 - [x] Phase 1.1 `SessionService` + `EventStream` UI-neutral herausloesen —
       **Code-Teil erledigt** (`src/session/` + `api_bridge`-Anbindung an den Kern;
-      `cargo test --lib` grün, 1220 passed). Hinweis: die `api_*`-Matrixzellen
+      `cargo test --lib` grün, 1232 passed). Hinweis: die `api_*`-Matrixzellen
       sind **Live-Abnahme-Zellen (Phase 3+)**, nicht dieser Code-Teil — sie
       bleiben `not_run`, bis ein echter Brain gegen `/v1/responses` läuft.
-- [ ] Phase 1.2 `ToolRegistry`-Vertrag + vier Managed Tools (Policy-Grenzen)
+- [x] Phase 1.2 `ToolRegistry`-Vertrag + vier Managed Tools (Policy-Grenzen) —
+      erledigt (`src/tools.rs`, `cargo test --lib` grün, 1232 passed)
 - [ ] Phase 1.3 Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests
 - [ ] Phase 1.4 Promptbuilder Reiner Chat vs. Managed Agent trennen
 - [ ] Phase 2.x Web-UI-Prototyp + lokaler Server + Health-Endpunkt
@@ -64,10 +65,12 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 
 1. Phase 1.1 (T-101) **abgeschlossen** (Code-Teil): `SessionService`/`EventStream`
    extrahiert, `api_bridge` nutzt den Kern (`session_service()` + Start-/Delta-/
-   Done-Stream), `cargo test --lib` grün (1220 passed). T-101 in `TASKBOARD.json`
-   auf `done` setzen (Live-`api_*`-Zelle bleibt für Phase 3 vorgemerkt).
-2. Phase 1.2 (T-102 ToolRegistry) als nächste Aufgabe — auf `feature/T-102-…`
-   anlegen (neues Zweig-Modell).
+   Done-Stream), `cargo test --lib` grün (1232 passed); T-101 ist in
+   `TASKBOARD.json` auf `done` gesetzt (Live-`api_*`-Zelle bleibt für Phase 3
+   vorgemerkt).
+2. Phase 1.3 (T-103 Fake-Brain) bleibt als nächste Aufgabe offen; der lokale
+   Stand enthält bereits ein uncommitted `src/fakebrain.rs`, erfüllt aber noch
+   nicht nachweislich die vollständige Loop-/Abort-/Retry-Abdeckung.
 3. Phase 0.4 als kleine Doku-Scheibe mitnehmen (historische Belege kennzeichnen).
 
 ## Freigabegrenzen (unverändert)
