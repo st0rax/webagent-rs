@@ -11,8 +11,10 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, VecDeque},
+    fs,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex, OnceLock,
@@ -29,11 +31,11 @@ const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_CONNECTIONS: usize = 8;
 const MAX_STORED_RESPONSES: usize = 256;
 const MAX_STORED_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
+const LOCAL_STATE_FORMAT: &str = "openai-local-state-v1";
 
 static BROWSER_RUN_LOCKS: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
-static RESPONSE_STORE: OnceLock<Mutex<ResponseStore>> = OnceLock::new();
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct StoredResponse {
     response: Value,
     messages: Vec<ConversationMessage>,
@@ -49,6 +51,18 @@ struct PromptBundle {
 struct ResponseStore {
     entries: BTreeMap<String, StoredResponse>,
     order: VecDeque<String>,
+}
+
+#[derive(Default)]
+struct StoreHub {
+    tenants: BTreeMap<String, ResponseStore>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct OnDiskStore {
+    format: String,
+    entries: BTreeMap<String, StoredResponse>,
+    order: Vec<String>,
 }
 
 #[derive(Default)]
@@ -306,7 +320,7 @@ fn handle_response_retrieve(
     if id.is_empty() || id.contains('/') {
         return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
     }
-    match retrieve_response(id) {
+    match retrieve_response(&tenant_id(&config.api_key), id) {
         Some(stored) => HttpResponse::json(200, stored.response),
         None => api_error(
             ApiFlavor::OpenAi,
@@ -328,7 +342,7 @@ fn handle_response_delete(
     if id.is_empty() || id.contains('/') {
         return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
     }
-    if delete_response(id) {
+    if delete_response(&tenant_id(&config.api_key), id) {
         HttpResponse::json(200, json!({"id":id,"object":"response","deleted":true}))
     } else {
         api_error(
@@ -355,7 +369,7 @@ fn handle_response_input_items(
     if id.is_empty() || id.contains('/') {
         return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
     }
-    let Some(stored) = retrieve_response(id) else {
+    let Some(stored) = retrieve_response(&tenant_id(&config.api_key), id) else {
         return api_error(
             ApiFlavor::OpenAi,
             404,
@@ -377,6 +391,9 @@ fn handle_response_input_items(
 
 fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
+        return response;
+    }
+    if let Err(response) = reject_unsupported_openai_body(&request.body) {
         return response;
     }
     let payload: OpenAiRequest = match decode_json(&request.body) {
@@ -428,8 +445,11 @@ fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
             "choices": [{
                 "index": 0,
                 "message": message,
-                "finish_reason": answer.finish_reason()
-            }]
+                "finish_reason": answer.finish_reason(),
+                "logprobs": null
+            }],
+            "usage": null,
+            "system_fingerprint": null
         }),
     )
 }
@@ -718,6 +738,9 @@ fn handle_openai_incremental(
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return write_http_response(stream, response);
     }
+    if let Err(response) = reject_unsupported_openai_body(&request.body) {
+        return write_http_response(stream, response);
+    }
     let payload: OpenAiRequest = match decode_json(&request.body) {
         Ok(payload) => payload,
         Err(error) => {
@@ -924,6 +947,9 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return response;
     }
+    if let Err(response) = reject_unsupported_openai_body(&request.body) {
+        return response;
+    }
     let payload: ResponsesRequest = match decode_json(&request.body) {
         Ok(payload) => payload,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
@@ -943,7 +969,8 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     if let Err(error) = require_clean_text_tools(&tools, &tool_choice) {
         return api_error(ApiFlavor::OpenAi, 400, &error);
     }
-    let (mut messages, prompt) = match responses_context(&payload) {
+    let tenant = tenant_id(&config.api_key);
+    let (mut messages, prompt) = match responses_context(&payload, &tenant) {
         Ok(context) => context,
         Err((status, error)) => return api_error(ApiFlavor::OpenAi, status, &error),
     };
@@ -964,6 +991,7 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     let response = response_with_state(response, payload.previous_response_id.as_deref());
     if payload.store {
         store_response(
+            &tenant,
             id.clone(),
             StoredResponse {
                 response: response.clone(),
@@ -985,6 +1013,9 @@ fn handle_responses_incremental(
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return write_http_response(stream, response);
     }
+    if let Err(response) = reject_unsupported_openai_body(&request.body) {
+        return write_http_response(stream, response);
+    }
     let payload: ResponsesRequest = match decode_json(&request.body) {
         Ok(payload) => payload,
         Err(error) => {
@@ -1004,7 +1035,8 @@ fn handle_responses_incremental(
     if let Err(error) = require_clean_text_tools(&tools, &choice) {
         return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error));
     }
-    let (mut messages, prompt) = match responses_context(&payload) {
+    let tenant = tenant_id(&config.api_key);
+    let (mut messages, prompt) = match responses_context(&payload, &tenant) {
         Ok(context) => context,
         Err((status, error)) => {
             return write_http_response(stream, api_error(ApiFlavor::OpenAi, status, &error))
@@ -1037,25 +1069,30 @@ fn handle_responses_incremental(
     started["output"] = json!([]);
     started["output_text"] = json!("");
     write_sse_headers(stream)?;
+    let mut seq = 0u64;
     write_sse_event(
         stream,
         "response.created",
         json!({"type":"response.created","response":started}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.in_progress",
         json!({"type":"response.in_progress","response":started}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.output_item.added",
         json!({"type":"response.output_item.added","output_index":0,"item":{"id":item_id,"type":"message","status":"in_progress","role":"assistant","content":[]}}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.content_part.added",
         json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}),
+        &mut seq,
     )?;
 
     let mut last_sent = String::new();
@@ -1087,6 +1124,7 @@ fn handle_responses_incremental(
                         stream,
                         "response.output_text.delta",
                         json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":delta}),
+                        &mut seq,
                     ) {
                         stream_error = Some(error);
                         return;
@@ -1124,6 +1162,7 @@ fn handle_responses_incremental(
                     stream,
                     "response.failed",
                     json!({"type":"response.failed","response":failed}),
+                    &mut seq,
                 )?;
             }
             return Ok(());
@@ -1138,6 +1177,7 @@ fn handle_responses_incremental(
             stream,
             "response.output_text.delta",
             json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":delta}),
+            &mut seq,
         )?;
     }
     if let Some(error) = stream_error {
@@ -1151,6 +1191,7 @@ fn handle_responses_incremental(
     );
     if payload.store {
         store_response(
+            &tenant,
             id.clone(),
             StoredResponse {
                 response: completed.clone(),
@@ -1162,21 +1203,25 @@ fn handle_responses_incremental(
         stream,
         "response.output_text.done",
         json!({"type":"response.output_text.done","item_id":item_id,"output_index":0,"content_index":0,"text":text}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.content_part.done",
         json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":text,"annotations":[]}}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.output_item.done",
         json!({"type":"response.output_item.done","output_index":0,"item":completed["output"][0]}),
+        &mut seq,
     )?;
     write_sse_event(
         stream,
         "response.completed",
         json!({"type":"response.completed","response":completed}),
+        &mut seq,
     )?;
 
     if let Some(h) = _sess.as_ref() {
@@ -1191,7 +1236,11 @@ fn handle_responses_incremental(
 fn write_sse_headers(stream: &mut TcpStream) -> Result<(), String> {
     stream
         .write_all(
-            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-cache\r\nConnection: close\r\nX-Request-Id: {}\r\n\r\n",
+                completion_id("req")
+            )
+            .as_bytes(),
         )
         .map_err(|error| format!("SSE-Header nicht schreibbar: {error}"))?;
     stream
@@ -1199,14 +1248,29 @@ fn write_sse_headers(stream: &mut TcpStream) -> Result<(), String> {
         .map_err(|error| format!("SSE-Header nicht flushbar: {error}"))
 }
 
-fn write_sse_event(stream: &mut TcpStream, event: &str, data: Value) -> Result<(), String> {
-    let frame = format!("event: {event}\ndata: {data}\n\n");
+fn write_sse_event(
+    stream: &mut TcpStream,
+    event: &str,
+    data: Value,
+    seq: &mut u64,
+) -> Result<(), String> {
+    let frame = format!("event: {event}\ndata: {}\n\n", sse_data(event, data, seq));
     stream
         .write_all(frame.as_bytes())
         .map_err(|error| format!("SSE-Event nicht schreibbar: {error}"))?;
     stream
         .flush()
         .map_err(|error| format!("SSE-Event nicht flushbar: {error}"))
+}
+
+/// Responses-SSE: `sequence_number` steigt streng monoton ab 0, ohne Luecke.
+fn sse_data(event: &str, mut data: Value, seq: &mut u64) -> Value {
+    if data.get("type").is_none() {
+        data["type"] = json!(event);
+    }
+    data["sequence_number"] = json!(*seq);
+    *seq += 1;
+    data
 }
 
 fn write_data_frame(stream: &mut TcpStream, data: Value) -> Result<(), String> {
@@ -1231,9 +1295,10 @@ fn write_sse_comment(stream: &mut TcpStream, comment: &str) -> Result<(), String
 
 fn responses_context(
     payload: &ResponsesRequest,
+    tenant: &str,
 ) -> Result<(Vec<ConversationMessage>, PromptBundle), (u16, String)> {
     let mut messages = match payload.previous_response_id.as_deref() {
-        Some(id) => retrieve_response(id).map_or_else(
+        Some(id) => retrieve_response(tenant, id).map_or_else(
             || Err((404, format!("Previous response '{id}' nicht gefunden."))),
             |stored| Ok(stored.messages),
         )?,
@@ -1348,8 +1413,84 @@ fn run_task_streaming(
     .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
 }
 
-fn response_store() -> &'static Mutex<ResponseStore> {
-    RESPONSE_STORE.get_or_init(|| Mutex::new(ResponseStore::default()))
+fn store_hub() -> &'static Mutex<StoreHub> {
+    static HUB: OnceLock<Mutex<StoreHub>> = OnceLock::new();
+    HUB.get_or_init(|| Mutex::new(StoreHub::default()))
+}
+
+fn tenant_id(api_key: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in api_key.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("t{hash:016x}")
+}
+
+fn local_state_root() -> PathBuf {
+    crate::config::data_dir().join(LOCAL_STATE_FORMAT)
+}
+
+fn tenant_store_path(tenant: &str) -> PathBuf {
+    local_state_root().join(tenant).join("store.json")
+}
+
+fn load_tenant_from_disk(tenant: &str) -> ResponseStore {
+    let path = tenant_store_path(tenant);
+    let Ok(bytes) = fs::read(&path) else {
+        return ResponseStore::default();
+    };
+    let Ok(disk) = serde_json::from_slice::<OnDiskStore>(&bytes) else {
+        return ResponseStore::default();
+    };
+    if disk.format != LOCAL_STATE_FORMAT {
+        return ResponseStore::default();
+    }
+    ResponseStore {
+        entries: disk.entries,
+        order: disk.order.into(),
+    }
+}
+
+fn persist_tenant(tenant: &str, store: &ResponseStore) {
+    let path = tenant_store_path(tenant);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let disk = OnDiskStore {
+        format: LOCAL_STATE_FORMAT.to_string(),
+        entries: store.entries.clone(),
+        order: store.order.iter().cloned().collect(),
+    };
+    let Ok(bytes) = serde_json::to_vec_pretty(&disk) else {
+        return;
+    };
+    let tmp = path.with_extension("json.tmp");
+    if fs::write(&tmp, bytes).is_ok() {
+        let _ = fs::rename(&tmp, &path);
+    }
+}
+
+fn with_tenant_store<R>(tenant: &str, f: impl FnOnce(&mut ResponseStore) -> R) -> R {
+    let mut hub = store_hub()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !hub.tenants.contains_key(tenant) {
+        hub.tenants
+            .insert(tenant.to_string(), load_tenant_from_disk(tenant));
+    }
+    let store = hub.tenants.get_mut(tenant).expect("tenant just inserted");
+    let result = f(store);
+    persist_tenant(tenant, store);
+    result
+}
+
+fn forget_cached_response_stores() {
+    store_hub()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .tenants
+        .clear();
 }
 
 /// Einmalige, prozessweite Kern-Registrierung lebender Lauefe. Responses-Runs
@@ -1360,50 +1501,43 @@ fn session_service() -> &'static crate::session::SessionService {
     SESSION.get_or_init(crate::session::SessionService::new)
 }
 
-fn retrieve_response(id: &str) -> Option<StoredResponse> {
-    response_store()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .entries
-        .get(id)
-        .cloned()
+fn retrieve_response(tenant: &str, id: &str) -> Option<StoredResponse> {
+    with_tenant_store(tenant, |store| store.entries.get(id).cloned())
 }
 
-fn store_response(id: String, response: StoredResponse) {
-    let mut store = response_store()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if !store.entries.contains_key(&id) {
-        store.order.push_back(id.clone());
-    }
-    store.entries.insert(id, response);
-    let mut stored_bytes: usize = store.entries.values().fold(0, |total, entry| {
-        total.saturating_add(
-            serde_json::to_vec(&entry.messages).map_or(usize::MAX, |bytes| bytes.len()),
-        )
-    });
-    while store.order.len() > MAX_STORED_RESPONSES || stored_bytes > MAX_STORED_RESPONSE_BYTES {
-        if let Some(expired) = store.order.pop_front() {
-            if let Some(removed) = store.entries.remove(&expired) {
-                let removed_bytes =
-                    serde_json::to_vec(&removed.messages).map_or(usize::MAX, |bytes| bytes.len());
-                stored_bytes = stored_bytes.saturating_sub(removed_bytes);
-            }
-        } else {
-            break;
+fn store_response(tenant: &str, id: String, response: StoredResponse) {
+    with_tenant_store(tenant, |store| {
+        if !store.entries.contains_key(&id) {
+            store.order.push_back(id.clone());
         }
-    }
+        store.entries.insert(id, response);
+        let mut stored_bytes: usize = store.entries.values().fold(0, |total, entry| {
+            total.saturating_add(
+                serde_json::to_vec(&entry.messages).map_or(usize::MAX, |bytes| bytes.len()),
+            )
+        });
+        while store.order.len() > MAX_STORED_RESPONSES || stored_bytes > MAX_STORED_RESPONSE_BYTES {
+            if let Some(expired) = store.order.pop_front() {
+                if let Some(removed) = store.entries.remove(&expired) {
+                    let removed_bytes = serde_json::to_vec(&removed.messages)
+                        .map_or(usize::MAX, |bytes| bytes.len());
+                    stored_bytes = stored_bytes.saturating_sub(removed_bytes);
+                }
+            } else {
+                break;
+            }
+        }
+    });
 }
 
-fn delete_response(id: &str) -> bool {
-    let mut store = response_store()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let removed = store.entries.remove(id).is_some();
-    if removed {
-        store.order.retain(|entry| entry != id);
-    }
-    removed
+fn delete_response(tenant: &str, id: &str) -> bool {
+    with_tenant_store(tenant, |store| {
+        let removed = store.entries.remove(id).is_some();
+        if removed {
+            store.order.retain(|entry| entry != id);
+        }
+        removed
+    })
 }
 
 fn response_input_items(messages: &[ConversationMessage]) -> Vec<Value> {
@@ -1607,6 +1741,63 @@ struct OpenAiAssistantFunction {
 
 fn decode_json<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
     serde_json::from_slice(body).map_err(|error| format!("Ungueltiger JSON-Body: {error}"))
+}
+
+/// Bekannte, aber nicht umsetzbare Semantikfelder: ablehnen statt still ignorieren.
+fn reject_unsupported_openai_body(body: &[u8]) -> Result<(), HttpResponse> {
+    let value: Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+    reject_unsupported_openai_fields(&value)
+}
+
+fn reject_unsupported_openai_fields(value: &Value) -> Result<(), HttpResponse> {
+    let Some(obj) = value.as_object() else {
+        return Ok(());
+    };
+    const UNSUPPORTED: &[&str] = &[
+        "seed",
+        "service_tier",
+        "logit_bias",
+        "best_of",
+        "echo",
+        "suffix",
+        "top_logprobs",
+    ];
+    for key in UNSUPPORTED {
+        if obj.get(*key).is_some_and(|v| !v.is_null()) {
+            return Err(unsupported_parameter(key));
+        }
+    }
+    if let Some(n) = obj.get("n") {
+        if !n.is_null() && n.as_u64() != Some(1) {
+            return Err(unsupported_value(
+                "n",
+                "n>1 wird nicht unterstuetzt; nur n=1.",
+            ));
+        }
+    }
+    match obj.get("logprobs") {
+        Some(v) if v.as_bool() == Some(true) || v.is_number() => {
+            return Err(unsupported_parameter("logprobs"));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn unsupported_parameter(param: &str) -> HttpResponse {
+    api_error_code(
+        400,
+        &format!("Parameter '{param}' wird nicht unterstuetzt."),
+        param,
+        "unsupported_parameter",
+    )
+}
+
+fn unsupported_value(param: &str, message: &str) -> HttpResponse {
+    api_error_code(400, message, param, "unsupported_value")
 }
 
 fn default_true() -> bool {
@@ -2570,6 +2761,7 @@ fn model_metadata(brain: &str) -> Value {
     let mut metadata = json!({
         "id": model_id(brain),
         "object": "model",
+        "created": 0,
         "owned_by": "webagent",
         "brain": brain,
         "context_window": 128000,
@@ -2632,13 +2824,27 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
 }
 
 fn api_error(flavor: ApiFlavor, status: u16, message: &str) -> HttpResponse {
+    api_error_with(flavor, status, message, None, None)
+}
+
+fn api_error_code(status: u16, message: &str, param: &str, code: &str) -> HttpResponse {
+    api_error_with(ApiFlavor::OpenAi, status, message, Some(param), Some(code))
+}
+
+fn api_error_with(
+    flavor: ApiFlavor,
+    status: u16,
+    message: &str,
+    param: Option<&str>,
+    code: Option<&str>,
+) -> HttpResponse {
     let body = match flavor {
         ApiFlavor::OpenAi => json!({
             "error": {
                 "message": message,
                 "type": "invalid_request_error",
-                "param": null,
-                "code": null
+                "param": param,
+                "code": code
             }
         }),
         ApiFlavor::Anthropic => json!({
@@ -2680,14 +2886,16 @@ fn openai_sse(
         "object": "chat.completion.chunk",
         "created": unix_seconds(),
         "model": model,
-        "choices": [{"index": 0, "delta": delta, "finish_reason": null}]
+        "choices": [{"index": 0, "delta": delta, "finish_reason": null, "logprobs": null}],
+        "usage": null
     });
     let last = json!({
         "id": id,
         "object": "chat.completion.chunk",
         "created": unix_seconds(),
         "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": answer.finish_reason()}]
+        "choices": [{"index": 0, "delta": {}, "finish_reason": answer.finish_reason(), "logprobs": null}],
+        "usage": null
     });
     HttpResponse::sse(format!("data: {first}\n\ndata: {last}\n\ndata: [DONE]\n\n"))
 }
@@ -2698,9 +2906,12 @@ fn response_object(id: &str, model: &str, text: &str) -> Value {
         "object": "response",
         "created_at": unix_seconds(),
         "status": "completed",
+        "background": false,
         "error": null,
         "incomplete_details": null,
         "instructions": null,
+        "max_output_tokens": null,
+        "max_tool_calls": null,
         "model": model,
         "output": [{
             "id": format!("{id}_msg"),
@@ -2711,9 +2922,17 @@ fn response_object(id: &str, model: &str, text: &str) -> Value {
         }],
         "output_text": text,
         "parallel_tool_calls": false,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "reasoning": null,
+        "store": true,
+        "temperature": null,
         "tool_choice": "none",
         "tools": [],
+        "top_p": null,
+        "truncation": null,
         "usage": null,
+        "user": null,
         "metadata": {}
     })
 }
@@ -2745,16 +2964,27 @@ fn response_object_from_answer(
         "object": "response",
         "created_at": unix_seconds(),
         "status": "completed",
+        "background": false,
         "error": null,
         "incomplete_details": null,
         "instructions": null,
+        "max_output_tokens": null,
+        "max_tool_calls": null,
         "model": model,
         "output": output,
         "output_text": "",
         "parallel_tool_calls": false,
+        "previous_response_id": null,
+        "prompt_cache_key": null,
+        "reasoning": null,
+        "store": true,
+        "temperature": null,
         "tool_choice": "auto",
         "tools": [],
+        "top_p": null,
+        "truncation": null,
         "usage": null,
+        "user": null,
         "metadata": {}
     })
 }
@@ -2785,66 +3015,83 @@ fn responses_sse_with_object(
     created["status"] = json!("in_progress");
     created["output"] = json!([]);
     created["output_text"] = json!("");
+    let mut seq = 0u64;
     let mut body = format!(
         "event: response.created\ndata: {}\n\n",
-        json!({"type":"response.created","response":created})
+        sse_data(
+            "response.created",
+            json!({"type":"response.created","response":created}),
+            &mut seq
+        )
     );
     body.push_str(&format!(
         "event: response.in_progress\ndata: {}\n\n",
-        json!({"type":"response.in_progress","response":created})
+        sse_data(
+            "response.in_progress",
+            json!({"type":"response.in_progress","response":created}),
+            &mut seq
+        )
     ));
     if answer.tool_calls.is_empty() {
         let item_id = format!("{id}_msg");
         body.push_str(&format!(
             "event: response.output_item.added\ndata: {}\n\n",
-            json!({"type":"response.output_item.added","output_index":0,"item":{"id":item_id,"type":"message","status":"in_progress","role":"assistant","content":[]}})
+            sse_data("response.output_item.added", json!({"type":"response.output_item.added","output_index":0,"item":{"id":item_id,"type":"message","status":"in_progress","role":"assistant","content":[]}}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.content_part.added\ndata: {}\n\n",
-            json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}})
+            sse_data("response.content_part.added", json!({"type":"response.content_part.added","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.output_text.delta\ndata: {}\n\n",
-            json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":text})
+            sse_data("response.output_text.delta", json!({"type":"response.output_text.delta","item_id":item_id,"output_index":0,"content_index":0,"delta":text}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.output_text.done\ndata: {}\n\n",
-            json!({"type":"response.output_text.done","item_id":item_id,"output_index":0,"content_index":0,"text":text})
+            sse_data("response.output_text.done", json!({"type":"response.output_text.done","item_id":item_id,"output_index":0,"content_index":0,"text":text}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.content_part.done\ndata: {}\n\n",
-            json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":text,"annotations":[]}})
+            sse_data("response.content_part.done", json!({"type":"response.content_part.done","item_id":item_id,"output_index":0,"content_index":0,"part":{"type":"output_text","text":text,"annotations":[]}}), &mut seq)
         ));
         body.push_str(&format!(
             "event: response.output_item.done\ndata: {}\n\n",
-            json!({"type":"response.output_item.done","output_index":0,"item":completed["output"][0]})
+            sse_data("response.output_item.done", json!({"type":"response.output_item.done","output_index":0,"item":completed["output"][0]}), &mut seq)
         ));
     } else {
         for (index, call) in answer.tool_calls.iter().enumerate() {
             let item = json!({"id":call.id,"type":"function_call","status":"in_progress","call_id":call.id,"name":call.name,"arguments":""});
             body.push_str(&format!(
                 "event: response.output_item.added\ndata: {}\n\n",
-                json!({"type":"response.output_item.added","output_index":index,"item":item})
+                sse_data(
+                    "response.output_item.added",
+                    json!({"type":"response.output_item.added","output_index":index,"item":item}),
+                    &mut seq
+                )
             ));
             let arguments =
                 serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string());
             body.push_str(&format!(
                 "event: response.function_call_arguments.delta\ndata: {}\n\n",
-                json!({"type":"response.function_call_arguments.delta","item_id":call.id,"output_index":index,"delta":arguments})
+                sse_data("response.function_call_arguments.delta", json!({"type":"response.function_call_arguments.delta","item_id":call.id,"output_index":index,"delta":arguments}), &mut seq)
             ));
             body.push_str(&format!(
                 "event: response.function_call_arguments.done\ndata: {}\n\n",
-                json!({"type":"response.function_call_arguments.done","item_id":call.id,"output_index":index,"arguments":arguments})
+                sse_data("response.function_call_arguments.done", json!({"type":"response.function_call_arguments.done","item_id":call.id,"output_index":index,"arguments":arguments}), &mut seq)
             ));
             body.push_str(&format!(
                 "event: response.output_item.done\ndata: {}\n\n",
-                json!({"type":"response.output_item.done","output_index":index,"item":completed["output"][index]})
+                sse_data("response.output_item.done", json!({"type":"response.output_item.done","output_index":index,"item":completed["output"][index]}), &mut seq)
             ));
         }
     }
     body.push_str(&format!(
         "event: response.completed\ndata: {}\n\n",
-        json!({"type":"response.completed","response":completed})
+        sse_data(
+            "response.completed",
+            json!({"type":"response.completed","response":completed}),
+            &mut seq
+        )
     ));
     HttpResponse::sse(body)
 }
@@ -3055,12 +3302,14 @@ fn render_http_response(response: &HttpResponse) -> Vec<u8> {
         503 => "Service Unavailable",
         _ => "Internal Server Error",
     };
+    let request_id = completion_id("req");
     let headers = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Request-Id: {}\r\n\r\n",
         response.status,
         reason,
         response.content_type,
-        response.body.len()
+        response.body.len(),
+        request_id
     );
     let mut bytes = headers.into_bytes();
     bytes.extend_from_slice(&response.body);
@@ -3079,7 +3328,11 @@ fn completion_id(prefix: &str) -> String {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
-    format!("{prefix}-{nanos:x}")
+    match prefix {
+        "resp" => format!("resp_{nanos:x}"),
+        "chatcmpl" => format!("chatcmpl-{nanos:x}"),
+        _ => format!("{prefix}_{nanos:x}"),
+    }
 }
 
 #[cfg(test)]
@@ -3570,6 +3823,50 @@ mod tests {
             sse.find("event: response.content_part.added").unwrap()
                 < sse.find("event: response.output_text.delta").unwrap()
         );
+        assert_eq!(response["usage"], Value::Null);
+        assert_eq!(response["previous_response_id"], Value::Null);
+        let seqs = sse_sequence_numbers(&sse);
+        assert!(!seqs.is_empty());
+        assert_eq!(seqs, (0..seqs.len() as u64).collect::<Vec<_>>());
+    }
+
+    fn sse_sequence_numbers(sse: &str) -> Vec<u64> {
+        sse.split("\n\n")
+            .filter_map(|frame| {
+                let data = frame.lines().find_map(|l| l.strip_prefix("data: "))?;
+                serde_json::from_str::<Value>(data)
+                    .ok()?
+                    .get("sequence_number")?
+                    .as_u64()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn responses_sse_sequence_numbers_sind_monoton_und_lueckenlos() {
+        let answer = crate::browser_inference::BrowserInferenceResponse {
+            text: Some("OK".to_string()),
+            tool_calls: Vec::new(),
+        };
+        let sse =
+            String::from_utf8(responses_sse("resp_seq", "webagent/chatgpt", &answer).body).unwrap();
+        let seqs = sse_sequence_numbers(&sse);
+        assert!(seqs.len() >= 8, "zu wenige Events: {seqs:?}");
+        assert_eq!(seqs, (0..seqs.len() as u64).collect::<Vec<_>>());
+        assert!(sse.contains("\"sequence_number\":0"));
+        let tool_answer = crate::browser_inference::BrowserInferenceResponse {
+            text: None,
+            tool_calls: vec![crate::browser_inference::BrowserToolCall {
+                id: "call_1".into(),
+                name: "read".into(),
+                arguments: json!({}),
+            }],
+        };
+        let tool_sse =
+            String::from_utf8(responses_sse("resp_tool", "webagent/chatgpt", &tool_answer).body)
+                .unwrap();
+        let tool_seqs = sse_sequence_numbers(&tool_sse);
+        assert_eq!(tool_seqs, (0..tool_seqs.len() as u64).collect::<Vec<_>>());
     }
 
     #[test]
@@ -3762,6 +4059,7 @@ mod tests {
             None,
         );
         store_response(
+            "tenant-state",
             id.clone(),
             StoredResponse {
                 response: response.clone(),
@@ -3769,7 +4067,7 @@ mod tests {
             },
         );
 
-        let mut stored = retrieve_response(&id).unwrap();
+        let mut stored = retrieve_response("tenant-state", &id).unwrap();
         stored
             .messages
             .extend(responses_messages(&json!("Wie lautet es?")).unwrap());
@@ -3818,6 +4116,7 @@ mod tests {
     fn response_retrieval_requires_auth_and_returns_stored_object() {
         let id = "resp_retrieve_contract";
         store_response(
+            &tenant_id("test-secret"),
             id.to_string(),
             StoredResponse {
                 response: response_with_state(
@@ -3895,15 +4194,70 @@ mod tests {
         assert_eq!(items[2]["type"], "function_call_output");
         let id = "resp_delete_contract";
         store_response(
+            "tenant-delete",
             id.to_string(),
             StoredResponse {
                 response: response_object(id, "webagent/chatgpt", "x"),
                 messages,
             },
         );
-        assert!(delete_response(id));
-        assert!(retrieve_response(id).is_none());
-        assert!(!delete_response(id));
+        assert!(delete_response("tenant-delete", id));
+        assert!(retrieve_response("tenant-delete", id).is_none());
+        assert!(!delete_response("tenant-delete", id));
+    }
+
+    #[test]
+    fn persistent_state_ueberlebt_restart_und_trennt_mandanten() {
+        let tenant_a = tenant_id("key-alpha");
+        let tenant_b = tenant_id("key-beta");
+        assert_ne!(tenant_a, tenant_b);
+        let parent_id = "resp_persist_parent";
+        let mut messages = responses_messages(&json!("Codewort Luchs")).unwrap();
+        append_response_message(
+            &mut messages,
+            &crate::browser_inference::BrowserInferenceResponse {
+                text: Some("gemerkt".to_string()),
+                tool_calls: Vec::new(),
+            },
+        );
+        store_response(
+            &tenant_a,
+            parent_id.to_string(),
+            StoredResponse {
+                response: response_with_state(
+                    response_object(parent_id, "webagent/chatgpt", "gemerkt"),
+                    None,
+                ),
+                messages,
+            },
+        );
+
+        forget_cached_response_stores();
+        assert!(retrieve_response(&tenant_a, parent_id).is_some());
+        assert!(retrieve_response(&tenant_b, parent_id).is_none());
+
+        let chained = ResponsesRequest {
+            model: "webagent/chatgpt".to_string(),
+            input: json!("Wie lautet es?"),
+            instructions: None,
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+            previous_response_id: Some(parent_id.to_string()),
+            store: true,
+        };
+        forget_cached_response_stores();
+        let (history, _) = responses_context(&chained, &tenant_a).unwrap();
+        assert!(history.iter().any(|m| m.content == json!("Codewort Luchs")));
+        assert!(responses_context(&chained, &tenant_b).is_err());
+
+        forget_cached_response_stores();
+        assert!(delete_response(&tenant_a, parent_id));
+        forget_cached_response_stores();
+        assert!(retrieve_response(&tenant_a, parent_id).is_none());
+        let path = tenant_store_path(&tenant_a);
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(raw.contains(LOCAL_STATE_FORMAT));
     }
 
     #[test]
@@ -3919,7 +4273,43 @@ mod tests {
         let text = String::from_utf8(rendered).unwrap();
         assert!(text.starts_with("HTTP/1.1 200 OK\r\n"));
         assert!(text.contains("Content-Type: application/json; charset=utf-8\r\n"));
+        assert!(text.contains("X-Request-Id: req_"));
         assert!(text.ends_with("{\"ok\":true}"));
+    }
+
+    #[test]
+    fn rejects_unsupported_semantic_fields_ohne_sie_zu_ignorieren() {
+        assert!(reject_unsupported_openai_fields(&json!({"model":"webagent/chatgpt"})).is_ok());
+        assert!(reject_unsupported_openai_fields(&json!({"n":1})).is_ok());
+        assert!(reject_unsupported_openai_fields(&json!({"logprobs":false})).is_ok());
+        assert!(reject_unsupported_openai_fields(&json!({"unknown_future":true})).is_ok());
+
+        let seed = reject_unsupported_openai_fields(&json!({"seed":7})).unwrap_err();
+        let seed_body: Value = serde_json::from_slice(&seed.body).unwrap();
+        assert_eq!(seed.status, 400);
+        assert_eq!(seed_body["error"]["code"], "unsupported_parameter");
+        assert_eq!(seed_body["error"]["param"], "seed");
+
+        let n = reject_unsupported_openai_fields(&json!({"n":2})).unwrap_err();
+        let n_body: Value = serde_json::from_slice(&n.body).unwrap();
+        assert_eq!(n_body["error"]["code"], "unsupported_value");
+        assert_eq!(n_body["error"]["param"], "n");
+
+        let logprobs = reject_unsupported_openai_fields(&json!({"logprobs":true})).unwrap_err();
+        let lp: Value = serde_json::from_slice(&logprobs.body).unwrap();
+        assert_eq!(lp["error"]["param"], "logprobs");
+
+        let tier =
+            reject_unsupported_openai_fields(&json!({"service_tier":"default"})).unwrap_err();
+        let tb: Value = serde_json::from_slice(&tier.body).unwrap();
+        assert_eq!(tb["error"]["param"], "service_tier");
+    }
+
+    #[test]
+    fn completion_ids_folgen_openai_praefixen() {
+        assert!(completion_id("resp").starts_with("resp_"));
+        assert!(completion_id("chatcmpl").starts_with("chatcmpl-"));
+        assert!(completion_id("req").starts_with("req_"));
     }
 
     #[test]
@@ -4036,9 +4426,7 @@ mod tests {
         let _ = handle.push(crate::session::SessionEvent::TextDelta {
             text: "hall".into(),
         });
-        let _ = handle.push(crate::session::SessionEvent::TextDelta {
-            text: "o".into(),
-        });
+        let _ = handle.push(crate::session::SessionEvent::TextDelta { text: "o".into() });
         let _ = handle.push(crate::session::SessionEvent::TextComplete);
         let _ = handle.push(crate::session::SessionEvent::Done {
             status: "done".into(),

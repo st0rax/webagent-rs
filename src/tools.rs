@@ -60,7 +60,9 @@ impl std::fmt::Display for ToolError {
         match self {
             ToolError::DuplicateAction(id) => write!(f, "Action '{id}' wurde bereits ausgefuehrt"),
             ToolError::MissingField(field) => write!(f, "Pflichtfeld fehlt: {field}"),
-            ToolError::DisallowedField(field) => write!(f, "Feld unzulaessig bei diesem Tool: {field}"),
+            ToolError::DisallowedField(field) => {
+                write!(f, "Feld unzulaessig bei diesem Tool: {field}")
+            }
             ToolError::PolicyViolation(msg) => write!(f, "Policy verletzt: {msg}"),
         }
     }
@@ -289,7 +291,10 @@ mod tests {
 
         let mut inv2 = bash("b2", "echo hi");
         inv2.timeout_seconds = 9999.0;
-        assert!(matches!(r.validate(&inv2), Err(ToolError::PolicyViolation(_))));
+        assert!(matches!(
+            r.validate(&inv2),
+            Err(ToolError::PolicyViolation(_))
+        ));
     }
 
     #[test]
