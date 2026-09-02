@@ -242,12 +242,12 @@
         "chatgpt-codex",
         "claude-code"
       ],
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
-      "done_at": null,
-      "proof_path": null,
+      "status": "done",
+      "owner": "grok-agent",
+      "branch": "feature/T-403-persistent-state",
+      "claimed_at": "2026-09-02",
+      "done_at": "2026-09-02",
+      "proof_path": "src/api_bridge.rs openai-local-state-v1 je Mandant auf Platte; Restart + previous_response_id + Delete; cargo test --lib 1242 passed / 1 ignored",
       "verification": "cargo test --lib",
       "dod": "Retrieve/Delete/previous_response_id ueber Restart hinweg; Mandantentrennung getestet"
     },

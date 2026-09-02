@@ -11,8 +11,10 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, VecDeque},
+    fs,
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex, OnceLock,
@@ -29,11 +31,11 @@ const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT_CONNECTIONS: usize = 8;
 const MAX_STORED_RESPONSES: usize = 256;
 const MAX_STORED_RESPONSE_BYTES: usize = 64 * 1024 * 1024;
+const LOCAL_STATE_FORMAT: &str = "openai-local-state-v1";
 
 static BROWSER_RUN_LOCKS: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
-static RESPONSE_STORE: OnceLock<Mutex<ResponseStore>> = OnceLock::new();
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct StoredResponse {
     response: Value,
     messages: Vec<ConversationMessage>,
@@ -49,6 +51,18 @@ struct PromptBundle {
 struct ResponseStore {
     entries: BTreeMap<String, StoredResponse>,
     order: VecDeque<String>,
+}
+
+#[derive(Default)]
+struct StoreHub {
+    tenants: BTreeMap<String, ResponseStore>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct OnDiskStore {
+    format: String,
+    entries: BTreeMap<String, StoredResponse>,
+    order: Vec<String>,
 }
 
 #[derive(Default)]
@@ -306,7 +320,7 @@ fn handle_response_retrieve(
     if id.is_empty() || id.contains('/') {
         return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
     }
-    match retrieve_response(id) {
+    match retrieve_response(&tenant_id(&config.api_key), id) {
         Some(stored) => HttpResponse::json(200, stored.response),
         None => api_error(
             ApiFlavor::OpenAi,
@@ -328,7 +342,7 @@ fn handle_response_delete(
     if id.is_empty() || id.contains('/') {
         return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
     }
-    if delete_response(id) {
+    if delete_response(&tenant_id(&config.api_key), id) {
         HttpResponse::json(200, json!({"id":id,"object":"response","deleted":true}))
     } else {
         api_error(
@@ -355,7 +369,7 @@ fn handle_response_input_items(
     if id.is_empty() || id.contains('/') {
         return api_error(ApiFlavor::OpenAi, 404, "Response nicht gefunden.");
     }
-    let Some(stored) = retrieve_response(id) else {
+    let Some(stored) = retrieve_response(&tenant_id(&config.api_key), id) else {
         return api_error(
             ApiFlavor::OpenAi,
             404,
@@ -955,7 +969,8 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     if let Err(error) = require_clean_text_tools(&tools, &tool_choice) {
         return api_error(ApiFlavor::OpenAi, 400, &error);
     }
-    let (mut messages, prompt) = match responses_context(&payload) {
+    let tenant = tenant_id(&config.api_key);
+    let (mut messages, prompt) = match responses_context(&payload, &tenant) {
         Ok(context) => context,
         Err((status, error)) => return api_error(ApiFlavor::OpenAi, status, &error),
     };
@@ -976,6 +991,7 @@ fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpRespons
     let response = response_with_state(response, payload.previous_response_id.as_deref());
     if payload.store {
         store_response(
+            &tenant,
             id.clone(),
             StoredResponse {
                 response: response.clone(),
@@ -1019,7 +1035,8 @@ fn handle_responses_incremental(
     if let Err(error) = require_clean_text_tools(&tools, &choice) {
         return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error));
     }
-    let (mut messages, prompt) = match responses_context(&payload) {
+    let tenant = tenant_id(&config.api_key);
+    let (mut messages, prompt) = match responses_context(&payload, &tenant) {
         Ok(context) => context,
         Err((status, error)) => {
             return write_http_response(stream, api_error(ApiFlavor::OpenAi, status, &error))
@@ -1174,6 +1191,7 @@ fn handle_responses_incremental(
     );
     if payload.store {
         store_response(
+            &tenant,
             id.clone(),
             StoredResponse {
                 response: completed.clone(),
@@ -1277,9 +1295,10 @@ fn write_sse_comment(stream: &mut TcpStream, comment: &str) -> Result<(), String
 
 fn responses_context(
     payload: &ResponsesRequest,
+    tenant: &str,
 ) -> Result<(Vec<ConversationMessage>, PromptBundle), (u16, String)> {
     let mut messages = match payload.previous_response_id.as_deref() {
-        Some(id) => retrieve_response(id).map_or_else(
+        Some(id) => retrieve_response(tenant, id).map_or_else(
             || Err((404, format!("Previous response '{id}' nicht gefunden."))),
             |stored| Ok(stored.messages),
         )?,
@@ -1394,8 +1413,84 @@ fn run_task_streaming(
     .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
 }
 
-fn response_store() -> &'static Mutex<ResponseStore> {
-    RESPONSE_STORE.get_or_init(|| Mutex::new(ResponseStore::default()))
+fn store_hub() -> &'static Mutex<StoreHub> {
+    static HUB: OnceLock<Mutex<StoreHub>> = OnceLock::new();
+    HUB.get_or_init(|| Mutex::new(StoreHub::default()))
+}
+
+fn tenant_id(api_key: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in api_key.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("t{hash:016x}")
+}
+
+fn local_state_root() -> PathBuf {
+    crate::config::data_dir().join(LOCAL_STATE_FORMAT)
+}
+
+fn tenant_store_path(tenant: &str) -> PathBuf {
+    local_state_root().join(tenant).join("store.json")
+}
+
+fn load_tenant_from_disk(tenant: &str) -> ResponseStore {
+    let path = tenant_store_path(tenant);
+    let Ok(bytes) = fs::read(&path) else {
+        return ResponseStore::default();
+    };
+    let Ok(disk) = serde_json::from_slice::<OnDiskStore>(&bytes) else {
+        return ResponseStore::default();
+    };
+    if disk.format != LOCAL_STATE_FORMAT {
+        return ResponseStore::default();
+    }
+    ResponseStore {
+        entries: disk.entries,
+        order: disk.order.into(),
+    }
+}
+
+fn persist_tenant(tenant: &str, store: &ResponseStore) {
+    let path = tenant_store_path(tenant);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let disk = OnDiskStore {
+        format: LOCAL_STATE_FORMAT.to_string(),
+        entries: store.entries.clone(),
+        order: store.order.iter().cloned().collect(),
+    };
+    let Ok(bytes) = serde_json::to_vec_pretty(&disk) else {
+        return;
+    };
+    let tmp = path.with_extension("json.tmp");
+    if fs::write(&tmp, bytes).is_ok() {
+        let _ = fs::rename(&tmp, &path);
+    }
+}
+
+fn with_tenant_store<R>(tenant: &str, f: impl FnOnce(&mut ResponseStore) -> R) -> R {
+    let mut hub = store_hub()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !hub.tenants.contains_key(tenant) {
+        hub.tenants
+            .insert(tenant.to_string(), load_tenant_from_disk(tenant));
+    }
+    let store = hub.tenants.get_mut(tenant).expect("tenant just inserted");
+    let result = f(store);
+    persist_tenant(tenant, store);
+    result
+}
+
+fn forget_cached_response_stores() {
+    store_hub()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .tenants
+        .clear();
 }
 
 /// Einmalige, prozessweite Kern-Registrierung lebender Lauefe. Responses-Runs
@@ -1406,50 +1501,43 @@ fn session_service() -> &'static crate::session::SessionService {
     SESSION.get_or_init(crate::session::SessionService::new)
 }
 
-fn retrieve_response(id: &str) -> Option<StoredResponse> {
-    response_store()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .entries
-        .get(id)
-        .cloned()
+fn retrieve_response(tenant: &str, id: &str) -> Option<StoredResponse> {
+    with_tenant_store(tenant, |store| store.entries.get(id).cloned())
 }
 
-fn store_response(id: String, response: StoredResponse) {
-    let mut store = response_store()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if !store.entries.contains_key(&id) {
-        store.order.push_back(id.clone());
-    }
-    store.entries.insert(id, response);
-    let mut stored_bytes: usize = store.entries.values().fold(0, |total, entry| {
-        total.saturating_add(
-            serde_json::to_vec(&entry.messages).map_or(usize::MAX, |bytes| bytes.len()),
-        )
-    });
-    while store.order.len() > MAX_STORED_RESPONSES || stored_bytes > MAX_STORED_RESPONSE_BYTES {
-        if let Some(expired) = store.order.pop_front() {
-            if let Some(removed) = store.entries.remove(&expired) {
-                let removed_bytes =
-                    serde_json::to_vec(&removed.messages).map_or(usize::MAX, |bytes| bytes.len());
-                stored_bytes = stored_bytes.saturating_sub(removed_bytes);
-            }
-        } else {
-            break;
+fn store_response(tenant: &str, id: String, response: StoredResponse) {
+    with_tenant_store(tenant, |store| {
+        if !store.entries.contains_key(&id) {
+            store.order.push_back(id.clone());
         }
-    }
+        store.entries.insert(id, response);
+        let mut stored_bytes: usize = store.entries.values().fold(0, |total, entry| {
+            total.saturating_add(
+                serde_json::to_vec(&entry.messages).map_or(usize::MAX, |bytes| bytes.len()),
+            )
+        });
+        while store.order.len() > MAX_STORED_RESPONSES || stored_bytes > MAX_STORED_RESPONSE_BYTES {
+            if let Some(expired) = store.order.pop_front() {
+                if let Some(removed) = store.entries.remove(&expired) {
+                    let removed_bytes = serde_json::to_vec(&removed.messages)
+                        .map_or(usize::MAX, |bytes| bytes.len());
+                    stored_bytes = stored_bytes.saturating_sub(removed_bytes);
+                }
+            } else {
+                break;
+            }
+        }
+    });
 }
 
-fn delete_response(id: &str) -> bool {
-    let mut store = response_store()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let removed = store.entries.remove(id).is_some();
-    if removed {
-        store.order.retain(|entry| entry != id);
-    }
-    removed
+fn delete_response(tenant: &str, id: &str) -> bool {
+    with_tenant_store(tenant, |store| {
+        let removed = store.entries.remove(id).is_some();
+        if removed {
+            store.order.retain(|entry| entry != id);
+        }
+        removed
+    })
 }
 
 fn response_input_items(messages: &[ConversationMessage]) -> Vec<Value> {
@@ -3971,6 +4059,7 @@ mod tests {
             None,
         );
         store_response(
+            "tenant-state",
             id.clone(),
             StoredResponse {
                 response: response.clone(),
@@ -3978,7 +4067,7 @@ mod tests {
             },
         );
 
-        let mut stored = retrieve_response(&id).unwrap();
+        let mut stored = retrieve_response("tenant-state", &id).unwrap();
         stored
             .messages
             .extend(responses_messages(&json!("Wie lautet es?")).unwrap());
@@ -4027,6 +4116,7 @@ mod tests {
     fn response_retrieval_requires_auth_and_returns_stored_object() {
         let id = "resp_retrieve_contract";
         store_response(
+            &tenant_id("test-secret"),
             id.to_string(),
             StoredResponse {
                 response: response_with_state(
@@ -4104,15 +4194,70 @@ mod tests {
         assert_eq!(items[2]["type"], "function_call_output");
         let id = "resp_delete_contract";
         store_response(
+            "tenant-delete",
             id.to_string(),
             StoredResponse {
                 response: response_object(id, "webagent/chatgpt", "x"),
                 messages,
             },
         );
-        assert!(delete_response(id));
-        assert!(retrieve_response(id).is_none());
-        assert!(!delete_response(id));
+        assert!(delete_response("tenant-delete", id));
+        assert!(retrieve_response("tenant-delete", id).is_none());
+        assert!(!delete_response("tenant-delete", id));
+    }
+
+    #[test]
+    fn persistent_state_ueberlebt_restart_und_trennt_mandanten() {
+        let tenant_a = tenant_id("key-alpha");
+        let tenant_b = tenant_id("key-beta");
+        assert_ne!(tenant_a, tenant_b);
+        let parent_id = "resp_persist_parent";
+        let mut messages = responses_messages(&json!("Codewort Luchs")).unwrap();
+        append_response_message(
+            &mut messages,
+            &crate::browser_inference::BrowserInferenceResponse {
+                text: Some("gemerkt".to_string()),
+                tool_calls: Vec::new(),
+            },
+        );
+        store_response(
+            &tenant_a,
+            parent_id.to_string(),
+            StoredResponse {
+                response: response_with_state(
+                    response_object(parent_id, "webagent/chatgpt", "gemerkt"),
+                    None,
+                ),
+                messages,
+            },
+        );
+
+        forget_cached_response_stores();
+        assert!(retrieve_response(&tenant_a, parent_id).is_some());
+        assert!(retrieve_response(&tenant_b, parent_id).is_none());
+
+        let chained = ResponsesRequest {
+            model: "webagent/chatgpt".to_string(),
+            input: json!("Wie lautet es?"),
+            instructions: None,
+            stream: None,
+            tools: Vec::new(),
+            tool_choice: None,
+            previous_response_id: Some(parent_id.to_string()),
+            store: true,
+        };
+        forget_cached_response_stores();
+        let (history, _) = responses_context(&chained, &tenant_a).unwrap();
+        assert!(history.iter().any(|m| m.content == json!("Codewort Luchs")));
+        assert!(responses_context(&chained, &tenant_b).is_err());
+
+        forget_cached_response_stores();
+        assert!(delete_response(&tenant_a, parent_id));
+        forget_cached_response_stores();
+        assert!(retrieve_response(&tenant_a, parent_id).is_none());
+        let path = tenant_store_path(&tenant_a);
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(raw.contains(LOCAL_STATE_FORMAT));
     }
 
     #[test]

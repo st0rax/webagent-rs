@@ -5,7 +5,7 @@
 
 ## Repo / Branch / Stand
 
-- Branch: `feature/T-402-reject-unsupported`
+- Branch: `feature/T-403-persistent-state`
 - Remote: `https://github.com/st0rax/webagent-rs.git`
 - Letzter Stand (Commit): `8e25d36` (2026-09-02)
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
@@ -26,7 +26,7 @@ cargo check --features tui
 cargo check --no-default-features
 ```
 
-Bekannter Stand Default-Gate (2026-09-02): 1241 passed / 1 ignored / 0 failed (T-402-Zweig, ohne Phase-2-UI).
+Bekannter Stand Default-Gate (2026-09-02): 1242 passed / 1 ignored / 0 failed (T-403-Zweig, ohne Phase-2-UI).
 
 ## Planphasen und Status
 
@@ -68,7 +68,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       erledigt (`unsupported_parameter`/`unsupported_value` fuer seed, logprobs,
       service_tier, n>1 u. a.; unbekannte Felder bleiben toleriert; `X-Request-Id`;
       Responses-IDs `resp_…`; `cargo test --lib` 1241 passed / 1 ignored)
-- [ ] Phase 4.x rest: persistenter State (T-403), SDK-Blackbox (T-404)
+- [x] Phase 4.3 persistenter State (T-403) —
+      erledigt (`openai-local-state-v1` je Mandant auf Platte; Retrieve/Delete/
+      previous_response_id nach Cache-Reset; `cargo test --lib` 1242 passed / 1 ignored)
+- [ ] Phase 4.x rest: SDK-Blackbox (T-404)
 - [ ] Phase 5.x Alle Brains
 - [ ] Phase 6.x Health-Dashboard + manuelle Quellen
 - [ ] Phase 7.x Grok-Bot-Modus (Gruppen)
@@ -86,9 +89,8 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
 3. Phase 1.4 (T-104) **abgeschlossen**: Reiner Chat und Managed Agent haben
    getrennte Promptbuilder; der Plain-Chat-Pfad injiziert keinen
    `WEBAGENT/1`- oder Toolvertrag.
-4. Phase 4.1–4.2 (T-401/T-402) **abgeschlossen**. Naechste Code-Zelle: T-403.
-   T-201 bleibt claimed auf `feature/T-201-web-ui-server` (kein Phantom
-   `embed-loopback`). Phase 0.4 bleibt Doku-Nachzug.
+4. Phase 4.1–4.3 (T-401..T-403) **abgeschlossen**. Naechste Zelle: T-404
+   (SDK-Blackbox). T-201 claimed auf `feature/T-201-web-ui-server`.
 
 ## Freigabegrenzen (unverändert)
 
