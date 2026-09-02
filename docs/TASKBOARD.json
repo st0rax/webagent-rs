@@ -39,7 +39,7 @@
       "branch": "feature/T-101-api-bridge",
       "claimed_at": "2026-09-01",
       "done_at": "2026-09-02",
-      "proof_path": "src/session/ + api_bridge::session_service(); cargo test --lib (1220 passed). Live-api_*-Zelle bleibt Phase 3.",
+      "proof_path": "src/session/ + api_bridge::session_service(); cargo test --lib (1232 passed). Live-api_*-Zelle bleibt Phase 3.",
       "verification": "cargo test --lib",
       "dod": "Extraktion + Unittests gruen; api_bridge ruft Kern statt eigener Session-Logik; Zelle api_* belegt"
     },
@@ -54,7 +54,7 @@
       "branch": "feature/T-102-tool-registry",
       "claimed_at": "2026-09-02",
       "done_at": "2026-09-02",
-      "proof_path": "src/tools.rs (ToolRegistry + read/bash/edit/write, Policy, Exactly-once); cargo test --lib (1226 passed).",
+      "proof_path": "src/tools.rs (ToolRegistry + read/bash/edit/write, Policy, Exactly-once); cargo test --lib (1232 passed).",
       "verification": "cargo test --lib",
       "dod": "Registry-Schema, Validierung, Policy, Exactly-once; bestehende Aktionen nicht umbenennen; Tests gruen"
     },
