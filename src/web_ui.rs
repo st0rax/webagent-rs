@@ -2,7 +2,7 @@
 //!
 //! T-201: eine portable Binary, kein Dateibaum neben der exe.
 //! T-202: `/api/*` sitzt auf SessionService/Doctor (siehe `web_ui_api`).
-//! Das Grok-Layout kommt in T-203.
+//! T-203: Grok-Layout-Prototyp in `web/index.html` (Fake, ohne Backend).
 
 use crate::web_ui_api::{dispatch, UiState};
 use std::{
@@ -157,9 +157,29 @@ mod tests {
         assert!(html.contains("WebAgent"));
         assert!(html.contains("<!DOCTYPE html>"));
         assert!(
-            html.len() < 8_192,
-            "Platzhalter-HTML muss klein bleiben (T-201 Budget), war {}",
+            html.len() < 48_000,
+            "eingebettetes Prototyp-HTML muss kompakt bleiben (T-203), war {}",
             html.len()
+        );
+    }
+
+    #[test]
+    fn prototypen_layout_hat_health_leiste_und_kategorien() {
+        let html = index_html();
+        assert!(html.contains("Quellen 3 von 5 bereit"));
+        assert!(html.contains("Sitzungen"));
+        assert!(html.contains("Brains"));
+        assert!(html.contains("Gruppen"));
+        assert!(html.contains("Laeufe"));
+        assert!(html.contains("composer-input"));
+        assert!(html.contains("role=\"banner\""));
+        assert!(html.contains("aria-live=\"polite\""));
+        assert!(html.contains("prefers-reduced-motion"));
+        assert!(html.contains("Zur Eingabe springen"));
+        assert!(html.contains(":focus-visible"));
+        assert!(
+            !html.contains("fetch("),
+            "T-203: kein Backend-Fetch im Fake-Prototyp"
         );
     }
 

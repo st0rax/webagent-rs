@@ -5,7 +5,7 @@
 
 ## Repo / Branch / Stand
 
-- Branch: `feature/T-202-ui-endpoints` (T-201/T-202 noch nicht auf master)
+- Branch: `feature/T-203-grok-layout-prototype` (Phase 2 Stack, noch nicht auf master)
 - Remote: `https://github.com/st0rax/webagent-rs.git`
 - Letzter Stand (Commit): `8e25d36` (2026-09-02)
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
@@ -26,7 +26,7 @@ cargo check --features tui
 cargo check --no-default-features
 ```
 
-Bekannter Stand Default-Gate (2026-09-02): 1248 passed / 1 ignored / 0 failed.
+Bekannter Stand Default-Gate (2026-09-02): 1249 passed / 1 ignored / 0 failed.
 
 ## Planphasen und Status
 
@@ -65,7 +65,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       erledigt (`src/web_ui_api.rs`: Session/Capability/Health/Upload/Chat/Stop/Event
       auf SessionService + `doctor::run_doctor` ohne Browserstart; HTTP-Wire-Tests;
       `cargo test --lib` 1248 passed / 1 ignored)
-- [ ] Phase 2.x rest: Fake-Prototyp (T-203)
+- [x] Phase 2.3 Fake-Prototyp (T-203) —
+      erledigt (`web/index.html`: Health-Balken oben, System-Kategorien links,
+      Chat-Mitte, Fake-Events ohne `fetch`; A11y: Skip-Link, `:focus-visible`,
+      `aria-live`, `prefers-reduced-motion`, semantische Buttons; `cargo test --lib`
+      1249 passed / 1 ignored)
 - [ ] Phase 3.x Claude-Referenz komplettieren
 - [ ] Phase 4.x OpenAI-Konformitaetskern (Profile, SSE, State)
 - [ ] Phase 5.x Alle Brains
@@ -89,8 +93,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
    `webagent` / `webagent ui` startet die lokale UI; TUI bleibt `webagent tui`.
 5. Phase 2.2 (T-202) **abgeschlossen**: `/api/health/brains`, `/api/capability`,
    Session CRUD, Chat, Stop, Events, Upload (angenommen, nicht gespeichert)
-   sitzen auf SessionService/EventStream und Doctor. Naechste Zelle: T-203
-   (Grok-Layout-Prototyp). Phase 0.4 bleibt Doku-Nachzug.
+   sitzen auf SessionService/EventStream und Doctor.
+6. Phase 2.3 (T-203) **abgeschlossen**: klickbarer Grok-Layout-Prototyp ohne
+   Backend-Kopplung. Naechste Zelle: T-301 (Claude-Live, Freigabegrenze).
+   Phase 0.4 bleibt Doku-Nachzug.
 
 ## Freigabegrenzen (unverändert)
 
