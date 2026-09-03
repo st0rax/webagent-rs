@@ -114,4 +114,26 @@ impl HandoffQueue {
     pub(crate) fn is_dropped(&self, effective: &str) -> bool {
         self.dropped.contains(effective)
     }
+
+    /// Setzt einen noch wartenden Sprecher an den Anfang der Runde
+    /// (T-701: `@Brain`-Handoff). `false`, wenn das Brain in dieser Runde
+    /// nicht mehr in der Schlange steht.
+    pub(crate) fn target_next_speaker(&mut self, brain: &str) -> bool {
+        let pos = self
+            .queue
+            .iter()
+            .position(|(candidate, _, _)| candidate.eq_ignore_ascii_case(brain));
+        match pos {
+            Some(0) => true,
+            Some(pos) => {
+                let item = self
+                    .queue
+                    .remove(pos)
+                    .expect("Position stammt aus derselben Queue");
+                self.queue.push_front(item);
+                true
+            }
+            None => false,
+        }
+    }
 }

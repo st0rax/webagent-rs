@@ -21,6 +21,7 @@ pub mod fakebrain;
 pub mod file_actions;
 pub mod free_cloud_chat;
 pub mod goal_plan;
+pub mod group_run;
 pub mod https_client;
 pub mod loop_guard;
 pub mod memory;
