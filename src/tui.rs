@@ -1243,7 +1243,7 @@ pub(crate) fn spawn_benchmark_from_tui(cmd: &str, candidates: &[String]) {
 // ---------------------------------------------------------------------------
 
 /// Schaltet die VT-Verarbeitung der Windows-Konsole ein (idempotent).
-#[cfg(all(windows, feature = "webview"))]
+#[cfg(all(windows, feature = "webview", feature = "tui"))]
 fn enable_vt_processing() {
     use std::os::windows::io::AsRawHandle;
     use windows::Win32::Foundation::HANDLE;
@@ -1259,11 +1259,7 @@ fn enable_vt_processing() {
     }
 }
 
-// Ohne `tui`-Feature wird der Rumpf von `run_tui` nicht uebersetzt; die
-// Funktion bleibt aber Teil der oeffentlichen Schnittstelle. Damit ist sie
-// hier ungenutzt — erwartet, kein Hinweis auf toten Code.
-#[cfg(not(all(windows, feature = "webview")))]
-#[cfg_attr(not(feature = "tui"), allow(dead_code))]
+#[cfg(all(feature = "tui", not(all(windows, feature = "webview"))))]
 fn enable_vt_processing() {}
 
 /// Schaltet eine Faehigkeit an einem Brain und liefert die Meldung dazu.
@@ -1300,7 +1296,6 @@ fn drive_capability(brain: &str, key: &str) -> String {
 }
 
 /// Alt+Nummer: Fokus auf eine Kachel holen.
-#[cfg_attr(not(feature = "tui"), allow(dead_code))]
 #[cfg(feature = "webview")]
 #[allow(dead_code)]
 fn focus_brain_tile(index: usize) -> String {
@@ -1321,7 +1316,6 @@ fn focus_brain_tile(_index: usize) -> String {
 }
 
 /// Esc: Fokus zurueck ans Terminalfenster, Kacheln wieder nicht aktivierbar.
-#[cfg_attr(not(feature = "tui"), allow(dead_code))]
 #[cfg(feature = "webview")]
 #[allow(dead_code)]
 fn release_brain_focus() -> String {

@@ -31,6 +31,7 @@ pub mod run_store;
 pub mod scoring;
 pub mod session;
 pub mod shell_policy;
+pub mod source_scope;
 pub mod startup;
 pub mod timeouts;
 pub mod tools;
