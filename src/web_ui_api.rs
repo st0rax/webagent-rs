@@ -382,10 +382,10 @@ fn post_quelle(state: &UiState, query: &str, body: &str) -> ApiResponse {
         }
     } else {
         let spec = parsed.spec.trim();
-        let spec = if spec.is_empty() || spec == "list" {
+        let spec = if spec == "list" {
+            QuelleSpec::List
+        } else if spec.is_empty() {
             if parsed.brain.trim().is_empty() {
-                QuelleSpec::List
-            } else if spec == "list" {
                 QuelleSpec::List
             } else {
                 QuelleSpec::Show

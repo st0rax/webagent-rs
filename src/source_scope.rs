@@ -341,7 +341,7 @@ impl SourceScope {
             source,
             kind,
             model,
-            persisted: self.overrides.get(brain).is_none(),
+            persisted: !self.overrides.contains_key(brain),
         }
     }
 }
