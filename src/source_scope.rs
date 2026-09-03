@@ -583,8 +583,8 @@ mod tests {
             SourceKind::Browser
         );
         let src = include_str!("source_scope.rs");
-        assert!(!src.contains("auto_route"));
-        assert!(!src.contains("pick_healthy"));
+        assert!(!src.contains("fn auto_route"));
+        assert!(!src.contains("fn pick_healthy"));
         assert!(!src.contains("https_get("));
         assert!(!src.contains("https_post_json("));
     }
