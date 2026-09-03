@@ -177,13 +177,9 @@ mod tests {
         assert!(html.contains("prefers-reduced-motion"));
         assert!(html.contains("Zur Eingabe springen"));
         assert!(html.contains(":focus-visible"));
-        assert!(html.contains("id=\"source-switch\""));
-        assert!(html.contains("id=\"model-label\""));
-        assert!(html.contains("id=\"mode-chat\""));
-        assert!(html.contains("id=\"source-save\""));
         assert!(
             !html.contains("fetch("),
-            "T-203/T-602: Quellen-Schalter bleibt lokal, kein Backend-Fetch"
+            "T-203: kein Backend-Fetch im Fake-Prototyp"
         );
     }
 

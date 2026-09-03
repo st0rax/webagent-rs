@@ -55,8 +55,6 @@ struct ReplSession {
     goal: Option<String>,
     /// Zähler für die Abschluss-Zusammenfassung beim Beenden.
     stats: SessionStats,
-    /// Manuelle Quellenwahl (T-602), Session-Scope.
-    source_scope: crate::source_scope::SourceScope,
 }
 
 impl ReplSession {
@@ -74,7 +72,6 @@ impl ReplSession {
             brain_open: false,
             goal: None,
             stats: SessionStats::default(),
-            source_scope: crate::source_scope::SourceScope::load_default(),
         })
     }
 
@@ -192,10 +189,6 @@ impl ReplSession {
             ("/brains  /whoami", "Roster · aktiver Account"),
             ("/memory  /remember  /forget", "Erinnerungen"),
             ("/new", "neue Konversation"),
-            (
-                "/quelle <brain> [src]",
-                "Quelle setzen (Session; --save persistiert)",
-            ),
             ("/login  /login-all", "Login-Fenster öffnen"),
             ("/help  /exit", "diese Hilfe · beenden"),
         ];
@@ -582,16 +575,6 @@ impl ReplSession {
                 match crate::transcript::compact_latest_run() {
                     Ok(summary) => println!("[compact]\n{summary}"),
                     Err(e) => println!("[compact] {e}"),
-                }
-                ReplAction::Continue
-            }
-            SlashCommand::Quelle { rest } => {
-                match crate::source_scope::parse_quelle_args(&rest) {
-                    Ok(cmd) => match self.source_scope.apply(&cmd) {
-                        Ok(report) => println!("{}", report.text),
-                        Err(e) => println!("[quelle] {e}"),
-                    },
-                    Err(e) => println!("[quelle] {e}"),
                 }
                 ReplAction::Continue
             }

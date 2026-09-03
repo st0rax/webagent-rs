@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::events::{EventStream, SessionEvent, Since};
-use crate::source_scope::{QuelleCommand, QuelleReport, SourceScope};
 
 /// Lebender Lauf samt Stream. Gleichzeitig abgreifbar; der Zustand liegt
 /// geteilt hinter einer [`Mutex`], die Sequenznummern bleiben stabil.
@@ -27,7 +26,6 @@ struct SessionCore {
     created_at: String,
     status: String,
     stream: EventStream,
-    sources: SourceScope,
 }
 
 impl SessionHandle {
@@ -83,7 +81,6 @@ impl SessionHandle {
     /// Momentaufnahme fuer Listen/UI.
     pub fn snapshot(&self) -> SessionSnapshot {
         let core = self.core.lock().unwrap();
-        let active = core.sources.active(&core.brain);
         SessionSnapshot {
             run_id: core.run_id.clone(),
             brain: core.brain.clone(),
@@ -92,19 +89,7 @@ impl SessionHandle {
             created_at: core.created_at.clone(),
             last_seq: core.stream.last_seq(),
             done: core.stream.is_done(),
-            source: active.source,
-            source_kind: active.kind.as_str().to_string(),
-            source_persisted: active.persisted,
         }
-    }
-
-    pub fn active_source(&self) -> crate::source_scope::ActiveSource {
-        let core = self.core.lock().unwrap();
-        core.sources.active(&core.brain)
-    }
-
-    pub fn apply_quelle(&self, cmd: &QuelleCommand) -> Result<QuelleReport, String> {
-        self.core.lock().unwrap().sources.apply(cmd)
     }
 }
 
@@ -118,20 +103,6 @@ pub struct SessionSnapshot {
     pub created_at: String,
     pub last_seq: u64,
     pub done: bool,
-    #[serde(default = "default_source")]
-    pub source: String,
-    #[serde(default = "default_source_kind")]
-    pub source_kind: String,
-    #[serde(default)]
-    pub source_persisted: bool,
-}
-
-fn default_source() -> String {
-    crate::source_scope::BROWSER_SOURCE.to_string()
-}
-
-fn default_source_kind() -> String {
-    "browser".to_string()
 }
 
 /// Registrierung der lebenden Lauefe. Pro Prozess eine Instanz Ihrer Wahl —
@@ -160,7 +131,6 @@ impl SessionService {
             created_at: crate::now_rfc3339(),
             status: "registered".to_string(),
             stream: EventStream::new(run_id),
-            sources: SourceScope::load_default(),
         };
         let handle = SessionHandle {
             core: Arc::new(Mutex::new(core)),
@@ -350,21 +320,5 @@ mod tests {
         assert!(list[0].run_id > list[1].run_id, "neueste zuerst: {list:?}");
         // Isoliert: b sieht nichts von a.
         assert!(b.list().iter().all(|s| s.run_id == "run-other"));
-    }
-
-    #[test]
-    fn session_source_default_ist_browser_und_isoliert() {
-        let service = SessionService::new();
-        let a = start_test(&service, "run-src-a");
-        let b = start_test(&service, "run-src-b");
-        assert_eq!(a.snapshot().source, "default");
-        assert_eq!(a.snapshot().source_kind, "browser");
-        let cmd = crate::source_scope::parse_quelle_args("claude openrouter").unwrap();
-        let report = a.apply_quelle(&cmd).unwrap();
-        assert!(!report.persisted);
-        assert_eq!(a.snapshot().source, "openrouter");
-        assert_eq!(a.snapshot().source_kind, "api");
-        assert_eq!(b.snapshot().source, "default");
-        assert_eq!(b.snapshot().source_kind, "browser");
     }
 }

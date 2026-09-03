@@ -139,18 +139,11 @@
         </div>
       </nav>
       <main class="stage">
-        <div class="chat-head" role="region" aria-label="Sitzung">
+        <div class="chat-head">
           <strong>Brain:</strong> <span id="brain-label">claude</span>
-          <span>Modell: <span id="model-label">claude-sonnet</span> (erkannt)</span>
+          <span>Modell: claude-sonnet (erkannt, Fake)</span>
           <span>Aufwand: mittel</span>
-          <label for="source-switch">Quelle
-            <select id="source-switch">
-              <option value="default" selected>Browser-Chat</option>
-              <option value="openrouter">openrouter</option>
-              <option value="groq">groq</option>
-            </select>
-          </label>
-          <label><input type="checkbox" id="source-save"> --save</label>
+          <span>Quelle: Browser-Chat</span>
           <span>
             Modus
             <button type="button" id="mode-chat" aria-pressed="true">Chat</button>
@@ -192,9 +185,6 @@
     const live = document.getElementById("live");
     const act = document.getElementById("act-list");
     const input = document.getElementById("composer-input");
-    const sourceSwitch = document.getElementById("source-switch");
-    const sourceSave = document.getElementById("source-save");
-    const sessionSources = { claude: "default" };
     let timer = null;
     let streaming = false;
 
@@ -240,22 +230,6 @@
       list.hidden = hide;
       document.getElementById("toggle-act").setAttribute("aria-expanded", hide ? "false" : "true");
     });
-    function applySource(brain, source, save) {
-      sessionSources[brain] = source;
-      sourceSwitch.value = source;
-      const label = sourceSwitch.options[sourceSwitch.selectedIndex]
-        ? sourceSwitch.options[sourceSwitch.selectedIndex].text
-        : source;
-      const note = save
-        ? "Session + --save (Fake, keine Datei)"
-        : "nur Session, nicht persistiert";
-      say("Quelle " + label + " fuer " + brain + " (" + note + ")");
-      addAct("Quelle: " + brain + " -> " + source + (save ? " --save" : ""));
-    }
-    sourceSwitch.addEventListener("change", () => {
-      const brain = document.getElementById("brain-label").textContent.trim();
-      applySource(brain, sourceSwitch.value, sourceSave.checked);
-    });
     document.getElementById("mode-chat").addEventListener("click", () => {
       document.getElementById("mode-chat").setAttribute("aria-pressed", "true");
       document.getElementById("mode-sys").setAttribute("aria-pressed", "false");
@@ -276,31 +250,6 @@
       e.preventDefault();
       const text = input.value.trim();
       if (!text) return;
-      if (text.startsWith("/quelle")) {
-        const parts = text.trim().split(/\s+/);
-        const tokens = [];
-        let save = sourceSave.checked;
-        for (let i = 1; i < parts.length; i++) {
-          if (parts[i] === "--save") save = true;
-          else tokens.push(parts[i].toLowerCase());
-        }
-        const brain = tokens[0] || document.getElementById("brain-label").textContent.trim();
-        const spec = tokens[1];
-        if (!spec || spec === "list") {
-          say("Quellen fuer " + brain + ": Browser-Chat, openrouter, groq");
-        } else {
-          if (![...sourceSwitch.options].some(o => o.value === spec) && spec !== "browser" && spec !== "browser-chat") {
-            const opt = document.createElement("option");
-            opt.value = spec;
-            opt.textContent = spec;
-            sourceSwitch.appendChild(opt);
-          }
-          const value = (spec === "browser" || spec === "browser-chat") ? "default" : spec;
-          applySource(brain, value, save);
-        }
-        input.value = "";
-        return;
-      }
       showChat();
       const user = document.createElement("article");
       user.className = "msg user";
