@@ -1,10 +1,11 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-01",
+  "as_of": "2026-09-03",
   "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "mirror": "docs/TASKBOARD.md",
   "contract": "docs/WORK_CONTRACT.md",
   "rule": "Claim = Zelle auf claimed setzen (owner, branch, claimed_at). DoD und Arbeitsvertrag sind verbindlich. Ein Entwickler, eine Aufgabe.",
+  "note": "Kante = Abhaengigkeit. Ein Task mit depends_on ist BLOCKED, bis alle Vorgaenger in depends_on done sind. Leeres depends_on = kann parallel laufen. Nie eine verkettete Aufgabe aus dem Block reissen.",
   "agents": [
     "chatgpt-codex",
     "claude-code",
@@ -196,7 +197,8 @@
       "done_at": null,
       "proof_path": null,
       "verification": "Menue-Oeffnung + Wahl + Verifikation naechster Turn",
-      "dod": "Runtime-Liste statt feste Kodierung; Nachpruefung belegt"
+      "dod": "Runtime-Liste statt feste Kodierung; Nachpruefung belegt",
+      "depends_on": []
     },
     {
       "id": "T-401",
@@ -286,7 +288,8 @@
       "done_at": null,
       "proof_path": null,
       "verification": "Matrix-Zellen; Belegpfad je Brain",
-      "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record"
+      "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
+      "depends_on": ["T-202", "T-203"]
     },
     {
       "id": "T-601",
