@@ -190,12 +190,12 @@
         "claude-code",
         "local/opencode"
       ],
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
-      "done_at": null,
-      "proof_path": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "feature/T-302-claude-runtime-model",
+      "claimed_at": "2026-09-03",
+      "done_at": "2026-09-03",
+      "proof_path": "docs/proofs/T-302/; matrix model/effort=claude passed",
       "verification": "Menue-Oeffnung + Wahl + Verifikation naechster Turn",
       "dod": "Runtime-Liste statt feste Kodierung; Nachpruefung belegt",
       "depends_on": []
@@ -281,15 +281,18 @@
         "grok-agent",
         "local/opencode"
       ],
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "feature/T-501-all-brains-matrix",
+      "claimed_at": "2026-09-03",
       "done_at": null,
       "proof_path": null,
       "verification": "Matrix-Zellen; Belegpfad je Brain",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
-      "depends_on": ["T-202", "T-203"]
+      "depends_on": [
+        "T-202",
+        "T-203"
+      ]
     },
     {
       "id": "T-601",

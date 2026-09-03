@@ -84,3 +84,17 @@ strip = true
 [profile.dev]
 debug = 1
 incremental = true
+
+# Binary-Ladbarkeit statt Default-Codegen-Fragmentierung: Mit dem Default
+# (codegen-units = 256) erzeugte der Multi-Codegen-Build der inzwischen grossen
+# Codebasis ein Binary, das beim Laden mit 0xC0000005 (ACCESS_VIOLATION)
+# crashte — noch vor jeder Ausfuehrung, selbst bei `webagent --help`
+# (gemessen 2026-09-03). Nicht nur Test-Suite, sondern auch die echte
+# Dev-Binary; der Compiler faengt das NIE (Kompilieren + Linken gelingt, der
+# Absturz passiert erst beim Prozessstart). Eine moderate Einheitenzahl haelt
+# das Binary unter der Loader-Schwelle. Verifiziert: codegen-units = 16 laeuft
+# (`webagent --help`, Tests, Live-Braincalls), mit 256 crasht es.
+# `[profile.test]` erbt von `[profile.dev]`, also nur hier setzen.
+codegen-units = 16
+
+[profile.test]

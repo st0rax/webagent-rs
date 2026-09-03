@@ -1,0 +1,1 @@
+{"brain_id":"zai","capability":"chat","ts":"2026-09-03T16:42:14.928708+00:00","outcome":"passed","selector_hash":1809018341,"winning_selector":"div.chat-assistant .markdown-prose","evidence":"chat belegt (count>baseline)","latency_ms":11233}

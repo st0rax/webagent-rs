@@ -7,7 +7,7 @@
 
 - Branch: `master`
 - Remote: `https://github.com/st0rax/webagent-rs.git`
-- Letzter Stand (Commit): `8e25d36` (2026-09-02)
+- Letzter Stand (Commit): `6f9579e` (2026-09-03) — Live-Test-Tage: siehe Planphasen unten
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
 - Multidev-Betrieb: `docs/TASKBOARD.json` (Claim-Quelle der Wahrheit),
   `docs/TASKBOARD.md` (Spiegel), `docs/WORK_CONTRACT.md` (verbindlich);
@@ -70,7 +70,13 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       Chat-Mitte, Fake-Events ohne `fetch`; A11y: Skip-Link, `:focus-visible`,
       `aria-live`, `prefers-reduced-motion`, semantische Buttons; `cargo test --lib`
       1249 passed / 1 ignored)
-- [ ] Phase 3.x Claude-Referenz komplettieren
+ - [x] Phase 3.x Claude-Referenz (T-302) —
+       **live erledigt (2026-09-03)** durch local/opencode: `webagent model --brain
+       claude` + `--set` belegt Runtime-Liste statt fester Kodierung (live: „Sonnet 5
+       Hoch", Fable 5.1, Opus 5 Pro, „Aufwand Hoch") und ehrliche No-op-Nachpruefung
+       („bereits aktiv, kein Wechsel noetig"); `model_switch`-Round-Trip via verify =
+       Passed (1759ms); Belege `docs/proofs/T-302/`; Matrix `model`/`effort`/`webui_chat`
+       fuer claude = passed. (T-301 Delta-Streaming bleibt bei grok-agent.)
 - [x] Phase 4.1 DTOs + Responses-SSE `sequence_number` (T-401) —
       erledigt (`src/api_bridge.rs`: monotone `sequence_number` ab 0 auf jedem
       Responses-SSE-Event; Response/Chat/Model-Felder ergaenzt; `usage` bleibt
@@ -87,7 +93,21 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       urllib, Node-fetch; Loopback-Bridge mit `BridgeConfig.fake_reply`;
       Dumps in `docs/proofs/T-404/`; `cargo test --lib` 1254 passed / 1 ignored).
       Kein clientbezogener Servercode. Live-`api_*`-Zellen bleiben Phase 3/5.
-- [ ] Phase 5.x Alle Brains
+ - [~] Phase 5.x Alle Brains (T-501, laeuft bei local/opencode)
+       **Live-Messung 2026-09-03, alle 9 Brains** via `webagent verify`:
+       `chat` (webui_chat) **9×Passed** (zai anfangs failed „ABSENDEKNOPF_DEAKTIVIERT"
+       — Root-Cause: Send-Button `disabled:false` aber `pointer-events:none` auf
+       Button+Parent, Echtklick rauschte durch; Fix `send_button_pointer_transparent()`
+       routet auf synthetischen Klick, Branch `fix/zai-send-absendeknopf`;
+       `webui_chat/zai` failed→**passed** 11233ms, Beleg
+       `docs/proofs/T-501/zai_send_fix_2026-09-03.jsonl`); `new_chat` 9×Passed;
+       `model_switch` Passed bei claude/
+       qwen/perplexity/zai, **unreachable** (kein sichtbarer Modell-Selektor) bei
+       deepseek/gemini/kimi/mistral/chatgpt; `reasoning_toggle` (effort) Passed bei
+       deepseek, unreachable bei zai. Belege `docs/proofs/T-501/`; Matrix gefuellt.
+       **Offen fuer „je Brain gruen"**: die nicht-driveable/API-Zellen (api_*,
+       attachment, managed_tools, sources, groups, security) bleiben `not_run` bis
+       eigene Live-Laeufe.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`

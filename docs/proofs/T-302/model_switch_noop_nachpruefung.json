@@ -1,0 +1,8 @@
+{
+  "cap": "model_switch_nachpruefung",
+  "brain": "claude",
+  "at": "2026-09-03T15:07:20Z",
+  "how": "webagent model --brain claude --set 'Sonnet 5 Hoch' (current)",
+  "output": "[model] claude: umgestellt auf 'Sonnet 5 Hoch (bereits aktiv, kein Wechsel noetig)'",
+  "proof": "Nachpruefung erkennt No-op ehrlich; kein falscher Wechsel-Pfad"
+}

@@ -29,12 +29,12 @@ laufen. Niemals eine verkettete Aufgabe aus dem Block reissen.
 | T-202 | 2 | Endpunkte: Session/Capability/Health/Upload/Chat/Stop/Event | code | codex, claude | done | grok-agent | feature/T-202-ui-endpoints |
 | T-203 | 2 | Klickbarer Fake-Prototyp (Grok-Layout) + A11y-Gates | code | claude, manus, local | done | grok-agent | feature/T-203-grok-layout-prototype |
 | T-301 | 3 | Claude-Referenz: Delta-Streaming live (Freigabegrenze!) | live | claude, local | claimed | grok-agent | – |
-| T-302 | 3 | Claude: Modelle/Aufwand runtime ermitteln, wählen, nachprüfen | live | claude, local | free | – | – |
+| T-302 | 3 | Claude: Modelle/Aufwand runtime ermitteln, wählen, nachprüfen | live | claude, local | done | local/opencode | feature/T-302-claude-runtime-model |
 | T-401 | 4 | DTOs feldvollständig + monotone sequence_number in Responses-SSE | code | codex | done | grok-agent | feature/T-401-responses-sse-seq |
 | T-402 | 4 | Negativfelder/Fehler: seed/logprobs/... klar ablehnen; IDs/Header | code | codex, claude | done | grok-agent | feature/T-402-reject-unsupported |
 | T-403 | 4 | openai-local-state-v1 auf echtem Store + Restart-Test | code | codex, claude | done | grok-agent | feature/T-403-persistent-state |
 | T-404 | 4 | SDK-Blackbox: offizielle Python-/JS-SDKs + zwei Clients | tests | codex, local | done | grok-agent | feature/T-404-sdk-blackbox |
-| T-501 | 5 | Alle-Brains-Matrix je Brain (Chat/Streaming/Modell/Anhang/Tools) | live | claude, grok, local | free | – | – |
+| T-501 | 5 | Alle-Brains-Matrix je Brain (Chat/Streaming/Modell/Anhang/Tools) | live | claude, grok, local | claimed | local/opencode | feature/T-501-all-brains-matrix |
 | T-601 | 6 | rustls-HTTPS-Client + data/providers.json + <10-MB-Budget | code | codex, grok | done | grok-agent | feature/T-601-rustls-https |
 | T-602 | 6 | /quelle + UI-Schalter + Session-Source-Scope (manueller Hybrid) | code | codex, claude | done | grok-agent | feature/T-602-quelle-impl |
 | T-701 | 7 | Gruppen (2-6), Runden, @Brain, Leader-Synthese | code | codex, claude | done | grok-agent | feature/T-701-swarm-groups |

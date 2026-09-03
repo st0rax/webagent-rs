@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-01",
+  "as_of": "2026-09-03",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "brains": [
     "chatgpt",
@@ -33,92 +33,93 @@
     {
       "area": "webui_chat",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "chatgpt",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 20184,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "Sonnet 5 Hoch",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 13416,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "deepseek",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 7710,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "gemini",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 8693,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "kimi",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 16480,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "mistral",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 7079,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "perplexity",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 13918,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "qwen",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 29234,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 11233,
+      "proof_path": "docs/proofs/T-501/zai_send_fix_2026-09-03.jsonl",
+      "note": "Send-Button ist disabled:false aber pointer-events:none (Button+Parent) — vertrauenswuerdiger Echtklick rauscht durch, synthetischer el.click() feuerte den on:click nie. Fix: send_button_pointer_transparent() erkennt das und routet auf synthetischen Klick. chat Failed (56471ms, ABSENDEKNOPF_DEAKTIVIERT) -> Passed (11233ms)."
     },
     {
       "area": "webui_chat",
@@ -233,92 +234,92 @@
     {
       "area": "model",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "Sonnet 5 Hoch",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 1759,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 2582,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 1629,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 1705,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
@@ -343,22 +344,22 @@
     {
       "area": "effort",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "Sonnet 5 Hoch",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-302/"
     },
     {
       "area": "effort",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 30350,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "effort",
@@ -413,12 +414,12 @@
     {
       "area": "effort",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "effort",
