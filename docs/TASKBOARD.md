@@ -34,7 +34,7 @@ laufen. Niemals eine verkettete Aufgabe aus dem Block reissen.
 | T-402 | 4 | Negativfelder/Fehler: seed/logprobs/... klar ablehnen; IDs/Header | code | codex, claude | done | grok-agent | feature/T-402-reject-unsupported |
 | T-403 | 4 | openai-local-state-v1 auf echtem Store + Restart-Test | code | codex, claude | done | grok-agent | feature/T-403-persistent-state |
 | T-404 | 4 | SDK-Blackbox: offizielle Python-/JS-SDKs + zwei Clients | tests | codex, local | done | grok-agent | feature/T-404-sdk-blackbox |
-| T-501 | 5 | Alle-Brains-Matrix je Brain (Chat/Streaming/Modell/Anhang/Tools) | live | claude, grok, local | free | – | – |
+| T-501 | 5 | Alle-Brains-Matrix je Brain (Chat/Streaming/Modell/Anhang/Tools) | live | claude, grok, local | claimed | local/opencode | feature/T-501-all-brains-matrix |
 | T-601 | 6 | rustls-HTTPS-Client + data/providers.json + <10-MB-Budget | code | codex, grok | done | grok-agent | feature/T-601-rustls-https |
 | T-602 | 6 | /quelle + UI-Schalter + Session-Source-Scope (manueller Hybrid) | code | codex, claude | done | grok-agent | feature/T-602-quelle-impl |
 | T-701 | 7 | Gruppen (2-6), Runden, @Brain, Leader-Synthese | code | codex, claude | done | grok-agent | feature/T-701-swarm-groups |
