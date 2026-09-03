@@ -4532,6 +4532,59 @@ mod tests {
         path
     }
 
+    fn t404_probe(mut cmd: std::process::Command) -> bool {
+        cmd.stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    fn t404_python_bin() -> Option<&'static str> {
+        for bin in ["python", "python3"] {
+            let mut cmd = std::process::Command::new(bin);
+            cmd.args(["-c", "pass"]);
+            if t404_probe(cmd) {
+                return Some(bin);
+            }
+        }
+        None
+    }
+
+    fn t404_have_python_openai() -> bool {
+        t404_python_bin().is_some_and(|bin| {
+            let mut cmd = std::process::Command::new(bin);
+            cmd.args(["-c", "import openai"]);
+            t404_probe(cmd)
+        })
+    }
+
+    fn t404_have_node() -> bool {
+        let mut cmd = std::process::Command::new("node");
+        cmd.args(["-e", "process.exit(0)"]);
+        t404_probe(cmd)
+    }
+
+    fn t404_have_node_openai() -> bool {
+        if !t404_have_node() {
+            return false;
+        }
+        let dir = t404_script_dir();
+        let mut cjs = std::process::Command::new("node");
+        cjs.args(["-e", "require('openai')"]).current_dir(&dir);
+        if t404_probe(cjs) {
+            return true;
+        }
+        let mut esm = std::process::Command::new("node");
+        esm.args([
+            "--input-type=module",
+            "-e",
+            "import('openai').then(() => process.exit(0)).catch(() => process.exit(1))",
+        ])
+        .current_dir(&dir);
+        t404_probe(esm)
+    }
+
     fn run_t404_script(program: &str, args: &[&str], addr: SocketAddr, dump_dir: &std::path::Path) {
         let output = std::process::Command::new(program)
             .args(args)
@@ -4619,9 +4672,26 @@ mod tests {
         assert!(seed.contains("seed"));
         fs::write(dump_dir.join("raw_seed_reject.http"), &seed).expect("dump seed");
 
-        run_t404_script("python", &["openai_python.py"], addr, &dump_dir);
-        run_t404_script("python", &["urllib_client.py"], addr, &dump_dir);
-        run_t404_script("node", &["openai_js.mjs"], addr, &dump_dir);
-        run_t404_script("node", &["fetch_client.mjs"], addr, &dump_dir);
+        if t404_have_python_openai() {
+            let py = t404_python_bin().expect("python-openai implies a python bin");
+            run_t404_script(py, &["openai_python.py"], addr, &dump_dir);
+        } else {
+            eprintln!("t404: skip openai_python.py (python-openai missing)");
+        }
+        if let Some(py) = t404_python_bin() {
+            run_t404_script(py, &["urllib_client.py"], addr, &dump_dir);
+        } else {
+            eprintln!("t404: skip urllib_client.py (python missing)");
+        }
+        if t404_have_node_openai() {
+            run_t404_script("node", &["openai_js.mjs"], addr, &dump_dir);
+        } else {
+            eprintln!("t404: skip openai_js.mjs (node openai missing)");
+        }
+        if t404_have_node() {
+            run_t404_script("node", &["fetch_client.mjs"], addr, &dump_dir);
+        } else {
+            eprintln!("t404: skip fetch_client.mjs (node missing)");
+        }
     }
 }
