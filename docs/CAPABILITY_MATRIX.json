@@ -233,12 +233,12 @@
     {
       "area": "model",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
@@ -247,78 +247,78 @@
       "date": "2026-09-03",
       "model": "Sonnet 5 Hoch",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-302/"
+      "latency_ms": 1759,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 2582,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 1629,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 1705,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "model",
@@ -353,12 +353,12 @@
     {
       "area": "effort",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 30350,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "effort",
@@ -413,12 +413,12 @@
     {
       "area": "effort",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "unreachable",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
     },
     {
       "area": "effort",
