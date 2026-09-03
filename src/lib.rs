@@ -22,6 +22,7 @@ pub mod file_actions;
 pub mod free_cloud_chat;
 pub mod goal_plan;
 pub mod https_client;
+pub mod source_scope;
 pub mod loop_guard;
 pub mod memory;
 pub mod observer;

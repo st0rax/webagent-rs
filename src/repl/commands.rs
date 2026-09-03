@@ -96,6 +96,10 @@ pub enum SlashCommand {
     Unknown {
         raw: String,
     },
+    /// Manuelle Quellenwahl: `/quelle <brain> <quelle|list|default> [--save]`.
+    Quelle {
+        rest: String,
+    },
 }
 
 /// Was die Session-TUI mit einem bereits geparsten Slash macht.
@@ -145,6 +149,7 @@ pub fn session_slash_effect(cmd: &SlashCommand) -> SessionSlashEffect {
             orchestrator: *orchestrator,
             prompt: prompt.clone(),
         },
+        SlashCommand::Quelle { .. } => SessionSlashEffect::Unhandled,
         _ => SessionSlashEffect::Unhandled,
     }
 }
@@ -367,6 +372,16 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
             message: rest.trim().to_string(),
         });
     }
+    if trimmed == "/quelle" {
+        return Some(SlashCommand::Quelle {
+            rest: String::new(),
+        });
+    }
+    if let Some(rest) = trimmed.strip_prefix("/quelle ") {
+        return Some(SlashCommand::Quelle {
+            rest: rest.trim().to_string(),
+        });
+    }
     Some(SlashCommand::Unknown {
         raw: trimmed.to_string(),
     })
@@ -483,6 +498,26 @@ mod tests {
                 orchestrator: Some(2),
                 prompt: "hallo".into()
             }
+        );
+    }
+
+    #[test]
+    fn quelle_slash_wird_erkannt() {
+        assert_eq!(
+            parse_slash_command("/quelle"),
+            Some(SlashCommand::Quelle {
+                rest: String::new()
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/quelle claude openrouter --save"),
+            Some(SlashCommand::Quelle {
+                rest: "claude openrouter --save".into()
+            })
+        );
+        assert_eq!(
+            session_slash_effect(&parse_slash_command("/quelle claude default").unwrap()),
+            SessionSlashEffect::Unhandled
         );
     }
 }

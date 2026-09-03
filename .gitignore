@@ -11,6 +11,7 @@ aider_build.log
 .aider*
 /data
 data/
+data/providers.json
 /profiles
 /test_out.txt
 test_out.txt
