@@ -291,7 +291,7 @@ mod tests {
         let resp = dispatch("GET", "/api/capability", "", "", &state);
         assert_eq!(resp.status, 200);
         let v: Value = serde_json::from_slice(&resp.body).unwrap();
-        assert!(v["brains"].as_array().unwrap().len() >= 1);
+        assert!(!v["brains"].as_array().unwrap().is_empty());
         let one = dispatch("GET", "/api/capability/chatgpt", "", "", &state);
         assert_eq!(one.status, 200);
         let one_v: Value = serde_json::from_slice(&one.body).unwrap();

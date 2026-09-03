@@ -1518,6 +1518,7 @@ fn with_tenant_store<R>(tenant: &str, f: impl FnOnce(&mut ResponseStore) -> R) -
     result
 }
 
+#[cfg(test)]
 fn forget_cached_response_stores() {
     store_hub()
         .lock()
@@ -2439,7 +2440,7 @@ fn decode_base64(encoded: &str) -> Result<Vec<u8>, String> {
         return Err("Ungueltige Base64-Nutzdaten.".to_string());
     }
     let mut output = Vec::with_capacity(bytes.len() / 4 * 3);
-    for chunk in bytes.chunks_exact(4) {
+    for chunk in bytes.as_chunks::<4>().0 {
         let a = base64_value(chunk[0]).ok_or_else(|| "Ungueltiges Base64-Zeichen.".to_string())?;
         let b = base64_value(chunk[1]).ok_or_else(|| "Ungueltiges Base64-Zeichen.".to_string())?;
         let c = if chunk[2] == b'=' {
