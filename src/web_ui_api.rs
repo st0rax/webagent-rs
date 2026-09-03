@@ -3,6 +3,7 @@
 //! Sitzt auf [`SessionService`] / [`EventStream`] und `doctor` ohne Browserstart.
 //! Keine eigene Tool-Implementierung.
 
+use crate::group_run::{run_group, stub_respond, GroupRegistry, GroupSpec};
 use crate::session::{SessionEvent, SessionService, Since};
 use crate::source_scope::{parse_quelle_args, QuelleCommand, QuelleSpec};
 use serde::Deserialize;
@@ -12,6 +13,7 @@ use serde_json::{json, Value};
 #[derive(Debug, Default, Clone)]
 pub struct UiState {
     pub sessions: SessionService,
+    pub groups: GroupRegistry,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +65,26 @@ struct SourceBody {
 }
 
 #[derive(Deserialize, Default)]
+struct NewGroup {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    brains: Vec<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct GroupRunBody {
+    #[serde(default)]
+    task: String,
+    #[serde(default)]
+    rounds: u32,
+    #[serde(default)]
+    leader: String,
+}
+
+#[derive(Deserialize, Default)]
 struct QuelleBody {
     #[serde(default)]
     session: String,
@@ -86,10 +108,13 @@ pub fn dispatch(method: &str, path: &str, query: &str, body: &str, state: &UiSta
         ("POST", "/api/sessions") => create_session(state, body),
         ("GET", "/api/sources") => list_sources(state, query),
         ("POST", "/api/quelle") => post_quelle(state, query, body),
+        ("GET", "/api/groups") => list_groups(state),
+        ("POST", "/api/groups") => create_group(state, body),
         ("GET", p) if p.starts_with("/api/capability/") => {
             capability_one(p.trim_start_matches("/api/capability/"))
         }
-        _ => route_session(method.as_str(), path, query, body, state)
+        _ => route_group(method.as_str(), path, body, state)
+            .or_else(|| route_session(method.as_str(), path, query, body, state))
             .unwrap_or_else(|| ApiResponse::json(404, json!({"error": "not_found"}))),
     }
 }
@@ -370,6 +395,104 @@ fn set_source(state: &UiState, id: &str, body: &str) -> ApiResponse {
     }
 }
 
+fn list_groups(state: &UiState) -> ApiResponse {
+    ApiResponse::json(200, json!({ "groups": state.groups.list() }))
+}
+
+fn slug_group_id(name: &str) -> String {
+    let slug: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        format!("g-{}", crate::now_run_stamp())
+    } else {
+        slug
+    }
+}
+
+fn create_group(state: &UiState, body: &str) -> ApiResponse {
+    let parsed: NewGroup = serde_json::from_str(body).unwrap_or_default();
+    let id = if parsed.id.trim().is_empty() {
+        slug_group_id(&parsed.name)
+    } else {
+        parsed.id.trim().to_string()
+    };
+    match GroupSpec::new(id, parsed.name, parsed.brains) {
+        Ok(spec) => match state.groups.insert(spec) {
+            Ok(stored) => {
+                ApiResponse::json(201, serde_json::to_value(&stored).unwrap_or(json!({})))
+            }
+            Err(error) => ApiResponse::json(409, json!({"error": error})),
+        },
+        Err(error) => ApiResponse::json(400, json!({"error": error})),
+    }
+}
+
+fn route_group(method: &str, path: &str, body: &str, state: &UiState) -> Option<ApiResponse> {
+    let rest = path.strip_prefix("/api/groups/")?;
+    let (id, tail) = match rest.split_once('/') {
+        Some((id, rest)) => (id, rest),
+        None => (rest, ""),
+    };
+    if id.is_empty() {
+        return None;
+    }
+    Some(match (method, tail) {
+        ("GET", "") => get_group(state, id),
+        ("POST", "run") => run_group_api(state, id, body),
+        _ => ApiResponse::json(404, json!({"error": "not_found"})),
+    })
+}
+
+fn get_group(state: &UiState, id: &str) -> ApiResponse {
+    match state.groups.get(id) {
+        Some(spec) => ApiResponse::json(200, serde_json::to_value(&spec).unwrap_or(json!({}))),
+        None => ApiResponse::json(404, json!({"error": "group_not_found"})),
+    }
+}
+
+fn run_group_api(state: &UiState, id: &str, body: &str) -> ApiResponse {
+    let Some(spec) = state.groups.get(id) else {
+        return ApiResponse::json(404, json!({"error": "group_not_found"}));
+    };
+    let parsed: GroupRunBody = serde_json::from_str(body).unwrap_or_default();
+    if parsed.task.trim().is_empty() {
+        return ApiResponse::json(400, json!({"error": "task_required"}));
+    }
+    let rounds = if parsed.rounds == 0 { 1 } else { parsed.rounds };
+    let leader = if parsed.leader.trim().is_empty() {
+        spec.brains[0].clone()
+    } else {
+        parsed.leader.trim().to_string()
+    };
+    match run_group(
+        &state.sessions,
+        &spec,
+        parsed.task.trim(),
+        rounds,
+        &leader,
+        stub_respond,
+    ) {
+        Ok(handle) => ApiResponse::json(
+            201,
+            json!({
+                "group": spec,
+                "session": handle.snapshot(),
+                "run_id": handle.run_id(),
+            }),
+        ),
+        Err(error) => ApiResponse::json(400, json!({"error": error})),
+    }
+}
+
 fn post_quelle(state: &UiState, query: &str, body: &str) -> ApiResponse {
     let parsed: QuelleBody = serde_json::from_str(body).unwrap_or_default();
     let cmd = if !parsed.line.trim().is_empty() {
@@ -565,5 +688,64 @@ mod tests {
         assert_eq!(cmd_v["persisted"], false);
         assert_eq!(cmd_v["active"]["source"], "default");
         assert_eq!(cmd_v["active"]["kind"], "browser");
+    }
+
+    #[test]
+    fn groups_create_list_and_run_share_session_stream() {
+        let state = UiState::default();
+        let bad = dispatch(
+            "POST",
+            "/api/groups",
+            "",
+            r#"{"name":"zu klein","brains":["A"]}"#,
+            &state,
+        );
+        assert_eq!(bad.status, 400);
+
+        let created = dispatch(
+            "POST",
+            "/api/groups",
+            "",
+            r#"{"id":"demo","name":"Demo 2er-Gruppe","brains":["A","B"]}"#,
+            &state,
+        );
+        assert_eq!(
+            created.status,
+            201,
+            "{}",
+            String::from_utf8_lossy(&created.body)
+        );
+        let listed = dispatch("GET", "/api/groups", "", "", &state);
+        assert_eq!(listed.status, 200);
+        let listed_v: Value = serde_json::from_slice(&listed.body).unwrap();
+        assert_eq!(listed_v["groups"].as_array().unwrap().len(), 1);
+
+        let run = dispatch(
+            "POST",
+            "/api/groups/demo/run",
+            "",
+            r#"{"task":"2+2","rounds":1,"leader":"A"}"#,
+            &state,
+        );
+        assert_eq!(run.status, 201, "{}", String::from_utf8_lossy(&run.body));
+        let run_v: Value = serde_json::from_slice(&run.body).unwrap();
+        let run_id = run_v["run_id"].as_str().unwrap();
+        assert_eq!(run_v["session"]["brain"], "group:demo");
+        assert_eq!(run_v["session"]["status"], "done");
+
+        let ev = dispatch(
+            "GET",
+            &format!("/api/sessions/{run_id}/events"),
+            "since=0",
+            "",
+            &state,
+        );
+        assert_eq!(ev.status, 200);
+        let ev_v: Value = serde_json::from_slice(&ev.body).unwrap();
+        assert_eq!(ev_v["gap"], false);
+        let events = ev_v["events"].as_array().unwrap();
+        assert!(events.len() >= 4);
+        let last = events.last().unwrap();
+        assert!(last["event"].get("Done").is_some() || last["event"]["status"] == "done");
     }
 }

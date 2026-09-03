@@ -40,6 +40,7 @@ mod tasks;
 mod types;
 mod work_package;
 
+pub(crate) use handoff::HandoffQueue;
 pub(crate) use pipeline::bench_say;
 
 // Bewertung ausgelagert nach `bench_scoring`, Ernte nach `bench_harvest`
