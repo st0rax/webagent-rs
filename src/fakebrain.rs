@@ -18,6 +18,12 @@ pub enum Scenario {
     Fail(String),
     /// Warten auf mehrere Polls (simuliert langsame/gestreamte Antwort).
     Stream(Vec<String>),
+    /// Claude-live: jeder Poll ist ein Ersatz-DOM-Snapshot; `final_text` ist
+    /// die kanonische Antwort (nicht die Konkatenation der Polls).
+    ReplaceSnapshots {
+        polls: Vec<String>,
+        final_text: String,
+    },
     /// Antwort, die nie `generation_complete` setzt (simuliert Haenger).
     Hanging,
 }
@@ -154,6 +160,22 @@ impl BrainBackend for FakeBrain {
                     polls: Some(3),
                 })
             }
+            Some(Scenario::ReplaceSnapshots { final_text, polls }) => {
+                let idx = self.index();
+                Ok(BrainResponse {
+                    text: final_text,
+                    message_index: idx,
+                    generation_complete: true,
+                    backend_status: "ok".into(),
+                    raw_html: String::new(),
+                    first_text_ms: Some(1),
+                    stop_first_seen_ms: None,
+                    stop_gone_ms: None,
+                    completion_ms: Some(9),
+                    completion_reason: Some("complete".into()),
+                    polls: Some(polls.len() as u32),
+                })
+            }
             Some(Scenario::Hanging) => {
                 let idx = self.index();
                 Ok(BrainResponse {
@@ -232,6 +254,26 @@ impl BrainBackend for FakeBrain {
                     completion_ms: Some(9),
                     completion_reason: Some("complete".into()),
                     polls: Some(parts.len() as u32),
+                }
+            }
+            Scenario::ReplaceSnapshots { polls, final_text } => {
+                for p in &polls {
+                    self.pause_chunk();
+                    on_update(p);
+                }
+                let idx = self.index();
+                BrainResponse {
+                    text: final_text,
+                    message_index: idx,
+                    generation_complete: true,
+                    backend_status: "ok".into(),
+                    raw_html: String::new(),
+                    first_text_ms: Some(1),
+                    stop_first_seen_ms: None,
+                    stop_gone_ms: None,
+                    completion_ms: Some(9),
+                    completion_reason: Some("complete".into()),
+                    polls: Some(polls.len() as u32),
                 }
             }
             Scenario::Hanging => {

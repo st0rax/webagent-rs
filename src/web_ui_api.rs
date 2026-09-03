@@ -85,28 +85,76 @@ fn production_chat_factory(brain_id: &str) -> Result<Box<dyn BrainBackend + Send
     Ok(Box::new(backend))
 }
 
-/// Wachsende Snapshots (Brain-Vertrag) oder Chunks (FakeBrain Text/Stream)
-/// werden zu eindeutigen Suffix-Deltas. Doppelte Volltexte entfallen.
-fn unique_suffix(last_sent: &mut String, snapshot: &str) -> Option<String> {
-    if snapshot.is_empty() {
-        return None;
-    }
-    if snapshot == last_sent.as_str() {
-        return None;
-    }
-    if let Some(delta) = snapshot.strip_prefix(last_sent.as_str()) {
-        if delta.is_empty() {
+/// Streaming-Ingest: Claude liefert Ersatz-DOM-Snapshots, FakeBrain Chunks
+/// oder wachsende Prefixe. `last_snapshot` ist die letzte **volle bereinigte**
+/// Antwort — nie die Konkatenation aller Polls.
+#[derive(Debug, Default)]
+struct StreamDeltaIngest {
+    last_snapshot: String,
+    last_emitted: String,
+}
+
+impl StreamDeltaIngest {
+    fn push(&mut self, raw_snapshot: &str) -> Option<String> {
+        let cleaned = crate::observer::chat_answer_text(raw_snapshot);
+        if cleaned.is_empty() {
             return None;
         }
-        last_sent.push_str(delta);
-        return Some(delta.to_string());
+        if cleaned == self.last_snapshot {
+            return None;
+        }
+        if let Some(suffix) = cleaned.strip_prefix(self.last_snapshot.as_str()) {
+            if suffix.is_empty() {
+                return None;
+            }
+            if suffix == self.last_emitted {
+                return None;
+            }
+            let delta = suffix.to_string();
+            self.last_snapshot = cleaned;
+            self.last_emitted = delta.clone();
+            return Some(delta);
+        }
+        // Kuerzerer Snapshot: veralteter Poll.
+        if self.last_snapshot.starts_with(&cleaned) {
+            return None;
+        }
+        // Kein Prefix: Ersatz-Snapshot (Claude) oder FakeBrain-Chunk.
+        if self.last_emitted.is_empty()
+            || cleaned == self.last_emitted
+            || cleaned.contains(self.last_emitted.as_str())
+        {
+            if cleaned == self.last_emitted {
+                self.last_snapshot = cleaned;
+                return None;
+            }
+            let delta = if self.last_snapshot.is_empty() {
+                cleaned.clone()
+            } else if let Some(suffix) = cleaned.strip_prefix(self.last_emitted.as_str()) {
+                if suffix.is_empty() {
+                    self.last_snapshot = cleaned;
+                    return None;
+                }
+                suffix.to_string()
+            } else {
+                cleaned.clone()
+            };
+            if delta.is_empty() || delta == self.last_emitted {
+                self.last_snapshot = cleaned;
+                return None;
+            }
+            self.last_snapshot = cleaned;
+            self.last_emitted = delta.clone();
+            return Some(delta);
+        }
+        // FakeBrain-Chunk: an last_snapshot anhaengen.
+        if cleaned == self.last_emitted {
+            return None;
+        }
+        self.last_snapshot.push_str(&cleaned);
+        self.last_emitted = cleaned.clone();
+        Some(cleaned)
     }
-    // Kuerzerer Snapshot: veralteter Poll, kein neues Chunk.
-    if last_sent.starts_with(snapshot) {
-        return None;
-    }
-    last_sent.push_str(snapshot);
-    Some(snapshot.to_string())
 }
 
 fn composer_missing(err: &str) -> bool {
@@ -402,12 +450,12 @@ fn drive_chat_turn(handle: &SessionHandle, chat: &SessionChat, text: &str) -> Ap
     };
     let wait_timeout =
         crate::timeouts::resolve_timeout("wait_response", &handle.brain(), text, None);
-    let mut last_sent = String::new();
+    let mut ingest = StreamDeltaIngest::default();
     let mut on_update = |snapshot: &str| {
         if chat.cancel.load(Ordering::SeqCst) || handle.is_done() {
             return;
         }
-        if let Some(delta) = unique_suffix(&mut last_sent, snapshot) {
+        if let Some(delta) = ingest.push(snapshot) {
             let _ = handle.push(SessionEvent::TextDelta { text: delta });
         }
     };
@@ -444,7 +492,7 @@ fn drive_chat_turn(handle: &SessionHandle, chat: &SessionChat, text: &str) -> Ap
         });
         return ApiResponse::json(502, json!({"error": error}));
     }
-    if let Some(delta) = unique_suffix(&mut last_sent, &response.text) {
+    if let Some(delta) = ingest.push(&response.text) {
         let _ = handle.push(SessionEvent::TextDelta { text: delta });
     }
     if handle.is_done() {
@@ -1041,15 +1089,95 @@ mod tests {
 
     #[test]
     fn unique_suffix_strips_snapshots_and_chunks() {
-        let mut last = String::new();
-        assert_eq!(unique_suffix(&mut last, "Hel").as_deref(), Some("Hel"));
-        assert_eq!(unique_suffix(&mut last, "Hello").as_deref(), Some("lo"));
-        assert_eq!(unique_suffix(&mut last, "Hello"), None);
-        last.clear();
-        assert_eq!(unique_suffix(&mut last, "Hel").as_deref(), Some("Hel"));
-        assert_eq!(unique_suffix(&mut last, "lo").as_deref(), Some("lo"));
-        assert_eq!(last, "Hello");
-        assert_eq!(unique_suffix(&mut last, "Hel"), None);
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
+        assert_eq!(ingest.push("Hello").as_deref(), Some("lo"));
+        assert_eq!(ingest.push("Hello"), None);
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
+        assert_eq!(ingest.push("lo").as_deref(), Some("lo"));
+        assert_eq!(ingest.last_snapshot, "Hello");
+        assert_eq!(ingest.push("Hel"), None);
+    }
+
+    #[test]
+    fn stream_ingest_drops_identical_consecutive_and_status() {
+        let mut ingest = StreamDeltaIngest::default();
+        // Wachsend
+        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
+        assert_eq!(ingest.push("Hello").as_deref(), Some("lo"));
+        assert_eq!(ingest.push("Hello"), None);
+        // Chunks
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
+        assert_eq!(ingest.push("lo").as_deref(), Some("lo"));
+        assert_eq!(ingest.last_snapshot, "Hello");
+        // Status → kein Delta
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("läuft\nTüfteln"), None);
+        assert_eq!(ingest.push("PING").as_deref(), Some("PING"));
+        assert_eq!(ingest.push("PING"), None);
+        assert_eq!(ingest.push("PING"), None);
+    }
+
+    /// Live-Beweis T-301: TextDelta-Strings aus events_after.json als DOM-Snapshots.
+    /// Verbietet das seq-2–36 Muster (Status als Delta + identisches PING-Spam).
+    #[test]
+    fn chat_live_claude_replacement_snapshots_emit_single_ping() {
+        let glyph = "\u{E02A}";
+        let status =
+            format!("läuft\n{glyph}\nVorbereiten einer einzelnen kurzen Antwort auf Deutsch");
+        let thinking_ping = format!("Dachte 2 s nach\n{glyph}\nDachte 2 s nach\n\nPING");
+        let mut polls = vec![
+            "läuft\nTüfteln".into(),
+            status.clone(),
+            status.clone(),
+            status,
+            thinking_ping.clone(),
+            thinking_ping,
+        ];
+        // seq 8–36: identisches PING
+        for _ in 0..29 {
+            polls.push("PING".into());
+        }
+        let state = test_ui(vec![Scenario::ReplaceSnapshots {
+            polls,
+            final_text: "PING".into(),
+        }]);
+        let id = post_session(&state);
+        let chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"antworte nur mit PING"}"#,
+            &state,
+        );
+        assert_eq!(chat.status, 200, "{}", String::from_utf8_lossy(&chat.body));
+        let (_, events) = fetch_events(&state, &id);
+        let deltas = text_deltas(&events);
+        assert!(
+            events
+                .iter()
+                .any(|e| event_kind(&e["event"]) == "TextComplete"
+                    || e["event"].as_str() == Some("TextComplete")),
+            "TextComplete fehlt: {events:?}"
+        );
+        // Kein Status/Thinking als TextDelta
+        for bad in ["läuft", "Tüfteln", "Vorbereiten", "Dachte"] {
+            assert!(
+                !deltas.iter().any(|d| d.contains(bad)),
+                "Status/Thinking als TextDelta ({bad}): {deltas:?}"
+            );
+        }
+        // Keine identischen aufeinanderfolgenden TextDeltas
+        assert!(
+            deltas.windows(2).all(|w| w[0] != w[1]),
+            "identische consecutive TextDeltas: {deltas:?}"
+        );
+        // Genau ein Chat-Delta PING, oder Deltas die eindeutig zu PING joinen
+        let joined = deltas.concat();
+        assert_eq!(joined, "PING", "deltas={deltas:?}");
+        assert_eq!(deltas.iter().filter(|d| d.as_str() == "PING").count(), 1);
     }
 
     #[test]

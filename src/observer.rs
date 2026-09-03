@@ -10,8 +10,20 @@ use std::sync::OnceLock;
 fn transient_status_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
+        // EN + DE Claude-UI Labels (T-301 live: laeuft, Tuefteln, Dachte N s nach).
         Regex::new(
-            r"(?i)^(?:denke\s+nach|thinking(?:\s*\.\.\.)?(?:\s+skip)?|reasoning|ueberlege|überlege|思考|generating|loading|skip|thought\s*process)\s*[.….]*$"
+            r"(?i)^(?:denke\s+nach|thinking(?:\s*\.\.\.)?(?:\s+skip)?|reasoning|ueberlege|überlege|思考|generating|loading|skip|thought\s*process|läuft|laeuft|tüfteln|tuefteln|dachte\s+\d+\s*s\s+nach)\s*[.….]*$"
+        )
+        .unwrap()
+    })
+}
+
+/// Claude-DE Statuszeilen, die kein ^…$-Vollmatch sind (z.B. "Vorbereiten …").
+fn claude_ui_status_line_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r"(?i)^(?:läuft|laeuft|tüfteln|tuefteln)\s*[.….]*$|^dachte\s+\d+\s*s\s+nach\s*[.….]*$|^vorbereiten\b"
         )
         .unwrap()
     })
@@ -166,6 +178,44 @@ pub fn is_limit_response_text(text: &str) -> bool {
     }
 
     limit_response_regex().is_match(normalized)
+}
+
+fn is_chat_status_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    if is_transient_response_text(trimmed) {
+        return true;
+    }
+    // Private-Use-only Zeile (Icon), auch wenn laengerer Kontext drumherum fehlt.
+    if trimmed.chars().all(|c| {
+        matches!(c as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
+            || c.is_whitespace()
+    }) {
+        return true;
+    }
+    trimmed.chars().count() <= STATUS_LABEL_MAX_CHARS
+        && claude_ui_status_line_regex().is_match(trimmed)
+}
+
+/// DOM-Snapshot → reiner Chat-Antworttext (ohne Thinking/Status).
+///
+/// Claude live liefert Ersatz-Snapshots mit Statuszeilen (`läuft`, `Tüfteln`,
+/// `Vorbereiten …`, `Dachte N s nach`, Private-Use-Glyphs). Leer → kein
+/// TextDelta.
+pub fn chat_answer_text(raw: &str) -> String {
+    let stripped = strip_repeated_lead_line(raw);
+    let kept: Vec<&str> = stripped
+        .lines()
+        .filter(|line| !is_chat_status_line(line))
+        .collect();
+    let cleaned = kept.join("\n");
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() || is_transient_response_text(cleaned) {
+        return String::new();
+    }
+    cleaned.to_string()
 }
 
 #[cfg(test)]
@@ -349,5 +399,41 @@ mod tests {
                 text
             );
         }
+    }
+
+    #[test]
+    fn german_claude_status_labels_are_transient() {
+        for s in [
+            "läuft",
+            "Tüfteln",
+            "Dachte 2 s nach",
+            "Dachte 10 s nach",
+            "\u{E02A}",
+        ] {
+            assert!(
+                is_transient_response_text(s) || is_chat_status_line(s),
+                "DE-Status nicht erkannt: {s:?}"
+            );
+        }
+        assert!(is_chat_status_line(
+            "Vorbereiten einer einzelnen kurzen Antwort auf Deutsch"
+        ));
+    }
+
+    #[test]
+    fn chat_answer_text_strips_live_t301_status_and_keeps_ping() {
+        assert_eq!(chat_answer_text("läuft\nTüfteln"), "");
+        assert_eq!(
+            chat_answer_text(
+                "läuft\n\u{E02A}\nVorbereiten einer einzelnen kurzen Antwort auf Deutsch"
+            ),
+            ""
+        );
+        assert_eq!(
+            chat_answer_text("Dachte 2 s nach\n\u{E02A}\nDachte 2 s nach\n\nPING"),
+            "PING"
+        );
+        assert_eq!(chat_answer_text("PING"), "PING");
+        assert_eq!(chat_answer_text("Dachte 2 s nach\n\nPING"), "PING");
     }
 }
