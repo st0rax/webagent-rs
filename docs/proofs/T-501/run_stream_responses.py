@@ -72,7 +72,7 @@ for brain in BRAINS:
     deltas = has_delta(chat.get("raw") or "")
     chat_rec = {
         "model": model,
-        "ok": bool(chat.get("ok") and deltas),
+        "ok": bool(chat.get("ok") and deltas and "STREAM_OK" in "".join(deltas)),
         "latency_ms": chat.get("latency_ms"),
         "http": chat.get("http"),
         "delta_count": len(deltas),
@@ -94,7 +94,7 @@ for brain in BRAINS:
     raw = resp.get("raw") or ""
     resp_rec = {
         "model": model,
-        "ok": bool(resp.get("ok") and (rdeltas or "RESP_OK" in raw)),
+        "ok": bool(resp.get("ok") and "RESP_OK" in ("".join(rdeltas) + raw)),
         "latency_ms": resp.get("latency_ms"),
         "http": resp.get("http"),
         "delta_count": len(rdeltas),

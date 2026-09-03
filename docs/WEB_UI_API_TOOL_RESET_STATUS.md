@@ -111,8 +111,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
        (alle 9 echten Brains, echte `POST /v1/chat/completions`, Antwort exakt
        `API_CHAT_OK` finish=stop; Beleg `api_chat_<brain>_2026-09-03.json`; zai bestaetigt
        den pointer-events-Fix auch ueber die Bridge). `api_chat/auto` Timeout >200s ->
-       `not_run` (AutoRouter-Inferenz haengt), `api_responses`/`streaming`/`attachment`/
-       `managed_tools`/`groups`/`security`/`sources` bleiben `not_run` bis eigene Belege.
+       `not_run` (AutoRouter-Inferenz haengt). Streaming 2026-09-04: perplexity+zai passed
+       (chatgpt nur UI-Chrome, nicht gezaehlt). api_responses: perplexity passed.
+       Rest streaming/api_responses plus attachment/managed_tools/groups/security/sources
+       bleiben `not_run` bis eigene Belege.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`
