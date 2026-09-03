@@ -92,7 +92,10 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`
       1259 passed / 1 ignored). Release-Gewicht wenn Artefakt existiert <10 MB.
-- [ ] Phase 6.x rest: /quelle (T-602), Health-Balken in der UI
+- [x] Phase 6.4 /quelle + Session-Source-Scope (T-602) —
+      erledigt (`src/source_scope.rs`, Web-UI `source-switch`, `/quelle` mit `--save` only;
+      PR #22 merge `0892fc9`). Health-Balken-Detail bleibt offen.
+- [ ] Phase 6.x rest: Health-Balken in der UI
 - [ ] Phase 7.x Grok-Bot-Modus (Gruppen)
 
 ## Naechste Schritte
