@@ -4,6 +4,7 @@
 //! Keine eigene Tool-Implementierung.
 
 use crate::session::{SessionEvent, SessionService, Since};
+use crate::source_scope::{parse_quelle_args, QuelleCommand, QuelleSpec};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -51,6 +52,30 @@ struct UploadBody {
     filename: String,
 }
 
+#[derive(Deserialize, Default)]
+struct SourceBody {
+    #[serde(default)]
+    brain: String,
+    #[serde(default)]
+    source: String,
+    #[serde(default)]
+    save: bool,
+}
+
+#[derive(Deserialize, Default)]
+struct QuelleBody {
+    #[serde(default)]
+    session: String,
+    #[serde(default)]
+    brain: String,
+    #[serde(default)]
+    spec: String,
+    #[serde(default)]
+    save: bool,
+    #[serde(default)]
+    line: String,
+}
+
 /// Routet eine UI-API-Anfrage. Statische Assets bleiben in `web_ui::lookup`.
 pub fn dispatch(method: &str, path: &str, query: &str, body: &str, state: &UiState) -> ApiResponse {
     let method = method.to_ascii_uppercase();
@@ -59,6 +84,8 @@ pub fn dispatch(method: &str, path: &str, query: &str, body: &str, state: &UiSta
         ("GET", "/api/capability") => capability_all(),
         ("GET", "/api/sessions") => list_sessions(state),
         ("POST", "/api/sessions") => create_session(state, body),
+        ("GET", "/api/sources") => list_sources(state, query),
+        ("POST", "/api/quelle") => post_quelle(state, query, body),
         ("GET", p) if p.starts_with("/api/capability/") => {
             capability_one(p.trim_start_matches("/api/capability/"))
         }
@@ -88,6 +115,8 @@ fn route_session(
         ("POST", "stop") => stop(state, id),
         ("GET", "events") => events(state, id, query),
         ("POST", "upload") => upload(state, id, body),
+        ("GET", "source") => get_source(state, id),
+        ("POST", "source") => set_source(state, id, body),
         _ => ApiResponse::json(404, json!({"error": "not_found"})),
     })
 }
@@ -258,6 +287,147 @@ fn upload(state: &UiState, id: &str, body: &str) -> ApiResponse {
     )
 }
 
+
+fn query_param(query: &str, key: &str) -> Option<String> {
+    query.split('&').find_map(|p| {
+        p.strip_prefix(&format!("{key}="))
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+    })
+}
+
+fn list_sources(state: &UiState, query: &str) -> ApiResponse {
+    let brain = query_param(query, "brain");
+    let session_id = query_param(query, "session");
+    if let Some(id) = session_id {
+        let Some(handle) = state.sessions.get(&id) else {
+            return ApiResponse::json(404, json!({"error": "session_not_found"}));
+        };
+        let brain = brain.unwrap_or_else(|| handle.brain());
+        let cmd = QuelleCommand {
+            brain: Some(brain.clone()),
+            spec: QuelleSpec::List,
+            save: false,
+        };
+        return match handle.apply_quelle(&cmd) {
+            Ok(report) => {
+                let active = handle.active_source();
+                ApiResponse::json(
+                    200,
+                    json!({
+                        "brain": brain,
+                        "active": active,
+                        "text": report.text,
+                    }),
+                )
+            }
+            Err(error) => ApiResponse::json(400, json!({"error": error})),
+        };
+    }
+    let scope = crate::source_scope::SourceScope::load_default();
+    let listed = scope.list(brain.as_deref());
+    ApiResponse::json(200, json!({ "sources": listed, "brain": brain }))
+}
+
+fn get_source(state: &UiState, id: &str) -> ApiResponse {
+    let Some(handle) = state.sessions.get(id) else {
+        return ApiResponse::json(404, json!({"error": "session_not_found"}));
+    };
+    ApiResponse::json(
+        200,
+        serde_json::to_value(handle.active_source()).unwrap_or(json!({})),
+    )
+}
+
+fn set_source(state: &UiState, id: &str, body: &str) -> ApiResponse {
+    let Some(handle) = state.sessions.get(id) else {
+        return ApiResponse::json(404, json!({"error": "session_not_found"}));
+    };
+    let parsed: SourceBody = serde_json::from_str(body).unwrap_or_default();
+    if parsed.source.trim().is_empty() {
+        return ApiResponse::json(400, json!({"error": "source_required"}));
+    }
+    let brain = if parsed.brain.trim().is_empty() {
+        handle.brain()
+    } else {
+        parsed.brain.trim().to_string()
+    };
+    let cmd = QuelleCommand {
+        brain: Some(brain),
+        spec: QuelleSpec::Set(parsed.source.trim().to_string()),
+        save: parsed.save,
+    };
+    match handle.apply_quelle(&cmd) {
+        Ok(report) => ApiResponse::json(
+            200,
+            json!({
+                "persisted": report.persisted,
+                "active": report.active,
+                "text": report.text,
+                "session": handle.snapshot(),
+            }),
+        ),
+        Err(error) => ApiResponse::json(400, json!({"error": error})),
+    }
+}
+
+fn post_quelle(state: &UiState, query: &str, body: &str) -> ApiResponse {
+    let parsed: QuelleBody = serde_json::from_str(body).unwrap_or_default();
+    let cmd = if !parsed.line.trim().is_empty() {
+        let line = parsed.line.trim();
+        let rest = line.strip_prefix("/quelle").unwrap_or(line).trim();
+        match parse_quelle_args(rest) {
+            Ok(cmd) => cmd,
+            Err(error) => return ApiResponse::json(400, json!({"error": error})),
+        }
+    } else {
+        let spec = parsed.spec.trim();
+        let spec = if spec.is_empty() || spec == "list" {
+            if parsed.brain.trim().is_empty() {
+                QuelleSpec::List
+            } else if spec == "list" {
+                QuelleSpec::List
+            } else {
+                QuelleSpec::Show
+            }
+        } else {
+            QuelleSpec::Set(spec.to_string())
+        };
+        QuelleCommand {
+            brain: if parsed.brain.trim().is_empty() {
+                None
+            } else {
+                Some(parsed.brain.trim().to_string())
+            },
+            spec,
+            save: parsed.save,
+        }
+    };
+    let session_id = if parsed.session.trim().is_empty() {
+        query_param(query, "session").unwrap_or_default()
+    } else {
+        parsed.session.trim().to_string()
+    };
+    if session_id.is_empty() {
+        return ApiResponse::json(400, json!({"error": "session_required"}));
+    }
+    let Some(handle) = state.sessions.get(&session_id) else {
+        return ApiResponse::json(404, json!({"error": "session_not_found"}));
+    };
+    match handle.apply_quelle(&cmd) {
+        Ok(report) => ApiResponse::json(
+            200,
+            json!({
+                "persisted": report.persisted,
+                "active": report.active,
+                "text": report.text,
+                "session": handle.snapshot(),
+            }),
+        ),
+        Err(error) => ApiResponse::json(400, json!({"error": error})),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,5 +518,53 @@ mod tests {
         assert_eq!(ok.status, 202);
         let v: Value = serde_json::from_slice(&ok.body).unwrap();
         assert_eq!(v["stored"], false);
+    }
+
+    #[test]
+    fn source_switch_ist_session_scope_ohne_auto_routing() {
+        let state = UiState::default();
+        let id = post_session(&state);
+        let got = dispatch("GET", &format!("/api/sessions/{id}/source"), "", "", &state);
+        assert_eq!(got.status, 200);
+        let v: Value = serde_json::from_slice(&got.body).unwrap();
+        assert_eq!(v["source"], "default");
+        assert_eq!(v["kind"], "browser");
+
+        let set = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/source"),
+            "",
+            r#"{"source":"openrouter","save":false}"#,
+            &state,
+        );
+        assert_eq!(set.status, 200, "{}", String::from_utf8_lossy(&set.body));
+        let set_v: Value = serde_json::from_slice(&set.body).unwrap();
+        assert_eq!(set_v["persisted"], false);
+        assert_eq!(set_v["active"]["source"], "openrouter");
+        assert_eq!(set_v["session"]["source"], "openrouter");
+
+        let other = dispatch(
+            "POST",
+            "/api/sessions",
+            "",
+            r#"{"brain":"chatgpt","task":"x"}"#,
+            &state,
+        );
+        assert_eq!(other.status, 201);
+        let other_v: Value = serde_json::from_slice(&other.body).unwrap();
+        assert_eq!(other_v["source"], "default");
+
+        let cmd = dispatch(
+            "POST",
+            "/api/quelle",
+            "",
+            &format!(r#"{{"session":"{id}","line":"/quelle claude default"}}"#),
+            &state,
+        );
+        assert_eq!(cmd.status, 200);
+        let cmd_v: Value = serde_json::from_slice(&cmd.body).unwrap();
+        assert_eq!(cmd_v["persisted"], false);
+        assert_eq!(cmd_v["active"]["source"], "default");
+        assert_eq!(cmd_v["active"]["kind"], "browser");
     }
 }
