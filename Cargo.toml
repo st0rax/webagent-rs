@@ -84,3 +84,13 @@ strip = true
 [profile.dev]
 debug = 1
 incremental = true
+
+# Testbinary groesse: Mit dem Default (codegen-units = 256) erzeugte der
+# Multi-Codegen-Build der inzwischen grossen Test-Suite ein Test-Binary, das
+# beim Laden mit 0xC0000005 (ACCESS_VIOLATION) crashte — noch vor jeder
+# Testausfuehrung, auch bei `--list`. Eine moderate Einheitenzahl hält das
+# Binary unter der Loader-Schwelle. Verifiziert: `cargo test --lib` mit
+# codegen-units = 16/1 laeuft komplett gruen (1276 passed), mit 256 crasht es.
+# `[profile.test]` erbt von `[profile.dev]`, also nur codegen-units setzen.
+[profile.test]
+codegen-units = 16
