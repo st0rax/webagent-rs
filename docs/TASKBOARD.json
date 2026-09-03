@@ -315,12 +315,12 @@
         "chatgpt-codex",
         "claude-code"
       ],
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
-      "branch": "feature/T-602-quelle-source-scope",
+      "branch": "feature/T-602-quelle-impl",
       "claimed_at": "2026-09-03",
-      "done_at": null,
-      "proof_path": null,
+      "done_at": "2026-09-03",
+      "proof_path": "src/source_scope.rs, web/index.html, src/web_ui_api.rs; PR #22 merge 0892fc9; DoD tests persistiert_nur_mit_save, session_scope_ist_pro_instanz_isoliert, kein_automatisches_routing, source_switch_ist_session_scope_ohne_auto_routing",
       "verification": "cargo test --lib",
       "dod": "Kein automatisches Routing; Session-Scope getestet; persistiert nur mit --save"
     },

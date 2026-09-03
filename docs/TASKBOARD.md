@@ -32,5 +32,5 @@
 | T-404 | 4 | SDK-Blackbox: offizielle Python-/JS-SDKs + zwei Clients | tests | codex, local | done | grok-agent | feature/T-404-sdk-blackbox |
 | T-501 | 5 | Alle-Brains-Matrix je Brain (Chat/Streaming/Modell/Anhang/Tools) | live | claude, grok, local | free | – | – |
 | T-601 | 6 | rustls-HTTPS-Client + data/providers.json + <10-MB-Budget | code | codex, grok | done | grok-agent | feature/T-601-rustls-https |
-| T-602 | 6 | /quelle + UI-Schalter + Session-Source-Scope (manueller Hybrid) | code | codex, claude | free | – | – |
+| T-602 | 6 | /quelle + UI-Schalter + Session-Source-Scope (manueller Hybrid) | code | codex, claude | done | grok-agent | feature/T-602-quelle-impl |
 | T-701 | 7 | Gruppen (2-6), Runden, @Brain, Leader-Synthese | code | codex, claude | free | – | – |
