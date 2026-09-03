@@ -228,13 +228,11 @@ impl SourceScope {
 
     fn write_catalog(&self) -> Result<(), String> {
         if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("providers.json Ordner: {e}"))?;
+            std::fs::create_dir_all(parent).map_err(|e| format!("providers.json Ordner: {e}"))?;
         }
         let json = serde_json::to_string_pretty(&self.catalog)
             .map_err(|e| format!("providers.json serialize: {e}"))?;
-        std::fs::write(&self.path, json)
-            .map_err(|e| format!("providers.json schreiben: {e}"))?;
+        std::fs::write(&self.path, json).map_err(|e| format!("providers.json schreiben: {e}"))?;
         ProvidersFile::load_path(&self.path).map(|_| ())
     }
 
@@ -506,7 +504,9 @@ mod tests {
             version: 1,
             brains: BTreeMap::new(),
         };
-        catalog.brains.insert("claude".into(), catalog_entry("default"));
+        catalog
+            .brains
+            .insert("claude".into(), catalog_entry("default"));
         let mut a = SourceScope::in_memory(catalog.clone());
         let mut b = SourceScope::in_memory(catalog);
         a.set_session("claude", "openrouter").unwrap();

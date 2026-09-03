@@ -287,7 +287,6 @@ fn upload(state: &UiState, id: &str, body: &str) -> ApiResponse {
     )
 }
 
-
 fn query_param(query: &str, key: &str) -> Option<String> {
     query.split('&').find_map(|p| {
         p.strip_prefix(&format!("{key}="))
