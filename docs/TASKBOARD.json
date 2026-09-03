@@ -190,12 +190,12 @@
         "claude-code",
         "local/opencode"
       ],
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "feature/T-302-claude-runtime-model",
       "claimed_at": "2026-09-03",
-      "done_at": null,
-      "proof_path": null,
+      "done_at": "2026-09-03",
+      "proof_path": "docs/proofs/T-302/; matrix model/effort=claude passed",
       "verification": "Menue-Oeffnung + Wahl + Verifikation naechster Turn",
       "dod": "Runtime-Liste statt feste Kodierung; Nachpruefung belegt",
       "depends_on": []

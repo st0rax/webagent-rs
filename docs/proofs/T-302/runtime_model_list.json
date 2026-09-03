@@ -1,0 +1,8 @@
+{
+  "cap": "runtime_model_list",
+  "brain": "claude",
+  "at": "2026-09-03T15:07:20Z",
+  "how": "webagent model --brain claude",
+  "output": "[model] claude: aktuell 'Sonnet 5 Hoch'\r\n    Fable 5.1 ¯éÅ Pro oder Max F├╝r Ihre schwierigsten Herausforderungen Upgrade\r\n    Opus 5 Pro F├╝r komplexe Aufgaben Upgrade\r\n    Aufwand Hoch ¯Ç¬\r\n    Weitere Modelle ¯Ç¬\r\n    Fable 5.1 ist in Max-Pl├ñnen enthalten oder mit Nutzungsguthaben auf Pro verf├╝gbar. Mehr erfahren",
+  "proof": "Runtime-Liste live aus Claude-Modellmenue (nicht hartkodiert)"
+}
