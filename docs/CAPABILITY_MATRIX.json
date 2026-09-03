@@ -33,92 +33,92 @@
     {
       "area": "webui_chat",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "chatgpt",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 20184,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "Sonnet 5 Hoch",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 13416,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "deepseek",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 7710,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "gemini",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 8693,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "kimi",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 16480,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "mistral",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 7079,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "perplexity",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 13918,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-03",
+      "model": "qwen",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 29234,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 56471,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
     },
     {
       "area": "webui_chat",
