@@ -113,12 +113,13 @@
     {
       "area": "webui_chat",
       "brain": "zai",
-      "status": "failed",
+      "status": "passed",
       "date": "2026-09-03",
       "model": null,
       "selector_hash": null,
-      "latency_ms": 56471,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "latency_ms": 11233,
+      "proof_path": "docs/proofs/T-501/zai_send_fix_2026-09-03.jsonl",
+      "note": "Send-Button ist disabled:false aber pointer-events:none (Button+Parent) — vertrauenswuerdiger Echtklick rauscht durch, synthetischer el.click() feuerte den on:click nie. Fix: send_button_pointer_transparent() erkennt das und routet auf synthetischen Klick. chat Failed (56471ms, ABSENDEKNOPF_DEAKTIVIERT) -> Passed (11233ms)."
     },
     {
       "area": "webui_chat",

@@ -867,6 +867,14 @@ impl WebBrainBackend {
         }
         std::thread::sleep(Duration::from_millis(150));
         let url_before = self.get_conversation_ref();
+        // zai (und a priori andere Svelte-Oberflaechen) rendern den Send-Button
+        // mit `pointer-events:none` auf Button UND Parent: er sieht enabled aus,
+        // aber ein vertrauenswuerdiger Echtklick wird vom OS-Hit-Testing DURCH
+        // ihn hindurchgeschickt und loest nie den Handler aus. Ein synthetisches
+        // `el.click()` ignoriert das und trifft den Handler. Wird hier EINMAL vor
+        // der Schleife ermittelt, damit die 5 Versuche konsistent denselben
+        // Absendeweg nehmen statt zwischen Echt- und Synthetik-Klick zu flippen.
+        let pointer_transparent = self.send_button_pointer_transparent();
         // Fuenf Versuche statt drei: das Absenden in Lexical-/contenteditable-Editoren
         // (kimi) greift pro Versuch nur ~zur Haelfte; jeder weitere Versuch, der bei
         // Erfolg gar nicht erst laeuft, hebt die Zuverlaessigkeit deutlich. Bei einem
@@ -890,6 +898,13 @@ impl WebBrainBackend {
                     if !self.click_visible_real("send_button") {
                         self.click_first("send_button");
                     }
+                } else if pointer_transparent && has_send_button {
+                    // zai-Sende-Button ist `disabled:false` (sieht enabled aus)
+                    // aber `pointer-events:none` — ein vertrauenswuerdiger
+                    // Echtklick wird vom OS-Hit-Testing durch ihn hindurch
+                    // geschickt und feuert den `on:click`-Handler nie. Der
+                    // synthetische Klick ignoriert das und trifft zuverlaessig.
+                    self.click_first("send_button");
                 } else if attempt == 0 || !has_send_button {
                     self.press_enter().ok();
                 } else if !self.click_visible_real("send_button") {
@@ -997,6 +1012,7 @@ impl WebBrainBackend {
                             var value=('value' in e)?(e.value||''):(e.innerText||e.textContent||'');
                             out.push({{selector:selectors[i],tag:e.tagName,cls:((e.className||'')+'').slice(0,180),
                                 aria:e.getAttribute('aria-label'),disabled:e.disabled===true||e.getAttribute('aria-disabled')==='true',
+                                pe:s.pointerEvents,parentPe:((e.parentElement&&getComputedStyle(e.parentElement))?getComputedStyle(e.parentElement).pointerEvents:null),
                                 visible:r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden',x:r.x,y:r.y,w:r.width,h:r.height,
                                 textLength:value.length,text:value.slice(0,500)}});
                         }}
@@ -1024,6 +1040,27 @@ impl WebBrainBackend {
                 Err(error) => eprintln!("[send] submit failure screenshot capture: {error}"),
             }
         }
+    }
+
+    /// Ist der Absendeknopf fuer Pointer-Eingaben transparent (`pointer-events:
+    /// none`)? Manche Svelte-Oberflaechen (zai) rendern den eigentlichen Send-
+    /// Button mit `pointer-events:none` auf Button UND Parent: er sieht enabled
+    /// aus, ein vertrauenswuerdiger CDP-Echtklick (OS-Hit-Testing) rauscht
+    /// trotzdem DURCH ihn hindurch auf das dahinterliegende Element — der
+    /// `on:click`-Handler feuert nie. Ein synthetisches `el.click()` ignoriert
+    /// `pointer-events` und trifft den Handler zuverlaessig. Erkennung ist rein
+    /// auf `pointer-events` gestuetzt — NUR hier, ohne `disabled`, damit die
+    /// echte Deaktivierung (grauer Knopf) in `send_button_disabled` nicht
+    /// verwischt wird.
+    fn send_button_pointer_transparent(&self) -> bool {
+        let list = Self::js_selectors(&self.sel("send_button"));
+        let js = Self::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){var b=el.closest('button')||el;\
+             return getComputedStyle(b).pointerEvents==='none';}",
+            "false",
+        );
+        self.eval(&js).ok().and_then(|v| v.as_bool()).unwrap_or(false)
     }
 
     /// Ist der Absendeknopf deaktiviert? `None` = kein Knopf gefunden.

@@ -95,15 +95,19 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       Kein clientbezogener Servercode. Live-`api_*`-Zellen bleiben Phase 3/5.
  - [~] Phase 5.x Alle Brains (T-501, laeuft bei local/opencode)
        **Live-Messung 2026-09-03, alle 9 Brains** via `webagent verify`:
-       `chat` (webui_chat) 8×Passed / zai **failed** („ABSENDEKNOPF_DEAKTIVIERT":
-       Composer gefuellt, Absendeknopf bleibt deaktiviert, 5 Versuche - echter
-       UI/Selektor-Befund); `new_chat` 9×Passed; `model_switch` Passed bei claude/
+       `chat` (webui_chat) **9×Passed** (zai anfangs failed „ABSENDEKNOPF_DEAKTIVIERT"
+       — Root-Cause: Send-Button `disabled:false` aber `pointer-events:none` auf
+       Button+Parent, Echtklick rauschte durch; Fix `send_button_pointer_transparent()`
+       routet auf synthetischen Klick, Branch `fix/zai-send-absendeknopf`;
+       `webui_chat/zai` failed→**passed** 11233ms, Beleg
+       `docs/proofs/T-501/zai_send_fix_2026-09-03.jsonl`); `new_chat` 9×Passed;
+       `model_switch` Passed bei claude/
        qwen/perplexity/zai, **unreachable** (kein sichtbarer Modell-Selektor) bei
        deepseek/gemini/kimi/mistral/chatgpt; `reasoning_toggle` (effort) Passed bei
        deepseek, unreachable bei zai. Belege `docs/proofs/T-501/`; Matrix gefuellt.
-       **Offen fuer „je Brain gruen"**: zai `chat` (zu fixen/entscheiden) + die
-       nicht-driveable/API-Zellen (api_*, attachment, managed_tools, sources,
-       groups, security) bleiben `not_run` bis eigene Live-Laeufe.
+       **Offen fuer „je Brain gruen"**: die nicht-driveable/API-Zellen (api_*,
+       attachment, managed_tools, sources, groups, security) bleiben `not_run` bis
+       eigene Live-Laeufe.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`
