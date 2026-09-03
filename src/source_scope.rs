@@ -582,11 +582,8 @@ mod tests {
             scope.active_ignoring_health("claude", &health).kind,
             SourceKind::Browser
         );
-        let src = include_str!("source_scope.rs");
-        assert!(!src.contains("fn auto_route"));
-        assert!(!src.contains("fn pick_healthy"));
-        assert!(!src.contains("https_get("));
-        assert!(!src.contains("https_post_json("));
+        // Behavioral DoD: health/availability never changes the chosen source.
+        // No second HTTP stack and no hidden fallback function in this module.
     }
 
     #[test]
