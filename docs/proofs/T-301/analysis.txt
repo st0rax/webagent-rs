@@ -1,0 +1,5 @@
+events=4 deltas=2 identical_consecutive=0 unique=2
+1 Started
+2 TextDelta 'Entwirren'
+3 TextDelta 'PING'
+4 TextComplete

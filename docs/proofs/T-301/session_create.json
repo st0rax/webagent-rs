@@ -1,0 +1,12 @@
+{
+  "brain": "claude",
+  "created_at": "2026-09-03T21:23:54.040782+02:00",
+  "done": false,
+  "last_seq": 1,
+  "run_id": "ui-20260903T1923540407620000",
+  "source": "default",
+  "source_kind": "browser",
+  "source_persisted": true,
+  "status": "running",
+  "task": "T-301 live retest after dedupe"
+}

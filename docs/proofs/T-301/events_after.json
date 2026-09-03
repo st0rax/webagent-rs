@@ -1,0 +1,1 @@
+{"events":[{"event":{"Started":{"brain":"claude","run_id":"ui-20260903T1926022916890000","task":"T-301 live retest"}},"seq":1},{"event":{"TextDelta":{"text":"Entwirren"}},"seq":2},{"event":{"TextDelta":{"text":"PING"}},"seq":3},{"event":"TextComplete","seq":4}],"gap":false,"since":0}

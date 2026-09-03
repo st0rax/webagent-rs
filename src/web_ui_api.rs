@@ -1,19 +1,165 @@
-//! HTTP-API der lokalen Web-UI (T-202).
+//! HTTP-API der lokalen Web-UI (T-202 / T-301).
 //!
-//! Sitzt auf [`SessionService`] / [`EventStream`] und `doctor` ohne Browserstart.
-//! Keine eigene Tool-Implementierung.
+//! Sitzt auf [`SessionService`] / [`EventStream`] und `doctor`. Chat (T-301)
+//! treibt ein persistentes Brain pro UI-Sitzung; Unit-Tests injizieren FakeBrain
+//! und starten keinen Browser.
 
+use crate::brain::{BrainBackend, SessionState};
+use crate::browser::WebBrainBackend;
 use crate::group_run::{run_group, stub_respond, GroupRegistry, GroupSpec};
-use crate::session::{SessionEvent, SessionService, Since};
+use crate::session::{SessionEvent, SessionHandle, SessionService, Since};
 use crate::source_scope::{parse_quelle_args, QuelleCommand, QuelleSpec};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+/// Factory fuer das Brain einer UI-Sitzung. Produktion: sichtbares WebView.
+/// Tests: FakeBrain, nie ein echter Browser.
+type ChatFactory = Arc<dyn Fn(&str) -> Result<Box<dyn BrainBackend + Send>, String> + Send + Sync>;
+
+struct LiveBrain {
+    brain: Box<dyn BrainBackend + Send>,
+    started: bool,
+    composer_opened: bool,
+}
+
+struct SessionChat {
+    live: Mutex<LiveBrain>,
+    cancel: AtomicBool,
+    generating: AtomicBool,
+}
 
 /// Gemeinsamer Zustand eines UI-Prozesses.
-#[derive(Debug, Default, Clone)]
 pub struct UiState {
     pub sessions: SessionService,
     pub groups: GroupRegistry,
+    chats: Arc<Mutex<HashMap<String, Arc<SessionChat>>>>,
+    factory: ChatFactory,
+}
+
+impl Clone for UiState {
+    fn clone(&self) -> Self {
+        Self {
+            sessions: self.sessions.clone(),
+            groups: self.groups.clone(),
+            chats: Arc::clone(&self.chats),
+            factory: Arc::clone(&self.factory),
+        }
+    }
+}
+
+impl std::fmt::Debug for UiState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UiState")
+            .field("sessions", &self.sessions)
+            .field("groups", &self.groups)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self::with_chat_factory(production_chat_factory)
+    }
+}
+
+impl UiState {
+    /// Injizierbare Brain-Factory (Tests: FakeBrain; Produktion: WebBrainBackend).
+    pub fn with_chat_factory<F>(factory: F) -> Self
+    where
+        F: Fn(&str) -> Result<Box<dyn BrainBackend + Send>, String> + Send + Sync + 'static,
+    {
+        Self {
+            sessions: SessionService::new(),
+            groups: GroupRegistry::default(),
+            chats: Arc::new(Mutex::new(HashMap::new())),
+            factory: Arc::new(factory),
+        }
+    }
+}
+
+fn production_chat_factory(brain_id: &str) -> Result<Box<dyn BrainBackend + Send>, String> {
+    let backend = WebBrainBackend::from_config(brain_id)?;
+    Ok(Box::new(backend))
+}
+
+/// Streaming-Ingest: Claude liefert Ersatz-DOM-Snapshots, FakeBrain Chunks
+/// oder wachsende Prefixe. `last_snapshot` ist die letzte **volle bereinigte**
+/// Antwort — nie die Konkatenation aller Polls.
+#[derive(Debug, Default)]
+struct StreamDeltaIngest {
+    last_snapshot: String,
+    last_emitted: String,
+}
+
+impl StreamDeltaIngest {
+    fn push(&mut self, raw_snapshot: &str) -> Option<String> {
+        let cleaned = crate::observer::chat_answer_text(raw_snapshot);
+        if cleaned.is_empty() {
+            return None;
+        }
+        if cleaned == self.last_snapshot {
+            return None;
+        }
+        if let Some(suffix) = cleaned.strip_prefix(self.last_snapshot.as_str()) {
+            if suffix.is_empty() {
+                return None;
+            }
+            if suffix == self.last_emitted {
+                return None;
+            }
+            let delta = suffix.to_string();
+            self.last_snapshot = cleaned;
+            self.last_emitted = delta.clone();
+            return Some(delta);
+        }
+        // Kuerzerer Snapshot: veralteter Poll.
+        if self.last_snapshot.starts_with(&cleaned) {
+            return None;
+        }
+        // Kein Prefix: Ersatz-Snapshot (Claude) oder FakeBrain-Chunk.
+        if self.last_emitted.is_empty()
+            || cleaned == self.last_emitted
+            || cleaned.contains(self.last_emitted.as_str())
+        {
+            if cleaned == self.last_emitted {
+                self.last_snapshot = cleaned;
+                return None;
+            }
+            let delta = if self.last_snapshot.is_empty() {
+                cleaned.clone()
+            } else if let Some(suffix) = cleaned.strip_prefix(self.last_emitted.as_str()) {
+                if suffix.is_empty() {
+                    self.last_snapshot = cleaned;
+                    return None;
+                }
+                suffix.to_string()
+            } else {
+                cleaned.clone()
+            };
+            if delta.is_empty() || delta == self.last_emitted {
+                self.last_snapshot = cleaned;
+                return None;
+            }
+            self.last_snapshot = cleaned;
+            self.last_emitted = delta.clone();
+            return Some(delta);
+        }
+        // FakeBrain-Chunk: an last_snapshot anhaengen.
+        if cleaned == self.last_emitted {
+            return None;
+        }
+        self.last_snapshot.push_str(&cleaned);
+        self.last_emitted = cleaned.clone();
+        Some(cleaned)
+    }
+}
+
+fn composer_missing(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    lower.contains("composer-feld nicht gefunden") || lower.contains("composer not found")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -243,11 +389,117 @@ fn chat(state: &UiState, id: &str, body: &str) -> ApiResponse {
         return ApiResponse::json(409, json!({"error": "session_done"}));
     }
     let parsed: ChatBody = serde_json::from_str(body).unwrap_or_default();
-    if parsed.text.trim().is_empty() {
+    let text = parsed.text.trim();
+    if text.is_empty() {
         return ApiResponse::json(400, json!({"error": "text_required"}));
     }
-    if let Err(error) = handle.push(SessionEvent::TextDelta { text: parsed.text }) {
-        return ApiResponse::json(409, json!({"error": error}));
+    let chat = match get_or_create_chat(state, id, &handle.brain()) {
+        Ok(chat) => chat,
+        Err(error) => return ApiResponse::json(400, json!({"error": error})),
+    };
+    if chat.generating.swap(true, Ordering::SeqCst) {
+        return ApiResponse::json(409, json!({"error": "busy"}));
+    }
+    let result = drive_chat_turn(&handle, &chat, text);
+    chat.generating.store(false, Ordering::SeqCst);
+    result
+}
+
+fn get_or_create_chat(
+    state: &UiState,
+    id: &str,
+    brain_id: &str,
+) -> Result<Arc<SessionChat>, String> {
+    let mut map = state.chats.lock().unwrap();
+    if let Some(existing) = map.get(id) {
+        return Ok(Arc::clone(existing));
+    }
+    let brain = (state.factory)(brain_id)?;
+    let chat = Arc::new(SessionChat {
+        live: Mutex::new(LiveBrain {
+            brain,
+            started: false,
+            composer_opened: false,
+        }),
+        cancel: AtomicBool::new(false),
+        generating: AtomicBool::new(false),
+    });
+    map.insert(id.to_string(), Arc::clone(&chat));
+    Ok(chat)
+}
+
+fn drive_chat_turn(handle: &SessionHandle, chat: &SessionChat, text: &str) -> ApiResponse {
+    if chat.cancel.load(Ordering::SeqCst) || handle.is_done() {
+        return ApiResponse::json(409, json!({"error": "session_done"}));
+    }
+    let mut live = chat.live.lock().unwrap();
+    if let Err(error) = ensure_session_brain(&mut live, &handle.brain()) {
+        let _ = handle.push(SessionEvent::Error {
+            message: error.clone(),
+        });
+        return ApiResponse::json(502, json!({"error": error}));
+    }
+    let baseline = match send_on_open_composer(&mut live, text) {
+        Ok(baseline) => baseline,
+        Err(error) => {
+            let _ = handle.push(SessionEvent::Error {
+                message: error.clone(),
+            });
+            return ApiResponse::json(502, json!({"error": error}));
+        }
+    };
+    let wait_timeout =
+        crate::timeouts::resolve_timeout("wait_response", &handle.brain(), text, None);
+    let mut ingest = StreamDeltaIngest::default();
+    let mut on_update = |snapshot: &str| {
+        if chat.cancel.load(Ordering::SeqCst) || handle.is_done() {
+            return;
+        }
+        if let Some(delta) = ingest.push(snapshot) {
+            let _ = handle.push(SessionEvent::TextDelta { text: delta });
+        }
+    };
+    let response = match live
+        .brain
+        .wait_response_streaming(baseline, wait_timeout, &mut on_update)
+    {
+        Ok(response) => response,
+        Err(error) => {
+            if chat.cancel.load(Ordering::SeqCst) || handle.is_done() {
+                let _ = live.brain.stop();
+                return ApiResponse::json(
+                    200,
+                    serde_json::to_value(handle.snapshot()).unwrap_or(json!({})),
+                );
+            }
+            let _ = handle.push(SessionEvent::Error {
+                message: error.clone(),
+            });
+            return ApiResponse::json(502, json!({"error": error}));
+        }
+    };
+    if chat.cancel.load(Ordering::SeqCst) || handle.is_done() {
+        let _ = live.brain.stop();
+        return ApiResponse::json(
+            200,
+            serde_json::to_value(handle.snapshot()).unwrap_or(json!({})),
+        );
+    }
+    if response.backend_status == "rate_limit" || response.backend_status == "blocked" {
+        let error = format!("{}: {}", response.backend_status, response.text.trim());
+        let _ = handle.push(SessionEvent::Error {
+            message: error.clone(),
+        });
+        return ApiResponse::json(502, json!({"error": error}));
+    }
+    if let Some(delta) = ingest.push(&response.text) {
+        let _ = handle.push(SessionEvent::TextDelta { text: delta });
+    }
+    if handle.is_done() {
+        return ApiResponse::json(
+            200,
+            serde_json::to_value(handle.snapshot()).unwrap_or(json!({})),
+        );
     }
     let _ = handle.push(SessionEvent::TextComplete);
     ApiResponse::json(
@@ -256,12 +508,57 @@ fn chat(state: &UiState, id: &str, body: &str) -> ApiResponse {
     )
 }
 
+fn ensure_session_brain(live: &mut LiveBrain, brain_id: &str) -> Result<(), String> {
+    if live.started {
+        return Ok(());
+    }
+    // T-301: sichtbares WebView, nie headless auf dem UI-Chat-Pfad.
+    live.brain.start(false)?;
+    let ready_timeout = crate::timeouts::resolve_timeout("ensure_ready", brain_id, "", None);
+    let state = live
+        .brain
+        .ensure_ready(ready_timeout)
+        .unwrap_or(SessionState::Error);
+    if state != SessionState::Ready {
+        let _ = live.brain.stop();
+        live.started = false;
+        return Err(format!("session_state={state:?}"));
+    }
+    live.started = true;
+    Ok(())
+}
+
+fn send_on_open_composer(live: &mut LiveBrain, text: &str) -> Result<i32, String> {
+    if !live.composer_opened {
+        live.brain.new_chat()?;
+        live.composer_opened = true;
+    }
+    match live.brain.send(text) {
+        Ok(baseline) => Ok(baseline),
+        Err(error) if live.composer_opened && composer_missing(&error) => {
+            live.brain.new_chat()?;
+            live.brain.send(text)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 fn stop(state: &UiState, id: &str) -> ApiResponse {
     let Some(handle) = state.sessions.get(id) else {
         return ApiResponse::json(404, json!({"error": "session_not_found"}));
     };
     if handle.is_done() {
         return ApiResponse::json(409, json!({"error": "session_done"}));
+    }
+    let chat = {
+        let mut map = state.chats.lock().unwrap();
+        map.remove(id)
+    };
+    if let Some(chat) = chat {
+        chat.cancel.store(true, Ordering::SeqCst);
+        if let Ok(mut live) = chat.live.try_lock() {
+            let _ = live.brain.stop();
+        }
     }
     if let Err(error) = handle.push(SessionEvent::Done {
         status: "cancelled".into(),
@@ -553,6 +850,47 @@ fn post_quelle(state: &UiState, query: &str, body: &str) -> ApiResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fakebrain::{FakeBrain, Scenario};
+    use std::time::Duration;
+
+    fn test_ui(scenarios: Vec<Scenario>) -> UiState {
+        UiState::with_chat_factory(move |_id| {
+            Ok(Box::new(FakeBrain::new("fake", scenarios.clone())))
+        })
+    }
+
+    fn event_kind(event: &Value) -> &str {
+        event
+            .as_object()
+            .and_then(|m| m.keys().next())
+            .map(String::as_str)
+            .unwrap_or("")
+    }
+
+    fn text_deltas(events: &[Value]) -> Vec<String> {
+        events
+            .iter()
+            .filter_map(|row| {
+                row["event"]["TextDelta"]["text"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect()
+    }
+
+    fn fetch_events(state: &UiState, id: &str) -> (Value, Vec<Value>) {
+        let ev = dispatch(
+            "GET",
+            &format!("/api/sessions/{id}/events"),
+            "since=0",
+            "",
+            state,
+        );
+        assert_eq!(ev.status, 200);
+        let v: Value = serde_json::from_slice(&ev.body).unwrap();
+        let events = v["events"].as_array().cloned().unwrap_or_default();
+        (v, events)
+    }
 
     fn post_session(state: &UiState) -> String {
         let resp = dispatch(
@@ -592,7 +930,7 @@ mod tests {
 
     #[test]
     fn session_chat_stop_events() {
-        let state = UiState::default();
+        let state = test_ui(vec![Scenario::Text("ok".into(), 0)]);
         let id = post_session(&state);
         let chat = dispatch(
             "POST",
@@ -747,5 +1085,228 @@ mod tests {
         assert!(events.len() >= 4);
         let last = events.last().unwrap();
         assert!(last["event"].get("Done").is_some() || last["event"]["status"] == "done");
+    }
+
+    #[test]
+    fn unique_suffix_strips_snapshots_and_chunks() {
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
+        assert_eq!(ingest.push("Hello").as_deref(), Some("lo"));
+        assert_eq!(ingest.push("Hello"), None);
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
+        assert_eq!(ingest.push("lo").as_deref(), Some("lo"));
+        assert_eq!(ingest.last_snapshot, "Hello");
+        assert_eq!(ingest.push("Hel"), None);
+    }
+
+    #[test]
+    fn stream_ingest_drops_identical_consecutive_and_status() {
+        let mut ingest = StreamDeltaIngest::default();
+        // Wachsend
+        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
+        assert_eq!(ingest.push("Hello").as_deref(), Some("lo"));
+        assert_eq!(ingest.push("Hello"), None);
+        // Chunks
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
+        assert_eq!(ingest.push("lo").as_deref(), Some("lo"));
+        assert_eq!(ingest.last_snapshot, "Hello");
+        // Status → kein Delta
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("läuft\nTüfteln"), None);
+        assert_eq!(ingest.push("PING").as_deref(), Some("PING"));
+        assert_eq!(ingest.push("PING"), None);
+        assert_eq!(ingest.push("PING"), None);
+    }
+
+    /// Live-Beweis T-301: TextDelta-Strings aus events_after.json als DOM-Snapshots.
+    /// Verbietet das seq-2–36 Muster (Status als Delta + identisches PING-Spam).
+    #[test]
+    fn chat_live_claude_replacement_snapshots_emit_single_ping() {
+        let glyph = "\u{E02A}";
+        let status =
+            format!("läuft\n{glyph}\nVorbereiten einer einzelnen kurzen Antwort auf Deutsch");
+        let thinking_ping = format!("Dachte 2 s nach\n{glyph}\nDachte 2 s nach\n\nPING");
+        let mut polls = vec![
+            "läuft\nTüfteln".into(),
+            status.clone(),
+            status.clone(),
+            status,
+            thinking_ping.clone(),
+            thinking_ping,
+        ];
+        // seq 8–36: identisches PING
+        for _ in 0..29 {
+            polls.push("PING".into());
+        }
+        let state = test_ui(vec![Scenario::ReplaceSnapshots {
+            polls,
+            final_text: "PING".into(),
+        }]);
+        let id = post_session(&state);
+        let chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"antworte nur mit PING"}"#,
+            &state,
+        );
+        assert_eq!(chat.status, 200, "{}", String::from_utf8_lossy(&chat.body));
+        let (_, events) = fetch_events(&state, &id);
+        let deltas = text_deltas(&events);
+        assert!(
+            events
+                .iter()
+                .any(|e| event_kind(&e["event"]) == "TextComplete"
+                    || e["event"].as_str() == Some("TextComplete")),
+            "TextComplete fehlt: {events:?}"
+        );
+        // Kein Status/Thinking als TextDelta
+        for bad in ["läuft", "Tüfteln", "Vorbereiten", "Dachte"] {
+            assert!(
+                !deltas.iter().any(|d| d.contains(bad)),
+                "Status/Thinking als TextDelta ({bad}): {deltas:?}"
+            );
+        }
+        // Keine identischen aufeinanderfolgenden TextDeltas
+        assert!(
+            deltas.windows(2).all(|w| w[0] != w[1]),
+            "identische consecutive TextDeltas: {deltas:?}"
+        );
+        // Genau ein Chat-Delta PING, oder Deltas die eindeutig zu PING joinen
+        let joined = deltas.concat();
+        assert_eq!(joined, "PING", "deltas={deltas:?}");
+        assert_eq!(deltas.iter().filter(|d| d.as_str() == "PING").count(), 1);
+    }
+
+    #[test]
+    fn chat_multi_turn_unique_deltas_ohne_echo_und_ohne_done() {
+        let state = test_ui(vec![
+            Scenario::Stream(vec!["Hel".into(), "lo".into()]),
+            Scenario::Stream(vec!["Wor".into(), "ld".into()]),
+        ]);
+        let id = post_session(&state);
+        let prompt = "hallo welt, bitte nicht echo";
+        let first = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            &format!(r#"{{"text":"{prompt}"}}"#),
+            &state,
+        );
+        assert_eq!(
+            first.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&first.body)
+        );
+        let second = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"noch eine frage"}"#,
+            &state,
+        );
+        assert_eq!(
+            second.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&second.body)
+        );
+        let (body, events) = fetch_events(&state, &id);
+        assert_eq!(body["gap"], false);
+        let seqs: Vec<u64> = events.iter().map(|e| e["seq"].as_u64().unwrap()).collect();
+        assert!(seqs.windows(2).all(|w| w[0] < w[1]), "seqs={seqs:?}");
+        let deltas = text_deltas(&events);
+        assert_eq!(deltas, vec!["Hel", "lo", "Wor", "ld"]);
+        assert_ne!(deltas.first().map(String::as_str), Some(prompt));
+        assert!(!deltas.iter().any(|d| d == prompt));
+        assert!(!deltas.iter().any(|d| d == "Hello" || d == "World"));
+        assert!(!events.iter().any(|e| event_kind(&e["event"]) == "Done"));
+        let snap: Value = serde_json::from_slice(&second.body).unwrap();
+        assert_eq!(snap["done"], false);
+    }
+
+    #[test]
+    fn chat_stop_reconnect_mid_turn() {
+        let template = {
+            let mut brain = FakeBrain::new(
+                "fake",
+                vec![Scenario::Stream(vec![
+                    "aa".into(),
+                    "bb".into(),
+                    "cc".into(),
+                ])],
+            );
+            brain.chunk_delay = Duration::from_millis(50);
+            brain
+        };
+        let state = UiState::with_chat_factory(move |_id| Ok(Box::new(template.clone())));
+        let id = post_session(&state);
+        let state_thread = state.clone();
+        let id_thread = id.clone();
+        let worker = std::thread::spawn(move || {
+            dispatch(
+                "POST",
+                &format!("/api/sessions/{id_thread}/chat"),
+                "",
+                r#"{"text":"langsam"}"#,
+                &state_thread,
+            )
+        });
+        let mut mid = None;
+        for _ in 0..40 {
+            let (body, events) = fetch_events(&state, &id);
+            if !text_deltas(&events).is_empty() {
+                assert_eq!(body["gap"], false);
+                mid = Some(events);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let mid = mid.expect("reconnect muss Deltas mitten im Turn sehen");
+        assert!(
+            !mid.iter().any(|e| event_kind(&e["event"]) == "Done"),
+            "kein Done vor Stop"
+        );
+        let stop = dispatch("POST", &format!("/api/sessions/{id}/stop"), "", "", &state);
+        assert_eq!(stop.status, 200);
+        let chat_resp = worker.join().expect("chat-thread");
+        assert_eq!(chat_resp.status, 200);
+        let again_chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"zu spaet"}"#,
+            &state,
+        );
+        assert_eq!(again_chat.status, 409);
+        let (_, events) = fetch_events(&state, &id);
+        let last = events.last().expect("events");
+        assert_eq!(last["event"]["Done"]["status"], "cancelled");
+        let deltas = text_deltas(&events);
+        assert!(!deltas.iter().any(|d| d == "langsam"));
+    }
+
+    #[test]
+    fn chat_echo_ist_kein_assistenten_delta() {
+        let state = test_ui(vec![Scenario::Text("antwort".into(), 0)]);
+        let id = post_session(&state);
+        let prompt = "genau dieser prompt darf nicht als delta erscheinen";
+        let chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            &format!(r#"{{"text":"{prompt}"}}"#),
+            &state,
+        );
+        assert_eq!(chat.status, 200);
+        let (_, events) = fetch_events(&state, &id);
+        let deltas = text_deltas(&events);
+        assert!(!deltas.is_empty());
+        assert_ne!(deltas[0], prompt);
+        assert!(!deltas.iter().any(|d| d == prompt));
+        assert_eq!(deltas.concat(), "antwort");
     }
 }

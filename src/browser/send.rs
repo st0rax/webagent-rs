@@ -1060,7 +1060,10 @@ impl WebBrainBackend {
              return getComputedStyle(b).pointerEvents==='none';}",
             "false",
         );
-        self.eval(&js).ok().and_then(|v| v.as_bool()).unwrap_or(false)
+        self.eval(&js)
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
     }
 
     /// Ist der Absendeknopf deaktiviert? `None` = kein Knopf gefunden.
