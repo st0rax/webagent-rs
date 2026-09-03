@@ -172,7 +172,7 @@
         "claude-code",
         "local/opencode"
       ],
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "feature/T-301-claude-live-stream",
       "claimed_at": "2026-09-03",

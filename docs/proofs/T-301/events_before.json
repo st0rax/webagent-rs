@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "event": {
+        "Started": {
+          "brain": "claude",
+          "run_id": "ui-20260903T1833088223210000",
+          "task": "T-301 live stream proof"
+        }
+      },
+      "seq": 1
+    }
+  ],
+  "gap": false,
+  "since": 0
+}
