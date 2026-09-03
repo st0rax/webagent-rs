@@ -1,0 +1,6 @@
+{
+  "model": "webagent/deepseek",
+  "content": "API_CHAT_OK",
+  "latency_ms": 13689,
+  "ok": true
+}

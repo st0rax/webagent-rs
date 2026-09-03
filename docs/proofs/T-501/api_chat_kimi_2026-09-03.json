@@ -1,0 +1,6 @@
+{
+  "model": "webagent/kimi",
+  "content": "API_CHAT_OK",
+  "latency_ms": 42234,
+  "ok": true
+}

@@ -105,9 +105,14 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
        qwen/perplexity/zai, **unreachable** (kein sichtbarer Modell-Selektor) bei
        deepseek/gemini/kimi/mistral/chatgpt; `reasoning_toggle` (effort) Passed bei
        deepseek, unreachable bei zai. Belege `docs/proofs/T-501/`; Matrix gefuellt.
-       **Offen fuer „je Brain gruen"**: die nicht-driveable/API-Zellen (api_*,
-       attachment, managed_tools, sources, groups, security) bleiben `not_run` bis
-       eigene Live-Laeufe.
+       **Zusaetzlich live ueber die API-Bridge (webagent api serve, :8787) belegt:**
+       `api_models` **10×Passed** (alle 9 Brains + `webagent/auto`, Katalog+Modellobjekt,
+       Belege `api_models_list_/.perbrain_2026-09-03.json`); `api_chat` **9×Passed**
+       (alle 9 echten Brains, echte `POST /v1/chat/completions`, Antwort exakt
+       `API_CHAT_OK` finish=stop; Beleg `api_chat_<brain>_2026-09-03.json`; zai bestaetigt
+       den pointer-events-Fix auch ueber die Bridge). `api_chat/auto` Timeout >200s ->
+       `not_run` (AutoRouter-Inferenz haengt), `api_responses`/`streaming`/`attachment`/
+       `managed_tools`/`groups`/`security`/`sources` bleiben `not_run` bis eigene Belege.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`

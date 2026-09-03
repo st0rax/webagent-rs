@@ -1,0 +1,6 @@
+{
+  "model": "webagent/claude",
+  "content": "API_CHAT_OK",
+  "latency_ms": 16144,
+  "ok": true
+}

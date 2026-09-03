@@ -1,0 +1,62 @@
+[
+  {
+    "id": "webagent/auto",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/chatgpt",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/claude",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/deepseek",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/gemini",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/kimi",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/mistral",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/perplexity",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/qwen",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  },
+  {
+    "id": "webagent/zai",
+    "object": "model",
+    "owned_by": "webagent",
+    "ok": true
+  }
+]
