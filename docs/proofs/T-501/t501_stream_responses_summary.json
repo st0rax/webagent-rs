@@ -1,0 +1,47 @@
+[
+  {
+    "brain": "claude",
+    "streaming": false,
+    "api_responses": false
+  },
+  {
+    "brain": "chatgpt",
+    "streaming": true,
+    "api_responses": false
+  },
+  {
+    "brain": "deepseek",
+    "streaming": false,
+    "api_responses": false
+  },
+  {
+    "brain": "gemini",
+    "streaming": false,
+    "api_responses": false
+  },
+  {
+    "brain": "kimi",
+    "streaming": false,
+    "api_responses": false
+  },
+  {
+    "brain": "mistral",
+    "streaming": false,
+    "api_responses": false
+  },
+  {
+    "brain": "perplexity",
+    "streaming": true,
+    "api_responses": true
+  },
+  {
+    "brain": "qwen",
+    "streaming": false,
+    "api_responses": false
+  },
+  {
+    "brain": "zai",
+    "streaming": true,
+    "api_responses": false
+  }
+]

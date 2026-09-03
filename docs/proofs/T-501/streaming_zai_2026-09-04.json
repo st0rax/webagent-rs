@@ -1,0 +1,9 @@
+{
+  "model": "webagent/zai",
+  "ok": true,
+  "latency_ms": 41802,
+  "http": 200,
+  "delta_count": 1,
+  "joined": "STREAM_OK",
+  "error": null
+}

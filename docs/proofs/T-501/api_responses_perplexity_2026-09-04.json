@@ -1,0 +1,10 @@
+{
+  "model": "webagent/perplexity",
+  "ok": true,
+  "latency_ms": 20428,
+  "http": 200,
+  "delta_count": 1,
+  "joined": "RESP_OK",
+  "error": null,
+  "raw_head": "event: response.created\ndata: {\"response\":{\"background\":false,\"created_at\":1788475614,\"error\":null,\"id\":\"resp_18d1f118886567e8\",\"incomplete_details\":null,\"instructions\":null,\"max_output_tokens\":null,\"max_tool_calls\":null,\"metadata\":{},\"model\":\"webagent/perplexity\",\"object\":\"response\",\"output\":[],\"output_text\":\"\",\"parallel_tool_calls\":false,\"previous_response_id\":null,\"prompt_cache_key\":null,\"reaso"
+}
