@@ -1,0 +1,36 @@
+{
+  "name": "auto_default_routing_transport",
+  "area": "auto_routing",
+  "brain": "auto",
+  "date": "2026-09-04",
+  "ok": true,
+  "status": "passed",
+  "method": "Live-Bridge 8790, webagent/auto (Default-Brain-Routing), deterministic",
+  "evidence": [
+    {
+      "endpoint": "POST /v1/chat/completions (stream=false)",
+      "model": "webagent/auto",
+      "http": 200,
+      "content": "ROUTED",
+      "latency_ms": 19616
+    },
+    {
+      "endpoint": "POST /v1/chat/completions (stream=true)",
+      "model": "webagent/auto",
+      "http": 200,
+      "content": "ROUTED",
+      "latency_ms": 17174,
+      "chunks": 7
+    },
+    {
+      "endpoint": "POST /v1/responses",
+      "model": "webagent/auto",
+      "http": 200,
+      "content": "ROUTED",
+      "latency_ms": 16763,
+      "note": "capable-on-retry (1 Vorsuch: 'Something went wrong' von flaky Default-Brain)"
+    }
+  ],
+  "prompt": "Reply with the single word ROUTED and nothing else.",
+  "note": "webagent/auto als Default-Brain-Routing belegt: non-stream + stream chat/completions und /v1/responses liefern je 200 mit der erwarteten Antwort. Auto ersetzt keinen eigenen Browser-Schalter (webui_chat/model/effort/attachment bleiben pro-Brain live zu pruefen); health/security/sources/groups teilen den Bridge-globalen bzw. App-Ebenen-Pfad."
+}

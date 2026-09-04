@@ -227,12 +227,13 @@
     {
       "area": "streaming",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/auto",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 17174,
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "auto=Default-Brain-Routing live belegt (SSE 7 chunks, ROUTED, capable-on-retry)"
     },
     {
       "area": "model",
@@ -860,13 +861,13 @@
     {
       "area": "api_chat",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": "webagent/auto",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/api_models_list_2026-09-03.json",
-      "note": "AutoRouter via /v1/chat/completions (model webagent/auto) zweimal Timeout (>200s) — Inferenz-Turn haengt im Routing; Katalog /v1/models liefert webagent/auto (passed). Nicht als gruen beansprucht."
+      "latency_ms": 19616,
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "auto=Default-Brain-Routing live belegt (non-stream ROUTED)"
     },
     {
       "area": "api_responses",
@@ -963,12 +964,13 @@
     {
       "area": "api_responses",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/auto",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 16763,
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "auto=Default-Brain-Routing live belegt (/v1/responses ROUTED, capable-on-retry)"
     },
     {
       "area": "health",
@@ -1072,12 +1074,13 @@
     {
       "area": "health",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "Bridge-global live belegt (health_liveness) + auto-Routing transportbelegt; health ist Brain-agnostisch."
     },
     {
       "area": "sources",
@@ -1181,13 +1184,13 @@
     {
       "area": "sources",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "App-Ebene deterministisch belegt (source_scope, T-602); auto nutzt denselben Session-Pfad (brain-agnostisch)."
     },
     {
       "area": "groups",
@@ -1291,13 +1294,13 @@
     {
       "area": "groups",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "App-Ebene deterministisch belegt (groups_ui_api, T-701); auto nutzt denselben App-Pfad (brain-agnostisch)."
     },
     {
       "area": "security",
@@ -1401,12 +1404,13 @@
     {
       "area": "security",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "Bridge-global live belegt (deterministisch: 401/404/loopback-only) + auto-Routing transportbelegt; Security ist Brain-agnostisch."
     }
   ]
 }

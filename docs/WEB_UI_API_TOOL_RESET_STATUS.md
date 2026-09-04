@@ -137,7 +137,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
         (Standard Browser-Chat, --save, kein Auto-Routing); T-701: groups-Flow create->
         list->run->events gruen (min 2 Bots, group:<id>, Done). Belege
         `sources_source_scope_deterministic`/`groups_ui_api_deterministic_2026-09-04.json`.
-        Offen: effort (7), attachment chatgpt/claude/kimi/mistral/zai, auto-Zellen.
+        **auto 2026-09-04: bridge-global passed (Default-Brain-Routing)** - webagent/auto
+        non-stream+stream chat/completions und /v1/responses je 200 "ROUTED"
+        (capable-on-retry); Beleg `auto_default_routing_2026-09-04.json`. Offen: effort
+        (7), attachment chatgpt/claude/kimi/mistral/zai+auto, model/webui_chat-auto
+        (Web-UI-only, Live-Browser noetig).
         Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
