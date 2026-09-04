@@ -509,6 +509,77 @@ fn resolve_brain_for_task(brain: &str, task: &str) -> Result<String, String> {
     }
 }
 
+/// Einheitliche Eingabe `webagent ask`: autonomer Run (Default) oder
+/// Konversations-Einzelturn (`--chat`). Delegiert 1:1 an die existierenden
+/// Pfade (cmd_run bzw. relay_single_turn) statt eigene Logik zu duplizieren.
+#[allow(clippy::too_many_arguments)]
+pub fn cmd_ask(
+    task: &str,
+    brain: &str,
+    _auto: bool,
+    chat: bool,
+    resume: Option<&str>,
+    headless: bool,
+    max_cycles: u32,
+    no_memory: bool,
+    json: bool,
+) -> i32 {
+    use webagent::relay::relay_single_turn;
+
+    if task.trim().is_empty() {
+        eprintln!("[ask] --task fehlt oder ist leer");
+        return 2;
+    }
+    if chat {
+        if resume.is_some() {
+            eprintln!("[ask] --resume gilt nur fuer --auto (autonomen Run)");
+            return 2;
+        }
+        let brain = match resolve_brain_for_task(brain, task) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[ask] {e}");
+                return 2;
+            }
+        };
+        let started = std::time::Instant::now();
+        match relay_single_turn(&brain, task, headless, None, None) {
+            Ok(reply) => {
+                if json {
+                    let r = BrainIoResult {
+                        brain: brain.to_string(),
+                        ok: true,
+                        answer: reply.clone(),
+                        latency_ms: started.elapsed().as_millis() as u64,
+                        reason: "ok".into(),
+                    };
+                    println!("{}", brain_io_json(&r));
+                } else {
+                    println!("{reply}");
+                }
+                0
+            }
+            Err(e) => {
+                if json {
+                    let r = BrainIoResult {
+                        brain: brain.to_string(),
+                        ok: false,
+                        answer: String::new(),
+                        latency_ms: started.elapsed().as_millis() as u64,
+                        reason: e.to_string(),
+                    };
+                    println!("{}", brain_io_json(&r));
+                } else {
+                    eprintln!("[ask] Fehler: {e}");
+                }
+                1
+            }
+        }
+    } else {
+        cmd_run(brain, task, resume, headless, max_cycles, no_memory)
+    }
+}
+
 pub fn cmd_run(
     brain: &str,
     task: &str,

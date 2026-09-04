@@ -44,6 +44,47 @@ pub enum Commands {
         no_memory: bool,
     },
 
+    /// Einheitliche Eingabe: autonomer Run (Default) oder Konversations-Einzelturn.
+    /// Nachfolger von `run`/`relay` (beide bleiben kompatible Aliasse).
+    Ask {
+        /// Benutzeraufgabe
+        #[arg(long)]
+        task: String,
+
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek); `auto` waehlt je Aufgabe
+        #[arg(long, default_value = "auto")]
+        brain: String,
+
+        /// Autonome Aufgabe (Default): Controller + Shell, bis `status=done`.
+        /// Gegenstueck zu --chat.
+        #[arg(long)]
+        auto: bool,
+
+        /// Reine Konversation: ein send+wait-Turn, kein Controller/Shell
+        #[arg(long, conflicts_with = "auto")]
+        chat: bool,
+
+        /// Run-ID fortsetzen (nur --auto)
+        #[arg(long)]
+        resume: Option<String>,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+
+        /// Maximale Anzahl an Zyklen (nur --auto)
+        #[arg(long, default_value = "100")]
+        max_cycles: u32,
+
+        /// Aufgabe ohne alte Run-Episoden und Wiki-Kontext starten (nur --auto)
+        #[arg(long)]
+        no_memory: bool,
+
+        /// Maschinenlesbare Ausgabe (nur --chat)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Sichtbaren Browser oeffnen und auf manuellen Login warten (keine Zugangsdaten-Eingabe)
     Login {
         /// Brain-Backend (z.B. chatgpt, claude, deepseek)

@@ -129,6 +129,28 @@ fn dispatch(command: Commands) -> i32 {
             no_memory,
         ),
 
+        Commands::Ask {
+            task,
+            brain,
+            auto,
+            chat,
+            resume,
+            headless,
+            max_cycles,
+            no_memory,
+            json,
+        } => cmd_ask(
+            &task,
+            &brain,
+            auto,
+            chat,
+            resume.as_deref(),
+            headless,
+            max_cycles,
+            no_memory,
+            json,
+        ),
+
         Commands::Login {
             brain,
             timeout,
