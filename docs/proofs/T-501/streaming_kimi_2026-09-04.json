@@ -7,5 +7,5 @@
   "joined": "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a very simple request. I should just output exactly that string with no additional formatting, explanation, or c",
   "error": null,
   "clean_token": false,
-  "failure": "echoes the instruction text (token appears inside prose, not as exact reply) - false positive in naive substring match"
+  "note": "FAIL streaming chat: emits reasoning/instruction echo as delta stream (token appears only inside prose) - clean via non-stream + /v1/responses"
 }

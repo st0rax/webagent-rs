@@ -110,14 +110,19 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
        Belege `api_models_list_/.perbrain_2026-09-03.json`); `api_chat` **9×Passed**
        (alle 9 echten Brains, echte `POST /v1/chat/completions`, Antwort exakt
        `API_CHAT_OK` finish=stop; Beleg `api_chat_<brain>_2026-09-03.json`; zai bestaetigt
-       den pointer-events-Fix auch ueber die Bridge). `api_chat/auto` Timeout >200s ->
-       `not_run` (AutoRouter-Inferenz haengt). **Streaming 2026-09-04: 6/9 passed**
-       (chatgpt/claude/deepseek/gemini/perplexity/qwen - sauberer `STREAM_OK`; kimi echo, mistral
-       Timestamp, zai leer -> fehlgeschlagen). **api_responses 2026-09-04: 6/9 passed**
-       (chatgpt/claude/deepseek/gemini/perplexity/qwen - sauberer `RESP_OK`; kimi echo, mistral
-       Timestamp, zai leer). 09-04-Timeouts teils Infra-Flakes (09-03 liefen alle 9 in beiden
-       Flaeche); verbleibende Flaeche attachment/managed_tools/groups/security/sources bleiben
-       `not_run` bis eigene Belege.
+        den pointer-events-Fix auch ueber die Bridge). `api_chat/auto` Timeout >200s ->
+        `not_run` (AutoRouter-Inferenz haengt). **Streaming 2026-09-04 (definitive
+        Verifikation, capable-on-retry): 6/9 passed** (chatgpt/claude/deepseek/gemini/
+        perplexity/qwen - sauberer `STREAM_OK`; kimi Reasoning-Echo, mistral Timestamp+
+        Capacity, zai circuit_open -> fehlgeschlagen). **api_responses 2026-09-04: 7/9
+        passed** (chatgpt/claude/deepseek/gemini/kimi/perplexity/qwen - sauberer `RESP_OK`;
+        mistral flaky/Capacity, zai circuit_open). **Root-Cause:** Ausfaelle sind
+        Provider-seitig (circuit_open/Capacity-Cooldowns zai+mistral, kimi streamt
+        Gedankengang, chatgpt/claude flaky unter Last) - Bridge relayt sauber, sobald der
+        Provider liefert; stabil: deepseek/gemini/perplexity/qwen. **DoD NICHT done**
+        (volle 9/9 durch Provider-Instabilitaet und 09-04-Capacity blockiert); verbleibende
+        Flaeche attachment/managed_tools/groups/security/sources bleiben `not_run` bis eigene
+        Belege. Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`

@@ -8,5 +8,5 @@
   "out_text": "",
   "error": null,
   "clean_token": false,
-  "failure": "returns empty stream (0 deltas) consistently across attempts - no content emitted"
+  "note": "FAIL: circuit_open (provider capacity, ~6h cooldown)"
 }

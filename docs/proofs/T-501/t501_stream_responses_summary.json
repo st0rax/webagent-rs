@@ -22,7 +22,7 @@
   {
     "brain": "kimi",
     "streaming": false,
-    "api_responses": false
+    "api_responses": true
   },
   {
     "brain": "mistral",

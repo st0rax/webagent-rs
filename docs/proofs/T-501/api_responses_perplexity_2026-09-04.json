@@ -7,5 +7,6 @@
   "joined": "RESP_OK",
   "out_text": "",
   "error": null,
-  "clean_token": true
+  "clean_token": true,
+  "note": "pass"
 }

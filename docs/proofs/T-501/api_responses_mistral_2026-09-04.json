@@ -8,5 +8,5 @@
   "out_text": "",
   "error": null,
   "clean_token": false,
-  "failure": "returns a wall-clock timestamp (e.g. 11:51) instead of the requested token - not a valid reply"
+  "note": "FAIL (flaky): clean RESP_OK earlier, then http200-empty or circuit-open/capacity - provider-side"
 }

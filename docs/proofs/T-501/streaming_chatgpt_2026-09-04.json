@@ -6,5 +6,6 @@
   "delta_count": 3,
   "joined": "STREAM_OK",
   "error": null,
-  "clean_token": true
+  "clean_token": true,
+  "note": "flaky: clean STREAM_OK earlier, truncates to STREAM_O_ under load; capable-on-retry"
 }
