@@ -1,9 +1,11 @@
 # Aktueller Arbeitsstand
 
-**Aktualisiert:** 2026-09-02
+**Aktualisiert:** 2026-09-04
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
-**Board 2026-09-02:** Phase 4 komplett inkl. T-404 SDK-Blackbox (Python/JS-SDK + urllib/fetch, Dumps `docs/proofs/T-404/`). Live T-301/T-302/T-501 ohne Freigabe nicht gegen echte Brains. Naechste Code-Zelle T-601.
+**Stand 2026-09-04:** `master` auf `505d416` (T-501 abgeschlossen, PR #29 gemergt; alle-Brains-Matrix 95/130 in `docs/proofs/T-501/`). Die GitHub-Repo-Pflege ist aufgeraeumt: alle bis dahin offenen Feature-Branch-Labels (T-201…T-601) sind entfernt, remote existieren hauptsaechlich `master` und die jeweils aktive Arbeit. Naechste aktive Arbeit: **CLI-/Oberflaechen-Schnittstellen** (`feature/docs-cli-ui-fixes`). Dort sind die Grundsatzentscheidungen und Sofort-Fixes umgesetzt (Web-UI als ehrlicher Standard statt „Session-TUI“-Doku, `--headless`-Flag-Semantik vereinheitlicht, Pi/Bridge-Absatz gekuerzt, USAGE-Block konsolidiert), Details in [`CLI_UI_REDESIGN.md`](CLI_UI_REDESIGN.md) Abschnitt 6. Design-Folgepunkte (ask-Befehl, Auto-Router im CLI, einheitliche Ports) stehen in Abschnitt 7. Gates auf dem Branch: fmt, clippy `-D warnings`, komplette browserfreie Test-Suite und `git diff --check` gruen.
+
+**Historischer Kopf (2026-09-02):** Phase 4 komplett inkl. T-404 SDK-Blackbox (Python/JS-SDK + urllib/fetch, Dumps `docs/proofs/T-404/`). Live T-301/T-302/T-501 ohne Freigabe nicht gegen echte Brains. Naechste Code-Zelle war T-601.
 
 ## Verbindlicher Produkt-Neuschnitt vom 01.09.2026
 
@@ -293,6 +295,11 @@ Die Implementierung ist als `1015586` (`feat: add dynamic pi brain switching`) a
 `api_bridge` serialisiert Browserruns jetzt nur noch pro Brain; unterschiedliche Brains koennen parallel arbeiten. In `relay` werden deterministische Sendefehler (fehlender Absende-Beweis, deaktivierter Knopf, erkannte Blockade, Login-/Cloudflare-/Limit-Hinweis) nicht mehr dreimal vollstaendig wiederholt; transiente CDP- und Navigationsfehler bleiben retry-faehig. Der identische Gemini-Fehler sank live von 95,351 s auf 33,408 s. Vollfeature-Clippy, fokussierte Relay-Tests und Release-Build bestanden.
 
 ## Aktueller Repositoryzustand
+
+> **Historisch (Stand vor 2026-09-04).** Die nachfolgenden Branch-, Commit- und
+> Gate-Angaben betreffen den damaligen Stand `task/v1-release-baseline` und sind
+> mit dem aktuellen `master` (`505d416`) überholt. Aktueller Einstieg: der Kopf
+> dieser Datei und `feature/docs-cli-ui-fixes`.
 
 Die Arbeit läuft auf `task/v1-release-baseline`, ausgehend von `origin/master` bei `1d214e8`. Die erste abgeschlossene Baseline-Scheibe ist als `2659baf` (`fix: restore headless release baseline`) committet; der Scope-Freeze und die Definition of Done folgen in `4fdb068` (`docs: define v1 release completion`). Beide Commits sind auf `origin/task/v1-release-baseline` gepusht. Die Baseline-Scheibe stellte den browserfreien Releasezustand wieder her: fehlende Bibliotheksmodule wurden registriert, der Root-Eintrag in `Cargo.lock` wurde auf `0.11.1` korrigiert, reine Kernmodule wurden von unnötigen TUI-Gates entkoppelt, strikte Lint-/Testdrift wurde behoben und die alte Wilson-Dublette wird auf die gemeinsame Implementierung zurückgeführt.
 
