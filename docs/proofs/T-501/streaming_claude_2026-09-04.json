@@ -1,9 +1,9 @@
 {
   "model": "webagent/claude",
-  "ok": false,
-  "latency_ms": 200153,
-  "http": null,
-  "delta_count": 0,
-  "joined": "",
-  "error": "timed out"
+  "ok": true,
+  "latency_ms": 16206,
+  "http": 200,
+  "delta_count": 2,
+  "joined": "STREAM_OK",
+  "error": null
 }

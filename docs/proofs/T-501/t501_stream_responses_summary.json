@@ -1,12 +1,12 @@
 [
   {
     "brain": "claude",
-    "streaming": false,
+    "streaming": true,
     "api_responses": false
   },
   {
     "brain": "chatgpt",
-    "streaming": true,
+    "streaming": false,
     "api_responses": false
   },
   {
@@ -16,7 +16,7 @@
   },
   {
     "brain": "gemini",
-    "streaming": false,
+    "streaming": true,
     "api_responses": false
   },
   {
