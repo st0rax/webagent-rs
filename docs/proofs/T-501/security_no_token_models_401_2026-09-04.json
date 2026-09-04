@@ -1,0 +1,10 @@
+{
+  "name": "security_no_token_models_401",
+  "area": "security",
+  "brain": "auto",
+  "ok": true,
+  "http": 401,
+  "body": "{\"error\":{\"code\":null,\"message\":\"Ungueltiger oder fehlender API-Token.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+  "latency_ms": 14,
+  "note": "GET /v1/models ohne Bearer-Token -> 401 (Token-Pflicht)"
+}

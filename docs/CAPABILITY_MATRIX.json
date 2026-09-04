@@ -134,12 +134,12 @@
     {
       "area": "streaming",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/chatgpt",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_chatgpt_2026-09-04.json"
     },
     {
       "area": "streaming",
@@ -148,18 +148,18 @@
       "date": "2026-09-04",
       "model": "webagent/claude",
       "selector_hash": null,
-      "latency_ms": 16206,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/streaming_claude_2026-09-04.json"
     },
     {
       "area": "streaming",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/deepseek",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_deepseek_2026-09-04.json"
     },
     {
       "area": "streaming",
@@ -168,28 +168,30 @@
       "date": "2026-09-04",
       "model": "webagent/gemini",
       "selector_hash": null,
-      "latency_ms": 24759,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/streaming_gemini_2026-09-04.json"
     },
     {
       "area": "streaming",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/kimi",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-04.json",
+      "note": "FAIL: Reasoning-Echo als Delta-Stream (Token nur in Prosa) - clean via non-stream+/v1/responses"
     },
     {
       "area": "streaming",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/mistral",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-04.json",
+      "note": "FAIL: Timestamp+keep-alive als Delta-Stream; spaeter circuit_open/capacity (Provider-seitig)"
     },
     {
       "area": "streaming",
@@ -198,28 +200,29 @@
       "date": "2026-09-04",
       "model": "webagent/perplexity",
       "selector_hash": null,
-      "latency_ms": 21060,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/streaming_perplexity_2026-09-04.json"
     },
     {
       "area": "streaming",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/qwen",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_qwen_2026-09-04.json"
     },
     {
       "area": "streaming",
       "brain": "zai",
-      "status": "passed",
+      "status": "failed",
       "date": "2026-09-04",
       "model": "webagent/zai",
       "selector_hash": null,
-      "latency_ms": 41802,
-      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-04.json"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-04.json",
+      "note": "FAIL: circuit_open (Provider-Capacity ~6h Cooldown); passed 09-03"
     },
     {
       "area": "streaming",
@@ -854,62 +857,63 @@
     {
       "area": "api_responses",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/chatgpt",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_chatgpt_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/claude",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_claude_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/deepseek",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_deepseek_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/gemini",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_gemini_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/kimi",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_kimi_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/mistral",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_mistral_2026-09-04.json",
+      "note": "FAIL (flaky): clean RESP_OK frueher, dann http200-empty/circuit_open - Provider-seitig"
     },
     {
       "area": "api_responses",
@@ -918,28 +922,29 @@
       "date": "2026-09-04",
       "model": "webagent/perplexity",
       "selector_hash": null,
-      "latency_ms": 20428,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/api_responses_perplexity_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/qwen",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_qwen_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/zai",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_zai_2026-09-04.json",
+      "note": "FAIL: circuit_open (Provider-Capacity ~6h Cooldown)"
     },
     {
       "area": "api_responses",
@@ -954,92 +959,101 @@
     {
       "area": "health",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
@@ -1254,92 +1268,101 @@
     {
       "area": "security",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",

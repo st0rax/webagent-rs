@@ -1,0 +1,11 @@
+{
+  "name": "security_token_models_200",
+  "area": "security",
+  "brain": "auto",
+  "ok": true,
+  "http": 200,
+  "count": 10,
+  "first": "webagent/auto",
+  "latency_ms": 2,
+  "note": "GET /v1/models mit Token -> 200, Katalog 10 Modelle, webagent/auto zuerst"
+}

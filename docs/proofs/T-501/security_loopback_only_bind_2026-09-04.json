@@ -1,0 +1,9 @@
+{
+  "name": "security_loopback_only_bind",
+  "area": "security",
+  "brain": "auto",
+  "ok": true,
+  "rc": 2,
+  "output": "[api] Sicherheitsgrenze: --bind muss eine Loopback-Adresse sein.",
+  "note": "api serve --bind 0.0.0.0 wird abgelehnt (nur Loopback erlaubt)"
+}

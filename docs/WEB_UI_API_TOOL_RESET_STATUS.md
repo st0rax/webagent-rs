@@ -120,9 +120,13 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
         Provider-seitig (circuit_open/Capacity-Cooldowns zai+mistral, kimi streamt
         Gedankengang, chatgpt/claude flaky unter Last) - Bridge relayt sauber, sobald der
         Provider liefert; stabil: deepseek/gemini/perplexity/qwen. **DoD NICHT done**
-        (volle 9/9 durch Provider-Instabilitaet und 09-04-Capacity blockiert); verbleibende
-        Flaeche attachment/managed_tools/groups/security/sources bleiben `not_run` bis eigene
-        Belege. Belege `docs/proofs/T-501/`.
+        (volle 9/9 durch Provider-Instabilitaet und 09-04-Capacity blockiert).
+        **security + health 2026-09-04: Bridge-global passed** (deterministisch, ohne
+        flaky Browserturn): /health unauth->200 status=ok, /v1/* ohne Token->401,
+        unbekannte Modell-ID->404, --bind 0.0.0.0->abgelehnt (Loopback-only); Belege
+        `security_*`/`health_liveness_2026-09-04.json`, Matrix `security`/`health`=passed
+        (je Brain). Verbleibende Flaeche attachment/managed_tools/groups/sources bleiben
+        `not_run` bis eigene Belege. Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`

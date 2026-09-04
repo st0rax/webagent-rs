@@ -1,0 +1,10 @@
+{
+  "name": "health_liveness",
+  "area": "health",
+  "brain": "auto",
+  "ok": true,
+  "http": 200,
+  "body": "{\"service\":\"webagent-provider-bridge\",\"status\":\"ok\"}",
+  "latency_ms": 54,
+  "note": "GET /health unauthenticated -> 200 status=ok (Liveness ohne Browserturn)"
+}
