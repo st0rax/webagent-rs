@@ -7,15 +7,16 @@ Werkzeuge (PowerShell/Shell) führen aus. Die Brains sind austauschbare Web-Chat
 (ChatGPT, Claude, DeepSeek, Gemini, Kimi, Qwen, Mistral, Z.ai) — kein API-Key,
 sondern die im Browser angemeldete Session.
 
-Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: Kern und
-Session-TUI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
+Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: Session-Web-UI,
+REPL und CLI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
 (`wry`/`tao`) auf Windows über WebView2 und auf Linux über WebKitGTK.
 
 ## Schnellstart (Benutzen, nicht Entwickeln)
 
 Du brauchst **kein** Rust und keinen Quellcode — nur das fertige Programm aus
 [Releases](https://github.com/st0rax/webagent-rs/releases/latest) und ein
-Nutzerkonto bei mindestens einem der Chat-Dienste.
+angemeldeter Browser bei einem der Chat-Dienste, die du nutzen willst
+(kein API-Key).
 
 **1. Herunterladen und ausführbar machen**
 
@@ -74,7 +75,7 @@ Der Chat plant, dein Rechner führt aus. Prüfen, ob eine Oberfläche fahrbar is
 > [`CONTRIBUTING.md`](CONTRIBUTING.md) und die Zusammenarbeit in
 > [`docs/COLLABORATION.md`](docs/COLLABORATION.md).
 
-> **Status (v0.10.1):** Session-TUI ist der Default. Der genaue aktuelle
+> **Status (v0.10.1):** Session-Web-UI ist der Default. Der genaue aktuelle
 > Abnahme- und Arbeitsstand steht in
 > [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md); lokale Testergebnisse sind
 > immer an den dort genannten Commit gebunden.
@@ -105,7 +106,7 @@ Brain (Web-Chat)  ──plan──▶  Controller  ──shell──▶  Executo
       └──────── Observation ◀────┘
 ```
 
-| Modul | Verantwortung |
+| Modul | Verantwortung (siehe [`docs/OVERVIEW.md`](docs/OVERVIEW.md) und [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) für Details) |
 |---|---|
 | `protocol` | `webagent/1`-Parser inkl. `WEBAGENT/1 SHELL`-Rohformat |
 | `controller` | Plan/Act/Observe-Zustandsmaschine, Resume, Loop-/Budget-Schutz |
@@ -148,32 +149,44 @@ WebView-Deps (`wry`, `tao`) sind optional (`--no-default-features` für headless
 
 ## Nutzung
 
-Die lokale Browser-Inference-Bridge fuer Pi wird mit `webagent api serve` gestartet. [`examples/pi/extensions/webagent-models.ts`](examples/pi/extensions/webagent-models.ts) laedt alle Brains automatisch vom Endpoint und stellt in Pi `/models` zum Auflisten und Wechseln bereit. Der Katalog enthaelt zusaetzlich `webagent/auto`, das Medien, Tools, Coding, aktuelle Recherche und allgemeinen Text automatisch auf ein geeignetes verfuegbares Brain routet. Eine isolierte Ein-Modell-Konfiguration und der End-to-End-Smoke-Test liegen in [`examples/pi/models.json`](examples/pi/models.json) und [`scripts/test-pi-provider.ps1`](scripts/test-pi-provider.ps1); die vollstaendige Anleitung steht in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
+Die lokale **Web-UI** ist die Standard-Oberflaeche: `webagent` **ohne Parameter**
+startet sie und oeffnet den Browser auf `http://127.0.0.1:8788/`. Dort laufen
+Sitzungen ueber `/api/sessions`. Die zeilenweise **REPL** ist `webagent repl`
+(siehe unten), die Pool-/Wand-/Bench-Ansicht `webagent tui`.
 
-`webagent` **ohne Parameter startet die Session-TUI** (Scrollback + Prompt).
-`webagent repl` ist die zeilenweise REPL, `webagent tui` Pool/Wand/Bench.
-Aus einer Pipe: `webagent tui --force-tui --view=session`. Unter Windows:
-Brain-Fenster oben, TUI unten — `AGENTS.md` §6.
+**REPL fragen vs. autonom:** In der REPL laufen normale Eingaben als
+**autonome Aufgabe** (das Brain darf Dateien aendern und lokale Shell ausfuehren).
+`/chat <text>` ist dagegen **reine Konversation** ohne Werkzeuge. Derselbe
+Slash-Parser gilt in beiden Oberflaechen: `/new`, `/resume`, `/status`,
+`/model`, `/dashboard`, `/quit`.
 
-In der Session-Ansicht: `/new`, `/resume`, `/status`, `/model`, `/dashboard`,
-`/quit` (derselbe Parser wie die REPL). In der REPL laufen normale Eingaben
-als autonome Aufgabe; `/chat` ist reine Konversation.
+Aus einer Pipe: `webagent tui --force-tui --view=session`. Unter Windows stehen
+die Brain-Fenster oben, die TUI unten — `AGENTS.md` §6.
+
+Die lokale Browser-Inference-Bridge fuer Pi (`webagent api serve`, Loopback,
+Token-geschuetzt) ist ein separates Integrationsthema — Details, Pi-Konfiguration
+und Beispielskripte in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
 
 ```
-webagent login            --brain <id> [--timeout <sek>] [--force]
+webagent login            --brain <id> [--timeout <sek>] [--force] [--auto]
 webagent login-all        [--timeout <sek>] [--force] [--parallel N]
-webagent run              --brain <id> --task "<aufgabe>" [--headless] [--max-cycles N] [--resume <run_id>]
+webagent run              --brain <id> --task "<aufgabe>" [--headless] [--max-cycles N] [--resume <run_id>] [--no-memory]
 webagent repl             --brain <id> [--headless]
-webagent autoresearch     --brain <id> --goal "<text>" --eval "<cmd>" [--direction higher|lower]
-                          [--max-iterations N] [--no-improve-abort N] [--eval-timeout <sek>] [--workdir <pfad>]
+webagent relay            --brain <id> --message "<text>" [--headless] [--timeout <sek>] [--json]
 webagent diagnose         --brain <id> [--headless]
 webagent doctor           [--brain <id>]... [--json]
 webagent watchdog         [--repair] [--json]
 webagent brains-health    [--allow-empty-profile]
-webagent relay            --brain <id> --message "<text>" [--headless] [--timeout <sek>]
+webagent autoresearch     --brain <id> --goal "<text>" --eval "<cmd>" [--direction higher|lower]
+                          [--max-iterations N] [--no-improve-abort N] [--eval-timeout <sek>] [--workdir <pfad>]
 webagent oobe             [--brains <csv>] [--skip-login] [--yes]
 webagent maintenance-check [--json]
 ```
+
+`relay --json` liefert einen einzelnen send+wait-Turn maschinenlesbar
+(`{"brain","ok","answer","latency_ms","reason"}`). Die Auto-Routing-Brain
+`webagent/auto` (Bild-, Coding-, Recherche- oder Textlast) gibt es derzeit nur
+im API-Katalog der Bridge — Details in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
 
 **Datei-Aktionen im Protokoll:** Brains ändern Dateien über `edit`
 (path/old_string/new_string, Anker muss exakt einmal matchen) und `write`
@@ -277,8 +290,8 @@ vertrauenswürdigen Umgebung und mit angemessen begrenzten Nutzerrechten nutzen.
 
 | Plattform | Artifact | Was darin steckt |
 |---|---|---|
-| Windows x86_64 | `webagent-windows-x86_64.exe` + `WebView2Loader.dll` | Session-TUI, REPL, Pool/Wand, Embedded WebView2 |
-| Linux x86_64 | `webagent-linux-x86_64` | Session-TUI, REPL, CLI **und Embedded WebView über WebKitGTK** (`--features tui,webview`); braucht `libwebkit2gtk-4.1-0` |
+| Windows x86_64 | `webagent-windows-x86_64.exe` + `WebView2Loader.dll` | Session-Web-UI, REPL, Pool/Wand, Embedded WebView2 |
+| Linux x86_64 | `webagent-linux-x86_64` | Session-Web-UI, REPL, CLI **und Embedded WebView über WebKitGTK** (`--features tui,webview`); braucht `libwebkit2gtk-4.1-0` |
 | Android aarch64 | `webagent-aarch64-linux-android` | dasselbe für Termux, kein Play-Store-APK, kein Embedded WebView |
 
 GitHub-Releases entstehen beim Tag `v*` (`.github/workflows/release.yml`).

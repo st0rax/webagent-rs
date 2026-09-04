@@ -132,9 +132,10 @@ Get-Process webagent -ErrorAction SilentlyContinue | ForEach-Object {
 powershell -File bench-monitor.ps1
 ```
 
-### TUI starten
-`webagent` ohne Subcommand oeffnet die Session-TUI (Scrollback + Prompt).
-`webagent repl` bleibt die zeilenweise REPL. `webagent tui` ist Pool/Wand/Bench.
+### Session starten
+`webagent` ohne Subcommand startet die Session-Web-UI und oeffnet
+`http://127.0.0.1:8788/` im Browser. `webagent repl` bleibt die zeilenweise
+REPL. `webagent tui` ist Pool/Wand/Bench.
 
 Die TUI braucht ein Terminal mit raw mode. Aus einer Pipe (opencode, viele
 Agenten-CLIs) ist `stdout().is_terminal()` false — dann `--force-tui`.
