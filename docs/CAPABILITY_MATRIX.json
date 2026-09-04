@@ -145,11 +145,11 @@
       "area": "streaming",
       "brain": "claude",
       "status": "passed",
-      "date": "2026-09-03",
-      "model": "claude-live",
+      "date": "2026-09-04",
+      "model": "webagent/claude",
       "selector_hash": null,
-      "latency_ms": 15700,
-      "proof_path": "docs/proofs/T-301/events_after.json"
+      "latency_ms": 16206,
+      "proof_path": "docs/proofs/T-501/streaming_claude_2026-09-04.json"
     },
     {
       "area": "streaming",
@@ -164,12 +164,12 @@
     {
       "area": "streaming",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/gemini",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 24759,
+      "proof_path": "docs/proofs/T-501/streaming_gemini_2026-09-04.json"
     },
     {
       "area": "streaming",

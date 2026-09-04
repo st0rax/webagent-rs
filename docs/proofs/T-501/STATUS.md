@@ -3,18 +3,21 @@
 # T-501 STATUS
 
 Date: 2026-09-04
-Harness: run_stream_responses.py (finished)
-API: webagent api serve healthy on 127.0.0.1:8787
+Harness: focused_rerun (finished)
+API: webagent api serve on 127.0.0.1:8787
 
 ## streaming (ok:true, token STREAM_OK)
+- claude
+- gemini
 - perplexity
 - zai
 
-## streaming (false positive, UI chrome)
-- chatgpt (delta was 'Erneut versuchen', not STREAM_OK)
+## streaming (false positive)
+- kimi (reasoning text mentioned STREAM_OK, not a clean token reply)
+- chatgpt (earlier UI chrome / Erneut versuchen)
 
 ## streaming (ok:false / timeout)
-- claude, deepseek, gemini, kimi, mistral, qwen
+- deepseek, mistral, qwen
 
 ## api_responses (ok:true, token RESP_OK)
 - perplexity
@@ -23,6 +26,6 @@ API: webagent api serve healthy on 127.0.0.1:8787
 - chatgpt, claude, deepseek, gemini, kimi, mistral, qwen, zai
 
 ## Counts
-- streaming: 2/9 passed
+- streaming: 4/9 passed
 - api_responses: 1/9 passed
 - T-501 DoD: NOT done
