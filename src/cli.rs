@@ -431,6 +431,7 @@ pub enum Commands {
 
     /// Single send+wait turn (bot2bot bridge debugging)
     Relay {
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek); `auto` waehlt je Aufgabe
         #[arg(long, default_value = "auto")]
         brain: String,
         #[arg(long, default_value = "")]
