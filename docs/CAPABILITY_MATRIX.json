@@ -339,11 +339,12 @@
       "area": "effort",
       "brain": "chatgpt",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
@@ -369,51 +370,56 @@
       "area": "effort",
       "brain": "gemini",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
       "brain": "kimi",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
       "brain": "mistral",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
       "brain": "perplexity",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
       "brain": "qwen",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
@@ -429,11 +435,12 @@
       "area": "effort",
       "brain": "auto",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "attachment",
