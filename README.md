@@ -170,9 +170,9 @@ und Beispielskripte in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
 ```
 webagent login            --brain <id> [--timeout <sek>] [--force] [--auto]
 webagent login-all        [--timeout <sek>] [--force] [--parallel N]
-webagent run              --brain <id> --task "<aufgabe>" [--headless] [--max-cycles N] [--resume <run_id>] [--no-memory]
-webagent repl             --brain <id> [--headless]
-webagent relay            --brain <id> --message "<text>" [--headless] [--timeout <sek>] [--json]
+webagent run              --task "<aufgabe>" [--brain <id>|auto] [--headless] [--max-cycles N] [--resume <run_id>] [--no-memory]
+webagent repl             [--brain <id>|auto] [--headless]
+webagent relay            --message "<text>" [--brain <id>|auto] [--headless] [--timeout <sek>] [--json]
 webagent diagnose         --brain <id> [--headless]
 webagent doctor           [--brain <id>]... [--json]
 webagent watchdog         [--repair] [--json]
@@ -183,10 +183,13 @@ webagent oobe             [--brains <csv>] [--skip-login] [--yes]
 webagent maintenance-check [--json]
 ```
 
+Der Auto-Router waehlt bei `run`, `repl` und `relay` ohne `--brain` (bzw. mit
+`--brain auto`) das passende Brain je Aufgabe: Bild-/Coding-/Recherche-Tasks
+landen bei passenden Brains, sonst beim ersten verfuegbaren Text-Brain. Die
+Wahl wird mit `[auto-router] selected=<id> reason=<grund>` auf stderr sichtbar.
+
 `relay --json` liefert einen einzelnen send+wait-Turn maschinenlesbar
-(`{"brain","ok","answer","latency_ms","reason"}`). Die Auto-Routing-Brain
-`webagent/auto` (Bild-, Coding-, Recherche- oder Textlast) gibt es derzeit nur
-im API-Katalog der Bridge — Details in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
+(`{"brain","ok","answer","latency_ms","reason"}`).
 
 **Datei-Aktionen im Protokoll:** Brains ändern Dateien über `edit`
 (path/old_string/new_string, Anker muss exakt einmal matchen) und `write`

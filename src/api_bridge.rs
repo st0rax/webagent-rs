@@ -2578,20 +2578,20 @@ fn text_content(value: &Value) -> Result<String, String> {
     Ok(out)
 }
 
-fn available_brains() -> Vec<String> {
+pub fn available_brains() -> Vec<String> {
     let mut brains: Vec<String> = crate::config::brains().into_keys().collect();
     brains.sort();
     brains
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AutoPurpose {
+pub(crate) enum AutoPurpose {
     Chat,
     ImageGeneration,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AutoRoute {
+pub(crate) enum AutoRoute {
     Default,
     AudioInput,
     ImageInput,
@@ -2601,7 +2601,7 @@ enum AutoRoute {
     CurrentResearch,
 }
 
-fn classify_auto_route(
+pub(crate) fn classify_auto_route(
     task: &str,
     attachments: &[crate::browser_inference::BrowserAttachment],
     has_tools: bool,
@@ -2670,14 +2670,23 @@ fn classify_auto_route(
     AutoRoute::Default
 }
 
-fn first_available_auto_brain(preferences: &[&str]) -> Option<String> {
+pub(crate) fn first_available_auto_brain(preferences: &[&str]) -> Option<String> {
     let available = available_brains();
+    first_available_auto_brain_in(preferences, &available, |brain| {
+        crate::circuit_breaker::check(brain).is_none()
+    })
+}
+
+/// Kern der Auto-Auswahl mit injizierbarer Verfügbarkeit/Entsperrtheit —
+/// deterministisch testbar ohne reale Brain-Installation oder Circuit-Breaker.
+fn first_available_auto_brain_in(
+    preferences: &[&str],
+    available: &[String],
+    is_unlocked: impl Fn(&str) -> bool,
+) -> Option<String> {
     preferences
         .iter()
-        .find(|brain| {
-            available.iter().any(|candidate| candidate == **brain)
-                && crate::circuit_breaker::check(brain).is_none()
-        })
+        .find(|brain| available.iter().any(|candidate| candidate == **brain) && is_unlocked(brain))
         .map(|brain| (*brain).to_string())
 }
 
@@ -2688,6 +2697,28 @@ fn select_auto_brain(
     has_tools: bool,
     purpose: AutoPurpose,
 ) -> Result<String, String> {
+    let default = if config.brain == "auto" {
+        "chatgpt"
+    } else {
+        config.brain.as_str()
+    };
+    select_auto_brain_with_default(task, attachments, has_tools, purpose, default)
+}
+
+/// Auto-Router fuer die CLI (run/repl/relay): ahnt aus der Aufgabe das passende
+/// Brain, ohne auf eine laufende Bridge-Config angewiesen zu sein. Default-Fall
+/// faellt auf das erste verfuegbare, nicht vom Circuit-Breaker gesperrte Brain.
+pub fn select_auto_brain_for_cli(task: &str) -> Result<String, String> {
+    select_auto_brain_with_default(task, &[], false, AutoPurpose::Chat, "chatgpt")
+}
+
+fn select_auto_brain_with_default(
+    task: &str,
+    attachments: &[crate::browser_inference::BrowserAttachment],
+    has_tools: bool,
+    purpose: AutoPurpose,
+    default: &str,
+) -> Result<String, String> {
     let route = classify_auto_route(task, attachments, has_tools, purpose);
     let (preferences, reason): (&[&str], &str) = match route {
         AutoRoute::ImageGeneration => (&["chatgpt", "gemini"], "image-generation"),
@@ -2697,11 +2728,6 @@ fn select_auto_brain(
         AutoRoute::Coding => (&["claude", "chatgpt", "gemini"], "coding"),
         AutoRoute::CurrentResearch => (&["perplexity", "gemini", "chatgpt"], "current-research"),
         AutoRoute::Default => {
-            let default = if config.brain == "auto" {
-                "chatgpt"
-            } else {
-                config.brain.as_str()
-            };
             let preferences = [default, "chatgpt", "gemini", "claude", "deepseek"];
             let selected = first_available_auto_brain(&preferences)
                 .ok_or_else(|| "AutoRouter findet kein verfuegbares Text-Brain.".to_string())?;
@@ -3654,6 +3680,33 @@ mod tests {
         assert_eq!(
             classify_auto_route("Sag einfach hallo", &[], false, AutoPurpose::Chat),
             AutoRoute::Default
+        );
+    }
+
+    #[test]
+    fn auto_selection_follows_preference_order_and_skips_locked() {
+        let available: Vec<String> = ["chatgpt", "claude", "gemini"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let no_locks = |_: &str| true;
+        assert_eq!(
+            first_available_auto_brain_in(&["claude", "chatgpt"], &available, no_locks).as_deref(),
+            Some("claude"),
+            "erste verfuegbare Praeferenz gewinnt"
+        );
+        assert_eq!(
+            first_available_auto_brain_in(&["claude", "chatgpt", "gemini"], &available, |brain| {
+                brain != "claude" && brain != "chatgpt"
+            })
+            .as_deref(),
+            Some("gemini"),
+            "gesperrte Brains uebersprungen"
+        );
+        assert_eq!(
+            first_available_auto_brain_in(&["perplexity", "deepseek"], &available, no_locks,),
+            None,
+            "keine Praeferenz verfuegbar → None"
         );
     }
 

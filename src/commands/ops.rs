@@ -285,8 +285,15 @@ pub fn cmd_relay(
     }
     let message = text.as_str();
     let to = if timeout > 0.0 { Some(timeout) } else { None };
+    let brain = match resolve_brain_for_task(brain, message) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[relay] {e}");
+            return 2;
+        }
+    };
     let started = std::time::Instant::now();
-    match webagent::relay::relay_single_turn(brain, message, headless, to, model) {
+    match webagent::relay::relay_single_turn(&brain, message, headless, to, model) {
         Ok(reply) => {
             let r = BrainIoResult {
                 brain: brain.to_string(),
@@ -481,6 +488,27 @@ pub fn cmd_oobe(brains: &str, skip_login: bool, yes: bool) -> i32 {
     }
 }
 
+/// Loest `brain == "auto"` ueber den Auto-Router auf; andere IDs werden nur
+/// als bekannt validiert. Fehler → Err mit klarer Meldung.
+fn resolve_brain_for_task(brain: &str, task: &str) -> Result<String, String> {
+    let brain = if brain == "auto" {
+        webagent::api_bridge::select_auto_brain_for_cli(task)?
+    } else {
+        brain.to_string()
+    };
+    if webagent::api_bridge::available_brains().contains(&brain) {
+        Ok(brain)
+    } else {
+        Err(format!(
+            "Unbekanntes Brain '{brain}' — verfuegbar: {}",
+            webagent::api_bridge::available_brains()
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
+}
+
 pub fn cmd_run(
     brain: &str,
     task: &str,
@@ -493,7 +521,14 @@ pub fn cmd_run(
     use webagent::controller::{AgentController, RunOptions};
     use webagent::executor::PlatformShellExecutor;
 
-    let backend = match WebBrainBackend::from_config(brain) {
+    let brain = match resolve_brain_for_task(brain, task) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[run] {e}");
+            return 2;
+        }
+    };
+    let backend = match WebBrainBackend::from_config(&brain) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("[run] {e}");
@@ -514,8 +549,8 @@ pub fn cmd_run(
         ..RunOptions::default()
     };
     let result = match resume {
-        Some(run_id) => controller.continue_run(run_id, task, brain, headless, opts),
-        None => controller.run_with_options(task, brain, None, headless, opts),
+        Some(run_id) => controller.continue_run(run_id, task, &brain, headless, opts),
+        None => controller.run_with_options(task, &brain, None, headless, opts),
     };
     match result {
         Ok(meta) => {

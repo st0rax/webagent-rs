@@ -759,9 +759,20 @@ fn show_welcome() {
 }
 
 pub fn run_repl(brain_id: &str, headless: bool) -> i32 {
+    let brain_id = if brain_id == "auto" {
+        match crate::api_bridge::select_auto_brain_for_cli("") {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[repl] {e}");
+                return 2;
+            }
+        }
+    } else {
+        brain_id.to_string()
+    };
     show_welcome();
     let session_start = std::time::Instant::now();
-    let mut session = match ReplSession::new(brain_id, headless) {
+    let mut session = match ReplSession::new(&brain_id, headless) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("[repl] {e}");

@@ -1,14 +1,16 @@
 > **Archiv (Design-Entwurf, Stand 2026-09-04).** Datiertes Redesign-Log, keine
 > laufende Betriebsanleitung. Grundsatzentscheidung und Sofort-Fixes (Abschnitt 6)
-> sind umgesetzt auf `feature/docs-cli-ui-fixes`; Design-Folgepunkte (ask-Befehl,
-> Auto-Router im CLI, Ports) sind Abschnitt 7 und stehen noch aus. aktueller
+> sind umgesetzt; der Auto-Router im CLI (run/repl/relay `--brain auto`, Default
+> `auto`) folgte als Folgepunkt C2 auf `feature/cli-auto-brain`. Offen aus
+> Abschnitt 7: ask-Einheitsbefehl, Port-Vereinheitlichung. aktueller
 > Betrieb: README/„Nutzung", `docs/API_BRIDGE.md`, `docs/OVERVIEW.md`.
 
 # CLI-/UI-Schnittstellen-Redesign — Entwurf (Ist-Befund + Vorschlag)
 
 > **Status:** Grundsatzentscheidungen getroffen, Sofort-Fixes umgesetzt (siehe
-> Abschnitt 6). Offene Design-Folgepunkte in Abschnitt 7. Datenbasis:
-> `src/cli.rs` (897 Z.), `src/main.rs` (680 Z.), `src/web_ui.rs`,
+> Abschnitt 6). Auto-Router im CLI (C2) umgesetzt auf `feature/cli-auto-brain`.
+> Offene Design-Folgepunkte in Abschnitt 7. Datenbasis:
+> `src/cli.rs` (898 Z.), `src/main.rs` (680 Z.), `src/web_ui.rs`,
 > `src/web_ui_api.rs`, `src/config/brains.rs`, `src/api_bridge.rs` (Auto-Router),
 > `src/repl/commands.rs`, README/AGENTS/OVERVIEW/TUI_DESIGN.
 
@@ -20,8 +22,8 @@
 
 | Gruppe | Befehl | Zweck |
 |---|---|---|
-| **Kern (Bedienen)** | `run` | autonomer Run (fast Default `chatgpt`) |
-| | `repl` | interaktive REPL (fast Default `chatgpt`) |
+| **Kern (Bedienen)** | `run` | autonomer Run (Default `brain=auto`, Router) |
+| | `repl` | interaktive REPL (Default `brain=auto`, Router) |
 | | `login` / `login-all` | manueller Login (sichtbares Fenster) |
 | | `diagnose` | Live-Diagnose eines Brains |
 | | `relay` | einzelner send+wait-Turn |
@@ -39,9 +41,10 @@
 - Mehrere Befehle heissen **anders als ihr clap-Variant-Name** (`--version`-Alias):
   `runs-report` = `RunsReport`, `design-vote`, `bot2bot-worker`, `workers`,
   `ui`, `tui`, `sync-master`, `api serve`, `cloud …`, `autoresearch-self`.
-- **Default-Varianten inkonsistent:** `run`/`repl` → `--brain chatgpt`;
-  `api serve` → `--brain chatgpt` + `--brain auto` (Auto-Router) aber ohne
-  Default-Brain-Auswahl im Katalog; `tui`/`workers` → `--brains` leer = alle.
+- **Default-Varianten inkonsistent (Stand: teils korrigiert):** `run`/`repl`/
+  `relay` → Default `--brain auto` (Router); `api serve` → `--brain chatgpt` +
+  `--brain auto` (Auto-Router) aber ohne Default-Brain-Auswahl im Katalog;
+  `tui`/`workers` → `--brains` leer = alle.
 - **Merkbare Nomenklatur:** `brains` (Liste) vs. `brain` (ein Wert); `set` vs.
   `--write`; `options` überall anders.
 - **Zwei Ports:** API-Bridge `8787`, Web-UI `8788` — leicht verwechselbar.
@@ -80,10 +83,11 @@ Eingabe-/Laufzeitform unterscheidet sich. `run` ist eine CLI-Einmal-Kapsel von
 4. **`repl` / `/chat`-Dualitaet** (in README erklaert, im CLI nicht sichtbar):
    `repl`-Eingabe laeuft als autonome Aufgabe; nur `/chat` ist reine Konversation.
    Verwirrend, weil „repl“ im Alltag Chat meint.
-5. **Kein einheitlicher Auto-Router im CLI-Modell:** `api serve --brain auto`
+5. **Kein einheitlicher Auto-Router im CLI-Modell (Ist-Beobachtung; inzwischen
+   umgesetzt als C2, siehe Abschnitt 6):** `api serve --brain auto`
    existiert (Bild/Coding/Research-Tools → Ziel-Brain), aber `run/repl/swarm/bot2bot`
-   haben **kein** `--brain auto` und kein `--brain <auto-rule>`. `webagent/auto`
-   ist nur ein Bridge-Modellkatalog-Eintrag, kein CLI-Pfad.
+   hatten **kein** `--brain auto` und kein `--brain <auto-rule>`. `webagent/auto`
+   war nur ein Bridge-Modellkatalog-Eintrag, kein CLI-Pfad.
 6. **Seiten-Oberflaeche vs. TUI:** Die neue **Web-UI** ist der Default, aber
    README/AGENTS und die ausgefuehrten Beispiele sprechen durchgehend von TUI/REPL.
    Die Oberflaechen-Empfehlung des Users ist offen: Web-UI (`ui`) vs. Session-TUI.
@@ -215,10 +219,10 @@ Getroffene Entscheidungen (aus Abschnitt 5, vom Nutzer beantwortet):
 2. **Kern-Befehle:** `ask`-Einheitsbefehl ist Design-Ziel, noch **nicht**
    implementiert; vorerst nur README-USAGE konsolidiert; `run`/`repl` bleiben
    Ist-Aliasnamen.
-3. **Auto-Router im CLI:** gewuenscht, aber **nicht** als `--brain auto` im
-   README dokumentiert — `auto` existiert aktuell nur im `api serve`/Bridge
-   (`classify_auto_route`), nicht in `run/repl/relay`. README weist auf die
-   Bridge hin statt eine nicht existente CLI-Faehigkeit zu behaupten.
+3. **Auto-Router im CLI (C2):** umgesetzt auf `feature/cli-auto-brain`
+   (2026-09-04, siehe unten). `run`/`repl`/`relay` haben jetzt Default
+   `--brain auto`; die Aufloesung teilt denselben Router wie die Bridge
+   (`classify_auto_route` + `first_available_auto_brain` in `api_bridge.rs`).
 4. **A2 (Flag-Inversion) umgesetzt:** `section/mode/menu/toggle/model/shot/
    survey/probe` nutzen jetzt `--headless` (Default sichtbar) statt `--visible`
    (Default unsichtbar + `!visible` in main.rs). 7 Identische cli.rs-Stellen +
@@ -240,12 +244,26 @@ Getroffene Entscheidungen (aus Abschnitt 5, vom Nutzer beantwortet):
   zentral dort).
 - `src/cli.rs` + `src/main.rs`: A2-Flag-Fix (s. o.).
 
+### Auto-Router im CLI (`feature/cli-auto-brain`, 2026-09-04)
+
+- `src/api_bridge.rs`: Router-Teile (`classify_auto_route`,
+  `first_available_auto_brain`, `available_brains`, `AutoPurpose`/`AutoRoute`)
+  gegenueber der Lib exportiert; Auswahlkern `first_available_auto_brain_in`
+  injizierbar und deterministisch getestet; neue `select_auto_brain_for_cli(task)`
+  ohne BridgeConfig (Default-Fall → erstes verfuegbares, nicht gesperrtes Brain).
+- `src/cli.rs`: `run`/`repl`/`relay` bekommen Default `brain=auto`.
+- `commands/ops.rs`: `resolve_brain_for_task` loest `auto` fuer `run`/`relay`
+  auf und validiert explizite IDs (Exit 2 bei unbekannt; `[auto-router]…` auf
+  stderr).
+- `src/repl/mod.rs`: `run_repl` loest `auto` beim Start auf.
+- `README.md`: USAGE `[--brain <id>|auto]`, Auto-Router-Absatz statt des
+  überholten „auto nur in der Bridge"-Hinweises.
+
 ---
 
 ## 7. Naechste Schritte (nach Abnahme dieses Branches)
 
 1. Review des Branches `feature/docs-cli-ui-fixes` → merge auf master, push.
-2. Design-Folgeschritte erst nach Abnahme: `ask`-Befehl (3.2), Auto-Router im
-   CLI (3.4), einheitliche Ports/Benennung (3.3), `--brain auto`-CLI-Default
-   mit `WEBAGENT_DEFAULT_BRAIN`.
+2. Design-Folgeschritte erst nach Abnahme: `ask`-Befehl (3.2), einheitliche
+   Ports/Benennung (3.3).
 3. Login-Realitaet pro Brain: nur mit Nutzer-Freigabe messen (6h-Sperre).
