@@ -224,9 +224,9 @@ pub enum Commands {
         /// Selektor-Schluessel des Bereichs
         #[arg(long)]
         key: String,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Segmentleiste umschalten (alle Stellungen sichtbar, z.B. deepseeks
@@ -241,9 +241,9 @@ pub enum Commands {
         /// Selektor-Schluessel der Stellungen
         #[arg(long, default_value = "mode_option")]
         options: String,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Beliebiges Aufklappmenue lesen oder waehlen (z.B. Denkstufe)
@@ -260,9 +260,9 @@ pub enum Commands {
         /// Zu waehlender Eintrag (Teilstring); ohne Angabe wird nur gelistet
         #[arg(long)]
         set: Option<String>,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Eine Option umschalten (z.B. reasoning_toggle, web_search_toggle) und
@@ -274,9 +274,9 @@ pub enum Commands {
         /// Selektor-Schluessel der Option
         #[arg(long)]
         option: String,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Bilderwand: alle Brains nebeneinander in einem Fenster, wie mehrere
@@ -302,9 +302,9 @@ pub enum Commands {
         /// Zu waehlendes Modell (Teilstring genuegt); ohne Angabe wird nur gelistet
         #[arg(long)]
         set: Option<String>,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Nimmt die Oberflaeche eines Brains als PNG auf (Vorlage fuer die
@@ -320,9 +320,9 @@ pub enum Commands {
         /// `model_menu` — ein geschlossenes Menue zeigt seine Eintraege nicht
         #[arg(long)]
         open: Option<String>,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Vermisst die Oberflaeche eines Brains im echten DOM und traegt die
@@ -342,9 +342,9 @@ pub enum Commands {
         #[arg(long)]
         dump: bool,
 
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Oberflaechen-Analyse wie die Link-Analyse in JDownloader: oeffnet eine
@@ -397,9 +397,10 @@ pub enum Commands {
         /// Antwort ab.
         #[arg(long)]
         stop_diff: bool,
-        /// Sichtbar statt headless (beim ersten Mal fuer den Login noetig)
+        /// Headless ausfuehren (Default: sichtbar; beim ersten Mal fuer den Login
+        /// sichtbar lassen)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
     Quests {
         /// Maschinenlesbar statt Konsolenansicht
