@@ -1,9 +1,14 @@
+> **Archiv (Design-Entwurf, Stand 2026-09-04).** Datiertes Redesign-Log, keine
+> laufende Betriebsanleitung. Grundsatzentscheidung und Sofort-Fixes (Abschnitt 6)
+> sind umgesetzt auf `feature/docs-cli-ui-fixes`; Design-Folgepunkte (ask-Befehl,
+> Auto-Router im CLI, Ports) sind Abschnitt 7 und stehen noch aus. aktueller
+> Betrieb: README/„Nutzung", `docs/API_BRIDGE.md`, `docs/OVERVIEW.md`.
+
 # CLI-/UI-Schnittstellen-Redesign — Entwurf (Ist-Befund + Vorschlag)
 
-> **Status:** Entwurf zur Diskussion (noch kein Commit). Ausloeser: Review der
-> README-„Nutzung“ (PAP-Projektablaufplan-Idee, auf ein Design-Doc reduziert,
-> damit essentielle Bedienprobleme spaeter nicht erst beim Lesen/Testen auffallen).
-> Datenbasis: `src/cli.rs` (897 Z.), `src/main.rs` (680 Z.), `src/web_ui.rs`,
+> **Status:** Grundsatzentscheidungen getroffen, Sofort-Fixes umgesetzt (siehe
+> Abschnitt 6). Offene Design-Folgepunkte in Abschnitt 7. Datenbasis:
+> `src/cli.rs` (897 Z.), `src/main.rs` (680 Z.), `src/web_ui.rs`,
 > `src/web_ui_api.rs`, `src/config/brains.rs`, `src/api_bridge.rs` (Auto-Router),
 > `src/repl/commands.rs`, README/AGENTS/OVERVIEW/TUI_DESIGN.
 
