@@ -457,22 +457,24 @@
     {
       "area": "attachment",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/deepseek",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_deepseek_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/gemini",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_gemini_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
@@ -497,22 +499,24 @@
     {
       "area": "attachment",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/perplexity",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_perplexity_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/qwen",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-04.json",
+      "note": "Fail-closed 502: Browseroberflaeche hat nur 0 von 1 Dateien uebernommen (Upload nicht bestaetigt)."
     },
     {
       "area": "attachment",
@@ -537,102 +541,112 @@
     {
       "area": "managed_tools",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "api_models",
@@ -1073,7 +1087,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1083,7 +1098,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1093,7 +1109,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1103,7 +1120,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1113,7 +1131,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1123,7 +1142,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1133,7 +1153,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1143,7 +1164,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1153,7 +1175,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "sources",
@@ -1163,7 +1186,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1173,7 +1197,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1183,7 +1208,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1193,7 +1219,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1203,7 +1230,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1213,7 +1241,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1223,7 +1252,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1233,7 +1263,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1243,7 +1274,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1253,7 +1285,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "groups",
@@ -1263,7 +1296,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
     },
     {
       "area": "security",

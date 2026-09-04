@@ -125,8 +125,15 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
         flaky Browserturn): /health unauth->200 status=ok, /v1/* ohne Token->401,
         unbekannte Modell-ID->404, --bind 0.0.0.0->abgelehnt (Loopback-only); Belege
         `security_*`/`health_liveness_2026-09-04.json`, Matrix `security`/`health`=passed
-        (je Brain). Verbleibende Flaeche attachment/managed_tools/groups/sources bleiben
-        `not_run` bis eigene Belege. Belege `docs/proofs/T-501/`.
+        (je Brain). **attachment 2026-09-04: 3/4 gemessen passed** (deepseek/gemini/
+        perplexity - image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED; qwen fail-closed
+        502 "0 von 1 Dateien uebernommen"; chatgpt/claude/kimi/mistral/zai nicht jetzt
+        getestet/capacity). **managed_tools 2026-09-04: brain-global failed (by design)**
+        - Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text
+        profile, c15586a, "verwaltete WebAgent-Tools folgen separat"), Request -> 400
+        invalid_request_error; Beleg `managed_tools_rejected_2026-09-04.json`. Verbleibend
+        sources/groups `not_run` (T-602/T-701 code-done, App-Ebene, kein Bridge-Endpoint).
+        Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`
