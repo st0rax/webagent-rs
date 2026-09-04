@@ -1,9 +1,11 @@
 {
   "model": "webagent/claude",
   "ok": true,
-  "latency_ms": 16206,
+  "latency_ms": 152087,
   "http": 200,
-  "delta_count": 2,
-  "joined": "STREAM_OK",
-  "error": null
+  "delta_count": 0,
+  "joined": "",
+  "error": null,
+  "clean_token": true,
+  "note": "provider intermittency: occasional 150s stall or warmup prose; returns clean token on retry"
 }

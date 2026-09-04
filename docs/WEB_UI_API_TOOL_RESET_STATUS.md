@@ -111,10 +111,13 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
        (alle 9 echten Brains, echte `POST /v1/chat/completions`, Antwort exakt
        `API_CHAT_OK` finish=stop; Beleg `api_chat_<brain>_2026-09-03.json`; zai bestaetigt
        den pointer-events-Fix auch ueber die Bridge). `api_chat/auto` Timeout >200s ->
-       `not_run` (AutoRouter-Inferenz haengt). Streaming 2026-09-04: claude+gemini+perplexity+zai passed
-       (chatgpt/kimi false-positive, nicht gezaehlt). api_responses: perplexity passed.
-       Rest streaming/api_responses plus attachment/managed_tools/groups/security/sources
-       bleiben `not_run` bis eigene Belege.
+       `not_run` (AutoRouter-Inferenz haengt). **Streaming 2026-09-04: 6/9 passed**
+       (chatgpt/claude/deepseek/gemini/perplexity/qwen - sauberer `STREAM_OK`; kimi echo, mistral
+       Timestamp, zai leer -> fehlgeschlagen). **api_responses 2026-09-04: 6/9 passed**
+       (chatgpt/claude/deepseek/gemini/perplexity/qwen - sauberer `RESP_OK`; kimi echo, mistral
+       Timestamp, zai leer). 09-04-Timeouts teils Infra-Flakes (09-03 liefen alle 9 in beiden
+       Flaeche); verbleibende Flaeche attachment/managed_tools/groups/security/sources bleiben
+       `not_run` bis eigene Belege.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`

@@ -1,9 +1,11 @@
 {
   "model": "webagent/mistral",
   "ok": false,
-  "latency_ms": 23,
-  "http": null,
-  "delta_count": 0,
-  "joined": "",
-  "error": "<urlopen error [WinError 10053] Eine bestehende Verbindung wurde softwaregesteuert\r\ndurch den Hostcomputer abgebrochen>"
+  "latency_ms": 27200,
+  "http": 200,
+  "delta_count": 1,
+  "joined": "11:51",
+  "error": null,
+  "clean_token": false,
+  "failure": "returns a wall-clock timestamp (e.g. 11:51) instead of the requested token - not a valid reply"
 }

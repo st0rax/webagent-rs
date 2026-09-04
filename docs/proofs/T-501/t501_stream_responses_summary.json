@@ -1,23 +1,23 @@
 [
   {
-    "brain": "claude",
+    "brain": "chatgpt",
     "streaming": true,
-    "api_responses": false
+    "api_responses": true
   },
   {
-    "brain": "chatgpt",
-    "streaming": false,
-    "api_responses": false
+    "brain": "claude",
+    "streaming": true,
+    "api_responses": true
   },
   {
     "brain": "deepseek",
-    "streaming": false,
-    "api_responses": false
+    "streaming": true,
+    "api_responses": true
   },
   {
     "brain": "gemini",
     "streaming": true,
-    "api_responses": false
+    "api_responses": true
   },
   {
     "brain": "kimi",
@@ -36,12 +36,12 @@
   },
   {
     "brain": "qwen",
-    "streaming": false,
-    "api_responses": false
+    "streaming": true,
+    "api_responses": true
   },
   {
     "brain": "zai",
-    "streaming": true,
+    "streaming": false,
     "api_responses": false
   }
 ]

@@ -1,9 +1,11 @@
 {
   "model": "webagent/zai",
-  "ok": true,
-  "latency_ms": 41802,
+  "ok": false,
+  "latency_ms": 30,
   "http": 200,
-  "delta_count": 1,
-  "joined": "STREAM_OK",
-  "error": null
+  "delta_count": 0,
+  "joined": "",
+  "error": null,
+  "clean_token": false,
+  "failure": "returns empty stream (0 deltas) consistently across attempts - no content emitted"
 }

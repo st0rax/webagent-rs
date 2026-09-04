@@ -1,9 +1,11 @@
 {
   "model": "webagent/kimi",
   "ok": false,
-  "latency_ms": 200007,
-  "http": null,
-  "delta_count": 0,
-  "joined": "",
-  "error": "timed out"
+  "latency_ms": 17954,
+  "http": 200,
+  "delta_count": 6,
+  "joined": "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a very simple request. I should just output exactly that string with no additional formatting, explanation, or c",
+  "error": null,
+  "clean_token": false,
+  "failure": "echoes the instruction text (token appears inside prose, not as exact reply) - false positive in naive substring match"
 }
