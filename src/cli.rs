@@ -19,8 +19,8 @@ pub struct Cli {
 pub enum Commands {
     /// Autonomen Run starten
     Run {
-        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
-        #[arg(long, default_value = "chatgpt")]
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek); `auto` waehlt je Aufgabe
+        #[arg(long, default_value = "auto")]
         brain: String,
 
         /// Benutzeraufgabe
@@ -96,8 +96,8 @@ pub enum Commands {
 
     /// Interaktive REPL: mehrere Aufgaben nacheinander gegen dasselbe Brain
     Repl {
-        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
-        #[arg(long, default_value = "chatgpt")]
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek); `auto` waehlt das Default-Brain
+        #[arg(long, default_value = "auto")]
         brain: String,
 
         /// Headless-Browser (Standard: sichtbar)
@@ -431,7 +431,7 @@ pub enum Commands {
 
     /// Single send+wait turn (bot2bot bridge debugging)
     Relay {
-        #[arg(long)]
+        #[arg(long, default_value = "auto")]
         brain: String,
         #[arg(long, default_value = "")]
         message: String,
