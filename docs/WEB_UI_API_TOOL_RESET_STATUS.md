@@ -142,9 +142,13 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
         (capable-on-retry); Beleg `auto_default_routing_2026-09-04.json`. **attachment
         2026-09-04: 5/9 passed** - chatgpt/claude/deepseek/gemini/perplexity
         (je RED live); qwen (502 0-von-1-Dateien) + kimi (502 ABSENDEKNOPF_DEAKTIVIERT
-        3/3) fail-closed; mistral/zai capacity, auto Web-UI-only offen. Offen: effort
-        (7), attachment mistral/zai/auto, model/webui_chat-auto (Web-UI-only, Live-Browser noetig).
-        Belege `docs/proofs/T-501/`.
+        3/3) fail-closed; mistral/zai capacity, auto Web-UI-only offen. **effort 2026-09-04:
+        deterministisch fail-safe** (reasoning_effort_ohne_pfad_bleibt_quest + is_not_the_
+        reasoning_toggle gruen; Beleg `effort_verify_system_deterministic_2026-09-04.json`).
+        2 Live-Belege (claude T-302, deepseek 09-03), 1 unreachable (zai), 7 not_run
+        (Web-UI-only: Live-Browser + reasoning_effort_path je Brain noetig). Matrix
+        Gesamtstand: **95/130 passed**, 17 failed, 6 unreachable, 12 not_run (alle not_run
+        = Web-UI-only oder capacity-blockiert). Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`
