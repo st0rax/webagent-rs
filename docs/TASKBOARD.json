@@ -281,12 +281,12 @@
         "grok-agent",
         "local/opencode"
       ],
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "feature/T-501-all-brains-matrix",
       "claimed_at": "2026-09-03",
-      "done_at": null,
-      "proof_path": null,
+      "done_at": "2026-09-04",
+      "proof_path": "docs/proofs/T-501/ (95/130 Matrix; streaming 6/9, api_responses 7/9, security/health/auto/sources/groups passed, attachment 5/9, managed_tools by-design failed); PR #29 merged 098e4c9",
       "verification": "Matrix-Zellen; Belegpfad je Brain",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
       "depends_on": [
