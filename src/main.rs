@@ -187,29 +187,29 @@ fn dispatch(command: Commands) -> i32 {
         Commands::Section {
             brain,
             key,
-            visible,
-        } => cmd_section(&brain, &key, !visible),
+            headless,
+        } => cmd_section(&brain, &key, headless),
 
         Commands::Mode {
             brain,
             set,
             options,
-            visible,
-        } => cmd_mode(&brain, &set, &options, !visible),
+            headless,
+        } => cmd_mode(&brain, &set, &options, headless),
 
         Commands::Menu {
             brain,
             key,
             options,
             set,
-            visible,
-        } => cmd_menu(&brain, &key, &options, set.as_deref(), !visible),
+            headless,
+        } => cmd_menu(&brain, &key, &options, set.as_deref(), headless),
 
         Commands::Toggle {
             brain,
             option,
-            visible,
-        } => cmd_toggle(&brain, &option, !visible),
+            headless,
+        } => cmd_toggle(&brain, &option, headless),
 
         Commands::Wall {
             interval,
@@ -220,23 +220,23 @@ fn dispatch(command: Commands) -> i32 {
         Commands::Model {
             brain,
             set,
-            visible,
-        } => cmd_model(&brain, set.as_deref(), !visible),
+            headless,
+        } => cmd_model(&brain, set.as_deref(), headless),
 
         Commands::Shot {
             brain,
             out,
             open,
-            visible,
-        } => cmd_shot(brain.as_deref(), out.as_deref(), open.as_deref(), !visible),
+            headless,
+        } => cmd_shot(brain.as_deref(), out.as_deref(), open.as_deref(), headless),
 
         Commands::Survey {
             brain,
             write,
             open,
             dump,
-            visible,
-        } => cmd_survey(brain.as_deref(), write, !visible, dump, open.as_deref()),
+            headless,
+        } => cmd_survey(brain.as_deref(), write, headless, dump, open.as_deref()),
 
         Commands::Probe {
             url,
@@ -249,7 +249,7 @@ fn dispatch(command: Commands) -> i32 {
             dump_text,
             generating,
             stop_diff,
-            visible,
+            headless,
         } => cmd_probe(
             url.as_deref(),
             brain_id.as_deref(),
@@ -261,7 +261,7 @@ fn dispatch(command: Commands) -> i32 {
             dump_text,
             generating,
             stop_diff,
-            !visible,
+            headless,
         ),
 
         Commands::Quests { json } => cmd_quests(json),
