@@ -1,0 +1,10 @@
+{
+  "model": "webagent/claude",
+  "ok": false,
+  "latency_ms": 200065,
+  "http": null,
+  "delta_count": 0,
+  "joined": "",
+  "error": "timed out",
+  "raw_head": ""
+}

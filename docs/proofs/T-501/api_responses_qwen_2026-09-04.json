@@ -1,0 +1,10 @@
+{
+  "model": "webagent/qwen",
+  "ok": false,
+  "latency_ms": 200025,
+  "http": null,
+  "delta_count": 0,
+  "joined": "",
+  "error": "timed out",
+  "raw_head": ""
+}

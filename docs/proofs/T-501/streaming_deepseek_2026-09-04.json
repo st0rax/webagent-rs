@@ -1,0 +1,9 @@
+{
+  "model": "webagent/deepseek",
+  "ok": false,
+  "latency_ms": 200062,
+  "http": null,
+  "delta_count": 0,
+  "joined": "",
+  "error": "timed out"
+}
