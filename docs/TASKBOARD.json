@@ -176,8 +176,8 @@
       "owner": "grok-agent",
       "branch": "feature/T-301-claude-live-stream",
       "claimed_at": "2026-09-03",
-      "done_at": null,
-      "proof_path": null,
+      "done_at": "2026-09-04",
+      "proof_path": "docs/proofs/T-301/ (chat.json, events_*, analysis.txt) + docs/proofs/T-501/streaming_claude_2026-09-04.json; PR #25 merged 7fb845e",
       "verification": "Relay/Web-UI gegen Claude; Streaming-Gate metrisch",
       "dod": "Deltas ohne Duplikate, Stop/Reconnect; Zelle webui_chat+streaming passed"
     },
