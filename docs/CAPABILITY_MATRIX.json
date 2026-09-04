@@ -1082,101 +1082,101 @@
     {
       "area": "sources",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-602 ist laut TASKBOARD code-done; sources ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
@@ -1192,101 +1192,101 @@
     {
       "area": "groups",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "T-701 ist laut TASKBOARD code-done; groups ist eine App-/Session-Ebene-Faehigkeit (kein Bridge-Endpoint), hier nicht live belegbar -> not_run bis eigener Nachweis."
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",

@@ -131,8 +131,13 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
         getestet/capacity). **managed_tools 2026-09-04: brain-global failed (by design)**
         - Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text
         profile, c15586a, "verwaltete WebAgent-Tools folgen separat"), Request -> 400
-        invalid_request_error; Beleg `managed_tools_rejected_2026-09-04.json`. Verbleibend
-        sources/groups `not_run` (T-602/T-701 code-done, App-Ebene, kein Bridge-Endpoint).
+        invalid_request_error; Beleg `managed_tools_rejected_2026-09-04.json`. **sources +
+        groups 2026-09-04: passed (deterministisch, kein Live-Browser)** - T-602: 7/7
+        source_scope-Tests + web_ui_api 12/12 inkl. /api/sessions/{id}/source + /api/quelle
+        (Standard Browser-Chat, --save, kein Auto-Routing); T-701: groups-Flow create->
+        list->run->events gruen (min 2 Bots, group:<id>, Done). Belege
+        `sources_source_scope_deterministic`/`groups_ui_api_deterministic_2026-09-04.json`.
+        Offen: effort (7), attachment chatgpt/claude/kimi/mistral/zai, auto-Zellen.
         Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
