@@ -1,0 +1,10 @@
+{
+  "model": "webagent/kimi",
+  "ok": false,
+  "latency_ms": 200013,
+  "http": null,
+  "delta_count": 0,
+  "joined": "",
+  "error": "timed out",
+  "raw_head": ""
+}
