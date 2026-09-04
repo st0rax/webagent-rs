@@ -139,9 +139,11 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
         `sources_source_scope_deterministic`/`groups_ui_api_deterministic_2026-09-04.json`.
         **auto 2026-09-04: bridge-global passed (Default-Brain-Routing)** - webagent/auto
         non-stream+stream chat/completions und /v1/responses je 200 "ROUTED"
-        (capable-on-retry); Beleg `auto_default_routing_2026-09-04.json`. Offen: effort
-        (7), attachment chatgpt/claude/kimi/mistral/zai+auto, model/webui_chat-auto
-        (Web-UI-only, Live-Browser noetig).
+        (capable-on-retry); Beleg `auto_default_routing_2026-09-04.json`. **attachment
+        2026-09-04: 5/9 passed** - chatgpt/claude/deepseek/gemini/perplexity
+        (je RED live); qwen (502 0-von-1-Dateien) + kimi (502 ABSENDEKNOPF_DEAKTIVIERT
+        3/3) fail-closed; mistral/zai capacity, auto Web-UI-only offen. Offen: effort
+        (7), attachment mistral/zai/auto, model/webui_chat-auto (Web-UI-only, Live-Browser noetig).
         Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;

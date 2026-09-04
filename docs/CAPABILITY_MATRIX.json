@@ -438,22 +438,24 @@
     {
       "area": "attachment",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/chatgpt",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_chatgpt_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/claude",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_claude_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
@@ -480,12 +482,13 @@
     {
       "area": "attachment",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/kimi",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_kimi_2026-09-04.json",
+      "note": "Fail-closed 502 ABSENDEKNOPF_DEAKTIVIERT (3/3 Versuche): Sendknopf deaktiviert trotz vollem Composer."
     },
     {
       "area": "attachment",
