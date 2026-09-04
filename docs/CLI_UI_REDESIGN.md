@@ -1,14 +1,16 @@
 > **Archiv (Design-Entwurf, Stand 2026-09-04).** Datiertes Redesign-Log, keine
 > laufende Betriebsanleitung. Grundsatzentscheidung und Sofort-Fixes (Abschnitt 6)
 > sind umgesetzt; der Auto-Router im CLI (run/repl/relay `--brain auto`, Default
-> `auto`) folgte als Folgepunkt C2 auf `feature/cli-auto-brain`. Offen aus
-> Abschnitt 7: ask-Einheitsbefehl, Port-Vereinheitlichung. aktueller
+> `auto`) folgte als Folgepunkt C2 auf `feature/cli-auto-brain`; der
+> `ask`-Einheitsbefehl (3.2) auf `feature/cli-ask`. Offen aus Abschnitt 7:
+> Port-Vereinheitlichung. aktueller
 > Betrieb: README/„Nutzung", `docs/API_BRIDGE.md`, `docs/OVERVIEW.md`.
 
 # CLI-/UI-Schnittstellen-Redesign — Entwurf (Ist-Befund + Vorschlag)
 
 > **Status:** Grundsatzentscheidungen getroffen, Sofort-Fixes umgesetzt (siehe
-> Abschnitt 6). Auto-Router im CLI (C2) umgesetzt auf `feature/cli-auto-brain`.
+> Abschnitt 6). Auto-Router im CLI (C2) umgesetzt auf `feature/cli-auto-brain`;
+> `ask`-Einheitsbefehl (3.2) umgesetzt auf `feature/cli-ask`.
 > Offene Design-Folgepunkte in Abschnitt 7. Datenbasis:
 > `src/cli.rs` (898 Z.), `src/main.rs` (680 Z.), `src/web_ui.rs`,
 > `src/web_ui_api.rs`, `src/config/brains.rs`, `src/api_bridge.rs` (Auto-Router),
@@ -216,9 +218,8 @@ Getroffene Entscheidungen (aus Abschnitt 5, vom Nutzer beantwortet):
 
 1. **Default-Oberflaeche:** Web-UI (Ist-Code) beibehalten, Doku nachgezogen
    (README/AGENTS/OVERVIEW statt „Session-TUI“ → „Session-Web-UI“).
-2. **Kern-Befehle:** `ask`-Einheitsbefehl ist Design-Ziel, noch **nicht**
-   implementiert; vorerst nur README-USAGE konsolidiert; `run`/`repl` bleiben
-   Ist-Aliasnamen.
+2. **Kern-Befehle:** `ask`-Einheitsbefehl umgesetzt auf `feature/cli-ask`
+   (2026-09-04, siehe unten). `run`/`relay` bleiben kompatible Aliasse.
 3. **Auto-Router im CLI (C2):** umgesetzt auf `feature/cli-auto-brain`
    (2026-09-04, siehe unten). `run`/`repl`/`relay` haben jetzt Default
    `--brain auto`; die Aufloesung teilt denselben Router wie die Bridge
@@ -259,11 +260,32 @@ Getroffene Entscheidungen (aus Abschnitt 5, vom Nutzer beantwortet):
 - `README.md`: USAGE `[--brain <id>|auto]`, Auto-Router-Absatz statt des
   überholten „auto nur in der Bridge"-Hinweises.
 
+### ask-Einheitsbefehl (`feature/cli-ask`, 2026-09-04)
+
+- `src/cli.rs`: `Ask`-Command `webagent ask --task "<aufgabe>"` mit
+  `--brain <id>|auto` (Default `auto`), `--auto` (Default) vs. `--chat`
+  (Konversations-Einzelturn, `conflicts_with = "auto"`), `--resume`,
+  `--headless`, `--max-cycles`, `--no-memory`, `--json` (nur `--chat`).
+  `--budget` aus 3.2 nicht umgesetzt (kein Laufgrenzen-Budget im Controller
+  vorhanden; nicht erfunden).
+- `src/main.rs`: `Commands::Ask` → `cmd_ask`-Dispatch.
+- `commands/ops.rs`: `cmd_ask` delegiert 1:1 — `--chat` → `relay_single_turn`
+  (mit `--json`-Ausgabe {brain/ok/answer/latency_ms/reason}), sonst →
+  `cmd_run`. Keine doppelte Run-/Relay-Logik.
+- `README.md`: `ask` als empfohlene Eingabe dokumentiert; `run` = `ask --auto`,
+  `relay` = Konversations-Einzelturn (Aliasse).
+- `run`/`relay`/`repl` technisch unveraendert — `ask` ist neuer Einstieg auf
+  denselben Pfaden.
+
 ---
 
 ## 7. Naechste Schritte (nach Abnahme dieses Branches)
 
 1. Review des Branches `feature/docs-cli-ui-fixes` → merge auf master, push.
-2. Design-Folgeschritte erst nach Abnahme: `ask`-Befehl (3.2), einheitliche
-   Ports/Benennung (3.3).
+2. Offen aus dem Design: **Port-Vereinheitlichung** (3.3) — API-Bridge `8787`
+   und Web-UI `8788` auf einen gemeinsamen Port zu legen verlangt eine
+   Architektur-Entscheidung (wer bedient wen, wie koexistiert beides auf einem
+   Sockel) und bricht konsumierende Skripte. Konkreter Vorschlag, bevor gebaut
+   wird: gemeinsame Port-Konstante + `ui`/`api serve` teilen einen Port über
+   einen `--port`-Default-Datenpunkt; 8787/8788 als dokumentierte Dead-Zahlen.
 3. Login-Realitaet pro Brain: nur mit Nutzer-Freigabe messen (6h-Sperre).

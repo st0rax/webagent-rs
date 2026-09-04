@@ -170,6 +170,7 @@ und Beispielskripte in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
 ```
 webagent login            --brain <id> [--timeout <sek>] [--force] [--auto]
 webagent login-all        [--timeout <sek>] [--force] [--parallel N]
+webagent ask              --task "<aufgabe>" [--brain <id>|auto] [--auto|--chat] [--resume <run_id>] [--headless] [--max-cycles N] [--no-memory] [--json]
 webagent run              --task "<aufgabe>" [--brain <id>|auto] [--headless] [--max-cycles N] [--resume <run_id>] [--no-memory]
 webagent repl             [--brain <id>|auto] [--headless]
 webagent relay            --message "<text>" [--brain <id>|auto] [--headless] [--timeout <sek>] [--json]
@@ -183,13 +184,19 @@ webagent oobe             [--brains <csv>] [--skip-login] [--yes]
 webagent maintenance-check [--json]
 ```
 
-Der Auto-Router waehlt bei `run`, `repl` und `relay` ohne `--brain` (bzw. mit
-`--brain auto`) das passende Brain je Aufgabe: Bild-/Coding-/Recherche-Tasks
+`ask` ist die einheitliche Eingabe: **Default = autonomer Run** (Controller + Shell,
+beendet bei `status=done`). `--chat` macht daraus einen reinen Konversations-
+Einzelturn (kein Controller/Shell). `run`/`relay` bleiben kompatible Aliasse:
+`run` = `ask --auto` mit denselben Run-Flags; `relay` = Konversations-Einzelturn
+mit `--message` statt `--task`.
+
+Der Auto-Router waehlt bei `ask`, `run`, `repl` und `relay` ohne `--brain` (bzw.
+mit `--brain auto`) das passende Brain je Aufgabe: Bild-/Coding-/Recherche-Tasks
 landen bei passenden Brains, sonst beim ersten verfuegbaren Text-Brain. Die
 Wahl wird mit `[auto-router] selected=<id> reason=<grund>` auf stderr sichtbar.
 
-`relay --json` liefert einen einzelnen send+wait-Turn maschinenlesbar
-(`{"brain","ok","answer","latency_ms","reason"}`).
+`relay --json` bzw. `ask --chat --json` liefern einen einzelnen send+wait-Turn
+maschinenlesbar (`{"brain","ok","answer","latency_ms","reason"}`).
 
 **Datei-Aktionen im Protokoll:** Brains ändern Dateien über `edit`
 (path/old_string/new_string, Anker muss exakt einmal matchen) und `write`
