@@ -1,10 +1,11 @@
 {
   "model": "webagent/gemini",
-  "ok": false,
-  "latency_ms": 200024,
-  "http": null,
-  "delta_count": 0,
-  "joined": "",
-  "error": "timed out",
-  "raw_head": ""
+  "ok": true,
+  "latency_ms": 14114,
+  "http": 200,
+  "delta_count": 1,
+  "joined": "RESP_OK",
+  "out_text": "",
+  "error": null,
+  "clean_token": true
 }

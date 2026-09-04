@@ -1,0 +1,39 @@
+{
+  "name": "sources_source_scope_deterministic",
+  "area": "sources",
+  "brain": "auto",
+  "date": "2026-09-04",
+  "ok": true,
+  "status": "passed",
+  "method": "deterministischer Unit-/API-Testlauf (cargo test), kein Live-Browser",
+  "evidence": [
+    {
+      "suite": "cargo test --lib source_scope",
+      "result": "7 passed; 0 failed; 0.02s",
+      "tests": [
+        "default_ist_browser_chat",
+        "save_flag_am_anfang_oder_ende",
+        "kein_automatisches_routing_kein_versteckter_fallback",
+        "quelle_list_und_show",
+        "session_scope_ist_pro_instanz_isoliert",
+        "keys_bleiben_env_namen_beim_save",
+        "persistiert_nur_mit_save"
+      ]
+    },
+    {
+      "suite": "cargo test --lib web_ui_api::tests::",
+      "result": "12 passed; 0 failed; 0.17s",
+      "tests_covering_sources": [
+        "source_switch_ist_session_scope_ohne_auto_routing",
+        "chat_echo_ist_kein_assistenten_delta"
+      ]
+    }
+  ],
+  "covered": [
+    "GET /api/sessions/{id}/source -> 200 {source:default, kind:browser}",
+    "POST /api/sessions/{id}/source {source:openrouter, save:false} -> 200, persisted=false, active+session=openrouter",
+    "neue Session bleibt default (Session-Scope isoliert, kein Auto-Routing/kein Hidden-Fallback)",
+    "POST /api/quelle {/quelle claude default} -> 200, active zurueck zu default/browser"
+  ],
+  "note": "T-602 (sources, /quelle + source_scope) deterministisch belegt: 7/7 source_scope-Unit-Tests und Web-UI-API-Schicht inkl. /api/sessions/{id}/source + /api/quelle gruen (12/12 web_ui_api). Standardquelle = Browser-Chat, manuelle Quelle nur per Schalter //quelle, Persistenz nur mit --save, keine Auto-Routing/kein versteckter Fallback. Brain-agnostische Session-Ebene (kein Bridge-Endpoint); Live-Browser-Round-Trip am 09-04 nicht erneut gefahren."
+}

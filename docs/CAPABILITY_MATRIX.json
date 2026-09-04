@@ -134,12 +134,12 @@
     {
       "area": "streaming",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/chatgpt",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_chatgpt_2026-09-04.json"
     },
     {
       "area": "streaming",
@@ -148,18 +148,18 @@
       "date": "2026-09-04",
       "model": "webagent/claude",
       "selector_hash": null,
-      "latency_ms": 16206,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/streaming_claude_2026-09-04.json"
     },
     {
       "area": "streaming",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/deepseek",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_deepseek_2026-09-04.json"
     },
     {
       "area": "streaming",
@@ -168,28 +168,30 @@
       "date": "2026-09-04",
       "model": "webagent/gemini",
       "selector_hash": null,
-      "latency_ms": 24759,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/streaming_gemini_2026-09-04.json"
     },
     {
       "area": "streaming",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/kimi",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-04.json",
+      "note": "FAIL: Reasoning-Echo als Delta-Stream (Token nur in Prosa) - clean via non-stream+/v1/responses"
     },
     {
       "area": "streaming",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/mistral",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-04.json",
+      "note": "FAIL: Timestamp+keep-alive als Delta-Stream; spaeter circuit_open/capacity (Provider-seitig)"
     },
     {
       "area": "streaming",
@@ -198,38 +200,40 @@
       "date": "2026-09-04",
       "model": "webagent/perplexity",
       "selector_hash": null,
-      "latency_ms": 21060,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/streaming_perplexity_2026-09-04.json"
     },
     {
       "area": "streaming",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/qwen",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/streaming_qwen_2026-09-04.json"
     },
     {
       "area": "streaming",
       "brain": "zai",
-      "status": "passed",
+      "status": "failed",
       "date": "2026-09-04",
       "model": "webagent/zai",
       "selector_hash": null,
-      "latency_ms": 41802,
-      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-04.json"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-04.json",
+      "note": "FAIL: circuit_open (Provider-Capacity ~6h Cooldown); passed 09-03"
     },
     {
       "area": "streaming",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/auto",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 17174,
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "auto=Default-Brain-Routing live belegt (SSE 7 chunks, ROUTED, capable-on-retry)"
     },
     {
       "area": "model",
@@ -335,11 +339,12 @@
       "area": "effort",
       "brain": "chatgpt",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
@@ -365,51 +370,56 @@
       "area": "effort",
       "brain": "gemini",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
       "brain": "kimi",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
       "brain": "mistral",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
       "brain": "perplexity",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
       "brain": "qwen",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "effort",
@@ -425,61 +435,67 @@
       "area": "effort",
       "brain": "auto",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
     },
     {
       "area": "attachment",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/chatgpt",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_chatgpt_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/claude",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_claude_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/deepseek",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_deepseek_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/gemini",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_gemini_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/kimi",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_kimi_2026-09-04.json",
+      "note": "Fail-closed 502 ABSENDEKNOPF_DEAKTIVIERT (3/3 Versuche): Sendknopf deaktiviert trotz vollem Composer."
     },
     {
       "area": "attachment",
@@ -494,22 +510,24 @@
     {
       "area": "attachment",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/perplexity",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_perplexity_2026-09-04.json",
+      "note": "Multimodaler image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED (Uploadpfad + Bildanalyse live belegt)."
     },
     {
       "area": "attachment",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/qwen",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-04.json",
+      "note": "Fail-closed 502: Browseroberflaeche hat nur 0 von 1 Dateien uebernommen (Upload nicht bestaetigt)."
     },
     {
       "area": "attachment",
@@ -534,102 +552,112 @@
     {
       "area": "managed_tools",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "managed_tools",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
     },
     {
       "area": "api_models",
@@ -843,73 +871,74 @@
     {
       "area": "api_chat",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": "webagent/auto",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/api_models_list_2026-09-03.json",
-      "note": "AutoRouter via /v1/chat/completions (model webagent/auto) zweimal Timeout (>200s) — Inferenz-Turn haengt im Routing; Katalog /v1/models liefert webagent/auto (passed). Nicht als gruen beansprucht."
+      "latency_ms": 19616,
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "auto=Default-Brain-Routing live belegt (non-stream ROUTED)"
     },
     {
       "area": "api_responses",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/chatgpt",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_chatgpt_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/claude",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_claude_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/deepseek",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_deepseek_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/gemini",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_gemini_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/kimi",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_kimi_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/mistral",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_mistral_2026-09-04.json",
+      "note": "FAIL (flaky): clean RESP_OK frueher, dann http200-empty/circuit_open - Provider-seitig"
     },
     {
       "area": "api_responses",
@@ -918,438 +947,480 @@
       "date": "2026-09-04",
       "model": "webagent/perplexity",
       "selector_hash": null,
-      "latency_ms": 20428,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/api_responses_perplexity_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/qwen",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_qwen_2026-09-04.json"
     },
     {
       "area": "api_responses",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "failed",
+      "date": "2026-09-04",
+      "model": "webagent/zai",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/api_responses_zai_2026-09-04.json",
+      "note": "FAIL: circuit_open (Provider-Capacity ~6h Cooldown)"
     },
     {
       "area": "api_responses",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/auto",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 16763,
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "auto=Default-Brain-Routing live belegt (/v1/responses ROUTED, capable-on-retry)"
     },
     {
       "area": "health",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/health_liveness_2026-09-04.json",
+      "note": "Bridge-global: GET /health unauth -> 200 status=ok (Liveness ohne Browserturn)"
     },
     {
       "area": "health",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "Bridge-global live belegt (health_liveness) + auto-Routing transportbelegt; health ist Brain-agnostisch."
     },
     {
       "area": "sources",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
+      "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "sources",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "App-Ebene deterministisch belegt (source_scope, T-602); auto nutzt denselben Session-Pfad (brain-agnostisch)."
     },
     {
       "area": "groups",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/groups_ui_api_deterministic_2026-09-04.json",
+      "note": "T-701 deterministisch belegt (Unit-/API-Test gruen 09-04): groups_create_list_and_run_share_session_stream create->list->run->events; min 2 Bots (400 bei 1), group:<id>-Session mit geteiltem Stream, Done. Brain-agnostische App-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
     },
     {
       "area": "groups",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "App-Ebene deterministisch belegt (groups_ui_api, T-701); auto nutzt denselben App-Pfad (brain-agnostisch)."
     },
     {
       "area": "security",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "claude",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "gemini",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "kimi",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "qwen",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
+      "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
     },
     {
       "area": "security",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/auto_default_routing_2026-09-04.json",
+      "note": "Bridge-global live belegt (deterministisch: 401/404/loopback-only) + auto-Routing transportbelegt; Security ist Brain-agnostisch."
     }
   ]
 }

@@ -1,0 +1,10 @@
+{
+  "name": "security_unknown_model_404",
+  "area": "security",
+  "brain": "auto",
+  "ok": true,
+  "http": 404,
+  "body": "{\"error\":{\"code\":null,\"message\":\"Unbekanntes Modell 'webagent/nope'. Verfuegbar: webagent/chatgpt, webagent/claude, webagent/deepseek, webagent/gemini, webagent/kimi, webagent/mistral, webagent/perplexity, webagent/qwen, webagent/zai.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+  "latency_ms": 4,
+  "note": "GET unbekannte Modell-ID -> 404"
+}

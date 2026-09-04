@@ -1,0 +1,12 @@
+{
+  "name": "attachment_perplexity",
+  "area": "attachment",
+  "brain": "perplexity",
+  "ok": true,
+  "http": 200,
+  "date": "2026-09-04",
+  "latency_ms": 27249,
+  "prompt": "What color is the attached image? Answer with exactly: RED",
+  "attachment": "1x1 red PNG (base64 image_url)",
+  "reply": "RED"
+}

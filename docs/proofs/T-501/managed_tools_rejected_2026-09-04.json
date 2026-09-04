@@ -1,0 +1,11 @@
+{
+  "name": "managed_tools_client_tools_rejected_by_design",
+  "area": "managed_tools",
+  "brain": "auto",
+  "ok": false,
+  "http": 400,
+  "date": "2026-09-04",
+  "latency_ms": 39,
+  "error_body": "{\"error\":{\"code\":null,\"message\":\"Aktive Client-Tools sind im sauberen Browser-Textprofil noch nicht unterstuetzt. WebAgent injiziert weder Tool-Schemas noch Skill-/System-Protokolle in die Browser-Unterhaltung; verwaltete WebAgent-Tools folgen separat.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+  "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): 'Aktive Client-Tools ... noch nicht unterstuetzt; verwaltete WebAgent-Tools folgen separat.' WebAgent injiziert kein Tool-Schema in die Browser-Unterhaltung. Kein Brain liefert tool_calls."
+}

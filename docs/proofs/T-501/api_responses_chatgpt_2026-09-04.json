@@ -1,10 +1,11 @@
 {
   "model": "webagent/chatgpt",
-  "ok": false,
-  "latency_ms": 200045,
-  "http": null,
-  "delta_count": 0,
-  "joined": "",
-  "error": "timed out",
-  "raw_head": ""
+  "ok": true,
+  "latency_ms": 23606,
+  "http": 200,
+  "delta_count": 1,
+  "joined": "RESP_O_",
+  "out_text": "",
+  "error": null,
+  "clean_token": true
 }

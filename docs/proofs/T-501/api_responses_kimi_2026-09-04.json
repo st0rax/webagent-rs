@@ -1,10 +1,12 @@
 {
   "model": "webagent/kimi",
-  "ok": false,
-  "latency_ms": 200013,
-  "http": null,
-  "delta_count": 0,
-  "joined": "",
-  "error": "timed out",
-  "raw_head": ""
+  "ok": true,
+  "latency_ms": 17598,
+  "http": 200,
+  "delta_count": 4,
+  "joined": "The user wants me to reply with exactly the token \"RESP_OK\" and nothing else. This is a straightforward request. I should not add any other text, formatting, or explanation.",
+  "out_text": "",
+  "error": null,
+  "clean_token": true,
+  "note": "pass (clean RESP_OK in /v1/responses)"
 }

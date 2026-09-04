@@ -1,0 +1,13 @@
+{
+  "name": "attachment_chatgpt",
+  "area": "attachment",
+  "brain": "chatgpt",
+  "ok": true,
+  "http": 200,
+  "date": "2026-09-04",
+  "attempts": 1,
+  "latency_ms": 28006,
+  "prompt": "What color is the attached image? Answer with exactly: RED",
+  "attachment": "1x1 red PNG (base64 image_url)",
+  "reply": "RED"
+}

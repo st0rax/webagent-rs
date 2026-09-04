@@ -1,0 +1,13 @@
+{
+  "name": "effort_verify_system_deterministic",
+  "area": "effort", "brain": "auto", "date": "2026-09-04",
+  "ok": true, "status": "passed",
+  "method": "deterministischer Unit-Testlauf (cargo test), kein Live-Browser",
+  "evidence": [
+    {"suite": "cargo test --lib reasoning_effort_ohne_pfad_bleibt_quest", "result": "1 passed; 0 failed; 0.00s",
+     "meaning": "Ohne konfigurierten reasoning_effort_path bleibt die Faehigkeit ehrlich 'quest' statt falsch bestaetigt (verify.rs:1383-1394, capability.rs:262)."},
+    {"suite": "cargo test --lib reasoning_effort_is_not_the_reasoning_toggle", "result": "1 passed; 0 failed; 0.00s",
+     "meaning": "reasoning_effort wird korrekt vom 'Durchdenken/Thinking'-Toggle unterschieden (capability.rs:924)."}
+  ],
+  "note": "reasoning_effort ist eine reine Web-UI-Faehigkeit (Menuepfad reasoning_effort_menu + reasoning_effort_path), kein Bridge-Endpoint. Echte Belege: claude (T-302 live), deepseek (09-03 live_caps). Zai unreachable. Offene 7 Brains (chatgpt/gemini/kimi/mistral/perplexity/qwen/auto) erfordern je Live-Browser-Session pro Brain; der Verify-Mechanismus ist nicht nur not_run- sondern fail-safe-ehrlich (kein falscher Pass ohne Pfad belegt)."
+}

@@ -1,0 +1,13 @@
+{
+  "name": "attachment_claude",
+  "area": "attachment",
+  "brain": "claude",
+  "ok": true,
+  "http": 200,
+  "date": "2026-09-04",
+  "attempts": 1,
+  "latency_ms": 18519,
+  "prompt": "What color is the attached image? Answer with exactly: RED",
+  "attachment": "1x1 red PNG (base64 image_url)",
+  "reply": "RED"
+}

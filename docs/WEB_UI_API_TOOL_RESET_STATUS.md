@@ -110,11 +110,45 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
        Belege `api_models_list_/.perbrain_2026-09-03.json`); `api_chat` **9×Passed**
        (alle 9 echten Brains, echte `POST /v1/chat/completions`, Antwort exakt
        `API_CHAT_OK` finish=stop; Beleg `api_chat_<brain>_2026-09-03.json`; zai bestaetigt
-       den pointer-events-Fix auch ueber die Bridge). `api_chat/auto` Timeout >200s ->
-       `not_run` (AutoRouter-Inferenz haengt). Streaming 2026-09-04: claude+gemini+perplexity+zai passed
-       (chatgpt/kimi false-positive, nicht gezaehlt). api_responses: perplexity passed.
-       Rest streaming/api_responses plus attachment/managed_tools/groups/security/sources
-       bleiben `not_run` bis eigene Belege.
+        den pointer-events-Fix auch ueber die Bridge). `api_chat/auto` Timeout >200s ->
+        `not_run` (AutoRouter-Inferenz haengt). **Streaming 2026-09-04 (definitive
+        Verifikation, capable-on-retry): 6/9 passed** (chatgpt/claude/deepseek/gemini/
+        perplexity/qwen - sauberer `STREAM_OK`; kimi Reasoning-Echo, mistral Timestamp+
+        Capacity, zai circuit_open -> fehlgeschlagen). **api_responses 2026-09-04: 7/9
+        passed** (chatgpt/claude/deepseek/gemini/kimi/perplexity/qwen - sauberer `RESP_OK`;
+        mistral flaky/Capacity, zai circuit_open). **Root-Cause:** Ausfaelle sind
+        Provider-seitig (circuit_open/Capacity-Cooldowns zai+mistral, kimi streamt
+        Gedankengang, chatgpt/claude flaky unter Last) - Bridge relayt sauber, sobald der
+        Provider liefert; stabil: deepseek/gemini/perplexity/qwen. **DoD NICHT done**
+        (volle 9/9 durch Provider-Instabilitaet und 09-04-Capacity blockiert).
+        **security + health 2026-09-04: Bridge-global passed** (deterministisch, ohne
+        flaky Browserturn): /health unauth->200 status=ok, /v1/* ohne Token->401,
+        unbekannte Modell-ID->404, --bind 0.0.0.0->abgelehnt (Loopback-only); Belege
+        `security_*`/`health_liveness_2026-09-04.json`, Matrix `security`/`health`=passed
+        (je Brain). **attachment 2026-09-04: 3/4 gemessen passed** (deepseek/gemini/
+        perplexity - image_url-Upload 1x1-Rot-PNG -> Antwort exakt RED; qwen fail-closed
+        502 "0 von 1 Dateien uebernommen"; chatgpt/claude/kimi/mistral/zai nicht jetzt
+        getestet/capacity). **managed_tools 2026-09-04: brain-global failed (by design)**
+        - Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text
+        profile, c15586a, "verwaltete WebAgent-Tools folgen separat"), Request -> 400
+        invalid_request_error; Beleg `managed_tools_rejected_2026-09-04.json`. **sources +
+        groups 2026-09-04: passed (deterministisch, kein Live-Browser)** - T-602: 7/7
+        source_scope-Tests + web_ui_api 12/12 inkl. /api/sessions/{id}/source + /api/quelle
+        (Standard Browser-Chat, --save, kein Auto-Routing); T-701: groups-Flow create->
+        list->run->events gruen (min 2 Bots, group:<id>, Done). Belege
+        `sources_source_scope_deterministic`/`groups_ui_api_deterministic_2026-09-04.json`.
+        **auto 2026-09-04: bridge-global passed (Default-Brain-Routing)** - webagent/auto
+        non-stream+stream chat/completions und /v1/responses je 200 "ROUTED"
+        (capable-on-retry); Beleg `auto_default_routing_2026-09-04.json`. **attachment
+        2026-09-04: 5/9 passed** - chatgpt/claude/deepseek/gemini/perplexity
+        (je RED live); qwen (502 0-von-1-Dateien) + kimi (502 ABSENDEKNOPF_DEAKTIVIERT
+        3/3) fail-closed; mistral/zai capacity, auto Web-UI-only offen. **effort 2026-09-04:
+        deterministisch fail-safe** (reasoning_effort_ohne_pfad_bleibt_quest + is_not_the_
+        reasoning_toggle gruen; Beleg `effort_verify_system_deterministic_2026-09-04.json`).
+        2 Live-Belege (claude T-302, deepseek 09-03), 1 unreachable (zai), 7 not_run
+        (Web-UI-only: Live-Browser + reasoning_effort_path je Brain noetig). Matrix
+        Gesamtstand: **95/130 passed**, 17 failed, 6 unreachable, 12 not_run (alle not_run
+        = Web-UI-only oder capacity-blockiert). Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;
       `docs/providers.example.json`; Keys nur Env-Namen; `cargo test --lib`

@@ -1,9 +1,11 @@
 {
   "model": "webagent/mistral",
   "ok": false,
-  "latency_ms": 200015,
-  "http": null,
-  "delta_count": 0,
-  "joined": "",
-  "error": "timed out"
+  "latency_ms": 27200,
+  "http": 200,
+  "delta_count": 1,
+  "joined": "11:51",
+  "error": null,
+  "clean_token": false,
+  "note": "FAIL: emits wall-clock timestamp + keep-alive as delta stream; later circuit-open/capacity"
 }

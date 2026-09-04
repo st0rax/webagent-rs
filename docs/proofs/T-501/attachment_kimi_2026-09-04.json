@@ -1,0 +1,13 @@
+{
+  "name": "attachment_kimi",
+  "area": "attachment",
+  "brain": "kimi",
+  "ok": false,
+  "http": 502,
+  "date": "2026-09-04",
+  "attempts": 3,
+  "latency_ms": 61263,
+  "prompt": "What color is the attached image? Answer with exactly: RED",
+  "attachment": "1x1 red PNG (base64 image_url)",
+  "error_body": "Browser-Inference fehlgeschlagen: ABSENDEKNOPF_DEAKTIVIERT: Absendeknopf ist deaktiviert, obwohl der Text vollstaendig im Composer steht"
+}

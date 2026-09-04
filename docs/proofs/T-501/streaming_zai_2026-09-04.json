@@ -1,9 +1,11 @@
 {
   "model": "webagent/zai",
-  "ok": true,
-  "latency_ms": 41802,
+  "ok": false,
+  "latency_ms": 30,
   "http": 200,
-  "delta_count": 1,
-  "joined": "STREAM_OK",
-  "error": null
+  "delta_count": 0,
+  "joined": "",
+  "error": null,
+  "clean_token": false,
+  "note": "FAIL: circuit_open (provider capacity, ~6h cooldown); no content emitted; passed 09-03"
 }

@@ -1,10 +1,12 @@
 {
   "model": "webagent/mistral",
   "ok": false,
-  "latency_ms": 200008,
-  "http": null,
-  "delta_count": 0,
-  "joined": "",
-  "error": "timed out",
-  "raw_head": ""
+  "latency_ms": 35964,
+  "http": 200,
+  "delta_count": 1,
+  "joined": "11:52",
+  "out_text": "",
+  "error": null,
+  "clean_token": false,
+  "note": "FAIL (flaky): clean RESP_OK earlier, then http200-empty or circuit-open/capacity - provider-side"
 }

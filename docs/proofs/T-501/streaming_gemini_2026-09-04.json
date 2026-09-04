@@ -1,9 +1,10 @@
 {
   "model": "webagent/gemini",
   "ok": true,
-  "latency_ms": 24759,
+  "latency_ms": 34986,
   "http": 200,
   "delta_count": 1,
   "joined": "STREAM_OK",
-  "error": null
+  "error": null,
+  "clean_token": true
 }

@@ -1,10 +1,12 @@
 {
   "model": "webagent/zai",
   "ok": false,
-  "latency_ms": 200035,
-  "http": null,
+  "latency_ms": 28,
+  "http": 200,
   "delta_count": 0,
   "joined": "",
-  "error": "timed out",
-  "raw_head": ""
+  "out_text": "",
+  "error": null,
+  "clean_token": false,
+  "note": "FAIL: circuit_open (provider capacity, ~6h cooldown)"
 }

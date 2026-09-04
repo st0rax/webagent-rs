@@ -1,0 +1,26 @@
+{
+  "name": "groups_ui_api_deterministic",
+  "area": "groups",
+  "brain": "auto",
+  "date": "2026-09-04",
+  "ok": true,
+  "status": "passed",
+  "method": "deterministischer Unit-/API-Testlauf (cargo test), kein Live-Browser",
+  "evidence": [
+    {
+      "suite": "cargo test --lib web_ui_api::tests::",
+      "result": "12 passed; 0 failed; 0.17s",
+      "tests_covering_groups": [
+        "groups_create_list_and_run_share_session_stream"
+      ]
+    }
+  ],
+  "covered": [
+    "POST /api/groups mit 1 Brain -> 400 (Gruppengroesse min 2)",
+    "POST /api/groups {id:demo, brains:[A,B]} -> 201",
+    "GET /api/groups -> 200, Gruppe gelistet",
+    "POST /api/groups/demo/run {task,rounds,leader} -> 201, session.brain=group:demo, status=done",
+    "GET /api/sessions/{run_id}/events since=0 -> 200, gap=false, >=4 Events, letztes Done"
+  ],
+  "note": "T-701 (groups, Swarm-Gruppen) deterministisch belegt: create->list->run->events-Flow der Web-UI-API gruen (groups_create_list_and_run_share_session_stream). 2-6-Bots-Validierung (min 2), Gruppen-Session (group:<id>) mit geteiltem Stream, Done-Abschluss. Brain-agnostische App-Ebene (kein Bridge-Endpoint); Live-Browser-Round-Trip am 09-04 nicht erneut gefahren."
+}

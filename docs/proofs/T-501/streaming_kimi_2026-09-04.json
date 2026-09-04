@@ -1,9 +1,11 @@
 {
   "model": "webagent/kimi",
   "ok": false,
-  "latency_ms": 18655,
+  "latency_ms": 17954,
   "http": 200,
   "delta_count": 6,
-  "joined": "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a straightforward request - I should output only that exact string without any additional text, formatting, or e",
-  "error": "false_positive: reasoning mentioned STREAM_OK but did not emit the token alone"
+  "joined": "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a very simple request. I should just output exactly that string with no additional formatting, explanation, or c",
+  "error": null,
+  "clean_token": false,
+  "note": "FAIL streaming chat: emits reasoning/instruction echo as delta stream (token appears only inside prose) - clean via non-stream + /v1/responses"
 }
