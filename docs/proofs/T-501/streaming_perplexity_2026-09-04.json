@@ -1,0 +1,9 @@
+{
+  "model": "webagent/perplexity",
+  "ok": true,
+  "latency_ms": 21060,
+  "http": 200,
+  "delta_count": 1,
+  "joined": "STREAM_OK",
+  "error": null
+}

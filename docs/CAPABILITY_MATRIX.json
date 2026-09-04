@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-03",
+  "as_of": "2026-09-04",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "brains": [
     "chatgpt",
@@ -194,12 +194,12 @@
     {
       "area": "streaming",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/perplexity",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 21060,
+      "proof_path": "docs/proofs/T-501/streaming_perplexity_2026-09-04.json"
     },
     {
       "area": "streaming",
@@ -214,12 +214,12 @@
     {
       "area": "streaming",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/zai",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 41802,
+      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-04.json"
     },
     {
       "area": "streaming",
@@ -914,12 +914,12 @@
     {
       "area": "api_responses",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-04",
+      "model": "webagent/perplexity",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 20428,
+      "proof_path": "docs/proofs/T-501/api_responses_perplexity_2026-09-04.json"
     },
     {
       "area": "api_responses",
