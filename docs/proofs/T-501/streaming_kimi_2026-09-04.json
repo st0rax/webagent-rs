@@ -1,9 +1,9 @@
 {
   "model": "webagent/kimi",
   "ok": false,
-  "latency_ms": 18655,
-  "http": 200,
-  "delta_count": 6,
-  "joined": "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a straightforward request - I should output only that exact string without any additional text, formatting, or e",
-  "error": "false_positive: reasoning mentioned STREAM_OK but did not emit the token alone"
+  "latency_ms": 200007,
+  "http": null,
+  "delta_count": 0,
+  "joined": "",
+  "error": "timed out"
 }

@@ -1,7 +1,7 @@
 {
   "model": "webagent/gemini",
   "ok": false,
-  "latency_ms": 200024,
+  "latency_ms": 200005,
   "http": null,
   "delta_count": 0,
   "joined": "",

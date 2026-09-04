@@ -12,18 +12,14 @@ API: webagent api serve on 127.0.0.1:8787
 - perplexity
 - zai
 
-## streaming (false positive)
-- kimi (reasoning text mentioned STREAM_OK, not a clean token reply)
-- chatgpt (earlier UI chrome / Erneut versuchen)
-
 ## streaming (ok:false / timeout)
-- deepseek, mistral, qwen
+- chatgpt, deepseek, kimi, mistral, qwen
 
 ## api_responses (ok:true, token RESP_OK)
 - perplexity
 
 ## api_responses (ok:false / timeout)
-- chatgpt, claude, deepseek, gemini, kimi, mistral, qwen, zai
+- claude, chatgpt, deepseek, gemini, kimi, mistral, qwen, zai
 
 ## Counts
 - streaming: 4/9 passed

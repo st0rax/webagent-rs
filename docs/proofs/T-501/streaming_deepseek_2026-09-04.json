@@ -1,7 +1,7 @@
 {
   "model": "webagent/deepseek",
   "ok": false,
-  "latency_ms": 200062,
+  "latency_ms": 200006,
   "http": null,
   "delta_count": 0,
   "joined": "",

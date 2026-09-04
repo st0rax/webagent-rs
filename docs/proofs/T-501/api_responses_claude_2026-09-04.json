@@ -1,7 +1,7 @@
 {
   "model": "webagent/claude",
   "ok": false,
-  "latency_ms": 200065,
+  "latency_ms": 200017,
   "http": null,
   "delta_count": 0,
   "joined": "",

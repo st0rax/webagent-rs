@@ -1,7 +1,7 @@
 {
   "model": "webagent/kimi",
   "ok": false,
-  "latency_ms": 200013,
+  "latency_ms": 200012,
   "http": null,
   "delta_count": 0,
   "joined": "",

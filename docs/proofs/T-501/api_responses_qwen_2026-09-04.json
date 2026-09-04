@@ -1,10 +1,10 @@
 {
   "model": "webagent/qwen",
   "ok": false,
-  "latency_ms": 200025,
-  "http": null,
+  "latency_ms": 0,
+  "http": 503,
   "delta_count": 0,
   "joined": "",
-  "error": "timed out",
-  "raw_head": ""
+  "error": null,
+  "raw_head": "{\"error\":{\"code\":\"overloaded\",\"message\":\"API-Bridge ist ausgelastet; bitte Anfrage wiederholen.\",\"type\":\"server_error\"}}"
 }

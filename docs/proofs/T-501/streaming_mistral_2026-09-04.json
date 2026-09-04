@@ -1,9 +1,9 @@
 {
   "model": "webagent/mistral",
   "ok": false,
-  "latency_ms": 200015,
+  "latency_ms": 23,
   "http": null,
   "delta_count": 0,
   "joined": "",
-  "error": "timed out"
+  "error": "<urlopen error [WinError 10053] Eine bestehende Verbindung wurde softwaregesteuert\r\ndurch den Hostcomputer abgebrochen>"
 }
