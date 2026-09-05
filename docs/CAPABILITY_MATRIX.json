@@ -489,13 +489,13 @@
     {
       "area": "attachment",
       "brain": "kimi",
-      "status": "failed",
+      "status": "passed",
       "date": "2026-09-05",
       "model": "webagent/kimi",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/attachment_kimi_2026-09-05.json",
-      "note": "FAIL 2026-09-05: 502 ABSENDEKNOPF_DEAKTIVIERT (3/3-artig): Sendknopf deaktiviert trotz vollem Composer."
+      "latency_ms": 36600,
+      "proof_path": "docs/proofs/T-501/attachment_kimi_real_image_2026-09-05.json",
+      "note": "PASS 2026-09-05: 200 'RED' (36,6s) mit echtem 256x256-Bild; Vorlauf-502 ABSENDEKNOPF lag am entarteten 1x1/70-B-Testbild, nicht an der Bridge; Kimi-Upload->Send-Durchlauf damit belegt (saubere frische Session)"
     },
     {
       "area": "attachment",
@@ -528,7 +528,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-05.json",
-      "note": "FAIL 2026-09-05: 502, 0 von 1 Dateien uebernommen (Upload nicht bestaetigt)."
+      "note": "FAIL (Re-Run 2026-09-05, echtes 256x256-Bild): Browseroberflaeche uebernimmt weiter 0 von 1 Dateien -> echter SPA-Upload-Gap, kein Testbild-Artefakt; Beleg docs/proofs/T-501/attachment_qwen_real_image_2026-09-05.json"
     },
     {
       "area": "attachment",
@@ -539,7 +539,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/attachment_zai_2026-09-05.json",
-      "note": "FAIL 2026-09-05: 502, 0 von 1 Dateien uebernommen (Upload nicht bestaetigt)."
+      "note": "FAIL (Re-Run 2026-09-05, echtes 256x256-Bild): Browseroberflaeche uebernimmt weiter 0 von 1 Dateien -> echter SPA-Upload-Gap, kein Testbild-Artefakt; Beleg docs/proofs/T-501/attachment_zai_real_image_2026-09-05.json"
     },
     {
       "area": "attachment",

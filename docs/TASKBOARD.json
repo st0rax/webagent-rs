@@ -286,8 +286,8 @@
       "branch": "feature/T-501-all-brains-matrix",
       "claimed_at": "2026-09-03",
       "done_at": null,
-      "proof_path": "docs/proofs/T-501/ (Stand 2026-09-05, Port 8788): 97/130 Zellen passed. api_responses 9/9 (mistral+zai nach Cooldown sauber), streaming 6/9 (kimi Reasoning-Echo, mistral Timestamp-Deltas, zai 'Thinking...'), attachment 0/5 neu gemessen (kimi ABSENDEKNOPF 502, qwen/zai 0-von-1 502, mistral Timestamp, auto Timeout 240s), managed_tools by-design 400 bestaetigt. Offen: streaming 3 Brains, attachment Upload/UI-Quirks, model/effort unreachable-not_run (Login-gebunden), effort Web-UI-only. DoD weiterhin NICHT done.",
-      "verification": "Matrix-Zellen; Belegpfad je Brain (2026-09-05 nachgezogen)",
+      "proof_path": "docs/proofs/T-501/ (Stand 2026-09-05, Port 8788): 98/130 Zellen passed. api_responses 9/9 (mistral+zai nach Cooldown sauber), streaming 6/9 (kimi Reasoning-Echo, mistral Timestamp-Deltas, zai Thinking...), attachment: kimi passed mit echtem 256x256-Bild (Vorlauf-502 war Testbild-Artefakt); qwen/zai echter SPA-Upload-Gap (real_image Belege), mistral Timestamp, auto Timeout; managed_tools by-design 400 bestaetigt. Offen: streaming 3, attachment 4, model/effort unreachable-not_run (Login-gebunden). DoD weiterhin NICHT done.",
+      "verification": "Matrix-Zellen; Belegpfad je Brain (2026-09-05 nachgezogen, kimi attachment real_image)",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
       "depends_on": [
         "T-202",
