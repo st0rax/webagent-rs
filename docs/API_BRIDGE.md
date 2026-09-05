@@ -4,7 +4,7 @@
 
 ## Zweck und Betriebsgrenze
 
-`webagent api serve` stellt WebAgent **ausschließlich auf dem lokalen Rechner** als Browser-Inference-Provider bereit. Der Dienst bindet nur an IPv4- oder IPv6-Loopback-Adressen, verlangt für alle Provider-Endpunkte einen API-Token und führt pro Anfrage genau einen frischen Browser-Modellturn aus. Anfragen desselben Brains werden bewusst serialisiert, damit ein Browserprofil nicht konkurrierend von mehreren Inference-Aufrufen gesteuert wird; unterschiedliche Brains können parallel arbeiten. Der Providerpfad startet keinen `AgentController`, interpretiert kein `webagent/1` und führt keine lokalen Shell- oder Dateiwerkzeuge aus.
+`webagent api serve` stellt WebAgent **ausschließlich auf dem lokalen Rechner** als Browser-Inference-Provider bereit. Es ist ein Alias für `ui --api --no-open`: **ein** Loopback-Listener (Port `8788`) bedient sowohl das eingebettete Web-UI als auch die OpenAI-/Anthropic-kompatiblen `/v1/*`-Routen. Der Dienst bindet nur an IPv4- oder IPv6-Loopback-Adressen, verlangt für alle Provider-Endpunkte einen API-Token und führt pro Anfrage genau einen frischen Browser-Modellturn aus. Anfragen desselben Brains werden bewusst serialisiert, damit ein Browserprofil nicht konkurrierend von mehreren Inference-Aufrufen gesteuert wird; unterschiedliche Brains können parallel arbeiten. Der Providerpfad startet keinen `AgentController`, interpretiert kein `webagent/1` und führt keine lokalen Shell- oder Dateiwerkzeuge aus.
 
 > **Sicherheitsinvariante:** Eine Adresse wie `0.0.0.0` wird vor dem Listener-Start abgelehnt. Der Token wird nur über eine Umgebungsvariable gelesen und nie in CLI-Argumenten, Logs oder Konfigurationsdateien gespeichert.
 
@@ -12,7 +12,7 @@ Die Bridge akzeptiert die für Pi relevanten Formate **OpenAI Chat Completions**
 
 | Eigenschaft | Implementierter Vertrag |
 |---|---|
-| Bindung | `127.0.0.1:8787` als Standard; ausschließlich Loopback zugelassen |
+| Bindung | `127.0.0.1:8788` als Standard; ausschließlich Loopback zugelassen. Ein Listener bedient sowohl Web-UI als auch API-Rolle (`ui --api` bzw. `api serve`). 8787 ist eine historische Dead-Zahl. |
 | Authentifizierung | `Authorization: Bearer <token>`; Anthropic-kompatibel zusätzlich `x-api-key: <token>` |
 | Brain | `chatgpt` als Standard; `model=webagent/<brain>` waehlt ein reales Brain, `model=webagent/auto` den virtuellen AutoRouter |
 | Nebenläufigkeit | Eine Anfrage zur Zeit pro Dienstprozess |
@@ -39,9 +39,9 @@ webagent api serve --bind 0.0.0.0
 Ein schneller lokaler Gesundheitscheck benötigt keinen Token. Der Modellkatalog dagegen ist absichtlich token-geschützt.
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8787/health
+Invoke-RestMethod http://127.0.0.1:8788/health
 Invoke-RestMethod -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
-  http://127.0.0.1:8787/v1/models
+  http://127.0.0.1:8788/v1/models
 ```
 
 ## Virtuelles Modell `webagent/auto`
@@ -78,7 +78,7 @@ $body = @{
   model = "webagent/auto"
   messages = @(@{ role = "user"; content = "Antworte kurz." })
 } | ConvertTo-Json -Depth 5
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/v1/chat/completions `
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8788/v1/chat/completions `
   -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
   -ContentType application/json -Body $body
 ```
@@ -120,7 +120,7 @@ $body = @{
     @{ type = "input_audio"; input_audio = @{ data = $audio; format = "wav" } }
   ) })
 } | ConvertTo-Json -Depth 8
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8787/v1/chat/completions -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } -ContentType application/json -Body $body
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8788/v1/chat/completions -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } -ContentType application/json -Body $body
 ~~~
 
 Die Responses-Variante verwendet type input_image mit derselben Data-URL und type input_audio; Anthropic verwendet type image bzw. type audio mit source.type base64. Pro Datei gilt ein dekodiertes Maximum von 8 MiB, pro Request höchstens 16 Dateien. Wenn ein Brain weder ein Datei-Input noch eine bestätigte Paste/Drop-Vorschau anbietet, antwortet der Endpoint mit einem erklärenden 502 statt die Datei zu verwerfen.
@@ -195,7 +195,7 @@ $body = @{
   size = "1024x1024"
 } | ConvertTo-Json
 $result = Invoke-RestMethod -Method Post `
-  -Uri http://127.0.0.1:8787/v1/images/generations `
+  -Uri http://127.0.0.1:8788/v1/images/generations `
   -Headers @{ Authorization = "Bearer $env:WEBAGENT_API_KEY" } `
   -ContentType application/json -Body $body
 [IO.File]::WriteAllBytes("robot.png", [Convert]::FromBase64String($result.data[0].b64_json))
@@ -234,7 +234,7 @@ Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kom
 {
   "providers": {
     "webagent": {
-      "baseUrl": "http://127.0.0.1:8787/v1",
+      "baseUrl": "http://127.0.0.1:8788/v1",
       "api": "openai-completions",
       "apiKey": "$WEBAGENT_API_KEY",
       "authHeader": true,
@@ -313,7 +313,7 @@ Für den Anthropic-Adapter wird derselbe Token verwendet. Die `baseUrl` endet **
 {
   "providers": {
     "webagent-anthropic": {
-      "baseUrl": "http://127.0.0.1:8787",
+      "baseUrl": "http://127.0.0.1:8788",
       "api": "anthropic-messages",
       "apiKey": "$WEBAGENT_API_KEY",
       "authHeader": true,
@@ -362,7 +362,7 @@ Diese Schicht **führt das Tool nicht aus**. Die Ausführung gehört dem aufrufe
 
 Die JSON- und API-Semantik ist lokal getestet. Fuer ChatGPT sind ein Webturn, ein Pi-0.84.4-Textturn und der vollstaendige Pi-`read`-Tool-Loop live belegt: Tooldefinition zum Browser, `tool_calls` zurueck zu Pi, lokale Ausfuehrung, `role=tool` zum Browser und finale Antwort mit einem zufaelligen Dateiinhalt. Der mitgelieferte Smoke-Test macht diese weiterhin provider- und modellabhaengige Formatstabilitaet reproduzierbar pruefbar. Ein anderes Brain oder Webmodell gilt erst nach demselben Tool-Smoke als belegt. Der Anthropic-Adapter nutzt denselben Browser-Uploadpfad fuer Base64-Bild-/Audio-Blöcke.
 
-Ein Deep-Agents-Client kann nach erfolgreicher Live-Gegenprobe einen `ChatOpenAI`-Adapter mit `base_url=http://127.0.0.1:8787/v1` verwenden. Der dort konfigurierte API-Key ist lediglich der lokale `WEBAGENT_API_KEY`; er ersetzt keinen Login der Browser-Sitzung.
+Ein Deep-Agents-Client kann nach erfolgreicher Live-Gegenprobe einen `ChatOpenAI`-Adapter mit `base_url=http://127.0.0.1:8788/v1` verwenden. Der dort konfigurierte API-Key ist lediglich der lokale `WEBAGENT_API_KEY`; er ersetzt keinen Login der Browser-Sitzung.
 
 HTTP-Verbindungen werden bis zu einer festen Grenze von **acht** gleichzeitig bearbeitet. Uebersteigt die Zahl aktiver Verbindungen diese Grenze, antwortet die Bridge sofort mit **503 Service Unavailable** und dem Fehlercode overloaded; Clients sollen die Anfrage nach kurzer Wartezeit erneut stellen. Die Grenze schuetzt den lokalen Dienst gegen blockierte oder unvollstaendige HTTP-Anfragen, ohne parallele Browserruns zuzulassen.
 
