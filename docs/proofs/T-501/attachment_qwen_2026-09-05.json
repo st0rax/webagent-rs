@@ -1,0 +1,12 @@
+{
+  "model": "webagent/qwen",
+  "ok": false,
+  "http": 502,
+  "latency_ms": 38641,
+  "attempts": 1,
+  "attachment": "1x1 red PNG (base64 image_url data:image/png)",
+  "reply": "",
+  "error": null,
+  "error_body": "{\"error\":{\"code\":null,\"message\":\"Browser-Inference fehlgeschlagen: Browseroberflaeche hat nur 0 von 1 Dateien uebernommen\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+  "note": "fail-closed/kein RED - ehrlich dokumentiert, keine gefaelschte Passage"
+}

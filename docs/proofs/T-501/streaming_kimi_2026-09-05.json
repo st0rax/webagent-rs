@@ -1,0 +1,10 @@
+{
+  "model": "webagent/kimi",
+  "ok": false,
+  "http": 200,
+  "latency_ms": 19080,
+  "delta_count": 5,
+  "joined": "The user wants me to reply with exactly \"STREAM_OK\" and nothing else. This is a straightforward request. I should not add any other text, markdown, or formatting.",
+  "error": null,
+  "note": "noch ohne sauberes STREAM_OK (Provider-Quirk/Capacity) - ehrlich dokumentiert, keine gefaelschte Passage"
+}

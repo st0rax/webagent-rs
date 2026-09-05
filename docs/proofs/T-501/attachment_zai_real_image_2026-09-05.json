@@ -1,0 +1,12 @@
+{
+  "model": "webagent/zai",
+  "ok": false,
+  "http": 502,
+  "latency_ms": 39600,
+  "attempts": 1,
+  "attachment": "solid red 256x256 PNG (generated via PIL, ~1.1 kB, base64 image_url data:image/png)",
+  "prompt": "What color is the attached image? Answer with exactly: RED",
+  "reply": null,
+  "error": "Browser-Inference fehlgeschlagen: Browseroberflaeche hat nur 0 von 1 Dateien uebernommen",
+  "note": "failed (Re-Run mit echtem 256x256-Bild): Auch mit realistischem PNG uebernimmt zais Browseroberflaeche die Datei nicht (data:image/png, ~1.1 kB). Bewertung: gleicher Upload-Gap wie qwen (Datei 0 von 1), kein Testbild-Artefakt, kein geplanter Repo-Fix ohne SPA-Detail-Analyse. Kategorie: failed."
+}

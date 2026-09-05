@@ -1,0 +1,10 @@
+{
+  "model": "webagent/zai",
+  "ok": true,
+  "http": 200,
+  "latency_ms": 17281,
+  "delta_count": 1,
+  "joined": "RESP_OK",
+  "error": null,
+  "note": null
+}

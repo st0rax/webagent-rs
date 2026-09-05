@@ -1,0 +1,12 @@
+{
+  "model": "webagent/auto",
+  "ok": false,
+  "http": null,
+  "latency_ms": 240014,
+  "attempts": 1,
+  "attachment": "1x1 red PNG (base64 image_url data:image/png)",
+  "reply": "",
+  "error": "timed out",
+  "error_body": "",
+  "note": "fail-closed/kein RED - ehrlich dokumentiert, keine gefaelschte Passage"
+}
