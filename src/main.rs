@@ -72,6 +72,11 @@ fn run() -> i32 {
         bind: "127.0.0.1".to_string(),
         port: webagent::web_ui::DEFAULT_PORT,
         no_open: false,
+        api: false,
+        api_key_env: "WEBAGENT_API_KEY".to_string(),
+        brain: "chatgpt".to_string(),
+        timeout_secs: None,
+        headless: false,
     });
 
     let exit_code = if matches!(
@@ -344,7 +349,21 @@ fn dispatch(command: Commands) -> i32 {
             bind,
             port,
             no_open,
-        } => cmd_ui(bind, port, no_open),
+            api,
+            api_key_env,
+            brain,
+            timeout_secs,
+            headless,
+        } => cmd_ui(UiLaunch {
+            bind,
+            port,
+            no_open,
+            api,
+            api_key_env,
+            brain,
+            timeout_secs,
+            headless,
+        }),
 
         Commands::Tui {
             active,
@@ -543,21 +562,60 @@ fn cmd_cloud(command: cli::CloudCommands) -> i32 {
         }
     }
 }
-fn cmd_ui(bind: String, port: u16, no_open: bool) -> i32 {
-    let ip: std::net::IpAddr = match bind.parse::<std::net::IpAddr>() {
+struct UiLaunch {
+    bind: String,
+    port: u16,
+    no_open: bool,
+    api: bool,
+    api_key_env: String,
+    brain: String,
+    timeout_secs: Option<f64>,
+    headless: bool,
+}
+
+fn cmd_ui(launch: UiLaunch) -> i32 {
+    let ip: std::net::IpAddr = match launch.bind.parse::<std::net::IpAddr>() {
         Ok(ip) if ip.is_loopback() => ip,
         Ok(_) => {
             eprintln!("[ui] Sicherheitsgrenze: --bind muss eine Loopback-Adresse sein.");
             return 2;
         }
         Err(error) => {
-            eprintln!("[ui] Ungueltige Bind-Adresse {bind}: {error}");
+            eprintln!("[ui] Ungueltige Bind-Adresse {}: {error}", launch.bind);
             return 2;
         }
     };
+    let addr = std::net::SocketAddr::new(ip, launch.port);
+    let api_bridge = if launch.api {
+        let api_key = match std::env::var(&launch.api_key_env) {
+            Ok(value) if !value.trim().is_empty() => value,
+            _ => {
+                eprintln!(
+                    "[api] Token fehlt: setze die Umgebungsvariable {}.",
+                    launch.api_key_env
+                );
+                return 2;
+            }
+        };
+        if launch.timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
+            eprintln!("[api] --timeout-secs muss groesser als 0 sein.");
+            return 2;
+        }
+        Some(webagent::api_bridge::BridgeConfig {
+            bind: addr,
+            brain: launch.brain,
+            timeout_secs: launch.timeout_secs,
+            headless: launch.headless,
+            api_key,
+            fake_reply: None,
+        })
+    } else {
+        None
+    };
     let config = webagent::web_ui::UiConfig {
-        bind: std::net::SocketAddr::new(ip, port),
-        open_browser: !no_open,
+        bind: addr,
+        open_browser: !launch.no_open,
+        api_bridge,
     };
     match webagent::web_ui::serve(config) {
         Ok(()) => 0,
@@ -578,45 +636,18 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
             headless,
             api_key_env,
         } => {
-            if timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
-                eprintln!("[api] --timeout-secs muss groesser als 0 sein.");
-                return 2;
-            }
-
-            let ip: std::net::IpAddr = match bind.parse::<std::net::IpAddr>() {
-                Ok(ip) if ip.is_loopback() => ip,
-                Ok(_) => {
-                    eprintln!("[api] Sicherheitsgrenze: --bind muss eine Loopback-Adresse sein.");
-                    return 2;
-                }
-                Err(error) => {
-                    eprintln!("[api] Ungueltige Bind-Adresse {bind}: {error}");
-                    return 2;
-                }
-            };
-            let api_key = match std::env::var(&api_key_env) {
-                Ok(value) if !value.trim().is_empty() => value,
-                _ => {
-                    eprintln!("[api] Token fehlt: setze die Umgebungsvariable {api_key_env}.");
-                    return 2;
-                }
-            };
-            let config = webagent::api_bridge::BridgeConfig {
-                bind: std::net::SocketAddr::new(ip, port),
+            // Ein Listener, zwei Rollen: `api serve` = `ui --api --no-open`.
+            // Der Port ist gemeinsamer Standard (DEFAULT_PORT), 8787 ist tot.
+            cmd_ui(UiLaunch {
+                bind,
+                port,
+                no_open: true,
+                api: true,
+                api_key_env,
                 brain,
                 timeout_secs,
                 headless,
-                api_key,
-                fake_reply: None,
-            };
-
-            match webagent::api_bridge::serve(config) {
-                Ok(()) => 0,
-                Err(error) => {
-                    eprintln!("[api] {error}");
-                    1
-                }
-            }
+            })
         }
     }
 }
