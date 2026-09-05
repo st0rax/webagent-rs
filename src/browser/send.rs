@@ -562,6 +562,9 @@ impl WebBrainBackend {
     /// Windows-Fenster zu aktivieren. CDP uebernimmt danach die trusted
     /// Ctrl-V-Ereignisse; dadurch bleibt die TUI im Vordergrund.
     fn focus_composer_for_clipboard_paste(&self) -> bool {
+        // Focus without fill_composer — still needs the renderer wake for
+        // headed NOACTIVATE tiles, or Ctrl-V lands on a frozen document.
+        self.wake_renderer();
         let composer = self.sel_js(
             "composer",
             &[

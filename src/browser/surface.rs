@@ -15,9 +15,10 @@ use crate::brain::{BrainBackend, SessionState};
 use super::{operations, LiveDiagnosis, WebBrainBackend};
 
 // Repeating the exact same CDP mouseMoved coordinates can be coalesced by the
-// browser. Alternate between two harmless points so background/headless pages
-// receive a real movement while a long-running generation is being polled.
-static OFFSCREEN_POINTER_PHASE: AtomicBool = AtomicBool::new(false);
+// browser. Alternate between two harmless points so headed NOACTIVATE tiles
+// (onscreen and offscreen) receive a real movement — Chromium otherwise freezes
+// painting/input until the user mouseovers the window.
+static RENDERER_POINTER_PHASE: AtomicBool = AtomicBool::new(false);
 
 /// Ergebnis von [`WebBrainBackend::probe_stop_by_disappearance`]:
 /// `(waehrend der Generierung, danach, Stop-Kandidaten)`.
@@ -174,12 +175,44 @@ impl WebBrainBackend {
         is_terminal_image_generation_error(&text).then_some(text)
     }
 
-    pub fn wake_offscreen_renderer(&self) {
+    /// Nudge the WebView renderer with a tiny CDP pointer move.
+    ///
+    /// Needed for **onscreen and offscreen** headed/`WS_EX_NOACTIVATE` tiles —
+    /// not only offscreen. Chromium can freeze painting and trusted input until
+    /// it sees a real pointer movement; without this nudge the user must
+    /// mouseover the window before send/click works. Call before every
+    /// send/input step and periodically during long generation polls.
+    pub fn wake_renderer(&self) {
         if let Some(driver) = self.driver.borrow_mut().as_mut() {
-            let phase = OFFSCREEN_POINTER_PHASE.fetch_xor(true, Ordering::Relaxed);
+            let phase = RENDERER_POINTER_PHASE.fetch_xor(true, Ordering::Relaxed);
             let coordinate = if phase { 2.0 } else { 1.0 };
             let _ = driver.move_pointer(coordinate, coordinate);
         }
+    }
+
+    /// Deprecated alias for [`Self::wake_renderer`].
+    ///
+    /// Kept so older callers keep compiling; the name lied — onscreen headed
+    /// `WS_EX_NOACTIVATE` windows need the same wake.
+    #[deprecated(note = "use wake_renderer — needed for onscreen and offscreen tiles")]
+    pub fn wake_offscreen_renderer(&self) {
+        self.wake_renderer();
+    }
+
+    /// After a wake, cheap CDP liveness check. Fail loudly instead of spinning
+    /// until a full generation timeout on a dead WebView.
+    pub(crate) fn ensure_renderer_responsive(&self) -> Result<(), String> {
+        self.eval("1").map(|_| ()).map_err(|_| {
+            "renderer_unresponsive: WebView answered no CDP after wake — move mouse or restart brain"
+                .to_string()
+        })
+    }
+
+    /// Wake then probe. Use on Result-returning input paths so a frozen
+    /// renderer surfaces immediately.
+    pub(crate) fn wake_renderer_or_err(&self) -> Result<(), String> {
+        self.wake_renderer();
+        self.ensure_renderer_responsive()
     }
 
     pub(crate) fn is_cloudflare_blocked(&self) -> bool {
@@ -916,5 +949,90 @@ mod image_generation_tests {
         assert!(!is_terminal_image_generation_error(
             "Your image is being generated."
         ));
+    }
+}
+
+#[cfg(test)]
+mod wake_renderer_tests {
+    use super::WebBrainBackend;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    fn backend_with(state: MockPageState) -> WebBrainBackend {
+        let backend = WebBrainBackend::from_config("chatgpt").expect("chatgpt config");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state)));
+        backend
+    }
+
+    #[test]
+    fn wake_renderer_moves_pointer() {
+        let state = MockPageState::new().on_eval("1", json!(1));
+        let backend = backend_with(state.clone());
+        assert_eq!(state.move_pointer_calls(), 0);
+        backend.wake_renderer();
+        assert_eq!(state.move_pointer_calls(), 1);
+        backend.wake_renderer();
+        assert_eq!(state.move_pointer_calls(), 2);
+        // Coordinates alternate 1/2 when undisturbed; under parallel tests the
+        // global phase can be flipped by another thread, so only require a
+        // known nudge pair.
+        let coords = state.move_pointer_coords();
+        assert_eq!(coords.len(), 2);
+        for (x, y) in &coords {
+            assert!(
+                (*x == 1.0 || *x == 2.0) && *x == *y,
+                "unexpected wake coordinate ({x},{y})"
+            );
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn wake_offscreen_renderer_aliases_wake_renderer() {
+        let state = MockPageState::new();
+        let backend = backend_with(state.clone());
+        backend.wake_offscreen_renderer();
+        assert_eq!(
+            state.move_pointer_calls(),
+            1,
+            "deprecated alias must still nudge the renderer"
+        );
+    }
+
+    #[test]
+    fn press_enter_wakes_renderer_before_key() {
+        let state = MockPageState::new().on_eval("1", json!(1));
+        let backend = backend_with(state.clone());
+        assert_eq!(state.move_pointer_calls(), 0);
+        backend.press_enter().expect("press_enter");
+        assert!(
+            state.move_pointer_calls() >= 1,
+            "press_enter must call wake_renderer (move_pointer) before the key"
+        );
+    }
+
+    #[test]
+    fn click_first_wakes_renderer_before_click() {
+        // Empty selector list still goes through click_first → wake first.
+        let state = MockPageState::new();
+        let backend = backend_with(state.clone());
+        let _ = backend.click_first("definitely_missing_selector_key");
+        assert!(
+            state.move_pointer_calls() >= 1,
+            "click_first must wake_renderer even when the selector misses"
+        );
+    }
+
+    #[test]
+    fn ensure_renderer_responsive_fails_loudly_when_cdp_dead() {
+        let state = MockPageState::new(); // no script for "1"
+        let backend = backend_with(state);
+        let err = backend
+            .ensure_renderer_responsive()
+            .expect_err("dead CDP must fail");
+        assert!(
+            err.contains("renderer_unresponsive"),
+            "expected renderer_unresponsive marker, got: {err}"
+        );
     }
 }

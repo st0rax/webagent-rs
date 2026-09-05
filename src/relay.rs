@@ -90,7 +90,7 @@ pub fn relay_image_generation(
     let remaining = total_budget.saturating_sub(started.elapsed());
     let deadline = Instant::now() + remaining;
     let result = loop {
-        backend.wake_offscreen_renderer();
+        backend.wake_renderer();
         match backend.latest_generated_image() {
             Ok(Some((mime_type, base64))) => {
                 if trace {

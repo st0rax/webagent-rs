@@ -229,8 +229,12 @@ impl BrainBackend for WebBrainBackend {
             }
             // Frueh (statt erst beim Timeout) auf ein Block-Banner pruefen, damit ein
             // Rate-/Nachrichtenlimit nicht ~timeout Sekunden je Turn kostet. ~alle 2 s.
+            // Same cadence: nudge the renderer so headed NOACTIVATE tiles do not
+            // stay frozen for the full timeout, and fail loudly if CDP is dead.
             block_polls += 1;
             if block_polls.is_multiple_of(7) {
+                self.wake_renderer();
+                self.ensure_renderer_responsive()?;
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, -1, false, "blocked"));
                 }
@@ -239,7 +243,13 @@ impl BrainBackend for WebBrainBackend {
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, -1, false, "blocked"));
                 }
-                return Ok(mk(String::new(), -1, false, "timeout_no_message"));
+                // Empty after wakes: prefer an unresponsive-UI hint over a blank timeout.
+                return Ok(mk(
+                    String::new(),
+                    -1,
+                    false,
+                    "timeout_no_message: renderer may be unresponsive after wake — move mouse or restart brain",
+                ));
             }
             std::thread::sleep(Duration::from_millis(300));
         }
@@ -311,8 +321,12 @@ impl BrainBackend for WebBrainBackend {
             // noch kein echter Text steht — sonst kostet ein Limit den vollen Timeout.
             // mistrals „Nachrichtenlimit erreicht" erscheint erst NACH dem Senden,
             // also bricht Phase 1 vorher ab und nur hier wird es rechtzeitig erkannt.
+            // Wake on the same cadence so a frozen NOACTIVATE tile does not sit
+            // silent until timeout_no_text.
             p2_polls += 1;
             if last_text.trim().is_empty() && p2_polls.is_multiple_of(7) {
+                self.wake_renderer();
+                self.ensure_renderer_responsive()?;
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, target, false, "blocked"));
                 }
@@ -409,7 +423,7 @@ impl BrainBackend for WebBrainBackend {
                 let status = if stop_visible {
                     "timeout_still_generating"
                 } else if last_text.trim().is_empty() {
-                    "timeout_no_text"
+                    "timeout_no_text: renderer may be unresponsive after wake — move mouse or restart brain"
                 } else {
                     "timeout_unstable"
                 };
