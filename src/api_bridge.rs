@@ -66,12 +66,12 @@ struct OnDiskStore {
 }
 
 #[derive(Default)]
-struct ConnectionLimiter {
+pub(crate) struct ConnectionLimiter {
     active: AtomicUsize,
 }
 
 impl ConnectionLimiter {
-    fn try_acquire(self: &Arc<Self>) -> Option<ConnectionPermit> {
+    pub(crate) fn try_acquire(self: &Arc<Self>) -> Option<ConnectionPermit> {
         let mut active = self.active.load(Ordering::Acquire);
         loop {
             if active >= MAX_CONCURRENT_CONNECTIONS {
@@ -90,7 +90,7 @@ impl ConnectionLimiter {
     }
 }
 
-struct ConnectionPermit(Arc<ConnectionLimiter>);
+pub(crate) struct ConnectionPermit(Arc<ConnectionLimiter>);
 
 impl Drop for ConnectionPermit {
     fn drop(&mut self) {
@@ -102,7 +102,7 @@ impl Drop for ConnectionPermit {
 ///
 /// `api_key` wird ausschliesslich aus einer Umgebungsvariable geladen und darf
 /// weder geloggt noch in Statusantworten ausgegeben werden.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BridgeConfig {
     pub bind: SocketAddr,
     pub brain: String,
@@ -121,15 +121,11 @@ pub struct BridgeConfig {
 /// Inference-Anfragen gesteuert werden; unterschiedliche Brains blockieren
 /// sich dagegen nicht gegenseitig.
 pub fn serve(config: BridgeConfig) -> Result<(), String> {
-    if config.timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
-        return Err("--timeout-secs muss groesser als 0 sein.".to_string());
-    }
+    validate_bridge_config(&config)?;
 
     if !config.bind.ip().is_loopback() {
         return Err("API-Bridge darf nur an eine Loopback-Adresse binden.".to_string());
     }
-
-    resolve_model(&model_id(&config.brain), &config.brain)?;
 
     let listener = TcpListener::bind(config.bind)
         .map_err(|error| format!("API-Bridge nicht bindbar: {error}"))?;
@@ -137,6 +133,17 @@ pub fn serve(config: BridgeConfig) -> Result<(), String> {
     eprintln!("[api] Bridge aktiv auf http://{bound}");
 
     accept_loop(listener, config)
+}
+
+/// Prueft die Bridge-Rolle vor dem Binden/Servieren (geteilt mit dem
+/// gemeinsamen Web-UI-Listener bei gesetzter API-Rolle).
+pub(crate) fn validate_bridge_config(config: &BridgeConfig) -> Result<(), String> {
+    if config.timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
+        return Err("--timeout-secs muss groesser als 0 sein.".to_string());
+    }
+
+    resolve_model(&model_id(&config.brain), &config.brain)?;
+    Ok(())
 }
 
 fn accept_loop(listener: TcpListener, config: BridgeConfig) -> Result<(), String> {
@@ -171,7 +178,7 @@ fn accept_loop(listener: TcpListener, config: BridgeConfig) -> Result<(), String
     Ok(())
 }
 
-fn overload_response() -> HttpResponse {
+pub(crate) fn overload_response() -> HttpResponse {
     HttpResponse::json(
         503,
         json!({
@@ -206,18 +213,30 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             return Ok(());
         }
     };
+    route_request(stream, &request, config)
+}
 
+/// Verarbeitet einen bereits gelesenen HTTP-Request gegen die Bridge-Routen.
+///
+/// Wird von `handle_connection` (Bridge-Eigenbetrieb) und vom gemeinsamen
+/// Web-UI-Listener (`web_ui::serve` bei gesetzter API-Rolle) aufgerufen:
+/// ein Port, gleiche Routing-Logik.
+pub(crate) fn route_request(
+    stream: &mut TcpStream,
+    request: &HttpRequest,
+    config: &BridgeConfig,
+) -> Result<(), String> {
     if request.method == "POST"
         && request.path == "/v1/responses"
         && is_incremental_text_request(&request.body)
     {
-        return handle_responses_incremental(stream, &request, config);
+        return handle_responses_incremental(stream, request, config);
     }
     if request.method == "POST"
         && request.path == "/v1/chat/completions"
         && is_incremental_chat_request(&request.body)
     {
-        return handle_openai_incremental(stream, &request, config);
+        return handle_openai_incremental(stream, request, config);
     }
 
     let flavor = if request.path == "/v1/messages" {
@@ -266,21 +285,21 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             }
         }
         ("GET", path) if path.starts_with("/v1/responses/") && path.ends_with("/input_items") => {
-            handle_response_input_items(&request, config, path)
+            handle_response_input_items(request, config, path)
         }
         ("GET", path) if path.starts_with("/v1/responses/") => {
-            handle_response_retrieve(&request, config, path)
+            handle_response_retrieve(request, config, path)
         }
         ("DELETE", path) if path.starts_with("/v1/responses/") => {
-            handle_response_delete(&request, config, path)
+            handle_response_delete(request, config, path)
         }
-        ("POST", "/v1/chat/completions") => handle_openai(&request, config),
-        ("POST", "/v1/images/generations") => handle_image_generation(&request, config),
-        ("POST", "/v1/audio/transcriptions") => handle_audio_transcription(&request, config, false),
-        ("POST", "/v1/audio/translations") => handle_audio_transcription(&request, config, true),
-        ("POST", "/v1/audio/speech") => handle_audio_speech(&request, config),
-        ("POST", "/v1/responses") => handle_responses(&request, config),
-        ("POST", "/v1/messages") => handle_anthropic(&request, config),
+        ("POST", "/v1/chat/completions") => handle_openai(request, config),
+        ("POST", "/v1/images/generations") => handle_image_generation(request, config),
+        ("POST", "/v1/audio/transcriptions") => handle_audio_transcription(request, config, false),
+        ("POST", "/v1/audio/translations") => handle_audio_transcription(request, config, true),
+        ("POST", "/v1/audio/speech") => handle_audio_speech(request, config),
+        ("POST", "/v1/responses") => handle_responses(request, config),
+        ("POST", "/v1/messages") => handle_anthropic(request, config),
         _ => api_error(flavor, 404, "Endpoint nicht gefunden."),
     };
     write_http_response(stream, response)
@@ -2848,7 +2867,7 @@ fn model_metadata(brain: &str) -> Value {
 }
 
 #[derive(Clone, Copy)]
-enum ApiFlavor {
+pub(crate) enum ApiFlavor {
     OpenAi,
     Anthropic,
 }
@@ -2883,7 +2902,7 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
     difference == 0
 }
 
-fn api_error(flavor: ApiFlavor, status: u16, message: &str) -> HttpResponse {
+pub(crate) fn api_error(flavor: ApiFlavor, status: u16, message: &str) -> HttpResponse {
     api_error_with(flavor, status, message, None, None)
 }
 
@@ -3212,14 +3231,15 @@ fn anthropic_sse(
     HttpResponse::sse(body)
 }
 
-struct HttpRequest {
-    method: String,
-    path: String,
-    headers: BTreeMap<String, String>,
-    body: Vec<u8>,
+pub(crate) struct HttpRequest {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) query: String,
+    pub(crate) headers: BTreeMap<String, String>,
+    pub(crate) body: Vec<u8>,
 }
 
-struct HttpResponse {
+pub(crate) struct HttpResponse {
     status: u16,
     content_type: &'static str,
     body: Vec<u8>,
@@ -3245,7 +3265,7 @@ impl HttpResponse {
     }
 }
 
-fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
+pub(crate) fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     let mut bytes = Vec::new();
     let mut buffer = [0u8; 4096];
     let header_end;
@@ -3277,13 +3297,11 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
         .next()
         .ok_or_else(|| "HTTP-Methode fehlt.".to_string())?
         .to_string();
-    let path = parts
-        .next()
-        .ok_or_else(|| "HTTP-Pfad fehlt.".to_string())?
-        .split('?')
-        .next()
-        .unwrap_or("/")
-        .to_string();
+    let path = parts.next().ok_or_else(|| "HTTP-Pfad fehlt.".to_string())?;
+    let (path, query) = match path.split_once('?') {
+        Some((path_part, query_part)) => (path_part.to_string(), query_part.to_string()),
+        None => (path.to_string(), String::new()),
+    };
     let version = parts.next().unwrap_or("");
     if !version.starts_with("HTTP/1.") || parts.next().is_some() {
         return Err("Ungueltige HTTP-Request-Line.".to_string());
@@ -3331,6 +3349,7 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     Ok(HttpRequest {
         method,
         path,
+        query,
         headers,
         body: bytes[header_end..header_end + content_length].to_vec(),
     })
@@ -3342,7 +3361,10 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-fn write_http_response(stream: &mut TcpStream, response: HttpResponse) -> Result<(), String> {
+pub(crate) fn write_http_response(
+    stream: &mut TcpStream,
+    response: HttpResponse,
+) -> Result<(), String> {
     let bytes = render_http_response(&response);
     stream
         .write_all(&bytes)
@@ -4224,6 +4246,7 @@ mod tests {
         let authorized = HttpRequest {
             method: "GET".to_string(),
             path: format!("/v1/responses/{id}"),
+            query: String::new(),
             headers: BTreeMap::from([(
                 "authorization".to_string(),
                 "Bearer test-secret".to_string(),
@@ -4412,6 +4435,7 @@ mod tests {
         let request = HttpRequest {
             method: "POST".to_string(),
             path: "/v1/audio/transcriptions".to_string(),
+            query: String::new(),
             headers: BTreeMap::from([(
                 "content-type".to_string(),
                 format!("multipart/form-data; boundary={boundary}"),
@@ -4433,6 +4457,7 @@ mod tests {
         let request = HttpRequest {
             method: "POST".to_string(),
             path: "/v1/audio/transcriptions".to_string(),
+            query: String::new(),
             headers: BTreeMap::from([(
                 "content-type".to_string(),
                 "multipart/form-data".to_string(),
