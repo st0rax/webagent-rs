@@ -1,9 +1,9 @@
 # Aktueller Arbeitsstand
 
-**Aktualisiert:** 2026-09-04
+**Aktualisiert:** 2026-09-05
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
-**Stand 2026-09-04:** `master` auf `eb6a134` (PR #31 gemergt: Auto-Router im CLI — `run`/`repl`/`relay` Default `--brain auto` via `select_auto_brain_for_cli`, gemeinsamer Router mit der Bridge). Naechste aktive Arbeit: **`feature/cli-ask`** — der `ask`-Einheitsbefehl (Design 3.2): `webagent ask --task "<aufgabe>"` mit Default `--brain auto`, `--auto` (autonomer Run, Default) vs. `--chat` (Konversations-Einzelturn), `--resume`, `--headless`, `--max-cycles`, `--no-memory`, `--json` (nur `--chat`). Delegiert 1:1 an `cmd_run`/`relay_single_turn` (keine Duplikat-Logik); `run`/`relay` bleiben kompatible Aliasse (`run` = `ask --auto`, `relay` = Konversations-Einzelturn). Details in [`CLI_UI_REDESIGN.md`](CLI_UI_REDESIGN.md) Abschnitt 6/„ask-Einheitsbefehl". Offen aus Design: Port-Vereinheitlichung (3.3, braucht Architektur-Freigabe, Vorschlag in §7) und Login-Realitaet pro Brain (6h-Sperre).
+**Stand 2026-09-05:** `master` auf `a934db2` (PR #32 gemergt: `ask`-Einheitsbefehl). Naechste aktive Arbeit: **`feature/port-one-listener`** — Port-Vereinheitlichung (Design 3.3, „Ein Listener, zwei Rollen“): Web-UI bleibt einziger Loopback-Server auf `8788`, bedient zusaetzlich die OpenAI-/Anthropic-`/v1/*`-Routen der Bridge (`ui --api` bzw. Alias `api serve`), Bearer-Schutz unveraendert; `8787` ist historische Dead-Zahl. Details in [`CLI_UI_REDESIGN.md`](CLI_UI_REDESIGN.md) Abschnitt 8. Alle aelteren `127.0.0.1:8787`-Erwaehnungen in diesem Dokument und in `docs/proofs/*` sind historische Belege des damaligen Portstands und bleiben unveraendert. Offen: Login-Realitaet pro Brain (6h-Sperre).
 
 **Historischer Kopf (2026-09-02):** Phase 4 komplett inkl. T-404 SDK-Blackbox (Python/JS-SDK + urllib/fetch, Dumps `docs/proofs/T-404/`). Live T-301/T-302/T-501 ohne Freigabe nicht gegen echte Brains. Naechste Code-Zelle war T-601.
 

@@ -567,19 +567,42 @@ pub enum Commands {
     },
 
     /// Lokale Web-UI (eingebettete Assets, Loopback). Default ohne Subcommand.
+    /// `--api` aktiviert die OpenAI-/Anthropic-kompatible `/v1/*`-Rolle auf
+    /// demselben Port (ein Listener, zwei Rollen; 8787 bleibt als Dead-Zahl
+    /// nur im Doku-Archiv).
     #[command(name = "ui")]
     Ui {
         /// Bind-Adresse (nur Loopback)
         #[arg(long, default_value = "127.0.0.1")]
         bind: String,
 
-        /// Port (API-Bridge bleibt 8787)
-        #[arg(long, default_value_t = 8788)]
+        /// Gemeinsamer Loopback-Port (Web-UI und API-Rolle)
+        #[arg(long, default_value_t = webagent::web_ui::DEFAULT_PORT)]
         port: u16,
 
         /// Systembrowser nicht oeffnen
         #[arg(long)]
         no_open: bool,
+
+        /// OpenAI-/Anthropic-kompatible /v1/*-Rolle auf demselben Port aktivieren
+        #[arg(long)]
+        api: bool,
+
+        /// Name der Umgebungsvariable mit dem lokalen Bearer-Token (nur --api)
+        #[arg(long, default_value = "WEBAGENT_API_KEY")]
+        api_key_env: String,
+
+        /// Standard-Brain fuer den Modell-Alias `webagent` (nur --api)
+        #[arg(long, default_value = "chatgpt")]
+        brain: String,
+
+        /// Optionales Zeitlimit fuer den einzelnen Browser-Inference-Turn (nur --api)
+        #[arg(long)]
+        timeout_secs: Option<f64>,
+
+        /// Browser ohne sichtbares Fenster ausfuehren (nur --api)
+        #[arg(long)]
+        headless: bool,
     },
 
     /// Pool/Wand/Bench-TUI. Ohne Subcommand startet `webagent` die Web-UI;
@@ -831,13 +854,15 @@ pub enum CloudCommands {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum ApiCommands {
-    /// Startet einen token-geschuetzten Loopback-Dienst.
+    /// Startet die lokale Bridge-Rolle: ein Listener mit der Web-UI
+    /// (`ui --api --no-open`), gemeinsamer Port 8788. 8787 ist eine
+    /// historische Dead-Zahl.
     Serve {
         /// Lokale Bind-Adresse; nur Loopback-Adressen werden akzeptiert.
         #[arg(long, default_value = "127.0.0.1")]
         bind: String,
-        /// TCP-Port des lokalen Dienstes.
-        #[arg(long, default_value_t = 8787)]
+        /// TCP-Port des lokalen Dienstes (gemeinsam mit der Web-UI).
+        #[arg(long, default_value_t = webagent::web_ui::DEFAULT_PORT)]
         port: u16,
         /// Standard-Brain fuer den Modell-Alias `webagent`.
         #[arg(long, default_value = "chatgpt")]

@@ -2,16 +2,18 @@
 > laufende Betriebsanleitung. Grundsatzentscheidung und Sofort-Fixes (Abschnitt 6)
 > sind umgesetzt; der Auto-Router im CLI (run/repl/relay `--brain auto`, Default
 > `auto`) folgte als Folgepunkt C2 auf `feature/cli-auto-brain`; der
-> `ask`-Einheitsbefehl (3.2) auf `feature/cli-ask`. Offen aus Abschnitt 7:
-> Port-Vereinheitlichung. aktueller
+> `ask`-Einheitsbefehl (3.2) auf `feature/cli-ask`. Port-Vereinheitlichung
+> (3.3/§7) umgesetzt am 2026-09-05 auf `feature/port-one-listener` („Ein
+> Listener, zwei Rollen“, siehe Abschnitt 8). aktueller
 > Betrieb: README/„Nutzung", `docs/API_BRIDGE.md`, `docs/OVERVIEW.md`.
 
 # CLI-/UI-Schnittstellen-Redesign — Entwurf (Ist-Befund + Vorschlag)
 
 > **Status:** Grundsatzentscheidungen getroffen, Sofort-Fixes umgesetzt (siehe
 > Abschnitt 6). Auto-Router im CLI (C2) umgesetzt auf `feature/cli-auto-brain`;
-> `ask`-Einheitsbefehl (3.2) umgesetzt auf `feature/cli-ask`.
-> Offene Design-Folgepunkte in Abschnitt 7. Datenbasis:
+> `ask`-Einheitsbefehl (3.2) umgesetzt auf `feature/cli-ask`;
+> Port-Vereinheitlichung (3.3) umgesetzt auf `feature/port-one-listener`
+> (Abschnitt 8). Offene Design-Folgepunkte in Abschnitt 7. Datenbasis:
 > `src/cli.rs` (898 Z.), `src/main.rs` (680 Z.), `src/web_ui.rs`,
 > `src/web_ui_api.rs`, `src/config/brains.rs`, `src/api_bridge.rs` (Auto-Router),
 > `src/repl/commands.rs`, README/AGENTS/OVERVIEW/TUI_DESIGN.
@@ -188,7 +190,8 @@ webagent ask [task]            # Default-Oberflaeche (siehe Offenpunkt A)
 - **`--json`** ueberall, wo etwas maschinell abgreifbar sein soll.
 - **`--visible`/`--headless`** ueberall gleich (Default sichtbar).
 - **Port/Router** konsistent: API-Bridge `8787`, Web-UI `8788` → **einen** Port,
-  Fuenfstelligen Ziffernraum dokumentieren (8787+8788 bleiben Dead-Zahlen).
+  Fuenfstelligen Ziffernraum dokumentieren (8787 bleibt als historische
+  Dead-Zahl; 8788 ist der gemeinsame Loopback-Port, siehe Abschnitt 8).
 
 ### 3.4 Auto-Router in den CLI-Modell-Punkt heben
 
@@ -282,10 +285,46 @@ Getroffene Entscheidungen (aus Abschnitt 5, vom Nutzer beantwortet):
 ## 7. Naechste Schritte (nach Abnahme dieses Branches)
 
 1. Review des Branches `feature/docs-cli-ui-fixes` → merge auf master, push.
-2. Offen aus dem Design: **Port-Vereinheitlichung** (3.3) — API-Bridge `8787`
-   und Web-UI `8788` auf einen gemeinsamen Port zu legen verlangt eine
-   Architektur-Entscheidung (wer bedient wen, wie koexistiert beides auf einem
-   Sockel) und bricht konsumierende Skripte. Konkreter Vorschlag, bevor gebaut
-   wird: gemeinsame Port-Konstante + `ui`/`api serve` teilen einen Port über
-   einen `--port`-Default-Datenpunkt; 8787/8788 als dokumentierte Dead-Zahlen.
+2. **Port-Vereinheitlichung (3.3): umgesetzt** am 2026-09-05 auf
+   `feature/port-one-listener` („Ein Listener, zwei Rollen“): Entscheidung
+   getroffen, dass die Web-UI (Port 8788) der einzige Loopback-Server bleibt
+   und die OpenAI-/Anthropic-`/v1/*`-Routen der Bridge auf demselben Port
+   bedient (Bearer-Schutz bleibt). `api serve` ist Alias auf `ui --api
+   --no-open`; der Port-Default fuer `ui` und `api serve` kommt aus einer
+   gemeinsamen Konstante; 8787 ist dokumentierte historische Zahl. Details in
+   Abschnitt 8.
 3. Login-Realitaet pro Brain: nur mit Nutzer-Freigabe messen (6h-Sperre).
+
+---
+
+## 8. Port-Vereinheitlichung umgesetzt (`feature/port-one-listener`, 2026-09-05)
+
+**Entscheidung (Nutzer): „Ein Listener, zwei Rollen“.** Die Web-UI bleibt der
+einzige Loopback-Server (Port `8788`). Auf demselben Port werden bei gesetzter
+API-Rolle zusätzlich die OpenAI-/Anthropic-kompatiblen `/v1/*`-Routen bedient;
+der Bearer-Token-Schutz ist unverändert. Port `8787` ist eine dokumentierte,
+historische Zahl und wird nirgendwo mehr gebunden.
+
+- `src/web_ui.rs`: `UiConfig` bekommt `api_bridge: Option<BridgeConfig>`.
+  `serve` validiert die Bridge-Config, baut den `ConnectionLimiter` und reicht
+  Config+Limiter in die Worker-Threads. `handle_connection` nutzt
+  `read_http_request` + `route_request`: `/health` und `/v1/*` gehen bei
+  aktiver API-Rolle an die Bridge, sonst an das UI (`/api/*`-Dispatch,
+  Asset-Lookup, 404). Der `ConnectionLimiter` gilt nur für `/v1*`-Pfade,
+  nicht für UI-Assets.
+- `src/api_bridge.rs`: `route_request(stream, &HttpRequest, &BridgeConfig)`
+  aus `handle_connection` extrahiert und `pub(crate)`. `HttpRequest` hat ein
+  `query`-Feld; `read_http_request` splittet Pfad/Query. `validate_bridge_config`
+  wird von `serve` und `web_ui::serve` geteilt. `api_bridge::serve` bleibt als
+  Standalone erhalten (Nutzer können den reinen Bridge-Modus weiter starten).
+- `src/cli.rs`: `ui` bekommt `--api`, `--api-key-env` (Default
+  `WEBAGENT_API_KEY`), `--brain` (Default `chatgpt`), `--timeout-secs`,
+  `--headless`. Port-Default von `ui` und `api serve` = `web_ui::DEFAULT_PORT`
+  (8788).
+- `src/main.rs`: `api serve` ist Alias auf `ui --api --no-open`. `cmd_ui`
+  bündelt die Optionen in `UiLaunch`, prüft Loopback-Bindung, Token-Pflicht
+  und `timeout > 0`.
+- Konsumierende Skripte nutzen `http://127.0.0.1:8788`; `docs/API_BRIDGE.md`
+  ist Referenz auf den neuen Zustand (alle `:8787`-Angriffsflächen auf `:8788`
+  vereinheitlicht). Historische Belege (`docs/proofs/*`) und der isolierte
+  Beispielprovider `scripts/test-pi-provider.ps1` bleiben unverändert.
