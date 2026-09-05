@@ -28,6 +28,8 @@ struct MockStateInner {
     /// „vorher" und „nachher" waeren zwangslaeufig derselbe Wert, und jede
     /// Vorher/Nachher-Pruefung sähe im Test aus wie ein Fehlschlag.
     sequences: HashMap<String, Vec<Value>>,
+    /// Count + coordinates of `move_pointer` calls (wake_renderer tests).
+    pointer_moves: Vec<(f64, f64)>,
 }
 
 impl MockPageState {
@@ -72,6 +74,22 @@ impl MockPageState {
             g.navigate_delay = delay;
         }
         self
+    }
+
+    /// How many times `move_pointer` was called on drivers sharing this state.
+    pub fn move_pointer_calls(&self) -> usize {
+        self.inner
+            .lock()
+            .map(|g| g.pointer_moves.len())
+            .unwrap_or(0)
+    }
+
+    /// Coordinates recorded by `move_pointer` (wake_renderer alternates 1/1 and 2/2).
+    pub fn move_pointer_coords(&self) -> Vec<(f64, f64)> {
+        self.inner
+            .lock()
+            .map(|g| g.pointer_moves.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -144,6 +162,16 @@ impl PageDriver for MockPageDriver {
     }
 
     fn click_at_trusted(&mut self, _x: f64, _y: f64) -> Result<()> {
+        Ok(())
+    }
+
+    fn move_pointer(&mut self, x: f64, y: f64) -> Result<()> {
+        let mut guard = self
+            .state
+            .inner
+            .lock()
+            .map_err(|_| PageDriverError::Protocol("Mock-Sperre verloren".into()))?;
+        guard.pointer_moves.push((x, y));
         Ok(())
     }
 

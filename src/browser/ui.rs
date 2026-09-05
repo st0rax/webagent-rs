@@ -245,6 +245,7 @@ impl WebBrainBackend {
     /// Klick unveraendert blieb. Ein Klick an den Koordinaten geht den
     /// vollstaendigen Ereignisweg und erreicht auch diese.
     fn click_real(&self, key: &str) -> bool {
+        self.wake_renderer();
         let Some((x, y)) = self.click_point(key) else {
             return false;
         };

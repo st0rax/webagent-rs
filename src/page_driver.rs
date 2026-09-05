@@ -87,8 +87,9 @@ pub trait PageDriver: Send {
     /// ueber `CallDevToolsProtocolMethod` statt ueber Port/WebSocket.
     fn click_at_trusted(&mut self, x: f64, y: f64) -> Result<()>;
 
-    /// Bewegt den Browser-Pointer ohne Klick. Das haelt offscreen gerenderte
-    /// SPAs bei langen Generierungen aktiv, ohne Seitenelemente auszuloesen.
+    /// Bewegt den Browser-Pointer ohne Klick. Haelt headed NOACTIVATE tiles
+    /// (onscreen und offscreen) und lange Generierungen aktiv, ohne
+    /// Seitenelemente auszuloesen — sonst friert Chromium bis zum Mouseover.
     fn move_pointer(&mut self, _x: f64, _y: f64) -> Result<()> {
         Err(PageDriverError::NotAvailable(
             "Pointer-Bewegung ist nicht verfuegbar".into(),

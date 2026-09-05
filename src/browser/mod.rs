@@ -350,6 +350,7 @@ impl WebBrainBackend {
 
     /// Klickt das erste sichtbare Element aus der Selektorliste.
     fn click_first(&self, key: &str) -> bool {
+        self.wake_renderer();
         let mut guard = self.driver.borrow_mut();
         match guard.as_mut() {
             Some(driver) => operations::click_first(driver.as_mut(), &self.selectors, key),
@@ -364,6 +365,7 @@ impl WebBrainBackend {
     /// enabled, aber der untrusted Klick löst keinen Submit aus). Spiegelt den
     /// Composer-Klick in `fill_composer`, der bei allen Providern funktioniert.
     fn click_visible_real(&self, key: &str) -> bool {
+        self.wake_renderer();
         let sels = self.sel(key);
         if sels.is_empty() {
             return false;
