@@ -1,0 +1,12 @@
+{
+  "model": "webagent/mistral",
+  "ok": false,
+  "http": 200,
+  "latency_ms": 113509,
+  "attempts": 1,
+  "attachment": "1x1 red PNG (base64 image_url data:image/png)",
+  "reply": "4:01",
+  "error": null,
+  "error_body": null,
+  "note": "fail-closed/kein RED - ehrlich dokumentiert, keine gefaelschte Passage"
+}

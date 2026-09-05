@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-03",
+  "as_of": "2026-09-05",
   "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "mirror": "docs/TASKBOARD.md",
   "contract": "docs/WORK_CONTRACT.md",
@@ -281,13 +281,13 @@
         "grok-agent",
         "local/opencode"
       ],
-      "status": "done",
+      "status": "claimed",
       "owner": "local/opencode",
       "branch": "feature/T-501-all-brains-matrix",
       "claimed_at": "2026-09-03",
-      "done_at": "2026-09-04",
-      "proof_path": "docs/proofs/T-501/ (95/130 Matrix; streaming 6/9, api_responses 7/9, security/health/auto/sources/groups passed, attachment 5/9, managed_tools by-design failed); PR #29 merged 098e4c9",
-      "verification": "Matrix-Zellen; Belegpfad je Brain",
+      "done_at": null,
+      "proof_path": "docs/proofs/T-501/ (Stand 2026-09-05, Port 8788): 97/130 Zellen passed. api_responses 9/9 (mistral+zai nach Cooldown sauber), streaming 6/9 (kimi Reasoning-Echo, mistral Timestamp-Deltas, zai 'Thinking...'), attachment 0/5 neu gemessen (kimi ABSENDEKNOPF 502, qwen/zai 0-von-1 502, mistral Timestamp, auto Timeout 240s), managed_tools by-design 400 bestaetigt. Offen: streaming 3 Brains, attachment Upload/UI-Quirks, model/effort unreachable-not_run (Login-gebunden), effort Web-UI-only. DoD weiterhin NICHT done.",
+      "verification": "Matrix-Zellen; Belegpfad je Brain (2026-09-05 nachgezogen)",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
       "depends_on": [
         "T-202",

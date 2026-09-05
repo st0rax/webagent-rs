@@ -7,7 +7,9 @@
 
 - Branch: `master`
 - Remote: `https://github.com/st0rax/webagent-rs.git`
-- Letzter Stand (Commit): `6f9579e` (2026-09-03) — Live-Test-Tage: siehe Planphasen unten
+- Letzter Stand (Commit): `9793623` (2026-09-05) — Port-Vereinheitlichung (ein Listener: 8788) sowie
+  T-501-Nachzieh-Runde 2026-09-05 (api_responses 9/9, streaming 6/9 — Details in Phase 5.x).
+  `6f9579e` (2026-09-03) bleibt historisch vermerkt.
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
 - Multidev-Betrieb: `docs/TASKBOARD.json` (Claim-Quelle der Wahrheit),
   `docs/TASKBOARD.md` (Spiegel), `docs/WORK_CONTRACT.md` (verbindlich);
@@ -94,7 +96,19 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       Dumps in `docs/proofs/T-404/`; `cargo test --lib` 1254 passed / 1 ignored).
       Kein clientbezogener Servercode. Live-`api_*`-Zellen bleiben Phase 3/5.
  - [~] Phase 5.x Alle Brains (T-501, laeuft bei local/opencode)
-       **Live-Messung 2026-09-03, alle 9 Brains** via `webagent verify`:
+       **Nachzieh-Runde 2026-09-05 (Port 8788, Breaker-Cooldowns abgelaufen):**
+       api_responses **9/9 passed** — mistral+zai jetzt mit sauberer finaler Antwort
+       (mistral-Deltas bleiben Provider-Timestamps, finale `.done`-Antwort RESP_OK; zai
+       sauber); streaming bleibt **6/9** (kimi Reasoning-Echo, mistral Timestamp, zai
+       „Thinking...“ — Provider-Transport-Quirks, Bridge relayt korrekt); attachment
+       jetzt **0× passed / 5× failed gemessen** (kimi ABSENDEKNOPF 502, qwen/zai 0-von-1
+       502, mistral Timestamp statt RED, auto Timeout 240s) — von 3× not_run zu failed
+       nachgezogen; managed_tools by-design 400 erneut bestaetigt. Belege
+       `docs/proofs/T-501/*2026-09-05.*`. Matrix-Gesamtstand: **97/130 passed**, 18
+       failed, 6 unreachable, 9 not_run. **DoD (volle 9/9 je Bereich) weiterhin NICHT
+       done** — offen: streaming 3 Brains (Provider-Transport), attachment Upload/UI-
+       Quirks, effort/model unreachable (Login-gebunden), effort Web-UI-only.
+       **Ursprüngliche Live-Messung 2026-09-03, alle 9 Brains** via `webagent verify`:
        `chat` (webui_chat) **9×Passed** (zai anfangs failed „ABSENDEKNOPF_DEAKTIVIERT"
        — Root-Cause: Send-Button `disabled:false` aber `pointer-events:none` auf
        Button+Parent, Echtklick rauschte durch; Fix `send_button_pointer_transparent()`
@@ -147,7 +161,7 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
         reasoning_toggle gruen; Beleg `effort_verify_system_deterministic_2026-09-04.json`).
         2 Live-Belege (claude T-302, deepseek 09-03), 1 unreachable (zai), 7 not_run
         (Web-UI-only: Live-Browser + reasoning_effort_path je Brain noetig). Matrix
-        Gesamtstand: **95/130 passed**, 17 failed, 6 unreachable, 12 not_run (alle not_run
+        Gesamtstand: **97/130 passed**, 18 failed, 6 unreachable, 9 not_run (alle not_run
         = Web-UI-only oder capacity-blockiert). Belege `docs/proofs/T-501/`.
 - [x] Phase 6.1 rustls-HTTPS + providers.json (T-601) —
       erledigt (`src/https_client.rs` HTTP/1.1+tokio-rustls+webpki-roots+ring;

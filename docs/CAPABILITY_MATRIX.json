@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-04",
+  "as_of": "2026-09-05",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "brains": [
     "chatgpt",
@@ -175,23 +175,23 @@
       "area": "streaming",
       "brain": "kimi",
       "status": "failed",
-      "date": "2026-09-04",
+      "date": "2026-09-05",
       "model": "webagent/kimi",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-04.json",
-      "note": "FAIL: Reasoning-Echo als Delta-Stream (Token nur in Prosa) - clean via non-stream+/v1/responses"
+      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-05.json",
+      "note": "FAIL 2026-09-05: Reasoning-/Instruktions-Echo als Delta-Stream, kein STREAM_OK-Delta; finaler Text i.d.R. korrekt (Transport-Quirk)."
     },
     {
       "area": "streaming",
       "brain": "mistral",
       "status": "failed",
-      "date": "2026-09-04",
+      "date": "2026-09-05",
       "model": "webagent/mistral",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-04.json",
-      "note": "FAIL: Timestamp+keep-alive als Delta-Stream; spaeter circuit_open/capacity (Provider-seitig)"
+      "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-05.json",
+      "note": "FAIL 2026-09-05: Delta-Stream = Wanduhr-Timestamp, kein STREAM_OK-Delta; finale Antwort im .done-Event korrekt."
     },
     {
       "area": "streaming",
@@ -217,12 +217,12 @@
       "area": "streaming",
       "brain": "zai",
       "status": "failed",
-      "date": "2026-09-04",
+      "date": "2026-09-05",
       "model": "webagent/zai",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-04.json",
-      "note": "FAIL: circuit_open (Provider-Capacity ~6h Cooldown); passed 09-03"
+      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-05.json",
+      "note": "FAIL 2026-09-05: Delta zeigt nur 'Thinking...', kein Content-Delta mit STREAM_OK."
     },
     {
       "area": "streaming",
@@ -490,22 +490,23 @@
       "area": "attachment",
       "brain": "kimi",
       "status": "failed",
-      "date": "2026-09-04",
+      "date": "2026-09-05",
       "model": "webagent/kimi",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/attachment_kimi_2026-09-04.json",
-      "note": "Fail-closed 502 ABSENDEKNOPF_DEAKTIVIERT (3/3 Versuche): Sendknopf deaktiviert trotz vollem Composer."
+      "proof_path": "docs/proofs/T-501/attachment_kimi_2026-09-05.json",
+      "note": "FAIL 2026-09-05: 502 ABSENDEKNOPF_DEAKTIVIERT (3/3-artig): Sendknopf deaktiviert trotz vollem Composer."
     },
     {
       "area": "attachment",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-05",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_mistral_2026-09-05.json",
+      "note": "FAIL 2026-09-05: http 200, Antwort nur Provider-Timestamp (kein RED) - Attachment nicht verarbeitet."
     },
     {
       "area": "attachment",
@@ -522,32 +523,34 @@
       "area": "attachment",
       "brain": "qwen",
       "status": "failed",
-      "date": "2026-09-04",
+      "date": "2026-09-05",
       "model": "webagent/qwen",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-04.json",
-      "note": "Fail-closed 502: Browseroberflaeche hat nur 0 von 1 Dateien uebernommen (Upload nicht bestaetigt)."
+      "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-05.json",
+      "note": "FAIL 2026-09-05: 502, 0 von 1 Dateien uebernommen (Upload nicht bestaetigt)."
     },
     {
       "area": "attachment",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-05",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_zai_2026-09-05.json",
+      "note": "FAIL 2026-09-05: 502, 0 von 1 Dateien uebernommen (Upload nicht bestaetigt)."
     },
     {
       "area": "attachment",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "failed",
+      "date": "2026-09-05",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_auto_2026-09-05.json",
+      "note": "FAIL 2026-09-05: Timeout 240s, kein RED (AutoRouter-Attachment laeuft nicht durch)."
     },
     {
       "area": "managed_tools",
@@ -652,12 +655,12 @@
       "area": "managed_tools",
       "brain": "auto",
       "status": "failed",
-      "date": "2026-09-04",
+      "date": "2026-09-05",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-05.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile): erwarteter 400 invalid_request_error am 2026-09-05 erneut bestaetigt (by design, brain-global)."
     },
     {
       "area": "api_models",
@@ -932,13 +935,13 @@
     {
       "area": "api_responses",
       "brain": "mistral",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-05",
       "model": "webagent/mistral",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/api_responses_mistral_2026-09-04.json",
-      "note": "FAIL (flaky): clean RESP_OK frueher, dann http200-empty/circuit_open - Provider-seitig"
+      "proof_path": "docs/proofs/T-501/api_responses_mistral_2026-09-05.json",
+      "note": "PASS 2026-09-05: sauberes RESP_OK als finale Antwort (output_text.done); inkrementelle Deltas sind weiterhin Provider-Timestamps (mistral) bzw. sauber (zai)."
     },
     {
       "area": "api_responses",
@@ -963,13 +966,13 @@
     {
       "area": "api_responses",
       "brain": "zai",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-05",
       "model": "webagent/zai",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/api_responses_zai_2026-09-04.json",
-      "note": "FAIL: circuit_open (Provider-Capacity ~6h Cooldown)"
+      "proof_path": "docs/proofs/T-501/api_responses_zai_2026-09-05.json",
+      "note": "PASS 2026-09-05: sauberes RESP_OK als finale Antwort (output_text.done); inkrementelle Deltas sind weiterhin Provider-Timestamps (mistral) bzw. sauber (zai)."
     },
     {
       "area": "api_responses",

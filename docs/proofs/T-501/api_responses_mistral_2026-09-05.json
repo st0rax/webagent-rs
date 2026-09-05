@@ -1,0 +1,10 @@
+{
+  "model": "webagent/mistral",
+  "ok": true,
+  "http": 200,
+  "latency_ms": 16801,
+  "delta_count": 1,
+  "joined": "3:59",
+  "error": null,
+  "note": null
+}
