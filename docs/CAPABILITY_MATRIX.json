@@ -239,13 +239,13 @@
     {
       "area": "model",
       "brain": "chatgpt",
-      "status": "passed",
+      "status": "unreachable",
       "date": "2026-09-06",
       "model": "ChatGPT",
       "selector_hash": 36116658,
       "latency_ms": 1743,
       "proof_path": "docs/proofs/T-501/model_switch_chatgpt_2026-09-06.json",
-      "note": "passed (verify 2026-09-06): Gewinner 'button.__composer-pill' (Composer-Pill > Model-Configure-Modal-Kette); Zustandswechsel belegt, Ausgangszustand wiederhergestellt"
+      "note": "passed (verify 2026-09-06): Gewinner 'button.__composer-pill' (Composer-Pill > Model-Configure-Modal-Kette); Zustandswechsel belegt, Ausgangszustand wiederhergestellt | Live verify 2026-09-06: kein sichtbarer Selektor"
     },
     {
       "area": "model",
@@ -261,12 +261,12 @@
       "area": "model",
       "brain": "deepseek",
       "status": "unreachable",
-      "date": "2026-09-03",
+      "date": "2026-09-06",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: DeepSeek bietet KEIN Modellmenue, sondern eine Segmentleiste (Instant/Expert/Vision) = mode_switch (driveable:false, mangels Auswahlmarker laut capability.rs). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung"
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: DeepSeek bietet KEIN Modellmenue, sondern eine Segmentleiste (Instant/Expert/Vision) = mode_switch (driveable:false, mangels Auswahlmarker laut capability.rs). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung | Live verify 2026-09-06: mode_switch != model; Hygiene #49"
     },
     {
       "area": "model",
@@ -277,7 +277,7 @@
       "selector_hash": 2230395766,
       "latency_ms": 3427,
       "proof_path": "docs/proofs/T-501/model_switch_gemini_2026-09-06.json",
-      "note": "passed (verify 2026-09-06): Gewinner 'button[aria-label*='Modusauswahl' i]'; resolve_fallback-Poll (SPA rendert nach ensure_ready); Zustandswechsel belegt (aria-expanded), Rueckweg misslungen (Menue blieb offen) - Menue-Trigger bedienbar, echte Modellwahl via menu --set Flash-Lite live bestaetigt"
+      "note": "passed (verify 2026-09-06): Gewinner 'button[aria-label*='Modusauswahl' i]'; resolve_fallback-Poll (SPA rendert nach ensure_ready); Zustandswechsel belegt (aria-expanded), Rueckweg misslungen (Menue blieb offen) - Menue-Trigger bedienbar, echte Modellwahl via menu --set Flash-Lite live bestaetigt | Live verify 2026-09-06: Zustandswechsel belegt (Rueckweg Menue offen)"
     },
     {
       "area": "model",
@@ -288,38 +288,40 @@
       "selector_hash": 43007049,
       "latency_ms": 0,
       "proof_path": "docs/proofs/T-501/model_switch_kimi_2026-09-06.json",
-      "note": "passed (cmd_model --set 2026-09-06): Kimi model_menu 'div.current-model' hat im Headless bounding-rect 0, deshalb meldet verify resolve_fallback Unreachable — der echte Menu-Klick greift trotzdem. model_option auf belegtes DOM korrigiert (div.kimi-menu .model-item, role=menuitemradio; .models-popover .model-item veraltet). model --set K3 Swarm -> umgestellt, Rueckweg auf Schnell bestaetigt (bereits aktiv). Record seeds %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl ts 2026-09-06T15:21:17Z"
+      "note": "passed (cmd_model --set 2026-09-06): Kimi model_menu 'div.current-model' hat im Headless bounding-rect 0, deshalb meldet verify resolve_fallback Unreachable — der echte Menu-Klick greift trotzdem. model_option auf belegtes DOM korrigiert (div.kimi-menu .model-item, role=menuitemradio; .models-popover .model-item veraltet). model --set K3 Swarm -> umgestellt, Rueckweg auf Schnell bestaetigt (bereits aktiv). Record seeds %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl ts 2026-09-06T15:21:17Z | Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
       "brain": "mistral",
       "status": "unreachable",
-      "date": "2026-09-03",
+      "date": "2026-09-06",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: Im Chat-Komposer-Kontext kein Modellmenue sichtbar (nur Chat/Work/Code-Ansicht, Einstellungsmenue, Notifications). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung"
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: Im Chat-Komposer-Kontext kein Modellmenue sichtbar (nur Chat/Work/Code-Ansicht, Einstellungsmenue, Notifications). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung | Live verify 2026-09-06: kein sichtbarer Selektor (kein Modellmenue)"
     },
     {
       "area": "model",
       "brain": "perplexity",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-06",
       "model": null,
       "selector_hash": null,
       "latency_ms": 2582,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
       "brain": "qwen",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-06",
       "model": null,
       "selector_hash": null,
       "latency_ms": 1629,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
