@@ -266,7 +266,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: DeepSeek bietet KEIN Modellmenue, sondern eine Segmentleiste (Instant/Expert/Vision) = mode_switch (driveable:false, mangels Auswahlmarker laut capability.rs). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung"
     },
     {
       "area": "model",
@@ -299,7 +299,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: Im Chat-Komposer-Kontext kein Modellmenue sichtbar (nur Chat/Work/Code-Ansicht, Einstellungsmenue, Notifications). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung"
     },
     {
       "area": "model",
