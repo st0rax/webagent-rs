@@ -8,5 +8,5 @@
   "reply": "4:01",
   "error": null,
   "error_body": null,
-  "note": "fail-closed/kein RED - ehrlich dokumentiert, keine gefaelschte Passage"
+  "note": "failed: HTTP 200 but reply is wall-clock timestamp only (\"4:01\"), not RED. Unlike qwen/zai this is NOT \"0 von 1 files\" — mistral already uses native clipboard paste like kimi; success gate may fire without image understanding, or answer scrape picks UI chrome. See ATTACHMENT_DIAGNOSIS_2026-09-06.md. fail-closed, no forged pass."
 }

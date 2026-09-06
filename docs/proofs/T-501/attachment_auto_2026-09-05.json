@@ -8,5 +8,5 @@
   "reply": "",
   "error": "timed out",
   "error_body": "",
-  "note": "fail-closed/kein RED - ehrlich dokumentiert, keine gefaelschte Passage"
+  "note": "failed: client/bridge timed out ~240s with empty reply, no RED. auto has no own selectors — routes to a concrete brain; hang likely from weak attachment target or missing error propagation. See ATTACHMENT_DIAGNOSIS_2026-09-06.md. fail-closed, no forged pass."
 }
