@@ -101,7 +101,23 @@
   ],
   "attach_button": [
     "[aria-label='Upload files']",
-    "[aria-label*='Upload' i]"
+    "[aria-label*='Upload files' i]",
+    "button[aria-label='Upload files']",
+    "button[aria-label*='Upload' i]",
+    "[aria-label*='Upload' i]",
+    "label[aria-label*='Upload' i]",
+    "button[aria-label*='attach' i]",
+    "button[aria-label*='Attach' i]",
+    "button[aria-label*='file' i]",
+    "button[aria-label*='图片' i]",
+    "button[aria-label*='上传' i]",
+    "button:has-text('Upload')",
+    "button:has-text('上传')",
+    "textarea.message-input-textarea ~ * button",
+    "[class*='message-input' i] button:has(svg)",
+    "[class*='chat-input' i] button:has(svg)",
+    "[class*='composer' i] button:has(svg)",
+    "form button:has(svg):not([aria-label*='Send' i]):not([aria-label*='send' i])"
   ],
   "voice_input_button": [
     "[aria-label='Voice Input']",
@@ -114,5 +130,14 @@
   "temporary_chat_button": [
     "[aria-label='Temporary Chat']",
     "[aria-label*='Temporary Chat' i]"
+  ],
+  "file_upload_button": [
+    "button:has-text('Upload files')",
+    "button:has-text('Upload file')",
+    "button:has-text('Upload image')",
+    "button:has-text('上传文件')",
+    "button:has-text('上传图片')",
+    "[role='menuitem']:has-text('Upload')",
+    "[role='menuitem']:has-text('上传')"
   ]
 }

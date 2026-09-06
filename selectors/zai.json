@@ -90,30 +90,42 @@
   "attach_button": [
     "button[aria-label*='Upload' i]",
     "button[aria-label*='upload' i]",
-    "button[aria-label*='attach' i]",
     "button[aria-label*='Attach' i]",
+    "button[aria-label*='attach' i]",
     "button[aria-label*='file' i]",
     "button[aria-label*='File' i]",
+    "button[aria-label*='Image' i]",
+    "button[aria-label*='image' i]",
     "button[aria-label*='图片' i]",
     "button[aria-label*='上传' i]",
     "button[aria-label*='附件' i]",
     "[role='button'][aria-label*='upload' i]",
     "[role='button'][aria-label*='attach' i]",
+    "[role='button'][aria-label*='file' i]",
     "label[for*='file' i]",
+    "label[aria-label*='upload' i]",
+    "label[aria-label*='attach' i]",
     "button:has-text('Upload')",
     "button:has-text('上传')",
     "button:has-text('附件')",
-    "form button:has(svg)",
+    "button:has-text('Image')",
     "#chat-input ~ button",
+    "#chat-input ~ * button",
+    "textarea#chat-input ~ button",
     "[class*='chat-input' i] button:first-of-type",
-    "[class*='composer' i] button:first-of-type"
+    "[class*='composer' i] button:first-of-type",
+    "form button:has(svg):not(#send-message-button):not([aria-label*='Send' i])",
+    "button:has(svg):not(#send-message-button):not([id*='sidebar' i])"
   ],
   "file_upload_button": [
     "button:has-text('Upload files')",
     "button:has-text('Upload file')",
+    "button:has-text('Upload image')",
     "button:has-text('上传文件')",
     "button:has-text('上传图片')",
     "[role='menuitem']:has-text('Upload')",
-    "[role='menuitem']:has-text('上传')"
+    "[role='menuitem']:has-text('上传')",
+    "[role='menuitem']:has-text('Image')",
+    "[role='option']:has-text('Upload')"
   ]
 }

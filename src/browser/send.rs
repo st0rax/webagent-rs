@@ -279,8 +279,21 @@ impl WebBrainBackend {
                 }
                 if self.reveal_onscreen().is_ok() {
                     revealed_for_attach = true;
+                    // In-process reveal (not HomBot show/hide): give the SPA a
+                    // moment to layout onscreen before re-arming the chooser.
+                    std::thread::sleep(Duration::from_millis(450));
                     self.wake_renderer();
+                    std::thread::sleep(Duration::from_millis(150));
                     self.open_upload_surface_and_wait();
+                    // Force a trusted attach click after reveal even if the
+                    // earlier offscreen pass already "opened" something.
+                    let _ = self.open_attachment_surface_trusted()
+                        || self.click_visible_real("attach_button");
+                    if !self.sel("file_upload_button").is_empty() {
+                        std::thread::sleep(Duration::from_millis(200));
+                        let _ = self.click_visible_real("file_upload_button")
+                            || self.click_first("file_upload_button");
+                    }
                     if self.confirm_native_cdp_upload(attachments, &native_files) {
                         if revealed_for_attach {
                             self.park_if_revealed();
@@ -408,7 +421,26 @@ impl WebBrainBackend {
         if self.file_input_count() > 0 {
             return;
         }
-        let opened = self.open_attachment_surface() || self.open_attachment_surface_trusted();
+        let trusted_first = prefers_trusted_cdp_upload(&self.brain_id);
+        // qwen/zai ignore untrusted toolbar clicks for the file chooser; prefer
+        // a trusted pointer first, then fall back to the DOM click path.
+        let opened = if trusted_first {
+            let trusted =
+                self.open_attachment_surface_trusted() || self.click_visible_real("attach_button");
+            let untrusted = if trusted {
+                false
+            } else {
+                self.open_attachment_surface()
+            };
+            // If an untrusted click "succeeded" but mounted nothing, retry trusted.
+            if !trusted && untrusted && self.file_input_count() == 0 {
+                let _ = self.open_attachment_surface_trusted()
+                    || self.click_visible_real("attach_button");
+            }
+            trusted || untrusted
+        } else {
+            self.open_attachment_surface() || self.open_attachment_surface_trusted()
+        };
         if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
             eprintln!("[upload] open attachment surface: opened={opened}");
         }
@@ -418,9 +450,17 @@ impl WebBrainBackend {
         // polling for the dynamic input.
         if !self.sel("file_upload_button").is_empty() {
             std::thread::sleep(Duration::from_millis(250));
-            let _ = self.click_first("file_upload_button");
+            if trusted_first {
+                let _ = self.click_visible_real("file_upload_button")
+                    || self.click_first("file_upload_button");
+            } else {
+                let _ = self.click_first("file_upload_button");
+            }
         }
-        let deadline = Instant::now() + Duration::from_secs(5);
+        // Trusted-first brains may open an intercepted chooser without ever
+        // mounting a durable input — keep the wait short so CDP can proceed.
+        let wait_secs = if trusted_first { 2 } else { 5 };
+        let deadline = Instant::now() + Duration::from_secs(wait_secs);
         while Instant::now() < deadline {
             if self.file_input_count() > 0 {
                 break;
@@ -491,16 +531,17 @@ impl WebBrainBackend {
                 attachments.len()
             );
         }
-        // Mistral recreates its transient input immediately after the
-        // intercepted chooser transaction. WebView2 therefore reports an
-        // empty replacement control even though DOM.setFileInputFiles was
-        // accepted against the chooser's backendNodeId. Let the real
-        // vision turn decide whether the upload was consumed; callers
-        // still fail if the provider cannot answer from the image.
-        if self.brain_id == "mistral" && self.file_input_count() == 0 {
+        // Mistral/qwen/zai recreate or clear the transient input after an
+        // intercepted chooser / drag transaction. WebView2 can report no
+        // durable input even though the native call was accepted. Let the
+        // vision turn decide; callers still fail without a RED reply.
+        // Only soft-accept when the control vanished (not when an empty
+        // input is still sitting there after a failed FileList write).
+        if prefers_trusted_cdp_upload(&self.brain_id) && self.file_input_count() == 0 {
             if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
                 eprintln!(
-                    "[upload] mistral replaced native chooser input; continue to provider proof"
+                    "[upload] {} replaced/cleared native chooser input; continue to provider proof",
+                    self.brain_id
                 );
             }
             return true;
@@ -726,15 +767,15 @@ impl WebBrainBackend {
     /// Attach-Selektoren. Der Aufruf bleibt bewusst untrusted, damit kein
     /// nativer Dateidialog geöffnet wird; anschließend übernimmt der
     /// `DataTransfer`- bzw. Paste-Pfad die eigentliche Dateiübergabe.
+    ///
+    /// Uses `Q`/`QA` (JS prelude) so Playwright `:has-text` / `text=` entries
+    /// in `attach_button` actually resolve — raw `querySelectorAll` cannot.
     fn open_attachment_surface(&self) -> bool {
         let selectors = self.sel("attach_button");
         if selectors.is_empty() {
             return false;
         }
-        let serialized = match serde_json::to_string(&selectors) {
-            Ok(value) => value,
-            Err(_) => return false,
-        };
+        let list_js = Self::js_selectors(&selectors);
         let composer_selectors = self.sel_js(
             "composer",
             &[
@@ -744,15 +785,14 @@ impl WebBrainBackend {
             ],
         );
         let expression = format!(
-            r#"(function(selectors,composerSelectors){{
+            r#"(function(composerSelectors){{
+                {prelude}
+                var S={list_js};
                 function visible(el){{
                     if(!el)return false;
                     var r=el.getBoundingClientRect(),s=window.getComputedStyle(el);
                     return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';
                 }}
-                // A global selector can hit an identically named icon in the
-                // sidebar/header. Prefer controls in the same visual band as
-                // the composer; this is essential for icon-only providers.
                 var composerRects=[];
                 for(var c=0;c<composerSelectors.length;c++){{
                     try{{var cs=document.querySelectorAll(composerSelectors[c]);
@@ -768,21 +808,24 @@ impl WebBrainBackend {
                     }}
                     return false;
                 }}
-                for(var i=0;i<selectors.length;i++){{
+                for(var i=0;i<S.length;i++){{
                     try{{
-                        var found=document.querySelectorAll(selectors[i]);
+                        var found=QA(S[i]);
                         for(var j=0;j<found.length;j++){{
                             var el=found[j];
                             if(!visible(el)||!nearComposer(el))continue;
                             var target=el.closest('button,[role=button],label')||el;
                             if(!visible(target)||!nearComposer(target))continue;
                             target.click();
-                            return {{ok:true,selector:selectors[i]}};
+                            return {{ok:true,selector:S[i]}};
                         }}
                     }}catch(e){{}}
                 }}
                 return {{ok:false,error:'no_attach_control'}};
-            }})({serialized},{composer_selectors})"#
+            }})({composer_selectors})"#,
+            prelude = Self::JS_SEL_PRELUDE,
+            list_js = list_js,
+            composer_selectors = composer_selectors
         );
         self.eval(&expression)
             .ok()
@@ -790,19 +833,66 @@ impl WebBrainBackend {
             .unwrap_or(false)
     }
 
-    /// Gemini's Angular menu ignores an untrusted DOM `click()`. Image-mode
-    /// activation is safe to open with a trusted pointer because the selected
-    /// control is only the menu trigger; unlike the upload action itself it
-    /// cannot open a native file dialog.
+    /// Trusted pointer on the attach control. Needed when the SPA ignores
+    /// untrusted DOM `click()` (Gemini menu; qwen/zai file chooser trigger).
+    /// Uses `Q`/`QA` so `:has-text` attach selectors resolve, and prefers
+    /// controls in the composer band (avoids sidebar false hits).
     fn open_attachment_surface_trusted(&self) -> bool {
         let selectors = self.sel("attach_button");
-        let serialized = match serde_json::to_string(&selectors) {
-            Ok(value) if !selectors.is_empty() => value,
-            _ => return false,
-        };
-        let target = match self.eval(&format!(
-            r#"(()=>{{const selectors={serialized};const visible=e=>{{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}};for(const selector of selectors){{try{{for(const node of document.querySelectorAll(selector)){{const e=node.closest('button,[role=button],label')||node;if(!visible(e))continue;const r=e.getBoundingClientRect();return{{x:r.left+r.width/2,y:r.top+r.height/2}}}}}}catch(e){{}}}}return null}})()"#
-        )) {
+        if selectors.is_empty() {
+            return false;
+        }
+        let list_js = Self::js_selectors(&selectors);
+        let composer_selectors = self.sel_js(
+            "composer",
+            &[
+                "div[contenteditable='true']",
+                "textarea",
+                "[role='textbox']",
+            ],
+        );
+        let expression = format!(
+            r#"(function(composerSelectors){{
+                {prelude}
+                var S={list_js};
+                function visible(el){{
+                    if(!el)return false;
+                    var r=el.getBoundingClientRect(),s=window.getComputedStyle(el);
+                    return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';
+                }}
+                var composerRects=[];
+                for(var c=0;c<composerSelectors.length;c++){{
+                    try{{var cs=document.querySelectorAll(composerSelectors[c]);
+                        for(var ci=0;ci<cs.length;ci++)if(visible(cs[ci]))composerRects.push(cs[ci].getBoundingClientRect());
+                    }}catch(e){{}}
+                }}
+                function nearComposer(el){{
+                    if(!composerRects.length)return true;
+                    var r=el.getBoundingClientRect();
+                    for(var i=0;i<composerRects.length;i++){{
+                        var c=composerRects[i];
+                        if(r.y>=c.y-140&&r.y<=c.bottom+140&&r.x>=c.x-220&&r.x<=c.right+220)return true;
+                    }}
+                    return false;
+                }}
+                for(var i=0;i<S.length;i++){{
+                    try{{
+                        var found=QA(S[i]);
+                        for(var j=0;j<found.length;j++){{
+                            var e=(found[j].closest('button,[role=button],label')||found[j]);
+                            if(!visible(e)||!nearComposer(e))continue;
+                            var r=e.getBoundingClientRect();
+                            return {{x:r.left+r.width/2,y:r.top+r.height/2,selector:S[i]}};
+                        }}
+                    }}catch(e){{}}
+                }}
+                return null;
+            }})({composer_selectors})"#,
+            prelude = Self::JS_SEL_PRELUDE,
+            list_js = list_js,
+            composer_selectors = composer_selectors
+        );
+        let target = match self.eval(&expression) {
             Ok(value) if !value.is_null() => value,
             _ => return false,
         };
@@ -813,6 +903,7 @@ impl WebBrainBackend {
         else {
             return false;
         };
+        self.wake_renderer();
         self.driver
             .borrow_mut()
             .as_mut()
@@ -1569,5 +1660,55 @@ mod tests {
             state.set_file_input_files_calls() >= 1,
             "mistral must attempt native CDP upload (not only clipboard paste)"
         );
+    }
+
+    /// After a successful native CDP call, qwen/zai/mistral may clear the
+    /// transient input. Soft-accept that vanishing control so the vision turn
+    /// can still prove the upload (matches live mistral behaviour).
+    #[test]
+    fn qwen_soft_accepts_native_ok_when_input_vanishes() {
+        let signal_expr = r#"(function(){
+            var sels=[
+                '[data-attachment]','[data-testid*="attachment" i]',
+                '[data-testid*="file" i]','[class*="attachment" i]',
+                '[class*="file-preview" i]','[class*="image-thumbnail" i]','img[src^="blob:"]',
+                '[aria-label*="attachment" i]','[aria-label*="angehängt" i]'
+            ],n=0;
+            for(var i=0;i<sels.length;i++)try{
+                var els=document.querySelectorAll(sels[i]);
+                for(var j=0;j<els.length;j++){
+                    var e=els[j],r=e.getBoundingClientRect(),s=window.getComputedStyle(e);
+                    if(r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden')n++;
+                }
+            }catch(e){}
+            return n;
+        })()"#;
+        let dispatch_expr = r#"(function(){
+                var input=document.querySelector('input[type=file]');
+                if(!input)return false;
+                input.dispatchEvent(new Event('input',{bubbles:true}));
+                input.dispatchEvent(new Event('change',{bubbles:true}));
+                return true;
+            })()"#;
+        let state = MockPageState::new()
+            .with_default_eval(json!(0))
+            .with_file_upload_ok(true)
+            // No durable input after the native call (chooser/drag consumed it).
+            .on_eval(
+                "document.querySelectorAll('input[type=file]').length",
+                json!(0),
+            )
+            .on_eval(signal_expr, json!(0))
+            .on_eval(
+                "(function(){var n=0;document.querySelectorAll('input[type=file]').forEach(function(i){n+=i.files?i.files.length:0;});return n;})()",
+                json!(0),
+            )
+            .on_eval(dispatch_expr, json!(false));
+        let mut backend = WebBrainBackend::from_config("qwen").expect("qwen");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state.clone())));
+        backend
+            .attach_files(&[png_attachment()])
+            .expect("qwen should soft-accept vanished input after native Ok");
+        assert!(state.set_file_input_files_calls() >= 1);
     }
 }

@@ -1969,13 +1969,27 @@ fn set_file_input_files_cdp(
         .or_else(|| found.pointer("/result/nodeId"))
         .and_then(Value::as_i64)
         .filter(|id| *id > 0)
-        .or_else(|| chooser_backend_node_id.map(|_| 0))
-        .ok_or_else(|| {
-            let _ = fs::remove_dir_all(&dir);
-            PageDriverError::Protocol(
-                "DOM.setFileInputFiles: kein input[type=file]-Element gefunden".into(),
-            )
-        })?;
+        .or_else(|| chooser_backend_node_id.map(|_| 0));
+    let Some(node_id) = node_id else {
+        // qwen/zai often have no persistent file input until a chooser opens.
+        // Still try a trusted composer drag/drop before failing closed.
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] no file input/chooser node; trying trusted drag fallback");
+        }
+        let path_strings: Vec<String> = paths
+            .iter()
+            .map(|path| path.to_string_lossy().replace('\\', "/"))
+            .collect();
+        match dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
+            Ok(()) => return Ok(paths),
+            Err(error) => {
+                let _ = fs::remove_dir_all(&dir);
+                return Err(PageDriverError::Protocol(format!(
+                    "DOM.setFileInputFiles: kein input[type=file]-Element gefunden; drag fallback: {error}"
+                )));
+            }
+        }
+    };
     // WebView2 has shipped runtimes where `nodeId` is accepted by the DOM
     // command but does not mutate the file control.  Resolve the corresponding
     // backend id as well and pass it when available; Chromium treats that as
@@ -2166,23 +2180,95 @@ fn open_intercepted_file_chooser_cdp(
                 r#"{"enabled":true}"#,
                 event_loop,
             )?;
-            let click = serde_json::json!({
-                "expression": "(() => { const i=document.querySelector('input[type=file]'); if(!i)return false; i.click(); return true; })()",
+            // Prefer an existing file input; otherwise click an upload/attach
+            // control (qwen/zai mount the chooser from a toolbar button, not a
+            // pre-existing input). Fall back to a trusted CDP pointer click on
+            // the resolved coordinates when DOM click alone is insufficient.
+            let locate = serde_json::json!({
+                "expression": r#"(() => {
+                    const visible = (el) => {
+                        if (!el) return false;
+                        const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+                        return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+                    };
+                    const inputs = Array.from(document.querySelectorAll('input[type=file]'));
+                    for (const i of inputs) {
+                        try { i.click(); return {ok:true, via:'input'}; } catch (e) {}
+                    }
+                    for (const l of document.querySelectorAll('label')) {
+                        const forId = l.getAttribute('for');
+                        const target = forId ? document.getElementById(forId) : null;
+                        if ((target && target.type === 'file') || l.querySelector('input[type=file]')) {
+                            if (!visible(l)) continue;
+                            const r = l.getBoundingClientRect();
+                            // Coordinates only — trusted CDP click opens the chooser once.
+                            return {ok:true, via:'label', x:r.left+r.width/2, y:r.top+r.height/2};
+                        }
+                    }
+                    const re = /upload|attach|anhang|datei|file|paperclip|image|图片|上传|附件|bild/i;
+                    const nodes = Array.from(document.querySelectorAll(
+                        'button,[role="button"],label,a,[aria-label],div[role="button"]'));
+                    const scored = [];
+                    for (const el of nodes) {
+                        if (!visible(el)) continue;
+                        const hay = (
+                            (el.getAttribute('aria-label') || '') + ' ' +
+                            (el.getAttribute('title') || '') + ' ' +
+                            (el.getAttribute('data-tooltip') || '') + ' ' +
+                            (el.innerText || '')
+                        ).trim();
+                        if (!re.test(hay) && !el.querySelector('input[type=file]')) continue;
+                        const r = el.getBoundingClientRect();
+                        // Prefer composer-band controls; skip top chrome.
+                        const band = r.top >= window.innerHeight * 0.35 ? 0 : 2;
+                        scored.push({el, hay, r, band});
+                    }
+                    scored.sort((a, b) => a.band - b.band || b.r.width * b.r.height - a.r.width * a.r.height);
+                    for (const item of scored) {
+                        return {
+                            ok: true,
+                            via: 'attach',
+                            text: item.hay.slice(0, 80),
+                            x: item.r.left + item.r.width / 2,
+                            y: item.r.top + item.r.height / 2
+                        };
+                    }
+                    return {ok:false};
+                })()"#,
                 "returnByValue": true,
                 "userGesture": true,
                 "silent": true
             });
-            let clicked =
-                call_cdp_json(webview, "Runtime.evaluate", &click.to_string(), event_loop)?;
-            let did_click = clicked
+            let located =
+                call_cdp_json(webview, "Runtime.evaluate", &locate.to_string(), event_loop)?;
+            let locate_value = located
                 .pointer("/result/value")
-                .or_else(|| clicked.pointer("/result/result/value"))
+                .or_else(|| located.pointer("/result/result/value"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            let did_click = locate_value
+                .get("ok")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] file-chooser trigger: {locate_value}");
+            }
             if !did_click {
                 return Err(PageDriverError::Protocol(
-                    "kein input[type=file] fuer File-Chooser-Interception".into(),
+                    "kein input/attach-Trigger fuer File-Chooser-Interception".into(),
                 ));
+            }
+            // Attach/label triggers need a trusted pointer; input[type=file]
+            // already received an in-page .click() above.
+            if let (Some(x), Some(y)) = (
+                locate_value.get("x").and_then(Value::as_f64),
+                locate_value.get("y").and_then(Value::as_f64),
+            ) {
+                if let Err(error) = click_at_trusted_cdp(webview, x, y, event_loop) {
+                    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                        eprintln!("[upload] trusted attach click failed: {error}");
+                    }
+                }
             }
 
             let deadline = Instant::now() + Duration::from_secs(5);
