@@ -1,0 +1,34 @@
+[verify] 8 Brain(s), 1 Faehigkeit(en): reasoning_effort
+[verify] chatgpt: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   1.93s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +  11.43s  ensure_ready fertig
+[verify] gemini: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   2.85s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   4.08s  ensure_ready fertig
+[verify] kimi: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   2.91s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   3.68s  ensure_ready fertig
+[verify] mistral: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   3.89s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   5.63s  ensure_ready fertig
+[verify] perplexity: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   1.99s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   4.46s  ensure_ready fertig
+[verify] qwen: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   2.79s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   2.89s  ensure_ready fertig
+[verify] deepseek: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   1.49s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   1.57s  ensure_ready fertig
+[verify] claude: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   1.18s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   4.68s  ensure_ready fertig
+[verify] claude: reasoning_effort = Passed (42ms) ÔÇö Sonnet 5 Hoch (bereits aktiv, kein Wechsel noetig)

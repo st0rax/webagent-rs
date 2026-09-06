@@ -1,0 +1,37 @@
+[verify] 8 Brain(s), 2 Faehigkeit(en): model_switch, reasoning_effort
+[verify] chatgpt: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   1.86s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   5.33s  ensure_ready fertig
+[verify] chatgpt: model_switch = Unreachable (4240ms) ÔÇö kein sichtbarer Selektor
+[verify] gemini: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   1.61s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   2.42s  ensure_ready fertig
+[verify] gemini: model_switch = Passed (3565ms) ÔÇö Zustandswechsel belegt, aber Rueckweg misslungen ÔÇö Oberflaeche steht jetzt auf 'aria-controls=ng-menu-a3443-0;aria-disabled=false;aria-expanded=true;aria-haspopup=true;aria-label=Modusauswahl ├Âffnen, derzeit ausgew├ñhlt: Flash;data-test-id=bard-mode-menu-button|mdc-button mat-mdc-button-base mat-mdc-tooltip-trigger input-area-switch mat-mdc-button mat-unthemed lm-enabled pressed' statt 'aria-controls=ng-menu-a3443-0;aria-disabled=false;aria-expanded=false;aria-haspopup=true;aria-label=Modusauswahl ├Âffnen, derzeit ausgew├ñhlt: Flash;data-test-id=bard-mode-menu-button|mdc-button mat-mdc-button-base mat-mdc-tooltip-trigger input-area-switch mat-mdc-button mat-unthemed lm-enabled'
+[verify] kimi: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   3.22s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   4.94s  ensure_ready fertig
+[verify] kimi: model_switch = Passed (3095ms) ÔÇö Zustandswechsel belegt, Ausgangszustand wiederhergestellt
+[verify] mistral: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   6.71s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   7.23s  ensure_ready fertig
+[verify] mistral: model_switch = Unreachable (4262ms) ÔÇö kein sichtbarer Selektor
+[verify] perplexity: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   1.67s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   5.13s  ensure_ready fertig
+[verify] perplexity: model_switch = Passed (2530ms) ÔÇö Zustandswechsel belegt, Ausgangszustand wiederhergestellt (via echtem Mausklick)
+[verify] qwen: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   1.67s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   1.81s  ensure_ready fertig
+[verify] qwen: model_switch = Passed (1727ms) ÔÇö Zustandswechsel belegt, Ausgangszustand wiederhergestellt
+[verify] auto: Start
+[verify] auto: Backend-Konfiguration fehlt: Unbekanntes Brain: auto
+[verify] deepseek: Start
+[verify] trace +   0.01s  Browserstart
+[verify] trace +   1.66s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   1.74s  ensure_ready fertig
