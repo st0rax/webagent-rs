@@ -634,7 +634,7 @@ impl WebBrainBackend {
     /// Mittelpunkt des Ziel-Eintrags im Viewport, oder `None`.
     fn option_point(&self, list: &str, needle: &str) -> Option<(f64, f64)> {
         let expr = format!(
-            "(function(){{{prelude}var S={list};var n={needle};function norm(s){{return ((s||'')+'').replace(/\s+/g,' ').trim().toLowerCase();}}function pt(e){{var r=e.getBoundingClientRect();return JSON.stringify(r.left+r.width/2)+','+JSON.stringify(r.top+r.height/2);}}var exact=null,loose=null;for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=norm(els[k].innerText||els[k].textContent);if(!t)continue;if(t===n&&!exact)exact=els[k];else if(t.indexOf(n)!==-1&&!loose)loose=els[k];}}}}catch(e){{}}}}var hit=exact||loose;return hit?pt(hit):'false';}})()",
+            "(function(){{{prelude}var S={list};var n={needle};function norm(s){{return ((s||'')+'').replace(/\\s+/g,' ').trim().toLowerCase();}}function pt(e){{var r=e.getBoundingClientRect();return JSON.stringify(r.left+r.width/2)+','+JSON.stringify(r.top+r.height/2);}}var exact=null,loose=null;for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=norm(els[k].innerText||els[k].textContent);if(!t)continue;if(t===n&&!exact)exact=els[k];else if(t.indexOf(n)!==-1&&!loose)loose=els[k];}}}}catch(e){{}}}}var hit=exact||loose;return hit?pt(hit):'false';}})()",
             prelude = Self::JS_SEL_PRELUDE,
             list = list,
             needle = needle
