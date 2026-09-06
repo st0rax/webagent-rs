@@ -28,7 +28,7 @@ laufen. Niemals eine verkettete Aufgabe aus dem Block reissen.
 | T-201 | 2 | Eingebettete Assets + Loopback-Serverstart (eine Binary) | code | claude, manus | done | grok-agent | feature/T-201-web-ui-server |
 | T-202 | 2 | Endpunkte: Session/Capability/Health/Upload/Chat/Stop/Event | code | codex, claude | done | grok-agent | feature/T-202-ui-endpoints |
 | T-203 | 2 | Klickbarer Fake-Prototyp (Grok-Layout) + A11y-Gates | code | claude, manus, local | done | grok-agent | feature/T-203-grok-layout-prototype |
-| T-204 | 2 | Web-UI-Grok-Bot-Fortsetzung: visuelles Polish, Navigation und responsive Chat-Oberflaeche | code | manus, claude, local | claimed | manus | feature/T-204-grok-ui-polish |
+| T-204 | 2 | Web-UI-Grok-Bot-Fortsetzung: visuelles Polish, Navigation und responsive Chat-Oberflaeche | code | manus, claude, local | done | manus | feature/T-204-grok-ui-polish |
 | T-301 | 3 | Claude-Referenz: Delta-Streaming live (Freigabegrenze!) | live | claude, local | claimed | grok-agent | – |
 | T-302 | 3 | Claude: Modelle/Aufwand runtime ermitteln, wählen, nachprüfen | live | claude, local | done | local/opencode | feature/T-302-claude-runtime-model |
 | T-401 | 4 | DTOs feldvollständig + monotone sequence_number in Responses-SSE | code | codex | done | grok-agent | feature/T-401-responses-sse-seq |

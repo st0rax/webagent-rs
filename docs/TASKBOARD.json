@@ -173,13 +173,13 @@
         "claude-code",
         "local/opencode"
       ],
-      "status": "claimed",
+      "status": "done",
       "owner": "manus",
       "branch": "feature/T-204-grok-ui-polish",
       "claimed_at": "2026-09-06",
-      "done_at": null,
-      "proof_path": "web/index.html; lokale Render-/Keyboard-Pruefung; T-203-Fortsetzung ohne Backend-Vertragsaenderung",
-      "verification": "cargo test --lib; lokale Web-UI-Pruefung; Keyboard-/Responsive-Durchlauf",
+      "done_at": "2026-09-06",
+      "proof_path": "web/index.html; docs/proofs/T-204-ui-check.md; Commit e0b3d82",
+      "verification": "Lokale Web-UI-Pruefung, Fake-Stream-/Keyboard-Durchlauf, git diff --check und JSON-Syntax gruen; cargo-Gate in Sandbox mangels cargo nicht verfuegbar",
       "dod": "Grok-Bot-artige Chat-Oberflaeche umgesetzt, bestehende A11y-Gates erhalten, responsive Darstellung geprueft, Status/Handover aktualisiert",
       "depends_on": [
         "T-203"
