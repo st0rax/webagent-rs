@@ -243,7 +243,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
     },
     {
       "area": "model",
@@ -263,7 +264,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
     },
     {
       "area": "model",
@@ -273,7 +275,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
     },
     {
       "area": "model",
@@ -283,7 +286,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
     },
     {
       "area": "model",
@@ -293,7 +297,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
     },
     {
       "area": "model",
@@ -429,7 +434,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable: Brain waehrend Integration nicht live erreichbar; ehrlich unreachable"
     },
     {
       "area": "effort",
