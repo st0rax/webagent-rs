@@ -1909,6 +1909,14 @@ fn set_file_input_files_cdp(
         let _ = fs::remove_dir_all(&dir);
         return Err(error);
     }
+    let path_strings: Vec<String> = paths
+        .iter()
+        // WebView2's CDP implementation expects POSIX separators even on
+        // Windows.  Backslashes are accepted by the JSON parser but are
+        // rejected by the underlying file-input bridge on some runtimes.
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .collect();
+
     // Ask Chromium to create a real file-chooser transaction, but intercept
     // it before a native Windows dialog is shown.  `DOM.setFileInputFiles`
     // is reliable against the backendNodeId from this event; setting an
@@ -1923,160 +1931,61 @@ fn set_file_input_files_cdp(
             None
         }
     };
-    let document = match call_cdp_json(
-        webview,
-        "DOM.getDocument",
-        r#"{"depth":-1,"pierce":true}"#,
-        event_loop,
-    ) {
-        Ok(value) => value,
-        Err(error) => {
-            let _ = fs::remove_dir_all(&dir);
-            return Err(error);
-        }
-    };
-    // WebView2 returns the CDP payload itself (the `result` wrapper used by
-    // some JSON-RPC clients is omitted).  Accept both shapes so this keeps
-    // working with runtimes that do preserve the wrapper.
-    let root_node_id = document
-        .pointer("/root/nodeId")
-        .or_else(|| document.pointer("/result/root/nodeId"))
-        .and_then(Value::as_i64)
-        .filter(|id| *id > 0)
-        .ok_or_else(|| {
-            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-                eprintln!("[upload] DOM.getDocument response: {document}");
-            }
-            let _ = fs::remove_dir_all(&dir);
-            PageDriverError::Protocol("DOM.setFileInputFiles: kein DOM-Dokument gefunden".into())
-        })?;
-    let query = serde_json::json!({
-        "nodeId": root_node_id,
-        "selector": "input[type=file]"
-    });
-    let found = match call_cdp_json(webview, "DOM.querySelector", &query.to_string(), event_loop) {
-        Ok(value) => value,
-        Err(error) => {
-            let _ = fs::remove_dir_all(&dir);
-            return Err(error);
-        }
-    };
-    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-        eprintln!("[upload] DOM.querySelector response: {found}");
-    }
-    let node_id = found
-        .pointer("/nodeId")
-        .or_else(|| found.pointer("/result/nodeId"))
-        .and_then(Value::as_i64)
-        .filter(|id| *id > 0)
-        .or_else(|| chooser_backend_node_id.map(|_| 0));
-    let Some(node_id) = node_id else {
-        // qwen/zai often have no persistent file input until a chooser opens.
-        // Still try a trusted composer drag/drop before failing closed.
-        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-            eprintln!("[upload] no file input/chooser node; trying trusted drag fallback");
-        }
-        let path_strings: Vec<String> = paths
-            .iter()
-            .map(|path| path.to_string_lossy().replace('\\', "/"))
-            .collect();
-        match dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
-            Ok(()) => return Ok(paths),
-            Err(error) => {
-                let _ = fs::remove_dir_all(&dir);
-                return Err(PageDriverError::Protocol(format!(
-                    "DOM.setFileInputFiles: kein input[type=file]-Element gefunden; drag fallback: {error}"
-                )));
-            }
-        }
-    };
-    // WebView2 has shipped runtimes where `nodeId` is accepted by the DOM
-    // command but does not mutate the file control.  Resolve the corresponding
-    // backend id as well and pass it when available; Chromium treats that as
-    // the stable renderer-side identity for a live element.
-    let describe = serde_json::json!({"nodeId": node_id});
-    let backend_node_id = call_cdp_json(
-        webview,
-        "DOM.describeNode",
-        &describe.to_string(),
-        event_loop,
-    )
-    .ok()
-    .and_then(|value| {
-        value
-            .pointer("/node/backendNodeId")
-            .or_else(|| value.pointer("/result/node/backendNodeId"))
-            .and_then(Value::as_i64)
-            .filter(|id| *id > 0)
-    });
-    let path_strings: Vec<String> = paths
-        .iter()
-        // WebView2's CDP implementation expects POSIX separators even on
-        // Windows.  Backslashes are accepted by the JSON parser but are
-        // rejected by the underlying file-input bridge on some runtimes.
-        .map(|path| path.to_string_lossy().replace('\\', "/"))
-        .collect();
-    // Prefer a Runtime object identity when available.  A few WebView2
-    // runtimes acknowledge `nodeId`/`backendNodeId` but leave the control
-    // untouched; the objectId is resolved in the same renderer execution
-    // context as the page script and avoids that stale-node path.
-    let evaluate = serde_json::json!({
-        "expression": "document.querySelector('input[type=file]')",
-        "returnByValue": false,
-        "silent": true
-    });
-    let object_id = call_cdp_json(
-        webview,
-        "Runtime.evaluate",
-        &evaluate.to_string(),
-        event_loop,
-    )
-    .ok()
-    .and_then(|value| {
-        value
-            .pointer("/result/objectId")
-            .or_else(|| value.pointer("/result/result/objectId"))
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned)
-    });
-    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-        eprintln!(
-            "[upload] DOM target node={} backend={:?} object={:?}",
-            node_id, backend_node_id, object_id
-        );
-    }
-    let mut params = serde_json::json!({"files": path_strings});
+
+    // Live TRACE (qwen #46): Page.fileChooserOpened reported backendNodeId=21,
+    // but a subsequent DOM.querySelector("input[type=file]") resolved a
+    // *different* node (backend=3144). setFileInputFiles on the wrong node
+    // returned {} while input.files stayed 0. Also, getDocument(depth:-1) +
+    // querySelector between the event and the set can invalidate the
+    // intercepted chooser transaction.
+    //
+    // Rule: when FileChooserOpened supplies a backendNodeId, call
+    // DOM.setFileInputFiles with THAT id immediately — never replace it with
+    // a querySelector'd input.
+    let mut used_chooser_node = false;
     if let Some(backend_node_id) = chooser_backend_node_id {
-        params["backendNodeId"] = Value::from(backend_node_id);
-    } else if let Some(object_id) = object_id {
-        params["objectId"] = Value::String(object_id);
-    } else {
-        params["nodeId"] = Value::from(node_id);
-        if let Some(backend_node_id) = backend_node_id {
-            params["backendNodeId"] = Value::from(backend_node_id);
+        // Only the FileChooserOpened backendNodeId — no querySelector, no
+        // getDocument, no resolveNode delay before the set.
+        let params = serde_json::json!({
+            "files": path_strings.clone(),
+            "backendNodeId": backend_node_id
+        });
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!(
+                "[upload] DOM.setFileInputFiles via FileChooserOpened backendNodeId={backend_node_id} params={params}"
+            );
         }
-    }
-    let cdp_response = match call_cdp_json(
-        webview,
-        "DOM.setFileInputFiles",
-        &params.to_string(),
-        event_loop,
-    ) {
-        Ok(response) => response,
-        Err(error) => {
-            if chooser_backend_node_id.is_some() {
-                let _ = call_cdp_json(
-                    webview,
-                    "Page.setInterceptFileChooserDialog",
-                    r#"{"enabled":false}"#,
-                    event_loop,
-                );
+        match call_cdp_json(
+            webview,
+            "DOM.setFileInputFiles",
+            &params.to_string(),
+            event_loop,
+        ) {
+            Ok(cdp_response) => {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[upload] DOM.setFileInputFiles response: {cdp_response}");
+                }
+                if let Some(error) = cdp_response
+                    .get("error")
+                    .or_else(|| cdp_response.pointer("/result/error"))
+                {
+                    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                        eprintln!(
+                            "[upload] DOM.setFileInputFiles on chooser backendNodeId={backend_node_id} error: {error}"
+                        );
+                    }
+                } else {
+                    used_chooser_node = true;
+                }
             }
-            let _ = fs::remove_dir_all(&dir);
-            return Err(error);
+            Err(error) => {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!(
+                        "[upload] DOM.setFileInputFiles on chooser backendNodeId={backend_node_id} failed: {error}"
+                    );
+                }
+            }
         }
-    };
-    if chooser_backend_node_id.is_some() {
         let _ = call_cdp_json(
             webview,
             "Page.setInterceptFileChooserDialog",
@@ -2084,23 +1993,182 @@ fn set_file_input_files_cdp(
             event_loop,
         );
     }
-    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-        eprintln!("[upload] DOM.setFileInputFiles response: {cdp_response}");
+
+    // querySelector path only when no chooser event (or chooser set failed).
+    if !used_chooser_node {
+        let document = match call_cdp_json(
+            webview,
+            "DOM.getDocument",
+            r#"{"depth":-1,"pierce":true}"#,
+            event_loop,
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                // Still try drag before failing closed.
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!(
+                        "[upload] DOM.getDocument failed ({error}); trying trusted drag fallback"
+                    );
+                }
+                match dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
+                    Ok(()) => return Ok(paths),
+                    Err(drag_error) => {
+                        let _ = fs::remove_dir_all(&dir);
+                        return Err(PageDriverError::Protocol(format!(
+                            "DOM.setFileInputFiles: getDocument={error}; drag fallback: {drag_error}"
+                        )));
+                    }
+                }
+            }
+        };
+        let root_node_id = document
+            .pointer("/root/nodeId")
+            .or_else(|| document.pointer("/result/root/nodeId"))
+            .and_then(Value::as_i64)
+            .filter(|id| *id > 0)
+            .ok_or_else(|| {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[upload] DOM.getDocument response: {document}");
+                }
+                let _ = fs::remove_dir_all(&dir);
+                PageDriverError::Protocol(
+                    "DOM.setFileInputFiles: kein DOM-Dokument gefunden".into(),
+                )
+            })?;
+        let query = serde_json::json!({
+            "nodeId": root_node_id,
+            "selector": "input[type=file]"
+        });
+        let found =
+            match call_cdp_json(webview, "DOM.querySelector", &query.to_string(), event_loop) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = fs::remove_dir_all(&dir);
+                    return Err(error);
+                }
+            };
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] DOM.querySelector response (no/failed chooser path): {found}");
+        }
+        let node_id = found
+            .pointer("/nodeId")
+            .or_else(|| found.pointer("/result/nodeId"))
+            .and_then(Value::as_i64)
+            .filter(|id| *id > 0);
+        let Some(node_id) = node_id else {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] no file input node; trying trusted drag fallback");
+            }
+            match dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
+                Ok(()) => return Ok(paths),
+                Err(error) => {
+                    let _ = fs::remove_dir_all(&dir);
+                    return Err(PageDriverError::Protocol(format!(
+                        "DOM.setFileInputFiles: kein input[type=file]-Element gefunden; drag fallback: {error}"
+                    )));
+                }
+            }
+        };
+        let describe = serde_json::json!({"nodeId": node_id});
+        let backend_node_id = call_cdp_json(
+            webview,
+            "DOM.describeNode",
+            &describe.to_string(),
+            event_loop,
+        )
+        .ok()
+        .and_then(|value| {
+            value
+                .pointer("/node/backendNodeId")
+                .or_else(|| value.pointer("/result/node/backendNodeId"))
+                .and_then(Value::as_i64)
+                .filter(|id| *id > 0)
+        });
+        let evaluate = serde_json::json!({
+            "expression": "document.querySelector('input[type=file]')",
+            "returnByValue": false,
+            "silent": true
+        });
+        let object_id = call_cdp_json(
+            webview,
+            "Runtime.evaluate",
+            &evaluate.to_string(),
+            event_loop,
+        )
+        .ok()
+        .and_then(|value| {
+            value
+                .pointer("/result/objectId")
+                .or_else(|| value.pointer("/result/result/objectId"))
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        });
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!(
+                "[upload] DOM target (querySelector fallback) node={node_id} backend={backend_node_id:?} object={object_id:?}"
+            );
+        }
+        let mut params = serde_json::json!({"files": path_strings.clone()});
+        if let Some(object_id) = object_id {
+            params["objectId"] = Value::String(object_id);
+        } else {
+            params["nodeId"] = Value::from(node_id);
+            if let Some(backend_node_id) = backend_node_id {
+                params["backendNodeId"] = Value::from(backend_node_id);
+            }
+        }
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] DOM.setFileInputFiles (querySelector fallback) params={params}");
+        }
+        let cdp_response = match call_cdp_json(
+            webview,
+            "DOM.setFileInputFiles",
+            &params.to_string(),
+            event_loop,
+        ) {
+            Ok(response) => response,
+            Err(error) => {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!(
+                        "[upload] querySelector setFileInputFiles failed ({error}); trying drag"
+                    );
+                }
+                match dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
+                    Ok(()) => return Ok(paths),
+                    Err(drag_error) => {
+                        let _ = fs::remove_dir_all(&dir);
+                        return Err(PageDriverError::Protocol(format!(
+                            "DOM.setFileInputFiles: {error}; drag fallback: {drag_error}"
+                        )));
+                    }
+                }
+            }
+        };
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] DOM.setFileInputFiles response: {cdp_response}");
+        }
+        if let Some(error) = cdp_response
+            .get("error")
+            .or_else(|| cdp_response.pointer("/result/error"))
+        {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] querySelector setFileInputFiles error {error}; trying drag");
+            }
+            match dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
+                Ok(()) => return Ok(paths),
+                Err(drag_error) => {
+                    let _ = fs::remove_dir_all(&dir);
+                    return Err(PageDriverError::Protocol(format!(
+                        "DOM.setFileInputFiles: {error}; drag fallback: {drag_error}"
+                    )));
+                }
+            }
+        }
     }
-    if let Some(error) = cdp_response
-        .get("error")
-        .or_else(|| cdp_response.pointer("/result/error"))
-    {
-        let _ = fs::remove_dir_all(&dir);
-        return Err(PageDriverError::Protocol(format!(
-            "DOM.setFileInputFiles: {error}"
-        )));
-    }
-    // WebView2 releases have historically acknowledged DOM.setFileInputFiles
-    // without updating the renderer-side FileList.  Only invoke the drag/drop
-    // fallback when that renderer-side check still reports zero files; once a
-    // native input is populated, dropping the same paths would duplicate the
-    // attachment in providers that accept both channels.
+
+    // Empty `{}` from setFileInputFiles is NOT proof the FileList was mutated.
+    // Always check renderer-side files; if still 0, run drag (do not treat the
+    // acknowledged set as a confirmed upload).
     let native_count = {
         let check = serde_json::json!({
             "expression": "Array.from(document.querySelectorAll('input[type=file]')).reduce((n,i)=>n+(i.files?i.files.length:0),0)",
@@ -2118,9 +2186,21 @@ fn set_file_input_files_cdp(
             .unwrap_or(0)
     };
     if native_count == 0 {
-        if let Err(error) = dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
-            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-                eprintln!("[upload] trusted drag fallback unavailable: {error}");
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!(
+                "[upload] native file-input count=0 after set (chooser_used={used_chooser_node}); running trusted drag fallback"
+            );
+        }
+        match dispatch_file_drag_cdp(webview, files, &path_strings, event_loop) {
+            Ok(()) => {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[upload] trusted drag fallback dispatched");
+                }
+            }
+            Err(error) => {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[upload] trusted drag fallback unavailable: {error}");
+                }
             }
         }
     } else if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
@@ -2192,8 +2272,12 @@ fn open_intercepted_file_chooser_cdp(
                         return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
                     };
                     const inputs = Array.from(document.querySelectorAll('input[type=file]'));
-                    for (const i of inputs) {
-                        try { i.click(); return {ok:true, via:'input'}; } catch (e) {}
+                    // Prefer the last-mounted input: SPAs (qwen/zai) often leave
+                    // stale file inputs ahead of the live chooser target. Live
+                    // TRACE showed FileChooserOpened backendNodeId differing
+                    // from document.querySelector('input[type=file]').
+                    for (const i of inputs.slice().reverse()) {
+                        try { i.click(); return {ok:true, via:'input', inputCount:inputs.length}; } catch (e) {}
                     }
                     for (const l of document.querySelectorAll('label')) {
                         const forId = l.getAttribute('for');
@@ -2364,6 +2448,14 @@ fn dispatch_file_drag_cdp(
     })
     .and_then(|value| Some((value.get("x")?.as_f64()?, value.get("y")?.as_f64()?)))
     .ok_or_else(|| PageDriverError::Protocol("kein sichtbarer Composer fuer Drag/Drop".into()))?;
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!(
+            "[upload] drag target composer at ({:.1},{:.1}) files={}",
+            point.0,
+            point.1,
+            path_strings.len()
+        );
+    }
     let items: Vec<Value> = files
         .iter()
         .map(|(name, _)| {

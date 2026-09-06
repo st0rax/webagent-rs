@@ -92,6 +92,11 @@
     "button[aria-label*='upload' i]",
     "button[aria-label*='Attach' i]",
     "button[aria-label*='attach' i]",
+    "button[aria-label*='plus' i]",
+    "button[aria-label*='More' i]",
+    "button[aria-label*='Add' i]",
+    "button[aria-label*='添加' i]",
+    "button[aria-label*='工具' i]",
     "button[aria-label*='file' i]",
     "button[aria-label*='File' i]",
     "button[aria-label*='Image' i]",
@@ -126,6 +131,13 @@
     "[role='menuitem']:has-text('Upload')",
     "[role='menuitem']:has-text('上传')",
     "[role='menuitem']:has-text('Image')",
-    "[role='option']:has-text('Upload')"
+    "[role='option']:has-text('Upload')",
+    "button:has-text('Upload')",
+    "button:has-text('Local file')",
+    "button:has-text('From device')",
+    "button:has-text('Computer')",
+    "button:has-text('本地文件')",
+    "[role='menuitem']:has-text('File')",
+    "[role='option']:has-text('上传')"
   ]
 }

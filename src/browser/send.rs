@@ -314,11 +314,15 @@ impl WebBrainBackend {
             if revealed_for_attach {
                 self.park_if_revealed();
             }
-            return Err(
-                "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit \
-                 (no_file_input_and_paste_not_confirmed)"
-                    .into(),
-            );
+            self.capture_attach_failure_trace();
+            return Err(format!(
+                "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit (no_file_input_and_paste_not_confirmed; brain={}; inputs={}; files={}; signal={}; reveal={})",
+                self.brain_id,
+                self.file_input_count(),
+                self.file_input_files_count(),
+                self.attachment_signal_count(),
+                revealed_for_attach || already_revealed
+            ));
         }
 
         // Kimi dokumentiert Ctrl-V aus der Zwischenablage als primaeren
@@ -442,7 +446,13 @@ impl WebBrainBackend {
             self.open_attachment_surface() || self.open_attachment_surface_trusted()
         };
         if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-            eprintln!("[upload] open attachment surface: opened={opened}");
+            eprintln!(
+                "[upload] open attachment surface: opened={opened} inputs_before_wait={} attach_sels={} upload_menu_sels={} signal={}",
+                self.file_input_count(),
+                self.sel("attach_button").len(),
+                self.sel("file_upload_button").len(),
+                self.attachment_signal_count()
+            );
         }
         // Mistral's plus button opens a toolkit menu. The actual file
         // input is mounted only after selecting "Upload files" from that
@@ -903,11 +913,22 @@ impl WebBrainBackend {
         else {
             return false;
         };
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!(
+                "[upload] attach button found: coords=({x:.1},{y:.1}) selector={:?}",
+                target.get("selector").and_then(Value::as_str)
+            );
+        }
         self.wake_renderer();
-        self.driver
+        let clicked = self
+            .driver
             .borrow_mut()
             .as_mut()
-            .is_some_and(|driver| driver.click_at_trusted(x, y).is_ok())
+            .is_some_and(|driver| driver.click_at_trusted(x, y).is_ok());
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] attach click done={clicked}");
+        }
+        clicked
     }
 
     /// Fallback für Provider, die Uploads über `paste`/`drop` am Composer
@@ -1174,6 +1195,77 @@ impl WebBrainBackend {
     /// Schreibt nur im expliziten Verifikationsmodus einen Screenshot und eine
     /// kompakte DOM-Diagnose. Das hält fehlgeschlagene Upload-Smokes
     /// untersuchbar, ohne im normalen Betrieb Chat-Inhalte mitzuschneiden.
+    /// VERIFY_TRACE-only: DOM summary + screenshot after a failed trusted
+    /// attach (qwen/zai/mistral). Keeps offscreen upload smokes diagnosable.
+    fn capture_attach_failure_trace(&self) {
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_none() {
+            return;
+        }
+        let attach_selectors = Self::js_selectors(&self.sel("attach_button"));
+        let upload_selectors = Self::js_selectors(&self.sel("file_upload_button"));
+        let composer_selectors = Self::js_selectors(&self.sel("composer"));
+        let expression = format!(
+            r#"(function(){{
+                function scan(selectors){{
+                    var out=[];
+                    for(var i=0;i<selectors.length;i++)try{{
+                        var els=QA(selectors[i]);
+                        for(var j=0;j<els.length;j++){{
+                            var e=els[j],r=e.getBoundingClientRect(),s=getComputedStyle(e);
+                            out.push({{selector:selectors[i],tag:e.tagName,
+                                aria:e.getAttribute('aria-label'),title:e.getAttribute('title'),
+                                cls:((e.className||'')+'').slice(0,120),
+                                visible:r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden',
+                                x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)}});
+                        }}
+                    }}catch(error){{}}
+                    return out;
+                }}
+                {prelude}
+                var inputs=[];
+                document.querySelectorAll('input[type=file]').forEach(function(i,idx){{
+                    var r=i.getBoundingClientRect();
+                    inputs.push({{idx:idx,multiple:!!i.multiple,files:i.files?i.files.length:0,
+                        accept:i.accept||null,x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)}});
+                }});
+                return {{
+                    url:location.href,
+                    inputs:inputs,
+                    inputCount:inputs.length,
+                    signalCards:document.querySelectorAll('[class*="image-thumbnail" i],[class*="attachment" i],[class*="file-preview" i],[data-attachment],img[src^="blob:"]').length,
+                    attach:scan({attach}),
+                    uploadMenu:scan({upload}),
+                    composer:scan({composer})
+                }};
+            }})()"#,
+            prelude = Self::JS_SEL_PRELUDE,
+            attach = attach_selectors,
+            upload = upload_selectors,
+            composer = composer_selectors,
+        );
+        if let Ok(details) = self.eval(&expression) {
+            eprintln!("[upload] attach failure DOM: {details}");
+        } else {
+            eprintln!(
+                "[upload] attach failure summary: inputs={} files={} signal={}",
+                self.file_input_count(),
+                self.file_input_files_count(),
+                self.attachment_signal_count()
+            );
+        }
+        let path =
+            std::env::temp_dir().join(format!("webagent-{}-attach-failure.png", self.brain_id));
+        if let Some(driver) = self.driver.borrow_mut().as_mut() {
+            match driver.capture_png() {
+                Ok(png) => match std::fs::write(&path, png) {
+                    Ok(()) => eprintln!("[upload] attach failure screenshot: {}", path.display()),
+                    Err(error) => eprintln!("[upload] attach failure screenshot write: {error}"),
+                },
+                Err(error) => eprintln!("[upload] attach failure screenshot capture: {error}"),
+            }
+        }
+    }
+
     fn capture_submit_failure_trace(&self) {
         if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_none() {
             return;

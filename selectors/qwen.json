@@ -113,6 +113,11 @@
     "button[aria-label*='上传' i]",
     "button:has-text('Upload')",
     "button:has-text('上传')",
+    "button[aria-label*='plus' i]",
+    "button[aria-label*='More' i]",
+    "button[aria-label*='Add' i]",
+    "button[aria-label*='添加' i]",
+    "button[aria-label*='工具' i]",
     "textarea.message-input-textarea ~ * button",
     "[class*='message-input' i] button:has(svg)",
     "[class*='chat-input' i] button:has(svg)",
@@ -138,6 +143,15 @@
     "button:has-text('上传文件')",
     "button:has-text('上传图片')",
     "[role='menuitem']:has-text('Upload')",
-    "[role='menuitem']:has-text('上传')"
+    "[role='menuitem']:has-text('上传')",
+    "button:has-text('Upload')",
+    "button:has-text('Local file')",
+    "button:has-text('From device')",
+    "button:has-text('Computer')",
+    "button:has-text('本地文件')",
+    "[role='menuitem']:has-text('Image')",
+    "[role='menuitem']:has-text('File')",
+    "[role='option']:has-text('Upload')",
+    "[role='option']:has-text('上传')"
   ]
 }
