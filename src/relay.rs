@@ -318,11 +318,16 @@ pub fn relay_single_turn_with_attachments_streaming(
         // Leerer Text = Timeout ohne erkannte Antwort. wait_response gibt das als
         // Ok mit leerem Text zurueck; ohne diese Pruefung zaehlte ein Timeout als
         // Erfolg (so entstand frueher "5/8 PASS" ohne eine echte Antwort).
-        let text = response.text.trim().to_string();
+        // UI-Chrome / CoT-Echo (Thinking..., 14:28, Kimi reasoning) zaehlen
+        // ebenfalls als leer — sonst landet Status als vermeintliche Antwort.
+        let raw = response.text.trim().to_string();
+        let text = crate::observer::chat_answer_text(&raw);
         if text.is_empty() {
             last_err = format!(
-                "keine Antwort erhalten (backend_status={}, generation_complete={})",
-                response.backend_status, response.generation_complete
+                "keine Antwort erhalten (backend_status={}, generation_complete={}, raw_chars={})",
+                response.backend_status,
+                response.generation_complete,
+                raw.chars().count()
             );
             continue;
         }

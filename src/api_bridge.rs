@@ -809,7 +809,8 @@ fn handle_openai_incremental(
             if stream_error.is_some() {
                 return;
             }
-            if snapshot == last_sent {
+            let cleaned = stream_answer_snapshot(snapshot);
+            if cleaned.is_empty() {
                 if last_keepalive.elapsed() >= Duration::from_secs(5) {
                     if let Err(error) = write_sse_comment(stream, "keep-alive") {
                         stream_error = Some(error);
@@ -819,7 +820,17 @@ fn handle_openai_incremental(
                 }
                 return;
             }
-            if let Some(delta) = snapshot.strip_prefix(&last_sent) {
+            if cleaned == last_sent {
+                if last_keepalive.elapsed() >= Duration::from_secs(5) {
+                    if let Err(error) = write_sse_comment(stream, "keep-alive") {
+                        stream_error = Some(error);
+                    } else {
+                        last_keepalive = Instant::now();
+                    }
+                }
+                return;
+            }
+            if let Some(delta) = cleaned.strip_prefix(&last_sent) {
                 if !delta.is_empty() {
                     if let Err(error) = write_data_frame(
                         stream,
@@ -829,7 +840,7 @@ fn handle_openai_incremental(
                         return;
                     }
                 }
-                last_sent = snapshot.to_string();
+                last_sent = cleaned;
                 last_keepalive = Instant::now();
             }
         };
@@ -853,7 +864,7 @@ fn handle_openai_incremental(
             return Ok(());
         }
     };
-    let text = answer.text.as_deref().unwrap_or_default();
+    let text = stream_answer_snapshot(answer.text.as_deref().unwrap_or_default());
     if let Some(delta) = text
         .strip_prefix(&last_sent)
         .filter(|delta| !delta.is_empty())
@@ -1130,7 +1141,8 @@ fn handle_responses_incremental(
             if stream_error.is_some() {
                 return;
             }
-            if snapshot == last_sent {
+            let cleaned = stream_answer_snapshot(snapshot);
+            if cleaned.is_empty() || cleaned == last_sent {
                 if last_keepalive.elapsed() >= Duration::from_secs(5) {
                     if let Err(error) = write_sse_comment(stream, "keep-alive") {
                         stream_error = Some(error);
@@ -1140,7 +1152,7 @@ fn handle_responses_incremental(
                 }
                 return;
             }
-            if let Some(delta) = snapshot.strip_prefix(&last_sent) {
+            if let Some(delta) = cleaned.strip_prefix(&last_sent) {
                 if !delta.is_empty() {
                     if let Some(h) = _sess.as_ref() {
                         let _ = h.push(crate::session::SessionEvent::TextDelta {
@@ -1157,7 +1169,7 @@ fn handle_responses_incremental(
                         return;
                     }
                 }
-                last_sent = snapshot.to_string();
+                last_sent = cleaned;
                 last_keepalive = Instant::now();
             }
         };
@@ -1195,7 +1207,7 @@ fn handle_responses_incremental(
             return Ok(());
         }
     };
-    let text = answer.text.as_deref().unwrap_or_default();
+    let text = stream_answer_snapshot(answer.text.as_deref().unwrap_or_default());
     if let Some(delta) = text
         .strip_prefix(&last_sent)
         .filter(|delta| !delta.is_empty())
@@ -1258,6 +1270,12 @@ fn handle_responses_incremental(
         });
     }
     Ok(())
+}
+
+/// Clean DOM/stream snapshots before SSE `delta.content` (Thinking..., clocks,
+/// Kimi CoT echo). Empty → no delta; caller may still keep-alive.
+fn stream_answer_snapshot(raw: &str) -> String {
+    crate::observer::chat_answer_text(raw)
 }
 
 fn write_sse_headers(stream: &mut TcpStream) -> Result<(), String> {

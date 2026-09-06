@@ -8,7 +8,7 @@
 //! `mod.rs` zu.
 
 use crate::circuit_breaker::contains_at_word_boundary;
-use crate::observer::{is_limit_response_text, is_transient_response_text};
+use crate::observer::is_limit_response_text;
 use crate::protocol::is_possibly_truncated;
 
 use super::has_protocol_payload;
@@ -235,7 +235,9 @@ pub(crate) fn classify_completion(
         return Completion::RateLimited;
     }
 
-    let text_ready = !text.trim().is_empty() && !is_transient_response_text(text);
+    // Chrome / CoT-only snapshots (Thinking..., UI clock, Kimi reasoning echo)
+    // must keep the waiter polling — never finish with status text as the answer.
+    let text_ready = !crate::observer::chat_answer_text(text).is_empty();
     if !text_ready {
         return Completion::Continue;
     }
