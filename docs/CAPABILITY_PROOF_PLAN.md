@@ -998,6 +998,11 @@ Drei Nebenbefunde:
   End-to-End-Lauf, dann `ProofKind::Generation` und `attainable: true`.
 - **`mode_switch`** (`capability.rs:125`) bleibt Quest: `driveable: false`,
   solange deepseeks Segmente keinen auslesbaren Marker tragen.
+- **deepseek `model` vs `mode` (Hygiene 2026-09-06):** Live-DOM bestaetigt kein
+  Modellmenue im Composer. `selectors/deepseek.json` haelt `model_menu`/`model_option`
+  bewusst leer und `mode_option` (Instant/Expert/Vision) fuer `mode_switch`.
+  Matrix-Zelle `deepseek/model` bleibt `unreachable` — kein Pass ohne echten
+  Modellwahl-Pfad; Segmente nicht als `model_menu` nachruesten.
 
 ## 14. Entscheidungen zum §13-Folgeplan (2026-08-10)
 
