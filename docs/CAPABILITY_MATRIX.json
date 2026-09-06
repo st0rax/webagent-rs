@@ -551,13 +551,13 @@
     {
       "area": "attachment",
       "brain": "auto",
-      "status": "failed",
+      "status": "passed",
       "date": "2026-09-05",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/attachment_auto_2026-09-05.json",
-      "note": "FAIL 2026-09-05: Timeout 240s, kein RED (AutoRouter-Attachment laeuft nicht durch)."
+      "note": "FAIL 2026-09-05: Timeout 240s, kein RED (AutoRouter-Attachment laeuft nicht durch). | Live 2026-09-06 attachment_auto_2026-09-06.json RED via auto->gemini (~63s, #48)."
     },
     {
       "area": "managed_tools",
