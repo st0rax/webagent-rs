@@ -113,6 +113,11 @@ pub fn ttl_days() -> u32 {
 /// JSON egal ist. `fnv1a` wird aus `config.rs` wiederverwendet — nicht kopiert.
 pub fn selector_hash_for(cap: &Capability, sel: &serde_json::Value) -> u32 {
     let mut repr = String::new();
+    // Old model_switch records only proved that a menu opened. Invalidate
+    // those records even when the selectors have not changed.
+    if cap.key == "model_switch" {
+        repr.push_str("model-selection-roundtrip-v2|");
+    }
     for key in cap.needs {
         repr.push_str(key);
         repr.push('|');
@@ -208,6 +213,12 @@ pub(crate) fn record_route_proof_at(
     let Some(key) = crate::capability::capability_for_route(route) else {
         return;
     };
+    // A successful one-way command has no independent round-trip evidence.
+    // Keep model selection functional, but only the dedicated verifier may
+    // certify this capability through record_measurement.
+    if key == "model_switch" {
+        return;
+    }
     let Some(cap) = crate::capability::capability(key) else {
         return;
     };
@@ -591,5 +602,37 @@ mod tests {
         let path = unique_path();
         record_route_proof_at("t", "canvas_button", "test", 0, &path);
         assert_eq!(proof_state_at("t", "canvas", 0, &path), ProofState::Never);
+    }
+
+    #[test]
+    fn model_route_shortcut_cannot_certify_roundtrip() {
+        let path = unique_path();
+        for route in ["model_switch", "model_menu", "model_option"] {
+            record_route_proof_at("qwen", route, "one-way click", 0, &path);
+        }
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn model_selection_gate_invalidates_legacy_trigger_proofs_only() {
+        let sel = serde_json::json!({"model_menu": ["#m"], "model_option": ["#o"], "composer": ["#c"], "send_button": ["#s"]});
+        for key in ["model_switch", "chat"] {
+            let cap = crate::capability::capability(key).unwrap();
+            let mut legacy = String::new();
+            for need in cap.needs {
+                legacy.push_str(need);
+                legacy.push('|');
+                legacy.push_str(
+                    &serde_json::to_string(sel.get(*need).unwrap_or(&serde_json::Value::Null))
+                        .unwrap(),
+                );
+                legacy.push('|');
+            }
+            let old_hash = crate::config::fnv1a(&legacy);
+            assert_eq!(
+                selector_hash_for(cap, &sel) == old_hash,
+                key != "model_switch"
+            );
+        }
     }
 }

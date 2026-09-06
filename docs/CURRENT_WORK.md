@@ -1,5 +1,27 @@
 # Aktueller Arbeitsstand
 
+## Fortsetzung G-001 / T-501 am 2026-09-07
+
+Claim: `chatgpt-codex`, Branch `fix/T-501-model-proof`, Basis `28e9f1c`.
+Der Nutzer hat die Fortsetzung von G-001 beauftragt. Erste Scheibe: den
+Modellwechsel-Beleg korrigieren; `verify model_switch` prueft bisher nur den
+generischen Zustand des Menueknopfs. Der Gemini-Beleg vom 2026-09-06 zeigt
+`aria-expanded=false -> true` bei unveraendertem Modell `Flash`.
+Das ist kein Modellwechsel. Matrix vor Audit: 109 passed, 10 failed,
+4 unreachable, 7 not_run; keine aktuelle Live-Rezertifizierung.
+
+Isolation: eigener Worktree. Der vorhandene Arbeitsbaum
+`C:/Users/storax/projects/GitHub/webagent-rs` auf `feature/T-501-effort-rest`
+enthaelt fremde, uncommittierte ChatGPT-Selektoren und Survey-Dateien; diese
+bleiben erhalten. Die dort laufende WebAgent-Instanz wird nicht ersetzt.
+Die Code-Scheibe ist jetzt lokal abgenommen: Modellwahl verlangt tatsaechlichen
+Laufzeitwechsel plus Restore; alte Trigger-PASS sind per Hash-Version ungueltig.
+Alle vier Gates gruen: `cargo test --locked --lib` (1331 passed, 1 ignored),
+striktes Clippy, no-default-features und TUI-Check. Die Tests legten eine
+unabhaengige Race in `benchmark::harvest` offen; die vier Tests teilen einen
+Testdatenordner und sind nun per Test-Mutex isoliert. Offene Folge: sechs
+Modellzellen erneut live messen, T-501 insgesamt bleibt offen.
+
 **Aktualisiert:** 2026-09-05
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
