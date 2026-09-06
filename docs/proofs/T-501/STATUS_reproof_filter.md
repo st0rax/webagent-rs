@@ -1,4 +1,4 @@
-> **Lebend (kimi-Nachzug).** Reproof 2026-09-06c nach CoT-Prefix-Filter (#44). Archiv 06b unten.
+> **Archiv.** Reproof 2026-09-06c nach CoT-Prefix-Filter (#44); 06b Archiv unten. Lebend: docs/WEB_UI_API_TOOL_RESET_STATUS.md.
 
 # T-501 streaming reproof (filter + CoT)
 
