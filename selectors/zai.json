@@ -86,5 +86,34 @@
   "web_search_toggle": [
     "[data-active][class*='p-1.5']",
     "button[data-active]:not([id*='sidebar'])"
+  ],
+  "attach_button": [
+    "button[aria-label*='Upload' i]",
+    "button[aria-label*='upload' i]",
+    "button[aria-label*='attach' i]",
+    "button[aria-label*='Attach' i]",
+    "button[aria-label*='file' i]",
+    "button[aria-label*='File' i]",
+    "button[aria-label*='图片' i]",
+    "button[aria-label*='上传' i]",
+    "button[aria-label*='附件' i]",
+    "[role='button'][aria-label*='upload' i]",
+    "[role='button'][aria-label*='attach' i]",
+    "label[for*='file' i]",
+    "button:has-text('Upload')",
+    "button:has-text('上传')",
+    "button:has-text('附件')",
+    "form button:has(svg)",
+    "#chat-input ~ button",
+    "[class*='chat-input' i] button:first-of-type",
+    "[class*='composer' i] button:first-of-type"
+  ],
+  "file_upload_button": [
+    "button:has-text('Upload files')",
+    "button:has-text('Upload file')",
+    "button:has-text('上传文件')",
+    "button:has-text('上传图片')",
+    "[role='menuitem']:has-text('Upload')",
+    "[role='menuitem']:has-text('上传')"
   ]
 }

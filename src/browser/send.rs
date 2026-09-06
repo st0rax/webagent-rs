@@ -47,6 +47,12 @@ pub fn submit_verify_rounds(prompt_chars: usize) -> u32 {
 pub const SEND_DISABLED_MARKER: &str = "ABSENDEKNOPF_DEAKTIVIERT";
 
 /// `true`, wenn der Fehler eine Ablehnung per deaktiviertem Absendeknopf ist.
+/// Brains whose SPA rejects synthetic JS FileList/paste and need the trusted
+/// CDP FileChooser / `Input.dispatchDragEvent` path first (T-501).
+pub(crate) fn prefers_trusted_cdp_upload(brain_id: &str) -> bool {
+    matches!(brain_id, "qwen" | "zai" | "mistral")
+}
+
 pub fn is_send_disabled_error(message: &str) -> bool {
     message.contains(SEND_DISABLED_MARKER)
 }
@@ -189,43 +195,30 @@ impl WebBrainBackend {
         if attachments.is_empty() {
             return Ok(());
         }
-        // Der Composer kann providerseitig persistierte Altanhaenge enthalten.
-        // Diese gehoeren nicht zu diesem API-Request und duerfen weder mitsamt
-        // Fehlerkarten noch als scheinbar gueltige Bilder erneut gesendet werden.
-        // Viele UIs rendern das Datei-Input erst nach einem Klick auf die
-        // Büroklammer. Dieser Klick darf nicht über den nativen Dateidialog
-        // laufen: ein solcher Dialog würde den gemeinsamen WebView-Eventloop
-        // blockieren. Wir lösen deshalb nur den DOM-Handler (untrusted
-        // `click()`) aus und warten anschließend auf das dynamisch gerenderte
-        // Input. Wenn die Oberfläche überhaupt kein Input rendert, versuchen
-        // wir noch den browserüblichen Paste/Drop-Pfad.
+        // Offscreen tiles often keep the renderer frozen until a pointer nudge;
+        // trusted CDP FileChooser/Drag still needs a live document. Reveal is
+        // only a last-resort fallback for qwen/zai/mistral (see below).
+        self.wake_renderer();
         let native_image_paste = attachments
             .iter()
             .all(|attachment| attachment.kind == BrowserAttachmentKind::Image);
         let kimi_image_paste = self.brain_id == "kimi" && native_image_paste;
-        if self.file_input_count() == 0 {
-            let _ = self.open_attachment_surface();
-            // Mistral's plus button opens a toolkit menu. The actual file
-            // input is mounted only after selecting "Upload files" from that
-            // menu, so perform the provider-configured second step before
-            // polling for the dynamic input.
-            if !self.sel("file_upload_button").is_empty() {
-                std::thread::sleep(Duration::from_millis(250));
-                let _ = self.click_first("file_upload_button");
-            }
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while Instant::now() < deadline {
-                if self.file_input_count() > 0 {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(150));
-            }
-        }
+        let trusted_first = prefers_trusted_cdp_upload(&self.brain_id);
+        let already_revealed = self.revealed.get();
+        let mut revealed_for_attach = false;
+
+        self.open_upload_surface_and_wait();
         // Provider wie Kimi hydrieren alte Draft-Karten erst beim Öffnen der
         // Attach-Oberfläche; erst jetzt sind sie zuverlässig löschbar.
-        std::thread::sleep(Duration::from_millis(1500));
+        // qwen/zai/mistral only need a short settle before the trusted CDP path.
+        let settle_ms = if self.brain_id == "kimi" { 1500 } else { 250 };
+        std::thread::sleep(Duration::from_millis(settle_ms));
         self.remove_all_attachment_previews();
-        std::thread::sleep(Duration::from_millis(300));
+        std::thread::sleep(Duration::from_millis(if self.brain_id == "kimi" {
+            300
+        } else {
+            50
+        }));
         // A failed Kimi upload leaves an error tile which disables Send and
         // cannot always be dismissed while the Vue uploader is still in its
         // failed state.  This is a stale *draft*, not part of the API
@@ -257,13 +250,70 @@ impl WebBrainBackend {
             .collect();
         let serialized = serde_json::to_string(&files)
             .map_err(|error| format!("Dateianhaenge nicht serialisierbar: {error}"))?;
+        let native_files: Vec<(String, Vec<u8>)> = attachments
+            .iter()
+            .map(|attachment| (attachment.file_name.clone(), attachment.data.clone()))
+            .collect();
+
+        // qwen/zai/mistral: synthetic FileList/paste is rejected by the SPA.
+        // Prefer CDP FileChooser + Input.dispatchDragEvent (via PageDriver
+        // set_file_input_files) even when the hidden input is not yet counted,
+        // and only reveal onscreen as a fallback if that trusted path fails.
+        if trusted_first {
+            if self.confirm_native_cdp_upload(attachments, &native_files) {
+                return Ok(());
+            }
+            // Mistral still accepts OS clipboard paste when the window is alive;
+            // try it offscreen before paying for a reveal.
+            if self.brain_id == "mistral"
+                && native_image_paste
+                && self.paste_images_via_native_clipboard(attachments)
+            {
+                return Ok(());
+            }
+            if !already_revealed {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!(
+                        "[upload] trusted CDP upload unconfirmed offscreen; reveal-on-attach fallback"
+                    );
+                }
+                if self.reveal_onscreen().is_ok() {
+                    revealed_for_attach = true;
+                    self.wake_renderer();
+                    self.open_upload_surface_and_wait();
+                    if self.confirm_native_cdp_upload(attachments, &native_files) {
+                        if revealed_for_attach {
+                            self.park_if_revealed();
+                        }
+                        return Ok(());
+                    }
+                    if self.brain_id == "mistral"
+                        && native_image_paste
+                        && self.paste_images_via_native_clipboard(attachments)
+                    {
+                        if revealed_for_attach {
+                            self.park_if_revealed();
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+            if revealed_for_attach {
+                self.park_if_revealed();
+            }
+            return Err(
+                "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit \
+                 (no_file_input_and_paste_not_confirmed)"
+                    .into(),
+            );
+        }
+
         // Kimi dokumentiert Ctrl-V aus der Zwischenablage als primaeren
         // Bildpfad. Der synthetische DataTransfer-Event darunter wird von
         // Kimi zwar dispatcht, aber als untrusted verworfen; der native
         // Clipboard-Pfad schreibt deshalb zuerst ein echtes CF_DIB und loest
-        // eine trusted CDP-Tastatursequenz aus. Nur ein aktivierter
-        // Absendeknopf gilt als Beleg fuer einen verwertbaren Anhang.
-        if matches!(self.brain_id.as_str(), "kimi" | "mistral")
+        // eine trusted CDP-Tastatursequenz aus.
+        if self.brain_id == "kimi"
             && native_image_paste
             && self.paste_images_via_native_clipboard(attachments)
         {
@@ -289,82 +339,8 @@ impl WebBrainBackend {
                     .into(),
             );
         }
-        // Prefer the native WebView2/CDP file channel whenever the current
-        // PageDriver provides it. This is the trusted path used by DevTools
-        // and avoids the synthetic-FileList rejection seen in several SPAs.
-        let native_files: Vec<(String, Vec<u8>)> = attachments
-            .iter()
-            .map(|attachment| (attachment.file_name.clone(), attachment.data.clone()))
-            .collect();
-        let signal_before_native = self.attachment_signal_count();
-        let native_result = self.set_file_input_files_native(&native_files);
-        if let Err(error) = &native_result {
-            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-                eprintln!("[upload] native file-input path unavailable: {error}");
-            }
-        }
-        if native_result.is_ok() {
-            let _ = self.dispatch_file_input_events();
-            let deadline = Instant::now() + Duration::from_secs(4);
-            let soft_ready = Instant::now() + Duration::from_millis(1500);
-            let mut native_files_observed = false;
-            while Instant::now() < deadline {
-                let signal_now = self.attachment_signal_count();
-                let file_count_now = self.file_input_files_count();
-                if file_count_now >= attachments.len() {
-                    native_files_observed = true;
-                }
-                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-                    eprintln!(
-                        "[upload] native proof: files={file_count_now}/{} signal={signal_now} (before={signal_before_native})",
-                        attachments.len()
-                    );
-                }
-                // A trusted CDP drag/drop can produce a visible provider
-                // preview even when WebView2 keeps `input.files` empty.  The
-                // new preview is the relevant proof in that case; do not
-                // reject an otherwise successful browser-native upload solely
-                // because the hidden input is recreated by the SPA.
-                if signal_now > signal_before_native {
-                    return Ok(());
-                }
-                // Vue/React uploader copy the File into their own state and
-                // immediately replace or clear the hidden input. Seeing the
-                // complete FileList followed by zero is therefore stronger
-                // evidence than polling only the final DOM state (observed on
-                // Kimi's current uploader).
-                if native_files_observed && file_count_now == 0 {
-                    return Ok(());
-                }
-                if native_files_observed && Instant::now() >= soft_ready {
-                    return Ok(());
-                }
-                std::thread::sleep(Duration::from_millis(150));
-            }
-            if self.file_input_files_count() >= attachments.len() {
-                return Ok(());
-            }
-            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-                eprintln!(
-                    "[upload] native path returned but input.files has {} of {} files",
-                    self.file_input_files_count(),
-                    attachments.len()
-                );
-            }
-            // Mistral recreates its transient input immediately after the
-            // intercepted chooser transaction. WebView2 therefore reports an
-            // empty replacement control even though DOM.setFileInputFiles was
-            // accepted against the chooser's backendNodeId. Let the real
-            // vision turn decide whether the upload was consumed; callers
-            // still fail if the provider cannot answer from the image.
-            if self.brain_id == "mistral" && self.file_input_count() == 0 {
-                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-                    eprintln!(
-                        "[upload] mistral replaced native chooser input; continue to provider proof"
-                    );
-                }
-                return Ok(());
-            }
+        if self.confirm_native_cdp_upload(attachments, &native_files) {
+            return Ok(());
         }
         if kimi_image_paste {
             // Kimi rejects synthetic File/DataTransfer events.  Do not fall
@@ -424,6 +400,112 @@ impl WebBrainBackend {
             ));
         }
         Ok(())
+    }
+
+    /// Opens the attach control (and mistral's second-step upload menu), then
+    /// waits briefly for a dynamic `input[type=file]`.
+    fn open_upload_surface_and_wait(&self) {
+        if self.file_input_count() > 0 {
+            return;
+        }
+        let opened = self.open_attachment_surface() || self.open_attachment_surface_trusted();
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] open attachment surface: opened={opened}");
+        }
+        // Mistral's plus button opens a toolkit menu. The actual file
+        // input is mounted only after selecting "Upload files" from that
+        // menu, so perform the provider-configured second step before
+        // polling for the dynamic input.
+        if !self.sel("file_upload_button").is_empty() {
+            std::thread::sleep(Duration::from_millis(250));
+            let _ = self.click_first("file_upload_button");
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if self.file_input_count() > 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(150));
+        }
+    }
+
+    /// Trusted CDP upload: `PageDriver::set_file_input_files` (FileChooser
+    /// intercept + `DOM.setFileInputFiles`, with `Input.dispatchDragEvent`
+    /// fallback inside the WebView runtime). Returns true only when a preview
+    /// signal or input.files proof confirms takeover.
+    fn confirm_native_cdp_upload(
+        &self,
+        attachments: &[BrowserAttachment],
+        native_files: &[(String, Vec<u8>)],
+    ) -> bool {
+        // Even with zero visible inputs, attempt the native channel: the CDP
+        // helper re-queries `input[type=file]` and can open an intercepted
+        // chooser once the SPA mounts one after the surface click.
+        self.wake_renderer();
+        let signal_before_native = self.attachment_signal_count();
+        let native_result = self.set_file_input_files_native(native_files);
+        if let Err(error) = &native_result {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] native file-input path unavailable: {error}");
+            }
+            return false;
+        }
+        let _ = self.dispatch_file_input_events();
+        let deadline = Instant::now() + Duration::from_secs(4);
+        let soft_ready = Instant::now() + Duration::from_millis(1500);
+        let mut native_files_observed = false;
+        while Instant::now() < deadline {
+            let signal_now = self.attachment_signal_count();
+            let file_count_now = self.file_input_files_count();
+            if file_count_now >= attachments.len() {
+                native_files_observed = true;
+            }
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!(
+                    "[upload] native proof: files={file_count_now}/{} signal={signal_now} (before={signal_before_native})",
+                    attachments.len()
+                );
+            }
+            // A trusted CDP drag/drop can produce a visible provider
+            // preview even when WebView2 keeps `input.files` empty.
+            if signal_now > signal_before_native {
+                return true;
+            }
+            // Vue/React uploader copy the File into their own state and
+            // immediately replace or clear the hidden input.
+            if native_files_observed && file_count_now == 0 {
+                return true;
+            }
+            if native_files_observed && Instant::now() >= soft_ready {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        if self.file_input_files_count() >= attachments.len() {
+            return true;
+        }
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!(
+                "[upload] native path returned but input.files has {} of {} files",
+                self.file_input_files_count(),
+                attachments.len()
+            );
+        }
+        // Mistral recreates its transient input immediately after the
+        // intercepted chooser transaction. WebView2 therefore reports an
+        // empty replacement control even though DOM.setFileInputFiles was
+        // accepted against the chooser's backendNodeId. Let the real
+        // vision turn decide whether the upload was consumed; callers
+        // still fail if the provider cannot answer from the image.
+        if self.brain_id == "mistral" && self.file_input_count() == 0 {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!(
+                    "[upload] mistral replaced native chooser input; continue to provider proof"
+                );
+            }
+            return true;
+        }
+        false
     }
 
     fn remove_all_attachment_previews(&self) {
@@ -1379,12 +1461,113 @@ fn base64_encode(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::submission_is_proven;
+    use super::{prefers_trusted_cdp_upload, submission_is_proven};
+    use crate::browser::WebBrainBackend;
+    use crate::browser_inference::{BrowserAttachment, BrowserAttachmentKind};
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
 
     #[test]
     fn chatgpt_dom_rehydration_is_not_a_send_proof_without_user_echo() {
         assert!(!submission_is_proven(true, false, true, false, true, false));
         assert!(submission_is_proven(true, true, true, false, false, false));
         assert!(submission_is_proven(true, false, false, true, false, false));
+    }
+
+    #[test]
+    fn qwen_zai_mistral_prefer_trusted_cdp_upload() {
+        for id in ["qwen", "zai", "mistral"] {
+            assert!(prefers_trusted_cdp_upload(id), "{id}");
+        }
+        assert!(!prefers_trusted_cdp_upload("kimi"));
+        assert!(!prefers_trusted_cdp_upload("chatgpt"));
+    }
+
+    fn png_attachment() -> BrowserAttachment {
+        BrowserAttachment {
+            kind: BrowserAttachmentKind::Image,
+            file_name: "red.png".into(),
+            mime_type: "image/png".into(),
+            data: vec![0x89, 0x50, 0x4e, 0x47],
+        }
+    }
+
+    /// Minimal eval map so attach_files can reach the native CDP call without a
+    /// live DOM. Unmatched probes fall back via MockPageState::default_eval.
+    fn attach_eval_state(signal_after_native: u64) -> MockPageState {
+        let signal_expr = r#"(function(){
+            var sels=[
+                '[data-attachment]','[data-testid*="attachment" i]',
+                '[data-testid*="file" i]','[class*="attachment" i]',
+                '[class*="file-preview" i]','[class*="image-thumbnail" i]','img[src^="blob:"]',
+                '[aria-label*="attachment" i]','[aria-label*="angehängt" i]'
+            ],n=0;
+            for(var i=0;i<sels.length;i++)try{
+                var els=document.querySelectorAll(sels[i]);
+                for(var j=0;j<els.length;j++){
+                    var e=els[j],r=e.getBoundingClientRect(),s=window.getComputedStyle(e);
+                    if(r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden')n++;
+                }
+            }catch(e){}
+            return n;
+        })()"#;
+        let dispatch_expr = r#"(function(){
+                var input=document.querySelector('input[type=file]');
+                if(!input)return false;
+                input.dispatchEvent(new Event('input',{bubbles:true}));
+                input.dispatchEvent(new Event('change',{bubbles:true}));
+                return true;
+            })()"#;
+        MockPageState::new()
+            .with_default_eval(json!(0))
+            .on_eval(
+                "document.querySelectorAll('input[type=file]').length",
+                json!(1),
+            )
+            .on_eval_seq(signal_expr, vec![json!(0), json!(signal_after_native)])
+            .on_eval(
+                "(function(){var n=0;document.querySelectorAll('input[type=file]').forEach(function(i){n+=i.files?i.files.length:0;});return n;})()",
+                json!(1),
+            )
+            .on_eval(dispatch_expr, json!(true))
+    }
+
+    #[test]
+    fn qwen_attach_calls_native_set_file_input_files() {
+        let state = attach_eval_state(1).with_file_upload_ok(true);
+        let mut backend = WebBrainBackend::from_config("qwen").expect("qwen");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state.clone())));
+        backend
+            .attach_files(&[png_attachment()])
+            .expect("trusted upload should confirm via mock signal");
+        assert!(
+            state.set_file_input_files_calls() >= 1,
+            "qwen must use PageDriver::set_file_input_files (CDP FileChooser/drag)"
+        );
+    }
+
+    #[test]
+    fn zai_attach_calls_native_set_file_input_files() {
+        let state = attach_eval_state(1).with_file_upload_ok(true);
+        let mut backend = WebBrainBackend::from_config("zai").expect("zai");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state.clone())));
+        backend
+            .attach_files(&[png_attachment()])
+            .expect("zai trusted upload");
+        assert!(state.set_file_input_files_calls() >= 1);
+    }
+
+    #[test]
+    fn mistral_attach_prefers_native_cdp_before_failing() {
+        let state = attach_eval_state(1).with_file_upload_ok(true);
+        let mut backend = WebBrainBackend::from_config("mistral").expect("mistral");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state.clone())));
+        backend
+            .attach_files(&[png_attachment()])
+            .expect("mistral trusted upload");
+        assert!(
+            state.set_file_input_files_calls() >= 1,
+            "mistral must attempt native CDP upload (not only clipboard paste)"
+        );
     }
 }
