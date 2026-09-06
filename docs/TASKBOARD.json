@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-05",
+  "as_of": "2026-09-06",
   "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "mirror": "docs/TASKBOARD.md",
   "contract": "docs/WORK_CONTRACT.md",
@@ -162,6 +162,28 @@
       "proof_path": "web/index.html Grok-Layout (Health oben, Kategorien links, Fake-Chat); A11y skip/focus-visible/live/reduced-motion; kein fetch(); cargo test --lib 1249 passed / 1 ignored",
       "verification": "Lokal renderbarer Prototyp, Keyborddurchlauf",
       "dod": "Layout/Interaktion abgenommen; A11y-Regeln aus Plan umgesetzt; keine Backend-Kopplung im Prototyp"
+    },
+    {
+      "id": "T-204",
+      "phase": "2",
+      "title": "Web-UI-Grok-Bot-Fortsetzung: visuelles Polish, Navigation und responsive Chat-Oberflaeche",
+      "type": "code",
+      "suitable": [
+        "manus",
+        "claude-code",
+        "local/opencode"
+      ],
+      "status": "claimed",
+      "owner": "manus",
+      "branch": "feature/T-204-grok-ui-polish",
+      "claimed_at": "2026-09-06",
+      "done_at": null,
+      "proof_path": "web/index.html; lokale Render-/Keyboard-Pruefung; T-203-Fortsetzung ohne Backend-Vertragsaenderung",
+      "verification": "cargo test --lib; lokale Web-UI-Pruefung; Keyboard-/Responsive-Durchlauf",
+      "dod": "Grok-Bot-artige Chat-Oberflaeche umgesetzt, bestehende A11y-Gates erhalten, responsive Darstellung geprueft, Status/Handover aktualisiert",
+      "depends_on": [
+        "T-203"
+      ]
     },
     {
       "id": "T-301",

@@ -72,6 +72,13 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       Chat-Mitte, Fake-Events ohne `fetch`; A11y: Skip-Link, `:focus-visible`,
       `aria-live`, `prefers-reduced-motion`, semantische Buttons; `cargo test --lib`
       1249 passed / 1 ignored)
+- [ ] Phase 2.4 Grok-Bot-Web-UI-Fortsetzung (T-204) —
+      **in Arbeit durch manus (2026-09-06)**: visuelles Polish auf dunkler
+      Workspace-Oberflaeche, prominentere Sidebar/Sitzungsnavigation, kompakter
+      Chat-Header, Composer und responsive Abstaende. T-203-A11y-Strukturen
+      bleiben erhalten. Lokaler Nachweis: `docs/proofs/T-204-ui-check.md`.
+      Noch offen: `cargo test --lib`, schmaler Viewport-Durchlauf und finaler
+      Handover-/Taskboard-Status.
  - [x] Phase 3.x Claude-Referenz (T-302) —
        **live erledigt (2026-09-03)** durch local/opencode: `webagent model --brain
        claude` + `--set` belegt Runtime-Liste statt fester Kodierung (live: „Sonnet 5

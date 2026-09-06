@@ -6,66 +6,93 @@
   <title>WebAgent</title>
   <style>
     :root {
-      --bg: #0b0c10;
-      --panel: #15171c;
-      --panel-2: #1c1f27;
-      --line: #2a2e38;
-      --text: #e8eaed;
-      --muted: #9aa0a6;
-      --ok: #3d9a64;
-      --bad: #c45c5c;
-      --accent: #7ab8ff;
-      --focus: #ffd166;
-      --radius: 8px;
+      --bg: #08090b;
+      --panel: #0f1115;
+      --panel-2: #17191e;
+      --panel-3: #202329;
+      --line: #292d35;
+      --text: #f4f5f7;
+      --muted: #8b919c;
+      --subtle: #606671;
+      --ok: #56c596;
+      --bad: #d66b79;
+      --accent: #f5f6f7;
+      --accent-ink: #101114;
+      --focus: #f4c95d;
+      --radius: 12px;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
-      font: 15px/1.45 system-ui, sans-serif; }
+      font: 14px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { letter-spacing: .005em; }
+    ::selection { background: #343944; color: #fff; }
     a.skip { position: absolute; left: -999px; top: 0; background: var(--focus); color: #111; padding: .4rem .7rem; }
     a.skip:focus { left: .5rem; top: .5rem; z-index: 20; }
     :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
     button, textarea, select { font: inherit; color: inherit; }
-    button { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .35rem .7rem; cursor: pointer; }
-    button.primary { background: var(--accent); color: #111; border-color: transparent; font-weight: 600; }
+    button { background: transparent; border: 1px solid transparent; border-radius: 9px; padding: .48rem .72rem; cursor: pointer; transition: background .16s ease, border-color .16s ease, color .16s ease; }
+    button:hover { background: var(--panel-3); border-color: var(--line); }
+    button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700; }
+    button.primary:hover { background: #fff; border-color: transparent; }
     button[aria-pressed="true"] { border-color: var(--accent); }
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .app { display: grid; grid-template-rows: auto 1fr; min-height: 100%; }
-    .health { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center;
-      padding: .6rem 1rem; background: var(--panel); border-bottom: 1px solid var(--line); }
-    .health h1 { font-size: 1rem; margin: 0 1rem 0 0; }
-    .health-track { display: flex; width: min(16rem, 40vw); height: .7rem; border-radius: 99px; overflow: hidden; background: var(--line); }
+    .health { display: flex; flex-wrap: wrap; gap: .65rem 1rem; align-items: center;
+      padding: .7rem 1.1rem; background: rgba(15, 17, 21, .94); border-bottom: 1px solid var(--line); }
+    .health h1 { font-size: 1rem; letter-spacing: -.02em; margin: 0 1rem 0 0; display: flex; align-items: center; gap: .55rem; }
+    .health h1::before { content: ""; width: .72rem; height: .72rem; border: 2px solid var(--text); border-radius: 50%; box-shadow: inset 0 0 0 2px var(--bg); }
+    .health-track { display: flex; width: min(13rem, 32vw); height: .35rem; border-radius: 99px; overflow: hidden; background: var(--line); }
     .health-track .ok { background: var(--ok); }
     .health-track .bad { background: var(--bad); }
-    .health-meta { color: var(--muted); }
+    .health-meta { color: var(--muted); font-size: .82rem; }
+    .health-track .ok, .health-track .bad { opacity: .9; }
+    .sources button { color: var(--muted); font-size: .78rem; padding: .28rem .45rem; }
+    .sources button:hover { color: var(--text); }
     .sources { display: flex; flex-wrap: wrap; gap: .35rem; list-style: none; margin: 0; padding: 0; }
     .sources button { display: inline-flex; align-items: center; gap: .35rem; }
     .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--muted); }
     .dot.ok { background: var(--ok); }
     .dot.bad { background: var(--bad); }
-    .shell { display: grid; grid-template-columns: 16.5rem 1fr; min-height: 0; }
-    .shell.collapsed { grid-template-columns: 2.6rem 1fr; }
-    nav.sys { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: .5rem; }
-    nav.sys h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: .4rem 0; }
-    details { border-bottom: 1px solid var(--line); padding: .25rem 0; }
-    summary { cursor: pointer; font-weight: 600; }
+    .shell { display: grid; grid-template-columns: 17.5rem minmax(0, 1fr); min-height: 0; }
+    .shell.collapsed { grid-template-columns: 3rem 1fr; }
+    nav.sys { background: #0b0d10; border-right: 1px solid var(--line); overflow: auto; padding: .75rem .65rem; }
+    nav.sys h2 { font-size: .68rem; text-transform: uppercase; letter-spacing: .12em; color: var(--subtle); margin: .85rem .55rem .4rem; }
+    nav.sys > button { width: 100%; text-align: left; color: var(--muted); margin-bottom: .55rem; }
+    nav.sys > button:hover { color: var(--text); }
+    nav.sys .new-chat { background: var(--panel-3); color: var(--text); border-color: var(--line); font-weight: 650; }
+    nav.sys .new-chat:hover { background: #2a2e35; }
+    nav.sys::after { content: "local workspace  ·  v0.1"; display: block; color: var(--subtle); font-size: .68rem; margin: 1.25rem .55rem; }
+    details { border-bottom: 0; padding: .2rem 0; }
+    summary { cursor: pointer; font-weight: 600; color: #c9cdd4; padding: .38rem .55rem; border-radius: 8px; list-style-position: inside; }
+    summary:hover { background: var(--panel-2); }
+    summary::marker { color: var(--subtle); }
     .cat { list-style: none; margin: .3rem 0 0; padding: 0; }
-    .cat button { width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; }
-    .cat button[aria-current="true"] { background: var(--panel-2); }
-    main.stage { display: grid; grid-template-rows: auto 1fr auto auto; min-width: 0; min-height: 0; }
-    .chat-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center;
-      padding: .5rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel-2); }
-    .chat-head span, .chat-head label { color: var(--muted); }
-    .messages { overflow: auto; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
-    .msg { max-width: 42rem; padding: .7rem .9rem; border-radius: 12px; background: var(--panel); }
-    .msg.user { align-self: flex-end; background: #243044; }
-    .msg .who { font-size: .75rem; color: var(--muted); margin-bottom: .2rem; }
-    .activity { border-top: 1px solid var(--line); background: var(--panel); padding: .4rem .8rem; }
+    .cat button { width: 100%; text-align: left; color: var(--muted); background: transparent; border: 0; border-radius: 8px; padding: .48rem .7rem; }
+    .cat button:hover { color: var(--text); }
+    .cat button[aria-current="true"] { background: var(--panel-3); color: var(--text); box-shadow: inset 2px 0 0 var(--text); }
+    main.stage { display: grid; grid-template-rows: auto 1fr auto auto; min-width: 0; min-height: 0; background: radial-gradient(circle at 70% 0%, rgba(66, 71, 83, .12), transparent 30rem), var(--bg); }
+    .chat-head { display: flex; flex-wrap: wrap; gap: .45rem 1rem; align-items: center;
+      padding: .75rem 1.25rem; border-bottom: 1px solid var(--line); background: rgba(15, 17, 21, .78); }
+    .chat-head strong { font-size: 1rem; letter-spacing: -.02em; }
+    .chat-head span, .chat-head label { color: var(--muted); font-size: .82rem; }
+    .chat-head select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: .25rem .45rem; }
+    .chat-spacer { flex: 1 1 auto; }
+    .session-state { display: inline-flex; align-items: center; gap: .35rem; }
+    .chat-head > span:last-child { margin-left: auto; }
+    .messages { overflow: auto; padding: clamp(1.25rem, 4vw, 3rem) clamp(1rem, 8vw, 8rem); display: flex; flex-direction: column; gap: 1.05rem; }
+    .msg { max-width: 46rem; padding: .95rem 1.05rem; border-radius: 14px; background: transparent; border: 1px solid transparent; }
+    .msg.user { align-self: flex-end; background: #24272d; border-color: #30343c; }
+    .msg .who { font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--subtle); margin-bottom: .35rem; }
+    .msg p { margin: 0; }
+    .activity { border-top: 1px solid var(--line); background: rgba(15, 17, 21, .9); padding: .45rem .9rem; color: var(--muted); }
     .activity[hidden] { display: none; }
     .activity ol { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); }
     form.composer { display: grid; grid-template-columns: 1fr auto auto; gap: .5rem; align-items: end;
-      padding: .7rem; border-top: 1px solid var(--line); background: var(--panel); }
-    textarea { width: 100%; min-height: 3.2rem; resize: vertical; background: var(--bg);
-      border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem; }
+      padding: .9rem clamp(.75rem, 6vw, 6rem) 1.1rem; border-top: 1px solid var(--line); background: rgba(15, 17, 21, .96); }
+    textarea { width: 100%; min-height: 3.35rem; resize: vertical; background: #1a1c21;
+      border: 1px solid #343842; border-radius: 13px; padding: .75rem .9rem; }
+    textarea::placeholder { color: var(--subtle); }
+    textarea:focus { border-color: #686f7c; outline: none; }
     .editor { position: relative; min-width: 0; }
     .editor textarea { display: block; }
     .hint { position: absolute; inset: .5rem; pointer-events: none; color: var(--muted);
@@ -79,9 +106,15 @@
     .warn { border-left: 4px solid var(--bad); padding-left: .6rem; }
     @media (max-width: 720px) {
       .shell, .shell.collapsed { grid-template-columns: 1fr; }
-      nav.sys { border-right: 0; border-bottom: 1px solid var(--line); }
-      form.composer { grid-template-columns: 1fr 1fr; }
+      nav.sys { border-right: 0; border-bottom: 1px solid var(--line); max-height: 15rem; }
+      .health { padding: .6rem .75rem; }
+      .health-track { width: 7rem; }
+      .chat-head { padding: .65rem .8rem; }
+      .chat-head > span:last-child { margin-left: 0; }
+      .messages { padding: 1rem .7rem; }
+      form.composer { grid-template-columns: 1fr 1fr; padding: .7rem; }
       form.composer .editor { grid-column: 1 / -1; }
+      form.composer button { min-height: 2.55rem; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
@@ -110,7 +143,8 @@
       <nav class="sys" aria-label="System-Kategorien">
         <button type="button" id="toggle-nav" aria-expanded="true" aria-controls="cats">Leiste einklappen</button>
         <div id="cats">
-          <h2>System</h2>
+          <button type="button" class="new-chat" data-view="chat">+ Neue Sitzung</button>
+          <h2>Workspace</h2>
           <details open>
             <summary>Sitzungen</summary>
             <ul class="cat">
@@ -147,6 +181,10 @@
       </nav>
       <main class="stage">
         <div class="chat-head" role="region" aria-label="Sitzung">
+          <strong>New chat</strong>
+          <span aria-hidden="true">·</span>
+          <span class="session-state"><span class="dot ok" aria-hidden="true"></span> bereit</span>
+          <span class="chat-spacer" aria-hidden="true"></span>
           <strong>Brain:</strong> <span id="brain-label">claude</span>
           <span>Modell: <span id="model-label">claude-sonnet</span> (erkannt)</span>
           <span>Aufwand: mittel</span>
@@ -179,7 +217,7 @@
         <form class="composer" id="composer">
           <label class="sr" for="composer-input">Nachricht</label>
           <div class="editor">
-            <textarea id="composer-input" rows="2" placeholder="Nachricht eingeben"></textarea>
+            <textarea id="composer-input" rows="2" placeholder="Frag WebAgent etwas …" aria-describedby="composer-hint"></textarea>
             <div class="hint" id="composer-hint" aria-hidden="true">z. B. <code>/quelle list</code> Quellenliste<br>z. B. <code>/quelle claude openrouter --save</code> Quelle wechseln<br>z. B. <code>@claude</code> Brain direkt ansprechen</div>
           </div>
           <button class="primary" type="submit" id="send">Senden</button>
