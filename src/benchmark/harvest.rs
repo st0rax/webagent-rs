@@ -356,8 +356,13 @@ pub(crate) fn harvest_commit(
 mod tests {
     use super::persist_candidate;
 
+    // All four tests use the same test-only harvest directory. The expiry
+    // test removes every candidate there, so these fixtures must not overlap.
+    static HARVEST_FIXTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn persist_candidate_legt_patch_und_task_ab() {
+        let _guard = HARVEST_FIXTURE_LOCK.lock().unwrap();
         let path = persist_candidate(
             "deepseek",
             "Zieldatei: src/observer.rs.",
@@ -385,6 +390,7 @@ mod tests {
     /// Frisch Abgelegtes wird gemeldet, nicht weggeraeumt.
     #[test]
     fn frische_kandidaten_bleiben_und_werden_gemeldet() {
+        let _guard = HARVEST_FIXTURE_LOCK.lock().unwrap();
         let pfad = persist_candidate(
             "qwen",
             "Zieldatei: src/a.rs.",
@@ -405,6 +411,7 @@ mod tests {
     /// die Zahl der Funde verdoppeln.
     #[test]
     fn nur_patchdateien_werden_gemeldet() {
+        let _guard = HARVEST_FIXTURE_LOCK.lock().unwrap();
         let pfad = persist_candidate(
             "kimi",
             "Zieldatei: src/b.rs.",
@@ -428,6 +435,7 @@ mod tests {
     /// loeschen und niemand merkte es.
     #[test]
     fn abgelaufene_werden_entfernt() {
+        let _guard = HARVEST_FIXTURE_LOCK.lock().unwrap();
         let pfad = persist_candidate(
             "zai",
             "Zieldatei: src/c.rs.",

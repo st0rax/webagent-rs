@@ -980,6 +980,18 @@ pub fn proposal_from(cap: &crate::capability::Capability, winner: &str) -> Propo
 /// ob der Rueckweg gelang. Ein Test, der die Oberflaeche anders hinterlaesst,
 /// als er sie vorfand, ist eine Nebenwirkung — keine Messung.
 pub fn verify(driver: &mut dyn PageDriver, proposal: &Proposal) -> Result<Verdict> {
+    if proposal.capability_key == "model_switch" {
+        return Ok(Verdict {
+            capability_key: proposal.capability_key,
+            selector_key: proposal.selector_key,
+            selector: proposal.selector.clone(),
+            before: String::new(),
+            after: String::new(),
+            proven: false,
+            restored: None,
+            note: "Menuebedienung belegt keinen Modellwechsel; verify --cap model_switch prueft Laufzeit-Auswahl und Rueckweg".into(),
+        });
+    }
     // Dieselben JS-Bausteine wie der Umschaltpfad des Backends
     // (`browser::ui::toggle_state_expr` / `click_toggle_expr`); nur die Quelle
     // der Selektorliste ist eine andere. Eine zweite handgepflegte Kopie waere
@@ -1092,6 +1104,28 @@ pub(crate) fn click_point_of(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn model_trigger_surface_probe_cannot_certify_model_selection() {
+        let cap = crate::capability::capability("model_switch").unwrap();
+        let proposal = super::proposal_from(cap, "#model-menu");
+        let state = crate::mock_page::MockPageState::new()
+            .on_eval_seq(
+                crate::browser::js::toggle_state_expr_for(&["#model-menu".into()]),
+                vec![
+                    serde_json::json!("closed"),
+                    serde_json::json!("open"),
+                    serde_json::json!("closed"),
+                ],
+            )
+            .on_eval(
+                crate::browser::js::click_toggle_expr_for(&["#model-menu".into()]),
+                serde_json::json!(true),
+            );
+        let mut driver = crate::mock_page::MockPageDriver::new(state);
+        let verdict = super::verify(&mut driver, &proposal).unwrap();
+        assert!(!verdict.proven);
+        assert!(verdict.note.contains("keinen Modellwechsel"));
+    }
     use super::*;
 
     fn button(aria: &str) -> Candidate {

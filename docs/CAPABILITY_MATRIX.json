@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-06",
+  "as_of": "2026-09-07",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "brains": [
     "chatgpt",
@@ -250,12 +250,13 @@
     {
       "area": "model",
       "brain": "claude",
-      "status": "passed",
-      "date": "2026-09-03",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": "Sonnet 5 Hoch",
       "selector_hash": null,
-      "latency_ms": 1759,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md"
     },
     {
       "area": "model",
@@ -271,24 +272,24 @@
     {
       "area": "model",
       "brain": "gemini",
-      "status": "passed",
-      "date": "2026-09-06",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": "3.6 Flash",
-      "selector_hash": 2230395766,
-      "latency_ms": 3427,
+      "selector_hash": null,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/model_switch_gemini_2026-09-06.json",
-      "note": "passed (verify 2026-09-06): Gewinner 'button[aria-label*='Modusauswahl' i]'; resolve_fallback-Poll (SPA rendert nach ensure_ready); Zustandswechsel belegt (aria-expanded), Rueckweg misslungen (Menue blieb offen) - Menue-Trigger bedienbar, echte Modellwahl via menu --set Flash-Lite live bestaetigt | Live verify 2026-09-06: Zustandswechsel belegt (Rueckweg Menue offen)"
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: passed (verify 2026-09-06): Gewinner 'button[aria-label*='Modusauswahl' i]'; resolve_fallback-Poll (SPA rendert nach ensure_ready); Zustandswechsel belegt (aria-expanded), Rueckweg misslungen (Menue blieb offen) - Menue-Trigger bedienbar, echte Modellwahl via menu --set Flash-Lite live bestaetigt | Live verify 2026-09-06: Zustandswechsel belegt (Rueckweg Menue offen)"
     },
     {
       "area": "model",
       "brain": "kimi",
-      "status": "passed",
-      "date": "2026-09-06",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": "K3 Swarm Hoch",
-      "selector_hash": 43007049,
-      "latency_ms": 0,
+      "selector_hash": null,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/model_switch_kimi_2026-09-06.json",
-      "note": "passed (cmd_model --set 2026-09-06): Kimi model_menu 'div.current-model' hat im Headless bounding-rect 0, deshalb meldet verify resolve_fallback Unreachable — der echte Menu-Klick greift trotzdem. model_option auf belegtes DOM korrigiert (div.kimi-menu .model-item, role=menuitemradio; .models-popover .model-item veraltet). model --set K3 Swarm -> umgestellt, Rueckweg auf Schnell bestaetigt (bereits aktiv). Record seeds %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl ts 2026-09-06T15:21:17Z | Live verify 2026-09-06: Zustandswechsel + Restore"
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: passed (cmd_model --set 2026-09-06): Kimi model_menu 'div.current-model' hat im Headless bounding-rect 0, deshalb meldet verify resolve_fallback Unreachable — der echte Menu-Klick greift trotzdem. model_option auf belegtes DOM korrigiert (div.kimi-menu .model-item, role=menuitemradio; .models-popover .model-item veraltet). model --set K3 Swarm -> umgestellt, Rueckweg auf Schnell bestaetigt (bereits aktiv). Record seeds %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl ts 2026-09-06T15:21:17Z | Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
@@ -304,34 +305,35 @@
     {
       "area": "model",
       "brain": "perplexity",
-      "status": "passed",
-      "date": "2026-09-06",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": null,
       "selector_hash": null,
-      "latency_ms": 2582,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "Live verify 2026-09-06: Zustandswechsel + Restore"
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
       "brain": "qwen",
-      "status": "passed",
-      "date": "2026-09-06",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": null,
       "selector_hash": null,
-      "latency_ms": 1629,
+      "latency_ms": null,
       "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "Live verify 2026-09-06: Zustandswechsel + Restore"
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
       "brain": "zai",
-      "status": "passed",
-      "date": "2026-09-03",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": null,
       "selector_hash": null,
-      "latency_ms": 1705,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md"
     },
     {
       "area": "model",

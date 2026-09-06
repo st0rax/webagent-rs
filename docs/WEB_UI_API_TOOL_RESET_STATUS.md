@@ -1,5 +1,20 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
+## Aktuell: 2026-09-07, T-501 Modellbeleg-Audit
+
+`chatgpt-codex` fuehrt T-501 auf `fix/T-501-model-proof` weiter (Basis `28e9f1c`).
+Die bisherigen Modellwechsel-PASS prueften teilweise nur Menue-Oeffnung.
+Der korrigierte Test verlangt Laufzeit-Auswahl, unabhaengiges Nachlesen und
+Restore; generische Trigger-Belege und alte Modellhashes zertifizieren nicht
+mehr. Sechs Modellzellen stehen deshalb zur erneuten Abnahme auf `not_run`.
+Matrix: **103 passed, 10 failed, 4 unreachable, 13 not_run**.
+Details und historische Teilbelege:
+[`MODEL_PROOF_AUDIT_2026-09-07.md`](proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md).
+
+Aktuelle serielle Login-Diagnose: alle neun realen Brains `Ready`, eingeloggt,
+Composer vorhanden, keine Cloudflare-Blockade. T-501/G-001 bleiben offen.
+Die folgenden datierten Abschnitte beschreiben fruehere Zwischenstaende.
+
 > **Handover-Datei.** Wer den Plan `docs/WEB_UI_API_TOOL_RESET.md` weiterfuehrt,
 > beginnt hier. Stand ist nach jedem Umsetzungsschritt zu aktualisieren.
 
