@@ -446,7 +446,13 @@ fn build_event_loop() -> EventLoop<()> {
         use tao::platform::windows::EventLoopBuilderExtWindows;
         EventLoopBuilder::new().with_any_thread(true).build()
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    {
+        use tao::event_loop::EventLoopBuilder;
+        use tao::platform::unix::EventLoopBuilderExtUnix;
+        EventLoopBuilder::new().with_any_thread(true).build()
+    }
+    #[cfg(not(any(windows, unix)))]
     {
         EventLoop::new()
     }
