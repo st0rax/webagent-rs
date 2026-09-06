@@ -176,22 +176,22 @@
       "area": "streaming",
       "brain": "kimi",
       "status": "failed",
-      "date": "2026-09-05",
+      "date": "2026-09-06",
       "model": "webagent/kimi",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-05.json",
+      "latency_ms": 18687,
+      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-06b.json",
       "note": "FAIL 2026-09-05/06: First-Delta = Reasoning-/Instruktions-Echo. Research-Befund: Kimi streamt via mask-Kanaele `block.think.content` (Reasoning) vs `block.text.content` (Antwort); DOM-Klassen sind gehasht/instabil. Repo-Fix-Kandidat: Reasoning-Deltas nur bis mask=text akkumulieren (Bridge-Extraktion). Evidence-Map workspace/research/kimi-webui-streaming.md"
     },
     {
       "area": "streaming",
       "brain": "mistral",
-      "status": "failed",
-      "date": "2026-09-05",
+      "status": "passed",
+      "date": "2026-09-06",
       "model": "webagent/mistral",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-05.json",
+      "latency_ms": 19006,
+      "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-06b.json",
       "note": "FAIL 2026-09-05/06: Delta-Strom = nur Wanduhr-Timestamps, finale Antwort .done. Research-Befund (2026-09-06): chat.mistral.ai nutzt internes SSE `0:\"text\"`-Format; Bridge schreibt SSE bei `Connection: close` unkomprimiert aus (kein gzip-Pufferen gefunden) -> Ursache eher Progress-/Meta-Frames der Web-App als Text; kein Repo-Fix ohne Netzwerk-Tab-Verifikation. Evidence-Map workspace/research/"
     },
     {
@@ -217,12 +217,12 @@
     {
       "area": "streaming",
       "brain": "zai",
-      "status": "failed",
-      "date": "2026-09-05",
+      "status": "passed",
+      "date": "2026-09-06",
       "model": "webagent/zai",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-05.json",
+      "latency_ms": 22188,
+      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-06b.json",
       "note": "FAIL 2026-09-05: Delta zeigt nur 'Thinking...', kein Content-Delta mit STREAM_OK."
     },
     {

@@ -1,0 +1,14 @@
+[
+  {
+    "brain": "kimi",
+    "ok": false
+  },
+  {
+    "brain": "mistral",
+    "ok": true
+  },
+  {
+    "brain": "zai",
+    "ok": true
+  }
+]
