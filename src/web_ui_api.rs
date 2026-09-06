@@ -327,7 +327,7 @@ fn brain_visibility(state: &UiState, brain_id: &str, show: bool) -> ApiResponse 
                     pool.park_brain(brain_id)
                 }
             });
-        return match pool_result {
+        match pool_result {
             Ok(()) => ApiResponse::json(
                 200,
                 json!({"ok": true, "brain": brain_id, "action": action, "via": "pool"}),
@@ -339,7 +339,7 @@ fn brain_visibility(state: &UiState, brain_id: &str, show: bool) -> ApiResponse 
                     "hint": "kein laufendes Brain-Fenster; UI-Chat starten oder Shared-Pool nutzen"
                 }),
             ),
-        };
+        }
     }
     #[cfg(not(feature = "webview"))]
     {
