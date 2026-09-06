@@ -129,6 +129,7 @@ impl WebBrainBackend {
             .get("y")
             .and_then(Value::as_f64)
             .ok_or_else(|| "Bildtool-Ziel ohne y-Koordinate".to_string())?;
+        self.wake_renderer();
         let mut guard = self.driver.borrow_mut();
         guard
             .as_mut()
@@ -832,6 +833,8 @@ impl WebBrainBackend {
     }
 
     pub(crate) fn send_generic(&mut self, text: &str) -> Result<i32, String> {
+        // Whole send path (fill → click/enter) needs a live renderer first.
+        self.wake_renderer();
         let baseline = self.prepare_send_baseline();
         let user_baseline = self.user_message_count();
         if self.sel("composer").is_empty() {
