@@ -1406,7 +1406,8 @@ fn run_task_blocking(
     if let Some(text) = config.fake_reply.as_deref() {
         return Ok(fake_inference_response(text));
     }
-    let brain = if brain == "auto" {
+    let via_auto = brain == "auto";
+    let brain = if via_auto {
         select_auto_brain(
             config,
             task,
@@ -1417,6 +1418,14 @@ fn run_task_blocking(
     } else {
         brain.to_string()
     };
+    let timeout_secs = auto_attach_timeout_secs(via_auto, attachments, &brain, task, config);
+    if via_auto {
+        eprintln!(
+            "[auto-router] execute brain={brain} attachments={} timeout_secs={:?}",
+            attachments.len(),
+            timeout_secs
+        );
+    }
     let lock = BROWSER_RUN_LOCKS
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
@@ -1426,6 +1435,7 @@ fn run_task_blocking(
         .clone();
     let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
+    let started = Instant::now();
     crate::browser_inference::complete_with_attachments(
         crate::browser_inference::BrowserInferenceRequest {
             brain: &brain,
@@ -1433,13 +1443,15 @@ fn run_task_blocking(
             tools,
             tool_choice,
             headless: config.headless,
-            timeout_secs: config.timeout_secs,
+            timeout_secs,
             model: None,
         },
         attachments,
         &mut |_| {},
     )
-    .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
+    .map_err(|error| {
+        annotate_auto_routed_inference_error(via_auto, &brain, &error, started.elapsed())
+    })
 }
 
 fn run_task_streaming(
@@ -1453,11 +1465,20 @@ fn run_task_streaming(
         emit_fake_stream(text, on_update);
         return Ok(fake_inference_response(text));
     }
-    let brain = if brain == "auto" {
+    let via_auto = brain == "auto";
+    let brain = if via_auto {
         select_auto_brain(config, task, attachments, false, AutoPurpose::Chat)?
     } else {
         brain.to_string()
     };
+    let timeout_secs = auto_attach_timeout_secs(via_auto, attachments, &brain, task, config);
+    if via_auto {
+        eprintln!(
+            "[auto-router] execute brain={brain} attachments={} timeout_secs={:?}",
+            attachments.len(),
+            timeout_secs
+        );
+    }
     let lock = BROWSER_RUN_LOCKS
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
@@ -1467,6 +1488,7 @@ fn run_task_streaming(
         .clone();
     let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
+    let started = Instant::now();
     crate::browser_inference::complete_streaming_with_attachments(
         crate::browser_inference::BrowserInferenceRequest {
             brain: &brain,
@@ -1474,13 +1496,85 @@ fn run_task_streaming(
             tools: &[],
             tool_choice: crate::browser_inference::BrowserToolChoice::None,
             headless: config.headless,
-            timeout_secs: config.timeout_secs,
+            timeout_secs,
             model: None,
         },
         attachments,
         on_update,
     )
-    .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
+    .map_err(|error| {
+        annotate_auto_routed_inference_error(via_auto, &brain, &error, started.elapsed())
+    })
+}
+
+/// Bei `auto` + Attachments: Budget an das geroutete Brain koppeln und deckeln.
+fn auto_attach_timeout_secs(
+    via_auto: bool,
+    attachments: &[crate::browser_inference::BrowserAttachment],
+    routed_brain: &str,
+    task: &str,
+    config: &BridgeConfig,
+) -> Option<f64> {
+    if via_auto && !attachments.is_empty() {
+        Some(crate::timeouts::resolve_auto_attach_budget(
+            routed_brain,
+            task,
+            config.timeout_secs,
+        ))
+    } else {
+        config.timeout_secs
+    }
+}
+
+fn is_auto_attach_timeout_signal(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    [
+        "keine antwort erhalten",
+        "timeout_budget=",
+        "page-timeout",
+        "zeitueberschreitung",
+        "timed out",
+        "timeout",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+fn is_auto_attach_upload_signal(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    [
+        "no_file_input",
+        "keinen nutzbaren datei-upload",
+        "kein nutzbarer datei-upload",
+        "dateien uebernommen",
+        "dateien übernommen",
+        "0 von",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+/// Macht AutoRouter-Fehler explizit: welches Brain, Timeout vs. Upload, via=auto→brain.
+fn annotate_auto_routed_inference_error(
+    via_auto: bool,
+    routed_brain: &str,
+    error: &str,
+    elapsed: Duration,
+) -> String {
+    if !via_auto {
+        return format!("Browser-Inference fehlgeschlagen: {error}");
+    }
+    let secs = elapsed.as_secs_f64();
+    if is_auto_attach_timeout_signal(error) {
+        return format!("auto_attach_timeout: routed={routed_brain} after {secs:.0}s ({error})");
+    }
+    if is_auto_attach_upload_signal(error) {
+        if error.contains("via=auto") {
+            return format!("Browser-Inference fehlgeschlagen: {error}");
+        }
+        return format!("Browser-Inference fehlgeschlagen: {error}; via=auto→{routed_brain}");
+    }
+    format!("Browser-Inference fehlgeschlagen: {error}; via=auto→{routed_brain}")
 }
 
 fn store_hub() -> &'static Mutex<StoreHub> {
@@ -3721,6 +3815,54 @@ mod tests {
             classify_auto_route("Sag einfach hallo", &[], false, AutoPurpose::Chat),
             AutoRoute::Default
         );
+    }
+
+    #[test]
+    fn auto_attach_timeout_error_names_routed_brain() {
+        let msg = annotate_auto_routed_inference_error(
+            true,
+            "gemini",
+            "keine Antwort erhalten (timeout_budget=90s, backend_status=idle, generation_complete=false, raw_chars=0)",
+            Duration::from_secs(91),
+        );
+        assert!(
+            msg.starts_with("auto_attach_timeout: routed=gemini after 91s"),
+            "got {msg}"
+        );
+        assert!(msg.contains("keine Antwort erhalten"), "got {msg}");
+    }
+
+    #[test]
+    fn auto_attach_upload_error_adds_via_route() {
+        let msg = annotate_auto_routed_inference_error(
+            true,
+            "chatgpt",
+            "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit (no_file_input)",
+            Duration::from_secs(2),
+        );
+        assert!(msg.contains("no_file_input"), "got {msg}");
+        assert!(msg.contains("via=auto→chatgpt"), "got {msg}");
+
+        let partial = annotate_auto_routed_inference_error(
+            true,
+            "qwen",
+            "Browseroberflaeche hat nur 0 von 1 Dateien uebernommen",
+            Duration::from_millis(500),
+        );
+        assert!(partial.contains("0 von 1"), "got {partial}");
+        assert!(partial.contains("via=auto→qwen"), "got {partial}");
+    }
+
+    #[test]
+    fn non_auto_errors_stay_unannotated() {
+        let msg = annotate_auto_routed_inference_error(
+            false,
+            "gemini",
+            "no_file_input",
+            Duration::from_secs(1),
+        );
+        assert_eq!(msg, "Browser-Inference fehlgeschlagen: no_file_input");
+        assert!(!msg.contains("via=auto"));
     }
 
     #[test]

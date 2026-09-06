@@ -191,8 +191,8 @@ pub fn relay_single_turn_with_attachments_streaming(
     let started = Instant::now();
     let prompt_chars = message.chars().count();
     let mut backend = WebBrainBackend::from_config(brain_id).map_err(RelayError)?;
-    let ready_timeout = resolve_timeout("ensure_ready", brain_id, "", timeout_override);
-    let wait_timeout = resolve_timeout("wait_response", brain_id, message, timeout_override);
+    let (ready_timeout, wait_timeout) =
+        resolve_attach_aware_timeouts(brain_id, message, timeout_override, !attachments.is_empty());
 
     backend.start(headless).map_err(RelayError)?;
     let state = backend
@@ -248,14 +248,17 @@ pub fn relay_single_turn_with_attachments_streaming(
     // Rate-Limit wird NICHT wiederholt: das ist ein echtes "spaeter wieder", kein
     // transienter Fehler. Retries gehen sichtbar nach stderr, werden also nicht
     // versteckt.
+    // Attachment-Turns: ein Versuch. Upload-Fehler sind deterministisch; leere
+    // Antworten nach dem Budget nicht 3x bis zum Client-Hang (ca. 240s) strecken.
     const MAX_TURNS: usize = 3;
+    let max_turns = if attachments.is_empty() { MAX_TURNS } else { 1 };
     let mut last_err = format!("kein Versuch ausgefuehrt fuer {brain_id}");
     let mut answer: Option<String> = None;
-    for turn in 0..MAX_TURNS {
+    for turn in 0..max_turns {
         if turn > 0 {
             crate::bench_events::eprint_line(&format!(
                 "[relay] {brain_id}: Wiederholung {turn}/{}  (vorher: {last_err})",
-                MAX_TURNS - 1
+                max_turns.saturating_sub(1)
             ));
             std::thread::sleep(std::time::Duration::from_millis(700));
         }
@@ -324,7 +327,7 @@ pub fn relay_single_turn_with_attachments_streaming(
         let text = crate::observer::chat_answer_text(&raw);
         if text.is_empty() {
             last_err = format!(
-                "keine Antwort erhalten (backend_status={}, generation_complete={}, raw_chars={})",
+                "keine Antwort erhalten (timeout_budget={wait_timeout:.0}s, backend_status={}, generation_complete={}, raw_chars={})",
                 response.backend_status,
                 response.generation_complete,
                 raw.chars().count()
@@ -372,6 +375,30 @@ pub fn relay_single_turn_with_attachments_streaming(
     }
 }
 
+/// Timeout-Aufloesung fuer Relay-Turns.
+///
+/// Ohne Attachments bleibt `--timeout-secs` / `timeout_override` ein Minimum
+/// (bisheriges Verhalten). Mit Attachments und gesetztem Override ist der Wert
+/// ein **absolutes** Budget (AutoRouter-Attach fail-closed vor Client-240s).
+fn resolve_attach_aware_timeouts(
+    brain_id: &str,
+    message: &str,
+    timeout_override: Option<f64>,
+    has_attachments: bool,
+) -> (f64, f64) {
+    if has_attachments {
+        if let Some(cap) = timeout_override.filter(|v| *v > 0.0) {
+            let ready = resolve_timeout("ensure_ready", brain_id, "", None).min(cap);
+            let wait = resolve_timeout("wait_response", brain_id, message, None).min(cap);
+            return (ready.max(1.0), wait.max(1.0));
+        }
+    }
+    (
+        resolve_timeout("ensure_ready", brain_id, "", timeout_override),
+        resolve_timeout("wait_response", brain_id, message, timeout_override),
+    )
+}
+
 /// Manche Sendefehler beschreiben einen stabilen UI-Zustand, bei dem ein
 /// weiterer kompletter Browserturn nur Zeit verbraucht: sichtbare Blockade,
 /// deaktivierter Sendeknopf oder fehlender Absende-Beweis. Transiente CDP- und
@@ -405,6 +432,8 @@ fn is_attachment_capability_failure(error: &str) -> bool {
         "no_file_input_and_paste_not_confirmed",
         "keinen nutzbaren datei-upload",
         "kein nutzbarer datei-upload",
+        "dateien uebernommen",
+        "dateien übernommen",
     ]
     .iter()
     .any(|marker| lower.contains(marker))
@@ -445,5 +474,25 @@ mod tests {
              (no_file_input_and_paste_not_confirmed)"
         ));
         assert!(!is_attachment_capability_failure("CDP connection reset"));
+    }
+
+    #[test]
+    fn attach_override_is_absolute_budget_not_minimum() {
+        let (ready, wait) = resolve_attach_aware_timeouts("chatgpt", "hi", Some(40.0), true);
+        assert!(wait <= 40.0, "attach override must cap wait, got {wait}");
+        assert!(ready <= 40.0, "attach override must cap ready, got {ready}");
+        let (_r, wait_text) = resolve_attach_aware_timeouts("chatgpt", "hi", Some(40.0), false);
+        // text path keeps minimum semantics: computed.max(40)
+        assert!(
+            wait_text >= 40.0,
+            "text override remains minimum, got {wait_text}"
+        );
+    }
+
+    #[test]
+    fn partial_upload_counts_as_attachment_capability_failure() {
+        assert!(is_attachment_capability_failure(
+            "Browseroberflaeche hat nur 0 von 1 Dateien uebernommen"
+        ));
     }
 }
