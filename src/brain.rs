@@ -68,6 +68,16 @@ pub trait BrainBackend {
     /// Stoppt das Backend und schließt den Browser.
     fn stop(&mut self) -> Result<(), String>;
 
+    /// Holt ein offscreen-WebView onscreen (Login/Captcha). Default: no-op.
+    fn reveal_onscreen(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Parkt ein onscreen-WebView wieder offscreen. Default: no-op.
+    fn park_offscreen(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Wartet bis das Backend bereit ist (Login, Cloudflare, etc.).
     fn ensure_ready(&mut self, timeout: f64) -> Result<SessionState, String>;
 

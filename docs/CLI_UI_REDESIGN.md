@@ -28,7 +28,8 @@
 |---|---|---|
 | **Kern (Bedienen)** | `run` | autonomer Run (Default `brain=auto`, Router) |
 | | `repl` | interaktive REPL (Default `brain=auto`, Router) |
-| | `login` / `login-all` | manueller Login (sichtbares Fenster) |
+| | `login` / `login-all` | manueller Login (Reveal onscreen, danach Park) |
+| | `show` / `hide` | Live-WebView onscreen/offscreen toggeln (HTTP→UI/API) |
 | | `diagnose` | Live-Diagnose eines Brains |
 | | `relay` | einzelner send+wait-Turn |
 | | `swarm` | Multi-Brain-Swarm + Synthese (JSON/CLI) |

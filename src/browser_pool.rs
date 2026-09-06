@@ -529,6 +529,59 @@ impl BrowserPool {
         Ok(count)
     }
 
+    /// Holt ein Pool-/gekapseltes Brain-Fenster onscreen (Login/Captcha).
+    #[cfg(feature = "webview")]
+    pub fn reveal_brain(&self, brain: &str) -> Result<(), String> {
+        let id = brain.to_lowercase();
+        let rect = crate::webview_reveal::reveal_rect();
+        if let Some(tab) = self.tabs.get(&id) {
+            let runtime = self
+                .runtime
+                .as_ref()
+                .ok_or_else(|| format!("{id}: kein Shared-Runtime"))?;
+            let ctrl = crate::webview_reveal::RuntimeViewControl {
+                runtime,
+                view_id: tab.view_id,
+            };
+            return crate::webview_reveal::reveal_onscreen(&ctrl, rect)
+                .map_err(|e| format!("{id}: {e}"));
+        }
+        if let Some(inst) = self.encapsulated.get(&id) {
+            let ctrl = crate::webview_reveal::RuntimeViewControl {
+                runtime: &inst.runtime,
+                view_id: inst.driver_proto.view_id(),
+            };
+            return crate::webview_reveal::reveal_onscreen(&ctrl, rect)
+                .map_err(|e| format!("{id}: {e}"));
+        }
+        Err(format!("kein offenes Fenster fuer {brain}"))
+    }
+
+    /// Parkt ein Pool-/gekapseltes Brain-Fenster wieder offscreen.
+    #[cfg(feature = "webview")]
+    pub fn park_brain(&self, brain: &str) -> Result<(), String> {
+        let id = brain.to_lowercase();
+        if let Some(tab) = self.tabs.get(&id) {
+            let runtime = self
+                .runtime
+                .as_ref()
+                .ok_or_else(|| format!("{id}: kein Shared-Runtime"))?;
+            let ctrl = crate::webview_reveal::RuntimeViewControl {
+                runtime,
+                view_id: tab.view_id,
+            };
+            return crate::webview_reveal::park_offscreen(&ctrl).map_err(|e| format!("{id}: {e}"));
+        }
+        if let Some(inst) = self.encapsulated.get(&id) {
+            let ctrl = crate::webview_reveal::RuntimeViewControl {
+                runtime: &inst.runtime,
+                view_id: inst.driver_proto.view_id(),
+            };
+            return crate::webview_reveal::park_offscreen(&ctrl).map_err(|e| format!("{id}: {e}"));
+        }
+        Err(format!("kein offenes Fenster fuer {brain}"))
+    }
+
     #[cfg(test)]
     pub fn tab_ref_count(&self, brain_id: &str) -> u32 {
         self.tabs

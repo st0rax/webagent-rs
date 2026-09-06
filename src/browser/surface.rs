@@ -240,7 +240,9 @@ impl WebBrainBackend {
     ///
     /// Gibt das Tool selbst nichts ein — der Nutzer handelt, wir halten nur das Fenster.
     pub fn hold_window_open(&mut self, timeout: Duration) -> Result<(), String> {
-        self.start(false)?; // headed
+        // Offscreen starten, nur fuer die Nutzeraktion onscreen holen, danach parken.
+        self.start(true)?;
+        let _ = self.reveal_onscreen();
         let start = Instant::now();
         while start.elapsed() < timeout {
             // Verschwindet der Tab (Nutzer hat das Fenster geschlossen), schlaegt der
@@ -252,6 +254,7 @@ impl WebBrainBackend {
         }
         // Kurz warten, damit die Session ins Profil geflusht wird.
         std::thread::sleep(Duration::from_secs(2));
+        self.park_if_revealed();
         let _ = self.stop();
         Ok(())
     }
@@ -379,13 +382,15 @@ return null;}})()"#,
     }
 
     pub fn interactive_login(&mut self, timeout: Duration) -> Result<bool, String> {
-        self.start(false)?; // headed — Login erfordert Nutzerinteraktion
+        // Default offscreen; Reveal nur wenn der Nutzer wirklich handeln muss.
+        self.start(true)?;
         let start = Instant::now();
         if self.is_logged_in() {
             std::thread::sleep(Duration::from_secs(1));
             let _ = self.stop();
             return Ok(true);
         }
+        let _ = self.reveal_onscreen();
         crate::bench_events::eprint_line(&format!(
             "[login] Browser geöffnet — bitte im Fenster bei '{}' anmelden. Warte auf Login…",
             self.brain_id
@@ -393,6 +398,7 @@ return null;}})()"#,
         loop {
             self.dismiss_consent();
             if self.is_logged_in() {
+                self.park_if_revealed();
                 self.stop_and_flush();
                 return Ok(true);
             }
@@ -409,6 +415,7 @@ return null;}})()"#,
                 // Erfolgsfall — danach ein letzter Blick, denn wer sich kurz vor
                 // Schluss angemeldet hat, wird so noch als Erfolg erkannt.
                 let logged_in_late = self.is_logged_in();
+                self.park_if_revealed();
                 self.stop_and_flush();
                 return Ok(logged_in_late);
             }
@@ -425,12 +432,13 @@ return null;}})()"#,
     /// Zwischenseiten überlässt sie dem Menschen, das Fenster bleibt dabei
     /// offen. Wer schon eingeloggt ist, bekommt sofort `true`.
     pub fn try_auto_login(&mut self, timeout: Duration) -> Result<bool, String> {
-        self.start(false)?; // headed — der Mensch soll sehen (und ggf. nachhelfen) können
+        self.start(true)?; // offscreen; Reveal sobald Nutzer nachhelfen muss
         let deadline = Instant::now() + timeout;
         if self.is_logged_in() {
             let _ = self.stop();
             return Ok(true);
         }
+        let _ = self.reveal_onscreen();
         // Klick 1: "Anmelden"/"Sign in". Echte Maus-Klicks, denn Geminis SSO-
         // Buttons ignorieren synthetische `el.click()`.
         self.dismiss_consent();
@@ -439,6 +447,7 @@ return null;}})()"#,
         if !first {
             self.dismiss_consent();
             if !self.click_visible_real("login_button") {
+                self.park_if_revealed();
                 let _ = self.stop();
                 return Err("Anmelden-Button nicht gefunden".into());
             }
@@ -458,6 +467,7 @@ return null;}})()"#,
             self.dismiss_consent();
             if self.is_logged_in() {
                 std::thread::sleep(Duration::from_secs(2)); // Session ins Profil flushen
+                self.park_if_revealed();
                 let _ = self.stop();
                 return Ok(true);
             }
@@ -466,6 +476,7 @@ return null;}})()"#,
             // Statt zu raten: warten, damit die Oberfläche sich stabilisiert.
             std::thread::sleep(Duration::from_secs(2));
         }
+        self.park_if_revealed();
         let _ = self.stop();
         Ok(false)
     }

@@ -759,6 +759,94 @@ pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool, auto: bool) -> i32
     code
 }
 
+pub fn cmd_show(brain: &str, port: u16) -> i32 {
+    match brain_visibility_request(brain, "show", port) {
+        Ok(msg) => {
+            println!("{msg}");
+            0
+        }
+        Err(e) => {
+            eprintln!("[show] {e}");
+            1
+        }
+    }
+}
+
+pub fn cmd_hide(brain: &str, port: u16) -> i32 {
+    match brain_visibility_request(brain, "hide", port) {
+        Ok(msg) => {
+            println!("{msg}");
+            0
+        }
+        Err(e) => {
+            eprintln!("[hide] {e}");
+            1
+        }
+    }
+}
+
+/// POST `/api/brains/{id}/show|hide` an die laufende Web-UI/API.
+///
+/// Bridge-Limitation: ohne laufenden `webagent ui` / `api serve` gibt es keinen
+/// Live-Runtime-IPC; dieser CLI-Befehl spricht deshalb HTTP auf Loopback an.
+/// In-Prozess-Reveal bleibt den Login-/Captcha-Pfaden und der API im selben
+/// Prozess vorbehalten.
+fn brain_visibility_request(brain: &str, action: &str, port: u16) -> Result<String, String> {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    let path = format!("/api/brains/{brain}/{action}");
+    let req = format!(
+        "POST {path} HTTP/1.1
+Host: 127.0.0.1:{port}
+Content-Length: 0
+Connection: close
+
+"
+    );
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).map_err(|e| {
+        format!(
+            "keine laufende Web-UI/API auf 127.0.0.1:{port} ({e}).              Starte `webagent ui` oder `webagent api serve`, dann erneut `webagent {action} --brain {brain}`."
+        )
+    })?;
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    stream
+        .write_all(req.as_bytes())
+        .map_err(|e| format!("HTTP-Schreiben fehlgeschlagen: {e}"))?;
+    let mut buf = Vec::new();
+    stream
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("HTTP-Lesen fehlgeschlagen: {e}"))?;
+    let raw = String::from_utf8_lossy(&buf);
+    let (status_line, rest) = raw
+        .split_once(
+            "
+",
+        )
+        .unwrap_or((raw.as_ref(), ""));
+    let body = rest
+        .split(
+            "
+
+",
+        )
+        .nth(1)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if status_line.contains(" 200 ") {
+        Ok(if body.is_empty() {
+            format!("{action} ok: {brain}")
+        } else {
+            body
+        })
+    } else {
+        Err(format!("HTTP {status_line} — {body}"))
+    }
+}
+
 pub fn cmd_diagnose(brain: &str, headless: bool) -> i32 {
     use webagent::browser::WebBrainBackend;
 
