@@ -201,6 +201,11 @@ impl BrainBackend for WebBrainBackend {
         on_update: &mut dyn FnMut(&str),
     ) -> Result<BrainResponse, String> {
         let start = Instant::now();
+        // Headed NOACTIVATE tiles often need a pointer nudge *before* the first
+        // poll, not only every ~2s — otherwise send already landed on a frozen
+        // document and we burn the full timeout waiting for mouseover.
+        self.wake_renderer();
+        let _ = self.ensure_renderer_responsive();
         // Selektor-Literale einmal bauen (ändern sich zur Laufzeit nie), dann pro
         // Poll-Iteration nur einen einzigen CDP-Roundtrip fahren.
         let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
@@ -232,9 +237,13 @@ impl BrainBackend for WebBrainBackend {
             // Same cadence: nudge the renderer so headed NOACTIVATE tiles do not
             // stay frozen for the full timeout, and fail loudly if CDP is dead.
             block_polls += 1;
-            if block_polls.is_multiple_of(7) {
+            // ~0.9s cadence (was ~2.1s): User still sees mouseover hangs when
+            // the tile freezes mid-wait; wake earlier and fail loud on dead CDP.
+            if block_polls.is_multiple_of(3) {
                 self.wake_renderer();
                 self.ensure_renderer_responsive()?;
+            }
+            if block_polls.is_multiple_of(7) {
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, -1, false, "blocked"));
                 }
@@ -324,9 +333,13 @@ impl BrainBackend for WebBrainBackend {
             // Wake on the same cadence so a frozen NOACTIVATE tile does not sit
             // silent until timeout_no_text.
             p2_polls += 1;
-            if last_text.trim().is_empty() && p2_polls.is_multiple_of(7) {
+            // Wake even when some text already arrived — a NOACTIVATE tile can
+            // freeze mid-stream and then only resume after a real mouse move.
+            if p2_polls.is_multiple_of(3) {
                 self.wake_renderer();
                 self.ensure_renderer_responsive()?;
+            }
+            if last_text.trim().is_empty() && p2_polls.is_multiple_of(7) {
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, target, false, "blocked"));
                 }
