@@ -1120,6 +1120,76 @@ mod tests {
         assert_eq!(ingest.push("PING"), None);
     }
 
+    /// Live 0/3 proofs 2026-09-06: zai Thinking..., mistral UI clock, kimi CoT echo
+    /// must never become TextDelta; STREAM_OK after chrome must still emit.
+    #[test]
+    fn stream_ingest_drops_t501_live_chrome_snapshots() {
+        let kimi_cot = concat!(
+            "The user wants me to reply with exactly the token \"STREAM_OK\" ",
+            "and nothing else. This is a very simple request. I should not add ",
+            "any extra text, markdown formatting, or explanations. Just the exact token."
+        );
+        for chrome in ["Thinking...", "14:28", "3:58", kimi_cot] {
+            let mut ingest = StreamDeltaIngest::default();
+            assert_eq!(
+                ingest.push(chrome),
+                None,
+                "chrome leaked as delta: {chrome:?}"
+            );
+        }
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("Thinking..."), None);
+        assert_eq!(
+            ingest.push("Thinking...\n\nSTREAM_OK").as_deref(),
+            Some("STREAM_OK")
+        );
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("14:28"), None);
+        assert_eq!(ingest.push("STREAM_OK").as_deref(), Some("STREAM_OK"));
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push(kimi_cot), None);
+        assert_eq!(
+            ingest.push(&format!("{kimi_cot}\n\nSTREAM_OK")).as_deref(),
+            Some("STREAM_OK")
+        );
+    }
+
+    #[test]
+    fn chat_live_t501_chrome_then_stream_ok_emits_clean_token() {
+        let kimi_cot = concat!(
+            "The user wants me to reply with exactly the token \"STREAM_OK\" ",
+            "and nothing else. This is a very simple request. I should not add ",
+            "any extra text."
+        );
+        let state = test_ui(vec![Scenario::ReplaceSnapshots {
+            polls: vec![
+                "Thinking...".into(),
+                "14:28".into(),
+                kimi_cot.into(),
+                format!("{kimi_cot}\n\nSTREAM_OK"),
+            ],
+            final_text: "STREAM_OK".into(),
+        }]);
+        let id = post_session(&state);
+        let chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"reply with exactly STREAM_OK"}"#,
+            &state,
+        );
+        assert_eq!(chat.status, 200, "{}", String::from_utf8_lossy(&chat.body));
+        let (_, events) = fetch_events(&state, &id);
+        let deltas = text_deltas(&events);
+        for bad in ["Thinking", "14:28", "The user wants"] {
+            assert!(
+                !deltas.iter().any(|d| d.contains(bad)),
+                "chrome/CoT as TextDelta ({bad}): {deltas:?}"
+            );
+        }
+        assert_eq!(deltas.concat(), "STREAM_OK", "deltas={deltas:?}");
+    }
+
     /// Live-Beweis T-301: TextDelta-Strings aus events_after.json als DOM-Snapshots.
     /// Verbietet das seq-2–36 Muster (Status als Delta + identisches PING-Spam).
     #[test]

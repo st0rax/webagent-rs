@@ -912,23 +912,19 @@ mod tests {
         assert_eq!(r, Completion::Complete);
     }
 
-    // Regression 2026-07-29: kimis Reasoning-Block stand still, der Stop-Button
-    // wurde nie erfasst — und die halbfertige Denk-Prosa wurde als Antwort
-    // geerntet. Wörtlicher Text aus Run 20260729_212023_dabfadbc.
+    // Regression 2026-07-29 / 2026-09-06: kimis Reasoning-Block (CoT-Echo)
+    // darf nie als fertige Antwort gelten — weder nach kurzem Stabilitätsfenster
+    // noch nach PROSE_STABILITY. Warten bis echte Antwort oder Timeout.
     #[test]
     fn mid_stream_reasoning_prose_is_not_a_finished_answer() {
         let prosa = "Der Benutzer hat keine neue Aufgabe gestellt, sondern den \
                      WebAgent-Runner gestartet. Ich muss zuerst den aktuellen Zustand \
                      des Projekts erfassen, um zu verstehen, welche der offenen Tasks \
                      machbar sind. Die Langzeiterinnerungen zeigen drei offene";
-        // Stop-Button nie gesehen, kurzes Fenster erreicht: früher Complete.
         let fruch = classify_completion(prosa, true, false, false, 3.0, true);
         assert_eq!(fruch, Completion::Continue, "Prosa zu früh als fertig");
-        // Auch die Stop-Button-Transition darf nutzlastfreien Text nicht
-        // vorzeitig abschließen.
         let transition = classify_completion(prosa, true, true, false, 3.0, true);
         assert_eq!(transition, Completion::Continue);
-        // Nach dem Prosa-Fenster ist es ein echter Regelbruch — dann Repair.
         let spaet = classify_completion(
             prosa,
             true,
@@ -937,7 +933,11 @@ mod tests {
             PROSE_STABILITY_SECONDS + 0.1,
             true,
         );
-        assert_eq!(spaet, Completion::Complete);
+        assert_eq!(
+            spaet,
+            Completion::Continue,
+            "reines CoT-Echo darf auch nach langem Fenster nicht Complete sein"
+        );
     }
 
     #[test]

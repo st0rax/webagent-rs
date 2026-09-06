@@ -32,7 +32,7 @@ fn claude_ui_status_line_regex() -> &'static Regex {
 /// Regex für reine Zeitanzeigen (z.B. "11:05").
 fn clock_only_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^\d{1,2}:\d{2}$").unwrap())
+    RE.get_or_init(|| Regex::new(r"(?i)^\d{1,2}:\d{2}(?:\s*uhr)?$").unwrap())
 }
 
 /// Regex für Limit-/Quota-Meldungen in einer Web-UI.
@@ -144,6 +144,85 @@ pub fn strip_repeated_lead_line(text: &str) -> String {
     tail.trim_start_matches('\n').to_string()
 }
 
+/// True when the snapshot is pure meta-reasoning about the user request
+/// (Kimi CoT panel scraped as the answer). Observed live 2026-09-05/06:
+/// `The user wants me to reply with exactly the token "STREAM_OK"...`
+/// — STREAM_OK never appeared. Keep waiting instead of finishing on CoT.
+pub fn is_reasoning_echo_text(text: &str) -> bool {
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let normalized = normalized.trim();
+    if normalized.chars().count() < 48 {
+        return false;
+    }
+    let lower = normalized.to_ascii_lowercase();
+    let lead = [
+        "the user wants",
+        "the user asked",
+        "the user has ",
+        "the user is asking",
+        "the user's request",
+        "der benutzer ",
+        "der nutzer ",
+    ];
+    if !lead.iter().any(|m| lower.starts_with(m)) {
+        return false;
+    }
+    let meta = [
+        "i should",
+        "i must",
+        "i will reply",
+        "i will respond",
+        "nothing else",
+        "exact token",
+        "exactly the token",
+        "exactly \"",
+        "exactly '",
+        "this is a very simple",
+        "this is a simple",
+        "this is a straightforward",
+        "ich sollte",
+        "ich muss",
+        "keine weiteren",
+    ];
+    meta.iter().any(|m| lower.contains(m))
+}
+
+/// Drop leading meta-reasoning paragraphs when a later answer block exists.
+fn strip_leading_reasoning_echo(text: &str) -> String {
+    let paras: Vec<&str> = text
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+    if paras.len() >= 2 {
+        let mut start = 0usize;
+        while start < paras.len().saturating_sub(1) && is_reasoning_echo_text(paras[start]) {
+            start += 1;
+        }
+        if start > 0 {
+            return paras[start..].join("\n\n");
+        }
+    }
+
+    // Status-line filtering may collapse blank lines to a single \n. Then treat a
+    // short final line as the answer when the lead is pure CoT echo.
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.len() >= 2 {
+        let last = lines[lines.len() - 1];
+        if last.chars().count() <= 64 && !is_reasoning_echo_text(last) {
+            let lead = lines[..lines.len() - 1].join(" ");
+            if is_reasoning_echo_text(&lead) {
+                return last.to_string();
+            }
+        }
+    }
+    text.to_string()
+}
+
 /// True für UI-Fortschritts-Labels, die keine echten Modellantworten sind.
 pub fn is_transient_response_text(text: &str) -> bool {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -206,13 +285,17 @@ fn is_chat_status_line(line: &str) -> bool {
 /// TextDelta.
 pub fn chat_answer_text(raw: &str) -> String {
     let stripped = strip_repeated_lead_line(raw);
+    // Keep blank lines so paragraph breaks survive (needed to separate Kimi CoT
+    // from a later answer token). Only non-empty status/chrome lines are dropped.
     let kept: Vec<&str> = stripped
         .lines()
-        .filter(|line| !is_chat_status_line(line))
+        .filter(|line| line.trim().is_empty() || !is_chat_status_line(line))
         .collect();
     let cleaned = kept.join("\n");
+    let cleaned = strip_leading_reasoning_echo(cleaned.trim());
     let cleaned = cleaned.trim();
-    if cleaned.is_empty() || is_transient_response_text(cleaned) {
+    if cleaned.is_empty() || is_transient_response_text(cleaned) || is_reasoning_echo_text(cleaned)
+    {
         return String::new();
     }
     cleaned.to_string()
@@ -435,5 +518,32 @@ mod tests {
         );
         assert_eq!(chat_answer_text("PING"), "PING");
         assert_eq!(chat_answer_text("Dachte 2 s nach\n\nPING"), "PING");
+    }
+
+    #[test]
+    fn live_t501_stream_chrome_is_not_answer_content() {
+        // Honest 0/3 proofs 2026-09-06 on feature/T-501-stream-kimi-mistral-zai.
+        assert_eq!(chat_answer_text("Thinking..."), "");
+        assert_eq!(chat_answer_text("14:28"), "");
+        assert_eq!(chat_answer_text("3:58"), "");
+        assert_eq!(chat_answer_text("14:28 Uhr"), "");
+        let kimi_cot = "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a very simple request. I should not add any extra text, markdown formatting, or explanations. Just the exact token.";
+        assert!(is_reasoning_echo_text(kimi_cot));
+        assert_eq!(chat_answer_text(kimi_cot), "");
+    }
+
+    #[test]
+    fn kimi_reasoning_echo_before_answer_is_stripped() {
+        let raw = "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a very simple request. I should not add any extra text.\n\nSTREAM_OK";
+        assert_eq!(chat_answer_text(raw), "STREAM_OK");
+    }
+
+    #[test]
+    fn real_user_facing_prose_is_not_reasoning_echo() {
+        let ok =
+            "The user wants coffee nearby. Here are three quiet cafes within walking distance.";
+        assert!(!is_reasoning_echo_text(ok));
+        assert_eq!(chat_answer_text(ok), ok);
+        assert_eq!(chat_answer_text("STREAM_OK"), "STREAM_OK");
     }
 }
