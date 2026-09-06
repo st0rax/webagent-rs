@@ -1,4 +1,7 @@
 {
+  "_hygiene_model_vs_mode": "DeepSeek has NO model_menu in the chat composer. Instant/Expert/Vision are mode_option (capability mode_switch), not model_switch. Leave model_menu/model_option empty — do not invent model selectors from the segment bar.",
+  "model_menu": [],
+  "model_option": [],
   "composer": [
     "textarea",
     "div[contenteditable='true']",
