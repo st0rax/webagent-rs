@@ -175,13 +175,13 @@
     {
       "area": "streaming",
       "brain": "kimi",
-      "status": "failed",
+      "status": "passed",
       "date": "2026-09-06",
       "model": "webagent/kimi",
       "selector_hash": null,
-      "latency_ms": 18687,
-      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-06b.json",
-      "note": "FAIL 2026-09-05/06: First-Delta = Reasoning-/Instruktions-Echo. Research-Befund: Kimi streamt via mask-Kanaele `block.think.content` (Reasoning) vs `block.text.content` (Antwort); DOM-Klassen sind gehasht/instabil. Repo-Fix-Kandidat: Reasoning-Deltas nur bis mask=text akkumulieren (Bridge-Extraktion). Evidence-Map workspace/research/kimi-webui-streaming.md"
+      "latency_ms": 18167,
+      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-06c.json",
+      "note": "PASS 2026-09-06c (PR #44/#45): STREAM_OK ~18s offscreen after incomplete CoT prefix filter; build d4fb6dd. Prior fail was reasoning/instruction echo as first delta."
     },
     {
       "area": "streaming",
@@ -507,13 +507,13 @@
     {
       "area": "attachment",
       "brain": "mistral",
-      "status": "failed",
-      "date": "2026-09-05",
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "webagent/mistral",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/attachment_mistral_2026-09-05.json",
-      "note": "FAIL 2026-09-05: http 200, Antwort nur Provider-Timestamp (kein RED) - Attachment nicht verarbeitet."
+      "latency_ms": 23086,
+      "proof_path": "docs/proofs/T-501/attachment_mistral_2026-09-06b.json",
+      "note": "PASS 2026-09-06b (PR #46 trusted CDP upload): reply RED ~23s offscreen. Prior fail was timestamp-only reply / upload not applied."
     },
     {
       "area": "attachment",
@@ -529,24 +529,24 @@
     {
       "area": "attachment",
       "brain": "qwen",
-      "status": "failed",
-      "date": "2026-09-05",
+      "status": "passed",
+      "date": "2026-09-06",
       "model": "webagent/qwen",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-05.json",
-      "note": "FAIL (Re-Run 2026-09-05, echtes 256x256-Bild): 0 von 1 Dateien. Research-Befund (2026-09-06): qwen nutzt OSS-Upload-Pipeline (File->OSS->URL); braucht echten FileChooser/Dropdown-Klick oder Input.dispatchDragEvent statt synthetischem DataTransfer. Repo-Fix-Kandidat: Input.dispatchDragEvent-Pfad fuer qwen. Evidence-Map workspace/research/qwen-zai-upload.md"
+      "latency_ms": 19932,
+      "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-06e.json",
+      "note": "PASS 2026-09-06e (PR #46 trusted CDP upload): reply RED ~20s offscreen. Prior fail was 0-of-1 files (OSS/FileChooser path)."
     },
     {
       "area": "attachment",
       "brain": "zai",
-      "status": "failed",
-      "date": "2026-09-05",
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "webagent/zai",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/attachment_zai_2026-09-05.json",
-      "note": "FAIL (Re-Run 2026-09-05): 0 von 1 Dateien. Research: z.ai-Web-UI-Upload nicht oeffentlich dokumentiert (Black Box), keine stabilen Selektoren; erster Schritt waere Live-DOM-Vermessung, kein sofortiger Fix. Evidence-Map workspace/research/qwen-zai-upload.md"
+      "latency_ms": 25396,
+      "proof_path": "docs/proofs/T-501/attachment_zai_2026-09-06e.json",
+      "note": "PASS 2026-09-06e (PR #46 trusted CDP upload): reply RED ~25s offscreen. Prior fail was 0-of-1 files (black-box upload UI)."
     },
     {
       "area": "attachment",
