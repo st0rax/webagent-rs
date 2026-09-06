@@ -118,9 +118,7 @@
     "#chat-input ~ * button",
     "textarea#chat-input ~ button",
     "[class*='chat-input' i] button:first-of-type",
-    "[class*='composer' i] button:first-of-type",
-    "form button:has(svg):not(#send-message-button):not([aria-label*='Send' i])",
-    "button:has(svg):not(#send-message-button):not([id*='sidebar' i])"
+    "[class*='composer' i] button:first-of-type"
   ],
   "file_upload_button": [
     "button:has-text('Upload files')",

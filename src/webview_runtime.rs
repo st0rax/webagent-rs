@@ -23,6 +23,10 @@ use wry::WebViewBuilder;
 use wry::WebViewBuilderExtWindows;
 
 use crate::page_driver::{PageDriver, PageDriverError, Result};
+#[cfg(windows)]
+use crate::upload_spa_js::{
+    b64_encode_upload, drag_drop_target_expression, spa_file_input_notify_fn, spa_filelist_hack_fn,
+};
 
 pub(crate) type ViewId = u64;
 
@@ -1864,6 +1868,263 @@ fn replace_multiline_text_cdp(
 }
 
 #[cfg(windows)]
+fn resolve_backend_object_id(
+    webview: &wry::WebView,
+    backend_node_id: i64,
+    event_loop: &mut EventLoop<()>,
+) -> Option<String> {
+    let params = serde_json::json!({"backendNodeId": backend_node_id});
+    call_cdp_json(webview, "DOM.resolveNode", &params.to_string(), event_loop)
+        .ok()
+        .and_then(|value| {
+            value
+                .pointer("/object/objectId")
+                .or_else(|| value.pointer("/result/object/objectId"))
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+}
+
+#[cfg(windows)]
+fn call_function_on_json(
+    webview: &wry::WebView,
+    object_id: &str,
+    function_declaration: &str,
+    arguments: Option<Value>,
+    event_loop: &mut EventLoop<()>,
+) -> Option<Value> {
+    let mut params = serde_json::json!({
+        "objectId": object_id,
+        "functionDeclaration": function_declaration,
+        "returnByValue": true,
+        "awaitPromise": false,
+        "userGesture": true
+    });
+    if let Some(args) = arguments {
+        params["arguments"] = args;
+    }
+    call_cdp_json(
+        webview,
+        "Runtime.callFunctionOn",
+        &params.to_string(),
+        event_loop,
+    )
+    .ok()
+    .and_then(|value| {
+        value
+            .pointer("/result/value")
+            .or_else(|| value.pointer("/result/result/value"))
+            .cloned()
+    })
+}
+
+/// After a successful `DOM.setFileInputFiles` on the FileChooserOpened node,
+/// fire SPA `input`/`change` on that same node and report its `files.length`.
+#[cfg(windows)]
+fn spa_notify_chooser_file_input(
+    webview: &wry::WebView,
+    backend_node_id: i64,
+    event_loop: &mut EventLoop<()>,
+) -> Option<Value> {
+    let object_id = resolve_backend_object_id(webview, backend_node_id, event_loop)?;
+    let status = call_function_on_json(
+        webview,
+        &object_id,
+        spa_file_input_notify_fn(),
+        None,
+        event_loop,
+    )?;
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!("[upload] SPA notify on chooser backendNodeId={backend_node_id}: {status}");
+    }
+    Some(status)
+}
+
+/// Last resort when CDP set left the chooser FileList empty: defineProperty
+/// FileList from in-memory bytes + bubble change/input on the same node.
+#[cfg(windows)]
+fn spa_filelist_hack_chooser(
+    webview: &wry::WebView,
+    backend_node_id: i64,
+    files: &[(String, Vec<u8>)],
+    event_loop: &mut EventLoop<()>,
+) -> Option<Value> {
+    // Cap payload so a huge attachment cannot stall the CDP roundtrip.
+    const MAX_HACK_BYTES: usize = 2 * 1024 * 1024;
+    let object_id = resolve_backend_object_id(webview, backend_node_id, event_loop)?;
+    let mut payloads = Vec::with_capacity(files.len());
+    let mut total = 0usize;
+    for (name, data) in files {
+        total = total.saturating_add(data.len());
+        if total > MAX_HACK_BYTES {
+            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                eprintln!("[upload] FileList hack skipped: payload exceeds {MAX_HACK_BYTES} bytes");
+            }
+            return None;
+        }
+        payloads.push(serde_json::json!({
+            "name": name,
+            "mime": upload_mime_for_name(name),
+            "b64": b64_encode_upload(data)
+        }));
+    }
+    let args = serde_json::json!([{"value": payloads}]);
+    let status = call_function_on_json(
+        webview,
+        &object_id,
+        spa_filelist_hack_fn(),
+        Some(args),
+        event_loop,
+    )?;
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!("[upload] FileList hack on chooser backendNodeId={backend_node_id}: {status}");
+    }
+    Some(status)
+}
+
+/// Vue remount: after set, the chooser input may be replaced. Watch briefly for
+/// a newly mounted `input[type=file]` and re-apply setFileInputFiles + SPA events.
+#[cfg(windows)]
+fn remount_watch_set_file_input(
+    webview: &wry::WebView,
+    path_strings: &[String],
+    files: &[(String, Vec<u8>)],
+    event_loop: &mut EventLoop<()>,
+) -> u64 {
+    let find = serde_json::json!({
+        "expression": r#"(() => {
+          const inputs = Array.from(document.querySelectorAll('input[type=file]'));
+          if (!inputs.length) return {count:0};
+          const i = inputs[inputs.length - 1];
+          return {
+            count: inputs.length,
+            files: (i.files && i.files.length) || 0,
+            connected: i.isConnected !== false
+          };
+        })()"#,
+        "returnByValue": true,
+        "silent": true
+    });
+    let mut best_files = 0u64;
+    for attempt in 0..8u32 {
+        pump_once(event_loop);
+        thread::sleep(Duration::from_millis(60));
+        let snap = call_cdp_json(webview, "Runtime.evaluate", &find.to_string(), event_loop)
+            .ok()
+            .and_then(|value| {
+                value
+                    .pointer("/result/value")
+                    .or_else(|| value.pointer("/result/result/value"))
+                    .cloned()
+            })
+            .unwrap_or(Value::Null);
+        let count = snap.get("count").and_then(Value::as_u64).unwrap_or(0);
+        let existing = snap.get("files").and_then(Value::as_u64).unwrap_or(0);
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!("[upload] remount watch attempt={attempt} snap={snap}");
+        }
+        if existing > 0 {
+            return existing;
+        }
+        if count == 0 {
+            continue;
+        }
+        // Resolve newest input via evaluate objectId, set files, notify.
+        let evaluate = serde_json::json!({
+            "expression": "(() => { var list=document.querySelectorAll('input[type=file]'); return list.length?list[list.length-1]:null; })()",
+            "returnByValue": false,
+            "silent": true
+        });
+        let object_id = call_cdp_json(
+            webview,
+            "Runtime.evaluate",
+            &evaluate.to_string(),
+            event_loop,
+        )
+        .ok()
+        .and_then(|value| {
+            value
+                .pointer("/result/objectId")
+                .or_else(|| value.pointer("/result/result/objectId"))
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        });
+        let Some(object_id) = object_id else {
+            continue;
+        };
+        let params = serde_json::json!({
+            "files": path_strings,
+            "objectId": object_id
+        });
+        let _ = call_cdp_json(
+            webview,
+            "DOM.setFileInputFiles",
+            &params.to_string(),
+            event_loop,
+        );
+        let status = call_function_on_json(
+            webview,
+            &object_id,
+            spa_file_input_notify_fn(),
+            None,
+            event_loop,
+        );
+        let after = status
+            .as_ref()
+            .and_then(|v| v.get("filesAfter").and_then(Value::as_u64))
+            .unwrap_or(0);
+        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+            eprintln!(
+                "[upload] remount re-apply set+SPA events: status={status:?} filesAfter={after}"
+            );
+        }
+        if after == 0 {
+            // Last resort on the remounted node as well.
+            let mut payloads = Vec::new();
+            let mut total = 0usize;
+            let mut oversized = false;
+            for (name, data) in files {
+                total = total.saturating_add(data.len());
+                if total > 2 * 1024 * 1024 {
+                    oversized = true;
+                    break;
+                }
+                payloads.push(serde_json::json!({
+                    "name": name,
+                    "mime": upload_mime_for_name(name),
+                    "b64": b64_encode_upload(data)
+                }));
+            }
+            if !oversized {
+                let args = serde_json::json!([{"value": payloads}]);
+                if let Some(hack) = call_function_on_json(
+                    webview,
+                    &object_id,
+                    spa_filelist_hack_fn(),
+                    Some(args),
+                    event_loop,
+                ) {
+                    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                        eprintln!("[upload] remount FileList hack: {hack}");
+                    }
+                    best_files = hack
+                        .get("files")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0)
+                        .max(best_files);
+                }
+            }
+        } else {
+            best_files = after.max(best_files);
+        }
+        if best_files > 0 {
+            return best_files;
+        }
+    }
+    best_files
+}
+
+#[cfg(windows)]
 /// Übergibt Dateien über WebView2s vertrauenswürdigen CDP-Kanal. Eine
 /// `DataTransfer`-Zuweisung aus JS sieht für manche SPAs zwar wie ein FileList
 /// aus, wird vom Upload-Backend aber als synthetisch verworfen. `DOM.setFileInputFiles`
@@ -1943,6 +2204,8 @@ fn set_file_input_files_cdp(
     // DOM.setFileInputFiles with THAT id immediately — never replace it with
     // a querySelector'd input.
     let mut used_chooser_node = false;
+    let mut chooser_files_len: Option<u64> = None;
+    let mut spa_events_dispatched = false;
     if let Some(backend_node_id) = chooser_backend_node_id {
         // Only the FileChooserOpened backendNodeId — no querySelector, no
         // getDocument, no resolveNode delay before the set.
@@ -1976,6 +2239,73 @@ fn set_file_input_files_cdp(
                     }
                 } else {
                     used_chooser_node = true;
+                    // SPA-side: WebView2 may accept setFileInputFiles without
+                    // firing change/input. Notify THAT chooser node immediately
+                    // and re-read files.length on the same backendNodeId.
+                    if let Some(status) =
+                        spa_notify_chooser_file_input(webview, backend_node_id, event_loop)
+                    {
+                        spa_events_dispatched = status
+                            .get("events")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false);
+                        let files_after = status
+                            .get("filesAfter")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(0);
+                        let files_before = status
+                            .get("filesBefore")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(0);
+                        let connected = status
+                            .get("connected")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(true);
+                        chooser_files_len = Some(files_after);
+                        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                            eprintln!(
+                                "[upload] chooser node files.length before={files_before} after={files_after} events={spa_events_dispatched} connected={connected}"
+                            );
+                        }
+                        // CDP set left FileList empty → last-resort Vue FileList hack.
+                        if files_after == 0 {
+                            if let Some(hack) = spa_filelist_hack_chooser(
+                                webview,
+                                backend_node_id,
+                                files,
+                                event_loop,
+                            ) {
+                                let hacked = hack.get("files").and_then(Value::as_u64).unwrap_or(0);
+                                chooser_files_len = Some(hacked);
+                                spa_events_dispatched = true;
+                            }
+                        }
+                        // Input removed/empty after set: watch for remount and re-apply.
+                        let still_empty = chooser_files_len.unwrap_or(0) == 0;
+                        if still_empty || !connected {
+                            let remounted = remount_watch_set_file_input(
+                                webview,
+                                &path_strings,
+                                files,
+                                event_loop,
+                            );
+                            if remounted > 0 {
+                                chooser_files_len = Some(remounted);
+                                spa_events_dispatched = true;
+                            }
+                        }
+                    } else if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                        eprintln!(
+                            "[upload] SPA notify failed to resolve chooser backendNodeId={backend_node_id}"
+                        );
+                        // Still try remount path — node may already be gone.
+                        let remounted =
+                            remount_watch_set_file_input(webview, &path_strings, files, event_loop);
+                        if remounted > 0 {
+                            chooser_files_len = Some(remounted);
+                            spa_events_dispatched = true;
+                        }
+                    }
                 }
             }
             Err(error) => {
@@ -2109,8 +2439,8 @@ fn set_file_input_files_cdp(
             );
         }
         let mut params = serde_json::json!({"files": path_strings.clone()});
-        if let Some(object_id) = object_id {
-            params["objectId"] = Value::String(object_id);
+        if let Some(ref object_id) = object_id {
+            params["objectId"] = Value::String(object_id.clone());
         } else {
             params["nodeId"] = Value::from(node_id);
             if let Some(backend_node_id) = backend_node_id {
@@ -2163,13 +2493,34 @@ fn set_file_input_files_cdp(
                     )));
                 }
             }
+        } else if let Some(object_id) = object_id.as_ref() {
+            // Mirror chooser path: bubble input/change on the node we just set.
+            if let Some(status) = call_function_on_json(
+                webview,
+                object_id,
+                spa_file_input_notify_fn(),
+                None,
+                event_loop,
+            ) {
+                spa_events_dispatched = status
+                    .get("events")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                chooser_files_len = status
+                    .get("filesAfter")
+                    .and_then(Value::as_u64)
+                    .or(chooser_files_len);
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[upload] SPA notify on querySelector node: {status}");
+                }
+            }
         }
     }
 
     // Empty `{}` from setFileInputFiles is NOT proof the FileList was mutated.
-    // Always check renderer-side files; if still 0, run drag (do not treat the
-    // acknowledged set as a confirmed upload).
-    let native_count = {
+    // Prefer chooser-node files.length (same backendNodeId); fall back to a
+    // querySelector sum. If still 0, run trusted drag with real file payload.
+    let query_count = {
         let check = serde_json::json!({
             "expression": "Array.from(document.querySelectorAll('input[type=file]')).reduce((n,i)=>n+(i.files?i.files.length:0),0)",
             "returnByValue": true,
@@ -2185,6 +2536,12 @@ fn set_file_input_files_cdp(
             })
             .unwrap_or(0)
     };
+    let native_count = chooser_files_len.unwrap_or(0).max(query_count);
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!(
+            "[upload] files proof: chooser_node={chooser_files_len:?} querySelector_sum={query_count} spa_events={spa_events_dispatched} chooser_used={used_chooser_node}"
+        );
+    }
     if native_count == 0 {
         if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
             eprintln!(
@@ -2419,21 +2776,11 @@ fn dispatch_file_drag_cdp(
         return Ok(());
     }
     let point_request = serde_json::json!({
-        "expression": r#"(() => {
-            const candidates = Array.from(document.querySelectorAll(
-                '[contenteditable="true"], textarea, [role="textbox"]'));
-            for (const el of candidates) {
-                const r = el.getBoundingClientRect();
-                const s = getComputedStyle(el);
-                if (r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden')
-                    return {x: r.left + r.width / 2, y: r.top + r.height / 2};
-            }
-            return null;
-        })()"#,
+        "expression": drag_drop_target_expression(),
         "returnByValue": true,
         "silent": true
     });
-    let point = call_cdp_json(
+    let point_value = call_cdp_json(
         webview,
         "Runtime.evaluate",
         &point_request.to_string(),
@@ -2446,24 +2793,32 @@ fn dispatch_file_drag_cdp(
             .or_else(|| value.pointer("/result/result/value"))
             .cloned()
     })
-    .and_then(|value| Some((value.get("x")?.as_f64()?, value.get("y")?.as_f64()?)))
-    .ok_or_else(|| PageDriverError::Protocol("kein sichtbarer Composer fuer Drag/Drop".into()))?;
-    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-        eprintln!(
-            "[upload] drag target composer at ({:.1},{:.1}) files={}",
-            point.0,
-            point.1,
-            path_strings.len()
-        );
-    }
+    .unwrap_or(Value::Null);
+    let point = point_value
+        .as_object()
+        .and_then(|obj| {
+            Some((
+                obj.get("x")?.as_f64()?,
+                obj.get("y")?.as_f64()?,
+                obj.get("via")
+                    .and_then(Value::as_str)
+                    .unwrap_or("composer")
+                    .to_string(),
+            ))
+        })
+        .ok_or_else(|| {
+            PageDriverError::Protocol("kein sichtbarer Composer fuer Drag/Drop".into())
+        })?;
+    // Real CDP drag payload: absolute paths in `files` plus MIME/title items
+    // matching Input.DragData (empty item data previously looked like a no-op).
     let items: Vec<Value> = files
         .iter()
-        .map(|(name, _)| {
-            // The page receives the actual file through `files`; the item
-            // payload carries the same MIME hint a real OS drag supplies.
+        .zip(path_strings.iter())
+        .map(|((name, _), path)| {
             serde_json::json!({
                 "mimeType": upload_mime_for_name(name),
-                "data": ""
+                "data": path,
+                "title": name
             })
         })
         .collect();
@@ -2472,6 +2827,17 @@ fn dispatch_file_drag_cdp(
         "files": path_strings,
         "dragOperationsMask": 1
     });
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        eprintln!(
+            "[upload] drag target {} at ({:.1},{:.1}) files={} payload_files={} payload_items={}",
+            point.2,
+            point.0,
+            point.1,
+            path_strings.len(),
+            path_strings.len(),
+            items.len()
+        );
+    }
     for event_type in ["dragEnter", "dragOver", "drop"] {
         let params = serde_json::json!({
             "type": event_type,
@@ -2485,6 +2851,28 @@ fn dispatch_file_drag_cdp(
             &params.to_string(),
             event_loop,
         )?;
+    }
+    // Post-drag signal: files.length and any visible attachment card count.
+    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+        let proof = serde_json::json!({
+            "expression": r#"(() => {
+              var files = Array.from(document.querySelectorAll('input[type=file]')).reduce((n,i)=>n+(i.files?i.files.length:0),0);
+              var signal = document.querySelectorAll('[class*="attachment" i],[class*="file-preview" i],[class*="image-thumbnail" i],img[src^="blob:"]').length;
+              return {files: files, signal: signal};
+            })()"#,
+            "returnByValue": true,
+            "silent": true
+        });
+        if let Ok(value) =
+            call_cdp_json(webview, "Runtime.evaluate", &proof.to_string(), event_loop)
+        {
+            let snap = value
+                .pointer("/result/value")
+                .or_else(|| value.pointer("/result/result/value"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            eprintln!("[upload] post-drag signal: {snap}");
+        }
     }
     Ok(())
 }

@@ -121,8 +121,7 @@
     "textarea.message-input-textarea ~ * button",
     "[class*='message-input' i] button:has(svg)",
     "[class*='chat-input' i] button:has(svg)",
-    "[class*='composer' i] button:has(svg)",
-    "form button:has(svg):not([aria-label*='Send' i]):not([aria-label*='send' i])"
+    "[class*='composer' i] button:has(svg)"
   ],
   "voice_input_button": [
     "[aria-label='Voice Input']",

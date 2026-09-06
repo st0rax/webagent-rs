@@ -740,13 +740,23 @@ impl WebBrainBackend {
     }
 
     fn dispatch_file_input_events(&self) -> bool {
+        // Prefer the last-mounted input (SPA remounts) and bubble input+change
+        // on every file input so Vue/React listeners still see the event even
+        // when querySelector's first hit is a stale empty control.
         self.eval(
             r#"(function(){
-                var input=document.querySelector('input[type=file]');
-                if(!input)return false;
-                input.dispatchEvent(new Event('input',{bubbles:true}));
-                input.dispatchEvent(new Event('change',{bubbles:true}));
-                return true;
+                var inputs=document.querySelectorAll('input[type=file]');
+                if(!inputs.length)return false;
+                var ok=false;
+                for(var i=0;i<inputs.length;i++){
+                    try{
+                        inputs[i].dispatchEvent(new Event('input',{bubbles:true,cancelable:true}));
+                        inputs[i].dispatchEvent(new Event('change',{bubbles:true,cancelable:true}));
+                        try{inputs[i].dispatchEvent(new InputEvent('input',{bubbles:true,cancelable:true}));}catch(e0){}
+                        ok=true;
+                    }catch(e){}
+                }
+                return ok;
             })()"#,
         )
         .ok()
@@ -1695,11 +1705,18 @@ mod tests {
             return n;
         })()"#;
         let dispatch_expr = r#"(function(){
-                var input=document.querySelector('input[type=file]');
-                if(!input)return false;
-                input.dispatchEvent(new Event('input',{bubbles:true}));
-                input.dispatchEvent(new Event('change',{bubbles:true}));
-                return true;
+                var inputs=document.querySelectorAll('input[type=file]');
+                if(!inputs.length)return false;
+                var ok=false;
+                for(var i=0;i<inputs.length;i++){
+                    try{
+                        inputs[i].dispatchEvent(new Event('input',{bubbles:true,cancelable:true}));
+                        inputs[i].dispatchEvent(new Event('change',{bubbles:true,cancelable:true}));
+                        try{inputs[i].dispatchEvent(new InputEvent('input',{bubbles:true,cancelable:true}));}catch(e0){}
+                        ok=true;
+                    }catch(e){}
+                }
+                return ok;
             })()"#;
         MockPageState::new()
             .with_default_eval(json!(0))
@@ -1776,11 +1793,18 @@ mod tests {
             return n;
         })()"#;
         let dispatch_expr = r#"(function(){
-                var input=document.querySelector('input[type=file]');
-                if(!input)return false;
-                input.dispatchEvent(new Event('input',{bubbles:true}));
-                input.dispatchEvent(new Event('change',{bubbles:true}));
-                return true;
+                var inputs=document.querySelectorAll('input[type=file]');
+                if(!inputs.length)return false;
+                var ok=false;
+                for(var i=0;i<inputs.length;i++){
+                    try{
+                        inputs[i].dispatchEvent(new Event('input',{bubbles:true,cancelable:true}));
+                        inputs[i].dispatchEvent(new Event('change',{bubbles:true,cancelable:true}));
+                        try{inputs[i].dispatchEvent(new InputEvent('input',{bubbles:true,cancelable:true}));}catch(e0){}
+                        ok=true;
+                    }catch(e){}
+                }
+                return ok;
             })()"#;
         let state = MockPageState::new()
             .with_default_eval(json!(0))
