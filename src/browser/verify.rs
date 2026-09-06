@@ -456,7 +456,16 @@ fn verify_reasoning_effort(backend: &mut WebBrainBackend, cap: &Capability) -> V
     let menu_key = "reasoning_effort_menu";
     let before = backend.menu_label(menu_key);
     let last_step = path[path.len() - 1];
-    match backend.select_in_menu_path(menu_key, "model_option", &path) {
+    let option_key = if backend
+        .sel("reasoning_effort_option")
+        .iter()
+        .any(|s| !s.trim().is_empty())
+    {
+        "reasoning_effort_option"
+    } else {
+        "model_option"
+    };
+    match backend.select_in_menu_path(menu_key, option_key, &path) {
         Ok(after) => {
             let proven = after
                 .to_lowercase()

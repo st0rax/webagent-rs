@@ -62,28 +62,70 @@ impl WebBrainBackend {
         if before.to_lowercase().contains(&last_l) {
             return Ok(format!("{before} (bereits aktiv, kein Wechsel noetig)"));
         }
+        if self.sel(menu_key).is_empty() {
+            return Err(format!("kein '{menu_key}' konfiguriert"));
+        }
+        if self.sel(option_key).is_empty() {
+            return Err(format!("kein '{option_key}' konfiguriert"));
+        }
         if !self.open_menu(menu_key) {
             return Err(format!("'{menu_key}' nicht anklickbar"));
         }
+        let list = Self::js_selectors(&self.sel(option_key));
+        // Same wait/reopen as select_in_menu — qwen Thinking popup (and
+        // Radix portals) often render items after aria-expanded, so a bare
+        // click loop reports "Fast/Think not in menu" on the first frame.
+        let mut options_sichtbar = self.wait_for_options(&list, 26, 150);
+        if !options_sichtbar {
+            let _ = self.press_key_escape();
+            std::thread::sleep(Duration::from_millis(400));
+            if self.open_menu(menu_key) {
+                options_sichtbar = self.wait_for_options(&list, 26, 150);
+            }
+        }
+        if !options_sichtbar {
+            let _ = self.press_key_escape();
+            return Err(format!(
+                "Pfad {path:?}: Eintraege von '{option_key}' trotz Warten/Reopen nicht im DOM"
+            ));
+        }
         for step in path {
             let step_l = step.trim().to_lowercase();
-            let list = Self::js_selectors(&self.sel(option_key));
             let needle = serde_json::to_string(&step_l).unwrap_or_else(|_| "\"\"".into());
+            // Prefer exact label match (item "Fast") over parent popup text
+            // that contains all of "Auto Think Fast".
             let expr = format!(
-                "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var e=els[k].closest('button,[role=menuitem],[role=option],[class*=item]')||els[k];e.click();return true;}}}}}}catch(e){{}}}}return false;}})()",
+                "(function(){{{prelude}var S={list};var n={needle};function norm(s){{return ((s||'')+'').replace(/\\s+/g,' ').trim().toLowerCase();}}function clk(e){{var r=e.getBoundingClientRect();var cx=r.left+r.width/2,cy=r.top+r.height/2;var pd=new PointerEvent('pointerdown',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});var pu=new PointerEvent('pointerup',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t2){{e.dispatchEvent(t2==='pointerdown'?pd:t2==='pointerup'?pu:new MouseEvent(t2,{{clientX:cx,clientY:cy,bubbles:true,button:0}}));}});}}var exact=null,loose=null;for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=norm(els[k].innerText||els[k].textContent);if(!t)continue;if(t===n&&!exact)exact=els[k];else if(t.indexOf(n)!==-1&&!loose)loose=els[k];}}}}catch(e){{}}}}var hit=exact||loose;if(!hit)return false;clk(hit);return true;}})()",
                 prelude = Self::JS_SEL_PRELUDE,
                 list = list,
                 needle = needle
             );
-            if !self.eval_bool(&expr) {
+            let mut clicked = self.eval_bool(&expr);
+            if !clicked {
+                if let Some((x, y)) = self.option_point(&list, &needle) {
+                    let mut guard = self.driver.borrow_mut();
+                    if let Some(driver) = guard.as_mut() {
+                        clicked = driver.click_at(x, y).is_ok();
+                    }
+                }
+            }
+            if !clicked {
                 let _ = self.press_key_escape();
                 return Err(format!("Pfadschritt '{step}' nicht im Menue gefunden"));
             }
-            std::thread::sleep(Duration::from_millis(1000));
+            std::thread::sleep(Duration::from_millis(1200));
         }
         let after = self.menu_label(menu_key);
         if after.to_lowercase().contains(&last_l) {
             return Ok(after);
+        }
+        // Menu closed after click but label not yet updated — one short poll.
+        for _ in 0..8 {
+            std::thread::sleep(Duration::from_millis(150));
+            let again = self.menu_label(menu_key);
+            if again.to_lowercase().contains(&last_l) {
+                return Ok(again);
+            }
         }
         Err(format!(
             "Pfad {path:?} geklickt, aber Beschriftung zeigt weiterhin '{after}' (vorher '{before}')"
@@ -592,7 +634,7 @@ impl WebBrainBackend {
     /// Mittelpunkt des Ziel-Eintrags im Viewport, oder `None`.
     fn option_point(&self, list: &str, needle: &str) -> Option<(f64, f64)> {
         let expr = format!(
-            "(function(){{{prelude}var S={list};var n={needle};for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').toLowerCase();if(t.indexOf(n)!==-1){{var r=els[k].getBoundingClientRect();return JSON.stringify(r.left+r.width/2)+','+JSON.stringify(r.top+r.height/2);}}}}}}catch(e){{}}}}return 'false';}})()",
+            "(function(){{{prelude}var S={list};var n={needle};function norm(s){{return ((s||'')+'').replace(/\\s+/g,' ').trim().toLowerCase();}}function pt(e){{var r=e.getBoundingClientRect();return JSON.stringify(r.left+r.width/2)+','+JSON.stringify(r.top+r.height/2);}}var exact=null,loose=null;for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=norm(els[k].innerText||els[k].textContent);if(!t)continue;if(t===n&&!exact)exact=els[k];else if(t.indexOf(n)!==-1&&!loose)loose=els[k];}}}}catch(e){{}}}}var hit=exact||loose;return hit?pt(hit):'false';}})()",
             prelude = Self::JS_SEL_PRELUDE,
             list = list,
             needle = needle

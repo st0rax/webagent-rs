@@ -1634,6 +1634,7 @@ mod tests {
             s.contains("/login_indicator")
                 || s.contains("/login_button")
                 || s.contains("/reasoning_effort_menu")
+                || s.contains("/reasoning_effort_option")
                 || s.contains("/model_menu")
                 || s.contains("/mode_option")
                 || s.contains("/file_upload_button")

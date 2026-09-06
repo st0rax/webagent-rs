@@ -1,0 +1,6 @@
+[verify] 1 Brain(s), 1 Faehigkeit(en): reasoning_effort
+[verify] qwen: Start
+[verify] trace +   0.00s  Browserstart
+[verify] trace +   2.03s  ensure_ready (Login/Cloudflare-Check)
+[verify] trace +   2.15s  ensure_ready fertig
+[verify] qwen: reasoning_effort = Passed (8685ms) ÔÇö Automatisch -> Think
