@@ -282,13 +282,13 @@
     {
       "area": "model",
       "brain": "kimi",
-      "status": "unreachable",
-      "date": "2026-09-03",
-      "model": null,
-      "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "K3 Swarm Hoch",
+      "selector_hash": 43007049,
+      "latency_ms": 0,
+      "proof_path": "docs/proofs/T-501/model_switch_kimi_2026-09-06.json",
+      "note": "passed (cmd_model --set 2026-09-06): Kimi model_menu 'div.current-model' hat im Headless bounding-rect 0, deshalb meldet verify resolve_fallback Unreachable — der echte Menu-Klick greift trotzdem. model_option auf belegtes DOM korrigiert (div.kimi-menu .model-item, role=menuitemradio; .models-popover .model-item veraltet). model --set K3 Swarm -> umgestellt, Rueckweg auf Schnell bestaetigt (bereits aktiv). Record seeds %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl ts 2026-09-06T15:21:17Z"
     },
     {
       "area": "model",

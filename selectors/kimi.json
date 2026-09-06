@@ -38,10 +38,15 @@
     "button[class*='stop' i]"
   ],
   "model_menu": [
-    "div.current-model"
+    "div.current-model",
+    "div.current-model.active",
+    "[class*='current-model' i]"
   ],
   "model_option": [
-    ".models-popover .model-item"
+    "div.kimi-menu [role='menuitemradio'].model-item",
+    "div.kimi-menu .model-item",
+    "[role='menuitemradio'].model-item",
+    "div.kimi-menu button.model-item"
   ],
   "assistant_message": [
     "div.markdown",

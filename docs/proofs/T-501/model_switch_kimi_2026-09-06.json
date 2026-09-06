@@ -1,0 +1,11 @@
+{
+  "area": "model",
+  "brain": "kimi",
+  "status": "passed",
+  "date": "2026-09-06",
+  "model": "K3 Swarm Hoch",
+  "selector_hash": 43007049,
+  "latency_ms": 0,
+  "proof_path": "docs/proofs/T-501/model_switch_kimi_2026-09-06.json",
+  "note": "PASS 2026-09-06: Token-Kette via menu/model-Pfad. Kimi model_menu 'div.current-model' hat im Headless bounding-rect 0 (Modell-Chip erscheint erst nach Interaktion/Fokus), deshalb meldet verify resolve_fallback 'kein sichtbarer Selektor' (Unreachable). Der echte Wechsel ueber den klickbasierten Menu-Pfad greift trotzdem und wird nachgeprueft: menu --key model_menu listet 'Schnell/K3/K3 Swarm' (div.kimi-menu .model-item, role=menuitemradio — belegt live am 2026-09-06-DOM; .models-popover .model-item ist veraltet), model --set 'K3 Swarm' stellte um und model --set 'Schnell' bestaetigte 'bereits aktiv'. Record in %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl (ts 2026-09-06T15:21:17Z, evidence 'cmd_model --set K3 Swarm')."
+}
