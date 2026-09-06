@@ -8,7 +8,7 @@
 - Branch: `master`
 - Remote: `https://github.com/st0rax/webagent-rs.git`
 - Letzter Stand (Commit): `9793623` (2026-09-05) — Port-Vereinheitlichung (ein Listener: 8788) sowie
-  T-501-Nachzieh-Runde 2026-09-05 (api_responses 9/9, streaming 9/9 (nach #42+#44; Details Phase 5.x) — Details in Phase 5.x).
+  T-501-Nachzieh 2026-09-06 (api_responses 9/9, streaming 9/9 inkl. kimi #45, attachment mistral/qwen/zai #46 — Details Phase 5.x).
   `6f9579e` (2026-09-03) bleibt historisch vermerkt.
 - Tags: v0.2.1, v0.5.0, v0.7.0–v0.11.0, `tui-ui-preservation-2026-09-01`
 - Multidev-Betrieb: `docs/TASKBOARD.json` (Claim-Quelle der Wahrheit),
@@ -96,12 +96,13 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       Dumps in `docs/proofs/T-404/`; `cargo test --lib` 1254 passed / 1 ignored).
       Kein clientbezogener Servercode. Live-`api_*`-Zellen bleiben Phase 3/5.
  - [~] Phase 5.x Alle Brains (T-501, laeuft bei local/opencode)
-       **Streaming-Nachzug 2026-09-06c (Port 8788, offscreen, master d4fb6dd / PR #44):**
-       streaming jetzt **9/9 passed** — kimi sauberer `STREAM_OK` (~18s) nach incomplete-CoT-Prefix-Filter;
-       mistral+zai bereits 06b nach Chrome-Filter (#42/#43). Belege
-       `docs/proofs/T-501/streaming_{kimi_2026-09-06c,mistral_2026-09-06b,zai_2026-09-06b}.json`,
-       `STATUS_reproof_filter.md`. Matrix-Gesamtstand ca. **102/130 passed** (+1 kimi stream).
-       **DoD weiterhin NICHT done** — offen: attachment (mistral/qwen/zai/auto), effort/model gaps,
+       **Matrix-Nachzug 2026-09-06 (Pflege docs, Live-Proofs schon auf master):**
+       streaming **9/9** inkl. kimi `STREAM_OK` (~18s, `streaming_kimi_2026-09-06c.json`, PR #44/#45);
+       mistral+zai stream schon 06b (#42/#43). attachment **9/10** — mistral/qwen/zai jetzt
+       `passed` (RED, `attachment_{mistral_2026-09-06b,qwen_2026-09-06e,zai_2026-09-06e}.json`,
+       PR #46 trusted CDP upload); **auto attachment bleibt failed** (Disk eng, spaeter).
+       Matrix-Gesamtstand **108/130 passed**. Belege `STATUS_reproof_filter.md` + Proof-JSONs.
+       **DoD weiterhin NICHT done** — offen: attachment/auto, effort/model gaps,
        managed_tools by-design. HomBot eis. T-501 Claim local/opencode unangetastet.
 
        **Nachzieh-Runde 2026-09-05 (Port 8788, Breaker-Cooldowns abgelaufen):**
