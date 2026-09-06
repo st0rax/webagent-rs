@@ -148,10 +148,14 @@ pub fn strip_repeated_lead_line(text: &str) -> String {
 /// (Kimi CoT panel scraped as the answer). Observed live 2026-09-05/06:
 /// `The user wants me to reply with exactly the token "STREAM_OK"...`
 /// — STREAM_OK never appeared. Keep waiting instead of finishing on CoT.
+///
+/// Live reproof 2026-09-06b also leaked the incomplete prefix `The user` as
+/// the first SSE delta. Treat known CoT openers and their prefixes as chrome
+/// until a non-meta answer appears.
 pub fn is_reasoning_echo_text(text: &str) -> bool {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let normalized = normalized.trim();
-    if normalized.chars().count() < 48 {
+    if normalized.is_empty() {
         return false;
     }
     let lower = normalized.to_ascii_lowercase();
@@ -164,6 +168,13 @@ pub fn is_reasoning_echo_text(text: &str) -> bool {
         "der benutzer ",
         "der nutzer ",
     ];
+
+    // Incomplete stream chunks must not become deltas. Require a real CoT
+    // opener stem (`the user` / DE) — never bare `the`.
+    if is_incomplete_reasoning_echo_prefix(&lower) {
+        return true;
+    }
+
     if !lead.iter().any(|m| lower.starts_with(m)) {
         return false;
     }
@@ -185,6 +196,36 @@ pub fn is_reasoning_echo_text(text: &str) -> bool {
         "keine weiteren",
     ];
     meta.iter().any(|m| lower.contains(m))
+}
+
+fn is_incomplete_reasoning_echo_prefix(lower: &str) -> bool {
+    // Growing SSE chunks toward Kimi CoT: "T" / "The" / "The user" / "The user wants…".
+    // Match only while `lower` is still a *prefix* of a known opener (so
+    // "The answer…" escapes as soon as it diverges from "the user…").
+    const OPENERS: &[&str] = &[
+        "the user",
+        "the user's",
+        "the user wants",
+        "the user asked",
+        "the user has ",
+        "the user is asking",
+        "the user's request",
+        "der benutzer",
+        "der benutzer ",
+        "der nutzer",
+        "der nutzer ",
+    ];
+    if lower.is_empty() {
+        return false;
+    }
+    if OPENERS.iter().any(|opener| opener.starts_with(lower)) {
+        return true;
+    }
+    // Past the opener stem but still a short CoT continuation (<48).
+    let stem_ok = lower.starts_with("the user")
+        || lower.starts_with("der benutzer")
+        || lower.starts_with("der nutzer");
+    stem_ok && lower.chars().count() < 48
 }
 
 /// Drop leading meta-reasoning paragraphs when a later answer block exists.
@@ -545,5 +586,31 @@ mod tests {
         assert!(!is_reasoning_echo_text(ok));
         assert_eq!(chat_answer_text(ok), ok);
         assert_eq!(chat_answer_text("STREAM_OK"), "STREAM_OK");
+    }
+
+    /// Live 2026-09-06b: joined == "The user" (first SSE deltas before full CoT).
+    #[test]
+    fn kimi_incomplete_cot_prefix_the_user_is_chrome() {
+        for s in [
+            "The",
+            "The u",
+            "The user",
+            "the user",
+            "The user wants",
+            "The user wants me",
+            "The user asked",
+        ] {
+            assert!(
+                is_reasoning_echo_text(s),
+                "incomplete CoT prefix must be chrome: {s:?}"
+            );
+            assert_eq!(chat_answer_text(s), "", "must not emit SSE delta for {s:?}");
+        }
+        // Must not over-match ordinary prose that merely starts with "The ".
+        assert!(!is_reasoning_echo_text("The answer is STREAM_OK"));
+        assert_eq!(
+            chat_answer_text("The answer is STREAM_OK"),
+            "The answer is STREAM_OK"
+        );
     }
 }
