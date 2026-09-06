@@ -50,7 +50,10 @@ pub mod browser_pool;
 pub mod login;
 pub mod mock_page;
 pub mod page_driver;
+#[cfg(any(feature = "webview", test))]
+mod upload_spa_js;
 pub mod webview_reveal;
+
 #[cfg(feature = "webview")]
 pub mod webview_runtime;
 

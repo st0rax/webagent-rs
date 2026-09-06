@@ -1,0 +1,63 @@
+[ui] Web-UI auf http://127.0.0.1:8788/ (eingebettete Assets)
+[ui] API-Rolle aktiv: /v1/* auf http://127.0.0.1:8788/ (Bearer-Schutz)
+[upload] open attachment surface: opened=true
+[upload] stale attachment controls visible: 0
+[upload] file-chooser trigger: {"ok":true,"via":"input"}
+[upload] Page.fileChooserOpened: {"backendNodeId":21,"frameId":"80665BFAD7E15FAB8C6309456B7B71C0","mode":"selectMultiple"}
+[upload] DOM.querySelector response: {"nodeId":3127}
+[upload] DOM target node=3127 backend=Some(3144) object=Some("4319734967095269554.3.1")
+[upload] DOM.setFileInputFiles response: {}
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native path returned but input.files has 0 of 1 files
+[upload] trusted CDP upload unconfirmed offscreen; reveal-on-attach fallback
+[upload] file-chooser trigger: {"ok":true,"via":"input"}
+[upload] Page.fileChooserOpened: {"backendNodeId":3295,"frameId":"80665BFAD7E15FAB8C6309456B7B71C0","mode":"selectMultiple"}
+[upload] DOM.querySelector response: {"nodeId":7411}
+[upload] DOM target node=7411 backend=Some(3295) object=Some("4319734967095269554.3.2")
+[upload] DOM.setFileInputFiles response: {}
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] native path returned but input.files has 0 of 1 files
+[relay] qwen: kein Retry fuer deterministischen Sendefehler

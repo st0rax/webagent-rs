@@ -1,0 +1,16 @@
+[
+  {
+    "brain": "qwen",
+    "ok": true,
+    "http": 200,
+    "reply": "RED",
+    "error": ""
+  },
+  {
+    "brain": "zai",
+    "ok": true,
+    "http": 200,
+    "reply": "RED",
+    "error": ""
+  }
+]

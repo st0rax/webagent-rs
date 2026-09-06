@@ -30,6 +30,12 @@ struct MockStateInner {
     sequences: HashMap<String, Vec<Value>>,
     /// Count + coordinates of `move_pointer` calls (wake_renderer tests).
     pointer_moves: Vec<(f64, f64)>,
+    /// Fallback when no exact `on_eval` / sequence matches (attach probes).
+    default_eval: Option<Value>,
+    /// Recorded `set_file_input_files` payloads (name list per call).
+    file_uploads: Vec<Vec<String>>,
+    /// Whether `set_file_input_files` succeeds (`true`) or returns NotAvailable.
+    file_upload_ok: bool,
 }
 
 impl MockPageState {
@@ -74,6 +80,35 @@ impl MockPageState {
             g.navigate_delay = delay;
         }
         self
+    }
+
+    /// Unmatched `evaluate` expressions return this value (attach/upload tests).
+    pub fn with_default_eval(self, value: Value) -> Self {
+        if let Ok(mut g) = self.inner.lock() {
+            g.default_eval = Some(value);
+        }
+        self
+    }
+
+    /// Configure whether `set_file_input_files` succeeds for this mock.
+    pub fn with_file_upload_ok(self, ok: bool) -> Self {
+        if let Ok(mut g) = self.inner.lock() {
+            g.file_upload_ok = ok;
+        }
+        self
+    }
+
+    /// How often `set_file_input_files` was invoked (trusted CDP upload path).
+    pub fn set_file_input_files_calls(&self) -> usize {
+        self.inner.lock().map(|g| g.file_uploads.len()).unwrap_or(0)
+    }
+
+    /// File names from each `set_file_input_files` call.
+    pub fn set_file_input_files_names(&self) -> Vec<Vec<String>> {
+        self.inner
+            .lock()
+            .map(|g| g.file_uploads.clone())
+            .unwrap_or_default()
     }
 
     /// How many times `move_pointer` was called on drivers sharing this state.
@@ -121,6 +156,9 @@ impl PageDriver for MockPageDriver {
         }
         if let Some(v) = guard.scripts.get(expression) {
             return Ok(v.clone());
+        }
+        if let Some(v) = guard.default_eval.clone() {
+            return Ok(v);
         }
         Err(PageDriverError::Protocol(format!(
             "kein Mock-Skript für: {expression}"
@@ -175,6 +213,23 @@ impl PageDriver for MockPageDriver {
         Ok(())
     }
 
+    fn set_file_input_files(&mut self, files: &[(String, Vec<u8>)]) -> Result<()> {
+        let mut guard = self
+            .state
+            .inner
+            .lock()
+            .map_err(|_| PageDriverError::Protocol("Mock-Sperre verloren".into()))?;
+        let names: Vec<String> = files.iter().map(|(n, _)| n.clone()).collect();
+        guard.file_uploads.push(names);
+        if guard.file_upload_ok {
+            Ok(())
+        } else {
+            Err(PageDriverError::NotAvailable(
+                "Mock: Datei-Upload nicht konfiguriert".into(),
+            ))
+        }
+    }
+
     fn capture_png(&mut self) -> Result<Vec<u8>> {
         let guard = self
             .state
@@ -220,5 +275,26 @@ mod tests {
         let start = Instant::now();
         driver.navigate("https://a.test", Duration::ZERO).unwrap();
         assert!(start.elapsed() >= Duration::from_millis(25));
+    }
+
+    #[test]
+    fn mock_records_set_file_input_files_when_enabled() {
+        let state = MockPageState::new().with_file_upload_ok(true);
+        let mut driver = MockPageDriver::new(state.clone());
+        driver
+            .set_file_input_files(&[("a.png".into(), vec![1, 2, 3])])
+            .unwrap();
+        assert_eq!(state.set_file_input_files_calls(), 1);
+        assert_eq!(
+            state.set_file_input_files_names(),
+            vec![vec!["a.png".to_string()]]
+        );
+    }
+
+    #[test]
+    fn mock_default_eval_covers_unscripted_probes() {
+        let state = MockPageState::new().with_default_eval(json!(0));
+        let mut driver = MockPageDriver::new(state);
+        assert_eq!(driver.evaluate("anything()").unwrap(), json!(0));
     }
 }

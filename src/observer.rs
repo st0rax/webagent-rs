@@ -568,6 +568,11 @@ mod tests {
         assert_eq!(chat_answer_text("14:28"), "");
         assert_eq!(chat_answer_text("3:58"), "");
         assert_eq!(chat_answer_text("14:28 Uhr"), "");
+        // Attachment answer acceptance (mistral): wall-clock chrome must never
+        // count as RED/success — same filter as stream deltas.
+        assert_eq!(chat_answer_text("4:01"), "");
+        assert!(is_transient_response_text("4:01"));
+        assert_eq!(chat_answer_text("RED"), "RED");
         let kimi_cot = "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a very simple request. I should not add any extra text, markdown formatting, or explanations. Just the exact token.";
         assert!(is_reasoning_echo_text(kimi_cot));
         assert_eq!(chat_answer_text(kimi_cot), "");

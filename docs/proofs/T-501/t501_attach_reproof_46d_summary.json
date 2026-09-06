@@ -1,0 +1,16 @@
+[
+  {
+    "brain": "qwen",
+    "ok": false,
+    "http": 502,
+    "reply": "",
+    "error": "{\"code\": null, \"message\": \"Browser-Inference fehlgeschlagen: Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit (no_file_input_and_paste_not_confirmed; brain=qwen; inputs=1; files=0; signal=0; reveal=true)\", \"param\": null, \"type\": \"invalid_request_error\"}"
+  },
+  {
+    "brain": "zai",
+    "ok": false,
+    "http": 502,
+    "reply": "",
+    "error": "{\"code\": null, \"message\": \"Browser-Inference fehlgeschlagen: Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit (no_file_input_and_paste_not_confirmed; brain=zai; inputs=1; files=0; signal=0; reveal=true)\", \"param\": null, \"type\": \"invalid_request_error\"}"
+  }
+]
