@@ -1,0 +1,14 @@
+{
+  "model": "webagent/mistral",
+  "ok": true,
+  "http": 200,
+  "latency_ms": 23086,
+  "attachment": "256x256 red PNG",
+  "reply": "RED",
+  "error": null,
+  "ts_only": false,
+  "build": "8d59627",
+  "pr": "#46",
+  "headless": true,
+  "api_port": 8788
+}

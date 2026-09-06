@@ -1,0 +1,23 @@
+[
+  {
+    "brain": "mistral",
+    "ok": true,
+    "http": 200,
+    "reply": "RED",
+    "error": ""
+  },
+  {
+    "brain": "qwen",
+    "ok": false,
+    "http": 502,
+    "reply": "",
+    "error": "{\"code\": null, \"message\": \"Browser-Inference fehlgeschlagen: Browseroberflaeche stellt keinen nutzbaren Datei-Upload ber"
+  },
+  {
+    "brain": "zai",
+    "ok": false,
+    "http": 502,
+    "reply": "",
+    "error": "{\"code\": null, \"message\": \"Browser-Inference fehlgeschlagen: Browseroberflaeche stellt keinen nutzbaren Datei-Upload ber"
+  }
+]
