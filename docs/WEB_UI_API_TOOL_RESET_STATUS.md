@@ -78,8 +78,8 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       Chat-Header, Composer und responsive Abstaende. T-203-A11y-Strukturen
       bleiben erhalten. Nachweis: `docs/proofs/T-204-ui-check.md`, Commit
       `e0b3d82`, Taskboard-JSON und Markdown-Tabelle synchronisiert. Der
-      Rust-Gate blieb in der Sandbox wegen fehlendem `cargo` technisch nicht
-      ausführbar; die verfügbaren Konsistenz- und UI-Prüfungen sind grün.
+      vollständige Rust-Gate ist grün: `cargo test --lib` mit 1316 passed / 0
+      failed / 1 ignored; Konsistenz- und UI-Prüfungen ebenfalls grün.
  - [x] Phase 3.x Claude-Referenz (T-302) —
        **live erledigt (2026-09-03)** durch local/opencode: `webagent model --brain
        claude` + `--set` belegt Runtime-Liste statt fester Kodierung (live: „Sonnet 5

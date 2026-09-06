@@ -1,3 +1,5 @@
+> **Referenz.** T-204-Prüfnachweis; zusammen mit dem getesteten Repository-Stand lesen.
+
 # T-204 UI-Prüfung
 
 Datum: 2026-09-06
@@ -8,4 +10,4 @@ Geprüfte Interaktion: Eine Beispielnachricht (`Wie ist der aktuelle Status?`) w
 
 Die bestehenden A11y-Strukturen blieben erhalten: Skip-Link, semantische Buttons, `:focus-visible`, `aria-live`, reduzierte Bewegung und beschriftete Eingabe. Es wurde kein Backend-Aufruf ausgelöst.
 
-Verfügbare Prüfungen: `git diff --check`, JSON-Syntax, Web-Asset-Präsenz und Handover-Verweise bestanden. Der Rust-Test-Gate konnte in der Sandbox nicht ausgeführt werden, weil `cargo` nicht installiert ist. Ein separater schmaler Viewport-Durchlauf und der Rust-Test-Gate bleiben vor Abschluss des Tasks offen.
+Prüfungen: `git diff --check`, JSON-Syntax, Web-Asset-Präsenz und Handover-Verweise bestanden. Der vollständige Rust-Gate `cargo test --lib` ist grün: **1316 passed; 0 failed; 1 ignored**. Der lokale Browser-/Keyboard-Durchlauf war ebenfalls erfolgreich.
