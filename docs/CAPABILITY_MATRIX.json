@@ -426,8 +426,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": 606,
-      "proof_path": "docs/proofs/T-501/verify_qwen_effort_2026-09-06d.log",
-      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen). | Live verify 2026-09-06d: reasoning_effort Passed Fast (bereits aktiv) headless after #53 harden."
+      "proof_path": "docs/proofs/T-501/verify_qwen_effort_think_2026-09-06.txt",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen). | Live verify 2026-09-06d: reasoning_effort Passed Fast (bereits aktiv) headless after #53 harden. | Also Passed Think (Automatisch->Think ~8.7s) and Fast (Automatisch->Fast ~8.4s) 2026-09-06e."
     },
     {
       "area": "effort",
