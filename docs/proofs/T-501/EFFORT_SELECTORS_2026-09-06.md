@@ -1,3 +1,5 @@
+> **Archiv.** Selector-/DOM-Notiz + Live-Proofs qwen effort 2026-09-06; kein Betrieb. Lebend: Matrix und docs/WEB_UI_API_TOOL_RESET_STATUS.md + PR #53.
+
 # reasoning_effort selectors (2026-09-06)
 
 Slice: qwen Thinking UI (chatgpt: no separate effort control in composer dump).
