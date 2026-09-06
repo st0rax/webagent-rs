@@ -1,0 +1,14 @@
+{
+  "model": "webagent/zai",
+  "ok": true,
+  "http": 200,
+  "latency_ms": 25396,
+  "attachment": "256x256 red PNG",
+  "reply": "RED",
+  "error": null,
+  "build": "f96f718",
+  "pr": "#46",
+  "headless": true,
+  "api_port": 8788,
+  "trace": true
+}
