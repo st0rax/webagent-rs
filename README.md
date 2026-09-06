@@ -169,6 +169,8 @@ und Beispielskripte in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
 
 ```
 webagent login            --brain <id> [--timeout <sek>] [--force] [--auto]
+webagent show             --brain <id> [--port 8788]
+webagent hide             --brain <id> [--port 8788]
 webagent login-all        [--timeout <sek>] [--force] [--parallel N]
 webagent ask              --task "<aufgabe>" [--brain <id>|auto] [--auto|--chat] [--resume <run_id>] [--headless] [--max-cycles N] [--no-memory] [--json]
 webagent run              --task "<aufgabe>" [--brain <id>|auto] [--headless] [--max-cycles N] [--resume <run_id>] [--no-memory]
@@ -225,6 +227,10 @@ webagent run --brain deepseek --task "Schreibe ein PowerShell-Skript, das die 10
 
 Der Standard ist **sichtbarer** Browser. `--headless` öffnet ein **verstecktes**
 Fenster (Hidden-Window-Policy), kein echtes Headless-Chromium.
+
+Live-Proofs/Matrix/API/Streaming bleiben **offscreen** (`headless`); headed nur
+für Login/Captcha. Laufendes Fenster toggeln: `webagent show --brain <id>` /
+`webagent hide --brain <id>` (HTTP an `ui`/`api serve` auf Port 8788).
 
 ### Login
 

@@ -108,6 +108,29 @@ pub enum Commands {
         auto: bool,
     },
 
+    /// Offscreen-WebView eines laufenden Brains onscreen holen (Login/Captcha).
+    /// Spricht bevorzugt die lokale Web-UI/API (`127.0.0.1:8788`) an.
+    Show {
+        /// Brain-ID (z.B. chatgpt)
+        #[arg(long)]
+        brain: String,
+
+        /// Port der laufenden Web-UI / API-Bridge (Default 8788)
+        #[arg(long, default_value_t = 8788)]
+        port: u16,
+    },
+
+    /// Onscreen-WebView wieder offscreen parken.
+    Hide {
+        /// Brain-ID (z.B. chatgpt)
+        #[arg(long)]
+        brain: String,
+
+        /// Port der laufenden Web-UI / API-Bridge (Default 8788)
+        #[arg(long, default_value_t = 8788)]
+        port: u16,
+    },
+
     /// Alle Brains nacheinander einloggen (canonical profiles/<brain>).
     /// Parallel nur opt-in und gedeckelt (siehe --parallel).
     LoginAll {

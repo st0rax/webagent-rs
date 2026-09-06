@@ -169,6 +169,9 @@ fn dispatch(command: Commands) -> i32 {
             parallel,
         } => cmd_login_all(timeout, force, parallel),
 
+        Commands::Show { brain, port } => cmd_show(&brain, port),
+        Commands::Hide { brain, port } => cmd_hide(&brain, port),
+
         Commands::Diagnose { brain, headless } => cmd_diagnose(&brain, headless),
 
         Commands::Repl { brain, headless } => webagent::repl::run_repl(&brain, headless),

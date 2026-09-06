@@ -75,8 +75,11 @@ impl BrainBackend for WebBrainBackend {
                     e
                 )
             })?;
+            let view_id = driver.view_id();
             *self.runtime.borrow_mut() = Some(runtime);
+            *self.view_id.borrow_mut() = Some(view_id);
             *self.driver.borrow_mut() = Some(Box::new(driver));
+            self.revealed.set(false);
             Ok(())
         }
     }
@@ -94,6 +97,8 @@ impl BrainBackend for WebBrainBackend {
             // sonst bleibt der WebView-Prozess hängen und Isolation bricht.
             if crate::config::use_shared_browser() && self.profile_override.is_none() {
                 *self.driver.borrow_mut() = None;
+                *self.view_id.borrow_mut() = None;
+                self.revealed.set(false);
                 return crate::browser_pool::BrowserPool::global()
                     .lock()
                     .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
@@ -101,6 +106,8 @@ impl BrainBackend for WebBrainBackend {
             }
             *self.driver.borrow_mut() = None;
             *self.runtime.borrow_mut() = None;
+            *self.view_id.borrow_mut() = None;
+            self.revealed.set(false);
             Ok(())
         }
     }
@@ -112,18 +119,35 @@ impl BrainBackend for WebBrainBackend {
             self.dismiss_consent();
             let state = self.session_state();
             match state {
-                SessionState::Cloudflare => {
+                SessionState::Cloudflare | SessionState::LoginRequired => {
+                    // Nutzer muss Captcha/Login loesen — Fenster kurz onscreen.
+                    let _ = self.reveal_onscreen();
                     cf_count += 1;
                     std::thread::sleep(Duration::from_secs_f64(
                         3.0 + (cf_count as f64 * 0.5).min(5.0),
                     ));
                     continue;
                 }
-                SessionState::Ready => return Ok(SessionState::Ready),
+                SessionState::Ready => {
+                    self.park_if_revealed();
+                    return Ok(SessionState::Ready);
+                }
                 _ => std::thread::sleep(Duration::from_millis(1500)),
             }
         }
-        Ok(self.session_state())
+        let final_state = self.session_state();
+        if final_state == SessionState::Ready {
+            self.park_if_revealed();
+        }
+        Ok(final_state)
+    }
+
+    fn reveal_onscreen(&mut self) -> Result<(), String> {
+        WebBrainBackend::reveal_onscreen(self)
+    }
+
+    fn park_offscreen(&mut self) -> Result<(), String> {
+        WebBrainBackend::park_offscreen(self)
     }
 
     fn session_state(&self) -> SessionState {
