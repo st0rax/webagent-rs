@@ -344,15 +344,39 @@ pub(crate) fn fallback_expr_for(sel: &Selectors, needs: &[&str]) -> String {
 /// Fallbacks (§5, `js_scan_indexed`). `(selektor, flat_index)` oder `None`.
 fn resolve_fallback(backend: &WebBrainBackend, needs: &[&str]) -> Option<(String, i32)> {
     let expr = fallback_expr_for(&backend.selectors, needs);
-    let mut guard = backend.driver.borrow_mut();
-    let driver = guard.as_mut()?;
-    let v = driver.evaluate(&expr).ok()?;
-    let i = v.get("i").and_then(|x| x.as_i64()).unwrap_or(-1);
-    if i < 0 {
-        return None;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(4200);
+    loop {
+        let hit = {
+            let mut guard = backend.driver.borrow_mut();
+            let driver = guard.as_mut()?;
+            match driver.evaluate(&expr) {
+                Ok(v) => {
+                    let i = v.get("i").and_then(|x| x.as_i64()).unwrap_or(-1);
+                    if i < 0 {
+                        None
+                    } else {
+                        v.get("v")
+                            .and_then(|x| x.as_str())
+                            .map(str::to_string)
+                            .map(|s| (s, i as i32))
+                    }
+                }
+                Err(e) => {
+                    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                        println!("[verify] trace  resolve_fallback evaluate-Fehler: {e}");
+                    }
+                    None
+                }
+            }
+        };
+        if hit.is_some() {
+            return hit;
+        }
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
     }
-    let sel = v.get("v").and_then(|x| x.as_str()).map(str::to_string);
-    sel.map(|s| (s, i as i32))
 }
 
 /// RoundTrip-Arme (Toggle und Menü): inneres `operations::verify_surface` mit
