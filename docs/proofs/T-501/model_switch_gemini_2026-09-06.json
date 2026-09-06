@@ -1,0 +1,11 @@
+{
+  "area": "model",
+  "brain": "gemini",
+  "status": "passed",
+  "date": "2026-09-06",
+  "model": "3.6 Flash",
+  "selector_hash": 2230395766,
+  "latency_ms": 3427,
+  "proof_path": "docs/proofs/T-501/model_switch_gemini_2026-09-06.json",
+  "note": "PASS 2026-09-06: verify --brain gemini --cap model_switch headless, Gewinner 'button[aria-label*='Modusauswahl' i]'. resolve_fallback-Poll (SPA/Angular rendert Bedienelemente erst nach ensure_ready, 4,2s-Deadline/150ms-Intervall) loest den frucheren 'kein sichtbarer Selektor'. Zustandswechsel belegt (aria-expanded false->true), Rueckweg misslungen (Menue blieb offen). Menue-Trigger bedienbar; echte Modellwahl zusaetzlich via 'menu --set Flash-Lite' live bestaetigt (Wechsel auf 3.5 Flash-Lite, Rueckkehr zu 3.6 Flash). Record in %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl (ts 2026-09-06T12:05:14Z)."
+}

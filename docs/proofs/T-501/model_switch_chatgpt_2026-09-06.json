@@ -1,0 +1,11 @@
+{
+  "area": "model",
+  "brain": "chatgpt",
+  "status": "passed",
+  "date": "2026-09-06",
+  "model": "ChatGPT",
+  "selector_hash": 36116658,
+  "latency_ms": 1743,
+  "proof_path": "docs/proofs/T-501/model_switch_chatgpt_2026-09-06.json",
+  "note": "PASS 2026-09-06: verify --brain chatgpt --cap model_switch, Gewinner 'button.__composer-pill' (Composer-Pill > Model-Configure-Modal-Kette). Zustandswechsel belegt, Ausgangszustand wiederhergestellt. Record in %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl (ts 2026-09-06T11:39:51Z)."
+}

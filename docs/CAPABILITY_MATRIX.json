@@ -239,13 +239,13 @@
     {
       "area": "model",
       "brain": "chatgpt",
-      "status": "unreachable",
-      "date": "2026-09-03",
-      "model": null,
-      "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "ChatGPT",
+      "selector_hash": 36116658,
+      "latency_ms": 1743,
+      "proof_path": "docs/proofs/T-501/model_switch_chatgpt_2026-09-06.json",
+      "note": "passed (verify 2026-09-06): Gewinner 'button.__composer-pill' (Composer-Pill > Model-Configure-Modal-Kette); Zustandswechsel belegt, Ausgangszustand wiederhergestellt"
     },
     {
       "area": "model",
@@ -271,13 +271,13 @@
     {
       "area": "model",
       "brain": "gemini",
-      "status": "unreachable",
-      "date": "2026-09-03",
-      "model": null,
-      "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar -> keiner Selektor-Luecke, kein Login-Problem; ehrlich dokumentiert, kein geplanter Repo-Fix ohne DOM-Verfeinerung"
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "3.6 Flash",
+      "selector_hash": 2230395766,
+      "latency_ms": 3427,
+      "proof_path": "docs/proofs/T-501/model_switch_gemini_2026-09-06.json",
+      "note": "passed (verify 2026-09-06): Gewinner 'button[aria-label*='Modusauswahl' i]'; resolve_fallback-Poll (SPA rendert nach ensure_ready); Zustandswechsel belegt (aria-expanded), Rueckweg misslungen (Menue blieb offen) - Menue-Trigger bedienbar, echte Modellwahl via menu --set Flash-Lite live bestaetigt"
     },
     {
       "area": "model",
