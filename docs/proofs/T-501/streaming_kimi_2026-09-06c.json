@@ -1,0 +1,13 @@
+{
+  "model": "webagent/kimi",
+  "ok": true,
+  "http": 200,
+  "latency_ms": 18167,
+  "delta_count": 1,
+  "joined": "STREAM_OK",
+  "error": null,
+  "filter_build": "d4fb6dd",
+  "headless": true,
+  "api_port": 8788,
+  "pr": "#44"
+}
