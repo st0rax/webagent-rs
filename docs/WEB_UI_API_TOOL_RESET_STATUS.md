@@ -95,7 +95,18 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       urllib, Node-fetch; Loopback-Bridge mit `BridgeConfig.fake_reply`;
       Dumps in `docs/proofs/T-404/`; `cargo test --lib` 1254 passed / 1 ignored).
       Kein clientbezogener Servercode. Live-`api_*`-Zellen bleiben Phase 3/5.
- - [~] Phase 5.x Alle Brains (T-501, laeuft bei local/opencode)
+ 
+### T-501 streaming Nachzieh 2026-09-06 (headless/offscreen)
+
+Branch `feature/T-501-stream-kimi-mistral-zai` auf `467e65f` (PR #39 harder wake).
+API: `webagent ui --api --no-open --port 8788 --headless` (nie headed fuer Streaming-Proofs).
+Live-Streaming-Reproofs kimi/mistral/zai: **0/3 ok** (ehrlich):
+- kimi: Reasoning-Echo (STREAM_OK nur im Thinking-Text, false_positive_guard greift)
+- mistral: UI-Uhr `14:28` statt STREAM_OK
+- zai: `Thinking...` ohne Content-Delta
+Keine Mouseover-Hangs im headless-Lauf; Bridge+wake live. Matrix bleibt failed fuer diese drei Zellen; DoD/T-501 **nicht** done.
+Belege: `docs/proofs/T-501/streaming_{kimi,mistral,zai}_2026-09-06.json`.
+- [~] Phase 5.x Alle Brains (T-501, laeuft bei local/opencode)
        **Nachzieh-Runde 2026-09-05 (Port 8788, Breaker-Cooldowns abgelaufen):**
        api_responses **9/9 passed** — mistral+zai jetzt mit sauberer finaler Antwort
        (mistral-Deltas bleiben Provider-Timestamps, finale `.done`-Antwort RESP_OK; zai

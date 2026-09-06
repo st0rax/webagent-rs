@@ -1,0 +1,17 @@
+{
+  "model": "webagent/mistral",
+  "ok": false,
+  "http": 200,
+  "latency_ms": 28106,
+  "delta_count": 1,
+  "joined": "14:28",
+  "error": null,
+  "sse_errors": [],
+  "note": "failed streaming proof - no clean STREAM_OK (provider quirk / transport / login). observed='14:28'",
+  "wake_binary": "467e65f",
+  "api_port": 8788,
+  "headless": true,
+  "offscreen": true,
+  "false_positive_guard": "require joined==STREAM_OK or startswith(STREAM_OK)",
+  "raw_head": "data: {\"choices\":[{\"delta\":{\"content\":\"\",\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1788697678,\"id\":\"chatcmpl-18d2bb0fb7078560\",\"model\":\"webagent/mistral\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"14:28\"},\"finish_reason\":null,\"index\":0}],\"created\":1788697685,\"id\":\"chatcmpl-18d2bb0fb7078560\",\"model\":\"webagent/mistral\",\"object\":\"chat.completion.chunk\"}\n\n: keep-alive\n\n: keep-alive\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1788697706,\"id\":\"chatcmpl-18d2bb0fb7078560\",\"model\":\"webagent/mistral\",\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n"
+}

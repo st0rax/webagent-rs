@@ -1,0 +1,17 @@
+{
+  "model": "webagent/zai",
+  "ok": false,
+  "http": 200,
+  "latency_ms": 23194,
+  "delta_count": 1,
+  "joined": "Thinking...",
+  "error": null,
+  "sse_errors": [],
+  "note": "failed streaming proof - no clean STREAM_OK (provider quirk / transport / login). observed='Thinking...'",
+  "wake_binary": "467e65f",
+  "api_port": 8788,
+  "headless": true,
+  "offscreen": true,
+  "false_positive_guard": "require joined==STREAM_OK or startswith(STREAM_OK)",
+  "raw_head": "data: {\"choices\":[{\"delta\":{\"content\":\"\",\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1788697709,\"id\":\"chatcmpl-18d2bb16f5f65da8\",\"model\":\"webagent/zai\",\"object\":\"chat.completion.chunk\"}\n\n: keep-alive\n\n: keep-alive\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"Thinking...\"},\"finish_reason\":null,\"index\":0}],\"created\":1788697723,\"id\":\"chatcmpl-18d2bb16f5f65da8\",\"model\":\"webagent/zai\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1788697732,\"id\":\"chatcmpl-18d2bb16f5f65da8\",\"model\":\"webagent/zai\",\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n"
+}
