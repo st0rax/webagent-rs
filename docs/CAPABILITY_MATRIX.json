@@ -564,112 +564,112 @@
     {
       "area": "managed_tools",
       "brain": "chatgpt",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "claude",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "deepseek",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "gemini",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "kimi",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "mistral",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "perplexity",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "qwen",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "zai",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-04",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "managed_tools",
       "brain": "auto",
-      "status": "failed",
+      "status": "unsupported",
       "date": "2026-09-05",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-05.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile): erwarteter 400 invalid_request_error am 2026-09-05 erneut bestaetigt (by design, brain-global)."
+      "note": "Client-Function-Tools im clean browser text profile sind brain-global bewusst nicht unterstuetzt; erwarteter 400 invalid_request_error, WebAgent-Tools folgen separat."
     },
     {
       "area": "api_models",

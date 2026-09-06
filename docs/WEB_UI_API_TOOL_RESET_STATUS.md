@@ -95,15 +95,19 @@ Symbolik: [x] erledigt · [~] laeuft · [ ] offen
       urllib, Node-fetch; Loopback-Bridge mit `BridgeConfig.fake_reply`;
       Dumps in `docs/proofs/T-404/`; `cargo test --lib` 1254 passed / 1 ignored).
       Kein clientbezogener Servercode. Live-`api_*`-Zellen bleiben Phase 3/5.
- - [~] Phase 5.x Alle Brains (T-501, laeuft bei local/opencode)
-       **Matrix-Nachzug 2026-09-06 (Pflege docs, Live-Proofs schon auf master):**
-       streaming **9/9** inkl. kimi `STREAM_OK` (~18s, `streaming_kimi_2026-09-06c.json`, PR #44/#45);
-       mistral+zai stream schon 06b (#42/#43). attachment **9/10** — mistral/qwen/zai jetzt
-       `passed` (RED, `attachment_{mistral_2026-09-06b,qwen_2026-09-06e,zai_2026-09-06e}.json`,
-       PR #46 trusted CDP upload); **auto attachment bleibt failed** (Disk eng, spaeter).
-       Matrix-Gesamtstand **108/130 passed**. Belege `STATUS_reproof_filter.md` + Proof-JSONs.
-       **DoD weiterhin NICHT done** — offen: attachment/auto, effort/model gaps,
-       managed_tools by-design. HomBot eis. T-501 Claim local/opencode unangetastet.
+ - [~] Phase 5.x Alle Brains (T-501, laeuft bei manus)
+       **Matrix-Audit 2026-09-06:** Die aktuelle Matrix enthält **109/130 passed**,
+       **10/130 unsupported by design**, **4 unreachable** und **7 not_run**.
+       `webui_chat`, `streaming`, `attachment`, `api_models`, `api_chat`,
+       `api_responses`, `health`, `sources`, `groups` und `security` sind jeweils
+       10/10 passed. Die zehn `managed_tools`-400-Ablehnungen sind kein Defekt:
+       Client-Function-Tools im clean browser text profile sind bewusst nicht
+       unterstützt und werden deshalb als `unsupported` klassifiziert; die
+       verwalteten WebAgent-Tools folgen separat.
+       **DoD weiterhin NICHT done** — offen bleiben effort (7 Zellen) und model
+       (4 Zellen), davon mehrere Web-UI-/Login-/Provider-gebunden. Belege liegen
+       unter `docs/proofs/T-501/`; T-501 ist auf `feature/T-501-finish` an manus
+       übergeben.
 
        **Nachzieh-Runde 2026-09-05 (Port 8788, Breaker-Cooldowns abgelaufen):**
        api_responses **9/9 passed** — mistral+zai jetzt mit sauberer finaler Antwort
