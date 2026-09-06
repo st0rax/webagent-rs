@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-05",
+  "as_of": "2026-09-06",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "brains": [
     "chatgpt",
@@ -124,12 +124,13 @@
     {
       "area": "webui_chat",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "webagent/auto",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 20700,
+      "proof_path": "docs/proofs/T-501/webui_chat_auto_2026-09-06.json",
+      "note": "PASS 2026-09-06: AUTO_UI_CHAT_OK (20,7s) via /v1/chat/completions webagent/auto; Token aus WEBAGENT_API_KEY nötig (sonst 401)"
     },
     {
       "area": "streaming",
@@ -180,7 +181,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-05.json",
-      "note": "FAIL 2026-09-05: Reasoning-/Instruktions-Echo als Delta-Stream, kein STREAM_OK-Delta; finaler Text i.d.R. korrekt (Transport-Quirk)."
+      "note": "FAIL 2026-09-05/06: First-Delta = Reasoning-/Instruktions-Echo. Research-Befund: Kimi streamt via mask-Kanaele `block.think.content` (Reasoning) vs `block.text.content` (Antwort); DOM-Klassen sind gehasht/instabil. Repo-Fix-Kandidat: Reasoning-Deltas nur bis mask=text akkumulieren (Bridge-Extraktion). Evidence-Map workspace/research/kimi-webui-streaming.md"
     },
     {
       "area": "streaming",
@@ -191,7 +192,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-05.json",
-      "note": "FAIL 2026-09-05: Delta-Stream = Wanduhr-Timestamp, kein STREAM_OK-Delta; finale Antwort im .done-Event korrekt."
+      "note": "FAIL 2026-09-05/06: Delta-Strom = nur Wanduhr-Timestamps, finale Antwort .done. Research-Befund (2026-09-06): chat.mistral.ai nutzt internes SSE `0:\"text\"`-Format; Bridge schreibt SSE bei `Connection: close` unkomprimiert aus (kein gzip-Pufferen gefunden) -> Ursache eher Progress-/Meta-Frames der Web-App als Text; kein Repo-Fix ohne Netzwerk-Tab-Verifikation. Evidence-Map workspace/research/"
     },
     {
       "area": "streaming",
@@ -534,7 +535,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-05.json",
-      "note": "FAIL (Re-Run 2026-09-05, echtes 256x256-Bild): Browseroberflaeche uebernimmt weiter 0 von 1 Dateien -> echter SPA-Upload-Gap, kein Testbild-Artefakt; Beleg docs/proofs/T-501/attachment_qwen_real_image_2026-09-05.json"
+      "note": "FAIL (Re-Run 2026-09-05, echtes 256x256-Bild): 0 von 1 Dateien. Research-Befund (2026-09-06): qwen nutzt OSS-Upload-Pipeline (File->OSS->URL); braucht echten FileChooser/Dropdown-Klick oder Input.dispatchDragEvent statt synthetischem DataTransfer. Repo-Fix-Kandidat: Input.dispatchDragEvent-Pfad fuer qwen. Evidence-Map workspace/research/qwen-zai-upload.md"
     },
     {
       "area": "attachment",
@@ -545,7 +546,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/attachment_zai_2026-09-05.json",
-      "note": "FAIL (Re-Run 2026-09-05, echtes 256x256-Bild): Browseroberflaeche uebernimmt weiter 0 von 1 Dateien -> echter SPA-Upload-Gap, kein Testbild-Artefakt; Beleg docs/proofs/T-501/attachment_zai_real_image_2026-09-05.json"
+      "note": "FAIL (Re-Run 2026-09-05): 0 von 1 Dateien. Research: z.ai-Web-UI-Upload nicht oeffentlich dokumentiert (Black Box), keine stabilen Selektoren; erster Schritt waere Live-DOM-Vermessung, kein sofortiger Fix. Evidence-Map workspace/research/qwen-zai-upload.md"
     },
     {
       "area": "attachment",
