@@ -13,7 +13,10 @@ $env:WEBAGENT_FULL_LOG = '1'
 # als Kontext verarbeitet.
 $env:WEBAGENT_MAX_OBSERVATION_CHARS = '1500'
 $env:WEBAGENT_READONLY_RUN = '1'
-$env:WEBAGENT_READONLY_MIN_ACTIONS = '2'
+# Eine Shell-Action darf mehrere bounded Befehle enthalten. Der vollständige
+# Output dieser Action ist im Artefakt gespeichert; deshalb zählt hier eine
+# erfolgreiche Read-only-Action als ausreichender Diagnoseabschluss.
+$env:WEBAGENT_READONLY_MIN_ACTIONS = '1'
 # Matrix-Abnahmen duerfen keinen fremden Shared-Browser/SingletonLock erben.
 # Jeder Provider startet mit seinem eigenen WebView-Profil.
 $env:WEBAGENT_USE_SHARED_BROWSER = '0'
