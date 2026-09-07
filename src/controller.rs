@@ -1096,6 +1096,15 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             return (response_text.to_string(), true);
         }
 
+        // A read-only matrix probe is intentionally bounded by its requested
+        // inspection actions. Do not send a follow-up observation round to a
+        // provider that has already completed those actions but omits the
+        // optional protocol finish marker; that round was the source of the
+        // DeepSeek/Gemini diagnostic timeouts.
+        if std::env::var_os("WEBAGENT_READONLY_RUN").is_some() && !observations.is_empty() {
+            return (response_text.to_string(), true);
+        }
+
         if !observations.is_empty() {
             let feedback = protocol::format_observations_bundle(&observations);
             let turn = self.run_once(&feedback, Some(transcript));
