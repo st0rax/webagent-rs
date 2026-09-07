@@ -151,16 +151,11 @@ fn bounded_memory(memory_context: &str) -> String {
 }
 
 fn task_with_memory(task: &str, memory_context: &str) -> String {
-    let bounded_memory = bounded_memory(memory_context);
-    let memory = if memory_context.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "\n<MEMORY untrusted=\"true\" length=\"{}\">\n{}\n</MEMORY>\n",
-            bounded_memory.len(),
-            bounded_memory
-        )
-    };
+    // Zentraler Kaltstart-Vertrag: niemals automatische Memory-/Wiki-
+    // Inhalte an einen Provider senden. Der Parameter bleibt aus
+    // Kompatibilitätsgründen erhalten, wird aber bewusst ignoriert.
+    let _ = memory_context;
+    let memory = String::new();
 
     format!(
         "{}\n<CURRENT_TASK length=\"{}\">\n{}\n</CURRENT_TASK>",
@@ -243,10 +238,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn task_und_memory_sind_getrennte_datensektionen() {
+    fn task_ignoriert_alten_memory_kontext() {
         let prompt = autonomous_task_prompt("Implementiere den Fix", "alte Notiz");
-        assert!(prompt.contains("<MEMORY untrusted=\"true\""));
-        assert!(prompt.contains("alte Notiz\n</MEMORY>"));
+        assert!(!prompt.contains("<MEMORY"));
+        assert!(!prompt.contains("alte Notiz"));
         assert!(prompt.contains("<CURRENT_TASK"));
         assert!(prompt.ends_with("Implementiere den Fix\n</CURRENT_TASK>"));
     }
@@ -262,7 +257,7 @@ mod tests {
     fn reiner_chat_enthaelt_keine_managed_agent_injektion() {
         let prompt = plain_chat_prompt("Beantworte die Frage", "relevanter Kontext");
         assert!(prompt.contains("Beantworte die Frage"));
-        assert!(prompt.contains("relevanter Kontext"));
+        assert!(!prompt.contains("relevanter Kontext"));
         assert!(!prompt.contains(PROTOCOL_VERSION));
         assert!(!prompt.contains("WEBAGENT/1"));
         assert!(!prompt.contains("[Client-Werkzeuge]"));
