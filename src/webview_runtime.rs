@@ -269,9 +269,14 @@ impl WebViewRuntime {
 impl Drop for WebViewRuntime {
     fn drop(&mut self) {
         let _ = self.tx.send(RuntimeMessage::Shutdown);
-        if let Some(h) = self.thread.take() {
-            let _ = h.join();
-        }
+        // Ein eingefrorener WebView2-UI-Thread darf den Controller beim Cleanup
+        // nicht erneut blockieren. `join()` war hier unbounded: der eigentliche
+        // Page-Call lief zwar in sein Timeout, danach hing `brain.start` aber
+        // trotzdem im Drop und erzeugte weder `brain.start end` noch einen
+        // terminalen Transkript-Eintrag. Das JoinHandle wird bewusst verworfen;
+        // der Shutdown wird weiterhin signalisiert, und ein gesunder Thread
+        // beendet sich selbst.
+        let _ = self.thread.take();
     }
 }
 
