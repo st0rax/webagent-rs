@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-03",
+  "as_of": "2026-09-07",
   "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "mirror": "docs/TASKBOARD.md",
   "contract": "docs/WORK_CONTRACT.md",
@@ -347,6 +347,130 @@
       "proof_path": "src/group_run.rs; cargo test --lib --no-default-features (1267 passed, 1 ignored; fake A/B group EventStream Exact + @Brain + leader synthesis)",
       "verification": "cargo test --lib --no-default-features",
       "dod": "Gruppenlauf als normale Session (gleicher Eventstream); deterministischer Test gruen"
+    },
+    {
+      "id": "T-801",
+      "phase": "8",
+      "title": "Gemeinsamer Brain-Vertrag und Konformitaetsfixtures",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 1 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": []
+    },
+    {
+      "id": "T-802",
+      "phase": "8",
+      "title": "Einheitliches Fill Verify Submit ohne Doppelversand",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 2 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-801"
+      ]
+    },
+    {
+      "id": "T-803",
+      "phase": "8",
+      "title": "Antwortstream durch Controller REPL Swarm UI und API",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 3 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-801"
+      ]
+    },
+    {
+      "id": "T-804",
+      "phase": "8",
+      "title": "Profil-Leases und gemeinsame Blocker-/Resetbehandlung",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 4 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-801"
+      ]
+    },
+    {
+      "id": "T-805",
+      "phase": "8",
+      "title": "Generische Probe mit bestehendem Capability-Proof-Gate",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 5 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-802",
+        "T-803",
+        "T-804"
+      ]
+    },
+    {
+      "id": "T-806",
+      "phase": "8",
+      "title": "Taskabschluss mit verifizierten Run-Belegen und Crashschutz",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 6 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-801",
+        "T-805"
+      ]
+    },
+    {
+      "id": "T-807",
+      "phase": "8",
+      "title": "Alle-Brains-Live-Abnahme und Windows-Release",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 7 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-802",
+        "T-803",
+        "T-804",
+        "T-805",
+        "T-806"
+      ]
     }
   ]
 }

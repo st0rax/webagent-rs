@@ -38,3 +38,17 @@ laufen. Niemals eine verkettete Aufgabe aus dem Block reissen.
 | T-601 | 6 | rustls-HTTPS-Client + data/providers.json + <10-MB-Budget | code | codex, grok | done | grok-agent | feature/T-601-rustls-https |
 | T-602 | 6 | /quelle + UI-Schalter + Session-Source-Scope (manueller Hybrid) | code | codex, claude | done | grok-agent | feature/T-602-quelle-impl |
 | T-701 | 7 | Gruppen (2-6), Runden, @Brain, Leader-Synthese | code | codex, claude | done | grok-agent | feature/T-701-swarm-groups |
+
+## Brain-Vereinheitlichung (Plan 2026-09-07)
+
+Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRAIN_UNIFICATION_PLAN.md). Alle neuen Aufgaben sind free; Abhaengigkeiten gelten.
+
+| Task | Inhalt |
+|---|---|
+| T-801 | Gemeinsamer Brain-Vertrag und Konformitaetsfixtures |
+| T-802 | Einheitliches Fill Verify Submit ohne Doppelversand |
+| T-803 | Antwortstream durch Controller REPL Swarm UI und API |
+| T-804 | Profil-Leases und gemeinsame Blocker-/Resetbehandlung |
+| T-805 | Generische Probe mit bestehendem Capability-Proof-Gate |
+| T-806 | Taskabschluss mit verifizierten Run-Belegen und Crashschutz |
+| T-807 | Alle-Brains-Live-Abnahme und Windows-Release |
