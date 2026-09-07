@@ -133,23 +133,6 @@ finish ist nur für Aufgaben ohne Nutzertext vorgesehen.
     )
 }
 
-fn bounded_memory(memory_context: &str) -> String {
-    const MEMORY_PROMPT_CHARS: usize = 6_000;
-    if memory_context.chars().count() > MEMORY_PROMPT_CHARS {
-        let start = memory_context
-            .char_indices()
-            .nth(memory_context.chars().count() - MEMORY_PROMPT_CHARS)
-            .map(|(index, _)| index)
-            .unwrap_or(0);
-        format!(
-            "[ältere Erinnerungen gekürzt]\n{}",
-            &memory_context[start..]
-        )
-    } else {
-        memory_context.to_string()
-    }
-}
-
 fn task_with_memory(task: &str, memory_context: &str) -> String {
     // Zentraler Kaltstart-Vertrag: niemals automatische Memory-/Wiki-
     // Inhalte an einen Provider senden. Der Parameter bleibt aus
@@ -273,15 +256,11 @@ mod tests {
     }
 
     #[test]
-    fn sehr_grosses_memory_verdraengt_den_aktuellen_task_nicht() {
+    fn grosser_ignorierter_memory_kontext_veraendert_den_task_nicht() {
         let memory = "x".repeat(20_000);
         let prompt = autonomous_task_prompt("AKTUELLER TASK", &memory);
-        assert!(prompt.contains("[ältere Erinnerungen gekürzt]"));
-        assert!(
-            prompt.len() < 14_000,
-            "Prompt ist noch zu gross: {}",
-            prompt.len()
-        );
+        let without_memory = autonomous_task_prompt("AKTUELLER TASK", "");
+        assert_eq!(prompt, without_memory);
         assert!(prompt.ends_with("AKTUELLER TASK\n</CURRENT_TASK>"));
     }
 
