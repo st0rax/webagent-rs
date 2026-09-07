@@ -8,7 +8,8 @@ use crate::protocol::PROTOCOL_VERSION;
 /// Arbeitsstrategie bleibt bewusst beim Brain.
 fn autonomous_prefix() -> String {
     format!(
-        r#"Der Nutzer hat einen lokalen Interpreter gebaut, der deine Nachrichten aus
+        r#"<WEBAGENT_SYSTEM_PROMPT version="{ver}">
+Der Nutzer hat einen lokalen Interpreter gebaut, der deine Nachrichten aus
 diesem Webchat einliest. Du hast keinen direkten Zugriff auf seinen Rechner und
 sollst lokale Ausführung niemals nur behaupten. Eine WEBAGENT/1-Action ist
 keine Ausführungsbehauptung, sondern eine echte Tool-Anforderung an diesen Interpreter:
@@ -128,6 +129,7 @@ Beende erst, wenn die Aufgabe tatsächlich erledigt oder konkret blockiert ist.
 Nach Dateiänderungen prüfst du nach Möglichkeit Build/Tests. Schließe mit genau
 einer message-Action und einer knappen Zusammenfassung samt Prüfstatus ab;
 finish ist nur für Aufgaben ohne Nutzertext vorgesehen.
+</WEBAGENT_SYSTEM_PROMPT>
 "#,
         ver = PROTOCOL_VERSION
     )

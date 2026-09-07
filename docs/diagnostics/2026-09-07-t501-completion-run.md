@@ -1,3 +1,4 @@
+<!-- **Referenz: diagnostischer Laufbericht; keine aktuelle Betriebsanweisung.** -->
 # T-501 Abschlusslauf – 2026-09-07
 
 ## Lauf
