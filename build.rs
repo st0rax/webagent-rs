@@ -24,8 +24,10 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/index");
 
-    #[cfg(windows)]
-    {
+    // `cfg(windows)` beschreibt hier den Host des Build-Skripts. Für einen
+    // Windows-GNU-Crossbuild muss die Ressource anhand des Zieltripletts
+    // aktiviert werden, sonst bleibt die EXE ohne Versionsinformationen.
+    if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
         let mut resource = winres::WindowsResource::new();
         resource.set("FileDescription", "WebAgent");
         resource.set("ProductName", "WebAgent");
