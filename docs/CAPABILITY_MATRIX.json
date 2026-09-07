@@ -316,13 +316,13 @@
     {
       "area": "model",
       "brain": "qwen",
-      "status": "not_run",
+      "status": "passed",
       "date": "2026-09-07",
-      "model": null,
+      "model": "Qwen3.7-Plus",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: Live verify 2026-09-06: Zustandswechsel + Restore"
+      "latency_ms": 5584,
+      "proof_path": "docs/proofs/T-501/model_reproof_qwen_2026-09-07f.log",
+      "note": "Live verify 2026-09-07: Qwen3.7-Plus -> Qwen3.8-Max, unabhaengig nachgelesen und in derselben Sitzung nach Qwen3.7-Plus wiederhergestellt. Die Laufzeitliste enthaelt Beschreibungen; der Pruefer waehlt den eindeutigen Titel und lehnt jeden abweichenden beobachteten Zustand ab."
     },
     {
       "area": "model",

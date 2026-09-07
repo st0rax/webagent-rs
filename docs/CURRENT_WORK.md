@@ -2,7 +2,7 @@
 
 ## Fortsetzung G-001 / T-501 am 2026-09-07
 
-Claim: `chatgpt-codex`, Branch `fix/T-501-model-proof`, Basis `28e9f1c`.
+Claim: `chatgpt-codex`, Branch `feature/T-501-model-reproof`, Basis `a3036db`.
 Der Nutzer hat die Fortsetzung von G-001 beauftragt. Erste Scheibe: den
 Modellwechsel-Beleg korrigieren; `verify model_switch` prueft bisher nur den
 generischen Zustand des Menueknopfs. Der Gemini-Beleg vom 2026-09-06 zeigt
@@ -19,8 +19,18 @@ Laufzeitwechsel plus Restore; alte Trigger-PASS sind per Hash-Version ungueltig.
 Alle vier Gates gruen: `cargo test --locked --lib` (1331 passed, 1 ignored),
 striktes Clippy, no-default-features und TUI-Check. Die Tests legten eine
 unabhaengige Race in `benchmark::harvest` offen; die vier Tests teilen einen
-Testdatenordner und sind nun per Test-Mutex isoliert. Offene Folge: sechs
-Modellzellen erneut live messen, T-501 insgesamt bleibt offen.
+Testdatenordner und sind nun per Test-Mutex isoliert. Aktive Folge: sechs
+Modellzellen erneut live messen, T-501 insgesamt bleibt offen. Die Messung
+laeuft mit dem in PR #54 gemergten Roundtrip-Pruefer gegen die vorhandenen,
+bereits als eingeloggt diagnostizierten Browserprofile.
+
+Nachpruefung Qwen 2026-09-07: `verify --brain qwen --cap model_switch
+--headless` bestand nach einem Selektor-Fix fuer die Qwen-Menuebeschreibung:
+`Qwen3.7-Plus -> Qwen3.8-Max -> Qwen3.7-Plus` mit unabhaengigem Lesen und
+Rueckweg in einer Sitzung (5584 ms). Beleg
+`docs/proofs/T-501/model_reproof_qwen_2026-09-07f.log`; Matrix jetzt 104
+passed, 10 failed, 4 unreachable, 12 not_run. Die anderen fuenf auditbedingt
+offenen Modellzellen bleiben offen.
 
 **Aktualisiert:** 2026-09-05
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.

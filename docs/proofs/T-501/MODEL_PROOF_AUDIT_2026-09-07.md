@@ -53,6 +53,19 @@ Historische Artefakte und Notizen bleiben erhalten. Gesamtstand nach Audit:
 Dies dokumentiert strengere Evidenz, keinen gemessenen Provider-Ausfall.
 Die zehn roten Managed-Tool-Zellen und die restliche T-501-Abnahme bleiben offen.
 
+## Nachpruefung Qwen
+
+Der korrigierte Pruefer lief am 2026-09-07 gegen das vorhandene Qwen-Profil
+und bestand in einer Sitzung: `Qwen3.7-Plus` wurde zu `Qwen3.8-Max` gewechselt,
+unabhaengig als `Qwen3.8-Max` nachgelesen und danach zu `Qwen3.7-Plus`
+wiederhergestellt. Beleg: `model_reproof_qwen_2026-09-07f.log` (5584 ms).
+Qwens Listenzeile enthaelt hinter dem Titel eine Beschreibung, der klickbare
+Eintrag nur den Titel. Die Auswahl normalisiert genau dieses darstellungsbedingte
+Suffix in Hin- und Rueckweg; der PASS verlangt weiterhin, dass der nachgelesene
+Zustand zum ausgewaehlten Listeneintrag passt. Die Qwen-Zelle ist damit wieder
+`passed`; neuer Gesamtstand: **104 passed, 10 failed, 4 unreachable, 12 not_run
+= 130 Zellen**.
+
 ## Login-Gegenprobe
 
 Mit der bereits vorhandenen Binary im urspruenglichen Checkout wurde seriell

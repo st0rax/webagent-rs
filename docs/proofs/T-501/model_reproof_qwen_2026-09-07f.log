@@ -1,0 +1,3 @@
+[verify] 1 Brain(s), 1 Faehigkeit(en): model_switch
+[verify] qwen: Start
+[verify] qwen: model_switch = Passed (5584ms) — Laufzeit-Modellwahl "Qwen3.7-Plus" -> "Qwen3.8-Max The flagship of Qwen3.8 model delivering state-of-the-art performance." (Auswahl "Qwen3.8-Max"), beobachtet "Qwen3.8-Max"; Wechsel=true, Rueckweg=true

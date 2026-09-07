@@ -463,6 +463,12 @@ impl ModelMenuProbe for WebBrainBackend {
     }
 }
 
+/// Qwen appends an explanatory sentence to a menu row, while the clickable
+/// child has only the title. Other providers expose their runtime label as-is.
+fn runtime_menu_choice(label: &str) -> &str {
+    label.split_once(" The ").map_or(label, |(title, _)| title)
+}
+
 fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
     let normalize = |s: &str| {
         s.split_whitespace()
@@ -490,37 +496,49 @@ fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
         m.note = "Modellauswahl waehrend des Listenlesens geaendert; kein Wechsel versucht".into();
         return m;
     }
+    // A menu item can have a subtitle while its trigger carries just the
+    // selected title. Permit this exact prefix representation, but never a
+    // general substring (e.g. Pro vs Pro Max).
+    let option_matches_label = |option: &str, label: &str| {
+        let option = normalize(option);
+        let label = normalize(label);
+        option == label
+            || option
+                .strip_prefix(&label)
+                .is_some_and(|tail| tail.starts_with(' '))
+    };
     // A generic trigger such as "Model" is not a restorable selection.
-    // Match whole normalized labels, never substrings (e.g. Pro vs Pro Max).
     let unambiguous = |label: &str| {
         let needle = normalize(label);
         !needle.is_empty()
             && options
                 .iter()
-                .filter(|s| normalize(s).contains(&needle))
+                .filter(|s| option_matches_label(s, label))
                 .count()
                 == 1
     };
     let Some(original) = options
         .iter()
-        .find(|s| unambiguous(s) && normalize(s) == normalize(&before))
+        .find(|s| unambiguous(&before) && option_matches_label(s, &before))
     else {
         m.note = "Aktuelles Modell nicht eindeutig in der Laufzeitliste erkennbar; kein Wechsel versucht".into();
         return m;
     };
     let Some(target) = options.iter().find(|s| {
         // The existing UI selector accepts partial labels and reports
-        // 'already active' for substrings. Avoid pairs such as Pro/Pro Max
-        // in either direction until an exact-selection API is available.
-        let target = normalize(s);
-        let initial = normalize(original);
-        unambiguous(s) && !target.contains(&initial) && !initial.contains(&target)
+        // 'already active' for substrings. The original label must be a
+        // unique prefix of exactly one option before it is ever restored.
+        unambiguous(s) && !option_matches_label(s, &before)
     }) else {
         m.note =
             "Kein eindeutig waehlbares anderes Modell in der Laufzeitliste; Menue-Oeffnung ist kein Wechselbeleg".into();
         return m;
     };
-    let forward = probe.select(target);
+    // Qwen renders an explanatory "The ..." subtitle in the option list but
+    // exposes only the model title on the clickable child. Use that stable
+    // title in both directions; other providers keep their full runtime label.
+    let target_choice = runtime_menu_choice(target);
+    let forward = probe.select(target_choice);
     let after = probe.selected();
     m.after = after.clone();
     let changed = normalize(&after) != normalize(&before);
@@ -528,11 +546,11 @@ fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
         .as_ref()
         .is_ok_and(|label| !label.contains("bereits aktiv"))
         && changed
-        && normalize(&after) == normalize(target);
+        && option_matches_label(target, &after);
     // Even an error can occur after changing the UI. Restore whenever the
     // independently observed state differs from the original selection.
     let restoration = if changed {
-        probe.select(original)
+        probe.select(runtime_menu_choice(original))
     } else {
         Ok(before.clone())
     };
@@ -540,7 +558,7 @@ fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
     m.restored = Some(restored);
     m.proven = selected && restored;
     m.note = format!(
-        "Laufzeit-Modellwahl {before:?} -> {target:?}, beobachtet {after:?}; Wechsel={selected}, Rueckweg={restored}"
+        "Laufzeit-Modellwahl {before:?} -> {target:?} (Auswahl {target_choice:?}), beobachtet {after:?}; Wechsel={selected}, Rueckweg={restored}"
     );
     if let Err(e) = forward {
         m.note.push_str(&format!("; Auswahlfehler: {e}"));
@@ -1184,7 +1202,7 @@ mod tests {
                 return Err("restore failed".into());
             }
             if !self.ignore_switch {
-                self.current = model.into();
+                self.current = model.split(" The ").next().unwrap_or(model).into();
             }
             if self.report_noop && model != "Model A" {
                 return Ok(format!("{model} (bereits aktiv, kein Wechsel noetig)"));
@@ -1207,6 +1225,19 @@ mod tests {
         assert_eq!(m.after, "Model B");
         assert_eq!(m.restored, Some(true));
         assert_eq!(menu.calls, ["Model B", "Model A"]);
+    }
+
+    #[test]
+    fn model_roundtrip_accepts_unique_menu_subtitles() {
+        let mut menu = ModelFixture::new(&[
+            "Model A The current general model.",
+            "Model B The alternate general model.",
+        ]);
+        let m = model_roundtrip(&mut menu);
+        assert!(m.proven, "{m:?}");
+        assert_eq!(menu.calls.len(), 2);
+        assert_eq!(menu.calls[0], "Model B");
+        assert_eq!(menu.calls[1], "Model A");
     }
 
     #[test]

@@ -1,0 +1,46 @@
+[survey] qwen: oeffne Oberflaeche (headless=true)…
+  --- qwen: ROH (erste 5) ---
+      {"al":"Toggle sidebar","cls":"slide-switch","dt":"","ex":"#qwpcicon-sidebarLeft aria-label=Toggle sidebar sidebar-toggle-button","svg":true,"tag":"BUTTON","ti":"","tl":0,"tp":""}
+      {"al":"","cls":"user-menu-btn","dt":"","ex":"","svg":false,"tag":"BUTTON","ti":"","tl":15,"tp":"Alexander Krenz"}
+      {"al":"","cls":"qwen-chat-v2-btn qwen-chat-v2-btn-text qwen-chat-v2-btn-m qwen-chat-v2-btn-icon-only tempo","dt":"","ex":"#qwpcicon-temporaryDialogue qwen-chat-header-right","svg":true,"tag":"BUTTON","ti":"","tl":0,"tp":""}
+      {"al":"Scroll down","cls":"scroll-down-button ","dt":"","ex":"#qwpcicon-arrowDown2 aria-label=Scroll down message-input-container","svg":true,"tag":"BUTTON","ti":"","tl":0,"tp":""}
+      {"al":"Voice Input","cls":"record-btn","dt":"","ex":"#qwpcicon-mic aria-label=Voice Input aria-describedby=_r_6_ voice-input-button","svg":true,"tag":"BUTTON","ti":"","tl":0,"tp":""}
+      {"al":"","cls":"qwen-chat-v2-switch qwen-chat-v2-switch-black qwen-chat-v2-switch-s","dt":"","ex":"aria-checked=false","svg":false,"tag":"BUTTON","ti":"","tl":0,"tp":""}
+      {"al":"New Chat","cls":"sidebar-entry-fixed-list-content","dt":"","ex":"#qwpcicon-newDialogue aria-label=New Chat","svg":true,"tag":"DIV","ti":"","tl":8,"tp":"New Chat"}
+      {"al":"Select Model","cls":"wms-trigger wms-trigger--open","dt":"","ex":"#qwpcicon-down aria-haspopup=listbox aria-expanded=true aria-label=Select Model","svg":true,"tag":"DIV","ti":"","tl":12,"tp":"Qwen3.7-Plus"}
+      {"al":"Select Mode","cls":"mode-select-open","dt":"","ex":"#qwpcicon-addBold aria-label=Select Mode","svg":true,"tag":"DIV","ti":"","tl":0,"tp":""}
+      {"al":"Voice mode","cls":"omb__btn","dt":"","ex":"#qwpcicon-soundPlayingPCMedium aria-label=Voice mode aria-describedby=_r_8_","svg":true,"tag":"DIV","ti":"","tl":0,"tp":""}
+      {"al":"Upload files","cls":"","dt":"","ex":"aria-label=Upload files filesUpload","svg":false,"tag":"INPUT","ti":"","tl":0,"tp":""}
+      {"al":"Models","cls":"wms-list","dt":"","ex":"#qwpcicon-circleCheck-fill aria-label=Models","svg":true,"tag":"DIV","ti":"","tl":198,"tp":"Qwen3.7-Plus The high-performance large language m"}
+  --- qwen: counts = {"assistant_message":0,"composer":2,"login_indicator":2,"new_chat_button":2,"send_button":0,"stop_button":0} ---
+  --- qwen: media file_inputs=1, composer_roots=2 ---
+      file-input {"attrs":{"aria-label":"Upload files","id":"filesUpload"},"cls":"","disabled":false,"h":0,"parents":["DIV.mode-select","DIV.message-input-container-area","DIV."],"svg":false,"svgText":"","tag":"INPUT","text":"","w":0,"x":0,"y":0}
+  --- qwen: media controls=16 ---
+      media-control {"attrs":{"aria-label":"Toggle sidebar","id":"sidebar-toggle-button"},"cls":"slide-switch","disabled":false,"h":36,"parents":["DIV.sidebar-header-wrapper","DIV.sidebar-side.side-mobile-width","DIV.sidebar"],"svg":true,"svgText":"","tag":"BUTTON","text":"","w":36,"x":212,"y":12}
+      media-control {"attrs":{},"cls":"user-menu-btn","disabled":false,"h":30,"parents":["DIV.user-menu-container","DIV.qwen-chat-v2-dropdown-menu-trigger","DIV.qwen-chat-v2-dropdown-menu"],"svg":false,"svgText":"","tag":"BUTTON","text":"Alexander Krenz","w":224,"x":24,"y":846}
+      media-control {"attrs":{},"cls":"qwen-chat-v2-btn qwen-chat-v2-btn-text qwen-chat-v2-btn-m qwen-chat-v2-btn-icon-only temporary-chat-entry","disabled":false,"h":32,"parents":["DIV.header-right","DIV.header-content","HEADER.header-desktop"],"svg":true,"svgText":"","tag":"BUTTON","text":"","w":32,"x":1234,"y":14}
+      media-control {"attrs":{"aria-label":"Voice Input","id":"voice-input-button"},"cls":"record-btn","disabled":false,"h":32,"parents":["DIV.record-btn-container","DIV.message-input-right-button","DIV.message-input-container-area"],"svg":true,"svgText":"","tag":"BUTTON","text":"","w":32,"x":1062,"y":408}
+      media-control {"attrs":{"role":"switch"},"cls":"qwen-chat-v2-switch qwen-chat-v2-switch-black qwen-chat-v2-switch-s","disabled":false,"h":16,"parents":["DIV.wms-intro__battle","DIV.wms-intro__content","DIV.wms-intro"],"svg":false,"svgText":"","tag":"BUTTON","text":"","w":28,"x":599,"y":69}
+      media-control {"attrs":{"aria-label":"New Chat","role":"button"},"cls":"sidebar-entry-fixed-list-content","disabled":false,"h":36,"parents":["DIV.sidebar-entry-fixed-list","DIV.sidebar-side.side-mobile-width","DIV.sidebar"],"svg":true,"svgText":"","tag":"DIV","text":"New Chat","w":235,"x":13,"y":68}
+      media-control {"attrs":{"aria-label":"Select Model","role":"button"},"cls":"wms-trigger wms-trigger--open","disabled":false,"h":32,"parents":["SPAN.ant-dropdown-trigger.ant-dropdown-open","DIV.header-left","DIV.header-content"],"svg":true,"svgText":"","tag":"DIV","text":"Qwen3.7-Plus","w":141,"x":268,"y":14}
+      media-control {"attrs":{"aria-label":"Select Mode","role":"button"},"cls":"mode-select-open","disabled":false,"h":32,"parents":["DIV.qwen-chat-v2-dropdown-menu-trigger","DIV.qwen-chat-v2-dropdown-menu.mode-select-dropdown","DIV.mode-select"],"svg":true,"svgText":"","tag":"DIV","text":"","w":32,"x":400,"y":408}
+      media-control {"attrs":{"aria-label":"Voice mode","role":"button"},"cls":"omb__btn","disabled":false,"h":32,"parents":["DIV.qwen-chat-v2-dropdown-menu-trigger","DIV.qwen-chat-v2-dropdown-menu","DIV.omb"],"svg":true,"svgText":"","tag":"DIV","text":"","w":32,"x":1102,"y":408}
+      media-control {"attrs":{"aria-label":"Models","role":"listbox"},"cls":"wms-list","disabled":false,"h":152,"parents":["DIV.wms-popup","DIV.ant-dropdown.css-mncuj7.ant-dropdown-placement-bottomLeft","DIV."],"svg":true,"svgText":"","tag":"DIV","text":"Qwen3.7-Plus The high-performance large language model in the Qwen3.7 series, supporting text and mu","w":362,"x":277,"y":95}
+      media-control {"attrs":{},"cls":"folder-button","disabled":false,"h":24,"parents":["DIV.collapsible-full","DIV.","DIV.collapsible-full"],"svg":true,"svgText":"","tag":"DIV","text":"All chats","w":236,"x":12,"y":312}
+      media-control {"attrs":{},"cls":"folder-button-icon-container","disabled":false,"h":16,"parents":["DIV.folder-button","DIV.collapsible-full","DIV."],"svg":true,"svgText":"","tag":"DIV","text":"","w":16,"x":226,"y":316}
+      media-control {"attrs":{"role":"img"},"cls":"anticon folder-button-icon-container-icon","disabled":false,"h":16,"parents":["DIV.folder-button-icon-container","DIV.folder-button","DIV.collapsible-full"],"svg":true,"svgText":"","tag":"SPAN","text":"","w":16,"x":226,"y":316}
+      media-control {"attrs":{},"cls":"message-input-right-button","disabled":false,"h":32,"parents":["DIV.message-input-container-area","DIV.","DIV.message-input-container"],"svg":true,"svgText":"","tag":"DIV","text":"Fast","w":154,"x":980,"y":408}
+      media-control {"attrs":{},"cls":"qwen-chat-v2-dropdown-menu-select qwen-chat-v2-dropdown-menu-select-button qwen-chat-v2-dropdown-menu-select-size-m","disabled":false,"h":32,"parents":["DIV.qwen-chat-v2-dropdown-menu-trigger","DIV.qwen-chat-v2-dropdown-menu","DIV.qwen-thinking-selector"],"svg":false,"svgText":"","tag":"DIV","text":"Fast","w":74,"x":980,"y":408}
+      media-control {"attrs":{},"cls":"message-input-right-button-send","disabled":false,"h":32,"parents":["DIV.message-input-right-button","DIV.message-input-container-area","DIV."],"svg":true,"svgText":"","tag":"DIV","text":"","w":32,"x":1102,"y":408}
+  --- qwen: 10 beschriftete Elemente ---
+      Toggle sidebar
+      Alexander Krenz
+      Scroll down
+      Voice Input
+      New Chat | New Chat
+      Select Model | Qwen3.7-Plus
+      Select Mode
+      Voice mode
+      Upload files
+      Models | Qwen3.7-Plus The high-performance large language m
+  qwen       5 Optionen aus 12 Buttons: chat, new_chat, file_attach, voice_input, voice_mode
