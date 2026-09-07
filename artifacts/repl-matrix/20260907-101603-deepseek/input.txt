@@ -1,0 +1,3 @@
+Begin by reading START_HERE.md from the current GitHub checkout, then follow its exact links and order. Reconstruct the current live repository state from the checkout before acting. Claim the currently free task only if docs/TASKBOARD.json proves it is free. Then perform one small, real repository inspection and report the result. Finish only when the work is actually complete. Do not invent ownership, branches, tests, or repository state. If START_HERE.md or the repository cannot be read, report that as a terminal blocker instead of guessing.
+When the inspection is complete, terminate the run with a valid WEBAGENT/1 finish action; a prose-only final report is not a terminal signal.
+
