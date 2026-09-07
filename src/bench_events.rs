@@ -346,6 +346,9 @@ pub fn install_panic_hook() {
 
 /// Kappt einen Detailblock auf [`DETAIL_CAP_CHARS`] Zeichen, zeichensicher.
 fn cap_detail(raw: &str) -> String {
+    if std::env::var_os("WEBAGENT_FULL_LOG").is_some() {
+        return raw.to_string();
+    }
     if raw.len() <= DETAIL_CAP_CHARS {
         return raw.to_string();
     }

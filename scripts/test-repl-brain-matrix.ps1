@@ -1,6 +1,6 @@
 param(
     [string]$Binary = "$PSScriptRoot\..\target\x86_64-pc-windows-gnu\release\webagent.exe",
-    [string[]]$Brains = @('chatgpt','claude','deepseek','gemini','kimi','mistral','perplexity','qwen','zai'),
+    [string[]]$Brains = @('deepseek','gemini','mistral','perplexity','qwen','zai','kimi','claude','chatgpt'),
     [int]$TimeoutSeconds = 300,
     [string]$OutputDirectory = "$PSScriptRoot\..\artifacts\repl-matrix"
 )
@@ -33,7 +33,29 @@ foreach ($brain in $Brains) {
     # Wiki und keine alten Run-Episoden dürfen die Provider vergleichen.
     $args = "run --brain `"$brain`" --task $taskArg --no-memory"
     $p = Start-Process -FilePath $Binary -ArgumentList $args -WorkingDirectory $Workspace -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
-    if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
+    # Start-Process kann stdout/stderr zwar sicher in Dateien schreiben, zeigt
+    # sie mit RedirectStandard* aber nicht im sichtbaren Fenster. Die Dateien
+    # werden deshalb waehrend des Laufs inkrementell gespiegelt; so bleiben
+    # Transkript und Live-Diagnose identisch nachvollziehbar.
+    $outSeen = 0
+    $errSeen = 0
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while (-not $p.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+        foreach ($stream in @(@{ Path=$stdout; Prefix="[$brain stdout]"; Seen=[ref]$outSeen }, @{ Path=$stderr; Prefix="[$brain stderr]"; Seen=[ref]$errSeen })) {
+            if (Test-Path -LiteralPath $stream.Path) {
+                $raw = [IO.File]::ReadAllText($stream.Path)
+                if ($raw.Length -gt $stream.Seen.Value) {
+                    $delta = $raw.Substring($stream.Seen.Value)
+                    $stream.Seen.Value = $raw.Length
+                    foreach ($line in ($delta -split "`r?`n")) {
+                        if ($line.Length -gt 0) { Write-Host ("{0} {1}" -f $stream.Prefix,$line) }
+                    }
+                }
+            }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $p.HasExited) {
         $result.status = 'timeout'
         taskkill.exe /PID $p.Id /T /F | Out-Null
         $p.WaitForExit(5000)

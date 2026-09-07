@@ -27,7 +27,8 @@ fn main() {
     // `cfg(windows)` beschreibt hier den Host des Build-Skripts. Für einen
     // Windows-GNU-Crossbuild muss die Ressource anhand des Zieltripletts
     // aktiviert werden, sonst bleibt die EXE ohne Versionsinformationen.
-    if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    if target.contains("windows") {
         let mut resource = winres::WindowsResource::new();
         resource.set("FileDescription", "WebAgent");
         resource.set("ProductName", "WebAgent");
