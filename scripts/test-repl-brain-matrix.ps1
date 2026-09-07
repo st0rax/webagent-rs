@@ -37,7 +37,8 @@ foreach ($brain in $Brains) {
     $input = Join-Path $dir 'input.txt'
     $stdout = Join-Path $dir 'stdout.log'
     $stderr = Join-Path $dir 'stderr.log'
-    $result = [ordered]@{ brain=$brain; started=(Get-Date).ToUniversalTime().ToString('o'); timeout_seconds=$TimeoutSeconds; status='started' }
+    $startedAt = [DateTime]::UtcNow
+    $result = [ordered]@{ brain=$brain; started=$startedAt.ToString('o'); timeout_seconds=$TimeoutSeconds; status='started' }
     # Kein /exit vorab senden: das würde die REPL beenden, bevor der
     # Providerturn abgeschlossen ist, und einen falschen exit_0 vortäuschen.
     Set-Content -LiteralPath $input -Value ($task.Trim() + "`r`n") -Encoding utf8
@@ -55,6 +56,7 @@ foreach ($brain in $Brains) {
     # Transkript und Live-Diagnose identisch nachvollziehbar.
     $outSeen = 0
     $errSeen = 0
+    $lastHeartbeat = [DateTime]::UtcNow
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while (-not $p.HasExited -and [DateTime]::UtcNow -lt $deadline) {
         foreach ($stream in @(@{ Path=$stdout; Prefix="[$brain stdout]"; Seen=[ref]$outSeen }, @{ Path=$stderr; Prefix="[$brain stderr]"; Seen=[ref]$errSeen })) {
@@ -69,10 +71,18 @@ foreach ($brain in $Brains) {
                 }
             }
         }
+        if ([DateTime]::UtcNow -ge $lastHeartbeat.AddSeconds(10)) {
+            $age = [int]([DateTime]::UtcNow - $startedAt).TotalSeconds
+            Write-Host ("[{0} runner] process still alive after {1}s; waiting for first diagnostic event" -f $brain,$age)
+            $lastHeartbeat = [DateTime]::UtcNow
+        }
         Start-Sleep -Milliseconds 250
     }
     if (-not $p.HasExited) {
         $result.status = 'timeout'
+        $result.timeout_phase = 'no terminal process output before runner deadline'
+        Add-Content -LiteralPath $stderr -Value ("[runner] timeout brain={0} pid={1} phase=no-terminal-output" -f $brain,$p.Id)
+        Write-Host ("[{0} runner] TIMEOUT: no terminal process output before {1}s (pid {2})" -f $brain,$TimeoutSeconds,$p.Id)
         taskkill.exe /PID $p.Id /T /F | Out-Null
         $p.WaitForExit(5000)
     } else {
