@@ -11,6 +11,12 @@ use clap::{Args, Parser, Subcommand};
 #[command(version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("WEBAGENT_GIT_HASH"), ")"))]
 #[command(about = "Gehirnunabhängiger lokaler Agent (Rust-Port)", long_about = None)]
 pub struct Cli {
+    /// Verwaiste Runs beim Start nicht automatisch reconciliieren.
+    /// Der Check bleibt standardmäßig aktiv; dieses Flag ist für schnelle
+    /// Teststarts und laufende Diagnose-Sessions gedacht.
+    #[arg(long, global = true)]
+    pub skip_startup_reconcile: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

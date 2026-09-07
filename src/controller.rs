@@ -44,6 +44,31 @@ const MAX_NO_CHANGE_NUDGES: u32 = 2;
 /// was nie begonnen wurde, und kostet 10-35 s Roundtrip.
 const FAST_EMPTY_RESPONSE_CHARS: usize = 20;
 
+fn is_send_failure_turn(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|v| {
+            v.get("stage")
+                .and_then(serde_json::Value::as_str)
+                .map(|s| s == "send")
+        })
+        .unwrap_or(false)
+}
+
+fn is_provider_limit_response(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "daily usage limit",
+        "you have reached the daily",
+        "rate limit",
+        "capacity limit",
+        "too many requests",
+        "please wait 20 hours",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
 fn protocol_completes_unstable_response(
     generation_complete: bool,
     backend_status: &str,
@@ -93,6 +118,7 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     meta: Option<RunMeta>,
     comms: CommsStore,
     completed_actions: HashMap<String, String>,
+    duplicate_action_counts: HashMap<String, usize>,
     incomplete_retries: usize,
     /// In DIESEM Run tatsächlich ausgeführte Arbeits-Actions (shell/edit/write).
     /// `done` mit 0 Act-Steps ist verdächtig: gemini lieferte am 2026-07-20 eine
@@ -202,6 +228,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             meta: None,
             comms: CommsStore::new(data_dir.join("comms")),
             completed_actions: HashMap::new(),
+            duplicate_action_counts: HashMap::new(),
             incomplete_retries: 0,
             act_steps: 0,
             file_actions_tried: 0,
@@ -667,6 +694,34 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         for action in actions {
             if self.completed_actions.contains_key(&action.id) {
                 let stored = self.completed_actions[&action.id].clone();
+                let count = self
+                    .duplicate_action_counts
+                    .entry(action.id.clone())
+                    .and_modify(|n| *n += 1)
+                    .or_insert(1);
+                if *count >= 3 {
+                    if let Some(meta) = self.meta.as_mut() {
+                        meta.status = "action_loop".to_string();
+                        meta.extra.insert(
+                            "duplicate_action_id".to_string(),
+                            serde_json::Value::String(action.id.clone()),
+                        );
+                        meta.extra.insert(
+                            "duplicate_action_count".to_string(),
+                            serde_json::Value::Number((*count as u64).into()),
+                        );
+                    }
+                    let _ = transcript.append(
+                        "system",
+                        &format!(
+                            "action_loop duplicate_action_id={} count={}",
+                            action.id, count
+                        ),
+                        HashMap::new(),
+                    );
+                    finished = true;
+                    break;
+                }
                 match action.action_type {
                     protocol::ActionType::Shell
                     | protocol::ActionType::Edit
@@ -677,7 +732,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                              gespeicherte Observation wird erneut geliefert. \
                              Fuer einen korrigierten oder erneut versuchten Befehl \
                              ist eine neue, runweit eindeutige Action-ID erforderlich.\n{}",
-                            action.id, stored
+                            action.id,
+                            stored
+                                .lines()
+                                .filter(|line| {
+                                    !line
+                                        .trim_start()
+                                        .starts_with("[Terminal-Ausgabe action_id=")
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
                         ));
                     }
                     protocol::ActionType::Finish => {
@@ -898,6 +962,18 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 &format!(
                     "brain_unavailable: Oberflaeche lieferte keine Antwort — {}",
                     crate::char_prefix(response_text.trim(), 120)
+                ),
+                HashMap::new(),
+            );
+            return ("brain_unavailable".to_string(), true);
+        }
+
+        if is_provider_limit_response(response_text) {
+            let _ = transcript.append(
+                "system",
+                &format!(
+                    "provider_rate_limited: {}",
+                    crate::char_prefix(response_text.trim(), 160)
                 ),
                 HashMap::new(),
             );
@@ -1408,6 +1484,24 @@ per edit/write-Action pflegbar):\n",
 
         // Incomplete recovery initial
         while !turn.complete {
+            if is_send_failure_turn(&turn.text) {
+                let reason = serde_json::from_str::<serde_json::Value>(&turn.text)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("error")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_owned)
+                    })
+                    .unwrap_or_else(|| "brain send failed".to_string());
+                meta.status = "send_error".to_string();
+                meta.extra
+                    .insert("error".to_string(), reason.clone().into());
+                self.run_store.save(&meta).ok();
+                let _ =
+                    transcript.append("system", "run_finished status=send_error", HashMap::new());
+                self.finish_run_cleanup(opts);
+                return Ok(meta);
+            }
             if self.wall_expired() {
                 let effective_deadline = self
                     .wall_deadline_at
@@ -1516,6 +1610,27 @@ per edit/write-Action pflegbar):\n",
             }
 
             while response_text.is_empty() && !finished {
+                if is_send_failure_turn(&incomplete_response_text) {
+                    let reason =
+                        serde_json::from_str::<serde_json::Value>(&incomplete_response_text)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("error")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_owned)
+                            })
+                            .unwrap_or_else(|| "brain send failed".to_string());
+                    meta.status = "send_error".to_string();
+                    meta.extra.insert("error".to_string(), reason.into());
+                    self.run_store.save(&meta).ok();
+                    let _ = transcript.append(
+                        "system",
+                        "run_finished status=send_error",
+                        HashMap::new(),
+                    );
+                    self.finish_run_cleanup(opts);
+                    return Ok(meta);
+                }
                 if self.wall_expired() {
                     let effective_deadline = self
                         .wall_deadline_at
@@ -1583,8 +1698,9 @@ per edit/write-Action pflegbar):\n",
         if let Some(sm) = self.meta.take() {
             meta.conversation_ref = sm.conversation_ref;
             meta.completed_actions = sm.completed_actions;
-            // protocol_error / streak aus dem Helfer-Meta uebernehmen
-            if sm.status == "protocol_error" {
+            meta.cycles = meta.cycles.max(sm.cycles);
+            // Alle terminalen Helferstatus uebernehmen, nicht nur protocol_error.
+            if sm.status != "running" && !sm.status.is_empty() {
                 meta.status = sm.status.clone();
             }
             for (k, v) in sm.extra {
@@ -1592,7 +1708,7 @@ per edit/write-Action pflegbar):\n",
             }
         }
 
-        if meta.status != "protocol_error" {
+        if meta.status == "running" || meta.status.is_empty() {
             meta.status = if finished { "done" } else { "max_cycles" }.to_string();
         }
 

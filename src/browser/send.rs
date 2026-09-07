@@ -1226,7 +1226,11 @@ return best?best.slice(0,300):null;})()"#;
     where
         F: Fn(&Self, &str, &str) -> bool,
     {
-        let deadline = Instant::now() + Duration::from_secs(12);
+        // Ein fehlender Composer ist ein lokaler UI-/Controller-Fehler. Zwölf
+        // Sekunden pro Repair-Runde machten daraus die beobachteten Minuten-
+        // langen Leerlaufphasen. Der normale Provider-Response-Timeout greift
+        // erst nach erfolgreichem Senden; hier reichen 4 Sekunden.
+        let deadline = Instant::now() + Duration::from_secs(4);
         while Instant::now() < deadline {
             if fill(self, composer_js, text) {
                 return true;

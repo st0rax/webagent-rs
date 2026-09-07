@@ -98,12 +98,16 @@ fn run() -> i32 {
             "comms wired from main/CLI",
             None,
         );
-        let repaired = startup_reconcile_runs();
-        if !repaired.is_empty() {
-            eprintln!(
-                "[runs] {} verwaiste Run-Statuswerte repariert.",
-                repaired.len()
-            );
+        if cli.skip_startup_reconcile {
+            eprintln!("[runs] Startup-Reconcile übersprungen (--skip-startup-reconcile).");
+        } else {
+            let repaired = startup_reconcile_runs();
+            if !repaired.is_empty() {
+                eprintln!(
+                    "[runs] {} verwaiste Run-Statuswerte repariert.",
+                    repaired.len()
+                );
+            }
         }
         dispatch(command)
     };

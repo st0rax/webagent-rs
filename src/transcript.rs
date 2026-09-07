@@ -55,6 +55,13 @@ impl Transcript {
             .map_err(|e| format!("Fehler beim Öffnen von {}: {}", self.path.display(), e))?;
 
         writeln!(file, "{}", line).map_err(|e| format!("Fehler beim Schreiben: {}", e))?;
+        file.sync_all().map_err(|e| {
+            format!(
+                "Transcript konnte nicht dauerhaft synchronisiert werden ({}): {}",
+                self.path.display(),
+                e
+            )
+        })?;
 
         // Storax-Vorgabe (2026-08-01): die vollstaendige Brain-Konversation
         // (transcript.jsonl) gehoert in den TUI-Baum — das ist die maximale

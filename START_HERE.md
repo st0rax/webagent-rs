@@ -1,5 +1,22 @@
 # START_HERE — Einstieg für neue Entwickler (auch KI)
 
+## AKTUELLER ARBEITSSTAND — 2026-09-07
+
+Dieser Block ist vor dem historischen Projektkontext zu lesen und ist die
+maßgebliche Einstiegslage für laufende Arbeit:
+
+- Checkout: `C:\Users\storax\Documents\Codex\2026-08-27\roadmap-zusammenfassen-chatgpt-conversation-6a90695d-b1e4\work\webagent-github-audit-20260829`
+- Branch: `feat/durable-transaction-log`
+- Basis-HEAD: `505d416` vom 04.09.2026; Working Tree enthält absichtliche, noch uncommittete Änderungen.
+- Aktuelle Änderungen: SHA-256-verknüpfte, per `fsync` persistierte Run-Events in `src/run_store.rs`; REPL startet für normale Eingaben jeweils einen frischen Run. Resume ist nur noch explizit mit `/resume <run-id>` möglich.
+- Validierung: `cargo test --lib --no-default-features` — 1278 bestanden, 0 fehlgeschlagen, 1 ignoriert.
+- Windows-Binary: vollständiger Release-Build lokal erzeugt und geprüft. Artefakt: `C:\Users\storax\Documents\Codex\2026-09-07\ich\outputs\webagent-0.11.1-transaction-log-repl-fix-x86_64-pc-windows-gnu.exe`; SHA-256 `223BB4B8858B5A9AF48AA1583772D227D0317C67FC66F2D47EB1D6DEE414125F`.
+- Aktuelle Run-Ausgaben: `C:\Users\storax\Downloads\data\runs\20260907_004810_9669ec48`.
+
+Das Dokument `docs/HANDOVER_TO_CODEX_2026-08-25.md` ist historische Übergabe
+und keine aktuelle Wahrheitsquelle. Für den Einstieg gelten diese Datei und
+`docs/CURRENT_WORK.md`.
+
 > **Der dauerhafte Einstieg.** Du bist neu im Repo (Mensch oder Agent wie
 > ChatGPT-Codex, Claude Code, Grok, Manus)? Dann starte hier. Diese Datei
 > verweist auf das, was du konkret ansehen und tun sollst.

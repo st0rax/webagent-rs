@@ -17,6 +17,22 @@ pub fn current_workspace_root() -> Result<PathBuf, String> {
         .map_err(|e| format!("Arbeitsverzeichnis nicht ermittelbar: {e}"))?
         .canonicalize()
         .map_err(|e| format!("Arbeitsverzeichnis nicht kanonisierbar: {e}"))?;
+
+    // Portable Windows bundles keep the cloned repository below
+    // `source\\webagent-rs`, while the shell session starts at the bundle root.
+    // Shell actions already address that repository explicitly; native file
+    // actions must resolve the same root instead of silently using the bundle
+    // directory and reporting a false "Datei nicht gefunden".
+    for candidate in [
+        cwd.join("source").join("webagent-rs"),
+        cwd.join("webagent-rs"),
+    ] {
+        if candidate.join(".git").exists() {
+            return candidate
+                .canonicalize()
+                .map_err(|e| format!("Repo-Root nicht kanonisierbar: {e}"));
+        }
+    }
     for ancestor in cwd.ancestors() {
         if ancestor.join(".git").exists() {
             return ancestor

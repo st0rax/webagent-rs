@@ -1,5 +1,16 @@
 # Aktueller Arbeitsstand
 
+> **Aktualisiert 2026-09-07:** Der aktuelle Checkout arbeitet auf
+> `feat/durable-transaction-log` auf Basis von `505d416` (04.09.2026). Die
+> laufenden, noch uncommitteten Änderungen stehen in `src/run_store.rs`,
+> `src/repl/autonomous.rs`, `src/repl/mod.rs`, `Cargo.toml` und `Cargo.lock`.
+> Normale REPL-Aufgaben starten frisch; Resume erfolgt ausschließlich über
+> `/resume <run-id>`. Run-Events sind SHA-256-verknüpft und werden per `fsync`
+> dauerhaft geschrieben. `cargo test --lib --no-default-features` ist mit
+> 1278 bestanden, 0 fehlgeschlagen und 1 ignoriert durchgelaufen. Der
+> vollständige Windows-Release-Build ist lokal erzeugt; das Artefakt liegt in
+> `C:\Users\storax\Documents\Codex\2026-09-07\ich\outputs\webagent-0.11.1-transaction-log-repl-fix-x86_64-pc-windows-gnu.exe`.
+
 **Aktualisiert:** 2026-09-02
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 

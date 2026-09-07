@@ -546,11 +546,16 @@ impl ReplSession {
                 ReplAction::Continue
             }
             SlashCommand::Resume { id } => {
-                println!(
-                    "[resume] {}",
-                    id.as_deref()
-                        .unwrap_or("(letzter Lauf — in der Session-TUI)")
-                );
+                match id {
+                    Some(id) if !id.trim().is_empty() => {
+                        self.resume = Some(id.clone());
+                        println!("[resume] nächster Task setzt Run {} explizit fort.", id);
+                    }
+                    _ => {
+                        self.resume = None;
+                        println!("[resume] deaktiviert; der nächste Task startet frisch.");
+                    }
+                }
                 ReplAction::Continue
             }
             SlashCommand::Dashboard => {

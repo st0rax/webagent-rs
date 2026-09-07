@@ -195,6 +195,36 @@ pub fn strip_rendered_ui_controls(text: &str) -> String {
     }
 }
 
+/// Entfernt Provider-/WebView-Vorspann vor dem eigentlichen Protokollmarker.
+///
+/// Einige Provider (zuletzt zai) liefern vor einer ansonsten gültigen Raw-
+/// Action sichtbaren Reasoning-/UI-Text wie `Thought Process text`, `Copy` oder
+/// `1 2 3`. Dieser Vorspann gehört nicht zum Protokoll. Der unveränderte
+/// Providertext bleibt im Transcript; nur der Parser erhält die normalisierte
+/// Nutzlast ab dem ersten `WEBAGENT/1`-Marker.
+fn strip_leading_provider_text(text: &str) -> String {
+    let marker = "WEBAGENT/1";
+    let Some(index) = text.find(marker) else {
+        return text.to_string();
+    };
+    if index == 0 || text[..index].trim_start().starts_with(['{', '[']) {
+        return text.to_string();
+    }
+    let looks_like_provider_ui = text[..index].lines().any(|line| {
+        let line = line.trim();
+        line.eq_ignore_ascii_case("thought process text")
+            || line.eq_ignore_ascii_case("copy")
+            || line.eq_ignore_ascii_case("regenerate")
+            || line == "1 2 3"
+            || line.chars().all(|c| c == '\u{a0}' || c.is_whitespace())
+    });
+    if looks_like_provider_ui {
+        text[index..].to_string()
+    } else {
+        text.to_string()
+    }
+}
+
 /// Repariert die zwei Defekte, mit denen Brains reihenweise gültiges Protokoll
 /// zerschießen, sobald ein Shell-Befehl selbst Anführungszeichen enthält.
 ///
@@ -564,7 +594,9 @@ fn action_from_value(val: &Value) -> Result<Action, String> {
 }
 
 pub fn parse(response_text: &str) -> ParseResult {
-    let text = unwrap_protocol_code_fence(&strip_rendered_ui_controls(response_text));
+    let text = strip_leading_provider_text(&unwrap_protocol_code_fence(
+        &strip_rendered_ui_controls(response_text),
+    ));
 
     if text.is_empty() {
         return ParseResult::invalid("Leere Antwort.", text);

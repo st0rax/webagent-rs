@@ -23,4 +23,20 @@ fn main() {
     // Neu bauen, wenn sich der Commit-Stand ändert (nicht bei jedem Build).
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/index");
+
+    #[cfg(windows)]
+    {
+        let mut resource = winres::WindowsResource::new();
+        resource.set("FileDescription", "WebAgent");
+        resource.set("ProductName", "WebAgent");
+        resource.set("CompanyName", "st0rax");
+        resource.set("LegalCopyright", "MIT License");
+        resource.set("OriginalFilename", "webagent.exe");
+        resource.set("InternalName", "webagent");
+        resource.set("ProductVersion", env!("CARGO_PKG_VERSION"));
+        resource.set("FileVersion", env!("CARGO_PKG_VERSION"));
+        resource
+            .compile()
+            .expect("Windows version resource compilation failed");
+    }
 }

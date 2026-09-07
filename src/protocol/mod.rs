@@ -178,6 +178,16 @@ mod tests {
     }
 
     #[test]
+    fn provider_reasoning_prefix_before_raw_shell_is_ignored() {
+        let text = "Thought Process text\n1 2 3\nWEBAGENT/1\u{00a0}SHELL\nid: zai-1\ntimeout_seconds: 30\n---SCRIPT---\nGet-Location\n---END SCRIPT---";
+        let result = parse(text);
+        assert!(result.valid, "{}", result.error);
+        assert_eq!(result.actions.len(), 1);
+        assert_eq!(result.actions[0].id, "zai-1");
+        assert_eq!(result.actions[0].command, "Get-Location");
+    }
+
+    #[test]
     fn complete_message_envelope_is_not_truncated() {
         let text = "WEBAGENT/1 MESSAGE\nid: answer-2\ntext: Fertig und sofort verwertbar.";
         assert!(!is_possibly_truncated(text));

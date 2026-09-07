@@ -1,6 +1,7 @@
 //! Run-Persistenz.
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
@@ -572,11 +573,34 @@ impl RunStore {
             .map_err(|e| format!("Fehler beim Erstellen von {}: {}", run_dir.display(), e))?;
 
         let path = run_dir.join("events.jsonl");
-        let event = serde_json::json!({
+        let core = serde_json::json!({
             "timestamp": crate::now_rfc3339(),
             "run_id": &meta.run_id,
             "type": event_type,
             "payload": payload,
+        });
+
+        // events.jsonl is a durable audit chain, not a best-effort transcript.
+        // Each record commits its predecessor hash and its own canonical JSON
+        // hash. A torn write therefore becomes detectable instead of looking
+        // like a successful provider action.
+        let (seq, previous_hash) = last_event_chain_state(&path)?;
+        let canonical = serde_json::to_vec(&core)
+            .map_err(|e| format!("Fehler beim Serialisieren des Events: {}", e))?;
+        let mut hasher = Sha256::new();
+        hasher.update(previous_hash.as_bytes());
+        hasher.update(&canonical);
+        let hash = format!("{:x}", hasher.finalize());
+        let event = serde_json::json!({
+            "seq": seq,
+            "prev_hash": previous_hash,
+            "hash": hash,
+            "pid": std::process::id(),
+            "durability": "fsync",
+            "timestamp": core["timestamp"],
+            "run_id": core["run_id"],
+            "type": core["type"],
+            "payload": core["payload"],
         });
 
         let line = serde_json::to_string(&event)
@@ -590,6 +614,13 @@ impl RunStore {
 
         writeln!(file, "{}", line)
             .map_err(|e| format!("Fehler beim Schreiben in {}: {}", path.display(), e))?;
+        file.sync_all().map_err(|e| {
+            format!(
+                "Journal konnte nicht dauerhaft synchronisiert werden ({}): {}",
+                path.display(),
+                e
+            )
+        })?;
 
         // Storax-Vorgabe (2026-08-01): die Run-Events (meta_saved,
         // status_changed) spiegeln in den TUI-Baum, damit der Lebenszyklus
@@ -779,6 +810,77 @@ impl RunStore {
         );
         repaired
     }
+}
+
+/// Returns the next sequence number and the last committed hash. A malformed
+/// existing journal is rejected fail-closed; silently continuing would make
+/// the resulting audit trail unverifiable.
+fn last_event_chain_state(path: &Path) -> Result<(u64, String), String> {
+    if !path.exists() {
+        return Ok((1, "GENESIS".to_string()));
+    }
+    let content = fs::read_to_string(path).map_err(|e| {
+        format!(
+            "Fehler beim Lesen des Event-Journals {}: {}",
+            path.display(),
+            e
+        )
+    })?;
+    let mut expected_seq = 1u64;
+    let mut previous = "GENESIS".to_string();
+    for (index, raw) in content.lines().enumerate() {
+        let value: serde_json::Value = serde_json::from_str(raw).map_err(|e| {
+            format!(
+                "Ungültiger Journal-Eintrag {} in {}: {}",
+                index + 1,
+                path.display(),
+                e
+            )
+        })?;
+        let seq = value
+            .get("seq")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| format!("Journal-Eintrag {} ohne seq", index + 1))?;
+        let prev_hash = value
+            .get("prev_hash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("Journal-Eintrag {} ohne prev_hash", index + 1))?;
+        let hash = value
+            .get("hash")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("Journal-Eintrag {} ohne hash", index + 1))?;
+        if seq != expected_seq || prev_hash != previous {
+            return Err(format!(
+                "Journal-Kette beschädigt bei Eintrag {} in {}",
+                index + 1,
+                path.display()
+            ));
+        }
+        let core = serde_json::json!({
+            "timestamp": value["timestamp"],
+            "run_id": value["run_id"],
+            "type": value["type"],
+            "payload": value["payload"],
+        });
+        let canonical =
+            serde_json::to_vec(&core).map_err(|e| format!("Journal-Core ungültig: {e}"))?;
+        let mut hasher = Sha256::new();
+        hasher.update(previous.as_bytes());
+        hasher.update(&canonical);
+        let computed = format!("{:x}", hasher.finalize());
+        if hash != computed {
+            return Err(format!(
+                "Hash-Prüfung fehlgeschlagen bei Eintrag {} in {}",
+                index + 1,
+                path.display()
+            ));
+        }
+        expected_seq = expected_seq
+            .checked_add(1)
+            .ok_or_else(|| "Journal-Sequenz übergelaufen".to_string())?;
+        previous = hash.to_string();
+    }
+    Ok((expected_seq, previous))
 }
 
 /// Parst RFC3339-Zeitstempel zu Unix-Sekunden (UTC).
