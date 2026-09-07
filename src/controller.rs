@@ -1101,7 +1101,14 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // provider that has already completed those actions but omits the
         // optional protocol finish marker; that round was the source of the
         // DeepSeek/Gemini diagnostic timeouts.
-        if std::env::var_os("WEBAGENT_READONLY_RUN").is_some() && !observations.is_empty() {
+        let readonly_min_actions = std::env::var("WEBAGENT_READONLY_MIN_ACTIONS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(1);
+        if std::env::var_os("WEBAGENT_READONLY_RUN").is_some()
+            && !observations.is_empty()
+            && self.act_steps >= readonly_min_actions
+        {
             return (response_text.to_string(), true);
         }
 
@@ -1699,8 +1706,13 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             // a protocol finish action; once every requested action succeeded,
             // the controller has a complete, durable result and must not turn
             // that into a provider timeout. Normal work still requires finish.
+            let readonly_min_actions = std::env::var("WEBAGENT_READONLY_MIN_ACTIONS")
+                .ok()
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(1);
             let readonly_complete = std::env::var_os("WEBAGENT_READONLY_RUN").is_some()
                 && self.act_steps > 0
+                && self.act_steps >= readonly_min_actions
                 && self.file_actions_tried == 0;
             meta.status = if finished || readonly_complete {
                 "done"
