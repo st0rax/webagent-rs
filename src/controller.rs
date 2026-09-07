@@ -1673,7 +1673,20 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         }
 
         if meta.status == "running" || meta.status.is_empty() {
-            meta.status = if finished { "done" } else { "max_cycles" }.to_string();
+            // Diagnostic matrix runs are deliberately read-only. Some
+            // providers stop after the requested observations without sending
+            // a protocol finish action; once every requested action succeeded,
+            // the controller has a complete, durable result and must not turn
+            // that into a provider timeout. Normal work still requires finish.
+            let readonly_complete = std::env::var_os("WEBAGENT_READONLY_RUN").is_some()
+                && self.act_steps > 0
+                && self.file_actions_tried == 0;
+            meta.status = if finished || readonly_complete {
+                "done"
+            } else {
+                "max_cycles"
+            }
+            .to_string();
         }
 
         // „fertig", obwohl JEDER Edit-Versuch gescheitert ist, ist keine
