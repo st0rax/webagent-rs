@@ -52,3 +52,4 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-805 | Generische Probe mit bestehendem Capability-Proof-Gate |
 | T-806 | Taskabschluss mit verifizierten Run-Belegen und Crashschutz |
 | T-807 | Alle-Brains-Live-Abnahme und Windows-Release |
+| T-808 | Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery |

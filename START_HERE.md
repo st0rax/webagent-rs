@@ -9,7 +9,7 @@ maßgebliche Einstiegslage für laufende Arbeit:
 - Branch dieses Dokumentationsstands: `fix/T-501-model-proof`
 - HEAD dieses Dokumentationsstands: `e5202f6`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
 - Der aktuelle technische Fahrplan steht in `docs/BRAIN_UNIFICATION_PLAN.md`. Er vereinheitlicht Vertrag, Senden, Antwortstream, Profil-Lease, Probe/Proof und Taskabschluss für alle Brains.
-- Die Aufgaben T-801 bis T-807 sind im `docs/TASKBOARD.json` angelegt und abhängig voneinander. T-801 ist die erste umsetzbare Scheibe; ein Agent muss sie vor Änderungen claimen.
+- Die Aufgaben T-801 bis T-808 sind im `docs/TASKBOARD.json` angelegt und abhängig voneinander. T-801 und T-808 sind die ersten umsetzbaren Scheiben; ein Agent muss genau eine davon vor Änderungen claimen.
 - Historische Branch-, Build-, Binary- und Run-Angaben aus älteren Übergaben sind kein aktueller Beleg. Aktuelle Runs und Artefakte müssen im jeweiligen Run-Verzeichnis neu nachgewiesen werden.
 
 Das Dokument `docs/HANDOVER_TO_CODEX_2026-08-25.md` ist historische Übergabe
@@ -103,8 +103,9 @@ Arbeiten unter `C:\Users`.)
    auf `"done"` setzen und `done_at` ergänzen.
 
 **Aktuelle Vereinheitlichung:** Beginne mit `T-801` aus
-`docs/BRAIN_UNIFICATION_PLAN.md`; die Aufgaben `T-802`–`T-807` sind durch
-Abhängigkeiten gesperrt, bis ihre Vorgänger abgeschlossen sind. Ältere freie
+`docs/BRAIN_UNIFICATION_PLAN.md` oder beginne unabhängig mit `T-808` für das
+Run-Ledger. Die Aufgaben `T-802`–`T-807` sind durch Abhängigkeiten gesperrt,
+bis ihre Vorgänger abgeschlossen sind. Ältere freie
 Aufgaben dürfen nur nach erneutem Lesen der aktuellen JSON-Quelle übernommen
 werden.
 
@@ -113,6 +114,7 @@ werden.
 | ID | Phase | Aufgabe | Typ |
 |---|---|---|---|
 | T-801 | 8 | Gemeinsamer Brain-Vertrag und Konformitätsfixtures | code |
+| T-808 | 8 | Dauerhaftes Run-Ledger und Crash-Recovery | code |
 | T-802–T-807 | 8 | Vereinheitlichung, Proof und Live-Abnahme; abhängig | code |
 
 Vollständige Liste: `docs/TASKBOARD.md`.

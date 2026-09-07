@@ -448,7 +448,8 @@
       "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
       "depends_on": [
         "T-801",
-        "T-805"
+        "T-805",
+        "T-808"
       ]
     },
     {
@@ -469,8 +470,24 @@
         "T-803",
         "T-804",
         "T-805",
-        "T-806"
+        "T-806",
+        "T-808"
       ]
+    },
+    {
+      "id": "T-808",
+      "phase": "8",
+      "title": "Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 8 und Pflichtgates",
+      "dod": "Lueckenlose Mehrprozess-Eventkette, fail-closed Recovery und belegte Crash-Gegenproben",
+      "depends_on": []
     }
   ]
 }
