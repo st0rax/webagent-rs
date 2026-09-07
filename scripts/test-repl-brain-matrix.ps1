@@ -7,6 +7,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $env:WEBAGENT_FULL_LOG = '1'
+
+function Read-SharedText([string]$Path) {
+    $fs = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    try {
+        $reader = [IO.StreamReader]::new($fs)
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    } finally { $fs.Dispose() }
+}
+
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
 $Workspace = (Resolve-Path -LiteralPath (Join-Path (Split-Path $Binary) 'source\webagent-rs')).Path
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
@@ -43,7 +52,7 @@ foreach ($brain in $Brains) {
     while (-not $p.HasExited -and [DateTime]::UtcNow -lt $deadline) {
         foreach ($stream in @(@{ Path=$stdout; Prefix="[$brain stdout]"; Seen=[ref]$outSeen }, @{ Path=$stderr; Prefix="[$brain stderr]"; Seen=[ref]$errSeen })) {
             if (Test-Path -LiteralPath $stream.Path) {
-                $raw = [IO.File]::ReadAllText($stream.Path)
+                $raw = Read-SharedText $stream.Path
                 if ($raw.Length -gt $stream.Seen.Value) {
                     $delta = $raw.Substring($stream.Seen.Value)
                     $stream.Seen.Value = $raw.Length
