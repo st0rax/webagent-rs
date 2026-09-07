@@ -11,7 +11,7 @@ $env:WEBAGENT_FULL_LOG = '1'
 # Brain-Turn reichen Kopf und Ende einer grossen Shell-Ausgabe. Das verhindert,
 # dass ein Brain komplette Branchlisten oder JSON-Dateien in jeder Runde erneut
 # als Kontext verarbeitet.
-$env:WEBAGENT_MAX_OBSERVATION_CHARS = '6000'
+$env:WEBAGENT_MAX_OBSERVATION_CHARS = '1500'
 
 function Read-SharedText([string]$Path) {
     $fs = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
@@ -25,7 +25,7 @@ $Binary = (Resolve-Path -LiteralPath $Binary).Path
 $Workspace = (Resolve-Path -LiteralPath (Join-Path (Split-Path $Binary) 'source\webagent-rs')).Path
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $task = @'
-Begin by reading START_HERE.md from the current GitHub checkout, then follow its exact links and order. Reconstruct the current live repository state from the checkout before acting. Claim the currently free task only if docs/TASKBOARD.json proves it is free. Then perform one small, real repository inspection and report the result. Finish only when the work is actually complete. Do not invent ownership, branches, tests, or repository state. If START_HERE.md or the repository cannot be read, report that as a terminal blocker instead of guessing.
+Read START_HERE.md from the current GitHub checkout. Then perform exactly two bounded commands: (1) `Get-Content docs/TASKBOARD.json -Raw | ConvertFrom-Json | ForEach-Object { $_.tasks | Where-Object status -eq free | Select-Object id,title } | ConvertTo-Json -Compress` and (2) `git status --short --branch`. Do not run any other command, do not follow linked documents, do not dump complete files or branch lists, do not modify files, and do not claim a task. Report those two command results and terminate immediately with a valid WEBAGENT/1 finish action. If START_HERE.md or docs/TASKBOARD.json cannot be read, report that as a terminal blocker instead of guessing.
 When the inspection is complete, terminate the run with a valid WEBAGENT/1 finish action; a prose-only final report is not a terminal signal.
 '@
 
