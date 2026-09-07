@@ -7,6 +7,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
+$Workspace = (Resolve-Path -LiteralPath (Join-Path (Split-Path $Binary) 'source\webagent-rs')).Path
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $task = @'
 Begin by reading START_HERE.md from the current GitHub checkout, then follow its exact links and order. Reconstruct the current live repository state from the checkout before acting. Claim the currently free task only if docs/TASKBOARD.json proves it is free. Then perform one small, real repository inspection and report the result. Finish only when the work is actually complete. Do not invent ownership, branches, tests, or repository state. If START_HERE.md or the repository cannot be read, report that as a terminal blocker instead of guessing.
@@ -30,7 +31,7 @@ foreach ($brain in $Brains) {
     # Matrix-Tests starten bewusst aus einem leeren Kontext: kein Memory, kein
     # Wiki und keine alten Run-Episoden dürfen die Provider vergleichen.
     $args = "run --brain `"$brain`" --task $taskArg --no-memory"
-    $p = Start-Process -FilePath $Binary -ArgumentList $args -WorkingDirectory (Split-Path $Binary) -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+    $p = Start-Process -FilePath $Binary -ArgumentList $args -WorkingDirectory $Workspace -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
     if (-not $p.WaitForExit($TimeoutSeconds * 1000)) {
         $result.status = 'timeout'
         taskkill.exe /PID $p.Id /T /F | Out-Null

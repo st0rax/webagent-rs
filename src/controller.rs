@@ -1417,51 +1417,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             // den Antwortbeginn.
             let _ = self.brain.new_chat();
 
-            let memories: Vec<_> = if opts.suppress_memory_context {
-                Vec::new()
-            } else {
-                self.memory
-                    .search(&task, &["shared", brain_id], MEMORY_CONTEXT_LIMIT)
-                    .unwrap_or_default()
-            }
-            .into_iter()
-            // Alte Episoden können vollständige, normale Chat-Antworten
-            // enthalten. Eine darin dokumentierte Protokollverweigerung
-            // ist weder Wissen noch nützlicher Kontext, sondern erzeugt
-            // bei Web-Chats besonders leicht eine Verweigerungsschleife.
-            .filter(|episode| {
-                let text = episode.content.to_ascii_lowercase();
-                !text.contains("keinen tatsächlichen zugriff")
-                    && !text.contains("keine technische kopplung")
-                    && !text.contains("keinen zugriff auf dein lokales")
-            })
-            .collect();
-            let mut memory_context: String = memories
-                .iter()
-                .map(|e| format!("- [memory:{} {}] {}", e.id, e.kind, e.content))
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            // Wiki-Index als Langzeitwissen anhängen. Fehler (z.B. Verzeichnis
-            // nicht anlegbar) liefern einen leeren Block — sie dürfen den Run
-            // NIEMALS blockieren.
-            let wiki_block = if opts.suppress_memory_context {
-                String::new()
-            } else {
-                self.wiki.context_block(1500).unwrap_or_default()
-            };
-            if !wiki_block.trim().is_empty() {
-                if !memory_context.is_empty() {
-                    memory_context.push_str("\n\n");
-                }
-                memory_context.push_str(
-                    "Wiki-Index (Langzeitwissen; Seiten unter data/memory/wiki/, \
-per edit/write-Action pflegbar):\n",
-                );
-                memory_context.push_str(&wiki_block);
-            }
-
-            let memory_ids: Vec<u64> = memories.iter().map(|e| e.id).collect();
+            // Kaltstart-Vertrag: automatische Memory-/Wiki-Injektion ist
+            // abgeschaltet. Jeder Brain erhält ausschließlich den aktuellen
+            // Task und den live aus dem Checkout gelesenen Kontext.
+            let memory_context = String::new();
+            let memory_ids: Vec<u64> = Vec::new();
             meta.extra.insert(
                 "memory_ids".to_string(),
                 serde_json::Value::String(serde_json::to_string(&memory_ids).unwrap_or_default()),
