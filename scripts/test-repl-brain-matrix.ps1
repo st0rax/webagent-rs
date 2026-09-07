@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$env:WEBAGENT_FULL_LOG = '1'
 $Binary = (Resolve-Path -LiteralPath $Binary).Path
 $Workspace = (Resolve-Path -LiteralPath (Join-Path (Split-Path $Binary) 'source\webagent-rs')).Path
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
