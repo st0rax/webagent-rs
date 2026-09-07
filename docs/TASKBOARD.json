@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-05",
+  "as_of": "2026-09-07",
   "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "mirror": "docs/TASKBOARD.md",
   "contract": "docs/WORK_CONTRACT.md",
@@ -286,12 +286,78 @@
       "branch": "feature/T-501-model-reproof",
       "claimed_at": "2026-09-07",
       "done_at": null,
-      "proof_path": "docs/proofs/T-501/; Modell-Audit 2026-09-07 entwertete sechs Trigger-only-PASS. Qwen ist mit echtem Auswahl-/Nachlese-/Restore-Roundtrip erneut passed: model_reproof_qwen_2026-09-07f.log (5584 ms, Qwen3.7-Plus -> Qwen3.8-Max -> Qwen3.7-Plus). Matrix: 104/130 passed, 10 failed, 4 unreachable, 12 not_run. DoD weiterhin NICHT done.",
+      "proof_path": "docs/proofs/T-501/; Modell-Audit 2026-09-07 entwertete sechs Trigger-only-PASS. Qwen ist mit echtem Auswahl-/Nachlese-/Restore-Roundtrip erneut passed: model_reproof_qwen_2026-09-07f.log (5584 ms, Qwen3.7-Plus -> Qwen3.8-Max -> Qwen3.7-Plus). Venice als eingebautes Brain hinzugefuegt, aber ohne geerbten PASS: 13 Venice-Zellen not_run. Matrix: 104/143 passed, 10 failed, 4 unreachable, 25 not_run. DoD weiterhin NICHT done.",
       "verification": "Matrix-Zellen mit belegtem Zustand und Rueckweg; Qwen Modell-Roundtrip 2026-09-07",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
       "depends_on": [
         "T-202",
         "T-203"
+      ]
+    },
+    {
+      "id": "T-502",
+      "phase": "5",
+      "title": "Modellauswahl neu abnehmen: DeepSeek-Modus gleichwertig, Gemini/Kimi/Perplexity/Z.ai mit Rueckweg",
+      "type": "live-tests",
+      "suitable": [
+        "chatgpt-codex",
+        "local/opencode"
+      ],
+      "status": "planned",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": "docs/proofs/T-501/model_*_2026-09-07.*; Ausgangsstatus: Qwen passed, DeepSeek mode-equivalent in Implementierung, Gemini/Kimi/Perplexity/Z.ai offen.",
+      "verification": "Je Brain echter Wechsel, unabhaengige Zustandsmessung und Rueckweg in derselben Sitzung; DeepSeek vergleicht die Gesamtsignatur der Segmentleiste.",
+      "dod": "Kein Trigger-only-PASS. Eindeutiger Zustand oder exakte Segmentleisten-Signatur vor/nach/restore belegt; andernfalls not_run oder unreachable mit DOM-Beleg.",
+      "depends_on": [
+        "T-501"
+      ]
+    },
+    {
+      "id": "T-503",
+      "phase": "5",
+      "title": "Venice als Browser-Brain registrieren und alle 13 Venice-Matrixzellen abnehmen",
+      "type": "code+live-tests",
+      "suitable": [
+        "chatgpt-codex",
+        "local/opencode"
+      ],
+      "status": "planned",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": "docs/PROVIDER_VENICE.md; selectors/venice.json; docs/proofs/T-501/venice_*.",
+      "verification": "Eingebettete Selektoren, API-Katalog und Pi-Fallback per Test; danach diagnose, survey und getrennte Live-Proofs pro beworbener Zelle.",
+      "dod": "Kein Venice-PASS ohne aktuellen Browser-/Bridge-Beleg. Nicht gemessene Faehigkeiten bleiben not_run; Modalitaeten bleiben konservativ text-only.",
+      "depends_on": [
+        "T-501"
+      ]
+    },
+    {
+      "id": "T-504",
+      "phase": "5",
+      "title": "Expliziten lokalen Managed-Tools-Modus fuer die API-Bridge entwerfen, implementieren und messen",
+      "type": "design+code+live-tests",
+      "suitable": [
+        "chatgpt-codex",
+        "local/opencode"
+      ],
+      "status": "planned",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": "docs/MANAGED_TOOLS_LOCAL_MODE.md; src/tools.rs; src/api_bridge.rs; docs/proofs/T-501/managed_tools_*.",
+      "verification": "Opt-in-Vertrag, ToolRegistry-Policy, Exactly-once, Event-Formate und Negativtest des bisherigen Standardpfads; danach ein echter lokaler Tool-Loop.",
+      "dod": "Kein Tool-Schema, keine Systemanweisung und kein Tool-Call-Verlauf wird in fremde Browser-Chats injiziert. Standard-API bleibt bei Client-Tools fail-closed; nur der klar bezeichnete lokale Modus darf Tools ausfuehren und muss alle Entscheidungen protokollieren.",
+      "depends_on": [
+        "T-102",
+        "T-103",
+        "T-104",
+        "T-501"
       ]
     },
     {

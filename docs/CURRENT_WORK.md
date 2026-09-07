@@ -32,6 +32,29 @@ Rueckweg in einer Sitzung (5584 ms). Beleg
 passed, 10 failed, 4 unreachable, 12 not_run. Die anderen fuenf auditbedingt
 offenen Modellzellen bleiben offen.
 
+Venice ist am 2026-09-07 als eingebautes Browser-Brain hinzugekommen:
+`https://venice.ai/chat`, eigenes Profil, eingebettete Selektoren, API-Katalog
+und Pi-Fallback. Die Matrix wurde auf 11 Brains und 143 Zellen erweitert;
+Venice hat vor der Live-Abnahme 13 explizite `not_run`-Zellen. Gesamtstand:
+104 passed, 10 failed, 4 unreachable, 25 not_run. Details und die
+Evidenzgrenze stehen in `docs/PROVIDER_VENICE.md`.
+
+Dokumentationsstand vor weiteren Live-Laeufen: `T-502` beschreibt die
+Modell-Nachabnahme; DeepSeeks dauerhafte Segmentleiste gilt auf ausdrueckliche
+Nutzerentscheidung als modellaequivalent, muss aber weiterhin einen echten
+Signaturwechsel und den Rueckweg belegen. `T-503` trennt Venice von den alten
+Providerbelegen. `T-504` beschreibt den lokalen, explizit opt-in Managed-
+Tools-Modus; die zehn bestehenden roten Zellen bleiben bis zu dessen echter
+Abnahme rot. Keine dieser geplanten Aufgaben ist bereits geclaimt.
+
+**Einstieg fuer neue Entwickler:** Die verbindliche Claim-Quelle ist
+`docs/TASKBOARD.json`. Die drei Einstiegsspezifikationen
+`DEEPSEEK_MODEL_EQUIVALENT.md`, `PROVIDER_VENICE.md` und
+`MANAGED_TOOLS_LOCAL_MODE.md` begrenzen die Folgearbeit. Vor jeder Aenderung
+den eigenen Worktree und den aktuellen Commit pruefen; der fremde Checkout
+`feature/T-501-effort-rest` bleibt unangetastet. Ein Matrix-PASS braucht einen
+gespeicherten frischen Beleg, nicht nur eine Code- oder Dokumentationsaenderung.
+
 **Aktualisiert:** 2026-09-05
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 

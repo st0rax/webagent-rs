@@ -11,6 +11,15 @@ Matrix: **103 passed, 10 failed, 4 unreachable, 13 not_run**.
 Details und historische Teilbelege:
 [`MODEL_PROOF_AUDIT_2026-09-07.md`](proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md).
 
+**Provider-Erweiterung Venice (2026-09-07):** Venice ist als eingebautes
+Browser-Brain mit eigener Selektordatei, Profil und API-Katalog registriert.
+Die Matrix umfasst damit 11 Brains × 13 Bereiche = 143 Zellen. Venice bringt
+keinen geerbten PASS mit: seine 13 Zellen stehen bis zur Browser-Abnahme auf
+`not_run`. Einschließlich des inzwischen erfolgreich nachgeprüften Qwen-
+Roundtrips lautet der aktuelle Gesamtstand **104 passed, 10 failed, 4
+unreachable, 25 not_run**. Siehe
+[`PROVIDER_VENICE.md`](PROVIDER_VENICE.md).
+
 Aktuelle serielle Login-Diagnose: alle neun realen Brains `Ready`, eingeloggt,
 Composer vorhanden, keine Cloudflare-Blockade. T-501/G-001 bleiben offen.
 Die folgenden datierten Abschnitte beschreiben fruehere Zwischenstaende.

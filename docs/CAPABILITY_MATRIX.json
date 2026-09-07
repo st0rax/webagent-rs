@@ -12,6 +12,7 @@
     "perplexity",
     "qwen",
     "zai",
+    "venice",
     "auto"
   ],
   "areas": [
@@ -123,6 +124,17 @@
     },
     {
       "area": "webui_chat",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Venice wurde als eingebautes Browser-Brain registriert; UI-Selektoren und Live-Chat sind noch nicht abgenommen."
+    },
+    {
+      "area": "webui_chat",
       "brain": "auto",
       "status": "passed",
       "date": "2026-09-06",
@@ -224,6 +236,17 @@
       "latency_ms": 22188,
       "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-06b.json",
       "note": "FAIL 2026-09-05: Delta zeigt nur 'Thinking...', kein Content-Delta mit STREAM_OK."
+    },
+    {
+      "area": "streaming",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-Streaming-Beleg."
     },
     {
       "area": "streaming",
@@ -337,6 +360,17 @@
     },
     {
       "area": "model",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-Modellwahl-/Restore-Roundtrip-Beleg."
+    },
+    {
+      "area": "model",
       "brain": "auto",
       "status": "not_run",
       "date": null,
@@ -441,6 +475,17 @@
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
       "note": "unreachable: Brain waehrend Integration nicht live erreichbar; ehrlich unreachable"
+    },
+    {
+      "area": "effort",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-Aufwandspfad belegt."
     },
     {
       "area": "effort",
@@ -554,6 +599,17 @@
     },
     {
       "area": "attachment",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-Datei-/Bild-Upload belegt."
+    },
+    {
+      "area": "attachment",
       "brain": "auto",
       "status": "passed",
       "date": "2026-09-05",
@@ -661,6 +717,17 @@
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
       "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+    },
+    {
+      "area": "managed_tools",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-Managed-Tools-Verhalten gemessen."
     },
     {
       "area": "managed_tools",
@@ -774,6 +841,17 @@
     },
     {
       "area": "api_models",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": "webagent/venice",
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein API-Katalog-Beleg nach der Venice-Registrierung."
+    },
+    {
+      "area": "api_models",
       "brain": "auto",
       "status": "passed",
       "date": "2026-09-03",
@@ -884,6 +962,17 @@
     },
     {
       "area": "api_chat",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": "webagent/venice",
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-API-Chat-Roundtrip belegt."
+    },
+    {
+      "area": "api_chat",
       "brain": "auto",
       "status": "passed",
       "date": "2026-09-04",
@@ -984,6 +1073,17 @@
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/api_responses_zai_2026-09-05.json",
       "note": "PASS 2026-09-05: sauberes RESP_OK als finale Antwort (output_text.done); inkrementelle Deltas sind weiterhin Provider-Timestamps (mistral) bzw. sauber (zai)."
+    },
+    {
+      "area": "api_responses",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": "webagent/venice",
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-Responses-Roundtrip belegt."
     },
     {
       "area": "api_responses",
@@ -1097,6 +1197,17 @@
     },
     {
       "area": "health",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-zugeordneter Health-Beleg."
+    },
+    {
+      "area": "health",
       "brain": "auto",
       "status": "passed",
       "date": "2026-09-04",
@@ -1204,6 +1315,17 @@
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/sources_source_scope_deterministic_2026-09-04.json",
       "note": "T-602 deterministisch belegt (Unit-/API-Tests gruen 09-04): 7/7 source_scope + web_ui_api inkl. /api/sessions/{id}/source und /api/quelle; Standard=Browser-Chat, manuelle Quelle per Schalter, Persistenz nur mit --save, kein Auto-Routing. Brain-agnostische Session-Ebene; Live-Browser-Round-Trip nicht erneut gefahren."
+    },
+    {
+      "area": "sources",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-Source-Scope-Roundtrip belegt."
     },
     {
       "area": "sources",
@@ -1317,6 +1439,17 @@
     },
     {
       "area": "groups",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-Gruppenlauf belegt."
+    },
+    {
+      "area": "groups",
       "brain": "auto",
       "status": "passed",
       "date": "2026-09-04",
@@ -1424,6 +1557,17 @@
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/security_no_token_models_401_2026-09-04.json",
       "note": "Bridge-global: Token-Pflicht (401 ohne Bearer), unbekannte Modell-ID 404, Loopback-only (--bind 0.0.0.0 abgelehnt) - gemein fuer alle Brains"
+    },
+    {
+      "area": "security",
+      "brain": "venice",
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": null,
+      "selector_hash": null,
+      "latency_ms": null,
+      "proof_path": "docs/PROVIDER_VENICE.md",
+      "note": "Noch kein Venice-spezifischer Security-Roundtrip belegt."
     },
     {
       "area": "security",
