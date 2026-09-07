@@ -13,6 +13,9 @@ $env:WEBAGENT_FULL_LOG = '1'
 # als Kontext verarbeitet.
 $env:WEBAGENT_MAX_OBSERVATION_CHARS = '1500'
 $env:WEBAGENT_READONLY_RUN = '1'
+# Matrix-Abnahmen duerfen keinen fremden Shared-Browser/SingletonLock erben.
+# Jeder Provider startet mit seinem eigenen WebView-Profil.
+$env:WEBAGENT_USE_SHARED_BROWSER = '0'
 # Bei Matrix-Abnahmen jeden Sendefehler mit DOM-Details belegen: Composer,
 # Buttonzustand, Pointer-Events und Screenshotpfad landen im stderr-Log.
 $env:WEBAGENT_VERIFY_TRACE = '1'
