@@ -46,6 +46,9 @@ fn main() {
         // Linken des erzeugten COFF-Objekts stellt sicher, dass VERSIONINFO auch in
         // einer Release-EXE vorhanden ist.
         let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR missing");
-        println!("cargo:rustc-link-arg={}", std::path::Path::new(&out_dir).join("resource.o").display());
+        println!(
+            "cargo:rustc-link-arg={}",
+            std::path::Path::new(&out_dir).join("resource.o").display()
+        );
     }
 }

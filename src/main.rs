@@ -124,6 +124,8 @@ fn dispatch(command: Commands) -> i32 {
             headless,
             max_cycles,
             no_memory,
+            complete_task,
+            proof_path,
         } => cmd_run(
             &brain,
             &task,
@@ -131,6 +133,8 @@ fn dispatch(command: Commands) -> i32 {
             headless,
             max_cycles,
             no_memory,
+            complete_task.as_deref(),
+            proof_path.as_deref(),
         ),
 
         Commands::Login {

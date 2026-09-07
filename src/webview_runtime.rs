@@ -306,8 +306,11 @@ impl WebViewPageDriver {
         // the polling loop and left the process looking frozen; the controller
         // needs a bounded failure so it can record the event and terminate the
         // run (or recreate the view).
-        rx.recv_timeout(Duration::from_secs(8))
-            .map_err(|_| PageDriverError::Timeout("Page-Befehl timeout (WebView moeglicherweise eingefroren)".into()))?
+        rx.recv_timeout(Duration::from_secs(8)).map_err(|_| {
+            PageDriverError::Timeout(
+                "Page-Befehl timeout (WebView moeglicherweise eingefroren)".into(),
+            )
+        })?
     }
 }
 
