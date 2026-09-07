@@ -48,6 +48,14 @@ pub enum Commands {
         /// Aufgabe ohne alte Run-Episoden und Wiki-Kontext starten
         #[arg(long)]
         no_memory: bool,
+
+        /// Claim nach einem erfolgreichen Run nur mit vorhandenem Beleg abschließen
+        #[arg(long, requires = "proof_path")]
+        complete_task: Option<String>,
+
+        /// Konkrete Belegdatei für --complete-task
+        #[arg(long)]
+        proof_path: Option<std::path::PathBuf>,
     },
 
     /// Sichtbaren Browser oeffnen und auf manuellen Login warten (keine Zugangsdaten-Eingabe)

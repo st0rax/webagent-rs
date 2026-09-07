@@ -1317,7 +1317,9 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // Start Brain + Executor (persistent shell session for the whole run)
         if !opts.skip_brain_start {
             let _ = transcript.append("system", "startup_phase=brain.start begin", HashMap::new());
-            crate::bench_events::eprint_line(&format!("[controller] brain={brain_id} startup_phase=brain.start begin"));
+            crate::bench_events::eprint_line(&format!(
+                "[controller] brain={brain_id} startup_phase=brain.start begin"
+            ));
             self.brain.start(headless).inspect_err(|e| {
                 meta.status = "failed".to_string();
                 meta.extra.insert(
@@ -1340,9 +1342,15 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 );
             })?;
             let _ = transcript.append("system", "startup_phase=brain.start end", HashMap::new());
-            crate::bench_events::eprint_line(&format!("[controller] brain={brain_id} startup_phase=brain.start end"));
+            crate::bench_events::eprint_line(&format!(
+                "[controller] brain={brain_id} startup_phase=brain.start end"
+            ));
         }
-        let _ = transcript.append("system", "startup_phase=executor.start begin", HashMap::new());
+        let _ = transcript.append(
+            "system",
+            "startup_phase=executor.start begin",
+            HashMap::new(),
+        );
         self.executor.start();
         let _ = transcript.append("system", "startup_phase=executor.start end", HashMap::new());
 
@@ -1374,13 +1382,17 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             "Browser: Sitzung wird geprüft",
         );
         let _ = transcript.append("system", "startup_phase=ensure_ready begin", HashMap::new());
-        crate::bench_events::eprint_line(&format!("[controller] brain={brain_id} startup_phase=ensure_ready begin"));
+        crate::bench_events::eprint_line(&format!(
+            "[controller] brain={brain_id} startup_phase=ensure_ready begin"
+        ));
         let state = self
             .brain
             .ensure_ready(ready_timeout)
             .unwrap_or(crate::brain::SessionState::Error);
         let _ = transcript.append("system", "startup_phase=ensure_ready end", HashMap::new());
-        crate::bench_events::eprint_line(&format!("[controller] brain={brain_id} startup_phase=ensure_ready end state={state:?}"));
+        crate::bench_events::eprint_line(&format!(
+            "[controller] brain={brain_id} startup_phase=ensure_ready end state={state:?}"
+        ));
         let _ = transcript.append(
             "system",
             &format!("session_state={:?}", state),

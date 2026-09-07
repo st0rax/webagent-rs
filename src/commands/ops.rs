@@ -488,6 +488,8 @@ pub fn cmd_run(
     headless: bool,
     max_cycles: u32,
     no_memory: bool,
+    complete_task: Option<&str>,
+    proof_path: Option<&std::path::Path>,
 ) -> i32 {
     use webagent::browser::WebBrainBackend;
     use webagent::controller::{AgentController, RunOptions};
@@ -524,6 +526,25 @@ pub fn cmd_run(
                 meta.status, meta.run_id, meta.cycles
             );
             if meta.status == "done" {
+                if let Some(task_id) = complete_task {
+                    let proof = proof_path.expect("clap enforces --proof-path");
+                    let board = std::path::Path::new("docs/TASKBOARD.json");
+                    if let Err(e) = webagent::taskboard::complete_claim(
+                        board,
+                        task_id,
+                        "chatgpt-codex",
+                        &branch_name(),
+                        proof,
+                    ) {
+                        eprintln!("[run] Taskabschluss verweigert: {e}");
+                        return 1;
+                    }
+                    println!(
+                        "[run] task={} status=done proof={}",
+                        task_id,
+                        proof.display()
+                    );
+                }
                 0
             } else {
                 1
@@ -534,6 +555,17 @@ pub fn cmd_run(
             1
         }
     }
+}
+
+fn branch_name() -> String {
+    std::process::Command::new("git")
+        .args(["branch", "--show-current"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_default()
 }
 
 pub fn cmd_login_all(timeout_secs: u64, force: bool, parallel: usize) -> i32 {
