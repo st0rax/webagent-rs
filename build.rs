@@ -15,7 +15,7 @@ fn git(args: &[&str]) -> Option<String> {
 
 fn main() {
     let hash = git(&["rev-parse", "--short=9", "HEAD"]).unwrap_or_else(|| "unknown".into());
-    let dirty = git(&["status", "--porcelain"])
+    let dirty = git(&["status", "--porcelain", "--untracked-files=no"])
         .map(|s| !s.is_empty())
         .unwrap_or(false);
     let stamp = if dirty { format!("{hash}+dirty") } else { hash };
