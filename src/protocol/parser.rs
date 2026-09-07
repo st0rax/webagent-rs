@@ -205,6 +205,24 @@ pub fn strip_rendered_ui_controls(text: &str) -> String {
 fn strip_leading_provider_text(text: &str) -> String {
     let marker = "WEBAGENT/1";
     let Some(index) = text.find(marker) else {
+        // Chromium/WebView can expose the provider's rendered language label
+        // as a private-use glyph followed by `text` before a raw JSON
+        // envelope. It is transport chrome, not user content. Strip it only
+        // when the first JSON value is intact and the prefix contains no
+        // ordinary prose.
+        let json_start = text.find(['{', '[']);
+        if let Some(index) = json_start {
+            let prefix = text[..index].trim();
+            let prefix_is_ui = prefix.lines().map(str::trim).all(|line| {
+                line.is_empty()
+                    || line.eq_ignore_ascii_case("text")
+                    || line.eq_ignore_ascii_case("json")
+                    || line.chars().all(|c| c.is_control() || !c.is_ascii())
+            });
+            if prefix_is_ui && serde_json::from_str::<serde_json::Value>(&text[index..]).is_ok() {
+                return text[index..].to_string();
+            }
+        }
         return text.to_string();
     };
     if index == 0 || text[..index].trim_start().starts_with(['{', '[']) {
@@ -910,5 +928,18 @@ mod edit_batch_tests {
         assert!(!parse(raw).valid);
         let json = r#"Ich würde so antworten: {"protocol":"webagent/1","actions":[{"id":"x","type":"finish"}]}"#;
         assert!(!parse(json).valid);
+    }
+}
+
+#[cfg(test)]
+mod provider_prefix_tests {
+    use super::*;
+
+    #[test]
+    fn private_use_text_label_before_json_is_removed() {
+        let raw = "\u{e056}\ntext\n{\"protocol\":\"webagent/1\",\"actions\":[{\"id\":\"x\",\"type\":\"message\",\"text\":\"ok\"}]}";
+        let parsed = parse(raw);
+        assert!(parsed.valid, "{}", parsed.error);
+        assert_eq!(parsed.actions[0].id, "x");
     }
 }
