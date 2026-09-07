@@ -6,12 +6,11 @@ Dieser Block ist vor dem historischen Projektkontext zu lesen und ist die
 maßgebliche Einstiegslage für laufende Arbeit:
 
 - Checkout: `C:\Users\storax\Documents\Codex\2026-08-27\roadmap-zusammenfassen-chatgpt-conversation-6a90695d-b1e4\work\webagent-github-audit-20260829`
-- Branch: `feat/durable-transaction-log`
-- Basis-HEAD: `505d416` vom 04.09.2026; Working Tree enthält absichtliche, noch uncommittete Änderungen.
-- Aktuelle Änderungen: SHA-256-verknüpfte, per `fsync` persistierte Run-Events in `src/run_store.rs`; REPL startet für normale Eingaben jeweils einen frischen Run. Resume ist nur noch explizit mit `/resume <run-id>` möglich.
-- Validierung: `cargo test --lib --no-default-features` — 1278 bestanden, 0 fehlgeschlagen, 1 ignoriert.
-- Windows-Binary: vollständiger Release-Build lokal erzeugt und geprüft. Artefakt: `C:\Users\storax\Documents\Codex\2026-09-07\ich\outputs\webagent-0.11.1-transaction-log-repl-fix-x86_64-pc-windows-gnu.exe`; SHA-256 `223BB4B8858B5A9AF48AA1583772D227D0317C67FC66F2D47EB1D6DEE414125F`.
-- Aktuelle Run-Ausgaben: `C:\Users\storax\Downloads\data\runs\20260907_004810_9669ec48`.
+- Branch dieses Dokumentationsstands: `fix/T-501-model-proof`
+- HEAD dieses Dokumentationsstands: `e5202f6`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
+- Der aktuelle technische Fahrplan steht in `docs/BRAIN_UNIFICATION_PLAN.md`. Er vereinheitlicht Vertrag, Senden, Antwortstream, Profil-Lease, Probe/Proof und Taskabschluss für alle Brains.
+- Die Aufgaben T-801 bis T-807 sind im `docs/TASKBOARD.json` angelegt und abhängig voneinander. T-801 ist die erste umsetzbare Scheibe; ein Agent muss sie vor Änderungen claimen.
+- Historische Branch-, Build-, Binary- und Run-Angaben aus älteren Übergaben sind kein aktueller Beleg. Aktuelle Runs und Artefakte müssen im jeweiligen Run-Verzeichnis neu nachgewiesen werden.
 
 Das Dokument `docs/HANDOVER_TO_CODEX_2026-08-25.md` ist historische Übergabe
 und keine aktuelle Wahrheitsquelle. Für den Einstieg gelten diese Datei und
@@ -38,6 +37,7 @@ lokale **Web-UI**, **OpenAI-kompatibler Endpunkt**, **Managed Tools** — siehe
 | 3 | `docs/WEB_UI_API_TOOL_RESET.md` | **Verbindlicher Umsetzungsplan** (Phasen 0–7) |
 | 4 | `docs/WORK_CONTRACT.md` | **Arbeitsvertrag** — verbindlich für jeden, der eine Aufgabe übernimmt |
 | 4 | `docs/TASKBOARD.md` | Aufgabentafel (Spiegel); Claim-Quelle ist `docs/TASKBOARD.json` |
+| 4a | `docs/BRAIN_UNIFICATION_PLAN.md` | Aktueller gemeinsamer Brain-Vertrag, Reihenfolge, Abnahme und Befundgrenzen |
 | 5 | `docs/WEB_UI_API_TOOL_RESET_STATUS.md` | Aktueller Umsetzungsstand / Handover |
 | 6 | `docs/CAPABILITY_MATRIX.json` | Beleg-Matrix (130 Zellen, Status je Fähigkeit) |
 
@@ -102,16 +102,18 @@ Arbeiten unter `C:\Users`.)
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
    auf `"done"` setzen und `done_at` ergänzen.
 
-**Gerade offen für dich:** `T-201`, `T-202`,
-`T-203`, `T-301`, `T-302`, `T-401`–`T-701` — freie Aufgaben ohne `owner`.
+**Aktuelle Vereinheitlichung:** Beginne mit `T-801` aus
+`docs/BRAIN_UNIFICATION_PLAN.md`; die Aufgaben `T-802`–`T-807` sind durch
+Abhängigkeiten gesperrt, bis ihre Vorgänger abgeschlossen sind. Ältere freie
+Aufgaben dürfen nur nach erneutem Lesen der aktuellen JSON-Quelle übernommen
+werden.
 
-**Freie Aufgaben auf einen Blick (Stand heute):**
+**Neue freie Aufgaben auf einen Blick:**
 
 | ID | Phase | Aufgabe | Typ |
 |---|---|---|---|
-| T-201 | 2 | Eingebettete Assets + Loopback-Serverstart | code |
-| T-202 | 2 | Endpunkte: Session/Capability/Health/Upload/Chat/Stop/Event | code |
-| T-701 | 7 | Gruppen-Modus (2–6 Brains, Runden, @Brain, Leader) | code |
+| T-801 | 8 | Gemeinsamer Brain-Vertrag und Konformitätsfixtures | code |
+| T-802–T-807 | 8 | Vereinheitlichung, Proof und Live-Abnahme; abhängig | code |
 
 Vollständige Liste: `docs/TASKBOARD.md`.
 
