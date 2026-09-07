@@ -754,9 +754,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
             match action.action_type {
                 protocol::ActionType::Finish => {
-                    if let Some(nudge) = self.no_change_nudge() {
-                        observations.push(nudge);
-                        continue;
+                    if std::env::var_os("WEBAGENT_READONLY_RUN").is_none() {
+                        if let Some(nudge) = self.no_change_nudge() {
+                            observations.push(nudge);
+                            continue;
+                        }
                     }
                     finished = true;
                     let mut extra = HashMap::new();
@@ -807,9 +809,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         );
                     }
                     self.record_completed_action(&action.id, &action.text);
-                    if let Some(nudge) = self.no_change_nudge() {
-                        observations.push(nudge);
-                        continue;
+                    if std::env::var_os("WEBAGENT_READONLY_RUN").is_none() {
+                        if let Some(nudge) = self.no_change_nudge() {
+                            observations.push(nudge);
+                            continue;
+                        }
                     }
                     finished = true;
                     break;

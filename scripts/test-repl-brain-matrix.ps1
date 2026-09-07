@@ -12,6 +12,7 @@ $env:WEBAGENT_FULL_LOG = '1'
 # dass ein Brain komplette Branchlisten oder JSON-Dateien in jeder Runde erneut
 # als Kontext verarbeitet.
 $env:WEBAGENT_MAX_OBSERVATION_CHARS = '1500'
+$env:WEBAGENT_READONLY_RUN = '1'
 
 function Read-SharedText([string]$Path) {
     $fs = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
