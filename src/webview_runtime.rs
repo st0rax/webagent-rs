@@ -194,7 +194,11 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Launch("WebView-Thread beendet".into()))?;
-        let (_view_id, driver) = self.wake_and_wait(resp_rx, Duration::from_secs(60))?;
+        // `start()` has a bounded navigation timeout as well.  A longer
+        // internal wait here used to let a wedged WebView outlive the runner's
+        // deadline, leaving only a black window and no terminal controller
+        // event in the transcript.
+        let (_view_id, driver) = self.wake_and_wait(resp_rx, Duration::from_secs(15))?;
         Ok(driver)
     }
 
