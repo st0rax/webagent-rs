@@ -47,7 +47,7 @@ foreach ($brain in $Brains) {
     $taskArg = '"' + $task.Trim().Replace('"', '\"') + '"'
     # Matrix-Tests starten bewusst aus einem leeren Kontext: kein Memory, kein
     # Wiki und keine alten Run-Episoden dürfen die Provider vergleichen.
-    $args = "run --brain `"$brain`" --task $taskArg --no-memory"
+    $args = "run --brain `"$brain`" --task $taskArg --no-memory --max-cycles 3"
     $p = Start-Process -FilePath $Binary -ArgumentList $args -WorkingDirectory $Workspace -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
     # Start-Process kann stdout/stderr zwar sicher in Dateien schreiben, zeigt
     # sie mit RedirectStandard* aber nicht im sichtbaren Fenster. Die Dateien
