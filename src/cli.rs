@@ -25,8 +25,8 @@ pub struct Cli {
 pub enum Commands {
     /// Autonomen Run starten
     Run {
-        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
-        #[arg(long, default_value = "chatgpt")]
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek); `auto` waehlt je Aufgabe
+        #[arg(long, default_value = "auto")]
         brain: String,
 
         /// Benutzeraufgabe
@@ -58,6 +58,47 @@ pub enum Commands {
         proof_path: Option<std::path::PathBuf>,
     },
 
+    /// Einheitliche Eingabe: autonomer Run (Default) oder Konversations-Einzelturn.
+    /// Nachfolger von `run`/`relay` (beide bleiben kompatible Aliasse).
+    Ask {
+        /// Benutzeraufgabe
+        #[arg(long)]
+        task: String,
+
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek); `auto` waehlt je Aufgabe
+        #[arg(long, default_value = "auto")]
+        brain: String,
+
+        /// Autonome Aufgabe (Default): Controller + Shell, bis `status=done`.
+        /// Gegenstueck zu --chat.
+        #[arg(long)]
+        auto: bool,
+
+        /// Reine Konversation: ein send+wait-Turn, kein Controller/Shell
+        #[arg(long, conflicts_with = "auto")]
+        chat: bool,
+
+        /// Run-ID fortsetzen (nur --auto)
+        #[arg(long)]
+        resume: Option<String>,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+
+        /// Maximale Anzahl an Zyklen (nur --auto)
+        #[arg(long, default_value = "100")]
+        max_cycles: u32,
+
+        /// Aufgabe ohne alte Run-Episoden und Wiki-Kontext starten (nur --auto)
+        #[arg(long)]
+        no_memory: bool,
+
+        /// Maschinenlesbare Ausgabe (nur --chat)
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Sichtbaren Browser oeffnen und auf manuellen Login warten (keine Zugangsdaten-Eingabe)
     Login {
         /// Brain-Backend (z.B. chatgpt, claude, deepseek)
@@ -79,6 +120,29 @@ pub enum Commands {
         /// des Menschen; das Fenster bleibt offen.
         #[arg(long)]
         auto: bool,
+    },
+
+    /// Offscreen-WebView eines laufenden Brains onscreen holen (Login/Captcha).
+    /// Spricht bevorzugt die lokale Web-UI/API (`127.0.0.1:8788`) an.
+    Show {
+        /// Brain-ID (z.B. chatgpt)
+        #[arg(long)]
+        brain: String,
+
+        /// Port der laufenden Web-UI / API-Bridge (Default 8788)
+        #[arg(long, default_value_t = 8788)]
+        port: u16,
+    },
+
+    /// Onscreen-WebView wieder offscreen parken.
+    Hide {
+        /// Brain-ID (z.B. chatgpt)
+        #[arg(long)]
+        brain: String,
+
+        /// Port der laufenden Web-UI / API-Bridge (Default 8788)
+        #[arg(long, default_value_t = 8788)]
+        port: u16,
     },
 
     /// Alle Brains nacheinander einloggen (canonical profiles/<brain>).
@@ -110,8 +174,8 @@ pub enum Commands {
 
     /// Interaktive REPL: mehrere Aufgaben nacheinander gegen dasselbe Brain
     Repl {
-        /// Brain-Backend (z.B. chatgpt, claude, deepseek)
-        #[arg(long, default_value = "chatgpt")]
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek); `auto` waehlt das Default-Brain
+        #[arg(long, default_value = "auto")]
         brain: String,
 
         /// Headless-Browser (Standard: sichtbar)
@@ -238,9 +302,9 @@ pub enum Commands {
         /// Selektor-Schluessel des Bereichs
         #[arg(long)]
         key: String,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Segmentleiste umschalten (alle Stellungen sichtbar, z.B. deepseeks
@@ -255,9 +319,9 @@ pub enum Commands {
         /// Selektor-Schluessel der Stellungen
         #[arg(long, default_value = "mode_option")]
         options: String,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Beliebiges Aufklappmenue lesen oder waehlen (z.B. Denkstufe)
@@ -274,9 +338,9 @@ pub enum Commands {
         /// Zu waehlender Eintrag (Teilstring); ohne Angabe wird nur gelistet
         #[arg(long)]
         set: Option<String>,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Eine Option umschalten (z.B. reasoning_toggle, web_search_toggle) und
@@ -288,9 +352,9 @@ pub enum Commands {
         /// Selektor-Schluessel der Option
         #[arg(long)]
         option: String,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Bilderwand: alle Brains nebeneinander in einem Fenster, wie mehrere
@@ -316,9 +380,9 @@ pub enum Commands {
         /// Zu waehlendes Modell (Teilstring genuegt); ohne Angabe wird nur gelistet
         #[arg(long)]
         set: Option<String>,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Nimmt die Oberflaeche eines Brains als PNG auf (Vorlage fuer die
@@ -334,9 +398,9 @@ pub enum Commands {
         /// `model_menu` — ein geschlossenes Menue zeigt seine Eintraege nicht
         #[arg(long)]
         open: Option<String>,
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Vermisst die Oberflaeche eines Brains im echten DOM und traegt die
@@ -356,9 +420,9 @@ pub enum Commands {
         #[arg(long)]
         dump: bool,
 
-        /// Sichtbar statt headless
+        /// Headless ausfuehren (Default: sichtbar)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
 
     /// Oberflaechen-Analyse wie die Link-Analyse in JDownloader: oeffnet eine
@@ -411,9 +475,10 @@ pub enum Commands {
         /// Antwort ab.
         #[arg(long)]
         stop_diff: bool,
-        /// Sichtbar statt headless (beim ersten Mal fuer den Login noetig)
+        /// Headless ausfuehren (Default: sichtbar; beim ersten Mal fuer den Login
+        /// sichtbar lassen)
         #[arg(long)]
-        visible: bool,
+        headless: bool,
     },
     Quests {
         /// Maschinenlesbar statt Konsolenansicht
@@ -444,7 +509,8 @@ pub enum Commands {
 
     /// Single send+wait turn (bot2bot bridge debugging)
     Relay {
-        #[arg(long)]
+        /// Brain-Backend (z.B. chatgpt, claude, deepseek); `auto` waehlt je Aufgabe
+        #[arg(long, default_value = "auto")]
         brain: String,
         #[arg(long, default_value = "")]
         message: String,
@@ -538,19 +604,42 @@ pub enum Commands {
     },
 
     /// Lokale Web-UI (eingebettete Assets, Loopback). Default ohne Subcommand.
+    /// `--api` aktiviert die OpenAI-/Anthropic-kompatible `/v1/*`-Rolle auf
+    /// demselben Port (ein Listener, zwei Rollen; 8787 bleibt als Dead-Zahl
+    /// nur im Doku-Archiv).
     #[command(name = "ui")]
     Ui {
         /// Bind-Adresse (nur Loopback)
         #[arg(long, default_value = "127.0.0.1")]
         bind: String,
 
-        /// Port (API-Bridge bleibt 8787)
-        #[arg(long, default_value_t = 8788)]
+        /// Gemeinsamer Loopback-Port (Web-UI und API-Rolle)
+        #[arg(long, default_value_t = webagent::web_ui::DEFAULT_PORT)]
         port: u16,
 
         /// Systembrowser nicht oeffnen
         #[arg(long)]
         no_open: bool,
+
+        /// OpenAI-/Anthropic-kompatible /v1/*-Rolle auf demselben Port aktivieren
+        #[arg(long)]
+        api: bool,
+
+        /// Name der Umgebungsvariable mit dem lokalen Bearer-Token (nur --api)
+        #[arg(long, default_value = "WEBAGENT_API_KEY")]
+        api_key_env: String,
+
+        /// Standard-Brain fuer den Modell-Alias `webagent` (nur --api)
+        #[arg(long, default_value = "chatgpt")]
+        brain: String,
+
+        /// Optionales Zeitlimit fuer den einzelnen Browser-Inference-Turn (nur --api)
+        #[arg(long)]
+        timeout_secs: Option<f64>,
+
+        /// Browser ohne sichtbares Fenster ausfuehren (nur --api)
+        #[arg(long)]
+        headless: bool,
     },
 
     /// Pool/Wand/Bench-TUI. Ohne Subcommand startet `webagent` die Web-UI;
@@ -802,13 +891,15 @@ pub enum CloudCommands {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum ApiCommands {
-    /// Startet einen token-geschuetzten Loopback-Dienst.
+    /// Startet die lokale Bridge-Rolle: ein Listener mit der Web-UI
+    /// (`ui --api --no-open`), gemeinsamer Port 8788. 8787 ist eine
+    /// historische Dead-Zahl.
     Serve {
         /// Lokale Bind-Adresse; nur Loopback-Adressen werden akzeptiert.
         #[arg(long, default_value = "127.0.0.1")]
         bind: String,
-        /// TCP-Port des lokalen Dienstes.
-        #[arg(long, default_value_t = 8787)]
+        /// TCP-Port des lokalen Dienstes (gemeinsam mit der Web-UI).
+        #[arg(long, default_value_t = webagent::web_ui::DEFAULT_PORT)]
         port: u16,
         /// Standard-Brain fuer den Modell-Alias `webagent`.
         #[arg(long, default_value = "chatgpt")]

@@ -131,6 +131,28 @@ fn get_operation_base() -> HashMap<&'static str, f64> {
     map
 }
 
+/// Budget fuer AutoRouter+Attachment: an das Ziel-Brain gekoppelt, aber hart
+/// gedeckelt, damit Clients nicht ~240s in eine leere Antwort laufen.
+///
+/// `override_timeout` (Bridge `--timeout-secs`) kann weiter verkleinern, nicht
+/// verlaengern — fail-closed vor dem Client-Hang.
+pub fn resolve_auto_attach_budget(
+    brain_id: &str,
+    message: &str,
+    override_timeout: Option<f64>,
+) -> f64 {
+    let brain_budget = resolve_timeout("wait_response", brain_id, message, None);
+    let attach_cap = env_float("WEBAGENT_AUTO_ATTACH_TIMEOUT", 90.0);
+    let min_t = env_float("WEBAGENT_TIMEOUT_MIN", 30.0);
+    let mut budget = brain_budget.min(attach_cap).max(min_t);
+    if let Some(ovr) = override_timeout {
+        if ovr > 0.0 {
+            budget = budget.min(ovr).max(min_t);
+        }
+    }
+    budget
+}
+
 fn env_float(name: &str, default: f64) -> f64 {
     std::env::var(name)
         .ok()
@@ -206,5 +228,15 @@ mod tests {
         let base = resolve_timeout("ensure_ready", "chatgpt", "", None);
         assert!(base >= 80.0); // 45.0 * 1.0 * 2.0 = 90.0, clamped by min 30.0
         std::env::remove_var("WEBAGENT_TIMEOUT_MULT");
+    }
+
+    #[test]
+    fn auto_attach_budget_is_capped_tighter_than_client_hang() {
+        let _g = env_guard();
+        let budget = resolve_auto_attach_budget("gemini", "hi", None);
+        assert!(budget <= 90.0, "default cap 90s, got {budget}");
+        assert!(budget >= 30.0, "floor 30s, got {budget}");
+        let tighter = resolve_auto_attach_budget("gemini", "hi", Some(45.0));
+        assert!(tighter <= 45.0, "override may only shrink, got {tighter}");
     }
 }

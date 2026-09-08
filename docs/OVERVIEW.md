@@ -6,10 +6,11 @@ Architekturübersicht.
 Nicht jede `.md` im Repo ist Soll-Zustand. `START_HERE.md` ist der stabile
 Einstieg und `docs/CURRENT_WORK.md` die kurze operative Übergabe. `*_PLAN.md`,
 `*_CONCEPT.md`, `PROGRESS.md`, `TUI_DESIGN.md`, `STATUS_LIVE.md` und datierte
-Übergaben sind Log oder Entwurf. Betrieb der TUI steht in `AGENTS.md` §6. `webagent` ohne Subcommand
-oeffnet die Session-Ansicht; `webagent repl` und `webagent tui` bleiben.
+Übergaben sind Log oder Entwurf. Betrieb der Session liegt in `AGENTS.md` §6.
+`webagent` ohne Subcommand oeffnet die Session-Web-UI (`http://127.0.0.1:8788/`);
+`webagent repl` und `webagent tui` bleiben.
 
-**Plattformen:** Session-TUI, REPL und CLI bauen auf Windows, Linux und
+**Plattformen:** Session-Web-UI, REPL und CLI bauen auf Windows, Linux und
 Android (Termux, `aarch64-linux-android`). Embedded-WebView-Brains und die
 Kachelwand sind Windows/WebView2. Release-Binaries: Tag `v*` →
 `.github/workflows/release.yml`.

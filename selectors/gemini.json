@@ -76,5 +76,27 @@
     "button:has-text('Weiter mit Google')",
     "button:has-text('Anmelden mit Google')",
     "button[aria-label*='Google' i]"
+  ],
+  "model_menu": [
+    "button[aria-label*='Modusauswahl' i]",
+    ".input-area-switch",
+    "button[aria-label*='Modell' i]",
+    "button[aria-label*='Model' i]",
+    "[data-testid*='model' i]"
+  ],
+  "model_option": [
+    "gem-menu-item",
+    "mat-mdc-menu-item[role=menuitem]",
+    "mat-mdc-menu-item",
+    "button.mat-mdc-menu-item",
+    "[role='menuitemradio']",
+    "[role=menuitem]",
+    "[role=option]"
+  ],
+  "ui_options": [
+    "chat",
+    "new_chat",
+    "stop_generation",
+    "model_switch"
   ]
 }

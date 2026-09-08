@@ -77,6 +77,11 @@ pub struct WebBrainBackend {
     profile_override: Option<PathBuf>,
     #[cfg(feature = "webview")]
     runtime: RefCell<Option<WebViewRuntime>>,
+    /// View-Id des eigenen Runtime-Tabs (nicht Shared-Pool).
+    #[cfg(feature = "webview")]
+    view_id: RefCell<Option<u64>>,
+    /// true, solange dieses Backend das Fenster per reveal auf dem Schirm haelt.
+    revealed: std::cell::Cell<bool>,
     pub(crate) driver: RefCell<Option<Box<dyn PageDriver>>>,
     /// Text der letzten Assistenten-Nachricht VOR dem Senden — damit wait_response
     /// den Antwortbeginn auch dann erkennt, wenn der Nachrichtenzähler nicht
@@ -101,6 +106,7 @@ impl WebBrainBackend {
         #[cfg(feature = "webview")]
         {
             *self.runtime.borrow_mut() = None;
+            *self.view_id.borrow_mut() = None;
         }
     }
 
@@ -123,6 +129,9 @@ impl WebBrainBackend {
             profile_override: None,
             #[cfg(feature = "webview")]
             runtime: RefCell::new(None),
+            #[cfg(feature = "webview")]
+            view_id: RefCell::new(None),
+            revealed: std::cell::Cell::new(false),
             driver: RefCell::new(None),
             baseline_text: RefCell::new(String::new()),
             last_sent: RefCell::new(String::new()),
@@ -149,6 +158,9 @@ impl WebBrainBackend {
             profile_override: None,
             #[cfg(feature = "webview")]
             runtime: RefCell::new(None),
+            #[cfg(feature = "webview")]
+            view_id: RefCell::new(None),
+            revealed: std::cell::Cell::new(false),
             driver: RefCell::new(None),
             baseline_text: RefCell::new(String::new()),
             last_sent: RefCell::new(String::new()),
@@ -170,6 +182,72 @@ impl WebBrainBackend {
     /// Effektives Profil (Override falls gesetzt, sonst kanonisch).
     pub fn effective_profile_dir(&self) -> &PathBuf {
         self.profile_override.as_ref().unwrap_or(&self.profile_dir)
+    }
+
+    /// Holt das Brain-Fenster onscreen (Login/Captcha) und fokussiert es.
+    pub fn reveal_onscreen(&self) -> Result<(), String> {
+        #[cfg(not(feature = "webview"))]
+        {
+            Err(crate::page_driver::webview_unavailable().to_string())
+        }
+        #[cfg(feature = "webview")]
+        {
+            let rect = crate::webview_reveal::reveal_rect();
+            if let (Some(rt), Some(vid)) = (
+                self.runtime.borrow().as_ref(),
+                self.view_id.borrow().as_ref().copied(),
+            ) {
+                let ctrl = crate::webview_reveal::RuntimeViewControl {
+                    runtime: rt,
+                    view_id: vid,
+                };
+                crate::webview_reveal::reveal_onscreen(&ctrl, rect)?;
+                self.revealed.set(true);
+                return Ok(());
+            }
+            crate::browser_pool::BrowserPool::global()
+                .lock()
+                .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
+                .reveal_brain(&self.brain_id)?;
+            self.revealed.set(true);
+            Ok(())
+        }
+    }
+
+    /// Parkt das Brain-Fenster wieder offscreen.
+    pub fn park_offscreen(&self) -> Result<(), String> {
+        #[cfg(not(feature = "webview"))]
+        {
+            Err(crate::page_driver::webview_unavailable().to_string())
+        }
+        #[cfg(feature = "webview")]
+        {
+            if let (Some(rt), Some(vid)) = (
+                self.runtime.borrow().as_ref(),
+                self.view_id.borrow().as_ref().copied(),
+            ) {
+                let ctrl = crate::webview_reveal::RuntimeViewControl {
+                    runtime: rt,
+                    view_id: vid,
+                };
+                crate::webview_reveal::park_offscreen(&ctrl)?;
+                self.revealed.set(false);
+                return Ok(());
+            }
+            crate::browser_pool::BrowserPool::global()
+                .lock()
+                .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
+                .park_brain(&self.brain_id)?;
+            self.revealed.set(false);
+            Ok(())
+        }
+    }
+
+    /// Parkt nur, wenn dieses Backend zuvor per [`Self::reveal_onscreen`] geholt wurde.
+    pub fn park_if_revealed(&self) {
+        if self.revealed.get() {
+            let _ = self.park_offscreen();
+        }
     }
 
     /// Schneller Login-Check: Browser kurz starten, Zustand prüfen, stoppen.
@@ -350,6 +428,7 @@ impl WebBrainBackend {
 
     /// Klickt das erste sichtbare Element aus der Selektorliste.
     fn click_first(&self, key: &str) -> bool {
+        self.wake_renderer();
         let mut guard = self.driver.borrow_mut();
         match guard.as_mut() {
             Some(driver) => operations::click_first(driver.as_mut(), &self.selectors, key),
@@ -364,6 +443,7 @@ impl WebBrainBackend {
     /// enabled, aber der untrusted Klick löst keinen Submit aus). Spiegelt den
     /// Composer-Klick in `fill_composer`, der bei allen Providern funktioniert.
     fn click_visible_real(&self, key: &str) -> bool {
+        self.wake_renderer();
         let sels = self.sel(key);
         if sels.is_empty() {
             return false;
@@ -910,23 +990,19 @@ mod tests {
         assert_eq!(r, Completion::Complete);
     }
 
-    // Regression 2026-07-29: kimis Reasoning-Block stand still, der Stop-Button
-    // wurde nie erfasst — und die halbfertige Denk-Prosa wurde als Antwort
-    // geerntet. Wörtlicher Text aus Run 20260729_212023_dabfadbc.
+    // Regression 2026-07-29 / 2026-09-06: kimis Reasoning-Block (CoT-Echo)
+    // darf nie als fertige Antwort gelten — weder nach kurzem Stabilitätsfenster
+    // noch nach PROSE_STABILITY. Warten bis echte Antwort oder Timeout.
     #[test]
     fn mid_stream_reasoning_prose_is_not_a_finished_answer() {
         let prosa = "Der Benutzer hat keine neue Aufgabe gestellt, sondern den \
                      WebAgent-Runner gestartet. Ich muss zuerst den aktuellen Zustand \
                      des Projekts erfassen, um zu verstehen, welche der offenen Tasks \
                      machbar sind. Die Langzeiterinnerungen zeigen drei offene";
-        // Stop-Button nie gesehen, kurzes Fenster erreicht: früher Complete.
         let fruch = classify_completion(prosa, true, false, false, 3.0, true);
         assert_eq!(fruch, Completion::Continue, "Prosa zu früh als fertig");
-        // Auch die Stop-Button-Transition darf nutzlastfreien Text nicht
-        // vorzeitig abschließen.
         let transition = classify_completion(prosa, true, true, false, 3.0, true);
         assert_eq!(transition, Completion::Continue);
-        // Nach dem Prosa-Fenster ist es ein echter Regelbruch — dann Repair.
         let spaet = classify_completion(
             prosa,
             true,
@@ -935,7 +1011,11 @@ mod tests {
             PROSE_STABILITY_SECONDS + 0.1,
             true,
         );
-        assert_eq!(spaet, Completion::Complete);
+        assert_eq!(
+            spaet,
+            Completion::Continue,
+            "reines CoT-Echo darf auch nach langem Fenster nicht Complete sein"
+        );
     }
 
     #[test]

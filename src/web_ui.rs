@@ -6,7 +6,7 @@
 
 use crate::web_ui_api::{dispatch, UiState};
 use std::{
-    io::{Read, Write},
+    io::Write,
     net::{SocketAddr, TcpListener, TcpStream},
     sync::Arc,
     thread,
@@ -17,14 +17,20 @@ const INDEX_HTML: &str = include_str!("../web/index.html");
 const HEALTH_JSON: &[u8] = br#"{"status":"ok","ui":"embedded"}"#;
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Standard-Loopback-Port der Web-UI (API-Bridge bleibt 8787).
+/// Standard-Loopback-Port der Web-UI und der/des gemeinsamen API-Bridge-Servers.
 pub const DEFAULT_PORT: u16 = 8788;
 
 /// Laufzeitkonfiguration. `bind` muss Loopback sein.
+///
+/// `api_bridge`: optionale OpenAI-/Anthropic-kompatible `/v1/*`-Rolle auf
+/// demselben Listener (Token-Schutz bleibt). Wenn gesetzt, bedient `/health`
+/// die Bridge-Health (Skripte fragen `service` ab); ohne gesetzte API-Rolle
+/// liefert `/health` das UI-Asset.
 #[derive(Clone, Debug)]
 pub struct UiConfig {
     pub bind: SocketAddr,
     pub open_browser: bool,
+    pub api_bridge: Option<crate::api_bridge::BridgeConfig>,
 }
 
 /// Eingebettete Startseite (Compile-Zeit, keine Datei zur Laufzeit).
@@ -52,22 +58,32 @@ pub fn bind_listener(addr: SocketAddr) -> Result<TcpListener, String> {
 
 /// Startet den Dienst und blockiert.
 pub fn serve(config: UiConfig) -> Result<(), String> {
+    if let Some(bridge) = &config.api_bridge {
+        crate::api_bridge::validate_bridge_config(bridge)?;
+    }
     let listener = bind_listener(config.bind)?;
     let local = listener
         .local_addr()
         .map_err(|error| format!("gebundene Adresse unlesbar: {error}"))?;
     let url = format!("http://{local}/");
     eprintln!("[ui] Web-UI auf {url} (eingebettete Assets)");
+    if config.api_bridge.is_some() {
+        eprintln!("[ui] API-Rolle aktiv: /v1/* auf {url} (Bearer-Schutz)");
+    }
     if config.open_browser {
         open_browser(&url);
     }
     let state = Arc::new(UiState::default());
+    let limiter = Arc::new(crate::api_bridge::ConnectionLimiter::default());
+    let guard = Arc::new(config);
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
                 let state = Arc::clone(&state);
+                let limiter = Arc::clone(&limiter);
+                let config = Arc::clone(&guard);
                 thread::spawn(move || {
-                    if let Err(error) = handle_connection(&mut stream, &state) {
+                    if let Err(error) = handle_connection(&mut stream, &state, &config, &limiter) {
                         eprintln!("[ui] Anfrage verworfen: {error}");
                     }
                 });
@@ -96,30 +112,52 @@ fn open_browser(url: &str) {
     }
 }
 
-fn handle_connection(stream: &mut TcpStream, state: &UiState) -> Result<(), String> {
+fn handle_connection(
+    stream: &mut TcpStream,
+    state: &UiState,
+    config: &UiConfig,
+    limiter: &Arc<crate::api_bridge::ConnectionLimiter>,
+) -> Result<(), String> {
     stream
         .set_read_timeout(Some(READ_TIMEOUT))
         .map_err(|error| format!("Lese-Timeout: {error}"))?;
     stream
         .set_write_timeout(Some(READ_TIMEOUT))
         .map_err(|error| format!("Schreib-Timeout: {error}"))?;
-    let mut buf = [0u8; 8192];
-    let n = stream
-        .read(&mut buf)
-        .map_err(|error| format!("Lesen: {error}"))?;
-    let text = std::str::from_utf8(&buf[..n]).unwrap_or("");
-    let (method, full_path) = parse_request_line(text).unwrap_or(("GET", "/"));
-    let (path, query) = match full_path.split_once('?') {
-        Some((p, q)) => (p, q),
-        None => (full_path, ""),
+    let request = match crate::api_bridge::read_http_request(stream) {
+        Ok(request) => request,
+        Err(error) => {
+            crate::api_bridge::write_http_response(
+                stream,
+                crate::api_bridge::api_error(
+                    crate::api_bridge::ApiFlavor::OpenAi,
+                    400,
+                    &format!("Ungueltige HTTP-Anfrage: {error}"),
+                ),
+            )?;
+            return Ok(());
+        }
     };
-    let body = text
-        .split("\r\n\r\n")
-        .nth(1)
-        .or_else(|| text.split("\n\n").nth(1))
-        .unwrap_or("");
+
+    let is_bridge_path = config.api_bridge.is_some()
+        && (request.path == "/health" || request.path.starts_with("/v1"));
+    if is_bridge_path {
+        let Some(permit) = limiter.try_acquire() else {
+            crate::api_bridge::write_http_response(stream, crate::api_bridge::overload_response())?;
+            return Ok(());
+        };
+        let _permit = permit;
+        let bridge = config
+            .api_bridge
+            .as_ref()
+            .expect("is_bridge_path setzt api_bridge");
+        return crate::api_bridge::route_request(stream, &request, bridge);
+    }
+
+    let path = request.path.as_str();
+    let body = String::from_utf8_lossy(&request.body).into_owned();
     let (status, ctype, body_bytes) = if path.starts_with("/api/") {
-        let resp = dispatch(method, path, query, body, state);
+        let resp = dispatch(&request.method, path, &request.query, &body, state);
         (resp.status, resp.content_type, resp.body)
     } else if let Some((ctype, body)) = lookup(path) {
         (200, ctype, body.to_vec())
@@ -136,17 +174,10 @@ fn handle_connection(stream: &mut TcpStream, state: &UiState) -> Result<(), Stri
         .map_err(|error| format!("Schreiben: {error}"))
 }
 
-fn parse_request_line(request: &str) -> Option<(&str, &str)> {
-    let line = request.lines().next()?;
-    let mut parts = line.split_whitespace();
-    let method = parts.next()?;
-    let path = parts.next()?;
-    Some((method, path))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
     use std::net::TcpStream as StdTcp;
     use std::thread;
     use std::time::Duration;
@@ -202,6 +233,25 @@ mod tests {
         assert!(err.contains("Loopback"));
     }
 
+    fn test_config(api_bridge: Option<crate::api_bridge::BridgeConfig>) -> UiConfig {
+        UiConfig {
+            bind: "127.0.0.1:0".parse().unwrap(),
+            open_browser: false,
+            api_bridge,
+        }
+    }
+
+    fn test_bridge_config() -> crate::api_bridge::BridgeConfig {
+        crate::api_bridge::BridgeConfig {
+            bind: "127.0.0.1:0".parse().unwrap(),
+            brain: "chatgpt".to_string(),
+            timeout_secs: None,
+            headless: true,
+            api_key: "test-secret".to_string(),
+            fake_reply: None,
+        }
+    }
+
     #[test]
     fn get_index_ohne_dateien_auf_der_platte() {
         let listener = bind_listener("127.0.0.1:0".parse().unwrap()).unwrap();
@@ -209,7 +259,9 @@ mod tests {
         thread::spawn(move || {
             if let Ok(mut stream) = listener.accept().map(|(s, _)| s) {
                 let state = UiState::default();
-                let _ = handle_connection(&mut stream, &state);
+                let config = test_config(None);
+                let limiter = Arc::new(crate::api_bridge::ConnectionLimiter::default());
+                let _ = handle_connection(&mut stream, &state, &config, &limiter);
             }
         });
         thread::sleep(Duration::from_millis(20));
@@ -224,13 +276,15 @@ mod tests {
         assert!(out.contains("eingebettet") || out.contains("Binary"));
     }
 
-    fn one_shot(request: &[u8]) -> String {
+    fn one_shot(request: &[u8], api_bridge: Option<crate::api_bridge::BridgeConfig>) -> String {
         let listener = bind_listener("127.0.0.1:0".parse().unwrap()).unwrap();
         let addr = listener.local_addr().unwrap();
         thread::spawn(move || {
             if let Ok(mut stream) = listener.accept().map(|(s, _)| s) {
                 let state = UiState::default();
-                let _ = handle_connection(&mut stream, &state);
+                let config = test_config(api_bridge);
+                let limiter = Arc::new(crate::api_bridge::ConnectionLimiter::default());
+                let _ = handle_connection(&mut stream, &state, &config, &limiter);
             }
         });
         thread::sleep(Duration::from_millis(20));
@@ -249,7 +303,7 @@ mod tests {
             body.len(),
             std::str::from_utf8(body).unwrap()
         );
-        let out = one_shot(req.as_bytes());
+        let out = one_shot(req.as_bytes(), None);
         assert!(out.contains("HTTP/1.1 201"), "{out}");
         assert!(out.contains("\"run_id\""), "{out}");
         assert!(out.contains("chatgpt"), "{out}");
@@ -257,9 +311,55 @@ mod tests {
 
     #[test]
     fn health_brains_laeuft_ueber_http_ohne_browser() {
-        let out = one_shot(b"GET /api/health/brains HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        let out = one_shot(
+            b"GET /api/health/brains HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            None,
+        );
         assert!(out.contains("HTTP/1.1 200"), "{out}");
         assert!(out.contains("\"timestamp\""), "{out}");
         assert!(out.contains("\"brains\""), "{out}");
+    }
+
+    #[test]
+    fn api_rolle_bedient_v1_models_auf_gemeinsamen_listener() {
+        let config = test_bridge_config();
+        let out = one_shot(
+            b"GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            Some(config),
+        );
+        assert!(out.contains("HTTP/1.1 401"), "{out}");
+    }
+
+    #[test]
+    fn api_rolle_zugriff_mit_token_liefert_modellliste() {
+        let config = test_bridge_config();
+        let out = one_shot(
+            b"GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer test-secret\r\n\r\n",
+            Some(config),
+        );
+        assert!(out.contains("HTTP/1.1 200"), "{out}");
+        assert!(out.contains("\"object\":\"list\""), "{out}");
+        assert!(out.contains("\"auto\""), "{out}");
+    }
+
+    #[test]
+    fn health_ohne_api_rolle_liefert_ui_asset() {
+        let out = one_shot(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", None);
+        assert!(out.contains("HTTP/1.1 200"), "{out}");
+        assert!(out.contains("\"ui\":\"embedded\""), "{out}");
+    }
+
+    #[test]
+    fn health_mit_api_rolle_liefert_bridge_health() {
+        let config = test_bridge_config();
+        let out = one_shot(
+            b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            Some(config),
+        );
+        assert!(out.contains("HTTP/1.1 200"), "{out}");
+        assert!(
+            out.contains("\"service\":\"webagent-provider-bridge\""),
+            "{out}"
+        );
     }
 }

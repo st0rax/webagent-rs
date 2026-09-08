@@ -66,12 +66,12 @@ struct OnDiskStore {
 }
 
 #[derive(Default)]
-struct ConnectionLimiter {
+pub(crate) struct ConnectionLimiter {
     active: AtomicUsize,
 }
 
 impl ConnectionLimiter {
-    fn try_acquire(self: &Arc<Self>) -> Option<ConnectionPermit> {
+    pub(crate) fn try_acquire(self: &Arc<Self>) -> Option<ConnectionPermit> {
         let mut active = self.active.load(Ordering::Acquire);
         loop {
             if active >= MAX_CONCURRENT_CONNECTIONS {
@@ -90,7 +90,7 @@ impl ConnectionLimiter {
     }
 }
 
-struct ConnectionPermit(Arc<ConnectionLimiter>);
+pub(crate) struct ConnectionPermit(Arc<ConnectionLimiter>);
 
 impl Drop for ConnectionPermit {
     fn drop(&mut self) {
@@ -102,7 +102,7 @@ impl Drop for ConnectionPermit {
 ///
 /// `api_key` wird ausschliesslich aus einer Umgebungsvariable geladen und darf
 /// weder geloggt noch in Statusantworten ausgegeben werden.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BridgeConfig {
     pub bind: SocketAddr,
     pub brain: String,
@@ -121,15 +121,11 @@ pub struct BridgeConfig {
 /// Inference-Anfragen gesteuert werden; unterschiedliche Brains blockieren
 /// sich dagegen nicht gegenseitig.
 pub fn serve(config: BridgeConfig) -> Result<(), String> {
-    if config.timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
-        return Err("--timeout-secs muss groesser als 0 sein.".to_string());
-    }
+    validate_bridge_config(&config)?;
 
     if !config.bind.ip().is_loopback() {
         return Err("API-Bridge darf nur an eine Loopback-Adresse binden.".to_string());
     }
-
-    resolve_model(&model_id(&config.brain), &config.brain)?;
 
     let listener = TcpListener::bind(config.bind)
         .map_err(|error| format!("API-Bridge nicht bindbar: {error}"))?;
@@ -137,6 +133,17 @@ pub fn serve(config: BridgeConfig) -> Result<(), String> {
     eprintln!("[api] Bridge aktiv auf http://{bound}");
 
     accept_loop(listener, config)
+}
+
+/// Prueft die Bridge-Rolle vor dem Binden/Servieren (geteilt mit dem
+/// gemeinsamen Web-UI-Listener bei gesetzter API-Rolle).
+pub(crate) fn validate_bridge_config(config: &BridgeConfig) -> Result<(), String> {
+    if config.timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
+        return Err("--timeout-secs muss groesser als 0 sein.".to_string());
+    }
+
+    resolve_model(&model_id(&config.brain), &config.brain)?;
+    Ok(())
 }
 
 fn accept_loop(listener: TcpListener, config: BridgeConfig) -> Result<(), String> {
@@ -171,7 +178,7 @@ fn accept_loop(listener: TcpListener, config: BridgeConfig) -> Result<(), String
     Ok(())
 }
 
-fn overload_response() -> HttpResponse {
+pub(crate) fn overload_response() -> HttpResponse {
     HttpResponse::json(
         503,
         json!({
@@ -206,18 +213,30 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             return Ok(());
         }
     };
+    route_request(stream, &request, config)
+}
 
+/// Verarbeitet einen bereits gelesenen HTTP-Request gegen die Bridge-Routen.
+///
+/// Wird von `handle_connection` (Bridge-Eigenbetrieb) und vom gemeinsamen
+/// Web-UI-Listener (`web_ui::serve` bei gesetzter API-Rolle) aufgerufen:
+/// ein Port, gleiche Routing-Logik.
+pub(crate) fn route_request(
+    stream: &mut TcpStream,
+    request: &HttpRequest,
+    config: &BridgeConfig,
+) -> Result<(), String> {
     if request.method == "POST"
         && request.path == "/v1/responses"
         && is_incremental_text_request(&request.body)
     {
-        return handle_responses_incremental(stream, &request, config);
+        return handle_responses_incremental(stream, request, config);
     }
     if request.method == "POST"
         && request.path == "/v1/chat/completions"
         && is_incremental_chat_request(&request.body)
     {
-        return handle_openai_incremental(stream, &request, config);
+        return handle_openai_incremental(stream, request, config);
     }
 
     let flavor = if request.path == "/v1/messages" {
@@ -266,21 +285,21 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
             }
         }
         ("GET", path) if path.starts_with("/v1/responses/") && path.ends_with("/input_items") => {
-            handle_response_input_items(&request, config, path)
+            handle_response_input_items(request, config, path)
         }
         ("GET", path) if path.starts_with("/v1/responses/") => {
-            handle_response_retrieve(&request, config, path)
+            handle_response_retrieve(request, config, path)
         }
         ("DELETE", path) if path.starts_with("/v1/responses/") => {
-            handle_response_delete(&request, config, path)
+            handle_response_delete(request, config, path)
         }
-        ("POST", "/v1/chat/completions") => handle_openai(&request, config),
-        ("POST", "/v1/images/generations") => handle_image_generation(&request, config),
-        ("POST", "/v1/audio/transcriptions") => handle_audio_transcription(&request, config, false),
-        ("POST", "/v1/audio/translations") => handle_audio_transcription(&request, config, true),
-        ("POST", "/v1/audio/speech") => handle_audio_speech(&request, config),
-        ("POST", "/v1/responses") => handle_responses(&request, config),
-        ("POST", "/v1/messages") => handle_anthropic(&request, config),
+        ("POST", "/v1/chat/completions") => handle_openai(request, config),
+        ("POST", "/v1/images/generations") => handle_image_generation(request, config),
+        ("POST", "/v1/audio/transcriptions") => handle_audio_transcription(request, config, false),
+        ("POST", "/v1/audio/translations") => handle_audio_transcription(request, config, true),
+        ("POST", "/v1/audio/speech") => handle_audio_speech(request, config),
+        ("POST", "/v1/responses") => handle_responses(request, config),
+        ("POST", "/v1/messages") => handle_anthropic(request, config),
         _ => api_error(flavor, 404, "Endpoint nicht gefunden."),
     };
     write_http_response(stream, response)
@@ -790,7 +809,8 @@ fn handle_openai_incremental(
             if stream_error.is_some() {
                 return;
             }
-            if snapshot == last_sent {
+            let cleaned = stream_answer_snapshot(snapshot);
+            if cleaned.is_empty() {
                 if last_keepalive.elapsed() >= Duration::from_secs(5) {
                     if let Err(error) = write_sse_comment(stream, "keep-alive") {
                         stream_error = Some(error);
@@ -800,7 +820,17 @@ fn handle_openai_incremental(
                 }
                 return;
             }
-            if let Some(delta) = snapshot.strip_prefix(&last_sent) {
+            if cleaned == last_sent {
+                if last_keepalive.elapsed() >= Duration::from_secs(5) {
+                    if let Err(error) = write_sse_comment(stream, "keep-alive") {
+                        stream_error = Some(error);
+                    } else {
+                        last_keepalive = Instant::now();
+                    }
+                }
+                return;
+            }
+            if let Some(delta) = cleaned.strip_prefix(&last_sent) {
                 if !delta.is_empty() {
                     if let Err(error) = write_data_frame(
                         stream,
@@ -810,7 +840,7 @@ fn handle_openai_incremental(
                         return;
                     }
                 }
-                last_sent = snapshot.to_string();
+                last_sent = cleaned;
                 last_keepalive = Instant::now();
             }
         };
@@ -834,7 +864,7 @@ fn handle_openai_incremental(
             return Ok(());
         }
     };
-    let text = answer.text.as_deref().unwrap_or_default();
+    let text = stream_answer_snapshot(answer.text.as_deref().unwrap_or_default());
     if let Some(delta) = text
         .strip_prefix(&last_sent)
         .filter(|delta| !delta.is_empty())
@@ -1111,7 +1141,8 @@ fn handle_responses_incremental(
             if stream_error.is_some() {
                 return;
             }
-            if snapshot == last_sent {
+            let cleaned = stream_answer_snapshot(snapshot);
+            if cleaned.is_empty() || cleaned == last_sent {
                 if last_keepalive.elapsed() >= Duration::from_secs(5) {
                     if let Err(error) = write_sse_comment(stream, "keep-alive") {
                         stream_error = Some(error);
@@ -1121,7 +1152,7 @@ fn handle_responses_incremental(
                 }
                 return;
             }
-            if let Some(delta) = snapshot.strip_prefix(&last_sent) {
+            if let Some(delta) = cleaned.strip_prefix(&last_sent) {
                 if !delta.is_empty() {
                     if let Some(h) = _sess.as_ref() {
                         let _ = h.push(crate::session::SessionEvent::TextDelta {
@@ -1138,7 +1169,7 @@ fn handle_responses_incremental(
                         return;
                     }
                 }
-                last_sent = snapshot.to_string();
+                last_sent = cleaned;
                 last_keepalive = Instant::now();
             }
         };
@@ -1176,7 +1207,7 @@ fn handle_responses_incremental(
             return Ok(());
         }
     };
-    let text = answer.text.as_deref().unwrap_or_default();
+    let text = stream_answer_snapshot(answer.text.as_deref().unwrap_or_default());
     if let Some(delta) = text
         .strip_prefix(&last_sent)
         .filter(|delta| !delta.is_empty())
@@ -1239,6 +1270,12 @@ fn handle_responses_incremental(
         });
     }
     Ok(())
+}
+
+/// Clean DOM/stream snapshots before SSE `delta.content` (Thinking..., clocks,
+/// Kimi CoT echo). Empty → no delta; caller may still keep-alive.
+fn stream_answer_snapshot(raw: &str) -> String {
+    crate::observer::chat_answer_text(raw)
 }
 
 fn write_sse_headers(stream: &mut TcpStream) -> Result<(), String> {
@@ -1369,7 +1406,8 @@ fn run_task_blocking(
     if let Some(text) = config.fake_reply.as_deref() {
         return Ok(fake_inference_response(text));
     }
-    let brain = if brain == "auto" {
+    let via_auto = brain == "auto";
+    let brain = if via_auto {
         select_auto_brain(
             config,
             task,
@@ -1380,6 +1418,14 @@ fn run_task_blocking(
     } else {
         brain.to_string()
     };
+    let timeout_secs = auto_attach_timeout_secs(via_auto, attachments, &brain, task, config);
+    if via_auto {
+        eprintln!(
+            "[auto-router] execute brain={brain} attachments={} timeout_secs={:?}",
+            attachments.len(),
+            timeout_secs
+        );
+    }
     let lock = BROWSER_RUN_LOCKS
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
@@ -1389,6 +1435,7 @@ fn run_task_blocking(
         .clone();
     let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
+    let started = Instant::now();
     crate::browser_inference::complete_with_attachments(
         crate::browser_inference::BrowserInferenceRequest {
             brain: &brain,
@@ -1396,13 +1443,15 @@ fn run_task_blocking(
             tools,
             tool_choice,
             headless: config.headless,
-            timeout_secs: config.timeout_secs,
+            timeout_secs,
             model: None,
         },
         attachments,
         &mut |_| {},
     )
-    .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
+    .map_err(|error| {
+        annotate_auto_routed_inference_error(via_auto, &brain, &error, started.elapsed())
+    })
 }
 
 fn run_task_streaming(
@@ -1416,11 +1465,20 @@ fn run_task_streaming(
         emit_fake_stream(text, on_update);
         return Ok(fake_inference_response(text));
     }
-    let brain = if brain == "auto" {
+    let via_auto = brain == "auto";
+    let brain = if via_auto {
         select_auto_brain(config, task, attachments, false, AutoPurpose::Chat)?
     } else {
         brain.to_string()
     };
+    let timeout_secs = auto_attach_timeout_secs(via_auto, attachments, &brain, task, config);
+    if via_auto {
+        eprintln!(
+            "[auto-router] execute brain={brain} attachments={} timeout_secs={:?}",
+            attachments.len(),
+            timeout_secs
+        );
+    }
     let lock = BROWSER_RUN_LOCKS
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
@@ -1430,6 +1488,7 @@ fn run_task_streaming(
         .clone();
     let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
+    let started = Instant::now();
     crate::browser_inference::complete_streaming_with_attachments(
         crate::browser_inference::BrowserInferenceRequest {
             brain: &brain,
@@ -1437,13 +1496,85 @@ fn run_task_streaming(
             tools: &[],
             tool_choice: crate::browser_inference::BrowserToolChoice::None,
             headless: config.headless,
-            timeout_secs: config.timeout_secs,
+            timeout_secs,
             model: None,
         },
         attachments,
         on_update,
     )
-    .map_err(|error| format!("Browser-Inference fehlgeschlagen: {error}"))
+    .map_err(|error| {
+        annotate_auto_routed_inference_error(via_auto, &brain, &error, started.elapsed())
+    })
+}
+
+/// Bei `auto` + Attachments: Budget an das geroutete Brain koppeln und deckeln.
+fn auto_attach_timeout_secs(
+    via_auto: bool,
+    attachments: &[crate::browser_inference::BrowserAttachment],
+    routed_brain: &str,
+    task: &str,
+    config: &BridgeConfig,
+) -> Option<f64> {
+    if via_auto && !attachments.is_empty() {
+        Some(crate::timeouts::resolve_auto_attach_budget(
+            routed_brain,
+            task,
+            config.timeout_secs,
+        ))
+    } else {
+        config.timeout_secs
+    }
+}
+
+fn is_auto_attach_timeout_signal(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    [
+        "keine antwort erhalten",
+        "timeout_budget=",
+        "page-timeout",
+        "zeitueberschreitung",
+        "timed out",
+        "timeout",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+fn is_auto_attach_upload_signal(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    [
+        "no_file_input",
+        "keinen nutzbaren datei-upload",
+        "kein nutzbarer datei-upload",
+        "dateien uebernommen",
+        "dateien übernommen",
+        "0 von",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+/// Macht AutoRouter-Fehler explizit: welches Brain, Timeout vs. Upload, via=auto→brain.
+fn annotate_auto_routed_inference_error(
+    via_auto: bool,
+    routed_brain: &str,
+    error: &str,
+    elapsed: Duration,
+) -> String {
+    if !via_auto {
+        return format!("Browser-Inference fehlgeschlagen: {error}");
+    }
+    let secs = elapsed.as_secs_f64();
+    if is_auto_attach_timeout_signal(error) {
+        return format!("auto_attach_timeout: routed={routed_brain} after {secs:.0}s ({error})");
+    }
+    if is_auto_attach_upload_signal(error) {
+        if error.contains("via=auto") {
+            return format!("Browser-Inference fehlgeschlagen: {error}");
+        }
+        return format!("Browser-Inference fehlgeschlagen: {error}; via=auto→{routed_brain}");
+    }
+    format!("Browser-Inference fehlgeschlagen: {error}; via=auto→{routed_brain}")
 }
 
 fn store_hub() -> &'static Mutex<StoreHub> {
@@ -2578,20 +2709,20 @@ fn text_content(value: &Value) -> Result<String, String> {
     Ok(out)
 }
 
-fn available_brains() -> Vec<String> {
+pub fn available_brains() -> Vec<String> {
     let mut brains: Vec<String> = crate::config::brains().into_keys().collect();
     brains.sort();
     brains
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AutoPurpose {
+pub(crate) enum AutoPurpose {
     Chat,
     ImageGeneration,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum AutoRoute {
+pub(crate) enum AutoRoute {
     Default,
     AudioInput,
     ImageInput,
@@ -2601,7 +2732,7 @@ enum AutoRoute {
     CurrentResearch,
 }
 
-fn classify_auto_route(
+pub(crate) fn classify_auto_route(
     task: &str,
     attachments: &[crate::browser_inference::BrowserAttachment],
     has_tools: bool,
@@ -2670,14 +2801,23 @@ fn classify_auto_route(
     AutoRoute::Default
 }
 
-fn first_available_auto_brain(preferences: &[&str]) -> Option<String> {
+pub(crate) fn first_available_auto_brain(preferences: &[&str]) -> Option<String> {
     let available = available_brains();
+    first_available_auto_brain_in(preferences, &available, |brain| {
+        crate::circuit_breaker::check(brain).is_none()
+    })
+}
+
+/// Kern der Auto-Auswahl mit injizierbarer Verfügbarkeit/Entsperrtheit —
+/// deterministisch testbar ohne reale Brain-Installation oder Circuit-Breaker.
+fn first_available_auto_brain_in(
+    preferences: &[&str],
+    available: &[String],
+    is_unlocked: impl Fn(&str) -> bool,
+) -> Option<String> {
     preferences
         .iter()
-        .find(|brain| {
-            available.iter().any(|candidate| candidate == **brain)
-                && crate::circuit_breaker::check(brain).is_none()
-        })
+        .find(|brain| available.iter().any(|candidate| candidate == **brain) && is_unlocked(brain))
         .map(|brain| (*brain).to_string())
 }
 
@@ -2688,6 +2828,28 @@ fn select_auto_brain(
     has_tools: bool,
     purpose: AutoPurpose,
 ) -> Result<String, String> {
+    let default = if config.brain == "auto" {
+        "chatgpt"
+    } else {
+        config.brain.as_str()
+    };
+    select_auto_brain_with_default(task, attachments, has_tools, purpose, default)
+}
+
+/// Auto-Router fuer die CLI (run/repl/relay): ahnt aus der Aufgabe das passende
+/// Brain, ohne auf eine laufende Bridge-Config angewiesen zu sein. Default-Fall
+/// faellt auf das erste verfuegbare, nicht vom Circuit-Breaker gesperrte Brain.
+pub fn select_auto_brain_for_cli(task: &str) -> Result<String, String> {
+    select_auto_brain_with_default(task, &[], false, AutoPurpose::Chat, "chatgpt")
+}
+
+fn select_auto_brain_with_default(
+    task: &str,
+    attachments: &[crate::browser_inference::BrowserAttachment],
+    has_tools: bool,
+    purpose: AutoPurpose,
+    default: &str,
+) -> Result<String, String> {
     let route = classify_auto_route(task, attachments, has_tools, purpose);
     let (preferences, reason): (&[&str], &str) = match route {
         AutoRoute::ImageGeneration => (&["chatgpt", "gemini"], "image-generation"),
@@ -2697,11 +2859,6 @@ fn select_auto_brain(
         AutoRoute::Coding => (&["claude", "chatgpt", "gemini"], "coding"),
         AutoRoute::CurrentResearch => (&["perplexity", "gemini", "chatgpt"], "current-research"),
         AutoRoute::Default => {
-            let default = if config.brain == "auto" {
-                "chatgpt"
-            } else {
-                config.brain.as_str()
-            };
             let preferences = [default, "chatgpt", "gemini", "claude", "deepseek"];
             let selected = first_available_auto_brain(&preferences)
                 .ok_or_else(|| "AutoRouter findet kein verfuegbares Text-Brain.".to_string())?;
@@ -2822,7 +2979,7 @@ fn model_metadata(brain: &str) -> Value {
 }
 
 #[derive(Clone, Copy)]
-enum ApiFlavor {
+pub(crate) enum ApiFlavor {
     OpenAi,
     Anthropic,
 }
@@ -2857,7 +3014,7 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
     difference == 0
 }
 
-fn api_error(flavor: ApiFlavor, status: u16, message: &str) -> HttpResponse {
+pub(crate) fn api_error(flavor: ApiFlavor, status: u16, message: &str) -> HttpResponse {
     api_error_with(flavor, status, message, None, None)
 }
 
@@ -3186,14 +3343,15 @@ fn anthropic_sse(
     HttpResponse::sse(body)
 }
 
-struct HttpRequest {
-    method: String,
-    path: String,
-    headers: BTreeMap<String, String>,
-    body: Vec<u8>,
+pub(crate) struct HttpRequest {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) query: String,
+    pub(crate) headers: BTreeMap<String, String>,
+    pub(crate) body: Vec<u8>,
 }
 
-struct HttpResponse {
+pub(crate) struct HttpResponse {
     status: u16,
     content_type: &'static str,
     body: Vec<u8>,
@@ -3219,7 +3377,7 @@ impl HttpResponse {
     }
 }
 
-fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
+pub(crate) fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     let mut bytes = Vec::new();
     let mut buffer = [0u8; 4096];
     let header_end;
@@ -3251,13 +3409,11 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
         .next()
         .ok_or_else(|| "HTTP-Methode fehlt.".to_string())?
         .to_string();
-    let path = parts
-        .next()
-        .ok_or_else(|| "HTTP-Pfad fehlt.".to_string())?
-        .split('?')
-        .next()
-        .unwrap_or("/")
-        .to_string();
+    let path = parts.next().ok_or_else(|| "HTTP-Pfad fehlt.".to_string())?;
+    let (path, query) = match path.split_once('?') {
+        Some((path_part, query_part)) => (path_part.to_string(), query_part.to_string()),
+        None => (path.to_string(), String::new()),
+    };
     let version = parts.next().unwrap_or("");
     if !version.starts_with("HTTP/1.") || parts.next().is_some() {
         return Err("Ungueltige HTTP-Request-Line.".to_string());
@@ -3305,6 +3461,7 @@ fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
     Ok(HttpRequest {
         method,
         path,
+        query,
         headers,
         body: bytes[header_end..header_end + content_length].to_vec(),
     })
@@ -3316,7 +3473,10 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-fn write_http_response(stream: &mut TcpStream, response: HttpResponse) -> Result<(), String> {
+pub(crate) fn write_http_response(
+    stream: &mut TcpStream,
+    response: HttpResponse,
+) -> Result<(), String> {
     let bytes = render_http_response(&response);
     stream
         .write_all(&bytes)
@@ -3654,6 +3814,81 @@ mod tests {
         assert_eq!(
             classify_auto_route("Sag einfach hallo", &[], false, AutoPurpose::Chat),
             AutoRoute::Default
+        );
+    }
+
+    #[test]
+    fn auto_attach_timeout_error_names_routed_brain() {
+        let msg = annotate_auto_routed_inference_error(
+            true,
+            "gemini",
+            "keine Antwort erhalten (timeout_budget=90s, backend_status=idle, generation_complete=false, raw_chars=0)",
+            Duration::from_secs(91),
+        );
+        assert!(
+            msg.starts_with("auto_attach_timeout: routed=gemini after 91s"),
+            "got {msg}"
+        );
+        assert!(msg.contains("keine Antwort erhalten"), "got {msg}");
+    }
+
+    #[test]
+    fn auto_attach_upload_error_adds_via_route() {
+        let msg = annotate_auto_routed_inference_error(
+            true,
+            "chatgpt",
+            "Browseroberflaeche stellt keinen nutzbaren Datei-Upload bereit (no_file_input)",
+            Duration::from_secs(2),
+        );
+        assert!(msg.contains("no_file_input"), "got {msg}");
+        assert!(msg.contains("via=auto→chatgpt"), "got {msg}");
+
+        let partial = annotate_auto_routed_inference_error(
+            true,
+            "qwen",
+            "Browseroberflaeche hat nur 0 von 1 Dateien uebernommen",
+            Duration::from_millis(500),
+        );
+        assert!(partial.contains("0 von 1"), "got {partial}");
+        assert!(partial.contains("via=auto→qwen"), "got {partial}");
+    }
+
+    #[test]
+    fn non_auto_errors_stay_unannotated() {
+        let msg = annotate_auto_routed_inference_error(
+            false,
+            "gemini",
+            "no_file_input",
+            Duration::from_secs(1),
+        );
+        assert_eq!(msg, "Browser-Inference fehlgeschlagen: no_file_input");
+        assert!(!msg.contains("via=auto"));
+    }
+
+    #[test]
+    fn auto_selection_follows_preference_order_and_skips_locked() {
+        let available: Vec<String> = ["chatgpt", "claude", "gemini"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let no_locks = |_: &str| true;
+        assert_eq!(
+            first_available_auto_brain_in(&["claude", "chatgpt"], &available, no_locks).as_deref(),
+            Some("claude"),
+            "erste verfuegbare Praeferenz gewinnt"
+        );
+        assert_eq!(
+            first_available_auto_brain_in(&["claude", "chatgpt", "gemini"], &available, |brain| {
+                brain != "claude" && brain != "chatgpt"
+            })
+            .as_deref(),
+            Some("gemini"),
+            "gesperrte Brains uebersprungen"
+        );
+        assert_eq!(
+            first_available_auto_brain_in(&["perplexity", "deepseek"], &available, no_locks,),
+            None,
+            "keine Praeferenz verfuegbar → None"
         );
     }
 
@@ -4171,6 +4406,7 @@ mod tests {
         let authorized = HttpRequest {
             method: "GET".to_string(),
             path: format!("/v1/responses/{id}"),
+            query: String::new(),
             headers: BTreeMap::from([(
                 "authorization".to_string(),
                 "Bearer test-secret".to_string(),
@@ -4359,6 +4595,7 @@ mod tests {
         let request = HttpRequest {
             method: "POST".to_string(),
             path: "/v1/audio/transcriptions".to_string(),
+            query: String::new(),
             headers: BTreeMap::from([(
                 "content-type".to_string(),
                 format!("multipart/form-data; boundary={boundary}"),
@@ -4380,6 +4617,7 @@ mod tests {
         let request = HttpRequest {
             method: "POST".to_string(),
             path: "/v1/audio/transcriptions".to_string(),
+            query: String::new(),
             headers: BTreeMap::from([(
                 "content-type".to_string(),
                 "multipart/form-data".to_string(),

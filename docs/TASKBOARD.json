@@ -286,8 +286,8 @@
       "branch": "fix/T-501-model-proof",
       "claimed_at": "2026-09-07",
       "done_at": null,
-      "proof_path": "docs/proofs/T-501/ (Stand 2026-09-06 nach CoT-Prefix-Filter PR #44/#45/#46 auf master): Matrix 108/130. streaming 9/9 (kimi STREAM_OK nach CoT-Prefix-Filter), api_responses 9/9 (mistral/zai nach Cooldown sauber; Belege api_responses_mistral/zai_2026-09-05.json), attachment mistral/qwen/zai #46, kimi real_image 2026-09-05; managed_tools by-design 400. Offen: model/effort Login-/Web-UI-gebunden, auto RED (2026-09-06 Notiz). DoD weiterhin NICHT done. | 2026-09-07 zai GLM-5.3 Webchat-Flaper: No response + SyntaxError 'Unexpected token ,' (Kein valid JSON; 24-Byte-Binary), Beleg zai_webchat_glm53_2026-09-07.md, Matrix-Zelle zai weiterhin rot; PR #29 merged 098e4c9",
-      "verification": "Matrix-Zellen; Belegpfad je Brain; streaming_reproof_filter als Beweisbasis",
+      "proof_path": "docs/proofs/T-501/ (Audit-Referenz MODEL_PROOF_AUDIT_2026-09-07.md auf master, Basis 28e9f1c): Matrix 103/130 passed, 10 failed, 4 unreachable, 13 not_run. model_switch 6 Zellen (claude/qwen/perplexity/zai/gemini/kimi) zurueck auf not_run (Roundtrip-v2: Laufzeit-Auswahl + unabhaengiges Nachlesen + Restore; alte Trigger-Hashes ungueltig). streaming 9/9 (ReProof-Filter PR #44/#45/#46), api_responses 9/9 (mistral/zai 2026-09-05 sauber), attachment via #46 + kimi real_image 2026-09-05. Offen: 6 model not_run, effort-Zellen, model/auto, auto RED. DoD NICHT done. | 2026-09-07 zai GLM-5.3 Webchat flaky (No response + SyntaxError 'Unexpected token ,' + 24-Byte-Binary), Beleg zai_webchat_glm53_2026-09-07.md; PR #29 merged 098e4c9",
+      "verification": "Matrix-Zellen; Belegpfad je Brain; model-selection-roundtrip-v2 als Beweisbasis (capability_proof.rs)",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
       "depends_on": [
         "T-202",

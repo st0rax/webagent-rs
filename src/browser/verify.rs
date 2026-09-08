@@ -231,6 +231,8 @@ fn verify_session(
             ProofKind::RoundTripMenu => {
                 if cap.key == "reasoning_effort" {
                     results.extend(verify_reasoning_effort(backend, cap));
+                } else if cap.key == "model_switch" {
+                    results.extend(verify_model_switch(backend, cap));
                 } else {
                     results.extend(verify_roundtrip(backend, cap));
                 }
@@ -344,19 +346,43 @@ pub(crate) fn fallback_expr_for(sel: &Selectors, needs: &[&str]) -> String {
 /// Fallbacks (§5, `js_scan_indexed`). `(selektor, flat_index)` oder `None`.
 fn resolve_fallback(backend: &WebBrainBackend, needs: &[&str]) -> Option<(String, i32)> {
     let expr = fallback_expr_for(&backend.selectors, needs);
-    let mut guard = backend.driver.borrow_mut();
-    let driver = guard.as_mut()?;
-    let v = driver.evaluate(&expr).ok()?;
-    let i = v.get("i").and_then(|x| x.as_i64()).unwrap_or(-1);
-    if i < 0 {
-        return None;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(4200);
+    loop {
+        let hit = {
+            let mut guard = backend.driver.borrow_mut();
+            let driver = guard.as_mut()?;
+            match driver.evaluate(&expr) {
+                Ok(v) => {
+                    let i = v.get("i").and_then(|x| x.as_i64()).unwrap_or(-1);
+                    if i < 0 {
+                        None
+                    } else {
+                        v.get("v")
+                            .and_then(|x| x.as_str())
+                            .map(str::to_string)
+                            .map(|s| (s, i as i32))
+                    }
+                }
+                Err(e) => {
+                    if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                        println!("[verify] trace  resolve_fallback evaluate-Fehler: {e}");
+                    }
+                    None
+                }
+            }
+        };
+        if hit.is_some() {
+            return hit;
+        }
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
     }
-    let sel = v.get("v").and_then(|x| x.as_str()).map(str::to_string);
-    sel.map(|s| (s, i as i32))
 }
 
-/// RoundTrip-Arme (Toggle und Menü): inneres `operations::verify_surface` mit
-/// `proposal_from(cap, winner)`. Nur `reasoning_effort` nimmt den Pfad-Arm.
+/// Generische Oberflaechen-Roundtrips. Modellwahl und Aufwand haben eigene
+/// semantische Pruefungen; aria-expanded allein belegt keinen Modellwechsel.
 fn verify_roundtrip(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<VerifyResult> {
     let start = Instant::now();
     if !has_sel(&backend.selectors, cap.needs) {
@@ -415,6 +441,146 @@ fn verify_roundtrip(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<Veri
     }
 }
 
+/// Small test boundary around the existing runtime model controls. The probe
+/// must read the selected model independently of the click's return value.
+trait ModelMenuProbe {
+    fn selected(&self) -> String;
+    fn options(&mut self) -> Result<Vec<String>, String>;
+    fn select(&mut self, model: &str) -> Result<String, String>;
+}
+
+impl ModelMenuProbe for WebBrainBackend {
+    fn selected(&self) -> String {
+        self.current_model()
+    }
+
+    fn options(&mut self) -> Result<Vec<String>, String> {
+        self.list_models()
+    }
+
+    fn select(&mut self, model: &str) -> Result<String, String> {
+        self.switch_model(model)
+    }
+}
+
+fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
+    let normalize = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
+    let before = probe.selected();
+    let mut m = measure(
+        "model_switch",
+        before.clone(),
+        before.clone(),
+        false,
+        String::new(),
+        None,
+    );
+    let options = match probe.options() {
+        Ok(options) => options,
+        Err(e) => {
+            m.note = format!("Modellliste nicht lesbar: {e}");
+            return m;
+        }
+    };
+    if normalize(&probe.selected()) != normalize(&before) {
+        m.note = "Modellauswahl waehrend des Listenlesens geaendert; kein Wechsel versucht".into();
+        return m;
+    }
+    // A generic trigger such as "Model" is not a restorable selection.
+    // Match whole normalized labels, never substrings (e.g. Pro vs Pro Max).
+    let unambiguous = |label: &str| {
+        let needle = normalize(label);
+        !needle.is_empty()
+            && options
+                .iter()
+                .filter(|s| normalize(s).contains(&needle))
+                .count()
+                == 1
+    };
+    let Some(original) = options
+        .iter()
+        .find(|s| unambiguous(s) && normalize(s) == normalize(&before))
+    else {
+        m.note = "Aktuelles Modell nicht eindeutig in der Laufzeitliste erkennbar; kein Wechsel versucht".into();
+        return m;
+    };
+    let Some(target) = options.iter().find(|s| {
+        // The existing UI selector accepts partial labels and reports
+        // 'already active' for substrings. Avoid pairs such as Pro/Pro Max
+        // in either direction until an exact-selection API is available.
+        let target = normalize(s);
+        let initial = normalize(original);
+        unambiguous(s) && !target.contains(&initial) && !initial.contains(&target)
+    }) else {
+        m.note =
+            "Kein eindeutig waehlbares anderes Modell in der Laufzeitliste; Menue-Oeffnung ist kein Wechselbeleg".into();
+        return m;
+    };
+    let forward = probe.select(target);
+    let after = probe.selected();
+    m.after = after.clone();
+    let changed = normalize(&after) != normalize(&before);
+    let selected = forward
+        .as_ref()
+        .is_ok_and(|label| !label.contains("bereits aktiv"))
+        && changed
+        && normalize(&after) == normalize(target);
+    // Even an error can occur after changing the UI. Restore whenever the
+    // independently observed state differs from the original selection.
+    let restoration = if changed {
+        probe.select(original)
+    } else {
+        Ok(before.clone())
+    };
+    let restored = restoration.is_ok() && normalize(&probe.selected()) == normalize(&before);
+    m.restored = Some(restored);
+    m.proven = selected && restored;
+    m.note = format!(
+        "Laufzeit-Modellwahl {before:?} -> {target:?}, beobachtet {after:?}; Wechsel={selected}, Rueckweg={restored}"
+    );
+    if let Err(e) = forward {
+        m.note.push_str(&format!("; Auswahlfehler: {e}"));
+    }
+    if let Err(e) = restoration {
+        m.note.push_str(&format!("; Wiederherstellungsfehler: {e}"));
+    }
+    m
+}
+
+fn verify_model_switch(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<VerifyResult> {
+    if !has_sel(&backend.selectors, cap.needs) {
+        return Vec::new();
+    }
+    let start = Instant::now();
+    let hash = hash_for(backend, cap);
+    let winner = resolve_fallback(backend, &["model_menu"]).map(|(s, _)| s);
+    let mut m = if winner.is_some() {
+        model_roundtrip(backend)
+    } else {
+        measure(
+            cap.key,
+            String::new(),
+            String::new(),
+            false,
+            "kein sichtbarer Modellselektor".into(),
+            None,
+        )
+    };
+    let outcome = if m.proven {
+        ProofOutcome::Passed
+    } else if winner.is_none() {
+        ProofOutcome::Unreachable
+    } else {
+        ProofOutcome::Failed
+    };
+    m.winning_selector = winner;
+    vec![VerifyResult::new(m, outcome, hash, start)]
+}
+
 /// `reasoning_effort` braucht einen Untermenü-Pfad (`select_in_menu_path`);
 /// ohne konfigurierten `reasoning_effort_path` bleibt die Fähigkeit ehrlich
 /// eine Quest (§13 — Pfade müssen noch nachgetragen werden).
@@ -432,7 +598,16 @@ fn verify_reasoning_effort(backend: &mut WebBrainBackend, cap: &Capability) -> V
     let menu_key = "reasoning_effort_menu";
     let before = backend.menu_label(menu_key);
     let last_step = path[path.len() - 1];
-    match backend.select_in_menu_path(menu_key, "model_option", &path) {
+    let option_key = if backend
+        .sel("reasoning_effort_option")
+        .iter()
+        .any(|s| !s.trim().is_empty())
+    {
+        "reasoning_effort_option"
+    } else {
+        "model_option"
+    };
+    match backend.select_in_menu_path(menu_key, option_key, &path) {
         Ok(after) => {
             let proven = after
                 .to_lowercase()
@@ -966,6 +1141,152 @@ mod tests {
 
     const PROBE: &str =
         "webagent capability probe test-stamp — zaehle langsam von 1 bis 100, je Zahl eine Zeile.";
+
+    struct ModelFixture {
+        current: String,
+        options: Vec<String>,
+        calls: Vec<String>,
+        ignore_switch: bool,
+        fail_restore: bool,
+        fail_after_change: bool,
+        drift_on_list: bool,
+        report_noop: bool,
+    }
+
+    impl ModelFixture {
+        fn new(options: &[&str]) -> Self {
+            Self {
+                current: "Model A".into(),
+                options: options.iter().map(|s| (*s).into()).collect(),
+                calls: Vec::new(),
+                ignore_switch: false,
+                fail_restore: false,
+                fail_after_change: false,
+                drift_on_list: false,
+                report_noop: false,
+            }
+        }
+    }
+
+    impl ModelMenuProbe for ModelFixture {
+        fn selected(&self) -> String {
+            self.current.clone()
+        }
+        fn options(&mut self) -> Result<Vec<String>, String> {
+            if self.drift_on_list {
+                self.current = "Model B".into();
+            }
+            Ok(self.options.clone())
+        }
+        fn select(&mut self, model: &str) -> Result<String, String> {
+            self.calls.push(model.into());
+            if self.fail_restore && model == "Model A" {
+                return Err("restore failed".into());
+            }
+            if !self.ignore_switch {
+                self.current = model.into();
+            }
+            if self.report_noop && model != "Model A" {
+                return Ok(format!("{model} (bereits aktiv, kein Wechsel noetig)"));
+            }
+            if self.fail_after_change && model != "Model A" {
+                return Err("late failure".into());
+            }
+            // The click's return value deliberately claims success even when
+            // ignore_switch is set; only the independent read may prove it.
+            Ok(model.into())
+        }
+    }
+
+    #[test]
+    fn model_roundtrip_requires_selected_model_and_restore() {
+        let mut menu = ModelFixture::new(&["Model A", "Model B"]);
+        let m = model_roundtrip(&mut menu);
+        assert!(m.proven, "{m:?}");
+        assert_eq!(m.before, "Model A");
+        assert_eq!(m.after, "Model B");
+        assert_eq!(m.restored, Some(true));
+        assert_eq!(menu.calls, ["Model B", "Model A"]);
+    }
+
+    #[test]
+    fn model_roundtrip_ignores_click_success_without_selection_change() {
+        let mut menu = ModelFixture::new(&["Model A", "Model B"]);
+        menu.ignore_switch = true;
+        let m = model_roundtrip(&mut menu);
+        assert!(!m.proven);
+        assert_eq!(m.before, m.after);
+        assert_eq!(menu.calls, ["Model B"]);
+    }
+
+    #[test]
+    fn model_roundtrip_rejects_missing_alternative_or_unknown_current_model() {
+        for options in [&["Model A"][..], &["Model B", "Model C"][..], &[][..]] {
+            let mut menu = ModelFixture::new(options);
+            assert!(!model_roundtrip(&mut menu).proven);
+            assert!(menu.calls.is_empty());
+        }
+    }
+
+    #[test]
+    fn model_roundtrip_restore_failure_is_not_passed() {
+        let mut menu = ModelFixture::new(&["Model A", "Model B"]);
+        menu.fail_restore = true;
+        let m = model_roundtrip(&mut menu);
+        assert!(!m.proven);
+        assert_eq!(m.after, "Model B");
+        assert_eq!(m.restored, Some(false));
+    }
+
+    #[test]
+    fn model_roundtrip_restores_after_selection_error_with_side_effect() {
+        let mut menu = ModelFixture::new(&["Model A", "Model B"]);
+        menu.fail_after_change = true;
+        let m = model_roundtrip(&mut menu);
+        assert!(!m.proven);
+        assert_eq!(m.restored, Some(true));
+        assert_eq!(menu.calls, ["Model B", "Model A"]);
+    }
+
+    #[test]
+    fn model_roundtrip_does_not_attempt_ambiguous_substring_pairs() {
+        for original in ["Pro", "Pro Max"] {
+            let mut menu = ModelFixture::new(&["Pro", "Pro Max"]);
+            menu.current = original.into();
+            assert!(!model_roundtrip(&mut menu).proven);
+            assert!(
+                menu.calls.is_empty(),
+                "substring no-op could prevent restore"
+            );
+            assert_eq!(menu.current, original);
+        }
+    }
+
+    #[test]
+    fn model_roundtrip_rejects_drift_during_listing() {
+        let mut menu = ModelFixture::new(&["Model A", "Model B"]);
+        menu.drift_on_list = true;
+        assert!(!model_roundtrip(&mut menu).proven);
+        assert!(menu.calls.is_empty());
+    }
+
+    #[test]
+    fn model_roundtrip_checks_all_options_for_substring_ambiguity() {
+        let mut menu = ModelFixture::new(&["Pro Max", "Pro", "Lite"]);
+        menu.current = "Pro".into();
+        assert!(!model_roundtrip(&mut menu).proven);
+        assert!(menu.calls.is_empty());
+        assert_eq!(menu.current, "Pro");
+    }
+
+    #[test]
+    fn model_roundtrip_already_active_response_cannot_prove_switch() {
+        let mut menu = ModelFixture::new(&["Model A", "Model B"]);
+        menu.report_noop = true;
+        let m = model_roundtrip(&mut menu);
+        assert!(!m.proven);
+        assert_eq!(m.restored, Some(true));
+    }
 
     fn cap(key: &str) -> &'static Capability {
         crate::capability::capability(key).expect("im Katalog")

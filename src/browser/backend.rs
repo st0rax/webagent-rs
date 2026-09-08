@@ -75,8 +75,11 @@ impl BrainBackend for WebBrainBackend {
                     e
                 )
             })?;
+            let view_id = driver.view_id();
             *self.runtime.borrow_mut() = Some(runtime);
+            *self.view_id.borrow_mut() = Some(view_id);
             *self.driver.borrow_mut() = Some(Box::new(driver));
+            self.revealed.set(false);
             Ok(())
         }
     }
@@ -94,6 +97,8 @@ impl BrainBackend for WebBrainBackend {
             // sonst bleibt der WebView-Prozess hängen und Isolation bricht.
             if crate::config::use_shared_browser() && self.profile_override.is_none() {
                 *self.driver.borrow_mut() = None;
+                *self.view_id.borrow_mut() = None;
+                self.revealed.set(false);
                 return crate::browser_pool::BrowserPool::global()
                     .lock()
                     .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
@@ -101,6 +106,8 @@ impl BrainBackend for WebBrainBackend {
             }
             *self.driver.borrow_mut() = None;
             *self.runtime.borrow_mut() = None;
+            *self.view_id.borrow_mut() = None;
+            self.revealed.set(false);
             Ok(())
         }
     }
@@ -112,18 +119,35 @@ impl BrainBackend for WebBrainBackend {
             self.dismiss_consent();
             let state = self.session_state();
             match state {
-                SessionState::Cloudflare => {
+                SessionState::Cloudflare | SessionState::LoginRequired => {
+                    // Nutzer muss Captcha/Login loesen — Fenster kurz onscreen.
+                    let _ = self.reveal_onscreen();
                     cf_count += 1;
                     std::thread::sleep(Duration::from_secs_f64(
                         3.0 + (cf_count as f64 * 0.5).min(5.0),
                     ));
                     continue;
                 }
-                SessionState::Ready => return Ok(SessionState::Ready),
+                SessionState::Ready => {
+                    self.park_if_revealed();
+                    return Ok(SessionState::Ready);
+                }
                 _ => std::thread::sleep(Duration::from_millis(1500)),
             }
         }
-        Ok(self.session_state())
+        let final_state = self.session_state();
+        if final_state == SessionState::Ready {
+            self.park_if_revealed();
+        }
+        Ok(final_state)
+    }
+
+    fn reveal_onscreen(&mut self) -> Result<(), String> {
+        WebBrainBackend::reveal_onscreen(self)
+    }
+
+    fn park_offscreen(&mut self) -> Result<(), String> {
+        WebBrainBackend::park_offscreen(self)
     }
 
     fn session_state(&self) -> SessionState {
@@ -201,6 +225,11 @@ impl BrainBackend for WebBrainBackend {
         on_update: &mut dyn FnMut(&str),
     ) -> Result<BrainResponse, String> {
         let start = Instant::now();
+        // Headed NOACTIVATE tiles often need a pointer nudge *before* the first
+        // poll, not only every ~2s — otherwise send already landed on a frozen
+        // document and we burn the full timeout waiting for mouseover.
+        self.wake_renderer();
+        let _ = self.ensure_renderer_responsive();
         // Selektor-Literale einmal bauen (ändern sich zur Laufzeit nie), dann pro
         // Poll-Iteration nur einen einzigen CDP-Roundtrip fahren.
         let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
@@ -229,7 +258,15 @@ impl BrainBackend for WebBrainBackend {
             }
             // Frueh (statt erst beim Timeout) auf ein Block-Banner pruefen, damit ein
             // Rate-/Nachrichtenlimit nicht ~timeout Sekunden je Turn kostet. ~alle 2 s.
+            // Same cadence: nudge the renderer so headed NOACTIVATE tiles do not
+            // stay frozen for the full timeout, and fail loudly if CDP is dead.
             block_polls += 1;
+            // ~0.9s cadence (was ~2.1s): User still sees mouseover hangs when
+            // the tile freezes mid-wait; wake earlier and fail loud on dead CDP.
+            if block_polls.is_multiple_of(3) {
+                self.wake_renderer();
+                self.ensure_renderer_responsive()?;
+            }
             if block_polls.is_multiple_of(7) {
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, -1, false, "blocked"));
@@ -239,7 +276,13 @@ impl BrainBackend for WebBrainBackend {
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, -1, false, "blocked"));
                 }
-                return Ok(mk(String::new(), -1, false, "timeout_no_message"));
+                // Empty after wakes: prefer an unresponsive-UI hint over a blank timeout.
+                return Ok(mk(
+                    String::new(),
+                    -1,
+                    false,
+                    "timeout_no_message: renderer may be unresponsive after wake — move mouse or restart brain",
+                ));
             }
             std::thread::sleep(Duration::from_millis(300));
         }
@@ -311,7 +354,15 @@ impl BrainBackend for WebBrainBackend {
             // noch kein echter Text steht — sonst kostet ein Limit den vollen Timeout.
             // mistrals „Nachrichtenlimit erreicht" erscheint erst NACH dem Senden,
             // also bricht Phase 1 vorher ab und nur hier wird es rechtzeitig erkannt.
+            // Wake on the same cadence so a frozen NOACTIVATE tile does not sit
+            // silent until timeout_no_text.
             p2_polls += 1;
+            // Wake even when some text already arrived — a NOACTIVATE tile can
+            // freeze mid-stream and then only resume after a real mouse move.
+            if p2_polls.is_multiple_of(3) {
+                self.wake_renderer();
+                self.ensure_renderer_responsive()?;
+            }
             if last_text.trim().is_empty() && p2_polls.is_multiple_of(7) {
                 if let Some(banner) = self.detect_block_banner() {
                     return Ok(mk(banner, target, false, "blocked"));
@@ -409,7 +460,7 @@ impl BrainBackend for WebBrainBackend {
                 let status = if stop_visible {
                     "timeout_still_generating"
                 } else if last_text.trim().is_empty() {
-                    "timeout_no_text"
+                    "timeout_no_text: renderer may be unresponsive after wake — move mouse or restart brain"
                 } else {
                     "timeout_unstable"
                 };

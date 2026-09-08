@@ -1,20 +1,46 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-07:** Der aktuelle Checkout arbeitet auf
-> `feat/durable-transaction-log` auf Basis von `505d416` (04.09.2026). Die
-> laufenden, noch uncommitteten Änderungen stehen in `src/run_store.rs`,
-> `src/repl/autonomous.rs`, `src/repl/mod.rs`, `Cargo.toml` und `Cargo.lock`.
-> Normale REPL-Aufgaben starten frisch; Resume erfolgt ausschließlich über
-> `/resume <run-id>`. Run-Events sind SHA-256-verknüpft und werden per `fsync`
-> dauerhaft geschrieben. `cargo test --lib --no-default-features` ist mit
-> 1278 bestanden, 0 fehlgeschlagen und 1 ignoriert durchgelaufen. Der
-> vollständige Windows-Release-Build ist lokal erzeugt; das Artefakt liegt in
-> `C:\Users\storax\Documents\Codex\2026-09-07\ich\outputs\webagent-0.11.1-transaction-log-repl-fix-x86_64-pc-windows-gnu.exe`.
+> **Aktualisiert 2026-09-08:** Arbeitsbranch `fix/T-501-model-proof` wurde auf
+> `origin/master` (a3036db, Merge PR #54) rekonsolidiert: `model-selection-
+> roundtrip-v2`-Verifier via `capability_proof.rs`, 57 Belegdateien von master
+> nachgezogen, Taskboard auf Audit-Stand 103/130 gestellt. Naechster G-001-
+> Schritt laut `MODEL_PROOF_AUDIT_2026-09-07.md`: sechs Modellzellen
+> (claude/qwen/perplexity/zai/gemini/kimi) live neu messen.
 
-**Aktualisiert:** 2026-09-02
+## Fortsetzung G-001 / T-501 am 2026-09-07
+
+Claim: `chatgpt-codex`, Branch `fix/T-501-model-proof`, Basis `28e9f1c`.
+Der Nutzer hat die Fortsetzung von G-001 beauftragt. Erste Scheibe: den
+Modellwechsel-Beleg korrigieren; `verify model_switch` prueft bisher nur den
+generischen Zustand des Menueknopfs. Der Gemini-Beleg vom 2026-09-06 zeigt
+`aria-expanded=false -> true` bei unveraendertem Modell `Flash`.
+Das ist kein Modellwechsel. Matrix vor Audit: 109 passed, 10 failed,
+4 unreachable, 7 not_run; keine aktuelle Live-Rezertifizierung.
+
+Isolation: eigener Worktree. Der vorhandene Arbeitsbaum
+`C:/Users/storax/projects/GitHub/webagent-rs` auf `feature/T-501-effort-rest`
+enthaelt fremde, uncommittierte ChatGPT-Selektoren und Survey-Dateien; diese
+bleiben erhalten. Die dort laufende WebAgent-Instanz wird nicht ersetzt.
+Die Code-Scheibe ist jetzt lokal abgenommen: Modellwahl verlangt tatsaechlichen
+Laufzeitwechsel plus Restore; alte Trigger-PASS sind per Hash-Version ungueltig.
+Alle vier Gates gruen: `cargo test --locked --lib` (1331 passed, 1 ignored),
+striktes Clippy, no-default-features und TUI-Check. Die Tests legten eine
+unabhaengige Race in `benchmark::harvest` offen; die vier Tests teilen einen
+Testdatenordner und sind nun per Test-Mutex isoliert. Offene Folge: sechs
+Modellzellen erneut live messen, T-501 insgesamt bleibt offen.
+
+> **Checkout-Hinweis (HEAD, 2026-09-07):** dieser Arbeitsbaum lief vor dem
+> Rebase auf `feat/durable-transaction-log` (Basis `505d416`). Run-Events
+> SHA-256-verknuepft + fsync; `cargo test --lib --no-default-features` 1278
+> passed / 1 ignored. Release-Artefakt
+> `webagent-0.11.1-transaction-log-repl-fix-x86_64-pc-windows-gnu.exe`.
+
+**Aktualisiert:** 2026-09-08
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
-**Board 2026-09-02:** Phase 4 komplett inkl. T-404 SDK-Blackbox (Python/JS-SDK + urllib/fetch, Dumps `docs/proofs/T-404/`). Live T-301/T-302/T-501 ohne Freigabe nicht gegen echte Brains. Naechste Code-Zelle T-601.
+**Stand 2026-09-05:** `master` auf `9793623` (PR #33 gemergt: Port-Vereinheitlichung „Ein Listener, zwei Rollen“ — Web-UI + API-Bridge gemeinsam auf `8788`, `api serve` als Alias; `8787` ist historische Dead-Zahl; Details [`CLI_UI_REDESIGN.md`](CLI_UI_REDESIGN.md) §8; `a934db2`/PR #32 `ask` war der Vorgaenger-Commit). **T-501-Nachzieh-Runde 2026-09-05 auf Port 8788** (Breaker-Cooldowns abgelaufen, Bridge mit echtem Login-Profil-Root): `api_responses` jetzt **9/9 passed** (mistral+zai nachgeholt; mistral-Deltas Provider-Timestamps, finale `.done`-Antwort sauber RESP_OK), `streaming` bleibt **6/9** (kimi Reasoning-Echo, mistral Timestamp, zai „Thinking...“), `attachment` 5 Brains frisch gemessen. **Nachtrag `attachment kimi` (2026-09-05, Fokus laut Eigentuemerentscheidung):** Der fruehere 502 `ABSENDEKNOPF_DEAKTIVIERT` lag am entarteten 1x1/70-Byte-Testbild, nicht an der Bridge - mit echtem 256x256-Bild (PIL, ~1,1 kB) laeuft der komplette Upload->Send->Antwort-Pfad durch: **kimi attachment jetzt `passed` (200 "RED", 36,6 s, frische Session)**. qwen/zai bleiben `failed` (auch mit echtem Bild "0 von 1 Dateien": echter SPA-Upload-Gap, Re-Run-Belege `attachment_{qwen,zai}_real_image_2026-09-05.json`), mistral Timestamp, auto Timeout 240s. `managed_tools` by-design 400 erneut bestaetigt. Matrix-Gesamtstand **98/130 passed, 17 failed, 6 unreachable, 9 not_run**; T-501 im TASKBOARD auf `claimed` zurueckgestellt (DoD weiterhin NICHT done: streaming 3, attachment 4, model/effort login-gebunden). **Web-UI-Feature (2026-09-05):** `web/index.html`-Composer zeigt bei leerer Eingabemaske einen Beispiel-Hinweis (`/quelle list`, `/quelle ... --save`, `@brain`) wie die opencode-Promptleiste; verschwindet beim Tippen (`syncHint()`), wirkt nach Neubau (eingebettet via `include_str!`). Belege `docs/proofs/T-501/*2026-09-05.*`, Harness `docs/proofs/T-501/rerun_2026-09-05.py`. Alle aelteren `127.0.0.1:8787`-Erwaehnungen in `docs/proofs/*` bleiben historische Belege und werden nicht angefasst. **Login-Realitaet (Messung 2026-09-05, DeepSeek zuerst):** isolierter No-Login-Smoke via `WEBAGENT_ROOT`-Temp-Root (frisches, leeres Profil; Breaker-Zustand im Temp — echter Betrieb unberuehrt): `webagent ask --task "Antworte exakt und nur: DS_NOLOGIN_OK" --brain deepseek --chat --json --headless --no-memory` → `reason=session_state=LoginRequired`, `latency_ms=47561`, deterministische Breaker-Sperre 21600s (nur im Temp-Root), Exit 1. **Befund: deepseek funktioniert ohne Login NICHT** — bestaetigt den frueheren Eintrag in `CLI_UI_REDESIGN.md` §2 P2; der README-Login-Claim („angemeldeter Browser bei dem Dienst, den du nutzen willst“) bleibt damit korrekt neutral formuliert. Protokoll: `%LOCALAPPDATA%\Temp\opencode\wa-nologin\deepseek-smoke.log`.
+
+**Historischer Kopf (2026-09-02):** Phase 4 komplett inkl. T-404 SDK-Blackbox (Python/JS-SDK + urllib/fetch, Dumps `docs/proofs/T-404/`). Live T-301/T-302/T-501 ohne Freigabe nicht gegen echte Brains. Naechste Code-Zelle war T-601.
 
 ## Verbindlicher Produkt-Neuschnitt vom 01.09.2026
 
@@ -304,6 +330,11 @@ Die Implementierung ist als `1015586` (`feat: add dynamic pi brain switching`) a
 `api_bridge` serialisiert Browserruns jetzt nur noch pro Brain; unterschiedliche Brains koennen parallel arbeiten. In `relay` werden deterministische Sendefehler (fehlender Absende-Beweis, deaktivierter Knopf, erkannte Blockade, Login-/Cloudflare-/Limit-Hinweis) nicht mehr dreimal vollstaendig wiederholt; transiente CDP- und Navigationsfehler bleiben retry-faehig. Der identische Gemini-Fehler sank live von 95,351 s auf 33,408 s. Vollfeature-Clippy, fokussierte Relay-Tests und Release-Build bestanden.
 
 ## Aktueller Repositoryzustand
+
+> **Historisch (Stand vor 2026-09-04).** Die nachfolgenden Branch-, Commit- und
+> Gate-Angaben betreffen den damaligen Stand `task/v1-release-baseline` und sind
+> mit dem aktuellen `master` (`505d416`) überholt. Aktueller Einstieg: der Kopf
+> dieser Datei und `feature/docs-cli-ui-fixes`.
 
 Die Arbeit läuft auf `task/v1-release-baseline`, ausgehend von `origin/master` bei `1d214e8`. Die erste abgeschlossene Baseline-Scheibe ist als `2659baf` (`fix: restore headless release baseline`) committet; der Scope-Freeze und die Definition of Done folgen in `4fdb068` (`docs: define v1 release completion`). Beide Commits sind auf `origin/task/v1-release-baseline` gepusht. Die Baseline-Scheibe stellte den browserfreien Releasezustand wieder her: fehlende Bibliotheksmodule wurden registriert, der Root-Eintrag in `Cargo.lock` wurde auf `0.11.1` korrigiert, reine Kernmodule wurden von unnötigen TUI-Gates entkoppelt, strikte Lint-/Testdrift wurde behoben und die alte Wilson-Dublette wird auf die gemeinsame Implementierung zurückgeführt.
 

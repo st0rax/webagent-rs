@@ -84,8 +84,12 @@
     "li[role=option]"
   ],
   "reasoning_effort_menu": [
-    "[aria-label='Thinking']",
-    "[aria-label*='Thinking' i]"
+    "div.qwen-thinking-selector div.qwen-chat-v2-dropdown-menu-select-button",
+    "div.qwen-thinking-selector [class*='dropdown-menu-select-button' i]",
+    "div.qwen-thinking-selector",
+    "[class*='qwen-thinking-selector' i] [class*='dropdown-menu-select-button' i]",
+    "[class*='qwen-thinking-selector' i]",
+    "div.message-input-right-button:has-text('Auto')"
   ],
   "ui_options": [
     "chat",
@@ -101,7 +105,27 @@
   ],
   "attach_button": [
     "[aria-label='Upload files']",
-    "[aria-label*='Upload' i]"
+    "[aria-label*='Upload files' i]",
+    "button[aria-label='Upload files']",
+    "button[aria-label*='Upload' i]",
+    "[aria-label*='Upload' i]",
+    "label[aria-label*='Upload' i]",
+    "button[aria-label*='attach' i]",
+    "button[aria-label*='Attach' i]",
+    "button[aria-label*='file' i]",
+    "button[aria-label*='图片' i]",
+    "button[aria-label*='上传' i]",
+    "button:has-text('Upload')",
+    "button:has-text('上传')",
+    "button[aria-label*='plus' i]",
+    "button[aria-label*='More' i]",
+    "button[aria-label*='Add' i]",
+    "button[aria-label*='添加' i]",
+    "button[aria-label*='工具' i]",
+    "textarea.message-input-textarea ~ * button",
+    "[class*='message-input' i] button:has(svg)",
+    "[class*='chat-input' i] button:has(svg)",
+    "[class*='composer' i] button:has(svg)"
   ],
   "voice_input_button": [
     "[aria-label='Voice Input']",
@@ -114,5 +138,34 @@
   "temporary_chat_button": [
     "[aria-label='Temporary Chat']",
     "[aria-label*='Temporary Chat' i]"
+  ],
+  "file_upload_button": [
+    "button:has-text('Upload files')",
+    "button:has-text('Upload file')",
+    "button:has-text('Upload image')",
+    "button:has-text('上传文件')",
+    "button:has-text('上传图片')",
+    "[role='menuitem']:has-text('Upload')",
+    "[role='menuitem']:has-text('上传')",
+    "button:has-text('Upload')",
+    "button:has-text('Local file')",
+    "button:has-text('From device')",
+    "button:has-text('Computer')",
+    "button:has-text('本地文件')",
+    "[role='menuitem']:has-text('Image')",
+    "[role='menuitem']:has-text('File')",
+    "[role='option']:has-text('Upload')",
+    "[role='option']:has-text('上传')"
+  ],
+  "reasoning_effort_path": [
+    "Think"
+  ],
+  "reasoning_effort_option": [
+    "div.qwen-chat-v2-dropdown-menu-item",
+    "div.qwen-chat-v2-dropdown-menu-popup .qwen-chat-v2-dropdown-menu-item",
+    "[aria-label=Thinking] .qwen-chat-v2-dropdown-menu-item",
+    "[class*='qwen-chat-v2-dropdown-menu-item' i]",
+    "[role='menu'] [class*='dropdown-menu-item' i]",
+    "[aria-label='Thinking'] [class*='dropdown-menu-item' i]"
   ]
 }

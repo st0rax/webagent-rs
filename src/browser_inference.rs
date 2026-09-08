@@ -146,30 +146,14 @@ pub fn complete_streaming_with_attachments(
     parse_response(&text, request.tools, &request.tool_choice)
 }
 
-/// Removes provider UI chrome that can be rendered as part of the assistant
-/// message. Z.ai currently prefixes some completed turns with a standalone
-/// `Thought Process` heading. This is not model content and must not leak into
-/// the OpenAI-compatible response. The rule is deliberately scoped to Z.ai
-/// and only removes the heading when non-empty answer text follows it.
-fn normalize_provider_text(brain: &str, text: &str) -> String {
-    if !brain.eq_ignore_ascii_case("zai") {
-        return text.to_string();
-    }
-
-    let trimmed = text.trim();
-    let Some(rest) = trimmed
-        .strip_prefix("Thought Process")
-        .or_else(|| trimmed.strip_prefix("thought process"))
-    else {
-        return text.to_string();
-    };
-
-    let rest = rest.trim_start_matches([' ', '\t', '\r', '\n']);
-    if rest.trim().is_empty() {
-        text.to_string()
-    } else {
-        rest.trim().to_string()
-    }
+/// Strip provider UI chrome / CoT echo before SSE deltas or final answers.
+///
+/// Shared with the Web-UI stream ingest (`observer::chat_answer_text`): Thinking...,
+/// UI clocks, Claude status lines, and Kimi reasoning-echo must never become
+/// `delta.content`. Chrome-only snapshots become empty so callers keep waiting
+/// or fail honestly instead of finishing on status text.
+fn normalize_provider_text(_brain: &str, text: &str) -> String {
+    crate::observer::chat_answer_text(text)
 }
 
 fn validate_attachments(attachments: &[BrowserAttachment]) -> Result<(), String> {
@@ -418,7 +402,7 @@ mod tests {
     }
 
     #[test]
-    fn zai_thought_process_heading_is_removed_when_answer_follows() {
+    fn provider_chrome_and_reasoning_echo_are_stripped_for_all_brains() {
         assert_eq!(
             normalize_provider_text("zai", "Thought Process\n\nZAI_OK"),
             "ZAI_OK"
@@ -427,17 +411,19 @@ mod tests {
             normalize_provider_text("zai", "  thought process\r\nAntwort  \n"),
             "Antwort"
         );
-    }
-
-    #[test]
-    fn provider_normalization_is_scoped_and_never_empties_answer() {
+        assert_eq!(normalize_provider_text("zai", "Thinking..."), "");
+        assert_eq!(normalize_provider_text("mistral", "14:28"), "");
         assert_eq!(
             normalize_provider_text("chatgpt", "Thought Process\n\nInhalt"),
-            "Thought Process\n\nInhalt"
+            "Inhalt"
         );
+        // Chrome-only → empty (keep waiting / fail honest), not echoed as answer.
+        assert_eq!(normalize_provider_text("zai", "Thought Process"), "");
+        let kimi = "The user wants me to reply with exactly the token \"STREAM_OK\" and nothing else. This is a very simple request. I should not add any extra text.";
+        assert_eq!(normalize_provider_text("kimi", kimi), "");
         assert_eq!(
-            normalize_provider_text("zai", "Thought Process"),
-            "Thought Process"
+            normalize_provider_text("kimi", &format!("{kimi}\n\nSTREAM_OK")),
+            "STREAM_OK"
         );
     }
 

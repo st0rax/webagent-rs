@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-04",
+  "as_of": "2026-09-07",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "brains": [
     "chatgpt",
@@ -124,12 +124,13 @@
     {
       "area": "webui_chat",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "webagent/auto",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 20700,
+      "proof_path": "docs/proofs/T-501/webui_chat_auto_2026-09-06.json",
+      "note": "PASS 2026-09-06: AUTO_UI_CHAT_OK (20,7s) via /v1/chat/completions webagent/auto; Token aus WEBAGENT_API_KEY nötig (sonst 401)"
     },
     {
       "area": "streaming",
@@ -174,24 +175,24 @@
     {
       "area": "streaming",
       "brain": "kimi",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-06",
       "model": "webagent/kimi",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-04.json",
-      "note": "FAIL: Reasoning-Echo als Delta-Stream (Token nur in Prosa) - clean via non-stream+/v1/responses"
+      "latency_ms": 18167,
+      "proof_path": "docs/proofs/T-501/streaming_kimi_2026-09-06c.json",
+      "note": "PASS 2026-09-06c (PR #44/#45): STREAM_OK ~18s offscreen after incomplete CoT prefix filter; build d4fb6dd. Prior fail was reasoning/instruction echo as first delta."
     },
     {
       "area": "streaming",
       "brain": "mistral",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-06",
       "model": "webagent/mistral",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-04.json",
-      "note": "FAIL: Timestamp+keep-alive als Delta-Stream; spaeter circuit_open/capacity (Provider-seitig)"
+      "latency_ms": 19006,
+      "proof_path": "docs/proofs/T-501/streaming_mistral_2026-09-06b.json",
+      "note": "FAIL 2026-09-05/06: Delta-Strom = nur Wanduhr-Timestamps, finale Antwort .done. Research-Befund (2026-09-06): chat.mistral.ai nutzt internes SSE `0:\"text\"`-Format; Bridge schreibt SSE bei `Connection: close` unkomprimiert aus (kein gzip-Pufferen gefunden) -> Ursache eher Progress-/Meta-Frames der Web-App als Text; kein Repo-Fix ohne Netzwerk-Tab-Verifikation. Evidence-Map workspace/research/"
     },
     {
       "area": "streaming",
@@ -216,13 +217,13 @@
     {
       "area": "streaming",
       "brain": "zai",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-06",
       "model": "webagent/zai",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-04.json",
-      "note": "FAIL: circuit_open (Provider-Capacity ~6h Cooldown); passed 09-03"
+      "latency_ms": 22188,
+      "proof_path": "docs/proofs/T-501/streaming_zai_2026-09-06b.json",
+      "note": "FAIL 2026-09-05: Delta zeigt nur 'Thinking...', kein Content-Delta mit STREAM_OK."
     },
     {
       "area": "streaming",
@@ -239,91 +240,100 @@
       "area": "model",
       "brain": "chatgpt",
       "status": "unreachable",
-      "date": "2026-09-03",
-      "model": null,
-      "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "date": "2026-09-06",
+      "model": "ChatGPT",
+      "selector_hash": 36116658,
+      "latency_ms": 1743,
+      "proof_path": "docs/proofs/T-501/model_switch_chatgpt_2026-09-06.json",
+      "note": "passed (verify 2026-09-06): Gewinner 'button.__composer-pill' (Composer-Pill > Model-Configure-Modal-Kette); Zustandswechsel belegt, Ausgangszustand wiederhergestellt | Live verify 2026-09-06: kein sichtbarer Selektor"
     },
     {
       "area": "model",
       "brain": "claude",
-      "status": "passed",
-      "date": "2026-09-03",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": "Sonnet 5 Hoch",
       "selector_hash": null,
-      "latency_ms": 1759,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md"
     },
     {
       "area": "model",
       "brain": "deepseek",
       "status": "unreachable",
-      "date": "2026-09-03",
+      "date": "2026-09-06",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: DeepSeek bietet KEIN Modellmenue, sondern eine Segmentleiste (Instant/Expert/Vision) = mode_switch (driveable:false, mangels Auswahlmarker laut capability.rs). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung | Live verify 2026-09-06: mode_switch != model; Hygiene #49"
     },
     {
       "area": "model",
       "brain": "gemini",
-      "status": "unreachable",
-      "date": "2026-09-03",
-      "model": null,
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": "3.6 Flash",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/model_switch_gemini_2026-09-06.json",
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: passed (verify 2026-09-06): Gewinner 'button[aria-label*='Modusauswahl' i]'; resolve_fallback-Poll (SPA rendert nach ensure_ready); Zustandswechsel belegt (aria-expanded), Rueckweg misslungen (Menue blieb offen) - Menue-Trigger bedienbar, echte Modellwahl via menu --set Flash-Lite live bestaetigt | Live verify 2026-09-06: Zustandswechsel belegt (Rueckweg Menue offen)"
     },
     {
       "area": "model",
       "brain": "kimi",
-      "status": "unreachable",
-      "date": "2026-09-03",
-      "model": null,
+      "status": "not_run",
+      "date": "2026-09-07",
+      "model": "K3 Swarm Hoch",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/model_switch_kimi_2026-09-06.json",
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: passed (cmd_model --set 2026-09-06): Kimi model_menu 'div.current-model' hat im Headless bounding-rect 0, deshalb meldet verify resolve_fallback Unreachable — der echte Menu-Klick greift trotzdem. model_option auf belegtes DOM korrigiert (div.kimi-menu .model-item, role=menuitemradio; .models-popover .model-item veraltet). model --set K3 Swarm -> umgestellt, Rueckweg auf Schnell bestaetigt (bereits aktiv). Record seeds %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl ts 2026-09-06T15:21:17Z | Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
       "brain": "mistral",
       "status": "unreachable",
-      "date": "2026-09-03",
+      "date": "2026-09-06",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: Im Chat-Komposer-Kontext kein Modellmenue sichtbar (nur Chat/Work/Code-Ansicht, Einstellungsmenue, Notifications). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung | Live verify 2026-09-06: kein sichtbarer Selektor (kein Modellmenue)"
     },
     {
       "area": "model",
       "brain": "perplexity",
-      "status": "passed",
-      "date": "2026-09-03",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": null,
       "selector_hash": null,
-      "latency_ms": 2582,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
       "brain": "qwen",
-      "status": "passed",
-      "date": "2026-09-03",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": null,
       "selector_hash": null,
-      "latency_ms": 1629,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: Live verify 2026-09-06: Zustandswechsel + Restore"
     },
     {
       "area": "model",
       "brain": "zai",
-      "status": "passed",
-      "date": "2026-09-03",
+      "status": "not_run",
+      "date": "2026-09-07",
       "model": null,
       "selector_hash": null,
-      "latency_ms": 1705,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md"
     },
     {
       "area": "model",
@@ -413,13 +423,13 @@
     {
       "area": "effort",
       "brain": "qwen",
-      "status": "not_run",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-06",
       "model": null,
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
+      "latency_ms": 606,
+      "proof_path": "docs/proofs/T-501/verify_qwen_effort_think_2026-09-06.txt",
+      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen). | Live verify 2026-09-06d: reasoning_effort Passed Fast (bereits aktiv) headless after #53 harden. | Also Passed Think (Automatisch->Think ~8.7s) and Fast (Automatisch->Fast ~8.4s) 2026-09-06e."
     },
     {
       "area": "effort",
@@ -429,7 +439,8 @@
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
+      "note": "unreachable: Brain waehrend Integration nicht live erreichbar; ehrlich unreachable"
     },
     {
       "area": "effort",
@@ -489,23 +500,24 @@
     {
       "area": "attachment",
       "brain": "kimi",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-05",
       "model": "webagent/kimi",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/attachment_kimi_2026-09-04.json",
-      "note": "Fail-closed 502 ABSENDEKNOPF_DEAKTIVIERT (3/3 Versuche): Sendknopf deaktiviert trotz vollem Composer."
+      "latency_ms": 36600,
+      "proof_path": "docs/proofs/T-501/attachment_kimi_real_image_2026-09-05.json",
+      "note": "PASS 2026-09-05: 200 'RED' (36,6s) mit echtem 256x256-Bild; Vorlauf-502 ABSENDEKNOPF lag am entarteten 1x1/70-B-Testbild, nicht an der Bridge; Kimi-Upload->Send-Durchlauf damit belegt (saubere frische Session)"
     },
     {
       "area": "attachment",
       "brain": "mistral",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "webagent/mistral",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 23086,
+      "proof_path": "docs/proofs/T-501/attachment_mistral_2026-09-06b.json",
+      "note": "PASS 2026-09-06b (PR #46 trusted CDP upload): reply RED ~23s offscreen. Prior fail was timestamp-only reply / upload not applied."
     },
     {
       "area": "attachment",
@@ -521,33 +533,35 @@
     {
       "area": "attachment",
       "brain": "qwen",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-06",
       "model": "webagent/qwen",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-04.json",
-      "note": "Fail-closed 502: Browseroberflaeche hat nur 0 von 1 Dateien uebernommen (Upload nicht bestaetigt)."
+      "latency_ms": 19932,
+      "proof_path": "docs/proofs/T-501/attachment_qwen_2026-09-06e.json",
+      "note": "PASS 2026-09-06e (PR #46 trusted CDP upload): reply RED ~20s offscreen. Prior fail was 0-of-1 files (OSS/FileChooser path)."
     },
     {
       "area": "attachment",
       "brain": "zai",
-      "status": "not_run",
-      "date": null,
-      "model": null,
+      "status": "passed",
+      "date": "2026-09-06",
+      "model": "webagent/zai",
       "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": null
+      "latency_ms": 25396,
+      "proof_path": "docs/proofs/T-501/attachment_zai_2026-09-06e.json",
+      "note": "PASS 2026-09-06e (PR #46 trusted CDP upload): reply RED ~25s offscreen. Prior fail was 0-of-1 files (black-box upload UI)."
     },
     {
       "area": "attachment",
       "brain": "auto",
-      "status": "not_run",
-      "date": null,
+      "status": "passed",
+      "date": "2026-09-05",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": "docs/proofs/T-501/attachment_auto_2026-09-05.json",
+      "note": "FAIL 2026-09-05: Timeout 240s, kein RED (AutoRouter-Attachment laeuft nicht durch). | Live 2026-09-06 attachment_auto_2026-09-06.json RED via auto->gemini (~63s, #48)."
     },
     {
       "area": "managed_tools",
@@ -652,12 +666,12 @@
       "area": "managed_tools",
       "brain": "auto",
       "status": "failed",
-      "date": "2026-09-04",
+      "date": "2026-09-05",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-04.json",
-      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile, c15586a): kein Tool-Schema wird in die Browser-Unterhaltung injiziert; Request -> 400 invalid_request_error. Vom Client-Typ unabhaengig und brain-global."
+      "proof_path": "docs/proofs/T-501/managed_tools_rejected_2026-09-05.json",
+      "note": "Bridge lehnt aktive Client-Function-Tools bewusst ab (clean browser text profile): erwarteter 400 invalid_request_error am 2026-09-05 erneut bestaetigt (by design, brain-global)."
     },
     {
       "area": "api_models",
@@ -932,13 +946,13 @@
     {
       "area": "api_responses",
       "brain": "mistral",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-05",
       "model": "webagent/mistral",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/api_responses_mistral_2026-09-04.json",
-      "note": "FAIL (flaky): clean RESP_OK frueher, dann http200-empty/circuit_open - Provider-seitig"
+      "proof_path": "docs/proofs/T-501/api_responses_mistral_2026-09-05.json",
+      "note": "PASS 2026-09-05: sauberes RESP_OK als finale Antwort (output_text.done); inkrementelle Deltas sind weiterhin Provider-Timestamps (mistral) bzw. sauber (zai)."
     },
     {
       "area": "api_responses",
@@ -963,13 +977,13 @@
     {
       "area": "api_responses",
       "brain": "zai",
-      "status": "failed",
-      "date": "2026-09-04",
+      "status": "passed",
+      "date": "2026-09-05",
       "model": "webagent/zai",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/api_responses_zai_2026-09-04.json",
-      "note": "FAIL: circuit_open (Provider-Capacity ~6h Cooldown)"
+      "proof_path": "docs/proofs/T-501/api_responses_zai_2026-09-05.json",
+      "note": "PASS 2026-09-05: sauberes RESP_OK als finale Antwort (output_text.done); inkrementelle Deltas sind weiterhin Provider-Timestamps (mistral) bzw. sauber (zai)."
     },
     {
       "area": "api_responses",

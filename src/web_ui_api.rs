@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Factory fuer das Brain einer UI-Sitzung. Produktion: sichtbares WebView.
+/// Factory fuer das Brain einer UI-Sitzung. Produktion: offscreen WebView (Reveal bei Bedarf).
 /// Tests: FakeBrain, nie ein echter Browser.
 type ChatFactory = Arc<dyn Fn(&str) -> Result<Box<dyn BrainBackend + Send>, String> + Send + Sync>;
 
@@ -261,7 +261,93 @@ pub fn dispatch(method: &str, path: &str, query: &str, body: &str, state: &UiSta
         }
         _ => route_group(method.as_str(), path, body, state)
             .or_else(|| route_session(method.as_str(), path, query, body, state))
+            .or_else(|| route_brain(method.as_str(), path, state))
             .unwrap_or_else(|| ApiResponse::json(404, json!({"error": "not_found"}))),
+    }
+}
+
+fn route_brain(method: &str, path: &str, state: &UiState) -> Option<ApiResponse> {
+    let rest = path.strip_prefix("/api/brains/")?;
+    let (id, action) = rest.split_once('/')?;
+    if id.is_empty() || action.is_empty() {
+        return None;
+    }
+    if method != "POST" {
+        return Some(ApiResponse::json(
+            405,
+            json!({"error": "method_not_allowed"}),
+        ));
+    }
+    Some(match action {
+        "show" => brain_visibility(state, id, true),
+        "hide" => brain_visibility(state, id, false),
+        _ => ApiResponse::json(404, json!({"error": "not_found"})),
+    })
+}
+
+fn brain_visibility(state: &UiState, brain_id: &str, show: bool) -> ApiResponse {
+    let action = if show { "show" } else { "hide" };
+    // 1) Aktive UI-Session mit diesem Brain (eigener Runtime-Pfad).
+    {
+        let map = state.chats.lock().unwrap();
+        for chat in map.values() {
+            let Ok(mut live) = chat.live.try_lock() else {
+                continue;
+            };
+            if !live.started {
+                continue;
+            }
+            if !live.brain.brain_id().eq_ignore_ascii_case(brain_id) {
+                continue;
+            }
+            let result = if show {
+                live.brain.reveal_onscreen()
+            } else {
+                live.brain.park_offscreen()
+            };
+            return match result {
+                Ok(()) => ApiResponse::json(
+                    200,
+                    json!({"ok": true, "brain": brain_id, "action": action, "via": "session"}),
+                ),
+                Err(error) => ApiResponse::json(502, json!({"error": error, "via": "session"})),
+            };
+        }
+    }
+    // 2) Shared-/gekapselter Pool (nur mit webview + offenem Tab).
+    #[cfg(feature = "webview")]
+    {
+        let pool_result = crate::browser_pool::BrowserPool::global()
+            .lock()
+            .map_err(|_| "BrowserPool-Sperre verloren".to_string())
+            .and_then(|pool| {
+                if show {
+                    pool.reveal_brain(brain_id)
+                } else {
+                    pool.park_brain(brain_id)
+                }
+            });
+        match pool_result {
+            Ok(()) => ApiResponse::json(
+                200,
+                json!({"ok": true, "brain": brain_id, "action": action, "via": "pool"}),
+            ),
+            Err(error) => ApiResponse::json(
+                404,
+                json!({
+                    "error": error,
+                    "hint": "kein laufendes Brain-Fenster; UI-Chat starten oder Shared-Pool nutzen"
+                }),
+            ),
+        }
+    }
+    #[cfg(not(feature = "webview"))]
+    {
+        let _ = state;
+        ApiResponse::json(
+            501,
+            json!({"error": "webview feature nicht aktiv", "action": action, "brain": brain_id}),
+        )
     }
 }
 
@@ -512,8 +598,9 @@ fn ensure_session_brain(live: &mut LiveBrain, brain_id: &str) -> Result<(), Stri
     if live.started {
         return Ok(());
     }
-    // T-301: sichtbares WebView, nie headless auf dem UI-Chat-Pfad.
-    live.brain.start(false)?;
+    // Offscreen by default (kein Mouseover-Hang). Reveal nur bei Login/Captcha
+    // via BrainBackend::ensure_ready / show-API.
+    live.brain.start(true)?;
     let ready_timeout = crate::timeouts::resolve_timeout("ensure_ready", brain_id, "", None);
     let state = live
         .brain
@@ -916,6 +1003,23 @@ mod tests {
     }
 
     #[test]
+    fn brains_show_hide_ohne_live_fenster_liefert_fehler() {
+        let state = UiState::default();
+        let show = dispatch("POST", "/api/brains/chatgpt/show", "", "", &state);
+        assert!(
+            show.status == 404 || show.status == 501,
+            "status={}",
+            show.status
+        );
+        let hide = dispatch("POST", "/api/brains/chatgpt/hide", "", "", &state);
+        assert!(
+            hide.status == 404 || hide.status == 501,
+            "status={}",
+            hide.status
+        );
+    }
+
+    #[test]
     fn capability_listet_brains() {
         let state = UiState::default();
         let resp = dispatch("GET", "/api/capability", "", "", &state);
@@ -1118,6 +1222,76 @@ mod tests {
         assert_eq!(ingest.push("PING").as_deref(), Some("PING"));
         assert_eq!(ingest.push("PING"), None);
         assert_eq!(ingest.push("PING"), None);
+    }
+
+    /// Live 0/3 proofs 2026-09-06: zai Thinking..., mistral UI clock, kimi CoT echo
+    /// must never become TextDelta; STREAM_OK after chrome must still emit.
+    #[test]
+    fn stream_ingest_drops_t501_live_chrome_snapshots() {
+        let kimi_cot = concat!(
+            "The user wants me to reply with exactly the token \"STREAM_OK\" ",
+            "and nothing else. This is a very simple request. I should not add ",
+            "any extra text, markdown formatting, or explanations. Just the exact token."
+        );
+        for chrome in ["Thinking...", "14:28", "3:58", kimi_cot] {
+            let mut ingest = StreamDeltaIngest::default();
+            assert_eq!(
+                ingest.push(chrome),
+                None,
+                "chrome leaked as delta: {chrome:?}"
+            );
+        }
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("Thinking..."), None);
+        assert_eq!(
+            ingest.push("Thinking...\n\nSTREAM_OK").as_deref(),
+            Some("STREAM_OK")
+        );
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push("14:28"), None);
+        assert_eq!(ingest.push("STREAM_OK").as_deref(), Some("STREAM_OK"));
+        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(ingest.push(kimi_cot), None);
+        assert_eq!(
+            ingest.push(&format!("{kimi_cot}\n\nSTREAM_OK")).as_deref(),
+            Some("STREAM_OK")
+        );
+    }
+
+    #[test]
+    fn chat_live_t501_chrome_then_stream_ok_emits_clean_token() {
+        let kimi_cot = concat!(
+            "The user wants me to reply with exactly the token \"STREAM_OK\" ",
+            "and nothing else. This is a very simple request. I should not add ",
+            "any extra text."
+        );
+        let state = test_ui(vec![Scenario::ReplaceSnapshots {
+            polls: vec![
+                "Thinking...".into(),
+                "14:28".into(),
+                kimi_cot.into(),
+                format!("{kimi_cot}\n\nSTREAM_OK"),
+            ],
+            final_text: "STREAM_OK".into(),
+        }]);
+        let id = post_session(&state);
+        let chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"reply with exactly STREAM_OK"}"#,
+            &state,
+        );
+        assert_eq!(chat.status, 200, "{}", String::from_utf8_lossy(&chat.body));
+        let (_, events) = fetch_events(&state, &id);
+        let deltas = text_deltas(&events);
+        for bad in ["Thinking", "14:28", "The user wants"] {
+            assert!(
+                !deltas.iter().any(|d| d.contains(bad)),
+                "chrome/CoT as TextDelta ({bad}): {deltas:?}"
+            );
+        }
+        assert_eq!(deltas.concat(), "STREAM_OK", "deltas={deltas:?}");
     }
 
     /// Live-Beweis T-301: TextDelta-Strings aus events_after.json als DOM-Snapshots.

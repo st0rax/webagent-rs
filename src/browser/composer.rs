@@ -20,6 +20,7 @@ impl WebBrainBackend {
             coords.get("x").and_then(Value::as_f64),
             coords.get("y").and_then(Value::as_f64),
         ) {
+            self.wake_renderer();
             let mut guard = self.driver.borrow_mut();
             if let Some(driver) = guard.as_mut() {
                 let _ = driver.click_at(x, y);
@@ -72,6 +73,7 @@ impl WebBrainBackend {
             (Some(x), Some(y)) => (x, y),
             _ => return false,
         };
+        self.wake_renderer();
         {
             let mut guard = self.driver.borrow_mut();
             if let Some(driver) = guard.as_mut() {
@@ -112,6 +114,8 @@ impl WebBrainBackend {
 
     /// Enter im aktuell fokussierten Element auslösen (echtes Tastatur-Event via CDP).
     pub(super) fn press_enter(&self) -> Result<(), String> {
+        // Headed NOACTIVATE tiles freeze until a trusted pointer nudge — wake first.
+        self.wake_renderer_or_err()?;
         let mut guard = self.driver.borrow_mut();
         let driver = guard
             .as_mut()
@@ -136,7 +140,9 @@ impl WebBrainBackend {
             (Some(x), Some(y)) => (x, y),
             _ => return false,
         };
-        // 2) Echter Mausklick auf den Composer (Fokus), dann leeren.
+        // 2) Wake then real mouse click on the composer (focus), then clear.
+        //    NOACTIVATE/headed tiles otherwise ignore the click until mouseover.
+        self.wake_renderer();
         {
             let mut guard = self.driver.borrow_mut();
             if let Some(driver) = guard.as_mut() {

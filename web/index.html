@@ -66,6 +66,13 @@
       padding: .7rem; border-top: 1px solid var(--line); background: var(--panel); }
     textarea { width: 100%; min-height: 3.2rem; resize: vertical; background: var(--bg);
       border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem; }
+    .editor { position: relative; min-width: 0; }
+    .editor textarea { display: block; }
+    .hint { position: absolute; inset: .5rem; pointer-events: none; color: var(--muted);
+      font-size: .85rem; line-height: 1.6; white-space: pre-wrap; }
+    .hint[hidden] { display: none; }
+    .hint code { color: var(--accent); background: var(--panel-2);
+      border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; }
     .detail { padding: 1rem; overflow: auto; }
     .detail dl { display: grid; grid-template-columns: 8rem 1fr; gap: .35rem .8rem; }
     .detail dt { color: var(--muted); }
@@ -74,7 +81,7 @@
       .shell, .shell.collapsed { grid-template-columns: 1fr; }
       nav.sys { border-right: 0; border-bottom: 1px solid var(--line); }
       form.composer { grid-template-columns: 1fr 1fr; }
-      form.composer textarea { grid-column: 1 / -1; }
+      form.composer .editor { grid-column: 1 / -1; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
@@ -171,7 +178,10 @@
         </aside>
         <form class="composer" id="composer">
           <label class="sr" for="composer-input">Nachricht</label>
-          <textarea id="composer-input" rows="2" placeholder="Nachricht (Fake, kein Server)"></textarea>
+          <div class="editor">
+            <textarea id="composer-input" rows="2" placeholder="Nachricht eingeben"></textarea>
+            <div class="hint" id="composer-hint" aria-hidden="true">z. B. <code>/quelle list</code> Quellenliste<br>z. B. <code>/quelle claude openrouter --save</code> Quelle wechseln<br>z. B. <code>@claude</code> Brain direkt ansprechen</div>
+          </div>
           <button class="primary" type="submit" id="send">Senden</button>
           <button type="button" id="stop">Stoppen</button>
         </form>
@@ -192,6 +202,10 @@
     const live = document.getElementById("live");
     const act = document.getElementById("act-list");
     const input = document.getElementById("composer-input");
+    const hint = document.getElementById("composer-hint");
+    function syncHint() { hint.hidden = input.value.length > 0; }
+    input.addEventListener("input", syncHint);
+    syncHint();
     const sourceSwitch = document.getElementById("source-switch");
     const sourceSave = document.getElementById("source-save");
     const sessionSources = { claude: "default" };
@@ -299,6 +313,7 @@
           applySource(brain, value, save);
         }
         input.value = "";
+        syncHint();
         return;
       }
       showChat();
@@ -308,6 +323,7 @@
       user.querySelector("p").textContent = text;
       messages.appendChild(user);
       input.value = "";
+      syncHint();
       const bot = document.createElement("article");
       bot.className = "msg";
       bot.innerHTML = "<div class=\"who\">claude</div><p></p>";

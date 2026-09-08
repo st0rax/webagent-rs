@@ -285,8 +285,15 @@ pub fn cmd_relay(
     }
     let message = text.as_str();
     let to = if timeout > 0.0 { Some(timeout) } else { None };
+    let brain = match resolve_brain_for_task(brain, message) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[relay] {e}");
+            return 2;
+        }
+    };
     let started = std::time::Instant::now();
-    match webagent::relay::relay_single_turn(brain, message, headless, to, model) {
+    match webagent::relay::relay_single_turn(&brain, message, headless, to, model) {
         Ok(reply) => {
             let r = BrainIoResult {
                 brain: brain.to_string(),
@@ -481,6 +488,98 @@ pub fn cmd_oobe(brains: &str, skip_login: bool, yes: bool) -> i32 {
     }
 }
 
+/// Loest `brain == "auto"` ueber den Auto-Router auf; andere IDs werden nur
+/// als bekannt validiert. Fehler → Err mit klarer Meldung.
+fn resolve_brain_for_task(brain: &str, task: &str) -> Result<String, String> {
+    let brain = if brain == "auto" {
+        webagent::api_bridge::select_auto_brain_for_cli(task)?
+    } else {
+        brain.to_string()
+    };
+    if webagent::api_bridge::available_brains().contains(&brain) {
+        Ok(brain)
+    } else {
+        Err(format!(
+            "Unbekanntes Brain '{brain}' — verfuegbar: {}",
+            webagent::api_bridge::available_brains()
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
+}
+
+/// Einheitliche Eingabe `webagent ask`: autonomer Run (Default) oder
+/// Konversations-Einzelturn (`--chat`). Delegiert 1:1 an die existierenden
+/// Pfade (cmd_run bzw. relay_single_turn) statt eigene Logik zu duplizieren.
+#[allow(clippy::too_many_arguments)]
+pub fn cmd_ask(
+    task: &str,
+    brain: &str,
+    _auto: bool,
+    chat: bool,
+    resume: Option<&str>,
+    headless: bool,
+    max_cycles: u32,
+    no_memory: bool,
+    json: bool,
+) -> i32 {
+    use webagent::relay::relay_single_turn;
+
+    if task.trim().is_empty() {
+        eprintln!("[ask] --task fehlt oder ist leer");
+        return 2;
+    }
+    if chat {
+        if resume.is_some() {
+            eprintln!("[ask] --resume gilt nur fuer --auto (autonomen Run)");
+            return 2;
+        }
+        let brain = match resolve_brain_for_task(brain, task) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("[ask] {e}");
+                return 2;
+            }
+        };
+        let started = std::time::Instant::now();
+        match relay_single_turn(&brain, task, headless, None, None) {
+            Ok(reply) => {
+                if json {
+                    let r = BrainIoResult {
+                        brain: brain.to_string(),
+                        ok: true,
+                        answer: reply.clone(),
+                        latency_ms: started.elapsed().as_millis() as u64,
+                        reason: "ok".into(),
+                    };
+                    println!("{}", brain_io_json(&r));
+                } else {
+                    println!("{reply}");
+                }
+                0
+            }
+            Err(e) => {
+                if json {
+                    let r = BrainIoResult {
+                        brain: brain.to_string(),
+                        ok: false,
+                        answer: String::new(),
+                        latency_ms: started.elapsed().as_millis() as u64,
+                        reason: e.to_string(),
+                    };
+                    println!("{}", brain_io_json(&r));
+                } else {
+                    eprintln!("[ask] Fehler: {e}");
+                }
+                1
+            }
+        }
+    } else {
+        cmd_run(brain, task, resume, headless, max_cycles, no_memory)
+    }
+}
+
 pub fn cmd_run(
     brain: &str,
     task: &str,
@@ -495,7 +594,14 @@ pub fn cmd_run(
     use webagent::controller::{AgentController, RunOptions};
     use webagent::executor::PlatformShellExecutor;
 
-    let backend = match WebBrainBackend::from_config(brain) {
+    let brain = match resolve_brain_for_task(brain, task) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[run] {e}");
+            return 2;
+        }
+    };
+    let backend = match WebBrainBackend::from_config(&brain) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("[run] {e}");
@@ -516,8 +622,8 @@ pub fn cmd_run(
         ..RunOptions::default()
     };
     let result = match resume {
-        Some(run_id) => controller.continue_run(run_id, task, brain, headless, opts),
-        None => controller.run_with_options(task, brain, None, headless, opts),
+        Some(run_id) => controller.continue_run(run_id, task, &brain, headless, opts),
+        None => controller.run_with_options(task, &brain, None, headless, opts),
     };
     match result {
         Ok(meta) => {
@@ -683,6 +789,94 @@ pub fn cmd_login(brain: &str, timeout_secs: u64, force: bool, auto: bool) -> i32
         webagent::config::seal_master_profile();
     }
     code
+}
+
+pub fn cmd_show(brain: &str, port: u16) -> i32 {
+    match brain_visibility_request(brain, "show", port) {
+        Ok(msg) => {
+            println!("{msg}");
+            0
+        }
+        Err(e) => {
+            eprintln!("[show] {e}");
+            1
+        }
+    }
+}
+
+pub fn cmd_hide(brain: &str, port: u16) -> i32 {
+    match brain_visibility_request(brain, "hide", port) {
+        Ok(msg) => {
+            println!("{msg}");
+            0
+        }
+        Err(e) => {
+            eprintln!("[hide] {e}");
+            1
+        }
+    }
+}
+
+/// POST `/api/brains/{id}/show|hide` an die laufende Web-UI/API.
+///
+/// Bridge-Limitation: ohne laufenden `webagent ui` / `api serve` gibt es keinen
+/// Live-Runtime-IPC; dieser CLI-Befehl spricht deshalb HTTP auf Loopback an.
+/// In-Prozess-Reveal bleibt den Login-/Captcha-Pfaden und der API im selben
+/// Prozess vorbehalten.
+fn brain_visibility_request(brain: &str, action: &str, port: u16) -> Result<String, String> {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    let path = format!("/api/brains/{brain}/{action}");
+    let req = format!(
+        "POST {path} HTTP/1.1
+Host: 127.0.0.1:{port}
+Content-Length: 0
+Connection: close
+
+"
+    );
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).map_err(|e| {
+        format!(
+            "keine laufende Web-UI/API auf 127.0.0.1:{port} ({e}).              Starte `webagent ui` oder `webagent api serve`, dann erneut `webagent {action} --brain {brain}`."
+        )
+    })?;
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(5))).ok();
+    stream
+        .write_all(req.as_bytes())
+        .map_err(|e| format!("HTTP-Schreiben fehlgeschlagen: {e}"))?;
+    let mut buf = Vec::new();
+    stream
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("HTTP-Lesen fehlgeschlagen: {e}"))?;
+    let raw = String::from_utf8_lossy(&buf);
+    let (status_line, rest) = raw
+        .split_once(
+            "
+",
+        )
+        .unwrap_or((raw.as_ref(), ""));
+    let body = rest
+        .split(
+            "
+
+",
+        )
+        .nth(1)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if status_line.contains(" 200 ") {
+        Ok(if body.is_empty() {
+            format!("{action} ok: {brain}")
+        } else {
+            body
+        })
+    } else {
+        Err(format!("HTTP {status_line} — {body}"))
+    }
 }
 
 pub fn cmd_diagnose(brain: &str, headless: bool) -> i32 {
