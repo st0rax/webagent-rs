@@ -424,7 +424,6 @@ impl ReplSession {
             opts,
         ) {
             Ok(meta) => {
-                self.resume = Some(meta.run_id.clone());
                 if meta.status == "done" {
                     self.stats.tasks_ok += 1;
                 } else {
@@ -435,6 +434,7 @@ impl ReplSession {
                     "[repl] status={} run_id={} cycles={}",
                     meta.status, meta.run_id, meta.cycles
                 );
+                println!("[repl] Neuer Task-Kontext beim nächsten Prompt. Fortsetzen nur explizit mit /resume {}", meta.run_id);
             }
             Err(e) => {
                 self.stats.tasks_failed += 1;

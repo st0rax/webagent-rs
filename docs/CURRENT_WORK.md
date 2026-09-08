@@ -1,5 +1,12 @@
 # Aktueller Arbeitsstand
 
+> **Aktualisiert 2026-09-08:** Arbeitsbranch `fix/T-501-model-proof` wurde auf
+> `origin/master` (a3036db, Merge PR #54) rekonsolidiert: `model-selection-
+> roundtrip-v2`-Verifier via `capability_proof.rs`, 57 Belegdateien von master
+> nachgezogen, Taskboard auf Audit-Stand 103/130 gestellt. Naechster G-001-
+> Schritt laut `MODEL_PROOF_AUDIT_2026-09-07.md`: sechs Modellzellen
+> (claude/qwen/perplexity/zai/gemini/kimi) live neu messen.
+
 ## Fortsetzung G-001 / T-501 am 2026-09-07
 
 Claim: `chatgpt-codex`, Branch `fix/T-501-model-proof`, Basis `28e9f1c`.
@@ -22,7 +29,13 @@ unabhaengige Race in `benchmark::harvest` offen; die vier Tests teilen einen
 Testdatenordner und sind nun per Test-Mutex isoliert. Offene Folge: sechs
 Modellzellen erneut live messen, T-501 insgesamt bleibt offen.
 
-**Aktualisiert:** 2026-09-05
+> **Checkout-Hinweis (HEAD, 2026-09-07):** dieser Arbeitsbaum lief vor dem
+> Rebase auf `feat/durable-transaction-log` (Basis `505d416`). Run-Events
+> SHA-256-verknuepft + fsync; `cargo test --lib --no-default-features` 1278
+> passed / 1 ignored. Release-Artefakt
+> `webagent-0.11.1-transaction-log-repl-fix-x86_64-pc-windows-gnu.exe`.
+
+**Aktualisiert:** 2026-09-08
 **Zweck:** verbindlicher Wiedereinstieg und operative Wahrheit. Historische Befunde stehen in `docs/OVERVIEW.md` sowie in den datierten Übergaben; diese Datei ersetzt sie nicht, sondern hält nur den aktuellen Abschlusspfad fest.
 
 **Stand 2026-09-05:** `master` auf `9793623` (PR #33 gemergt: Port-Vereinheitlichung „Ein Listener, zwei Rollen“ — Web-UI + API-Bridge gemeinsam auf `8788`, `api serve` als Alias; `8787` ist historische Dead-Zahl; Details [`CLI_UI_REDESIGN.md`](CLI_UI_REDESIGN.md) §8; `a934db2`/PR #32 `ask` war der Vorgaenger-Commit). **T-501-Nachzieh-Runde 2026-09-05 auf Port 8788** (Breaker-Cooldowns abgelaufen, Bridge mit echtem Login-Profil-Root): `api_responses` jetzt **9/9 passed** (mistral+zai nachgeholt; mistral-Deltas Provider-Timestamps, finale `.done`-Antwort sauber RESP_OK), `streaming` bleibt **6/9** (kimi Reasoning-Echo, mistral Timestamp, zai „Thinking...“), `attachment` 5 Brains frisch gemessen. **Nachtrag `attachment kimi` (2026-09-05, Fokus laut Eigentuemerentscheidung):** Der fruehere 502 `ABSENDEKNOPF_DEAKTIVIERT` lag am entarteten 1x1/70-Byte-Testbild, nicht an der Bridge - mit echtem 256x256-Bild (PIL, ~1,1 kB) laeuft der komplette Upload->Send->Antwort-Pfad durch: **kimi attachment jetzt `passed` (200 "RED", 36,6 s, frische Session)**. qwen/zai bleiben `failed` (auch mit echtem Bild "0 von 1 Dateien": echter SPA-Upload-Gap, Re-Run-Belege `attachment_{qwen,zai}_real_image_2026-09-05.json`), mistral Timestamp, auto Timeout 240s. `managed_tools` by-design 400 erneut bestaetigt. Matrix-Gesamtstand **98/130 passed, 17 failed, 6 unreachable, 9 not_run**; T-501 im TASKBOARD auf `claimed` zurueckgestellt (DoD weiterhin NICHT done: streaming 3, attachment 4, model/effort login-gebunden). **Web-UI-Feature (2026-09-05):** `web/index.html`-Composer zeigt bei leerer Eingabemaske einen Beispiel-Hinweis (`/quelle list`, `/quelle ... --save`, `@brain`) wie die opencode-Promptleiste; verschwindet beim Tippen (`syncHint()`), wirkt nach Neubau (eingebettet via `include_str!`). Belege `docs/proofs/T-501/*2026-09-05.*`, Harness `docs/proofs/T-501/rerun_2026-09-05.py`. Alle aelteren `127.0.0.1:8787`-Erwaehnungen in `docs/proofs/*` bleiben historische Belege und werden nicht angefasst. **Login-Realitaet (Messung 2026-09-05, DeepSeek zuerst):** isolierter No-Login-Smoke via `WEBAGENT_ROOT`-Temp-Root (frisches, leeres Profil; Breaker-Zustand im Temp — echter Betrieb unberuehrt): `webagent ask --task "Antworte exakt und nur: DS_NOLOGIN_OK" --brain deepseek --chat --json --headless --no-memory` → `reason=session_state=LoginRequired`, `latency_ms=47561`, deterministische Breaker-Sperre 21600s (nur im Temp-Root), Exit 1. **Befund: deepseek funktioniert ohne Login NICHT** — bestaetigt den frueheren Eintrag in `CLI_UI_REDESIGN.md` §2 P2; der README-Login-Claim („angemeldeter Browser bei dem Dienst, den du nutzen willst“) bleibt damit korrekt neutral formuliert. Protokoll: `%LOCALAPPDATA%\Temp\opencode\wa-nologin\deepseek-smoke.log`.

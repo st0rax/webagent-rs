@@ -34,9 +34,24 @@ laufen. Niemals eine verkettete Aufgabe aus dem Block reissen.
 | T-402 | 4 | Negativfelder/Fehler: seed/logprobs/... klar ablehnen; IDs/Header | code | codex, claude | done | grok-agent | feature/T-402-reject-unsupported |
 | T-403 | 4 | openai-local-state-v1 auf echtem Store + Restart-Test | code | codex, claude | done | grok-agent | feature/T-403-persistent-state |
 | T-404 | 4 | SDK-Blackbox: offizielle Python-/JS-SDKs + zwei Clients | tests | codex, local | done | grok-agent | feature/T-404-sdk-blackbox |
-| T-501 | 5 | Alle-Brains-Matrix je Brain (Chat/Streaming/Modell/Anhang/Tools) | live | claude, grok, local | claimed* | chatgpt-codex | fix/T-501-model-proof |
+| T-501 | 5 | Alle-Brains-Matrix je Brain (Chat/Streaming/Modell/Anhang/Tools) | live | claude, grok, local | claimed | chatgpt-codex | fix/T-501-model-proof |
 
-\* Re-claimed 2026-09-05 nach 2026-09-04 als `done` markiert, obwohl DoD NICHT erfüllt war (97/130 Matrix, streaming 6/9, attachment offen). Nachzieh-Runde am 2026-09-05: api_responses 9/9. Attachment-Nachtrag 2026-09-05 (Eigentümer-Fokus, Logins gestattet): kimi mit echtem 256x256-Bild `passed` (früherer 502 war Testbild-Artefakt); qwen/zai echter SPA-Upload-Gap verifiziert. Matrix 98/130, Rest ehrlich offen (streaming 3, attachment 4, model/effort Provider-/Login-gebunden).
+Matrix-Stand 2026-09-08 (Live-Reproof + Selector-Nachzug `model_switch_roundtrip_v2_2026-09-08.md`): **105/130 passed — qwen + kimi model_switch jetzt grün** (Namens-Knoten-Selektoren; `Qwen3.7-Plus->Qwen3.8-Max` bzw. `Schnell->K3 Swarm`, Rueckweg=true, headless). zai/claude/gemini/perplexity bleiben ehrlich failed (UI-Struktur: Substring-Paar GLM-5.3/GLM-5.3-Flash; Trigger Sonnet 5 Hoch = Modell+Aufwand; Flash vs 3.5/3.6 Flash; statischer Button Modell). Offen (DoD NICHT done): 4 model-Zellen (nur exakte Auswahl-API möglich, Audit-Grenze), effort-Zellen, model/auto, auto RED, zai-GLM-5.3 flaky 2026-09-07.
 | T-601 | 6 | rustls-HTTPS-Client + data/providers.json + <10-MB-Budget | code | codex, grok | done | grok-agent | feature/T-601-rustls-https |
 | T-602 | 6 | /quelle + UI-Schalter + Session-Source-Scope (manueller Hybrid) | code | codex, claude | done | grok-agent | feature/T-602-quelle-impl |
 | T-701 | 7 | Gruppen (2-6), Runden, @Brain, Leader-Synthese | code | codex, claude | done | grok-agent | feature/T-701-swarm-groups |
+
+## Brain-Vereinheitlichung (Plan 2026-09-07)
+
+Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRAIN_UNIFICATION_PLAN.md). Alle neuen Aufgaben sind free; Abhaengigkeiten gelten.
+
+| Task | Inhalt |
+|---|---|
+| T-801 | Gemeinsamer Brain-Vertrag und Konformitaetsfixtures |
+| T-802 | Einheitliches Fill Verify Submit ohne Doppelversand |
+| T-803 | Antwortstream durch Controller REPL Swarm UI und API |
+| T-804 | Profil-Leases und gemeinsame Blocker-/Resetbehandlung |
+| T-805 | Generische Probe mit bestehendem Capability-Proof-Gate |
+| T-806 | Taskabschluss mit verifizierten Run-Belegen und Crashschutz |
+| T-807 | Alle-Brains-Live-Abnahme und Windows-Release |
+| T-808 | Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery |

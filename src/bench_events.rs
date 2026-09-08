@@ -134,7 +134,11 @@ fn dispatch(
 pub fn console_lines(ev: &BenchEvent) -> Vec<String> {
     let mut out = vec![ev.text.clone()];
     if let Some(d) = &ev.detail {
-        out.extend(detail_excerpt(d));
+        if std::env::var_os("WEBAGENT_FULL_LOG").is_some() {
+            out.extend(d.lines().map(|line| format!("      {line}")));
+        } else {
+            out.extend(detail_excerpt(d));
+        }
     }
     out
 }
@@ -342,6 +346,9 @@ pub fn install_panic_hook() {
 
 /// Kappt einen Detailblock auf [`DETAIL_CAP_CHARS`] Zeichen, zeichensicher.
 fn cap_detail(raw: &str) -> String {
+    if std::env::var_os("WEBAGENT_FULL_LOG").is_some() {
+        return raw.to_string();
+    }
     if raw.len() <= DETAIL_CAP_CHARS {
         return raw.to_string();
     }

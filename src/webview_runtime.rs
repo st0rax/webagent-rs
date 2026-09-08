@@ -198,7 +198,11 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Launch("WebView-Thread beendet".into()))?;
-        let (_view_id, driver) = self.wake_and_wait(resp_rx, Duration::from_secs(60))?;
+        // `start()` has a bounded navigation timeout as well.  A longer
+        // internal wait here used to let a wedged WebView outlive the runner's
+        // deadline, leaving only a black window and no terminal controller
+        // event in the transcript.
+        let (_view_id, driver) = self.wake_and_wait(resp_rx, Duration::from_secs(15))?;
         Ok(driver)
     }
 
@@ -269,9 +273,14 @@ impl WebViewRuntime {
 impl Drop for WebViewRuntime {
     fn drop(&mut self) {
         let _ = self.tx.send(RuntimeMessage::Shutdown);
-        if let Some(h) = self.thread.take() {
-            let _ = h.join();
-        }
+        // Ein eingefrorener WebView2-UI-Thread darf den Controller beim Cleanup
+        // nicht erneut blockieren. `join()` war hier unbounded: der eigentliche
+        // Page-Call lief zwar in sein Timeout, danach hing `brain.start` aber
+        // trotzdem im Drop und erzeugte weder `brain.start end` noch einen
+        // terminalen Transkript-Eintrag. Das JoinHandle wird bewusst verworfen;
+        // der Shutdown wird weiterhin signalisiert, und ein gesunder Thread
+        // beendet sich selbst.
+        let _ = self.thread.take();
     }
 }
 
@@ -296,8 +305,16 @@ impl WebViewPageDriver {
         self.page_tx
             .send(msg)
             .map_err(|_| PageDriverError::Protocol("WebView-Tab beendet".into()))?;
-        rx.recv_timeout(Duration::from_secs(45))
-            .map_err(|_| PageDriverError::Timeout("Page-Befehl timeout".into()))?
+        // A hung WebView2 renderer must never hold the controller hostage for
+        // the full run deadline.  The old 45 s per page call multiplied with
+        // the polling loop and left the process looking frozen; the controller
+        // needs a bounded failure so it can record the event and terminate the
+        // run (or recreate the view).
+        rx.recv_timeout(Duration::from_secs(8)).map_err(|_| {
+            PageDriverError::Timeout(
+                "Page-Befehl timeout (WebView moeglicherweise eingefroren)".into(),
+            )
+        })?
     }
 }
 

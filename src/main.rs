@@ -103,12 +103,16 @@ fn run() -> i32 {
             "comms wired from main/CLI",
             None,
         );
-        let repaired = startup_reconcile_runs();
-        if !repaired.is_empty() {
-            eprintln!(
-                "[runs] {} verwaiste Run-Statuswerte repariert.",
-                repaired.len()
-            );
+        if cli.skip_startup_reconcile {
+            eprintln!("[runs] Startup-Reconcile übersprungen (--skip-startup-reconcile).");
+        } else {
+            let repaired = startup_reconcile_runs();
+            if !repaired.is_empty() {
+                eprintln!(
+                    "[runs] {} verwaiste Run-Statuswerte repariert.",
+                    repaired.len()
+                );
+            }
         }
         dispatch(command)
     };
@@ -125,6 +129,9 @@ fn dispatch(command: Commands) -> i32 {
             headless,
             max_cycles,
             no_memory,
+            complete_task,
+            proof_path,
+            acquire_task,
         } => cmd_run(
             &brain,
             &task,
@@ -132,6 +139,9 @@ fn dispatch(command: Commands) -> i32 {
             headless,
             max_cycles,
             no_memory,
+            complete_task.as_deref(),
+            proof_path.as_deref(),
+            acquire_task.as_deref(),
         ),
 
         Commands::Ask {

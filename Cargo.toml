@@ -1,9 +1,13 @@
 [package]
 name = "webagent"
-version = "0.11.1"
+version = "0.11.2"
 edition = "2021"
 description = "WebAgent — lokaler, browserbasierter Agent (Rust-Port). Web-Chats als Gehirn, lokale Shell als Werkzeug."
 license = "MIT"
+build = "build.rs"
+
+[build-dependencies]
+winres = "0.1"
 
 # Bewusst rein-Rust-Dependencies (keine windows-*/chrono/C-Toolchain nötig),
 # damit der Kern plattformunabhängig ohne MSVC/MinGW baut. Zeitstempel und
@@ -11,6 +15,7 @@ license = "MIT"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 regex = "1"
 # Rein-Rust-Regex MIT Lookaround-Support (die regex-Crate kann kein Lookahead/-behind).
 fancy-regex = "0.14"
@@ -72,6 +77,10 @@ path = "src/main.rs"
 [profile.release]
 lto = true
 strip = true
+# Windows-GNU loader safety: the default multi-codegen release can produce a
+# binary that crashes before main with 0xC0000005. Keep the proven stable
+# setting used by the runnable development profile.
+codegen-units = 16
 
 # Testlaeufe dominiert das LINKEN, nicht das Kompilieren: die Testbinary zieht
 # wry/tao/webview2 mit voller Debug-Information, und der mingw-Linker schreibt

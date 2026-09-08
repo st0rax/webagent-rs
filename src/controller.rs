@@ -44,6 +44,31 @@ const MAX_NO_CHANGE_NUDGES: u32 = 2;
 /// was nie begonnen wurde, und kostet 10-35 s Roundtrip.
 const FAST_EMPTY_RESPONSE_CHARS: usize = 20;
 
+fn is_send_failure_turn(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|v| {
+            v.get("stage")
+                .and_then(serde_json::Value::as_str)
+                .map(|s| s == "send")
+        })
+        .unwrap_or(false)
+}
+
+fn is_provider_limit_response(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "daily usage limit",
+        "you have reached the daily",
+        "rate limit",
+        "capacity limit",
+        "too many requests",
+        "please wait 20 hours",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
 fn protocol_completes_unstable_response(
     generation_complete: bool,
     backend_status: &str,
@@ -93,6 +118,7 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     meta: Option<RunMeta>,
     comms: CommsStore,
     completed_actions: HashMap<String, String>,
+    duplicate_action_counts: HashMap<String, usize>,
     incomplete_retries: usize,
     /// In DIESEM Run tatsächlich ausgeführte Arbeits-Actions (shell/edit/write).
     /// `done` mit 0 Act-Steps ist verdächtig: gemini lieferte am 2026-07-20 eine
@@ -202,6 +228,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             meta: None,
             comms: CommsStore::new(data_dir.join("comms")),
             completed_actions: HashMap::new(),
+            duplicate_action_counts: HashMap::new(),
             incomplete_retries: 0,
             act_steps: 0,
             file_actions_tried: 0,
@@ -667,6 +694,34 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         for action in actions {
             if self.completed_actions.contains_key(&action.id) {
                 let stored = self.completed_actions[&action.id].clone();
+                let count = self
+                    .duplicate_action_counts
+                    .entry(action.id.clone())
+                    .and_modify(|n| *n += 1)
+                    .or_insert(1);
+                if *count >= 3 {
+                    if let Some(meta) = self.meta.as_mut() {
+                        meta.status = "action_loop".to_string();
+                        meta.extra.insert(
+                            "duplicate_action_id".to_string(),
+                            serde_json::Value::String(action.id.clone()),
+                        );
+                        meta.extra.insert(
+                            "duplicate_action_count".to_string(),
+                            serde_json::Value::Number((*count as u64).into()),
+                        );
+                    }
+                    let _ = transcript.append(
+                        "system",
+                        &format!(
+                            "action_loop duplicate_action_id={} count={}",
+                            action.id, count
+                        ),
+                        HashMap::new(),
+                    );
+                    finished = true;
+                    break;
+                }
                 match action.action_type {
                     protocol::ActionType::Shell
                     | protocol::ActionType::Edit
@@ -677,7 +732,16 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                              gespeicherte Observation wird erneut geliefert. \
                              Fuer einen korrigierten oder erneut versuchten Befehl \
                              ist eine neue, runweit eindeutige Action-ID erforderlich.\n{}",
-                            action.id, stored
+                            action.id,
+                            stored
+                                .lines()
+                                .filter(|line| {
+                                    !line
+                                        .trim_start()
+                                        .starts_with("[Terminal-Ausgabe action_id=")
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
                         ));
                     }
                     protocol::ActionType::Finish => {
@@ -690,9 +754,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
             match action.action_type {
                 protocol::ActionType::Finish => {
-                    if let Some(nudge) = self.no_change_nudge() {
-                        observations.push(nudge);
-                        continue;
+                    if std::env::var_os("WEBAGENT_READONLY_RUN").is_none() {
+                        if let Some(nudge) = self.no_change_nudge() {
+                            observations.push(nudge);
+                            continue;
+                        }
                     }
                     finished = true;
                     let mut extra = HashMap::new();
@@ -743,9 +809,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         );
                     }
                     self.record_completed_action(&action.id, &action.text);
-                    if let Some(nudge) = self.no_change_nudge() {
-                        observations.push(nudge);
-                        continue;
+                    if std::env::var_os("WEBAGENT_READONLY_RUN").is_none() {
+                        if let Some(nudge) = self.no_change_nudge() {
+                            observations.push(nudge);
+                            continue;
+                        }
                     }
                     finished = true;
                     break;
@@ -904,6 +972,18 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             return ("brain_unavailable".to_string(), true);
         }
 
+        if is_provider_limit_response(response_text) {
+            let _ = transcript.append(
+                "system",
+                &format!(
+                    "provider_rate_limited: {}",
+                    crate::char_prefix(response_text.trim(), 160)
+                ),
+                HashMap::new(),
+            );
+            return ("brain_unavailable".to_string(), true);
+        }
+
         // #11: fast leere Antwort ohne jede Protokoll-Nutzlast (kein `{`, kein
         // WEBAGENT/1) — das Brain hat nie zu antworten begonnen. Vorher landete
         // das als `protocol_invalid` und kostete einen teuren Repair-Roundtrip.
@@ -1013,6 +1093,22 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         let (finished, observations) = self.execute_actions_serial(&parsed.actions, transcript);
 
         if finished {
+            return (response_text.to_string(), true);
+        }
+
+        // A read-only matrix probe is intentionally bounded by its requested
+        // inspection actions. Do not send a follow-up observation round to a
+        // provider that has already completed those actions but omits the
+        // optional protocol finish marker; that round was the source of the
+        // DeepSeek/Gemini diagnostic timeouts.
+        let readonly_min_actions = std::env::var("WEBAGENT_READONLY_MIN_ACTIONS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(1);
+        if std::env::var_os("WEBAGENT_READONLY_RUN").is_some()
+            && !observations.is_empty()
+            && self.act_steps >= readonly_min_actions
+        {
             return (response_text.to_string(), true);
         }
 
@@ -1220,6 +1316,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         // Start Brain + Executor (persistent shell session for the whole run)
         if !opts.skip_brain_start {
+            let _ = transcript.append("system", "startup_phase=brain.start begin", HashMap::new());
+            crate::bench_events::eprint_line(&format!(
+                "[controller] brain={brain_id} startup_phase=brain.start begin"
+            ));
             self.brain.start(headless).inspect_err(|e| {
                 meta.status = "failed".to_string();
                 meta.extra.insert(
@@ -1241,10 +1341,21 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     extra,
                 );
             })?;
+            let _ = transcript.append("system", "startup_phase=brain.start end", HashMap::new());
+            crate::bench_events::eprint_line(&format!(
+                "[controller] brain={brain_id} startup_phase=brain.start end"
+            ));
         }
+        let _ = transcript.append(
+            "system",
+            "startup_phase=executor.start begin",
+            HashMap::new(),
+        );
         self.executor.start();
+        let _ = transcript.append("system", "startup_phase=executor.start end", HashMap::new());
 
         if self.fresh_chat {
+            let _ = transcript.append("system", "startup_phase=new_chat begin", HashMap::new());
             crate::bench_events::emit(
                 crate::bench_events::Level::Progress,
                 Some(brain_id),
@@ -1260,6 +1371,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     .insert("error".to_string(), serde_json::Value::String(e.clone()));
                 self.run_store.save(&meta).ok();
             })?;
+            let _ = transcript.append("system", "startup_phase=new_chat end", HashMap::new());
         }
 
         let ready_timeout =
@@ -1269,10 +1381,18 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             Some(brain_id),
             "Browser: Sitzung wird geprüft",
         );
+        let _ = transcript.append("system", "startup_phase=ensure_ready begin", HashMap::new());
+        crate::bench_events::eprint_line(&format!(
+            "[controller] brain={brain_id} startup_phase=ensure_ready begin"
+        ));
         let state = self
             .brain
             .ensure_ready(ready_timeout)
             .unwrap_or(crate::brain::SessionState::Error);
+        let _ = transcript.append("system", "startup_phase=ensure_ready end", HashMap::new());
+        crate::bench_events::eprint_line(&format!(
+            "[controller] brain={brain_id} startup_phase=ensure_ready end state={state:?}"
+        ));
         let _ = transcript.append(
             "system",
             &format!("session_state={:?}", state),
@@ -1341,51 +1461,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             // den Antwortbeginn.
             let _ = self.brain.new_chat();
 
-            let memories: Vec<_> = if opts.suppress_memory_context {
-                Vec::new()
-            } else {
-                self.memory
-                    .search(&task, &["shared", brain_id], MEMORY_CONTEXT_LIMIT)
-                    .unwrap_or_default()
-            }
-            .into_iter()
-            // Alte Episoden können vollständige, normale Chat-Antworten
-            // enthalten. Eine darin dokumentierte Protokollverweigerung
-            // ist weder Wissen noch nützlicher Kontext, sondern erzeugt
-            // bei Web-Chats besonders leicht eine Verweigerungsschleife.
-            .filter(|episode| {
-                let text = episode.content.to_ascii_lowercase();
-                !text.contains("keinen tatsächlichen zugriff")
-                    && !text.contains("keine technische kopplung")
-                    && !text.contains("keinen zugriff auf dein lokales")
-            })
-            .collect();
-            let mut memory_context: String = memories
-                .iter()
-                .map(|e| format!("- [memory:{} {}] {}", e.id, e.kind, e.content))
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            // Wiki-Index als Langzeitwissen anhängen. Fehler (z.B. Verzeichnis
-            // nicht anlegbar) liefern einen leeren Block — sie dürfen den Run
-            // NIEMALS blockieren.
-            let wiki_block = if opts.suppress_memory_context {
-                String::new()
-            } else {
-                self.wiki.context_block(1500).unwrap_or_default()
-            };
-            if !wiki_block.trim().is_empty() {
-                if !memory_context.is_empty() {
-                    memory_context.push_str("\n\n");
-                }
-                memory_context.push_str(
-                    "Wiki-Index (Langzeitwissen; Seiten unter data/memory/wiki/, \
-per edit/write-Action pflegbar):\n",
-                );
-                memory_context.push_str(&wiki_block);
-            }
-
-            let memory_ids: Vec<u64> = memories.iter().map(|e| e.id).collect();
+            // Kaltstart-Vertrag: automatische Memory-/Wiki-Injektion ist
+            // abgeschaltet. Jeder Brain erhält ausschließlich den aktuellen
+            // Task und den live aus dem Checkout gelesenen Kontext.
+            let memory_context = String::new();
+            let memory_ids: Vec<u64> = Vec::new();
             meta.extra.insert(
                 "memory_ids".to_string(),
                 serde_json::Value::String(serde_json::to_string(&memory_ids).unwrap_or_default()),
@@ -1408,6 +1488,24 @@ per edit/write-Action pflegbar):\n",
 
         // Incomplete recovery initial
         while !turn.complete {
+            if is_send_failure_turn(&turn.text) {
+                let reason = serde_json::from_str::<serde_json::Value>(&turn.text)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("error")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_owned)
+                    })
+                    .unwrap_or_else(|| "brain send failed".to_string());
+                meta.status = "send_error".to_string();
+                meta.extra
+                    .insert("error".to_string(), reason.clone().into());
+                self.run_store.save(&meta).ok();
+                let _ =
+                    transcript.append("system", "run_finished status=send_error", HashMap::new());
+                self.finish_run_cleanup(opts);
+                return Ok(meta);
+            }
             if self.wall_expired() {
                 let effective_deadline = self
                     .wall_deadline_at
@@ -1516,6 +1614,27 @@ per edit/write-Action pflegbar):\n",
             }
 
             while response_text.is_empty() && !finished {
+                if is_send_failure_turn(&incomplete_response_text) {
+                    let reason =
+                        serde_json::from_str::<serde_json::Value>(&incomplete_response_text)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("error")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_owned)
+                            })
+                            .unwrap_or_else(|| "brain send failed".to_string());
+                    meta.status = "send_error".to_string();
+                    meta.extra.insert("error".to_string(), reason.into());
+                    self.run_store.save(&meta).ok();
+                    let _ = transcript.append(
+                        "system",
+                        "run_finished status=send_error",
+                        HashMap::new(),
+                    );
+                    self.finish_run_cleanup(opts);
+                    return Ok(meta);
+                }
                 if self.wall_expired() {
                     let effective_deadline = self
                         .wall_deadline_at
@@ -1583,8 +1702,9 @@ per edit/write-Action pflegbar):\n",
         if let Some(sm) = self.meta.take() {
             meta.conversation_ref = sm.conversation_ref;
             meta.completed_actions = sm.completed_actions;
-            // protocol_error / streak aus dem Helfer-Meta uebernehmen
-            if sm.status == "protocol_error" {
+            meta.cycles = meta.cycles.max(sm.cycles);
+            // Alle terminalen Helferstatus uebernehmen, nicht nur protocol_error.
+            if sm.status != "running" && !sm.status.is_empty() {
                 meta.status = sm.status.clone();
             }
             for (k, v) in sm.extra {
@@ -1592,8 +1712,26 @@ per edit/write-Action pflegbar):\n",
             }
         }
 
-        if meta.status != "protocol_error" {
-            meta.status = if finished { "done" } else { "max_cycles" }.to_string();
+        if meta.status == "running" || meta.status.is_empty() {
+            // Diagnostic matrix runs are deliberately read-only. Some
+            // providers stop after the requested observations without sending
+            // a protocol finish action; once every requested action succeeded,
+            // the controller has a complete, durable result and must not turn
+            // that into a provider timeout. Normal work still requires finish.
+            let readonly_min_actions = std::env::var("WEBAGENT_READONLY_MIN_ACTIONS")
+                .ok()
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(1);
+            let readonly_complete = std::env::var_os("WEBAGENT_READONLY_RUN").is_some()
+                && self.act_steps > 0
+                && self.act_steps >= readonly_min_actions
+                && self.file_actions_tried == 0;
+            meta.status = if finished || readonly_complete {
+                "done"
+            } else {
+                "max_cycles"
+            }
+            .to_string();
         }
 
         // „fertig", obwohl JEDER Edit-Versuch gescheitert ist, ist keine

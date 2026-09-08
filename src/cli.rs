@@ -11,6 +11,12 @@ use clap::{Args, Parser, Subcommand};
 #[command(version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("WEBAGENT_GIT_HASH"), ")"))]
 #[command(about = "Gehirnunabhängiger lokaler Agent (Rust-Port)", long_about = None)]
 pub struct Cli {
+    /// Verwaiste Runs beim Start nicht automatisch reconciliieren.
+    /// Der Check bleibt standardmäßig aktiv; dieses Flag ist für schnelle
+    /// Teststarts und laufende Diagnose-Sessions gedacht.
+    #[arg(long, global = true)]
+    pub skip_startup_reconcile: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -42,6 +48,19 @@ pub enum Commands {
         /// Aufgabe ohne alte Run-Episoden und Wiki-Kontext starten
         #[arg(long)]
         no_memory: bool,
+
+        /// Claim nach einem erfolgreichen Run nur mit vorhandenem Beleg abschließen
+        #[arg(long, requires = "proof_path")]
+        complete_task: Option<String>,
+
+        /// Konkrete Belegdatei für --complete-task
+        #[arg(long)]
+        proof_path: Option<std::path::PathBuf>,
+
+        /// Task offiziell claimen (nur wenn im Taskboard `free` und nicht per
+        /// claim_lock gesperrt; verhindert Doppel-Claims)
+        #[arg(long)]
+        acquire_task: Option<String>,
     },
 
     /// Einheitliche Eingabe: autonomer Run (Default) oder Konversations-Einzelturn.

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-05",
+  "as_of": "2026-09-08",
   "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "mirror": "docs/TASKBOARD.md",
   "contract": "docs/WORK_CONTRACT.md",
@@ -285,9 +285,10 @@
       "owner": "chatgpt-codex",
       "branch": "fix/T-501-model-proof",
       "claimed_at": "2026-09-07",
+      "claim_lock": true,
       "done_at": null,
-      "proof_path": "docs/proofs/T-501/ (Stand 2026-09-05, Port 8788): 98/130 Zellen passed. api_responses 9/9 (mistral+zai nach Cooldown sauber), streaming 6/9 (kimi Reasoning-Echo, mistral Timestamp-Deltas, zai Thinking...), attachment: kimi passed mit echtem 256x256-Bild (Vorlauf-502 war Testbild-Artefakt); qwen/zai echter SPA-Upload-Gap (real_image Belege), mistral Timestamp, auto Timeout; managed_tools by-design 400 bestaetigt. Offen: streaming 3, attachment 4, model/effort unreachable-not_run (Login-gebunden). DoD weiterhin NICHT done. | 2026-09-06 OpenCode Limit — Finish bei derfuhrer/Crew. Matrix ~108/130; auto RED; effort Rest.",
-      "verification": "Matrix-Zellen; Belegpfad je Brain (2026-09-05 nachgezogen, kimi attachment real_image)",
+      "proof_path": "docs/proofs/T-501/ (Live-Reproof + Selector-Nachzug 2026-09-08, roundtrip-v2): model_switch_roundtrip_v2_2026-09-08.md. Messung 1: 6 model-Zellen (claude/qwen/perplexity/zai/gemini/kimi) alle failed (fail-closed, headless). Nachzug modell_selectors/qwen.json + kimi.json (Namens-Knoten): qwen passed (Qwen3.7-Plus->Qwen3.8-Max, Rueckweg=true), kimi passed (Schnell->K3 Swarm, Rueckweg=true). zai (GLM-5.3 vs GLM-5.3-Flash Substring-Paar, echte Mehrdeutigkeit), claude (Trigger Sonnet 5 Hoch = Modell+Aufwand), gemini (Flash vs 3.5/3.6 Flash), perplexity (statischer Button Modell) bleiben ehrlich failed - UI-Struktur, keine exakte Auswahl-API. Matrix-Stand 2026-09-08 nach Messung 2: 105 passed, 14 failed, 4 unreachable, 7 not_run. Offen: zai/claude/gemini/perplexity model (exakte Auswahl-API noetig, Audit-Doku Grenze), effort-Zellen, model/auto, auto RED, zai GLM-5.3 Webchat flaky 2026-09-07. DoD NICHT done.",
+      "verification": "Matrix-Zellen; proof_store proofs.jsonl; model-selection-roundtrip-v2 (capability_proof.rs)",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
       "depends_on": [
         "T-202",
@@ -347,6 +348,147 @@
       "proof_path": "src/group_run.rs; cargo test --lib --no-default-features (1267 passed, 1 ignored; fake A/B group EventStream Exact + @Brain + leader synthesis)",
       "verification": "cargo test --lib --no-default-features",
       "dod": "Gruppenlauf als normale Session (gleicher Eventstream); deterministischer Test gruen"
+    },
+    {
+      "id": "T-801",
+      "phase": "8",
+      "title": "Gemeinsamer Brain-Vertrag und Konformitaetsfixtures",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 1 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": []
+    },
+    {
+      "id": "T-802",
+      "phase": "8",
+      "title": "Einheitliches Fill Verify Submit ohne Doppelversand",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 2 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-801"
+      ]
+    },
+    {
+      "id": "T-803",
+      "phase": "8",
+      "title": "Antwortstream durch Controller REPL Swarm UI und API",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 3 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-801"
+      ]
+    },
+    {
+      "id": "T-804",
+      "phase": "8",
+      "title": "Profil-Leases und gemeinsame Blocker-/Resetbehandlung",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 4 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-801"
+      ]
+    },
+    {
+      "id": "T-805",
+      "phase": "8",
+      "title": "Generische Probe mit bestehendem Capability-Proof-Gate",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 5 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-802",
+        "T-803",
+        "T-804"
+      ]
+    },
+    {
+      "id": "T-806",
+      "phase": "8",
+      "title": "Taskabschluss mit verifizierten Run-Belegen und Crashschutz",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 6 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-801",
+        "T-805",
+        "T-808"
+      ]
+    },
+    {
+      "id": "T-807",
+      "phase": "8",
+      "title": "Alle-Brains-Live-Abnahme und Windows-Release",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 7 und Pflichtgates",
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "depends_on": [
+        "T-802",
+        "T-803",
+        "T-804",
+        "T-805",
+        "T-806",
+        "T-808"
+      ]
+    },
+    {
+      "id": "T-808",
+      "phase": "8",
+      "title": "Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery",
+      "type": "code",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "done_at": null,
+      "proof_path": null,
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 8 und Pflichtgates",
+      "dod": "Lueckenlose Mehrprozess-Eventkette, fail-closed Recovery und belegte Crash-Gegenproben",
+      "depends_on": []
     }
   ]
 }
