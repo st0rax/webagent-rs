@@ -56,6 +56,11 @@ pub enum Commands {
         /// Konkrete Belegdatei für --complete-task
         #[arg(long)]
         proof_path: Option<std::path::PathBuf>,
+
+        /// Task offiziell claimen (nur wenn im Taskboard `free` und nicht per
+        /// claim_lock gesperrt; verhindert Doppel-Claims)
+        #[arg(long)]
+        acquire_task: Option<String>,
     },
 
     /// Einheitliche Eingabe: autonomer Run (Default) oder Konversations-Einzelturn.

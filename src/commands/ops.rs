@@ -576,7 +576,7 @@ pub fn cmd_ask(
             }
         }
     } else {
-        cmd_run(brain, task, resume, headless, max_cycles, no_memory, None, None)
+        cmd_run(brain, task, resume, headless, max_cycles, no_memory, None, None, None)
     }
 }
 
@@ -589,10 +589,25 @@ pub fn cmd_run(
     no_memory: bool,
     complete_task: Option<&str>,
     proof_path: Option<&std::path::Path>,
+    acquire_task: Option<&str>,
 ) -> i32 {
     use webagent::browser::WebBrainBackend;
     use webagent::controller::{AgentController, RunOptions};
     use webagent::executor::PlatformShellExecutor;
+
+    let board = std::path::Path::new("docs/TASKBOARD.json");
+    if let Some(task_id) = acquire_task {
+        if let Err(e) = webagent::taskboard::acquire_claim(
+            board,
+            task_id,
+            "chatgpt-codex",
+            &branch_name(),
+        ) {
+            eprintln!("[run] Task-Claim verweigert: {e}");
+            return 1;
+        }
+        println!("[run] task={task_id} status=claimed - Doppel-Claim verhindert");
+    }
 
     let brain = match resolve_brain_for_task(brain, task) {
         Ok(b) => b,
@@ -634,7 +649,6 @@ pub fn cmd_run(
             if meta.status == "done" {
                 if let Some(task_id) = complete_task {
                     let proof = proof_path.expect("clap enforces --proof-path");
-                    let board = std::path::Path::new("docs/TASKBOARD.json");
                     if let Err(e) = webagent::taskboard::complete_claim(
                         board,
                         task_id,

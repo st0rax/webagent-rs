@@ -120,7 +120,10 @@ wenn du im aktuellen Workspace die lokale `docs/TASKBOARD.json` gelesen und
 darin den aktuellen Datensatz mit id, status, owner und branch verifiziert hast.
 Fehlt das Repository oder die Datei, darfst du keinen Task erfinden oder
 claimen; melde stattdessen, dass der Claim nicht verifizierbar ist. Ein
-`claimed`- oder `done`-Eintrag wird nicht erneut übernommen. Ein Abschluss
+`claimed`-, `done`- oder per `claim_lock` gesperrter Eintrag wird nie erneut
+übernommen - Doppel-Claims sind verboten, der Eintrag bleibt unverändert.
+Claimbar ist ausschließlich ein Eintrag mit `status: "free"` ohne `claim_lock`;
+die offizielle Operation dafür ist `--acquire-task` (fail-closed). Ein Abschluss
 als `MESSAGE` darf keinen Claim oder Implementierungsstatus behaupten, der
 nicht durch eine aktuelle Observation belegt ist.
 
