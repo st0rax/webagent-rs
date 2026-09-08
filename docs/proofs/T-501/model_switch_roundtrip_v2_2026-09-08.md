@@ -68,6 +68,44 @@ Nachlesen + Restore) headless. zai/claude/gemini/perplexity bleiben ehrlich
 fail-closed — jeweiks durch UI-Struktur bedingte Ganzlabel-Mehrdeutigkeit, kein
 Selektor-Bug, kein UI-Eingriff versucht.
 
+## Messung 3 (Exakte Auswahl-API / ID-Roundtrip, 18:49–18:53 UTC)
+
+Neue Selektoren-Keys in `selectors/{gemini,ZAI}.json`: `model_id_attr`,
+`model_active_option`, `model_option_label` plus neue Verifier-Strecke
+`model_roundtrip_exact` (ID-Roundtrip) in `src/browser/verify.rs` mit
+Backend-Methoden `supports_exact_models` / `active_model_exact` /
+`list_models_exact` / `select_model_exact` (`src/browser/ui.rs`). Auswahl laeuft
+nun ueber exakte IDs statt Ganzlabels:
+
+| Brain | Ergebnis | Latenz | Route | Beleg (Proof-Store, `selector_hash`) |
+|---|---|---|---|---|
+| gemini | **passed** (3/3) | 11.6 s | ID: `3.6 Flash -> 3.5 Flash-Lite` `[cf41b0e0dd7d53e5]`, Wechsel+Rueckweg=true | 311126731, ts 18:49:02/21/18:50:10 |
+| zai | **passed** (3/3) | 11.0 s | ID: `GLM-5.3 -> GLM-5.3-Flash` `[x-preview-l]`, Wechsel+Rueckweg=true | 723949967, ts 18:50:30/46/18:51:34 |
+| claude | failed | 1.2 s | Label-Fallback (kein `model_id_attr`) | ts 18:52 |
+| perplexity | failed | 2.3 s | Label-Fallback (kein `model_id_attr`) | ts 18:53 |
+
+DOM-Fakten je Brain:
+- **gemini**: `gem-menu-item[data-mode-id=…]` als ID-Quelle; aktive Zeile =
+  `class~="selected"` (Checkmark `aria-label="Ausgewählt"`, NICHT `data-active`
+  — das ist Hover/Panel-Fokus); reines Label in `span.label`. Trigger `Flash`
+  bleibt Teilstring, aber der ID-Roundtrip lauft daran vorbei.
+- **zai**: `[data-testid='model-item']` mit `data-value` (`glm-5.3`,
+  `glm-5.2`, `x-preview-l`), aktiv via `data-selected="true"`; Ganzlabel in
+  `div.line-clamp-1` (erste Zeile). Substring-Paar `GLM-5.3` / `GLM-5.3-Flash`
+  wird per ID eindeutig — in Messung 2 noch echte Mehrdeutigkeit.
+- **claude**: Optionen tragen `data-model-id` (`claude-fable-5-1`,
+  `claude-opus-5`), aber das aktive Modell (Sonnet 5) steht NICHT im Erstwohrh
+  Menue (nur `Fable 5.1`, `Opus 5 Pro`, Untermenue `Aufwand Hoch`), und der
+  Trigger kombiniert Modell+Effort. Strukturell nicht ueber den Roundtrip
+  bestehbar → bewusst KEIN `model_id_attr`, Label-Fallback, failed.
+- **perplexity**: keine exakten IDs, statischer Trigger `Modell` (kein
+  Modellname im DOM). Kein `model_id_attr`, Label-Fallback, failed.
+
+Dispatcher in `model_roundtrip` prueft zuerst `options_exact()` (≥2 distinct
+IDs) → `model_roundtrip_exact`, sonst Label-Pfad. qwen/kimi/chatgpt unveraendert
+via Label-Pfad (Testfixture-Defaults fuer die neuen Trait-Methoden liefern
+`Ok(None)` ohne Seiteneffekt).
+
 ## Bewertung
 
 - Deterministisches Fehlverhalten in Messung 1 ueber alle sechs Brains — kein
@@ -76,8 +114,12 @@ Selektor-Bug, kein UI-Eingriff versucht.
 - Ursache lag in der Selektoren-Ebene (Name+Desc gemischt). Fuer zwei Brains
   durch Namens-Knoten-Fixes behebbar.
 - Zell-Uebergaenge: Baseline 6x `not_run`→`failed` (Messung 1); nach Nachzug
-  2x →`passed`, 4x bleiben `failed` (dokumentierte UI-Grenzen). Gesamtstand nach
-  Messung 2: **105 passed, 14 failed, 4 unreachable, 7 not_run**.
-- T-501 DoD ("Pro beworbenes Brain gruen") bleibt NICHT done: zai/claude/gemini/
-  perplexity sind nur ueber eine exakte Auswahl-API (statt Ganzlabel) oder
-  UI-seitige Spezialisierung bestehbar — im Audit als kuenftige Grenze erfasst.
+  2x →`passed`, 4x bleiben `failed` (dokumentierte UI-Grenzen). Messung 3
+  (ID-Roundtrip): gemini + zai →`passed` (je 3/3), claude + perplexity bleiben
+  `failed` — strukturelle Ausschlusskriterien, kein `model_id_attr` gesetzt.
+  Gesamtstand nach Messung 3: **107 passed, 12 failed, 4 unreachable,
+  7 not_run**.
+- T-501 DoD ("Pro beworbenes Brain gruen") bleibt NICHT done: claude +
+  perplexity sind strukturell nicht ueber exakte Auswahl oder Ganzlabel
+  bestehbar (aktives Modell fehlt im Menue / kein Modellname im Trigger-DOM) —
+  im Audit als dauerhaft dokumentierte Grenze erfasst.

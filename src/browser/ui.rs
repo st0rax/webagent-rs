@@ -483,6 +483,138 @@ impl WebBrainBackend {
         self.select_in_menu("model_menu", "model_option", want)
     }
 
+    /// Exakter Modell-Pfad (ID-gestützt): ist der Brain konfiguriert
+    /// (`model_id_attr` + `model_active_option` + `model_option_label`),
+    /// liefert diese Methode die aktiven/alle Modell-Optionen als
+    /// `(Ganzlabel, exakte-ID)`-Paare und erlaubt `select_model_exact`.
+    /// `Ok(false)` = keine exakte API konfiguriert → Label-Pfad wie bisher.
+    pub fn supports_exact_models(&self) -> bool {
+        !self.sel("model_id_attr").is_empty()
+            && !self.sel("model_active_option").is_empty()
+            && !self.sel("model_option_label").is_empty()
+    }
+
+    /// Der aktive Modell-Name als Ganzlabel + exakte ID, gelesen aus der
+    /// `model_active_option`-Zeile im geoeffneten Menue (3.6 Flash, GLM-5.3 …).
+    pub fn active_model_exact(&mut self) -> Result<(String, String), String> {
+        if !self.supports_exact_models() {
+            return Err("keine exakte Modell-API konfiguriert".into());
+        }
+        if self.sel("model_menu").is_empty() {
+            return Err("kein 'model_menu' konfiguriert".into());
+        }
+        if !self.open_menu("model_menu") {
+            return Err("'model_menu' nicht anklickbar".into());
+        }
+        let active = Self::js_selectors(&self.sel("model_active_option"));
+        let id_attr = self.sel("model_id_attr")[0].clone();
+        let label_sel = Self::js_selectors(&self.sel("model_option_label"));
+        let expr = format!(
+            "(function(){{{prelude}function lab(el){{var best='';for(var j=0;j<{ls}.length;j++){{try{{var ns=el.querySelectorAll({ls}[j]);for(var m=0;m<ns.length;m++){{var t=((ns[m].innerText||ns[m].textContent||'')+'').replace(/\\s+/g,' ').trim();if(t&&(best===''||t.length<best.length))best=t;}}}}catch(e){{}}}}if(!best){{var t=((el.innerText||el.textContent||'')+'').replace(/\\s+/g,' ').trim();if(t)best=t;}}return best;}}var A={active};for(var i=0;i<A.length;i++){{try{{var el=Q(A[i]);if(!el)continue;var id=el.getAttribute('{attr}')||'';if(!id)continue;return [lab(el),id];}}catch(e){{}}}}return ['',''];}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            active = active,
+            attr = id_attr.replace('\'', "\\'"),
+            ls = label_sel,
+        );
+        let v = self.eval(&expr).ok().and_then(|v| {
+            v.as_array().map(|a| {
+                (
+                    a.first()
+                        .and_then(|x| x.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    a.get(1)
+                        .and_then(|x| x.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                )
+            })
+        });
+        let _ = self.press_key_escape();
+        match v {
+            Some((label, id)) if !label.is_empty() && !id.is_empty() => Ok((label, id)),
+            _ => Err("aktives Modell nicht per ID lesbar".into()),
+        }
+    }
+
+    /// Alle Modell-Optionen als `(Ganzlabel, exakte-ID)`-Paare aus dem
+    /// geoeffneten Menue (Label aus `model_option_label`, ID aus
+    /// `model_id_attr`).
+    pub fn list_models_exact(&mut self) -> Result<Vec<(String, String)>, String> {
+        if !self.supports_exact_models() {
+            return Err("keine exakte Modell-API konfiguriert".into());
+        }
+        if self.sel("model_menu").is_empty() {
+            return Err("kein 'model_menu' konfiguriert".into());
+        }
+        if !self.open_menu("model_menu") {
+            return Err("'model_menu' nicht anklickbar".into());
+        }
+        let opts = Self::js_selectors(&self.sel("model_option"));
+        let id_attr = self.sel("model_id_attr")[0].clone();
+        let ls = Self::js_selectors(&self.sel("model_option_label"));
+        let expr = format!(
+            "(function(){{{prelude}function lab(el){{var best='';for(var j=0;j<{ls}.length;j++){{try{{var ns=el.querySelectorAll({ls}[j]);for(var m=0;m<ns.length;m++){{var t=((ns[m].innerText||ns[m].textContent||'')+'').replace(/\\s+/g,' ').trim();if(t&&(best===''||t.length<best.length))best=t;}}}}catch(e){{}}}}if(!best){{var t=((el.innerText||el.textContent||'')+'').replace(/\\s+/g,' ').trim();if(t)best=t;}}return best;}}var L={opts};var out=[];for(var i=0;i<L.length;i++){{try{{var els=QA(L[i]);for(var k=0;k<els.length;k++){{var id=els[k].getAttribute('{attr}')||'';if(!id)continue;out.push([lab(els[k]),id]);}}if(out.length)break;}}catch(e){{}}}}return out;}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            opts = opts,
+            attr = id_attr.replace('\'', "\\'"),
+            ls = ls,
+        );
+        let pairs = self
+            .eval(&expr)
+            .ok()
+            .and_then(|v| {
+                v.as_array().map(|a| {
+                    a.iter()
+                        .filter_map(|x| {
+                            let arr = x.as_array()?;
+                            Some((
+                                arr.first()?.as_str().unwrap_or_default().to_string(),
+                                arr.get(1)?.as_str().unwrap_or_default().to_string(),
+                            ))
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .unwrap_or_default();
+        let _ = self.press_key_escape();
+        Ok(pairs)
+    }
+
+    /// Wählt ein Modell per exakter ID aus `model_id_attr` und liest danach
+    /// das Ganzlabel der neuen aktiven Zeile (wie `select_in_menu`, aber ID-
+    /// statt Textmatch, ohne Teilstring-Mehrdeutigkeit).
+    pub fn select_model_exact(&mut self, id: &str) -> Result<String, String> {
+        if !self.supports_exact_models() {
+            return Err("keine exakte Modell-API konfiguriert".into());
+        }
+        let id_attr = self.sel("model_id_attr")[0].clone();
+        let id_json = serde_json::to_string(id).unwrap_or_else(|_| "\"\"".into());
+        if !self.open_menu("model_menu") {
+            return Err("'model_menu' nicht anklickbar".into());
+        }
+        let opts = Self::js_selectors(&self.sel("model_option"));
+        let expr = format!(
+            "(function(){{{prelude}var L={opts};var n={id_json};function clk(e){{var r=e.getBoundingClientRect();var cx=r.left+r.width/2,cy=r.top+r.height/2;var pd=new PointerEvent('pointerdown',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});var pu=new PointerEvent('pointerup',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t2){{e.dispatchEvent(t2==='pointerdown'?pd:t2==='pointerup'?pu:new MouseEvent(t2,{{clientX:cx,clientY:cy,bubbles:true,button:0}}));}});}}for(var i=0;i<L.length;i++){{try{{var els=QA(L[i]);for(var k=0;k<els.length;k++){{if((els[k].getAttribute('{attr}')||'')===n){{clk(els[k]);return true;}}}}}}catch(e){{}}}}return false;}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            opts = opts,
+            id_json = id_json,
+            attr = id_attr.replace('\'', "\\'"),
+        );
+        let clicked = self.eval_bool(&expr);
+        std::thread::sleep(Duration::from_millis(1200));
+        if !clicked {
+            let _ = self.press_key_escape();
+            return Err(format!("Modell-ID '{id}' nicht im Menue gefunden"));
+        }
+        let (after_label, after_id) = self.active_model_exact()?;
+        if after_id == id {
+            Ok(after_label)
+        } else {
+            Ok(format!("{after_label} (Auswahl wirkte nicht auf '{id}')"))
+        }
+    }
+
     /// Beschriftung eines Menue-Knopfs (= aktuell gewaehlter Eintrag).
     pub fn menu_label(&self, menu_key: &str) -> String {
         let list = Self::js_selectors(&self.sel(menu_key));
