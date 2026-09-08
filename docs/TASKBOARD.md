@@ -36,7 +36,7 @@ laufen. Niemals eine verkettete Aufgabe aus dem Block reissen.
 | T-404 | 4 | SDK-Blackbox: offizielle Python-/JS-SDKs + zwei Clients | tests | codex, local | done | grok-agent | feature/T-404-sdk-blackbox |
 | T-501 | 5 | Alle-Brains-Matrix je Brain (Chat/Streaming/Modell/Anhang/Tools) | live | claude, grok, local | claimed | chatgpt-codex | fix/T-501-model-proof |
 
-Matrix-Stand 2026-09-07 (Modellbeleg-Audit, `MODEL_PROOF_AUDIT_2026-09-07.md`): **103/130 passed — streaming 9/9, api_responses 9/9**. Offen (DoD NICHT done): 6 model-Zellen auf not_run (Roundtrip-v2 erforderlich), effort-Zellen, model/auto, auto RED, zai-GLM-5.3 flaky 2026-09-07. Belege `docs/proofs/T-501/` + `STATUS_reproof_filter.md`.
+Matrix-Stand 2026-09-08 (Live-Reproof `model_switch_roundtrip_v2_2026-09-08.md`): **103/130 passed — 6 model-Zellen gemessen, alle failed** (aktuelles Modell nicht eindeutig aus Laufzeitliste lesbar; fail-closed, kein UI-Eingriff; headless; Belege `proofs.jsonl`). Offen (DoD NICHT done): 6 model-Zellen Selector-Nachzug je Brain, effort-Zellen, model/auto, auto RED, zai-GLM-5.3 flaky 2026-09-07.
 | T-601 | 6 | rustls-HTTPS-Client + data/providers.json + <10-MB-Budget | code | codex, grok | done | grok-agent | feature/T-601-rustls-https |
 | T-602 | 6 | /quelle + UI-Schalter + Session-Source-Scope (manueller Hybrid) | code | codex, claude | done | grok-agent | feature/T-602-quelle-impl |
 | T-701 | 7 | Gruppen (2-6), Runden, @Brain, Leader-Synthese | code | codex, claude | done | grok-agent | feature/T-701-swarm-groups |

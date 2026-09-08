@@ -286,8 +286,8 @@
       "branch": "fix/T-501-model-proof",
       "claimed_at": "2026-09-07",
       "done_at": null,
-      "proof_path": "docs/proofs/T-501/ (Audit-Referenz MODEL_PROOF_AUDIT_2026-09-07.md auf master, Basis 28e9f1c): Matrix 103/130 passed, 10 failed, 4 unreachable, 13 not_run. model_switch 6 Zellen (claude/qwen/perplexity/zai/gemini/kimi) zurueck auf not_run (Roundtrip-v2: Laufzeit-Auswahl + unabhaengiges Nachlesen + Restore; alte Trigger-Hashes ungueltig). streaming 9/9 (ReProof-Filter PR #44/#45/#46), api_responses 9/9 (mistral/zai 2026-09-05 sauber), attachment via #46 + kimi real_image 2026-09-05. Offen: 6 model not_run, effort-Zellen, model/auto, auto RED. DoD NICHT done. | 2026-09-07 zai GLM-5.3 Webchat flaky (No response + SyntaxError 'Unexpected token ,' + 24-Byte-Binary), Beleg zai_webchat_glm53_2026-09-07.md; PR #29 merged 098e4c9",
-      "verification": "Matrix-Zellen; Belegpfad je Brain; model-selection-roundtrip-v2 als Beweisbasis (capability_proof.rs)",
+      "proof_path": "docs/proofs/T-501/ (Live-Reproof 2026-09-08, roundtrip-v2): 6 model-Zellen (claude/qwen/perplexity/zai/gemini/kimi) gemessen - model_switch_roundtrip_v2_2026-09-08.md. Ergebnis: alle 6 failed - aktuelles Modell nicht eindeutig aus Laufzeitliste lesbar (fail-closed, kein Eingriff, headless, Belege proofs.jsonl <brain>><cap>). Matrix-Stand 2026-09-08: 103 passed, 16 failed, 4 unreachable, 7 not_run. streaming 9/9, api_responses 9/9 (2026-09-05/06 Belege). Offen: 6 model failed (Selector-Nachzug je Brain), effort-Zellen, model/auto, auto RED, zai GLM-5.3 Webchat flaky 2026-09-07 (zai_webchat_glm53_2026-09-07.md). DoD NICHT done.",
+      "verification": "Matrix-Zellen; proof_store proofs.jsonl; model-selection-roundtrip-v2 (capability_proof.rs)",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
       "depends_on": [
         "T-202",
