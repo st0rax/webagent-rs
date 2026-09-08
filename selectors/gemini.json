@@ -84,6 +84,17 @@
     "button[aria-label*='Model' i]",
     "[data-testid*='model' i]"
   ],
+  "model_active_option": [
+    "gem-menu-item[class~='selected']",
+    "gem-menu-item-content[class~='selected']"
+  ],
+  "model_option_label": [
+    "span.label",
+    "gem-menu-item-content span.label"
+  ],
+  "model_id_attr": [
+    "data-mode-id"
+  ],
   "model_option": [
     "gem-menu-item",
     "mat-mdc-menu-item[role=menuitem]",

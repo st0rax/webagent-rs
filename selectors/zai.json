@@ -60,6 +60,17 @@
     "button[aria-label='Select a model']",
     "button[aria-label*='Select a model' i]"
   ],
+  "model_active_option": [
+    "[data-testid='model-item'][data-selected='true']",
+    "[aria-label='model-item'][data-selected='true']"
+  ],
+  "model_option_label": [
+    "div.line-clamp-1",
+    "[aria-label='model-item'] div.line-clamp-1"
+  ],
+  "model_id_attr": [
+    "data-value"
+  ],
   "model_option": [
     "[data-testid='model-item']",
     "[title='model-item']",

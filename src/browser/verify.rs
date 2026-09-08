@@ -443,10 +443,35 @@ fn verify_roundtrip(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<Veri
 
 /// Small test boundary around the existing runtime model controls. The probe
 /// must read the selected model independently of the click's return value.
+///
+/// Zusaetzlich zum Ganzlabel-Pfad (selected/options/select) gibt es einen
+/// ID-gestuetzten exakten Pfad (selected_id/options_exact/select_exact), den
+/// Brains mit sprechenden `model_id_attr`-Attributen aktivieren. Die
+/// Default-Implementierungen fallen auf den Label-Pfad zurueck — qwen/kimi
+/// bleiben dadurch unveraendert gruen, ohne dass sie ID-selektoren brauchen.
 trait ModelMenuProbe {
     fn selected(&self) -> String;
     fn options(&mut self) -> Result<Vec<String>, String>;
     fn select(&mut self, model: &str) -> Result<String, String>;
+
+    /// Aktives Modell als `(Ganzlabel, exakte-ID)`; `Ok(None)` wenn der Brain
+    /// keine `model_id_attr`-API hat (Fallback: Label-Pfad).
+    fn selected_id(&mut self) -> Result<Option<(String, String)>, String> {
+        Ok(None)
+    }
+
+    /// Alle Modell-Optionen als `(Ganzlabel, exakte-ID)`-Paare; `Ok(None)`
+    /// wenn der Brain keine exakten IDs bereitstellt.
+    fn options_exact(&mut self) -> Result<Option<Vec<(String, String)>>, String> {
+        Ok(None)
+    }
+
+    /// Waehlt ein Modell per exakter ID; liefert das Ganzlabel der neuen
+    /// aktiven Zeile. Default: Rueckfall auf `select(label)` — fuer Brains
+    /// ohne ID-API ungenutzt.
+    fn select_exact(&mut self, id: &str) -> Result<String, String> {
+        self.select(id)
+    }
 }
 
 impl ModelMenuProbe for WebBrainBackend {
@@ -461,6 +486,31 @@ impl ModelMenuProbe for WebBrainBackend {
     fn select(&mut self, model: &str) -> Result<String, String> {
         self.switch_model(model)
     }
+
+    fn selected_id(&mut self) -> Result<Option<(String, String)>, String> {
+        if !self.supports_exact_models() {
+            return Ok(None);
+        }
+        match self.active_model_exact() {
+            Ok((label, id)) => Ok(Some((label, id))),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn options_exact(&mut self) -> Result<Option<Vec<(String, String)>>, String> {
+        if !self.supports_exact_models() {
+            return Ok(None);
+        }
+        let list = self.list_models_exact()?;
+        if list.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(list))
+    }
+
+    fn select_exact(&mut self, id: &str) -> Result<String, String> {
+        self.select_model_exact(id)
+    }
 }
 
 fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
@@ -470,6 +520,27 @@ fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
             .join(" ")
             .to_lowercase()
     };
+    // ID-gestützter exakter Pfad zuerst: eindeutige Modellhilfe ohne
+    // Teilstring-Mehrdeutigkeit (GLM-5.3 vs GLM-5.3-Flash, Flash vs
+    // 3.5/3.6 Flash-Lite). Nur wenn der Brain eine `model_id_attr`-API
+    // mitbringt und ≥2 verschiedene Optionen liefert.
+    match probe.options_exact() {
+        Ok(Some(opts)) if opts.len() >= 2 && {
+            let mut ids = opts.iter().map(|(_, id)| id.as_str()).collect::<Vec<_>>();
+            ids.sort_unstable();
+            ids.dedup();
+            ids.len() >= 2
+        } =>
+        {
+            match probe.selected_id() {
+                Ok(Some((before_label, before_id))) => {
+                    return model_roundtrip_exact(probe, &normalize, opts, before_label, before_id);
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
     let before = probe.selected();
     let mut m = measure(
         "model_switch",
@@ -541,6 +612,81 @@ fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
     m.proven = selected && restored;
     m.note = format!(
         "Laufzeit-Modellwahl {before:?} -> {target:?}, beobachtet {after:?}; Wechsel={selected}, Rueckweg={restored}"
+    );
+    if let Err(e) = forward {
+        m.note.push_str(&format!("; Auswahlfehler: {e}"));
+    }
+    if let Err(e) = restoration {
+        m.note.push_str(&format!("; Wiederherstellungsfehler: {e}"));
+    }
+    m
+}
+
+/// ID-gestützter Modell-Roundtrip: das aktive Modell ist über `model_id_attr`
+/// exakt identifizierbar, die Auswahl per ID statt Ganzlabel-Text meidet jede
+/// Teilstring-Mehrdeutigkeit (GLM-5.3 vs GLM-5.3-Flash, Flash vs 3.5/3.6
+/// Flash-Lite).
+fn model_roundtrip_exact(
+    probe: &mut impl ModelMenuProbe,
+    normalize: &impl Fn(&str) -> String,
+    opts: Vec<(String, String)>,
+    before_label: String,
+    before_id: String,
+) -> Measurement {
+    let mut m = measure(
+        "model_switch",
+        before_label.clone(),
+        before_label.clone(),
+        false,
+        String::new(),
+        None,
+    );
+    // Aktive Zeile (original) muss in der Optionenliste stehen, sonst ist die
+    // ID-Auswahl nicht vertrauenswuerdig (UI-Rest von anderswo).
+    let Some((_, original_id)) = opts.iter().find(|(_, id)| *id == before_id) else {
+        m.note = "Aktive Modell-ID fehlt in der Laufzeit-Optionenliste; kein Wechsel versucht"
+            .into();
+        return m;
+    };
+    // Anderes Modell: eindeutig per anderer ID (die Auswahl klickt exakt per
+    // Attribut, nicht per Text — Teilstring-Nachbarschaft wie GLM-5.3 /
+    // GLM-5.3-Flash ist hier unschaedlich). Nur das eigene Modell und
+    // Duplikat-Labels bleiben ausgeschlossen.
+    let Some((target_label, target_id)) = opts.iter().find(|(l, id)| {
+        *id != before_id && normalize(l) != normalize(&before_label)
+    }) else {
+        m.note = "Kein anderes Modell mit eigener ID in der Laufzeitliste; kein Wechsel versucht"
+            .into();
+        return m;
+    };
+    let forward = probe.select_exact(target_id);
+    let after = match probe.selected_id() {
+        Ok(Some((l, a_id))) if a_id == *target_id => l,
+        Ok(Some((l, _))) => {
+            format!("{l} (ID wechselte nicht auf '{target_id}')")
+        }
+        _ => "aktive Modell-ID nach Klick nicht lesbar".into(),
+    };
+    m.after = after.clone();
+    let changed = normalize(&after) == normalize(target_label);
+    let selected = forward
+        .as_ref()
+        .is_ok_and(|label| !label.contains("bereits aktiv"))
+        && changed;
+    // Auch hier zuruecksetzen, sobald sich der Zustand geaendert hat.
+    let restoration = if changed {
+        probe.select_exact(original_id)
+    } else {
+        Ok(before_label.clone())
+    };
+    let restored = match probe.selected_id() {
+        Ok(Some((_, a_id))) => a_id == *original_id,
+        _ => false,
+    };
+    m.restored = Some(restored);
+    m.proven = selected && restored;
+    m.note = format!(
+        "Laufzeit-Modellwahl (ID) {before_label:?} -> {target_label:?} [{target_id}], beobachtet {after:?}; Wechsel={selected}, Rueckweg={restored}"
     );
     if let Err(e) = forward {
         m.note.push_str(&format!("; Auswahlfehler: {e}"));
@@ -1144,6 +1290,7 @@ mod tests {
 
     struct ModelFixture {
         current: String,
+        initial: String,
         options: Vec<String>,
         calls: Vec<String>,
         ignore_switch: bool,
@@ -1151,12 +1298,14 @@ mod tests {
         fail_after_change: bool,
         drift_on_list: bool,
         report_noop: bool,
+        exact: bool,
     }
 
     impl ModelFixture {
         fn new(options: &[&str]) -> Self {
             Self {
                 current: "Model A".into(),
+                initial: "Model A".into(),
                 options: options.iter().map(|s| (*s).into()).collect(),
                 calls: Vec::new(),
                 ignore_switch: false,
@@ -1164,6 +1313,7 @@ mod tests {
                 fail_after_change: false,
                 drift_on_list: false,
                 report_noop: false,
+                exact: false,
             }
         }
     }
@@ -1195,6 +1345,37 @@ mod tests {
             // The click's return value deliberately claims success even when
             // ignore_switch is set; only the independent read may prove it.
             Ok(model.into())
+        }
+
+        // ID-Pfad: nutzt die gleichen Labels mit Hang-IDs, wenn `exact` an.
+        fn selected_id(&mut self) -> Result<Option<(String, String)>, String> {
+            if !self.exact {
+                return Ok(None);
+            }
+            Ok(Some((self.current.clone(), format!("id-{}", self.current))))
+        }
+        fn options_exact(&mut self) -> Result<Option<Vec<(String, String)>>, String> {
+            if !self.exact {
+                return Ok(None);
+            }
+            Ok(Some(
+                self.options
+                    .iter()
+                    .map(|s| (s.clone(), format!("id-{s}")))
+                    .collect(),
+            ))
+        }
+        fn select_exact(&mut self, id: &str) -> Result<String, String> {
+            let label = id.trim_start_matches("id-").to_string();
+            self.calls.push(id.into());
+            // Ruecksetzen auf die Ausgangslage schlaegt bewusst fehl.
+            if self.fail_restore && label == self.initial {
+                return Err("restore failed".into());
+            }
+            if !self.ignore_switch {
+                self.current = label.clone();
+            }
+            Ok(label)
         }
     }
 
@@ -1286,6 +1467,58 @@ mod tests {
         let m = model_roundtrip(&mut menu);
         assert!(!m.proven);
         assert_eq!(m.restored, Some(true));
+    }
+
+    #[test]
+    fn model_roundtrip_exact_resolves_ambiguous_substring_pairs() {
+        // GLM-5.3 vs GLM-5.3-Flash: im Label-Pfad unloesbar, im ID-Pfad
+        // eindeutig ueber unterschiedliche IDs.
+        let mut menu = ModelFixture::new(&["GLM-5.3-Flash", "GLM-5.3"]);
+        menu.current = "GLM-5.3".into();
+        menu.exact = true;
+        let m = model_roundtrip(&mut menu);
+        assert!(m.proven, "{m:?}");
+        assert_eq!(m.after, "GLM-5.3-Flash");
+        assert_eq!(m.restored, Some(true));
+        assert_eq!(menu.calls, ["id-GLM-5.3-Flash", "id-GLM-5.3"]);
+    }
+
+    #[test]
+    fn model_roundtrip_exact_needs_two_distinct_ids() {
+        let mut menu = ModelFixture::new(&["Model A", "Model B"]);
+        menu.exact = true;
+        menu.options.clear();
+        menu.options.push("Model A".into());
+        let m = model_roundtrip(&mut menu);
+        assert!(!m.proven);
+        assert!(menu.calls.is_empty());
+    }
+
+    #[test]
+    fn model_roundtrip_exact_ignores_click_without_id_change() {
+        let mut menu = ModelFixture::new(&["GLM-5.3-Flash", "GLM-5.3"]);
+        menu.current = "GLM-5.3".into();
+        menu.initial = "GLM-5.3".into();
+        menu.exact = true;
+        menu.ignore_switch = true;
+        let m = model_roundtrip(&mut menu);
+        assert!(!m.proven, "{m:?}");
+        assert!(m.after.contains("GLM-5.3"), "after={}", m.after);
+        assert!(m.after.contains("ID wechselte nicht"), "after={}", m.after);
+        assert_eq!(menu.calls, ["id-GLM-5.3-Flash"]);
+    }
+
+    #[test]
+    fn model_roundtrip_exact_restore_failure_is_not_passed() {
+        let mut menu = ModelFixture::new(&["GLM-5.3-Flash", "GLM-5.3"]);
+        menu.current = "GLM-5.3".into();
+        menu.initial = "GLM-5.3".into();
+        menu.exact = true;
+        menu.fail_restore = true;
+        let m = model_roundtrip(&mut menu);
+        assert!(!m.proven);
+        assert_eq!(m.after, "GLM-5.3-Flash");
+        assert_eq!(m.restored, Some(false));
     }
 
     fn cap(key: &str) -> &'static Capability {
