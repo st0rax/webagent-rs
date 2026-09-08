@@ -78,10 +78,8 @@
     "button[aria-label='Select Model']"
   ],
   "model_option": [
-    "[role=menuitem]",
-    "[role=menuitemradio]",
-    "[role=option]",
-    "li[role=option]"
+    "div.wms-list__name-text",
+    "[role=option] div.wms-list__name-text"
   ],
   "reasoning_effort_menu": [
     "div.qwen-thinking-selector div.qwen-chat-v2-dropdown-menu-select-button",

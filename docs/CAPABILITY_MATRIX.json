@@ -253,10 +253,10 @@
       "status": "failed",
       "date": "2026-09-08",
       "model": "Sonnet 5 Hoch",
-      "selector_hash": null,
-      "latency_ms": null,
+      "selector_hash": 3074261798,
+      "latency_ms": 1152,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md"
+      "note": "Live verify 2026-09-08 (headless, roundtrip-v2): TRIGGER 'Sonnet 5 Hoch' kombiniert Modell+Effort-Ebene; menuitemradio-Optionen sind getrennt ('Sonnet 5', 'Haiku 4.5') - Triggerlabel existiert nie als Ganzlabel in der Laufzeitliste (fail-closed ehrlich, kein UI-Eingriff). Selector-Nachzug: Optionen auf Namens-Knoten moeglich, Trigger-Dimension Modell+Aufwand verhindert Ganzlabel-Match. Beleg proofs.jsonl ts 2026-09-08T08:55:24Z."
     },
     {
       "area": "model",
@@ -278,18 +278,18 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: passed (verify 2026-09-06): Gewinner 'button[aria-label*='Modusauswahl' i]'; resolve_fallback-Poll (SPA rendert nach ensure_ready); Zustandswechsel belegt (aria-expanded), Rueckweg misslungen (Menue blieb offen) - Menue-Trigger bedienbar, echte Modellwahl via menu --set Flash-Lite live bestaetigt | Live verify 2026-09-06: Zustandswechsel belegt (Rueckweg Menue offen)"
+      "note": "Live verify 2026-09-08 (headless, roundtrip-v2): TRIGGER zeigt nur 'Flash', Optionen sind '3.5 Flash-Lite'/'3.6 Flash' (MODE + Version + Desc kombinierte Labels); 'Flash' nie ganzlabel in Liste; Substring-Mehrdeutigkeit (flash in flash-lite) -> fail-closed ehrlich. Menue oeffnet zuverlaessig (button[aria-label*='Modusauswahl' i]); Label-Dimension passt nicht zum strikten Verifier. Beleg proofs.jsonl ts 2026-09-08T08:55:29Z."
     },
     {
       "area": "model",
       "brain": "kimi",
-      "status": "failed",
+      "status": "passed",
       "date": "2026-09-08",
-      "model": "K3 Swarm Hoch",
-      "selector_hash": null,
-      "latency_ms": null,
+      "model": "K3 Swarm",
+      "selector_hash": 548048541,
+      "latency_ms": 5537,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: passed (cmd_model --set 2026-09-06): Kimi model_menu 'div.current-model' hat im Headless bounding-rect 0, deshalb meldet verify resolve_fallback Unreachable — der echte Menu-Klick greift trotzdem. model_option auf belegtes DOM korrigiert (div.kimi-menu .model-item, role=menuitemradio; .models-popover .model-item veraltet). model --set K3 Swarm -> umgestellt, Rueckweg auf Schnell bestaetigt (bereits aktiv). Record seeds %LOCALAPPDATA%\\webagent\\data\\capability\\proofs.jsonl ts 2026-09-06T15:21:17Z | Live verify 2026-09-06: Zustandswechsel + Restore"
+      "note": "Live verify 2026-09-08 PASSED (headless, roundtrip-v2): Laufzeit-Modellwahl 'Schnell' -> 'K3 Swarm', beobachtet 'K3 Swarm'; Wechsel=true, Rueckweg=true (5,5s). Fix: model_menu auf 'div.current-model div.model-name span.name' (reiner Name statt name+effort 'Schnell Hoch'), model_option auf '[role='menuitemradio'].model-item .model-name .name' (Name statt Name+Desc). Beleg proofs.jsonl ts 2026-09-08T08:54:13Z."
     },
     {
       "area": "model",
@@ -308,32 +308,32 @@
       "status": "failed",
       "date": "2026-09-08",
       "model": null,
-      "selector_hash": null,
-      "latency_ms": null,
+      "selector_hash": 3864292236,
+      "latency_ms": 2080,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: Live verify 2026-09-06: Zustandswechsel + Restore"
+      "note": "Live verify 2026-09-08 (headless, roundtrip-v2): TRIGGER statisch 'Modell' (button[aria-label*='Modell' i]), aktuelle Modellname wird im DOM nicht gerendert; Menue-Optionen sind verschachtelte Radix-Dropdowns (Zugang zu besten KI-Modellen, Sonar 2...). Ohne aktuelle Modellbezeichnung im Triggerlabel niemals Ganzlabel-Match - fail-closed ehrlich, DoD-Grenze v1.0 (perplexity-Entscheidung v1.0 vs. custom im Endtest on_record). Beleg proofs.jsonl ts 2026-09-08T08:55:34Z."
     },
     {
       "area": "model",
       "brain": "qwen",
-      "status": "failed",
+      "status": "passed",
       "date": "2026-09-08",
-      "model": null,
-      "selector_hash": null,
-      "latency_ms": null,
+      "model": "Qwen3.7-Plus",
+      "selector_hash": 179466165,
+      "latency_ms": 5538,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md | Historische Notiz: Live verify 2026-09-06: Zustandswechsel + Restore"
+      "note": "Live verify 2026-09-08 PASSED (headless, roundtrip-v2): Laufzeit-Modellwahl 'Qwen3.7-Plus' -> 'Qwen3.8-Max', beobachtet 'Qwen3.8-Max'; Wechsel=true, Rueckweg=true (5,5s). Fix: model_option auf 'div.wms-list__name-text' (exakter Modellname statt Name+Beschreibung im role=option). Beleg proofs.jsonl ts 2026-09-08T08:54:03Z."
     },
     {
       "area": "model",
       "brain": "zai",
       "status": "failed",
       "date": "2026-09-08",
-      "model": null,
-      "selector_hash": null,
-      "latency_ms": null,
+      "model": "GLM-5.3",
+      "selector_hash": 723949967,
+      "latency_ms": 1135,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Audit 2026-09-07: bisheriger Beleg zertifiziert keinen unabhaengig nachgelesenen Modellwechsel mit Rueckweg. Historischer Teilbeleg bleibt am proof_path erhalten; neue Abnahme ausstehend. Details: docs/proofs/T-501/MODEL_PROOF_AUDIT_2026-09-07.md"
+      "note": "Live verify 2026-09-08 (headless, roundtrip-v2): TRIGGER 'GLM-5.3' korrekt; aber Modellliste enthaelt 'GLM-5.3-Flash' als Substring-Paar zu 'GLM-5.3' - der strikte Verifier verwirft solche Paare bewusst (unambiguous count=2, Ambiguity-Schutz; auch Target 'GLM-5.2' koennte nicht geprueft werden weil initial mehrdeutig). Namens-Knoten liest exakt (div.line-clamp-1), dennoch echte UI-Mehrdeutigkeit -> fail-closed ehrlich. Beleg proofs.jsonl ts 2026-09-08T08:55:19Z."
     },
     {
       "area": "model",
