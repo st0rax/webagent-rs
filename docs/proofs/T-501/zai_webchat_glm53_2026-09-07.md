@@ -1,3 +1,5 @@
+**Referenz:** Beleg im Beweis-/Archivraum von T-501 — nicht Betrieb; Änderungen als neue, datierte Belege, nicht inline.
+
 # zai (GLM-5.3) Webchat — Befund 2026-09-07
 
 **Fazit:** zai/GLM-5.3 flaky auf der Webchat-Schiene. Keine valide Antwort im

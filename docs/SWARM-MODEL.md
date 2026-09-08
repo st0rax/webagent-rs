@@ -1,3 +1,5 @@
+> **Referenz.** Swarm-Referenzmodell, kein Betrieb. Lebend: `docs/CURRENT_WORK.md`, `docs/TASKBOARD.md`, `docs/WEB_UI_API_TOOL_RESET_STATUS.md`.
+
 # Swarm-Referenzmodell V3 – „Saturn"
 
 > Diskussionsgrundlage für `/swarm`. Team-Übersicht, Regeln und Entscheidungsstand —
