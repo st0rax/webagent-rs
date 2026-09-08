@@ -576,7 +576,7 @@ pub fn cmd_ask(
             }
         }
     } else {
-        cmd_run(brain, task, resume, headless, max_cycles, no_memory)
+        cmd_run(brain, task, resume, headless, max_cycles, no_memory, None, None)
     }
 }
 
