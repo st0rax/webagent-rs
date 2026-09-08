@@ -1,0 +1,13 @@
+{
+  "model": "webagent/auto",
+  "ok": true,
+  "http": 200,
+  "latency_ms": 62733,
+  "attachment": "256x256 red PNG",
+  "reply": "RED",
+  "error": null,
+  "build": "049273d",
+  "pr": "#48",
+  "headless": true,
+  "api_port": 8788
+}

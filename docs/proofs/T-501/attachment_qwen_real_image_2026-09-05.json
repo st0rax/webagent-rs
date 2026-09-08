@@ -1,0 +1,12 @@
+{
+  "model": "webagent/qwen",
+  "ok": false,
+  "http": 502,
+  "latency_ms": 38500,
+  "attempts": 1,
+  "attachment": "solid red 256x256 PNG (generated via PIL, ~1.1 kB, base64 image_url data:image/png)",
+  "prompt": "What color is the attached image? Answer with exactly: RED",
+  "reply": null,
+  "error": "Browser-Inference fehlgeschlagen: Browseroberflaeche hat nur 0 von 1 Dateien uebernommen",
+  "note": "failed (Re-Run mit echtem 256x256-Bild, 25.08.-Digest: Nicht-Testbild-Artefakt): Auch mit realistischem PNG uebernimmt qwens Browseroberflaeche die Datei nicht (data:image/png, ~1.1 kB). Bewertung: echter Upload-Gap am SPA-DOM (FileList/paste/drop wird zurueckgewiesen; Datei 0 von 1), kein Repo-Bug und kein degeneriertes Bild wie bei kimi. Kategorie: failed, ehrlicher Brain-spezifischer Upload-Gap, kein geplanter Repo-Fix ohne SPA-Detail-Analyse."
+}

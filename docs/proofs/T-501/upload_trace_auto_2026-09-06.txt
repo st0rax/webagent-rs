@@ -1,0 +1,7 @@
+[ui] Web-UI auf http://127.0.0.1:8788/ (eingebettete Assets)
+[ui] API-Rolle aktiv: /v1/* auf http://127.0.0.1:8788/ (Bearer-Schutz)
+[auto-router] selected=gemini reason=image-input
+[auto-router] execute brain=gemini attachments=1 timeout_secs=Some(90.0)
+[upload] open attachment surface: opened=false inputs_before_wait=0 attach_sels=2 upload_menu_sels=0 signal=0
+[upload] stale attachment controls visible: 0
+[upload] attachment phase complete; entering send path

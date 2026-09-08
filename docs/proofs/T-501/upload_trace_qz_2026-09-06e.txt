@@ -1,0 +1,45 @@
+[ui] Web-UI auf http://127.0.0.1:8788/ (eingebettete Assets)
+[ui] API-Rolle aktiv: /v1/* auf http://127.0.0.1:8788/ (Bearer-Schutz)
+[upload] stale attachment controls visible: 0
+[upload] file-chooser trigger: {"inputCount":1,"ok":true,"via":"input"}
+[upload] Page.fileChooserOpened: {"backendNodeId":15,"frameId":"088723E3C0B487378D0AAB7E62FFA405","mode":"selectMultiple"}
+[upload] DOM.setFileInputFiles via FileChooserOpened backendNodeId=15 params={"backendNodeId":15,"files":["C:/Users/storax/AppData/Local/Temp/webagent-upload-15836-1788704617877716700/0-image-1.png"]}
+[upload] DOM.setFileInputFiles response: {}
+[upload] SPA notify on chooser backendNodeId=15: {"connected":true,"error":null,"events":true,"filesAfter":0,"filesBefore":0}
+[upload] chooser node files.length before=0 after=0 events=true connected=true
+[upload] FileList hack on chooser backendNodeId=15: {"files":1,"hacked":true,"ok":true}
+[upload] files proof: chooser_node=Some(1) querySelector_sum=1 spa_events=true chooser_used=true
+[upload] native file-input count=1; skip drag fallback
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=0/1 signal=0 (before=0)
+[upload] attachment phase complete; entering send path
+[upload] stale attachment controls visible: 0
+[upload] file-chooser trigger: {"inputCount":1,"ok":true,"via":"input"}
+[upload] Page.fileChooserOpened: {"backendNodeId":12,"frameId":"14A9CB4ADC2E64D8CBB66771F7473267","mode":"selectMultiple"}
+[upload] DOM.setFileInputFiles via FileChooserOpened backendNodeId=12 params={"backendNodeId":12,"files":["C:/Users/storax/AppData/Local/Temp/webagent-upload-15836-1788704639468482800/0-image-1.png"]}
+[upload] DOM.setFileInputFiles response: {}
+[upload] SPA notify on chooser backendNodeId=12: {"connected":true,"error":null,"events":true,"filesAfter":0,"filesBefore":0}
+[upload] chooser node files.length before=0 after=0 events=true connected=true
+[upload] FileList hack on chooser backendNodeId=12: {"files":1,"hacked":true,"ok":true}
+[upload] files proof: chooser_node=Some(1) querySelector_sum=1 spa_events=true chooser_used=true
+[upload] native file-input count=1; skip drag fallback
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] native proof: files=1/1 signal=0 (before=0)
+[upload] attachment phase complete; entering send path
+[submit] composer fill begins
+[submit] composer fill confirmed; dispatch begins
+[submit] attempt 1 consumed=false
+[submit] submission proved

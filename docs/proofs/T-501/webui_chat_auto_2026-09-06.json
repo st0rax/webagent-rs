@@ -1,0 +1,11 @@
+{
+  "area": "webui_chat",
+  "brain": "auto",
+  "status": "passed",
+  "date": "2026-09-06",
+  "model": "webagent/auto",
+  "selector_hash": null,
+  "latency_ms": 20700,
+  "proof_path": "docs/proofs/T-501/webui_chat_auto_2026-09-06.json",
+  "note": "PASS 2026-09-06: POST /v1/chat/completions model=webagent/auto, Antwort exakt AUTO_UI_CHAT_OK (20,7s), Router waehlte reales Brain. Token-Korrektur: config.api_key kommt aus WEBAGENT_API_KEY; Bridge muss mit gesetztem Env starten (sonst 401)."
+}

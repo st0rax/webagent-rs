@@ -1,0 +1,19 @@
+{
+  "streaming": {
+    "kimi": false,
+    "mistral": false,
+    "zai": false
+  },
+  "api_responses": {
+    "mistral": true,
+    "zai": true
+  },
+  "attachment": {
+    "kimi": false,
+    "qwen": false,
+    "mistral": false,
+    "zai": false,
+    "auto": false
+  },
+  "managed_tools": true
+}

@@ -1,0 +1,12 @@
+{
+  "model": "webagent/kimi",
+  "ok": true,
+  "http": 200,
+  "latency_ms": 36600,
+  "attempts": 1,
+  "attachment": "solid red 256x256 PNG (generated via PIL, 1106 bytes, base64 image_url data:image/png)",
+  "prompt": "What color is the attached image? Answer with exactly: RED",
+  "reply": "RED",
+  "error": null,
+  "note": "passed: kimis ABSENDEKNOPF in der Vorlauf-Messung (2026-09-05, 1x1/70-byte entartetes PNG) liegt nicht an der Bridge, sondern am entarteten Testbild: Clipboard-Paste und Vue-Uploader aktivieren den Send-Knopf erst fuer ein verwertbares Bild. Mit realistischer Aufloesung/Dateigroesse (256x256, ~1,1 kB) laeuft der komplette Pfad durch (Upload -> Send enabled -> Antwort). Beleg ist die frische Single-Run-Session via /v1/chat/completions."
+}

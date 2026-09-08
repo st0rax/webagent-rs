@@ -1,0 +1,5 @@
+[
+  {"brain": "kimi", "ok": true, "proof": "streaming_kimi_2026-09-06c.json", "build": "d4fb6dd"},
+  {"brain": "mistral", "ok": true, "proof": "streaming_mistral_2026-09-06b.json"},
+  {"brain": "zai", "ok": true, "proof": "streaming_zai_2026-09-06b.json"}
+]

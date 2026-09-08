@@ -1,0 +1,12 @@
+{
+  "model": "webagent/mistral",
+  "ok": true,
+  "http": 200,
+  "latency_ms": 19006,
+  "delta_count": 1,
+  "joined": "STREAM_OK",
+  "error": null,
+  "filter_build": "2ba2dce+060bcba",
+  "headless": true,
+  "api_port": 8788
+}

@@ -1,0 +1,10 @@
+{
+  "model": "webagent/mistral",
+  "ok": false,
+  "http": 200,
+  "latency_ms": 17025,
+  "delta_count": 1,
+  "joined": "3:58",
+  "error": null,
+  "note": "noch ohne sauberes STREAM_OK (Provider-Quirk/Capacity) - ehrlich dokumentiert, keine gefaelschte Passage"
+}
