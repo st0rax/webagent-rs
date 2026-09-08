@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-07",
+  "as_of": "2026-09-08",
   "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "mirror": "docs/TASKBOARD.md",
   "contract": "docs/WORK_CONTRACT.md",
@@ -286,8 +286,8 @@
       "branch": "fix/T-501-model-proof",
       "claimed_at": "2026-09-07",
       "done_at": null,
-      "proof_path": "docs/proofs/T-501/ (95/130 Matrix; streaming 6/9, api_responses 7/9, security/health/auto/sources/groups passed, attachment 5/9, managed_tools by-design failed); PR #29 merged 098e4c9",
-      "verification": "Matrix-Zellen; Belegpfad je Brain",
+      "proof_path": "docs/proofs/T-501/ (Stand 2026-09-06 nach CoT-Prefix-Filter PR #44/#45/#46 auf master): Matrix 108/130. streaming 9/9 (kimi STREAM_OK nach CoT-Prefix-Filter), api_responses 9/9 (mistral/zai nach Cooldown sauber; Belege api_responses_mistral/zai_2026-09-05.json), attachment mistral/qwen/zai #46, kimi real_image 2026-09-05; managed_tools by-design 400. Offen: model/effort Login-/Web-UI-gebunden, auto RED (2026-09-06 Notiz). DoD weiterhin NICHT done. | 2026-09-07 zai GLM-5.3 Webchat-Flaper: No response + SyntaxError 'Unexpected token ,' (Kein valid JSON; 24-Byte-Binary), Beleg zai_webchat_glm53_2026-09-07.md, Matrix-Zelle zai weiterhin rot; PR #29 merged 098e4c9",
+      "verification": "Matrix-Zellen; Belegpfad je Brain; streaming_reproof_filter als Beweisbasis",
       "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
       "depends_on": [
         "T-202",
