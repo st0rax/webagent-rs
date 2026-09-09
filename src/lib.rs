@@ -61,6 +61,7 @@ pub mod webview_runtime;
 // ── agent: Steuerung & Agent-Schleife ──
 pub mod capability;
 pub mod capability_proof;
+pub mod contract;
 pub mod controller;
 pub mod counting;
 pub mod knockout;

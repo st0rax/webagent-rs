@@ -243,6 +243,134 @@ impl PageDriver for MockPageDriver {
     }
 }
 
+/// Benannte Fixtures fuer reale beobachtete Ablaeufe (T-801, Scheibe 1).
+///
+/// Die rohen Antworttexte sind echte Funde aus dem Betrieb; jeder Builder
+/// konfiguriert einen [`MockPageState`], der diese Ausgabe liefert. Klassifikat
+/// und Storina pruefen sie ueber [`crate::contract::classify_surface`].
+pub mod surface_fixtures {
+    #[cfg(test)]
+    use crate::contract::SurfaceKind;
+
+    use super::MockPageState;
+    use serde_json::json;
+
+    /// Zai-HTML aus Lauf 20260721_173223: `No response…` + `Unexpected token '<'`
+    /// samt HTML-artigem Fragment. Muss [`SurfaceKind::UiDiagnosis`] bleiben.
+    pub fn zai_html() -> MockPageState {
+        MockPageState::new().on_eval(
+            "fixture:assistant_text",
+            json!("No response, Please try again later.\nSyntaxError: Unexpected token '<', \"<!doctypeh\"... is not valid JSON"),
+        )
+    }
+
+    /// qwen-Tageslimit aus Lauf 20260721_225309 (sechs Wiederholungen).
+    pub fn qwen_daily_limit() -> MockPageState {
+        MockPageState::new().on_eval(
+            "fixture:assistant_text",
+            json!("Oops! There was an issue connecting to Qwen3.7-Plus.\nYou have reached the daily usage limit. Please wait 2 hours before trying again."),
+        )
+    }
+
+    /// ChatGPT-deutsches Nutzungslimit (Reset um 23:40).
+    pub fn chatgpt_nutzungslimit() -> MockPageState {
+        MockPageState::new().on_eval(
+            "fixture:assistant_text",
+            json!("Dateien, Bilder und Datenanalyse sind nicht verfügbar, bis dein Nutzungslimit um 23:40 zurückgesetzt wird."),
+        )
+    }
+
+    /// ChatGPT-Kapazitaetsbanner mit "Erneut versuchen".
+    pub fn chatgpt_capacity_banner() -> MockPageState {
+        MockPageState::new().on_eval(
+            "fixture:assistant_text",
+            json!("Something went wrong. If this issue persists please contact us through our help center at help.openai.com.\n\nErneut versuchen"),
+        )
+    }
+
+    /// Anmelde-Wand.
+    pub fn login_wall() -> MockPageState {
+        MockPageState::new().on_eval("fixture:assistant_text", json!("Please sign in to continue"))
+    }
+
+    /// Cloudflare-Challenge-Seite.
+    pub fn cloudflare_challenge() -> MockPageState {
+        MockPageState::new().on_eval(
+            "fixture:assistant_text",
+            json!("Attention Required! Cloudflare"),
+        )
+    }
+
+    /// Echte inhaltliche Antwort.
+    pub fn real_content() -> MockPageState {
+        MockPageState::new().on_eval(
+            "fixture:assistant_text",
+            json!("Die Aufgabe wurde abgeschlossen. Dies ist eine echte Zusammenfassung."),
+        )
+    }
+
+    /// Erwartete Klassifikation zu Ordnung pruefen.
+    #[cfg(test)]
+    pub(crate) fn expected_kind_state() -> Vec<(&'static str, fn() -> MockPageState, SurfaceKind)> {
+        vec![
+            ("zai_html", zai_html, SurfaceKind::UiDiagnosis),
+            ("qwen_daily_limit", qwen_daily_limit, SurfaceKind::Limit),
+            ("chatgpt_nutzungslimit", chatgpt_nutzungslimit, SurfaceKind::Limit),
+            ("chatgpt_capacity_banner", chatgpt_capacity_banner, SurfaceKind::Transient),
+            ("login_wall", login_wall, SurfaceKind::Login),
+            ("cloudflare_challenge", cloudflare_challenge, SurfaceKind::Challenge),
+            ("real_content", real_content, SurfaceKind::Content),
+        ]
+    }
+
+    /// Bewertet den Text hinter `fixture:assistant_text`.
+    #[cfg(test)]
+    pub(crate) fn classify_fixture(state: &MockPageState) -> SurfaceKind {
+        use crate::contract::classify_surface;
+        use crate::page_driver::PageDriver as _;
+        let mut driver = crate::mock_page::MockPageDriver::new(state.clone());
+        let text = driver
+            .eval_string("fixture:assistant_text")
+            .expect("Fixture liefert Text");
+        classify_surface(&text, "", "ok").kind
+    }
+}
+
+#[cfg(test)]
+mod fixture_tests {
+    use crate::contract::SurfaceKind;
+
+    use super::surface_fixtures;
+
+    #[test]
+    fn real_observed_flows_classify_stably() {
+        for (name, builder, expected) in surface_fixtures::expected_kind_state() {
+            let state = builder();
+            let kind = surface_fixtures::classify_fixture(&state);
+            assert_eq!(
+                kind, expected,
+                "Fixture {name}: erwartet {expected:?}, bekommen {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn zai_html_stays_raw_diagnosis() {
+        use crate::page_driver::PageDriver as _;
+        let state = surface_fixtures::zai_html();
+        let mut driver = super::MockPageDriver::new(state.clone());
+        let text = driver
+            .eval_string("fixture:assistant_text")
+            .expect("Zai-Fixture liefert Text");
+        let outcome = crate::contract::classify_surface(&text, "", "brain_incomplete");
+        assert_eq!(outcome.kind, SurfaceKind::UiDiagnosis, "Zai-HTML bleibt Rohbeleg");
+        assert!(outcome.is_raw_diagnosis());
+        assert!(!outcome.is_content());
+        // Rohbeleg bleibt unveraendert erhalten.
+        assert!(outcome.raw_text.contains("Unexpected token"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

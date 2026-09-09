@@ -1,11 +1,85 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-08:** Arbeitsbranch `fix/T-501-model-proof` wurde auf
-> `origin/master` (a3036db, Merge PR #54) rekonsolidiert: `model-selection-
-> roundtrip-v2`-Verifier via `capability_proof.rs`, 57 Belegdateien von master
-> nachgezogen, Taskboard auf Audit-Stand 103/130 gestellt. Naechster G-001-
-> Schritt laut `MODEL_PROOF_AUDIT_2026-09-07.md`: sechs Modellzellen
-> (claude/qwen/perplexity/zai/gemini/kimi) live neu messen.
+> **Aktualisiert 2026-09-09:** Claim **T-801 „Gemeinsamer Brain-Vertrag und
+> Konformitaetsfixtures"** (Phase 8, Scheibe 1 des
+> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md)). Branch
+> `feature/T-801-brain-contract` (Basis `master`), Owner `local/opencode`.
+> Scheibe 1 ist als Code umgesetzt und alle drei Pflichtgates sind gruen:
+> `cargo test --lib` (1365 passed, 1 ignored), `cargo check --features tui`,
+> `cargo check --no-default-features`. Managed-Tools-Green (T-501, Commit
+> `36da691` auf `fix/T-501-model-proof`) bleibt unverändert gruen und ist nicht
+> Teil dieses Branches. Der Einstieg in die laufende T-801-Umsetzung liegt unten
+> im Abschnitt „T-801 — gemeinsamer Brain-Vertrag (2026-09-09)".
+
+## T-801 — gemeinsamer Brain-Vertrag (2026-09-09)
+
+Claim: `local/opencode`, Branch `feature/T-801-brain-contract`, Basis `master`
+(`c947348`). Phase 8, Scheibe 1 des BRAIN_UNIFICATION_PLAN.
+
+Geliefert (als Code, Grünbeweis in den Tests):
+
+- **Neues Modul `src/contract.rs`** — die gemeinsame Vertragsgrundlage,
+  browserfrei und rein rechnerisch:
+  - `Operation` mit `operation_id`, `attempt_id`, `run_id`, `turn_id`,
+    `brain_id`, `lease_generation`, `phase`, `sequence`, `revision`, `origin`,
+    `duration_ms` — alle Felder aus Scheibe 1 (ausser `run_id`/`turn_id`
+    existieren nur `attempt` im Cross-Brain-Handoff und `message_index` als
+    Turn-Zählwert; beides bleibt bestehen, der Vertrag ergänzt die
+    Operationsebene).
+  - `OperationPhase` als gemeinsame Zustandsmaschine aus dem Plan
+    (`AcquireProfile … Finished` + seitlich `Blocked/Failed/Cancelled`),
+    `OperationPhase::MAIN` als einziges, für alle sechs Einstiegspunkte
+    identisches Ketten-Array; `is_terminal()`, `next()`, `transition()`,
+    `retry()` (fail-closed hinter Terminale).
+  - `OperationOrigin` für Controller/Repl/Relay/WebUi/Api/Swarm —
+    Identische-Klassifikation-Gegenprobe über alle sechs Origins im Test.
+  - `SurfaceKind` (`Content/UiDiagnosis/Limit/Captcha/Challenge/Login/
+    Transient`) + `SurfaceOutcome` mit unveränderlichen Rohbelegen
+    (`raw_text`/`raw_html`/`matched`).
+  - `classify_surface(text, raw_html, backend_status)` — die zentrale
+    Klassifikation VOR jedem Einstiegspunkt, der streamt, repariert oder
+    Erfolg zählt. **Zai-HTML wird nie Textdelta oder Parser-Repair**: Der
+    Real-Fund `No response…` + `Unexpected token '<'` wird `UiDiagnosis`
+    (nicht `Content`). Qwen-Tageslimit, ChatGPT-Nutzungslimit,
+    Kapazitätsbanner, Login-Wand, Cloudflare, Captcha und Protokoll-Nutzlast
+    sind separate, feste Fixtures. Reihenfolge der Regeln ist in der
+    Funktions-Doku festgehalten.
+  - `OperationEvent` (`Started/Heartbeat/Retry/Timeout/Cancelled/Terminal`) +
+    `OperationTrace` mit fail-closed-Invariante **„genau ein
+    Terminalereignis je Turn"** (nach einem Terminale werden weitere Events
+    verworfen) und `cancel()` in jeder Phase.
+  - `run_operation_with_heartbeat` — frairing ein blockierter PageDriver
+    sichtbar `started`, `heartbeat` und `timeout` produziert; der Test
+    simuliert einen 400 ms-Hänger bei 120 ms Timeout und prüft started→
+    heartbeat→timeout→ein einziges `Terminal{Timeout}`.
+- **Neue MockPageDriver-Fixtures in `src/mock_page.rs`** unter
+  `surface_fixtures`: benannte Staats-Builder für die real beobachteten
+  Abläufe (Zai-HTML 20260721_173223, Qwen-Tageslimit 20260721_225309,
+  ChatGPT-Nutzungslimit, ChatGPT-Kapazitätsbanner, Login-Wand, Cloudflare,
+  echte Antwort) — mit Stabilitätstest über `classify_surface`.
+- **FakeBrain-Kompatibilität** unverändert: `BrainBackend`-Trait und
+  `wait_response`/`wait_response_streaming`-Signaturen bleiben bestehen; die
+  volle Suite inkl. aller `fakebrain`-Tests ist grün. Der Vertrag ist
+  additiv, es wurde kein bestehendes Verhalten verändert.
+
+Status der Abnahmekriterien (Scheibe 1):
+
+| Abnahmepunkt | Stand |
+|---|---|
+| Identische Zustandsfolgen für Controller/REPL/Relay/Web-UI/API/Swarm | Vertrag/Test vorhanden; Einstiegspunkt-Anbindung folgt in T-803 |
+| Ein Terminalereignis je Turn | `OperationTrace` fail-closed + Tests |
+| Abbruch in jeder Phase | `cancel_is_possible_in_every_phase` über alle `OperationPhase::MAIN` |
+| Zai-HTML bleibt Rohbeleg, nie Textdelta/Repair | `SurfaceKind::UiDiagnosis` + Fixtures; Streaming-/Repair-Anbindung folgt in T-803 |
+| Blockierter PageDriver → started/heartbeat/timeout | `run_operation_with_heartbeat` + Test |
+| Leitungsfragete `cargo test --lib` | 1365 passed, 1 ignored |
+| Gate `cargo check --features tui` | bestanden |
+| Gate `cargo check --no-default-features` | bestanden |
+
+Offene Folge (nicht Teil dieser Scheibe): T-802 (gemeinsames Senden),
+T-803 (Antwortstream bis zur Maske ink. Einstiegspunkt-Anbindung),
+T-804 (gemeinsame Profil-Lease). T-806 hängt an T-801/805/808.
+
+Commit: siehe `git log` auf `feature/T-801-brain-contract`.
 
 ## Fortsetzung G-001 / T-501 am 2026-09-07
 
