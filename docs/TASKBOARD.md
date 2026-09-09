@@ -47,7 +47,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 
 | Task | Inhalt |
 |---|---|
-| T-801 | Gemeinsamer Brain-Vertrag und Konformitaetsfixtures |
+| T-801 | Gemeinsamer Brain-Vertrag und Konformitaetsfixtures — **claimed** (local/opencode, feature/T-801-brain-contract, 2026-09-09) |
 | T-802 | Einheitliches Fill Verify Submit ohne Doppelversand |
 | T-803 | Antwortstream durch Controller REPL Swarm UI und API |
 | T-804 | Profil-Leases und gemeinsame Blocker-/Resetbehandlung |
