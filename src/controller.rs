@@ -1472,17 +1472,38 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
 
         // Pending response oder Resume oder Initial
         let mut turn = if let Some(resume_id) = resume_id {
-            if let Some(pending_str) = resume::take_pending_response(&mut meta.extra) {
-                let _ = transcript.append("system", "resume_pending_response", HashMap::new());
-                self.run_store.save(&meta).ok();
-                BrainTurn {
-                    text: pending_str,
-                    complete: true,
+            // Persistenzunterbrechung: liegt ein Recovery-Receipt vor, sind die
+            // zuletzt geloggten Aktionen möglicherweise schon gesendet worden.
+            // Eine `pending_response` darf dann nicht blind recycelt werden —
+            // erst beobachten, dann fortsetzen.
+            let receipt_pending = self
+                .runs_dir
+                .join(&meta.run_id)
+                .join("recovery.json")
+                .exists();
+            if !receipt_pending {
+                if let Some(pending_str) = resume::take_pending_response(&mut meta.extra) {
+                    let _ = transcript.append("system", "resume_pending_response", HashMap::new());
+                    self.run_store.save(&meta).ok();
+                    BrainTurn {
+                        text: pending_str,
+                        complete: true,
+                    }
+                } else {
+                    let _ = transcript.append(
+                        "system",
+                        &format!("resume run {}", resume_id),
+                        HashMap::new(),
+                    );
+                    self.resume_initial_turn(&mut transcript, continuation)
                 }
             } else {
                 let _ = transcript.append(
                     "system",
-                    &format!("resume run {}", resume_id),
+                    &format!(
+                        "resume run {} recovery_required (pending nicht recycelt; beobachten zuerst)",
+                        resume_id
+                    ),
                     HashMap::new(),
                 );
                 self.resume_initial_turn(&mut transcript, continuation)

@@ -28,6 +28,7 @@ pub mod memory;
 pub mod observer;
 pub mod oobe;
 pub mod protocol;
+pub mod run_ledger;
 pub mod run_store;
 pub mod scoring;
 pub mod session;

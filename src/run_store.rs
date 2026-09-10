@@ -225,6 +225,7 @@ const NON_RUNNING_STATUSES: &[&str] = &[
     "cloudflare",
     "error",
     "protocol_error",
+    "recovery_required",
 ];
 
 /// Erlaubte Status-Übergänge.
@@ -416,6 +417,21 @@ impl RunStore {
 
     /// Speichert einen Run mit Validierung.
     pub fn save(&self, meta: &RunMeta) -> Result<(), String> {
+        // Fail-closed - VOR der Übergangsvalidierung: solange ein
+        // Recovery-Receipt offen ist, darf der Run keinen terminalen Zustand
+        // (insbesondere `done`) bekommen. Die Unterbrechung ist erst durch eine
+        // explizite Fortsetzung (`activate_continuation`, beobachten zuerst)
+        // abgeschlossen.
+        if crate::run_ledger::has_recovery_receipt(&meta.dir(&self.runs_dir))
+            && TERMINAL_STATUSES.contains(&meta.status.as_str())
+        {
+            return Err(format!(
+                "recovery_required: Run {} hat ein offenes Recovery-Receipt — Status {:?} ist \
+                 nicht erlaubt; erst fortsetzen (beobachten zuerst), dann abschließen",
+                meta.run_id, meta.status
+            ));
+        }
+
         let previous = self.load_existing_meta(&meta.run_id);
 
         if let Some(prev) = &previous {
@@ -423,9 +439,27 @@ impl RunStore {
         }
 
         self.save_internal(meta)?;
-        self.append_save_events(previous.as_ref(), meta)?;
-
-        Ok(())
+        match self.append_save_events(previous.as_ref(), meta) {
+            Ok(()) => Ok(()),
+            Err(e) if e.starts_with("recovery_required") => {
+                // Fail-closed: die Event-Kette ist nach der Unterbrechung nicht
+                // belegt. Der Run muss als `recovery_required` dastehen, nicht
+                // als abgeschlossen (`done`/`interrupted`).
+                let mut corrected = meta.clone();
+                corrected.status = "recovery_required".to_string();
+                corrected.extra.insert(
+                    "recovery_required_at".to_string(),
+                    serde_json::Value::String(crate::now_rfc3339()),
+                );
+                corrected.extra.insert(
+                    "error".to_string(),
+                    serde_json::Value::String(e.clone()),
+                );
+                self.save_internal(&corrected)?;
+                Err(e)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Reaktiviert einen explizit fortgesetzten Run, ohne die allgemeinen
@@ -442,6 +476,7 @@ impl RunStore {
             "protocol_error",
             "wall_timeout",
             "interrupted",
+            "recovery_required",
         ];
 
         let persisted = self
@@ -465,7 +500,15 @@ impl RunStore {
         meta.extra.remove("protocol_error_streak");
         meta.extra.remove("protocol_error");
         self.save_internal(meta)?;
-        self.append_save_events(Some(&previous), meta)
+        self.append_save_events(Some(&previous), meta)?;
+
+        // Recovery explizit abgeschlossen: die Continuation hat die Zustände
+        // beobachtet und das Journal wieder belegt. Ab jetzt sind normale
+        // Terminal-Übergänge wieder erlaubt.
+        if crate::run_ledger::has_recovery_receipt(meta.dir(&self.runs_dir).as_path()) {
+            let _ = fs::remove_file(meta.dir(&self.runs_dir).join("recovery.json"));
+        }
+        Ok(())
     }
 
     /// Interne Speicherfunktion ohne Validierung.
@@ -475,29 +518,26 @@ impl RunStore {
             .map_err(|e| format!("Fehler beim Erstellen von {}: {}", run_dir.display(), e))?;
 
         let path = run_dir.join("meta.json");
-        let tmp_path = run_dir.join("meta.json.tmp");
-
         let json = serde_json::to_string_pretty(meta)
             .map_err(|e| format!("Fehler beim Serialisieren: {}", e))?;
 
-        fs::write(&tmp_path, &json)
-            .map_err(|e| format!("Fehler beim Schreiben von {}: {}", tmp_path.display(), e))?;
+        // Atomar ersetzen: einzigartige Temp-Datei (PID+Nanos — kein geteilter
+        // Name), fsync vor dem Rename, Windows-Fallback mit Direkt-Schreiben
+        // und fsync des Ziels. Bei einem Fehler entsteht weder ein halbes
+        // meta.json noch bleibt eine Rest-Temp-Datei liegen.
+        crate::run_ledger::atomic_write(&path, json.as_bytes()).map_err(|e| {
+            format!(
+                "Fehler beim atomaren Speichern nach {}: {}",
+                path.display(),
+                e
+            )
+        })?;
 
-        // Der Rename bleibt der bevorzugte atomare Weg. Unter Windows kann er
-        // jedoch bei einem bereits vorhandenen Ziel (oder kurzem Scanner-/Handle-
-        // Nachlauf) scheitern. Dann schreibt der Fallback denselben vollständig
-        // serialisierten Zustand direkt und entfernt die Temp-Datei best effort.
-        if let Err(rename_error) = fs::rename(&tmp_path, &path) {
-            fs::write(&path, &json).map_err(|write_error| {
-                format!(
-                    "Fehler beim Umbenennen von {} nach {}: {}; direkter Windows-Fallback schlug fehl: {}",
-                    tmp_path.display(),
-                    path.display(),
-                    rename_error,
-                    write_error
-                )
-            })?;
-            let _ = fs::remove_file(&tmp_path);
+        // Reinigt allfällige Reste von älteren, nicht-PID-gesteuerten
+        // Temp-Dateien (Basis liefe einst auf festem `meta.json.tmp`).
+        let legacy_tmp = run_dir.join("meta.json.tmp");
+        if legacy_tmp.exists() {
+            let _ = fs::remove_file(&legacy_tmp);
         }
 
         Ok(())
@@ -561,7 +601,7 @@ impl RunStore {
         }
     }
 
-    /// Schreibt ein Event in events.jsonl.
+/// Schreibt ein Event in events.jsonl.
     fn append_event(
         &self,
         meta: &RunMeta,
@@ -580,46 +620,75 @@ impl RunStore {
             "payload": payload,
         });
 
-        // events.jsonl is a durable audit chain, not a best-effort transcript.
-        // Each record commits its predecessor hash and its own canonical JSON
-        // hash. A torn write therefore becomes detectable instead of looking
-        // like a successful provider action.
-        let (seq, previous_hash) = last_event_chain_state(&path)?;
         let canonical = serde_json::to_vec(&core)
             .map_err(|e| format!("Fehler beim Serialisieren des Events: {}", e))?;
-        let mut hasher = Sha256::new();
-        hasher.update(previous_hash.as_bytes());
-        hasher.update(&canonical);
-        let hash = format!("{:x}", hasher.finalize());
-        let event = serde_json::json!({
-            "seq": seq,
-            "prev_hash": previous_hash,
-            "hash": hash,
-            "pid": std::process::id(),
-            "durability": "fsync",
-            "timestamp": core["timestamp"],
-            "run_id": core["run_id"],
-            "type": core["type"],
-            "payload": core["payload"],
-        });
 
-        let line = serde_json::to_string(&event)
-            .map_err(|e| format!("Fehler beim Serialisieren des Events: {}", e))?;
+        // Kritische Sektion unter der prozessübergreifenden Ledger-Sperre:
+        // Ketten-Verifikation, Sequenz-Vergabe und Append (inkl. fsync) sind
+        // atomar gegeneinander. Ein abgerissener Tail wird erkannt, in die
+        // Quarantäne gelegt und per Receipt als `recovery_required` belegt —
+        // nie still weitergehangen, nie als `done` verkannt.
+        use crate::run_ledger::{ChainError, verify_event_chain, quarantine_torn_tail};
+        let lock_timeout = std::time::Duration::from_secs(30);
+        crate::run_ledger::with_run_lock(&run_dir, lock_timeout, || {
+            let head = match verify_event_chain(&path) {
+                Ok(head) => head,
+                Err(ChainError::TornTail { valid }) => {
+                    quarantine_torn_tail(&meta.run_id, &path, &run_dir, &valid)?;
+                    return Err(format!(
+                        "recovery_required: abgerissener Journal-Tail von Run {} wurde \
+                         quarantänisiert (Receipt in recovery.json)",
+                        meta.run_id
+                    ));
+                }
+                Err(ChainError::Corrupt { line, reason }) => {
+                    return Err(format!(
+                        "Journal-Kette von Run {} beschädigt bei Eintrag {}: {} — \
+                         fail-closed, kein Weiterschreiben",
+                        meta.run_id,
+                        line,
+                        reason
+                    ));
+                }
+                Err(ChainError::Io(e)) => return Err(e),
+            };
 
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| format!("Fehler beim Öffnen von {}: {}", path.display(), e))?;
+            let mut hasher = Sha256::new();
+            hasher.update(head.previous_hash.as_bytes());
+            hasher.update(&canonical);
+            let hash = format!("{:x}", hasher.finalize());
+            let event = serde_json::json!({
+                "seq": head.next_seq,
+                "prev_hash": head.previous_hash,
+                "hash": hash,
+                "pid": std::process::id(),
+                "durability": "fsync",
+                "timestamp": core["timestamp"],
+                "run_id": core["run_id"],
+                "type": core["type"],
+                "payload": core["payload"],
+            });
 
-        writeln!(file, "{}", line)
-            .map_err(|e| format!("Fehler beim Schreiben in {}: {}", path.display(), e))?;
-        file.sync_all().map_err(|e| {
-            format!(
-                "Journal konnte nicht dauerhaft synchronisiert werden ({}): {}",
-                path.display(),
-                e
-            )
+            let line = serde_json::to_string(&event)
+                .map_err(|e| format!("Fehler beim Serialisieren des Events: {}", e))?;
+
+            let mut file = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .map_err(|e| format!("Fehler beim Öffnen von {}: {}", path.display(), e))?;
+
+            writeln!(file, "{}", line)
+                .map_err(|e| format!("Fehler beim Schreiben in {}: {}", path.display(), e))?;
+            file.sync_all().map_err(|e| {
+                format!(
+                    "Journal konnte nicht dauerhaft synchronisiert werden ({}): {}",
+                    path.display(),
+                    e
+                )
+            })?;
+
+            Ok(())
         })?;
 
         // Storax-Vorgabe (2026-08-01): die Run-Events (meta_saved,
@@ -627,7 +696,7 @@ impl RunStore {
         // eines Phase-B-Runs dort mitläuft.
         if crate::bench_events::echo_bus_enabled() {
             let level = if event_type == "status_changed" {
-                crate::bench_events::Level::Progress
+                crate::bench_events::Level::Warn
             } else {
                 crate::bench_events::Level::Info
             };
@@ -639,7 +708,7 @@ impl RunStore {
             );
         }
 
-        Ok(())
+Ok(())
     }
 
     /// Listet alle Runs auf (sortiert, neueste zuerst).
@@ -781,7 +850,15 @@ impl RunStore {
             }
 
             let mut updated = meta.clone();
-            updated.status = stale_status_for(&meta).to_string();
+            // Fail-closed: liegt ein Recovery-Receipt vor, darf der Run nicht als
+            // done/interrupted erscheinen — die Persistenzunterbrechung muss erst
+            // explizit verarbeitet werden.
+            let run_dir = self.runs_dir.join(&run_id);
+            updated.status = if crate::run_ledger::has_recovery_receipt(&run_dir) {
+                "recovery_required".to_string()
+            } else {
+                stale_status_for(&meta).to_string()
+            };
             updated.extra.insert(
                 "reconciled_at".to_string(),
                 serde_json::Value::String(crate::now_rfc3339()),
@@ -810,77 +887,6 @@ impl RunStore {
         );
         repaired
     }
-}
-
-/// Returns the next sequence number and the last committed hash. A malformed
-/// existing journal is rejected fail-closed; silently continuing would make
-/// the resulting audit trail unverifiable.
-fn last_event_chain_state(path: &Path) -> Result<(u64, String), String> {
-    if !path.exists() {
-        return Ok((1, "GENESIS".to_string()));
-    }
-    let content = fs::read_to_string(path).map_err(|e| {
-        format!(
-            "Fehler beim Lesen des Event-Journals {}: {}",
-            path.display(),
-            e
-        )
-    })?;
-    let mut expected_seq = 1u64;
-    let mut previous = "GENESIS".to_string();
-    for (index, raw) in content.lines().enumerate() {
-        let value: serde_json::Value = serde_json::from_str(raw).map_err(|e| {
-            format!(
-                "Ungültiger Journal-Eintrag {} in {}: {}",
-                index + 1,
-                path.display(),
-                e
-            )
-        })?;
-        let seq = value
-            .get("seq")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| format!("Journal-Eintrag {} ohne seq", index + 1))?;
-        let prev_hash = value
-            .get("prev_hash")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| format!("Journal-Eintrag {} ohne prev_hash", index + 1))?;
-        let hash = value
-            .get("hash")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| format!("Journal-Eintrag {} ohne hash", index + 1))?;
-        if seq != expected_seq || prev_hash != previous {
-            return Err(format!(
-                "Journal-Kette beschädigt bei Eintrag {} in {}",
-                index + 1,
-                path.display()
-            ));
-        }
-        let core = serde_json::json!({
-            "timestamp": value["timestamp"],
-            "run_id": value["run_id"],
-            "type": value["type"],
-            "payload": value["payload"],
-        });
-        let canonical =
-            serde_json::to_vec(&core).map_err(|e| format!("Journal-Core ungültig: {e}"))?;
-        let mut hasher = Sha256::new();
-        hasher.update(previous.as_bytes());
-        hasher.update(&canonical);
-        let computed = format!("{:x}", hasher.finalize());
-        if hash != computed {
-            return Err(format!(
-                "Hash-Prüfung fehlgeschlagen bei Eintrag {} in {}",
-                index + 1,
-                path.display()
-            ));
-        }
-        expected_seq = expected_seq
-            .checked_add(1)
-            .ok_or_else(|| "Journal-Sequenz übergelaufen".to_string())?;
-        previous = hash.to_string();
-    }
-    Ok((expected_seq, previous))
 }
 
 /// Parst RFC3339-Zeitstempel zu Unix-Sekunden (UTC).
@@ -1374,6 +1380,72 @@ mod tests {
         assert!(runs.contains(&meta2.run_id));
 
         // Cleanup
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Ende-zu-Ende (Windows-Crash-Szenario): nach einem abgerissenen
+    /// Journal-Tail darf ein Run NIE als `done` gespeichert werden; er landet
+    /// fail-closed auf `recovery_required`, der gültige Präfix bleibt lesbar
+    /// und die Quarantäne + Revision estabele quiet.
+    #[test]
+    fn torn_tail_verhindert_done_und_setzt_recovery_required() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let mut meta = store.create("mock", "crash-szenario").unwrap();
+        let run_dir = meta.dir(&store.runs_dir);
+
+        // Normaler Fortschritt, dann künstlicher Crash: partieller Write ohne
+        // abschließendes Newline (wie ein Stromausfall mitten im writeln).
+        meta.status = "running".to_string();
+        store.save(&meta).expect("normaler Lauf speicherbar");
+        let events = run_dir.join("events.jsonl");
+        {
+            use std::io::Write;
+            let mut f = fs::OpenOptions::new().append(true).open(&events).unwrap();
+            f.write_all(br#"{"seq": 999, "prev_h"#).unwrap();
+            f.sync_all().unwrap();
+        }
+
+        // `done` wird abgelehnt: fail-closed.
+        meta.status = "done".to_string();
+        let err = store.save(&meta).expect_err("done muss scheitern");
+        assert!(
+            err.contains("recovery_required") || err.contains("Recovery"),
+            "Fehler muss Recovery nennen, war: {err}"
+        );
+
+        // Der persistierte Zustand ist recovery_required, nie done.
+        let loaded = store.load(&meta.run_id).unwrap();
+        assert_eq!(loaded.status, "recovery_required");
+
+        // Receipt + Quarantäne existieren; Kette ist wieder gültig.
+        assert!(run_dir.join("recovery.json").exists());
+        assert!(
+            fs::read_dir(run_dir.join("quarantine")).is_ok(),
+            "Quarantäne-Ordner fehlt"
+        );
+        let head =
+            crate::run_ledger::verify_event_chain(&events).expect("Präfix bleibt verifizierbar");
+        assert!(head.valid_count >= 1);
+        assert_ne!(head.previous_hash, "GENESIS");
+
+        // Neue Appends sind wieder möglich; done bleibt aber blockiert, bis
+        // die Recovery explizit fortgesetzt (beobachtet) wurde.
+        let err = store.save(&meta).expect_err("done bleibt blockiert");
+        assert!(err.contains("recovery_required"), "Fehler: {err}");
+
+        // Explizite Fortsetzung beobachtet und schließt Recovery ab (der
+        // gespeicherte Zustand ist recovery_required, nicht done).
+        let mut continuation = loaded;
+        store
+            .activate_continuation(&mut continuation)
+            .expect("Recovery-Fortsetzung");
+        assert!(
+            !run_dir.join("recovery.json").exists(),
+            "Receipt muss nach Fortsetzung entfernt sein"
+        );
+        assert_eq!(store.load(&meta.run_id).unwrap().status, "running");
+
         fs::remove_dir_all(&tmp).ok();
     }
 }
