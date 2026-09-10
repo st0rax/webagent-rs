@@ -177,6 +177,7 @@ fn turn_prompt(
     brain: &str,
     task: &str,
     answers: &[(String, String)],
+    context: &str,
 ) -> String {
     let mut out = format!("Runde {round}/{rounds}. Du bist {brain}. Aufgabe: {task}\n");
     if !answers.is_empty() {
@@ -188,20 +189,47 @@ fn turn_prompt(
     out.push_str(
         "\nAntworte kurz. Mit @Brain kannst du das Wort an ein anderes Gruppenmitglied weitergeben.",
     );
+    out.push_str(context);
     out
 }
 
-fn synthesis_prompt(leader: &str, task: &str, answers: &[(String, String)]) -> String {
+fn synthesis_prompt(
+    leader: &str,
+    task: &str,
+    answers: &[(String, String)],
+    context: &str,
+) -> String {
     let joined: String = answers
         .iter()
         .map(|(brain, text)| format!("### {brain}\n{text}"))
         .collect::<Vec<_>>()
         .join("\n\n");
-    format!(
+    let mut out = format!(
         "[LEADER-SYNTHESIS]\nDu bist der Orchestrator ({leader}).\nAufgabe: «{task}».\n\n\
          Die beteiligten Modelle haben so geantwortet:\n\n{joined}\n\n\
          Fuehre diese Antworten zu einer einzigen, besten finalen Antwort zusammen. \
          Nenne Widersprueche, wenn es welche gibt."
+    );
+    out.push_str(context);
+    out
+}
+
+/// T-803: sichtbarer Swarm-Kontext pro Brain. Die Gruppe ist eine Einheit mit
+/// einer Run-ID; jedes Mitglied und die Leader-Synthese sehen Ziel/Zusammenhang.
+/// Fehlende Belege (z.B. Evidence-Pfade aus Vor-Runs) bleiben fehlend — die
+/// Zeile fuer sie wird weggelassen, nie erfunden.
+fn swarm_context_block(
+    group_id: &str,
+    run_id: &str,
+    leader: &str,
+    members: &[String],
+    round: u32,
+    rounds: u32,
+) -> String {
+    format!(
+        "\n[SWARM-KONTEXT] Gruppe: {group_id} · Run: {run_id} · Leader: {leader} · \
+         Mitstreiter: {}\nRunde {round}/{rounds}.",
+        members.join(", ")
     )
 }
 
@@ -244,6 +272,7 @@ where
         brain: brain_label,
         task: task.to_string(),
     })?;
+    let context = swarm_context_block(&spec.id, &run_id, &leader, &spec.brains, 0, rounds);
 
     let mut answers: Vec<(String, String)> = Vec::new();
     for round in 1..=rounds {
@@ -261,7 +290,7 @@ where
             if handle.is_done() {
                 return Ok(handle);
             }
-            let prompt = turn_prompt(round, rounds, &brain, task, &answers);
+            let prompt = turn_prompt(round, rounds, &brain, task, &answers, &context);
             let reply = respond(&brain, &prompt);
             if handle.is_done() {
                 return Ok(handle);
@@ -285,7 +314,7 @@ where
     if handle.is_done() {
         return Ok(handle);
     }
-    let synth_prompt = synthesis_prompt(&leader, task, &answers);
+    let synth_prompt = synthesis_prompt(&leader, task, &answers, &context);
     let synthesis = respond(&leader, &synth_prompt);
     if handle.is_done() {
         return Ok(handle);
@@ -414,6 +443,51 @@ mod tests {
         assert!(other.events_since(&handle.run_id(), 0).is_none());
         assert!(other.is_empty());
         assert_eq!(service.len(), 1);
+    }
+
+    #[test]
+    fn swarm_kontext_sichtbar_pro_brain_und_synthese() {
+        // T-803: der Swarm-Kontext (Gruppe, Run-ID, Leader, Mitstreiter) ist
+        // jedem Brain und der Leader-Synthese im Prompt sichtbar.
+        let spec = two();
+        let service = SessionService::new();
+        let mut prompts: Vec<String> = Vec::new();
+        let handle = run_group(&service, &spec, "Ziel X", 1, "A", |brain, prompt| {
+            prompts.push(prompt.to_string());
+            stub_respond(brain, prompt)
+        })
+        .unwrap();
+        let run_id = handle.run_id();
+        let mut brained = 0usize;
+        for prompt in &prompts {
+            let context = format!(
+                "[SWARM-KONTEXT] Gruppe: {} · Run: {} · Leader: A · Mitstreiter: A, B",
+                spec.id,
+                run_id
+            );
+            assert!(
+                prompt.contains("[SWARM-KONTEXT]"),
+                "Kontext-Block fehlt: {prompt}"
+            );
+            assert!(
+                prompt.contains(&format!("Run: {run_id}")),
+                "Run-ID fehlt im Kontext: {prompt}"
+            );
+            assert!(
+                prompt.contains("Mitstreiter: A, B"),
+                "Mitglieder fehlen im Kontext: {prompt}"
+            );
+            assert!(
+                prompt.contains("Leader: A"),
+                "Leader fehlt im Kontext: {prompt}"
+            );
+            assert!(prompt.contains(&context), "Kontext nicht konsistent: {prompt}");
+            brained += usize::from(!prompt.contains("[LEADER-SYNTHESIS]"));
+        }
+        assert!(
+            brained >= 2,
+            "mindestens beide Brains ohne Synthese gesehen: {brained} (prompts: {prompts:?})"
+        );
     }
 
     #[test]

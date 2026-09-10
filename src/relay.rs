@@ -334,6 +334,35 @@ pub fn relay_single_turn_with_attachments_streaming(
             );
             continue;
         }
+        // T-803: Diagnose-/Chrome-/Wall-Oberflaechen (HTML-Rohbeleg, Login-Wand,
+        // Captcha, Limit) sind NIEMALS eine Antwort — auch wenn der bereinigte
+        // Text nicht leer ist. Nur `Content` zaehlt als Erfolg.
+        let surface =
+            crate::contract::classify_surface(&text, &response.raw_html, &response.backend_status);
+        if !surface.is_content() {
+            if surface.kind == crate::contract::SurfaceKind::Transient {
+                last_err = format!(
+                    "keine Antworterkenntung: surface=Transient matched={:?}",
+                    surface.matched
+                );
+                continue;
+            }
+            let _ = backend.stop();
+            let reason = format!(
+                "surface_{:?}: {brain_id}: {}",
+                surface.kind,
+                surface.matched.trim()
+            );
+            crate::circuit_breaker::record_failure(brain_id, &reason);
+            crate::brain_score::record_event(
+                brain_id,
+                false,
+                Some(&reason),
+                started.elapsed().as_millis() as u64,
+                prompt_chars,
+            );
+            return Err(RelayError(reason));
+        }
         answer = Some(text);
         break;
     }

@@ -27,6 +27,10 @@ pub enum SessionEvent {
     },
     /// Teilstueck einer Modellantwort (Streaming).
     TextDelta { text: String },
+    /// Revision der Antwort: Der volle Text ersetzt den bisherigen Anzeige-
+    /// stand (T-803: Replace-Ereignis bei Revisions-/Ersatz-Snapshot statt
+    /// Text zu verlieren). Konsumenten ersetzen ihre akkumulierte Sicht.
+    TextReplace { text: String },
     /// Text-Phase eines Turns abgeschlossen.
     TextComplete,
     /// Aufruf eines Werkzeugs (read/bash/edit/write).
@@ -314,5 +318,19 @@ mod tests {
             serde_json::from_str::<StampedEvent>(&text).unwrap(),
             stamped
         );
+    }
+
+    #[test]
+    fn text_replace_serialisiert_wiederherstellbar() {
+        let replace = SessionEvent::TextReplace {
+            text: "revidierte Antwort".to_string(),
+        };
+        let text = serde_json::to_string(&replace).unwrap();
+        let back: SessionEvent = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, replace);
+        let mut stream = EventStream::new("run-h");
+        let seq = stream.push(replace).unwrap();
+        assert_eq!(stream.last_seq(), seq);
+        assert!(!stream.is_done());
     }
 }

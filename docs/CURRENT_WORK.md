@@ -1,16 +1,42 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-10:** Scheibe 2 des
-> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-802
-> „Einheitliches Fill/Verify/Submit ohne Doppelversand"** — ist auf demselben
-> Branch `feature/T-801-brain-contract` (Basis `master`) als Code umgesetzt und
-> alle drei Pflichtgates sind gruen: `cargo test --lib` (1372 passed, 1 ignored),
-> `cargo check --features tui`, `cargo check --no-default-features`. Beleg:
-> [`docs/proofs/T-802/RESULT.md`](proofs/T-802/RESULT.md), TASKBOARD `done`.
-> Die darunter stehende T-801-Scheibe (Claim 2026-09-09) bleibt bis zu ihrer
-> Gesamt-Abnahme `claimed` (Abnahme-Einstiegspunkte folgen in T-803); Details im
-> Abschnitt „T-801 — gemeinsamer Brain-Vertrag (2026-09-09)". Einstieg in die
-> laufende Arbeit: Abschnitt „T-802 — gemeinsames Senden (2026-09-10)".
+> **Aktualisiert 2026-09-10:** Scheibe 3 des
+> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-803
+> „Antwortstream durch Controller, REPL, Swarm, UI und API"** — ist auf dem
+> Branch `feature/T-803-answer-stream` als Code umgesetzt und alle Pflichtgates
+> sind gruen: `cargo test` (1386 lib + 8 bin passed, 1 ignored),
+> `cargo test --features tui` (1419 lib + 8 bin passed), `cargo check --features
+> tui`, `cargo check --no-default-features`. Beleg:
+> [`docs/proofs/T-803/RESULT.md`](proofs/T-803/RESULT.md), TASKBOARD `done`.
+> Die darunter stehende T-801-/T-802-Scheibe bleibt bis zu ihrer Gesamt-Abnahme
+> `claimed` bzw. ist `done` (Details in den Abschnitten unten). Einstieg in die
+> laufende Arbeit: Abschnitt „T-803 — Antwortstream (2026-09-10)".
+
+## T-803 — Antwortstream durch Controller, REPL, Swarm, UI und API (2026-09-10)
+
+Claim: `local/opencode`, Branch `feature/T-803-answer-stream` (Basis `feature/T-801-brain-contract`),
+Phase 8, Scheibe 3 des BRAIN_UNIFICATION_PLAN. Status im TASKBOARD: `done`.
+
+Geliefert (als Code, Gruenbeweis in den Tests):
+
+- **Ein gemeinsamer Snapshot->Edit-Strom** in `src/contract.rs`: `StreamJournal`
+  konsumiert rohe DOM-Snapshots und uebersetzt sie via `classify_edit` in
+  `StreamEdit::Append`/`Replace` (Praefix-Zuwachs vs. Revision). Derselbe
+  Klassifikator laeuft in Controller, Relay, Web-UI und API.
+- **`SessionEvent::TextReplace { text }`** (`src/session/events.rs`) traegt
+  Revisionen in den Session-Stream; auf dem additiven OpenAI-Draht bleibt eine
+  Revision stumm (`last_sent` wird korrigiert).
+- **`src/web_ui_api.rs`**: `drive_chat_turn` emittiert `TextDelta`/`TextReplace`
+  und meldet Diagnose-/Login-/Limit-Oberflaechen als 502 statt `TextComplete`.
+- **`src/controller.rs`**: konsumiert `wait_response_streaming` und schreibt
+  Roh-Snapshots als `brain_stream_snapshot`-Evidenz ins Transkript.
+- **`src/relay.rs`**: Oberflaechen-Gate nach jeder Antwort — nie Diagnose als Antwort.
+- **`src/group_run.rs`** + **`src/commands/ops.rs`** (Bin): Swarm-Kontext
+  `[SWARM-KONTEXT]` (Gruppe/Run-ID/Leader bei Gruppen, Ziel/Repo/Commit/Branch
+  beim CLI-Swarm), „fehlend bleibt fehlend“.
+
+Abnahme / ehrliche Grenze: 11 Abnahmepunkte der Scheibe sind belegt (Testtabelle
+im RESULT), Pflichtgates gruen; die Live-Matrix/Rezertifizierung bleibt T-807.
 
 ## T-802 — gemeinsames Senden ohne Doppelversand (2026-09-10)
 
@@ -102,10 +128,10 @@ Status der Abnahmekriterien (Scheibe 1):
 
 | Abnahmepunkt | Stand |
 |---|---|
-| Identische Zustandsfolgen für Controller/REPL/Relay/Web-UI/API/Swarm | Vertrag/Test vorhanden; Einstiegspunkt-Anbindung folgt in T-803 |
+| Identische Zustandsfolgen für Controller/REPL/Relay/Web-UI/API/Swarm | Vertrag/Test vorhanden; Einstiegspunkt-Anbindung in T-803 umgesetzt (`StreamJournal` + `wait_response_streaming` in allen Sechs) |
 | Ein Terminalereignis je Turn | `OperationTrace` fail-closed + Tests |
 | Abbruch in jeder Phase | `cancel_is_possible_in_every_phase` über alle `OperationPhase::MAIN` |
-| Zai-HTML bleibt Rohbeleg, nie Textdelta/Repair | `SurfaceKind::UiDiagnosis` + Fixtures; Streaming-/Repair-Anbindung folgt in T-803 |
+| Zai-HTML bleibt Rohbeleg, nie Textdelta/Repair | `SurfaceKind::UiDiagnosis` + Fixtures; Oberflaechen-Gate in T-803 an Relay/Web-UI angebunden (nie `TextComplete`/Erfolg) |
 | Blockierter PageDriver → started/heartbeat/timeout | `run_operation_with_heartbeat` + Test |
 | Leitungsfragete `cargo test --lib` | 1365 passed, 1 ignored |
 | Gate `cargo check --features tui` | bestanden |

@@ -1,3 +1,6 @@
+> **Archiv** — T-802 (Scheibe 2) belegt und abgeschlossen (2026-09-10). Messprotokoll bleibt
+> fuer Gegenprobe und Regression; lebender Stand: `docs/CURRENT_WORK.md`, `docs/TASKBOARD.md`.
+
 # T-802 — Einheitliches Fill/Verify/Submit ohne Doppelversand
 
 Messung: 2026-09-10 · Owner: local/opencode · Branch: `feature/T-801-brain-contract`

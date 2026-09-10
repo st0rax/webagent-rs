@@ -810,38 +810,43 @@ fn handle_openai_incremental(
                 return;
             }
             let cleaned = stream_answer_snapshot(snapshot);
-            if cleaned.is_empty() {
-                if last_keepalive.elapsed() >= Duration::from_secs(5) {
-                    if let Err(error) = write_sse_comment(stream, "keep-alive") {
-                        stream_error = Some(error);
-                    } else {
-                        last_keepalive = Instant::now();
+            // Gemeinsamer Snapshot->Edit-Beobachter (T-803): Praefixwachstum
+            // wird als Delta versendet; eine Revision ist auf dem additiv
+            // appenden chat.completions-Draht nicht darstellbar und bleibt
+            // dem Session-Stream vorbehalten.
+            let prev = if last_sent.is_empty() {
+                None
+            } else {
+                Some(last_sent.as_str())
+            };
+            match crate::contract::classify_edit(prev, &cleaned) {
+                None => {
+                    if last_keepalive.elapsed() >= Duration::from_secs(5) {
+                        if let Err(error) = write_sse_comment(stream, "keep-alive") {
+                            stream_error = Some(error);
+                        } else {
+                            last_keepalive = Instant::now();
+                        }
                     }
                 }
-                return;
-            }
-            if cleaned == last_sent {
-                if last_keepalive.elapsed() >= Duration::from_secs(5) {
-                    if let Err(error) = write_sse_comment(stream, "keep-alive") {
-                        stream_error = Some(error);
-                    } else {
-                        last_keepalive = Instant::now();
-                    }
-                }
-                return;
-            }
-            if let Some(delta) = cleaned.strip_prefix(&last_sent) {
-                if !delta.is_empty() {
+                Some(crate::contract::StreamEdit::Append { text }) => {
                     if let Err(error) = write_data_frame(
                         stream,
-                        json!({"id":id,"object":"chat.completion.chunk","created":unix_seconds(),"model":payload.model,"choices":[{"index":0,"delta":{"content":delta},"finish_reason":null}]}),
+                        json!({"id":id,"object":"chat.completion.chunk","created":unix_seconds(),"model":payload.model,"choices":[{"index":0,"delta":{"content":text},"finish_reason":null}]}),
                     ) {
                         stream_error = Some(error);
                         return;
                     }
+                    last_sent = cleaned;
+                    last_keepalive = Instant::now();
                 }
-                last_sent = cleaned;
-                last_keepalive = Instant::now();
+                Some(crate::contract::StreamEdit::Replace { text: _ }) => {
+                    // Kein Delta: der naechste echte Zuwachs wird RELATIV zur
+                    // revidierten Sicht berechnet statt Karte und Text zu
+                    // verschmelzen.
+                    last_sent = cleaned;
+                    last_keepalive = Instant::now();
+                }
             }
         };
         run_task_streaming(
@@ -865,9 +870,13 @@ fn handle_openai_incremental(
         }
     };
     let text = stream_answer_snapshot(answer.text.as_deref().unwrap_or_default());
-    if let Some(delta) = text
-        .strip_prefix(&last_sent)
-        .filter(|delta| !delta.is_empty())
+    let prev = if last_sent.is_empty() {
+        None
+    } else {
+        Some(last_sent.as_str())
+    };
+    if let Some(crate::contract::StreamEdit::Append { text: delta }) =
+        crate::contract::classify_edit(prev, &text)
     {
         write_data_frame(
             stream,
@@ -1142,21 +1151,28 @@ fn handle_responses_incremental(
                 return;
             }
             let cleaned = stream_answer_snapshot(snapshot);
-            if cleaned.is_empty() || cleaned == last_sent {
-                if last_keepalive.elapsed() >= Duration::from_secs(5) {
-                    if let Err(error) = write_sse_comment(stream, "keep-alive") {
-                        stream_error = Some(error);
-                    } else {
-                        last_keepalive = Instant::now();
+            // Gemeinsamer Snapshot->Edit-Beobachter (T-803). Der Session-Strom
+            // bekommt Append UND Revision; der additive Responses-Draht traegt
+            // nur echtes Praefixwachstum als output_text.delta.
+            let prev = if last_sent.is_empty() {
+                None
+            } else {
+                Some(last_sent.as_str())
+            };
+            match crate::contract::classify_edit(prev, &cleaned) {
+                None => {
+                    if last_keepalive.elapsed() >= Duration::from_secs(5) {
+                        if let Err(error) = write_sse_comment(stream, "keep-alive") {
+                            stream_error = Some(error);
+                        } else {
+                            last_keepalive = Instant::now();
+                        }
                     }
                 }
-                return;
-            }
-            if let Some(delta) = cleaned.strip_prefix(&last_sent) {
-                if !delta.is_empty() {
+                Some(crate::contract::StreamEdit::Append { text: delta }) => {
                     if let Some(h) = _sess.as_ref() {
                         let _ = h.push(crate::session::SessionEvent::TextDelta {
-                            text: delta.to_string(),
+                            text: delta.clone(),
                         });
                     }
                     if let Err(error) = write_sse_event(
@@ -1168,9 +1184,21 @@ fn handle_responses_incremental(
                         stream_error = Some(error);
                         return;
                     }
+                    last_sent = cleaned;
+                    last_keepalive = Instant::now();
                 }
-                last_sent = cleaned;
-                last_keepalive = Instant::now();
+                Some(crate::contract::StreamEdit::Replace { text }) => {
+                    // Revision: nicht auf dem additiven Draht verfuegbar, aber
+                    // im Session-Strom als TextReplace erhalten — der naechste
+                    // Zuwachs misst ab der revidierten Sicht.
+                    if let Some(h) = _sess.as_ref() {
+                        let _ = h.push(crate::session::SessionEvent::TextReplace {
+                            text: text.to_string(),
+                        });
+                    }
+                    last_sent = cleaned;
+                    last_keepalive = Instant::now();
+                }
             }
         };
         run_task_streaming(
@@ -1208,9 +1236,13 @@ fn handle_responses_incremental(
         }
     };
     let text = stream_answer_snapshot(answer.text.as_deref().unwrap_or_default());
-    if let Some(delta) = text
-        .strip_prefix(&last_sent)
-        .filter(|delta| !delta.is_empty())
+    let prev = if last_sent.is_empty() {
+        None
+    } else {
+        Some(last_sent.as_str())
+    };
+    if let Some(crate::contract::StreamEdit::Append { text: delta }) =
+        crate::contract::classify_edit(prev, &text)
     {
         write_sse_event(
             stream,

@@ -374,7 +374,17 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // Turn darf die Gesamtfrist nicht ueberziehen (Fund 2026-07-21).
         let wait_timeout = self.cap_to_wall(wait_timeout);
 
-        let mut response = match self.brain.wait_response(baseline, wait_timeout) {
+        // T-803: der Controller konsumiert DENSELBEN Snapshot->Edit-Strom wie
+        // Relay/Web-UI/API. Der Journal-Beobachter klassifiziert die rohen
+        // Poll-Snapshots und haelt sie als Beweis (Rohsnapshot im Transkript).
+        let mut stream_journal = crate::contract::StreamJournal::default();
+        let mut stream_on_update = |snapshot: &str| {
+            let _ = stream_journal.push(snapshot);
+        };
+        let mut response = match self
+            .brain
+            .wait_response_streaming(baseline, wait_timeout, &mut stream_on_update)
+        {
             Ok(r) => r,
             Err(e) => {
                 return BrainTurn {
@@ -407,6 +417,29 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 Err(_) => break,
             };
             rereads += 1;
+        }
+
+        // Letzter Stand: die finale Antwort als letzten Poll des Journal-Stroms
+        // festhalten, damit das Transkript-Bild vollstaendig ist.
+        if let Some(edit) = stream_journal.push(&response.text) {
+            let _ = edit;
+        }
+        if let Some(t) = transcript.as_deref_mut() {
+            let raw = stream_journal.raw_snapshots();
+            if !raw.is_empty() {
+                let mut extra = HashMap::new();
+                extra.insert("appends".to_string(), stream_journal.appends.into());
+                extra.insert("replaces".to_string(), stream_journal.replaces.into());
+                extra.insert(
+                    "snapshots".to_string(),
+                    serde_json::Value::Array(
+                        raw.iter()
+                            .map(|s| serde_json::Value::String(s.clone()))
+                            .collect(),
+                    ),
+                );
+                let _ = t.append("system", "brain_stream_snapshot", extra);
+            }
         }
 
         // Web-UIs ohne belastbares Stop-Signal können bis zum Timeout als
@@ -2343,6 +2376,38 @@ mod tests {
         assert_eq!(
             store.load(&source.run_id).unwrap().conversation_ref,
             source.conversation_ref
+        );
+    }
+
+    #[test]
+    fn stream_rohbeweis_transkript_behaelt_snapshots() {
+        let data_dir = unique_data_dir();
+        let mut controller = AgentController::with_data_dir(
+            MockBrain::new().with_responses(vec![&finish_response()], vec![true]),
+            MockExecutor::new(),
+            5,
+            data_dir.clone(),
+        );
+
+        let meta = controller
+            .run("zeige den Antwortstrom", "mock", None, false)
+            .unwrap();
+        assert_eq!(meta.status, "done");
+
+        let runs_dir = data_dir.join("runs");
+        let transcript = Transcript::new(&meta, &runs_dir);
+        let entries = transcript.read_all().unwrap();
+        let proof: Vec<_> = entries
+            .iter()
+            .filter(|e| e["content"].as_str() == Some("brain_stream_snapshot"))
+            .collect();
+        assert_eq!(proof.len(), 1, "genau ein Beweis-Eintrag: {entries:?}");
+        assert!(
+            proof[0]["snapshots"]
+                .as_array()
+                .map(|a| !a.is_empty())
+                .unwrap_or(false),
+            "Roh-Snapshots fehlen: {proof:?}"
         );
     }
 

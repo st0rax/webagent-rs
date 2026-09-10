@@ -207,16 +207,20 @@ impl BrainBackend for FakeBrain {
         let final_response = match scenario {
             Scenario::Fail(m) => return Err(m),
             Scenario::Text(text, polls) => {
-                // inkrementelle Deltas (Textdelta) zeichenweise/blockweise
+                // inkrementelle Deltas: jeder on_update traegt das KUMULATIVE
+                // Abbild der Antwort (echte Browser-Polls zeigen den ganzen
+                // Container, nie isolierte Fragmente — T-803-Transportvertrag).
                 let steps = text
                     .chars()
                     .collect::<Vec<char>>()
                     .chunks(self.delta_chars.max(1))
                     .map(|c| c.iter().collect::<String>())
                     .collect::<Vec<_>>();
+                let mut acc = String::new();
                 for chunk in &steps {
                     self.pause_chunk();
-                    on_update(chunk);
+                    acc.push_str(chunk);
+                    on_update(&acc);
                 }
                 if timeout < 0.0 {
                     return Err("fakebrain: timeout".into());
@@ -237,9 +241,13 @@ impl BrainBackend for FakeBrain {
                 }
             }
             Scenario::Stream(parts) => {
+                // Teile sind Fragmente einer Antwort; der Strom zeigt das
+                // wachsende Gesamtbild, nicht einzelne Teile.
+                let mut acc = String::new();
                 for p in &parts {
                     self.pause_chunk();
-                    on_update(p);
+                    acc.push_str(p);
+                    on_update(&acc);
                 }
                 let idx = self.index();
                 BrainResponse {
@@ -414,6 +422,8 @@ mod tests {
 
     #[test]
     fn streaming_liefert_textdelta_in_schritten() {
+        // Transportvertrag T-803: jeder on_update traegt das KUMULATIVE Abbild
+        // der Antwort, kein isoliertes Fragment.
         let mut fb = FakeBrain::new(
             "fake",
             vec![Scenario::Stream(vec!["a".into(), "bcd".into()])],
@@ -421,16 +431,28 @@ mod tests {
         let mut seen = Vec::new();
         fb.wait_response_streaming(0, 5.0, &mut |t| seen.push(t.to_string()))
             .unwrap();
-        assert_eq!(seen, vec!["a".to_string(), "bcd".to_string()]);
+        assert_eq!(
+            seen,
+            vec!["a".to_string(), "abcd".to_string()],
+            "Snapshot-Traeger wachsen, ohne zu verlieren"
+        );
     }
 
     #[test]
     fn text_scenario_streaming_deltas_bleiben_nicht_leer() {
         let mut fb = FakeBrain::new("fake", vec![Scenario::Text("hallo".into(), 2)]);
-        let mut joined = String::new();
-        fb.wait_response_streaming(0, 5.0, &mut |t| joined.push_str(t))
+        let mut seen = Vec::new();
+        fb.wait_response_streaming(0, 5.0, &mut |t| seen.push(t.to_string()))
             .unwrap();
-        assert_eq!(joined, "hallo");
+        assert_eq!(
+            seen.last().map(String::as_str),
+            Some("hallo"),
+            "letzter Snapshot muss die volle Antwort tragen"
+        );
+        assert!(
+            seen.windows(2).all(|w| w[1].starts_with(&w[0])),
+            "Snapshots muessen kumulativ wachsen: {seen:?}"
+        );
     }
 
     #[test]

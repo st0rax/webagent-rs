@@ -85,78 +85,6 @@ fn production_chat_factory(brain_id: &str) -> Result<Box<dyn BrainBackend + Send
     Ok(Box::new(backend))
 }
 
-/// Streaming-Ingest: Claude liefert Ersatz-DOM-Snapshots, FakeBrain Chunks
-/// oder wachsende Prefixe. `last_snapshot` ist die letzte **volle bereinigte**
-/// Antwort — nie die Konkatenation aller Polls.
-#[derive(Debug, Default)]
-struct StreamDeltaIngest {
-    last_snapshot: String,
-    last_emitted: String,
-}
-
-impl StreamDeltaIngest {
-    fn push(&mut self, raw_snapshot: &str) -> Option<String> {
-        let cleaned = crate::observer::chat_answer_text(raw_snapshot);
-        if cleaned.is_empty() {
-            return None;
-        }
-        if cleaned == self.last_snapshot {
-            return None;
-        }
-        if let Some(suffix) = cleaned.strip_prefix(self.last_snapshot.as_str()) {
-            if suffix.is_empty() {
-                return None;
-            }
-            if suffix == self.last_emitted {
-                return None;
-            }
-            let delta = suffix.to_string();
-            self.last_snapshot = cleaned;
-            self.last_emitted = delta.clone();
-            return Some(delta);
-        }
-        // Kuerzerer Snapshot: veralteter Poll.
-        if self.last_snapshot.starts_with(&cleaned) {
-            return None;
-        }
-        // Kein Prefix: Ersatz-Snapshot (Claude) oder FakeBrain-Chunk.
-        if self.last_emitted.is_empty()
-            || cleaned == self.last_emitted
-            || cleaned.contains(self.last_emitted.as_str())
-        {
-            if cleaned == self.last_emitted {
-                self.last_snapshot = cleaned;
-                return None;
-            }
-            let delta = if self.last_snapshot.is_empty() {
-                cleaned.clone()
-            } else if let Some(suffix) = cleaned.strip_prefix(self.last_emitted.as_str()) {
-                if suffix.is_empty() {
-                    self.last_snapshot = cleaned;
-                    return None;
-                }
-                suffix.to_string()
-            } else {
-                cleaned.clone()
-            };
-            if delta.is_empty() || delta == self.last_emitted {
-                self.last_snapshot = cleaned;
-                return None;
-            }
-            self.last_snapshot = cleaned;
-            self.last_emitted = delta.clone();
-            return Some(delta);
-        }
-        // FakeBrain-Chunk: an last_snapshot anhaengen.
-        if cleaned == self.last_emitted {
-            return None;
-        }
-        self.last_snapshot.push_str(&cleaned);
-        self.last_emitted = cleaned.clone();
-        Some(cleaned)
-    }
-}
-
 fn composer_missing(err: &str) -> bool {
     let lower = err.to_ascii_lowercase();
     lower.contains("composer-feld nicht gefunden") || lower.contains("composer not found")
@@ -536,13 +464,21 @@ fn drive_chat_turn(handle: &SessionHandle, chat: &SessionChat, text: &str) -> Ap
     };
     let wait_timeout =
         crate::timeouts::resolve_timeout("wait_response", &handle.brain(), text, None);
-    let mut ingest = StreamDeltaIngest::default();
+    // Gemeinsamer Stream-Beobachter (T-803): gleiche Snapshot->Edit-Regeln wie
+    // Controller/Relay/API, plus roher Beweis.
+    let mut journal = crate::contract::StreamJournal::default();
     let mut on_update = |snapshot: &str| {
         if chat.cancel.load(Ordering::SeqCst) || handle.is_done() {
             return;
         }
-        if let Some(delta) = ingest.push(snapshot) {
-            let _ = handle.push(SessionEvent::TextDelta { text: delta });
+        if let Some(edit) = journal.push(snapshot) {
+            let event = match edit {
+                crate::contract::StreamEdit::Append { text } => SessionEvent::TextDelta { text },
+                crate::contract::StreamEdit::Replace { text } => {
+                    SessionEvent::TextReplace { text }
+                }
+            };
+            let _ = handle.push(event);
         }
     };
     let response = match live
@@ -578,8 +514,29 @@ fn drive_chat_turn(handle: &SessionHandle, chat: &SessionChat, text: &str) -> Ap
         });
         return ApiResponse::json(502, json!({"error": error}));
     }
-    if let Some(delta) = ingest.push(&response.text) {
-        let _ = handle.push(SessionEvent::TextDelta { text: delta });
+    // T-803: auch ohne rate_limit/blocked-Status ist eine Diagnose-Wand
+    // (HTML-Rohbeleg, Login, Captcha, Limit, leere Antwort) NIEMALS eine
+    // fertige Antwort: kein TextComplete, kein Erfolg.
+    let surface = crate::contract::classify_surface(
+        &response.text,
+        &response.raw_html,
+        &response.backend_status,
+    );
+    if !surface.is_content() {
+        let error = format!("surface_{:?}: {}", surface.kind, surface.matched.trim());
+        let _ = handle.push(SessionEvent::Error {
+            message: error.clone(),
+        });
+        return ApiResponse::json(502, json!({"error": error}));
+    }
+    match journal.push(&response.text) {
+        Some(crate::contract::StreamEdit::Append { text }) => {
+            let _ = handle.push(SessionEvent::TextDelta { text });
+        }
+        Some(crate::contract::StreamEdit::Replace { text }) => {
+            let _ = handle.push(SessionEvent::TextReplace { text });
+        }
+        None => {}
     }
     if handle.is_done() {
         return ApiResponse::json(
@@ -1193,33 +1150,66 @@ mod tests {
 
     #[test]
     fn unique_suffix_strips_snapshots_and_chunks() {
-        let mut ingest = StreamDeltaIngest::default();
-        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
-        assert_eq!(ingest.push("Hello").as_deref(), Some("lo"));
+        use crate::contract::StreamEdit::{Append, Replace};
+        let mut ingest = crate::contract::StreamJournal::default();
+        assert_eq!(
+            ingest.push("Hel"),
+            Some(Append {
+                text: "Hel".into()
+            })
+        );
+        assert_eq!(
+            ingest.push("Hello"),
+            Some(Append {
+                text: "lo".into()
+            })
+        );
         assert_eq!(ingest.push("Hello"), None);
-        let mut ingest = StreamDeltaIngest::default();
-        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
-        assert_eq!(ingest.push("lo").as_deref(), Some("lo"));
-        assert_eq!(ingest.last_snapshot, "Hello");
-        assert_eq!(ingest.push("Hel"), None);
+        // Nicht-Praefix-Wachstum: Replacement, nie Konkatenation von Fragmenten.
+        let mut ingest = crate::contract::StreamJournal::default();
+        assert_eq!(
+            ingest.push("Hel"),
+            Some(Append {
+                text: "Hel".into()
+            })
+        );
+        assert_eq!(
+            ingest.push("lo"),
+            Some(Replace {
+                text: "lo".into()
+            })
+        );
+        assert_eq!(ingest.snapshot(), "lo");
+        assert_eq!(ingest.push("Hel"), Some(Replace { text: "Hel".into() }));
     }
 
     #[test]
     fn stream_ingest_drops_identical_consecutive_and_status() {
-        let mut ingest = StreamDeltaIngest::default();
+        use crate::contract::StreamEdit::Append;
+        let mut ingest = crate::contract::StreamJournal::default();
         // Wachsend
-        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
-        assert_eq!(ingest.push("Hello").as_deref(), Some("lo"));
+        assert_eq!(
+            ingest.push("Hel"),
+            Some(Append {
+                text: "Hel".into()
+            })
+        );
+        assert_eq!(
+            ingest.push("Hello"),
+            Some(Append {
+                text: "lo".into()
+            })
+        );
         assert_eq!(ingest.push("Hello"), None);
-        // Chunks
-        let mut ingest = StreamDeltaIngest::default();
-        assert_eq!(ingest.push("Hel").as_deref(), Some("Hel"));
-        assert_eq!(ingest.push("lo").as_deref(), Some("lo"));
-        assert_eq!(ingest.last_snapshot, "Hello");
         // Status → kein Delta
-        let mut ingest = StreamDeltaIngest::default();
+        let mut ingest = crate::contract::StreamJournal::default();
         assert_eq!(ingest.push("läuft\nTüfteln"), None);
-        assert_eq!(ingest.push("PING").as_deref(), Some("PING"));
+        assert_eq!(
+            ingest.push("PING"),
+            Some(Append {
+                text: "PING".into()
+            })
+        );
         assert_eq!(ingest.push("PING"), None);
         assert_eq!(ingest.push("PING"), None);
     }
@@ -1234,27 +1224,36 @@ mod tests {
             "any extra text, markdown formatting, or explanations. Just the exact token."
         );
         for chrome in ["Thinking...", "14:28", "3:58", kimi_cot] {
-            let mut ingest = StreamDeltaIngest::default();
+            let mut ingest = crate::contract::StreamJournal::default();
             assert_eq!(
                 ingest.push(chrome),
                 None,
                 "chrome leaked as delta: {chrome:?}"
             );
         }
-        let mut ingest = StreamDeltaIngest::default();
+        let mut ingest = crate::contract::StreamJournal::default();
         assert_eq!(ingest.push("Thinking..."), None);
         assert_eq!(
-            ingest.push("Thinking...\n\nSTREAM_OK").as_deref(),
-            Some("STREAM_OK")
+            ingest.push("Thinking...\n\nSTREAM_OK"),
+            Some(crate::contract::StreamEdit::Append {
+                text: "STREAM_OK".into()
+            })
         );
-        let mut ingest = StreamDeltaIngest::default();
+        let mut ingest = crate::contract::StreamJournal::default();
         assert_eq!(ingest.push("14:28"), None);
-        assert_eq!(ingest.push("STREAM_OK").as_deref(), Some("STREAM_OK"));
-        let mut ingest = StreamDeltaIngest::default();
+        assert_eq!(
+            ingest.push("STREAM_OK"),
+            Some(crate::contract::StreamEdit::Append {
+                text: "STREAM_OK".into()
+            })
+        );
+        let mut ingest = crate::contract::StreamJournal::default();
         assert_eq!(ingest.push(kimi_cot), None);
         assert_eq!(
-            ingest.push(&format!("{kimi_cot}\n\nSTREAM_OK")).as_deref(),
-            Some("STREAM_OK")
+            ingest.push(&format!("{kimi_cot}\n\nSTREAM_OK")),
+            Some(crate::contract::StreamEdit::Append {
+                text: "STREAM_OK".into()
+            })
         );
     }
 
@@ -1352,6 +1351,125 @@ mod tests {
         let joined = deltas.concat();
         assert_eq!(joined, "PING", "deltas={deltas:?}");
         assert_eq!(deltas.iter().filter(|d| d.as_str() == "PING").count(), 1);
+    }
+
+    #[test]
+    fn chat_revision_emits_text_replace_ohne_textverlust() {
+        // T-803: ein abweichender/kuerzerer Snapshot ist eine Revision — der
+        // volle neue Text ersetzt den Anzeige-Stand als TextReplace statt
+        // zu verschwinden oder gar als Konkatenation angehaengt zu werden.
+        let state = test_ui(vec![Scenario::ReplaceSnapshots {
+            polls: vec![
+                "Antwort version eins".into(),
+                "Antwort version zwei komplett anders".into(),
+            ],
+            final_text: "Antwort version zwei komplett anders".into(),
+        }]);
+        let id = post_session(&state);
+        let chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"revision bitte"}"#,
+            &state,
+        );
+        assert_eq!(chat.status, 200, "{}", String::from_utf8_lossy(&chat.body));
+        let (_, events) = fetch_events(&state, &id);
+        let replaces: Vec<String> = events
+            .iter()
+            .filter_map(|row| {
+                row["event"]["TextReplace"]["text"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect();
+        assert!(
+            replaces
+                .iter()
+                .any(|r| r == "Antwort version zwei komplett anders"),
+            "kein Replace-Event fuer die Revision: {replaces:?}"
+        );
+        let deltas = text_deltas(&events);
+        assert_eq!(
+            deltas,
+            vec!["Antwort version eins".to_string()],
+            "erste Sicht ist ein Delta, die Revision ist KEIN Delta: deltas={deltas:?}"
+        );
+        assert!(
+            !deltas.iter().any(|d| d.contains("einsAntwort")),
+            "Revision wurde als Anhaengsel an ein Delta versendet: {deltas:?}"
+        );
+        assert!(
+            events.iter().any(|e| e["event"].as_str() == Some("TextComplete")),
+            "kein TextComplete: {events:?}"
+        );
+    }
+
+    #[test]
+    fn chat_diagnose_wand_ist_keine_fertige_antwort() {
+        // T-803: eine Diagnose-Wand (HTML-Rohbeleg, nichtleer) ist NIEMALS
+        // eine fertige Antwort: kein TextComplete, stattdessen Error + 502.
+        let state = test_ui(vec![Scenario::Text(
+            "<html><body>Unexpected token '<'</body></html>".into(),
+            1,
+        )]);
+        let id = post_session(&state);
+        let chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"status?"}"#,
+            &state,
+        );
+        assert_eq!(chat.status, 502, "{}", String::from_utf8_lossy(&chat.body));
+        let (_, events) = fetch_events(&state, &id);
+        assert!(
+            !events
+                .iter()
+                .any(|e| e["event"].as_str() == Some("TextComplete")),
+            "Diagnose-Wand darf kein TextComplete emittieren: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e["event"]["Error"].is_object()),
+            "Diagnose-Wand muss einen Error pushen: {events:?}"
+        );
+    }
+
+    #[test]
+    fn chat_erstes_delta_erscheint_vor_abschluss() {
+        // T-803: Streaming ist kein Buendeln — das erste Delta kommt VOR
+        // TextComplete/Done und der letzte Texteleintrag vor dem Abschluss.
+        let state = test_ui(vec![Scenario::Text("früh\nmittig\nEnde".into(), 2)]);
+        let id = post_session(&state);
+        let chat = dispatch(
+            "POST",
+            &format!("/api/sessions/{id}/chat"),
+            "",
+            r#"{"text":"erstes delta bitte"}"#,
+            &state,
+        );
+        assert_eq!(chat.status, 200, "{}", String::from_utf8_lossy(&chat.body));
+        let (_, events) = fetch_events(&state, &id);
+        let deltas = text_deltas(&events);
+        assert!(!deltas.is_empty(), "kein einziges Delta: {events:?}");
+        let last_delta_seq = events
+            .iter()
+            .filter(|row| row["event"]["TextDelta"].is_object())
+            .last()
+            .map(|row| row["seq"].as_u64().unwrap())
+            .expect("kein TextDelta");
+        let first_complete = events
+            .iter()
+            .filter(|e| e["event"].as_str() == Some("TextComplete"))
+            .next()
+            .map(|row| row["seq"].as_u64().unwrap());
+        assert!(
+            first_complete.map(|seq| seq > last_delta_seq).unwrap_or(false),
+            "erstes Delta muss VOR TextComplete liegen: events={events:?}"
+        );
+        assert_eq!(deltas.concat(), "früh\nmittig\nEnde");
     }
 
     #[test]

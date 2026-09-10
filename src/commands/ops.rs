@@ -327,6 +327,43 @@ pub fn cmd_relay(
     }
 }
 
+/// T-803: Swarm-Kontext pro Brain sichtbar machen (Ziel, Repo, Commit, Branch).
+/// „Fehlend bleibt fehlend“: nicht verfügbare Werte (kein Git-Repo, kein HEAD)
+/// werden als Zeile weggelassen, nie erfunden. `cwd` ist Test-Injektion;
+/// `None` = reales Arbeitsverzeichnis.
+fn swarm_context_block(message: &str, cwd: Option<&std::path::Path>) -> String {
+    let mut lines = vec![format!("[SWARM-KONTEXT] Ziel: {message}")];
+    let cwd = match cwd.map(ToOwned::to_owned).or_else(|| {
+        std::env::current_dir().ok()
+    }) {
+        Some(dir) => dir,
+        None => return lines.join("\n"),
+    };
+    if let Ok(root) = webagent::autoresearch::git_repo_root(&cwd) {
+        lines.push(format!("Repo: {}", root.display()));
+        let git = |args: &[&str]| -> Option<String> {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&cwd)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        };
+        if let Some(commit) = git(&["rev-parse", "HEAD"]) {
+            if !commit.is_empty() {
+                lines.push(format!("Commit: {commit}"));
+            }
+        }
+        if let Some(branch) = git(&["rev-parse", "--abbrev-ref", "HEAD"]) {
+            if !branch.is_empty() {
+                lines.push(format!("Branch: {branch}"));
+            }
+        }
+    }
+    lines.join("\n")
+}
+
 pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json: bool) -> i32 {
     let to = if timeout > 0.0 { Some(timeout) } else { None };
     let targets: Vec<String> = {
@@ -355,9 +392,17 @@ pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json
     }
 
     let mut results: Vec<BrainIoResult> = Vec::new();
+    let context = swarm_context_block(message, None);
     for brain in &targets {
         let started = std::time::Instant::now();
-        let r = match webagent::relay::relay_single_turn(brain, message, headless, to, None) {
+        let message_with_context = format!("{context}\n\n{message}");
+        let r = match webagent::relay::relay_single_turn(
+            brain,
+            &message_with_context,
+            headless,
+            to,
+            None,
+        ) {
             Ok(answer) => BrainIoResult {
                 brain: brain.clone(),
                 ok: true,
@@ -422,7 +467,7 @@ pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json
             .collect::<Vec<_>>()
             .join("\n\n");
         let synth_prompt = format!(
-            "Aufgabe: «{message}».\n\nDie beteiligten Modelle haben so geantwortet:\n\n{joined}\n\n\
+            "{context}\n\nAufgabe: «{message}».\n\nDie beteiligten Modelle haben so geantwortet:\n\n{joined}\n\n\
              Führe diese Antworten zu einer einzigen, besten finalen Antwort zusammen. \
              Nenne Widersprüche, wenn es welche gibt. Du bist der Orchestrator ({orch})."
         );
@@ -1354,6 +1399,26 @@ mod tests {
     fn test_startup_reconcile_runs_does_not_panic() {
         let repaired = startup_reconcile_runs();
         let _ = repaired;
+    }
+
+    #[test]
+    fn swarm_kontext_fehlend_bleibt_fehlend() {
+        // T-803: im Git-Repo sind Ziel/Repo/Commit/Branch sichtbar; ausserhalb
+        // (kein Git) bleiben Repo/Commit/Branch einfach weg.
+        let cwd = std::env::current_dir().expect("cwd");
+        let in_repo = swarm_context_block("Ziel X", Some(&cwd));
+        assert!(in_repo.contains("[SWARM-KONTEXT]"), "{in_repo}");
+        assert!(in_repo.contains("Ziel: Ziel X"), "{in_repo}");
+        assert!(in_repo.contains("\nRepo: "), "{in_repo}");
+        assert!(in_repo.contains("\nCommit: "), "{in_repo}");
+        assert!(in_repo.contains("\nBranch: "), "{in_repo}");
+
+        let temp = std::env::temp_dir();
+        let outside = swarm_context_block("Ziel X", Some(&temp));
+        assert!(outside.contains("Ziel: Ziel X"), "{outside}");
+        assert!(!outside.contains("\nRepo: "), "{outside}");
+        assert!(!outside.contains("\nCommit: "), "{outside}");
+        assert!(!outside.contains("\nBranch: "), "{outside}");
     }
 
     #[test]

@@ -837,6 +837,118 @@ where
     }
 }
 
+/// Ein Edit am wachsenden Antworttext, wie ein gemeinsamer Beobachter ihn vom
+/// rohen Snapshot-Strom des Browsers ableitet (T-803).
+///
+/// Alle Einstiegspunkte (Controller, Relay, Swarm, REPL, Web-UI, API) konsumieren
+/// DENSELBEN Strom. Die Umwandlung Snapshot -> Delta passiert genau einmal hier,
+/// damit sich niemand eine eigene Prefix-/Dedupe- oder Ersatzlogik ausdenkt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamEdit {
+    /// Echter Praefix-Zuwachs: nur der Suffix seit dem letzten Snapshot.
+    ///
+    /// Ein vorheriger leerer Zustand ist der erste Chunk (Stream beginnt).
+    Append { text: String },
+    /// Revision: der Snapshot ist kuerzer oder weicht ab (Claude Ersatz-DOM,
+    /// Re-Render). Das volle neue Abbild ersetzt den alten statt ihn zu
+    /// verwerfen — sonst wuerde Text verloren gehen.
+    Replace { text: String },
+}
+
+/// Klassifiziert den naechsten rohen Snapshot relativ zum vorherigen.
+///
+/// Regeln:
+/// - gleicher Snapshot -> kein Edit (`None`),
+/// - leerer Snapshot -> kein Edit (transientes DOM-Leer wird ignoriert, die
+///   naechste Revision traegt den vollen Text sowieso neu an),
+/// - echtes Praefixwachstum -> [`StreamEdit::Append`] mit genau dem Suffix,
+/// - alles andere (kuerzer, abweichend, ersetzt) -> [`StreamEdit::Replace`] mit
+///   dem vollen neuen Text.
+///
+/// Die Regeln sind Byte-sicher: ein Praefix-Beweis garantiert, dass die
+/// Suffix-Grenze auf einer UTF-8-Zeichengrenze liegt.
+pub fn classify_edit(prev: Option<&str>, next: &str) -> Option<StreamEdit> {
+    if next.is_empty() {
+        return None;
+    }
+    match prev {
+        None => Some(StreamEdit::Append {
+            text: next.to_string(),
+        }),
+        Some(prev) if prev == next => None,
+        Some(prev) if next.len() > prev.len() && next.starts_with(prev) => {
+            Some(StreamEdit::Append {
+                text: next[prev.len()..].to_string(),
+            })
+        }
+        Some(_) => Some(StreamEdit::Replace {
+            text: next.to_string(),
+        }),
+    }
+}
+
+/// Gemeinsamer, zustandsbehafteter Beobachter des Antwort-Streams (T-803).
+///
+/// Controller, Relay, Web-UI und API fuehren jeden Snapshot hier durch: Der
+/// Beobachter klassifiziert mit [`classify_edit`] auf dem kumulativen,
+/// bereinigten Abbild und haelt die rohen Poll-Snapshots als Beweis. Damit
+/// konsumieren alle Einstiegspunkte DENSELBEN Strom statt eigener
+/// Prefix-/Dedupe-/Ersatzlogik.
+#[derive(Debug, Default)]
+pub struct StreamJournal {
+    /// Letztes kumulatives, bereinigtes Antwortabbild.
+    snapshot: String,
+    /// Anzahl klassifizierter Append-Edits.
+    pub appends: usize,
+    /// Anzahl klassifizierter Replace-Edits.
+    pub replaces: usize,
+    /// Rohe Poll-Snapshots (Beweis), begrenzt auf [`StreamJournal::MAX_RAW`].
+    raw: Vec<String>,
+}
+
+impl StreamJournal {
+    /// Oberste Menge aufbewahrter roher Poll-Snapshots.
+    pub const MAX_RAW: usize = 192;
+
+    /// Verarbeitet einen rohen Browser-Snapshot und liefert den Edit.
+    pub fn push(&mut self, raw_snapshot: &str) -> Option<StreamEdit> {
+        let cleaned = crate::observer::chat_answer_text(raw_snapshot);
+        if cleaned == self.snapshot {
+            return None;
+        }
+        let prev = if self.snapshot.is_empty() {
+            None
+        } else {
+            Some(self.snapshot.as_str())
+        };
+        let edit = classify_edit(prev, &cleaned)?;
+        self.snapshot = cleaned;
+        match &edit {
+            StreamEdit::Append { .. } => self.appends += 1,
+            StreamEdit::Replace { .. } => self.replaces += 1,
+        }
+        if self.raw.len() < Self::MAX_RAW {
+            self.raw.push(raw_snapshot.to_string());
+        }
+        Some(edit)
+    }
+
+    /// Bereinigtes kumulatives Antwortabbild (letzter Stand).
+    pub fn snapshot(&self) -> &str {
+        &self.snapshot
+    }
+
+    /// Gesehener Antworttext (bereinigt) bzw. leer, wenn nichts ankam.
+    pub fn is_empty(&self) -> bool {
+        self.snapshot.is_empty()
+    }
+
+    /// Rohe Poll-Snapshots als Beweis (maximal [`StreamJournal::MAX_RAW`]).
+    pub fn raw_snapshots(&self) -> &[String] {
+        &self.raw
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1313,6 +1425,147 @@ You have reached the daily usage limit. Please wait 2 hours before trying again.
         assert_eq!(
             classify_send_surface("", "prompt", true, false),
             SendSurface::Consumed
+        );
+    }
+
+    #[test]
+    fn equal_snapshots_erzeugen_kein_edit() {
+        assert_eq!(classify_edit(Some("gleich"), "gleich"), None);
+        assert_eq!(classify_edit(None, ""), None);
+        assert_eq!(classify_edit(Some("text"), ""), None);
+    }
+
+    #[test]
+    fn praefixwachstum_wird_zum_suffix_delta() {
+        assert_eq!(
+            classify_edit(Some("Hallo"), "Hallo Welt"),
+            Some(StreamEdit::Append {
+                text: " Welt".to_string()
+            })
+        );
+        assert_eq!(
+            classify_edit(Some("abc"), "abcd"),
+            Some(StreamEdit::Append {
+                text: "d".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn erster_snapshot_startet_den_strom() {
+        assert_eq!(
+            classify_edit(None, "Erster"),
+            Some(StreamEdit::Append {
+                text: "Erster".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn kuerzerer_snapshot_ist_revision_replace() {
+        // Shorter ist kein Delta, sondern Revision: voller neuer Text ersetzt.
+        assert_eq!(
+            classify_edit(Some("Hallo Welt"), "Hallo"),
+            Some(StreamEdit::Replace {
+                text: "Hallo".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn abweichender_snapshot_ist_revision_replace() {
+        // Claude Ersatz-DOM: neuer Text ist nicht Praefix, Text darf nicht
+        // verloren gehen.
+        assert_eq!(
+            classify_edit(Some("Thinking..."), "Antwort auf die Frage"),
+            Some(StreamEdit::Replace {
+                text: "Antwort auf die Frage".to_string()
+            })
+        );
+        assert_eq!(
+            classify_edit(Some("alt"), "neu und laenger als alt"),
+            Some(StreamEdit::Replace {
+                text: "neu und laenger als alt".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn unicode_suffix_grenze_bleibt_zeichensicher() {
+        // utf8-Folge "Ö": Zuwachs auf zweitem Codepoint. Die Byte-Grenze aus
+        // starts_with liegt garantiert auf einer Zeichengrenze.
+        assert_eq!(
+            classify_edit(Some("Hällö"), "Hällö Wörld"),
+            Some(StreamEdit::Append {
+                text: " Wörld".to_string()
+            })
+        );
+        assert_eq!(
+            classify_edit(Some("こん"), "こんにちは"),
+            Some(StreamEdit::Append {
+                text: "にちは".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn stream_journal_beobachtet_denselben_strom_bewertet_und_belegt() {
+        let mut journal = StreamJournal::default();
+        assert_eq!(
+            journal.push("Hallo"),
+            Some(StreamEdit::Append {
+                text: "Hallo".to_string()
+            })
+        );
+        assert_eq!(
+            journal.push("Hallo Welt"),
+            Some(StreamEdit::Append {
+                text: " Welt".to_string()
+            })
+        );
+        assert_eq!(journal.push("Hallo Welt"), None);
+        assert_eq!(
+            journal.push("Revision"),
+            Some(StreamEdit::Replace {
+                text: "Revision".to_string()
+            })
+        );
+        assert_eq!(journal.appends, 2);
+        assert_eq!(journal.replaces, 1);
+        assert_eq!(journal.snapshot(), "Revision");
+        assert_eq!(journal.raw_snapshots(), &["Hallo", "Hallo Welt", "Revision"]);
+        assert!(!journal.is_empty());
+        let mut leer = StreamJournal::default();
+        assert!(leer.is_empty());
+    }
+
+    #[test]
+    fn revision_wirkt_nicht_als_doppeltes_delta() {
+        let mut prev: Option<String> = None;
+        let snaps = ["Hallo Welt", "Hallo", "Hallo Welt neu", "Hallo Welt neu"];
+        let edits: Vec<StreamEdit> = snaps
+            .iter()
+            .filter_map(|snap| {
+                let edit = classify_edit(prev.as_deref(), snap);
+                prev = Some(snap.to_string());
+                edit
+            })
+            .collect();
+        assert_eq!(
+            edits,
+            vec![
+                StreamEdit::Append {
+                    text: "Hallo Welt".to_string()
+                },
+                StreamEdit::Replace {
+                    text: "Hallo".to_string()
+                },
+                // Nach der Revision waechst der Text wieder per Praefix — ein
+                // Replace wird NICHT zum Sonderfall fuer die Folgesnapshots.
+                StreamEdit::Append {
+                    text: " Welt neu".to_string()
+                }
+            ]
         );
     }
 }

@@ -6,10 +6,10 @@ Dieser Block ist vor dem historischen Projektkontext zu lesen und ist die
 maßgebliche Einstiegslage für laufende Arbeit:
 
 - Checkout: `C:\Users\storax\Documents\Codex\2026-08-27\roadmap-zusammenfassen-chatgpt-conversation-6a90695d-b1e4\work\webagent-github-audit-20260829`
-- Branch dieses Dokumentationsstands: `feature/T-801-brain-contract`
+- Branch dieses Dokumentationsstands: `feature/T-803-answer-stream`
 - HEAD dieses Dokumentationsstands: siehe `git log -1`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
 - Der aktuelle technische Fahrplan steht in `docs/BRAIN_UNIFICATION_PLAN.md`. Er vereinheitlicht Vertrag, Senden, Antwortstream, Profil-Lease, Probe/Proof und Taskabschluss für alle Brains.
-- Umsetzungsstand laut `docs/CURRENT_WORK.md`: **T-801 (Scheibe 1, Brain-Vertrag) und T-802 (Scheibe 2, gemeinsames Senden ohne Doppelversand) sind als Code umgesetzt**; T-802 ist im `docs/TASKBOARD.json` `done` (Beleg `docs/proofs/T-802/RESULT.md`). Als naechste umsetzbare Scheiben bieten sich **T-803** (Antwortstream) und **T-804** (Profil-Lease) an; genau eine davon ist vor Aenderungen zu claimen.
+- Umsetzungsstand laut `docs/CURRENT_WORK.md`: **T-801 (Scheibe 1, Brain-Vertrag), T-802 (Scheibe 2, gemeinsames Senden) und T-803 (Scheibe 3, Antwortstream durch Controller/REPL/Swarm/UI/API) sind als Code umgesetzt**; T-802 und T-803 sind im `docs/TASKBOARD.json` `done` (Belege `docs/proofs/T-802/RESULT.md`, `docs/proofs/T-803/RESULT.md`). Als naechste umsetzbare Scheibe bietet sich **T-804** (Profil-Lease) an; sie ist vor Aenderungen zu claimen.
 - Historische Branch-, Build-, Binary- und Run-Angaben aus älteren Übergaben sind kein aktueller Beleg. Aktuelle Runs und Artefakte müssen im jeweiligen Run-Verzeichnis neu nachgewiesen werden.
 
 Das Dokument `docs/HANDOVER_TO_CODEX_2026-08-25.md` ist historische Übergabe
