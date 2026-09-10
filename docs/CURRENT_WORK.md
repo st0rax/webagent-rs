@@ -1,16 +1,30 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-10:** Scheibe 8 des
-> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-808
-> „Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery"** — ist auf dem
-> Branch `feature/T-808-run-ledger` als Code umgesetzt und alle Pflichtgates
-> sind gruen: `cargo test --lib` (1405 passed, 1 ignored),
-> `cargo test --features tui --lib` (1438 passed, 1 ignored),
-> `cargo check --features tui`, `cargo check --no-default-features`. Beleg:
-> [`docs/proofs/T-808/RESULT.md`](proofs/T-808/RESULT.md), TASKBOARD `done`.
-> Die darunter stehenden Scheiben T-807/T-806/T-805/T-804/T-803/T-801/T-802
-> bleiben als Code belegt (`done` bzw. `claimed` fuer T-801). Einstieg in die
-> laufende Arbeit: Abschnitt „T-808 — Run-Ledger und Crash-Recovery (2026-09-10)".
+> **Aktualisiert 2026-09-10:** Scheibe 6 des
+> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-806
+> „Taskabschluss mit verifizierten Run-Belegen und Crashschutz"** — ist
+> geclaimt auf `feature/T-806-run-proof` (Basis `feature/T-808-run-ledger`).
+> Vorgaenger sind belegt: T-808 (`done`, 1405/1438 passed; Beleg
+> [`docs/proofs/T-808/RESULT.md`](proofs/T-808/RESULT.md)), T-805/T-804/T-803
+> (`done`), T-801 (`claimed`). Einstieg in die laufende Arbeit: Abschnitt
+> „T-806 — Verifizierter Taskabschluss (2026-09-10)".
+
+## T-806 — Verifizierter Taskabschluss (2026-09-10)
+
+Claim: `local/opencode`, Branch `feature/T-806-run-proof` (Basis
+`feature/T-808-run-ledger`), Phase 8, Scheibe 6 des BRAIN_UNIFICATION_PLAN.
+Status im TASKBOARD: `claimed`.
+
+Soll (Plan-Z.34, Kurzform): Schwachen Datei-Existenzabschluss ersetzen;
+Runstart mit expliziter Task-/Owner-Bindung (keine fest codierte
+chatgpt-codex-Identitaet); Abnahmeanforderungen vor Runende einfrieren;
+controllerseitig erfasste Tests/Capabilities gegen Run-ID, Commit,
+Artefakthashes und Geltungsbereich prüfen; Brain-Manifest ist Antrag, kein
+eigener Beweis; Board unter Prozesslock erneut lesen, Claim/Dependencies
+vergleichen, eindeutige Tempdatei + flush/sync + Windows-sicher ersetzen;
+Crash-Recovery und idempotenten Replay testen; Ablehnung im Run-Eventlog
+persistieren; alte/leere/fremde/manipulierte Belege und parallele
+Boardaenderungen dürfen nie `done` ergeben.
 
 ## T-808 — Dauerhaftes Run-Ledger und Crash-Recovery (2026-09-10)
 
