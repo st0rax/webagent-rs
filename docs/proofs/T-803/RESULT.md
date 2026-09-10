@@ -77,4 +77,4 @@ Bezug: `docs/BRAIN_UNIFICATION_PLAN.md` Scheibe 3 (T-803), `docs/TASKBOARD.json`
 - Gegenprobe gegen reale Logs/Live-Matrix: gehoert zur Live-Matrix **T-807**
   (auto-RED-Entscheidung bleibt offen; zai GLM-5.3 Live-Flap ungeloest).
 
-Commit: siehe `git log` auf `feature/T-803-answer-stream` (ft. T-806).
+Commit: siehe `git log` auf `feature/T-803-answer-stream` (ft. T-801/802).
