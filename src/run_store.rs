@@ -332,6 +332,28 @@ impl RunStore {
         self.create_internal(brain_id, task, None)
     }
 
+    /// Persistiert eine Claim-Ablehnung im Run-Eventlog (Scheibe 6).
+    ///
+    /// Der Abschluss eines Taskboard-Claims wurde verweigert; der Grund wird
+    /// never still geschluckt. Ein Replay-Lauf abgelehnter Abschlüsse bleibt
+    /// damit auditierbar im selben Journal, das der Run-Ledger bewacht.
+    pub fn append_claim_rejected(
+        &self,
+        meta: &RunMeta,
+        task_id: &str,
+        reason: &str,
+    ) -> Result<(), String> {
+        self.append_event(
+            meta,
+            "claim_rejected",
+            serde_json::json!({
+                "task_id": task_id,
+                "reason": reason,
+                "status": meta.status,
+            }),
+        )
+    }
+
     /// Erstellt den frischen Ziel-Run fuer einen validierten Cross-Brain-Handoff.
     /// Der Quell-Run wird nur zur Provenienzpruefung geladen; seine Browser-
     /// Konversation und sein sonstiger Zustand werden nicht uebernommen.
@@ -1445,6 +1467,40 @@ mod tests {
             "Receipt muss nach Fortsetzung entfernt sein"
         );
         assert_eq!(store.load(&meta.run_id).unwrap().status, "running");
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Claim-Ablehnungen landen als `claim_rejected` im Run-Eventlog, damit
+    /// ein verweigerter Taskabschluss nie still geschluckt wird (Scheibe 6).
+    #[test]
+    fn claim_ablehnung_landet_im_run_eventlog() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let mut meta = store.create("mock", "taskabschluss-ablehnung").unwrap();
+        meta.status = "running".to_string();
+        store.save(&meta).expect("Lauf speicherbar");
+
+        store
+            .append_claim_rejected(&meta, "T-42", "Dependency DEP-1 ist claimed, nicht done")
+            .expect("Ablehnung persistiert");
+
+        let events = fs::read_to_string(meta.dir(&store.runs_dir).join("events.jsonl")).unwrap();
+        assert!(
+            events.contains("claim_rejected"),
+            "claim_rejected-Ereignis fehlt im Eventlog"
+        );
+        assert!(
+            events.contains("T-42") && events.contains("Dependency DEP-1"),
+            "Ablehnung muss Task-ID und Grund tragen"
+        );
+
+        // Die Kette bleibt verifizierbar (Hash-Kette intakt).
+        let head = crate::run_ledger::verify_event_chain(
+            &meta.dir(&store.runs_dir).join("events.jsonl"),
+        )
+        .expect("Eventlog bleibt verifizierbar");
+        assert!(head.valid_count >= 1);
 
         fs::remove_dir_all(&tmp).ok();
     }

@@ -61,6 +61,11 @@ pub enum Commands {
         /// claim_lock gesperrt; verhindert Doppel-Claims)
         #[arg(long)]
         acquire_task: Option<String>,
+
+        /// Explizite Task-/Owner-Bindung statt fest codierter Identitaet.
+        /// Standard: `WEBAGENT_AGENT_ID`-Env, sonst der lokale Default.
+        #[arg(long)]
+        owner: Option<String>,
     },
 
     /// Einheitliche Eingabe: autonomer Run (Default) oder Konversations-Einzelturn.

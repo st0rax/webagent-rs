@@ -627,7 +627,7 @@ pub fn cmd_ask(
             }
         }
     } else {
-        cmd_run(brain, task, resume, headless, max_cycles, no_memory, None, None, None)
+        cmd_run(brain, task, resume, headless, max_cycles, no_memory, None, None, None, None)
     }
 }
 
@@ -641,23 +641,27 @@ pub fn cmd_run(
     complete_task: Option<&str>,
     proof_path: Option<&std::path::Path>,
     acquire_task: Option<&str>,
+    owner: Option<&str>,
 ) -> i32 {
     use webagent::browser::WebBrainBackend;
     use webagent::controller::{AgentController, RunOptions};
     use webagent::executor::PlatformShellExecutor;
 
+    // Explizite Task-/Owner-Bindung: keine fest codierte chatgpt-codex-Identitaet.
+    // Der Owner kommt aus --owner oder der WEBAGENT_AGENT_ID-Env; nur als
+    // letzter Fallback bleibt der lokale Default.
+    let owner = owner
+        .map(str::to_string)
+        .or_else(|| std::env::var(webagent::taskboard::AGENT_ID_ENV).ok())
+        .unwrap_or_else(|| webagent::taskboard::DEFAULT_OWNER.to_string());
+
     let board = std::path::Path::new("docs/TASKBOARD.json");
     if let Some(task_id) = acquire_task {
-        if let Err(e) = webagent::taskboard::acquire_claim(
-            board,
-            task_id,
-            "chatgpt-codex",
-            &branch_name(),
-        ) {
+        if let Err(e) = webagent::taskboard::acquire_claim(board, task_id, &owner, &branch_name()) {
             eprintln!("[run] Task-Claim verweigert: {e}");
             return 1;
         }
-        println!("[run] task={task_id} status=claimed - Doppel-Claim verhindert");
+        println!("[run] task={task_id} status=claimed owner={owner} - Doppel-Claim verhindert");
     }
 
     let brain = match resolve_brain_for_task(brain, task) {
@@ -700,21 +704,30 @@ pub fn cmd_run(
             if meta.status == "done" {
                 if let Some(task_id) = complete_task {
                     let proof = proof_path.expect("clap enforces --proof-path");
-                    if let Err(e) = webagent::taskboard::complete_claim(
+                    match webagent::taskboard::complete_claim_verified(
                         board,
                         task_id,
-                        "chatgpt-codex",
+                        &owner,
                         &branch_name(),
+                        &meta.run_id,
                         proof,
                     ) {
-                        eprintln!("[run] Taskabschluss verweigert: {e}");
-                        return 1;
+                        Ok(outcome) => println!(
+                            "[run] task={} status=done proof={} sha256={} commit={} run_id={}",
+                            task_id, outcome.proof_path, outcome.proof_sha256,
+                            outcome.proof_commit, outcome.run_id
+                        ),
+                        Err(e) => {
+                            // Ablehnung im Run-Eventlog persistieren — nie still.
+                            let store = RunStore::new(
+                                webagent::config::runs_dir(),
+                                webagent::config::runs_dir().join("logs"),
+                            );
+                            let _ = store.append_claim_rejected(&meta, task_id, &e);
+                            eprintln!("[run] Taskabschluss verweigert: {e}");
+                            return 1;
+                        }
                     }
-                    println!(
-                        "[run] task={} status=done proof={}",
-                        task_id,
-                        proof.display()
-                    );
                 }
                 0
             } else {
