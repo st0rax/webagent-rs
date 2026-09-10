@@ -57,10 +57,26 @@ pub fn run_brains_health(allow_empty_profile: bool) -> i32 {
             // Level = fahrbare Webchat-Optionen. Zeigt die Luecke zwischen
             // "Text rein/raus" und dem, was die Oberflaeche per Maus hergibt.
             let lvl = crate::capability::level_of(&id);
+            // Scheibe 5: unbekannte Mechanik ehrlich als unverified ausweisen.
+            // Ein frischer, hash-konformer Beleg macht ein Brain verified; alles
+            // andere (nie gemessen, TTL abgelaufen, Selektoren geaendert) bleibt
+            // unverified — auch neue Brain-URLs aus der generischen Discovery.
+            let verify = crate::config::load_selectors(&id)
+                .ok()
+                .and_then(|sel| {
+                    crate::capability::capability("chat").and_then(|chat| {
+                        Some(crate::capability_proof::brain_verification(
+                            &id,
+                            crate::capability_proof::selector_hash_for(&chat, &sel),
+                        ))
+                    })
+                })
+                .unwrap_or(crate::capability_proof::BrainVerification::Unverified);
             println!(
-                "  {}: selectors={} url={url}",
+                "  {}: selectors={} url={url} verification={:?}",
                 lvl.label(),
-                if sel_ok { "ok" } else { "MISSING" }
+                if sel_ok { "ok" } else { "MISSING" },
+                verify
             );
         }
     }

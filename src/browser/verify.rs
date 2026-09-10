@@ -1005,6 +1005,14 @@ fn generation_sequence(
         crate::timeouts::resolve_timeout("wait_response", &backend.brain_id, probe, None);
     let deadline = Instant::now() + Duration::from_secs_f64(deadline);
 
+    // T-805: derselbe Snapshot->Edit-Strom wie der Produktivpfad. Der
+    // Controller konsumiert `wait_response_streaming` ueber ein StreamJournal
+    // (`contract::StreamJournal` in `controller.rs::run_direct`); genau dieser
+    // Textstrom (`probe_generation`) speist das Journal dort. Fuer die Probe
+    // hier denselben Vertrag geben: jeder Poll-Snapshot klassifiziert
+    // Appends/Replaces, und der chat-Beleg nennt das Streaming separat.
+    let mut stream_journal = crate::contract::StreamJournal::default();
+
     let mut chat_proven = false;
     let mut chat_trigger = String::new();
     let mut stop_seen = false;
@@ -1025,6 +1033,10 @@ fn generation_sequence(
             break;
         }
         let (count, text, stop) = backend.probe_generation(&assistant_js, &stop_js, -1);
+        // T-805: identischer Beobachtungsvertrag wie controller.rs::run_direct —
+        // der Textstrom der Probe ist exakt der, den der Controller ueber
+        // `wait_response_streaming` ins StreamJournal schickt.
+        let _ = stream_journal.push(&text);
         let stop_visible = stop_driveable && stop;
 
         if !chat_proven {
@@ -1139,12 +1151,23 @@ fn generation_sequence(
         let winner = resolve_fallback(backend, cap.needs).map(|(w, _)| w);
         let hash = hash_for(backend, cap);
         if chat_proven {
+            // T-805: Streaming separat belegen — aus demselben Journal-Vertrag
+            // wie der Produktivpfad. Appends = Praefix-Zuwachs in mehreren
+            // Polls, Replaces = Revisionen (z.B. Claude Ersatz-DOM).
+            let stream_note = if stream_journal.appends > 0 || stream_journal.replaces > 0 {
+                format!(
+                    " (streaming: {} appends, {} replaces)",
+                    stream_journal.appends, stream_journal.replaces
+                )
+            } else {
+                String::new()
+            };
             let m = measure(
                 cap.key,
                 format!("baseline {baseline}"),
                 String::new(),
                 true,
-                format!("chat belegt ({chat_trigger})"),
+                format!("chat belegt ({chat_trigger}){stream_note}"),
                 winner,
             );
             results.push(VerifyResult::new(m, ProofOutcome::Passed, hash, start));
@@ -1737,6 +1760,62 @@ mod tests {
         assert!(st.measurement.proven, "stop_generation: {st:?}");
         assert_eq!(st.outcome, ProofOutcome::Passed);
         assert!(st.measurement.note.contains("Stop"));
+    }
+
+    /// Scheibe 5: die Probe konsumiert DENSELBEN Snapshot->Edit-Vertrag wie
+    /// der Produktivpfad. Praefix-Wachstum ueber mehrere Polls zaehlt als
+    /// Appends und wird im chat-Beleg separat ausgewiesen — der Gegeprobe zu
+    /// `controller.rs::run_direct`, das `probe_generation`-Text durch ein
+    /// StreamJournal schickt.
+    #[test]
+    fn streaming_wird_ueber_denselben_journalvertrag_belegt() {
+        let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
+        let mut state = send_flow_mocks(ready_state(&sel), &sel, PROBE);
+        state = state
+            .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
+            .on_eval(composer_set_expr(&sel, PROBE), json!(true))
+            .on_eval(click_first_expr(&sel, "send_button"), json!(true))
+            .on_eval(click_first_expr(&sel, "stop_button"), json!(true))
+            .on_eval_seq(
+                assistant_count_expr(&sel),
+                vec![json!(0), json!(0), json!(1)],
+            )
+            .on_eval(
+                fallback_expr(&sel, cap("chat").needs),
+                json!({"i": 0, "v": "button[aria-label*='Send' i]"}),
+            )
+            .on_eval(
+                fallback_expr(&sel, cap("stop_generation").needs),
+                json!({"i": 0, "v": "button[aria-label*='stoppen' i]"}),
+            )
+            .on_eval_seq(
+                probe_expr(&sel),
+                vec![
+                    gen(0, "", false),
+                    gen(1, "1", false),
+                    gen(1, "1\n2", false),
+                    gen(1, "1\n2\n3", true),
+                    gen(1, "1\n2\n3", false),
+                ],
+            );
+        let mut backend = qwen_with(state);
+        let results = verify_capabilities(
+            &mut backend,
+            false,
+            &[cap("chat"), cap("stop_generation")],
+            PROBE,
+            5.0,
+        );
+        let ch = results
+            .iter()
+            .find(|r| r.measurement.capability_key == "chat")
+            .unwrap_or_else(|| panic!("kein chat-Beleg: {results:?}"));
+        assert!(ch.measurement.proven, "chat: {ch:?}");
+        assert!(
+            ch.measurement.note.contains("streaming: 3 appends"),
+            "streaming separat belegt: {:?}",
+            ch.measurement.note
+        );
     }
 
     /// `new_chat` hat zwei unabhängige Kriterien. Der URL-Zweig trägt bei den

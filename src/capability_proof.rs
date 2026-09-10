@@ -326,10 +326,50 @@ pub fn proof_state_at(
     }
 }
 
+/// Ausweisstatus einer Brain-Mechanik (Scheibe 5: „Generische Probe mit
+/// bestehendem Capability-Proof-Gate").
+///
+/// `Verified`: ein frischer, hash-konformer Beleg liegt vor (mindestens eine
+/// fahrbare Faehigkeit hat `ProofState::Proven`). `Unverified`: die Mechanik
+/// ist unbekannt — weder je gemessen noch durch Selektor-Aenderung/TTL
+/// entwertet. Neue Brain-URLs (generische Discovery via `custom_brains.json`)
+/// starten ohne Belege und werden damit ehrlich als `Unverified` ausgewiesen,
+/// statt still als „geprobt" zu gelten.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BrainVerification {
+    Verified,
+    Unverified,
+}
+
+/// Reine Auskunft ohne Dateizugriff: Ausweisstatus gegen einen Store-Pfad
+/// (Tests schreiben in ein Wegwerf-Verzeichnis).
+pub fn brain_verification_at(
+    brain_id: &str,
+    current_hash: u32,
+    path: &PathBuf,
+) -> BrainVerification {
+    for cap in crate::capability::CATALOG {
+        if !cap.driveable || !cap.attainable {
+            continue;
+        }
+        // Frisch UND hash-konform reicht fuer einen Ausweis als Verified:
+        // `proof_state_at` entwertet sonst selbst (Selektoren/TTL).
+        match proof_state_at(brain_id, cap.key, current_hash, path) {
+            ProofState::Proven { .. } => return BrainVerification::Verified,
+            _ => {}
+        }
+    }
+    BrainVerification::Unverified
+}
+
+/// Wie [`brain_verification_at`], gegen den echten Store.
+pub fn brain_verification(brain_id: &str, current_hash: u32) -> BrainVerification {
+    brain_verification_at(brain_id, current_hash, &proofs_path())
+}
+
 /// Alter eines Belegs in Tagen. Ein nicht parsebarer Zeitstempel gilt als
 /// unendlich alt — konservativ, lieber einmal neu verifizieren als einen
 /// fragwuerdigen Beleg halten.
-///
 /// Der Vergleich in `proof_state_at` ist `>=`: ein Beleg ist **hoechstens**
 /// `ttl_days()` alt, dann verfaellt er. Damit schlaegt `WEBAGENT_PROOF_TTL_DAYS=0`
 /// unmittelbar nach dem Schreiben zu (Alter 0.0 >= 0.0) — „sofort verfallen"
@@ -410,6 +450,48 @@ mod tests {
                 ProofState::Proven { .. }
             ));
         });
+    }
+
+    #[test]
+    fn brain_ohne_beleg_ist_unverified() {
+        // Scheibe 5: eine neue Brain-URL via generischer Discovery startet ohne
+        // Belege — die Mechanik ist unbekannt und wird ehrlich ausgewiesen.
+        assert_eq!(
+            brain_verification_at("neues-brain", 42, &unique_path()),
+            BrainVerification::Unverified
+        );
+    }
+
+    #[test]
+    fn frischer_hashkonformer_beleg_macht_brain_verified() {
+        with_ttl("14", || {
+            let path = unique_path();
+            record_proof_at(rec(ProofOutcome::Passed, "neues-brain", "chat", 42), &path);
+            assert_eq!(
+                brain_verification_at("neues-brain", 42, &path),
+                BrainVerification::Verified
+            );
+        });
+    }
+
+    #[test]
+    fn entwerteter_beleg_bleibt_unverified() {
+        // TTL-Ablauf UND Selektor-Aenderung entziehen dem Ausweis, nicht nur
+        // dem Einzelbeleg: eineentwertete Mechanik ist wieder unbekannt.
+        with_ttl("0", || {
+            let path = unique_path();
+            record_proof_at(rec(ProofOutcome::Passed, "neues-brain", "chat", 42), &path);
+            assert_eq!(
+                brain_verification_at("neues-brain", 42, &path),
+                BrainVerification::Unverified
+            );
+        });
+        let path = unique_path();
+        record_proof_at(rec(ProofOutcome::Passed, "neues-brain", "chat", 42), &path);
+        assert_eq!(
+            brain_verification_at("neues-brain", 43, &path),
+            BrainVerification::Unverified
+        );
     }
 
     #[test]
