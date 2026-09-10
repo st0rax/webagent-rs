@@ -194,6 +194,7 @@ pub const BRAIN_TABLE: &[(&str, &str)] = &[
     ("claude", "https://claude.ai/new"),
     ("mistral", "https://chat.mistral.ai/chat"),
     ("zai", "https://chat.z.ai/"),
+    ("perplexity", "https://www.perplexity.ai/"),
 ];
 
 /// Brain-Definitionen: ID -> {url, selectors, profile_dir}.

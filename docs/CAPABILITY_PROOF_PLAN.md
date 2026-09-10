@@ -960,9 +960,11 @@ Drei Nebenbefunde:
   dessen `start_failed` sich im Einzellauf nicht reproduzieren ließ.
 - **Nachgemessen zur Schattendatei-Warnung:** `load_selectors` merged **pro
   Schlüssel**. Betroffen war nur `kimi.json` (12 Schlüssel). `gemini.json`
-  führt allein `ui_options`, `perplexity.json` hat gar kein Repo-Gegenstück und
-  ist damit die einzige Quelle — die gehört ins Repo, wenn perplexity bleiben
-  soll.
+  führt allein `ui_options`; `perplexity.json` hatte gar kein Repo-Gegenstück
+  und war damit die einzige Quelle — **erledigt 2026-09-10**, Perplexity wurde
+  in den `BRAIN_TABLE` aufgenommen, der gemessene Stand als
+  `selectors/perplexity.json` ins Repo ausgeliefert und um die Chat-Basis
+  (`composer`, `send_button`) ergänzt.
 - **`stop_button` für deepseek, gemini, kimi, zai.** Alle vier melden „Stop-Button
   nie sichtbar", obwohl plausible `aria-label`-Selektoren hinterlegt sind. Der
   Modulkopf von `capability.rs` nennt den Grund für deepseek: 107 Bedienelemente

@@ -645,7 +645,7 @@ Der v1.0-Kritische Pfad umfasst ausschließlich die nachfolgenden Arbeiten. Jede
 
 ## Providerbereitschaft und Desktop-Grenze
 
-Die aktiven Standardprovider sind aktuell `chatgpt`, `deepseek`, `kimi`, `gemini`, `qwen`, `claude`, `mistral` und `zai`. Die ausgelieferten Selektoren für alle acht Anbieter werden eingebettet, sind valides JSON und bestehen die beiden providerfreien Verträge `test_embedded_selectors_cover_all_brains_and_parse` sowie `all_configured_brains_have_selectors`. `perplexity` besitzt eine ausgelieferte Selektordatei, ist jedoch nicht Teil des aktuellen statischen `BRAIN_TABLE` und damit kein v1.0-Standardprovider.
+Die aktiven Standardprovider sind aktuell `chatgpt`, `deepseek`, `kimi`, `gemini`, `qwen`, `claude`, `mistral`, `zai` und `perplexity`. Die ausgelieferten Selektoren für alle neun Anbieter werden eingebettet, sind valides JSON und bestehen die beiden providerfreien Verträge `test_embedded_selectors_cover_all_brains_and_parse` sowie `all_configured_brains_have_selectors`. `perplexity` ist seit 2026-09-10 Teil des statischen `BRAIN_TABLE` und damit ein v1.0-Standardprovider; die zuvor rein lokale Nutzer-Selektordatei (einzige Quelle) wurde als Repo-Selektor `selectors/perplexity.json` ausgeliefert und um die Chat-Basis ergänzt.
 
 Eine manuelle Browser-Gegenprobe auf ChatGPT im verbundenen Browser lieferte den erwarteten Antworttext `BEREIT.`. Sie ist **keine Webagent-WebView-Evidenz**, weil sie nicht aus dem vom Nutzer getesteten Desktop-Arbeitsordner stammt. Der anschließende DeepSeek-Aufruf leitete in diesem separaten Browserprofil auf `/sign_in` um; auch das ist kein Befund über die projektseitigen Profile.
 

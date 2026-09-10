@@ -1,8 +1,20 @@
 {
+  "_source": "Gemessen 2026-08/09 (Live; Quelle: lokale Nutzer-Selektordatei + CAPABILITY_MATRIX 2026-09-04). Chat-Basis composer/send_button belegt, model_switch strukturell unreachable (Matrix 2026-09-08).",
+  "composer": [
+    "#ask-input",
+    "div[contenteditable='true']",
+    "textarea"
+  ],
+  "send_button": [
+    "button[aria-label*='Senden' i]"
+  ],
+  "assistant_message": [
+    "div.prose",
+    "div.prose p.my-2"
+  ],
   "model_menu": [
-    "button[aria-label='Modell']",
-    "button[aria-label='Model']",
     "button[aria-label*='Modell' i]",
+    "button[aria-label='Model']",
     "button[aria-label*='Model' i]"
   ],
   "model_option": [
@@ -11,8 +23,26 @@
     "[role=menuitemradio]",
     "[role=option]"
   ],
-  "assistant_message": [
-    "div.prose",
-    "div.prose p.my-2"
+  "login_button": [
+    "button:has-text('Anmelden')"
+  ],
+  "consent_reject_button": [
+    "button:has-text('Nur notwendige')"
+  ],
+  "projects_button": [
+    "a[aria-label*='Projekte' i]"
+  ],
+  "temporary_chat_button": [
+    "button[aria-label*='Inkognito verwenden: Anonyme Sitzungen erstellen, die nicht in Ihrem Verlauf gespeichert werden und nach 24 Stunden ablaufen' i]"
+  ],
+  "voice_input_button": [
+    "button[aria-label*='Diktiermodus' i]"
+  ],
+  "ui_options": [
+    "chat",
+    "model_switch",
+    "temporary_chat",
+    "projects",
+    "voice_input"
   ]
 }
