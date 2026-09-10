@@ -68,5 +68,5 @@ Bezug: `docs/BRAIN_UNIFICATION_PLAN.md` Scheibe 5 (T-805), `docs/TASKBOARD.json`
 - `cargo check --no-default-features`: **gruen**.
 - Live-Matrix/Rezertifizierung gehoert zur Endabnahme **T-807**.
 
-Commit: `951572d` (chore(T-805)) auf `feature/T-805-probe-proof`, Basis
-`feature/T-804-profile-lease`.
+Commit: `cef7898` (feat) + `a339ea5` (docs/Abschluss) auf `feature/T-805-probe-proof`, Basis
+`feature/T-804-profile-lease` (Claim-Marker `951572d`).
