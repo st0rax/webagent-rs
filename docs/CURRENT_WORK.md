@@ -2,9 +2,10 @@
 
 > **Aktualisiert 2026-09-10:** Scheibe 6 des
 > [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-806
-> „Taskabschluss mit verifizierten Run-Belegen und Crashschutz"** — ist
-> geclaimt auf `feature/T-806-run-proof` (Basis `feature/T-808-run-ledger`).
-> Vorgaenger sind belegt: T-808 (`done`, 1405/1438 passed; Beleg
+> „Taskabschluss mit verifizierten Run-Belegen und Crashschutz"** — ist `done`
+> (Beleg [`docs/proofs/T-806/RESULT.md`](proofs/T-806/RESULT.md),
+> Branch `feature/T-806-run-proof`, Basis `feature/T-808-run-ledger`).
+> Vorgaenger sind belegt: T-808 (`done`, 1411/1444 passed; Beleg
 > [`docs/proofs/T-808/RESULT.md`](proofs/T-808/RESULT.md)), T-805/T-804/T-803
 > (`done`), T-801 (`claimed`). Einstieg in die laufende Arbeit: Abschnitt
 > „T-806 — Verifizierter Taskabschluss (2026-09-10)".
@@ -13,18 +14,39 @@
 
 Claim: `local/opencode`, Branch `feature/T-806-run-proof` (Basis
 `feature/T-808-run-ledger`), Phase 8, Scheibe 6 des BRAIN_UNIFICATION_PLAN.
-Status im TASKBOARD: `claimed`.
+Status im TASKBOARD: `done`.
 
-Soll (Plan-Z.34, Kurzform): Schwachen Datei-Existenzabschluss ersetzen;
-Runstart mit expliziter Task-/Owner-Bindung (keine fest codierte
-chatgpt-codex-Identitaet); Abnahmeanforderungen vor Runende einfrieren;
-controllerseitig erfasste Tests/Capabilities gegen Run-ID, Commit,
-Artefakthashes und Geltungsbereich prüfen; Brain-Manifest ist Antrag, kein
-eigener Beweis; Board unter Prozesslock erneut lesen, Claim/Dependencies
-vergleichen, eindeutige Tempdatei + flush/sync + Windows-sicher ersetzen;
-Crash-Recovery und idempotenten Replay testen; Ablehnung im Run-Eventlog
-persistieren; alte/leere/fremde/manipulierte Belege und parallele
-Boardaenderungen dürfen nie `done` ergeben.
+Geliefert (Gruenbeweis in den Tests):
+
+- **`src/taskboard.rs` neu geschrieben**: `acquire_claim` friert die
+  Abnahmeanforderungen ein (`requirements_snapshot` mit verification/dod/
+  depends_on) und gibt ein `ClaimedTask` zurueck; `complete_claim_verified`
+  ersetzt den schwachen Datei-Existenzabschluss: Beleg muss Datei sein, nicht
+  leer, im Scope `docs/proofs/<task_id>/` liegen und frisch sein (mtime >=
+  claimed_at), SHA-256 wird controllerseitig ueber den unangetasteten Inhalt
+  gebildet; das Board wird unter dem `LedgerLock` erneut gelesen, Owner/Branch
+  muessen mit dem Claim uebereinstimmen, eingefrorene == aktuelle
+  Anforderungen, eingefrorene Dependencies alle `done`; der Abschluss bindet
+  `proof_path`, `proof_sha256`, `proof_commit` (git HEAD) und `run_id`.
+  Idempotenter Replay: identischer Beleg+Hash wird als `replayed` erkannt ohne
+  Neuschreibung, anderer Hash nach `done` blockiert.
+- **Owner statt fest codierter chatgpt-codex-Identitaet** (`src/commands/
+  ops.rs` + `src/cli.rs` + `src/main.rs`): `--owner`-Flag, Fallback
+  `WEBAGENT_AGENT_ID`-Env, letzter Fallback `local/opencode`
+  (`DEFAULT_OWNER`).
+- **Ablehnungen landen im Run-Eventlog** (`src/run_store.rs`):
+  `append_claim_rejected` schreibt `claim_rejected` mit task_id + Grund unter
+  der Ledger-Sperre — nie still.
+- **13 neue Tests** (12 taskboard + 1 run_store): Freeze der Anforderungen,
+  Scope/Hash/Frische-Pruefung, leere/externe/Verzeichnis-Belege, offene
+  Dependencies, nachtraegliche Manipulation, fremder Owner/Branch, alter
+  Beleg, Replay-Idempotenz + fremder Hash nach done, parallele
+  Boardaenderung, acquire fail-closed, sha256-Stabilität, task_status,
+  Claim-Ablehnung im Eventlog.
+
+Threshold erfuellt: TASKBOARD `done`, `docs/proofs/T-806/RESULT.md`. Naechste:
+T-807 (Alle-Brains-Live-Abnahme, braucht Live-Matrix mit echten Providern);
+T-801 bleibt claimed.
 
 ## T-808 — Dauerhaftes Run-Ledger und Crash-Recovery (2026-09-10)
 
