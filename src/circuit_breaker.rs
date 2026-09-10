@@ -59,6 +59,15 @@ struct BrainState {
     /// Aus der Meldung gelesenes Reset-Fenster (z. B. "wait 7 hours" -> 7).
     #[serde(default)]
     message_window_secs: Option<i64>,
+    /// Wann ein Reset bestaetigt wurde (T-804: Resetzeit mit Herkunft).
+    /// `None` = unbekannter Reset (wird nicht geraten).
+    #[serde(default)]
+    reset_at: Option<i64>,
+    /// Woher das Reset stammt: "message" (Provider-Meldung), "login"
+    /// (Login-Befehl), "manual", "probe", oder "unknown".
+    /// `None` = kein Reset beobachtet.
+    #[serde(default)]
+    reset_origin: Option<String>,
 }
 
 type StateMap = HashMap<String, BrainState>;
@@ -194,6 +203,35 @@ fn clear_at(brain_id: &str, path: &PathBuf) -> bool {
         save(path, &state);
     }
     hatte_eintrag
+}
+
+/// Resetzeit mit Herkunft speichern (T-804): wann ein Reset bestaetigt wurde
+/// und woher das Wissen stammt. Ein unbekannter Reset bleibt unbekannt: wer
+/// den Zeitpunkt nicht kennt, ruft diese Funktion gar nicht erst auf.
+pub fn record_reset(brain_id: &str, at_secs: i64, origin: &str) {
+    record_reset_at(brain_id, at_secs, origin, &state_path());
+}
+
+fn record_reset_at(brain_id: &str, at_secs: i64, origin: &str, path: &PathBuf) {
+    let _guard = WRITE_LOCK.lock();
+    let mut state = load(path);
+    let entry = state.entry(brain_id.to_string()).or_default();
+    entry.reset_at = Some(at_secs);
+    entry.reset_origin = Some(origin.to_string());
+    save(path, &state);
+}
+
+/// Stellt die Resetzeit mit Herkunft des Breaker-Zustands nach.
+pub fn reset_status(brain_id: &str) -> Option<(i64, String)> {
+    reset_status_at(brain_id, &state_path())
+}
+
+fn reset_status_at(brain_id: &str, path: &PathBuf) -> Option<(i64, String)> {
+    let state = load(path);
+    let entry = state.get(brain_id)?;
+    let at = entry.reset_at?;
+    let origin = entry.reset_origin.as_deref().unwrap_or("unknown").to_string();
+    Some((at, origin))
 }
 
 /// Fehlschlag (Timeout/Rate-Limit/Blocked): erhoeht den Zaehler; oeffnet den
@@ -361,6 +399,32 @@ fn implied_window_secs(reason: &str) -> Option<i64> {
 }
 
 fn record_failure_at(brain_id: &str, reason: &str, path: &PathBuf) {
+    record_failure_at_with(brain_id, reason, path, |brain| {
+        crate::config::is_profile_leased(brain)
+    });
+}
+
+fn record_failure_at_with<F>(
+    brain_id: &str,
+    reason: &str,
+    path: &PathBuf,
+    busy: F,
+) where
+    F: Fn(&str) -> bool,
+{
+    // Busy ist kein Providerlimit (T-804): haelt ein anderer Prozess das
+    // Profil gerade mit frischem Heartbeat, ist ein Fehlschlag die Folge von
+    // Profil-Konkurrenz, nicht ein Anbieter- oder Brain-Fehler. Solche
+    // Fehlschlaege duerfen den Breaker nie oeffnen — sonst wuerde ein
+    // gelegentlicher Parallel-Lauf ein gesundes Brain fuer 15 Minuten ausser
+    // Kraft setzen.
+    if busy(brain_id) {
+        crate::bench_events::eprint_line(&format!(
+            "[circuit_breaker] {brain_id}: Fehlschlag waehrend belegtem Profil, nicht als \
+             Providerlimit gewertet ({reason})"
+        ));
+        return;
+    }
     let _guard = WRITE_LOCK.lock();
     let mut state = load(path);
     let hard = is_hard_block(reason);
@@ -978,6 +1042,73 @@ mod tests {
         assert_eq!(s.message_blocks, 1);
         assert_eq!(s.message_window_secs, Some(3 * 3600));
         assert!(s.last_message_block_at.is_some());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // --- T-804-Abnahme: Busy ist kein Providerlimit, Resetzeit mit Herkunft -------
+
+    #[test]
+    fn belegtes_profil_ist_kein_providerlimit() {
+        let path = unique_path();
+        // Profil belegt (Lease aktiv): Fehlschlaege duerfen den Breaker nie
+        // oeffnen — auch nicht nach mehr als `max_failures`.
+        for _ in 0..(DEFAULT_MAX_FAILURES + 2) {
+            record_failure_at_with("claude", "os error 32 (sharing violation)", &path, |_| true);
+        }
+        let state = load(&path);
+        assert!(
+            state.get("claude").is_none(),
+            "Busy-Fehlschlaege hinterlassen keinen Breaker-Eintrag"
+        );
+        assert_eq!(check_at("claude", &path), None, "Breaker muss zu bleiben");
+
+        // Kontrolle: ohne belegtes Profil oeffnet dieselbe Fehlerklasse normal.
+        for _ in 0..DEFAULT_MAX_FAILURES {
+            record_failure_at_with("claude", "os error 32 (sharing violation)", &path, |_| false);
+        }
+        let rest = check_at("claude", &path).unwrap();
+        assert!(rest <= DEFAULT_COOLDOWN_SECS, "Kontrolle: soft cooldown");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn reset_mit_herkunft_wird_gespeichert() {
+        let path = unique_path();
+        let at = now_secs() - 60;
+        record_reset_at("deepseek", at, "message", &path);
+        let (t, origin) = reset_status_at("deepseek", &path).expect("Reset bekannt");
+        assert_eq!(t, at, "Zeitpunkt muss unveraendert bleiben");
+        assert_eq!(origin, "message", "Herkunft wird dauerhaft gefuehrt");
+
+        record_reset_at("deepseek", now_secs(), "login", &path);
+        let (_, origin) = reset_status_at("deepseek", &path).expect("Reset ueberschrieben");
+        assert_eq!(origin, "login", "neueres Reset ersetzt Herkunft");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn unbekannter_reset_bleibt_unbekannt() {
+        let path = unique_path();
+        // Ohne Reset-Beobachtung gibt es weder Zeit noch Herkunft — es wird
+        // nicht geraten ("unbekannt bleibt unbekannt").
+        assert_eq!(reset_status_at("kimi", &path), None);
+
+        // Auch ein Fehler-Eintrag ohne Reset-Feld bleibt unbekannt.
+        record_failure_at("kimi", "timeout_no_text", &path);
+        assert_eq!(reset_status_at("kimi", &path), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn reset_mit_explizit_unbekannter_herkunft_bleibt_unterscheidbar() {
+        let path = unique_path();
+        let at = now_secs();
+        record_reset_at("zai", at, "unknown", &path);
+        // Als Reset erfasst, aber die Quelle ist als unknown markiert — das
+        // ist etwas anderes als gar kein Reset-Eintrag.
+        let (t, origin) = reset_status_at("zai", &path).expect("Reset erfasst");
+        assert_eq!(t, at);
+        assert_eq!(origin, "unknown");
         let _ = std::fs::remove_file(&path);
     }
 }

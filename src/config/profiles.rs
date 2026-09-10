@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +8,16 @@ use super::brains::{
     use_sparse_profile_copy, FULL_COPY_SKIP_DIRS, SPARSE_COPY_WHITELIST, SPARSE_SKIP_DIRS,
 };
 use super::paths::*;
+
+/// Unix seconds; heartbeat or lease within this window is considered live.
+pub(crate) const HEARTBEAT_FRESH_SECS: i64 = 120;
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
 
 /// Kopiert ein Verzeichnis rekursiv (inkl. Unterverzeichnisse). Bricht nicht bei
 /// einzelnen nicht-kopierbaren Dateien (z.B. Lock-Files), sondern überspringt
@@ -323,7 +334,9 @@ fn copy_sparse_rec(
 }
 
 const SWARM_OWNER_FILE: &str = ".webagent-swarm-owner.json";
-const SWARM_OWNER_VERSION: u32 = 1;
+/// Version 2: added pid, process_started_at, generation, heartbeat fields for
+/// cross-process lease visibility (T-804).
+const SWARM_OWNER_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct SwarmProfileOwner {
@@ -331,6 +344,13 @@ struct SwarmProfileOwner {
     run_id: String,
     brain_id: String,
     scope_key: String,
+    pid: u32,
+    #[serde(default)]
+    process_started_at: i64,
+    #[serde(default)]
+    generation: u64,
+    #[serde(default)]
+    heartbeat: Option<i64>,
 }
 
 impl SwarmProfileOwner {
@@ -340,6 +360,10 @@ impl SwarmProfileOwner {
             run_id: run_id.to_string(),
             brain_id: brain_id.to_string(),
             scope_key: swarm_profile_scope_key(run_id, brain_id),
+            pid: std::process::id(),
+            process_started_at: now_secs(),
+            generation: 0,
+            heartbeat: Some(now_secs()),
         }
     }
 }
@@ -371,10 +395,50 @@ impl SwarmProfileLease {
         &self.owner.scope_key
     }
 
+    pub fn generation(&self) -> u64 {
+        self.owner.generation
+    }
+
+    pub fn pid(&self) -> u32 {
+        self.owner.pid
+    }
+
+    /// Refresh the on-disk heartbeat to the current time. Call this while the
+    /// browser is alive so other processes can detect this lease as active.
+    pub fn heartbeat_now(&mut self) -> std::io::Result<()> {
+        self.owner.heartbeat = Some(now_secs());
+        write_swarm_owner(&self.profile_dir, &self.owner)
+    }
+
     pub fn release(&mut self) -> std::io::Result<()> {
         if self.released {
             return Ok(());
         }
+        // If another process wrote a different owner, refuse without touching
+        // the marker — we must not silently overwrite a foreign lease.
+        let on_disk = read_swarm_owner(&self.profile_dir)
+            .map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "refusing release: cannot read owner at {}: {error}",
+                        self.profile_dir.display()
+                    ),
+                )
+            })?;
+        if on_disk != self.owner {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "refusing release of profile owned by run={} brain={} (we own run={} brain={})",
+                    on_disk.run_id, on_disk.brain_id, self.owner.run_id, self.owner.brain_id
+                ),
+            ));
+        }
+        // Clear the heartbeat before removing so other processes see the
+        // lease as released even if the directory delete is delayed.
+        self.owner.heartbeat = None;
+        let _ = write_swarm_owner(&self.profile_dir, &self.owner);
         release_swarm_profile(&self.profile_dir, &self.owner)?;
         self.released = true;
         Ok(())
@@ -390,6 +454,126 @@ impl Drop for SwarmProfileLease {
             ));
         }
     }
+}
+
+/// True if a swarm profile for `brain_id` has a fresh heartbeat (owned by a
+/// live process). Used to prevent probes from running while a profile is held.
+pub fn is_profile_leased(brain_id: &str) -> bool {
+    is_profile_leased_in(&profiles_dir(), brain_id)
+}
+
+/// Wie [`is_profile_leased`], aber mit expliziter Profil-Basis (für Tests).
+pub fn is_profile_leased_in(base: &Path, brain_id: &str) -> bool {
+    let swarm_root = base.join("swarm");
+    if !swarm_root.is_dir() {
+        return false;
+    }
+    let cutoff = now_secs() - HEARTBEAT_FRESH_SECS;
+    for entry in std::fs::read_dir(&swarm_root).into_iter().flatten() {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let owner = match read_swarm_owner(&entry.path()) {
+            Ok(o) => o,
+            Err(_) => continue,
+        };
+        if owner.brain_id != brain_id || owner.version != SWARM_OWNER_VERSION {
+            continue;
+        }
+        if let Some(hb) = owner.heartbeat {
+            if hb >= cutoff {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Block until the swarm profile for `brain_id` is free (no fresh heartbeat),
+/// up to `timeout`. Returns Ok(()) when free, Err if still leased after timeout.
+pub fn wait_for_profile_free(brain_id: &str, timeout: std::time::Duration) -> std::io::Result<()> {
+    wait_for_profile_free_in(&profiles_dir(), brain_id, timeout)
+}
+
+pub(crate) fn wait_for_profile_free_in(
+    base: &Path,
+    brain_id: &str,
+    timeout: std::time::Duration,
+) -> std::io::Result<()> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if !is_profile_leased_in(base, brain_id) {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!(
+                    "profile for brain '{}' still leased after {:?}",
+                    brain_id, timeout
+                ),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+}
+
+/// Nimmt einen Scope nach einem Prozessabsturz wieder auf (T-804:
+/// „Wiederaufnahme"). Voraussetzungen, alle der Reihe nach geprueft:
+///
+/// 1. `is_profile_leased_in` muss den Scope als **frei** melden — ein
+///    abgestuerzter Prozess laesst sein Heartbeat-Feld alt werden, sodass
+///    dieser Check nach `HEARTBEAT_FRESH_SECS` kippt. Bei frischem Heartbeat
+///    wird NICHT wiedergeklaut (fail-closed).
+/// 2. Der alte Owner-Marker muss lesbar sein und **exakt** zum gesuchten
+///    Scope passen. Ein unlesbarer, fremder oder format-unbekannter Marker
+///    blockiert die Wiederaufnahme — nie blind recyceln.
+/// 3. Erst dann wird das alte Verzeichnis entfernt und ein frischer Lease
+///    auf demselben Scope angelegt.
+pub fn reclaim_swarm_profile_in(
+    base: &Path,
+    run_id: &str,
+    brain_id: &str,
+    sparse: bool,
+    timeout: std::time::Duration,
+) -> std::io::Result<SwarmProfileLease> {
+    wait_for_profile_free_in(base, brain_id, timeout)?;
+    let dst = swarm_profile_dir_in(base, run_id, brain_id);
+    if dst.is_dir() {
+        let actual = match read_swarm_owner(&dst) {
+            Ok(o) => o,
+            Err(error) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "refusing reclaim without readable owner marker at {}: {error}",
+                        dst.display()
+                    ),
+                ));
+            }
+        };
+        if actual.version != SWARM_OWNER_VERSION
+            || actual.scope_key != swarm_profile_scope_key(&actual.run_id, &actual.brain_id)
+            || actual.run_id != run_id
+            || actual.brain_id != brain_id
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "refusing reclaim of profile owned by run={} brain={}",
+                    actual.run_id, actual.brain_id
+                ),
+            ));
+        }
+        // Heartbeat ist hier bereits stale (Schritt 1) — altes Verzeichnis
+        // entfernen und frisch aufsetzen.
+        std::fs::remove_dir_all(&dst)?;
+    }
+    prepare_swarm_profile_in(base, run_id, brain_id, sparse)
 }
 
 /// Bereitet das Profil für einen Swarm-Teilnehmer vor:
@@ -770,6 +954,7 @@ fn migrate_legacy_dir(legacy: &Path, target: &Path) {
 mod lease_tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
 
     fn temp_base(label: &str) -> PathBuf {
         static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -864,6 +1049,198 @@ mod lease_tests {
             guarded_path.exists(),
             "a foreign marker cannot re-scope a profile for cleanup"
         );
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// Zwei konkurrierende Prozesse (hier: Threads) auf demselben Scope:
+    /// genau einer gewinnt die atomare Reservation, der andere bekommt
+    /// `AlreadyExists` — und das Profil des Gewinners bleibt unversehrt.
+    #[test]
+    fn scope_konkurrenz_ist_fail_closed() {
+        let base = temp_base("race");
+        let source = reference_profile_dir_in(&base, "chatgpt");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("Cookies"), b"login").unwrap();
+
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let (base_a, base_b) = (base.clone(), base.clone());
+        let (ba, bb) = (barrier.clone(), barrier.clone());
+        let a = std::thread::spawn(move || {
+            ba.wait();
+            prepare_swarm_profile_in(&base_a, "run-a", "chatgpt", false)
+        });
+        let b = std::thread::spawn(move || {
+            bb.wait();
+            prepare_swarm_profile_in(&base_b, "run-a", "chatgpt", false)
+        });
+        let results = [a.join().unwrap(), b.join().unwrap()];
+        let winners: Vec<_> = results.iter().filter(|r| r.is_ok()).collect();
+        let losers: Vec<_> = results.iter().filter(|r| r.is_err()).collect();
+        assert_eq!(winners.len(), 1, "nur ein Prozess darf den Scope halten");
+        assert_eq!(losers.len(), 1);
+        assert_eq!(
+            losers[0].as_ref().unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists,
+            "Verlierer muss als 'belegt' scheitern, nie blind ueberschreiben"
+        );
+        let winner_dir = winners[0].as_ref().unwrap().profile_dir().to_path_buf();
+        assert!(winner_dir.join("Cookies").exists(), "Profil unversehrt");
+        drop(results);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// Windows-Addendum zu [`scope_konkurrenz_ist_fail_closed`]: Haelt ein
+    /// Prozess eine Profildatei mit `share=0` (WebView2/SingletonLock-
+    /// Semantik), scheitert der zweite öffnende Prozess mit
+    /// ERROR_SHARING_VIOLATION (`os error 32`). Diese Fehlerklasse darf
+    /// weder ein Fremdprofil zerstören noch als Providerlimit zählen — der
+    /// Lease-Schutz antwortet bereits vor dem Öffnen.
+    #[cfg(windows)]
+    #[test]
+    fn os_error_32_ist_profilkonkurrenz_nicht_providerlimit() {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Foundation::{
+            CloseHandle, GENERIC_READ, INVALID_HANDLE_VALUE,
+        };
+        use windows_sys::Win32::Storage::FileSystem::{
+            CreateFileW, GetFileAttributesW, OPEN_EXISTING,
+        };
+
+        let base = temp_base("os_error_32");
+        let lease = prepare_swarm_profile_in(&base, "run-a", "chatgpt", false).unwrap();
+        assert!(is_profile_leased_in(&base, "chatgpt"));
+
+        let marker = lease.profile_dir().join(".webagent-swarm-owner.json");
+        let wide: Vec<u16> = marker.as_os_str().encode_wide().chain(Some(0)).collect();
+        // Erster Prozess haelt den Marker mit share=0 — genau wie ein
+        // WebView2-Prozess sein SingletonLock haelt.
+        let handle = unsafe {
+            CreateFileW(
+                wide.as_ptr(),
+                GENERIC_READ,
+                0, // dwShareMode: keine Freigaben
+                std::ptr::null(),
+                OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        assert!(handle != INVALID_HANDLE_VALUE, "erster Oeffner gewinnt");
+
+        // Zweiter Prozess: gleiche Datei oeffnen -> ERROR_SHARING_VIOLATION.
+        let second = unsafe {
+            CreateFileW(
+                wide.as_ptr(),
+                GENERIC_READ,
+                0,
+                std::ptr::null(),
+                OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(
+            second, INVALID_HANDLE_VALUE,
+            "zweiter Oeffner muss mit Sharing-Violation scheitern"
+        );
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(32),
+            "os error 32 (ERROR_SHARING_VIOLATION) muss es sein"
+        );
+        unsafe { let _ = CloseHandle(handle); }
+
+        // Das Profil ist deshalb noch da und weiter korrekt vergeben — kein
+        // Aufraeumer darf es auf Basis der Fehlerklasse geloescht haben.
+        assert!(marker.exists(), "Marker bleibt bestehen");
+        assert!(is_profile_leased_in(&base, "chatgpt"));
+        assert_eq!(
+            unsafe { GetFileAttributesW(wide.as_ptr()) }
+                != windows_sys::Win32::Storage::FileSystem::INVALID_FILE_ATTRIBUTES,
+            true
+        );
+        drop(lease);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// Abgestuerzter Arbeiter + Wiederaufnahme (T-804): Solange der Heartbeat
+    /// frisch ist, bleibt der Scope fail-closed „belegt" (nichts anfassen,
+    /// keine Probes). Erst wenn der Heartbeat nach `HEARTBEAT_FRESH_SECS`
+    /// abkaltet, darf der naechste Prozess den Scope per Reclaim wieder
+    /// aufnehmen. Ein frueher Reclaim schlaegt fehl statt blind zu loeschen.
+    #[test]
+    fn stale_heartbeat_ermöglicht_wiederaufnahme() {
+        let base = temp_base("crash_resume");
+        let source = reference_profile_dir_in(&base, "chatgpt");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("Cookies"), b"login").unwrap();
+        let scope = swarm_profile_dir_in(&base, "run-a", "chatgpt");
+
+        {
+            let mut crashed = prepare_swarm_profile_in(&base, "run-a", "chatgpt", false).unwrap();
+            assert!(crashed.heartbeat_now().is_ok());
+            assert!(is_profile_leased_in(&base, "chatgpt"));
+
+            // Solange der Heartbeat frisch ist, muss ein Reclaim scheitern —
+            // der Besitzer koennte noch leben.
+            let early = reclaim_swarm_profile_in(
+                &base,
+                "run-a",
+                "chatgpt",
+                false,
+                Duration::from_millis(30),
+            );
+            assert!(early.is_err(), "frischer Lease darf nicht wiedergeklaut werden");
+            assert!(scope.exists(), "fremdes Profil bleibt unangetastet");
+            assert!(is_profile_leased_in(&base, "chatgpt"));
+
+            // Absturz simulieren: Heartbeat abkaltend alt schreiben (wie die
+            // Zeit vergeht, ohne dass der Prozess noch heartbeatet).
+            let aged = SwarmProfileOwner {
+                version: SWARM_OWNER_VERSION,
+                run_id: "run-a".to_string(),
+                brain_id: "chatgpt".to_string(),
+                scope_key: swarm_profile_scope_key("run-a", "chatgpt"),
+                pid: crashed.pid(),
+                process_started_at: now_secs() - 3600,
+                generation: crashed.generation(),
+                heartbeat: Some(now_secs() - HEARTBEAT_FRESH_SECS - 1),
+            };
+            write_swarm_owner(crashed.profile_dir(), &aged).unwrap();
+            // Nun ist der Scope frei — ein frischer Worker darf das alte
+            // Verzeichnis ersetzen.
+            let mut resumed =
+                reclaim_swarm_profile_in(&base, "run-a", "chatgpt", false, Duration::from_secs(1))
+                    .unwrap();
+            assert!(scope.exists());
+            assert!(scope.join("Cookies").exists(), "frischer Clone");
+            assert!(resumed.release().is_ok());
+        }
+        assert!(!scope.exists());
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// Ein Navigations-Timeout waehnt sich nicht vor dem Lease: der Besitzer
+    /// kann weiterarbeiten, bis die ganze Run fuehrt den Scope frei.
+    #[test]
+    fn navigationstimeout_laesst_lease_intakt() {
+        let base = temp_base("nav_timeout");
+        let source = reference_profile_dir_in(&base, "chatgpt");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("Cookies"), b"login").unwrap();
+        let mut lease = prepare_swarm_profile_in(&base, "run-a", "chatgpt", false).unwrap();
+        assert!(is_profile_leased_in(&base, "chatgpt"));
+
+        // Simulierter Timeout der Navigations-Routine: Statusmeldungen,
+        // erneuter Heartbeat — das Profil bleibt unangetastet.
+        assert!(lease.heartbeat_now().is_ok());
+        assert!(is_profile_leased_in(&base, "chatgpt"));
+        let path = lease.profile_dir().to_path_buf();
+        assert!(path.join("Cookies").exists());
+        // Und der Verlierer-Prozess wartet kontrolliert, statt zu loeschen.
+        assert!(wait_for_profile_free_in(&base, "chatgpt", Duration::from_millis(20)).is_err());
+        let _ = lease.release();
+        assert!(!is_profile_leased_in(&base, "chatgpt"));
         let _ = std::fs::remove_dir_all(base);
     }
 }

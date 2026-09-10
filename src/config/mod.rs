@@ -30,8 +30,9 @@ pub use paths::{
 };
 pub use profiles::{
     cleanup_swarm_profiles, cleanup_swarm_profiles_in, copy_dir_all, copy_dir_sparse,
-    copy_dir_without_caches, ensure_stable_layout, prepare_swarm_profile, prepare_swarm_profile_in,
-    sweep_stale_runtime_profiles, sweep_stale_runtime_profiles_in, SwarmProfileLease,
+    copy_dir_without_caches, ensure_stable_layout, is_profile_leased, prepare_swarm_profile,
+    prepare_swarm_profile_in, reclaim_swarm_profile_in, sweep_stale_runtime_profiles,
+    sweep_stale_runtime_profiles_in, wait_for_profile_free, SwarmProfileLease,
 };
 pub use selectors::{
     available_brain_ids, debug_port, embedded_selector, encapsulated_profile_dir, load_selectors,

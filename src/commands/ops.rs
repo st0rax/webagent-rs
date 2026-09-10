@@ -173,6 +173,12 @@ pub fn cmd_measure_limits(
 
     let mut fehler = 0;
     for brain in &offen {
+        // Keine Probes waehrend belegter Sperre (T-804): ein frisches
+        // Swarm-Lease gehoert einem anderen Lauf.
+        if webagent::config::is_profile_leased(brain) {
+            println!("  {brain:<10} übersprungen: Profil belegt (Lease aktiv)");
+            continue;
+        }
         let mut notiz = String::new();
         let ergebnis = webagent::brain_limits::search_limit(&cfg, |groesse| {
             let fuellung = "x".repeat(groesse.saturating_sub(200));

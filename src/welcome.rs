@@ -116,6 +116,13 @@ fn probe_with_shot(
         max_level: lvl.max_level(),
         note: String::new(),
     };
+    // Keine Probes waehrend belegter Sperre (T-804): ein frisch geleastes
+    // Swarm-Profil gehoert einem anderen Lauf. Ein Probe-Browser wuerde nur
+    // in die Sperre laufen und den Lauf stoeren.
+    if crate::config::is_profile_leased(brain_id) {
+        st.note = "übersprungen: Profil belegt".into();
+        return st;
+    }
     let mut backend = match crate::browser::WebBrainBackend::from_config(brain_id) {
         Ok(b) => b,
         Err(e) => {
