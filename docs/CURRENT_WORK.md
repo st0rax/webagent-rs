@@ -1,16 +1,54 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-10:** Scheibe 5 des
-> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-805
-> „Generische Probe mit bestehendem Capability-Proof-Gate"** — ist auf dem
-> Branch `feature/T-805-probe-proof` als Code umgesetzt und alle Pflichtgates
-> sind gruen: `cargo test --lib` (1398 passed, 1 ignored),
-> `cargo test --features tui --lib` (1431 passed, 1 ignored),
+> **Aktualisiert 2026-09-10:** Scheibe 8 des
+> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-808
+> „Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery"** — ist auf dem
+> Branch `feature/T-808-run-ledger` als Code umgesetzt und alle Pflichtgates
+> sind gruen: `cargo test --lib` (1405 passed, 1 ignored),
+> `cargo test --features tui --lib` (1438 passed, 1 ignored),
 > `cargo check --features tui`, `cargo check --no-default-features`. Beleg:
-> [`docs/proofs/T-805/RESULT.md`](proofs/T-805/RESULT.md), TASKBOARD `done`.
-> Die darunter stehenden Scheiben T-804/T-803/T-801/T-802 bleiben als Code
-> belegt (`done`). Einstieg in die laufende Arbeit:
-> Abschnitt „T-805 — Generische Probe mit Capability-Proof-Gate (2026-09-10)".
+> [`docs/proofs/T-808/RESULT.md`](proofs/T-808/RESULT.md), TASKBOARD `done`.
+> Die darunter stehenden Scheiben T-807/T-806/T-805/T-804/T-803/T-801/T-802
+> bleiben als Code belegt (`done` bzw. `claimed` fuer T-801). Einstieg in die
+> laufende Arbeit: Abschnitt „T-808 — Run-Ledger und Crash-Recovery (2026-09-10)".
+
+## T-808 — Dauerhaftes Run-Ledger und Crash-Recovery (2026-09-10)
+
+Claim: `local/opencode`, Branch `feature/T-808-run-ledger` (Basis `feature/T-805-probe-proof`),
+Phase 8, Scheibe 8 des BRAIN_UNIFICATION_PLAN. Status im TASKBOARD: `done`.
+
+Geliefert (Gruenbeweis in den Tests):
+
+- **Neues Modul `src/run_ledger.rs`**: `verify_event_chain` (SHA-256-Kette,
+  Unterscheidung TornTail vs. mittige Korruption), `LedgerLock`
+  (atomares create_dir + Owner `{pid, started_at}`; stale nur bei toter PID
+  oder Alter > 120 s; frisches Lock ohne Owner wird nie gestohlen),
+  `quarantine_torn_tail` (abgerissene Bytes unveraendert nach
+  `quarantine/events.jsonl.<stamp>.torn` + `recovery.json`-Receipt mit
+  SHA-256 und gueltiger seq), `atomic_write` (eindeutige Tempnamen
+  PID+Nanos, fsync vor Rename, Windows-Fallback mit Ziel-fsync).
+- **`save_internal`**: atomare Speicherung ohne geteilten Tempnamen
+  (Legacy-Reste `meta.json.tmp` werden bereinigt); kein halbes Meta mehr.
+- **`append_event`** laeuft unter der Ledger-Sperre: Ketten-Verifikation,
+  Sequenz-Vergabe und Append+fsync sind eine kritische Sektion. TornTail ->
+  Quarantaene + Fehler `recovery_required`; mittige Korruption -> fail-closed.
+- **Neuer Status `recovery_required`** (non-running, aktivierbar): `save()`
+  verweigert terminale Status bei offenem Receipt (vor Validierung),
+  Reconcile setzt `recovery_required` statt blinder Reparatur,
+  `activate_continuation` schliesst das Receipt explizit ab.
+- **Resume beobachtet zuerst** (`src/controller.rs`): bei vorhandenem
+  `recovery.json` wird `pending_response` nicht recycelt, sondern
+  `resume_initial_turn` startet (moeglicherweise bereits gesendete Aktionen sind
+  mehrdeutig).
+- **7 neue Tests**: leeres/intaktes Journal, TornTail, Quarantaene+Receipt,
+  Mittelkorruption (nie Torn), 4-Writer-lueckenlose Kette (100 Events,
+  valid_count == 100), Ende-zu-Ende-Crash (done blockiert, recovery_required,
+  Fortsetzung schliesst Recovery ab).
+
+Threshold: TASKBOARD `done`, `docs/proofs/T-808/RESULT.md`. Naechste offene
+Aufgaben: T-806 (Taskabschluss mit Run-Belegen, benoetigt T-808 — jetzt frei),
+T-807 (Alle-Brains-Live-Abnahme, braucht Live-Matrix mit echten Providern);
+T-801 bleibt claimed.
 
 ## T-805 — Generische Probe mit Capability-Proof-Gate (2026-09-10)
 
@@ -34,9 +72,8 @@ Geliefert (Gruenbeweis in den Tests):
   `Unverified` pro Brain-Zeile, berechnet aus aktuellem Selektor-Hash und
   `chat`-Belegen.
 
-Threshold: TASKBOARD `done`, `docs/proofs/T-805/RESULT.md`. Naechste offene
-Aufgaben: T-806 (Taskabschluss mit Run-Belegen), T-807 (Alle-Brains-Live-
-Abnahme), T-808 (Run-Ledger/Crash-Recovery); T-801 bleibt claimed.
+Threshold: TASKBOARD `done`, `docs/proofs/T-805/RESULT.md`. (Stand 2026-09-10:
+T-808 ist inzwischen ebenfalls `done`; siehe oberen Abschnitt.)
 
 ## T-804 — Gemeinsame Profil-Lease und Blocker (2026-09-10)
 
