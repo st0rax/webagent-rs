@@ -1,16 +1,42 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-10:** Scheibe 4 des
-> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-804
-> „Gemeinsame Profil-Lease und Blocker"** — ist auf dem Branch
-> `feature/T-804-profile-lease` als Code umgesetzt und alle Pflichtgates sind
-> gruen: `cargo test` (1394 lib + 8 bin passed, 1 ignored),
-> `cargo test --features tui` (1427 lib + 8 bin passed), `cargo check --features
-> tui`, `cargo check --no-default-features`. Beleg:
-> [`docs/proofs/T-804/RESULT.md`](proofs/T-804/RESULT.md), TASKBOARD `done`.
-> Die darunter stehende T-803-Scheibe bleibt als Code belegt (`done`), T-801/T-802
-> ebenfalls (Details in den Abschnitten unten). Einstieg in die laufende Arbeit:
-> Abschnitt „T-804 — Gemeinsame Profil-Lease und Blocker (2026-09-10)".
+> **Aktualisiert 2026-09-10:** Scheibe 5 des
+> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-805
+> „Generische Probe mit bestehendem Capability-Proof-Gate"** — ist auf dem
+> Branch `feature/T-805-probe-proof` als Code umgesetzt und alle Pflichtgates
+> sind gruen: `cargo test --lib` (1398 passed, 1 ignored),
+> `cargo test --features tui --lib` (1431 passed, 1 ignored),
+> `cargo check --features tui`, `cargo check --no-default-features`. Beleg:
+> [`docs/proofs/T-805/RESULT.md`](proofs/T-805/RESULT.md), TASKBOARD `done`.
+> Die darunter stehenden Scheiben T-804/T-803/T-801/T-802 bleiben als Code
+> belegt (`done`). Einstieg in die laufende Arbeit:
+> Abschnitt „T-805 — Generische Probe mit Capability-Proof-Gate (2026-09-10)".
+
+## T-805 — Generische Probe mit Capability-Proof-Gate (2026-09-10)
+
+Claim: `local/opencode`, Branch `feature/T-805-probe-proof` (Basis `feature/T-804-profile-lease`),
+Phase 8, Scheibe 5 des BRAIN_UNIFICATION_PLAN. Status im TASKBOARD: `done`.
+
+Geliefert (Gruenbeweis in den Tests):
+
+- **Gemeinsamer Vertrag in `generation_sequence`** (`src/browser/verify.rs`):
+  Die Brain-Probe konsumiert denselben Snapshot->Edit-Strom wie der
+  Produktivpfad (`controller.rs`): `StreamJournal` klassifiziert Praefix-
+  Wachstum als `Append`, Revisionen als `Replace`; der Appendix-Zaehler
+  erscheint als Note im `chat`-Beleg — die Gegeprobe zur Produktivmessung.
+- **`BrainVerification`** (`src/capability_proof.rs`): reines Enum
+  `Verified`/`Unverified` mit `brain_verification_at` (pur, testbar ueber
+  Wegwerf-Pfad). Mindestens ein frischer, hash-konformer Beleg in einer
+  Kernfaehigkeit reicht fuer `Verified`; alles andere bleibt `Unverified`.
+  Drei Tests: ohne Beleg, mit frischem Hash, bei abgelaufenem TTL oder
+  geaendertem Selektor.
+- **Sichtbare Ausweisung** (`src/brains_health.rs`): `verification=Verified|`
+  `Unverified` pro Brain-Zeile, berechnet aus aktuellem Selektor-Hash und
+  `chat`-Belegen.
+
+Threshold: TASKBOARD `done`, `docs/proofs/T-805/RESULT.md`. Naechste offene
+Aufgaben: T-806 (Taskabschluss mit Run-Belegen), T-807 (Alle-Brains-Live-
+Abnahme), T-808 (Run-Ledger/Crash-Recovery); T-801 bleibt claimed.
 
 ## T-804 — Gemeinsame Profil-Lease und Blocker (2026-09-10)
 

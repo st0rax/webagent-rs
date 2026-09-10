@@ -51,7 +51,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-802 | Einheitliches Fill Verify Submit ohne Doppelversand |
 | T-803 | Antwortstream durch Controller REPL Swarm UI und API — **done** (feature/T-803-answer-stream; Beweis docs/proofs/T-803/RESULT.md) |
 | T-804 | Profil-Leases und gemeinsame Blocker-/Resetbehandlung — **done** (feature/T-804-profile-lease; Beweis docs/proofs/T-804/RESULT.md) |
-| T-805 | Generische Probe mit bestehendem Capability-Proof-Gate |
+| T-805 | Generische Probe mit bestehendem Capability-Proof-Gate — **done** (feature/T-805-probe-proof; Beweis docs/proofs/T-805/RESULT.md) |
 | T-806 | Taskabschluss mit verifizierten Run-Belegen und Crashschutz |
 | T-807 | Alle-Brains-Live-Abnahme und Windows-Release |
 | T-808 | Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery |
