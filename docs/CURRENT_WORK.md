@@ -1,15 +1,51 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-09:** Claim **T-801 „Gemeinsamer Brain-Vertrag und
-> Konformitaetsfixtures"** (Phase 8, Scheibe 1 des
-> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md)). Branch
-> `feature/T-801-brain-contract` (Basis `master`), Owner `local/opencode`.
-> Scheibe 1 ist als Code umgesetzt und alle drei Pflichtgates sind gruen:
-> `cargo test --lib` (1365 passed, 1 ignored), `cargo check --features tui`,
-> `cargo check --no-default-features`. Managed-Tools-Green (T-501, Commit
-> `36da691` auf `fix/T-501-model-proof`) bleibt unverändert gruen und ist nicht
-> Teil dieses Branches. Der Einstieg in die laufende T-801-Umsetzung liegt unten
-> im Abschnitt „T-801 — gemeinsamer Brain-Vertrag (2026-09-09)".
+> **Aktualisiert 2026-09-10:** Scheibe 2 des
+> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-802
+> „Einheitliches Fill/Verify/Submit ohne Doppelversand"** — ist auf demselben
+> Branch `feature/T-801-brain-contract` (Basis `master`) als Code umgesetzt und
+> alle drei Pflichtgates sind gruen: `cargo test --lib` (1372 passed, 1 ignored),
+> `cargo check --features tui`, `cargo check --no-default-features`. Beleg:
+> [`docs/proofs/T-802/RESULT.md`](proofs/T-802/RESULT.md), TASKBOARD `done`.
+> Die darunter stehende T-801-Scheibe (Claim 2026-09-09) bleibt bis zu ihrer
+> Gesamt-Abnahme `claimed` (Abnahme-Einstiegspunkte folgen in T-803); Details im
+> Abschnitt „T-801 — gemeinsamer Brain-Vertrag (2026-09-09)". Einstieg in die
+> laufende Arbeit: Abschnitt „T-802 — gemeinsames Senden (2026-09-10)".
+
+## T-802 — gemeinsames Senden ohne Doppelversand (2026-09-10)
+
+Claim: `local/opencode`, Branch `feature/T-801-brain-contract` (Basis `master`),
+Phase 8, Scheibe 2 des BRAIN_UNIFICATION_PLAN. Status im TASKBOARD: `done`.
+
+Geliefert (als Code, Gruenbeweis in den Tests):
+
+- **`src/contract.rs`** — reine Send-State-Machine:
+  - `classify_send_surface` unterscheidet
+    `Empty/Complete/Consumed/Truncated/Missing/Disabled` und vergleicht den
+    VOLLSTAENDIGEN Editor-Inhalt statt eines 8-Zeichen-Praefixes.
+  - `normalize_editor_content` normalisiert nur Leerraum-Aequivalente
+    (`split_whitespace().join(" ")`), laesst Codezeichen/Unicode unveraendert;
+    `composer_matches_text`/`editor_matches` nutzen genau diesen Vertrag.
+  - `run_send_flow` mit `SendBudget` (5 Submit / 3 Refill): nach konsumiertem
+    Composer oder unklarem Submit nur noch BEobachten (`Consumed`/`Truncated`/
+    `Missing` nach send -> nur `wait_proof`), nie blindes Nachfuellen.
+- **`src/browser/send.rs`** — `send_common` als einzige Schleife mit
+  `SendFlowProfile` (kimi RichMultilineVerified/ButtonOnly, generic
+  FillContains/EnterThenButton, gemini Gemini/AlternateButtonEnter, qwen
+  Qwen/AlternateButtonEnter); `send_generic`/`send_gemini`/`send_qwen` sind nur
+  noch Wrapper, die alten getrennten Schleifen und `wait_fill_composer` sind
+  entfernt.
+- **`src/browser/verify.rs`** — die neuen Composer-Lese-Evals der gemeinsamen
+  Schleife (`composer_text`, `composer_contains`, `send_button_disabled`) sind
+  in den 5 betroffenen Send-Tests gemockt (`send_flow_mocks`).
+
+Abnahme / ehrliche Grenze: 7 Abnahmetests in `contract.rs` (Multiline, Unicode,
+Truncated, Disabled, verspaetete Bestaetigung, Missing, classify),
+Pflichtgates gruen (1372 passed), Gegenprobe gegen reale T-501-Logs belegt den
+alten Blind-Refill-Bug („5 Versuche“, Zai/Kimi). Eine gruene Testsuite ersetzt
+keine Live-Matrix — Provider-Rezertifizierung bleibt T-807.
+
+Commit: siehe `git log` auf `feature/T-801-brain-contract` (ft. T-802).
 
 ## T-801 — gemeinsamer Brain-Vertrag (2026-09-09)
 
