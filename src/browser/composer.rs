@@ -4,6 +4,7 @@
 //! Sichtbarkeitsaenderungen.
 
 use super::WebBrainBackend;
+use crate::contract::editor_matches;
 use serde_json::Value;
 use std::time::Duration;
 
@@ -48,16 +49,22 @@ impl WebBrainBackend {
 
     /// Vergleicht den gesamten sichtbaren Editorinhalt, wobei nur die von
     /// Rich-Text-Editoren unterschiedlich gerenderte Leerraumstruktur
-    /// normalisiert wird. Ein passender Anfang reicht fuer Maschinenprompts
-    /// nicht: Kimi hatte dadurch still nur Absatz eins uebernommen.
+    /// normalisiert wird (Vertrag siehe `crate::contract::normalize_editor_content`).
+    /// Ein passender Anfang reicht fuer Maschinenprompts nicht: Kimi hatte
+    /// dadurch still nur Absatz eins uebernommen.
     pub(super) fn composer_matches_text(&self, composer_js: &str, text: &str) -> bool {
-        let expected = text.split_whitespace().collect::<Vec<_>>().join(" ");
-        let expected = serde_json::to_string(&expected).unwrap_or_else(|_| "\"\"".into());
-        let body = format!(
-            "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');\
-             return v.replace(/\\s+/g,' ').trim()==={expected};}}"
-        );
-        self.eval_bool(&Self::js_scan(composer_js, &body, "false"))
+        editor_matches(&self.composer_text(composer_js), text)
+    }
+
+    /// Liest den Rohtext des Composers, wie die Oberflaeche ihn sieht
+    /// (`value` fuer textarea/input, sonst `innerText`/`textContent`).
+    /// Leerer Composer oder kein Treffer → "".
+    pub(super) fn composer_text(&self, composer_js: &str) -> String {
+        let body = "var el=Q(S[i]);if(el){return ('value' in el)?(el.value||''):(el.innerText||el.textContent||'');}";
+        self.eval(&Self::js_scan(composer_js, body, "\"\""))
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_string))
+            .unwrap_or_default()
     }
 
     /// Playwright-`fill()`-Äquivalent: DOM setzen + input/change-Events (Angular/React).

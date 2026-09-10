@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use crate::brain::BrainBackend;
 use crate::browser_inference::{BrowserAttachment, BrowserAttachmentKind};
+use crate::contract::{classify_send_surface, run_send_flow, SendBudget, SendFlowError, SendSurface};
 use serde_json::{json, Value};
 
 use super::blocking::{banner_is_prompt_echo, block_banner_expr, is_technical_block_phrase_list};
@@ -69,6 +70,81 @@ fn submission_is_proven(
         stop_visible || (composer_consumed && (user_echo || url_changed))
     } else {
         stop_visible || assistant_grew || (url_changed && composer_consumed)
+    }
+}
+
+/// T-802 (Scheibe 2): Profil fuer die gemeinsame Fill/Verify/Submit-Schleife.
+///
+/// Eine Schleife (`crate::contract::run_send_flow`) faehrt alle send_*-Pfade;
+/// dieses Profil traegt die brain-spezifischen Unterschiede: die
+/// Fill-Fallback-Kette und die Absende-Geste je Submit-Runde.
+struct SendFlowProfile {
+    budget: SendBudget,
+    fill: FillStrategy,
+    gesture: GestureStyle,
+}
+
+/// Welche Füll-Kette der Composer braucht, bis die beobachtende Schleife den
+/// Text als vollstaendig anerkennt. Fuehrt jeweils nur EINEN Fuellversuch aus.
+#[derive(Debug, Clone, Copy)]
+enum FillStrategy {
+    /// kimi (Lexical): rich-multiline Fuellen und danach volle Bestaetigung
+    /// abwarten (Lexical reconciled asynchron und verwirft sonst den Text).
+    RichMultilineVerified,
+    /// generisch (chatgpt/claude/zai/mistral/...): fuellen; die Schleife
+    /// prueft danach die Vollstaendigkeit.
+    FillContains,
+    /// gemini (ProseMirror): echtes Tippen; bleibt der Knopf danach grau,
+    /// DOM-Set + Zeichen-fuer-Zeichen nachtippen (echte Tastatur-Events
+    /// registriert ProseMirror als Eingabe).
+    Gemini,
+    /// qwen: fuellen; nimmt der Editor den Text nicht an, DOM-Set nachziehen.
+    Qwen,
+}
+
+/// Welche Geste ein Submit-Versuch ausloest. Fuehrt GENAU EINE Geste aus —
+/// ein anschliessendes Nachfuellen gibt es nie (Doppelversand-Schutz).
+#[derive(Debug, Clone, Copy)]
+enum GestureStyle {
+    /// kimi: nur der echte Button-Klick (Enter ist bei Lexical ein Umbruch).
+    ButtonOnly,
+    /// generisch: Versuch 0 = Enter, danach Button.
+    EnterThenButton,
+    /// gemini/qwen: abwechselnd Button-Klick und Enter (Anti-Automation).
+    AlternateButtonEnter,
+}
+
+impl SendFlowProfile {
+    fn generic() -> Self {
+        Self {
+            budget: SendBudget::default_send(),
+            fill: FillStrategy::FillContains,
+            gesture: GestureStyle::EnterThenButton,
+        }
+    }
+
+    fn kimi() -> Self {
+        Self {
+            budget: SendBudget::default_send(),
+            fill: FillStrategy::RichMultilineVerified,
+            gesture: GestureStyle::ButtonOnly,
+        }
+    }
+
+    fn gemini() -> Self {
+        Self {
+            budget: SendBudget::default_send(),
+            fill: FillStrategy::Gemini,
+            gesture: GestureStyle::AlternateButtonEnter,
+        }
+    }
+
+    fn qwen() -> Self {
+        Self {
+            budget: SendBudget::default_send(),
+            fill: FillStrategy::Qwen,
+            gesture: GestureStyle::AlternateButtonEnter,
+        }
     }
 }
 
@@ -1037,6 +1113,22 @@ impl WebBrainBackend {
     }
 
     pub(crate) fn send_generic(&mut self, text: &str) -> Result<i32, String> {
+        // Kimi's Lexical-Editor behandelt Enter als Zeilenumbruch — sein
+        // Absendeweg ist der Pfeil-Button, und die Fill-Kette braucht die
+        // rich-multiline Variante mit voller Bestaetigung.
+        let profile = if self.brain_id == "kimi" {
+            SendFlowProfile::kimi()
+        } else {
+            SendFlowProfile::generic()
+        };
+        self.send_common(text, profile)
+    }
+
+    /// Gemeinsame Fill/Verify/Submit-Schleife (T-802, Scheibe 2) fuer alle
+    /// send_*-Pfade. Unterschiede stecken nur noch im Profil (Fill-Kette,
+    /// Absende-Geste, Budget); das Rundenprotokoll selbst ist EINES und liegt
+    /// in `crate::contract::run_send_flow`.
+    fn send_common(&mut self, text: &str, profile: SendFlowProfile) -> Result<i32, String> {
         // Whole send path (fill → click/enter) needs a live renderer first.
         self.wake_renderer();
         let baseline = self.prepare_send_baseline();
@@ -1044,99 +1136,189 @@ impl WebBrainBackend {
         if self.sel("composer").is_empty() {
             return Err("Keine Composer-Selektoren konfiguriert".into());
         }
-        // Werbe-/Consent-Modals wegklicken, bevor gefuellt wird — sonst blockiert
-        // z.B. mistrals "Vibe CLI"-Announcement den Composer und jeder Versuch scheitert.
+        // Werbe-/Consent-Modals wegklicken, bevor gefuellt wird — sonst
+        // blockiert z.B. mistrals "Vibe CLI"-Announcement den Composer und
+        // jeder Versuch scheitert.
         self.dismiss_consent();
         if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
             eprintln!("[submit] composer fill begins");
         }
         let composer_js = self.sel_js("composer", &[]);
         let has_send_button = !self.sel("send_button").is_empty();
-        // Fuellen und **bestaetigen**, dass der Text wirklich im Editor steht: bei
-        // kimis Lexical-Editor meldete fill_composer frueher Erfolg, obwohl das Feld
-        // leer blieb — dann ging Enter ins Leere und verify_submitted meldete
-        // faelschlich "abgeschickt". Vor jedem Fuell-Versuch nochmal Modals schliessen.
-        let filled = if self.brain_id == "kimi" {
-            self.wait_fill_composer(&composer_js, text, |s, js, t| {
-                s.dismiss_consent();
-                s.fill_composer_rich_multiline(js, t) && s.composer_matches_text(js, t)
-            })
-        } else {
-            self.wait_fill_composer(&composer_js, text, |s, js, t| {
-                s.dismiss_consent();
-                s.fill_composer(js, t);
-                s.composer_contains(js, t)
-            })
-        };
-        if !filled {
-            self.capture_submit_failure_trace();
-            return Err("Composer-Feld nicht gefunden (Timeout)".into());
-        }
-        if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-            eprintln!("[submit] composer fill confirmed; dispatch begins");
-        }
-        std::thread::sleep(Duration::from_millis(150));
         let url_before = self.get_conversation_ref();
         // zai (und a priori andere Svelte-Oberflaechen) rendern den Send-Button
         // mit `pointer-events:none` auf Button UND Parent: er sieht enabled aus,
         // aber ein vertrauenswuerdiger Echtklick wird vom OS-Hit-Testing DURCH
         // ihn hindurchgeschickt und loest nie den Handler aus. Ein synthetisches
-        // `el.click()` ignoriert das und trifft den Handler. Wird hier EINMAL vor
-        // der Schleife ermittelt, damit die 5 Versuche konsistent denselben
+        // `el.click()` ignoriert das und trifft den Handler. Wird hier EINMAL
+        // vor der Schleife ermittelt, damit alle Versuche konsistent denselben
         // Absendeweg nehmen statt zwischen Echt- und Synthetik-Klick zu flippen.
         let pointer_transparent = self.send_button_pointer_transparent();
-        // Fuenf Versuche statt drei: das Absenden in Lexical-/contenteditable-Editoren
-        // (kimi) greift pro Versuch nur ~zur Haelfte; jeder weitere Versuch, der bei
-        // Erfolg gar nicht erst laeuft, hebt die Zuverlaessigkeit deutlich. Bei einem
-        // wirklich blockierten Composer (mistral-Dialog) scheitern trotzdem alle.
-        for attempt in 0..5 {
-            // Absendung ist im Gange, wenn der Composer die Eingabe schon
-            // konsumiert hat (leer): dann NUR den Beweis abwarten, nicht neu
-            // fuellen/senden — sonst ensteht ein Doppel-Send bei Brains, deren
-            // Send-Registrierung (perplexity/deepseek ~20s) laenger dauert als
-            // das Beweisfenster des ersten Versuchs.
-            let consumed = !self.composer_contains(&composer_js, text);
-            if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-                eprintln!("[submit] attempt {} consumed={consumed}", attempt + 1);
+        self.run_send_flow_browser(
+            text,
+            &profile,
+            baseline,
+            user_baseline,
+            url_before.as_deref(),
+            &composer_js,
+            has_send_button,
+            pointer_transparent,
+        )
+    }
+
+    /// Treibt die pure Schleife aus `crate::contract` mit den Browser-Reads
+    /// und -Gesten. Nach dem ersten Submit wird nie wieder gefuellt und nicht
+    /// erneut gesendet, sobald der Composer konsumiert aussieht — kein
+    /// Doppel-Send bei Brains, deren Send-Registrierung (perplexity/deepseek
+    /// ~20s) laenger dauert als das Beweisfenster des ersten Versuchs.
+    fn run_send_flow_browser(
+        &self,
+        text: &str,
+        profile: &SendFlowProfile,
+        baseline: i32,
+        user_baseline: Option<i32>,
+        url_before: Option<&str>,
+        composer_js: &str,
+        has_send_button: bool,
+        pointer_transparent: bool,
+    ) -> Result<i32, String> {
+        let outcome = run_send_flow(
+            text,
+            &profile.budget,
+            |expected| self.classify_composer_surface(composer_js, expected),
+            || self.fill_into_composer(composer_js, text, profile.fill),
+            |round| self.perform_submit_gesture(profile.gesture, round, has_send_button, pointer_transparent),
+            || self.verify_submitted(baseline, user_baseline, url_before),
+        );
+        match outcome {
+            Ok(_) => {
+                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
+                    eprintln!("[submit] submission proved");
+                }
+                Ok(baseline)
             }
-            if !consumed {
+            Err(SendFlowError::Disabled) => Err(self.submit_failed_error(5)),
+            Err(SendFlowError::NoProof { submits, .. }) => Err(self.submit_failed_error(submits)),
+            Err(SendFlowError::Truncated) => {
+                self.capture_submit_failure_trace();
+                Err(
+                    "Abgeschnittener Prompt: der Composer hat den Text nicht vollstaendig \
+                     uebernommen; es wurde NICHTS abgesendet"
+                        .into(),
+                )
+            }
+            Err(SendFlowError::Missing) => {
+                self.capture_submit_failure_trace();
+                Err("Composer-Feld nicht gefunden (Timeout)".into())
+            }
+        }
+    }
+
+    /// Liest den Composer-Zustand relativ zum gewuenschten Prompt und ordnet
+    /// ihn in die pure `SendSurface`-Skala ein (T-802).
+    ///
+    /// "Konsumiert" heisst: die Oberflaeche hat die Eingabe verbraucht — die
+    /// gleiche Messung wie `verify_submitted` (Anfangs-Praefix fehlt).
+    fn classify_composer_surface(&self, composer_js: &str, expected: &str) -> SendSurface {
+        let actual = self.composer_text(composer_js);
+        let consumed = !self.composer_contains(composer_js, expected);
+        let disabled = self.send_button_disabled() == Some(true);
+        classify_send_surface(&actual, expected, consumed, disabled)
+    }
+
+    /// Fuehrt EINEN Fuellversuch gemaess der Fill-Kette aus. Die Schleife
+    /// beobachtet danach selbst, ob der Text vollstaendig angenommen wurde —
+    /// diese Funktion pumpt nur in den Editor und zieht den brain-spezifischen
+    /// Fallback nach, wenn die Oberflaeche die erste Eingabe nicht registriert.
+    fn fill_into_composer(&self, composer_js: &str, text: &str, strategy: FillStrategy) {
+        match strategy {
+            FillStrategy::RichMultilineVerified => {
+                self.dismiss_consent();
+                if self.fill_composer_rich_multiline(composer_js, text) {
+                    // Lexical (kimi) reconciled nach dem Fuellen asynchron; kurz
+                    // warten, bis der Text wirklich im Editor-State gelandet ist.
+                    let deadline = Instant::now() + Duration::from_millis(800);
+                    while Instant::now() < deadline {
+                        if self.composer_matches_text(composer_js, text) {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            FillStrategy::FillContains => {
+                self.dismiss_consent();
+                self.fill_composer(composer_js, text);
+                // Der Editor-State darf dem DOM kurz hinterherhinken.
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            FillStrategy::Gemini => {
+                self.fill_composer(composer_js, text);
+                // Nimmt die Oberflaeche den Text nicht an, bleibt der Absendeknopf
+                // grau — dann DOM-Set + Zeichen fuer Zeichen nachtippen statt
+                // blind zu klicken (ProseMirror registriert echte Tastatur-Events).
+                std::thread::sleep(Duration::from_millis(200));
+                if self.send_button_disabled() == Some(true) {
+                    let _ = self.fill_composer_dom_set(composer_js, text);
+                    let _ = self.type_text_char_by_char(text);
+                }
+            }
+            FillStrategy::Qwen => {
+                self.fill_composer(composer_js, text);
+                std::thread::sleep(Duration::from_millis(150));
+                if !self.composer_contains(composer_js, text) {
+                    let _ = self.fill_composer_dom_set(composer_js, text);
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+        }
+    }
+
+    /// Fuehrt genau EINE Absende-Geste aus (Enter oder Button-Klick) — ohne
+    /// anschliessende Fuellung (Doppelversand-Schutz, T-802).
+    fn perform_submit_gesture(
+        &self,
+        style: GestureStyle,
+        round: u32,
+        has_send_button: bool,
+        pointer_transparent: bool,
+    ) {
+        match style {
+            GestureStyle::ButtonOnly => {
                 // Kimi's Lexical editor treats Enter as a line break. Its
                 // actual send affordance is the arrow button inside the
-                // send-button container, so do not spend the first attempt
-                // on a keystroke which can never submit this provider.
-                if self.brain_id == "kimi" && has_send_button {
+                // send-button container.
+                if has_send_button {
                     if !self.click_visible_real("send_button") {
                         self.click_first("send_button");
                     }
-                } else if pointer_transparent && has_send_button {
-                    // zai-Sende-Button ist `disabled:false` (sieht enabled aus)
-                    // aber `pointer-events:none` — ein vertrauenswuerdiger
-                    // Echtklick wird vom OS-Hit-Testing durch ihn hindurch
-                    // geschickt und feuert den `on:click`-Handler nie. Der
-                    // synthetische Klick ignoriert das und trifft zuverlaessig.
+                }
+            }
+            GestureStyle::EnterThenButton => {
+                if pointer_transparent && has_send_button {
+                    // zai-Sende-Button: ein Echtklick wird vom OS-Hit-Testing
+                    // durch ihn hindurchgeschickt; der synthetische Klick trifft.
                     self.click_first("send_button");
-                } else if attempt == 0 || !has_send_button {
+                } else if round == 0 || !has_send_button {
                     self.press_enter().ok();
                 } else if !self.click_visible_real("send_button") {
                     self.click_first("send_button");
                 }
             }
-            if self.verify_submitted(baseline, user_baseline, url_before.as_deref()) {
-                if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
-                    eprintln!("[submit] submission proved");
+            GestureStyle::AlternateButtonEnter => {
+                // Geminis Button ignoriert gelegentlich den trusted Klick
+                // (Anti-Automation); Enter sendet zuverlaessig, wenn der Text
+                // im Composer steht.
+                if round % 2 == 0 {
+                    if self.click_visible_real("send_button") || self.click_first("send_button") {
+                        std::thread::sleep(Duration::from_millis(400));
+                    }
+                } else {
+                    let _ = self.press_enter();
                 }
-                return Ok(baseline);
             }
         }
-        // Frueher: `Ok(baseline)`, auch wenn jeder Versuch scheiterte — der Aufrufer
-        // lief dann in den vollen wait_response-Timeout (150s Stille). Jetzt ehrlicher
-        // Fehler: es kam kein Absende-Beweis (URL-Wechsel / Stop-Button / neue
-        // Antwort). Ursache ist meist ein blockierender Dialog/Overlay ueber dem
-        // Composer -- z.B. kimis "gerade zu viele Nutzer"-Kapazitaetsmeldung. Statt
-        // das nur zu vermuten: die Seite nach einem bekannten Block-Text absuchen und
-        // den tatsaechlichen Text melden, falls vorhanden, damit der naechste
-        // Auftritt im Log/`/score` diagnostizierbar ist statt ein Ratespiel zu bleiben.
-        Err(self.submit_failed_error(5))
     }
 
     /// Einheitlicher Fehler, wenn kein Absende-Beweis (URL-Wechsel / Stop-Button /
@@ -1417,79 +1599,14 @@ return best?best.slice(0,300):null;})()"#;
     }
 
     pub(crate) fn send_gemini(&mut self, text: &str) -> Result<i32, String> {
-        let baseline = self.prepare_send_baseline();
+        // Geminis „Welche Antwort bevorzugst du?"-Vergleich/Dialoge wegklicken,
+        // bevor gefuellt wird; die Send-Logik teilt sich die gemeinsame Schleife.
         self.handle_interruptions();
-        let composer_js = self.sel_js("composer", &[]);
-        // ProseMirror (geminis Editor) registriert ein reines DOM-Set (textContent
-        // + InputEvent) NICHT — der Absendeknopf bleibt dann deaktiviert und der
-        // ehrliche Fehler "kein Absende-Beweis" war die Folge. Darum zuerst echt
-        // tippen (`fill_composer`: Klick + trusted `Input.insertText`), DOM-Set nur
-        // als Fallback.
-        if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t)) {
-            let _ = self.wait_fill_composer(&composer_js, text, |s, js, t| {
-                s.fill_composer_dom_set(js, t) && s.type_text_char_by_char(t).is_ok()
-            });
-        }
-        std::thread::sleep(Duration::from_millis(200));
-        // Gibt die Oberflaeche den Text nicht an ProseMirror weiter, bleibt der
-        // Absendeknopf grau — dann Zeichen fuer Zeichen nachtippen statt blind
-        // zu klicken (React/ProseMirror registriert echte Tastatur-Events).
-        if self.send_button_disabled() == Some(true) {
-            let _ = self.fill_composer_dom_set(&composer_js, text);
-            let _ = self.type_text_char_by_char(text);
-        }
-        let url_before = self.get_conversation_ref();
-        for attempt in 0..3 {
-            // Abwechselnd echten Klick und Enter: Geminis "Nachricht senden"-Button
-            // ignoriert gelegentlich den trusted Klick (Anti-Automation), Enter
-            // sendet zuverlaessig, wenn der Text im Composer steht. Nach dem
-            // ersten Senden einer Konversation wechselt die UI teils den Knopf.
-            if attempt % 2 == 0 {
-                if self.click_visible_real("send_button") || self.click_first("send_button") {
-                    std::thread::sleep(Duration::from_millis(400));
-                }
-            } else {
-                let _ = self.press_enter();
-            }
-            if self.verify_submitted(baseline, None, url_before.as_deref()) {
-                return Ok(baseline);
-            }
-            let _ = self.fill_composer_dom_set(&composer_js, text);
-        }
-        // Kein Ok(baseline) bei ausbleibendem Absende-Beweis (Vergiftungsquelle) —
-        // ehrlicher Fehler wie in send_generic.
-        Err(self.submit_failed_error(3))
+        self.send_common(text, SendFlowProfile::gemini())
     }
 
     pub(crate) fn send_qwen(&mut self, text: &str) -> Result<i32, String> {
-        let baseline = self.prepare_send_baseline();
-        self.dismiss_consent();
-        let composer_js = self.sel_js("composer", &[]);
-        if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t))
-            && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-                s.fill_composer_dom_set(js, t)
-            })
-        {
-            return Err("Composer-Feld nicht gefunden (Timeout)".into());
-        }
-        std::thread::sleep(Duration::from_millis(300));
-        let url_before = self.get_conversation_ref();
-        for attempt in 0..4 {
-            if attempt % 2 == 0 {
-                if !self.click_visible_real("send_button") {
-                    self.click_first("send_button");
-                }
-            } else {
-                self.press_enter().ok();
-            }
-            if self.verify_submitted(baseline, None, url_before.as_deref()) {
-                return Ok(baseline);
-            }
-            let _ = self.fill_composer(&composer_js, text);
-        }
-        // Kein Ok(baseline) bei ausbleibendem Absende-Beweis (Vergiftungsquelle) —
-        // ehrlicher Fehler wie in send_generic.
-        Err(self.submit_failed_error(4))
+        self.send_common(text, SendFlowProfile::qwen())
     }
 
     fn prepare_send_baseline(&mut self) -> i32 {
@@ -1501,24 +1618,6 @@ return best?best.slice(0,300):null;})()"#;
         };
         *self.baseline_text.borrow_mut() = bt;
         baseline
-    }
-
-    fn wait_fill_composer<F>(&self, composer_js: &str, text: &str, fill: F) -> bool
-    where
-        F: Fn(&Self, &str, &str) -> bool,
-    {
-        // Ein fehlender Composer ist ein lokaler UI-/Controller-Fehler. Zwölf
-        // Sekunden pro Repair-Runde machten daraus die beobachteten Minuten-
-        // langen Leerlaufphasen. Der normale Provider-Response-Timeout greift
-        // erst nach erfolgreichem Senden; hier reichen 4 Sekunden.
-        let deadline = Instant::now() + Duration::from_secs(4);
-        while Instant::now() < deadline {
-            if fill(self, composer_js, text) {
-                return true;
-            }
-            std::thread::sleep(Duration::from_millis(400));
-        }
-        false
     }
 
     /// Wartet darauf, dass ein Absende-**Beweis** erscheint. `url_before` ist die URL

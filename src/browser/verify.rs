@@ -1603,6 +1603,53 @@ mod tests {
         WebBrainBackend::probe_generation_js(&assistant_js, &stop_js, -1)
     }
 
+    /// Die gemeinsame Send-Schleife (T-802) beobachtet den Composer vor jeder
+    /// Runde ueber genau drei Lese-Selektoren: `composer_text` (Rohtext),
+    /// `composer_contains` (Praefix angenommen?) und `send_button_disabled`
+    /// (Knopf grau?). Die alten verify-Tests haben diese Evals nicht gemockt,
+    /// weil die damals getrennten send_*-Schleifen nie davor lasen.
+    fn composer_text_expr(sel: &Selectors) -> String {
+        js::js_scan(
+            &sel.js("composer", &[]),
+            "var el=Q(S[i]);if(el){return ('value' in el)?(el.value||''):(el.innerText||el.textContent||'');}",
+            "\"\"",
+        )
+    }
+
+    fn composer_contains_expr(sel: &Selectors, text: &str) -> String {
+        let needle = text.chars().take(8).collect::<String>();
+        let n = serde_json::to_string(&needle).unwrap_or_else(|_| "\"\"".into());
+        let body = format!(
+            "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');if(v.indexOf({n})!==-1)return true;}}"
+        );
+        js::js_scan(&sel.js("composer", &[]), &body, "false")
+    }
+
+    fn send_button_disabled_expr(sel: &Selectors) -> String {
+        js::js_scan(
+            &WebBrainBackend::js_selectors(&sel.list("send_button")),
+            "var el=Q(S[i]);if(el){var b=el.closest('button')||el;\
+             var st=window.getComputedStyle(b);\
+             var cls=((b.className||'')+'').toLowerCase();\
+             return (b.disabled===true)||b.getAttribute('aria-disabled')==='true'\
+             ||st.pointerEvents==='none'||cls.indexOf('disabled')!==-1;}",
+            "null",
+        )
+    }
+
+    /// Modelliert den Composer fuer einen qwen-`send`: erst leer (der Fill der
+    /// Schleife traegt den Text ein), nach dem Fuellen vollstaendig gelesen,
+    /// der Knopf nie deaktiviert.
+    fn send_flow_mocks(state: MockPageState, sel: &Selectors, text: &str) -> MockPageState {
+        state
+            .on_eval_seq(composer_text_expr(sel), vec![json!(""), json!(text)])
+            .on_eval_seq(
+                composer_contains_expr(sel, text),
+                vec![json!(false), json!(true)],
+            )
+            .on_eval(send_button_disabled_expr(sel), json!(false))
+    }
+
     fn fallback_expr(sel: &Selectors, needs: &[&str]) -> String {
         super::fallback_expr_for(sel, needs)
     }
@@ -1625,7 +1672,7 @@ mod tests {
     #[test]
     fn eine_sitzung_belegt_new_chat_chat_und_stop() {
         let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
-        let mut state = ready_state(&sel);
+        let mut state = send_flow_mocks(ready_state(&sel), &sel, PROBE);
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
@@ -1737,7 +1784,7 @@ mod tests {
     #[test]
     fn stop_nie_sichtbar_ist_failed() {
         let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
-        let mut state = ready_state(&sel);
+        let mut state = send_flow_mocks(ready_state(&sel), &sel, PROBE);
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
@@ -1790,7 +1837,7 @@ mod tests {
     #[test]
     fn stop_klick_kommt_nicht_an_ist_unreachable() {
         let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
-        let mut state = ready_state(&sel);
+        let mut state = send_flow_mocks(ready_state(&sel), &sel, PROBE);
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
@@ -1842,7 +1889,7 @@ mod tests {
     #[test]
     fn stop_klick_ohne_wirkung_ist_unreachable() {
         let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
-        let mut state = ready_state(&sel);
+        let mut state = send_flow_mocks(ready_state(&sel), &sel, PROBE);
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
@@ -1890,7 +1937,7 @@ mod tests {
     #[test]
     fn sendefehler_ist_chat_failed() {
         let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
-        let mut state = ready_state(&sel);
+        let mut state = send_flow_mocks(ready_state(&sel), &sel, PROBE);
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))

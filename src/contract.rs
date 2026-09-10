@@ -608,6 +608,235 @@ pub fn run_operation_with_heartbeat(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// T-802, Scheibe 2: gemeinsames Senden.
+//
+// Pure Entscheidungslogik fuer die gemeinsame Fill/Verify/Submit-Schleife,
+// die `browser::send` fuer alle send_*-Pfade (generic, gemini, qwen) faehrt.
+// Alles hier ist ohne Browser testbar; die Browser-Integration und die
+// Vertraege der Abnahmepunkte stehen unten im Testblock.
+// ─────────────────────────────────────────────────────────────────────
+
+/// Normalisiert AUSSCHLIESSLICH Editor-Leerraum: Whitespace-Runs werden zu
+/// einem Leerzeichen kollabiert, Raender getrimmt.
+///
+/// Vertrag (T-802): Es duerfen NIE Codezeichen oder Unicode pauschal
+/// veraendert werden — die Funktion fasst einzig die Unicode-Whitespace-Klasse
+/// (`split_whitespace`) an, alle anderen Code-Punkte bleiben unangetastet.
+/// NBSP zaehlt als Leerraum, weil Rich-Text-Editoren ihn fuer Absaetze
+/// ausgeben — das ist Editor-Leerraum im Sinne des Vertrags.
+pub fn normalize_editor_content(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Vollstaendiger Vergleich des Editorinhalts nach reiner Leerraum-
+/// Normalisierung (T-802). Ein passender Anfang reicht NICHT — Kimi hatte
+/// dadurch still nur Absatz eins uebernommen.
+pub fn editor_matches(actual: &str, expected: &str) -> bool {
+    normalize_editor_content(actual) == normalize_editor_content(expected)
+}
+
+/// `true`, wenn `actual` ein echter Anfang (Praefix) von `expected` ist —
+/// die Beschreibung eines abgeschnittenen Prompts. Leerer `actual` zaehlt
+/// nicht: ein leerer Composer ist ein Fuell-, kein Kuerzungs-Zustand.
+pub fn editor_is_prefix(actual: &str, expected: &str) -> bool {
+    !actual.is_empty()
+        && normalize_editor_content(expected).starts_with(&normalize_editor_content(actual))
+}
+
+/// Beobachteter Composer-Zustand einer Send-Runde (T-802).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendSurface {
+    /// Vollstaendiger Text steht (nur Editor-Leerraum normalisiert).
+    Complete,
+    /// Die Oberflaeche hat die Eingabe konsumiert — die Absendung laeuft.
+    Consumed,
+    /// Nur ein echter Anfang steht (abgeschnittener Prompt).
+    Truncated,
+    /// Kein verwertbarer Inhalt (Editor leer oder fremder Text).
+    Missing,
+    /// Text steht vollstaendig, aber der Absendeknopf ist deaktiviert.
+    Disabled,
+}
+
+/// Ordnet einen gemessenen Composer-Zustand in die Send-Skala ein.
+///
+/// `submit_disabled` wird nur relevant, wenn die Eingabe VOLLSTAENDIG
+/// drinsteht — solange Text fehlt, ist ein grauer Knopf ein Fuell-, kein
+/// Ablehnungs-Problem (Geminis ProseMirror laesst den Knopf z.B. beim reinen
+/// DOM-Set grau, obwohl der Text sichtbar drinsteht).
+pub fn classify_send_surface(
+    actual: &str,
+    expected: &str,
+    consumed: bool,
+    submit_disabled: bool,
+) -> SendSurface {
+    if consumed {
+        SendSurface::Consumed
+    } else if editor_matches(actual, expected) {
+        if submit_disabled {
+            SendSurface::Disabled
+        } else {
+            SendSurface::Complete
+        }
+    } else if editor_is_prefix(actual, expected) {
+        SendSurface::Truncated
+    } else {
+        SendSurface::Missing
+    }
+}
+
+/// Begrenzte, dokumentierte Retry-Budgets der gemeinsamen Send-Schleife.
+///
+/// EIN einheitliches Budget statt der frueheren 5/3/4 Versuche pro send_*:
+/// `max_submit_rounds` (Submit-Gesten UND Beweis-Beobachtungen) folgt der
+/// live bewaerten `send_generic`-Schleife; `max_refill_rounds` limitiert die
+/// Pre-Fill-Versuche, wenn der Editor den Text nicht vollstaendig uebernimmt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SendBudget {
+    pub max_submit_rounds: u32,
+    pub max_refill_rounds: u32,
+}
+
+impl SendBudget {
+    pub const fn default_send() -> Self {
+        Self {
+            max_submit_rounds: 5,
+            max_refill_rounds: 3,
+        }
+    }
+}
+
+impl Default for SendBudget {
+    fn default() -> Self {
+        Self::default_send()
+    }
+}
+
+/// Fehler der gemeinsamen Send-Schleife (T-802).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendFlowError {
+    /// Absendeknopf ist deaktiviert, obwohl der Text vollstaendig steht: die
+    /// Oberflaeche verweigert das Absenden ohne Meldung (Laengenablehnung).
+    Disabled,
+    /// Der Composer bekam den Prompt nie vollstaendig (abgeschnittener
+    /// Prompt); es wurde NICHTS abgesendet.
+    Truncated,
+    /// Der Composer wurde nie gefuellt/gefunden; es wurde NICHTS abgesendet.
+    Missing,
+    /// Budget der Submit-/Beweis-Runden erschoepft, ohne dass ein
+    /// Absende-Beweis kam.
+    NoProof { submits: u32, refills: u32 },
+}
+
+/// Ergebnis einer erfolgreichen Send-Schleife.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SendFlowResult {
+    pub submits: u32,
+    pub refills: u32,
+}
+
+/// Gemeinsame Fill/Verify/Submit-Schleife fuer alle send_*-Pfade (T-802).
+///
+/// Rundenprotokoll:
+/// - `observe` liefert je Runde den Composer-Zustand relativ zum gewuenschten
+///   Text (`actual` ist der Editorinhalt wie der Browser ihn sieht).
+/// - VOR dem ersten Submit wird ein fehlender/kurz uebernommener Text
+///   nachgefuellt (`fill`), begrenzt durch `SendBudget::max_refill_rounds`.
+///   Ein abgeschnittener Prompt wird NIE abgesendet.
+/// - Ab dem ersten Submit wird NIE wieder gefuellt und nicht erneut gesendet,
+///   sobald der Composer konsumiert beobachtet wurde: in den Zuständen nach
+///   dem Submit wird nur noch der Beweis abgewartet (`wait_proof`). Das
+///   verhindert den Doppelversand bei Oberflaechen, deren Send-Registrierung
+///   laenger dauert als das Beweisfenster des ersten Versuchs.
+/// - `Disabled` bricht ab, bevor eine Geste auf einen grauen Knopf laeuft.
+/// - Alle Runden zaehlen gegen `max_submit_rounds`, damit die Schleife in
+///   jedem Fall endet.
+pub fn run_send_flow<Obs, Fill, Submit, WaitProof>(
+    text: &str,
+    budget: &SendBudget,
+    mut observe: Obs,
+    mut fill: Fill,
+    mut submit: Submit,
+    mut wait_proof: WaitProof,
+) -> Result<SendFlowResult, SendFlowError>
+where
+    Obs: FnMut(&str) -> SendSurface,
+    Fill: FnMut() -> (),
+    Submit: FnMut(u32) -> (),
+    WaitProof: FnMut() -> bool,
+{
+    let mut submits = 0u32;
+    let mut refills = 0u32;
+    let mut sent = false;
+    loop {
+        let surface = observe(text);
+        match surface {
+            SendSurface::Disabled => return Err(SendFlowError::Disabled),
+            SendSurface::Complete => {
+                submits += 1;
+                if submits > budget.max_submit_rounds {
+                    return Err(SendFlowError::NoProof { submits, refills });
+                }
+                sent = true;
+                submit(submits - 1);
+                if wait_proof() {
+                    return Ok(SendFlowResult { submits, refills });
+                }
+            }
+            // Ein leerer Composer VOR dem ersten Submit ist kein Konsum-, sondern
+            // ein Fuellzustand: erst das Absenden macht "leer" zu "konsumiert".
+            SendSurface::Consumed if !sent => {
+                refills += 1;
+                if refills > budget.max_refill_rounds {
+                    return Err(SendFlowError::Missing);
+                }
+                fill();
+            }
+            SendSurface::Consumed => {
+                // Absendung laeuft (Composer konsumiert): NUR den Beweis
+                // abwarten, nicht neu fuellen oder erneut absenden — sonst
+                // ensteht ein Doppel-Send bei Oberflaechen, deren
+                // Send-Registrierung laenger dauert als das Beweisfenster.
+                submits += 1;
+                if submits > budget.max_submit_rounds {
+                    return Err(SendFlowError::NoProof { submits, refills });
+                }
+                if wait_proof() {
+                    return Ok(SendFlowResult { submits, refills });
+                }
+            }
+            // Nach dem Absenden nie nachfuellen: ein unklarer Submit
+            // (Truncated/Missing nach Send) bleibt ebenfalls Beobachtung.
+            SendSurface::Truncated | SendSurface::Missing if sent => {
+                submits += 1;
+                if submits > budget.max_submit_rounds {
+                    return Err(SendFlowError::NoProof { submits, refills });
+                }
+                if wait_proof() {
+                    return Ok(SendFlowResult { submits, refills });
+                }
+            }
+            SendSurface::Truncated => {
+                // Abgeschnittener Prompt: wird NIE abgesendet, nur begrenzt
+                // nachgefuellt.
+                refills += 1;
+                if refills > budget.max_refill_rounds {
+                    return Err(SendFlowError::Truncated);
+                }
+                fill();
+            }
+            SendSurface::Missing => {
+                refills += 1;
+                if refills > budget.max_refill_rounds {
+                    return Err(SendFlowError::Missing);
+                }
+                fill();
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -919,5 +1148,171 @@ You have reached the daily usage limit. Please wait 2 hours before trying again.
             trace.events().last(),
             Some(OperationEvent::Terminal { outcome: TerminalOutcome::Failed(_), .. })
         ));
+    }
+
+    // ── T-802, Scheibe 2: gemeinsames Senden (pure Abnahme) ──
+
+    const SEND_BUDGET: SendBudget = SendBudget {
+        max_submit_rounds: 5,
+        max_refill_rounds: 3,
+    };
+
+    #[test]
+    fn multiline_editor_content_matches_after_whitespace_normalization() {
+        // Abnahme "Multiline": Newline-/Tabbing-Unterschiede sind Editor-
+        // Leerraum; der Textinhalt bleibt entscheidend.
+        assert!(editor_matches("a\nb", "a b"));
+        assert!(editor_matches("  a\t\n b ", "a b"));
+        assert!(editor_matches("a  b\n\nc", "a b c"));
+        assert!(!editor_matches("a b", "a bb"));
+        assert!(!editor_matches("abc", "a b c"));
+        assert_eq!(normalize_editor_content("x   y\n\t z"), "x y z");
+    }
+
+    #[test]
+    fn normalization_never_alters_code_or_unicode_characters() {
+        // Abnahme "Unicode": die Normalisierung fasst NUR Whitespace an;
+        // Umlaute, Emoji, CJK und sonstige Code-Punkte bleiben unveraendert.
+        for text in [
+            "héllo wörld",
+            "Umlaute: äöü ß",
+            "Emoji: 😀 🚀",
+            "CJK: 日本語の テスト",
+            "Griechisch: αβγ δε",
+            "a",
+            "µ",
+        ] {
+            assert_eq!(
+                normalize_editor_content(text),
+                text,
+                "Normalisierung veraendert Code-Punkte: {text:?}"
+            );
+        }
+        assert!(editor_matches("héllo\nwörld", "héllo wörld"));
+        assert!(
+            !editor_matches("héllo wörld", "hello world"),
+            "Umlaute sind kein Leerraum"
+        );
+        assert!(!editor_matches("😀😀", "😀"));
+    }
+
+    #[test]
+    fn truncated_prompt_is_never_sent() {
+        // Abnahme "abgeschnittener Prompt": nur ein Anfang steht im Editor —
+        // die Schleife fuellt begrenzt nach und bricht ab, OHNE abzusenden.
+        let mut submits = 0u32;
+        let mut fills = 0u32;
+        let err = run_send_flow(
+            "ein sehr langer vollständiger prompt",
+            &SEND_BUDGET,
+            |_| SendSurface::Truncated,
+            || fills += 1,
+            |_| submits += 1,
+            || false,
+        )
+        .expect_err("abgeschnittener Prompt darf nicht als Ok enden");
+        assert_eq!(err, SendFlowError::Truncated);
+        assert_eq!(submits, 0, "es wurde NICHTS abgesendet");
+        assert_eq!(fills, 3, "drei Refill-Runden innerhalb des Budgets");
+    }
+
+    #[test]
+    fn disabled_button_aborts_before_any_gesture() {
+        // Abnahme "deaktivierter Button": es wird abgebrochen statt weiter
+        // auf einen grauen Knopf zu klicken.
+        let mut submits = 0u32;
+        let err = run_send_flow(
+            "prompt",
+            &SEND_BUDGET,
+            |_| SendSurface::Disabled,
+            || {},
+            |_| submits += 1,
+            || false,
+        )
+        .expect_err("deaktivierter Knopf muss abbrechen");
+        assert_eq!(err, SendFlowError::Disabled);
+        assert_eq!(submits, 0, "keine Geste auf einen grauen Knopf");
+    }
+
+    #[test]
+    fn delayed_confirmation_is_waited_and_sends_exactly_once() {
+        // Abnahmen "verspaetete Bestaetigung" + "Doppelversand-Gegenprobe":
+        // der Composer wird erst nach einigen Wart-Runden konsumiert, der
+        // Beweis kommt spaet — die Schleife wartet und gestet genau EINMAL.
+        let mut submits = 0u32;
+        let mut proofs = 0u32;
+        let mut states = vec![
+            SendSurface::Complete,
+            SendSurface::Consumed,
+            SendSurface::Consumed,
+            SendSurface::Consumed,
+        ];
+        let result = run_send_flow(
+            "prompt",
+            &SEND_BUDGET,
+            |_| states.remove(0),
+            || {},
+            |_| submits += 1,
+            || {
+                proofs += 1;
+                proofs >= 4
+            },
+        )
+        .expect("wartet statt frueh abzubrechen");
+        assert_eq!(submits, 1, "kein Doppelversand");
+        assert_eq!(result.submits, 4, "drei Wart-Runden nach dem Submit");
+        assert_eq!(result.refills, 0);
+    }
+
+    #[test]
+    fn missing_composer_gives_up_without_sending() {
+        let mut submits = 0u32;
+        let err = run_send_flow(
+            "prompt",
+            &SEND_BUDGET,
+            |_| SendSurface::Missing,
+            || {},
+            |_| submits += 1,
+            || false,
+        )
+        .expect_err("nie gefuellter Composer ist ein Fehler");
+        assert_eq!(err, SendFlowError::Missing);
+        assert_eq!(submits, 0);
+    }
+
+    #[test]
+    fn classify_disabled_only_when_text_is_complete() {
+        // Abnahme "deaktivierter Button" auf Klassifikationsebene: ein grauer
+        // Knopf ist solange ein Fuell-Problem, wie der Text nicht vollstaendig
+        // drinsteht (Gemini). Erst bei vollstaendigem Text ist er eine
+        // Ablehnung.
+        assert_eq!(
+            classify_send_surface("prompt", "prompt", false, true),
+            SendSurface::Disabled
+        );
+        assert_eq!(
+            classify_send_surface("prom", "prompt", false, true),
+            SendSurface::Truncated
+        );
+        assert_eq!(
+            classify_send_surface("prompt", "prompt", false, false),
+            SendSurface::Complete
+        );
+        assert_eq!(
+            classify_send_surface("prom", "prompt", false, false),
+            SendSurface::Truncated
+        );
+        assert_eq!(
+            classify_send_surface("fremder text", "prompt", false, false),
+            SendSurface::Missing
+        );
+        assert_eq!(
+            classify_send_surface("", "prompt", false, false),
+            SendSurface::Missing
+        );
+        assert_eq!(
+            classify_send_surface("", "prompt", true, false),
+            SendSurface::Consumed
+        );
     }
 }
