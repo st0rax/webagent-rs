@@ -49,8 +49,8 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 |---|---|
 | T-801 | Gemeinsamer Brain-Vertrag und Konformitaetsfixtures — **claimed** (local/opencode, feature/T-801-brain-contract, 2026-09-09) |
 | T-802 | Einheitliches Fill Verify Submit ohne Doppelversand |
-| T-803 | Antwortstream durch Controller REPL Swarm UI und API |
-| T-804 | Profil-Leases und gemeinsame Blocker-/Resetbehandlung |
+| T-803 | Antwortstream durch Controller REPL Swarm UI und API — **done** (feature/T-803-answer-stream; Beweis docs/proofs/T-803/RESULT.md) |
+| T-804 | Profil-Leases und gemeinsame Blocker-/Resetbehandlung — **done** (feature/T-804-profile-lease; Beweis docs/proofs/T-804/RESULT.md) |
 | T-805 | Generische Probe mit bestehendem Capability-Proof-Gate |
 | T-806 | Taskabschluss mit verifizierten Run-Belegen und Crashschutz |
 | T-807 | Alle-Brains-Live-Abnahme und Windows-Release |

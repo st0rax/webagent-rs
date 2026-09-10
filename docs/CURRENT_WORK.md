@@ -1,16 +1,47 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-10:** Scheibe 3 des
-> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-803
-> „Antwortstream durch Controller, REPL, Swarm, UI und API"** — ist auf dem
-> Branch `feature/T-803-answer-stream` als Code umgesetzt und alle Pflichtgates
-> sind gruen: `cargo test` (1386 lib + 8 bin passed, 1 ignored),
-> `cargo test --features tui` (1419 lib + 8 bin passed), `cargo check --features
+> **Aktualisiert 2026-09-10:** Scheibe 4 des
+> [`BRAIN_UNIFICATION_PLAN.md`](BRAIN_UNIFICATION_PLAN.md) — **T-804
+> „Gemeinsame Profil-Lease und Blocker"** — ist auf dem Branch
+> `feature/T-804-profile-lease` als Code umgesetzt und alle Pflichtgates sind
+> gruen: `cargo test` (1394 lib + 8 bin passed, 1 ignored),
+> `cargo test --features tui` (1427 lib + 8 bin passed), `cargo check --features
 > tui`, `cargo check --no-default-features`. Beleg:
-> [`docs/proofs/T-803/RESULT.md`](proofs/T-803/RESULT.md), TASKBOARD `done`.
-> Die darunter stehende T-801-/T-802-Scheibe bleibt bis zu ihrer Gesamt-Abnahme
-> `claimed` bzw. ist `done` (Details in den Abschnitten unten). Einstieg in die
-> laufende Arbeit: Abschnitt „T-803 — Antwortstream (2026-09-10)".
+> [`docs/proofs/T-804/RESULT.md`](proofs/T-804/RESULT.md), TASKBOARD `done`.
+> Die darunter stehende T-803-Scheibe bleibt als Code belegt (`done`), T-801/T-802
+> ebenfalls (Details in den Abschnitten unten). Einstieg in die laufende Arbeit:
+> Abschnitt „T-804 — Gemeinsame Profil-Lease und Blocker (2026-09-10)".
+
+## T-804 — Gemeinsame Profil-Lease und Blocker (2026-09-10)
+
+Claim: `local/opencode`, Branch `feature/T-804-profile-lease` (Basis `feature/T-803-answer-stream`),
+Phase 8, Scheibe 4 des BRAIN_UNIFICATION_PLAN. Status im TASKBOARD: `done`.
+
+Geliefert (Gruenbeweis in den Tests):
+
+- **Lease v2** (`src/config/profiles.rs`): `SwarmProfileOwner` traegt `pid`,
+  `process_started_at`, `generation`, erneuerbarer `heartbeat`
+  (`HEARTBEAT_FRESH_SECS = 120s`); atomare Reservation (create_dir + Owner via
+  pending+rename) bleibt; `SwarmProfileLease::heartbeat_now` erneuert den Beleg.
+- **release verweigert fremde Owner**: erst Owner lesen, Mismatch -> PermissionDenied,
+  nie blind ueberschreiben. Alter Worker kann einen neuen Lease nicht loeschen.
+- **Busy ist kein Providerlimit** (`src/circuit_breaker.rs`): `record_failure_at`
+  prueft `is_profile_leased` und laesst Zaehler/Breaker unberuehrt.
+- **Keine Probes waehrend belegter Sperre**: `welcome::probe_with_shot` +
+  `commands::ops::cmd_measure_limits` ueberspringen geleaste Brains.
+- **Wiederaufnahme nach Absturz**: `wait_for_profile_free_in` (kontrolliert
+  warten) + `reclaim_swarm_profile_in` (nur wenn Heartbeat abgekaltet und
+  Owner-Marker lesbar + scope-konform; frischer Lease wird nie wiedergeklaut).
+- **Resetzeit mit Herkunft**: `reset_at`/`reset_origin` im Breaker-Zustand
+  (kein neuer Store), `record_reset`/`reset_status`; unbekannter Reset bleibt
+  `None`, explizit `unknown` bleibt unterscheidbar.
+- **Abnahmetests** (Scheibe 4, Z.32): Zwei-Prozess-Race
+  (`scope_konkurrenz_ist_fail_closed`), os error 32 (Win32 `CreateFileW`
+  `share=0`), Absturz+Wiederaufnahme (`stale_heartbeat_ermöglicht_wiederaufnahme`),
+  alter Worker vs. neuer Lease, bekannter/unbekannter Reset, Navigationstimeout.
+
+Threshold: TASKBOARD `done`, `docs/proofs/T-804/RESULT.md`. Naechste Scheibe:
+T-805 (Probe + Capability-Nachweis, Backlog-G-009 jetzt `in_progress`).
 
 ## T-803 — Antwortstream durch Controller, REPL, Swarm, UI und API (2026-09-10)
 
