@@ -1,18 +1,14 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-11:** `master` auf `3a7d30d` (Merge PR #55 —
-> ChatGPT `model_menu` composer-pill/"Nachdenken"-Selektoren + Effort-Survey-
-> Rohbelege). Modellwahl live abgenommen via `model_switch_roundtrip_v2_
-> 2026-09-08.md`: Messung 3 (Exakte Auswahl-API / ID-Roundtrip in
-> `capability_proof.rs` + `verify.rs` + `ui.rs`) brachte **gemini (3/3) und
-> zai (3/3) auf passed** — Substring-Mehrdeutigkeit (GLM-5.3 vs GLM-5.3-Flash,
-> Flash vs 3.5/3.6 Flash) via `model_id_attr`/`data-value`-IDs geloest.
-> Qwen + Kimi bereits via Namens-Knoten-Selektoren passed (Messung 2).
-> Matrix-Stand: **107/130 passed, 12 failed, 4 unreachable, 7 not_run**.
-> claude (Trigger = Modell+Aufwand, aktives Modell nicht im Erst-Menue) und
-> perplexity (statischer Button ohne Modellname) bleiben strukturell failed —
-> dokumentierte Audit-Grenze, kein `model_id_attr` gesetzt. Naechster offener
-> Block: effort-Zellen (6 not_run + zai unreachable) und model/auto.
+> **Aktualisiert 2026-09-11:** `master` auf `1f16896`. Heutige Sitzung:
+> - perplexity als Custom-Brain registriert (`custom_brains.json`, `%LOCALAPPDATA%\\webagent\\data`) — diagnose/verify erreichbar
+> - deepseek model/mode_switch removed by-design (Modus-Bar vom Anbieter entfernt)
+> - effort-Spalte komplett vermessen: claude/qwen passed, alle anderen not_run/failed
+>   (kimi: Pfad `['Denkaufwand Hoch','Hoch']` klickt, verify-Failed strukturell)
+> - gemini/kimi/zai model_switch Frischbelege, chatgpt model_switch failed (Sofort-Pill)
+> - chatgpt.json reasoning_effort_menu entfernt (komplett deckungsgleich mit model_menu)
+> - Matrix-Stand: **130 Zellen, 10 Brains × 13 Areas** vollständig, `as_of` 2026-09-11
+> - offene Bereiche: streaming (Teil-Brains), attachment (qwen/zai), managed_tools (by-design 400)
 
 ## Fortsetzung G-001 / T-501 am 2026-09-07
 
