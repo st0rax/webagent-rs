@@ -6,6 +6,57 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
+/// Klassifikation eines Stream-Snapshots relativ zum vorherigen.
+///
+/// Der Controller/Relay konsumieren wachsende Antwort-Snapshots. Damit dabei
+/// nichts verloren geht, wird jeder neue Snapshot gegeneinander abgeglichen:
+/// - `AppendDelta("…")` wenn der neue Text ein **echtes Präfix-Wachstum** ist
+///   (länger, vorheriges ist Präfix) — der Zuwachs ist das Delta.
+/// - `Replace { previous, next }` wenn der Text revidiert wurde (nicht Präfix,
+///   kürzer, gleiche Länge, oder kompletter Sprung) — statt den alten Text
+///   still zu verlieren, wird beides geführt.
+/// - `Identical` wenn sich nichts geändert hat (Konsumenten deduplizieren).
+///
+/// Gepufferte Ausgabe (Sprung von leer auf die fertige Antwort) ist kein
+/// echtes Streaming: sie fällt unter `Replace` bzw. `AppendDelta` vom leeren
+/// Text, wird aber nie als „mehrere Deltas" gezählt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamDelta {
+    AppendDelta {
+        addition: String,
+    },
+    Replace {
+        previous: String,
+        next: String,
+    },
+    Identical,
+}
+
+/// Klassifiziert ein neues Antwort-Snapshot gegenüber dem vorherigen.
+///
+/// Unicode-sicher (zeichenbasiert), nie verlustbehaftet: `Replace` trägt beide
+/// Seiten. Ein leerer `previous` mit neuem Text ist ein `AppendDelta` vom
+/// Leertext — die erste echte Antwort ist aber noch kein Beweis für
+/// inkrementelles Streaming (siehe [`StreamDelta`]).
+pub fn classify_stream_delta(previous: &str, next: &str) -> StreamDelta {
+    if previous == next {
+        return StreamDelta::Identical;
+    }
+    if previous.is_empty() {
+        return StreamDelta::AppendDelta {
+            addition: next.to_string(),
+        };
+    }
+    if next.starts_with(previous) && next.len() > previous.len() {
+        let addition = next[previous.len()..].to_string();
+        return StreamDelta::AppendDelta { addition };
+    }
+    StreamDelta::Replace {
+        previous: previous.to_string(),
+        next: next.to_string(),
+    }
+}
+
 /// Regex für transiente UI-Status-Labels (Denke nach, Thinking, etc.).
 fn transient_status_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -345,6 +396,71 @@ pub fn chat_answer_text(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pruefwachstum_ergibt_append_delta_unicode_sicher() {
+        // Unicode: Zeichengrenzen durften nie aufgeschnitten werden.
+        let d = classify_stream_delta("Hallo ", "Hallo 😀 Welt");
+        assert_eq!(
+            d,
+            StreamDelta::AppendDelta {
+                addition: "😀 Welt".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn identischer_snapshot_ist_kein_duplikat() {
+        assert_eq!(
+            classify_stream_delta("Antwort", "Antwort"),
+            StreamDelta::Identical
+        );
+    }
+
+    #[test]
+    fn revision_verliert_keinen_text() {
+        let d = classify_stream_delta("abc", "zxy");
+        match d {
+            StreamDelta::Replace { previous, next } => {
+                assert_eq!(previous, "abc");
+                assert_eq!(next, "zxy");
+            }
+            other => panic!("erwartet Replace, kam {other:?}"),
+        }
+    }
+
+    #[test]
+    fn nicht_praefix_aber_verlaengert_ist_replace() {
+        // "abc" -> "abcxyz" IST Praefixwachstum. Nicht-Praefix bedeutet Sprung:
+        // z.B. "abz" -> "xyzabc". Auch kuerzer und gleich lang sind Replace.
+        let d = classify_stream_delta("abz", "xyzabc");
+        assert!(matches!(d, StreamDelta::Replace { .. }));
+        let d2 = classify_stream_delta("wort", "wo");
+        assert!(matches!(d2, StreamDelta::Replace { .. }));
+        let d3 = classify_stream_delta("aaaa", "AAÄ");
+        assert!(matches!(d3, StreamDelta::Replace { .. }));
+    }
+
+    #[test]
+    fn leertext_delta_ist_append_nicht_replace() {
+        let d = classify_stream_delta("", "erste Antwort");
+        assert_eq!(
+            d,
+            StreamDelta::AppendDelta {
+                addition: "erste Antwort".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn gleiche_laenge_aber_praefix_ist_identisch_wenn_exakt_gleich() {
+        // Nur exakt gleich gilt als Identical — gleiche Laenge mit Abweichung
+        // ist eine Revision.
+        assert!(matches!(
+            classify_stream_delta("abc", "abd"),
+            StreamDelta::Replace { .. }
+        ));
+    }
 
     #[test]
     fn duplicated_thinking_headline_is_stripped_from_answer() {

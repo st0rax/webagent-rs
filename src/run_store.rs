@@ -1752,7 +1752,7 @@ mod tests {
 
         let run_dir = tmp.join("runs").join(&run_id);
         let journal = run_dir.join("events.jsonl");
-        let mut original = std::fs::read_to_string(&journal).unwrap();
+        let original = std::fs::read_to_string(&journal).unwrap();
         assert!(!original.is_empty());
 
         // Torn Tail simulieren: eine kaputte Zeile ans Journal hängen, die die

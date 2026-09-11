@@ -12,6 +12,7 @@ use crate::loop_guard::{
     is_shell_read_action, loop_guard_message, read_budget_message, shell_read_fingerprint,
 };
 use crate::memory::MemoryStore;
+use crate::observer::{classify_stream_delta, StreamDelta};
 use crate::prompts::autonomous_task_prompt;
 use crate::protocol::{self, Action};
 use crate::run_store::{CrossBrainHandoffEnvelope, RunMeta, RunStore};
@@ -166,6 +167,51 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// bleibt das historische Verhalten (naechster Git-Root ab Prozess-CWD).
     workspace_root: Option<std::path::PathBuf>,
     fresh_chat: bool,
+}
+
+/// Erfasst wachsende Antwort-Snapshots eines Turns, damit der Controller
+/// denselben Ereignisstrom konsumiert wie Relay/Swarm/UI: append-Deltas bei
+/// echtem Präfixwachstum, Replace-Ereignis bei Revision, nie Duplikate.
+#[derive(Default)]
+struct StreamTracker {
+    /// Bisher gesehener Snapshot (letzter stabiler Stand).
+    last_snapshot: String,
+    /// Hat je Text gesehen (nicht nur "Thinking…"/leere Bursts).
+    saw_text: bool,
+    /// Anzahl nicht-identischer Snapshots (inkl. Replace).
+    snapshots: usize,
+    /// Anzahl Replace-Revisionen.
+    revisions: usize,
+}
+
+impl StreamTracker {
+    /// Klassifiziert einen neuen Snapshot und aktualisiert den Fortschritt.
+    fn record(&mut self, snapshot: &str) {
+        if snapshot == self.last_snapshot {
+            return;
+        }
+        let delta = classify_stream_delta(&self.last_snapshot, snapshot);
+        match delta {
+            StreamDelta::Identical => {}
+            StreamDelta::AppendDelta { addition } => {
+                if !snapshot.trim().is_empty() {
+                    self.saw_text = true;
+                }
+                if !addition.is_empty() || !snapshot.trim().is_empty() {
+                    self.snapshots += 1;
+                }
+                self.last_snapshot = snapshot.to_string();
+            }
+            StreamDelta::Replace { .. } => {
+                if !snapshot.trim().is_empty() {
+                    self.saw_text = true;
+                }
+                self.revisions += 1;
+                self.snapshots += 1;
+                self.last_snapshot = snapshot.to_string();
+            }
+        }
+    }
 }
 
 impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
@@ -333,6 +379,10 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             let _ = t.append("user", message, HashMap::new());
         }
 
+        // Pro-Turn-Streamtrajektorie: der Controller konsumiert denselben
+        // Ereignisstrom wie Relay/Swarm/UI und schreibt ihn ins Transkript.
+        let mut stream_tracker = StreamTracker::default();
+
         let brain_id = self.brain.brain_id().to_string();
         crate::bench_events::emit(
             crate::bench_events::Level::Progress,
@@ -374,7 +424,13 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // Turn darf die Gesamtfrist nicht ueberziehen (Fund 2026-07-21).
         let wait_timeout = self.cap_to_wall(wait_timeout);
 
-        let mut response = match self.brain.wait_response(baseline, wait_timeout) {
+        let mut response = match self
+            .brain
+            .wait_response_streaming(
+                baseline,
+                wait_timeout,
+                &mut |snapshot| stream_tracker.record(snapshot),
+            ) {
             Ok(r) => r,
             Err(e) => {
                 return BrainTurn {
@@ -402,7 +458,11 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                 );
             }
             let reread_timeout = self.cap_to_wall(wait_timeout);
-            response = match self.brain.wait_response(baseline, reread_timeout) {
+            response = match self.brain.wait_response_streaming(
+                baseline,
+                reread_timeout,
+                &mut |snapshot| stream_tracker.record(snapshot),
+            ) {
                 Ok(r) => r,
                 Err(_) => break,
             };
@@ -420,6 +480,35 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             &response.text,
         );
         let effective_complete = response.generation_complete || protocol_complete;
+
+        // Der Controller konsumiert denselben Ereignisstrom wie Relay/Swarm/UI.
+        // Der Streamverlauf wird als eigenes Ereignis ins Transkript gelegt —
+        // getrennt von der Endantwort, damit Diagnose- und Reasoning-Fragmente
+        // nie als Antwort gewertet werden.
+        if let Some(t) = transcript.as_deref_mut() {
+            let mut extra = HashMap::new();
+            extra.insert(
+                "snapshots".to_string(),
+                serde_json::Value::Number(stream_tracker.snapshots.into()),
+            );
+            extra.insert(
+                "revisions".to_string(),
+                serde_json::Value::Number(stream_tracker.revisions.into()),
+            );
+            extra.insert(
+                "saw_text".to_string(),
+                serde_json::Value::Bool(stream_tracker.saw_text),
+            );
+            extra.insert(
+                "streamed_incrementally".to_string(),
+                serde_json::Value::Bool(
+                    stream_tracker.snapshots > 1
+                        && stream_tracker.revisions == 0
+                        && stream_tracker.saw_text,
+                ),
+            );
+            let _ = t.append("system", "brain_stream", extra);
+        }
 
         if let Some(t) = transcript {
             let mut extra = HashMap::new();
@@ -1910,6 +1999,11 @@ mod tests {
         loop_shell: bool,
         send_error: Option<String>,
         wait_calls: Rc<RefCell<usize>>,
+        /// Je Antwort-Index eine Kette wachsender Stream-Snapshots. Ist sie
+        /// gesetzt, liefert `wait_response_streaming` die Snapshots nacheinander
+        /// und der letzte Snapshot wird zur Antwort. Default: leer → gepuffertes
+        /// Einzelsnapshot über den Trait-Default.
+        streaming_snapshots: Vec<Vec<String>>,
     }
 
     impl MockBrain {
@@ -1932,7 +2026,13 @@ mod tests {
                 loop_shell: false,
                 send_error: None,
                 wait_calls: Rc::new(RefCell::new(0)),
+                streaming_snapshots: Vec::new(),
             }
+        }
+
+        fn with_streaming(mut self, chains: Vec<Vec<String>>) -> Self {
+            self.streaming_snapshots = chains;
+            self
         }
 
         fn with_responses(mut self, responses: Vec<&str>, complete: Vec<bool>) -> Self {
@@ -2036,6 +2136,51 @@ mod tests {
                 completion_reason: None,
                 polls: None,
             })
+        }
+
+        fn wait_response_streaming(
+            &mut self,
+            baseline_count: i32,
+            timeout: f64,
+            on_update: &mut dyn FnMut(&str),
+        ) -> Result<BrainResponse, String> {
+            // Ist eine Stream-Kette konfiguriert, liefern wir echte wachsende
+            // Snapshots (nacheinander), beginnend mit dem ersten Snapshot.
+            // Der Index wird VOR dem if-let-Block in eine lokale Variable
+            // kopiert, damit kein RefCell-Borrow bis ins Blockende haengt.
+            let idx = *self.response_index.borrow();
+            if let Some(chain) = self.streaming_snapshots.get(idx).cloned() {
+                *self.wait_calls.borrow_mut() += 1;
+                *self.response_index.borrow_mut() += 1;
+                for snapshot in &chain {
+                    on_update(snapshot);
+                    if !self.wait_sleep.is_zero() {
+                        std::thread::sleep(self.wait_sleep);
+                    }
+                }
+                let last = chain.last().cloned().unwrap_or_default();
+                return Ok(BrainResponse {
+                    text: last,
+                    message_index: idx as i32,
+                    generation_complete: true,
+                    backend_status: "ok".to_string(),
+                    raw_html: String::new(),
+                    first_text_ms: None,
+                    stop_first_seen_ms: None,
+                    stop_gone_ms: None,
+                    completion_ms: None,
+                    completion_reason: None,
+                    polls: None,
+                });
+            }
+            // Keine Stream-Kette: genau EIN gepufferter Snapshot mit dem finalen
+            // Text (Trait-Default-Verhalten) — gepufferte Ausgabe zaelt nicht
+            // als inkrementelles Streaming, wird aber trotzdem geliefert.
+            let response = self.wait_response(baseline_count, timeout)?;
+            if !response.text.is_empty() {
+                on_update(&response.text);
+            }
+            Ok(response)
         }
 
         fn is_logged_in(&self) -> bool {
@@ -3101,5 +3246,116 @@ mod tests {
             "expected a fresh chat before task dispatch, calls={}",
             *new_chat_calls.borrow()
         );
+    }
+
+    fn stream_events_from(runs_dir: &std::path::Path, run_id: &str) -> Vec<serde_json::Value> {
+        let dir = runs_dir.join(run_id);
+        let path = dir.join("transcript.jsonl");
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        text.lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect()
+    }
+
+    /// Das `brain_stream`-Event trägt die Stream-Statistik im `content`-Feld
+    /// (Transkript-Konvention: role=system, content=Eventname).
+    fn find_stream_event(events: &[serde_json::Value]) -> serde_json::Value {
+        events
+            .iter()
+            .find(|e| e.get("content").and_then(|v| v.as_str()) == Some("brain_stream"))
+            .cloned()
+            .unwrap_or_else(|| panic!("kein brain_stream-Event: {events:?}"))
+    }
+
+    /// Der Controller konsumiert denselben Ereignisstrom wie Relay/Swarm/UI:
+    /// wachsende Snapshots erscheinen als `brain_stream`-Event mit Append-
+    /// Deltas (echtes Praefixwachstum), gepufferte Endantworten gelten nicht
+    /// als Streaming.
+    #[test]
+    fn brain_stream_event_erfasst_inkrementelles_praefixwachstum() {
+        let data_dir = unique_data_dir();
+        // Kette mit einem echten Praefix-Wachstum (Fragment -> Zwischenstand)
+        // und EINER Revision (Zwischenstand -> finale Antwort): der Brain hat
+        // den Zwischenstand (falsche Action-ID) durch die finale Antwort
+        // ersetzt. Ein solcher Ersatz zaehlt nie als inkrementelles Streaming.
+        let s0 = "{\"protocol\"";
+        let s1 =
+            "{\"protocol\": \"webagent/1\", \"actions\": [{\"id\": \"wrong-id\", \"type\": \"finish\"}]}";
+        let s2 = finish_response();
+        // s1 beginnt mit s0 (Append), s2 beginnt NICHT mit s1 (Replace).
+        let chain = vec![s0.to_string(), s1.to_string(), s2];
+        let brain = MockBrain::new().with_streaming(vec![chain]);
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
+
+        let meta = controller
+            .run("Pruefe etwas", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "done", "meta={:?}", meta.extra);
+        let events = stream_events_from(&data_dir.join("runs"), &meta.run_id);
+        let stream = find_stream_event(&events);
+        assert_eq!(stream["snapshots"], 3, "{stream}");
+        assert_eq!(stream["revisions"], 1, "{stream}");
+        assert_eq!(stream["saw_text"], true, "{stream}");
+        assert_eq!(
+            stream["streamed_incrementally"], false,
+            "Zwischenstand->Endantwort-Ersatz ist eine Revision, kein Praefixwachstum: {stream}"
+        );
+        let _ = std::fs::remove_dir_all(&data_dir);
+    }
+
+    /// Eine reine Praefix-Kette OHNE Revision ist echtes inkrementelles
+    /// Streaming. Die Praefixe werden per Slice aus der finalen Antwort
+    /// gebildet, damit sie garantiert echt wachsen (Unicode/ASCII-sicher).
+    #[test]
+    fn reine_praefixkette_ohne_revision_ist_inkrementell() {
+        let data_dir = unique_data_dir();
+        let finish = finish_response();
+        let p1 = finish[..finish.len() - 24].to_string();
+        let p2 = finish[..finish.len() - 4].to_string();
+        // p1 Paefix von p2, p2 Praefix von finish — reines Wachstum.
+        let chain = vec![p1, p2, finish];
+        let brain = MockBrain::new().with_streaming(vec![chain]);
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
+
+        let meta = controller
+            .run("Pruefe", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "done");
+        let events = stream_events_from(&data_dir.join("runs"), &meta.run_id);
+        let stream = find_stream_event(&events);
+        assert_eq!(stream["snapshots"], 3, "{stream}");
+        assert_eq!(stream["revisions"], 0, "{stream}");
+        assert_eq!(stream["streamed_incrementally"], true, "{stream}");
+        let _ = std::fs::remove_dir_all(&data_dir);
+    }
+
+    /// Eine BUFFERED finale Antwort (nur ein Snapshot) ist kein Streaming:
+    /// `streamed_incrementally` muss false sein, damit gepufferte Ausgabe nie
+    /// als inkrementelle Lieferung gezaehlt wird.
+    #[test]
+    fn gepufferte_endantwort_zaehlt_nicht_als_streaming() {
+        let data_dir = unique_data_dir();
+        let brain =
+            MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let mut controller =
+            AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
+
+        let meta = controller
+            .run("Berechne", "mock", None, false)
+            .unwrap();
+
+        assert_eq!(meta.status, "done");
+        let events = stream_events_from(&data_dir.join("runs"), &meta.run_id);
+        let stream = find_stream_event(&events);
+        assert_eq!(stream["snapshots"], 1, "genau ein (gepufferter) Snapshot: {stream}");
+        assert_eq!(
+            stream["streamed_incrementally"], false,
+            "gepufferte Ausgabe darf nie als Streaming gelten: {stream}"
+        );
+        let _ = std::fs::remove_dir_all(&data_dir);
     }
 }

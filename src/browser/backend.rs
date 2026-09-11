@@ -311,7 +311,6 @@ impl BrainBackend for WebBrainBackend {
             // sonst bleibt der Antwort-Container leer und die Erkennung timeoutet.
             self.handle_interruptions();
             let (count, current, stop_raw) = self.probe_generation(&assistant_js, &stop_js, target);
-            on_update(&current);
             target = latest_response_target(count);
             let stop_visible = has_stop && stop_raw;
             stop_seen_ever |= stop_visible;
