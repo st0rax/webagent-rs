@@ -340,11 +340,12 @@
       "area": "model",
       "brain": "auto",
       "status": "not_run",
-      "date": null,
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null
+      "proof_path": null,
+      "note": "auto ist ein virtueller Auto-Router-Brain (kein eigenes Browser-UI/Modellmenue, routed an ein eingeloggtes Brain; api_bridge.rs AutoRouter). Modellwahl ist nicht anwendbar — analog effort/auto. Verify bleibt ehrlich Quest (kein reasoning_effort_path/model selectors)."
     },
     {
       "area": "effort",
