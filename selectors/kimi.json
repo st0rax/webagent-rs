@@ -94,5 +94,16 @@
     "[id*='next-sidebar-history-section-title']",
     ".next-sidebar__section-text-action",
     ".next-sidebar-history-item__link"
-  ]
+  ],
+  "reasoning_effort_menu": [
+    "div.current-model div.model-name span.name",
+    "[class*='current-model' i] div.model-name span.name",
+    "[class*='current-model' i] span.name"
+  ],
+  "reasoning_effort_option": [
+    "[role='menuitem']",
+    "[role='menuitem'][class*='effort']",
+    "#v-3-menu-trigger"
+  ],
+  "_reasoning_effort_note": "Effort-Trigger '#v-3-menu-trigger' ('Denkaufwand Hoch') nur im offenen Modell-Menue sichtbar. Pfad ['Denkaufwand Hoch', 'Hoch'] funktioniert (Klicks gelingen), aber verify-Pfad-Check schlaegt fehl: reasoning_effort_menu zeigt auf model_menu, Label bleibt 'Schnell' (Modellname), kein persistenter Effort-Label ausserhalb des Menues. Strukturelle UI-Eigenart, kein Selektor-Bug. Kein reasoning_effort_path konfiguriert (verify bleibt Quest)."
 }

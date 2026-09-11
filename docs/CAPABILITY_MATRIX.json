@@ -392,12 +392,12 @@
       "area": "effort",
       "brain": "kimi",
       "status": "not_run",
-      "date": "2026-09-04",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
+      "note": "Effort-Trigger '#v-3-menu-trigger' ('Denkaufwand Hoch') im Modell-Menue gefunden (2026-09-11). Pfad ['Denkaufwand Hoch', 'Hoch'] klickt erfolgreich, aber verify-Pfad-Check schlaegt fehl: Effort-Label ist nur im offenen Modell-Menue sichtbar, kein persistenter Effort-Label ausserhalb (Label bleibt 'Schnell' = Modellname). Strukturelle UI-Eigenart, kein Selektor-Defekt. Kein reasoning_effort_path konfiguriert (verify bleibt Quest)."
     },
     {
       "area": "effort",
