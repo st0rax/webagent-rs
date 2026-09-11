@@ -1423,9 +1423,11 @@ return best?best.slice(0,300):null;})()"#;
         // ProseMirror (geminis Editor) registriert ein reines DOM-Set (textContent
         // + InputEvent) NICHT — der Absendeknopf bleibt dann deaktiviert und der
         // ehrliche Fehler "kein Absende-Beweis" war die Folge. Darum zuerst echt
-        // tippen (`fill_composer`: Klick + trusted `Input.insertText`), DOM-Set nur
-        // als Fallback.
-        if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t)) {
+        // tippen (`fill_composer`: Klick + trusted `Input.insertText`) und den
+        // Inhalt bestaetigen; DOM-Set + Zeichen-Nachtippen nur als Fallback.
+        if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
+            s.fill_composer(js, t) && s.composer_contains(js, t)
+        }) {
             let _ = self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 s.fill_composer_dom_set(js, t) && s.type_text_char_by_char(t).is_ok()
             });
@@ -1440,21 +1442,27 @@ return best?best.slice(0,300):null;})()"#;
         }
         let url_before = self.get_conversation_ref();
         for attempt in 0..3 {
-            // Abwechselnd echten Klick und Enter: Geminis "Nachricht senden"-Button
-            // ignoriert gelegentlich den trusted Klick (Anti-Automation), Enter
-            // sendet zuverlaessig, wenn der Text im Composer steht. Nach dem
-            // ersten Senden einer Konversation wechselt die UI teils den Knopf.
-            if attempt % 2 == 0 {
-                if self.click_visible_real("send_button") || self.click_first("send_button") {
-                    std::thread::sleep(Duration::from_millis(400));
+            // Wenn der Composer den Text schon konsumiert hat (geleert), ist das
+            // Senden bereits im Gange: dann NUR den Beweis abwarten, nicht neu
+            // fuellen/senden — sonst Doppel-Send (registers long nach DeepSeek/
+            // perplexity). Gleiche Garantie wie in send_generic.
+            let consumed = !self.composer_contains(&composer_js, text);
+            if !consumed {
+                // Abwechselnd echten Klick und Enter: Geminis "Nachricht senden"-Button
+                // ignoriert gelegentlich den trusted Klick (Anti-Automation), Enter
+                // sendet zuverlaessig, wenn der Text im Composer steht. Nach dem
+                // ersten Senden einer Konversation wechselt die UI teils den Knopf.
+                if attempt % 2 == 0 {
+                    if self.click_visible_real("send_button") || self.click_first("send_button") {
+                        std::thread::sleep(Duration::from_millis(400));
+                    }
+                } else {
+                    let _ = self.press_enter();
                 }
-            } else {
-                let _ = self.press_enter();
             }
             if self.verify_submitted(baseline, None, url_before.as_deref()) {
                 return Ok(baseline);
             }
-            let _ = self.fill_composer_dom_set(&composer_js, text);
         }
         // Kein Ok(baseline) bei ausbleibendem Absende-Beweis (Vergiftungsquelle) —
         // ehrlicher Fehler wie in send_generic.
@@ -1465,27 +1473,34 @@ return best?best.slice(0,300):null;})()"#;
         let baseline = self.prepare_send_baseline();
         self.dismiss_consent();
         let composer_js = self.sel_js("composer", &[]);
-        if !self.wait_fill_composer(&composer_js, text, |s, js, t| s.fill_composer(js, t))
-            && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-                s.fill_composer_dom_set(js, t)
-            })
-        {
+        // Fuellen und bestaetigen, dass der Text wirklich im Editor steht —
+        // gleiche Forderung wie in send_generic (nur Fill-Erfolg zaehlt nicht).
+        if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
+            s.fill_composer(js, t) && s.composer_contains(js, t)
+        }) && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
+            s.fill_composer_dom_set(js, t) && s.composer_contains(js, t)
+        }) {
             return Err("Composer-Feld nicht gefunden (Timeout)".into());
         }
         std::thread::sleep(Duration::from_millis(300));
         let url_before = self.get_conversation_ref();
         for attempt in 0..4 {
-            if attempt % 2 == 0 {
-                if !self.click_visible_real("send_button") {
-                    self.click_first("send_button");
+            // Consumed bedeutet: das Senden ist bereits registriert (qwen braucht
+            // fuer die Send-Registrierung teils mehrere Sekunden) — dann nur den
+            // Beweis abwarten, nie neu fuellen (Doppel-Send-Gegenprobe).
+            let consumed = !self.composer_contains(&composer_js, text);
+            if !consumed {
+                if attempt % 2 == 0 {
+                    if !self.click_visible_real("send_button") {
+                        self.click_first("send_button");
+                    }
+                } else {
+                    self.press_enter().ok();
                 }
-            } else {
-                self.press_enter().ok();
             }
             if self.verify_submitted(baseline, None, url_before.as_deref()) {
                 return Ok(baseline);
             }
-            let _ = self.fill_composer(&composer_js, text);
         }
         // Kein Ok(baseline) bei ausbleibendem Absende-Beweis (Vergiftungsquelle) —
         // ehrlicher Fehler wie in send_generic.

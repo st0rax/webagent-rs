@@ -1577,6 +1577,22 @@ mod tests {
         )
     }
 
+    /// Der `composer_contains`-Ausdruck (8-Zeichen-Praefix), den `send_generic`,
+    /// `send_gemini` und `send_qwen` heute als Fill-Nachweis und Consumed-Check
+    /// evaluieren. Muss im Mock registriert sein, seit die Send-Pfade den
+    /// Inhalt nicht mehr nur ueber den Fill-Rueckgabewert annehmen.
+    fn composer_contains_expr(sel: &Selectors, text: &str) -> String {
+        let needle = text.chars().take(8).collect::<String>();
+        let n = serde_json::to_string(&needle).unwrap_or_else(|_| "\"\"".into());
+        js::js_scan(
+            &sel.js("composer", &[]),
+            &format!(
+                "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');if(v.indexOf({n})!==-1)return true;}}"
+            ),
+            "false",
+        )
+    }
+
     fn click_first_expr(sel: &Selectors, key: &str) -> String {
         js::js_scan(
             &js::js_selectors(&sel.list(key)),
@@ -1629,6 +1645,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             .on_eval(click_first_expr(&sel, "stop_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
@@ -1741,6 +1758,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
@@ -1794,6 +1812,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
@@ -1846,6 +1865,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             .on_eval(click_first_expr(&sel, "stop_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
@@ -1894,6 +1914,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Zaehler waechst nie → verify_submitted scheitert 4×, dann Fehler.
             .on_eval(assistant_count_expr(&sel), json!(0))
