@@ -45,12 +45,12 @@
   "model_menu": [
     "button.__composer-pill",
     "button:has-text('Nachdenken')",
-    "button[class*='__composer-pill']",
-    "button[data-testid='model-switcher-dropdown-button']",
-    "[data-testid='model-switcher-dropdown-button']",
-    "button[aria-label='Modellauswaehler']",
-    "button[aria-label='Modellauswähler']",
-    "button[aria-label*='Modellausw' i]"
+    "button[class*='__composer-pill']"
+  ],
+  "reasoning_effort_menu": [
+    "button.__composer-pill",
+    "button:has-text('Nachdenken')",
+    "button[class*='__composer-pill']"
   ],
   "model_option": [
     "[role=menuitem]",
