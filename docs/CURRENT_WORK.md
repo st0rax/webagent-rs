@@ -1,11 +1,18 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-08:** Arbeitsbranch `fix/T-501-model-proof` wurde auf
-> `origin/master` (a3036db, Merge PR #54) rekonsolidiert: `model-selection-
-> roundtrip-v2`-Verifier via `capability_proof.rs`, 57 Belegdateien von master
-> nachgezogen, Taskboard auf Audit-Stand 103/130 gestellt. Naechster G-001-
-> Schritt laut `MODEL_PROOF_AUDIT_2026-09-07.md`: sechs Modellzellen
-> (claude/qwen/perplexity/zai/gemini/kimi) live neu messen.
+> **Aktualisiert 2026-09-11:** `master` auf `3a7d30d` (Merge PR #55 —
+> ChatGPT `model_menu` composer-pill/"Nachdenken"-Selektoren + Effort-Survey-
+> Rohbelege). Modellwahl live abgenommen via `model_switch_roundtrip_v2_
+> 2026-09-08.md`: Messung 3 (Exakte Auswahl-API / ID-Roundtrip in
+> `capability_proof.rs` + `verify.rs` + `ui.rs`) brachte **gemini (3/3) und
+> zai (3/3) auf passed** — Substring-Mehrdeutigkeit (GLM-5.3 vs GLM-5.3-Flash,
+> Flash vs 3.5/3.6 Flash) via `model_id_attr`/`data-value`-IDs geloest.
+> Qwen + Kimi bereits via Namens-Knoten-Selektoren passed (Messung 2).
+> Matrix-Stand: **107/130 passed, 12 failed, 4 unreachable, 7 not_run**.
+> claude (Trigger = Modell+Aufwand, aktives Modell nicht im Erst-Menue) und
+> perplexity (statischer Button ohne Modellname) bleiben strukturell failed —
+> dokumentierte Audit-Grenze, kein `model_id_attr` gesetzt. Naechster offener
+> Block: effort-Zellen (6 not_run + zai unreachable) und model/auto.
 
 ## Fortsetzung G-001 / T-501 am 2026-09-07
 
