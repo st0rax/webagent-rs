@@ -395,7 +395,12 @@ impl Bot2BotWorker {
     /// Einstiegspunkt: `--once` = ein Durchlauf; sonst Poll-Loop mit `poll_secs`.
     /// Event-getrieben: nur bei neuen Tasks Aktion; bei leer still (kein Spam).
     pub fn run(&self) -> i32 {
-        self.run_with_profile_preparer(crate::config::prepare_swarm_profile)
+        // T-804: statt Blind-Fehlschlag bei belegtem Profil kontrolliert warten
+        // (Busy ist kein Providerlimit). Ein verwaister Scope (tote PID +
+        // abgelaufener Heartbeat) wird dabei zurueckgefordert.
+        self.run_with_profile_preparer(|run_id, brain_id| {
+            crate::config::acquire_swarm_profile(run_id, brain_id, Duration::from_secs(120))
+        })
     }
 
     fn run_with_profile_preparer<F>(&self, prepare: F) -> i32

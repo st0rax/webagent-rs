@@ -22,7 +22,7 @@ fancy-regex = "0.14"
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 lazy_static = "1.5"
 fs2 = "0.4"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "std", "local-offset", "macros"] }
 tokio = { version = "1", features = ["full"] }
 # T-601: HTTP/1.1 + rustls, kein reqwest, kein System-OpenSSL.

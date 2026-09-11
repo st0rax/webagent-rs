@@ -29,9 +29,11 @@ pub use paths::{
     webagent_root_stable,
 };
 pub use profiles::{
-    cleanup_swarm_profiles, cleanup_swarm_profiles_in, copy_dir_all, copy_dir_sparse,
-    copy_dir_without_caches, ensure_stable_layout, prepare_swarm_profile, prepare_swarm_profile_in,
-    sweep_stale_runtime_profiles, sweep_stale_runtime_profiles_in, SwarmProfileLease,
+    acquire_swarm_profile, acquire_swarm_profile_in, cleanup_swarm_profiles,
+    cleanup_swarm_profiles_in, copy_dir_all, copy_dir_sparse, copy_dir_without_caches,
+    ensure_stable_layout, prepare_swarm_profile, prepare_swarm_profile_in,
+    swarm_profile_lease_state, sweep_stale_runtime_profiles, sweep_stale_runtime_profiles_in,
+    SwarmProfileLease, SwarmProfileLeaseState,
 };
 pub use selectors::{
     available_brain_ids, debug_port, embedded_selector, encapsulated_profile_dir, load_selectors,

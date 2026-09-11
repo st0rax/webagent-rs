@@ -1,9 +1,13 @@
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::Duration;
 
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
 use super::brains::{
-    reference_profile_dir_in, swarm_profile_dir_in, swarm_profile_scope_key,
+    reference_profile_dir_in, stale_heartbeat_secs, swarm_profile_dir_in, swarm_profile_scope_key,
     use_sparse_profile_copy, FULL_COPY_SKIP_DIRS, SPARSE_COPY_WHITELIST, SPARSE_SKIP_DIRS,
 };
 use super::paths::*;
@@ -326,20 +330,52 @@ const SWARM_OWNER_FILE: &str = ".webagent-swarm-owner.json";
 const SWARM_OWNER_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-struct SwarmProfileOwner {
+pub struct SwarmProfileOwner {
     version: u32,
     run_id: String,
     brain_id: String,
     scope_key: String,
+    /// Halter der Lease (Worker-Prozess) — identifiziert den Besitzer ueber
+    /// Prozessgrenzen hinweg eindeutig (T-804).
+    #[serde(default)]
+    pid: Option<u64>,
+    /// Prozess-Identitaetsstempel (erste Lease-Nutzung des Prozesses). Dient
+    /// zusammen mit `pid` zur Unterscheidung eines frischen Prozesses von PID-
+    /// Wiederverwendung. Fehlt bei Legacy-Markern (Version 1 ohne Lease-Feld).
+    #[serde(default)]
+    process_start_ns: Option<u64>,
+    /// Monotone Generation: wird bei jeder (Wieder-)Vergabe einer Lease
+    /// gesetzt. Ein veralteter Worker darf eine hoehere Generation nie
+    /// ueberschreiben oder loeschen.
+    #[serde(default)]
+    generation: u64,
+    /// Heartbeat (Unix-ns): lebende Worker erneuern ihn regelmassig via
+    /// [`SwarmProfileLease::renew`]. Abgelaufener Heartbeat PLUS tote PID ist
+    /// die einzige Bedingung fuer einen fremden Reclaim.
+    #[serde(default)]
+    heartbeat_ns: Option<u64>,
+    /// Reset-Herkunft, falls bekannt (z.B. `navigation_timeout`). `None`
+    /// bedeutet: unbekannter Reset bleibt unbekannt, nichts wird erfunden.
+    #[serde(default)]
+    reset_origin: Option<String>,
+    #[serde(default)]
+    reset_at_ns: Option<u64>,
 }
 
 impl SwarmProfileOwner {
     fn new(run_id: &str, brain_id: &str) -> Self {
+        let (pid, start) = process_stamp();
         Self {
             version: SWARM_OWNER_VERSION,
             run_id: run_id.to_string(),
             brain_id: brain_id.to_string(),
             scope_key: swarm_profile_scope_key(run_id, brain_id),
+            pid: Some(pid),
+            process_start_ns: Some(start),
+            generation: 1,
+            heartbeat_ns: Some(now_ns()),
+            reset_origin: None,
+            reset_at_ns: None,
         }
     }
 }
@@ -369,6 +405,39 @@ impl SwarmProfileLease {
 
     pub fn scope_key(&self) -> &str {
         &self.owner.scope_key
+    }
+
+    pub fn pid(&self) -> Option<u64> {
+        self.owner.pid
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.owner.generation
+    }
+
+    pub fn heartbeat_ns(&self) -> Option<u64> {
+        self.owner.heartbeat_ns
+    }
+
+    pub fn reset_origin(&self) -> Option<&str> {
+        self.owner.reset_origin.as_deref()
+    }
+
+    /// Verlaengert den Heartbeat. Ein lebender Worker haelt die Lease frisch;
+    /// ein paralleler Wiederaufnahme-Check behandelt sie dann nie als
+    /// verwaist, und ein fremder Reclaim darf sie nie loeschen (T-804).
+    pub fn renew(&mut self) -> std::io::Result<()> {
+        self.owner.heartbeat_ns = Some(now_ns());
+        write_swarm_owner(&self.profile_dir, &self.owner)
+    }
+
+    /// Speichert einen BEKANNTEN Reset mit Herkunft im Lease-Marker. Ein
+    /// unbekannter Reset (kein Marker / kein Eintrag) bleibt erkennbar
+    /// unbekannt — `reset_origin()` liefert dann `None` (T-804).
+    pub fn record_reset(&mut self, origin: &str) -> std::io::Result<()> {
+        self.owner.reset_at_ns = Some(now_ns());
+        self.owner.reset_origin = Some(origin.to_string());
+        write_swarm_owner(&self.profile_dir, &self.owner)
     }
 
     pub fn release(&mut self) -> std::io::Result<()> {
@@ -668,6 +737,218 @@ fn release_swarm_profile(path: &Path, expected: &SwarmProfileOwner) -> std::io::
     remove_runtime_profile(path)
 }
 
+/// Aktuelle globale Uhr (Unix-ns) fuer Lease-Zeitstempel.
+fn now_ns() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
+}
+
+/// Prozess-Identitaet dieser Binary: PID plus ein pro-Prozess-Ist-Stempel.
+/// Der Prozess-Stempel dient der Unterscheidung von PID-Wiederverwendung
+/// (gleiche PID, anderer Prozess -> anderer Stempel).
+fn process_stamp() -> (u64, u64) {
+    static START_NANO: OnceLock<u64> = OnceLock::new();
+    let start = *START_NANO.get_or_init(now_ns);
+    (std::process::id() as u64, start)
+}
+
+/// Lebt der Prozess mit `pid` noch? Windows fragt das Betriebssystem
+/// (`PROCESS_QUERY_LIMITED_INFORMATION` + `GetExitCodeProcess`); ausserhalb
+/// von Windows gilt der Heartbeat als autoritativ (kein libc-Dependency im
+/// Kern), also `true`, bis der Heartbeat nachweislich verwaist ist.
+#[cfg(windows)]
+pub(crate) fn pid_is_alive(pid: u64) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid as u32) };
+    if handle.is_null() {
+        return false;
+    }
+    let mut code: u32 = 0;
+    let ok = unsafe { GetExitCodeProcess(handle, &mut code) };
+    unsafe {
+        CloseHandle(handle);
+    }
+    ok != 0 && code == (STILL_ACTIVE as u32)
+}
+
+#[cfg(not(windows))]
+pub(crate) fn pid_is_alive(_pid: u64) -> bool {
+    true
+}
+
+/// Eine Lease gilt als verwaist (reclaimable) NUR wenn sie ein pid UND einen
+/// Heartbeat traegt, der Heartbeat abgelaufen IST, und die PID tot ist.
+/// Legacy-Marker ohne pid/heartbeat werden nie angefasst (T-804: alte Belege
+/// nicht loeschen); ein frischer Heartbeat eines lebenden Workers auch nicht.
+fn owner_is_reclaimable(owner: &SwarmProfileOwner) -> bool {
+    let (Some(pid), Some(heartbeat)) = (owner.pid, owner.heartbeat_ns) else {
+        return false;
+    };
+    let age_secs = now_ns().saturating_sub(heartbeat) / 1_000_000_000;
+    age_secs > stale_heartbeat_secs() && !pid_is_alive(pid)
+}
+
+/// Zustand des gemeinsamen Profil-Leases fuer `run_id`/`brain_id`-Scope.
+/// `Busy` ist ausdruecklich KEIN Providerlimit — die Unterscheidung bleibt
+/// fuer Aufrufer sichtbar (T-804-Abnahme "os error 32").
+#[derive(Clone, Debug)]
+pub enum SwarmProfileLeaseState {
+    /// Scope frei: Lease sofort vergeben.
+    Free,
+    /// Scope von einem LEBENDEN Halter belegt (frischer Heartbeat oder keine
+    /// Reclaim-Berechtigung).
+    Busy { run_id: String, brain_id: String },
+    /// Scope verwaist (tote PID + abgelaufener Heartbeat): reclaimbar.
+    Stale { owner: SwarmProfileOwner },
+}
+
+pub fn swarm_profile_lease_state(run_id: &str, brain_id: &str) -> SwarmProfileLeaseState {
+    swarm_profile_lease_state_in(&profiles_dir(), run_id, brain_id)
+}
+
+/// Wie `swarm_profile_lease_state`, mit expliziter Profil-Basis (Tests).
+pub fn swarm_profile_lease_state_in(
+    base: &Path,
+    run_id: &str,
+    brain_id: &str,
+) -> SwarmProfileLeaseState {
+    let dst = swarm_profile_dir_in(base, run_id, brain_id);
+    if !dst.exists() {
+        return SwarmProfileLeaseState::Free;
+    }
+    match read_swarm_owner(&dst) {
+        Ok(owner)
+            if owner.version == SWARM_OWNER_VERSION
+                && owner.run_id == run_id
+                && owner.brain_id == brain_id
+                && owner.scope_key == swarm_profile_scope_key(run_id, brain_id) =>
+        {
+            if owner_is_reclaimable(&owner) {
+                SwarmProfileLeaseState::Stale { owner }
+            } else {
+                SwarmProfileLeaseState::Busy {
+                    run_id: owner.run_id,
+                    brain_id: owner.brain_id,
+                }
+            }
+        }
+        // Fremder/unlesbarer Marker: nie anfassen, als belegt ausweisen.
+        _ => SwarmProfileLeaseState::Busy {
+            run_id: run_id.to_string(),
+            brain_id: brain_id.to_string(),
+        },
+    }
+}
+
+/// Fordert eine verwaiste Lease zurueck. Das Loeschen steht unter einer
+/// Advisory-Sperre (fs2) und validiert in DER SPERRE die beobachtete Lease
+/// erneut: Stimmen Marker-Inhalt und Verwaistheit nicht mehr (ein anderer
+/// Prozess hat erneuert oder neu vergeben), wird nichts geloescht — ein alter
+/// Worker kann einen neuen Lease nie loeschen (T-804-Abnahme).
+fn reclaim_swarm_profile_in(
+    base: &Path,
+    run_id: &str,
+    brain_id: &str,
+    expected: &SwarmProfileOwner,
+) -> std::io::Result<bool> {
+    let dst = swarm_profile_dir_in(base, run_id, brain_id);
+    if !dst.exists() {
+        return Ok(true);
+    }
+    let lock_path = base
+        .join("swarm")
+        .join(format!(".reclaim-{}.lock", swarm_profile_scope_key(run_id, brain_id)));
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)?;
+    file.try_lock_exclusive().map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::WouldBlock,
+            format!("Reclaim-Sperre fuer {}-{} belegt: {error}", run_id, brain_id),
+        )
+    })?;
+    match read_swarm_owner(&dst) {
+        Ok(actual) if &actual == expected && owner_is_reclaimable(&actual) => {
+            remove_runtime_profile(&dst)?;
+            Ok(true)
+        }
+        // Unter der Sperre hat jemand die Lease erneuert/ersetzt: stehen lassen.
+        _ => Ok(false),
+    }
+}
+
+/// Gemeinsamer Profil-Lease-Einstieg (T-804): wartet kontrolliert bis zu
+/// `wait_budget`, verwaiste Leases eines abgestuerzten Workers werden
+/// zurueckgefordert. `Err(WouldBlock)` nach Budget = busy auf einem Scope,
+/// den ein LEBENDER Prozess haelt — kein Providerlimit.
+pub fn acquire_swarm_profile(
+    run_id: &str,
+    brain_id: &str,
+    wait_budget: Duration,
+) -> std::io::Result<SwarmProfileLease> {
+    acquire_swarm_profile_in(
+        &profiles_dir(),
+        run_id,
+        brain_id,
+        use_sparse_profile_copy(),
+        wait_budget,
+    )
+}
+
+/// Wie `acquire_swarm_profile`, mit expliziter Profil-Basis und Sparse-Flag
+/// (isolierte, nebenlaeufige Tests).
+pub fn acquire_swarm_profile_in(
+    base: &Path,
+    run_id: &str,
+    brain_id: &str,
+    sparse: bool,
+    wait_budget: Duration,
+) -> std::io::Result<SwarmProfileLease> {
+    let deadline = std::time::Instant::now().checked_add(wait_budget);
+    loop {
+        match swarm_profile_lease_state_in(base, run_id, brain_id) {
+            SwarmProfileLeaseState::Free => match prepare_swarm_profile_in(base, run_id, brain_id, sparse)
+            {
+                Ok(lease) => return Ok(lease),
+                // Rennen um die atomare Reservation verloren: erneut pruefen.
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            },
+            SwarmProfileLeaseState::Stale { owner } => {
+                if reclaim_swarm_profile_in(base, run_id, brain_id, &owner)? {
+                    continue;
+                }
+                // Reclaim-Rennen verloren: als busy weiterwarten.
+            }
+            SwarmProfileLeaseState::Busy { .. } => {}
+        }
+        if deadline
+            .map(|d| std::time::Instant::now() >= d)
+            .unwrap_or(true)
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                format!(
+                    "Profil-Lease fuer run={run_id} brain={brain_id} ist belegt — \
+                     busy (kein Providerlimit)"
+                ),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 /// Ein Wegwerf-Profil, das älter als das hier ist, kann keinem laufenden Run
 /// mehr gehören — ein Swarm-Turn dauert Minuten, nicht Stunden.
 const STALE_RUNTIME_PROFILE_SECS: u64 = 12 * 60 * 60;
@@ -706,6 +987,18 @@ pub fn sweep_stale_runtime_profiles_in(base: &Path, max_age_secs: u64) -> usize 
             let path = entry.path();
             if !path.is_dir() {
                 continue;
+            }
+            // Lease-Marker (mit pid+heartbeat) setzen sich gegen den reinen
+            // mtime-Cutoff durch: ein LEBENDER Worker erneuert seinen Heartbeat
+            // per rewrite des Markers — die Verzeichnis-mtime bleibt dabei alt,
+            // sodass der Cutoff ihn sonst faelschlich als verwaist loeschen
+            // wuerde. Loeschbar ist eine Lease-Marke nur, wenn sie tatsaechlich
+            // verwaist ist (tote PID + abgelaufener Heartbeat). Legacy-Marker
+            // ohne Lease-Felder behalten den bisherigen mtime-Cutoff (T-804).
+            if let Ok(owner) = read_swarm_owner(&path) {
+                if owner.heartbeat_ns.is_some() && !owner_is_reclaimable(&owner) {
+                    continue;
+                }
             }
             let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
             // Ohne lesbare mtime lieber stehen lassen als fremde Daten löschen.
@@ -864,6 +1157,139 @@ mod lease_tests {
             guarded_path.exists(),
             "a foreign marker cannot re-scope a profile for cleanup"
         );
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    /// Liefert eine garantiert tote PID (Kind-Prozess starten, killen, warten).
+    #[cfg(windows)]
+    fn dead_pid() -> u64 {
+        let mut child = std::process::Command::new("cmd")
+            .args(["/c", "ping"])
+            .spawn()
+            .unwrap();
+        let pid = child.id() as u64;
+        let _ = child.kill();
+        let _ = child.wait();
+        pid
+    }
+
+    #[cfg(not(windows))]
+    fn dead_pid() -> u64 {
+        let mut child = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("sleep 30")
+            .spawn()
+            .unwrap();
+        let pid = child.id() as u64;
+        let _ = child.kill();
+        let _ = child.wait();
+        pid
+    }
+
+    #[test]
+    fn lease_traegt_pid_generation_und_lebt_heartbeat() {
+        let base = temp_base("stamp");
+        let mut lease = prepare_swarm_profile_in(&base, "run-x", "gemini", false).unwrap();
+        assert_eq!(lease.pid(), Some(std::process::id() as u64));
+        assert_eq!(lease.generation(), 1);
+        assert!(lease.heartbeat_ns().is_some());
+        let before = lease.heartbeat_ns().unwrap();
+        std::thread::sleep(Duration::from_millis(5));
+        lease.renew().unwrap();
+        assert!(
+            lease.heartbeat_ns().unwrap() >= before,
+            "renew muss den Heartbeat aktualisieren"
+        );
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn bekannter_und_unbekannter_reset_bleiben_getrennt() {
+        let base = temp_base("reset");
+        let mut lease = prepare_swarm_profile_in(&base, "run-x", "gemini", false).unwrap();
+        assert_eq!(
+            lease.reset_origin(),
+            None,
+            "unbekannter Reset bleibt unbekannt (nichts wird erfunden)"
+        );
+        lease.record_reset("navigation_timeout").unwrap();
+        assert_eq!(lease.reset_origin(), Some("navigation_timeout"));
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn busy_ist_kein_providerlimit() {
+        let base = temp_base("busy");
+        let _held = prepare_swarm_profile_in(&base, "run-x", "gemini", false).unwrap();
+        assert!(matches!(
+            swarm_profile_lease_state_in(&base, "run-x", "gemini"),
+            SwarmProfileLeaseState::Busy { .. }
+        ));
+        let err = acquire_swarm_profile_in(
+            &base,
+            "run-x",
+            "gemini",
+            false,
+            Duration::from_millis(300),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.kind(),
+            std::io::ErrorKind::WouldBlock,
+            "busy muss sauber als busy ausgewiesen werden, nicht als Providerlimit"
+        );
+        assert!(err.to_string().contains("busy"));
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn verwaiste_lease_abgestuerzten_workers_wird_reclaimed() {
+        let base = temp_base("reclaim");
+        let lease1 = prepare_swarm_profile_in(&base, "run-x", "gemini", false).unwrap();
+        let path = lease1.profile_dir().to_path_buf();
+        // Absturz simulieren: tote PID + stark veralteter Heartbeat.
+        let mut dead = SwarmProfileOwner::new("run-x", "gemini");
+        dead.pid = Some(dead_pid());
+        dead.heartbeat_ns = Some(
+            now_ns().saturating_sub((stale_heartbeat_secs() + 60) * 1_000_000_000),
+        );
+        dead.scope_key = swarm_profile_scope_key("run-x", "gemini");
+        write_swarm_owner(&path, &dead).unwrap();
+        drop(lease1); // Drop-Release verweigert den fremden Marker; Verzeichnis bleibt.
+        assert!(matches!(
+            swarm_profile_lease_state_in(&base, "run-x", "gemini"),
+            SwarmProfileLeaseState::Stale { .. }
+        ));
+        let lease2 = acquire_swarm_profile_in(&base, "run-x", "gemini", false, Duration::from_secs(3))
+            .unwrap();
+        assert!(path.exists(), "Lease wurde frisch neu geklont");
+        assert_eq!(lease2.pid(), Some(std::process::id() as u64));
+        drop(lease2);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn alter_worker_kann_fremden_lease_nicht_loeschen() {
+        let base = temp_base("crosstake");
+        let mut lease = prepare_swarm_profile_in(&base, "run-x", "gemini", false).unwrap();
+        let path = lease.profile_dir().to_path_buf();
+        // Ein "alter" Worker haelt seinen Owner-Stand; die Lease wurde inzwischen
+        // von einem anderen Halter uebernommen (hoehere Generation, frischer
+        // Heartbeat, neuer pid).
+        let mut other = SwarmProfileOwner::new("run-x", "gemini");
+        other.generation = 2;
+        other.pid = Some(dead_pid());
+        other.heartbeat_ns = Some(now_ns());
+        other.scope_key = swarm_profile_scope_key("run-x", "gemini");
+        write_swarm_owner(&path, &other).unwrap();
+        assert!(lease.release().is_err(), "alter Worker darf fremden Lease nicht loeschen");
+        assert!(path.exists());
+
+        // Auch der Reclaim verweigert einen NICHT-verwaisten (frischen) Lease.
+        let reclaimed = reclaim_swarm_profile_in(&base, "run-x", "gemini", &other).unwrap();
+        assert!(!reclaimed);
+        assert!(path.exists());
+        drop(lease);
         let _ = std::fs::remove_dir_all(base);
     }
 }
