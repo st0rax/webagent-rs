@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 pub const CROSS_BRAIN_HANDOFF_KIND: &str = "cross_brain_session_handoff";
@@ -15,6 +15,30 @@ pub const CROSS_BRAIN_HANDOFF_MAX_CONTEXT_CHARS: usize = 4_000;
 const CROSS_BRAIN_HANDOFF_MAX_ID_CHARS: usize = 160;
 const CROSS_BRAIN_HANDOFF_MAX_BRAIN_CHARS: usize = 80;
 const CROSS_BRAIN_HANDOFF_MAX_ATTEMPT: u32 = 64;
+
+/// Name der Journal-Sperre pro Run-Verzeichnis (T-808).
+const JOURNAL_LOCK_NAME: &str = "events.lock";
+/// Nach dieser Dauer gilt eine bestehende Sperre als verwaist (Crash des Halters).
+const JOURNAL_LOCK_STALE: Duration = Duration::from_secs(30);
+/// Warteintervall, bis ein belegtes Lock geprüft und erneut versucht wird.
+const JOURNAL_LOCK_RETRY: Duration = Duration::from_millis(25);
+/// Name des Recovery-Receipts pro Run-Verzeichnis (T-808).
+const RECOVERY_RECEIPT_NAME: &str = "recovery-receipt.json";
+
+/// Quittung fuer eine Torn-Tail-Quarantaene (T-808-Abnahme).
+///
+/// Wird ZUSAMMEN mit dem unveraendert abgelegten Tail geschrieben, damit eine
+/// spätere Auswertung den Vorfall nachvollziehen kann, ohne still reparieren
+/// zu müssen.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RecoveryReceipt {
+    pub run_id: String,
+    pub created_at_rfc3339: String,
+    pub valid_entries: usize,
+    pub torn_entries: usize,
+    pub quarantine_file: String,
+    pub reason: String,
+}
 
 /// Bounded, textual metadata passed between two different brains.
 ///
@@ -160,12 +184,18 @@ fn validate_bounded_field(name: &str, value: &str, max_chars: usize) -> Result<(
 }
 
 /// Terminal-Status, die nicht mehr geändert werden können.
+///
+/// `recovery_required` ist PERSISTENZ-Terminal (T-808): die Eventkette hatte
+/// einen Torn Tail / eine Unterbrechung, die erst quarantaniert werden muss,
+/// bevor der Lauf beobachtend weiterlaufen darf. Es ist fail-closed — ein
+/// solcher Lauf wird nie unbelegt `done`.
 const TERMINAL_STATUSES: &[&str] = &[
     "done",
     "failed",
     "interrupted",
     "never_started",
     "protocol_error",
+    "recovery_required",
 ];
 
 /// Ausgangsstatus fuer einen verwaisten, nicht mehr laufenden Run.
@@ -422,6 +452,31 @@ impl RunStore {
             self.validate_status_transition(&prev.status, &meta.status)?;
         }
 
+        // T-808 (fail-closed): Man darf einen Run mit kaputtem Event-Journal
+        // nicht als `done`/`failed` ablegen — erst quaraentaen (setzt den
+        // Persistenzstatus auf `recovery_required`) und den Save-Versuch
+        // ehrlich zurueckweisen. Ein unbelegtes `done` gaebe dem Aufrufer vor,
+        // der Lauf sei sauber durchgelaufen, obwohl die Beweiskette torn ist.
+        if meta.status == "done" || meta.status == "failed" {
+            let run_dir = meta.dir(&self.runs_dir);
+            let journal = run_dir.join("events.jsonl");
+            let torn = self.with_journal_lock(&run_dir, Duration::from_secs(5), || {
+                if journal.exists() && last_event_chain_state(&journal).is_err() {
+                    self.quarantine_torn_tail_unlocked(&meta.run_id)?;
+                    return Ok(true);
+                }
+                Ok(false)
+            })?;
+            if torn {
+                return Err(format!(
+                    "Persistenzunterbrechung: Run {} hatte einen Torn Tail; \
+                     quaraentaniert und als recovery_required markiert — der \
+                     Save-Versuch auf {} wurde fail-closed abgelehnt",
+                    meta.run_id, meta.status
+                ));
+            }
+        }
+
         self.save_internal(meta)?;
         self.append_save_events(previous.as_ref(), meta)?;
 
@@ -562,6 +617,11 @@ impl RunStore {
     }
 
     /// Schreibt ein Event in events.jsonl.
+    ///
+    /// Die gesamte Sequenz (Kette lesen → ggf. Torn Tail quarantänieren →
+    /// anhängen → fsync) läuft prozessübergreifend unter EINEM Journal-Lock,
+    /// damit zwei Prozesse nie zweimal denselben `seq` vergeben und die Kette
+    /// entzweien (T-808-Abnahme: lückenlose lineare Kette).
     fn append_event(
         &self,
         meta: &RunMeta,
@@ -571,8 +631,21 @@ impl RunStore {
         let run_dir = meta.dir(&self.runs_dir);
         fs::create_dir_all(&run_dir)
             .map_err(|e| format!("Fehler beim Erstellen von {}: {}", run_dir.display(), e))?;
-
         let path = run_dir.join("events.jsonl");
+        self.with_journal_lock(&run_dir, Duration::from_secs(5), || {
+            self.append_event_unlocked(meta, event_type, payload, &path)
+        })
+    }
+
+    /// Lock-freier Kern von `append_event`: läuft im bereits gehaltenen
+    /// Journal-Lock und ersetzt `self` nicht rekursiv.
+    fn append_event_unlocked(
+        &self,
+        meta: &RunMeta,
+        event_type: &str,
+        payload: serde_json::Value,
+        path: &Path,
+    ) -> Result<(), String> {
         let core = serde_json::json!({
             "timestamp": crate::now_rfc3339(),
             "run_id": &meta.run_id,
@@ -584,7 +657,16 @@ impl RunStore {
         // Each record commits its predecessor hash and its own canonical JSON
         // hash. A torn write therefore becomes detectable instead of looking
         // like a successful provider action.
-        let (seq, previous_hash) = last_event_chain_state(&path)?;
+        let (seq, previous_hash) = {
+            // Erst die Kette pruefen — ein vorhandener Torn Tail (z.B. vom
+            // Crash des vorigen Prozesses) wird VOR dem neuen Anhaengen
+            // quarantaniert und fail-closed als recovery_required markiert.
+            // Sonst wuerden wir auf einer gebrochenen Kette blind weiterschreiben.
+            if last_event_chain_state(path).is_err() {
+                self.quarantine_torn_tail_unlocked(&meta.run_id)?;
+            }
+            last_event_chain_state(path)?
+        };
         let canonical = serde_json::to_vec(&core)
             .map_err(|e| format!("Fehler beim Serialisieren des Events: {}", e))?;
         let mut hasher = Sha256::new();
@@ -635,11 +717,284 @@ impl RunStore {
                 level,
                 None,
                 &format!("[run:{}] {}", meta.run_id, event_type),
-                Some(&payload.to_string()),
+                Some(&core["payload"].to_string()),
             );
         }
 
         Ok(())
+    }
+
+    /// Prozessübergreifende Serialisierung der Journal-Anhänge (T-808).
+    ///
+    /// Zwei parallel laufende Prozesse, die in dieselbe `events.jsonl`
+    /// schreiben, würden ohne Lock denselben `seq`/`prev_hash` vom Ende lesen
+    /// und die Kette entzweien. `events.lock` wird atomar per `create_new`
+    /// belegt (nur ein Prozess gewinnt), PID steht drin fuer Diagnose. Ein
+    /// verwaistes Lock (Crash) wird anhand des Alters aufgeräumt.
+    ///
+    /// Die Lock-Datei wird nicht offen gehalten — das Haelt-Handle-Problem,
+    /// das `fs::rename` auf Windows zu Fall bringt, entsteht so gar nicht
+    /// erst; `create_new` allein ist der atomare Belegungsvorgang.
+    fn with_journal_lock<R>(
+        &self,
+        run_dir: &Path,
+        timeout: Duration,
+        f: impl FnOnce() -> Result<R, String>,
+    ) -> Result<R, String> {
+        let lock_path = run_dir.join(JOURNAL_LOCK_NAME);
+        let deadline = Instant::now() + timeout;
+        loop {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
+                Ok(mut lock) => {
+                    let _ = writeln!(lock, "pid={}", std::process::id());
+                    let result = f();
+                    // Nur löschen, wenn wir die Datei noch halten (kein fremder
+                    // Neubelegung waehrend der Ausfuehrung ueberschrieben hat).
+                    if fs::metadata(&lock_path).map(|m| m.len()).ok() == Some(0)
+                        || fs::read_to_string(&lock_path)
+                            .ok()
+                            .is_some_and(|s| s.trim() == format!("pid={}", std::process::id()))
+                    {
+                        let _ = fs::remove_file(&lock_path);
+                    }
+                    return result;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Verwaistes Lock: aelter als die Stale-Grenze → aufraeumen
+                    // und sofort erneut versuchen. Sonst bis zum Deadline warten.
+                    let stale = fs::metadata(&lock_path)
+                        .and_then(|m| m.modified())
+                        .map(|m| m.elapsed().map(|a| a > JOURNAL_LOCK_STALE).unwrap_or(false))
+                        .unwrap_or(false);
+                    if stale {
+                        let _ = fs::remove_file(&lock_path);
+                        continue;
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(format!(
+                            "Journal-Lock {} nicht erreichbar innerhalb {:?} — \
+                             ein anderer Prozess haelt das Journal, es ist weder \
+                             torn noch recovery_required, also fail-closed: kein \
+                             Schreiben ohne Sequenzierung",
+                            lock_path.display(),
+                            timeout
+                        ));
+                    }
+                    std::thread::sleep(JOURNAL_LOCK_RETRY);
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "Journal-Lock {} kann nicht angelegt werden: {}",
+                        lock_path.display(),
+                        e
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Erkennt einen Torn Tail im Event-Journal.
+    ///
+    /// Führt dieselbe Kettentest-Rechenschritte wie `last_event_chain_state`
+    /// aus, liefert aber statt des ersten Fehlers die Rohzeilen, damit die
+    /// Quarantäne den kaputten Teil UNVERÄNDERT beiseite legen kann: der
+    /// gültige Prefix bleibt vollständig lesbar, nichts wird still repariert
+    /// oder verworfen (T-808-Abnahme: kaputter Tail lässt den gültigen Prefix
+    /// lesbar).
+    fn scan_journal(path: &Path) -> Result<(Vec<String>, Vec<String>, u64, String), String> {
+        if !path.exists() {
+            return Ok((Vec::new(), Vec::new(), 1, "GENESIS".to_string()));
+        }
+        let content = fs::read_to_string(path).map_err(|e| {
+            format!(
+                "Fehler beim Lesen des Event-Journals {}: {}",
+                path.display(),
+                e
+            )
+        })?;
+        let lines: Vec<&str> = content.lines().collect();
+        let mut valid_lines = Vec::new();
+        let mut expected_seq = 1u64;
+        let mut previous = "GENESIS".to_string();
+        for (index, raw) in lines.iter().enumerate() {
+            let value: serde_json::Value = serde_json::from_str(raw).map_err(|e| {
+                format!(
+                    "Ungültiger Journal-Eintrag {} in {}: {}",
+                    index + 1,
+                    path.display(),
+                    e
+                )
+            })?;
+            let seq = value
+                .get("seq")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| format!("Journal-Eintrag {} ohne seq", index + 1))?;
+            let prev_hash = value
+                .get("prev_hash")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("Journal-Eintrag {} ohne prev_hash", index + 1))?;
+            let hash = value
+                .get("hash")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("Journal-Eintrag {} ohne hash", index + 1))?;
+            if seq != expected_seq || prev_hash != previous {
+                return Err(format!(
+                    "Journal-Kette beschädigt bei Eintrag {} in {}",
+                    index + 1,
+                    path.display()
+                ));
+            }
+            let core = serde_json::json!({
+                "timestamp": value["timestamp"],
+                "run_id": value["run_id"],
+                "type": value["type"],
+                "payload": value["payload"],
+            });
+            let canonical =
+                serde_json::to_vec(&core).map_err(|e| format!("Journal-Core ungültig: {e}"))?;
+            let mut hasher = Sha256::new();
+            hasher.update(previous.as_bytes());
+            hasher.update(&canonical);
+            let computed = format!("{:x}", hasher.finalize());
+            if hash != computed {
+                return Err(format!(
+                    "Hash-Prüfung fehlgeschlagen bei Eintrag {} in {}",
+                    index + 1,
+                    path.display()
+                ));
+            }
+            valid_lines.push((*raw).to_string());
+            expected_seq = expected_seq
+                .checked_add(1)
+                .ok_or_else(|| "Journal-Sequenz übergelaufen".to_string())?;
+            previous = hash.to_string();
+        }
+        Ok((valid_lines, Vec::new(), expected_seq, previous))
+    }
+
+    /// Kern der Torn-Tail-Quarantäne OHNE eigenes Journal-Lock.
+    ///
+    /// Wird von `quarantine_torn_tail` (eigenes Lock) und von `append_event`
+    /// (bereits gehaltenes Lock) aufgerufen — nie rekursiv.
+    fn quarantine_torn_tail_unlocked(
+        &self,
+        run_id: &str,
+    ) -> Result<Option<RecoveryReceipt>, String> {
+        let run_dir = self.runs_dir.join(run_id);
+        let path = run_dir.join("events.jsonl");
+        // Der erste Fehler definiert die Trennlinie: alle Zeilen davor
+        // sind der gültige Prefix, alle danach (unverändert) der Torn Tail.
+        let (valid_lines, torn, _seq, _prev) = {
+            // scan_journal validiert bis zum ersten Fehler; dann kopieren
+            // wir sämtliche verbliebenen Rohzeilen unverändert weg.
+            match Self::scan_journal(&path) {
+                Ok(scan) => scan,
+                Err(_) => {
+                    let content = fs::read_to_string(&path).map_err(|e| {
+                        format!("Journal {} nach Kettentest nicht lesbar: {}", path.display(), e)
+                    })?;
+                    let mut valid = Vec::new();
+                    let mut broken_at = None;
+                    for (i, line) in content.lines().enumerate() {
+                        if serde_json::from_str::<serde_json::Value>(line).is_ok() {
+                            valid.push(line.to_string());
+                        } else {
+                            broken_at = Some(i);
+                            break;
+                        }
+                    }
+                    let torn_lines: Vec<String> = content
+                        .lines()
+                        .skip(broken_at.unwrap_or(content.lines().count()))
+                        .map(str::to_string)
+                        .collect();
+                    (valid, torn_lines, 0, String::new())
+                }
+            }
+        };
+        if torn.is_empty() {
+            return Ok(None);
+        }
+        // Eindeutiger Quarantäne-Name: nie ein gemeinsam genutzter Tempname.
+        let stamp = crate::now_run_stamp();
+        let quarantine_file = format!("events.jsonl.torn-{}-{}.jsonl", stamp, std::process::id());
+        let quarantine_path = run_dir.join(&quarantine_file);
+        fs::write(&quarantine_path, torn.join("\n") + "\n").map_err(|e| {
+            format!(
+                "Torn Tail konnte nicht quarantiniert werden ({}): {}",
+                quarantine_path.display(),
+                e
+            )
+        })?;
+        // Gültigen Prefix atomar zurueckschreiben (tmp + rename, Windows-Fallback).
+        let tmp_path = run_dir.join(format!("events.jsonl.prefix-{}.tmp", std::process::id()));
+        fs::write(
+            &tmp_path,
+            valid_lines.join("\n") + (if valid_lines.is_empty() { "" } else { "\n" }),
+        )
+        .map_err(|e| format!("Gültiger Prefix nicht schreibbar ({}): {}", tmp_path.display(), e))?;
+        if let Err(rename_error) = fs::rename(&tmp_path, &path) {
+            fs::write(&path, valid_lines.join("\n") + "\n").map_err(|write_error| {
+                format!(
+                    "Prefix-Rename fehlgeschlagen ({}): {}; direkter Fallback: {}",
+                    tmp_path.display(),
+                    rename_error,
+                    write_error
+                )
+            })?;
+            let _ = fs::remove_file(&tmp_path);
+        }
+        let torn_entries = torn.len();
+        let valid_entries = valid_lines.len();
+        let receipt = RecoveryReceipt {
+            run_id: run_id.to_string(),
+            created_at_rfc3339: crate::now_rfc3339(),
+            valid_entries,
+            torn_entries,
+            quarantine_file: quarantine_file.clone(),
+            reason: "Torn Tail (Eventkette gebrochen oder unvollständig)".to_string(),
+        };
+        let receipt_path = run_dir.join(RECOVERY_RECEIPT_NAME);
+        let receipt_json = serde_json::to_string_pretty(&receipt)
+            .map_err(|e| format!("Recovery-Receipt nicht serialisierbar: {e}"))?;
+        fs::write(&receipt_path, receipt_json).map_err(|e| {
+            format!(
+                "Recovery-Receipt nicht schreibbar ({}): {}",
+                receipt_path.display(),
+                e
+            )
+        })?;
+        fs::File::open(&receipt_path)
+            .and_then(|f| f.sync_all())
+            .ok();
+        // Fail-closed: Run darf nie unbelegt `done` werden. Status im
+        // Persistenzbestand auf recovery_required stellen.
+        if let Some(mut meta) = self.load_existing_meta(run_id) {
+            if meta.status != "recovery_required" {
+                let previous = meta.clone();
+                meta.status = "recovery_required".to_string();
+                let _ = self.save_internal(&meta);
+                let _ = self.append_event_unlocked(&meta, "recovery_required", serde_json::json!({
+                    "torn_entries": torn_entries,
+                    "valid_entries": valid_entries,
+                    "quarantine_file": quarantine_file,
+                }), &run_dir.join("events.jsonl"));
+                let _ = previous;
+            }
+        }
+        Ok(Some(receipt))
+    }
+
+    /// Öffentlicher Einstieg für die Torn-Tail-Quarantäne (eigenes Lock).
+    pub fn quarantine_torn_tail(&self, run_id: &str) -> Result<Option<RecoveryReceipt>, String> {
+        let run_dir = self.runs_dir.join(run_id);
+        self.with_journal_lock(&run_dir, Duration::from_secs(5), || {
+            self.quarantine_torn_tail_unlocked(run_id)
+        })
     }
 
     /// Listet alle Runs auf (sortiert, neueste zuerst).
@@ -1374,6 +1729,182 @@ mod tests {
         assert!(runs.contains(&meta2.run_id));
 
         // Cleanup
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    // --- T-808: Dauerhaftes Run-Ledger und Crash-Recovery -----------------
+    // Abnahme aus docs/BRAIN_UNIFICATION_PLAN.md: kaputter Tail lässt den
+    // gültigen Prefix lesbar; Fehler bei Rename/Write erzeugen nie halbes
+    // Meta; jede Persistenzunterbrechung ergibt fail-closed `interrupted`
+    // oder `recovery_required`, nie unbelegtes `done`; zwei Prozesse (hier
+    // zwei Store-Instanzen) schreiben eine lückenlose lineare Kette.
+
+    /// Legt einen Torn Tail eigenständig an und prüft, dass die Quarantäne den
+    /// unveränderten Tail wegschiebt, dem gültigen Prefix wiederherstellt und
+    /// den Run fail-closed auf `recovery_required` stellt — nie auf `done`.
+    #[test]
+    fn torn_tail_wird_quarantaniert_prefix_bleibt_lesbar() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let meta = store.create("mock", "torn").unwrap();
+        let run_id = meta.run_id.clone();
+        store.save(&meta).unwrap(); // schreibt "created"/"meta_saved" Events
+
+        let run_dir = tmp.join("runs").join(&run_id);
+        let journal = run_dir.join("events.jsonl");
+        let mut original = std::fs::read_to_string(&journal).unwrap();
+        assert!(!original.is_empty());
+
+        // Torn Tail simulieren: eine kaputte Zeile ans Journal hängen, die die
+        // Kette bricht (kein JSON, kein Hash).
+        std::fs::write(&journal, format!("{original}TORN-TAIL-OHNE-JSON-NEWLINE")).unwrap();
+        assert!(last_event_chain_state(&journal).is_err(), "Torn Tail muss die Kette brechen");
+
+        // Ein Anhänge-Versuch ist ein Persistenzbruch → append_event muss ihn
+        // zuerst quarantänieren und als recovery_required laufen lassen.
+        let mut meta2 = store.load(&run_id).unwrap();
+        meta2.status = "done".to_string();
+        let res = store.save(&meta2);
+        assert!(res.is_err(), "Torn Tail darf nie unbelegt done werden: {res:?}");
+
+        // Quarantäne-Datei existiert und enthält den unveränderten Tail.
+        let quarantined: Vec<_> = std::fs::read_dir(&run_dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains("torn-"))
+            .collect();
+        assert_eq!(quarantined.len(), 1, "genau eine Quarantäne-Datei");
+        let quarantined_text = std::fs::read_to_string(quarantined[0].path()).unwrap();
+        assert_eq!(quarantined_text.trim(), "TORN-TAIL-OHNE-JSON-NEWLINE");
+
+        // Recovery-Receipt geschrieben.
+        assert!(run_dir.join("recovery-receipt.json").exists());
+
+        // Der gültige Prefix ist wieder lesbar (ganze Kette validiert).
+        assert!(last_event_chain_state(&journal).is_ok(), "Prefix muss lesbar bleiben");
+
+        // Der Run ist `recovery_required`, nie `done`.
+        let persisted = store.load(&run_id).unwrap();
+        assert_eq!(persisted.status, "recovery_required", "fail-closed statt unbelegtes done");
+        assert_ne!(original, std::fs::read_to_string(&journal).unwrap());
+
+        // Idempotent: zweiter Lauf findet keinen Torn Tail mehr.
+        assert!(store.quarantine_torn_tail(&run_id).unwrap().is_none());
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Zwei parallele Schreiber (zwei Store-Instanzen auf dasselbe Verzeichnis,
+    /// Proxy für zwei Prozesse) erzeugen eine lückenlose lineare Kette: keine
+    /// doppelten seq, keine gebrochenen prev_hash beim Lesen.
+    #[test]
+    fn zwei_schreiber_erzeugen_lueckenlose_kette() {
+        let tmp = unique_tmp();
+        let store_a = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let meta = store_a.create("mock", "parallel").unwrap();
+        let run_id = meta.run_id.clone();
+        store_a.save(&meta).unwrap();
+
+        let a_thread = std::thread::spawn({
+            let base = meta.clone();
+            let dir = tmp.join("runs");
+            let logs = tmp.join("logs");
+            move || {
+                for i in 0..8 {
+                    let store = RunStore::new(dir.clone(), logs.clone());
+                    let mut m = base.clone();
+                    m.extra
+                        .insert("writer".into(), serde_json::Value::String(format!("a{i}")));
+                    let _ = store.save(&m);
+                }
+            }
+        });
+
+        let b_thread = std::thread::spawn({
+            let base = meta.clone();
+            let dir = tmp.join("runs");
+            let logs = tmp.join("logs");
+            move || {
+                for i in 0..8 {
+                    let store = RunStore::new(dir.clone(), logs.clone());
+                    let mut m = base.clone();
+                    m.extra
+                        .insert("writer".into(), serde_json::Value::String(format!("b{i}")));
+                    let _ = store.save(&m);
+                }
+            }
+        });
+
+        a_thread.join().unwrap();
+        b_thread.join().unwrap();
+
+        // Neue, frische Instanz liest die gesamte Kette — sie muss lückenlos
+        // validierbar sein (last_event_chain_state wirft sonst).
+        let journal = tmp.join("runs").join(&run_id).join("events.jsonl");
+        assert!(
+            last_event_chain_state(&journal).is_ok(),
+            "Kette nach Parallellschreiben kaputt"
+        );
+        let content = std::fs::read_to_string(&journal).unwrap();
+        assert!(
+            content.lines().count() > 4,
+            "es müssen parallele Events angehängt worden sein"
+        );
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Ein `recovery_required`-Status kann nicht zurück zu `running` schreiben
+    /// (fail-closed Persistenzgrenze, kein Fortsetzen frei Haus).
+    #[test]
+    fn recovery_required_kann_nicht_still_fortgesetzt_werden() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let mut meta = store.create("mock", "recovery").unwrap();
+        let run_id = meta.run_id.clone();
+        meta.status = "recovery_required".to_string();
+        store.save(&meta).unwrap();
+
+        // Direkter Übergang recovery_required -> running ist NICHT erlaubt
+        // (nur activate_continuation darf, und nur für die ACTIVATABLE-Liste).
+        let mut back = store.load(&run_id).unwrap();
+        back.status = "running".to_string();
+        assert!(store.save(&back).is_err(), "recovery_required -> running ohne Continuation verboten");
+        assert!(store.activate_continuation(&mut back).is_err(), "recovery_required ist nicht activatable");
+
+        fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Journal-Lock ist prozessübergreifend exklusiv: eine gehaltene Sperre
+    /// blockiert einen zweiten Schreiber bis zum Timeout (fail-closed, kein
+    /// unbelegtes Weiterlaufen).
+    #[test]
+    fn journal_lock_ist_exklusiv_und_blockiert_zweiten_schreiber() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let run_dir = tmp.join("runs").join("lock_test");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let lock_path = run_dir.join("events.lock");
+
+        // Erster Schreiber hält das Lock (Datei existiert).
+        std::fs::write(&lock_path, format!("pid={}", std::process::id())).unwrap();
+        let now = std::time::Instant::now();
+
+        // Zweiter Schreiber mit kurzem Timeout scheitert fail-closed.
+        let blocked = store.with_journal_lock(&run_dir, Duration::from_millis(120), || {
+            Ok::<_, String>(())
+        });
+        assert!(blocked.is_err(), "belegtes Lock muss den zweiten Schreiber blockieren");
+        assert!(now.elapsed() >= Duration::from_millis(100));
+
+        // Wird das Lock entfernt, kommt der zweite Schreiber durch.
+        std::fs::remove_file(&lock_path).ok();
+        let released = store.with_journal_lock(&run_dir, Duration::from_secs(1), || {
+            Ok::<_, String>(())
+        });
+        assert!(released.is_ok(), "nach Freigabe muss der Schreiber durchkommen");
+        assert!(!run_dir.join("events.lock").exists(), "Lock wird nach Nutzung gelöscht");
+
         fs::remove_dir_all(&tmp).ok();
     }
 }
