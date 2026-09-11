@@ -557,6 +557,29 @@ pub(crate) fn git_head_sha(workdir: &Path) -> Result<String, String> {
     git_ok(workdir, &["rev-parse", "HEAD"])
 }
 
+/// Aktueller Branch (`git rev-parse --abbrev-ref HEAD`).
+pub(crate) fn git_branch(workdir: &Path) -> Result<String, String> {
+    git_ok(workdir, &["rev-parse", "--abbrev-ref", "HEAD"])
+}
+
+/// Git-Lagebild (Repo-Root, kurzer HEAD-SHA, Branch) fuer externe
+/// Konsumenten wie den Swarm-Kontext. Kein Repo -> alle Werte `None`;
+/// Einzelausfaelle (z.B. detached HEAD) bleiben einzeln fehlend, nichts wird
+/// erfunden (T-803: fehlende Werte bleiben fehlend).
+pub fn git_env(workdir: &Path) -> (Option<String>, Option<String>, Option<String>) {
+    let root = git_repo_root(workdir).ok();
+    let sha = git_head_sha(workdir).ok().map(|s| {
+        let short: String = s.chars().take(7).collect();
+        short
+    });
+    let branch = git_branch(workdir).ok();
+    (
+        root.map(|p| p.display().to_string()),
+        sha,
+        branch,
+    )
+}
+
 /// Repo-Root des Verzeichnisses (`git rev-parse --show-toplevel`).
 pub fn git_repo_root(start: &Path) -> Result<PathBuf, String> {
     git_ok(start, &["rev-parse", "--show-toplevel"]).map(PathBuf::from)

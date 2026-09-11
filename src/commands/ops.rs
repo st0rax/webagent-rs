@@ -2,7 +2,8 @@
 //! Watchdog, Wartungspruefung.
 
 use std::collections::HashMap;
-use webagent::run_store::RunStore;
+use webagent::run_store::{RunMeta, RunStore};
+use webagent::transcript::Transcript;
 
 /// Startup-Helfer: stale Runs reparieren (Python `main()` vor jedem Command
 /// ausser maintenance-check).
@@ -327,6 +328,130 @@ pub fn cmd_relay(
     }
 }
 
+/// Stream-Statistik eines einzelnen Brain-Rufs (T-803, identische Semantik
+/// wie das `brain_stream`-Transkript-Event des Controllers).
+#[derive(Default)]
+struct StreamStats {
+    snapshots: usize,
+    revisions: usize,
+    saw_text: bool,
+}
+
+impl StreamStats {
+    /// Echtes inkrementelles Streaming: mehr als ein Snapshot, keine Revision,
+    /// und es kam tatsaechlich Text — eine gepufferte Endantwort oder ein
+    /// Ersatz (Diagnose -> Antwort) zaehlt nie als Streaming.
+    fn streamed_incrementally(&self) -> bool {
+        self.snapshots > 1 && self.revisions == 0 && self.saw_text
+    }
+}
+
+/// Zeigt die Roisse des Kontexts, den der Swarm einem Brain wirklich
+/// uebergibt (Plan T-803). Fehlende Werte bleiben fehlend: `None` wird als
+/// `-` ausgegeben, niemals erfunden.
+struct SwarmContext {
+    brain: String,
+    repository: Option<String>,
+    commit: Option<String>,
+    branch: Option<String>,
+    task: String,
+    run_id: Option<String>,
+    evidence_paths: Vec<String>,
+    run_meta: Option<RunMeta>,
+}
+
+/// Git-Kontext des aktuellen Arbeitsverzeichnisses. Kein Git-Repo -> alle
+/// drei Werte fehlen; Einzelausfaelle (z.B. detached HEAD) bleiben einzeln
+/// fehlend.
+fn swarm_git_context() -> (Option<String>, Option<String>, Option<String>) {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    webagent::autoresearch::git_env(&cwd)
+}
+
+/// Belegpfade, die fuer diesen Lauf real existieren bzw. entstehen
+/// (capability-proofs, Scores, Limits und das Run-Transcript). Eszaehlt nur,
+/// was tatsaechlich auf der Platte liegt.
+fn swarm_evidence_paths(run_id: Option<&str>) -> Vec<String> {
+    let data = webagent::config::data_dir();
+    let mut paths = Vec::new();
+    for rel in [
+        "capability/proofs.jsonl",
+        "brain_score/events.jsonl",
+        "code_score/events.jsonl",
+        "brain_limits.json",
+    ] {
+        let p = data.join(rel);
+        if p.exists() {
+            paths.push(p.display().to_string());
+        }
+    }
+    if let Some(id) = run_id {
+        let p = data.join("runs").join(id).join("transcript.jsonl");
+        paths.push(p.display().to_string());
+    }
+    paths
+}
+
+/// Legt einen Run im Ledger an und liefert Run-ID plus Meta fuer das
+/// Transcript. Schlaegt das Ledger fehl, bleibt die Run-ID fehlend — der
+/// Swarm laeuft trotzdem weiter (kein erfundener Beleg).
+fn swarm_new_run(brain: &str, task: &str) -> (Option<String>, Option<RunMeta>) {
+    let runs_dir = webagent::config::runs_dir();
+    let store = RunStore::new(runs_dir.clone(), runs_dir.join("logs"));
+    match store.create(brain, task) {
+        Ok(meta) => (Some(meta.run_id.clone()), Some(meta)),
+        Err(_) => (None, None),
+    }
+}
+
+fn or_missing(v: &Option<String>) -> &str {
+    v.as_deref().unwrap_or("-")
+}
+
+fn print_swarm_context(ctx: &SwarmContext) {
+    println!("  Kontext fuer '{}':", ctx.brain);
+    println!("    Ziel        : {}", ctx.brain);
+    println!("    Repository  : {}", or_missing(&ctx.repository));
+    println!("    Commit      : {}", or_missing(&ctx.commit));
+    println!("    Branch      : {}", or_missing(&ctx.branch));
+    println!("    Task        : {}", ctx.task);
+    println!("    Run-ID      : {}", or_missing(&ctx.run_id));
+    if ctx.evidence_paths.is_empty() {
+        println!("    Belegpfade  : -");
+    } else {
+        println!("    Belegpfade  :");
+        for p in &ctx.evidence_paths {
+            println!("      - {}", p);
+        }
+    }
+}
+
+/// Schreibt den Brain-Ruf in das Run-Transcript (Spiegel des
+/// Controller-`brain_stream`-Events): user, brain_stream-Statistik, Antwort.
+fn record_swarm_run(
+    run_meta: &Option<RunMeta>,
+    task: &str,
+    answer: &str,
+    stats: &StreamStats,
+) {
+    let Some(meta) = run_meta else { return };
+    let runs_dir = webagent::config::runs_dir();
+    let t = Transcript::new(meta, &runs_dir);
+    let _ = t.append("user", task, HashMap::new());
+    let mut extra = HashMap::new();
+    extra.insert("snapshots".to_string(), serde_json::json!(stats.snapshots));
+    extra.insert("revisions".to_string(), serde_json::json!(stats.revisions));
+    extra.insert("saw_text".to_string(), serde_json::json!(stats.saw_text));
+    extra.insert(
+        "streamed_incrementally".to_string(),
+        serde_json::json!(stats.streamed_incrementally()),
+    );
+    let _ = t.append("system", "brain_stream", extra);
+    if !answer.is_empty() {
+        let _ = t.append("assistant", answer, HashMap::new());
+    }
+}
+
 pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json: bool) -> i32 {
     let to = if timeout > 0.0 { Some(timeout) } else { None };
     let targets: Vec<String> = {
@@ -357,7 +482,68 @@ pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json
     let mut results: Vec<BrainIoResult> = Vec::new();
     for brain in &targets {
         let started = std::time::Instant::now();
-        let r = match webagent::relay::relay_single_turn(brain, message, headless, to, None) {
+        // Kontext (T-803): vor jedem Brain ausgeben, was wirklich uebergeben
+        // wird. Fehlende Werte bleiben fehlend, nichts wird erfunden.
+        let (repository, commit, branch) = swarm_git_context();
+        let (run_id, run_meta) = swarm_new_run(brain, message);
+        let ctx = SwarmContext {
+            brain: brain.clone(),
+            repository,
+            commit,
+            branch,
+            task: message.to_string(),
+            run_id,
+            evidence_paths: swarm_evidence_paths(run_meta.as_ref().map(|m| m.run_id.as_str())),
+            run_meta,
+        };
+        if !json {
+            println!("  [swarm] Antwortstream:");
+            print_swarm_context(&ctx);
+            print!("  > ");
+        }
+        // Derselbe Ereignisstrom wie Relay/UI/Controller: wachsende Snapshots
+        // mit Append-Deltas, Replace bei Revision. Gepufferte Endantworten
+        // zaehlen nicht als Streaming.
+        use std::io::Write;
+        use webagent::observer::{classify_stream_delta, StreamDelta};
+        let mut last: String = String::new();
+        let mut stats = StreamStats::default();
+        let mut on_update = |txt: &str| {
+            match classify_stream_delta(&last, txt) {
+                StreamDelta::Identical => {}
+                StreamDelta::AppendDelta { addition } => {
+                    if !txt.trim().is_empty() {
+                        stats.saw_text = true;
+                    }
+                    stats.snapshots += 1;
+                    if !json && !last.is_empty() {
+                        print!("{addition}");
+                        let _ = std::io::stdout().flush();
+                    }
+                    last = txt.to_string();
+                }
+                StreamDelta::Replace { .. } => {
+                    if !txt.trim().is_empty() {
+                        stats.saw_text = true;
+                    }
+                    stats.revisions += 1;
+                    stats.snapshots += 1;
+                    if !json {
+                        print!("\n  (antwort revidiert — Replace statt Praefixwachstum) ");
+                        let _ = std::io::stdout().flush();
+                    }
+                    last = txt.to_string();
+                }
+            }
+        };
+        let r = match webagent::relay::relay_single_turn_streaming(
+            brain,
+            message,
+            headless,
+            to,
+            None,
+            &mut on_update,
+        ) {
             Ok(answer) => BrainIoResult {
                 brain: brain.clone(),
                 ok: true,
@@ -373,7 +559,9 @@ pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json
                 reason: e.to_string(),
             },
         };
+        record_swarm_run(&ctx.run_meta, message, &r.answer, &stats);
         if !json {
+            println!();
             let status = if r.ok { "ok" } else { "FAIL" };
             let preview: String = r.answer.chars().take(160).collect();
             println!(
