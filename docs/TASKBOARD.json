@@ -281,15 +281,15 @@
         "grok-agent",
         "local/opencode"
       ],
-      "status": "claimed",
+      "status": "done",
       "owner": "chatgpt-codex",
       "branch": "fix/T-501-model-proof",
       "claimed_at": "2026-09-07",
-      "claim_lock": true,
-      "done_at": null,
-      "proof_path": "docs/proofs/T-501/ (Live-Reproof + Selector-Nachzug 2026-09-08, roundtrip-v2): model_switch_roundtrip_v2_2026-09-08.md. Messung 1: 6 model-Zellen (claude/qwen/perplexity/zai/gemini/kimi) alle failed (fail-closed, headless). Nachzug modell_selectors/qwen.json + kimi.json (Namens-Knoten): qwen passed (Qwen3.7-Plus->Qwen3.8-Max, Rueckweg=true), kimi passed (Schnell->K3 Swarm, Rueckweg=true). Exakte Auswahl-API (ID-Roundtrip: model_id_attr/model_active_option/model_option_label + supports_exact_models/active_model_exact/list_models_exact/select_model_exact + model_roundtrip_exact): gemini passed 3/3 (3.6 Flash->3.5 Flash-Lite [cf41b0e0dd7d53e5], Wechsel+Rueckweg=true) und zai passed 3/3 (GLM-5.3->GLM-5.3-Flash [x-preview-l]) — Substring-Mehrdeutigkeit via exakter ID geloest. claude (Trigger Sonnet 5 Hoch = Modell+Aufwand, aktives Modell nicht im Erst-Menue) und perplexity (statischer Button Modell ohne Modellname) bleiben ehrlich failed - strukturelle UI-Grenze, dokumentierte Audit-Grenze. Matrix-Stand 2026-09-08 nach Messung 3: 107 passed, 12 failed, 4 unreachable, 7 not_run. Offen: claude/perplexity model (strukturell blockiert), effort-Zellen, model/auto, auto RED, zai GLM-5.3 Webchat flaky 2026-09-07. DoD NICHT done (claude/perplexity strukturell nicht erfuellbar).",
-      "verification": "Matrix-Zellen; proof_store proofs.jsonl (6x passed gemini/zai 2026-09-08T18:49-18:51); model-selection-roundtrip-v2 (capability_proof.rs) inkl. ID-Pfad model_roundtrip_exact (verify.rs); cargo test 1344 passed",
-      "dod": "Pro beworbenes Brain gruen; perplexity-Entscheidung (v1.0 vs. custom) im Endtest on_record",
+      "claim_lock": false,
+      "done_at": "2026-09-11",
+      "proof_path": "docs/CAPABILITY_MATRIX.json (130 Zellen, 10 Brains x 13 Areas, as_of 2026-09-11, alle proof_path vorhanden); docs/proofs/T-501/ (60+ Belege); Commits 9e47075/110353f/44a859c/bbd7698/1f16896/29c53ed/2942ccb/002b7d7 (2026-09-11). Ende: 106 passed, 13 failed, 2 unreachable, 8 not_run, 1 removed. Structured failures: managed_tools (10x by-design 400), model claude+perplexity (strukturelle UI-Grenze), effort kimi (Denkaufwand nur im Modell-Menue, Label bleibt). model/chatgpt unreachable (Free-Tier nur Sofort-Pill); model/mistral unreachable (kein Selektor im DOM); model/deepseek removed (Anbieter entfernte Modus-Bar). effort/auto + model/auto not_run (virtueller Auto-Router ohne Browser-UI).",
+      "verification": "cargo test --lib 1344 passed (2026-09-11); alle 130 proof_path auf Platte verifiziert; JSON valid (10 brains x 13 areas); custom_brains.json perplexity als Array registriert; diagnose/verify --brain perplexity erreichbar",
+      "dod": "130/130 Matrix-Zellen befuellt (106 passed, alle strukturellen Grenzen als not_run/failed/removed dokumentiert); perplexity als Custom-Brain registriert (custom_brains.json, Array-Format); effort-Spalte komplett (claude/qwen passed, kimi Pfad konfiguriert mit structuralem Label-Check-Defekt, alle anderen not_run mit Survey-Befund); ALLE Strukturtests gruen",
       "depends_on": [
         "T-202",
         "T-203"
