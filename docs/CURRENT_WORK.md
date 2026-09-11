@@ -8,7 +8,8 @@
 > - gemini/kimi/zai model_switch Frischbelege, chatgpt model_switch failed (Sofort-Pill)
 > - chatgpt.json reasoning_effort_menu entfernt (komplett deckungsgleich mit model_menu)
 > - Matrix-Stand: **130 Zellen, 10 Brains × 13 Areas** vollständig, `as_of` 2026-09-11
-> - offene Bereiche: streaming (Teil-Brains), attachment (qwen/zai), managed_tools (by-design 400)
+> - restliche Restposten: streaming/attachment bereits 10/10 passed (PR #44/#45/#46);
+>   managed_tools 10/10 failed by-design; nur `model/auto` und zai-Webchat-Flaky offen
 
 ## Fortsetzung G-001 / T-501 am 2026-09-07
 
