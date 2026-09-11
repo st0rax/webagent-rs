@@ -1,6 +1,6 @@
 # T-501: mistral chat Live-Reproof 2026-09-11
 
-> Referenz. Datierter Live-Beleg. Operativer Arbeitsstand: `docs/CURRENT_WORK.md`;
+**Referenz.** Datierter Live-Beleg. Operativer Arbeitsstand: `docs/CURRENT_WORK.md`;
 > aktuelle Abnahme: `docs/CAPABILITY_MATRIX.json`.
 
 Datum: 2026-09-11, lokale Zeit (UTC+2). Binary: `target/debug/webagent.exe`,

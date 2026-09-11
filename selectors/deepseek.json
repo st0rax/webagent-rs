@@ -1,5 +1,5 @@
 {
-  "_hygiene_model_vs_mode": "DeepSeek has NO model_menu in the chat composer. Instant/Expert/Vision are mode_option (capability mode_switch), not model_switch. Leave model_menu/model_option empty — do not invent model selectors from the segment bar.",
+  "_hygiene_model_vs_mode": "Am 2026-09-11 entfernt: DeepSeek hat die Instant/Expert/Vision-Segmentleiste kommentarlos entfernt (User bestaetigt Konsolidierung; OCR+Screenshot belegen: Composer zeigt nur noch DeepThink/Search-Toggles). Damit sind model_switch UND mode_switch im aktuellen UI nicht vorhanden (by-design). model_menu/model_option bleiben leer, mode_option wird nicht mehr getroffen -> als removed dokumentiert (siehe Beleg deepseek_mode_model_removed_2026-09-11.md).",
   "model_menu": [],
   "model_option": [],
   "composer": [
@@ -56,9 +56,7 @@
     "stop_generation",
     "reasoning_toggle",
     "web_search",
-    "model_switch",
-    "file_attach",
-    "mode_switch"
+    "file_attach"
   ],
   "reasoning_toggle": [
     "text=DeepThink",
@@ -69,10 +67,5 @@
     "text=Search",
     "div:has-text('Search')",
     "span:has-text('Search')"
-  ],
-  "mode_option": [
-    "text=Instant",
-    "text=Expert",
-    "text=Vision"
   ]
 }

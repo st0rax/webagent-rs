@@ -261,13 +261,13 @@
     {
       "area": "model",
       "brain": "deepseek",
-      "status": "unreachable",
-      "date": "2026-09-06",
+      "status": "removed",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable (verify 2026-09-05, Logins OK): kein sichtbarer Modell-Selektor im Web-UI-DOM auffindbar. Live-DOM 2026-09-06 (survey --dump headless) bestaetigt: DeepSeek bietet KEIN Modellmenue, sondern eine Segmentleiste (Instant/Expert/Vision) = mode_switch (driveable:false, mangels Auswahlmarker laut capability.rs). model_switch (RoundTripMenu) hat dort keinen Trigger — kein geplanter Repo-Fix ohne DOM-Verfeinerung | Live verify 2026-09-06: mode_switch != model; Hygiene #49"
+      "proof_path": "docs/proofs/T-501/deepseek_mode_model_removed_2026-09-11.md",
+      "note": "removed by-design (2026-09-11): DeepSeek hat die Instant/Expert/Vision-Segmentleiste kommentarlos entfernt (User bestaetigt Konsolidierung; OCR + Screenshot + survey --dump headless belegen: Composer zeigt nur noch DeepThink/Search-Toggles, kein Modell-/Modus-Selektor). model_switch UND mode_switch sind im aktuellen UI strukturell nicht mehr vorhanden. Vormals: kein sichtbarer Modell-Selektor + Segmentleiste = mode_switch (driveable:false, mangels Auswahlmarker, Hygiene #49)"
     },
     {
       "area": "model",

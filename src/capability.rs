@@ -157,6 +157,14 @@ pub const CATALOG: &[Capability] = &[
     // feststellbar". Ein Klick, dessen Wirkung man nicht nachweisen kann, ist
     // kein Koennen — sonst zaehlt das Level Absichten. Sobald ein belastbarer
     // Marker gefunden ist (z.B. am Elternelement statt am Knopf), kippt das.
+    //
+    // Am 2026-09-11 superzediert fuer deepseek: Die Instant/Expert/Vision-
+    // Segmentleiste wurde vom Anbieter kommentarlos entfernt (User bestaetigt
+    // Konsolidierung, OCR + Screenshot: Composer zeigt nur noch DeepThink/
+    // Search-Toggles). Damit ist mode_switch im COUNTERPART — siehe
+    // deepseek_mode_model_removed_2026-09-11.md — als nicht vorhanden belegt;
+    // die Capability-Konzepte bleiben fuer Oberflaechen bestehen, die die
+    // Leiste noch zeigen.
     Capability {
         key: "mode_switch",
         label: "Modus umschalten (Segmentleiste)",
