@@ -392,13 +392,13 @@
     {
       "area": "effort",
       "brain": "kimi",
-      "status": "not_run",
+      "status": "failed",
       "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Effort-Trigger '#v-3-menu-trigger' ('Denkaufwand Hoch') im Modell-Menue gefunden (2026-09-11). Pfad ['Denkaufwand Hoch', 'Hoch'] klickt erfolgreich, aber verify-Pfad-Check schlaegt fehl: Effort-Label ist nur im offenen Modell-Menue sichtbar, kein persistenter Effort-Label ausserhalb (Label bleibt 'Schnell' = Modellname). Strukturelle UI-Eigenart, kein Selektor-Defekt. Kein reasoning_effort_path konfiguriert (verify bleibt Quest)."
+      "note": "Pfad ['Denkaufwand Hoch', 'Hoch'] konfiguriert (2026-09-11). Kette funktioniert (Klicks gelingen), aber verify-Schluss: Label bleibt 'Schnell' (Modellname) — Effort-Label ist nur im offenen Modell-Menue sichtbar, kein persistenter Effort-Trigger ausserhalb. Strukturelle UI-Eigenart, kein Selektor-Defekt."
     },
     {
       "area": "effort",
