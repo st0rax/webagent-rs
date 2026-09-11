@@ -48,6 +48,7 @@ pub mod brain_limits;
 pub mod brain_probe;
 pub mod browser;
 pub mod browser_pool;
+pub mod contract;
 pub mod login;
 pub mod mock_page;
 pub mod page_driver;
