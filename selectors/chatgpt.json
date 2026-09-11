@@ -47,11 +47,6 @@
     "button:has-text('Nachdenken')",
     "button[class*='__composer-pill']"
   ],
-  "reasoning_effort_menu": [
-    "button.__composer-pill",
-    "button:has-text('Nachdenken')",
-    "button[class*='__composer-pill']"
-  ],
   "model_option": [
     "[role=menuitem]",
     "[role=menuitemradio]",

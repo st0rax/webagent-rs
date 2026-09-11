@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-08",
+  "as_of": "2026-09-11",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "brains": [
     "chatgpt",
@@ -94,11 +94,12 @@
       "area": "webui_chat",
       "brain": "perplexity",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "perplexity",
-      "selector_hash": null,
-      "latency_ms": 13918,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "selector_hash": 3401704169,
+      "latency_ms": 10714,
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl",
+      "note": "Frischbeleg 2026-09-11 PASSED (10714ms): chat belegt (count>baseline), winning_selector div.prose. Erstmals als Custom-Brain registriert (custom_brains.json) — vorher 'Unbekanntes Brain' in diagnose/verify."
     },
     {
       "area": "webui_chat",
@@ -240,12 +241,12 @@
       "area": "model",
       "brain": "chatgpt",
       "status": "unreachable",
-      "date": "2026-09-06",
+      "date": "2026-09-11",
       "model": "ChatGPT",
-      "selector_hash": 36116658,
-      "latency_ms": 1743,
+      "selector_hash": 1231929714,
+      "latency_ms": 4337,
       "proof_path": "docs/proofs/T-501/model_switch_chatgpt_2026-09-06.json",
-      "note": "passed (verify 2026-09-06): Gewinner 'button.__composer-pill' (Composer-Pill > Model-Configure-Modal-Kette); Zustandswechsel belegt, Ausgangszustand wiederhergestellt | Live verify 2026-09-06: kein sichtbarer Selektor"
+      "note": "passed (verify 2026-09-06): Gewinner 'button.__composer-pill' (Composer-Pill > Model-Configure-Modal-Kette); Zustandswechsel belegt, Ausgangszustand wiederhergestellt | Live verify 2026-09-06: kein sichtbarer Selektor | Frischbeleg 2026-09-11 (headless roundtrip-v2): unreachable 'kein sichtbarer Modellselektor' (4337ms); 10:40 failed 'kein eindeutig waehlbares anderes Modell in der Laufzeitliste; Menue-Oeffnung ist kein Wechselbeleg' (composer-pill 'Sofort' einzige Option im Free-Tier) — ehrlich failed"
     },
     {
       "area": "model",
@@ -273,23 +274,23 @@
       "area": "model",
       "brain": "gemini",
       "status": "passed",
-      "date": "2026-09-08",
+      "date": "2026-09-11",
       "model": "3.6 Flash",
       "selector_hash": 311126731,
-      "latency_ms": 11610,
+      "latency_ms": 12302,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Live verify 2026-09-08 PASSED 3/3 (headless, roundtrip-v2, exakte Auswahl-API): Laufzeit-Modellwahl (ID) '3.6 Flash' -> '3.5 Flash-Lite' [cf41b0e0dd7d53e5], beobachtet '3.5 Flash-Lite'; Wechsel=true, Rueckweg=true (11.6s). Vorher failed: TRIGGER zeigt nur 'Flash' (MODE+VERSION kombiniert), Label-Substring fall. Fix: model_id_attr=data-mode-id, model_active_option='gem-menu-item[class~=\"selected\"]', model_option_label='span.label' -> reiner ID-Roundtrip ueber model_roundtrip_exact. Beleg proofs.jsonl ts 2026-09-08T18:49-18:50."
+      "note": "Live verify 2026-09-08 PASSED 3/3 (headless, roundtrip-v2, exakte Auswahl-API): Laufzeit-Modellwahl (ID) '3.6 Flash' -> '3.5 Flash-Lite' [cf41b0e0dd7d53e5], beobachtet '3.5 Flash-Lite'; Wechsel=true, Rueckweg=true (11.6s). Vorher failed: TRIGGER zeigt nur 'Flash' (MODE+VERSION kombiniert), Label-Substring fall. Fix: model_id_attr=data-mode-id, model_active_option='gem-menu-item[class~=\"selected\"]', model_option_label='span.label' -> reiner ID-Roundtrip ueber model_roundtrip_exact. Beleg proofs.jsonl ts 2026-09-08T18:49-18:50. | Frischbeleg 2026-09-11 PASSED (12302ms): identischer Hash, ts 2026-09-11T10:50:38Z."
     },
     {
       "area": "model",
       "brain": "kimi",
       "status": "passed",
-      "date": "2026-09-08",
+      "date": "2026-09-11",
       "model": "K3 Swarm",
       "selector_hash": 548048541,
-      "latency_ms": 5537,
+      "latency_ms": 5619,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Live verify 2026-09-08 PASSED (headless, roundtrip-v2): Laufzeit-Modellwahl 'Schnell' -> 'K3 Swarm', beobachtet 'K3 Swarm'; Wechsel=true, Rueckweg=true (5,5s). Fix: model_menu auf 'div.current-model div.model-name span.name' (reiner Name statt name+effort 'Schnell Hoch'), model_option auf '[role='menuitemradio'].model-item .model-name .name' (Name statt Name+Desc). Beleg proofs.jsonl ts 2026-09-08T08:54:13Z."
+      "note": "Live verify 2026-09-08 PASSED (headless, roundtrip-v2): Laufzeit-Modellwahl 'Schnell' -> 'K3 Swarm', beobachtet 'K3 Swarm'; Wechsel=true, Rueckweg=true (5,5s). Fix: model_menu auf 'div.current-model div.model-name span.name' (reiner Name statt name+effort 'Schnell Hoch'), model_option auf '[role='menuitemradio'].model-item .model-name .name' (Name statt Name+Desc). Beleg proofs.jsonl ts 2026-09-08T08:54:13Z. | Frischbeleg 2026-09-11 PASSED (5619ms): identischer Hash, ts 2026-09-11T10:50:49Z."
     },
     {
       "area": "model",
@@ -306,12 +307,12 @@
       "area": "model",
       "brain": "perplexity",
       "status": "failed",
-      "date": "2026-09-08",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": 3864292236,
-      "latency_ms": 2080,
+      "latency_ms": 2108,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Live verify 2026-09-08 (headless, roundtrip-v2): TRIGGER statisch 'Modell' (button[aria-label*='Modell' i]), aktuelle Modellname wird im DOM nicht gerendert; Menue-Optionen sind verschachtelte Radix-Dropdowns (Zugang zu besten KI-Modellen, Sonar 2...). Ohne aktuelle Modellbezeichnung im Triggerlabel niemals Ganzlabel-Match. Auch nach exakter Auswahl-API (ID-Pfad): keinerlei exakte IDs im DOM -> kein model_id_attr, bleibt strukturell failed. DoD-Grenze v1.0 (perplexity-Entscheidung v1.0 vs. custom im Endtest on_record). Beleg proofs.jsonl ts 2026-09-08T08:55:34Z + 18:53."
+      "note": "Live verify 2026-09-08 (headless, roundtrip-v2): TRIGGER statisch 'Modell' (button[aria-label*='Modell' i]), aktuelle Modellname wird im DOM nicht gerendert; Menue-Optionen sind verschachtelte Radix-Dropdowns (Zugang zu besten KI-Modellen, Sonar 2...). Ohne aktuelle Modellbezeichnung im Triggerlabel niemals Ganzlabel-Match. Auch nach exakter Auswahl-API (ID-Pfad): keinerlei exakte IDs im DOM -> kein model_id_attr, bleibt strukturell failed. DoD-Grenze v1.0 (perplexity-Entscheidung v1.0 vs. custom im Endtest on_record). Beleg proofs.jsonl ts 2026-09-08T08:55:34Z + 18:53. | Frischbeleg 2026-09-11 (nach Custom-Brain-Registrierung, identischer Hash): weiterhin failed 'Aktuelles Modell nicht eindeutig in der Laufzeitliste erkennbar; kein Wechsel versucht' (2108ms), ts 2026-09-11T13:33Z."
     },
     {
       "area": "model",
@@ -328,12 +329,12 @@
       "area": "model",
       "brain": "zai",
       "status": "passed",
-      "date": "2026-09-08",
+      "date": "2026-09-11",
       "model": "GLM-5.3",
       "selector_hash": 723949967,
-      "latency_ms": 10991,
+      "latency_ms": 12347,
       "proof_path": "docs/proofs/T-501/model_switch_roundtrip_v2_2026-09-08.md",
-      "note": "Live verify 2026-09-08 PASSED 3/3 (headless, roundtrip-v2, exakte Auswahl-API): Laufzeit-Modellwahl (ID) 'GLM-5.3' -> 'GLM-5.3-Flash' [x-preview-l], beobachtet 'GLM-5.3-Flash'; Wechsel=true, Rueckweg=true (11.0s). Vorher failed: GLM-5.3-Flash als Substring-Paar zu GLM-5.3 = echte Mehrdeutigkeit im Label-Pfad. Fix: model_id_attr=data-value, model_active_option='[data-testid=\"model-item\"][data-selected=\"true\"]', model_option_label='div.line-clamp-1' -> Substring-Mehrdeutigkeit via exakter ID geloest (model_roundtrip_exact). Beleg proofs.jsonl ts 2026-09-08T18:50-18:51."
+      "note": "Live verify 2026-09-08 PASSED 3/3 (headless, roundtrip-v2, exakte Auswahl-API): Laufzeit-Modellwahl (ID) 'GLM-5.3' -> 'GLM-5.3-Flash' [x-preview-l], beobachtet 'GLM-5.3-Flash'; Wechsel=true, Rueckweg=true (11.0s). Vorher failed: GLM-5.3-Flash als Substring-Paar zu GLM-5.3 = echte Mehrdeutigkeit im Label-Pfad. Fix: model_id_attr=data-value, model_active_option='[data-testid=\"model-item\"][data-selected=\"true\"]', model_option_label='div.line-clamp-1' -> Substring-Mehrdeutigkeit via exakter ID geloest (model_roundtrip_exact). Beleg proofs.jsonl ts 2026-09-08T18:50-18:51. | Frischbeleg 2026-09-11 PASSED (12347ms): identischer Hash, ts 2026-09-11T10:51:12Z."
     },
     {
       "area": "model",
