@@ -43,6 +43,9 @@
     "button[aria-label*='Google' i]"
   ],
   "model_menu": [
+    "button.__composer-pill",
+    "button:has-text('Nachdenken')",
+    "button[class*='__composer-pill']",
     "button[data-testid='model-switcher-dropdown-button']",
     "[data-testid='model-switcher-dropdown-button']",
     "button[aria-label='Modellauswaehler']",
