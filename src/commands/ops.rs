@@ -784,11 +784,22 @@ pub fn cmd_run(
     use webagent::executor::PlatformShellExecutor;
 
     let board = std::path::Path::new("docs/TASKBOARD.json");
+    let brain = match resolve_brain_for_task(brain, task) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("[run] {e}");
+            return 2;
+        }
+    };
+    // T-806: Owner ist die echte Run-Bindung (aufgeloester Brain), nicht eine
+    // fest codierte Agent-Identität — beide Claim-Schritte nutzen dieselbe
+    // Größe, damit complete_claim den Claim eindeutig zuordnen kann.
+    let task_owner = format!("webagent:{}", brain);
     if let Some(task_id) = acquire_task {
         if let Err(e) = webagent::taskboard::acquire_claim(
             board,
             task_id,
-            "chatgpt-codex",
+            &task_owner,
             &branch_name(),
         ) {
             eprintln!("[run] Task-Claim verweigert: {e}");
@@ -797,13 +808,6 @@ pub fn cmd_run(
         println!("[run] task={task_id} status=claimed - Doppel-Claim verhindert");
     }
 
-    let brain = match resolve_brain_for_task(brain, task) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("[run] {e}");
-            return 2;
-        }
-    };
     let backend = match WebBrainBackend::from_config(&brain) {
         Ok(b) => b,
         Err(e) => {
@@ -840,7 +844,7 @@ pub fn cmd_run(
                     if let Err(e) = webagent::taskboard::complete_claim(
                         board,
                         task_id,
-                        "chatgpt-codex",
+                        &task_owner,
                         &branch_name(),
                         proof,
                     ) {
