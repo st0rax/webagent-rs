@@ -100,6 +100,14 @@ enum FillStrategy {
     Gemini,
     /// qwen: fuellen; nimmt der Editor den Text nicht an, DOM-Set nachziehen.
     Qwen,
+    /// claude (Tiptap/ProseMirror): erst fuellen; bleibt der Knopf deaktiviert,
+    /// Composer LEEREN und Zeichen-fuer-Zeichen echt nachtippen — ein zweites
+    /// DOM-Set wuerde den vorhandenen Text verdoppeln.
+    Claude,
+    /// mistral (ProseMirror): Text steht nach dem Fuellen im DOM, aber der
+    /// Knopf bleibt deaktiviert, weil der Editor-State die Eingabe nicht als
+    /// echt verbucht. Nachziehen mit DOM-Set + InputEvent(data='insertText').
+    Mistral,
 }
 
 /// Welche Geste ein Submit-Versuch ausloest. Fuehrt GENAU EINE Geste aus —
@@ -123,6 +131,21 @@ impl SendFlowProfile {
         }
     }
 
+    fn claude() -> Self {
+        // Claude nutzt einen Tiptap/ProseMirror-Editor: nimmt der Editor den
+        // Text nur ins DOM, bleibt der Absendeknopf deaktiviert. Erst echtes
+        // Tastatur-Nachtippen laesst die Oberflaeche den Send-Button aktivieren
+        // (gemessen 2026-09-11). Wichtig ist dabei, den Composer zuvor zu
+        // LEEREN — nach dem Füllen steht der Text schon im DOM, und ein
+        // weiteres DOM-Set plus Nachtippen wuerde ihn verdoppeln (220 statt
+        // 110 Zeichen im Trace 2026-09-11 → editor_matches schlug fehl).
+        Self {
+            budget: SendBudget::default_send(),
+            fill: FillStrategy::Claude,
+            gesture: GestureStyle::EnterThenButton,
+        }
+    }
+
     fn kimi() -> Self {
         Self {
             budget: SendBudget::default_send(),
@@ -136,6 +159,14 @@ impl SendFlowProfile {
             budget: SendBudget::default_send(),
             fill: FillStrategy::Gemini,
             gesture: GestureStyle::AlternateButtonEnter,
+        }
+    }
+
+    fn mistral() -> Self {
+        Self {
+            budget: SendBudget::default_send(),
+            fill: FillStrategy::Mistral,
+            gesture: GestureStyle::EnterThenButton,
         }
     }
 
@@ -1118,6 +1149,15 @@ impl WebBrainBackend {
         // rich-multiline Variante mit voller Bestaetigung.
         let profile = if self.brain_id == "kimi" {
             SendFlowProfile::kimi()
+        } else if self.brain_id == "claude" {
+            // Tiptap/ProseMirror: Text landet nur im DOM, der Knopf bleibt
+            // deaktiviert — erst Composer leeren + echtes Nachtippen aktiviert
+            // ihn (gemessen 2026-09-11).
+            SendFlowProfile::claude()
+        } else if self.brain_id == "mistral" {
+            // Mistrals ProseMirror verbucht CDP-Input nicht als echte Eingabe;
+            // der Knopf bleibt disabled — DOM-Set + InputEvent nachziehen.
+            SendFlowProfile::mistral()
         } else {
             SendFlowProfile::generic()
         };
@@ -1262,6 +1302,41 @@ impl WebBrainBackend {
                 if self.send_button_disabled() == Some(true) {
                     let _ = self.fill_composer_dom_set(composer_js, text);
                     let _ = self.type_text_char_by_char(text);
+                }
+            }
+            FillStrategy::Claude => {
+                self.fill_composer(composer_js, text);
+                // Tiptap registriert CDP-eingegebenen Text nicht als echte Eingabe
+                // (Absendeknopf bleibt grau). Anders als bei Gemini darf hier kein
+                // zweites DOM-Fuellen passieren: der Text steht bereits im DOM und
+                // wuerde verdoppelt. Stattdessen Composer leer räumen und echt tippen.
+                std::thread::sleep(Duration::from_millis(200));
+                if self.send_button_disabled() == Some(true) {
+                    let _ = self.clear_composer(composer_js);
+                    let _ = self.type_text_char_by_char(text);
+                }
+            }
+            FillStrategy::Mistral => {
+                self.fill_composer(composer_js, text);
+                // Mistrals ProseMirror aktualisiert den Knopf-State asynchron:
+                // Nach dem Fuellen klar first warten, bis die Oberflaeche die
+                // Eingabe verbucht hat — ein zu fruehes DOM-Set wuerde einen
+                // eigentlich angenommenen Text zerstoeren (Race, gemessen
+                // 2026-09-11: Lauf 1 Passed, Lauf 2 ABSENDEKNOPF).
+                let deadline = Instant::now() + Duration::from_millis(1500);
+                let mut still_disabled = true;
+                while Instant::now() < deadline {
+                    if self.send_button_disabled() == Some(false) {
+                        still_disabled = false;
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                // Erst NACH der Wartezeit nachziehen — DOM-Set + InputEvent
+                // (data='insertText'), damit React/ProseMirror die Eingabe
+                // als echter verbucht.
+                if still_disabled {
+                    let _ = self.fill_composer_dom_set(composer_js, text);
                 }
             }
             FillStrategy::Qwen => {
@@ -1539,9 +1614,10 @@ impl WebBrainBackend {
             &list,
             "var el=Q(S[i]);if(el){var b=el.closest('button')||el;\
              var st=window.getComputedStyle(b);\
-             var cls=((b.className||'')+'').toLowerCase();\
+             var cls=((b.className||'')+'');\
              return (b.disabled===true)||b.getAttribute('aria-disabled')==='true'\
-             ||st.pointerEvents==='none'||cls.indexOf('disabled')!==-1;}",
+             ||st.pointerEvents==='none'\
+             ||cls.split(/\\s+/).indexOf('disabled')!==-1;}",
             "null",
         );
         self.eval(&js).ok().and_then(|v| v.as_bool())

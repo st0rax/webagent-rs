@@ -971,10 +971,11 @@ mod tests {
 
     #[test]
     fn load_selectors_faellt_auf_die_generische_maske_zurueck() {
-        // Ein registrierter, aber unvermessener Brain (keine mitgelieferte
-        // Datei; unter cargo test auch keine Nutzer-Datei) bekommt die Maske —
-        // statt des frueheren `NotFound`-Fehlers.
-        let sel = load_selectors("perplexity").expect("Maske greift statt NotFound");
+        // Ein Brain ohne mitgelieferte und ohne Nutzer-Datei (unter cargo test
+        // auch keine Nutzer-Datei) bekommt die Maske — statt des frueheren
+        // `NotFound`-Fehlers. Perplexity war hier der Anker, bis es 2026-09-10
+        // in den BRAIN_TABLE aufgenommen wurde und eine eigene Datei bekam.
+        let sel = load_selectors("grok").expect("Maske greift statt NotFound");
         for key in [
             "composer",
             "send_button",

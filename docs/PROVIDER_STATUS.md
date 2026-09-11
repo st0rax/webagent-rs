@@ -7,8 +7,33 @@
 > nicht die KI-Entitäten dahinter.
 
 **Backend:** Embedded WebView (`wry`/`tao`)
-**Letzte Messung:** 2026-07-16 — `webagent relay --brain <id> --headless`,
-Profil `data/profiles/shared`, Release-Build.
+**Letzte Messung:** 2026-09-11 — `webagent verify --brain <id> --cap chat`,
+headless; frische Daten in docs/CAPABILITY_MATRIX.json (as_of 2026-09-11) und
+docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md.
+
+## T-807 Live-Abnahme 2026-09-11: chat auf allen 9 Brains Passed
+
+Nach Selektor-/Sendeprofil-Fixes live nachgemessen (headless +
+`--skip-startup-reconcile`; nur frische echte Stream-Beweise, count>baseline):
+
+| Brain | chat | Latenz | Fix |
+|---|---|---|---|
+| chatgpt | 🟢 Passed | 14,5 s | — |
+| claude | 🟢 Passed | 15,5 s / 17,6 s | Send-Button `chat-input-send`; `send_button_disabled` Klassen-Token-Statt-Substring (Tailwind `aria-disabled:…` war keine Disabled-Oberkategorie); Tiptap: erst Composer leeren, dann echt tippen (FillStrategy::Claude) |
+| deepseek | 🟢 Passed | 7,7 s | — |
+| gemini | 🟢 Passed | 8,7 s | — |
+| kimi | 🟢 Passed | 16,5 s | — |
+| mistral | 🟢 Passed | 11,3 s / 6,9 s | ProseMirror verbucht CDP-Input nicht; geduldig bis 1,5 s auf Aktivierung warten, sonst DOM-Set + InputEvent nachziehen (FillStrategy::Mistral) |
+| perplexity | 🟢 Passed | 10,3 s / 10,3 s | Send-Button-Selektor `button[aria-label*='Senden' i]` |
+| qwen | 🟢 Passed | 10,9 s | — |
+| zai | 🟢 Passed | 11,2 s | — |
+
+**Blocker (Win 11, WebView2 152.0.4191.66):** Headed-Browserstart zeitweise
+maschinenweit eingefroren (Navigation-Timeout, Start-Reconcile). Workaround für
+nachweisbare Messungen: `--headless` + `--skip-startup-reconcile. Details und
+Fix-Diagnose: docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md.
+
+---
 
 ## Stabilität: 5 Runden × 8/8 in Folge (2026-07-16), dann qwen-Tageslimit
 

@@ -13,6 +13,8 @@
     "div[role='textbox']"
   ],
   "send_button": [
+    "[data-testid='chat-input-send']",
+    "button[data-testid='chat-input-send']",
     "button[aria-label='Send message']",
     "button[aria-label='Send Message']",
     "button[aria-label*='Send message' i]",

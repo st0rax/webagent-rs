@@ -67,6 +67,13 @@ impl WebBrainBackend {
             .unwrap_or_default()
     }
 
+    /// Leert den Composer vollstaendig (value/textContent) und feuert `input`.
+    /// Nur fuer Nachtipp-Strategien, die danach echt tippen (Tiptap/ProseMirror).
+    pub(super) fn clear_composer(&self, composer_js: &str) -> bool {
+        let body = "var el=Q(S[i]);if(el){el.focus();try{if('value' in el){el.value='';}else{el.textContent='';}el.dispatchEvent(new InputEvent('input',{bubbles:true}));}catch(e){}return true;}";
+        self.eval_bool(&Self::js_scan(composer_js, body, "false"))
+    }
+
     /// Playwright-`fill()`-Äquivalent: DOM setzen + input/change-Events (Angular/React).
     pub(super) fn fill_composer_dom_set(&self, composer_js: &str, text: &str) -> bool {
         let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";

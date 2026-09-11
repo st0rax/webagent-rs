@@ -6,10 +6,11 @@
     "div[role='textbox'][contenteditable='true']"
   ],
   "send_button": [
+    "button[aria-label*='Senden' i]",
+    "button[aria-label='Senden']",
     "button[data-testid='send-button']",
     "button[aria-label='Send message']",
-    "button[aria-label='Send']",
-    "button[aria-label='Senden']"
+    "button[aria-label='Send']"
   ],
   "attach_button": [
     "button[aria-label='Einstellungsmenü öffnen']",

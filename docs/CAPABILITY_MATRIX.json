@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-08",
+  "as_of": "2026-09-11",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "brains": [
     "chatgpt",
@@ -34,92 +34,100 @@
       "area": "webui_chat",
       "brain": "chatgpt",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "chatgpt",
       "selector_hash": null,
-      "latency_ms": 20184,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "latency_ms": 14494,
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11 (headless): chat Passed (count>baseline, streaming)."
     },
     {
       "area": "webui_chat",
       "brain": "claude",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "claude-live",
       "selector_hash": null,
-      "latency_ms": 15700,
-      "proof_path": "docs/proofs/T-301/events_after.json"
+      "latency_ms": 15525,
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11: chat Passed 2x (15,5s/17,6s). Vorher ABSENDEKNOPF — Ursache Fehldiagnose: send_button_disabled traf Tailwind-Klasse aria-disabled:… (kein echter Disabled); nur echtes Tastatur-Nachtippen (Tiptap) aktiviert den Button. Fix: Selector chat-input-send + SendFlowProfile::claude."
     },
     {
       "area": "webui_chat",
       "brain": "deepseek",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "deepseek",
       "selector_hash": null,
       "latency_ms": 7710,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11 (headless): chat Passed (count>baseline, streaming)."
     },
     {
       "area": "webui_chat",
       "brain": "gemini",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "gemini",
       "selector_hash": null,
       "latency_ms": 8693,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11 (headless): chat Passed (count>baseline, streaming)."
     },
     {
       "area": "webui_chat",
       "brain": "kimi",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "kimi",
       "selector_hash": null,
       "latency_ms": 16480,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11 (headless): chat Passed (count>baseline, streaming)."
     },
     {
       "area": "webui_chat",
       "brain": "mistral",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "mistral",
       "selector_hash": null,
-      "latency_ms": 7079,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "latency_ms": 6907,
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11: chat Passed 2x (11,3s/6,9s). Vorher ABSENDEKNOPF: Mistrals ProseMirror verbucht CDP-Input nicht als echte Eingabe, Knopf bleibt disabled obwohl Text drinsteht. Fix: SendFlowProfile::mistral — erst geduldig auf Aktivierung warten, nur dann DOM-Set+InputEvent nachziehen; zu fruehes DOM-Set zerstoerte einen akzeptierten Editor-Zustand (Race)."
     },
     {
       "area": "webui_chat",
       "brain": "perplexity",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "perplexity",
       "selector_hash": null,
-      "latency_ms": 13918,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "latency_ms": 10276,
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11: chat Passed 2x (10,3s). Send-Button live gefunden via button[aria-label*='Senden' i]."
     },
     {
       "area": "webui_chat",
       "brain": "qwen",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "qwen",
       "selector_hash": null,
-      "latency_ms": 29234,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "latency_ms": 10914,
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11 (headless): chat Passed (count>baseline, streaming)."
     },
     {
       "area": "webui_chat",
       "brain": "zai",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": 11233,
-      "proof_path": "docs/proofs/T-501/zai_send_fix_2026-09-03.jsonl",
-      "note": "Send-Button ist disabled:false aber pointer-events:none (Button+Parent) — vertrauenswuerdiger Echtklick rauscht durch, synthetischer el.click() feuerte den on:click nie. Fix: send_button_pointer_transparent() erkennt das und routet auf synthetischen Klick. chat Failed (56471ms, ABSENDEKNOPF_DEAKTIVIERT) -> Passed (11233ms)."
+      "proof_path": "docs/proofs/T-807/LIVE_ABNAHME_2026-09-11.md",
+      "note": "Live verify 2026-09-11 (headless): chat Passed (count>baseline, streaming)."
     },
     {
       "area": "webui_chat",
