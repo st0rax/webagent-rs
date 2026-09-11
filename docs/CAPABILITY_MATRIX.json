@@ -350,12 +350,12 @@
       "area": "effort",
       "brain": "chatgpt",
       "status": "not_run",
-      "date": "2026-09-04",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
+      "note": "Kein eigenes Effort-Control (Survey 2026-09-11): Composer-Pill 'Sofort' ist Modell UND einziges Effort in einem; reasoning_effort_menu == model_menu, kein separater Denkstufen-Waehler. Effort wahlbar wuerde mode_switch-artigen zweiten Pill erfordern, existiert nicht. Kein reasoning_effort_path (verify bleibt Quest)."
     },
     {
       "area": "effort",
@@ -370,23 +370,24 @@
     {
       "area": "effort",
       "brain": "deepseek",
-      "status": "passed",
-      "date": "2026-09-03",
+      "status": "not_run",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
-      "latency_ms": 30350,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl"
+      "latency_ms": null,
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Fruehere effort-Zelle hing am reasoning_toggle-Belego (DeepThink-Zustandswechsel, 30350ms) statt an einer Denkstufen-Wahl; es gibt auf deepseek nie ein mehrstufiges Effortmenue. Die drei Segmente (Instant/Expert/Vision) wurden 2026-09-11 vom Anbieter entfernt (siehe model-Zelle removed). Composer zeigt nur noch DeepThink/Search-Toggles = reasoning_toggle, kein reasoning_effort. Kein reasoning_effort_path (verify bleibt Quest)."
     },
     {
       "area": "effort",
       "brain": "gemini",
       "status": "not_run",
-      "date": "2026-09-04",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
+      "note": "Kein Effort-/Denkstufen-Waehler (Survey 2026-09-11, im geoeffneten Modellmenue): Composer zeigt nur Modusauswahl 'Flash' (model_menu), Temporaerer Chat, Uploads & Tools, Spracheingabe. Kein Think/Effort/Sonar-Aequivalent, keine Denkstufen-Optionen in Menues. Kein reasoning_effort_path (verify bleibt Quest)."
     },
     {
       "area": "effort",
@@ -403,23 +404,23 @@
       "area": "effort",
       "brain": "mistral",
       "status": "not_run",
-      "date": "2026-09-04",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
+      "note": "Kein Effort-/Modellmenue (Survey 2026-09-11): nur chat, voice_mode, projects aus 39 Buttons; model_menu nicht anklickbar (kein Modellselektor). Kein Denkstufen-Waehler im DOM. Kein reasoning_effort_path (verify bleibt Quest)."
     },
     {
       "area": "effort",
       "brain": "perplexity",
       "status": "not_run",
-      "date": "2026-09-04",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
+      "note": "Kein Effort-/Denkstufen-Waehler (Survey 2026-09-11, im geoeffneten Modellmenue): 83 Buttons, Optionen nur chat, canvas, regenerate, voice_input, voice_mode, projects. Modellmenue ist Radix-Portal ohne Effort-Optionen. Kein reasoning_effort_path (verify bleibt Quest)."
     },
     {
       "area": "effort",
@@ -435,13 +436,13 @@
     {
       "area": "effort",
       "brain": "zai",
-      "status": "unreachable",
-      "date": "2026-09-03",
+      "status": "not_run",
+      "date": "2026-09-11",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/live_caps_2026-09-03.jsonl",
-      "note": "unreachable: Brain waehrend Integration nicht live erreichbar; ehrlich unreachable"
+      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
+      "note": "Kein mehrstufiges Effortmenue (Survey 2026-09-11, im geoeffneten Modellmenue): zai hat nur 'DeepThink Deaktivierung' (reasoning_toggle, Ein/Aus) als Effort-Control; kein Denkstufen-Waehler mit Ebenen. Kein reasoning_effort_path (verify bleibt Quest)."
     },
     {
       "area": "effort",
