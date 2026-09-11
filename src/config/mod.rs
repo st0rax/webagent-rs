@@ -31,7 +31,7 @@ pub use paths::{
 pub use profiles::{
     acquire_swarm_profile, acquire_swarm_profile_in, cleanup_swarm_profiles,
     cleanup_swarm_profiles_in, copy_dir_all, copy_dir_sparse, copy_dir_without_caches,
-    ensure_stable_layout, prepare_swarm_profile, prepare_swarm_profile_in,
+    ensure_stable_layout, prepare_swarm_profile, prepare_swarm_profile_in, record_reset_in,
     swarm_profile_lease_state, sweep_stale_runtime_profiles, sweep_stale_runtime_profiles_in,
     SwarmProfileLease, SwarmProfileLeaseState,
 };

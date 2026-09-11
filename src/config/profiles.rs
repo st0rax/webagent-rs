@@ -949,6 +949,19 @@ pub fn acquire_swarm_profile_in(
     }
 }
 
+/// Best-effort-Erfassung eines BEKANNTEN Reset-Ereignisses (z.B.
+/// `navigation_timeout`) in der Lease-Marke eines Profils — fuer Pfade, die
+/// die [`SwarmProfileLease`] selbst nicht in der Hand halten (Browser-Start).
+/// Es wird NUR geschrieben, wenn in `profile_dir` tatsaechlich eine
+/// lesbare Lease-Marke liegt; ein Profil ohne Marker (Shared-Master, Legacy)
+/// bleibt unangetastet — ein unbekannter Reset bleibt unbekannt (T-804).
+pub fn record_reset_in(profile_dir: &Path, origin: &str) -> std::io::Result<()> {
+    let mut owner = read_swarm_owner(profile_dir)?;
+    owner.reset_at_ns = Some(now_ns());
+    owner.reset_origin = Some(origin.to_string());
+    write_swarm_owner(profile_dir, &owner)
+}
+
 /// Ein Wegwerf-Profil, das älter als das hier ist, kann keinem laufenden Run
 /// mehr gehören — ein Swarm-Turn dauert Minuten, nicht Stunden.
 const STALE_RUNTIME_PROFILE_SECS: u64 = 12 * 60 * 60;
@@ -1184,6 +1197,25 @@ mod lease_tests {
         let _ = child.kill();
         let _ = child.wait();
         pid
+    }
+
+    #[test]
+    fn record_reset_in_schreibt_nur_in_eine_echte_lease_aufs_profil() {
+        let base = temp_base("recorder");
+        let lease = prepare_swarm_profile_in(&base, "run-x", "gemini", false).unwrap();
+        let path = lease.profile_dir().to_path_buf();
+        record_reset_in(&path, "navigation_timeout").unwrap();
+        let marked = read_swarm_owner(&path).unwrap();
+        assert_eq!(marked.reset_origin.as_deref(), Some("navigation_timeout"));
+        assert!(marked.reset_at_ns.is_some());
+
+        // Ein Profil OHNE Lease-Marke (z.B. Shared-Master) wird nie erfinden:
+        // kein Marker, kein Reset.
+        let unmarked = base.join("unmarked");
+        std::fs::create_dir_all(&unmarked).unwrap();
+        assert!(record_reset_in(&unmarked, "navigation_timeout").is_err());
+        assert!(!unmarked.join(SWARM_OWNER_FILE).exists());
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]

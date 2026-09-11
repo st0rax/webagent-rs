@@ -68,6 +68,16 @@ impl BrainBackend for WebBrainBackend {
             let nav_timeout = Duration::from_secs(15);
             driver.navigate(&self.url, nav_timeout).map_err(|e| {
                 let elapsed = nav_start.elapsed();
+                // T-804: bekannter Navigationstimeout wird mit Herkunft im
+                // Lease-Marker des (isolierten) Profils erfasst. Ist dort keine
+                // Lease-Marke (Shared-Master/Legacy), bleibt der Reset bewusst
+                // unbekannt — record_reset_in no-op't dann.
+                if self.profile_override.is_some() {
+                    let _ = crate::config::record_reset_in(
+                        &self.effective_profile_dir(),
+                        "navigation_timeout",
+                    );
+                }
                 format!(
                     "Navigation timeout after {:.2}s to {} (limit 15s): {}",
                     elapsed.as_secs_f64(),

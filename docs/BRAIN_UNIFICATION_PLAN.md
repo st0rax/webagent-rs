@@ -42,3 +42,17 @@ T-802/803/804 bauen auf T-801; T-805 benoetigt diese drei; T-808 kann parallel z
 ## Ausfuehrung mit geringer Denktiefe
 
 Je Scheibe: aktuellen Branch/Claim/Dateiscope pruefen, genau diese Scheibe implementieren, spezifizierte Gegenproben laufen lassen, kleinen neuen Commit pushen, Taskboard und CURRENT_WORK aktualisieren. Keine Force-Pushes, keine wiederholten Builds nach blossen Statuschecks. Bei API-Vertragsaenderungen oder widerspruechlichen Live-Befunden Architekturentscheidung explizit dokumentieren. T-501 bleibt bis Gesamt-Abnahme claimed; neue Aufgaben stehen zunaechst free, Abhaengigkeiten bestimmen ihre Ausfuehrbarkeit.
+
+## T-804-Status (2026-09-12)
+
+Kernmodul umgesetzt und gepusht (`7b328eb`), Rest per Plan-Zuordnung:
+
+- **Prozessuebergreifende Profilbelegung pruefen**: `acquire_swarm_profile(_in)` in `config/profiles.rs`; Default-Preparer des bot2bot-Workers nutzt es (120s Budget). `SwarmProfileOwner` traegt pid, Prozessstart, run_id, brain_id, Scope, `generation`, Heartbeat und Reset (`reset_origin`/`reset_at_ns`); Version bleibt 1 (additiv, Legacy-Marker ohne Lease-Felder werden nie angefasst).
+- **Busy != Providerlimit**: `SwarmProfileLeaseState::Busy` ist vom Fehlerfall `Err(WouldBlock)` getrennt; Leases werden von `Stale` unterschieden, Lock-Dateien sind Advisory-locks, kein State-Store.
+- **Verwaist = abgelaufener Heartbeat UND tote PID** (`pid_is_alive` via OpenProcess/GetExitCodeProcess, Windows); Reclaim steht unter fs2-Advisory-Sperre mit Re-Validierung des Markers (`actual == expected`) — ein alter Worker kann einen uebernommenen Lease nie loeschen, der Sweeper respektiert frische Heartbeats.
+- **Kontrolliert warten / Isolation**: Acquire loop Free->prepare, Stale->reclaim, Busy->sleep(50ms), Deadline -> `Err(WouldBlock)`; gekapselte Fallback-Instanzen (encapsulated) kloeen weiterhin in eigene Verzeichnisse unter OS-Lock (`prepare_shared_profile_for_clone`).
+- **Lease bis nach Browser-Abbau**: Worker released die Lease explizit erst nach dem kompletten `poll_once`-Durchlauf (browser teardown), nicht vorher.
+- **Reset mit Herkunft / unbekannt bleibt unbekannt**: `record_reset` am Lease und `record_reset_in(profile_dir, origin)` freistehend; Navigationstimeout im isolierten Startpfad (`browser/backend.rs`) erfasst `navigation_timeout`, ein Profil ohne Marke bleibt unangetastet.
+- **Keine Probes bei belegter Sperre / Store-Vereinheitlichung**: marke liegt im bestehenden `.webagent-swarm-owner.json`, Lock-Datei-Muster wie `.session-writeback.lock` (fs2); es entstehen keine neuen State-Stores. Probes/Verify gate zusätzlich ueber `circuit_breaker` (Vorbestand) — ein Proben-Hub waehrend belegter Lease bleibt fuer die Live-Abnahme.
+
+Live-Abnahmepunkte (zwei Prozesse, os error 32, Absturz, Wiederaufnahme, Nav-Timesout) sind bewusst fuer T-807 als Windows-Prozessproben gegen reale Browser vorgesehen; die unit-getesteten Gegenproben decken Busy, Reclaim, Fremd-Release und Reset ab.
