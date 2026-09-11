@@ -43,6 +43,30 @@ T-802/803/804 bauen auf T-801; T-805 benoetigt diese drei; T-808 kann parallel z
 
 Je Scheibe: aktuellen Branch/Claim/Dateiscope pruefen, genau diese Scheibe implementieren, spezifizierte Gegenproben laufen lassen, kleinen neuen Commit pushen, Taskboard und CURRENT_WORK aktualisieren. Keine Force-Pushes, keine wiederholten Builds nach blossen Statuschecks. Bei API-Vertragsaenderungen oder widerspruechlichen Live-Befunden Architekturentscheidung explizit dokumentieren. T-501 bleibt bis Gesamt-Abnahme claimed; neue Aufgaben stehen zunaechst free, Abhaengigkeiten bestimmen ihre Ausfuehrbarkeit.
 
+## Phase-8-Status (2026-09-12)
+
+| Scheibe | Status | Belege |
+|---|---|---|
+| T-801 Vertrag + Fixtures | done | `96e83aa`; contract.rs Zustandsmaschine/OperationEvent/Ledger |
+| T-802 Einheitliches Senden | done | `181cb38`; Fill+Verify+Submit-Schleife, Doppelversand-Gegenproben |
+| T-803 Antwortstream | done | `1cf0cc5`,`133361a`,`41a6053`; Controller/REPL/Swarm/UI/API-Strom, Praefix-Delta vs Replace |
+| T-804 Profil-Lease/Blocker | done | `7b328eb`,`9dd18a0`; siehe Abschnitt T-804-Status; Live-Prozessproben -> T-807 |
+| T-805 Probe/Capability-Proof | teilweise | Kern vorhanden (brain_probe Verdict->Measurement, selector_hash+TTL-Invalidierung, verify). Live-Messungen -> T-807 |
+| T-806 Verifizierter Taskabschluss | teilweise | `d5e88eb`; Taskboard unter Prozesslock, unique Temps, sync_all, Owner=Brain. Beleg-Verifikation -> T-807 |
+| T-807 Endabnahme/Release | offen | benoetigt Live-Matrix mit echten Brains + Windows-Prozessproben |
+| T-808 Run-Ledger/Crash-Recovery | done | `6b02cd0`; Torn-Tail-Quarantaene, Recovery-Receipt, Journal-Lock, fsync |
+
+T-805-Rest (rein Rechnung/ohne Browser pruefbar): unbekannte Mechanik als
+`unverified`/`Unreachable` ausweisen, keine feste Brain-Liste im Kern (API-
+Router-Batches in `api_bridge` sind Routing-Tabellen, keine Kernliste),
+Cache an Selektor-/Adapterversion. Live-Messungen je Brain (Kandidat ->
+Live-Zustandswechsel -> Measurement -> capability_proof) folgen in T-807.
+
+T-806-Rest: Datei-Existenz-Abschluss ersetzt durch verifizierte Run-Belege
+(Manifest = Antrag, kein Beweis), Run-ID/Commit/Artefakthashes controllerseitig
+pruefen, Ablehnung im Run-Eventlog, Crash-/Replay-Tests — groesstenteils mit
+echten Runs; die noch offenen Live-Teile laufen in T-807.
+
 ## T-804-Status (2026-09-12)
 
 Kernmodul umgesetzt und gepusht (`7b328eb`), Rest per Plan-Zuordnung:
