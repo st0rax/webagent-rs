@@ -418,11 +418,11 @@ fn verify_roundtrip(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<Veri
     match verdict {
         Ok(v) => {
             let m: Measurement = (&v).into();
-            let outcome = if v.proven {
-                ProofOutcome::Passed
-            } else {
-                ProofOutcome::Failed
-            };
+            // `verdict_outcome`: eine unbestimmte Oberflaechen-Probe ist eine
+            // Messluecke (Unreachable), nie ein Gegenbeweis (Failed). Echte
+            // Failed-Befunde entstehen nur in den reichen Pfaden unten
+            // (generation_sequence u.a.), die die Faehigkeit wirklich fahren.
+            let outcome = crate::brain_probe::verdict_outcome(&v);
             vec![VerifyResult::new(m, outcome, hash, start)]
         }
         Err(e) => vec![VerifyResult::new(

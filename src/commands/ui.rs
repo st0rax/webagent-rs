@@ -950,8 +950,13 @@ pub fn cmd_probe(
             verdicts.len()
         );
 
-        // Belege in den Store: JEDER probe --verify-Lauf schreibt sein Urteil,
-        // auch das "Failed" — das ist das "letztes Urteil gewinnt" des Plans.
+        // Belege in den Store: JEDER probe --verify-Lauf schreibt sein Urteil.
+        // `brain_probe::verdict_outcome` ist die einzige Uebersetzung: belegt
+        // -> Passed, nicht belegt -> Unreachable. Eine Messluecke ist kein
+        // Gegenbeweis — die Probe widerlegt nie (Plan-Luecke 19:
+        // failed/unreachable bleiben getrennt). Nur probe-interne Urteile
+        // landen hier; die reichen Befunde des Verify-Pfads entstehen in
+        // browser/verify.rs mit eigener Begruendung.
         // Der Selektor-Hash wird erst NACH dem Schreiben ueber
         // `load_selectors` gebildet: die Datei ist die Wahrheit, die das Level
         // naechste Runde liest. Wuerde man vorher hashieren, verfiele der
@@ -966,11 +971,7 @@ pub fn cmd_probe(
                         .map(|s| webagent::capability_proof::selector_hash_for(c, s))
                 })
                 .unwrap_or(0);
-            let outcome = if v.proven {
-                webagent::capability_proof::ProofOutcome::Passed
-            } else {
-                webagent::capability_proof::ProofOutcome::Failed
-            };
+            let outcome = webagent::brain_probe::verdict_outcome(v);
             webagent::capability_proof::record_measurement(&id, &m, outcome, hash, 0);
         }
     }

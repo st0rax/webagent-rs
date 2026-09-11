@@ -968,6 +968,27 @@ pub fn proposal_from(cap: &crate::capability::Capability, winner: &str) -> Propo
     }
 }
 
+/// Die einzige Uebersetzung einer Oberflaechen-[`Verdict`]es in ein
+/// Store-Urteil — fuer `verify_roundtrip` wie fuer `probe --verify`, damit es
+/// nicht zwei Handkopien `proven`->`ProofOutcome` gibt.
+///
+/// Eine nicht belegte Messung verurteilt die Faehigkeit NICHT: wer einen
+/// Menue- oder Toggle-Klick nicht in einen lesbaren Zustandswechsel uebersetzen
+/// kann, hat eine Messluecke, keinen Gegenbeweis. Der reiche Verify-Pfad
+/// (`verify_capabilities`: Sende-Fehler, Stop nie sichtbar, Sendefehler) ist
+/// der einzige Ort, an dem echte `Failed`-Befunde entstehen; die Probe darunter
+/// widerlegt nie. Deshalb wird `proven:false` zu `Unreachable` — „kein Beleg,
+/// kein Level" — und entzieht damit nie einen Beleg (§5: unbekannte Mechanik
+/// als unverified ausweisen; Plan-Luecke 19: `failed`/`unreachable`/`blocked`
+/// bleiben getrennt).
+pub fn verdict_outcome(v: &Verdict) -> crate::capability_proof::ProofOutcome {
+    if v.proven {
+        crate::capability_proof::ProofOutcome::Passed
+    } else {
+        crate::capability_proof::ProofOutcome::Unreachable
+    }
+}
+
 /// Klickt einen Vorschlag an und prueft, ob sich ein lesbarer Zustand aendert.
 ///
 /// Wichtig: **kein** Zustandswechsel ist ein gueltiges Ergebnis, kein Fehler.
@@ -1125,6 +1146,46 @@ mod tests {
         let verdict = super::verify(&mut driver, &proposal).unwrap();
         assert!(!verdict.proven);
         assert!(verdict.note.contains("keinen Modellwechsel"));
+    }
+
+    fn verdict(capability_key: &'static str, proven: bool, note: &str) -> Verdict {
+        Verdict {
+            capability_key,
+            selector_key: "a_selector",
+            selector: "#a".into(),
+            before: "vorher".into(),
+            after: "nachher".into(),
+            proven,
+            restored: if proven { Some(true) } else { None },
+            note: note.into(),
+        }
+    }
+
+    #[test]
+    fn belegte_probe_ist_passed() {
+        assert_eq!(
+            verdict_outcome(&verdict("stop_generation", true, "belegt")),
+            crate::capability_proof::ProofOutcome::Passed
+        );
+    }
+
+    #[test]
+    fn unbestimmte_probe_ist_unreachable_nie_failed() {
+        // Drei Messluecken der Oberflaechen-Probe — jede darf einen
+        // bestehenden Beleg NICHT widerrufen (Plan-Luecke 19).
+        let faelle = [
+            verdict("stop_generation", false, "Selektor '#' war nicht anklickbar"),
+            verdict("reasoning_toggle", false, "Klick kam an, Zustand unveraendert"),
+            verdict("model_switch", false, "Menuebedienung belegt keinen Modellwechsel"),
+        ];
+        for v in &faelle {
+            assert_eq!(
+                verdict_outcome(v),
+                crate::capability_proof::ProofOutcome::Unreachable,
+                "note: {}",
+                v.note
+            );
+        }
     }
     use super::*;
 

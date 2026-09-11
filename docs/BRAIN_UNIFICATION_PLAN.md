@@ -51,16 +51,21 @@ Je Scheibe: aktuellen Branch/Claim/Dateiscope pruefen, genau diese Scheibe imple
 | T-802 Einheitliches Senden | done | `181cb38`; Fill+Verify+Submit-Schleife, Doppelversand-Gegenproben |
 | T-803 Antwortstream | done | `1cf0cc5`,`133361a`,`41a6053`; Controller/REPL/Swarm/UI/API-Strom, Praefix-Delta vs Replace |
 | T-804 Profil-Lease/Blocker | done | `7b328eb`,`9dd18a0`; siehe Abschnitt T-804-Status; Live-Prozessproben -> T-807 |
-| T-805 Probe/Capability-Proof | teilweise | Kern vorhanden (brain_probe Verdict->Measurement, selector_hash+TTL-Invalidierung, verify). Live-Messungen -> T-807 |
+| T-805 Probe/Capability-Proof | teilweise | Kern vorhanden (brain_probe Verdict->Measurement, selector_hash+TTL-Invalidierung, verify). Store-Urteil: nicht belegte Oberflaechen-Probe = Unreachable, nie Failed. Live-Messungen -> T-807 |
 | T-806 Verifizierter Taskabschluss | teilweise | `d5e88eb`; Taskboard unter Prozesslock, unique Temps, sync_all, Owner=Brain. Beleg-Verifikation -> T-807 |
 | T-807 Endabnahme/Release | offen | benoetigt Live-Matrix mit echten Brains + Windows-Prozessproben |
 | T-808 Run-Ledger/Crash-Recovery | done | `6b02cd0`; Torn-Tail-Quarantaene, Recovery-Receipt, Journal-Lock, fsync |
 
-T-805-Rest (rein Rechnung/ohne Browser pruefbar): unbekannte Mechanik als
-`unverified`/`Unreachable` ausweisen, keine feste Brain-Liste im Kern (API-
-Router-Batches in `api_bridge` sind Routing-Tabellen, keine Kernliste),
-Cache an Selektor-/Adapterversion. Live-Messungen je Brain (Kandidat ->
-Live-Zustandswechsel -> Measurement -> capability_proof) folgen in T-807.
+T-805-Rest (rein Rechnung/ohne Browser pruefbar): `brain_probe::verdict_outcome` ist
+die einzige Uebersetzung Verdict->Store-Urteil; nicht belegte Messungen sind
+Messluecken (`Unreachable`, entziehen nie einen Beleg), echte `Failed`-Befunde
+entstehen nur in den reichen Verify-Pfaden (`generation_sequence` u.a.).
+Keine feste Brain-Liste im Kern (API-Router-Batches in `api_bridge` sind
+Routing-Tabellen, keine Kernliste; Capability-Katalog ist brain-agnostisch).
+Cache an Selektor-/Adapterversion und TTL ist ueber `selector_hash_for` +
+`proof_state` gebunden (`SelectorsChanged`/`TtlElapsed`).
+Live-Messungen je Brain (Kandidat -> Live-Zustandswechsel -> Measurement ->
+capability_proof) folgen in T-807.
 
 T-806-Rest: Datei-Existenz-Abschluss ersetzt durch verifizierte Run-Belege
 (Manifest = Antrag, kein Beweis), Run-ID/Commit/Artefakthashes controllerseitig
