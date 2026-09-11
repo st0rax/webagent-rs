@@ -93,3 +93,19 @@ ohne Umdeuten von failed/unreachable.
 
 Live-Matrix komplett. Matrix-Update (docs/CAPABILITY_MATRIX.json) und
 PROVIDER_STATUS folgen separat; failed/unreachable werden nicht umgedeutet.
+
+## Nachtrag: Release-Verifikation (2026-09-11, ~11:50 lok)
+
+- Pflichtgates gruen (1444 Tests, beide cargo check); Release-Build v0.11.2
+  frisch gebaut; WebView2Loader.dll per copy-webview2-loader.ps1 daneben
+  (RELEASE_MANIFEST_v0.11.2.md).
+- **Wichtig (Profil-Falle):** Mit `WEBAGENT_PROFILE_DIR`-Override auf das
+  Desktop-Shared-Profil meldete mistral chat ABSENDEKNOPF_DEAKTIVIERT (5/5
+  Versuche, ~2,5 s) — obwohl diagnose Ready/logged_in. Die Morgen-Passed
+  liefen OHNE Override im Standard-Profil `%LOCALAPPDATA%\webagent\profiles\
+  mistral` (zuletzt beruehrt 10:50 lok). Gegenprobe mit Release-Build und
+  Standard-Profil: **mistral chat = Passed (11,3 s, 5 appends, 1 replace)**.
+  Override nur fuer das geteilte Desktop-Profil verwenden, wenn dessen
+  Session wirklich gemeint ist.
+- Uebrige Brains waren 09-11 11:45 lok abgemeldet (Sessions ausgelaufen);
+  Login-Runde nur durch menschlichen Eingriff, ohne Zugangsdaten-Handling.
