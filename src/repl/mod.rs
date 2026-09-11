@@ -522,7 +522,30 @@ impl ReplSession {
                         println!("[brain] ...");
                         let timeout =
                             resolve_timeout("wait_response", &self.brain_id, &message, None);
-                        match self.brain_mut().wait_response(baseline, timeout) {
+                        // Derselbe Ereignisstrom wie Controller/Relay/Swarm/UI:
+                        // wachsende Snapshots als Append-Deltas live, Replace bei
+                        // Revision. Gepufferte Endantworten liefert das Backend
+                        // trotzdem als finalen Snapshot.
+                        let mut last: String = String::new();
+                        let on_update = &mut |snapshot: &str| {
+                            match crate::observer::classify_stream_delta(&last, snapshot) {
+                                crate::observer::StreamDelta::Identical => {}
+                                crate::observer::StreamDelta::AppendDelta { addition } => {
+                                    print!("{addition}");
+                                    let _ = io::stdout().flush();
+                                    last = snapshot.to_string();
+                                }
+                                crate::observer::StreamDelta::Replace { .. } => {
+                                    print!("\n[brain:revision] ");
+                                    let _ = io::stdout().flush();
+                                    last = snapshot.to_string();
+                                }
+                            }
+                        };
+                        match self
+                            .brain_mut()
+                            .wait_response_streaming(baseline, timeout, on_update)
+                        {
                             Ok(resp) => {
                                 let display = display_chat_text(&resp.text);
                                 self.stats.chars_out += display.chars().count();
