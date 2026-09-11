@@ -84,11 +84,11 @@
       "area": "webui_chat",
       "brain": "mistral",
       "status": "passed",
-      "date": "2026-09-03",
+      "date": "2026-09-11",
       "model": "mistral",
-      "selector_hash": null,
-      "latency_ms": 7079,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "selector_hash": 3015493917,
+      "latency_ms": 11048,
+      "proof_path": "docs/proofs/T-501/chat_mistral_reproof_2026-09-11.md"
     },
     {
       "area": "webui_chat",
