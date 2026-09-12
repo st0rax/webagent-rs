@@ -1,0 +1,29 @@
+{
+  "task": "T-906-REVIEW",
+  "title": "Web-UI Code-Review (reviewer-Bot) + Fixes",
+  "date": "2026-09-12",
+  "context": "Vorbereitung Release v0.11.3 (Web-UI-Meilenstein). Reviewer-Bot (REQUEST_CHANGES) geprueft web/index.html + src/web_ui.rs + src/web_ui_api.rs + src/session/events.rs (read-only).",
+  "befunde": [
+    { "id": "F1", "severity": "high", "titel": "escRow Identitaets-No-op (XSS)", "fix": "echte Escaping-Funktion fuer &<>\"'; Live-Beweis: '<img src=x onerror=alert(1)>' -> neutralisiert (LT/GT, no raw), Quoting korrekt" },
+    { "id": "F2", "severity": "high", "titel": "unescaped innerHTML-Builder (Brain-Pills/-Liste, Session-Liste, Quellen, Gruppen, Capability/Doctor, show/hide-Attribute)", "fix": "escRow an allen API-Datensinks; Quell- und Brain-Select auf createElement/DOM (keine String-Concatenation); zusaetzlich CSP-Meta (default-src 'none'; connect-src 'self'; img-src 'self' data:)" },
+    { "id": "F3", "severity": "medium", "titel": "TextComplete wird verworfen (Backend sendet JSON-String statt Objekt)", "fix": "applyEvent: typeof ev === 'string' -> finishTurn(). LIVE BELEGT: {'event':'TextComplete','seq':4} als String in events?since=0 nach echtem chatgpt-Turn ('REVIEW_OK')" },
+    { "id": "F4", "severity": "medium", "titel": "Quell-Dropdown preselected nie die aktive Quelle (String-Objekt-Vergleich)", "fix": "compare o[0] === active.source; DOM-Optionen" },
+    { "id": "F5", "severity": "medium", "titel": "Poll-Race beim Session-Wechsel (in-flight poll der alten Session)", "fix": "rid-Guard nach await: if (rid !== state.active) return" },
+    { "id": "F6", "severity": "low", "titel": "gap=true wird ignoriert", "fix": "bei data.gap -> openSession(rid) (Snapshot-Neuaufbau)" },
+    { "id": "F7", "severity": "low", "titel": "Endlos-Poll bei 404/Server-Neustart", "fix": "3x 404 -> stopPoll + Banner; pollErrors-Reset bei Erfolg" },
+    { "id": "F8", "severity": "low", "titel": "Upload-Nachricht suggeriert echten Anhang", "fix": "ehrlicher Text '(nur Dateiname, keine Speicherung)'" },
+    { "id": "F9", "severity": "low", "titel": "Retry-Warteschleife fest 2000ms x 50", "fix": "exponentieller Backoff 500ms*2 cap 4000, max 20 Versuche" },
+    { "id": "F10", "severity": "low", "titel": "409 kann session_done sein, wird aber als busy-anderer-Turn gemeldet", "fix": "Unterscheidung /done/i.test(error). LIVE BELEGT: 409 {'error':'session_done'} -> 'Sitzung abgeschlossen'" },
+    { "id": "F11", "severity": "low", "titel": "toter Code", "fix": "activeLastSeq, void all/hi/data/snap entfernt" }
+  ],
+  "verifiziert": [
+    "escRow-Angriff neutralisiert (Node-Probe: LT/GT/STILL_RAW/MATCH_ATTACK)",
+    "Marker in serverter HTML: CSP=True, TOTAL_ESCAPE=True, STR_EVENT=True, NO_NOOP=True",
+    "Live 8793: HTML 33.666 B (< 48 KiB), health ok (9 healthy), Session+Started, source=default/browser",
+    "Live 409-Form session_done belegt (F10-Realbild)",
+    "Live Event-Form: TextComplete als JSON-String belegt (F3-Realbild)",
+    "cargo test --lib web_ui: 27 passed; cargo test --lib: 1388 passed / 0 failed / 1 ignored"
+  ],
+  "gate": "cargo test --lib -> 1388 passed, 0 failed, 1 ignored",
+  "fazit": "Alle 11 Befunde von EDIT-fest umgesetzt und belegt; Reviewer-Verdict REQUEST_CHANGES ist damit abgearbeitet - keine release-blocking-Befunde mehr."
+}

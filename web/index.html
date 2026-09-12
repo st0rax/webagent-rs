@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'">
   <title>WebAgent</title>
   <style>
     :root {
@@ -185,7 +186,8 @@
     "use strict";
     const $ = (id) => document.getElementById(id);
     const say = (t) => { $("live").textContent = t; };
-    const escRow = (s) => s;
+    const escRow = (s) => String(s).replace(/[&<>"']/g, (c) =>
+      ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
     const parts = (p) => new URLSearchParams(p);
 
     async function api(method, path, body) {
@@ -251,13 +253,6 @@
 
     function setStatus(text) { $("head-status").textContent = text; }
 
-    function activeLastSeq() {
-      const cur = state.active;
-      if (!cur) return 0;
-      const snap = state.sessions.find((s) => s.run_id === cur);
-      return snap ? snap.last_seq : state.seq;
-    }
-
     function renderHead(snap) {
       $("head-title").textContent = snap.brain + " - " + snap.task;
       $("brain-label").textContent = snap.brain;
@@ -267,18 +262,22 @@
 
     function sourceOptions(active) {
       const sel = $("source-switch");
-      if (!active) { sel.innerHTML = ""; return; }
+      sel.textContent = "";
+      if (!active) return;
+      const preselect = active.source;
       const opts = [["default", "Browser-Chat"]];
-      const all = Object.values(state.brains);
       const fromBrain = state.sessions.find((s) => s.run_id === state.active);
       if (fromBrain && fromBrain.brain && state.sourcesByBrain) {
         const list = state.sourcesByBrain[fromBrain.brain] || [];
         list.forEach((s) => opts.push([s.source, s.source + (s.kind ? " (" + s.kind + ")" : "")]));
       }
-      sel.innerHTML = opts.map((o) =>
-        "<option value=\"" + o[0] + "\"" + (o[0] === active ? " selected" : "") + ">" + o[1] + "</option>"
-      ).join("");
-      void all;
+      opts.forEach((o) => {
+        const opt = document.createElement("option");
+        opt.value = o[0];
+        opt.textContent = o[1];
+        if (o[0] === preselect) opt.selected = true;
+        sel.appendChild(opt);
+      });
     }
 
     function refreshSource() {
@@ -299,16 +298,22 @@
         $("tr-ok").style.width = (ids.length ? (100 * healthy.length / ids.length) : 0) + "%";
         $("tr-bad").style.width = (ids.length ? (100 * (ids.length - healthy.length) / ids.length) : 0) + "%";
         const pills = ids.map((id) =>
-          "<li><button type=\"button\" data-brain=\"" + id + "\">" +
+          "<li><button type=\"button\" data-brain=\"" + escRow(id) + "\">" +
           "<span class=\"dot " + (healthy.includes(id) ? "ok" : "bad") + "\" aria-hidden=\"true\"></span> " +
-          id + " " + (rep.brains[id].login_state || "?") + "</button></li>"
+          escRow(id) + " " + escRow(rep.brains[id].login_state || "?") + "</button></li>"
         ).join("");
         $("brain-pills").innerHTML = pills;
         const brainSel = $("new-brain");
-        brainSel.innerHTML = ids.map((id) => "<option value=\"" + id + "\">" + id + "</option>").join("");
+        brainSel.textContent = "";
+        ids.forEach((id) => {
+          const opt = document.createElement("option");
+          opt.value = id;
+          opt.textContent = id;
+          brainSel.appendChild(opt);
+        });
         $("brain-list").innerHTML = ids.map((id) =>
-          "<li><button type=\"button\" data-brain=\"" + id + "\">" + id +
-          " <span class=\"st\">" + (rep.brains[id].login_state || "") + "</span></button></li>"
+          "<li><button type=\"button\" data-brain=\"" + escRow(id) + "\">" + escRow(id) +
+          " <span class=\"st\">" + escRow(rep.brains[id].login_state || "") + "</span></button></li>"
         ).join("");
         loadSourcesByBrain();
       } catch (e) {
@@ -336,9 +341,9 @@
         state.sessions = data.sessions || [];
         const ul = $("session-list");
         ul.innerHTML = state.sessions.map((s) =>
-          "<li><button type=\"button\" data-session=\"" + s.run_id + "\"" +
+          "<li><button type=\"button\" data-session=\"" + escRow(s.run_id) + "\"" +
           (s.run_id === state.active ? " aria-current=\"true\"" : "") + ">" +
-          s.brain + " <span class=\"st\">" + s.status + "</span></button></li>"
+          escRow(s.brain) + " <span class=\"st\">" + escRow(s.status) + "</span></button></li>"
         ).join("");
       } catch (e) {
         showBanner("Sessions: " + e.message);
@@ -354,8 +359,7 @@
         const snap = await api("GET", "/api/sessions/" + encodeURIComponent(id));
         state.seq = snap.last_seq || 0;
         renderHead(snap);
-        const hi = addMessage(snap.brain, "Sitzung gestartet (status=" + snap.status + ", quelle=" + snap.source + ")", "thinking");
-        void hi;
+        addMessage(snap.brain, "Sitzung gestartet (status=" + snap.status + ", quelle=" + snap.source + ")", "thinking");
         $("act-list").innerHTML = "<li>Session " + id + " geoeffnet</li>";
         refreshSource();
         loadSessions();
@@ -380,20 +384,35 @@
 
     async function pollEvents() {
       if (!state.pollLive || !state.active) return;
+      const rid = state.active;
       try {
-        const data = await api("GET", "/api/sessions/" + encodeURIComponent(state.active) +
+        const data = await api("GET", "/api/sessions/" + encodeURIComponent(rid) +
           "/events?since=" + state.seq);
+        if (rid !== state.active) return;
+        if (data.gap) { openSession(rid); return; }
+        state.pollErrors = 0;
         const events = data.events || [];
         for (const se of events) {
           if (se.seq <= state.seq) continue;
           state.seq = se.seq;
           applyEvent(se.event);
         }
-        void data;
-      } catch (e) { /* poll does not fail the UI */ }
+      } catch (e) {
+        if (e.status === 404) {
+          state.pollErrors = (state.pollErrors || 0) + 1;
+          if (state.pollErrors >= 3) {
+            stopPoll();
+            showBanner("Session/Server nicht erreichbar - Polling gestoppt.");
+          }
+        }
+      }
     }
 
     function applyEvent(ev) {
+      if (typeof ev === "string") {
+        if (ev === "TextComplete") finishTurn();
+        return;
+      }
       const key = Object.keys(ev)[0];
       const v = ev[key];
       if (key === "TextDelta") {
@@ -403,8 +422,7 @@
         $("messages").scrollTop = $("messages").scrollHeight;
         $("act-list").innerHTML = "<li>Text-Delta (Streaming)</li>";
       } else if (key === "TextComplete") {
-        setStatus(state.sessions.find((s) => s.run_id === state.active)?.status || "antwort fertig");
-        $("act-list").innerHTML = "<li>Antwort abgeschlossen</li>";
+        finishTurn();
       } else if (key === "ToolStart") {
         addAct("ToolStart " + v.tool + " (" + v.id + ")");
         setStatus("werkzeug " + v.tool + " laeuft");
@@ -427,6 +445,11 @@
         say("Sitzung beendet (" + v.status + ")");
         loadSessions();
       }
+    }
+
+    function finishTurn() {
+      setStatus(state.sessions.find((s) => s.run_id === state.active)?.status || "antwort fertig");
+      $("act-list").innerHTML = "<li>Antwort abgeschlossen</li>";
     }
 
     function toolRow(text) {
@@ -459,7 +482,8 @@
         await api("POST", "/api/sessions/" + encodeURIComponent(state.active) + "/chat", { text });
       } catch (e) {
         if (e.status === 409) {
-          addAct("busy: anderer Turn laeuft");
+          const what = String((e.data && e.data.error) || "");
+          addAct("busy: " + (/done/i.test(what) ? "Sitzung abgeschlossen" : "anderer Turn laeuft"));
         } else {
           addAct("Chat-Fehler: " + e.message);
           showBanner("Chat: " + e.message);
@@ -525,8 +549,8 @@
           ["Recovery", bc.recovery_hint || "-"],
         ];
         const actions = "<p>" +
-          "<button type=\"button\" data-bshow=\"" + id + "\">Fenster anzeigen</button> " +
-          "<button type=\"button\" data-bhide=\"" + id + "\">Fenster verstecken</button>" +
+          "<button type=\"button\" data-bshow=\"" + escRow(id) + "\">Fenster anzeigen</button> " +
+          "<button type=\"button\" data-bhide=\"" + escRow(id) + "\">Fenster verstecken</button>" +
           "</p>";
         showDetailBody("Brain: " + id, actions + "<dl>" + rows.map(function (r) {
           return "<dt>" + r[0] + "</dt><dd>" + escRow(String(r[1])) + "</dd>";
@@ -541,7 +565,7 @@
         try {
           const data = await api("GET", "/api/capability");
           const rows = (data.brains || []).map(function (l) {
-            return "<dt>" + l.brain_id + "</dt><dd>surveyed=" + l.surveyed +
+            return "<dt>" + escRow(l.brain_id) + "</dt><dd>surveyed=" + l.surveyed +
               ", available=" + l.available + ", have=" + l.have + "</dd>";
           }).join("");
           showDetail("Capability-Matrix", rows || "<p>Leer</p>");
@@ -552,7 +576,7 @@
         const ids = Object.keys(state.brains || {});
         showDetail("Doctor-Report", ids.map(function (id) {
           const b = state.brains[id];
-          return "<dt>" + id + "</dt><dd>login=" + (b.login_state || "?") +
+          return "<dt>" + escRow(id) + "</dt><dd>login=" + escRow(b.login_state || "?") +
             ", selector=" + (b.selectors_ok ? "ok" : "defekt") +
             ", lauf=" + (b.last_done_run_age_hours < 0 ? "-" : Math.round(b.last_done_run_age_hours) + "h") +
             "</dd>";
@@ -582,8 +606,8 @@
         const data = await api("GET", "/api/groups");
         state.groups = data.groups || [];
         $("group-list").innerHTML = state.groups.map(function (g) {
-          return "<li><button type=\"button\" data-group=\"" + g.id + "\">" + escRow(g.name) +
-            " <span class=\"st\">" + (g.brains || []).join(",") + "</span></button></li>";
+          return "<li><button type=\"button\" data-group=\"" + escRow(g.id) + "\">" + escRow(g.name) +
+            " <span class=\"st\">" + (g.brains || []).map(escRow).join(",") + "</span></button></li>";
         }).join("");
       } catch (e) { /* ignore */ }
     }
@@ -591,8 +615,8 @@
     async function runGroup(id) {
       const g = state.groups.find(function (x) { return x.id === id; });
       if (!g) return;
-      let wait = 2000;
-      for (let i = 0; i < 50; i++) {
+      let wait = 500;
+      for (let i = 0; i < 20; i++) {
         try {
           const data = await api("POST", "/api/groups/" + encodeURIComponent(id) + "/run", {
             task: $("gr-task").value.trim(),
@@ -608,6 +632,7 @@
         } catch (e) {
           if (e.status === 409) {
             await new Promise(function (r) { setTimeout(r, wait); });
+            wait = Math.min(wait * 2, 4000);
             continue;
           }
           showBanner("Gruppenlauf: " + e.message);
@@ -629,10 +654,8 @@
       try {
         const data = await api("POST", "/api/sessions/" + encodeURIComponent(state.active) + "/upload",
           { filename: f.name });
-        addAct("Datei angehaengt: " + f.name + (data.stored ? " (gespeichert)" : " (angefuegt, echte Speicherung: abwarten)"));
-        const snap = state.sessions.find(function (s) { return s.run_id === state.active; });
-        addMessage("du", "[Datei angehaengt: " + f.name + "]", "user");
-        void snap;
+        addAct("Datei uebermittelt: " + f.name + (data.stored ? " (gespeichert)" : " (nur Dateiname, keine Speicherung)"));
+        addMessage("du", "[Datei uebermittelt: " + f.name + (data.stored ? "]" : " (nur Dateiname)]"), "user");
       } catch (e) {
         showBanner("Upload: " + e.message);
       } finally {
