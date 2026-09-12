@@ -92,7 +92,10 @@
   "reasoning_toggle": [
     "[aria-label^='Deep think'] button",
     "[aria-label^='Deep think'] [role=button]",
-    "[aria-label^='Deep think']"
+    "[aria-label^='Deep think']",
+    "button:has-text('DeepThink')",
+    "button:has-text('Deep Think')",
+    "button:has-text('Deaktivierung')"
   ],
   "web_search_toggle": [
     "[data-active][class*='p-1.5']",

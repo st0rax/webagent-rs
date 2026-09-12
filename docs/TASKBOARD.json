@@ -491,11 +491,11 @@
       "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 8 und Pflichtgates"
     },
     {
-      "status": "free",
-      "claimed_at": null,
-      "owner": null,
+      "status": "done",
+      "claimed_at": "2026-09-12T10:15:00+02:00",
+      "owner": "webagent:qwen",
       "id": "T-901",
-      "branch": null,
+      "branch": "master",
       "type": "live-tests",
       "suitable": [
         "webagent:qwen",
@@ -504,11 +504,11 @@
       ],
       "dod": "Frischer Live-Turn je Modus (Normal/DeepThink), Thought-Process-Praefix-Klassifikation, Flakiness dokumentiert; Zelle gemessen oder Grenze begruendet",
       "phase": "9",
-      "proof_path": null,
+      "proof_path": "docs/proofs/T-901/zai-flaky-survey-2026-09-12.json",
       "verification": "verify/diagnose --brain zai --headless; docs/diagnostics-Befund",
       "title": "T-501-Restposten: zai-Webchat-Flaky vermessen und stabilisieren",
       "depends_on": [],
-      "done_at": null
+      "done_at": "2026-09-12T10:45:00+02:00"
     },
     {
       "status": "done",

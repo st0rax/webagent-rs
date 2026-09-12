@@ -460,7 +460,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Kein mehrstufiges Effortmenue (Survey 2026-09-11, im geoeffneten Modellmenue): zai hat nur 'DeepThink Deaktivierung' (reasoning_toggle, Ein/Aus) als Effort-Control; kein Denkstufen-Waehler mit Ebenen. Kein reasoning_effort_path (verify bleibt Quest)."
+      "note": "Kein mehrstufiges Effortmenue (Survey 2026-09-11, im geoeffneten Modellmenue): zai hat nur 'DeepThink Deaktivierung' (reasoning_toggle, Ein/Aus) als Effort-Control; kein Denkstufen-Waehler mit Ebenen. Kein reasoning_effort_path (verify bleibt Quest). T-901-Ergaenzung (2026-09-12): reasoning_toggle-Selektor-Drift korrigiert (Text-Fallback DeepThink) und live belegt - Zustand false->true via webagent toggle; zai chat stabil 4/4 (DeepThink aktiv, ohne Thought-Process-Praefix). Beleg docs/proofs/T-901/zai-flaky-survey-2026-09-12.json."
     },
     {
       "area": "effort",

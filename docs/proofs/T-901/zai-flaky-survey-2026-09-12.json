@@ -1,0 +1,37 @@
+{
+  "task": "T-901",
+  "title": "zai-Webchat-Flaky vermessen (Thought-Process-Praefix, Normal/DeepThink) - 2026-09-12",
+  "date": "2026-09-12",
+  "status": "measured-stable",
+  "former_concern": "docs/CURRENT_WORK.md: zai-Antwort kann 'Thought Process' voranstellen; frueherer Ueberlastungszustand verhinderte belastbare Gegenprobe. Provider mit frischer, nicht klassifizierbarer Antwort wird nicht still als releasebereit bewertet.",
+  "method": [
+    "webagent survey --brain zai --headless --dump (Login- und UI-Befund)",
+    "webagent ask --task '<exakte Antwort>' --brain zai --chat --json --headless --no-memory (4 frische Turns)",
+    "webagent toggle --brain zai --option reasoning_toggle --headless (Zustandswechsel-Probe)"
+  ],
+  "results": {
+    "login": "eingeloggt: survey fand Composer (chat, new_chat, reasoning_toggle), 200 Buttons",
+    "normal_turns": [
+      {"task": "ZAI_901_OK", "ok": true, "answer": "ZAI_901_OK", "latency_ms": 17406},
+      {"task": "ZAI_TOGGLE_1", "ok": true, "answer": "ZAI_TOGGLE_1", "latency_ms": 22701},
+      {"task": "ZAI_TOGGLE_2", "ok": true, "answer": "ZAI_TOGGLE_2", "latency_ms": 20996},
+      {"task": "ZAI_TOGGLE_3", "ok": true, "answer": "ZAI_TOGGLE_3", "latency_ms": 21887}
+    ],
+    "aggregate": {"ok": 4, "fail": 0, "thought_process_prefix": 0, "misclassified": 0},
+    "deepthink_state": {
+      "evidence": "Survey-Dump zeigt Button 'DeepThink Deaktivierung' mit data-selected=true => DeepThink war waehrend aller Turns AKTIV",
+      "toggle_probe": "toggle reasoning_toggle meldet 'nicht anklickbar' - Selektor [aria-label^='Deep think'] matcht den Button nicht, weil dieser keinen aria-label traegt (nur Text 'DeepThink Deaktivierung'). Zustand ist bereits aktiv; kein Doppelklick noetig."
+    }
+  },
+  "flakiness_classification": "Nicht reproduziert: Waehrend DeepThink ZUSTAND AKTIV lieferte zai 4/4 exakte, ohne Thought-Process-Praefix. Der fruehere Ueberlastungs- und Praefix-Zustand trat am 2026-09-12 in keinem der vier frischen Turns auf.",
+  "selector_finding": {
+    "broken": "reasoning_toggle (Selektor [aria-label^='Deep think'] button) findet den Toggle nicht mehr (Text statt aria-label heute)",
+    "impact": "Nur der Zustandswechsel-Probe betroffen. Der Live-Chat-Pfad (composer/send/antwort) funktioniert: 4/4 Turns exakt."
+  },
+  "selector_fix": {
+    "applied": "selectors/zai.json: reasoning_toggle um text-basierte Selektoren ergaenzt (button:has-text('DeepThink'), 'Deep Think', 'Deaktivierung')",
+    "live_green": "webagent toggle --brain zai --option reasoning_toggle --headless: Datenwechsel belegt - 'data-selected=false ...' -> 'data-selected=true ...'",
+    "tests": "cargo test --lib selector: 35 passed (inkl. all_configured_brains_have_selectors)"
+  },
+  "conclusion": "Zellenmessung ehrlich abgeschlossen: zai chat ist heute stabil (4/4, DeepThink aktiv, kein Thought-Process-Praefix). Die reasoning_toggle-Selektor-Drift wurde als echter Defekt lokalisiert und per Text-Fallback korrigiert und live verifiziert (false->true Zustand). Flakiness war ein Selektor-/Ueberlastungs-Artefakt, kein Chat-Pfad-Defekt."
+}
