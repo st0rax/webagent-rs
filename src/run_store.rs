@@ -712,7 +712,7 @@ impl RunStore {
         let mut file = fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&path)
+            .open(path)
             .map_err(|e| format!("Fehler beim Öffnen von {}: {}", path.display(), e))?;
 
         writeln!(file, "{}", line)
@@ -916,7 +916,11 @@ impl RunStore {
                 Ok(scan) => scan,
                 Err(_) => {
                     let content = fs::read_to_string(&path).map_err(|e| {
-                        format!("Journal {} nach Kettentest nicht lesbar: {}", path.display(), e)
+                        format!(
+                            "Journal {} nach Kettentest nicht lesbar: {}",
+                            path.display(),
+                            e
+                        )
                     })?;
                     let mut valid = Vec::new();
                     let mut broken_at = None;
@@ -957,7 +961,13 @@ impl RunStore {
             &tmp_path,
             valid_lines.join("\n") + (if valid_lines.is_empty() { "" } else { "\n" }),
         )
-        .map_err(|e| format!("Gültiger Prefix nicht schreibbar ({}): {}", tmp_path.display(), e))?;
+        .map_err(|e| {
+            format!(
+                "Gültiger Prefix nicht schreibbar ({}): {}",
+                tmp_path.display(),
+                e
+            )
+        })?;
         if let Err(rename_error) = fs::rename(&tmp_path, &path) {
             fs::write(&path, valid_lines.join("\n") + "\n").map_err(|write_error| {
                 format!(
@@ -999,11 +1009,16 @@ impl RunStore {
                 let previous = meta.clone();
                 meta.status = "recovery_required".to_string();
                 let _ = self.save_internal(&meta);
-                let _ = self.append_event_unlocked(&meta, "recovery_required", serde_json::json!({
-                    "torn_entries": torn_entries,
-                    "valid_entries": valid_entries,
-                    "quarantine_file": quarantine_file,
-                }), &run_dir.join("events.jsonl"));
+                let _ = self.append_event_unlocked(
+                    &meta,
+                    "recovery_required",
+                    serde_json::json!({
+                        "torn_entries": torn_entries,
+                        "valid_entries": valid_entries,
+                        "quarantine_file": quarantine_file,
+                    }),
+                    &run_dir.join("events.jsonl"),
+                );
                 let _ = previous;
             }
         }
@@ -1779,14 +1794,20 @@ mod tests {
         // Torn Tail simulieren: eine kaputte Zeile ans Journal hängen, die die
         // Kette bricht (kein JSON, kein Hash).
         std::fs::write(&journal, format!("{original}TORN-TAIL-OHNE-JSON-NEWLINE")).unwrap();
-        assert!(last_event_chain_state(&journal).is_err(), "Torn Tail muss die Kette brechen");
+        assert!(
+            last_event_chain_state(&journal).is_err(),
+            "Torn Tail muss die Kette brechen"
+        );
 
         // Ein Anhänge-Versuch ist ein Persistenzbruch → append_event muss ihn
         // zuerst quarantänieren und als recovery_required laufen lassen.
         let mut meta2 = store.load(&run_id).unwrap();
         meta2.status = "done".to_string();
         let res = store.save(&meta2);
-        assert!(res.is_err(), "Torn Tail darf nie unbelegt done werden: {res:?}");
+        assert!(
+            res.is_err(),
+            "Torn Tail darf nie unbelegt done werden: {res:?}"
+        );
 
         // Quarantäne-Datei existiert und enthält den unveränderten Tail.
         let quarantined: Vec<_> = std::fs::read_dir(&run_dir)
@@ -1802,11 +1823,17 @@ mod tests {
         assert!(run_dir.join("recovery-receipt.json").exists());
 
         // Der gültige Prefix ist wieder lesbar (ganze Kette validiert).
-        assert!(last_event_chain_state(&journal).is_ok(), "Prefix muss lesbar bleiben");
+        assert!(
+            last_event_chain_state(&journal).is_ok(),
+            "Prefix muss lesbar bleiben"
+        );
 
         // Der Run ist `recovery_required`, nie `done`.
         let persisted = store.load(&run_id).unwrap();
-        assert_eq!(persisted.status, "recovery_required", "fail-closed statt unbelegtes done");
+        assert_eq!(
+            persisted.status, "recovery_required",
+            "fail-closed statt unbelegtes done"
+        );
         assert_ne!(original, std::fs::read_to_string(&journal).unwrap());
 
         // Idempotent: zweiter Lauf findet keinen Torn Tail mehr.
@@ -1890,8 +1917,14 @@ mod tests {
         // (nur activate_continuation darf, und nur für die ACTIVATABLE-Liste).
         let mut back = store.load(&run_id).unwrap();
         back.status = "running".to_string();
-        assert!(store.save(&back).is_err(), "recovery_required -> running ohne Continuation verboten");
-        assert!(store.activate_continuation(&mut back).is_err(), "recovery_required ist nicht activatable");
+        assert!(
+            store.save(&back).is_err(),
+            "recovery_required -> running ohne Continuation verboten"
+        );
+        assert!(
+            store.activate_continuation(&mut back).is_err(),
+            "recovery_required ist nicht activatable"
+        );
 
         fs::remove_dir_all(&tmp).ok();
     }
@@ -1912,19 +1945,26 @@ mod tests {
         let now = std::time::Instant::now();
 
         // Zweiter Schreiber mit kurzem Timeout scheitert fail-closed.
-        let blocked = store.with_journal_lock(&run_dir, Duration::from_millis(120), || {
-            Ok::<_, String>(())
-        });
-        assert!(blocked.is_err(), "belegtes Lock muss den zweiten Schreiber blockieren");
+        let blocked =
+            store.with_journal_lock(&run_dir, Duration::from_millis(120), || Ok::<_, String>(()));
+        assert!(
+            blocked.is_err(),
+            "belegtes Lock muss den zweiten Schreiber blockieren"
+        );
         assert!(now.elapsed() >= Duration::from_millis(100));
 
         // Wird das Lock entfernt, kommt der zweite Schreiber durch.
         std::fs::remove_file(&lock_path).ok();
-        let released = store.with_journal_lock(&run_dir, Duration::from_secs(1), || {
-            Ok::<_, String>(())
-        });
-        assert!(released.is_ok(), "nach Freigabe muss der Schreiber durchkommen");
-        assert!(!run_dir.join("events.lock").exists(), "Lock wird nach Nutzung gelöscht");
+        let released =
+            store.with_journal_lock(&run_dir, Duration::from_secs(1), || Ok::<_, String>(()));
+        assert!(
+            released.is_ok(),
+            "nach Freigabe muss der Schreiber durchkommen"
+        );
+        assert!(
+            !run_dir.join("events.lock").exists(),
+            "Lock wird nach Nutzung gelöscht"
+        );
 
         fs::remove_dir_all(&tmp).ok();
     }
@@ -1947,7 +1987,10 @@ mod tests {
         );
         assert!(content.contains("Fremder Beleg"));
         assert!(content.contains("T-806"));
-        assert!(last_event_chain_state(&journal).is_ok(), "Kette bleibt intakt");
+        assert!(
+            last_event_chain_state(&journal).is_ok(),
+            "Kette bleibt intakt"
+        );
 
         fs::remove_dir_all(&tmp).ok();
     }

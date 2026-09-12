@@ -573,11 +573,7 @@ pub fn git_env(workdir: &Path) -> (Option<String>, Option<String>, Option<String
         short
     });
     let branch = git_branch(workdir).ok();
-    (
-        root.map(|p| p.display().to_string()),
-        sha,
-        branch,
-    )
+    (root.map(|p| p.display().to_string()), sha, branch)
 }
 
 /// Repo-Root des Verzeichnisses (`git rev-parse --show-toplevel`).

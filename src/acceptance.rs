@@ -69,7 +69,9 @@ pub fn verify_completion(
         || receipt.commit.trim().is_empty()
         || receipt.scope.trim().is_empty()
     {
-        return Err("Receipt enthält leere Pflichtfelder (task_id, run_id, brain_id, commit, scope)".into());
+        return Err(
+            "Receipt enthält leere Pflichtfelder (task_id, run_id, brain_id, commit, scope)".into(),
+        );
     }
     if receipt.task_id != expected.task_id {
         return Err(format!(

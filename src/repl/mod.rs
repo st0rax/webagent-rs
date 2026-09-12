@@ -527,8 +527,10 @@ impl ReplSession {
                         // Revision. Gepufferte Endantworten liefert das Backend
                         // trotzdem als finalen Snapshot.
                         let mut last: String = String::new();
-                        let on_update = &mut |snapshot: &str| {
-                            match crate::observer::classify_stream_delta(&last, snapshot) {
+                        let on_update =
+                            &mut |snapshot: &str| match crate::observer::classify_stream_delta(
+                                &last, snapshot,
+                            ) {
                                 crate::observer::StreamDelta::Identical => {}
                                 crate::observer::StreamDelta::AppendDelta { addition } => {
                                     print!("{addition}");
@@ -540,8 +542,7 @@ impl ReplSession {
                                     let _ = io::stdout().flush();
                                     last = snapshot.to_string();
                                 }
-                            }
-                        };
+                            };
                         match self
                             .brain_mut()
                             .wait_response_streaming(baseline, timeout, on_update)

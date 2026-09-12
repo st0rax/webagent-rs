@@ -206,10 +206,7 @@ pub enum OperationEvent {
         elapsed_ms: u64,
     },
     /// Wiederholungsversuch (begrenzt und dokumentiert, siehe T-802).
-    Retry {
-        attempt_id: String,
-        reason: String,
-    },
+    Retry { attempt_id: String, reason: String },
     /// Timeout in einer Phase.
     Timeout {
         attempt_id: String,
@@ -316,9 +313,8 @@ impl OperationLedger {
         // Nach einem Terminal ist der Turn zu.
         if let Some(terminal) = &self.terminal {
             let phase_label = match terminal {
-                OperationEvent::Terminal { phase, .. } | OperationEvent::Cancelled { phase, .. } => {
-                    phase.label()
-                }
+                OperationEvent::Terminal { phase, .. }
+                | OperationEvent::Cancelled { phase, .. } => phase.label(),
                 _ => "?",
             };
             return Err(format!(
@@ -416,6 +412,52 @@ where
     }
 }
 
+/// Klassifiziert einen Rohtext einer Oberflaechenantwort in een [`SurfaceOutcome`].
+///
+/// Reihenfolge ist wichtig:
+/// 1. Protokoll-Nutzlast (`WEBAGENT/1 …`) ist immer Inhalt.
+/// 2. Klassische UI-Glitch-Profile (leer, „No response", „Unexpected token",
+///    HTML-Dokumente) sind `UiGlitch` — blitzt auch neben echtem Inhalt nicht
+///    als Antwort durch.
+/// 3. Provider-Block (usage limit etc.) ist `Limit`.
+/// 4. Anmelde-/Login-Phrasen sind `Login`.
+/// 5. Alles andere mit Inhalt ist `Content`.
+///
+/// Die zwei Kernel-Mechaniken sind schnell und ohne Browser: [`crate::brain::
+/// is_retryable_empty_response`] kennt die Glitch-/Limit-Profile,
+/// [`crate::browser::block_phrase_in_text`] die Provider-Block-Phrasen.
+pub fn classify_surface_text(raw: &str) -> SurfaceOutcome {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return SurfaceOutcome::UiGlitch {
+            raw: raw.to_string(),
+        };
+    }
+    if crate::browser::has_protocol_payload(trimmed) {
+        return SurfaceOutcome::Content;
+    }
+    if crate::brain::is_retryable_empty_response(trimmed) {
+        // Zwischen Glitch und Provider-Limit unterscheiden, damit ein
+        // Einstiegspunkt Limits nicht als transienten Repair-Versuch behandelt.
+        if let Some(_phrase) = crate::browser::block_phrase_in_text(trimmed) {
+            return SurfaceOutcome::Limit;
+        }
+        return SurfaceOutcome::UiGlitch {
+            raw: raw.to_string(),
+        };
+    }
+    let low = trimmed.to_lowercase();
+    if low.contains("anmelden")
+        || low.contains("log in")
+        || low.contains("sign in")
+        || low.contains("nicht angemeldet")
+        || low.contains("login erforderlich")
+    {
+        return SurfaceOutcome::Login;
+    }
+    SurfaceOutcome::Content
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -488,7 +530,10 @@ mod tests {
             phase: OperationPhase::Observe,
             elapsed_ms: 5,
         });
-        assert!(err.is_err(), "nach Terminal darf kein weiteres Event kommen");
+        assert!(
+            err.is_err(),
+            "nach Terminal darf kein weiteres Event kommen"
+        );
         let second = ledger.record(OperationEvent::Terminal {
             attempt_id: "a1".into(),
             phase: OperationPhase::Finished,
@@ -510,10 +555,13 @@ mod tests {
             phase: OperationPhase::Fill,
         });
         assert!(!ledger.is_terminal() || ledger.terminal().is_some());
-        assert_eq!(ledger.terminal().unwrap(), &OperationEvent::Cancelled {
-            attempt_id: "cancel-1".into(),
-            phase: OperationPhase::Fill,
-        });
+        assert_eq!(
+            ledger.terminal().unwrap(),
+            &OperationEvent::Cancelled {
+                attempt_id: "cancel-1".into(),
+                phase: OperationPhase::Fill,
+            }
+        );
     }
 
     #[test]
@@ -534,19 +582,24 @@ mod tests {
                 origin: Origin::Swarm,
                 phase,
             });
-            assert!(ledger.record(OperationEvent::Cancelled {
-                attempt_id: "c".into(),
-                phase,
-            })
-            .is_ok());
-            assert!(ledger.is_terminal(), "Abbruch in {phase:?} muss terminal sein");
-            assert!(
-                ledger.record(OperationEvent::Terminal {
+            assert!(ledger
+                .record(OperationEvent::Cancelled {
                     attempt_id: "c".into(),
-                    phase: OperationPhase::Finished,
-                    outcome: SurfaceOutcome::Content,
+                    phase,
                 })
-                .is_err(),
+                .is_ok());
+            assert!(
+                ledger.is_terminal(),
+                "Abbruch in {phase:?} muss terminal sein"
+            );
+            assert!(
+                ledger
+                    .record(OperationEvent::Terminal {
+                        attempt_id: "c".into(),
+                        phase: OperationPhase::Finished,
+                        outcome: SurfaceOutcome::Content,
+                    })
+                    .is_err(),
                 "nach Abbruch kein doppelter Abschluss"
             );
         }
@@ -572,7 +625,10 @@ mod tests {
                 .label(),
             "limit"
         );
-        assert_eq!(classify_surface_text("Sie sind nicht angemeldet.").label(), "login");
+        assert_eq!(
+            classify_surface_text("Sie sind nicht angemeldet.").label(),
+            "login"
+        );
     }
 
     #[test]
@@ -594,21 +650,31 @@ mod tests {
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_eq!(err, OperationEvent::Terminal {
-            attempt_id: "blocked-1".into(),
-            phase: OperationPhase::Failed,
-            outcome: SurfaceOutcome::Transient,
-        });
-        let kinds: Vec<&str> = ledger.events().iter().map(|e| match e {
-            OperationEvent::Started { .. } => "started",
-            OperationEvent::Heartbeat { .. } => "heartbeat",
-            OperationEvent::Timeout { .. } => "timeout",
-            OperationEvent::Terminal { .. } => "terminal",
-            OperationEvent::Retry { .. } => "retry",
-            OperationEvent::Cancelled { .. } => "cancelled",
-        }).collect();
+        assert_eq!(
+            err,
+            OperationEvent::Terminal {
+                attempt_id: "blocked-1".into(),
+                phase: OperationPhase::Failed,
+                outcome: SurfaceOutcome::Transient,
+            }
+        );
+        let kinds: Vec<&str> = ledger
+            .events()
+            .iter()
+            .map(|e| match e {
+                OperationEvent::Started { .. } => "started",
+                OperationEvent::Heartbeat { .. } => "heartbeat",
+                OperationEvent::Timeout { .. } => "timeout",
+                OperationEvent::Terminal { .. } => "terminal",
+                OperationEvent::Retry { .. } => "retry",
+                OperationEvent::Cancelled { .. } => "cancelled",
+            })
+            .collect();
         assert_eq!(kinds[0], "started");
-        assert!(kinds.contains(&"heartbeat"), "blockierter Treiber muss heartbeats zeigen");
+        assert!(
+            kinds.contains(&"heartbeat"),
+            "blockierter Treiber muss heartbeats zeigen"
+        );
         assert!(kinds.contains(&"timeout"));
         assert!(kinds.contains(&"terminal"));
         assert!(ledger.is_terminal());
@@ -622,11 +688,19 @@ mod tests {
             origin: Origin::Controller,
             phase: OperationPhase::Observe,
         });
-        let result = poll_with_heartbeat(&mut ledger, "ok-1", OperationPhase::Observe, 5, 1000, || {
-            Ok(())
-        });
+        let result = poll_with_heartbeat(
+            &mut ledger,
+            "ok-1",
+            OperationPhase::Observe,
+            5,
+            1000,
+            || Ok(()),
+        );
         assert!(result.is_ok());
-        assert!(!ledger.is_terminal(), "Erfolg ist kein Terminal in poll_with_heartbeat");
+        assert!(
+            !ledger.is_terminal(),
+            "Erfolg ist kein Terminal in poll_with_heartbeat"
+        );
     }
 
     #[test]
@@ -666,7 +740,11 @@ mod tests {
         .map(|o| o.label())
         .collect();
         let unique = labels.iter().collect::<std::collections::HashSet<_>>();
-        assert_eq!(unique.len(), labels.len(), "Origin-Labels muessen eindeutig sein");
+        assert_eq!(
+            unique.len(),
+            labels.len(),
+            "Origin-Labels muessen eindeutig sein"
+        );
     }
 
     #[test]
@@ -688,50 +766,4 @@ mod tests {
             assert_eq!(back, event);
         }
     }
-}
-
-/// Klassifiziert einen Rohtext einer Oberflaechenantwort in een [`SurfaceOutcome`].
-///
-/// Reihenfolge ist wichtig:
-/// 1. Protokoll-Nutzlast (`WEBAGENT/1 …`) ist immer Inhalt.
-/// 2. Klassische UI-Glitch-Profile (leer, „No response", „Unexpected token",
-///    HTML-Dokumente) sind `UiGlitch` — blitzt auch neben echtem Inhalt nicht
-///    als Antwort durch.
-/// 3. Provider-Block (usage limit etc.) ist `Limit`.
-/// 4. Anmelde-/Login-Phrasen sind `Login`.
-/// 5. Alles andere mit Inhalt ist `Content`.
-///
-/// Die zwei Kernel-Mechaniken sind schnell und ohne Browser: [`crate::brain::
-/// is_retryable_empty_response`] kennt die Glitch-/Limit-Profile,
-/// [`crate::browser::block_phrase_in_text`] die Provider-Block-Phrasen.
-pub fn classify_surface_text(raw: &str) -> SurfaceOutcome {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return SurfaceOutcome::UiGlitch {
-            raw: raw.to_string(),
-        };
-    }
-    if crate::browser::has_protocol_payload(trimmed) {
-        return SurfaceOutcome::Content;
-    }
-    if crate::brain::is_retryable_empty_response(trimmed) {
-        // Zwischen Glitch und Provider-Limit unterscheiden, damit ein
-        // Einstiegspunkt Limits nicht als transienten Repair-Versuch behandelt.
-        if let Some(_phrase) = crate::browser::block_phrase_in_text(trimmed) {
-            return SurfaceOutcome::Limit;
-        }
-        return SurfaceOutcome::UiGlitch {
-            raw: raw.to_string(),
-        };
-    }
-    let low = trimmed.to_lowercase();
-    if low.contains("anmelden")
-        || low.contains("log in")
-        || low.contains("sign in")
-        || low.contains("nicht angemeldet")
-        || low.contains("login erforderlich")
-    {
-        return SurfaceOutcome::Login;
-    }
-    SurfaceOutcome::Content
 }

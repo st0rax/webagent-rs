@@ -860,9 +860,10 @@ fn reclaim_swarm_profile_in(
     if !dst.exists() {
         return Ok(true);
     }
-    let lock_path = base
-        .join("swarm")
-        .join(format!(".reclaim-{}.lock", swarm_profile_scope_key(run_id, brain_id)));
+    let lock_path = base.join("swarm").join(format!(
+        ".reclaim-{}.lock",
+        swarm_profile_scope_key(run_id, brain_id)
+    ));
     if let Some(parent) = lock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -875,7 +876,10 @@ fn reclaim_swarm_profile_in(
     file.try_lock_exclusive().map_err(|error| {
         std::io::Error::new(
             std::io::ErrorKind::WouldBlock,
-            format!("Reclaim-Sperre fuer {}-{} belegt: {error}", run_id, brain_id),
+            format!(
+                "Reclaim-Sperre fuer {}-{} belegt: {error}",
+                run_id, brain_id
+            ),
         )
     })?;
     match read_swarm_owner(&dst) {
@@ -918,13 +922,14 @@ pub fn acquire_swarm_profile_in(
     let deadline = std::time::Instant::now().checked_add(wait_budget);
     loop {
         match swarm_profile_lease_state_in(base, run_id, brain_id) {
-            SwarmProfileLeaseState::Free => match prepare_swarm_profile_in(base, run_id, brain_id, sparse)
-            {
-                Ok(lease) => return Ok(lease),
-                // Rennen um die atomare Reservation verloren: erneut pruefen.
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(error),
-            },
+            SwarmProfileLeaseState::Free => {
+                match prepare_swarm_profile_in(base, run_id, brain_id, sparse) {
+                    Ok(lease) => return Ok(lease),
+                    // Rennen um die atomare Reservation verloren: erneut pruefen.
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(error),
+                }
+            }
             SwarmProfileLeaseState::Stale { owner } => {
                 if reclaim_swarm_profile_in(base, run_id, brain_id, &owner)? {
                     continue;
@@ -1257,14 +1262,9 @@ mod lease_tests {
             swarm_profile_lease_state_in(&base, "run-x", "gemini"),
             SwarmProfileLeaseState::Busy { .. }
         ));
-        let err = acquire_swarm_profile_in(
-            &base,
-            "run-x",
-            "gemini",
-            false,
-            Duration::from_millis(300),
-        )
-        .unwrap_err();
+        let err =
+            acquire_swarm_profile_in(&base, "run-x", "gemini", false, Duration::from_millis(300))
+                .unwrap_err();
         assert_eq!(
             err.kind(),
             std::io::ErrorKind::WouldBlock,
@@ -1282,9 +1282,8 @@ mod lease_tests {
         // Absturz simulieren: tote PID + stark veralteter Heartbeat.
         let mut dead = SwarmProfileOwner::new("run-x", "gemini");
         dead.pid = Some(dead_pid());
-        dead.heartbeat_ns = Some(
-            now_ns().saturating_sub((stale_heartbeat_secs() + 60) * 1_000_000_000),
-        );
+        dead.heartbeat_ns =
+            Some(now_ns().saturating_sub((stale_heartbeat_secs() + 60) * 1_000_000_000));
         dead.scope_key = swarm_profile_scope_key("run-x", "gemini");
         write_swarm_owner(&path, &dead).unwrap();
         drop(lease1); // Drop-Release verweigert den fremden Marker; Verzeichnis bleibt.
@@ -1292,8 +1291,9 @@ mod lease_tests {
             swarm_profile_lease_state_in(&base, "run-x", "gemini"),
             SwarmProfileLeaseState::Stale { .. }
         ));
-        let lease2 = acquire_swarm_profile_in(&base, "run-x", "gemini", false, Duration::from_secs(3))
-            .unwrap();
+        let lease2 =
+            acquire_swarm_profile_in(&base, "run-x", "gemini", false, Duration::from_secs(3))
+                .unwrap();
         assert!(path.exists(), "Lease wurde frisch neu geklont");
         assert_eq!(lease2.pid(), Some(std::process::id() as u64));
         drop(lease2);
@@ -1314,7 +1314,10 @@ mod lease_tests {
         other.heartbeat_ns = Some(now_ns());
         other.scope_key = swarm_profile_scope_key("run-x", "gemini");
         write_swarm_owner(&path, &other).unwrap();
-        assert!(lease.release().is_err(), "alter Worker darf fremden Lease nicht loeschen");
+        assert!(
+            lease.release().is_err(),
+            "alter Worker darf fremden Lease nicht loeschen"
+        );
         assert!(path.exists());
 
         // Auch der Reclaim verweigert einen NICHT-verwaisten (frischen) Lease.

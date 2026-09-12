@@ -428,12 +428,7 @@ fn print_swarm_context(ctx: &SwarmContext) {
 
 /// Schreibt den Brain-Ruf in das Run-Transcript (Spiegel des
 /// Controller-`brain_stream`-Events): user, brain_stream-Statistik, Antwort.
-fn record_swarm_run(
-    run_meta: &Option<RunMeta>,
-    task: &str,
-    answer: &str,
-    stats: &StreamStats,
-) {
+fn record_swarm_run(run_meta: &Option<RunMeta>, task: &str, answer: &str, stats: &StreamStats) {
     let Some(meta) = run_meta else { return };
     let runs_dir = webagent::config::runs_dir();
     let t = Transcript::new(meta, &runs_dir);
@@ -508,32 +503,30 @@ pub fn cmd_swarm(message: &str, headless: bool, timeout: f64, brains: &str, json
         use webagent::observer::{classify_stream_delta, StreamDelta};
         let mut last: String = String::new();
         let mut stats = StreamStats::default();
-        let mut on_update = |txt: &str| {
-            match classify_stream_delta(&last, txt) {
-                StreamDelta::Identical => {}
-                StreamDelta::AppendDelta { addition } => {
-                    if !txt.trim().is_empty() {
-                        stats.saw_text = true;
-                    }
-                    stats.snapshots += 1;
-                    if !json && !last.is_empty() {
-                        print!("{addition}");
-                        let _ = std::io::stdout().flush();
-                    }
-                    last = txt.to_string();
+        let mut on_update = |txt: &str| match classify_stream_delta(&last, txt) {
+            StreamDelta::Identical => {}
+            StreamDelta::AppendDelta { addition } => {
+                if !txt.trim().is_empty() {
+                    stats.saw_text = true;
                 }
-                StreamDelta::Replace { .. } => {
-                    if !txt.trim().is_empty() {
-                        stats.saw_text = true;
-                    }
-                    stats.revisions += 1;
-                    stats.snapshots += 1;
-                    if !json {
-                        print!("\n  (antwort revidiert — Replace statt Praefixwachstum) ");
-                        let _ = std::io::stdout().flush();
-                    }
-                    last = txt.to_string();
+                stats.snapshots += 1;
+                if !json && !last.is_empty() {
+                    print!("{addition}");
+                    let _ = std::io::stdout().flush();
                 }
+                last = txt.to_string();
+            }
+            StreamDelta::Replace { .. } => {
+                if !txt.trim().is_empty() {
+                    stats.saw_text = true;
+                }
+                stats.revisions += 1;
+                stats.snapshots += 1;
+                if !json {
+                    print!("\n  (antwort revidiert — Replace statt Praefixwachstum) ");
+                    let _ = std::io::stdout().flush();
+                }
+                last = txt.to_string();
             }
         };
         let r = match webagent::relay::relay_single_turn_streaming(
@@ -764,10 +757,13 @@ pub fn cmd_ask(
             }
         }
     } else {
-        cmd_run(brain, task, resume, headless, max_cycles, no_memory, None, None, None, None)
+        cmd_run(
+            brain, task, resume, headless, max_cycles, no_memory, None, None, None, None,
+        )
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_run(
     brain: &str,
     task: &str,
@@ -797,12 +793,9 @@ pub fn cmd_run(
     // Größe, damit complete_claim den Claim eindeutig zuordnen kann.
     let task_owner = format!("webagent:{}", brain);
     if let Some(task_id) = acquire_task {
-        if let Err(e) = webagent::taskboard::acquire_claim(
-            board,
-            task_id,
-            &task_owner,
-            &branch_name(),
-        ) {
+        if let Err(e) =
+            webagent::taskboard::acquire_claim(board, task_id, &task_owner, &branch_name())
+        {
             eprintln!("[run] Task-Claim verweigert: {e}");
             return 1;
         }
@@ -852,33 +845,30 @@ pub fn cmd_run(
                                 .map_err(|e| format!("Receipt lesen: {e}"));
                             match receipt_json {
                                 Ok(json) => {
-                                    let receipt =
-                                        match serde_json::from_str::<webagent::acceptance::CompletionReceipt>(
-                                            &json,
-                                        ) {
-                                            Ok(r) => r,
-                                            Err(e) => {
-                                                return {
-                                                    eprintln!(
+                                    let receipt = match serde_json::from_str::<
+                                        webagent::acceptance::CompletionReceipt,
+                                    >(&json)
+                                    {
+                                        Ok(r) => r,
+                                        Err(e) => {
+                                            return {
+                                                eprintln!(
                                                         "[run] Taskabschluss verweigert: Receipt ungueltig: {e}"
                                                     );
-                                                    1
-                                                };
-                                            }
-                                        };
-                                    let expected =
-                                        webagent::acceptance::ExpectedCompletion {
-                                            task_id: task_id.to_string(),
-                                            run_id: meta.run_id.clone(),
-                                            brain_id: brain.clone(),
-                                            commit: head_commit(),
-                                            run_status: meta.status.clone(),
-                                        };
+                                                1
+                                            };
+                                        }
+                                    };
+                                    let expected = webagent::acceptance::ExpectedCompletion {
+                                        task_id: task_id.to_string(),
+                                        run_id: meta.run_id.clone(),
+                                        brain_id: brain.clone(),
+                                        commit: head_commit(),
+                                        run_status: meta.status.clone(),
+                                    };
                                     let runs_dir = webagent::config::runs_dir();
-                                    let store = RunStore::new(
-                                        runs_dir.clone(),
-                                        runs_dir.join("logs"),
-                                    );
+                                    let store =
+                                        RunStore::new(runs_dir.clone(), runs_dir.join("logs"));
                                     webagent::taskboard::complete_claim_verified(
                                         board,
                                         task_id,

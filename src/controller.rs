@@ -30,7 +30,6 @@ pub use types::{BrainTurn, RunOptions};
 
 // Konfigurationskonstanten (aus CONVENTIONS.md: keine externe config-Crate)
 use crate::config::{max_observation_chars_for, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT};
-const MEMORY_CONTEXT_LIMIT: usize = 5;
 const CONTROLLER_HEARTBEAT_INTERVAL_SECONDS: f64 = 30.0;
 
 /// Wie oft bei „fertig ohne durchgelaufenen Edit" nachgehakt wird, bevor der
@@ -113,8 +112,6 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     max_cycles: usize,
     run_store: RunStore,
     memory: MemoryStore,
-    /// Markdown-Wiki (Langzeitwissen); Layout entsteht erst beim ersten Zugriff.
-    wiki: crate::wiki_memory::WikiMemory,
     runs_dir: std::path::PathBuf,
     meta: Option<RunMeta>,
     comms: CommsStore,
@@ -266,10 +263,6 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             max_cycles,
             run_store: RunStore::new(runs_dir.clone(), logs_dir),
             memory: MemoryStore::new(memory_path),
-            // Wiki-Wurzel wie config::data_dir()/memory/wiki — hier über das
-            // uebergebene data_dir, damit Tests isoliert bleiben. Kein
-            // ensure_layout beim Konstruieren (erst beim ersten Zugriff).
-            wiki: crate::wiki_memory::WikiMemory::new(data_dir.join("memory").join("wiki")),
             runs_dir,
             meta: None,
             comms: CommsStore::new(data_dir.join("comms")),
@@ -424,21 +417,20 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         // Turn darf die Gesamtfrist nicht ueberziehen (Fund 2026-07-21).
         let wait_timeout = self.cap_to_wall(wait_timeout);
 
-        let mut response = match self
-            .brain
-            .wait_response_streaming(
-                baseline,
-                wait_timeout,
-                &mut |snapshot| stream_tracker.record(snapshot),
-            ) {
-            Ok(r) => r,
-            Err(e) => {
-                return BrainTurn {
-                    text: format!("{{\"error\": \"{}\"}}", e),
-                    complete: false,
-                };
-            }
-        };
+        let mut response =
+            match self
+                .brain
+                .wait_response_streaming(baseline, wait_timeout, &mut |snapshot| {
+                    stream_tracker.record(snapshot)
+                }) {
+                Ok(r) => r,
+                Err(e) => {
+                    return BrainTurn {
+                        text: format!("{{\"error\": \"{}\"}}", e),
+                        complete: false,
+                    };
+                }
+            };
         let mut rereads = 0;
 
         while response.generation_complete
@@ -3288,9 +3280,7 @@ mod tests {
         let mut controller =
             AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
 
-        let meta = controller
-            .run("Pruefe etwas", "mock", None, false)
-            .unwrap();
+        let meta = controller.run("Pruefe etwas", "mock", None, false).unwrap();
 
         assert_eq!(meta.status, "done", "meta={:?}", meta.extra);
         let events = stream_events_from(&data_dir.join("runs"), &meta.run_id);
@@ -3320,9 +3310,7 @@ mod tests {
         let mut controller =
             AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
 
-        let meta = controller
-            .run("Pruefe", "mock", None, false)
-            .unwrap();
+        let meta = controller.run("Pruefe", "mock", None, false).unwrap();
 
         assert_eq!(meta.status, "done");
         let events = stream_events_from(&data_dir.join("runs"), &meta.run_id);
@@ -3339,19 +3327,19 @@ mod tests {
     #[test]
     fn gepufferte_endantwort_zaehlt_nicht_als_streaming() {
         let data_dir = unique_data_dir();
-        let brain =
-            MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
+        let brain = MockBrain::new().with_responses(vec![&finish_response()], vec![true]);
         let mut controller =
             AgentController::with_data_dir(brain, MockExecutor::new(), 5, data_dir.clone());
 
-        let meta = controller
-            .run("Berechne", "mock", None, false)
-            .unwrap();
+        let meta = controller.run("Berechne", "mock", None, false).unwrap();
 
         assert_eq!(meta.status, "done");
         let events = stream_events_from(&data_dir.join("runs"), &meta.run_id);
         let stream = find_stream_event(&events);
-        assert_eq!(stream["snapshots"], 1, "genau ein (gepufferter) Snapshot: {stream}");
+        assert_eq!(
+            stream["snapshots"], 1,
+            "genau ein (gepufferter) Snapshot: {stream}"
+        );
         assert_eq!(
             stream["streamed_incrementally"], false,
             "gepufferte Ausgabe darf nie als Streaming gelten: {stream}"

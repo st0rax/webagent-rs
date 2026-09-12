@@ -22,13 +22,8 @@ use std::sync::OnceLock;
 /// Text, wird aber nie als „mehrere Deltas" gezählt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamDelta {
-    AppendDelta {
-        addition: String,
-    },
-    Replace {
-        previous: String,
-        next: String,
-    },
+    AppendDelta { addition: String },
+    Replace { previous: String, next: String },
     Identical,
 }
 

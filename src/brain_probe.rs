@@ -1174,9 +1174,21 @@ mod tests {
         // Drei Messluecken der Oberflaechen-Probe — jede darf einen
         // bestehenden Beleg NICHT widerrufen (Plan-Luecke 19).
         let faelle = [
-            verdict("stop_generation", false, "Selektor '#' war nicht anklickbar"),
-            verdict("reasoning_toggle", false, "Klick kam an, Zustand unveraendert"),
-            verdict("model_switch", false, "Menuebedienung belegt keinen Modellwechsel"),
+            verdict(
+                "stop_generation",
+                false,
+                "Selektor '#' war nicht anklickbar",
+            ),
+            verdict(
+                "reasoning_toggle",
+                false,
+                "Klick kam an, Zustand unveraendert",
+            ),
+            verdict(
+                "model_switch",
+                false,
+                "Menuebedienung belegt keinen Modellwechsel",
+            ),
         ];
         for v in &faelle {
             assert_eq!(

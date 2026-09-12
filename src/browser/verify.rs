@@ -525,18 +525,16 @@ fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
     // 3.5/3.6 Flash-Lite). Nur wenn der Brain eine `model_id_attr`-API
     // mitbringt und ≥2 verschiedene Optionen liefert.
     match probe.options_exact() {
-        Ok(Some(opts)) if opts.len() >= 2 && {
-            let mut ids = opts.iter().map(|(_, id)| id.as_str()).collect::<Vec<_>>();
-            ids.sort_unstable();
-            ids.dedup();
-            ids.len() >= 2
-        } =>
+        Ok(Some(opts))
+            if opts.len() >= 2 && {
+                let mut ids = opts.iter().map(|(_, id)| id.as_str()).collect::<Vec<_>>();
+                ids.sort_unstable();
+                ids.dedup();
+                ids.len() >= 2
+            } =>
         {
-            match probe.selected_id() {
-                Ok(Some((before_label, before_id))) => {
-                    return model_roundtrip_exact(probe, &normalize, opts, before_label, before_id);
-                }
-                _ => {}
+            if let Ok(Some((before_label, before_id))) = probe.selected_id() {
+                return model_roundtrip_exact(probe, &normalize, opts, before_label, before_id);
             }
         }
         _ => {}
@@ -644,19 +642,20 @@ fn model_roundtrip_exact(
     // Aktive Zeile (original) muss in der Optionenliste stehen, sonst ist die
     // ID-Auswahl nicht vertrauenswuerdig (UI-Rest von anderswo).
     let Some((_, original_id)) = opts.iter().find(|(_, id)| *id == before_id) else {
-        m.note = "Aktive Modell-ID fehlt in der Laufzeit-Optionenliste; kein Wechsel versucht"
-            .into();
+        m.note =
+            "Aktive Modell-ID fehlt in der Laufzeit-Optionenliste; kein Wechsel versucht".into();
         return m;
     };
     // Anderes Modell: eindeutig per anderer ID (die Auswahl klickt exakt per
     // Attribut, nicht per Text — Teilstring-Nachbarschaft wie GLM-5.3 /
     // GLM-5.3-Flash ist hier unschaedlich). Nur das eigene Modell und
     // Duplikat-Labels bleiben ausgeschlossen.
-    let Some((target_label, target_id)) = opts.iter().find(|(l, id)| {
-        *id != before_id && normalize(l) != normalize(&before_label)
-    }) else {
-        m.note = "Kein anderes Modell mit eigener ID in der Laufzeitliste; kein Wechsel versucht"
-            .into();
+    let Some((target_label, target_id)) = opts
+        .iter()
+        .find(|(l, id)| *id != before_id && normalize(l) != normalize(&before_label))
+    else {
+        m.note =
+            "Kein anderes Modell mit eigener ID in der Laufzeitliste; kein Wechsel versucht".into();
         return m;
     };
     let forward = probe.select_exact(target_id);

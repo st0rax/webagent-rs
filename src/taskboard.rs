@@ -94,8 +94,7 @@ fn with_board_lock<R>(
         .map_err(|e| format!("Taskboard-Sperre ({op}) belegt: {e}"))?;
 
     let raw = fs::read_to_string(taskboard).map_err(|e| format!("Taskboard lesen: {e}"))?;
-    let mut root: Value =
-        serde_json::from_str(&raw).map_err(|e| format!("Taskboard-JSON: {e}"))?;
+    let mut root: Value = serde_json::from_str(&raw).map_err(|e| format!("Taskboard-JSON: {e}"))?;
     let result = f(&mut root)?;
     let formatted = serde_json::to_string_pretty(&root)
         .map_err(|e| format!("Taskboard schreiben: {e}"))?
@@ -206,6 +205,7 @@ pub fn complete_claim(
 /// kein Beweis. `receipt` wird gegen den gelaufenen Run (Run-ID, Brain,
 /// Commit, alle Pflichtkriterien bestanden) geprüft; nur ein belastbarer
 /// Antrag führt zu `done`. Eine Ablehnung wird im Run-Eventlog festgehalten.
+#[allow(clippy::too_many_arguments)]
 pub fn complete_claim_verified(
     taskboard: &Path,
     task_id: &str,
@@ -324,7 +324,8 @@ mod tests {
 
     #[test]
     fn acquire_is_fail_closed_for_unknown_task() {
-        let d = std::env::temp_dir().join(format!("webagent-acquire-unknown-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("webagent-acquire-unknown-{}", std::process::id()));
         let _ = fs::create_dir_all(&d);
         let board = d.join("TASKBOARD.json");
         board_with(&board, r#"{"tasks":[{"id":"T-1","status":"free"}]}"#);
@@ -335,9 +336,21 @@ mod tests {
     fn sperre_ist_aus_pfad_deterministisch_und_pro_boards_getrennt() {
         let a = Path::new("docs/TASKBOARD.json");
         let b = Path::new("docs/ANDERES.json");
-        assert_eq!(taskboard_lock_path(a), taskboard_lock_path(a), "gleiches Board -> gleiche Sperre");
-        assert_ne!(taskboard_lock_path(a), taskboard_lock_path(b), "andere Boards -> andere Sperren");
-        assert!(taskboard_lock_path(a).extension().unwrap().to_string_lossy().ends_with("lock"));
+        assert_eq!(
+            taskboard_lock_path(a),
+            taskboard_lock_path(a),
+            "gleiches Board -> gleiche Sperre"
+        );
+        assert_ne!(
+            taskboard_lock_path(a),
+            taskboard_lock_path(b),
+            "andere Boards -> andere Sperren"
+        );
+        assert!(taskboard_lock_path(a)
+            .extension()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with("lock"));
     }
 
     #[test]
@@ -415,8 +428,17 @@ mod tests {
             run_status: meta.status.clone(),
         };
 
-        complete_claim_verified(&board, "T-1", "webagent:claude", "master", &proof, &receipt, &expected, &store)
-            .unwrap();
+        complete_claim_verified(
+            &board,
+            "T-1",
+            "webagent:claude",
+            "master",
+            &proof,
+            &receipt,
+            &expected,
+            &store,
+        )
+        .unwrap();
 
         let value: Value = serde_json::from_str(&fs::read_to_string(&board).unwrap()).unwrap();
         assert_eq!(value["tasks"][0]["status"], "done");
@@ -425,7 +447,9 @@ mod tests {
 
     #[test]
     fn verified_completion_lehnt_unbestandene_kriterien_ab_und_lasst_board_claimed() {
-        use crate::acceptance::{CompletionReceipt, ExpectedCompletion, CriterionOutcome, ACCEPTANCE_VERSION};
+        use crate::acceptance::{
+            CompletionReceipt, CriterionOutcome, ExpectedCompletion, ACCEPTANCE_VERSION,
+        };
         let d = std::env::temp_dir().join(format!("webagent-v-nok-{}", std::process::id()));
         let _ = fs::create_dir_all(&d);
         let board = d.join("TASKBOARD.json");
@@ -460,8 +484,17 @@ mod tests {
             run_status: meta.status.clone(),
         };
 
-        let err = complete_claim_verified(&board, "T-1", "webagent:claude", "master", &proof, &receipt, &expected, &store)
-            .expect_err("Unreachable-Kriterium darf den Abschluss verweigern");
+        let err = complete_claim_verified(
+            &board,
+            "T-1",
+            "webagent:claude",
+            "master",
+            &proof,
+            &receipt,
+            &expected,
+            &store,
+        )
+        .expect_err("Unreachable-Kriterium darf den Abschluss verweigern");
         assert!(err.contains("verweigert"));
 
         let value: Value = serde_json::from_str(&fs::read_to_string(&board).unwrap()).unwrap();
@@ -472,7 +505,10 @@ mod tests {
 
         let journal = d.join("runs").join(&meta.run_id).join("events.jsonl");
         let content = fs::read_to_string(&journal).unwrap();
-        assert!(content.contains("task_completion_rejected"), "Ablehnung muss im Run-Eventlog stehen");
+        assert!(
+            content.contains("task_completion_rejected"),
+            "Ablehnung muss im Run-Eventlog stehen"
+        );
 
         fs::remove_dir_all(&d).ok();
     }

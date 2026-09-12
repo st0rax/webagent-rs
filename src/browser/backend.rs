@@ -74,7 +74,7 @@ impl BrainBackend for WebBrainBackend {
                 // unbekannt — record_reset_in no-op't dann.
                 if self.profile_override.is_some() {
                     let _ = crate::config::record_reset_in(
-                        &self.effective_profile_dir(),
+                        self.effective_profile_dir(),
                         "navigation_timeout",
                     );
                 }
