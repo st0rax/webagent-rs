@@ -1,0 +1,18 @@
+{
+  "schema": "webagent-release-manifest",
+  "version": "0.11.2",
+  "commit": "6881014fb58ed7dd3f158f95c6b3114ade3d277b",
+  "binary": "target\\release\\webagent.exe",
+  "binary_size_bytes": 8451072,
+  "sha256": "ec06446e5533de6db3a22aa1287e329650dc00e785d4188c0979e5b027441cc7",
+  "webview2_loader": "WebView2Loader.dll",
+  "webview2_loader_sha256": "465a7ddfb3a0da4c3965daf2ad6ac7548513f42329b58aebc337311c10ea0a6f",
+  "artifact": "dist/webagent-0.11.2-windows-x86_64.zip",
+  "artifact_sha256": "c00df381767ab602323e6c7d15698404741373aadc379eaa1beaf612c4dbfa89",
+  "built": "2026-09-12",
+  "toolchain": "rustc stable",
+  "profile": "release",
+  "platforms": [
+    "windows-x86_64"
+  ]
+}

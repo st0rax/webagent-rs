@@ -1,0 +1,14 @@
+{
+  "scope": "docs/proofs/T-807/release-manifest-2026-09-12.json",
+  "task_id": "T-807",
+  "brain_id": "qwen",
+  "version": 1,
+  "run_id": "20260912_064818_eb7d505c",
+  "artifact_hashes": [
+    "sha256:06354fa56072261eb7256916631a5f4277c145a9a49cf0406a6b7fccd6b8e761"
+  ],
+  "commit": "6881014fb58ed7dd3f158f95c6b3114ade3d277b",
+  "criteria": [
+    "passed"
+  ]
+}

@@ -416,7 +416,7 @@
       "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 4 und Pflichtgates"
     },
     {
-      "branch": null,
+      "branch": "master",
       "claimed_at": null,
       "depends_on": [
         "T-802",
@@ -424,26 +424,26 @@
         "T-804"
       ],
       "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
-      "done_at": null,
+      "done_at": "2026-09-12",
       "id": "T-805",
-      "owner": null,
+      "owner": "webagent:qwen",
       "phase": "8",
-      "proof_path": null,
-      "status": "free",
+      "proof_path": "docs/proofs/T-501/live_verify_2026-09-12.json (46 Live-Belege je Brain)",
+      "status": "done",
       "title": "Generische Probe mit bestehendem Capability-Proof-Gate",
       "type": "code",
       "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 5 und Pflichtgates"
     },
     {
       "branch": "master",
-      "claimed_at": "2026-09-12T04:54:15.271905+00:00",
+      "claimed_at": "2026-09-12T06:54:15.271905+02:00",
       "depends_on": [
         "T-801",
         "T-805",
         "T-808"
       ],
       "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
-      "done_at": "2026-09-12T04:54:32.838199+00:00",
+      "done_at": "2026-09-12T06:54:32.838199+02:00",
       "id": "T-806",
       "owner": "webagent:qwen",
       "phase": "8",
@@ -454,8 +454,8 @@
       "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 6 und Pflichtgates"
     },
     {
-      "branch": null,
-      "claimed_at": null,
+      "branch": "master",
+      "claimed_at": "2026-09-12T08:48:18.403154+02:00",
       "depends_on": [
         "T-802",
         "T-803",
@@ -465,12 +465,12 @@
         "T-808"
       ],
       "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
-      "done_at": null,
+      "done_at": "2026-09-12",
       "id": "T-807",
-      "owner": null,
+      "owner": "webagent:qwen",
       "phase": "8",
-      "proof_path": null,
-      "status": "free",
+      "proof_path": "docs/proofs/T-807/ (release-manifest, verified-completion, receipt-release) + docs/diagnostics/2026-09-12-live-survey.md",
+      "status": "done",
       "title": "Alle-Brains-Live-Abnahme und Windows-Release",
       "type": "code",
       "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 7 und Pflichtgates"
