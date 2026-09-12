@@ -566,6 +566,26 @@
       "title": "Free-Cloud-Scheibe: Registry/decide mit echten VerifiedFree-Adaptern verbinden",
       "depends_on": [],
       "done_at": "2026-09-12T11:00:00+02:00"
+    },
+    {
+      "status": "done",
+      "claimed_at": "2026-09-12T12:00:00+02:00",
+      "owner": "webagent:qwen",
+      "id": "T-905",
+      "branch": "master",
+      "type": "code",
+      "suitable": [
+        "local/opencode",
+        "webagent:qwen",
+        "chief"
+      ],
+      "dod": "Web-UI bedient echte API (/api/*) fuer Brains/Health, Sessions anlegen+wechseln, Chat-Stream (Polling events?since=), Stoppen, Quellen, Gruppen; Layout weiterentwickelt; kein Fake-Text mehr; Testanpassung web_ui.rs; Gates gruen",
+      "phase": "9",
+      "proof_path": "docs/proofs/T-905/webui-v2-live-2026-09-12.json",
+      "verification": "cargo test --lib; Server starten, Browser-Live-Check /api/* traversieren",
+      "title": "Web-UI: Fake-Prototyp -> echte API-Anbindung + Layout (T-905)",
+      "depends_on": [],
+      "done_at": "2026-09-12T13:30:00+02:00"
     }
   ]
 }

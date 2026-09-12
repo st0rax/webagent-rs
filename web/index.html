@@ -6,17 +6,9 @@
   <title>WebAgent</title>
   <style>
     :root {
-      --bg: #0b0c10;
-      --panel: #15171c;
-      --panel-2: #1c1f27;
-      --line: #2a2e38;
-      --text: #e8eaed;
-      --muted: #9aa0a6;
-      --ok: #3d9a64;
-      --bad: #c45c5c;
-      --accent: #7ab8ff;
-      --focus: #ffd166;
-      --radius: 8px;
+      --bg: #0b0c10; --panel: #15171c; --panel-2: #1c1f27; --line: #2a2e38;
+      --text: #e8eaed; --muted: #9aa0a6; --ok: #3d9a64; --bad: #c45c5c;
+      --accent: #7ab8ff; --focus: #ffd166; --radius: 8px;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
@@ -24,10 +16,13 @@
     a.skip { position: absolute; left: -999px; top: 0; background: var(--focus); color: #111; padding: .4rem .7rem; }
     a.skip:focus { left: .5rem; top: .5rem; z-index: 20; }
     :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-    button, textarea, select { font: inherit; color: inherit; }
+    button, textarea, select, input { font: inherit; color: inherit; }
     button { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .35rem .7rem; cursor: pointer; }
     button.primary { background: var(--accent); color: #111; border-color: transparent; font-weight: 600; }
     button[aria-pressed="true"] { border-color: var(--accent); }
+    button.danger { border-color: var(--bad); color: var(--bad); }
+    input[type=text], input[type=number] { background: var(--bg); border: 1px solid var(--line);
+      border-radius: var(--radius); padding: .35rem .5rem; width: 100%; }
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .app { display: grid; grid-template-rows: auto 1fr; min-height: 100%; }
     .health { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center;
@@ -49,19 +44,28 @@
     details { border-bottom: 1px solid var(--line); padding: .25rem 0; }
     summary { cursor: pointer; font-weight: 600; }
     .cat { list-style: none; margin: .3rem 0 0; padding: 0; }
-    .cat button { width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; }
+    .cat button, .cat .row { width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; }
     .cat button[aria-current="true"] { background: var(--panel-2); }
+    .cat .row { display: flex; justify-content: space-between; gap: .3rem; padding: .15rem .3rem; }
+    .row .st { font-size: .72rem; color: var(--muted); }
+    .newform { display: grid; gap: .35rem; margin: .3rem 0; }
     main.stage { display: grid; grid-template-rows: auto 1fr auto auto; min-width: 0; min-height: 0; }
     .chat-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center;
       padding: .5rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel-2); }
     .chat-head span, .chat-head label { color: var(--muted); }
+    .chat-head select { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: .2rem .4rem; }
+    .banner { margin: 0; padding: .3rem 1rem; background: rgba(196,92,92,.15); border-bottom: 1px solid var(--bad); color: var(--bad); }
+    .banner[hidden] { display: none; }
     .messages { overflow: auto; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
-    .msg { max-width: 42rem; padding: .7rem .9rem; border-radius: 12px; background: var(--panel); }
+    .msg { max-width: 42rem; padding: .7rem .9rem; border-radius: 12px; background: var(--panel);
+      white-space: pre-wrap; overflow-wrap: anywhere; }
     .msg.user { align-self: flex-end; background: #243044; }
     .msg .who { font-size: .75rem; color: var(--muted); margin-bottom: .2rem; }
+    .msg .tool { font-size: .75rem; color: var(--accent); margin-top: .3rem; }
+    .msg.thinking { font-style: italic; color: var(--muted); }
     .activity { border-top: 1px solid var(--line); background: var(--panel); padding: .4rem .8rem; }
     .activity[hidden] { display: none; }
-    .activity ol { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); }
+    .activity ol { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); max-height: 8rem; overflow: auto; }
     form.composer { display: grid; grid-template-columns: 1fr auto auto; gap: .5rem; align-items: end;
       padding: .7rem; border-top: 1px solid var(--line); background: var(--panel); }
     textarea { width: 100%; min-height: 3.2rem; resize: vertical; background: var(--bg);
@@ -74,7 +78,8 @@
     .hint code { color: var(--accent); background: var(--panel-2);
       border: 1px solid var(--line); border-radius: 4px; padding: 0 .25rem; }
     .detail { padding: 1rem; overflow: auto; }
-    .detail dl { display: grid; grid-template-columns: 8rem 1fr; gap: .35rem .8rem; }
+    .detail h2 { margin: .6rem 0; }
+    .detail dl { display: grid; grid-template-columns: 9rem 1fr; gap: .35rem .8rem; }
     .detail dt { color: var(--muted); }
     .warn { border-left: 4px solid var(--bad); padding-left: .6rem; }
     @media (max-width: 720px) {
@@ -93,94 +98,79 @@
   <div class="app">
     <header class="health" role="banner">
       <h1>WebAgent</h1>
-      <p class="health-meta" id="health-text">Quellen 3 von 5 bereit (60 %)</p>
+      <p class="health-meta" id="health-text">Lade Brains ...</p>
       <div class="health-track" role="img" aria-labelledby="health-text">
-        <span class="ok" style="width:60%"></span>
-        <span class="bad" style="width:40%"></span>
+        <span class="ok" id="tr-ok" style="width:0%"></span>
+        <span class="bad" id="tr-bad" style="width:0%"></span>
       </div>
-      <ul class="sources" aria-label="Quellenliste">
-        <li><button type="button" data-brain="chatgpt"><span class="dot ok" aria-hidden="true"></span> chatgpt bereit</button></li>
-        <li><button type="button" data-brain="claude"><span class="dot ok" aria-hidden="true"></span> claude bereit</button></li>
-        <li><button type="button" data-brain="grok"><span class="dot ok" aria-hidden="true"></span> grok bereit</button></li>
-        <li><button type="button" data-brain="perplexity"><span class="dot bad" aria-hidden="true"></span> perplexity nicht verfuegbar</button></li>
-        <li><button type="button" data-brain="gemini"><span class="dot bad" aria-hidden="true"></span> gemini nicht verfuegbar</button></li>
-      </ul>
+      <ul class="sources" id="brain-pills" aria-label="Quellenliste"></ul>
     </header>
+    <p class="banner" id="banner" hidden></p>
     <div class="shell" id="shell">
       <nav class="sys" aria-label="System-Kategorien">
         <button type="button" id="toggle-nav" aria-expanded="true" aria-controls="cats">Leiste einklappen</button>
         <div id="cats">
-          <h2>System</h2>
           <details open>
             <summary>Sitzungen</summary>
-            <ul class="cat">
-              <li><button type="button" data-view="chat" aria-current="true">Heute · claude</button></li>
-              <li><button type="button" data-view="chat">Gestern · grok</button></li>
-            </ul>
+            <ul class="cat" id="session-list"></ul>
+            <form class="newform" id="new-session">
+              <label class="sr" for="new-brain">Brain</label>
+              <select id="new-brain" aria-label="Brain waehlen"></select>
+              <label class="sr" for="new-task">Aufgabe</label>
+              <input type="text" id="new-task" placeholder="Aufgabe (optional)" autocomplete="off">
+              <button class="primary" type="submit">Sitzung anlegen</button>
+            </form>
           </details>
           <details>
             <summary>Brains &amp; Quellen</summary>
-            <ul class="cat">
-              <li><button type="button" data-brain="chatgpt">chatgpt</button></li>
-              <li><button type="button" data-brain="claude">claude</button></li>
-              <li><button type="button" data-brain="grok">grok</button></li>
-            </ul>
+            <ul class="cat" id="brain-list"></ul>
           </details>
           <details>
             <summary>Gruppen</summary>
-            <ul class="cat" id="group-list"><li><button type="button" data-view="group">Demo 2er-Gruppe</button></li></ul>
-          </details>
-          <details>
-            <summary>Laeufe</summary>
-            <ul class="cat"><li><button type="button" data-view="run">ui-20260902</button></li></ul>
+            <ul class="cat" id="group-list"></ul>
+            <form class="newform" id="new-group">
+              <label class="sr" for="group-name">Gruppenname</label>
+              <input type="text" id="group-name" placeholder="Gruppenname" autocomplete="off">
+              <label class="sr" for="group-brains">Brains (2-6)</label>
+              <input type="text" id="group-brains" placeholder="Brains, Komma-getrennt" autocomplete="off">
+              <button type="submit">Gruppe anlegen</button>
+            </form>
           </details>
           <details>
             <summary>System</summary>
             <ul class="cat">
-              <li><button type="button" data-view="sys">Workspace</button></li>
-              <li><button type="button" data-view="sys">Profile</button></li>
-              <li><button type="button" data-view="sys">Selektoren</button></li>
-              <li><button type="button" data-view="sys">Logs</button></li>
+              <li><button type="button" data-sys="capability">Capability-Matrix</button></li>
+              <li><button type="button" data-sys="health">Doctor-Report</button></li>
             </ul>
           </details>
         </div>
       </nav>
       <main class="stage">
-        <div class="chat-head" role="region" aria-label="Sitzung">
-          <strong>Brain:</strong> <span id="brain-label">claude</span>
-          <span>Modell: <span id="model-label">claude-sonnet</span> (erkannt)</span>
-          <span>Aufwand: mittel</span>
-          <label for="source-switch">Quelle
-            <select id="source-switch">
-              <option value="default" selected>Browser-Chat</option>
-              <option value="openrouter">openrouter</option>
-              <option value="groq">groq</option>
-            </select>
+        <div class="chat-head" role="region" aria-label="Sitzung" id="chat-head">
+          <strong id="head-title">Keine Sitzung gewaehlt</strong>
+          <span>Status: <span id="head-status">-</span></span>
+          <span>Brain: <span id="brain-label">-</span></span>
+          <span>Modell: <span id="model-label">-</span></span>
+          <label>Quelle
+            <select id="source-switch"></select>
           </label>
           <label><input type="checkbox" id="source-save"> --save</label>
-          <span>
-            Modus
-            <button type="button" id="mode-chat" aria-pressed="true">Chat</button>
-            <button type="button" id="mode-sys" aria-pressed="false">Systemzugriff</button>
-          </span>
         </div>
-        <section class="messages" id="messages" aria-label="Unterhaltung">
-          <article class="msg"><div class="who">claude</div><p>Fake-Prototyp ohne Backend. Lokale Binary, eingebettet.</p></article>
-        </section>
+        <section class="messages" id="messages" aria-label="Unterhaltung"></section>
         <section class="detail" id="detail" hidden>
           <p><button type="button" id="back-chat">Zurueck zum Chat</button></p>
-          <h2 id="detail-title">Backend-Detail</h2>
-          <dl id="detail-dl"></dl>
+          <h2 id="detail-title">Detail</h2>
+          <div id="detail-body"></div>
         </section>
         <aside class="activity" id="activity" aria-label="Aktivitaetsleiste">
           <button type="button" id="toggle-act" aria-expanded="true">Aktivitaet einklappen</button>
-          <ol id="act-list"><li>Bereit (kein Live-Lauf, Fake-Events)</li></ol>
+          <ol id="act-list"><li>Keine Session aktiv</li></ol>
         </aside>
         <form class="composer" id="composer">
           <label class="sr" for="composer-input">Nachricht</label>
           <div class="editor">
             <textarea id="composer-input" rows="2" placeholder="Nachricht eingeben"></textarea>
-            <div class="hint" id="composer-hint" aria-hidden="true">z. B. <code>/quelle list</code> Quellenliste<br>z. B. <code>/quelle claude openrouter --save</code> Quelle wechseln<br>z. B. <code>@claude</code> Brain direkt ansprechen</div>
+            <div class="hint" id="composer-hint" aria-hidden="true">z. B. <code>/quelle list</code> Quellenliste<br>z. B. <code>/quelle claude openrouter --save</code> Quelle wechseln</div>
           </div>
           <button class="primary" type="submit" id="send">Senden</button>
           <button type="button" id="stop">Stoppen</button>
@@ -190,168 +180,508 @@
     </div>
   </div>
   <script>
-    const brains = {
-      chatgpt: { status: "bereit", layer: "doctor", next: "keine", login: "ok", last: "vor 2 h" },
-      claude: { status: "bereit", layer: "doctor", next: "keine", login: "ok", last: "vor 12 min" },
-      grok: { status: "bereit", layer: "doctor", next: "keine", login: "ok", last: "vor 1 h" },
-      perplexity: { status: "nicht verfuegbar", layer: "login", next: "Anmeldung pruefen", login: "offen", last: "nie" },
-      gemini: { status: "nicht verfuegbar", layer: "selector", next: "Selektoren vermessen", login: "unbekannt", last: "nie" }
-    };
-    const messages = document.getElementById("messages");
-    const detail = document.getElementById("detail");
-    const live = document.getElementById("live");
-    const act = document.getElementById("act-list");
-    const input = document.getElementById("composer-input");
-    const hint = document.getElementById("composer-hint");
-    function syncHint() { hint.hidden = input.value.length > 0; }
-    input.addEventListener("input", syncHint);
-    syncHint();
-    const sourceSwitch = document.getElementById("source-switch");
-    const sourceSave = document.getElementById("source-save");
-    const sessionSources = { claude: "default" };
-    let timer = null;
-    let streaming = false;
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+    const say = (t) => { $("live").textContent = t; };
+    const escRow = (s) => s;
+    const parts = (p) => new URLSearchParams(p);
 
-    function say(text) { live.textContent = text; }
+    async function api(method, path, body) {
+      const opts = { method, headers: { "Content-Type": "application/json" } };
+      if (body !== undefined) opts.body = JSON.stringify(body);
+      const res = await fetch(path, opts);
+      let data = null;
+      try { data = await res.json(); } catch (e) { data = {}; }
+      if (!res.ok) {
+        const msg = (data && data.error) ? data.error : ("HTTP " + res.status);
+        const err = new Error(msg);
+        err.status = res.status;
+        err.data = data;
+        throw err;
+      }
+      return data;
+    }
+
+    const state = {
+      sessions: [],
+      brains: {},
+      groups: [],
+      active: null,
+      seq: 0,
+      pollTimer: null,
+      pollLive: false,
+      generating: false,
+      botEl: null,
+    };
+
     function addAct(text) {
       const li = document.createElement("li");
       li.textContent = text;
-      act.prepend(li);
+      $("act-list").prepend(li);
     }
-    function showChat() {
-      detail.hidden = true;
-      messages.hidden = false;
+
+    function showBanner(text) {
+      const b = $("banner");
+      b.textContent = text;
+      b.hidden = !text;
     }
-    function showDetail(id) {
-      const b = brains[id] || { status: "unbekannt", layer: "ui", next: "nachpruefen", login: "?", last: "?" };
-      document.getElementById("detail-title").textContent = "Backend-Detail: " + id;
-      document.getElementById("detail-dl").innerHTML =
-        "<dt>Status</dt><dd>" + b.status + "</dd>" +
-        "<dt>Schicht</dt><dd>" + b.layer + "</dd>" +
-        "<dt>Naechste Aktion</dt><dd>" + b.next + "</dd>" +
-        "<dt>Login</dt><dd>" + b.login + "</dd>" +
-        "<dt>Letzter Lauf</dt><dd>" + b.last + "</dd>" +
-        "<dt>Breaker</dt><dd>geschlossen (Fake)</dd>";
-      messages.hidden = true;
-      detail.hidden = false;
-      document.getElementById("back-chat").focus();
-      say("Detailansicht " + id);
+
+    function clearMessages() {
+      $("messages").textContent = "";
+      state.botEl = null;
     }
-    document.querySelectorAll("[data-brain]").forEach(btn => {
-      btn.addEventListener("click", () => showDetail(btn.getAttribute("data-brain")));
-    });
-    document.getElementById("back-chat").addEventListener("click", () => { showChat(); say("Chat"); });
-    document.getElementById("toggle-nav").addEventListener("click", () => {
-      const shell = document.getElementById("shell");
-      const open = shell.classList.toggle("collapsed");
-      const expanded = !open;
-      document.getElementById("toggle-nav").setAttribute("aria-expanded", expanded ? "true" : "false");
-      document.getElementById("cats").hidden = !expanded;
-    });
-    document.getElementById("toggle-act").addEventListener("click", () => {
-      const list = document.getElementById("act-list");
-      const hide = !list.hidden;
-      list.hidden = hide;
-      document.getElementById("toggle-act").setAttribute("aria-expanded", hide ? "false" : "true");
-    });
-    function applySource(brain, source, save) {
-      sessionSources[brain] = source;
-      sourceSwitch.value = source;
-      const label = sourceSwitch.options[sourceSwitch.selectedIndex]
-        ? sourceSwitch.options[sourceSwitch.selectedIndex].text
-        : source;
-      const note = save
-        ? "Session + --save (Fake, keine Datei)"
-        : "nur Session, nicht persistiert";
-      say("Quelle " + label + " fuer " + brain + " (" + note + ")");
-      addAct("Quelle: " + brain + " -> " + source + (save ? " --save" : ""));
+
+    function addMessage(who, text, cls) {
+      const el = document.createElement("article");
+      el.className = "msg" + (cls ? " " + cls : "");
+      const whoEl = document.createElement("div");
+      whoEl.className = "who";
+      whoEl.textContent = who;
+      const p = document.createElement("p");
+      p.textContent = text || "";
+      el.appendChild(whoEl);
+      el.appendChild(p);
+      $("messages").appendChild(el);
+      const m = $("messages");
+      m.scrollTop = m.scrollHeight;
+      return el;
     }
-    sourceSwitch.addEventListener("change", () => {
-      const brain = document.getElementById("brain-label").textContent.trim();
-      applySource(brain, sourceSwitch.value, sourceSave.checked);
-    });
-    document.getElementById("mode-chat").addEventListener("click", () => {
-      document.getElementById("mode-chat").setAttribute("aria-pressed", "true");
-      document.getElementById("mode-sys").setAttribute("aria-pressed", "false");
-    });
-    document.getElementById("mode-sys").addEventListener("click", () => {
-      document.getElementById("mode-sys").setAttribute("aria-pressed", "true");
-      document.getElementById("mode-chat").setAttribute("aria-pressed", "false");
-      addAct("Systemzugriff angefordert — Policy-Freigabe noetig (Fake, nichts ausgefuehrt)");
-      say("Systemzugriff braucht Freigabe");
-    });
-    function stopStream() {
-      if (timer) { clearInterval(timer); timer = null; }
-      if (streaming) { say("Antwort gestoppt"); addAct("Stop: Fake-Stream beendet"); }
-      streaming = false;
+
+    function setStatus(text) { $("head-status").textContent = text; }
+
+    function activeLastSeq() {
+      const cur = state.active;
+      if (!cur) return 0;
+      const snap = state.sessions.find((s) => s.run_id === cur);
+      return snap ? snap.last_seq : state.seq;
     }
-    document.getElementById("stop").addEventListener("click", stopStream);
-    document.getElementById("composer").addEventListener("submit", (e) => {
-      e.preventDefault();
+
+    function renderHead(snap) {
+      $("head-title").textContent = snap.brain + " - " + snap.task;
+      $("brain-label").textContent = snap.brain;
+      setStatus(snap.status + (snap.done ? " (fertig)" : ""));
+      $("model-label").textContent = snap.source_kind === "api" ? snap.source : "Browser-Chat";
+    }
+
+    function sourceOptions(active) {
+      const sel = $("source-switch");
+      if (!active) { sel.innerHTML = ""; return; }
+      const opts = [["default", "Browser-Chat"]];
+      const all = Object.values(state.brains);
+      const fromBrain = state.sessions.find((s) => s.run_id === state.active);
+      if (fromBrain && fromBrain.brain && state.sourcesByBrain) {
+        const list = state.sourcesByBrain[fromBrain.brain] || [];
+        list.forEach((s) => opts.push([s.source, s.source + (s.kind ? " (" + s.kind + ")" : "")]));
+      }
+      sel.innerHTML = opts.map((o) =>
+        "<option value=\"" + o[0] + "\"" + (o[0] === active ? " selected" : "") + ">" + o[1] + "</option>"
+      ).join("");
+      void all;
+    }
+
+    function refreshSource() {
+      if (!state.active) { $("source-switch").innerHTML = ""; return; }
+      api("GET", "/api/sessions/" + encodeURIComponent(state.active) + "/source")
+        .then((active) => sourceOptions(active))
+        .catch(() => {});
+    }
+
+    async function loadBrains() {
+      try {
+        const rep = await api("GET", "/api/health/brains");
+        state.brains = rep.brains || {};
+        const ids = Object.keys(state.brains).sort();
+        const healthy = ids.filter((id) => (rep.healthy || []).includes(id));
+        const text = ids.length + " Brains, " + healthy.length + " bereit";
+        $("health-text").textContent = text;
+        $("tr-ok").style.width = (ids.length ? (100 * healthy.length / ids.length) : 0) + "%";
+        $("tr-bad").style.width = (ids.length ? (100 * (ids.length - healthy.length) / ids.length) : 0) + "%";
+        const pills = ids.map((id) =>
+          "<li><button type=\"button\" data-brain=\"" + id + "\">" +
+          "<span class=\"dot " + (healthy.includes(id) ? "ok" : "bad") + "\" aria-hidden=\"true\"></span> " +
+          id + " " + (rep.brains[id].login_state || "?") + "</button></li>"
+        ).join("");
+        $("brain-pills").innerHTML = pills;
+        const brainSel = $("new-brain");
+        brainSel.innerHTML = ids.map((id) => "<option value=\"" + id + "\">" + id + "</option>").join("");
+        $("brain-list").innerHTML = ids.map((id) =>
+          "<li><button type=\"button\" data-brain=\"" + id + "\">" + id +
+          " <span class=\"st\">" + (rep.brains[id].login_state || "") + "</span></button></li>"
+        ).join("");
+        loadSourcesByBrain();
+      } catch (e) {
+        $("health-text").textContent = "Brains nicht erreichbar";
+        showBanner("Health: " + e.message);
+      }
+    }
+
+    async function loadSourcesByBrain() {
+      state.sourcesByBrain = {};
+      const cur = state.active ? state.sessions.find((s) => s.run_id === state.active) : null;
+      const brains = state.active && cur ? [cur.brain] : Object.keys(state.brains);
+      for (const b of brains.slice(0, 3)) {
+        try {
+          const data = await api("GET", "/api/sources?brain=" + encodeURIComponent(b));
+          state.sourcesByBrain[b] = data.sources || [];
+        } catch (e) { /* ignore */ }
+      }
+      refreshSource();
+    }
+
+    async function loadSessions() {
+      try {
+        const data = await api("GET", "/api/sessions");
+        state.sessions = data.sessions || [];
+        const ul = $("session-list");
+        ul.innerHTML = state.sessions.map((s) =>
+          "<li><button type=\"button\" data-session=\"" + s.run_id + "\"" +
+          (s.run_id === state.active ? " aria-current=\"true\"" : "") + ">" +
+          s.brain + " <span class=\"st\">" + s.status + "</span></button></li>"
+        ).join("");
+      } catch (e) {
+        showBanner("Sessions: " + e.message);
+      }
+    }
+
+    async function openSession(id) {
+      stopPoll();
+      state.active = id;
+      state.seq = 0;
+      clearMessages();
+      try {
+        const snap = await api("GET", "/api/sessions/" + encodeURIComponent(id));
+        state.seq = snap.last_seq || 0;
+        renderHead(snap);
+        const hi = addMessage(snap.brain, "Sitzung gestartet (status=" + snap.status + ", quelle=" + snap.source + ")", "thinking");
+        void hi;
+        $("act-list").innerHTML = "<li>Session " + id + " geoeffnet</li>";
+        refreshSource();
+        loadSessions();
+        startPoll();
+        say("Sitzung " + id);
+      } catch (e) {
+        showBanner("Session: " + e.message);
+      }
+    }
+
+    function stopPoll() {
+      if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+      state.pollLive = false;
+    }
+
+    function startPoll() {
+      stopPoll();
+      if (!state.active) return;
+      state.pollLive = true;
+      state.pollTimer = setInterval(pollEvents, 700);
+    }
+
+    async function pollEvents() {
+      if (!state.pollLive || !state.active) return;
+      try {
+        const data = await api("GET", "/api/sessions/" + encodeURIComponent(state.active) +
+          "/events?since=" + state.seq);
+        const events = data.events || [];
+        for (const se of events) {
+          if (se.seq <= state.seq) continue;
+          state.seq = se.seq;
+          applyEvent(se.event);
+        }
+        void data;
+      } catch (e) { /* poll does not fail the UI */ }
+    }
+
+    function applyEvent(ev) {
+      const key = Object.keys(ev)[0];
+      const v = ev[key];
+      if (key === "TextDelta") {
+        if (!state.botEl) state.botEl = addMessage(state.activeBrain() || "brain", "", "");
+        const p = state.botEl.querySelector("p");
+        if (p) p.textContent += v.text;
+        $("messages").scrollTop = $("messages").scrollHeight;
+        $("act-list").innerHTML = "<li>Text-Delta (Streaming)</li>";
+      } else if (key === "TextComplete") {
+        setStatus(state.sessions.find((s) => s.run_id === state.active)?.status || "antwort fertig");
+        $("act-list").innerHTML = "<li>Antwort abgeschlossen</li>";
+      } else if (key === "ToolStart") {
+        addAct("ToolStart " + v.tool + " (" + v.id + ")");
+        setStatus("werkzeug " + v.tool + " laeuft");
+        const el = state.botEl || addMessage(state.activeBrain() || "brain", "", "");
+        el.appendChild(toolRow("tool run: " + v.tool + " (" + v.id + ")"));
+      } else if (key === "ToolResult") {
+        addAct("ToolResult " + v.id + " " + (v.ok ? "ok" : "fehler") + ": " + escRow(v.summary || ""));
+        setStatus("werkzeug " + v.id + " " + (v.ok ? "ok" : "fehler"));
+      } else if (key === "Status") {
+        setStatus(v.state);
+        addAct("Status: " + v.state);
+      } else if (key === "Error") {
+        addAct("Fehler: " + escRow(v.message || ""));
+        showBanner(v.message);
+        setStatus("fehler");
+      } else if (key === "Done") {
+        stopPoll();
+        setStatus(v.status);
+        addAct("Session beendet (" + v.status + ")");
+        say("Sitzung beendet (" + v.status + ")");
+        loadSessions();
+      }
+    }
+
+    function toolRow(text) {
+      const d = document.createElement("div");
+      d.className = "tool";
+      d.textContent = text;
+      return d;
+    }
+
+    async function sendText() {
+      const input = $("composer-input");
       const text = input.value.trim();
       if (!text) return;
-      if (text.startsWith("/quelle")) {
-        const parts = text.trim().split(/\s+/);
-        const tokens = [];
-        let save = sourceSave.checked;
-        for (let i = 1; i < parts.length; i++) {
-          if (parts[i] === "--save") save = true;
-          else tokens.push(parts[i].toLowerCase());
-        }
-        const brain = tokens[0] || document.getElementById("brain-label").textContent.trim();
-        const spec = tokens[1];
-        if (!spec || spec === "list") {
-          say("Quellen fuer " + brain + ": Browser-Chat, openrouter, groq");
-        } else {
-          if (![...sourceSwitch.options].some(o => o.value === spec) && spec !== "browser" && spec !== "browser-chat") {
-            const opt = document.createElement("option");
-            opt.value = spec;
-            opt.textContent = spec;
-            sourceSwitch.appendChild(opt);
-          }
-          const value = (spec === "browser" || spec === "browser-chat") ? "default" : spec;
-          applySource(brain, value, save);
-        }
-        input.value = "";
-        syncHint();
-        return;
-      }
-      showChat();
-      const user = document.createElement("article");
-      user.className = "msg user";
-      user.innerHTML = "<div class=\"who\">du</div><p></p>";
-      user.querySelector("p").textContent = text;
-      messages.appendChild(user);
       input.value = "";
       syncHint();
-      const bot = document.createElement("article");
-      bot.className = "msg";
-      bot.innerHTML = "<div class=\"who\">claude</div><p></p>";
-      const p = bot.querySelector("p");
-      messages.appendChild(bot);
-      messages.scrollTop = messages.scrollHeight;
+      if (!state.active) {
+        showBanner("Zuerst eine Sitzung anlegen (links) oder ein Brain waehlen.");
+        return;
+      }
+      if (state.generating) {
+        showBanner("Turn laeuft bereits - Stoppen oder warten.");
+        return;
+      }
+      addMessage("du", text, "user");
+      state.botEl = null;
+      state.generating = true;
+      $("send").disabled = true;
       say("Antwort laeuft");
-      addAct("Fake-Textdelta");
-      const chunks = ("Echo: " + text + " — nur Prototyp, kein Brain.").split(" ");
-      let i = 0;
-      streaming = true;
-      timer = setInterval(() => {
-        if (i >= chunks.length) { stopStream(); say("Antwort fertig"); return; }
-        p.textContent += (i ? " " : "") + chunks[i];
-        i += 1;
-        if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 48) {
-          messages.scrollTop = messages.scrollHeight;
+      try {
+        await api("POST", "/api/sessions/" + encodeURIComponent(state.active) + "/chat", { text });
+      } catch (e) {
+        if (e.status === 409) {
+          addAct("busy: anderer Turn laeuft");
+        } else {
+          addAct("Chat-Fehler: " + e.message);
+          showBanner("Chat: " + e.message);
         }
-      }, 90);
-    });
-    document.querySelectorAll("[data-view]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll("[data-view]").forEach(b => b.removeAttribute("aria-current"));
-        btn.setAttribute("aria-current", "true");
-        showChat();
-        say(btn.textContent.trim());
+      } finally {
+        state.generating = false;
+        $("send").disabled = false;
+        loadSessions();
+        pollEvents();
+        refreshSource();
+      }
+    }
+
+    async function stopTurn() {
+      if (!state.active) return;
+      stopPoll();
+      try {
+        await api("POST", "/api/sessions/" + encodeURIComponent(state.active) + "/stop");
+        addAct("Stoppen angefordert");
+      } catch (e) {
+        showBanner("Stop: " + e.message);
+      } finally {
+        startPoll();
+        loadSessions();
+      }
+    }
+
+    async function showBrainDetail(id) {
+      try {
+        const cap = await api("GET", "/api/capability/" + encodeURIComponent(id));
+        const bc = state.brains[id] || {};
+        const locks = (bc.profile_lock_files || []).length;
+        const rows = [
+          ["Brain", id],
+          ["Surveyed", String(cap.surveyed)],
+          ["Available", String(cap.available)],
+          ["Have", String(cap.have)],
+          ["Login", bc.login_state || "?"],
+          ["Selektoren", bc.selectors_ok ? "ok" : "defekt"],
+          ["Profil", bc.profile_exists ? "vorhanden" : "fehlt"],
+          ["Profil-Locks", String(locks)],
+          ["Letzter Lauf", bc.last_done_run || "-"],
+          ["Recovery", bc.recovery_hint || "-"],
+        ];
+        showDetail("Brain: " + id, rows.map(function (r) {
+          return "<dt>" + r[0] + "</dt><dd>" + escRow(String(r[1])) + "</dd>";
+        }).join(""));
+      } catch (e) {
+        showDetail("Brain: " + id, "<p class=\"warn\">Capability nicht erreichbar: " + escRow(e.message) + "</p>");
+      }
+    }
+
+    async function showSys(view) {
+      if (view === "capability") {
+        try {
+          const data = await api("GET", "/api/capability");
+          const rows = (data.brains || []).map(function (l) {
+            return "<dt>" + l.brain_id + "</dt><dd>surveyed=" + l.surveyed +
+              ", available=" + l.available + ", have=" + l.have + "</dd>";
+          }).join("");
+          showDetail("Capability-Matrix", rows || "<p>Leer</p>");
+        } catch (e) {
+          showDetail("Capability-Matrix", "<p class=\"warn\">" + escRow(e.message) + "</p>");
+        }
+      } else {
+        const ids = Object.keys(state.brains || {});
+        showDetail("Doctor-Report", ids.map(function (id) {
+          const b = state.brains[id];
+          return "<dt>" + id + "</dt><dd>login=" + (b.login_state || "?") +
+            ", selector=" + (b.selectors_ok ? "ok" : "defekt") +
+            ", lauf=" + (b.last_done_run_age_hours < 0 ? "-" : Math.round(b.last_done_run_age_hours) + "h") +
+            "</dd>";
+        }).join("") || "<p>Leer</p>");
+      }
+    }
+
+    function showChat() {
+      $("detail").hidden = true;
+      $("messages").hidden = false;
+    }
+
+    function showDetail(title, bodyHtml) {
+      $("detail-title").textContent = title;
+      $("detail-body").innerHTML = bodyHtml;
+      $("messages").hidden = true;
+      $("detail").hidden = false;
+      $("back-chat").focus();
+    }
+
+    async function loadGroups() {
+      try {
+        const data = await api("GET", "/api/groups");
+        state.groups = data.groups || [];
+        $("group-list").innerHTML = state.groups.map(function (g) {
+          return "<li><button type=\"button\" data-group=\"" + g.id + "\">" + escRow(g.name) +
+            " <span class=\"st\">" + (g.brains || []).join(",") + "</span></button></li>";
+        }).join("");
+      } catch (e) { /* ignore */ }
+    }
+
+    function showGroupDetail(id) {
+      const g = state.groups.find(function (x) { return x.id === id; });
+      if (!g) return;
+      const rows = [
+        ["Id", g.id],
+        ["Name", g.name],
+        ["Brains", g.brains.join(", ")],
+      ].map(function (r) {
+        return "<dt>" + r[0] + "</dt><dd>" + escRow(String(r[1])) + "</dd>";
+      }).join("");
+      const form = "<form class=\"newform\" id=\"group-run\">" +
+        "<label class=\"sr\" for=\"gr-task\">Aufgabe</label>" +
+        "<input type=\"text\" id=\"gr-task\" placeholder=\"Aufgabe\" autocomplete=\"off\">" +
+        "<label class=\"sr\" for=\"gr-rounds\">Runden</label>" +
+        "<input type=\"number\" id=\"gr-rounds\" value=\"1\" min=\"1\" max=\"20\" aria-label=\"Runden\">" +
+        "<button type=\"submit\">Gruppenlauf starten</button></form>";
+      showDetail("Gruppe: " + g.name, "<dl>" + rows + "</dl>" + form);
+      $("group-run").addEventListener("submit", async function (ev) {
+        ev.preventDefault();
+        try {
+          await api("POST", "/api/groups/" + encodeURIComponent(g.id) + "/run", {
+            task: $("gr-task").value.trim(),
+            rounds: parseInt($("gr-rounds").value, 10) || 1,
+          });
+          addAct("Gruppenlauf " + g.name + " gestartet");
+          say("Gruppenlauf gestartet");
+        } catch (e) {
+          showBanner("Gruppenlauf: " + e.message);
+        }
       });
+    }
+
+    function syncHint() {
+      $("composer-hint").hidden = $("composer-input").value.length > 0;
+    }
+
+    async function setSource() {
+      if (!state.active) return;
+      const spec = $("source-switch").value;
+      const save = $("source-save").checked;
+      try {
+        await api("POST", "/api/sessions/" + encodeURIComponent(state.active) + "/source",
+          { source: spec, save: save });
+        addAct("Quelle: " + spec + (save ? " (gespeichert)" : ""));
+        loadSessions();
+      } catch (e) {
+        showBanner("Quelle: " + e.message);
+      }
+    }
+
+    document.addEventListener("click", function (e) {
+      const b = e.target.closest("[data-brain]");
+      if (b) { showBrainDetail(b.getAttribute("data-brain")); return; }
+      const s = e.target.closest("[data-session]");
+      if (s) { openSession(s.getAttribute("data-session")); return; }
+      const g = e.target.closest("[data-group]");
+      if (g) { showGroupDetail(g.getAttribute("data-group")); return; }
+      const sys = e.target.closest("[data-sys]");
+      if (sys) { showSys(sys.getAttribute("data-sys")); }
     });
+
+    $("composer").addEventListener("submit", function (ev) { ev.preventDefault(); sendText(); });
+    $("new-session").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      const brain = $("new-brain").value;
+      const task = $("new-task").value.trim();
+      if (!brain) return;
+      try {
+        const snap = await api("POST", "/api/sessions", { brain: brain, task: task });
+        $("new-task").value = "";
+        addAct("Sitzung angelegt (" + snap.run_id + ")");
+        await loadSessions();
+        openSession(snap.run_id);
+      } catch (e) {
+        showBanner("Session: " + e.message);
+      }
+    });
+    $("new-group").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      const name = $("group-name").value.trim();
+      const brainsRaw = $("group-brains").value.split(",").map(function (s) { return s.trim(); })
+        .filter(function (s) { return s; });
+      if (!name || brainsRaw.length < 2) {
+        showBanner("Gruppe braucht Namen und mindestens 2 Brains.");
+        return;
+      }
+      try {
+        const g = await api("POST", "/api/groups", { name: name, brains: brainsRaw });
+        $("group-name").value = "";
+        $("group-brains").value = "";
+        addAct("Gruppe angelegt (" + g.id + ")");
+        loadGroups();
+      } catch (e) {
+        showBanner("Gruppe: " + e.message);
+      }
+    });
+    $("stop").addEventListener("click", stopTurn);
+    $("back-chat").addEventListener("click", function () { showChat(); say("Chat"); });
+    $("toggle-nav").addEventListener("click", function () {
+      const shell = $("shell");
+      const open = shell.classList.toggle("collapsed");
+      const expanded = !open;
+      $("toggle-nav").setAttribute("aria-expanded", expanded ? "true" : "false");
+      $("cats").hidden = !expanded;
+    });
+    $("toggle-act").addEventListener("click", function () {
+      const list = $("act-list");
+      const hide = !list.hidden;
+      list.hidden = hide;
+      $("toggle-act").setAttribute("aria-expanded", hide ? "false" : "true");
+    });
+    $("source-switch").addEventListener("change", setSource);
+    $("source-save").addEventListener("change", setSource);
+    $("composer-input").addEventListener("input", syncHint);
+    syncHint();
+
+    state.activeBrain = function () {
+      const cur = state.sessions.find(function (s) { return s.run_id === state.active; });
+      return cur ? cur.brain : null;
+    };
+
+    loadBrains();
+    loadSessions();
+    loadGroups();
   </script>
 </body>
 </html>

@@ -195,26 +195,34 @@ mod tests {
     }
 
     #[test]
-    fn prototypen_layout_hat_health_leiste_und_kategorien() {
+    fn ui_ist_echt_an_die_api_angebunden_und_kompakt() {
         let html = index_html();
-        assert!(html.contains("Quellen 3 von 5 bereit"));
-        assert!(html.contains("Sitzungen"));
-        assert!(html.contains("Brains"));
-        assert!(html.contains("Gruppen"));
-        assert!(html.contains("Laeufe"));
-        assert!(html.contains("composer-input"));
-        assert!(html.contains("role=\"banner\""));
         assert!(html.contains("aria-live=\"polite\""));
         assert!(html.contains("prefers-reduced-motion"));
         assert!(html.contains("Zur Eingabe springen"));
         assert!(html.contains(":focus-visible"));
         assert!(html.contains("id=\"source-switch\""));
         assert!(html.contains("id=\"model-label\""));
-        assert!(html.contains("id=\"mode-chat\""));
         assert!(html.contains("id=\"source-save\""));
         assert!(
-            !html.contains("fetch("),
-            "T-203/T-602: Quellen-Schalter bleibt lokal, kein Backend-Fetch"
+            html.contains("fetch("),
+            "T-905: UI bedient die echte /api/*-Ebene, kein Fake-Prototyp mehr"
+        );
+        assert!(
+            html.contains("\"/api/health/brains\""),
+            "Health-Leiste muss live aus /api/health/brains gefuellt werden"
+        );
+        assert!(
+            html.contains("\"/api/sessions\""),
+            "Sitzungsliste muss aus der API kommen"
+        );
+        assert!(
+            html.contains("events?since="),
+            "Streaming-Deltas muessen ueber events?since= gepollt werden"
+        );
+        assert!(
+            !html.contains("Fake-Prototyp"),
+            "kein Fake-Hinweis mehr im eingebetteten UI"
         );
     }
 
@@ -273,7 +281,7 @@ mod tests {
         client.read_to_string(&mut out).unwrap();
         assert!(out.contains("HTTP/1.1 200"));
         assert!(out.contains("WebAgent"));
-        assert!(out.contains("eingebettet") || out.contains("Binary"));
+        assert!(out.contains("api/health/brains"));
     }
 
     fn one_shot(request: &[u8], api_bridge: Option<crate::api_bridge::BridgeConfig>) -> String {

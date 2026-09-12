@@ -1,0 +1,38 @@
+{
+  "task": "T-905",
+  "title": "Web-UI: Fake-Prototyp -> echte API-Anbindung + Layout",
+  "date": "2026-09-12",
+  "status": "live-verifiziert",
+  "head": "master (nach T-905-Commit)",
+  "summary": "Das eingebettete web/index.html ist kein Fake-Prototyp mehr: Es bedient die echte /api/*-Ebene (SessionService, Doctor, Capability, Quelle, Gruppen). Layout bleibt das T-203-Grok-Schema (Health-Leiste, Nav mit Sitzungen/Brains/Gruppen/System, Chat-Stage, Aktivitaetsleiste, Composer), aber alle Daten kommen aus der API.",
+  "api_vertraege": {
+    "health": "GET /api/health/brains -> {ok, healthy[], unhealthy[], brains{id: BrainCheck}}; render Brains-Pills + Track live",
+    "capability": "GET /api/capability und /api/capability/{brain} -> surveyed/available/have; Brain-Detail-Panel",
+    "sessions": "GET/POST /api/sessions (+ /{id}) -> SessionSnapshot {run_id,brain,task,status,created_at,last_seq,done,source,source_kind,source_persisted}; Nav-Liste + Anlegen",
+    "chat": "POST /api/sessions/{id}/chat {text} -> blockierender Turn, Deltas via events?since=; 409 busy abgefangen",
+    "events": "GET /api/sessions/{id}/events?since=N -> {seq,event}; Polling alle 700ms; TextDelta/ToolStart/ToolResult/Status/Error/Done gerendert",
+    "stop": "POST /api/sessions/{id}/stop -> cancel + Done{cancelled}",
+    "source": "GET/POST /api/sessions/{id}/source {source,save} + GET /api/sources?brain= -> Quelle-Dropdown mit Browser-Chat default",
+    "groups": "GET/POST /api/groups + POST /{id}/run {task,rounds} -> Liste, Anlegen, Lauf"
+  },
+  "live_beweis": {
+    "server": "cargo run -- ui --api --port 8791 --no-open --headless (WEBAGENT_API_KEY gesetzt)",
+    "html": "GET / -> 200, groesse=29611 Bytes, fetch=ja, /api/health/brains=ja, /api/sessions=ja, kein 'Fake-Prototyp'",
+    "health": "9 Brains (chatgpt,claude,deepseek,gemini,kimi,mistral,perplexity,qwen,zai), alle healthy=true",
+    "capability": "count=9; chatgpt first={'surveyed':true,'available':[...5],'have':[chat,new_chat,projects]}",
+    "session_anlegen": "POST /api/sessions brain=chatgpt task='T-905 live check' -> 201, run_id=ui-20260912T1108479550780000, status=running",
+    "event_start": "events?since=0 -> seq=1 event=Started{running}",
+    "quelle_setzen": "POST /api/sessions/{id}/source {source:default} -> active.source=default kind=browser persisted=false",
+    "chat_live": "POST /api/sessions/{id}/chat {text:'Antworte nur mit: WEBUI-V2-OK'} -> HTTP 200 mit Antwort; Event-Historie: [1] Started, [2] TextDelta text='WEBUI-V2-OK', [3] TextComplete — exakt das Shape, das die JS-UI per Polling rendert",
+    "stop": "POST /api/sessions/{id}/stop -> status=cancelled"
+  },
+  "tests": {
+    "web_ui_tests": "cargo test --lib web_ui -> 27 passed (inkl. umgeschriebener ui_ist_echt_an_die_api_angebunden_und_kompakt und get_index_ohne_dateien_auf_der_platte)",
+    "full_gate": "cargo test --lib -> 1388 passed, 0 failed, 1 ignored"
+  },
+  "bemerkungen": {
+    "t203_geblieben": "Grok-Schema (Health, Nav-Kategorien, Chat-Stage, Activity, Composer, :focus-visible, prefers-reduced-motion, Skip-Link) ist erhalten; nur das Backend ist jetzt echt",
+    "kompaktheit": "index.html 29,6 KB < 48 KB Prototyp-Limit; weiterhin Compile-Zeit eingebettet (include_str), keine Datei zur Laufzeit",
+    "bekannte_zukunft": "Gruppenlauf rendert Events noch auf Session-Stream; Upload-Endpunkt (202 accepted, no disk) noch nicht in UI-Komposer integriert; Webview-show/hide-Actions bleiben API-seitig verfuegbar (POST /api/brains/{id}/show|hide)"
+  }
+}
