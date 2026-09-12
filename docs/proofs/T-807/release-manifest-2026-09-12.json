@@ -13,6 +13,16 @@
   "toolchain": "rustc stable",
   "profile": "release",
   "platforms": [
-    "windows-x86_64"
-  ]
+    "windows-x86_64",
+    "linux-x86_64",
+    "android-aarch64"
+  ],
+  "ci_release": {
+    "url": "https://github.com/st0rax/webagent-rs/releases/tag/v0.11.2",
+    "workflow": ".github/workflows/release.yml",
+    "run": "34679531136",
+    "status": "success",
+    "commit": "081e595fb58ed7dd3f158f95c6b3114ade3d277b",
+    "windows_build_fix": "build.rs linkt resource.o nur noch bei GNU/mingw; MSVC-CI nutzt winres resource.lib (LNK1181 behoben)"
+  }
 }

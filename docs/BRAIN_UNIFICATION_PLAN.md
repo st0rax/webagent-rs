@@ -52,8 +52,8 @@ Je Scheibe: aktuellen Branch/Claim/Dateiscope pruefen, genau diese Scheibe imple
 | T-803 Antwortstream | done | `1cf0cc5`,`133361a`,`41a6053`; Controller/REPL/Swarm/UI/API-Strom, Praefix-Delta vs Replace |
 | T-804 Profil-Lease/Blocker | done | `7b328eb`,`9dd18a0`; siehe Abschnitt T-804-Status; Live-Prozessproben -> T-807 |
 | T-805 Probe/Capability-Proof | teilweise | Kern vorhanden (brain_probe Verdict->Measurement, selector_hash+TTL-Invalidierung, verify). Store-Urteil: nicht belegte Oberflaechen-Probe = Unreachable, nie Failed. Live-Messungen -> T-807 |
-| T-806 Verifizierter Taskabschluss | teilweise | `d5e88eb`; Taskboard unter Prozesslock, unique Temps, sync_all, Owner=Brain. Beleg-Verifikation -> T-807 |
-| T-807 Endabnahme/Release | offen | benoetigt Live-Matrix mit echten Brains + Windows-Prozessproben |
+| T-806 Verifizierter Taskabschluss | done | `d5e88eb` + T-806-E2E; Taskboard unter Prozesslock, unique Temps, sync_all, Owner=Brain; Negativ-/Positivprobe live belegt (Beleg-Verifikation -> T-807) |
+| T-807 Endabnahme/Release | done | Live-Matrix (46 Belege), Windows-Prozessprobe, Release `v0.11.2` (Windows/Linux/Android) |
 | T-808 Run-Ledger/Crash-Recovery | done | `6b02cd0`; Torn-Tail-Quarantaene, Recovery-Receipt, Journal-Lock, fsync |
 
 T-805-Rest (rein Rechnung/ohne Browser pruefbar): `brain_probe::verdict_outcome` ist
