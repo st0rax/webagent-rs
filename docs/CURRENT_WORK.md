@@ -1,7 +1,9 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-12:** `master` auf `8fd8c4a`. **Release `v0.11.3`
-> vorbereitet** (Tag + GitHub-Release ausstehend — Freigabe beim Eigentümer):
+> **Aktualisiert 2026-09-12:** **Release `v0.11.3` veröffentlicht** —
+> https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3 (Tag `7021959`,
+> CI `34696249277` success, Assets: Windows exe + WebView2Loader.dll + sha256,
+> Linux, Android aarch64):
 > - **Web-UI vom T-203-Fake-Prototyp auf die echte `/api/*`-Anbindung gehoben**
 >   (Phase-9 T-901–T-906 done):
 > - T-905 (`664f4e8`): Brain-Status, Sessions anlegen/wechseln, Chat-Stream
