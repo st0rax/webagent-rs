@@ -248,7 +248,8 @@ persistente Profil (`profiles/<brain>/` oder Shared-Profil). Prüfen mit
 `webagent diagnose --brain <id>`.
 
 `webagent login-all` (REPL: `/login-all`) loggt **alle** Brains **nacheinander**
-ein (Default sequenziell; `--parallel N` max 3, experimentell). Schon eingeloggte
+ein (`--parallel N` wird akzeptiert/gedeckelt, aber noch nicht implementiert —
+läuft sequenziell). Schon eingeloggte
 Profile werden übersprungen (`--force` erzwingt erneut).
 
 ### Profile (Swarm)

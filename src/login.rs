@@ -40,7 +40,8 @@ pub struct LoginResult {
 /// Das Profil landet in `profiles/<brain>` — der einzigen canonical Quelle.
 ///
 /// `timeout_per_brain` gilt pro Brain (nicht gesamt).
-/// `parallel` (0 = sequenziell, sonst max 2–3) ist experimentell.
+/// `parallel` (0 = sequenziell, sonst max 2–3) ist spezifiziert, aber noch nicht
+/// implementiert — laeuft aktuell immer sequenziell.
 /// `force` überspringt den „bereits eingeloggt"-Check.
 pub fn login_all(timeout_per_brain: Duration, parallel: usize, force: bool) -> Vec<LoginResult> {
     let brains = available_brain_ids();
