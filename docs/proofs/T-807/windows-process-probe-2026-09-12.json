@@ -1,0 +1,13 @@
+{
+  "check": "windows_process_probe",
+  "as_of": "2026-09-12",
+  "head": "170c1c9",
+  "mode": "headless",
+  "runs_probed": ["20260912_043716_532f5290", "20260912_044259_42f2ec30", "20260912_044714_11e151e4", "20260912_045327_f41ae05c", "20260912_045415_98fde10c"],
+  "plus": "9 verify-Lauefe je Brain (chatgpt, claude, deepseek, gemini, kimi, mistral, perplexity, qwen, zai)",
+  "webagent_processes_left": 0,
+  "webview2_processes_left": 0,
+  "profile_lock_left": "shared.session-writeback.lock (23.08., ohne offenen Handle)",
+  "foreign_webview": "6 x msedgewebview2 (TeamViewer.exe 15.x, seit 11.09. 05:18), nicht webagent-zugehoerig",
+  "verdict": "keine Prozess- oder Profil-Leaks nach headless-Laeufen; Release-Reife bzgl. Prozesshygiene gegeben"
+}

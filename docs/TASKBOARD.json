@@ -1,11 +1,4 @@
 {
-  "schema_version": 1,
-  "as_of": "2026-09-08",
-  "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
-  "mirror": "docs/TASKBOARD.md",
-  "contract": "docs/WORK_CONTRACT.md",
-  "rule": "Claim = Zelle auf claimed setzen (owner, branch, claimed_at). DoD und Arbeitsvertrag sind verbindlich. Ein Entwickler, eine Aufgabe.",
-  "note": "Kante = Abhaengigkeit. Ein Task mit depends_on ist BLOCKED, bis alle Vorgaenger in depends_on done sind. Leeres depends_on = kann parallel laufen. Nie eine verkettete Aufgabe aus dem Block reissen.",
   "agents": [
     "chatgpt-codex",
     "claude-code",
@@ -14,458 +7,455 @@
     "local/opencode",
     "chief"
   ],
+  "as_of": "2026-09-08",
+  "contract": "docs/WORK_CONTRACT.md",
+  "mirror": "docs/TASKBOARD.md",
+  "note": "Kante = Abhaengigkeit. Ein Task mit depends_on ist BLOCKED, bis alle Vorgaenger in depends_on done sind. Leeres depends_on = kann parallel laufen. Nie eine verkettete Aufgabe aus dem Block reissen.",
+  "rule": "Claim = Zelle auf claimed setzen (owner, branch, claimed_at). DoD und Arbeitsvertrag sind verbindlich. Ein Entwickler, eine Aufgabe.",
+  "schema_version": 1,
+  "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "tasks": [
     {
+      "branch": "feat/browser-inference-provider",
+      "claimed_at": "2026-09-01",
+      "done_at": "2026-09-01",
       "id": "T-001",
+      "owner": "local/opencode",
       "phase": "0",
-      "title": "Umsetzungsstatus-Datei und Capability-Matrix pflegen (Handover)",
-      "type": "docs",
+      "proof_path": "docs/WEB_UI_API_TOOL_RESET_STATUS.md, docs/CAPABILITY_MATRIX.json",
+      "status": "done",
       "suitable": [
         "local/opencode",
         "chief"
       ],
-      "status": "done",
-      "owner": "local/opencode",
-      "branch": "feat/browser-inference-provider",
-      "claimed_at": "2026-09-01",
-      "done_at": "2026-09-01",
-      "proof_path": "docs/WEB_UI_API_TOOL_RESET_STATUS.md, docs/CAPABILITY_MATRIX.json",
+      "title": "Umsetzungsstatus-Datei und Capability-Matrix pflegen (Handover)",
+      "type": "docs",
       "verification": "git diff --check"
     },
     {
-      "id": "T-101",
-      "phase": "1",
-      "title": "SessionService + EventStream UI-neutral herausloesen (um AgentController/run_store/transcript, monotone sequence_number)",
-      "type": "code",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code",
-        "local/opencode"
-      ],
-      "status": "done",
-      "owner": "local/opencode",
       "branch": "feature/T-101-api-bridge",
       "claimed_at": "2026-09-01",
+      "dod": "Extraktion + Unittests gruen; api_bridge ruft Kern statt eigener Session-Logik; Zelle api_* belegt",
       "done_at": "2026-09-02",
-      "proof_path": "src/session/ + api_bridge::session_service(); cargo test --lib (1232 passed). Live-api_*-Zelle bleibt Phase 3.",
-      "verification": "cargo test --lib",
-      "dod": "Extraktion + Unittests gruen; api_bridge ruft Kern statt eigener Session-Logik; Zelle api_* belegt"
-    },
-    {
-      "id": "T-102",
+      "id": "T-101",
+      "owner": "local/opencode",
       "phase": "1",
-      "title": "ToolRegistry-Vertrag + vier Managed Tools (read/bash/edit/write) mit Policy-Grenzen (aus controller.rs:659/file_actions/shell_policy/executor)",
-      "type": "code",
+      "proof_path": "src/session/ + api_bridge::session_service(); cargo test --lib (1232 passed). Live-api_*-Zelle bleibt Phase 3.",
+      "status": "done",
       "suitable": [
         "chatgpt-codex",
         "claude-code",
         "local/opencode"
       ],
-      "status": "done",
-      "owner": "local/opencode",
+      "title": "SessionService + EventStream UI-neutral herausloesen (um AgentController/run_store/transcript, monotone sequence_number)",
+      "type": "code",
+      "verification": "cargo test --lib"
+    },
+    {
       "branch": "feature/T-102-tool-registry",
       "claimed_at": "2026-09-02",
+      "dod": "Registry-Schema, Validierung, Policy, Exactly-once; bestehende Aktionen nicht umbenennen; Tests gruen",
       "done_at": "2026-09-02",
-      "proof_path": "src/tools.rs (ToolRegistry + read/bash/edit/write, Policy, Exactly-once); cargo test --lib (1232 passed).",
-      "verification": "cargo test --lib",
-      "dod": "Registry-Schema, Validierung, Policy, Exactly-once; bestehende Aktionen nicht umbenennen; Tests gruen"
-    },
-    {
-      "id": "T-103",
+      "id": "T-102",
+      "owner": "local/opencode",
       "phase": "1",
-      "title": "Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests",
-      "type": "code",
+      "proof_path": "src/tools.rs (ToolRegistry + read/bash/edit/write, Policy, Exactly-once); cargo test --lib (1232 passed).",
+      "status": "done",
       "suitable": [
         "chatgpt-codex",
         "claude-code",
         "local/opencode"
       ],
-      "status": "done",
-      "owner": "chatgpt-codex",
+      "title": "ToolRegistry-Vertrag + vier Managed Tools (read/bash/edit/write) mit Policy-Grenzen (aus controller.rs:659/file_actions/shell_policy/executor)",
+      "type": "code",
+      "verification": "cargo test --lib"
+    },
+    {
       "branch": "feature/T-103-fakebrain",
       "claimed_at": "2026-09-02",
+      "dod": "Deterministischer Fake-Brain in tests/; Loop-, Abort-, Retry-, Exactly-once-Tests gruen",
       "done_at": "2026-09-02",
-      "proof_path": "src/fakebrain.rs (FakeBrain + Controller-Integrationstests fuer Textdelta, Toolloop, Abort, Retry und Exactly-once); cargo test --lib (1236 passed).",
-      "verification": "cargo test --lib",
-      "dod": "Deterministischer Fake-Brain in tests/; Loop-, Abort-, Retry-, Exactly-once-Tests gruen"
-    },
-    {
-      "id": "T-104",
+      "id": "T-103",
+      "owner": "chatgpt-codex",
       "phase": "1",
-      "title": "Promptbuilder trennen: Reiner Chat vs. Managed Agent (keine Tool-Injection in Reiner Chat)",
-      "type": "code",
+      "proof_path": "src/fakebrain.rs (FakeBrain + Controller-Integrationstests fuer Textdelta, Toolloop, Abort, Retry und Exactly-once); cargo test --lib (1236 passed).",
+      "status": "done",
       "suitable": [
         "chatgpt-codex",
         "claude-code",
         "local/opencode"
       ],
-      "status": "done",
-      "owner": "chatgpt-codex",
-      "branch": "feature/T-104-prompt-builders",
-      "claimed_at": "2026-09-02",
-      "done_at": "2026-09-02",
-      "proof_path": "src/prompts.rs (getrennte plain_chat_prompt-/managed_agent_prompt-Builder mit Vertragstests); cargo test --lib (1238 passed).",
-      "verification": "cargo test --lib",
-      "dod": "Zwei getrennte Builder mit Vertragstests; bestehendes Textprofil bleibt unveraendert"
+      "title": "Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests",
+      "type": "code",
+      "verification": "cargo test --lib"
     },
     {
-      "id": "T-201",
-      "phase": "2",
-      "title": "Eingebettete statische Assets + Loopback-Serverstart (einzelne portable Binary)",
+      "branch": "feature/T-104-prompt-builders",
+      "claimed_at": "2026-09-02",
+      "dod": "Zwei getrennte Builder mit Vertragstests; bestehendes Textprofil bleibt unveraendert",
+      "done_at": "2026-09-02",
+      "id": "T-104",
+      "owner": "chatgpt-codex",
+      "phase": "1",
+      "proof_path": "src/prompts.rs (getrennte plain_chat_prompt-/managed_agent_prompt-Builder mit Vertragstests); cargo test --lib (1238 passed).",
+      "status": "done",
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code",
+        "local/opencode"
+      ],
+      "title": "Promptbuilder trennen: Reiner Chat vs. Managed Agent (keine Tool-Injection in Reiner Chat)",
       "type": "code",
+      "verification": "cargo test --lib"
+    },
+    {
+      "branch": "feature/T-201-web-ui-server",
+      "claimed_at": "2026-09-02",
+      "dod": "Assets eingebettet; Server startet Standard auf Web-UI; Binargroesse im Release-Artefakt kontrolliert",
+      "done_at": "2026-09-02",
+      "id": "T-201",
+      "owner": "grok-agent",
+      "phase": "2",
+      "proof_path": "src/web_ui.rs + web/index.html (include_str); Default ohne Subcommand ist Loopback-UI; cargo test --lib 1242 passed",
+      "status": "done",
       "suitable": [
         "claude-code",
         "manus"
       ],
-      "status": "done",
-      "owner": "grok-agent",
-      "branch": "feature/T-201-web-ui-server",
-      "claimed_at": "2026-09-02",
-      "done_at": "2026-09-02",
-      "proof_path": "src/web_ui.rs + web/index.html (include_str); Default ohne Subcommand ist Loopback-UI; cargo test --lib 1242 passed",
-      "verification": "cargo test --lib; Start ohne externe Dateien",
-      "dod": "Assets eingebettet; Server startet Standard auf Web-UI; Binargroesse im Release-Artefakt kontrolliert"
+      "title": "Eingebettete statische Assets + Loopback-Serverstart (einzelne portable Binary)",
+      "type": "code",
+      "verification": "cargo test --lib; Start ohne externe Dateien"
     },
     {
+      "branch": "feature/T-202-ui-endpoints",
+      "claimed_at": "2026-09-02",
+      "dod": "Endpunkte auf SessionService/EventStream-Kern; Health via doctor ohne Browserstart; Tests gruen",
+      "done_at": "2026-09-02",
       "id": "T-202",
+      "owner": "grok-agent",
       "phase": "2",
-      "title": "Server-Endpunkte: Session / Capability / Health / Upload / Chat / Stop / Event",
-      "type": "code",
+      "proof_path": "src/web_ui_api.rs + src/web_ui.rs dispatch /api/* auf SessionService/doctor; cargo test --lib 1248 passed / 1 ignored",
+      "status": "done",
       "suitable": [
         "chatgpt-codex",
         "claude-code"
       ],
-      "status": "done",
-      "owner": "grok-agent",
-      "branch": "feature/T-202-ui-endpoints",
-      "claimed_at": "2026-09-02",
-      "done_at": "2026-09-02",
-      "proof_path": "src/web_ui_api.rs + src/web_ui.rs dispatch /api/* auf SessionService/doctor; cargo test --lib 1248 passed / 1 ignored",
-      "verification": "cargo test --lib",
-      "dod": "Endpunkte auf SessionService/EventStream-Kern; Health via doctor ohne Browserstart; Tests gruen"
+      "title": "Server-Endpunkte: Session / Capability / Health / Upload / Chat / Stop / Event",
+      "type": "code",
+      "verification": "cargo test --lib"
     },
     {
+      "branch": "feature/T-203-grok-layout-prototype",
+      "claimed_at": "2026-09-02",
+      "dod": "Layout/Interaktion abgenommen; A11y-Regeln aus Plan umgesetzt; keine Backend-Kopplung im Prototyp",
+      "done_at": "2026-09-02",
       "id": "T-203",
+      "owner": "grok-agent",
       "phase": "2",
-      "title": "Klickbarer Fake-Prototyp im Grok-Bot-Layout (Health-Balken oben, System-Kategorien links) + A11y-Gates",
-      "type": "code",
+      "proof_path": "web/index.html Grok-Layout (Health oben, Kategorien links, Fake-Chat); A11y skip/focus-visible/live/reduced-motion; kein fetch(); cargo test --lib 1249 passed / 1 ignored",
+      "status": "done",
       "suitable": [
         "claude-code",
         "manus",
         "local/opencode"
       ],
-      "status": "done",
-      "owner": "grok-agent",
-      "branch": "feature/T-203-grok-layout-prototype",
-      "claimed_at": "2026-09-02",
-      "done_at": "2026-09-02",
-      "proof_path": "web/index.html Grok-Layout (Health oben, Kategorien links, Fake-Chat); A11y skip/focus-visible/live/reduced-motion; kein fetch(); cargo test --lib 1249 passed / 1 ignored",
-      "verification": "Lokal renderbarer Prototyp, Keyborddurchlauf",
-      "dod": "Layout/Interaktion abgenommen; A11y-Regeln aus Plan umgesetzt; keine Backend-Kopplung im Prototyp"
+      "title": "Klickbarer Fake-Prototyp im Grok-Bot-Layout (Health-Balken oben, System-Kategorien links) + A11y-Gates",
+      "type": "code",
+      "verification": "Lokal renderbarer Prototyp, Keyborddurchlauf"
     },
     {
-      "id": "T-301",
-      "phase": "3",
-      "title": "Claude-Referenz: Mehrturn-Chat mit echtem Delta-Streaming (Live, Freigabegrenze beachten)",
-      "type": "live-tests",
-      "suitable": [
-        "claude-code",
-        "local/opencode"
-      ],
-      "status": "done",
-      "owner": "grok-agent",
       "branch": "feature/T-301-claude-live-stream",
       "claimed_at": "2026-09-03",
+      "dod": "Deltas ohne Duplikate, Stop/Reconnect; Zelle webui_chat+streaming passed",
       "done_at": "2026-09-04",
-      "proof_path": "docs/proofs/T-301/ (chat.json, events_*, analysis.txt) + docs/proofs/T-501/streaming_claude_2026-09-04.json; PR #25 merged 7fb845e",
-      "verification": "Relay/Web-UI gegen Claude; Streaming-Gate metrisch",
-      "dod": "Deltas ohne Duplikate, Stop/Reconnect; Zelle webui_chat+streaming passed"
-    },
-    {
-      "id": "T-302",
+      "id": "T-301",
+      "owner": "grok-agent",
       "phase": "3",
-      "title": "Claude-Referenz: Modelle und Aufwand zur Laufzeit ermitteln, waehlen, nachpruefen",
-      "type": "live-tests",
+      "proof_path": "docs/proofs/T-301/ (chat.json, events_*, analysis.txt) + docs/proofs/T-501/streaming_claude_2026-09-04.json; PR #25 merged 7fb845e",
+      "status": "done",
       "suitable": [
         "claude-code",
         "local/opencode"
       ],
-      "status": "done",
-      "owner": "local/opencode",
-      "branch": "feature/T-302-claude-runtime-model",
-      "claimed_at": "2026-09-03",
-      "done_at": "2026-09-03",
-      "proof_path": "docs/proofs/T-302/; matrix model/effort=claude passed",
-      "verification": "Menue-Oeffnung + Wahl + Verifikation naechster Turn",
-      "dod": "Runtime-Liste statt feste Kodierung; Nachpruefung belegt",
-      "depends_on": []
+      "title": "Claude-Referenz: Mehrturn-Chat mit echtem Delta-Streaming (Live, Freigabegrenze beachten)",
+      "type": "live-tests",
+      "verification": "Relay/Web-UI gegen Claude; Streaming-Gate metrisch"
     },
     {
+      "branch": "feature/T-302-claude-runtime-model",
+      "claimed_at": "2026-09-03",
+      "depends_on": [],
+      "dod": "Runtime-Liste statt feste Kodierung; Nachpruefung belegt",
+      "done_at": "2026-09-03",
+      "id": "T-302",
+      "owner": "local/opencode",
+      "phase": "3",
+      "proof_path": "docs/proofs/T-302/; matrix model/effort=claude passed",
+      "status": "done",
+      "suitable": [
+        "claude-code",
+        "local/opencode"
+      ],
+      "title": "Claude-Referenz: Modelle und Aufwand zur Laufzeit ermitteln, waehlen, nachpruefen",
+      "type": "live-tests",
+      "verification": "Menue-Oeffnung + Wahl + Verifikation naechster Turn"
+    },
+    {
+      "branch": "feature/T-401-responses-sse-seq",
+      "claimed_at": "2026-09-02",
+      "dod": "Feldweise Gegenprobe gegen offizielle Referenz; sequence_number pro Event; keine erfundenen Usage",
+      "done_at": "2026-09-02",
       "id": "T-401",
+      "owner": "grok-agent",
       "phase": "4",
-      "title": "DTOs feldvollstaendig fuer Models/Chat/Responses; monotone sequence_number in Responses-SSE",
-      "type": "code",
+      "proof_path": "src/api_bridge.rs: Responses-SSE sequence_number 0..n-1; Response/Chat/Model-Felder; usage bleibt null; cargo test --lib 1239 passed / 1 ignored",
+      "status": "done",
       "suitable": [
         "chatgpt-codex"
       ],
-      "status": "done",
-      "owner": "grok-agent",
-      "branch": "feature/T-401-responses-sse-seq",
-      "claimed_at": "2026-09-02",
-      "done_at": "2026-09-02",
-      "proof_path": "src/api_bridge.rs: Responses-SSE sequence_number 0..n-1; Response/Chat/Model-Felder; usage bleibt null; cargo test --lib 1239 passed / 1 ignored",
-      "verification": "cargo test --lib; SDK-Blackbox",
-      "dod": "Feldweise Gegenprobe gegen offizielle Referenz; sequence_number pro Event; keine erfundenen Usage"
+      "title": "DTOs feldvollstaendig fuer Models/Chat/Responses; monotone sequence_number in Responses-SSE",
+      "type": "code",
+      "verification": "cargo test --lib; SDK-Blackbox"
     },
     {
-      "id": "T-402",
-      "phase": "4",
-      "title": "Negativfelder/Fehler: seed, logprobs, service_tier, n>1 etc. klar ablehnen (unsupported_*); IDs/Zeitstempel/Header korrigieren",
-      "type": "code",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code"
-      ],
-      "status": "done",
-      "owner": "grok-agent",
       "branch": "feature/T-402-reject-unsupported",
       "claimed_at": "2026-09-02",
+      "dod": "Negative Tests fuer Verbotene Felder; kein stilles Ignorieren",
       "done_at": "2026-09-02",
-      "proof_path": "src/api_bridge.rs reject_unsupported_openai_fields (seed/logprobs/service_tier/n>1); X-Request-Id; resp_ IDs; cargo test --lib 1241 passed / 1 ignored",
-      "verification": "cargo test --lib",
-      "dod": "Negative Tests fuer Verbotene Felder; kein stilles Ignorieren"
-    },
-    {
-      "id": "T-403",
+      "id": "T-402",
+      "owner": "grok-agent",
       "phase": "4",
-      "title": "Persistent State: openai-local-state-v1 auf echtem Store + Restart-Test",
-      "type": "code",
+      "proof_path": "src/api_bridge.rs reject_unsupported_openai_fields (seed/logprobs/service_tier/n>1); X-Request-Id; resp_ IDs; cargo test --lib 1241 passed / 1 ignored",
+      "status": "done",
       "suitable": [
         "chatgpt-codex",
         "claude-code"
       ],
-      "status": "done",
-      "owner": "grok-agent",
-      "branch": "feature/T-403-persistent-state",
-      "claimed_at": "2026-09-02",
-      "done_at": "2026-09-02",
-      "proof_path": "src/api_bridge.rs openai-local-state-v1 je Mandant auf Platte; Restart + previous_response_id + Delete; cargo test --lib 1242 passed / 1 ignored",
-      "verification": "cargo test --lib",
-      "dod": "Retrieve/Delete/previous_response_id ueber Restart hinweg; Mandantentrennung getestet"
+      "title": "Negativfelder/Fehler: seed, logprobs, service_tier, n>1 etc. klar ablehnen (unsupported_*); IDs/Zeitstempel/Header korrigieren",
+      "type": "code",
+      "verification": "cargo test --lib"
     },
     {
-      "id": "T-404",
+      "branch": "feature/T-403-persistent-state",
+      "claimed_at": "2026-09-02",
+      "dod": "Retrieve/Delete/previous_response_id ueber Restart hinweg; Mandantentrennung getestet",
+      "done_at": "2026-09-02",
+      "id": "T-403",
+      "owner": "grok-agent",
       "phase": "4",
-      "title": "OpenAI-SDK-Blackbox: offizielle Python-/JS-SDKs + zwei reale Clients",
-      "type": "tests",
+      "proof_path": "src/api_bridge.rs openai-local-state-v1 je Mandant auf Platte; Restart + previous_response_id + Delete; cargo test --lib 1242 passed / 1 ignored",
+      "status": "done",
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code"
+      ],
+      "title": "Persistent State: openai-local-state-v1 auf echtem Store + Restart-Test",
+      "type": "code",
+      "verification": "cargo test --lib"
+    },
+    {
+      "branch": "feature/T-404-sdk-blackbox",
+      "claimed_at": "2026-09-02",
+      "dod": "Kein clientbezogener Code; Protokoll-Dumps als Beleg",
+      "done_at": "2026-09-02",
+      "id": "T-404",
+      "owner": "grok-agent",
+      "phase": "4",
+      "proof_path": "scripts/t404/ (openai_python.py, openai_js.mjs, urllib_client.py, fetch_client.mjs) + docs/proofs/T-404/; cargo test --lib 1254 passed / 1 ignored",
+      "status": "done",
       "suitable": [
         "chatgpt-codex",
         "local/opencode"
       ],
-      "status": "done",
-      "owner": "grok-agent",
-      "branch": "feature/T-404-sdk-blackbox",
-      "claimed_at": "2026-09-02",
-      "done_at": "2026-09-02",
-      "proof_path": "scripts/t404/ (openai_python.py, openai_js.mjs, urllib_client.py, fetch_client.mjs) + docs/proofs/T-404/; cargo test --lib 1254 passed / 1 ignored",
-      "verification": "cargo test --lib; SDK-Skripte gruen",
-      "dod": "Kein clientbezogener Code; Protokoll-Dumps als Beleg"
+      "title": "OpenAI-SDK-Blackbox: offizielle Python-/JS-SDKs + zwei reale Clients",
+      "type": "tests",
+      "verification": "cargo test --lib; SDK-Skripte gruen"
     },
     {
+      "branch": "fix/T-501-model-proof",
+      "claim_lock": false,
+      "claimed_at": "2026-09-07",
+      "depends_on": [
+        "T-202",
+        "T-203"
+      ],
+      "dod": "130/130 Matrix-Zellen befuellt (106 passed, alle strukturellen Grenzen als not_run/failed/removed dokumentiert); perplexity als Custom-Brain registriert (custom_brains.json, Array-Format); effort-Spalte komplett (claude/qwen passed, kimi Pfad konfiguriert mit structuralem Label-Check-Defekt, alle anderen not_run mit Survey-Befund); ALLE Strukturtests gruen",
+      "done_at": "2026-09-11",
       "id": "T-501",
+      "owner": "chatgpt-codex",
       "phase": "5",
-      "title": "Alle-Brains-Matrix: Chat/Streaming/Modell/Aufwand/Anhang/Tools ueber UI und API (je Brain)",
-      "type": "live-tests",
+      "proof_path": "docs/CAPABILITY_MATRIX.json (130 Zellen, 10 Brains x 13 Areas, as_of 2026-09-11, alle proof_path vorhanden); docs/proofs/T-501/ (60+ Belege); Commits 9e47075/110353f/44a859c/bbd7698/1f16896/29c53ed/2942ccb/002b7d7 (2026-09-11). Ende: 106 passed, 13 failed, 2 unreachable, 8 not_run, 1 removed. Structured failures: managed_tools (10x by-design 400), model claude+perplexity (strukturelle UI-Grenze), effort kimi (Denkaufwand nur im Modell-Menue, Label bleibt). model/chatgpt unreachable (Free-Tier nur Sofort-Pill); model/mistral unreachable (kein Selektor im DOM); model/deepseek removed (Anbieter entfernte Modus-Bar). effort/auto + model/auto not_run (virtueller Auto-Router ohne Browser-UI).",
+      "status": "done",
       "suitable": [
         "claude-code",
         "grok-agent",
         "local/opencode"
       ],
-      "status": "done",
-      "owner": "chatgpt-codex",
-      "branch": "fix/T-501-model-proof",
-      "claimed_at": "2026-09-07",
-      "claim_lock": false,
-      "done_at": "2026-09-11",
-      "proof_path": "docs/CAPABILITY_MATRIX.json (130 Zellen, 10 Brains x 13 Areas, as_of 2026-09-11, alle proof_path vorhanden); docs/proofs/T-501/ (60+ Belege); Commits 9e47075/110353f/44a859c/bbd7698/1f16896/29c53ed/2942ccb/002b7d7 (2026-09-11). Ende: 106 passed, 13 failed, 2 unreachable, 8 not_run, 1 removed. Structured failures: managed_tools (10x by-design 400), model claude+perplexity (strukturelle UI-Grenze), effort kimi (Denkaufwand nur im Modell-Menue, Label bleibt). model/chatgpt unreachable (Free-Tier nur Sofort-Pill); model/mistral unreachable (kein Selektor im DOM); model/deepseek removed (Anbieter entfernte Modus-Bar). effort/auto + model/auto not_run (virtueller Auto-Router ohne Browser-UI).",
-      "verification": "cargo test --lib 1344 passed (2026-09-11); alle 130 proof_path auf Platte verifiziert; JSON valid (10 brains x 13 areas); custom_brains.json perplexity als Array registriert; diagnose/verify --brain perplexity erreichbar",
-      "dod": "130/130 Matrix-Zellen befuellt (106 passed, alle strukturellen Grenzen als not_run/failed/removed dokumentiert); perplexity als Custom-Brain registriert (custom_brains.json, Array-Format); effort-Spalte komplett (claude/qwen passed, kimi Pfad konfiguriert mit structuralem Label-Check-Defekt, alle anderen not_run mit Survey-Befund); ALLE Strukturtests gruen",
-      "depends_on": [
-        "T-202",
-        "T-203"
-      ]
+      "title": "Alle-Brains-Matrix: Chat/Streaming/Modell/Aufwand/Anhang/Tools ueber UI und API (je Brain)",
+      "type": "live-tests",
+      "verification": "cargo test --lib 1344 passed (2026-09-11); alle 130 proof_path auf Platte verifiziert; JSON valid (10 brains x 13 areas); custom_brains.json perplexity als Array registriert; diagnose/verify --brain perplexity erreichbar"
     },
     {
+      "branch": "feature/T-601-rustls-https",
+      "claimed_at": "2026-09-02",
+      "dod": "Kein reqwest/System-OpenSSL; Budget im Release-Artefakt kontrolliert und dokumentiert",
+      "done_at": "2026-09-02",
       "id": "T-601",
+      "owner": "grok-agent",
       "phase": "6",
-      "title": "Minimaler rustls-HTTPS-Client + data/providers.json + Groessenbudget (<10 MB)",
-      "type": "code",
+      "proof_path": "src/https_client.rs + docs/providers.example.json; rustls/ring, kein reqwest; cargo test --lib 1259 passed / 1 ignored",
+      "status": "done",
       "suitable": [
         "chatgpt-codex",
         "grok-agent"
       ],
-      "status": "done",
-      "owner": "grok-agent",
-      "branch": "feature/T-601-rustls-https",
-      "claimed_at": "2026-09-02",
-      "done_at": "2026-09-02",
-      "proof_path": "src/https_client.rs + docs/providers.example.json; rustls/ring, kein reqwest; cargo test --lib 1259 passed / 1 ignored",
-      "verification": "cargo test --lib; Release-Binary wiegen",
-      "dod": "Kein reqwest/System-OpenSSL; Budget im Release-Artefakt kontrolliert und dokumentiert"
+      "title": "Minimaler rustls-HTTPS-Client + data/providers.json + Groessenbudget (<10 MB)",
+      "type": "code",
+      "verification": "cargo test --lib; Release-Binary wiegen"
     },
     {
-      "id": "T-602",
-      "phase": "6",
-      "title": "/quelle-Befehl + Web-UI-Quellen-Schalter + Session-Source-Scope (manueller Hybrid)",
-      "type": "code",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code"
-      ],
-      "status": "done",
-      "owner": "grok-agent",
       "branch": "feature/T-602-quelle-impl",
       "claimed_at": "2026-09-03",
+      "dod": "Kein automatisches Routing; Session-Scope getestet; persistiert nur mit --save",
       "done_at": "2026-09-03",
+      "id": "T-602",
+      "owner": "grok-agent",
+      "phase": "6",
       "proof_path": "src/source_scope.rs, web/index.html, src/web_ui_api.rs; PR #22 merge 0892fc9; DoD tests persistiert_nur_mit_save, session_scope_ist_pro_instanz_isoliert, kein_automatisches_routing, source_switch_ist_session_scope_ohne_auto_routing",
-      "verification": "cargo test --lib",
-      "dod": "Kein automatisches Routing; Session-Scope getestet; persistiert nur mit --save"
-    },
-    {
-      "id": "T-701",
-      "phase": "7",
-      "title": "Grok-Bot-Modus: Gruppen (2-6), Runden, @Brain, Leader-Synthese auf /swarm + HandoffQueue",
-      "type": "code",
+      "status": "done",
       "suitable": [
         "chatgpt-codex",
         "claude-code"
       ],
-      "status": "done",
-      "owner": "grok-agent",
+      "title": "/quelle-Befehl + Web-UI-Quellen-Schalter + Session-Source-Scope (manueller Hybrid)",
+      "type": "code",
+      "verification": "cargo test --lib"
+    },
+    {
       "branch": "feature/T-701-swarm-groups",
       "claimed_at": "2026-09-03",
+      "dod": "Gruppenlauf als normale Session (gleicher Eventstream); deterministischer Test gruen",
       "done_at": "2026-09-03",
+      "id": "T-701",
+      "owner": "grok-agent",
+      "phase": "7",
       "proof_path": "src/group_run.rs; cargo test --lib --no-default-features (1267 passed, 1 ignored; fake A/B group EventStream Exact + @Brain + leader synthesis)",
-      "verification": "cargo test --lib --no-default-features",
-      "dod": "Gruppenlauf als normale Session (gleicher Eventstream); deterministischer Test gruen"
+      "status": "done",
+      "suitable": [
+        "chatgpt-codex",
+        "claude-code"
+      ],
+      "title": "Grok-Bot-Modus: Gruppen (2-6), Runden, @Brain, Leader-Synthese auf /swarm + HandoffQueue",
+      "type": "code",
+      "verification": "cargo test --lib --no-default-features"
     },
     {
+      "branch": "master",
+      "claimed_at": "2026-09-12",
+      "depends_on": [],
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "done_at": "2026-09-12",
       "id": "T-801",
+      "owner": "webagent:auto",
       "phase": "8",
+      "proof_path": "src/contract.rs (OperationEvent/SurfaceOutcome mit attempt_id/run_id/brain_id); 96e83aa",
+      "status": "done",
       "title": "Gemeinsamer Brain-Vertrag und Konformitaetsfixtures",
       "type": "code",
-      "status": "done",
-      "owner": "webagent:auto",
-      "branch": "master",
-      "claimed_at": "2026-09-12",
-      "done_at": "2026-09-12",
-      "proof_path": "src/contract.rs (OperationEvent/SurfaceOutcome mit attempt_id/run_id/brain_id); 96e83aa",
-      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 1 und Pflichtgates",
-      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
-      "depends_on": []
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 1 und Pflichtgates"
     },
     {
+      "branch": "master",
+      "claimed_at": "2026-09-12",
+      "depends_on": [
+        "T-801"
+      ],
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "done_at": "2026-09-12",
       "id": "T-802",
+      "owner": "webagent:auto",
       "phase": "8",
+      "proof_path": "Einheitlicher Send-/Observe-Vertrag (181cb38); Volltext-Vergleich, kein charweises Ueberschreiben",
+      "status": "done",
       "title": "Einheitliches Fill Verify Submit ohne Doppelversand",
       "type": "code",
-      "status": "done",
-      "owner": "webagent:auto",
-      "branch": "master",
-      "claimed_at": "2026-09-12",
-      "done_at": "2026-09-12",
-      "proof_path": "Einheitlicher Send-/Observe-Vertrag (181cb38); Volltext-Vergleich, kein charweises Ueberschreiben",
-      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 2 und Pflichtgates",
-      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
-      "depends_on": [
-        "T-801"
-      ]
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 2 und Pflichtgates"
     },
     {
+      "branch": "master",
+      "claimed_at": "2026-09-12",
+      "depends_on": [
+        "T-801"
+      ],
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "done_at": "2026-09-12",
       "id": "T-803",
+      "owner": "webagent:auto",
       "phase": "8",
+      "proof_path": "1cf0cc5 + 133361a + 41a6053 (Controller/REPL/Swarm konsumieren denselben brain_stream-Strom; Preafix-Delta-Streaming-Tests)",
+      "status": "done",
       "title": "Antwortstream durch Controller REPL Swarm UI und API",
       "type": "code",
-      "status": "done",
-      "owner": "webagent:auto",
-      "branch": "master",
-      "claimed_at": "2026-09-12",
-      "done_at": "2026-09-12",
-      "proof_path": "1cf0cc5 + 133361a + 41a6053 (Controller/REPL/Swarm konsumieren denselben brain_stream-Strom; Preafix-Delta-Streaming-Tests)",
-      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 3 und Pflichtgates",
-      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
-      "depends_on": [
-        "T-801"
-      ]
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 3 und Pflichtgates"
     },
     {
+      "branch": "master",
+      "claimed_at": "2026-09-12",
+      "depends_on": [
+        "T-801"
+      ],
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt (Live-Prozessproben fuer T-807)",
+      "done_at": "2026-09-12",
       "id": "T-804",
+      "owner": "webagent:auto",
       "phase": "8",
+      "proof_path": "7b328eb + 9dd18a0 (Lease: pid/Prozessstart/Generation/Heartbeat/Reset; Free-Busy-Stale; Reclaim unter Sperre; Navigationstimeout-Reset)",
+      "status": "done",
       "title": "Profil-Leases und gemeinsame Blocker-/Resetbehandlung",
       "type": "code",
-      "status": "done",
-      "owner": "webagent:auto",
-      "branch": "master",
-      "claimed_at": "2026-09-12",
-      "done_at": "2026-09-12",
-      "proof_path": "7b328eb + 9dd18a0 (Lease: pid/Prozessstart/Generation/Heartbeat/Reset; Free-Busy-Stale; Reclaim unter Sperre; Navigationstimeout-Reset)",
-      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 4 und Pflichtgates",
-      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt (Live-Prozessproben fuer T-807)",
-      "depends_on": [
-        "T-801"
-      ]
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 4 und Pflichtgates"
     },
     {
-      "id": "T-805",
-      "phase": "8",
-      "title": "Generische Probe mit bestehendem Capability-Proof-Gate",
-      "type": "code",
-      "status": "free",
-      "owner": null,
       "branch": null,
       "claimed_at": null,
-      "done_at": null,
-      "proof_path": null,
-      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 5 und Pflichtgates",
-      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
       "depends_on": [
         "T-802",
         "T-803",
         "T-804"
-      ]
+      ],
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "done_at": null,
+      "id": "T-805",
+      "owner": null,
+      "phase": "8",
+      "proof_path": null,
+      "status": "free",
+      "title": "Generische Probe mit bestehendem Capability-Proof-Gate",
+      "type": "code",
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 5 und Pflichtgates"
     },
     {
-      "id": "T-806",
-      "phase": "8",
-      "title": "Taskabschluss mit verifizierten Run-Belegen und Crashschutz",
-      "type": "code",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
-      "done_at": null,
-      "proof_path": null,
-      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 6 und Pflichtgates",
-      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "branch": "master",
+      "claimed_at": "2026-09-12T04:54:15.271905+00:00",
       "depends_on": [
         "T-801",
         "T-805",
         "T-808"
-      ]
+      ],
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "done_at": "2026-09-12T04:54:32.838199+00:00",
+      "id": "T-806",
+      "owner": "webagent:qwen",
+      "phase": "8",
+      "proof_path": "docs/proofs/T-806/verified-completion-2026-09-12.md",
+      "status": "done",
+      "title": "Taskabschluss mit verifizierten Run-Belegen und Crashschutz",
+      "type": "code",
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 6 und Pflichtgates"
     },
     {
-      "id": "T-807",
-      "phase": "8",
-      "title": "Alle-Brains-Live-Abnahme und Windows-Release",
-      "type": "code",
-      "status": "free",
-      "owner": null,
       "branch": null,
       "claimed_at": null,
-      "done_at": null,
-      "proof_path": null,
-      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 7 und Pflichtgates",
-      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
       "depends_on": [
         "T-802",
         "T-803",
@@ -473,22 +463,32 @@
         "T-805",
         "T-806",
         "T-808"
-      ]
+      ],
+      "dod": "Abnahmekriterien der zugeordneten Scheibe vollstaendig belegt",
+      "done_at": null,
+      "id": "T-807",
+      "owner": null,
+      "phase": "8",
+      "proof_path": null,
+      "status": "free",
+      "title": "Alle-Brains-Live-Abnahme und Windows-Release",
+      "type": "code",
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 7 und Pflichtgates"
     },
     {
-      "id": "T-808",
-      "phase": "8",
-      "title": "Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery",
-      "type": "code",
-      "status": "done",
-      "owner": "webagent:auto",
       "branch": "master",
       "claimed_at": "2026-09-12",
-      "done_at": "2026-09-12",
-      "proof_path": "6b02cd0 (Torn-Tail-Quarantaene, Recovery-Receipt, Journal-Lock, fsync)",
-      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 8 und Pflichtgates",
+      "depends_on": [],
       "dod": "Lueckenlose Mehrprozess-Eventkette, fail-closed Recovery und belegte Crash-Gegenproben",
-      "depends_on": []
+      "done_at": "2026-09-12",
+      "id": "T-808",
+      "owner": "webagent:auto",
+      "phase": "8",
+      "proof_path": "6b02cd0 (Torn-Tail-Quarantaene, Recovery-Receipt, Journal-Lock, fsync)",
+      "status": "done",
+      "title": "Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery",
+      "type": "code",
+      "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 8 und Pflichtgates"
     }
   ]
 }

@@ -55,6 +55,21 @@ Head `0902593`, Debug-Build mit kopierter WebView2Loader.dll.
 - chatgpt/claude/perplexity model_switch failed fail-closed: aktuelles Modell nicht eindeutig in Laufzeitliste
   erkennbar, kein Wechsel versucht.
 
+## T-806 E2E-Receipt (2026-09-12, headless)
+
+- Negativprobe `20260912_045327_f41ae05c` (qwen): Receipt mit fremder run_id -> `Taskabschluss verweigert`,
+  `task_completion_rejected` im Eventlog (seq=10), Board bleibt `claimed`, Abbruch.
+- Positivprobe `20260912_045415_98fde10c` (qwen, cycles=1): korrekt gebundenes Receipt -> Board `done`,
+  kein Rejection-Event. Beweis: `docs/proofs/T-806/verified-completion-2026-09-12.md` + Receipts dort.
+- Merkmal: `cmd_run` liest `--completion-receipt` erst im done-Zweig -> deterministischer E2E.
+
+## Windows-Prozessprobe T-807 (2026-09-12)
+
+- Nach 9 Live-Verifys + 5 E2E-Runs: `webagent.exe`-Prozesse: 0, neue `msedgewebview2`-Kinder: 0.
+- Profil-Lock `shared.session-writeback.lock` ohne offenen Handle -> unlock.
+- 6 fremde `msedgewebview2` gehoeren TeamViewer (PID 2212 ff., seit 11.09. 05:18) — nicht webagent.
+- Beleg: `docs/proofs/T-807/windows-process-probe-2026-09-12.json`.
+
 ## Naechste Schritte
 
 - Ergebnisse liegen in `docs/proofs/T-501/live_verify_2026-09-12.json` + proofs.jsonl; Matrix `as_of` aktualisiert.

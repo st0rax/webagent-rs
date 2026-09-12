@@ -1,0 +1,15 @@
+{
+  "run_id": "20260912_045415_98fde10c",
+  "task_id": "T-806",
+  "brain_id": "qwen",
+  "commit": "170c1c9d78db8d952dfa120fe224903c5154ea7c",
+  "criteria": [
+    "passed",
+    "passed"
+  ],
+  "version": 1,
+  "scope": "docs/proofs/T-806/verified-completion-2026-09-12.md",
+  "artifact_hashes": [
+    "sha256:ea0853b64b671eff9d61dba3313d3a85d3a860871c97bcb03a8b45b26f90ede4"
+  ]
+}
