@@ -1,6 +1,21 @@
 # Changelog
 > **Referenz:** Versionshistorie. Der aktuelle Produktzustand steht in `docs/OVERVIEW.md`, der operative Arbeitsstand in `docs/CURRENT_WORK.md`.
 
+## [0.11.2] - 2026-09-12
+
+### Added
+- **Phase-8-Abnahme abgeschlossen** (Brain-Vereinheitlichung T-801–T-808): alle 26 TASKBOARD-Tasks done
+- Live-Verify-Suite (46 Belege je Brain) + CAPABILITY_MATRIX `as_of 2026-09-12`
+- Verifizierter Taskabschluss (Acceptance-Receipt): E2E live belegt, negativ fail-closed, danach `done` nur mit gültigem Receipt
+- Windows-Prozessprobe: keine Prozess-/Profil-Leaks nach Headless-Läufen dokumentiert
+
+### Fixed
+- `build.rs`: Windows-Version-Resource wird nur noch unter GNU/mingw als `resource.o` direkt gelinkt; unter MSVC (CI) genügt das von winres vermeldete `resource.lib` — behebt `LNK1181: cannot open input file 'resource.o'` im Release-Workflow
+- E2E-Resume-Pfad: Brains können UI-Artefakte (`text\nKopieren` etc.) vor der WEBAGENT/1-Antwort senden, die der Parser fail-closed ablehnt (dokumentiert, keine stille Reparatur)
+
+### Release
+- GitHub-Release `v0.11.2`: Windows (`webagent-windows-x86_64.exe` 10,4 MB + `WebView2Loader.dll`), Linux, Android (CI green)
+
 ## [0.11.1] - 2026-08-25
 
 ### Refactored
