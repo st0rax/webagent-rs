@@ -174,7 +174,9 @@ pub enum Commands {
     },
 
     /// Interner Helfer von `login-all --parallel`: loggt EIN Brain ein und
-    /// schreibt `LOGIN_RESULT=<json>` auf stdout. Nicht fuer Handaufrufe.
+    /// meldet das Ergebnis als `LOGIN_RESULT=<json>` (in die über
+    /// `WEBAGENT_LOGIN_WORKER_RESULT` gegebene Tempdatei — Parallel-Modus — oder
+    /// auf stdout). Nicht fuer Handaufrufe.
     #[command(name = "login-worker", hide = true)]
     LoginWorker {
         /// Brain-Backend (z.B. chatgpt, claude)

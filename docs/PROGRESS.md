@@ -164,11 +164,13 @@ Anfang/Ende-Ersetzung) und wurden übernommen. Dabei gefundene Bugs/Findings:
   login-all, verify-Info, Web-UI/API-Start) laufen jetzt auf stdout; stderr
   nur noch für echte Fehler.
 - **`--parallel` implementiert (2026-09-12):** `login-all --parallel N` startet
-  jetzt pro Brain einen eigenen `login-worker`-Kindprozess (re-exec des Binaries,
-  JSON-Ergebniszeile `LOGIN_RESULT=<json>` auf stdout), gedeckelt auf 3. Bei
+  jetzt pro Brain einen eigenen `login-worker`-Kindprozess (re-exec des
+  Binaries), gedeckelt auf 3. Fortschrittszeilen bleiben live sichtbar (Kinder
+  erben stdout), das Ergebnis kommt über eine per-Kind-Tempdatei
+  (`WEBAGENT_LOGIN_WORKER_RESULT`, `LOGIN_RESULT=<json>`) zurück. Bei
   `WEBAGENT_USE_SHARED_BROWSER=1` automatisch sequenziell (allel Brains dort in
-  EIN `profiles/shared`-Profil — SingletonLock-Race). Tests: 7 neue (Parser,
-  Cap, Worker-Exit).
+  EIN `profiles/shared`-Profil — SingletonLock-Race). Tests: 8 neue (Parser,
+  Cap, Worker-Exit, Datei-Write, Fehl-Datei, brain_id-Fallback).
 - zai baute für eine simple Markdown-Datei erneut eine fragile einzeilige
   Set-Content-Array-Konstruktion — bestätigt den Bedarf der write-Action.
 

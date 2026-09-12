@@ -80,8 +80,11 @@ pub fn login_all(timeout_per_brain: Duration, parallel: usize, force: bool) -> V
 pub const MAX_PARALLEL: usize = 3;
 
 /// Startet pro Brain einen `login-worker`-Kindprozess (re-exec des eigenen
-/// Binaries). Bis zu `parallel` fast gleichzeitig; Ergebniszeile pro Kind ist
-/// eine JSON-`LoginResult`-Zeile auf stdout (Präfix `LOGIN_RESULT=`).
+/// Binaries). Bis zu `parallel` fast gleichzeitig; das Kind erbt stdout/stderr,
+/// damit seine Fortschrittszeilen (`[login-all] <brain>: …`) live sichtbar
+/// bleiben wie im sequenziellen Pfad. Das Ergebnis schreibt jedes Kind nach
+/// `WEBAGENT_LOGIN_WORKER_RESULT` (Tempdatei) — der Parent liest sie nach dem
+/// `wait()` aus und raeumt sie auf.
 fn login_all_parallel(
     brains: &[String],
     timeout: Duration,
@@ -101,8 +104,18 @@ fn login_all_parallel(
     let mut results: Vec<LoginResult> = Vec::with_capacity(brains.len());
     // Chunked: nie mehr als `parallel` Kinder gleichzeitig am Leben.
     for chunk in brains.chunks(parallel.max(1)) {
-        let mut children = Vec::with_capacity(chunk.len());
-        for brain in chunk {
+        // Pro Chunk neu indexiert; benannte Datei ist pro Kind eindeutig, weil
+        // Chunks sequenziell laufen und die Datei nach dem Einlesen entfernt wird.
+        let mut children: Vec<(String, std::process::Child, std::path::PathBuf)> =
+            Vec::with_capacity(chunk.len());
+        for (i, brain) in chunk.iter().enumerate() {
+            // Zuerst das Ergebnisziel reservieren, damit Spawn-Fehler keine
+            // kollidierenden Tempdateien hinterlassen.
+            let result_file = std::env::temp_dir().join(format!(
+                "webagent-login-worker-{}-{}.json",
+                std::process::id(),
+                i
+            ));
             println!("[login-all] {brain}: Kindprozess starten…");
             let mut cmd = Command::new(&exe);
             cmd.arg("login-worker")
@@ -110,15 +123,23 @@ fn login_all_parallel(
                 .arg(brain)
                 .arg("--timeout")
                 .arg(timeout.as_secs().to_string())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null());
+                // stdout/stderr erben: Kinder-Fortschrittszeilen bleiben live
+                // sichtbar (stderr nur echte Fehler, wie überall sonst).
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .env(
+                    "WEBAGENT_LOGIN_WORKER_RESULT",
+                    result_file.to_string_lossy().into_owned(),
+                );
             if force {
                 cmd.arg("--force");
             }
             match cmd.spawn() {
-                Ok(child) => children.push((brain.clone(), child)),
+                Ok(child) => children.push((brain.clone(), child, result_file)),
                 Err(err) => {
                     eprintln!("[login-all] {brain}: Spawn fehlgeschlagen ({err})");
+                    // Reste aufraeumen, falls der Worker doch noch angeschlagen hat.
+                    let _ = std::fs::remove_file(&result_file);
                     results.push(LoginResult {
                         brain_id: brain.clone(),
                         ok: false,
@@ -128,15 +149,18 @@ fn login_all_parallel(
                 }
             }
         }
-        for (brain, child) in children {
-            let res = match child.wait_with_output() {
-                Ok(out) => parse_login_result_line(&out.stdout),
-                Err(err) => LoginResult {
-                    brain_id: brain.clone(),
-                    ok: false,
-                    skipped: false,
-                    message: format!("Kindprozess nicht lesbar: {err}"),
-                },
+        for (brain, mut child, result_file) in children {
+            let res = match child.wait() {
+                Ok(_) => read_worker_result_file(&brain, &result_file),
+                Err(err) => {
+                    let _ = std::fs::remove_file(&result_file);
+                    LoginResult {
+                        brain_id: brain.clone(),
+                        ok: false,
+                        skipped: false,
+                        message: format!("Kindprozess nicht lesbar: {err}"),
+                    }
+                }
             };
             results.push(res);
         }
@@ -148,9 +172,31 @@ fn login_all_parallel(
     results
 }
 
-/// Liest die Ergebniszeile aus der stdout des `login-worker`-Kindprozesses.
-/// Der Worker schreibt genau eine `LOGIN_RESULT=<json>`-Zeile; alles andere auf
-/// stdout sind menschliche Fortschrittszeilen und werden ignoriert.
+/// Liest die Ergebnisdatei eines beendeten `login-worker`-Kindprozesses und
+/// raeumt sie auf. Die Datei enthaelt die `LOGIN_RESULT=<json>`-Zeile.
+fn read_worker_result_file(brain: &str, path: &std::path::Path) -> LoginResult {
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(_) => {
+            let _ = std::fs::remove_file(path);
+            return LoginResult {
+                brain_id: brain.to_string(),
+                ok: false,
+                skipped: false,
+                message: "Kindprozess ohne Ergebnisdatei beendet".into(),
+            };
+        }
+    };
+    let _ = std::fs::remove_file(path);
+    let mut r = parse_login_result_line(&bytes);
+    if r.brain_id == "?" {
+        r.brain_id = brain.to_string();
+    }
+    r
+}
+
+/// Liest die Ergebniszeile aus stdout/-Datei des `login-worker`. Der Inhalt ist
+/// eine `LOGIN_RESULT=<json>`-Zeile; davor steht meist eine Fortschrittszeile.
 fn parse_login_result_line(stdout: &[u8]) -> LoginResult {
     const PREFIX: &str = "LOGIN_RESULT=";
     let text = String::from_utf8_lossy(stdout);
@@ -169,15 +215,24 @@ fn parse_login_result_line(stdout: &[u8]) -> LoginResult {
     }
 }
 
-/// Der Runner des `login-worker`-Subcommands: loggt EIN Brain ein und schreibt
-/// die `LOGIN_RESULT=`-Zeile auf stdout. Getrennt von `cmd_login` gehalten,
+/// Der Runner des `login-worker`-Subcommands: loggt EIN Brain ein. Ergebnis
+/// geht als `LOGIN_RESULT=<json>`-Zeile entweder in die `WEBAGENT_LOGIN_WORKER_RESULT`-
+/// Tempdatei (Parallel-Modus; stdout des Kindes bleibt fuer Fortschritt frei)
+/// oder auf stdout (manueller Aufruf). Getrennt von `cmd_login` gehalten,
 /// damit die Kindprozess-Ausgabe maschinenlesbar bleibt.
 pub fn run_login_worker(brain: &str, timeout_secs: u64, force: bool) -> i32 {
     let res = login_one(brain, Duration::from_secs(timeout_secs), force, None);
-    println!(
+    let line = format!(
         "LOGIN_RESULT={}",
         serde_json::to_string(&res).unwrap_or_else(|_| "{}".into())
     );
+    match std::env::var("WEBAGENT_LOGIN_WORKER_RESULT") {
+        Ok(path) => {
+            // Fortschritt des Kindes ging auf stdout (geerbt); Ergebnis in Datei.
+            let _ = std::fs::write(&path, line);
+        }
+        Err(_) => println!("{line}"),
+    }
     if res.ok || res.skipped {
         0
     } else {
@@ -523,8 +578,68 @@ mod tests {
         // Wir testen nur die strukturelle Vertraeglichkeit der Ausgabezeile.
         std::env::remove_var("WEBAGENT_USE_SHARED_BROWSER");
         std::env::remove_var("WEBAGENT_SHARED_BROWSER");
+        std::env::remove_var("WEBAGENT_LOGIN_WORKER_RESULT");
         let code = run_login_worker("__no_such_brain_xyz__", 1, false);
         // Backend-Fehler => ok=false => code 1 (kein Launch versucht).
         assert_eq!(code, 1);
+    }
+
+    #[test]
+    fn run_login_worker_writes_result_file_when_env_set() {
+        // Parallel-Modus: Kind schreibt LOGIN_RESULT in die Tempdatei statt
+        // auf stdout (Fortschritt bleibt dort menschenfreundlich).
+        std::env::remove_var("WEBAGENT_USE_SHARED_BROWSER");
+        std::env::remove_var("WEBAGENT_SHARED_BROWSER");
+        let path = std::env::temp_dir().join(format!(
+            "webagent-login-worker-test-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::env::set_var("WEBAGENT_LOGIN_WORKER_RESULT", &path);
+        let code = run_login_worker("__no_such_brain_xyz__", 1, false);
+        std::env::remove_var("WEBAGENT_LOGIN_WORKER_RESULT");
+        assert_eq!(code, 1);
+        let content = std::fs::read_to_string(&path).expect("Ergebnisdatei geschrieben");
+        let _ = std::fs::remove_file(&path);
+        assert!(content.starts_with("LOGIN_RESULT="), "got: {content}");
+        let parsed = parse_login_result_line(content.as_bytes());
+        assert_eq!(parsed.brain_id, "__no_such_brain_xyz__");
+        assert!(!parsed.ok);
+    }
+
+    #[test]
+    fn read_worker_result_file_reports_missing_file_honestly() {
+        // Crash des Kindes ohne Ergebnisdatei -> ehrliches Fehl-Result,
+        // keine leere Erfolgsmeldung. Und die Datei wird aufgeraeumt.
+        let path = std::env::temp_dir().join(format!(
+            "webagent-login-worker-nofile-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let r = read_worker_result_file("gemini", &path);
+        assert!(!r.ok);
+        assert_eq!(r.brain_id, "gemini");
+        assert!(r.message.contains("ohne Ergebnisdatei"));
+    }
+
+    #[test]
+    fn read_worker_result_file_falls_back_brain_from_callername() {
+        // Wenn der Worker nur "?"-brain_id schreibt (kaputte Zeile), behaelt
+        // der Parent die Caller-Brain-Zuordnung — absolut wesentlich, sonst
+        // wuerde der Abgleich am falschen Brain haengen.
+        let path = std::env::temp_dir().join(format!(
+            "webagent-login-worker-fallback-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(
+            &path,
+            "LOGIN_RESULT={\"brain_id\":\"?\",\"ok\":false,\"skipped\":false,\"message\":\"x\"}",
+        )
+        .unwrap();
+        let r = read_worker_result_file("chatgpt", &path);
+        assert_eq!(r.brain_id, "chatgpt");
+        assert_eq!(r.message, "x");
+        assert!(!path.exists());
     }
 }
