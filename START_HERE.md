@@ -1,15 +1,22 @@
 # START_HERE — Einstieg für neue Entwickler (auch KI)
 
-## AKTUELLER ARBEITSSTAND — 2026-09-07
+## AKTUELLER ARBEITSSTAND — 2026-09-12
 
 Dieser Block ist vor dem historischen Projektkontext zu lesen und ist die
 maßgebliche Einstiegslage für laufende Arbeit:
 
-- Checkout: `C:\Users\storax\Documents\Codex\2026-08-27\roadmap-zusammenfassen-chatgpt-conversation-6a90695d-b1e4\work\webagent-github-audit-20260829`
-- Branch dieses Dokumentationsstands: `fix/T-501-model-proof`
-- HEAD dieses Dokumentationsstands: `e5202f6`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
-- Der aktuelle technische Fahrplan steht in `docs/BRAIN_UNIFICATION_PLAN.md`. Er vereinheitlicht Vertrag, Senden, Antwortstream, Profil-Lease, Probe/Proof und Taskabschluss für alle Brains.
-- Die Aufgaben T-801 bis T-808 sind im `docs/TASKBOARD.json` angelegt und abhängig voneinander. T-801 und T-808 sind die ersten umsetzbaren Scheiben; ein Agent muss genau eine davon vor Änderungen claimen.
+- Checkout: `C:\Users\storax\projects\GitHub\webagent-rs`
+- Branch: `master`
+- HEAD: `3fc5cfb`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
+- **Release `v0.11.2` veröffentlicht** (Windows/Linux/Android, `https://github.com/st0rax/webagent-rs/releases/tag/v0.11.2`).
+- **Phase-8 (Brain-Vereinheitlichung T-801–T-808) vollständig done**: gemeinsamer
+  Brain-Vertrag, einheitliches Senden, Antwortstream, Profil-Lease, Probe/Proof,
+  Taskabschluss-Verifikation (E2E belegt), Run-Ledger/Crash-Recovery und
+  Live-Abnahme inkl. Windows-Prozessproben. Alle 26 Tasks im `docs/TASKBOARD.json`
+  sind `done`; neue Aufgaben stehen zunächst `free`.
+- Der aktuelle Stand gilt als v1.0-Anwärter: Der technische Fahrplan steht in
+  `docs/BRAIN_UNIFICATION_PLAN.md`; Live-Matrix-Belegen in
+  `docs/CAPABILITY_MATRIX.json` (`as_of` 2026-09-12, 46 frische Verify-Belege).
 - Historische Branch-, Build-, Binary- und Run-Angaben aus älteren Übergaben sind kein aktueller Beleg. Aktuelle Runs und Artefakte müssen im jeweiligen Run-Verzeichnis neu nachgewiesen werden.
 
 Das Dokument `docs/HANDOVER_TO_CODEX_2026-08-25.md` ist historische Übergabe
@@ -102,22 +109,10 @@ Arbeiten unter `C:\Users`.)
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
    auf `"done"` setzen und `done_at` ergänzen.
 
-**Aktuelle Vereinheitlichung:** Beginne mit `T-801` aus
-`docs/BRAIN_UNIFICATION_PLAN.md` oder beginne unabhängig mit `T-808` für das
-Run-Ledger. Die Aufgaben `T-802`–`T-807` sind durch Abhängigkeiten gesperrt,
-bis ihre Vorgänger abgeschlossen sind. Ältere freie
-Aufgaben dürfen nur nach erneutem Lesen der aktuellen JSON-Quelle übernommen
-werden.
-
-**Neue freie Aufgaben auf einen Blick:**
-
-| ID | Phase | Aufgabe | Typ |
-|---|---|---|---|
-| T-801 | 8 | Gemeinsamer Brain-Vertrag und Konformitätsfixtures | code |
-| T-808 | 8 | Dauerhaftes Run-Ledger und Crash-Recovery | code |
-| T-802–T-807 | 8 | Vereinheitlichung, Proof und Live-Abnahme; abhängig | code |
-
-Vollständige Liste: `docs/TASKBOARD.md`.
+**Aktueller Stand:** Phase-8 (T-801–T-808) ist abgeschlossen. Alle bisherigen
+Tasks sind `done`; neue Aufgaben werden als `free` in `docs/TASKBOARD.json`
+angelegt und übernommen wie oben beschrieben. Vor der Übernahme immer die
+aktuelle JSON-Quelle lesen (Claim = Quelle der Wahrheit).
 
 **Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
 
@@ -136,13 +131,15 @@ cargo check --no-default-features
 # (optional) Binärgewicht im Release-Artefakt für das <10-MB-Budget
 ```
 
-Bekannter Stand: 1238 passed / 1 ignored (Stand 2026‑09‑02).
+Bekannter Stand: 1388 passed / 0 failed / 1 ignored (Stand 2026‑09‑12).
 
-## 5. Nächste offene Scheiben
+## 5. Verbleibende Arbeit
 
-- **T-101** und **T-102** sind erledigt (`local/opencode`).
-- **T-103** und **T-104** sind erledigt (`chatgpt-codex`); **T-201** … bleibt frei.
-  Siehe `docs/TASKBOARD.md`.
+- Phase-8 abgeschlossen (T-801–T-808 done), Release v0.11.2 veröffentlicht.
+- Offene Matrix-Grenzen sind dokumentierte Befunde (`failed`/`unreachable`/
+  `removed`/`not_run` laut `docs/CAPABILITY_MATRIX.json`), kein offener Task.
+- Neuer Bedarf wird als freie Aufgabe im TASKBOARD eintragen und nach dem
+  Claim-Verfahren umgesetzt.
 
 ## 6. Grenzen (nicht überschreiten)
 

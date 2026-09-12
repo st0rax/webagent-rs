@@ -1,6 +1,16 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-11:** `master` auf `1f16896`. Heutige Sitzung:
+> **Aktualisiert 2026-09-12:** `master` auf `3fc5cfb`. **Phase-8 komplett done**
+> und **Release `v0.11.2` veröffentlicht** (Windows/Linux/Android):
+> - T-805/T-806/T-807 abgenommen: 46 frische Live-Verify-Belege (alle 9 Brains)
+>   in `docs/proofs/T-501/live_verify_2026-09-12.json`, Matrix `as_of 2026-09-12`.
+> - T-806 Receipt-E2E live belegt (negativ fail-closed + positiv done,
+>   `docs/proofs/T-806/`); T-807 Windows-Prozessprobe + Release-Binary-E2E
+>   (`docs/proofs/T-807/`), alle 26 Tasks im TASKBOARD `done`.
+> - Release-Fix im CI: `build.rs` linkt `resource.o` nur noch unter GNU/mingw
+>   (MSVC-CI nutzt winres `resource.lib`) — behebt `LNK1181` im Release-Workflow.
+> - Gates: `cargo test --lib` 1388 passed / 0 failed / 1 ignored;
+>   `--features tui` und `--no-default-features` grün.
 > - perplexity als Custom-Brain registriert (`custom_brains.json`, `%LOCALAPPDATA%\\webagent\\data`) — diagnose/verify erreichbar
 > - deepseek model/mode_switch removed by-design (Modus-Bar vom Anbieter entfernt)
 > - effort-Spalte komplett vermessen: claude/qwen passed, alle anderen not_run/failed
