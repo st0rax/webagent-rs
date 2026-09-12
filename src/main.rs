@@ -132,6 +132,7 @@ fn dispatch(command: Commands) -> i32 {
             complete_task,
             proof_path,
             acquire_task,
+            completion_receipt,
         } => cmd_run(
             &brain,
             &task,
@@ -142,6 +143,7 @@ fn dispatch(command: Commands) -> i32 {
             complete_task.as_deref(),
             proof_path.as_deref(),
             acquire_task.as_deref(),
+            completion_receipt.as_deref(),
         ),
 
         Commands::Ask {

@@ -764,7 +764,7 @@ pub fn cmd_ask(
             }
         }
     } else {
-        cmd_run(brain, task, resume, headless, max_cycles, no_memory, None, None, None)
+        cmd_run(brain, task, resume, headless, max_cycles, no_memory, None, None, None, None)
     }
 }
 
@@ -778,6 +778,7 @@ pub fn cmd_run(
     complete_task: Option<&str>,
     proof_path: Option<&std::path::Path>,
     acquire_task: Option<&str>,
+    completion_receipt: Option<&std::path::Path>,
 ) -> i32 {
     use webagent::browser::WebBrainBackend;
     use webagent::controller::{AgentController, RunOptions};
@@ -841,13 +842,66 @@ pub fn cmd_run(
             if meta.status == "done" {
                 if let Some(task_id) = complete_task {
                     let proof = proof_path.expect("clap enforces --proof-path");
-                    if let Err(e) = webagent::taskboard::complete_claim(
-                        board,
-                        task_id,
-                        &task_owner,
-                        &branch_name(),
-                        proof,
-                    ) {
+                    let result = match completion_receipt {
+                        Some(receipt_path) => {
+                            // T-806 verifizierter Abschluss: das Brain-Manifest
+                            // (Receipt) ist ein Antrag; nur ein gegen Run-ID,
+                            // Commit, Brain und alle Pflichtkriterien geprüfter
+                            // Antrag ergibt done. Ablehnungen landen im Run-Eventlog.
+                            let receipt_json = std::fs::read_to_string(receipt_path)
+                                .map_err(|e| format!("Receipt lesen: {e}"));
+                            match receipt_json {
+                                Ok(json) => {
+                                    let receipt =
+                                        match serde_json::from_str::<webagent::acceptance::CompletionReceipt>(
+                                            &json,
+                                        ) {
+                                            Ok(r) => r,
+                                            Err(e) => {
+                                                return {
+                                                    eprintln!(
+                                                        "[run] Taskabschluss verweigert: Receipt ungueltig: {e}"
+                                                    );
+                                                    1
+                                                };
+                                            }
+                                        };
+                                    let expected =
+                                        webagent::acceptance::ExpectedCompletion {
+                                            task_id: task_id.to_string(),
+                                            run_id: meta.run_id.clone(),
+                                            brain_id: brain.clone(),
+                                            commit: head_commit(),
+                                            run_status: meta.status.clone(),
+                                        };
+                                    let runs_dir = webagent::config::runs_dir();
+                                    let store = RunStore::new(
+                                        runs_dir.clone(),
+                                        runs_dir.join("logs"),
+                                    );
+                                    webagent::taskboard::complete_claim_verified(
+                                        board,
+                                        task_id,
+                                        &task_owner,
+                                        &branch_name(),
+                                        proof,
+                                        &receipt,
+                                        &expected,
+                                        &store,
+                                    )
+                                }
+                                Err(e) => Err(e),
+                            }
+                        }
+                        None => webagent::taskboard::complete_claim(
+                            board,
+                            task_id,
+                            &task_owner,
+                            &branch_name(),
+                            proof,
+                        ),
+                    };
+                    if let Err(e) = result {
                         eprintln!("[run] Taskabschluss verweigert: {e}");
                         return 1;
                     }
@@ -877,6 +931,18 @@ fn branch_name() -> String {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+        .unwrap_or_default()
+}
+
+/// Aktueller HEAD-Commit (SHA-1/256) für die Abschluss-Belegbindung: ein
+/// Receipt gilt nur für den Commit, unter dem der Run wirklich lief.
+fn head_commit() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
         .unwrap_or_default()
 }
 

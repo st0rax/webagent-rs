@@ -82,8 +82,10 @@ Ergebnisse liefert und Artefakthashes vorhanden sind. `Failed`/`Unreachable`/
 `NotRun`-Kriterien und leere/differente Belege werden abgelehnt.
 `taskboard::complete_claim_verified` schaltet bei Ablehnung nicht auf `done`,
 sondern persistiert die Ursache via `RunStore::record_rejection` (Event-Typ
-`task_completion_rejected`) in der lueckenlosen Run-Ereigniskette. CLI-Anbindung
-an den Run-Abschluss und die Live-Loops folgen in T-807.
+`task_completion_rejected`) in der lueckenlosen Run-Ereigniskette.
+CLI: `run --completion-receipt <json>` bindet den Abschluss an
+Run-ID/HEAD-Commit/Brain; ohne passendes Receipt kein `done`. Live-Loops
+(Controller erzeugt Receipt aus verifizierten Capabilities) folgen in T-807.
 
 ## T-804-Status (2026-09-12)
 

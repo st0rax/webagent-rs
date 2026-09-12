@@ -57,6 +57,11 @@ pub enum Commands {
         #[arg(long)]
         proof_path: Option<std::path::PathBuf>,
 
+        /// Abschluss-Receipt (JSON, Acceptance-Version 1) zur Bindung des
+        /// Belegs an Run-ID/Commit/Brain — ohne passendes Receipt kein done
+        #[arg(long, requires = "complete_task")]
+        completion_receipt: Option<std::path::PathBuf>,
+
         /// Task offiziell claimen (nur wenn im Taskboard `free` und nicht per
         /// claim_lock gesperrt; verhindert Doppel-Claims)
         #[arg(long)]
