@@ -75,7 +75,7 @@ Der Chat plant, dein Rechner führt aus. Prüfen, ob eine Oberfläche fahrbar is
 > [`CONTRIBUTING.md`](CONTRIBUTING.md) und die Zusammenarbeit in
 > [`docs/COLLABORATION.md`](docs/COLLABORATION.md).
 
-> **Status (v0.11.3, vorbereitet):** Die lokale **Web-UI ist die primäre Oberfläche**
+> **Status (v0.11.3, veröffentlicht):** Die lokale **Web-UI ist die primäre Oberfläche**
 > und **echt an `/api/*` angebunden** (kein Prototyp mehr): Brain-Health,
 > Sessions anlegen/wechseln, Chat live als Event-Stream, Quellen (`/quelle`),
 > Gruppenläufe (Runden + Synthese), Datei-Upload, Brain-Fenster show/hide,

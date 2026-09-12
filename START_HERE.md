@@ -7,8 +7,8 @@ maßgebliche Einstiegslage für laufende Arbeit:
 
 - Checkout: `C:\Users\storax\projects\GitHub\webagent-rs`
 - Branch: `master`
-- HEAD: `3fc5cfb`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
-- **Release `v0.11.2` veröffentlicht** (Windows/Linux/Android, `https://github.com/st0rax/webagent-rs/releases/tag/v0.11.2`).
+- HEAD: `6409ea2`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
+- **Release `v0.11.3` veröffentlicht** (Windows/Linux/Android, `https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3`).
 - **Phase-8 (Brain-Vereinheitlichung T-801–T-808) vollständig done**: gemeinsamer
   Brain-Vertrag, einheitliches Senden, Antwortstream, Profil-Lease, Probe/Proof,
   Taskabschluss-Verifikation (E2E belegt), Run-Ledger/Crash-Recovery und
@@ -135,7 +135,7 @@ Bekannter Stand: 1388 passed / 0 failed / 1 ignored (Stand 2026‑09‑12).
 
 ## 5. Verbleibende Arbeit
 
-- Phase-8 abgeschlossen (T-801–T-808 done), Release v0.11.2 veröffentlicht.
+- Phase-8 abgeschlossen (T-801–T-808 done), Release v0.11.3 veröffentlicht.
 - Offene Matrix-Grenzen sind dokumentierte Befunde (`failed`/`unreachable`/
   `removed`/`not_run` laut `docs/CAPABILITY_MATRIX.json`), kein offener Task.
 - Neuer Bedarf wird als freie Aufgabe im TASKBOARD eintragen und nach dem

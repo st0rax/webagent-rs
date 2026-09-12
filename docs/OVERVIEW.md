@@ -1,6 +1,6 @@
 # Webagent: Systemüberblick
 
-**Stand:** 2026-09-12 (Release `v0.11.3` vorbereitet). Diese Datei ist die
+**Stand:** 2026-09-12 (Release `v0.11.3` veröffentlicht). Diese Datei ist die
 aktuelle Produkt- und Architekturübersicht; die kurze operative Wahrheit liegt
 in `docs/CURRENT_WORK.md`.
 
