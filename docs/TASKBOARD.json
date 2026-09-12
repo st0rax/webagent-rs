@@ -549,7 +549,7 @@
       "done_at": "2026-09-12T10:00:00+02:00"
     },
     {
-      "status": "free",
+      "status": "done",
       "claimed_at": null,
       "owner": null,
       "id": "T-904",
@@ -561,11 +561,11 @@
       ],
       "dod": "Adaptervertrag fuer mindestens ein VerifiedFree-Angebot live erfuellt oder Status als Providergrenze dokumentiert; Invariante free_only bleibt",
       "phase": "9",
-      "proof_path": null,
+      "proof_path": "docs/proofs/T-904/verifiedfree-grenze-2026-09-12.json",
       "verification": "cargo test --lib; doc-Befund",
       "title": "Free-Cloud-Scheibe: Registry/decide mit echten VerifiedFree-Adaptern verbinden",
       "depends_on": [],
-      "done_at": null
+      "done_at": "2026-09-12T11:00:00+02:00"
     }
   ]
 }

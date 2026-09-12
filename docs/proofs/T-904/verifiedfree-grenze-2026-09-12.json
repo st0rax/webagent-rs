@@ -1,0 +1,27 @@
+{
+  "task": "T-904",
+  "title": "Free-Cloud-Scheibe: VerifiedFree-Adapter-Realitaet als Providergrenze dokumentiert",
+  "date": "2026-09-12",
+  "status": "done-as-grenze",
+  "dod_option": "DoD-Zweig 2: 'Status als Providergrenze dokumentiert; Invariante free_only bleibt.'",
+  "regression_update": "Keine Code-Aenderung noetig: Registry-Invariante bereits in src/free_cloud_chat.rs implementiert und durch cargo test --lib (1388 passed) abgedeckt.",
+  "registry_facts": {
+    "webagent/local-mock-stream": {"access": "VerifiedFree", "adapter_compatible": true, "last_verified_at": "local-contract", "role": "deterministischer In-Process-Referenzadapter (kein externes Angebot)"},
+    "webagent/hub-metadata": {"access": "VerifiedFree", "adapter_compatible": true, "role": "lokaler Hub-Metadaten-Vertrag (pure registry)"},
+    "huggingchat/catalog": {"access": "ManualOnly", "adapter_compatible": false, "role": "HuggingChat oeffentlicher Chat"},
+    "huggingface/inference-providers": {"access": "ExplicitCredits", "adapter_compatible": true, "role": "HF Inference API - freies Konto hat 0,10 USD/Monat Testguthaben, danach nutzungsabhaengige Bezahlung"},
+    "huggingface/spaces": {"access": "ManualOnly", "adapter_compatible": false, "role": "HF Spaces - oeffentliche Spaces, kein stabiler Chatvertrag"}
+  },
+  "why_no_verifiedfree_external": "Es existiert heute kein echtes externes Angebot ohne Kosten- oder Friktionsrisiko, das den VerifiedFree-Standard erfuellt: HF Inference hat ein 0,10-USD-Testguthaben mit automatischer Bezahlung bei Verbrauch (Kostenrisiko, Direktive 8: gezielte Uebergabe noetig); HF Spaces/HuggingChat bieten keinen stabilen adapter. Ein 'VerifiedFree'-Status ohne wiederholten technischen Nachweis waere ein Schwebezustand - verbotene Verfluessigung der strengen Zugangs-Invariante.",
+  "decision": {
+    "free_only_invariant": true,
+    "route_logic": "In free_only=true routet nur VerifiedFree UND adapter_compatible=true auf Auto; jeder andere Status wird vor Adapterausfuehrung zurueckgewiesen (unveraendert, Unit-getestet)",
+    "action": "Bewusst KEINE Freigabe fuer HF-Inference-Adapter ohne Nutzerentscheidung (Kosten-/Zahlungsdaten-Sperre nach Arbeitsdirektive 8). Die Grenze ist statt dessen dokumentiert.",
+    "next_step_if_requested": "Nur nach ausdruecklicher Freigabe des Nutzers (Arbeitsdirektive 8): ein HF-Inference-Beweislauf mit einem echten kostenfreien Testkonto gegen die Registry-Invariante. Ohne diese Freigabe bleibt die Grenze dokumentiert und der Status VerifiedFree unangetastet."
+  },
+  "proofs": [
+    "src/free_cloud_chat.rs (AccessMode, decide_route, Registry-Eintraege)",
+    "docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md (Kosten- und Sicherheitsentscheidung)",
+    "cargo test --lib: 1388 passed / 0 failed (Invariante gruen)"
+  ]
+}
