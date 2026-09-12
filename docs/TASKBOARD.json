@@ -586,6 +586,27 @@
       "title": "Web-UI: Fake-Prototyp -> echte API-Anbindung + Layout (T-905)",
       "depends_on": [],
       "done_at": "2026-09-12T13:30:00+02:00"
+    },
+    {
+      "status": "done",
+      "claimed_at": "2026-09-12T14:00:00+02:00",
+      "owner": "webagent:qwen",
+      "branch": "master",
+      "id": "T-906",
+      "type": "code",
+      "suitable": [
+        "local/opencode",
+        "webagent:qwen"
+      ],
+      "dod": "Web-UI schliesst T-905-Restluecken: Gruppenlauf oeffnet die erzeugte Session (run_id) mit Live-Events, Composer hat Datei-Upload (POST /sessions/{id}/upload -> 202), Brain-Detail hat Fenster-Anzeigen/Verstecken (show|hide). Gates gruen, HTML < 48k, Beweis mit Live-Vertraegen",
+      "phase": "9",
+      "proof_path": "docs/proofs/T-906/webui-t906-live-2026-09-12.json",
+      "verification": "cargo test --lib; Server starten, Upload/Group-run/show-hide Vertraege live",
+      "title": "Web-UI: T-905-Restluecken schliessen (Gruppenlauf-Live, Upload, Brain-Fenster)",
+      "depends_on": [
+        "T-905"
+      ],
+      "done_at": "2026-09-12T14:30:00+02:00"
     }
   ]
 }

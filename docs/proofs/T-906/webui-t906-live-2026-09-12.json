@@ -1,0 +1,36 @@
+{
+  "task": "T-906",
+  "title": "Web-UI: T-905-Restluecken schliessen (Gruppenlauf-Live, Upload, Brain-Fenster)",
+  "date": "2026-09-12",
+  "status": "live-verifiziert",
+  "head": "master (nach T-906-Commit)",
+  "restluecken_aus_t905": [
+    "Gruppenlauf rendert Events noch nicht in der UI",
+    "Upload-Endpunkt (202 accepted, no disk) noch nicht in UI-Komposer integriert",
+    "Webview-show/hide-Actions (POST /api/brains/{id}/show|hide) fehlen in der UI"
+  ],
+  "umsetzung": {
+    "gruppenlauf_live": "runGroup(id): POST /api/groups/{id}/run {task,rounds} -> Antwort enthaelt run_id (echte Session) -> UI wechselt in den Chat dieser Session und pollt events?since= live; 409-busy-Retry bis zu 50x mit Backoff",
+    "upload": "Composer hat Datei-Feld (#upload-input); uploadFile(files) postet {filename: name} an POST /api/sessions/{id}/upload, zeigt user-Nachricht '[Datei angehaengt: name]' und true/false-Speicherstatus; manuelles Reset nach Upload",
+    "brain_fenster": "Brain-Detail (#detail) hat 'Fenster anzeigen'/'Fenster verstecken'; ruft POST /api/brains/{id}/show bzw. /hide; Errors (kein offenes Fenster / webview fehlt) erscheinen als Banner + Activity"
+  },
+  "live_beweis": {
+    "server": "cargo run -- ui --api --port 8792 --no-open --headless (WEBAGENT_API_KEY gesetzt)",
+    "html": "GET / -> len=32680 Bytes (< 48k), upload-input=ja, data-bshow=ja, runGroup=ja",
+    "upload_ohne_session": "POST /api/sessions/nope/upload -> HTTP 404 session_not_found",
+    "upload_mit_session": "POST /api/sessions/{id}/upload {filename:'spec.txt'} -> accepted=true stored=false file=spec.txt",
+    "brain_show_ohne_webview": "POST /api/brains/chatgpt/show -> 404 {error:'kein offenes Fenster fuer chatgpt', hint:'kein laufendes Brain-Fenster; UI-Chat starten oder Shared-Pool nutzen'} (erwartet ohne geoeffnete Session/webview; UI zeigt Banner)",
+    "gruppe_anlegen": "POST /api/groups {name:'t906-demo', brains:[chatgpt,qwen]} -> id=t906-demo",
+    "gruppenlauf": "POST /api/groups/t906-demo/run {task:'T-906 demo', rounds:1} -> 201 {run_id:'group-t906-demo-20260912_113621-1', session.status:'done'}",
+    "gruppenlauf_events": "GET /api/sessions/group-t906-demo-20260912_113621-1/events?since=0 -> 11 Events: [1] Started{brain:'group:t906-demo'}, [2] Status round:1:chatgpt, [3] TextDelta '[chatgpt] chatgpt: verstanden.', [4] TextComplete, [5] Status round:1:qwen, [6] TextDelta '[qwen] qwen: verstanden.', [8] Status synthesis:chatgpt, [9] TextDelta 'Synthese (chatgpt).', [11] Done{status:'done'}",
+    "fazit": "Die UI oeffnet nach Gruppenlauf die erzeugte Session und rendert diese Event-Kette (rundenbezogen, mit Synthese) live im Nachrichten- und Aktivitaetsbereich"
+  },
+  "tests": {
+    "web_ui_tests": "cargo test --lib web_ui -> 27 passed",
+    "full_gate": "cargo test --lib -> 1388 passed, 0 failed, 1 ignored"
+  },
+  "verbleibende_grenzen": {
+    "upload_speicherung": "Backend nimmt Upload nur an (202, stored=false, keine Platte) - bewusstes T-202-Verhalten; echte Dateispeicherung waere neuer API-Vertrag",
+    "brain_fenster": "show/hide funktionieren voll nur mit geoeffneter UI-Session desselben Brains oder Shared-Pool (webview-Feature); ohne Browserfenster sauberer 404-Hint"
+  }
+}

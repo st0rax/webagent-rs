@@ -66,12 +66,13 @@
     .activity { border-top: 1px solid var(--line); background: var(--panel); padding: .4rem .8rem; }
     .activity[hidden] { display: none; }
     .activity ol { margin: .3rem 0 0; padding-left: 1.2rem; color: var(--muted); max-height: 8rem; overflow: auto; }
-    form.composer { display: grid; grid-template-columns: 1fr auto auto; gap: .5rem; align-items: end;
+    form.composer { display: grid; grid-template-columns: 1fr auto auto auto; gap: .5rem; align-items: end;
       padding: .7rem; border-top: 1px solid var(--line); background: var(--panel); }
     textarea { width: 100%; min-height: 3.2rem; resize: vertical; background: var(--bg);
       border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem; }
     .editor { position: relative; min-width: 0; }
     .editor textarea { display: block; }
+    .filelabel { display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; }
     .hint { position: absolute; inset: .5rem; pointer-events: none; color: var(--muted);
       font-size: .85rem; line-height: 1.6; white-space: pre-wrap; }
     .hint[hidden] { display: none; }
@@ -173,6 +174,7 @@
             <div class="hint" id="composer-hint" aria-hidden="true">z. B. <code>/quelle list</code> Quellenliste<br>z. B. <code>/quelle claude openrouter --save</code> Quelle wechseln</div>
           </div>
           <button class="primary" type="submit" id="send">Senden</button>
+          <label class="filelabel" for="upload-input">Datei<input type="file" id="upload-input" hidden></label>
           <button type="button" id="stop">Stoppen</button>
         </form>
         <div class="sr" role="status" aria-live="polite" id="live"></div>
@@ -485,6 +487,26 @@
       }
     }
 
+    async function hideBrain(id) {
+      try {
+        const data = await api("POST", "/api/brains/" + encodeURIComponent(id) + "/hide");
+        addAct("Brain " + id + " versteckt (" + (data.via || "?") + ")");
+        say("Brain-Fenster versteckt");
+      } catch (e) {
+        showBanner("Verstecken: " + e.message);
+      }
+    }
+
+    async function showBrain(id) {
+      try {
+        const data = await api("POST", "/api/brains/" + encodeURIComponent(id) + "/show");
+        addAct("Brain " + id + " gezeigt (" + (data.via || "?") + ")");
+        say("Brain-Fenster gezeigt");
+      } catch (e) {
+        showBanner("Zeigen: " + e.message);
+      }
+    }
+
     async function showBrainDetail(id) {
       try {
         const cap = await api("GET", "/api/capability/" + encodeURIComponent(id));
@@ -502,9 +524,13 @@
           ["Letzter Lauf", bc.last_done_run || "-"],
           ["Recovery", bc.recovery_hint || "-"],
         ];
-        showDetail("Brain: " + id, rows.map(function (r) {
+        const actions = "<p>" +
+          "<button type=\"button\" data-bshow=\"" + id + "\">Fenster anzeigen</button> " +
+          "<button type=\"button\" data-bhide=\"" + id + "\">Fenster verstecken</button>" +
+          "</p>";
+        showDetailBody("Brain: " + id, actions + "<dl>" + rows.map(function (r) {
           return "<dt>" + r[0] + "</dt><dd>" + escRow(String(r[1])) + "</dd>";
-        }).join(""));
+        }).join("") + "</dl>");
       } catch (e) {
         showDetail("Brain: " + id, "<p class=\"warn\">Capability nicht erreichbar: " + escRow(e.message) + "</p>");
       }
@@ -539,12 +565,16 @@
       $("messages").hidden = false;
     }
 
-    function showDetail(title, bodyHtml) {
+    function showDetailBody(title, bodyHtml) {
       $("detail-title").textContent = title;
       $("detail-body").innerHTML = bodyHtml;
       $("messages").hidden = true;
       $("detail").hidden = false;
       $("back-chat").focus();
+    }
+
+    function showDetail(title, bodyHtml) {
+      showDetailBody(title, bodyHtml);
     }
 
     async function loadGroups() {
@@ -556,6 +586,58 @@
             " <span class=\"st\">" + (g.brains || []).join(",") + "</span></button></li>";
         }).join("");
       } catch (e) { /* ignore */ }
+    }
+
+    async function runGroup(id) {
+      const g = state.groups.find(function (x) { return x.id === id; });
+      if (!g) return;
+      let wait = 2000;
+      for (let i = 0; i < 50; i++) {
+        try {
+          const data = await api("POST", "/api/groups/" + encodeURIComponent(id) + "/run", {
+            task: $("gr-task").value.trim(),
+            rounds: parseInt($("gr-rounds").value, 10) || 1,
+          });
+          if (data && data.run_id) {
+            addAct("Gruppenlauf " + g.name + " gestartet: " + data.run_id);
+            say("Gruppenlauf gestartet");
+            showChat();
+            openSession(data.run_id);
+            return;
+          }
+        } catch (e) {
+          if (e.status === 409) {
+            await new Promise(function (r) { setTimeout(r, wait); });
+            continue;
+          }
+          showBanner("Gruppenlauf: " + e.message);
+          return;
+        }
+        return;
+      }
+      showBanner("Gruppenlauf: Server nicht bereit.");
+    }
+
+    async function uploadFile(files) {
+      if (!state.active) {
+        showBanner("Zuerst eine Sitzung oeffnen, dann Datei anhaengen.");
+        $("upload-input").value = "";
+        return;
+      }
+      if (!files || !files.length) return;
+      const f = files[0];
+      try {
+        const data = await api("POST", "/api/sessions/" + encodeURIComponent(state.active) + "/upload",
+          { filename: f.name });
+        addAct("Datei angehaengt: " + f.name + (data.stored ? " (gespeichert)" : " (angefuegt, echte Speicherung: abwarten)"));
+        const snap = state.sessions.find(function (s) { return s.run_id === state.active; });
+        addMessage("du", "[Datei angehaengt: " + f.name + "]", "user");
+        void snap;
+      } catch (e) {
+        showBanner("Upload: " + e.message);
+      } finally {
+        $("upload-input").value = "";
+      }
     }
 
     function showGroupDetail(id) {
@@ -577,16 +659,7 @@
       showDetail("Gruppe: " + g.name, "<dl>" + rows + "</dl>" + form);
       $("group-run").addEventListener("submit", async function (ev) {
         ev.preventDefault();
-        try {
-          await api("POST", "/api/groups/" + encodeURIComponent(g.id) + "/run", {
-            task: $("gr-task").value.trim(),
-            rounds: parseInt($("gr-rounds").value, 10) || 1,
-          });
-          addAct("Gruppenlauf " + g.name + " gestartet");
-          say("Gruppenlauf gestartet");
-        } catch (e) {
-          showBanner("Gruppenlauf: " + e.message);
-        }
+        await runGroup(id);
       });
     }
 
@@ -609,6 +682,10 @@
     }
 
     document.addEventListener("click", function (e) {
+      const bshow = e.target.closest("[data-bshow]");
+      if (bshow) { showBrain(bshow.getAttribute("data-bshow")); return; }
+      const bhide = e.target.closest("[data-bhide]");
+      if (bhide) { hideBrain(bhide.getAttribute("data-bhide")); return; }
       const b = e.target.closest("[data-brain]");
       if (b) { showBrainDetail(b.getAttribute("data-brain")); return; }
       const s = e.target.closest("[data-session]");
@@ -620,6 +697,7 @@
     });
 
     $("composer").addEventListener("submit", function (ev) { ev.preventDefault(); sendText(); });
+    $("upload-input").addEventListener("change", function () { uploadFile(this.files); });
     $("new-session").addEventListener("submit", async function (ev) {
       ev.preventDefault();
       const brain = $("new-brain").value;
