@@ -7,7 +7,7 @@ maßgebliche Einstiegslage für laufende Arbeit:
 
 - Checkout: `C:\Users\storax\projects\GitHub\webagent-rs`
 - Branch: `master`
-- HEAD: `6409ea2`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
+- HEAD: `4b2bdc7`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
 - **Release `v0.11.3` veröffentlicht** (Windows/Linux/Android, `https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3`).
 - **Phase-8 (Brain-Vereinheitlichung T-801–T-808) vollständig done**: gemeinsamer
   Brain-Vertrag, einheitliches Senden, Antwortstream, Profil-Lease, Probe/Proof,
