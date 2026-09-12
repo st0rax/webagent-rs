@@ -104,7 +104,7 @@ fn run() -> i32 {
             None,
         );
         if cli.skip_startup_reconcile {
-            eprintln!("[runs] Startup-Reconcile übersprungen (--skip-startup-reconcile).");
+            println!("[runs] Startup-Reconcile übersprungen (--skip-startup-reconcile).");
         } else {
             let repaired = startup_reconcile_runs();
             if !repaired.is_empty() {

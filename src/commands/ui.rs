@@ -338,7 +338,7 @@ pub fn cmd_shot(brain: Option<&str>, out: Option<&str>, open: Option<&str>, head
                 continue;
             }
         };
-        eprintln!("[shot] {id}: nehme Oberflaeche auf (headless={headless})…");
+        println!("[shot] {id}: nehme Oberflaeche auf (headless={headless})…");
         match backend.live_screenshot_with(headless, open) {
             Ok(png) => {
                 let path = dir.join(format!("{id}.png"));
@@ -389,7 +389,7 @@ pub fn cmd_survey(
                 continue;
             }
         };
-        eprintln!("[survey] {id}: oeffne Oberflaeche (headless={headless})…");
+        println!("[survey] {id}: oeffne Oberflaeche (headless={headless})…");
         let report = match backend.live_survey_with(headless, open) {
             Ok(r) => r,
             Err(e) => {
@@ -619,7 +619,7 @@ pub fn cmd_probe(
     };
 
     if stop_diff {
-        eprintln!("[probe] {id}: Probe senden, waehrend + nach der Generierung scannen…");
+        println!("[probe] {id}: Probe senden, waehrend + nach der Generierung scannen…");
         return match backend
             .probe_stop_by_disappearance(headless, &probe_message(&webagent::now_rfc3339()))
         {
@@ -658,11 +658,11 @@ pub fn cmd_probe(
         };
     }
 
-    eprintln!("[probe] {id}: oeffne Oberflaeche (headless={headless})…");
+    println!("[probe] {id}: oeffne Oberflaeche (headless={headless})…");
     // `--dump-text` ist ein eigener Lauf: Er sucht den ANTWORT-Container, den
     // der regulaere Scan strukturell nicht sehen kann, und endet danach.
     if dump_text {
-        eprintln!("[probe] {id}: sende Probe und sammle Textcontainer…");
+        println!("[probe] {id}: sende Probe und sammle Textcontainer…");
         let kandidaten = match backend
             .probe_text_generating(headless, &probe_message(&webagent::now_rfc3339()))
         {
@@ -705,7 +705,7 @@ pub fn cmd_probe(
         // Der Stop-Knopf existiert nur waehrend einer laufenden Antwort; ein
         // Scan im Ruhezustand kann ihn nicht finden. Kostet eine echte
         // Nachricht — deshalb nur auf ausdrueckliche Anforderung.
-        eprintln!("[probe] {id}: sende Probe und scanne waehrend der Generierung…");
+        println!("[probe] {id}: sende Probe und scanne waehrend der Generierung…");
         match backend.probe_surface_generating(headless, &probe_message(&webagent::now_rfc3339())) {
             Ok(p) => p,
             Err(e) => {
@@ -763,8 +763,8 @@ pub fn cmd_probe(
     }
 
     if proposals.is_empty() {
-        eprintln!("[probe] {id}: keine Bedienelemente gefunden — ist ein Login noetig?");
-        eprintln!("[probe] Tipp: mit --visible laeuft der Browser sichtbar, dann einloggen.");
+        println!("[probe] {id}: keine Bedienelemente gefunden — ist ein Login noetig?");
+        println!("[probe] Tipp: mit --visible laeuft der Browser sichtbar, dann einloggen.");
         return 1;
     }
 
@@ -829,8 +829,8 @@ pub fn cmd_probe(
     }
 
     if !write {
-        eprintln!();
-        eprintln!("[probe] kein Schreiben (--write fehlt). Funde oben = Vorschlaege.");
+        println!();
+        println!("[probe] kein Schreiben (--write fehlt). Funde oben = Vorschlaege.");
         return 0;
     }
 

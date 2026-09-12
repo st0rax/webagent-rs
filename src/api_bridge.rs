@@ -130,7 +130,7 @@ pub fn serve(config: BridgeConfig) -> Result<(), String> {
     let listener = TcpListener::bind(config.bind)
         .map_err(|error| format!("API-Bridge nicht bindbar: {error}"))?;
     let bound = listener.local_addr().unwrap_or(config.bind);
-    eprintln!("[api] Bridge aktiv auf http://{bound}");
+    println!("[api] Bridge aktiv auf http://{bound}");
 
     accept_loop(listener, config)
 }

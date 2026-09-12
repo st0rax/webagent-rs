@@ -946,9 +946,9 @@ pub fn cmd_login_all(timeout_secs: u64, force: bool, parallel: usize) -> i32 {
         parallel
     };
     if parallel == 0 {
-        eprintln!("[login-all] sequenziell, {timeout_secs}s pro Brain (profiles/<brain>)…");
+        println!("[login-all] sequenziell, {timeout_secs}s pro Brain (profiles/<brain>)…");
     } else {
-        eprintln!("[login-all] parallel={parallel} (experimentell), {timeout_secs}s pro Brain…");
+        println!("[login-all] parallel={parallel} (experimentell), {timeout_secs}s pro Brain…");
     }
     let results = webagent::login::login_all(Duration::from_secs(timeout_secs), parallel, force);
     let mut fail = 0usize;
@@ -1151,7 +1151,7 @@ pub fn cmd_diagnose(brain: &str, headless: bool) -> i32 {
             return 2;
         }
     };
-    eprintln!("[diagnose] {brain}: starte Browser (headless={headless})…");
+    println!("[diagnose] {brain}: starte Browser (headless={headless})…");
     match backend.live_diagnose(headless) {
         Ok(d) => {
             let ok = |b: bool| if b { "ok" } else { "FEHLT" };

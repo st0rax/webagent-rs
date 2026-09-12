@@ -66,9 +66,9 @@ pub fn serve(config: UiConfig) -> Result<(), String> {
         .local_addr()
         .map_err(|error| format!("gebundene Adresse unlesbar: {error}"))?;
     let url = format!("http://{local}/");
-    eprintln!("[ui] Web-UI auf {url} (eingebettete Assets)");
+    println!("[ui] Web-UI auf {url} (eingebettete Assets)");
     if config.api_bridge.is_some() {
-        eprintln!("[ui] API-Rolle aktiv: /v1/* auf {url} (Bearer-Schutz)");
+        println!("[ui] API-Rolle aktiv: /v1/* auf {url} (Bearer-Schutz)");
     }
     if config.open_browser {
         open_browser(&url);

@@ -157,9 +157,12 @@ Arbeitsverzeichnisses nach Aufgaben.
 **Dogfooding:** Testfall-Ideen für edit kamen von webagent selbst (zai, run
 20260720_150236, 3 Zyklen) — 2 davon fehlten in der Suite (Umlaute,
 Anfang/Ende-Ersetzung) und wurden übernommen. Dabei gefundene Bugs/Findings:
-- webagent schreibt normale Fortschritts-Zeilen auf stderr → PowerShell-Wrapper
+- ~~webagent schreibt normale Fortschritts-Zeilen auf stderr → PowerShell-Wrapper
   rendern sie als rote NativeCommandError-Blöcke (sieht nach Crash aus). TODO:
-  Fortschritt auf stdout, stderr nur für echte Fehler.
+  Fortschritt auf stdout, stderr nur für echte Fehler.~~ Erledigt 2026-09-12:
+  Fortschritts-/Info-Zeilen der CLI-Befehle (shot, survey, probe, diagnose,
+  login-all, verify-Info, Web-UI/API-Start) laufen jetzt auf stdout; stderr
+  nur noch für echte Fehler.
 - zai baute für eine simple Markdown-Datei erneut eine fragile einzeilige
   Set-Content-Array-Konstruktion — bestätigt den Bedarf der write-Action.
 
