@@ -55,3 +55,14 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-806 | Taskabschluss mit verifizierten Run-Belegen und Crashschutz |
 | T-807 | Alle-Brains-Live-Abnahme und Windows-Release |
 | T-808 | Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery |
+
+## Phase 9 (ab 2026-09-12) — Folgearbeiten aus dokumentierten Befunden
+
+Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRAIN_UNIFICATION_PLAN.md). Alle neuen Aufgaben sind free; Abhaengigkeiten gelten.
+
+| Task | Inhalt | Abgeleitet aus |
+|---|---|---|
+| T-901 | zai-Webchat-Flaky vermessen und stabilisieren (Thought-Process-Praefix, Normal/DeepThink) | docs/CURRENT_WORK.md Restposten |
+| T-902 | auto-Router-Live-Beleg: /v1/chat/completions modell=webagent/auto routet real | CAPABILITY_MATRIX model/auto not_run |
+| T-903 | chatgpt-Selektor-Drift nachmessen (attach_button trifft history-item) | docs/diagnostics/2026-09-12-live-survey.md |
+| T-904 | Free-Cloud-Scheibe: Registry/decide mit echten VerifiedFree-Adaptern verbinden | docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md |

@@ -7,7 +7,7 @@
     "local/opencode",
     "chief"
   ],
-  "as_of": "2026-09-08",
+  "as_of": "2026-09-12",
   "contract": "docs/WORK_CONTRACT.md",
   "mirror": "docs/TASKBOARD.md",
   "note": "Kante = Abhaengigkeit. Ein Task mit depends_on ist BLOCKED, bis alle Vorgaenger in depends_on done sind. Leeres depends_on = kann parallel laufen. Nie eine verkettete Aufgabe aus dem Block reissen.",
@@ -489,6 +489,83 @@
       "title": "Dauerhaftes Run-Ledger, Prozesssicherheit und Crash-Recovery",
       "type": "code",
       "verification": "docs/BRAIN_UNIFICATION_PLAN.md: Scheibe 8 und Pflichtgates"
+    },
+    {
+      "status": "free",
+      "claimed_at": null,
+      "owner": null,
+      "id": "T-901",
+      "branch": null,
+      "type": "live-tests",
+      "suitable": [
+        "webagent:qwen",
+        "local/opencode",
+        "chief"
+      ],
+      "dod": "Frischer Live-Turn je Modus (Normal/DeepThink), Thought-Process-Praefix-Klassifikation, Flakiness dokumentiert; Zelle gemessen oder Grenze begruendet",
+      "phase": "9",
+      "proof_path": null,
+      "verification": "verify/diagnose --brain zai --headless; docs/diagnostics-Befund",
+      "title": "T-501-Restposten: zai-Webchat-Flaky vermessen und stabilisieren",
+      "depends_on": [],
+      "done_at": null
+    },
+    {
+      "status": "free",
+      "claimed_at": null,
+      "owner": null,
+      "id": "T-902",
+      "branch": null,
+      "type": "live-tests",
+      "suitable": [
+        "webagent:qwen",
+        "local/opencode"
+      ],
+      "dod": "webagent/auto-Request routet live auf ein verfuegbares Brain, Antworttext belegt; model/auto+effort/auto-Zellen bleiben not_run ODER bekommen Live-Beleg",
+      "phase": "9",
+      "proof_path": null,
+      "verification": "api_smoke /v1/chat/completions --model webagent/auto; proofs-Eintrag",
+      "title": "auto-Router-Live-Beleg: Routing ueber eingeloggtes Brain nachweisen",
+      "depends_on": [],
+      "done_at": null
+    },
+    {
+      "status": "free",
+      "claimed_at": null,
+      "owner": null,
+      "id": "T-903",
+      "branch": null,
+      "type": "code",
+      "suitable": [
+        "webagent:qwen",
+        "local/opencode"
+      ],
+      "dod": "Survey-Beleg 2026-09-12 verifizieren; Selektoren neu vermessen oder Selector-Datei korrigieren; Zelle aktualisieren",
+      "phase": "9",
+      "proof_path": null,
+      "verification": "survey --dump brain=chatgpt --headless; git diff selectors",
+      "title": "chatgpt-Selektor-Drift nachmessen (attach_button trifft history-item)",
+      "depends_on": [],
+      "done_at": null
+    },
+    {
+      "status": "free",
+      "claimed_at": null,
+      "owner": null,
+      "id": "T-904",
+      "branch": null,
+      "type": "code",
+      "suitable": [
+        "local/opencode",
+        "claude-code"
+      ],
+      "dod": "Adaptervertrag fuer mindestens ein VerifiedFree-Angebot live erfuellt oder Status als Providergrenze dokumentiert; Invariante free_only bleibt",
+      "phase": "9",
+      "proof_path": null,
+      "verification": "cargo test --lib; doc-Befund",
+      "title": "Free-Cloud-Scheibe: Registry/decide mit echten VerifiedFree-Adaptern verbinden",
+      "depends_on": [],
+      "done_at": null
     }
   ]
 }
