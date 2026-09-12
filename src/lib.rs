@@ -11,6 +11,7 @@
 // Löschen toter Items (siehe docs/ARCHITECTURE.md → "API-Fläche").
 
 // ── core: plattformreiner Kern (keine UI/Browser-Abhängigkeiten) ──
+pub mod acceptance;
 pub mod api_bridge;
 pub mod browser_inference;
 pub mod circuit_breaker;

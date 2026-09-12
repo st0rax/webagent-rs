@@ -483,6 +483,27 @@ impl RunStore {
         Ok(())
     }
 
+    /// Schreibt ein Audit-Event (z.B. eine verweigerte Task-Abnahme, T-806)
+    /// in die lückenlose Kette des Runs. Der Save selber bleibt unverändert;
+    /// die Ablehnung wird nur dokumentiert.
+    pub fn record_rejection(
+        &self,
+        run_id: &str,
+        task_id: &str,
+        reason: &str,
+    ) -> Result<(), String> {
+        let meta = self.load(run_id)?;
+        self.append_event(
+            &meta,
+            "task_completion_rejected",
+            serde_json::json!({
+                "task_id": task_id,
+                "reason": reason,
+                "when": crate::now_rfc3339(),
+            }),
+        )
+    }
+
     /// Reaktiviert einen explizit fortgesetzten Run, ohne die allgemeinen
     /// Status-Übergänge für normale Saves aufzuweichen.
     ///

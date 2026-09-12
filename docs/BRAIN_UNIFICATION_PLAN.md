@@ -72,6 +72,19 @@ T-806-Rest: Datei-Existenz-Abschluss ersetzt durch verifizierte Run-Belege
 pruefen, Ablehnung im Run-Eventlog, Crash-/Replay-Tests — groesstenteils mit
 echten Runs; die noch offenen Live-Teile laufen in T-807.
 
+T-806-Rest (2026-09-12, Kern rechnerisch umgesetzt): `acceptance.rs` definiert
+`CompletionReceipt` (brain-erzeugtes Manifest) und `ExpectedCompletion`
+(controllerseitige Bindung an task_id, run_id, brain_id, Commit, Run-Status).
+`acceptance::verify_completion` akzeptiert einen Antrag nur, wenn: Version passt,
+alle Pflichtfelder nicht leer sind, task/run/brain/commit der Erwartung
+entsprechen, der Run `done` ist, mindestens ein Pflichtkriterium reine `Passed`-
+Ergebnisse liefert und Artefakthashes vorhanden sind. `Failed`/`Unreachable`/
+`NotRun`-Kriterien und leere/differente Belege werden abgelehnt.
+`taskboard::complete_claim_verified` schaltet bei Ablehnung nicht auf `done`,
+sondern persistiert die Ursache via `RunStore::record_rejection` (Event-Typ
+`task_completion_rejected`) in der lueckenlosen Run-Ereigniskette. CLI-Anbindung
+an den Run-Abschluss und die Live-Loops folgen in T-807.
+
 ## T-804-Status (2026-09-12)
 
 Kernmodul umgesetzt und gepusht (`7b328eb`), Rest per Plan-Zuordnung:

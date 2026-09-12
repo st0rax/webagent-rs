@@ -202,6 +202,29 @@ pub fn complete_claim(
     })
 }
 
+/// Verifizierter Taskabschluss (T-806): das Brain-Manifest ist ein ANTRAG,
+/// kein Beweis. `receipt` wird gegen den gelaufenen Run (Run-ID, Brain,
+/// Commit, alle Pflichtkriterien bestanden) geprüft; nur ein belastbarer
+/// Antrag führt zu `done`. Eine Ablehnung wird im Run-Eventlog festgehalten.
+pub fn complete_claim_verified(
+    taskboard: &Path,
+    task_id: &str,
+    owner: &str,
+    branch: &str,
+    proof_path: &Path,
+    receipt: &crate::acceptance::CompletionReceipt,
+    expected: &crate::acceptance::ExpectedCompletion,
+    run_store: &crate::run_store::RunStore,
+) -> Result<(), String> {
+    match crate::acceptance::verify_completion(receipt, expected) {
+        Ok(()) => complete_claim(taskboard, task_id, owner, branch, proof_path),
+        Err(reason) => {
+            let _ = run_store.record_rejection(&expected.run_id, task_id, &reason);
+            Err(format!("Task-Abnahme verweigert: {reason}"))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
