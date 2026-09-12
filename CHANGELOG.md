@@ -1,6 +1,19 @@
 # Changelog
 > **Referenz:** Versionshistorie. Der aktuelle Produktzustand steht in `docs/OVERVIEW.md`, der operative Arbeitsstand in `docs/CURRENT_WORK.md`.
 
+## [Unreleased]
+
+### Added
+- **Web-UI echte API-Anbindung** (T-905): `web/index.html` komplett neu — echte `fetch`-Aufrufe zu `/api/health/brains`, `/api/sessions` (anlegen, Chat-Stream `events?since=`, Stop), `/api/quelle`, `/api/groups`, `/api/sources`; Brain-Detail, Aktivitätsleiste; Einzeldatei 32,7 KB (< 48 KiB), Layout im T-203-Grok-Schema (a11y, `prefers-reduced-motion`, Skip-Link)
+- **Web-UI Restlücken geschlossen** (T-906): Gruppenlauf (`POST /api/groups/{id}/run`) öffnet erzeugte Session (`run_id`) und rendert Events live (rundenbezogene Stati, TextDeltas, Synthese, Done; 409-busy-Retry); Datei-Upload im Composer (`POST /sessions/{id}/upload`, 202 `accepted`); Brain-Fenster show/hide im Detail (`POST /brains/{id}/show|hide`, 404-Hinweis ohne offenes Fenster)
+- **zai stabil 4/4** (T-901): reasoning-toggle-Fix (DOM-klick + Readback), effort-Toggle geprüft; Live-Beweis `docs/proofs/T-901/`
+- **AutoRouter-Deckung** (T-902): Live-Beleg `docs/proofs/T-902/`
+- **chatgpt Slideover-Drift** (T-903): Driftvermessung dokumentiert, Selektoren aktualisiert; Live-Beweis `docs/proofs/T-903/`
+- **VerifiedFree-Providergrenze** (T-904): Grenze für paid-only-Features dokumentiert; Live-Beweis `docs/proofs/T-904/`
+
+### Changed
+- **Tests** erzwingen jetzt echte API-Anbindung: `ui_ist_echt_an_die_api_angebunden_und_kompakt` assertiert `fetch(`, `/api/health/brains`, `/api/sessions`, `events?since=` statt „kein fetch"
+
 ## [0.11.2] - 2026-09-12
 
 ### Added
