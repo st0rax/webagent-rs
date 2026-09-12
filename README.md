@@ -82,8 +82,6 @@ Der Chat plant, dein Rechner führt aus. Prüfen, ob eine Oberfläche fahrbar is
 > Capability-Matrix & Doctor-Report. Der genaue aktuelle Abnahme- und
 > Arbeitsstand steht in [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md); lokale Testergebnisse sind
 > immer an den dort genannten Commit gebunden.
-> `comms.rs` (internes Messaging, ersetzt bot2bot für webagent-intern) in CLI/Controller verdrahtet.
-> Browser-Steuerung über Embedded WebView + `BrowserPool`; REPL hält die Session über Turns offen.
 >
 > **Historischer Provider-Nachweis:** Am 2026-07-16 antworteten 8 von 8 Brains
 > headless — chatgpt, deepseek, kimi, gemini, qwen, claude, mistral und zai.
