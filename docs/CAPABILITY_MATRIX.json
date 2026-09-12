@@ -53,7 +53,8 @@
       "model": "chatgpt",
       "selector_hash": null,
       "latency_ms": 20184,
-      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl"
+      "proof_path": "docs/proofs/T-501/chat_live_2026-09-03.jsonl",
+      "note": "Live-Kanal belegt ueber composer/send (ChatGPT Slideover-UI). Selektor-Drift 2026-09-12 vermessen (docs/proofs/T-903/selector-drift-survey-2026-09-12.json): file_attach matcht history-item, send_button=0 im Ruhe-Scan; echter Turn am selben Tag via AutoRouter (T-902, Antwort AUTO-ROUTER-OK) zeigt chat-Pfad intakt."
     },
     {
       "area": "webui_chat",
@@ -156,7 +157,8 @@
       "model": "webagent/chatgpt",
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/streaming_chatgpt_2026-09-04.json"
+      "proof_path": "docs/proofs/T-501/streaming_chatgpt_2026-09-04.json",
+      "note": "Streaming-Turn belegt (2026-09-04). Frischer Live-Turn 2026-09-12 via AutoRouter (T-902) zeigt Stream intakt trotz Slideover-UI-Refresh; Ruhe-Scan-Befund send_button=0 dokumentiert in docs/proofs/T-903/selector-drift-survey-2026-09-12.json."
     },
     {
       "area": "streaming",

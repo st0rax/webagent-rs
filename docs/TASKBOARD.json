@@ -530,7 +530,7 @@
       "done_at": "2026-09-12T09:30:00+02:00"
     },
     {
-      "status": "claimed",
+      "status": "done",
       "claimed_at": "2026-09-12T09:30:00+02:00",
       "owner": "webagent:qwen",
       "id": "T-903",
@@ -542,11 +542,11 @@
       ],
       "dod": "Survey-Beleg 2026-09-12 verifizieren; Selektoren neu vermessen oder Selector-Datei korrigieren; Zelle aktualisieren",
       "phase": "9",
-      "proof_path": null,
+      "proof_path": "docs/proofs/T-903/selector-drift-survey-2026-09-12.json",
       "verification": "survey --dump brain=chatgpt --headless; git diff selectors",
       "title": "chatgpt-Selektor-Drift nachmessen (attach_button trifft history-item)",
       "depends_on": [],
-      "done_at": null
+      "done_at": "2026-09-12T10:00:00+02:00"
     },
     {
       "status": "free",

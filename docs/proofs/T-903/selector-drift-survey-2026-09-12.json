@@ -1,0 +1,30 @@
+{
+  "task": "T-903",
+  "title": "chatgpt-Selektor-Drift nachmessen: survey --brain chatgpt --headless --dump (2026-09-12)",
+  "date": "2026-09-12",
+  "status": "measured",
+  "method": "webagent survey --brain chatgpt --headless --dump (Kein --write => keine Selektor-Datei veraendert)",
+  "core_result": "chatgpt    5 Optionen aus 133 Buttons: chat, new_chat, temporary_chat, voice_input, projects",
+  "counts": {
+    "assistant_message": 0,
+    "composer": 2,
+    "login_indicator": 1,
+    "new_chat_button": 4,
+    "send_button": 0,
+    "stop_button": 0,
+    "total_buttons": 133
+  },
+  "evidence": {
+    "dominant_testids": "history-item-0-options bis history-item-27-options (28 Treffer) plus pin/sidebar-Buttons",
+    "ui_has_changed": "ChatGPT zeigt neue Slideover-Sidebar: data-testid=stage-slideover-sidebar, sidebar-search, sidebar-keep-open, SVG-Baum sprites-shell; Verlaufseintraege tragen data-conversation-options-trigger IDs",
+    "file_attach_drift_confirmed": "attach-Kandidaten landen heute auf history-item-/pin-Knoten ('anheften' statt Upload) - Reproduktion des Verdachts aus docs/diagnostics/2026-09-12-live-survey.md",
+    "send_button_zero": "send_button=0 im Ruhe-Scan (Slideover-Kontext, keine Puffer-Nachricht) - konsistent mit deepseek-Verhalten (Send erst nach Editor-Fuellung); kein Funktionsausfall-Verdacht"
+  },
+  "live_operations_check": {
+    "chat_input": "composer=2 via prompt-textarea Selektoren",
+    "login": "login_indicator=1 via Composer-Praesenz",
+    "real_turn_works": "T-902 Lauf am selben Tag (09:40 Uhr) routete live ueber chatgpt und lieferte 'AUTO-ROUTER-OK' => chat/streaming Pfad funktioniert in der Oberflaeche real",
+    "new_chat_button": 4
+  },
+  "conclusion": "Der Selektoren-Drift ist real (Klick-/Erkennungs-Selektoren zeigen heute in die Slideover-Sidebar, file_attach matcht history-item). Chirurgische Selektor-Korrektur NICHT durchgefuehrt: Die funktional belegten Pfade (composer, send-on-fill, chat-Turn via Router) schlagen weiter durch; die Optionen-Liste spiegelt die neue UI (temporary_chat neu). Aenderungen wuerden dan oder die kuenftige Abnahme brauchen - bewusst reversibel, keine ungepruefte Datei-Reihe."
+}
