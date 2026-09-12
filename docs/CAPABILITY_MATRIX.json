@@ -1,7 +1,22 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-11",
+  "as_of": "2026-09-12",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
+  "live_verify": {
+    "as_of": "2026-09-12",
+    "head": "0902593",
+    "mode": "headless",
+    "proof": "docs/proofs/T-501/live_verify_2026-09-12.json",
+    "summary": "Frische Live-Vermessung je Brain (chat, model_switch, new_chat, stop_generation, reasoning_toggle/effort, web_search, projects). Einzelzellen vgl. Beleg; kein Umdruck historischer Eintraege.",
+    "notable": {
+      "gemini_model_switch": "passed 11067ms bisheriger failed - Live-Wechsel 3.6 Flash->3.5 Flash-Lite, Rueckweg ok",
+      "mistral_model_switch": "unreachable 4218ms kein sichtbarer Modellselektor",
+      "kimi_reasoning_effort": "failed - 'Denkaufwand Hoch' geklickt, Beschriftung bleibt 'Schnell'",
+      "gemini_new_chat": "failed - weder URL-Wechsel noch Verlauf geleert (1->1)",
+      "kimi_projects": "failed - projects_button klick ohne Seitenwechsel",
+      "chatgpt_claude_perplexity_model_switch": "failed - Modell nicht eindeutig in Laufzeitliste (ehrlich fail-closed)"
+    }
+  },
   "brains": [
     "chatgpt",
     "claude",
