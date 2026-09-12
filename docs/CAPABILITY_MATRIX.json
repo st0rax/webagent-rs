@@ -360,7 +360,7 @@
       "selector_hash": null,
       "latency_ms": null,
       "proof_path": null,
-      "note": "auto ist ein virtueller Auto-Router-Brain (kein eigenes Browser-UI/Modellmenue, routed an ein eingeloggtes Brain; api_bridge.rs AutoRouter). Modellwahl ist nicht anwendbar — analog effort/auto. Verify bleibt ehrlich Quest (kein reasoning_effort_path/model selectors)."
+      "note": "auto ist ein virtueller Auto-Router-Brain (kein eigenes Browser-UI/Modellmenue, routed an ein eingeloggtes Brain; api_bridge.rs AutoRouter). Modellwahl ist nicht anwendbar — analog effort/auto. Verify bleibt ehrlich Quest (kein reasoning_effort_path/model selectors). ROUTING-PFAD LIVE BELEGT (T-902, 2026-09-12): POST /v1/chat/completions model=webagent/auto -> HTTP 200, Antwort 'AUTO-ROUTER-OK', Serverlog '[auto-router] selected=chatgpt reason=default' + '[auto-router] execute brain=chatgpt' - docs/proofs/T-902/auto-router-live-proof-2026-09-12.json"
     },
     {
       "area": "effort",

@@ -511,11 +511,11 @@
       "done_at": null
     },
     {
-      "status": "free",
-      "claimed_at": null,
-      "owner": null,
+      "status": "done",
+      "claimed_at": "2026-09-12T08:00:00+02:00",
+      "owner": "webagent:qwen",
       "id": "T-902",
-      "branch": null,
+      "branch": "master",
       "type": "live-tests",
       "suitable": [
         "webagent:qwen",
@@ -523,18 +523,18 @@
       ],
       "dod": "webagent/auto-Request routet live auf ein verfuegbares Brain, Antworttext belegt; model/auto+effort/auto-Zellen bleiben not_run ODER bekommen Live-Beleg",
       "phase": "9",
-      "proof_path": null,
+      "proof_path": "docs/proofs/T-902/auto-router-live-proof-2026-09-12.json",
       "verification": "api_smoke /v1/chat/completions --model webagent/auto; proofs-Eintrag",
       "title": "auto-Router-Live-Beleg: Routing ueber eingeloggtes Brain nachweisen",
       "depends_on": [],
-      "done_at": null
+      "done_at": "2026-09-12T09:30:00+02:00"
     },
     {
-      "status": "free",
-      "claimed_at": null,
-      "owner": null,
+      "status": "claimed",
+      "claimed_at": "2026-09-12T09:30:00+02:00",
+      "owner": "webagent:qwen",
       "id": "T-903",
-      "branch": null,
+      "branch": "master",
       "type": "code",
       "suitable": [
         "webagent:qwen",

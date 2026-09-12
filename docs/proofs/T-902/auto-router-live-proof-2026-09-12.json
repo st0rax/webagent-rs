@@ -1,0 +1,33 @@
+{
+  "task": "T-902",
+  "title": "auto-Router-Live-Beleg: /v1/chat/completions model=webagent/auto routet real",
+  "date": "2026-09-12",
+  "status": "passed",
+  "environment": {
+    "binary": "target/release/webagent.exe",
+    "commit": "06bc94b",
+    "server": "ui --api --port 8788 --no-open --headless",
+    "api_key": "lokaler Test-Key (t902-local-test-key, env WEBAGENT_API_KEY)",
+    "endpoint": "http://127.0.0.1:8788/v1/chat/completions"
+  },
+  "request": {
+    "method": "POST",
+    "model": "webagent/auto",
+    "messages": [{"role": "user", "content": "Antworte nur mit: AUTO-ROUTER-OK"}],
+    "authorization": "Bearer t902-local-test-key"
+  },
+  "response": {
+    "status": 200,
+    "id": "chatcmpl-18d48a38bc8b3190",
+    "object": "chat.completion",
+    "model": "webagent/auto",
+    "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "AUTO-ROUTER-OK"}}]
+  },
+  "router_evidence": {
+    "log": "[auto-router] selected=chatgpt reason=default",
+    "log2": "[auto-router] execute brain=chatgpt attachments=0 timeout_secs=None",
+    "meaning": "AutoRouter waehlte das eingeloggte Brain chatgpt als Zielfeld und fuehrte den Browser-Turn real aus; Antwortinhalt identisch mit Auftrag."
+  },
+  "conclusion": "model=webagent/auto (AutoRouter) routet live ueber ein real eingeloggtes Brain und liefert eine echte Inferenzantwort. Damit ist die CAPABILITY_MATRIX-Zelle model/auto nicht mehr ignorierbar-not_run: routing-Pfad ist live belegt.",
+  "matrix_update": "model/auto: not_run -> passed (Routing-Pfad live belegt; die Modellwahl selbst bleibt nicht anwendbar, da auto ein virtueller Router ist - die Zelle wird mit Hinweis auf diesen Routing-Proof als belegt markiert)"
+}
