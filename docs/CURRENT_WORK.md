@@ -1,9 +1,10 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-12:** `master` auf `5c42656`. **Phase-9 komplett done**
-> (T-901–T-906), danach **Release `v0.11.2`** (Windows/Linux/Android):
-> - Web-UI vom T-203-Fake-Prototyp auf die echte `/api/*`-Anbindung gehoben
->   (T-905, `664f4e8`): Brain-Status, Sessions anlegen/wechseln, Chat-Stream
+> **Aktualisiert 2026-09-12:** `master` auf `8fd8c4a`. **Release `v0.11.3`
+> vorbereitet** (Tag + GitHub-Release ausstehend — Freigabe beim Eigentümer):
+> - **Web-UI vom T-203-Fake-Prototyp auf die echte `/api/*`-Anbindung gehoben**
+>   (Phase-9 T-901–T-906 done):
+> - T-905 (`664f4e8`): Brain-Status, Sessions anlegen/wechseln, Chat-Stream
 >   (`events?since=`), Stop, Quellen, Gruppen, Brain-Detail, Upload, Brain-
 >   Fenster show/hide; Layout im T-203-Grok-Schema, Einzeldatei < 48 KiB,
 >   Tests erzwingen `fetch(`-Anbindung.
@@ -11,13 +12,14 @@
 >   erzeugte Session (`run_id`) und rendert die Events live (Runden-Stati,
 >   TextDeltas, Synthese, Done), Datei-Upload im Composer
 >   (`POST /sessions/{id}/upload`, 202 `accepted`), Brain-Fenster show/hide im
->   Detail; Beweis `docs/proofs/T-906/`, Gate **1388 passed / 0 failed /
->   1 ignored**.
-> - T-901 done (zai stabil 4/4, reasoning_toggle-Fix), T-902 done (AutoRouter-
->   Live-Beleg), T-903 done (chatgpt-Slideover-Drift vermessen), T-904 done
->   (VerifiedFree-Providergrenze dokumentiert) — Belege in `docs/proofs/T-90x/`.
-> - CAPABILITY_MATRIX `as_of 2026-09-12`; 31/31 TASKBOARD-Tasks done.
-> - Phase-8-Abnahme und Release v0.11.2 (historischer Stand siehe unten):
+>   Detail; Beweis `docs/proofs/T-906/`.
+> - **Code-Review (`44f7a1e`):** reviewer-Bot REQUEST_CHANGES → alle 11 Befunde
+>   umgesetzt: XSS-Klasse behoben (echtes `escRow`, DOM-Selects, CSP-Meta),
+>   `TextComplete`-String-Handling (live belegt: Backend sendet JSON-String),
+>   Poll-Race-Guard, Gap-/404-Recovery, 409-`session_done`-Text, Backoff,
+>   ehrlicher Upload-Text. Beweis `docs/proofs/T-906/webui-review-2026-09-12.json`.
+> - Gates für 0.11.3: **1388 passed / 0 failed / 1 ignored**; `cargo check` grün;
+>   Changelog `[0.11.3]` finalisiert; Beweise T-901..T-906 in `docs/proofs/`.
 > - T-805/T-806/T-807 abgenommen: 46 frische Live-Verify-Belege (alle 9 Brains)
 >   in `docs/proofs/T-501/live_verify_2026-09-12.json`, Matrix `as_of 2026-09-12`.
 > - T-806 Receipt-E2E live belegt (negativ fail-closed + positiv done,
