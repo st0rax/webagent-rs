@@ -1,6 +1,15 @@
 # Aktueller Arbeitsstand
 
-> **Aktualisiert 2026-09-12:** **Release `v0.11.3` veröffentlicht** —
+> **Aktualisiert 2026-09-12:** **G-001 abgeschlossen** — alle Zeilen der
+> v1.0-Definition-of-Done verifiziert (`docs/proofs/G-001/g001-abschluss-2026-09-12.json`).
+> - Voll-Gates am Abschluss-Stand (`2589b0a`) erneut grün: `cargo fmt --all -- --check`,
+>   Clippy `-D warnings` headless **und** full-features, `cargo test --locked`
+>   **1388 passed / 0 failed / 1 ignored + 7 bin**, `cargo test --locked
+>   --no-default-features` 1382 + 7 bin, `git diff --check` sauber.
+> - Toolchain-Norm auf rust 1.97 (`2589b0a`): rustfmt-Drift über 13 Dateien
+>   bereinigt, sechs neue Clippy-Lints behoben (u. a. `items_after_test_module`,
+>   `single_match`, tote Konstante `MEMORY_CONTEXT_LIMIT`, nie gelesenes `wiki`-Feld).
+> - **Release `v0.11.3` veröffentlicht** —
 > https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3 (Tag `7021959`,
 > CI `34696249277` success, Assets: Windows exe + WebView2Loader.dll + sha256,
 > Linux, Android aarch64):
@@ -450,10 +459,10 @@ Die nächste sichere Aktion ist die **Live-Abnahme am erreichbaren Desktop-Arbei
 
 ## Übergabe
 
-- **Branch:** `master` auf `f51acd6`; der frühere Arbeitsbranch `task/v1-release-baseline` zeigt auf denselben Commit.
-- **Abgeschlossene Scheiben:** `2659baf` (Headless-Baseline), `4fdb068` (v1.0-Definition), `d32b8d0` (Linux-WebView-Feature-Gates) und `f51acd6` (Linux-/Windows-Abnahmestände); alle per Fast-Forward in `origin/master` integriert.
-- **Eigentümerschaft:** aktueller Integrator bearbeitet den v1.0-Abschluss; Live-Anmeldungen bleiben beim Eigentümer.
-- **Externe Freigaben:** erforderlich für Live-Browser, Logins, kostenpflichtige Providerpfade, Tag und GitHub-Release.
+- **Branch:** `master`; G-001-Abschluss-Stand `2589b0a`, Release `v0.11.3` (Tag `7021959`) veröffentlicht.
+- **Abgeschlossene Scheiben:** `2659baf` (Headless-Baseline), `4fdb068` (v1.0-Definition), `d32b8d0` (Linux-WebView-Feature-Gates), `f51acd6` (Linux-/Windows-Abnahmestände), Phase-9 `T-901..T-906` inkl. Web-UI-Review-Fixes (`44f7a1e`), Release `v0.11.3`, Toolchain-Norm `2589b0a`.
+- **Eigentümerschaft:** aktueller Integrator hat den v1.0-Abschluss bearbeitet; Live-Anmeldungen bleiben beim Eigentümer.
+- **Externe Freigaben:** für Release `v0.11.3` erteilt (Eigentümerwahl „Erst README/Bild, dann Release"); Tag und GitHub-Release sind erfolgt.
 - **Arbeitsbaum:** nach diesem Übergabecommit erneut prüfen; `master` direkt pushen, keine History umschreiben.
 
-> **Hinweis zur Wahrheitspflege:** Historische Live-Befunde aus August 2026 sind nützlich für die Diagnose, aber kein aktueller Verfügbarkeitsbeleg. Maßgeblich für v1.0 sind frische, reproduzierbare Belege am Release Candidate.
+> **Hinweis zur Wahrheitspflege:** Historische Live-Befunde aus August 2026 sind nützlich für die Diagnose, aber kein aktueller Verfügbarkeitsbeleg. Maßgeblich für v1.0 sind frische, reproduzierbare Belege am Release Candidate — für `v0.11.3` in `docs/proofs/G-001/g001-abschluss-2026-09-12.json` zusammengeführt.

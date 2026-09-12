@@ -1,0 +1,74 @@
+{
+  "ziel": "G-001",
+  "titel": "Das Projekt webagent soll FERTIG werden",
+  "stand": "2026-09-12",
+  "bewertung": "abgeschlossen",
+  "release": "v0.11.3",
+  "release_url": "https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3",
+  "tag_commit": "7021959",
+  "ci_run": "34696249277",
+  "definition_of_done_erfuehlt": {
+    "reproduzierbarer_kern": {
+      "kriterium": "Formatcheck, striktes Headless-Clippy und vollstaendige browserfreie Test-Suite auf dem Release-Candidate gruen; Lockfile konsistent",
+      "verifizierung": "Voll-Gates am 2026-09-12 erneut durchgefuehrt",
+      "evidenz": {
+        "cargo_fmt_check": "gruen",
+        "cargo_clippy_headless_D_warnings": "gruen",
+        "cargo_clippy_full_D_warnings": "gruen",
+        "cargo_test_locked_no_default_features_lib": "1382 passed, 0 failed, 1 ignored",
+        "cargo_test_locked_no_default_features_bin": "7 passed, 0 failed",
+        "cargo_test_locked_full_lib": "1388 passed, 0 failed, 1 ignored",
+        "cargo_test_locked_full_bin": "7 passed, 0 failed",
+        "git_diff_check": "sauber",
+        "lockfile": "0.11.3 konsistent (Cargo.lock Root-Eintrag; durch cargo --locked verifiziert)"
+      }
+    },
+    "plattformgrenze": {
+      "kriterium": "Vollfeature-Gates auf Windows mit WebView2 oder durch Windows-CI-Evidenz gruen",
+      "evidenz": "Windows-CI fuer v0.11.3 vollstaendig success (linux-x86_64, windows-x86_64, android-aarch64, github-release); lokale Windows-Vollfeature-Gates erneut gruen (clippy --all-targets -- -D warnings, cargo test --locked)"
+    },
+    "providerfaehigkeit": {
+      "kriterium": "Jeder aktivierte Provider besitzt frische Send-/Antwort-Evidenz oder ist bewusst deaktiviert und dokumentiert",
+      "evidenz": "46 frische Live-Verify-Belege (9 Brains) in docs/proofs/T-501/live_verify_2026-09-12.json; Capability-Matrix as_of 2026-09-12; T-805/T-806/T-807 abgenommen"
+    },
+    "mehr_brain_betrieb": {
+      "kriterium": "Poolstart, Heartbeat, Recovery, Profil-Lease, Write-back, bereinigbarer Shutdown, Continuation und Cross-Brain-Handoff systemisch belegt",
+      "evidenz": "T-806 Receipt-E2E live (negativ fail-closed + positiv done), T-807 Windows-Prozessprobe + Release-Binary-E2E; Systemtests gruen (1388er Suite enthaelt Pool-/Shutdown-/Lease-Tests)"
+    },
+    "harvest_sicherheit": {
+      "kriterium": "Gueltiger Patch wird nach Wiederanwendung erneut gebaut/getestet; Scope-Verstoesse fail-closed",
+      "evidenz": "capture_patch arbeitet ohne ANSI-Farben; reale Scope-/Harvest-Gegenprobe bestanden (fail-closed Out-of-Scope-Ablehnung)"
+    },
+    "betriebsdokumentation": {
+      "kriterium": "OVERVIEW.md, CURRENT_WORK.md, CHANGELOG.md und Release-Checkliste stimmen mit Code/Tests/Grenzen ueberein",
+      "evidenz": "Alle Doku-Staende am 2026-09-12 aktualisiert: README v0.11.3, OVERVIEW Stand 2026-09-12, CHANGELOG [0.11.3], CURRENT_WORK Kopf"
+    },
+    "releaseentscheidung": {
+      "kriterium": "RC auf sauberem Tree, ueber GitHub erreichbar, erst nach dokumentierter Review- und Eigentuemerfreigabe Tag + Release",
+      "evidenz": "Tag v0.11.3 auf 7021959, CI success, GitHub-Release mit Assets (Windows exe + WebView2Loader.dll + sha256, Linux, Android aarch64); Eigentuemerfreigabe via Wahl 'Erst README/Bild, dann Release'; Code-Review 11/11 Befunde umgesetzt (docs/proofs/T-906/webui-review-2026-09-12.json)"
+    }
+  },
+  "toolchain_norm": {
+    "anlass": "rust-Drift auf 1.97: cargo fmt --all -- --check und clippy -D warnings meldeten Differenzen (neue Lints/Formatregeln der Toolchain)",
+    "commit": "2589b0a",
+    "umgesetzt": [
+      "cargo fmt: 13 Dateien auf aktuelle rustfmt-Norm",
+      "contract.rs classify_surface_text vor Test-Modul (items_after_test_module)",
+      "verify.rs single-pattern match -> if let",
+      "backend.rs redundante Referenz entfernt (needless borrows)",
+      "controller.rs tote Konstante MEMORY_CONTEXT_LIMIT + nie gelesenes wiki-Feld entfernt",
+      "run_store.rs needless borrow entfernt",
+      "taskboard.rs / commands/ops.rs too_many_arguments fuer Public-API/CLI erlaubt"
+    ],
+    "gates_nach_fix": {
+      "fmt_check": "gruen",
+      "clippy_headless": "gruen",
+      "clippy_full": "gruen",
+      "test_lib": "1388/0/1",
+      "diff_check": "sauber"
+    }
+  },
+  "taskboard": "31/31 Tasks done (Phase-9 T-901..T-906 inklusive)",
+  "abnahme_durch": "Eigentuemerfreigabe fuer Release v0.11.3 dokumentiert; dieser Abschluss folgt aus der Verifikation aller Definition-of-Done-Zeilen",
+  "anmerkung": "G-001 ist mit v0.11.3 als veroeffentlichtem, getestetem, dokumentiertem Status erfuellt. Das Projekt bleibt ein lebender Bazaar: Erweiterungen nach v1.0-Scope sind weiterhin moeglich, veraendern aber nichts am erreichten Abschlusszustand."
+}

@@ -18,6 +18,13 @@
 - **Erfolg messbar über** grüne `cargo test --lib` + erfüllte Definition-of-Done
   je Task.
 
+> **Status: abgeschlossen am 2026-09-12** mit Release `v0.11.3`
+> (https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3). Alle Zeilen der
+> v1.0-Definition-of-Done (`docs/CURRENT_WORK.md`) sind verifiziert: Voll-Gates
+> grün (fmt, Clippy headless + voll, `cargo test --locked` 1388/0/1 + 7 bin),
+> Release entschieden und veröffentlicht, Review 11/11 Befunde umgesetzt.
+> Abschluss-Beweis: `docs/proofs/G-001/g001-abschluss-2026-09-12.json`.
+
 ## Regeln
 
 - Dieser Nordstern **überschreibt** den Bazaar nicht; er ist dessen Rahmen.
