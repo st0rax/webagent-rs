@@ -194,6 +194,9 @@ pub const BRAIN_TABLE: &[(&str, &str)] = &[
     ("claude", "https://claude.ai/new"),
     ("mistral", "https://chat.mistral.ai/chat"),
     ("zai", "https://chat.z.ai/"),
+    // Venice bietet einen browserbasierten Chat; der konkrete UI-Pfad bleibt
+    // separat selektor- und live-belegt, bevor eine Capability beworben wird.
+    ("venice", "https://venice.ai/chat"),
 ];
 
 /// Brain-Definitionen: ID -> {url, selectors, profile_dir}.

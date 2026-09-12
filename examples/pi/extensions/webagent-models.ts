@@ -11,6 +11,7 @@ const FALLBACK_BRAINS = [
   "mistral",
   "qwen",
   "zai",
+  "venice",
 ];
 
 type CatalogEntry = {

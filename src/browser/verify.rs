@@ -463,10 +463,14 @@ impl ModelMenuProbe for WebBrainBackend {
     }
 }
 
-/// Qwen appends an explanatory sentence to a menu row, while the clickable
-/// child has only the title. Other providers expose their runtime label as-is.
+/// Some providers append a separate explanatory sentence or `NEW` marker to a
+/// menu row, while the clickable child has only the model title. Other
+/// providers expose their runtime label as-is.
 fn runtime_menu_choice(label: &str) -> &str {
-    label.split_once(" The ").map_or(label, |(title, _)| title)
+    [" The ", " NEW "]
+        .into_iter()
+        .find_map(|separator| label.split_once(separator).map(|(title, _)| title))
+        .unwrap_or(label)
 }
 
 fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
@@ -570,6 +574,9 @@ fn model_roundtrip(probe: &mut impl ModelMenuProbe) -> Measurement {
 }
 
 fn verify_model_switch(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<VerifyResult> {
+    if backend.brain_id == "deepseek" {
+        return verify_deepseek_model_equivalent(backend, cap);
+    }
     if !has_sel(&backend.selectors, cap.needs) {
         return Vec::new();
     }
@@ -597,6 +604,102 @@ fn verify_model_switch(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<V
     };
     m.winning_selector = winner;
     vec![VerifyResult::new(m, outcome, hash, start)]
+}
+
+/// DeepSeek exposes its selectable inference variants as a persistent segment
+/// bar (`Instant | Expert | Vision`) rather than a popup. The user has
+/// designated this path as model-equivalent. Its entries do not reliably name
+/// the active option, so the full bar signature is used as the restoration
+/// witness: return only succeeds when it is byte-for-byte the initial state.
+fn verify_deepseek_model_equivalent(
+    backend: &mut WebBrainBackend,
+    cap: &Capability,
+) -> Vec<VerifyResult> {
+    let start = Instant::now();
+    let hash = hash_for(backend, cap);
+    if !has_sel(&backend.selectors, &["mode_option"]) {
+        return vec![VerifyResult::new(
+            measure(
+                cap.key,
+                String::new(),
+                String::new(),
+                false,
+                "kein sichtbarer DeepSeek-Moduspfad".into(),
+                None,
+            ),
+            ProofOutcome::Unreachable,
+            hash,
+            start,
+        )];
+    }
+    let before = backend.segment_signature("mode_option");
+    if before.is_empty() {
+        return vec![VerifyResult::new(
+            measure(
+                cap.key,
+                String::new(),
+                String::new(),
+                false,
+                "DeepSeek-Segmentleiste nicht lesbar".into(),
+                None,
+            ),
+            ProofOutcome::Unreachable,
+            hash,
+            start,
+        )];
+    }
+    let choices = ["Instant", "Expert", "Vision"];
+    let mut changed_to = None;
+    let mut selection_error = None;
+    for choice in choices {
+        match backend.select_segment("mode_option", choice) {
+            Ok(_) if backend.segment_signature("mode_option") != before => {
+                changed_to = Some(choice);
+                break;
+            }
+            Ok(_) => {}
+            Err(error) => selection_error = Some(error),
+        }
+    }
+    let after = backend.segment_signature("mode_option");
+    let changed = changed_to.is_some();
+    let mut restore_error = None;
+    for choice in choices {
+        if backend.segment_signature("mode_option") == before {
+            break;
+        }
+        if let Err(error) = backend.select_segment("mode_option", choice) {
+            restore_error = Some(error);
+        }
+    }
+    let restored = backend.segment_signature("mode_option") == before;
+    let mut note = format!(
+        "DeepSeek-Modellaequivalent: Segmentleiste vor/nach verschieden={changed}; Ziel={changed_to:?}; Rueckweg={restored}"
+    );
+    if let Some(error) = selection_error {
+        note.push_str(&format!("; Auswahlhinweis: {error}"));
+    }
+    if let Some(error) = restore_error {
+        note.push_str(&format!("; Wiederherstellungshinweis: {error}"));
+    }
+    vec![VerifyResult::new(
+        Measurement {
+            capability_key: cap.key.to_string(),
+            before,
+            after,
+            proven: changed && restored,
+            restored: Some(restored),
+            note,
+            winning_selector: Some("mode_option (DeepSeek model-equivalent)".into()),
+        },
+        if changed && restored {
+            ProofOutcome::Passed
+        } else {
+            ProofOutcome::Failed
+        },
+        hash,
+        start,
+    )]
 }
 
 /// `reasoning_effort` braucht einen Untermenü-Pfad (`select_in_menu_path`);
@@ -1238,6 +1341,18 @@ mod tests {
         assert_eq!(menu.calls.len(), 2);
         assert_eq!(menu.calls[0], "Model B");
         assert_eq!(menu.calls[1], "Model A");
+    }
+
+    #[test]
+    fn model_roundtrip_uses_title_before_new_marker() {
+        let mut menu = ModelFixture::new(&[
+            "GLM-5.3 Flagship model.",
+            "GLM-5.3-Flash NEW Lightweight flagship model.",
+        ]);
+        menu.current = "GLM-5.3".into();
+        let m = model_roundtrip(&mut menu);
+        assert!(m.proven, "{m:?}");
+        assert_eq!(menu.calls, ["GLM-5.3-Flash", "GLM-5.3"]);
     }
 
     #[test]

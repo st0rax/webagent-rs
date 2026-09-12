@@ -1,5 +1,5 @@
 {
-  "_hygiene_model_vs_mode": "DeepSeek has NO model_menu in the chat composer. Instant/Expert/Vision are mode_option (capability mode_switch), not model_switch. Leave model_menu/model_option empty — do not invent model selectors from the segment bar.",
+  "_model_equivalent_segment_bar": "Instant/Expert/Vision are a persistent DeepSeek inference-variant bar. G-001 treats this explicitly as model-equivalent. The verifier proves a real signature change and restores the exact initial segment-bar signature.",
   "model_menu": [],
   "model_option": [],
   "composer": [

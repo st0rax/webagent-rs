@@ -17,6 +17,7 @@ pub(crate) const EMBEDDED_SELECTORS: &[(&str, &str)] = &[
     ("claude", include_str!("../../selectors/claude.json")),
     ("mistral", include_str!("../../selectors/mistral.json")),
     ("zai", include_str!("../../selectors/zai.json")),
+    ("venice", include_str!("../../selectors/venice.json")),
 ];
 
 /// Eingebettete Selektor-JSON eines Brains (falls vorhanden).

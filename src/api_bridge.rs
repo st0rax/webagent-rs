@@ -3668,7 +3668,7 @@ mod tests {
     fn model_catalog_contains_all_builtin_brains() {
         let brains = available_brains();
         for expected in [
-            "chatgpt", "claude", "deepseek", "gemini", "kimi", "mistral", "qwen", "zai",
+            "chatgpt", "claude", "deepseek", "gemini", "kimi", "mistral", "qwen", "zai", "venice",
         ] {
             assert!(brains.contains(&expected.to_string()), "{expected} fehlt");
         }

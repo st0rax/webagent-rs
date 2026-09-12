@@ -4,7 +4,7 @@
 
 Ein **lokaler, browsergesteuerter Agent**: ein Web-Chat („Brain") plant, lokale
 Werkzeuge (PowerShell/Shell) führen aus. Die Brains sind austauschbare Web-Chats
-(ChatGPT, Claude, DeepSeek, Gemini, Kimi, Qwen, Mistral, Z.ai) — kein API-Key,
+(ChatGPT, Claude, DeepSeek, Gemini, Kimi, Qwen, Mistral, Z.ai, Venice) — kein API-Key,
 sondern die im Browser angemeldete Session.
 
 Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: Session-Web-UI,
@@ -214,7 +214,7 @@ Log: `data/autoresearch/<run_id>/log.md`.
 in autonome Runs, Brains pflegen Seiten per edit/write. REPL: `/wiki`,
 `/wiki <suche>`, `/wiki lint`.
 
-Verfügbare Brains: `chatgpt, deepseek, kimi, gemini, qwen, claude, mistral, zai`.
+Verfügbare Brains: `chatgpt, deepseek, kimi, gemini, qwen, claude, mistral, zai, venice`.
 
 Typischer Erstlauf: `webagent login-all` (oder `login --brain claude`), dann
 `webagent diagnose --brain claude` (prüfen), dann `webagent run …` bzw. REPL `/swarm`.

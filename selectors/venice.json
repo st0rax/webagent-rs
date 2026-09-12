@@ -1,0 +1,72 @@
+{
+  "composer": [
+    "textarea[placeholder*='message' i]",
+    "textarea[placeholder*='ask' i]",
+    "div[contenteditable='true'][role='textbox']",
+    "div[contenteditable='true']",
+    "textarea"
+  ],
+  "send_button": [
+    "button[data-testid='send-button']",
+    "button[aria-label*='send' i]",
+    "button[title*='send' i]",
+    "button[type='submit']"
+  ],
+  "stop_button": [
+    "button[data-testid='stop-button']",
+    "button[aria-label*='stop' i]",
+    "button[title*='stop' i]"
+  ],
+  "new_chat_button": [
+    "button[data-testid='new-chat-button']",
+    "button[aria-label*='new chat' i]",
+    "button[title*='new chat' i]",
+    "a[href*='/chat']"
+  ],
+  "login_button": [
+    "button:has-text('Log in')",
+    "button:has-text('Sign in')",
+    "a[href*='login' i]",
+    "a[href*='signin' i]"
+  ],
+  "login_indicator": [
+    "textarea[placeholder*='message' i]",
+    "div[contenteditable='true'][role='textbox']",
+    "button[data-testid='send-button']"
+  ],
+  "google_sso_button": [
+    "button:has-text('Continue with Google')",
+    "button:has-text('Sign in with Google')",
+    "button[aria-label*='Google' i]"
+  ],
+  "assistant_message": [
+    "[data-message-author-role='assistant']",
+    "[data-testid='assistant-message']",
+    "div[class*='assistant-message' i]",
+    "div[class*='markdown' i]",
+    "div.prose"
+  ],
+  "model_menu": [
+    "button[data-testid*='model' i]",
+    "button[aria-label*='model' i]",
+    "[role='button'][aria-label*='model' i]"
+  ],
+  "model_option": [
+    "[role='menuitemradio']",
+    "[role='menuitem']",
+    "[role='option']",
+    "[data-testid*='model-option' i]"
+  ],
+  "attach_button": [
+    "button[aria-label*='attach' i]",
+    "button[aria-label*='upload' i]",
+    "button[title*='attach' i]",
+    "label[for*='file' i]"
+  ],
+  "ui_options": [
+    "chat",
+    "new_chat",
+    "stop_generation",
+    "model_switch"
+  ]
+}
