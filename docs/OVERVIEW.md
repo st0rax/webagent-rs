@@ -1,14 +1,19 @@
 # Webagent: Systemüberblick
 
-**Stand:** 2026-08-22. Diese Datei ist die aktuelle Produkt- und
-Architekturübersicht.
+**Stand:** 2026-09-12 (Release `v0.11.3` vorbereitet). Diese Datei ist die
+aktuelle Produkt- und Architekturübersicht; die kurze operative Wahrheit liegt
+in `docs/CURRENT_WORK.md`.
 
 Nicht jede `.md` im Repo ist Soll-Zustand. `START_HERE.md` ist der stabile
 Einstieg und `docs/CURRENT_WORK.md` die kurze operative Übergabe. `*_PLAN.md`,
 `*_CONCEPT.md`, `PROGRESS.md`, `TUI_DESIGN.md`, `STATUS_LIVE.md` und datierte
 Übergaben sind Log oder Entwurf. Betrieb der Session liegt in `AGENTS.md` §6.
-`webagent` ohne Subcommand oeffnet die Session-Web-UI (`http://127.0.0.1:8788/`);
-`webagent repl` und `webagent tui` bleiben.
+`webagent` ohne Subcommand oeffnet die **Web-UI** (`http://127.0.0.1:8788/`);
+sie ist die primaere Oberflaeche und **echt an `/api/*` angebunden**
+(T-901–T-906 done): Brain-Health, Sessions anlegen/wechseln, Chat-Stream
+(`events?since=`), Quellen (`/quelle`), Gruppenläufe (2-6 Brains, Runden +
+Synthese), Datei-Upload, Brain-Fenster show/hide, Capability-Matrix und
+Doctor-Report. `webagent repl` und `webagent tui` bleiben.
 
 **Plattformen:** Session-Web-UI, REPL und CLI bauen auf Windows, Linux und
 Android (Termux, `aarch64-linux-android`). Embedded-WebView-Brains und die

@@ -75,9 +75,12 @@ Der Chat plant, dein Rechner führt aus. Prüfen, ob eine Oberfläche fahrbar is
 > [`CONTRIBUTING.md`](CONTRIBUTING.md) und die Zusammenarbeit in
 > [`docs/COLLABORATION.md`](docs/COLLABORATION.md).
 
-> **Status (v0.10.1):** Session-Web-UI ist der Default. Der genaue aktuelle
-> Abnahme- und Arbeitsstand steht in
-> [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md); lokale Testergebnisse sind
+> **Status (v0.11.3, vorbereitet):** Die lokale **Web-UI ist die primäre Oberfläche**
+> und **echt an `/api/*` angebunden** (kein Prototyp mehr): Brain-Health,
+> Sessions anlegen/wechseln, Chat live als Event-Stream, Quellen (`/quelle`),
+> Gruppenläufe (Runden + Synthese), Datei-Upload, Brain-Fenster show/hide,
+> Capability-Matrix & Doctor-Report. Der genaue aktuelle Abnahme- und
+> Arbeitsstand steht in [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md); lokale Testergebnisse sind
 > immer an den dort genannten Commit gebunden.
 > `comms.rs` (internes Messaging, ersetzt bot2bot für webagent-intern) in CLI/Controller verdrahtet.
 > Browser-Steuerung über Embedded WebView + `BrowserPool`; REPL hält die Session über Turns offen.
@@ -150,8 +153,13 @@ WebView-Deps (`wry`, `tao`) sind optional (`--no-default-features` für headless
 ## Nutzung
 
 Die lokale **Web-UI** ist die Standard-Oberflaeche: `webagent` **ohne Parameter**
-startet sie und oeffnet den Browser auf `http://127.0.0.1:8788/`. Dort laufen
-Sitzungen ueber `/api/sessions`. Die zeilenweise **REPL** ist `webagent repl`
+startet sie und oeffnet den Browser auf `http://127.0.0.1:8788/`. Die UI ist
+**echt angebunden** (`src/web_ui_api.rs`): Seitenleiste mit Brain-Health und
+lokalen Sessions, Chat-Stream wird live ueber `events?since=` angebunden
+(Textdeltas, Tool-Start/Result, Synthese, Done), Quelle wechselbar
+(`/quelle`-API, inkl. `--save`), Gruppen 2-6 Brains mit Rundenlauf, Datei-
+Upload-Feld, Brain-Fenster anzeigen/verstecken, Capability-Matrix und
+Doctor-Report. Die zeilenweise **REPL** ist `webagent repl`
 (siehe unten), die Pool-/Wand-/Bench-Ansicht `webagent tui`.
 
 **REPL fragen vs. autonom:** In der REPL laufen normale Eingaben als
@@ -306,8 +314,8 @@ vertrauenswürdigen Umgebung und mit angemessen begrenzten Nutzerrechten nutzen.
 
 | Plattform | Artifact | Was darin steckt |
 |---|---|---|
-| Windows x86_64 | `webagent-windows-x86_64.exe` + `WebView2Loader.dll` | Session-Web-UI, REPL, Pool/Wand, Embedded WebView2 |
-| Linux x86_64 | `webagent-linux-x86_64` | Session-Web-UI, REPL, CLI **und Embedded WebView über WebKitGTK** (`--features tui,webview`); braucht `libwebkit2gtk-4.1-0` |
+| Windows x86_64 | `webagent-windows-x86_64.exe` + `WebView2Loader.dll` | Web-UI (Standard), REPL, Pool/Wand, Embedded WebView2 |
+| Linux x86_64 | `webagent-linux-x86_64` | Web-UI (Standard), REPL, CLI **und Embedded WebView über WebKitGTK** (`--features tui,webview`); braucht `libwebkit2gtk-4.1-0` |
 | Android aarch64 | `webagent-aarch64-linux-android` | dasselbe für Termux, kein Play-Store-APK, kein Embedded WebView |
 
 GitHub-Releases entstehen beim Tag `v*` (`.github/workflows/release.yml`).
