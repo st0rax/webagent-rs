@@ -155,8 +155,8 @@ pub enum Commands {
         port: u16,
     },
 
-    /// Alle Brains nacheinander einloggen (canonical profiles/<brain>).
-    /// Parallelitaet ist spezifiziert, aber noch nicht implementiert.
+    /// Alle Brains einloggen (canonical profiles/<brain>).
+    /// Parallel startet pro Brain einen eigenen login-worker-Kindprozess.
     LoginAll {
         /// Maximale Wartezeit pro Brain in Sekunden
         #[arg(long, default_value = "300")]
@@ -166,10 +166,28 @@ pub enum Commands {
         #[arg(long)]
         force: bool,
 
-        /// Parallelitaet gewuenscht (0 = sequenziell); wird akzeptiert, aber
-        /// noch nicht implementiert — laeuft aktuell immer sequenziell
+        /// Parallelitaet (0 = sequenziell/Default; 1..=3 = je Brain ein
+        /// eigener Kindprozess). Gedeckelt auf 3; bei WEBAGENT_USE_SHARED_BROWSER=1
+        /// automatisch sequenziell, weil alle Brains dort in EIN Profil schreiben.
         #[arg(long, default_value = "0")]
         parallel: usize,
+    },
+
+    /// Interner Helfer von `login-all --parallel`: loggt EIN Brain ein und
+    /// schreibt `LOGIN_RESULT=<json>` auf stdout. Nicht fuer Handaufrufe.
+    #[command(name = "login-worker", hide = true)]
+    LoginWorker {
+        /// Brain-Backend (z.B. chatgpt, claude)
+        #[arg(long)]
+        brain: String,
+
+        /// Maximale Wartezeit in Sekunden
+        #[arg(long, default_value = "300")]
+        timeout: u64,
+
+        /// Auch bei positivem Login-Check erneut oeffnen
+        #[arg(long)]
+        force: bool,
     },
 
     /// Live-Diagnose: echten Browser oeffnen und Login/Composer/Selektoren pruefen

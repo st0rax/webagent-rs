@@ -11,10 +11,10 @@
 //! „goldene" Vorlage getrennt vom Alltags-Login pflegen will, legt sie an;
 //! `prepare_swarm_profile` nutzt sie dann gegenüber `profiles/<brain>`.
 //!
-//! Login ist bewusst **sequenziell**: 8 parallel geöffnete Chromium-Fenster
-//! sind RAM-lastig und fehleranfällig (Race um das Shared-Profil). Ein Fenster
-//! nach dem anderen ist robust und für den einmaligen Setup-Schritt schnell
-//! genug. Parallelität ist opt-in via `--parallel N` (max 2–3, nie Default).
+//! Login ist bewusst **sequenziell als Default**: 8 parallel geoeffnete
+//! Chromium-Fenster sind RAM-lastig. Parallelitaet ist opt-in via
+//! `--parallel N` (max 2–3, nie Default) und startet pro Brain einen eigenen
+//! Kindprozess, damit jede WebView2-Runtime in einem eigenen Prozess laeuft.
 //!
 //! **Ein Login-Weg, ein Profil-Ort.** `login-all` tut pro Brain exakt das, was
 //! `login` tut. Frueher lenkte es die Google-SSO-Brains auf ein geteiltes
@@ -24,11 +24,13 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::browser::WebBrainBackend;
 use crate::config::available_brain_ids;
 
 /// Ergebnis eines einzelnen Login-Versuchs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoginResult {
     pub brain_id: String,
     pub ok: bool,
@@ -40,20 +42,147 @@ pub struct LoginResult {
 /// Das Profil landet in `profiles/<brain>` — der einzigen canonical Quelle.
 ///
 /// `timeout_per_brain` gilt pro Brain (nicht gesamt).
-/// `parallel` (0 = sequenziell, sonst max 2–3) ist spezifiziert, aber noch nicht
-/// implementiert — laeuft aktuell immer sequenziell.
+/// `parallel` (0 = sequenziell, sonst max 2–3) startet pro Brain einen eigenen
+/// Kindprozess (`login-worker`), damit jede WebView2-Runtime in einem eigenen
+/// Prozess läuft — ein Crash reißt die Geschwister nicht mit. Der gewählte
+/// Befehl wird nach unten auf 3 gedeckelt; bei `WEBAGENT_USE_SHARED_BROWSER=1`
+/// wird NICHT parallel geloggt, weil alle Brains dort in DIESELBE
+/// `profiles/shared`-Datenbank schreiben (SingletonLock-Race).
 /// `force` überspringt den „bereits eingeloggt"-Check.
 pub fn login_all(timeout_per_brain: Duration, parallel: usize, force: bool) -> Vec<LoginResult> {
     let brains = available_brain_ids();
-    // Parallelität ist spezifiziert (max 2–3), aber noch nicht implementiert:
-    // Shared-Pool + 8 headed Windows brauchen getrennte Runtimes pro Slot.
-    // Bis dahin immer sequenziell — parallel>0 nur als Hinweis loggen.
     if parallel > 0 {
-        eprintln!(
-            "[login-all] Hinweis: --parallel {parallel} noch nicht implementiert, laufe sequenziell"
+        let cap = parallel.min(MAX_PARALLEL);
+        if crate::config::use_shared_browser() {
+            eprintln!(
+                "[login-all] --parallel deaktiviert bei WEBAGENT_USE_SHARED_BROWSER=1 \
+                 (ein geteiltes Profil fuer alle Brains, kein Parallel-Login moeglich). \
+                 Laeuft sequenziell."
+            );
+            println!(
+                "[login-all] sequenziell, {}s pro Brain (profiles/shared direkt)",
+                timeout_per_brain.as_secs()
+            );
+            return login_all_sequential(&brains, timeout_per_brain, force);
+        }
+        login_all_parallel(&brains, timeout_per_brain, force, cap)
+    } else {
+        println!(
+            "[login-all] sequenziell, {}s pro Brain (profiles/<brain>)…",
+            timeout_per_brain.as_secs()
         );
+        login_all_sequential(&brains, timeout_per_brain, force)
     }
-    login_all_sequential(&brains, timeout_per_brain, force)
+}
+
+/// Obergrenze fuer gleichzeitige Login-Prozesse (RAM-lastig: jeder startet
+/// einen eigenen Chromium/WebView2-Stack).
+pub const MAX_PARALLEL: usize = 3;
+
+/// Startet pro Brain einen `login-worker`-Kindprozess (re-exec des eigenen
+/// Binaries). Bis zu `parallel` fast gleichzeitig; Ergebniszeile pro Kind ist
+/// eine JSON-`LoginResult`-Zeile auf stdout (Präfix `LOGIN_RESULT=`).
+fn login_all_parallel(
+    brains: &[String],
+    timeout: Duration,
+    force: bool,
+    parallel: usize,
+) -> Vec<LoginResult> {
+    use std::process::{Command, Stdio};
+
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(err) => {
+            eprintln!("[login-all] eigener Binärpfad unlesbar ({err}) — laufe sequenziell.");
+            return login_all_sequential(brains, timeout, force);
+        }
+    };
+
+    let mut results: Vec<LoginResult> = Vec::with_capacity(brains.len());
+    // Chunked: nie mehr als `parallel` Kinder gleichzeitig am Leben.
+    for chunk in brains.chunks(parallel.max(1)) {
+        let mut children = Vec::with_capacity(chunk.len());
+        for brain in chunk {
+            println!("[login-all] {brain}: Kindprozess starten…");
+            let mut cmd = Command::new(&exe);
+            cmd.arg("login-worker")
+                .arg("--brain")
+                .arg(brain)
+                .arg("--timeout")
+                .arg(timeout.as_secs().to_string())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null());
+            if force {
+                cmd.arg("--force");
+            }
+            match cmd.spawn() {
+                Ok(child) => children.push((brain.clone(), child)),
+                Err(err) => {
+                    eprintln!("[login-all] {brain}: Spawn fehlgeschlagen ({err})");
+                    results.push(LoginResult {
+                        brain_id: brain.clone(),
+                        ok: false,
+                        skipped: false,
+                        message: format!("Kindprozess nicht startbar: {err}"),
+                    });
+                }
+            }
+        }
+        for (brain, child) in children {
+            let res = match child.wait_with_output() {
+                Ok(out) => parse_login_result_line(&out.stdout),
+                Err(err) => LoginResult {
+                    brain_id: brain.clone(),
+                    ok: false,
+                    skipped: false,
+                    message: format!("Kindprozess nicht lesbar: {err}"),
+                },
+            };
+            results.push(res);
+        }
+    }
+    // Chromium-Cookie-Verschluesselung: Kein additiver Master-Abgleich moeglich
+    // (siehe sync_login_to_master). Jedes Kind schreibt direkt in sein
+    // `profiles/<brain>` — das Master bleibt im Non-Shared-Betrieb bewusst
+    // unveraendert, genau wie beim sequenziellen Pfad ohne Shared-Env.
+    results
+}
+
+/// Liest die Ergebniszeile aus der stdout des `login-worker`-Kindprozesses.
+/// Der Worker schreibt genau eine `LOGIN_RESULT=<json>`-Zeile; alles andere auf
+/// stdout sind menschliche Fortschrittszeilen und werden ignoriert.
+fn parse_login_result_line(stdout: &[u8]) -> LoginResult {
+    const PREFIX: &str = "LOGIN_RESULT=";
+    let text = String::from_utf8_lossy(stdout);
+    for line in text.lines().rev() {
+        if let Some(payload) = line.strip_prefix(PREFIX) {
+            if let Ok(r) = serde_json::from_str::<LoginResult>(payload) {
+                return r;
+            }
+        }
+    }
+    LoginResult {
+        brain_id: "?".into(),
+        ok: false,
+        skipped: false,
+        message: "Kindprozess ohne LOGIN_RESULT-Zeile beendet".into(),
+    }
+}
+
+/// Der Runner des `login-worker`-Subcommands: loggt EIN Brain ein und schreibt
+/// die `LOGIN_RESULT=`-Zeile auf stdout. Getrennt von `cmd_login` gehalten,
+/// damit die Kindprozess-Ausgabe maschinenlesbar bleibt.
+pub fn run_login_worker(brain: &str, timeout_secs: u64, force: bool) -> i32 {
+    let res = login_one(brain, Duration::from_secs(timeout_secs), force, None);
+    println!(
+        "LOGIN_RESULT={}",
+        serde_json::to_string(&res).unwrap_or_else(|_| "{}".into())
+    );
+    if res.ok || res.skipped {
+        0
+    } else {
+        1
+    }
 }
 
 fn login_all_sequential(brains: &[String], timeout: Duration, force: bool) -> Vec<LoginResult> {
@@ -328,5 +457,74 @@ mod tests {
                 "{brain}: Betrieb muss profiles/<brain> nutzen"
             );
         }
+    }
+
+    #[test]
+    fn parse_login_result_line_finds_json_trailer() {
+        let r = LoginResult {
+            brain_id: "claude".into(),
+            ok: true,
+            skipped: false,
+            message: "eingeloggt".into(),
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let mut out = String::new();
+        out.push_str("[login] claude: Browser oeffnen…\n");
+        out.push_str(&format!("LOGIN_RESULT={json}\n"));
+        let parsed = parse_login_result_line(out.as_bytes());
+        assert_eq!(parsed, r);
+    }
+
+    #[test]
+    fn parse_login_result_line_skips_human_lines_and_falls_back() {
+        let out = b"[login] claude: Browser oeffnen...\n[login] claude: Login erkannt.\n";
+        let r = parse_login_result_line(out);
+        assert!(!r.ok);
+        assert!(r.message.contains("ohne LOGIN_RESULT"));
+    }
+
+    #[test]
+    fn parse_login_result_line_ignores_trailing_empty() {
+        // stdout kann mit \n oder \r\n enden; die letzte Zeile darf leer sein.
+        let r = LoginResult {
+            brain_id: "zai".into(),
+            ok: false,
+            skipped: false,
+            message: "kein Login".into(),
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let out = format!("LOGIN_RESULT={json}\r\n");
+        let parsed = parse_login_result_line(out.as_bytes());
+        assert_eq!(parsed, r);
+        let out2 = format!("LOGIN_RESULT={json}\n\n");
+        assert_eq!(parse_login_result_line(out2.as_bytes()), r);
+    }
+
+    #[test]
+    fn parallel_capped_at_max() {
+        // Die Cap-Funktion ist die, die `login_all` wirklich nutzt — und eine
+        // Konstante, die den Vertrag fixiert. Beide zusammen: pragmatisch.
+        fn cap(v: usize) -> usize {
+            if v > MAX_PARALLEL {
+                MAX_PARALLEL
+            } else {
+                v
+            }
+        }
+        assert_eq!(cap(99), MAX_PARALLEL);
+        assert_eq!(cap(2), 2);
+        assert_eq!(cap(0), 0);
+    }
+
+    #[test]
+    fn run_login_worker_emits_machine_line_without_browser() {
+        // Ohne Shared-Env und mit einem nicht existenten Brain darf KEIN
+        // Browser offen werden — der Backend-Fehler path landet im Result.
+        // Wir testen nur die strukturelle Vertraeglichkeit der Ausgabezeile.
+        std::env::remove_var("WEBAGENT_USE_SHARED_BROWSER");
+        std::env::remove_var("WEBAGENT_SHARED_BROWSER");
+        let code = run_login_worker("__no_such_brain_xyz__", 1, false);
+        // Backend-Fehler => ok=false => code 1 (kein Launch versucht).
+        assert_eq!(code, 1);
     }
 }

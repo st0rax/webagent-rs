@@ -939,16 +939,17 @@ fn head_commit() -> String {
 pub fn cmd_login_all(timeout_secs: u64, force: bool, parallel: usize) -> i32 {
     use std::time::Duration;
 
-    let parallel = if parallel > 3 {
-        eprintln!("[login-all] --parallel {parallel} gedeckelt auf 3 (Flag akzeptiert, aber noch nicht implementiert)");
-        3
+    let max_parallel = webagent::login::MAX_PARALLEL;
+    let parallel = if parallel > max_parallel {
+        eprintln!("[login-all] --parallel {parallel} gedeckelt auf {max_parallel}");
+        max_parallel
     } else {
         parallel
     };
     if parallel == 0 {
         println!("[login-all] sequenziell, {timeout_secs}s pro Brain (profiles/<brain>)…");
     } else {
-        println!("[login-all] --parallel={parallel} angefordert, aber noch nicht implementiert — laufe sequenziell.");
+        println!("[login-all] parallel={parallel} (eigener Prozess je Brain, max {max_parallel})");
     }
     let results = webagent::login::login_all(Duration::from_secs(timeout_secs), parallel, force);
     let mut fail = 0usize;

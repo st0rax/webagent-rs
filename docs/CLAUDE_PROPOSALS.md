@@ -26,9 +26,10 @@ Umgesetzt durch Qwen (Track A–E, AUTONOMIE-MANDAT) + Grok-Review. Build + Test
 - **Eigene Runtime bei Override:** `browser::start()` nutzt den Shared-Pool **nur** ohne `profile_override`; mit Override
   (Swarm-Kopie) startet eine eigene `WebViewRuntime` → Isolation wirksam (Grok MUST-FIX, in `browser.rs` integriert).
 - **Einheitliches Login:** `webagent login-all [--timeout] [--force] [--parallel N]` (N auf 3 gedeckelt) + REPL `/login-all`
-  loggen alle Brains **sequenziell** ein und schreiben canonical nach `profiles/<brain>`. Bereits eingeloggte Brains werden
-  via `is_logged_in_quick` übersprungen (außer `--force`). Hinweis: `--parallel N` wird akzeptiert, ist aber noch nicht
-  implementiert — parallelitaet ist spezifiziert, laeuft aber aktuell immer sequenziell.
+  loggen alle Brains ein und schreiben canonical nach `profiles/<brain>`. Bereits eingeloggte Brains werden
+  via `is_logged_in_quick` übersprungen (außer `--force`). `--parallel N` startet N Kindprozesse gleichzeitig
+  (je Brain eine eigene WebView2-Runtime); bei `WEBAGENT_USE_SHARED_BROWSER=1` automatisch sequenziell
+  (ein Profil fuer alle Brains, kein Parallel-Login moeglich).
 - **Tests:** `config::tests::test_prepare_swarm_profile_fallback_and_cleanup`, `test_swarm_and_reference_paths` (grün).
 - **Docs:** `README.md` Profil-Tabelle + login-all + swarm aktualisiert.
 

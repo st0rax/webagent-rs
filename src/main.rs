@@ -181,6 +181,12 @@ fn dispatch(command: Commands) -> i32 {
             parallel,
         } => cmd_login_all(timeout, force, parallel),
 
+        Commands::LoginWorker {
+            brain,
+            timeout,
+            force,
+        } => webagent::login::run_login_worker(&brain, timeout, force),
+
         Commands::Show { brain, port } => cmd_show(&brain, port),
         Commands::Hide { brain, port } => cmd_hide(&brain, port),
 

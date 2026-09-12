@@ -247,9 +247,10 @@ Login-Zustand. Danach nutzen `run`/`diagnose`/`relay` diese Session im
 persistente Profil (`profiles/<brain>/` oder Shared-Profil). Prüfen mit
 `webagent diagnose --brain <id>`.
 
-`webagent login-all` (REPL: `/login-all`) loggt **alle** Brains **nacheinander**
-ein (`--parallel N` wird akzeptiert/gedeckelt, aber noch nicht implementiert —
-läuft sequenziell). Schon eingeloggte
+`webagent login-all` (REPL: `/login-all`) loggt **alle** Brains ein
+(`--parallel N` startet N Kindprozesse gleichzeitig, max 3 — je Brain eine
+eigene WebView2-Runtime; bei `WEBAGENT_USE_SHARED_BROWSER=1` automatisch
+sequenziell, weil alle Brains dort in EIN Profil schreiben). Schon eingeloggte
 Profile werden übersprungen (`--force` erzwingt erneut).
 
 ### Profile (Swarm)
