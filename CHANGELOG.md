@@ -1,7 +1,7 @@
 # Changelog
 > **Referenz:** Versionshistorie. Der aktuelle Produktzustand steht in `docs/OVERVIEW.md`, der operative Arbeitsstand in `docs/CURRENT_WORK.md`.
 
-## [Unreleased]
+## [0.11.3] - 2026-09-12
 
 ### Added
 - **Web-UI echte API-Anbindung** (T-905): `web/index.html` komplett neu — echte `fetch`-Aufrufe zu `/api/health/brains`, `/api/sessions` (anlegen, Chat-Stream `events?since=`, Stop), `/api/quelle`, `/api/groups`, `/api/sources`; Brain-Detail, Aktivitätsleiste; Einzeldatei 32,7 KB (< 48 KiB), Layout im T-203-Grok-Schema (a11y, `prefers-reduced-motion`, Skip-Link)
