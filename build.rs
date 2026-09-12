@@ -41,14 +41,19 @@ fn main() {
         resource
             .compile()
             .expect("Windows version resource compilation failed");
-        // Bei mingw-gcc kann die von winres erzeugte statische Resource-Bibliothek
-        // mangels referenzierter Symbole aus dem Link entfernt werden. Das direkte
-        // Linken des erzeugten COFF-Objekts stellt sicher, dass VERSIONINFO auch in
-        // einer Release-EXE vorhanden ist.
-        let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR missing");
-        println!(
-            "cargo:rustc-link-arg={}",
-            std::path::Path::new(&out_dir).join("resource.o").display()
-        );
+        // winres verknüpft das Ergebnis je Toolchain unterschiedlich: unter MSVC
+        // erzeugt es resource.lib und meldet es selbst per cargo:rustc-link-lib;
+        // unter GNU/mingw erzeugt es resource.o + libresource.a, wobei die
+        // statische Bibliothek mangels referenzierter Symbole aus dem Link
+        // entfernt werden kann. Nur im GNU-Fall wird das COFF-Objekt deshalb
+        // zusätzlich direkt gelinkt, damit VERSIONINFO in der Release-EXE bleibt.
+        let target_lower = target.to_ascii_lowercase();
+        if target_lower.contains("gnu") && !target_lower.contains("android") {
+            let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR missing");
+            println!(
+                "cargo:rustc-link-arg={}",
+                std::path::Path::new(&out_dir).join("resource.o").display()
+            );
+        }
     }
 }
