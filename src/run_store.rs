@@ -1928,4 +1928,27 @@ mod tests {
 
         fs::remove_dir_all(&tmp).ok();
     }
+
+    #[test]
+    fn record_rejection_persistiert_ursache_in_der_kette() {
+        let tmp = unique_tmp();
+        let store = RunStore::new(tmp.join("runs"), tmp.join("logs"));
+        let meta = store.create("claude", "T-806-Demo").unwrap();
+
+        store
+            .record_rejection(&meta.run_id, "T-806", "Fremder Beleg: run_id stimmt nicht")
+            .unwrap();
+
+        let journal = tmp.join("runs").join(&meta.run_id).join("events.jsonl");
+        let content = fs::read_to_string(&journal).unwrap();
+        assert!(
+            content.contains("task_completion_rejected"),
+            "Ablehnung muss in der Run-Ereigniskette stehen"
+        );
+        assert!(content.contains("Fremder Beleg"));
+        assert!(content.contains("T-806"));
+        assert!(last_event_chain_state(&journal).is_ok(), "Kette bleibt intakt");
+
+        fs::remove_dir_all(&tmp).ok();
+    }
 }

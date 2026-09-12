@@ -374,4 +374,106 @@ mod tests {
         let value: Value = serde_json::from_str(&fs::read_to_string(&board).unwrap()).unwrap();
         assert_eq!(value["tasks"][0]["status"], "claimed");
     }
+
+    #[test]
+    fn verified_completion_markiert_claim_erst_bei_belastbarem_antrag_done() {
+        use crate::acceptance::{CompletionReceipt, ExpectedCompletion, ACCEPTANCE_VERSION};
+        let d = std::env::temp_dir().join(format!("webagent-v-ok-{}", std::process::id()));
+        let _ = fs::create_dir_all(&d);
+        let board = d.join("TASKBOARD.json");
+        let proof = d.join("proof.txt");
+        fs::write(
+            &board,
+            r#"{"tasks":[{"id":"T-1","status":"claimed","owner":"webagent:claude","branch":"master"}]}"#,
+        )
+        .unwrap();
+        fs::write(&proof, "beleg").unwrap();
+
+        let store = crate::run_store::RunStore::new(d.join("runs"), d.join("logs"));
+        let mut meta = store.create("claude", "T-806-Demo").unwrap();
+        meta.status = "done".to_string();
+        store.save(&meta).unwrap();
+
+        let receipt = CompletionReceipt {
+            version: ACCEPTANCE_VERSION,
+            task_id: "T-1".into(),
+            run_id: meta.run_id.clone(),
+            brain_id: "claude".into(),
+            commit: "abc123".into(),
+            scope: "docs".into(),
+            criteria: vec![
+                crate::acceptance::CriterionOutcome::Passed,
+                crate::acceptance::CriterionOutcome::Passed,
+            ],
+            artifact_hashes: vec!["sha256:beleg".into()],
+        };
+        let expected = ExpectedCompletion {
+            task_id: "T-1".into(),
+            run_id: meta.run_id.clone(),
+            brain_id: "claude".into(),
+            commit: "abc123".into(),
+            run_status: meta.status.clone(),
+        };
+
+        complete_claim_verified(&board, "T-1", "webagent:claude", "master", &proof, &receipt, &expected, &store)
+            .unwrap();
+
+        let value: Value = serde_json::from_str(&fs::read_to_string(&board).unwrap()).unwrap();
+        assert_eq!(value["tasks"][0]["status"], "done");
+        fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn verified_completion_lehnt_unbestandene_kriterien_ab_und_lasst_board_claimed() {
+        use crate::acceptance::{CompletionReceipt, ExpectedCompletion, CriterionOutcome, ACCEPTANCE_VERSION};
+        let d = std::env::temp_dir().join(format!("webagent-v-nok-{}", std::process::id()));
+        let _ = fs::create_dir_all(&d);
+        let board = d.join("TASKBOARD.json");
+        let proof = d.join("proof.txt");
+        fs::write(
+            &board,
+            r#"{"tasks":[{"id":"T-1","status":"claimed","owner":"webagent:claude","branch":"master"}]}"#,
+        )
+        .unwrap();
+        fs::write(&proof, "beleg").unwrap();
+
+        let store = crate::run_store::RunStore::new(d.join("runs"), d.join("logs"));
+        let mut meta = store.create("claude", "T-806-Demo").unwrap();
+        meta.status = "done".to_string();
+        store.save(&meta).unwrap();
+
+        let receipt = CompletionReceipt {
+            version: ACCEPTANCE_VERSION,
+            task_id: "T-1".into(),
+            run_id: meta.run_id.clone(),
+            brain_id: "claude".into(),
+            commit: "abc123".into(),
+            scope: "docs".into(),
+            criteria: vec![CriterionOutcome::Passed, CriterionOutcome::Unreachable],
+            artifact_hashes: vec!["sha256:beleg".into()],
+        };
+        let expected = ExpectedCompletion {
+            task_id: "T-1".into(),
+            run_id: meta.run_id.clone(),
+            brain_id: "claude".into(),
+            commit: "abc123".into(),
+            run_status: meta.status.clone(),
+        };
+
+        let err = complete_claim_verified(&board, "T-1", "webagent:claude", "master", &proof, &receipt, &expected, &store)
+            .expect_err("Unreachable-Kriterium darf den Abschluss verweigern");
+        assert!(err.contains("verweigert"));
+
+        let value: Value = serde_json::from_str(&fs::read_to_string(&board).unwrap()).unwrap();
+        assert_eq!(
+            value["tasks"][0]["status"], "claimed",
+            "Board darf nicht auf done wechseln"
+        );
+
+        let journal = d.join("runs").join(&meta.run_id).join("events.jsonl");
+        let content = fs::read_to_string(&journal).unwrap();
+        assert!(content.contains("task_completion_rejected"), "Ablehnung muss im Run-Eventlog stehen");
+
+        fs::remove_dir_all(&d).ok();
+    }
 }
