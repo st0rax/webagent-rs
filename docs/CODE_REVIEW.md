@@ -32,7 +32,8 @@ Die ehemals roten `executor::tests::*` sind grün.
 - **Eigene Runtime bei Override:** `browser::start()` Shared-Pool nur ohne `profile_override`; mit Override eigene
   `WebViewRuntime` → Isolation wirksam (Grok MUST-FIX integriert).
 - **Einheitliches Login:** `webagent login-all` + REPL `/login-all`, sequenziell, schreibt canonical `profiles/<brain>`;
-  Skip via `is_logged_in_quick` (außer `--force`); `--parallel N` auf 3 gedeckelt.
+  Skip via `is_logged_in_quick` (außer `--force`); `--parallel N` wird auf 3 gedeckelt akzeptiert, aber noch nicht
+  implementiert (laeuft sequenziell; getrennte Runtimes pro Slot muessten erst gebaut werden).
 - **Tests:** `config::tests::test_prepare_swarm_profile_fallback_and_cleanup`, `test_swarm_and_reference_paths` (grün).
 - **Docs:** `README.md` Profil-Tabelle + login-all + swarm; `CLAUDE_PROPOSALS.md` Status-Sektion.
 

@@ -156,7 +156,7 @@ pub enum Commands {
     },
 
     /// Alle Brains nacheinander einloggen (canonical profiles/<brain>).
-    /// Parallel nur opt-in und gedeckelt (siehe --parallel).
+    /// Parallelitaet ist spezifiziert, aber noch nicht implementiert.
     LoginAll {
         /// Maximale Wartezeit pro Brain in Sekunden
         #[arg(long, default_value = "300")]
@@ -166,7 +166,8 @@ pub enum Commands {
         #[arg(long)]
         force: bool,
 
-        /// Parallelitaet (0 = sequenziell/Default; max 3 experimentell)
+        /// Parallelitaet gewuenscht (0 = sequenziell); wird akzeptiert, aber
+        /// noch nicht implementiert — laeuft aktuell immer sequenziell
         #[arg(long, default_value = "0")]
         parallel: usize,
     },

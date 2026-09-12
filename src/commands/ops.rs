@@ -940,7 +940,7 @@ pub fn cmd_login_all(timeout_secs: u64, force: bool, parallel: usize) -> i32 {
     use std::time::Duration;
 
     let parallel = if parallel > 3 {
-        eprintln!("[login-all] --parallel {parallel} gedeckelt auf 3");
+        eprintln!("[login-all] --parallel {parallel} gedeckelt auf 3 (Flag akzeptiert, aber noch nicht implementiert)");
         3
     } else {
         parallel
@@ -948,7 +948,7 @@ pub fn cmd_login_all(timeout_secs: u64, force: bool, parallel: usize) -> i32 {
     if parallel == 0 {
         println!("[login-all] sequenziell, {timeout_secs}s pro Brain (profiles/<brain>)…");
     } else {
-        println!("[login-all] parallel={parallel} (experimentell), {timeout_secs}s pro Brain…");
+        println!("[login-all] --parallel={parallel} angefordert, aber noch nicht implementiert — laufe sequenziell.");
     }
     let results = webagent::login::login_all(Duration::from_secs(timeout_secs), parallel, force);
     let mut fail = 0usize;

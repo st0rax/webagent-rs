@@ -27,7 +27,8 @@ Umgesetzt durch Qwen (Track A–E, AUTONOMIE-MANDAT) + Grok-Review. Build + Test
   (Swarm-Kopie) startet eine eigene `WebViewRuntime` → Isolation wirksam (Grok MUST-FIX, in `browser.rs` integriert).
 - **Einheitliches Login:** `webagent login-all [--timeout] [--force] [--parallel N]` (N auf 3 gedeckelt) + REPL `/login-all`
   loggen alle Brains **sequenziell** ein und schreiben canonical nach `profiles/<brain>`. Bereits eingeloggte Brains werden
-  via `is_logged_in_quick` übersprungen (außer `--force`).
+  via `is_logged_in_quick` übersprungen (außer `--force`). Hinweis: `--parallel N` wird akzeptiert, ist aber noch nicht
+  implementiert — parallelitaet ist spezifiziert, laeuft aber aktuell immer sequenziell.
 - **Tests:** `config::tests::test_prepare_swarm_profile_fallback_and_cleanup`, `test_swarm_and_reference_paths` (grün).
 - **Docs:** `README.md` Profil-Tabelle + login-all + swarm aktualisiert.
 
