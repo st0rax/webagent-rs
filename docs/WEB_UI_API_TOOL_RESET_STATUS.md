@@ -1,6 +1,15 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-07, T-501 Modellbeleg-Audit
+## Aktuell: 2026-09-13, T-907 Routing-Modul
+
+`grok-agent` hat T-907 auf `refactor/T-907-api-bridge-routing` abgeschlossen.
+Dispatch und Streaming-Policy liegen in `src/api_bridge/routing.rs`
+(`classify` + `BridgeRoute`, Handler-Namen 1:1 dokumentiert).
+`src/api_bridge.rs` bleibt unveraendert; T-913 verdrahtet das Modul.
+Gates: fmt/clippy `-D warnings`/50 `api_bridge::tests` gruen.
+Beweis: `docs/proofs/T-907/`.
+
+## Historisch: 2026-09-07, T-501 Modellbeleg-Audit
 
 `chatgpt-codex` fuehrt T-501 auf `fix/T-501-model-proof` weiter (Basis `28e9f1c`).
 Die bisherigen Modellwechsel-PASS prueften teilweise nur Menue-Oeffnung.

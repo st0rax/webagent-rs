@@ -1,0 +1,18 @@
+T-907 gates 2026-09-13 (worktree webagent-rs-t907, branch refactor/T-907-api-bridge-routing)
+
+cargo fmt --all -- --check
+  exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+  Finished `dev` profile in 4m 25s
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 1348 filtered out; finished in 10.15s
+  incremental_route_is_only_used_for_text_streams ... ok
+
+git diff --check
+  diff_exit=0
+
+Hinweis: `src/api_bridge.rs` bleibt in diesem Slot unveraendert. `classify` wird erst in T-913 verdrahtet.

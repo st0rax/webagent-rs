@@ -510,10 +510,11 @@
       "phase": "10",
       "type": "refactoring",
       "title": "API-Bridge-Routing und Request-Dispatch isolieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "refactor/T-907-api-bridge-routing",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/routing.rs"
