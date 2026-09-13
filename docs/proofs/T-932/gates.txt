@@ -1,0 +1,5 @@
+test -f LICENSE
+# expected: first line "MIT License"
+# Cargo.toml license = "MIT" unveraendert
+# README.md endet weiterhin mit MIT.
+git diff --check
