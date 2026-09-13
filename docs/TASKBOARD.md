@@ -73,7 +73,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-905 | Web-UI: Fake-Prototyp -> echte API-Anbindung + Layout | docs/WEB_UI_API_TOOL_RESET.md (Status: sonst tote Scheibe) |
 | T-906 | Web-UI: T-905-Restluecken schliessen (Gruppenlauf-Live, Upload, Brain-Fenster) | T-905 Beweis verbleibende_grenzen |
 | T-907 | API-Bridge-Routing und Request-Dispatch isolieren | done `grok-agent` / `refactor/T-907-api-bridge-routing` |
-| T-908 | API-Bridge-Provider-Handler fachlich trennen | Refactoring-Scope: `src/api_bridge/provider_handlers.rs` |
+| T-908 | API-Bridge-Provider-Handler fachlich trennen | claimed `grok-agent` / `refactor/T-908-api-bridge-handlers` |
 | T-909 | API-Bridge-HTTP-Transport und SSE-Schreiben isolieren | Refactoring-Scope: `src/api_bridge/transport.rs`, `src/api_bridge/wire.rs` |
 | T-910 | API-Bridge-Auth und Fehlervertrag als Boundary-Modul ordnen | Refactoring-Scope: `src/api_bridge/boundary.rs` |
 | T-911 | API-Bridge-Tests in eigenstaendige Testmodule ordnen | Test-Scope: `src/api_bridge/tests.rs` |
@@ -91,4 +91,4 @@ dort genannten Scope und liefert die dort genannten Gates und Belege. Niemand
 aller Vorgänger. T-913 ist deshalb absichtlich blockiert, bis alle Vorgänger
 `done` sind.
 
-**Phase-10-Claims (2026-09-13):** T-907 done (`grok-agent`, `refactor/T-907-api-bridge-routing`, Beweis `docs/proofs/T-907/`).
+**Phase-10-Claims (2026-09-13):** T-907 done (`grok-agent`, `refactor/T-907-api-bridge-routing`, Beweis `docs/proofs/T-907/`). T-908 claimed (`grok-agent`, `refactor/T-908-api-bridge-handlers`).

@@ -534,10 +534,10 @@
       "phase": "10",
       "type": "refactoring",
       "title": "API-Bridge-Provider-Handler fachlich trennen",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "grok-agent",
+      "branch": "refactor/T-908-api-bridge-handlers",
+      "claimed_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/provider_handlers.rs"
