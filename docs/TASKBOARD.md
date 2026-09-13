@@ -122,7 +122,7 @@ sie bei Bedarf nur verdrahtet — kein paralleler Types-Slot.
 
 ## Phase 12 (ab 2026-09-13) — Verdrahtungs-Nachzug + Folgearbeit
 
-User-Skips: **T-914** und **T-919** bleiben deferred (nicht claimen).
+User-Skips: **T-914** bleibt deferred (nicht claimen). **T-919** ist freigegeben.
 Columbo-P0: T-915/T-916 Dateiextrakte ohne `mod` gelten als **unwired ≠ done**;
 Nachzug in T-922/T-923.
 

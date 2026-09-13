@@ -32,7 +32,7 @@ Nicht als Kindmodul extrahiert (User-Skip, bleiben in der Root-Datei):
 | Thema | Slot | Status |
 |---|---|---|
 | Bild/Audio/Multipart | T-914 | deferred, nicht claimen |
-| `run_task_blocking` / streaming | T-919 | deferred, nicht claimen |
+| `run_task_blocking` / streaming | T-919 | freigegeben (claimbar) |
 
 ## Erlaubte Abhängigkeitsrichtung
 
@@ -76,7 +76,7 @@ Verdrahtung (T-913, T-921, T-922, T-923, T-931, T-933): zusätzlich
 
 Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe.
 
-- T-914 und T-919 nicht claimen (deferred).
+- T-914 nicht claimen (deferred). T-919 ist freigegeben.
 - Orphan-Dateien (`store`, `content`, `catalog`, `response_protocol`) nicht
   als fertige Produktion behandeln; Nachzug ist T-922 / T-923 / T-931 / T-933.
 - T-921 verdrahtet den Rest, ist aber `depends_on` T-915, T-916, T-917, T-918,
@@ -86,7 +86,7 @@ Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe.
 ## Verbleibende Risiken
 
 - Drift Root vs. Orphan, solange `mod` fehlt: Clippy sieht die Orphans nicht.
-- Medien und Inference bleiben in der Root-Datei (T-914/T-919 deferred).
+- Medien und Inference bleiben in der Root-Datei (T-914 deferred; T-919 freigegeben).
 - `docs/API_BRIDGE.md` ist der Betriebsvertrag; dieses Dokument ist die Modulkarte.
 - Phase-12-Nachzug (T-922+) ist der Weg, Orphans zu schließen — nicht ein
   zweites paralleles Extrakt ohne `mod`.
@@ -101,5 +101,5 @@ Verdrahtungs-Nachzug und Folgearbeit: siehe docs/TASKBOARD.json (T-922–T-933, 
 1. `START_HERE.md` und `docs/WORK_CONTRACT.md`.
 2. `git pull origin master`.
 3. Freien Task in `docs/TASKBOARD.json` claimen, Branch nach `docs/GIT_GLOSSAR.md`.
-4. Nur den Scope der Aufgabe anfassen. T-914/T-919 überspringen.
+4. Nur den Scope der Aufgabe anfassen. T-914 überspringen (deferred).
 5. Gates grün, Beleg unter `docs/proofs/T-…/`, Merge nach `master`.

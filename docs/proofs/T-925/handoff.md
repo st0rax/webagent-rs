@@ -28,3 +28,9 @@ Siehe `docs/proofs/T-925/gates.txt`.
 - .env.example: WEBAGENT_API_KEY für CLI//v1/* dokumentiert; /api/* =
   trust-localhost (kein Bearer, kein Fake-Auth).
 
+## Columbo QM follow-up
+
+- Typo esponse_protocol -> response_protocol.
+- v1.0/Verify-Zahl entschärft.
+- T-919 freigegeben im Board (kein DEFERRED/USER-SKIP).
+
