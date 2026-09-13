@@ -1194,9 +1194,9 @@
       "type": "bugfix",
       "title": "Pi-Bridge: Systemkontext und Client-Tool-Rundlauf reparieren",
       "status": "claimed",
-      "owner": "chatgpt-codex",
+      "owner": "grok-agent",
       "branch": "fix/T-934-pi-bridge-roundtrip",
-      "claimed_at": "2026-09-13",
+      "claimed_at": "2026-09-14",
       "depends_on": [],
       "scope": [
         "src/api_bridge/content.rs",
