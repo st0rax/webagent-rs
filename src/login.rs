@@ -52,7 +52,7 @@ pub struct LoginResult {
 pub fn login_all(timeout_per_brain: Duration, parallel: usize, force: bool) -> Vec<LoginResult> {
     let brains = available_brain_ids();
     if parallel > 0 {
-        let cap = parallel.min(MAX_PARALLEL);
+        let cap = cap_parallel(parallel);
         if crate::config::use_shared_browser() {
             eprintln!(
                 "[login-all] --parallel deaktiviert bei WEBAGENT_USE_SHARED_BROWSER=1 \
@@ -78,6 +78,13 @@ pub fn login_all(timeout_per_brain: Duration, parallel: usize, force: bool) -> V
 /// Obergrenze fuer gleichzeitige Login-Prozesse (RAM-lastig: jeder startet
 /// einen eigenen Chromium/WebView2-Stack).
 pub const MAX_PARALLEL: usize = 3;
+
+/// Kappt den gewuenschten Parallelitaetsgrad auf die echte Obergrenze.
+/// Genau diese Funktion nutzt auch `login_all`, damit der Vertrag getestet wird
+/// und nicht eine abgeleitete Kopie.
+pub fn cap_parallel(parallel: usize) -> usize {
+    parallel.min(MAX_PARALLEL)
+}
 
 /// Startet pro Brain einen `login-worker`-Kindprozess (re-exec des eigenen
 /// Binaries). Bis zu `parallel` fast gleichzeitig; das Kind erbt stdout/stderr,
@@ -109,13 +116,15 @@ fn login_all_parallel(
         let mut children: Vec<(String, std::process::Child, std::path::PathBuf)> =
             Vec::with_capacity(chunk.len());
         for (i, brain) in chunk.iter().enumerate() {
-            // Zuerst das Ergebnisziel reservieren, damit Spawn-Fehler keine
-            // kollidierenden Tempdateien hinterlassen.
             let result_file = std::env::temp_dir().join(format!(
                 "webagent-login-worker-{}-{}.json",
                 std::process::id(),
                 i
             ));
+            // Alte Ergebnisdatei loeschen (TOCTOU-Schutz): verhindert, dass ein
+            // abgestuerzter Kindprozess aus einer frueheren Runde einen
+            // veralteten Erfolg vortaeuscht.
+            let _ = std::fs::remove_file(&result_file);
             println!("[login-all] {brain}: Kindprozess starten…");
             let mut cmd = Command::new(&exe);
             cmd.arg("login-worker")
@@ -165,10 +174,12 @@ fn login_all_parallel(
             results.push(res);
         }
     }
-    // Chromium-Cookie-Verschluesselung: Kein additiver Master-Abgleich moeglich
-    // (siehe sync_login_to_master). Jedes Kind schreibt direkt in sein
-    // `profiles/<brain>` — das Master bleibt im Non-Shared-Betrieb bewusst
-    // unveraendert, genau wie beim sequenziellen Pfad ohne Shared-Env.
+    // Jedes Kind spiegelt nach erfolgreichem Login seine Session ins Master
+    // (write_back_dir_to_master). Die Master-Schreibsperre ist try-exclusive:
+    // bei mehreren parallelen Kindern gewinnt pro Welle nur eines, die anderen
+    // erhalten "Spiegelung abgelehnt" und lassen das Master unangetastet
+    // (fail-closed, kein Korruptionsrisiko; sequenzielles login-all spiegelt
+    // jedes Brain einzeln).
     results
 }
 
@@ -200,8 +211,10 @@ fn read_worker_result_file(brain: &str, path: &std::path::Path) -> LoginResult {
 fn parse_login_result_line(stdout: &[u8]) -> LoginResult {
     const PREFIX: &str = "LOGIN_RESULT=";
     let text = String::from_utf8_lossy(stdout);
+    let mut saw_line = false;
     for line in text.lines().rev() {
         if let Some(payload) = line.strip_prefix(PREFIX) {
+            saw_line = true;
             if let Ok(r) = serde_json::from_str::<LoginResult>(payload) {
                 return r;
             }
@@ -211,7 +224,11 @@ fn parse_login_result_line(stdout: &[u8]) -> LoginResult {
         brain_id: "?".into(),
         ok: false,
         skipped: false,
-        message: "Kindprozess ohne LOGIN_RESULT-Zeile beendet".into(),
+        message: if saw_line {
+            "LOGIN_RESULT-Zeile vorhanden, aber JSON unlesbar".into()
+        } else {
+            "Kindprozess ohne LOGIN_RESULT-Zeile beendet".into()
+        },
     }
 }
 
@@ -220,18 +237,29 @@ fn parse_login_result_line(stdout: &[u8]) -> LoginResult {
 /// Tempdatei (Parallel-Modus; stdout des Kindes bleibt fuer Fortschritt frei)
 /// oder auf stdout (manueller Aufruf). Getrennt von `cmd_login` gehalten,
 /// damit die Kindprozess-Ausgabe maschinenlesbar bleibt.
-pub fn run_login_worker(brain: &str, timeout_secs: u64, force: bool) -> i32 {
+pub fn run_login_worker(
+    brain: &str,
+    timeout_secs: u64,
+    force: bool,
+    dest: Option<&std::path::Path>,
+) -> i32 {
     let res = login_one(brain, Duration::from_secs(timeout_secs), force, None);
     let line = format!(
         "LOGIN_RESULT={}",
         serde_json::to_string(&res).unwrap_or_else(|_| "{}".into())
     );
-    match std::env::var("WEBAGENT_LOGIN_WORKER_RESULT") {
-        Ok(path) => {
+    match dest {
+        Some(path) => {
             // Fortschritt des Kindes ging auf stdout (geerbt); Ergebnis in Datei.
-            let _ = std::fs::write(&path, line);
+            if let Err(e) = std::fs::write(path, line) {
+                eprintln!("[login-worker] Ergebnisdatei nicht schreibbar ({e}) — Result nur als stdout-Zeile.");
+                println!(
+                    "LOGIN_RESULT={}",
+                    serde_json::to_string(&res).unwrap_or_else(|_| "{}".into())
+                );
+            }
         }
-        Err(_) => println!("{line}"),
+        None => println!("{line}"),
     }
     if res.ok || res.skipped {
         0
@@ -539,6 +567,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_login_result_line_distinguishes_malformed_json() {
+        // LOGIN_RESULT-Zeile vorhanden, aber Payload kaputt -> ehrliche Message.
+        let out = b"LOGIN_RESULT={nicht-json\nLOGIN_RESULT={\"ok\":true, \"brain_id\":\n";
+        let r = parse_login_result_line(out);
+        assert!(!r.ok);
+        assert!(r.message.contains("JSON unlesbar"));
+        assert!(!r.message.contains("ohne LOGIN_RESULT"));
+    }
+
+    #[test]
     fn parse_login_result_line_ignores_trailing_empty() {
         // stdout kann mit \n oder \r\n enden; die letzte Zeile darf leer sein.
         let r = LoginResult {
@@ -557,18 +595,11 @@ mod tests {
 
     #[test]
     fn parallel_capped_at_max() {
-        // Die Cap-Funktion ist die, die `login_all` wirklich nutzt — und eine
-        // Konstante, die den Vertrag fixiert. Beide zusammen: pragmatisch.
-        fn cap(v: usize) -> usize {
-            if v > MAX_PARALLEL {
-                MAX_PARALLEL
-            } else {
-                v
-            }
-        }
-        assert_eq!(cap(99), MAX_PARALLEL);
-        assert_eq!(cap(2), 2);
-        assert_eq!(cap(0), 0);
+        // Die echte Funktion, die `login_all` benutzt (keine abgeleitete Kopie).
+        assert_eq!(cap_parallel(99), MAX_PARALLEL);
+        assert_eq!(cap_parallel(MAX_PARALLEL), MAX_PARALLEL);
+        assert_eq!(cap_parallel(2), 2);
+        assert_eq!(cap_parallel(0), 0);
     }
 
     #[test]
@@ -578,8 +609,7 @@ mod tests {
         // Wir testen nur die strukturelle Vertraeglichkeit der Ausgabezeile.
         std::env::remove_var("WEBAGENT_USE_SHARED_BROWSER");
         std::env::remove_var("WEBAGENT_SHARED_BROWSER");
-        std::env::remove_var("WEBAGENT_LOGIN_WORKER_RESULT");
-        let code = run_login_worker("__no_such_brain_xyz__", 1, false);
+        let code = run_login_worker("__no_such_brain_xyz__", 1, false, None);
         // Backend-Fehler => ok=false => code 1 (kein Launch versucht).
         assert_eq!(code, 1);
     }
@@ -595,9 +625,7 @@ mod tests {
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
-        std::env::set_var("WEBAGENT_LOGIN_WORKER_RESULT", &path);
-        let code = run_login_worker("__no_such_brain_xyz__", 1, false);
-        std::env::remove_var("WEBAGENT_LOGIN_WORKER_RESULT");
+        let code = run_login_worker("__no_such_brain_xyz__", 1, false, Some(&path));
         assert_eq!(code, 1);
         let content = std::fs::read_to_string(&path).expect("Ergebnisdatei geschrieben");
         let _ = std::fs::remove_file(&path);

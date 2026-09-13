@@ -1,6 +1,10 @@
 @echo off
 set WEBAGENT_VERIFY_TRACE=1
 cd /d C:\Users\storax\projects\GitHub\webagent-rs
-if not exist "target\debug\WebView2Loader.dll" copy /y "C:\Users\storax\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-sys-0.33.0\x64\WebView2Loader.dll" "target\debug\WebView2Loader.dll" >nul 2>&1
+if not defined CARGO_HOME set "CARGO_HOME=%USERPROFILE%\.cargo"
+set "WV2="
+for /d %%R in ("%CARGO_HOME%\registry\src\*.crates.io-*") do for /d %%V in ("%%R\webview2-com-sys-*") do if exist "%%V\x64\WebView2Loader.dll" set "WV2=%%V\x64\WebView2Loader.dll"
+if defined WV2 if not exist "target\debug\WebView2Loader.dll" copy /y "%WV2%" "target\debug\WebView2Loader.dll" >nul 2>&1
+if not defined WV2 echo [loaderguard] WebView2Loader.dll im Cargo-Cache nicht gefunden (webview2-com-sys fehlt?) >&2
 target\debug\webagent.exe verify >> "%TEMP%\opencode\verify-sauber.log" 2>&1
 echo RUN_CLEAN_DONE >> "%TEMP%\opencode\verify-sauber.log"

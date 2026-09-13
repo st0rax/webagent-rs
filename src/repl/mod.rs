@@ -914,11 +914,25 @@ mod tests {
         );
         assert_eq!(
             parse_slash_command("/login-all parallel=foo"),
-            Some(SlashCommand::LoginAll { parallel: None })
+            Some(SlashCommand::Unknown {
+                raw: "/login-all parallel=foo".into()
+            }) // ungueltiger Wert -> verwirft statt sequenziell zu laufen
         );
         assert_eq!(
             parse_slash_command("/login-all unsinn"),
-            Some(SlashCommand::LoginAll { parallel: None }) // unbekanntes Arg -> Default
+            Some(SlashCommand::Unknown {
+                raw: "/login-all unsinn".into()
+            }) // nicht-paralleles Argument -> verwirft (kann sonst 40 min sequenziell sein)
+        );
+        assert_eq!(
+            parse_slash_command("/login-all   "),
+            Some(SlashCommand::LoginAll { parallel: None })
+        ); // nur Whitespace -> Default-sequenziell
+        assert_eq!(
+            parse_slash_command("/login-all 2"),
+            Some(SlashCommand::Unknown {
+                raw: "/login-all 2".into()
+            }) // Zahl ohne parallel=-Prefix -> verwirft
         );
         assert_eq!(
             parse_slash_command("/chat hi"),

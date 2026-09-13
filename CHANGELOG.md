@@ -1,6 +1,13 @@
 # Changelog
 > **Referenz:** Versionshistorie. Der aktuelle Produktzustand steht in `docs/OVERVIEW.md`, der operative Arbeitsstand in `docs/CURRENT_WORK.md`.
 
+## [0.11.4] - 2026-09-13
+
+### Added
+- **login-all --parallel N** (echte Parallelitaet, max 3): pro Brain ein eigener `login-worker`-Kindprozess (re-exec), JSON-Ergebnis per Tempdatei (`WEBAGENT_LOGIN_WORKER_RESULT`), Live-Fortschritt via stdout-Inheritance; automatisch sequenziell bei `WEBAGENT_USE_SHARED_BROWSER=1` (SingletonLock-Race)
+- **REPL `/login-all parallel=N`**: Paritaet zur CLI (vorher nur sequenziell)
+- **run-\*.bat: WebView2Loader-Guard** — Kopiert `WebView2Loader.dll` aus `webview2-com-sys` nach `target/debug`, falls die Datei fehlt (behebt `0xC0000135`-Crash nach frischem `cargo build`)
+
 ## [0.11.3] - 2026-09-12
 
 ### Added

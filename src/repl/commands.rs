@@ -371,15 +371,24 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
         return Some(SlashCommand::LoginAll { parallel: None });
     }
     if let Some(rest) = trimmed.strip_prefix("/login-all ") {
-        let parallel = rest
-            .strip_prefix("parallel=")
-            .and_then(|p| p.trim().parse::<usize>().ok());
-        if parallel.is_none() && !rest.trim().is_empty() {
-            eprintln!(
-                "[login-all] Hinweis: '<parallel=N>' (0=sequenziell, max 3) — '{rest}' ignoriert."
-            );
+        // Reine Textverarbeitung ohne Seiteneffekte: ungueltige Argumente
+        // erzwingen einen Unknown-Befehl (nichts wird ausgefuehrt), statt
+        // ungewollt einen langen sequenziellen Login zu starten.
+        let rest = rest.trim();
+        if rest.is_empty() {
+            return Some(SlashCommand::LoginAll { parallel: None });
         }
-        return Some(SlashCommand::LoginAll { parallel });
+        if let Some(p) = rest.strip_prefix("parallel=") {
+            return match p.trim().parse::<usize>() {
+                Ok(n) => Some(SlashCommand::LoginAll { parallel: Some(n) }),
+                Err(_) => Some(SlashCommand::Unknown {
+                    raw: trimmed.to_string(),
+                }),
+            };
+        }
+        return Some(SlashCommand::Unknown {
+            raw: trimmed.to_string(),
+        });
     }
     if let Some(rest) = trimmed.strip_prefix("/chat ") {
         return Some(SlashCommand::Chat {

@@ -185,7 +185,12 @@ fn dispatch(command: Commands) -> i32 {
             brain,
             timeout,
             force,
-        } => webagent::login::run_login_worker(&brain, timeout, force),
+        } => {
+            let dest = std::env::var("WEBAGENT_LOGIN_WORKER_RESULT")
+                .map(std::path::PathBuf::from)
+                .ok();
+            webagent::login::run_login_worker(&brain, timeout, force, dest.as_deref())
+        }
 
         Commands::Show { brain, port } => cmd_show(&brain, port),
         Commands::Hide { brain, port } => cmd_hide(&brain, port),
