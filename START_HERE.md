@@ -16,8 +16,8 @@ maßgebliche Einstiegslage für laufende Arbeit:
   Live-Abnahme inkl. Windows-Prozessproben. Die bisherigen Phasen sind
   abgeschlossen. Phase 10 (API-Bridge-Refactoring): T-907–T-911 sind `done`.
   Phase 10 (T-907–T-913) ist `done` und verdrahtet. Phase 11: T-915–T-918
-  extrahiert (store/content verdrahtet (T-922/T-923); noch orphan: catalog/response_protocol → T-931/T-933); T-914 deferred,
-  T-919 freigegeben. Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`.
+  extrahiert (store/content/inference verdrahtet (T-922/T-923/T-919); noch orphan: catalog/response_protocol → T-931/T-933); T-914 deferred,
+  T-919 done (inference verdrahtet). Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`.
   Phase 12: Verdrahtungs-Nachzug T-922+ (siehe TASKBOARD).
 - Fahrplan: `docs/BRAIN_UNIFICATION_PLAN.md`. Live-Faehigkeiten nur ueber
   `docs/CAPABILITY_MATRIX.json` (Stand dort nachlesen — keine eingefrorene
@@ -116,7 +116,7 @@ Arbeiten unter `C:\Users`.)
    auf `"done"` setzen und `done_at` ergänzen.
 
 **Aktueller Stand:** Phase-8 und Phase-10 sind abgeschlossen.
-T-914 bleibt DEFERRED; **T-919 ist freigegeben** (claimbar). Extrakte catalog/response_protocol sind noch unwired (store/content seit T-922/T-923 verdrahtet);
+T-914 bleibt DEFERRED; **T-919 done** (inference verdrahtet). Extrakte catalog/response_protocol sind noch unwired (store/content/inference verdrahtet);
 unwired ≠ done, bis T-922/T-923/T-931/T-933 mod setzen. T-921 nicht claimen, solange
 diese Vorgänger offen sind. Phase-12 in docs/TASKBOARD.json. Vor der Übernahme immer
 die JSON-Quelle lesen. Keine Fake-Live-Claims — Live nur über Capability-Matrix / proofs.
@@ -150,7 +150,7 @@ Zahlen hier wären schnell Lüge.
 - Phase-8 abgeschlossen (T-801–T-808 done), Release v0.11.3 veröffentlicht.
 - Offene Matrix-Grenzen sind dokumentierte Befunde (`failed`/`unreachable`/
   `removed`/`not_run` laut `docs/CAPABILITY_MATRIX.json`), kein offener Task.
-- Phase-10 done. Phase-11/12: T-914 deferred; T-919 freigegeben; Orphans verdrahten T-931/T-933 (store/content done).
+- Phase-10 done. Phase-11/12: T-914 deferred; T-919 done; Orphans verdrahten T-931/T-933 (store/content/inference done).
   Modulkarte docs/API_BRIDGE_ARCHITECTURE.md. Linux-CI Flake config::profiles
   …reclaimed → **T-929**.
 - Neuer Bedarf wird als freie Aufgabe im TASKBOARD eingetragen und nach dem

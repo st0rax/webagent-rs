@@ -15,7 +15,7 @@ T-922 / T-923 / T-931 / T-933.
 
 | Pfad | Slot | `mod` in Root? | Verantwortung |
 |---|---|---|---|
-| `src/api_bridge.rs` | Root | — | Orchestrierung, Typen, Medien, Inference, noch Duplikate der Orphans |
+| `src/api_bridge.rs` | Root | — | Orchestrierung, Typen, Medien, noch Duplikate der Orphans (Inference in inference.rs) |
 | `routing.rs` | T-907 | ja (T-913) | `classify`, Streaming-Policy |
 | `provider_handlers.rs` | T-908 | ja (T-913) | OpenAI-Chat, Anthropic, Responses |
 | `transport.rs` | T-909 | ja (T-913) | HTTP-Request-Parsing |
@@ -24,6 +24,7 @@ T-922 / T-923 / T-931 / T-933.
 | `tests.rs` | T-911 | ja (T-913) | 50 Unit-Tests |
 | `store.rs` | T-915/T-922 | **ja** (T-922) | Mandanten-Store, Lifecycle |
 | `content.rs` | T-916/T-923 | **ja** (T-923) | Prompt/Tool-Normalizer |
+| `inference.rs` | T-919 | **ja** (T-919) | Browser-Inference-Lauf |
 | `catalog.rs` | T-917 | **nein** → T-931 | Katalog, Auto-Router |
 | `response_protocol.rs` | T-918 | **nein** → T-933 | JSON/SSE-Antwortkörper |
 
@@ -32,7 +33,7 @@ Nicht als Kindmodul extrahiert (User-Skip, bleiben in der Root-Datei):
 | Thema | Slot | Status |
 |---|---|---|
 | Bild/Audio/Multipart | T-914 | deferred, nicht claimen |
-| `run_task_blocking` / streaming | T-919 | freigegeben (claimbar) |
+| `run_task_blocking` / streaming | T-919 | **verdrahtet** (done, 98ad7a5) |
 
 ## Erlaubte Abhängigkeitsrichtung
 
@@ -76,8 +77,8 @@ Verdrahtung (T-913, T-921, T-922, T-923, T-931, T-933): zusätzlich
 
 Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe.
 
-- T-914 nicht claimen (deferred). T-919 ist freigegeben.
-- Orphan-Dateien (`catalog`, `response_protocol`; `store`/`content` verdrahtet seit T-922/T-923) nicht
+- T-914 nicht claimen (deferred). T-919 done (inference verdrahtet).
+- Orphan-Dateien (`catalog`, `response_protocol`; `store`/`content`/`inference` verdrahtet) nicht
   als fertige Produktion behandeln; Nachzug ist T-931 / T-933 (`store`/`content` done).
 - T-921 verdrahtet den Rest, ist aber `depends_on` T-915, T-916, T-917, T-918,
   T-920, T-922, T-923, T-931, T-933 — nicht claimen, solange Vorgänger offen sind.
@@ -86,7 +87,7 @@ Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe.
 ## Verbleibende Risiken
 
 - Drift Root vs. Orphan, solange `mod` fehlt: Clippy sieht die Orphans nicht.
-- Medien und Inference bleiben in der Root-Datei (T-914 deferred; T-919 freigegeben).
+- Medien bleiben in der Root-Datei (T-914 deferred). Inference verdrahtet (T-919).
 - `docs/API_BRIDGE.md` ist der Betriebsvertrag; dieses Dokument ist die Modulkarte.
 - Phase-12-Nachzug (T-922+) ist der Weg, Orphans zu schließen — nicht ein
   zweites paralleles Extrakt ohne `mod`.

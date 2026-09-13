@@ -806,7 +806,7 @@
       "phase": "11",
       "type": "refactoring",
       "title": "API-Bridge-Browser-Inference-Lauf isolieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "feature/T-919-wire-inference",
       "claimed_at": "2026-09-13",
@@ -822,7 +822,8 @@
       "dod": "Ein Laufpfad, bestehende Auto-Attach- und Fake-Tests bestehen, keine doppelte Lock-Logik nach T-921.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
       "proof_path": "docs/proofs/T-919/",
-      "handoff": "Laufvertrag, Kopplung zu browser_inference, Testausgabe, Branch und Commit."
+      "handoff": "Laufvertrag, Kopplung zu browser_inference, Testausgabe, Branch und Commit.",
+      "done_at": "2026-09-14"
     },
     {
       "id": "T-920",
