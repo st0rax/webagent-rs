@@ -15,7 +15,7 @@ T-922 / T-923 / T-931 / T-933.
 
 | Pfad | Slot | `mod` in Root? | Verantwortung |
 |---|---|---|---|
-| `src/api_bridge.rs` | Root | — | Orchestrierung, Typen, Medien, Inference, noch Duplikate der Orphans |
+| `src/api_bridge.rs` | Root | — | Orchestrierung, Typen, Medien, noch Duplikate der Orphans (Inference in inference.rs) |
 | `routing.rs` | T-907 | ja (T-913) | `classify`, Streaming-Policy |
 | `provider_handlers.rs` | T-908 | ja (T-913) | OpenAI-Chat, Anthropic, Responses |
 | `transport.rs` | T-909 | ja (T-913) | HTTP-Request-Parsing |
@@ -87,7 +87,7 @@ Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe.
 ## Verbleibende Risiken
 
 - Drift Root vs. Orphan, solange `mod` fehlt: Clippy sieht die Orphans nicht.
-- Medien und Inference bleiben in der Root-Datei (T-914 deferred; T-919 done).
+- Medien bleiben in der Root-Datei (T-914 deferred). Inference verdrahtet (T-919).
 - `docs/API_BRIDGE.md` ist der Betriebsvertrag; dieses Dokument ist die Modulkarte.
 - Phase-12-Nachzug (T-922+) ist der Weg, Orphans zu schließen — nicht ein
   zweites paralleles Extrakt ohne `mod`.
