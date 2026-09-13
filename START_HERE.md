@@ -142,8 +142,9 @@ cargo check --no-default-features
 # (optional) Binärgewicht im Release-Artefakt für das <10-MB-Budget
 ```
 
-Bekannter Master-Stand: 1388 passed / 0 failed / 1 ignored (Stand 2026‑09‑12).
-Nach jeder Änderung ist der Teststand im Übergabebeleg neu zu erfassen.
+Kein eingefrorener Pass-Count in dieser Datei. Nach jeder Änderung den
+aktuellen cargo test --lib-Stand im Übergabebeleg / proof neu erfassen —
+Zahlen hier wären schnell Lüge.
 
 ## 5. Verbleibende Arbeit
 

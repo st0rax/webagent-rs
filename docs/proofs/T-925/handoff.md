@@ -21,3 +21,10 @@
 ## Verifikation
 
 Siehe `docs/proofs/T-925/gates.txt`.
+
+## Columbo-Nachzug
+
+- START_HERE: eingefrorenen Pass-Count 1388/0 entfernt.
+- .env.example: WEBAGENT_API_KEY für CLI//v1/* dokumentiert; /api/* =
+  trust-localhost (kein Bearer, kein Fake-Auth).
+
