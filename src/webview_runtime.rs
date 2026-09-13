@@ -300,6 +300,14 @@ impl WebViewPageDriver {
     }
 
     fn call<T>(&self, build: impl FnOnce(Sender<Result<T>>) -> PageMessage) -> Result<T> {
+        self.call_with_timeout(Duration::from_secs(8), build)
+    }
+
+    fn call_with_timeout<T>(
+        &self,
+        timeout: Duration,
+        build: impl FnOnce(Sender<Result<T>>) -> PageMessage,
+    ) -> Result<T> {
         let (tx, rx) = mpsc::channel();
         let msg = build(tx);
         self.page_tx
@@ -310,7 +318,7 @@ impl WebViewPageDriver {
         // the polling loop and left the process looking frozen; the controller
         // needs a bounded failure so it can record the event and terminate the
         // run (or recreate the view).
-        rx.recv_timeout(Duration::from_secs(8)).map_err(|_| {
+        rx.recv_timeout(timeout).map_err(|_| {
             PageDriverError::Timeout(
                 "Page-Befehl timeout (WebView moeglicherweise eingefroren)".into(),
             )
@@ -362,10 +370,12 @@ impl PageDriver for WebViewPageDriver {
     }
 
     fn navigate(&mut self, url: &str, timeout: Duration) -> Result<()> {
-        self.call(|respond| PageMessage::Navigate {
-            url: url.to_string(),
-            timeout,
-            respond,
+        self.call_with_timeout(timeout.saturating_add(Duration::from_secs(2)), |respond| {
+            PageMessage::Navigate {
+                url: url.to_string(),
+                timeout,
+                respond,
+            }
         })
     }
 

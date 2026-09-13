@@ -461,7 +461,7 @@ fn openai_tools_and_choice_are_normalized() {
 }
 
 #[test]
-fn tool_result_is_not_injected_into_clean_browser_prompt() {
+fn tool_result_is_replayed_as_visible_browser_context() {
     let request = OpenAiRequest {
         model: "webagent".to_string(),
         stream: None,
@@ -475,8 +475,26 @@ fn tool_result_is_not_injected_into_clean_browser_prompt() {
         }],
     };
 
-    let error = openai_task(&request).unwrap_err();
-    assert!(error.contains("Tool-Call-Verlaeufe"));
+    assert_eq!(openai_task(&request).unwrap(), "Dateiinhalt");
+}
+
+#[test]
+fn pi_system_null_assistant_and_tool_error_roundtrip() {
+    let request: OpenAiRequest = serde_json::from_value(json!({
+        "model":"chatgpt", "messages":[
+            {"role":"system","content":"Du bist ein Coding-Agent."},
+            {"role":"user","content":"Lies missing.txt"},
+            {"role":"assistant","content":null,"tool_calls":[
+                {"id":"call_1","type":"function","function":{"name":"read","arguments":"{\"path\":\"missing.txt\"}"}}
+            ]},
+            {"role":"tool","tool_call_id":"call_1","content":{"error":"ENOENT"}}
+        ]
+    })).unwrap();
+    let prompt = openai_prompt(&request).unwrap();
+    assert!(prompt.text.contains("Coding-Agent"));
+    assert!(prompt.text.contains("call_1"));
+    assert!(prompt.text.contains("ENOENT"));
+    assert!(prompt.text.contains("missing.txt"));
 }
 
 #[test]
@@ -509,9 +527,9 @@ fn responses_task_accepts_string_and_message_input() {
         previous_response_id: None,
         store: true,
     };
-    assert!(responses_task(&string_request)
-        .unwrap_err()
-        .contains("System-/Instructions-Semantik"));
+    let prompt = responses_task(&string_request).unwrap();
+    assert!(prompt.contains("Antworte kurz."));
+    assert!(prompt.ends_with("Hallo"));
 
     let message_request = ResponsesRequest {
         model: "webagent/chatgpt".to_string(),
@@ -737,7 +755,7 @@ fn anthropic_response_renders_tool_use_blocks() {
 }
 
 #[test]
-fn responses_task_rejects_function_call_transcript_injection() {
+fn responses_task_accepts_function_call_transcript() {
     let request = ResponsesRequest {
         model: "webagent/chatgpt".to_string(),
         input: json!([{"type":"function_call_output","call_id":"call_7","output":{"ok":true}}]),
@@ -748,9 +766,7 @@ fn responses_task_rejects_function_call_transcript_injection() {
         previous_response_id: None,
         store: true,
     };
-    assert!(responses_task(&request)
-        .unwrap_err()
-        .contains("Tool-Call-Verlaeufe"));
+    assert!(responses_task(&request).unwrap().contains("ok"));
 
     let continuation = ResponsesRequest {
         model: "webagent/chatgpt".to_string(),
@@ -772,8 +788,8 @@ fn responses_task_rejects_function_call_transcript_injection() {
         store: true,
     };
     assert!(responses_task(&continuation)
-        .unwrap_err()
-        .contains("Tool-Call-Verlaeufe"));
+        .unwrap()
+        .contains("Dateiinhalt"));
 }
 
 #[test]
