@@ -126,6 +126,27 @@ Jeder Agent darf jeden freien Task übernehmen; es gibt keine `suitable`- oder
 Kompetenzbeschränkung. Maßgeblich sind ausschließlich Task-Scope, Claim,
 Abhängigkeiten und die definierten Gates.
 
+
+### Warum Bridge-Brains oft nicht claimen können
+
+Ein **vollständiger Claim** ist mehr als eine Board-Zeile. Er braucht:
+
+1. Eintrag in `docs/TASKBOARD.json`: `status`/`owner`/`branch`/`claimed_at`
+2. Den genannten **Branch anlegen und pushen** (siehe `docs/GIT_GLOSSAR.md`)
+
+**Crew / lokale Agents** (Laptop): `git` und `gh` laufen mit dem
+System-Credential-Store als `st0rax`. Push und PR funktionieren deshalb.
+
+**Brains hinter der API-Bridge** (ChatGPT/Claude/… über Browser+GitHub-App)
+nutzen oft eine **GitHub-Integration/App**, nicht den lokalen `gh`-Login.
+Typische Fehlermeldung: `Resource not accessible by integration` — die App
+darf Refs/Branches nicht schreiben (häufig read-only). Die Bridge reicht den
+Laptop-`gh`-Login **nicht** in diese Integration durch.
+
+**Folge:** Ein Board-only-Claim ohne pushbaren Branch ist ungültig. Entweder
+lokal wie die Crew pushen, oder die Integration braucht echte Schreibrechte —
+sonst 403. Deferred Tasks nicht claimen.
+
 ## 4. Verifikationskommandos
 
 ```pwsh
