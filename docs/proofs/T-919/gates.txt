@@ -1,0 +1,26 @@
+T-919 gates 2026-09-14 (branch feature/T-919-wire-inference)
+
+rg "^mod inference" src/api_bridge.rs
+  match: mod inference;
+
+rg "fn run_task_blocking|fn run_task_streaming|static BROWSER_RUN_LOCKS" src/api_bridge.rs
+  match: (none in Root)
+
+rg "fn run_task_blocking|static BROWSER_RUN_LOCKS" src/api_bridge/inference.rs
+  match: static BROWSER_RUN_LOCKS; pub(super) fn run_task_blocking; pub(super) fn run_task_streaming
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  50 passed
+  auto_attach_timeout_error_names_routed_brain ... ok
+  auto_attach_upload_error_adds_via_route ... ok
+  non_auto_errors_stay_unannotated ... ok
+
+git diff --check
+  diffcheck_exit=0
