@@ -14,10 +14,10 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, OnceLock,
+        Arc, OnceLock,
     },
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 #[cfg(test)]
 use std::{fs, path::PathBuf};
@@ -48,7 +48,7 @@ use store::{
 };
 
 #[cfg(test)]
-pub(crate) use inference::annotate_auto_routed_inference_error;
+use inference::annotate_auto_routed_inference_error;
 use inference::{browser_run_lock, run_task_blocking, run_task_streaming};
 
 use provider_handlers::{
