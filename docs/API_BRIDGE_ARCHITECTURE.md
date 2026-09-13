@@ -4,9 +4,10 @@
 Dieses Dokument beschreibt die **Modulgrenzen** der lokalen Provider-Bridge.
 Laufzeitvertrag (Bindung, Token, Endpunkte) steht in [`API_BRIDGE.md`](API_BRIDGE.md).
 Keine unbelegten Fähigkeitsaussagen: Live-Matrix bleibt [`CAPABILITY_MATRIX.json`](CAPABILITY_MATRIX.json).
+Keine Fake-Live-Claims in dieser Datei.
 
 **Regel:** Eine Datei unter `src/api_bridge/*.rs` ohne passende `mod`-Zeile in
-`src/api_bridge.rs` ist **orphan / unwired**. Unwired ist nicht gleich
+`src/api_bridge.rs` ist **orphan / unwired**. **Unwired ≠ done** für Produktion: Unwired ist nicht gleich
 produktionswirksam. T-915–T-918 haben extrahiert; die Verdrahtung ist
 T-922 / T-923 / T-931 / T-933.
 
@@ -89,6 +90,11 @@ Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe.
 - `docs/API_BRIDGE.md` ist der Betriebsvertrag; dieses Dokument ist die Modulkarte.
 - Phase-12-Nachzug (T-922+) ist der Weg, Orphans zu schließen — nicht ein
   zweites paralleles Extrakt ohne `mod`.
+
+## Phase 12
+
+Verdrahtungs-Nachzug und Folgearbeit: siehe docs/TASKBOARD.json (T-922–T-933, T-932 LICENSE). Keine Live-Fähigkeitsaussagen in Docs-PRs.
+
 
 ## Agenten-Einstieg
 

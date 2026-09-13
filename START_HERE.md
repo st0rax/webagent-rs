@@ -18,6 +18,7 @@ maßgebliche Einstiegslage für laufende Arbeit:
   Phase 10 (T-907–T-913) ist `done` und verdrahtet. Phase 11: T-915–T-918
   extrahiert (noch orphan bis T-922/T-923/T-931/T-933); T-914 und T-919
   deferred, nicht claimen. Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`.
+  Phase 12: Verdrahtungs-Nachzug T-922+ (siehe TASKBOARD).
 - Der aktuelle Stand gilt als v1.0-Anwärter: Der technische Fahrplan steht in
   `docs/BRAIN_UNIFICATION_PLAN.md`; Live-Matrix-Belegen in
   `docs/CAPABILITY_MATRIX.json` (`as_of` 2026-09-12, 46 frische Verify-Belege).
@@ -58,7 +59,7 @@ Außerhalb des Repos (nur lokal relevante Umgebung:
 Arbeiten unter `C:\Users`.)
 
 > **Grundmodell (wichtig):** `master` ist der **Stamm / `main`** und bleibt
-> **immer grün** (baut + testet). Sichtbare Arbeit läuft **nicht direkt** auf
+> **zuverlässig grün** (baut + testet) — Ziel, nicht Garantie ohne Flakes; Linux-CI config::profiles …reclaimed → **T-929**. Sichtbare Arbeit läuft **nicht direkt** auf
 > dem Stamm, sondern auf **kurzen, klar benannten Arbeits-Zweigen** (Branches):
 > `feature/<T-…>-<kurz>`, `fix/…`, `docs/…`, `chore/…`, `refactor/…`, `test/…`.
 > Regel: nie am Ende einen „Riesen-Branch" pushen — sobald ein Zweig eine
@@ -115,9 +116,11 @@ Arbeiten unter `C:\Users`.)
    auf `"done"` setzen und `done_at` ergänzen.
 
 **Aktueller Stand:** Phase-8 und Phase-10 sind abgeschlossen. T-914 und T-919
-nicht claimen. Extrakte `store`/`content`/`catalog`/`response_protocol` sind
-unwired, bis T-922/T-923/T-931/T-933 `mod` setzen. T-921 nicht claimen, solange
-diese Vorgänger offen sind. Vor der Übernahme immer `docs/TASKBOARD.json` lesen.
+nicht claimen (DEFERRED). Extrakte store/content/catalog/
+esponse_protocol sind
+unwired ≠ done, bis T-922/T-923/T-931/T-933 mod setzen. T-921 nicht claimen, solange
+diese Vorgänger offen sind. Phase-12 in docs/TASKBOARD.json. Vor der Übernahme immer
+die JSON-Quelle lesen. Keine Fake-Live-Claims — Live nur über Capability-Matrix / proofs.
 
 **Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
 Jeder Agent darf jeden freien Task übernehmen; es gibt keine `suitable`- oder
@@ -148,9 +151,11 @@ Nach jeder Änderung ist der Teststand im Übergabebeleg neu zu erfassen.
 - Offene Matrix-Grenzen sind dokumentierte Befunde (`failed`/`unreachable`/
   `removed`/`not_run` laut `docs/CAPABILITY_MATRIX.json`), kein offener Task.
 - Phase-10 done. Phase-11/12: T-914/T-919 deferred; Orphans verdrahten T-922+.
-  Modulkarte `docs/API_BRIDGE_ARCHITECTURE.md`.
+  Modulkarte docs/API_BRIDGE_ARCHITECTURE.md. Linux-CI Flake config::profiles
+  …reclaimed → **T-929**.
 - Neuer Bedarf wird als freie Aufgabe im TASKBOARD eingetragen und nach dem
   Claim-Verfahren umgesetzt.
+- Docs dürfen keine unbelegten Live-Passed-Claims setzen.
 
 ## 6. Grenzen (nicht überschreiten)
 

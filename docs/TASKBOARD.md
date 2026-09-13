@@ -131,7 +131,7 @@ Nachzug in T-922/T-923.
 | T-922 | Store echt verdrahten (`mod store`, Root-Duplikate weg) | done `grok-agent` |
 | T-923 | Content echt verdrahten (`mod content`, Root-Duplikate weg) |
 | T-924 | CI-Gate gegen orphan `src/api_bridge/*.rs` |
-| T-925 | Modulkarte/START_HERE: unwired≠done + Skips dokumentieren |
+| T-925 | Phase-11/12 Modulkarte: unwired≠done + Skip T-914/T-919 — done (pflege) |
 | T-926 | Free-Cloud: ersten VerifiedFree-Adapter anbinden |
 | T-927 | Matrix `model/auto` Live-Beleg |
 | T-928 | Effort-Spalte ehrlich bereinigen |

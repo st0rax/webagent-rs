@@ -1,0 +1,5 @@
+git diff --check
+# Docs against master tree:
+# - src/api_bridge/*.rs orphans without mod: store, content, catalog, response_protocol
+# - wired mods: boundary, provider_handlers, routing, transport, wire, tests
+# - START_HERE mentions T-929 flake; T-914/T-919 deferred
