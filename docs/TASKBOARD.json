@@ -24,10 +24,6 @@
       "phase": "0",
       "proof_path": "docs/WEB_UI_API_TOOL_RESET_STATUS.md, docs/CAPABILITY_MATRIX.json",
       "status": "done",
-      "suitable": [
-        "local/opencode",
-        "chief"
-      ],
       "title": "Umsetzungsstatus-Datei und Capability-Matrix pflegen (Handover)",
       "type": "docs",
       "verification": "git diff --check"
@@ -42,11 +38,6 @@
       "phase": "1",
       "proof_path": "src/session/ + api_bridge::session_service(); cargo test --lib (1232 passed). Live-api_*-Zelle bleibt Phase 3.",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code",
-        "local/opencode"
-      ],
       "title": "SessionService + EventStream UI-neutral herausloesen (um AgentController/run_store/transcript, monotone sequence_number)",
       "type": "code",
       "verification": "cargo test --lib"
@@ -61,11 +52,6 @@
       "phase": "1",
       "proof_path": "src/tools.rs (ToolRegistry + read/bash/edit/write, Policy, Exactly-once); cargo test --lib (1232 passed).",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code",
-        "local/opencode"
-      ],
       "title": "ToolRegistry-Vertrag + vier Managed Tools (read/bash/edit/write) mit Policy-Grenzen (aus controller.rs:659/file_actions/shell_policy/executor)",
       "type": "code",
       "verification": "cargo test --lib"
@@ -80,11 +66,6 @@
       "phase": "1",
       "proof_path": "src/fakebrain.rs (FakeBrain + Controller-Integrationstests fuer Textdelta, Toolloop, Abort, Retry und Exactly-once); cargo test --lib (1236 passed).",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code",
-        "local/opencode"
-      ],
       "title": "Fake-Brain fuer Textdelta-/Toolloop-/Abort-/Retry-/Exactly-once-Tests",
       "type": "code",
       "verification": "cargo test --lib"
@@ -99,11 +80,6 @@
       "phase": "1",
       "proof_path": "src/prompts.rs (getrennte plain_chat_prompt-/managed_agent_prompt-Builder mit Vertragstests); cargo test --lib (1238 passed).",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code",
-        "local/opencode"
-      ],
       "title": "Promptbuilder trennen: Reiner Chat vs. Managed Agent (keine Tool-Injection in Reiner Chat)",
       "type": "code",
       "verification": "cargo test --lib"
@@ -118,10 +94,6 @@
       "phase": "2",
       "proof_path": "src/web_ui.rs + web/index.html (include_str); Default ohne Subcommand ist Loopback-UI; cargo test --lib 1242 passed",
       "status": "done",
-      "suitable": [
-        "claude-code",
-        "manus"
-      ],
       "title": "Eingebettete statische Assets + Loopback-Serverstart (einzelne portable Binary)",
       "type": "code",
       "verification": "cargo test --lib; Start ohne externe Dateien"
@@ -136,10 +108,6 @@
       "phase": "2",
       "proof_path": "src/web_ui_api.rs + src/web_ui.rs dispatch /api/* auf SessionService/doctor; cargo test --lib 1248 passed / 1 ignored",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code"
-      ],
       "title": "Server-Endpunkte: Session / Capability / Health / Upload / Chat / Stop / Event",
       "type": "code",
       "verification": "cargo test --lib"
@@ -154,11 +122,6 @@
       "phase": "2",
       "proof_path": "web/index.html Grok-Layout (Health oben, Kategorien links, Fake-Chat); A11y skip/focus-visible/live/reduced-motion; kein fetch(); cargo test --lib 1249 passed / 1 ignored",
       "status": "done",
-      "suitable": [
-        "claude-code",
-        "manus",
-        "local/opencode"
-      ],
       "title": "Klickbarer Fake-Prototyp im Grok-Bot-Layout (Health-Balken oben, System-Kategorien links) + A11y-Gates",
       "type": "code",
       "verification": "Lokal renderbarer Prototyp, Keyborddurchlauf"
@@ -173,10 +136,6 @@
       "phase": "3",
       "proof_path": "docs/proofs/T-301/ (chat.json, events_*, analysis.txt) + docs/proofs/T-501/streaming_claude_2026-09-04.json; PR #25 merged 7fb845e",
       "status": "done",
-      "suitable": [
-        "claude-code",
-        "local/opencode"
-      ],
       "title": "Claude-Referenz: Mehrturn-Chat mit echtem Delta-Streaming (Live, Freigabegrenze beachten)",
       "type": "live-tests",
       "verification": "Relay/Web-UI gegen Claude; Streaming-Gate metrisch"
@@ -192,10 +151,6 @@
       "phase": "3",
       "proof_path": "docs/proofs/T-302/; matrix model/effort=claude passed",
       "status": "done",
-      "suitable": [
-        "claude-code",
-        "local/opencode"
-      ],
       "title": "Claude-Referenz: Modelle und Aufwand zur Laufzeit ermitteln, waehlen, nachpruefen",
       "type": "live-tests",
       "verification": "Menue-Oeffnung + Wahl + Verifikation naechster Turn"
@@ -210,9 +165,6 @@
       "phase": "4",
       "proof_path": "src/api_bridge.rs: Responses-SSE sequence_number 0..n-1; Response/Chat/Model-Felder; usage bleibt null; cargo test --lib 1239 passed / 1 ignored",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex"
-      ],
       "title": "DTOs feldvollstaendig fuer Models/Chat/Responses; monotone sequence_number in Responses-SSE",
       "type": "code",
       "verification": "cargo test --lib; SDK-Blackbox"
@@ -227,10 +179,6 @@
       "phase": "4",
       "proof_path": "src/api_bridge.rs reject_unsupported_openai_fields (seed/logprobs/service_tier/n>1); X-Request-Id; resp_ IDs; cargo test --lib 1241 passed / 1 ignored",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code"
-      ],
       "title": "Negativfelder/Fehler: seed, logprobs, service_tier, n>1 etc. klar ablehnen (unsupported_*); IDs/Zeitstempel/Header korrigieren",
       "type": "code",
       "verification": "cargo test --lib"
@@ -245,10 +193,6 @@
       "phase": "4",
       "proof_path": "src/api_bridge.rs openai-local-state-v1 je Mandant auf Platte; Restart + previous_response_id + Delete; cargo test --lib 1242 passed / 1 ignored",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code"
-      ],
       "title": "Persistent State: openai-local-state-v1 auf echtem Store + Restart-Test",
       "type": "code",
       "verification": "cargo test --lib"
@@ -263,10 +207,6 @@
       "phase": "4",
       "proof_path": "scripts/t404/ (openai_python.py, openai_js.mjs, urllib_client.py, fetch_client.mjs) + docs/proofs/T-404/; cargo test --lib 1254 passed / 1 ignored",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "local/opencode"
-      ],
       "title": "OpenAI-SDK-Blackbox: offizielle Python-/JS-SDKs + zwei reale Clients",
       "type": "tests",
       "verification": "cargo test --lib; SDK-Skripte gruen"
@@ -286,11 +226,6 @@
       "phase": "5",
       "proof_path": "docs/CAPABILITY_MATRIX.json (130 Zellen, 10 Brains x 13 Areas, as_of 2026-09-11, alle proof_path vorhanden); docs/proofs/T-501/ (60+ Belege); Commits 9e47075/110353f/44a859c/bbd7698/1f16896/29c53ed/2942ccb/002b7d7 (2026-09-11). Ende: 106 passed, 13 failed, 2 unreachable, 8 not_run, 1 removed. Structured failures: managed_tools (10x by-design 400), model claude+perplexity (strukturelle UI-Grenze), effort kimi (Denkaufwand nur im Modell-Menue, Label bleibt). model/chatgpt unreachable (Free-Tier nur Sofort-Pill); model/mistral unreachable (kein Selektor im DOM); model/deepseek removed (Anbieter entfernte Modus-Bar). effort/auto + model/auto not_run (virtueller Auto-Router ohne Browser-UI).",
       "status": "done",
-      "suitable": [
-        "claude-code",
-        "grok-agent",
-        "local/opencode"
-      ],
       "title": "Alle-Brains-Matrix: Chat/Streaming/Modell/Aufwand/Anhang/Tools ueber UI und API (je Brain)",
       "type": "live-tests",
       "verification": "cargo test --lib 1344 passed (2026-09-11); alle 130 proof_path auf Platte verifiziert; JSON valid (10 brains x 13 areas); custom_brains.json perplexity als Array registriert; diagnose/verify --brain perplexity erreichbar"
@@ -305,10 +240,6 @@
       "phase": "6",
       "proof_path": "src/https_client.rs + docs/providers.example.json; rustls/ring, kein reqwest; cargo test --lib 1259 passed / 1 ignored",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "grok-agent"
-      ],
       "title": "Minimaler rustls-HTTPS-Client + data/providers.json + Groessenbudget (<10 MB)",
       "type": "code",
       "verification": "cargo test --lib; Release-Binary wiegen"
@@ -323,10 +254,6 @@
       "phase": "6",
       "proof_path": "src/source_scope.rs, web/index.html, src/web_ui_api.rs; PR #22 merge 0892fc9; DoD tests persistiert_nur_mit_save, session_scope_ist_pro_instanz_isoliert, kein_automatisches_routing, source_switch_ist_session_scope_ohne_auto_routing",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code"
-      ],
       "title": "/quelle-Befehl + Web-UI-Quellen-Schalter + Session-Source-Scope (manueller Hybrid)",
       "type": "code",
       "verification": "cargo test --lib"
@@ -341,10 +268,6 @@
       "phase": "7",
       "proof_path": "src/group_run.rs; cargo test --lib --no-default-features (1267 passed, 1 ignored; fake A/B group EventStream Exact + @Brain + leader synthesis)",
       "status": "done",
-      "suitable": [
-        "chatgpt-codex",
-        "claude-code"
-      ],
       "title": "Grok-Bot-Modus: Gruppen (2-6), Runden, @Brain, Leader-Synthese auf /swarm + HandoffQueue",
       "type": "code",
       "verification": "cargo test --lib --no-default-features"
@@ -497,11 +420,6 @@
       "id": "T-901",
       "branch": "master",
       "type": "live-tests",
-      "suitable": [
-        "webagent:qwen",
-        "local/opencode",
-        "chief"
-      ],
       "dod": "Frischer Live-Turn je Modus (Normal/DeepThink), Thought-Process-Praefix-Klassifikation, Flakiness dokumentiert; Zelle gemessen oder Grenze begruendet",
       "phase": "9",
       "proof_path": "docs/proofs/T-901/zai-flaky-survey-2026-09-12.json",
@@ -517,10 +435,6 @@
       "id": "T-902",
       "branch": "master",
       "type": "live-tests",
-      "suitable": [
-        "webagent:qwen",
-        "local/opencode"
-      ],
       "dod": "webagent/auto-Request routet live auf ein verfuegbares Brain, Antworttext belegt; model/auto+effort/auto-Zellen bleiben not_run ODER bekommen Live-Beleg",
       "phase": "9",
       "proof_path": "docs/proofs/T-902/auto-router-live-proof-2026-09-12.json",
@@ -536,10 +450,6 @@
       "id": "T-903",
       "branch": "master",
       "type": "code",
-      "suitable": [
-        "webagent:qwen",
-        "local/opencode"
-      ],
       "dod": "Survey-Beleg 2026-09-12 verifizieren; Selektoren neu vermessen oder Selector-Datei korrigieren; Zelle aktualisieren",
       "phase": "9",
       "proof_path": "docs/proofs/T-903/selector-drift-survey-2026-09-12.json",
@@ -555,10 +465,6 @@
       "id": "T-904",
       "branch": null,
       "type": "code",
-      "suitable": [
-        "local/opencode",
-        "claude-code"
-      ],
       "dod": "Adaptervertrag fuer mindestens ein VerifiedFree-Angebot live erfuellt oder Status als Providergrenze dokumentiert; Invariante free_only bleibt",
       "phase": "9",
       "proof_path": "docs/proofs/T-904/verifiedfree-grenze-2026-09-12.json",
@@ -574,11 +480,6 @@
       "id": "T-905",
       "branch": "master",
       "type": "code",
-      "suitable": [
-        "local/opencode",
-        "webagent:qwen",
-        "chief"
-      ],
       "dod": "Web-UI bedient echte API (/api/*) fuer Brains/Health, Sessions anlegen+wechseln, Chat-Stream (Polling events?since=), Stoppen, Quellen, Gruppen; Layout weiterentwickelt; kein Fake-Text mehr; Testanpassung web_ui.rs; Gates gruen",
       "phase": "9",
       "proof_path": "docs/proofs/T-905/webui-v2-live-2026-09-12.json",
@@ -594,10 +495,6 @@
       "branch": "master",
       "id": "T-906",
       "type": "code",
-      "suitable": [
-        "local/opencode",
-        "webagent:qwen"
-      ],
       "dod": "Web-UI schliesst T-905-Restluecken: Gruppenlauf oeffnet die erzeugte Session (run_id) mit Live-Events, Composer hat Datei-Upload (POST /sessions/{id}/upload -> 202), Brain-Detail hat Fenster-Anzeigen/Verstecken (show|hide). Gates gruen, HTML < 48k, Beweis mit Live-Vertraegen",
       "phase": "9",
       "proof_path": "docs/proofs/T-906/webui-t906-live-2026-09-12.json",
@@ -618,10 +515,14 @@
       "branch": null,
       "claimed_at": null,
       "depends_on": [],
-      "suitable": ["chatgpt-codex", "claude-code", "grok-agent", "local/opencode", "chief"],
-      "scope": ["src/api_bridge/routing.rs"],
+      "scope": [
+        "src/api_bridge/routing.rs"
+      ],
       "objective": "Die zentrale Request-Routenentscheidung und Streaming-Policy in ein klar benanntes Routing-Modul ueberfuehren.",
-      "non_goals": ["Keine Aenderung an Endpunkten, Providerlogik oder HTTP-Bytes.", "Keine Dateien ausserhalb des Scopes aendern."],
+      "non_goals": [
+        "Keine Aenderung an Endpunkten, Providerlogik oder HTTP-Bytes.",
+        "Keine Dateien ausserhalb des Scopes aendern."
+      ],
       "dod": "Routing-Dispatch ist modular, Handlernamen bleiben kompatibel, bestehende Routing- und Streaming-Tests bestehen, neue Modulgrenze ist per Rustdoc erklaert.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
       "proof_path": "docs/proofs/T-907/",
@@ -637,10 +538,14 @@
       "branch": null,
       "claimed_at": null,
       "depends_on": [],
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode", "chief"],
-      "scope": ["src/api_bridge/provider_handlers.rs"],
+      "scope": [
+        "src/api_bridge/provider_handlers.rs"
+      ],
       "objective": "OpenAI-Chat, Anthropic und Responses-Handler aus der Orchestrierungsdatei in ein Provider-Handler-Modul verschieben.",
-      "non_goals": ["Keine Protokoll- oder JSON-Semantik aendern.", "Keine Aenderung an Browser-Inferenz oder Providerprofilen."],
+      "non_goals": [
+        "Keine Protokoll- oder JSON-Semantik aendern.",
+        "Keine Aenderung an Browser-Inferenz oder Providerprofilen."
+      ],
       "dod": "Handler liegen in einem fachlich benannten Modul, Abhaengigkeiten sind explizit, API-Bridge-Tests bleiben gruen.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
       "proof_path": "docs/proofs/T-908/",
@@ -656,10 +561,15 @@
       "branch": null,
       "claimed_at": null,
       "depends_on": [],
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode"],
-      "scope": ["src/api_bridge/transport.rs", "src/api_bridge/wire.rs"],
+      "scope": [
+        "src/api_bridge/transport.rs",
+        "src/api_bridge/wire.rs"
+      ],
       "objective": "HTTP-Request-Parsing, Response-Header und SSE-Frames als eigenstaendigen Transportblock strukturieren.",
-      "non_goals": ["Keine Handlerlogik verschieben, wenn sie nicht zum Byte-Transport gehoert.", "Keine Timeoutwerte oder Headervertraege aendern."],
+      "non_goals": [
+        "Keine Handlerlogik verschieben, wenn sie nicht zum Byte-Transport gehoert.",
+        "Keine Timeoutwerte oder Headervertraege aendern."
+      ],
       "dod": "Transportcode ist isoliert und testbar, Status/Header/Content-Length/SSE-Verhalten sind unveraendert belegt.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
       "proof_path": "docs/proofs/T-909/",
@@ -675,10 +585,14 @@
       "branch": null,
       "claimed_at": null,
       "depends_on": [],
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode"],
-      "scope": ["src/api_bridge/boundary.rs"],
+      "scope": [
+        "src/api_bridge/boundary.rs"
+      ],
       "objective": "Authentifizierung, timing-sicheren Tokenvergleich und provider-spezifische Fehlerantworten als explizite Boundary kapseln.",
-      "non_goals": ["Keine Sicherheitssemantik lockern.", "Keine neuen Authentisierungsarten oder Fehlermeldungstexte erfinden."],
+      "non_goals": [
+        "Keine Sicherheitssemantik lockern.",
+        "Keine neuen Authentisierungsarten oder Fehlermeldungstexte erfinden."
+      ],
       "dod": "Boundary-Funktionen sind zentral testbar, Bearer/x-api-key und OpenAI/Anthropic-Fehlerformen bleiben unveraendert, negative Auth-Tests bestehen.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
       "proof_path": "docs/proofs/T-910/",
@@ -694,10 +608,14 @@
       "branch": null,
       "claimed_at": null,
       "depends_on": [],
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode", "chief"],
-      "scope": ["src/api_bridge/tests.rs"],
+      "scope": [
+        "src/api_bridge/tests.rs"
+      ],
       "objective": "Die grosse test-Sektion aus api_bridge.rs in thematisch benannte Testmodule verschieben, ohne Assertions oder Abdeckung zu verlieren.",
-      "non_goals": ["Keine Produktivlogik aendern.", "Keine Tests loeschen, abschwaechen oder auskommentieren."],
+      "non_goals": [
+        "Keine Produktivlogik aendern.",
+        "Keine Tests loeschen, abschwaechen oder auskommentieren."
+      ],
       "dod": "Tests sind ausserhalb der Produktionsdatei organisiert, Testanzahl bleibt mindestens gleich, API-Bridge- und Library-Gates bestehen.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib; git diff --check",
       "proof_path": "docs/proofs/T-911/",
@@ -713,10 +631,15 @@
       "branch": null,
       "claimed_at": null,
       "depends_on": [],
-      "suitable": ["chatgpt-codex", "claude-code", "local/opencode", "chief"],
-      "scope": ["docs/API_BRIDGE_ARCHITECTURE.md", "START_HERE.md"],
+      "scope": [
+        "docs/API_BRIDGE_ARCHITECTURE.md",
+        "START_HERE.md"
+      ],
       "objective": "Aktuelle Modulkarte, Verantwortungsgrenzen, erlaubte Abhaengigkeitsrichtung und Agenten-Einstieg fuer die API-Bridge dokumentieren.",
-      "non_goals": ["Keine Codeaenderung ausser erforderlichen Links oder Statuskorrekturen.", "Keine unbewiesenen Laufzeitfaehigkeiten behaupten."],
+      "non_goals": [
+        "Keine Codeaenderung ausser erforderlichen Links oder Statuskorrekturen.",
+        "Keine unbewiesenen Laufzeitfaehigkeiten behaupten."
+      ],
       "dod": "Dokument nennt aktuelle Module, Nicht-Ziele, Gates, Claim-Regeln und verbleibende Risiken; Links und Taskboard-Status sind aktuell.",
       "verification": "git diff --check; Dokument gegen aktuelle src/api_bridge-Struktur abgleichen",
       "proof_path": "docs/proofs/T-912/",
@@ -731,11 +654,22 @@
       "owner": null,
       "branch": null,
       "claimed_at": null,
-      "depends_on": ["T-907", "T-908", "T-909", "T-910", "T-911", "T-912"],
-      "suitable": ["chatgpt-codex", "claude-code", "chief"],
-      "scope": ["src/api_bridge.rs"],
+      "depends_on": [
+        "T-907",
+        "T-908",
+        "T-909",
+        "T-910",
+        "T-911",
+        "T-912"
+      ],
+      "scope": [
+        "src/api_bridge.rs"
+      ],
       "objective": "Die abgeschlossenen, disjunkten Refactoring-Ergebnisse T-907 bis T-912 in src/api_bridge.rs verdrahten und den Gesamtstand gegen Regressionen pruefen.",
-      "non_goals": ["Keine neue fachliche Refaktorierung waehrend der Integration.", "Keine Aenderung ausserhalb von src/api_bridge.rs und notwendiger Moduldeklarationen."],
+      "non_goals": [
+        "Keine neue fachliche Refaktorierung waehrend der Integration.",
+        "Keine Aenderung ausserhalb von src/api_bridge.rs und notwendiger Moduldeklarationen."
+      ],
       "dod": "Alle vorherigen Belege sind geprueft, Root-Modul ist sauber verdrahtet, keine doppelte Logik bleibt, Gesamt-Suite und Clippy sind gruen.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib; git diff --check",
       "proof_path": "docs/proofs/T-913/",
