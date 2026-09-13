@@ -1,5 +1,6 @@
 @echo off
 set WEBAGENT_VERIFY_TRACE=1
 cd /d C:\Users\storax\projects\GitHub\webagent-rs
+if not exist "target\debug\WebView2Loader.dll" copy /y "C:\Users\storax\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com-sys-0.33.0\x64\WebView2Loader.dll" "target\debug\WebView2Loader.dll" >nul 2>&1
 target\debug\webagent.exe verify --headless >> "%TEMP%\opencode\verify-headless-full.log" 2>&1
 echo RUN_FULL_DONE >> "%TEMP%\opencode\verify-headless-full.log"

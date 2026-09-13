@@ -196,7 +196,10 @@ impl ReplSession {
                 "/quelle <brain> [src]",
                 "Quelle setzen (Session; --save persistiert)",
             ),
-            ("/login  /login-all", "Login-Fenster öffnen"),
+            (
+                "/login  /login-all",
+                "Login-Fenster öffnen  (/login-all [parallel=N]: alle Brains, max 3)",
+            ),
             ("/help  /exit", "diese Hilfe · beenden"),
         ];
         for (cmd, desc) in rows {
@@ -400,16 +403,25 @@ impl ReplSession {
                 }
                 ReplAction::Continue
             }
-            SlashCommand::LoginAll => {
-                // Pausiert die REPL-Session, loggt alle Brains sequenziell ein,
-                // startet das aktive Brain danach wieder.
+            SlashCommand::LoginAll { parallel } => {
+                // Pausiert die REPL-Session, loggt alle Brains ein (sequenziell
+                // oder parallel via Kindprozesse), startet das aktive Brain danach
+                // wieder. `parallel` 1..=3 = je Brain ein eigener Kindprozess,
+                // 0/None = sequenziell (siehe login::MAX_PARALLEL).
                 if let Err(e) = self.stop_brain() {
                     eprintln!("[login-all] Aktives Brain konnte nicht gestoppt werden: {e}");
                     return ReplAction::Continue;
                 }
-                println!("[login-all] Sequentielles Login für alle Brains (profiles/<brain>)…");
+                let p = parallel.unwrap_or(0);
+                if p > 0 {
+                    println!(
+                        "[login-all] Parallel login (max 3) für alle Brains (profiles/<brain>)…"
+                    );
+                } else {
+                    println!("[login-all] Sequentielles Login für alle Brains (profiles/<brain>)…");
+                }
                 let results =
-                    crate::login::login_all(std::time::Duration::from_secs(300), 0, false);
+                    crate::login::login_all(std::time::Duration::from_secs(300), p, false);
                 let ok = results.iter().filter(|r| r.ok).count();
                 let skip = results.iter().filter(|r| r.skipped).count();
                 for r in &results {
@@ -890,7 +902,23 @@ mod tests {
         assert_eq!(parse_slash_command("/login"), Some(SlashCommand::Login));
         assert_eq!(
             parse_slash_command("/login-all"),
-            Some(SlashCommand::LoginAll)
+            Some(SlashCommand::LoginAll { parallel: None })
+        );
+        assert_eq!(
+            parse_slash_command("/login-all parallel=2"),
+            Some(SlashCommand::LoginAll { parallel: Some(2) })
+        );
+        assert_eq!(
+            parse_slash_command("/login-all parallel=99"),
+            Some(SlashCommand::LoginAll { parallel: Some(99) }) // Cap greift erst in login_all
+        );
+        assert_eq!(
+            parse_slash_command("/login-all parallel=foo"),
+            Some(SlashCommand::LoginAll { parallel: None })
+        );
+        assert_eq!(
+            parse_slash_command("/login-all unsinn"),
+            Some(SlashCommand::LoginAll { parallel: None }) // unbekanntes Arg -> Default
         );
         assert_eq!(
             parse_slash_command("/chat hi"),

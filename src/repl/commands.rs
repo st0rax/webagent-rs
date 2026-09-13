@@ -39,8 +39,11 @@ pub enum SlashCommand {
     Score,
     /// Canary-Health-Tabelle (`/canary`).
     Canary,
-    /// Einheitliches Login für alle Brains (sequenziell), schreibt profiles/{brain}.
-    LoginAll,
+    /// Einheitliches Login für alle Brains, schreibt profiles/{brain}.
+    /// `parallel` = 0 (sequenziell/Default); 1..=3 = je Brain ein eigener Kindprozess.
+    LoginAll {
+        parallel: Option<usize>,
+    },
     /// Stehendes Ziel setzen/anzeigen/löschen (fließt in autonome Aufgaben ein).
     Goal {
         arg: Option<String>,
@@ -365,7 +368,18 @@ pub fn parse_slash_command(line: &str) -> Option<SlashCommand> {
         return Some(SlashCommand::Canary);
     }
     if trimmed == "/login-all" {
-        return Some(SlashCommand::LoginAll);
+        return Some(SlashCommand::LoginAll { parallel: None });
+    }
+    if let Some(rest) = trimmed.strip_prefix("/login-all ") {
+        let parallel = rest
+            .strip_prefix("parallel=")
+            .and_then(|p| p.trim().parse::<usize>().ok());
+        if parallel.is_none() && !rest.trim().is_empty() {
+            eprintln!(
+                "[login-all] Hinweis: '<parallel=N>' (0=sequenziell, max 3) — '{rest}' ignoriert."
+            );
+        }
+        return Some(SlashCommand::LoginAll { parallel });
     }
     if let Some(rest) = trimmed.strip_prefix("/chat ") {
         return Some(SlashCommand::Chat {
