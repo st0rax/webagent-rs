@@ -1,6 +1,13 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-912 Architektur
+## Aktuell: 2026-09-13, T-913 Verdrahtung (Phase 10 done)
+
+`grok-agent` hat T-913 auf `refactor/T-913-api-bridge-integrate` abgeschlossen.
+`src/api_bridge.rs` verdrahtet routing, provider_handlers, transport, wire,
+boundary und tests. `cargo test --features webview --lib`: 1406 passed / 1 ignored.
+Beweis: `docs/proofs/T-913/`.
+
+## Vorher: 2026-09-13, T-912 Architektur
 
 `grok-agent` hat T-912 auf `docs/T-912-api-bridge-architecture` abgeschlossen.
 Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`. START_HERE verweist darauf.

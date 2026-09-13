@@ -656,10 +656,11 @@
       "phase": "10",
       "type": "integration",
       "title": "API-Bridge-Refactoring kontrolliert in die Root-Datei integrieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "refactor/T-913-api-bridge-integrate",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [
         "T-907",
         "T-908",

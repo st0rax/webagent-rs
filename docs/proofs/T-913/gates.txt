@@ -1,0 +1,13 @@
+T-913 gates 2026-09-13 (branch refactor/T-913-api-bridge-integrate)
+
+cargo fmt --all -- --check
+  exit=0 (via cargo fmt --all)
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib
+  test result: ok. 1406 passed; 0 failed; 1 ignored; finished in 60.63s
+
+git diff --check
+  (run at commit time)

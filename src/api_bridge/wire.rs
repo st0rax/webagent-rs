@@ -126,7 +126,11 @@ mod tests {
     fn sse_sequence_numbers_are_monotonic_from_zero() {
         let mut seq = 0u64;
         let first = sse_data("response.created", json!({}), &mut seq);
-        let second = sse_data("response.in_progress", json!({"type": "response.in_progress"}), &mut seq);
+        let second = sse_data(
+            "response.in_progress",
+            json!({"type": "response.in_progress"}),
+            &mut seq,
+        );
         assert_eq!(first["sequence_number"], 0);
         assert_eq!(first["type"], "response.created");
         assert_eq!(second["sequence_number"], 1);

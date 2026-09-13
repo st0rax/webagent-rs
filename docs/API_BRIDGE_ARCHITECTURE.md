@@ -17,7 +17,9 @@ Keine unbelegten Fähigkeitsaussagen: Live-Matrix bleibt [`CAPABILITY_MATRIX.jso
 | `src/api_bridge/boundary.rs` | T-910 | Auth, timing-sicherer Vergleich, Fehlerkörper |
 | `src/api_bridge/tests.rs` | T-911 | 50 Unit-Tests, thematische Abschnitte |
 
-Bis T-913 sind die Kindmodule **vorbereitet, nicht eingebunden**. Die Root-Datei bleibt die laufende Implementierung. T-913 setzt `mod routing` / `mod provider_handlers` / `mod transport` / `mod wire` / `mod boundary` / `#[cfg(test)] mod tests` und entfernt doppelte Logik.
+T-913 hat die Kindmodule verdrahtet: `mod routing` / `mod provider_handlers` /
+`mod transport` / `mod wire` / `mod boundary` / `#[cfg(test)] mod tests`.
+Doppelte Root-Logik ist entfernt. `route_request` dispatcht über `classify`.
 
 ## Erlaubte Abhängigkeitsrichtung
 

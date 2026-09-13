@@ -12,6 +12,7 @@
 //! Prompt/Tools/Protokoll, Store/Lifecycle, Transport/HTTP, SDK-Blackbox.
 
 use super::*;
+use std::io::{Read, Write};
 
 // --- Prompt / Content -------------------------------------------------------
 
@@ -448,11 +449,10 @@ fn openai_tools_and_choice_are_normalized() {
         crate::browser_inference::BrowserToolChoice::Required
     );
     assert!(require_clean_text_tools(&tools, &choice).is_err());
-    assert!(require_clean_text_tools(
-        &tools,
-        &crate::browser_inference::BrowserToolChoice::None
-    )
-    .is_ok());
+    assert!(
+        require_clean_text_tools(&tools, &crate::browser_inference::BrowserToolChoice::None)
+            .is_ok()
+    );
     assert!(openai_tool_choice(
         Some(&json!({"type":"function","function":{"name":"missing"}})),
         &tools
@@ -565,8 +565,8 @@ fn responses_renderer_emits_completion_contract() {
         text: Some("OK".to_string()),
         tool_calls: Vec::new(),
     };
-    let sse = String::from_utf8(responses_sse("resp_test", "webagent/chatgpt", &answer).body)
-        .unwrap();
+    let sse =
+        String::from_utf8(responses_sse("resp_test", "webagent/chatgpt", &answer).body).unwrap();
     assert!(sse.contains("response.created"));
     assert!(sse.contains("response.output_text.delta"));
     assert!(sse.contains("response.completed"));
@@ -662,8 +662,7 @@ fn anthropic_tools_normalizes_input_schema() {
     assert_eq!(tools[0].parameters["properties"]["path"]["type"], "string");
 
     let fallback =
-        anthropic_tools(&[json!({"name": "search", "parameters": {"type": "object"}})])
-            .unwrap();
+        anthropic_tools(&[json!({"name": "search", "parameters": {"type": "object"}})]).unwrap();
     assert_eq!(fallback[0].name, "search");
     assert_eq!(fallback[0].parameters["type"], "object");
 
@@ -690,8 +689,7 @@ fn anthropic_tool_choice_maps_anthropic_forms() {
         crate::browser_inference::BrowserToolChoice::Required
     );
     assert_eq!(
-        anthropic_tool_choice(Some(&json!({"type": "tool", "name": "read_file"})), &tools)
-            .unwrap(),
+        anthropic_tool_choice(Some(&json!({"type": "tool", "name": "read_file"})), &tools).unwrap(),
         crate::browser_inference::BrowserToolChoice::Function("read_file".to_string())
     );
     assert_eq!(
@@ -703,8 +701,7 @@ fn anthropic_tool_choice_maps_anthropic_forms() {
         crate::browser_inference::BrowserToolChoice::None
     );
     assert!(
-        anthropic_tool_choice(Some(&json!({"type": "tool", "name": "missing"})), &tools)
-            .is_err()
+        anthropic_tool_choice(Some(&json!({"type": "tool", "name": "missing"})), &tools).is_err()
     );
     assert!(anthropic_tool_choice(Some(&json!("auto")), &tools).is_err());
     assert!(anthropic_tool_choice(Some(&json!({"type": "unknown"})), &tools).is_err());
@@ -789,8 +786,8 @@ fn responses_tool_call_sse_uses_output_item_events() {
             arguments: json!({"path":"README.md"}),
         }],
     };
-    let sse = String::from_utf8(responses_sse("resp_tool", "webagent/chatgpt", &answer).body)
-        .unwrap();
+    let sse =
+        String::from_utf8(responses_sse("resp_tool", "webagent/chatgpt", &answer).body).unwrap();
     assert!(sse.contains("response.output_item.added"));
     assert!(sse.contains("response.function_call_arguments.delta"));
     assert!(sse.contains("response.function_call_arguments.done"));
@@ -1060,8 +1057,7 @@ fn rejects_unsupported_semantic_fields_ohne_sie_zu_ignorieren() {
     let lp: Value = serde_json::from_slice(&logprobs.body).unwrap();
     assert_eq!(lp["error"]["param"], "logprobs");
 
-    let tier =
-        reject_unsupported_openai_fields(&json!({"service_tier":"default"})).unwrap_err();
+    let tier = reject_unsupported_openai_fields(&json!({"service_tier":"default"})).unwrap_err();
     let tb: Value = serde_json::from_slice(&tier.body).unwrap();
     assert_eq!(tb["error"]["param"], "service_tier");
 }
@@ -1348,8 +1344,7 @@ fn t404_sdk_blackbox_official_sdks_and_two_clients() {
     assert!(models.contains("webagent/chatgpt"));
     fs::write(dump_dir.join("raw_models.http"), &models).expect("dump models");
 
-    let chat_body =
-        r#"{"model":"webagent/chatgpt","messages":[{"role":"user","content":"ping"}]}"#;
+    let chat_body = r#"{"model":"webagent/chatgpt","messages":[{"role":"user","content":"ping"}]}"#;
     let chat = http_exchange(
         addr,
         &format!(

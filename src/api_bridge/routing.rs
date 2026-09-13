@@ -205,10 +205,7 @@ mod tests {
             classify("POST", "/v1/audio/speech", b""),
             BridgeRoute::AudioSpeech
         );
-        assert_eq!(
-            classify("POST", "/v1/messages", b""),
-            BridgeRoute::Messages
-        );
+        assert_eq!(classify("POST", "/v1/messages", b""), BridgeRoute::Messages);
         assert_eq!(
             classify("GET", "/unknown", b""),
             BridgeRoute::NotFound { anthropic: false }
