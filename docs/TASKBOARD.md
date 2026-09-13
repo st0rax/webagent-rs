@@ -139,5 +139,6 @@ Nachzug in T-922/T-923.
 | T-930 | Web-UI Smoke gegen Loopback `:8788` |
 | T-931 | Catalog echt verdrahten (`mod catalog`, Root-Duplikate weg) |
 | T-932 | LICENSE (MIT) committen |
+| T-933 | response_protocol echt verdrahten (T-918-Nachzug) |
 
 T-921 depends_on: T-915/916/917/918/920 + T-922/923/931; ohne T-914/T-919. T-932 parallel (LICENSE).
