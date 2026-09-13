@@ -128,7 +128,7 @@ Nachzug in T-922/T-923.
 
 | Task | Inhalt |
 |---|---|
-| T-922 | Store echt verdrahten (`mod store`, Root-Duplikate weg) |
+| T-922 | Store echt verdrahten (`mod store`, Root-Duplikate weg) | claimed `grok-agent` |
 | T-923 | Content echt verdrahten (`mod content`, Root-Duplikate weg) |
 | T-924 | CI-Gate gegen orphan `src/api_bridge/*.rs` |
 | T-925 | Modulkarte/START_HERE: unwired≠done + Skips dokumentieren |
