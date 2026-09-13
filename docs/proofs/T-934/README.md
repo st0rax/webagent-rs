@@ -17,3 +17,7 @@ Cherry-pick of cb51e1f onto fresh origin/master (no blind-merge of old fix branc
 - Not Done: /v1/models-only
 
 See handoff.md (Referenz-Banner) and live-status.md.
+
+## Gap
+
+handle_openai_incremental still require_clean_text_tools (SSE tools rejected); buffered+continuation covered.

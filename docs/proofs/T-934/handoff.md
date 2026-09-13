@@ -26,6 +26,12 @@ OpenAI-kompatibler **Chat Completions + Tools + Fortsetzung** gegen lokale Bridg
 | OpenAI SSE / Anthropic / Responses client-tools | bewusst weiterhin Reject — nicht Scope |
 | `/v1/models` only | **kein** Done-Kriterium |
 
+## Incremental-Luecke
+
+handle_openai_incremental (SSE) bleibt bei 
+equire_clean_text_tools — Client-Tools im Streaming-Pfad weiterhin rejected.
+Abgedeckt in diesem PR: **buffered** Chat Completions + Tools/Fortsetzung. SSE-Tools = Follow-up, nicht Done-Kriterium.
+
 ## Separater Note (nicht in diesem PR)
 
 Wiederholte 502 „Composer-Feld nicht gefunden“ = Browser-Inference/Selektor bricht **vor** Tool-Nutzung ab — nicht der T-934 Tools-Pfad. Meta-Chat ohne Tools ≠ Brain ohne Tools. Composer-Timeout hier nur dokumentiert, nicht gefixt.

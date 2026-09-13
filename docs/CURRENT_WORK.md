@@ -1,15 +1,20 @@
 # Aktueller Arbeitsstand
 
-## T-934 Pi-Bridge-Reparatur (chatgpt-codex, 2026-09-13)
+## T-934 OpenAI Chat+Tools+Fortsetzung (spock, 2026-09-14)
 
-Claim auf origin/master: c8682d6. Arbeitsbranch: fix/T-934-pi-bridge-roundtrip.
-Isolierte Arbeitskopie: C:/Users/storax/projects/GitHub/webagent-bridge-repair.
-Reparatur und Live-Belege: docs/proofs/T-934/README.md.
-Systemkontext, null-Content bei Assistant-Tool-Calls und Tool-Ergebnisse sind normalisiert;
-OpenAI-Chat leitet Client-Tools zur Browser-Inference weiter. Die laufende EXE liegt in
-der Reparaturkopie unter runtime/ samt WebView2Loader.dll. 60 Bridge-Tests, Build und Clippy
-sind gruen; echte Pi-Begrues­sung und read/ENOENT-Fortsetzung sind belegt.
-Integration ist separat; T-914/T-919 bleiben deferred.
+Claim: owner spock, Branch eature/T-934-pi-bridge-roundtrip (PR #69).
+Chirurgischer Cherry-Pick des Fix-Commits auf aktuellen master — kein Blind-Merge.
+
+**Stand (ehrlich):**
+- Unit/pi_bridge::tests: **51 passed** (inkl. pi_system_null…); fmt/clippy webview gruen.
+- Live Pi / generisches curl-SDK gegen Bridge: **pending** (Artefakte vorhanden, Re-Run dieses SHA offen).
+- Buffered OpenAI Chat Completions + Tools → rowser_inference: Code-Pfad abgedeckt.
+- **Incremental-Luecke:** handle_openai_incremental bleibt bei 
+equire_clean_text_tools (SSE-Tools noch rejected); buffered + non-SSE Fortsetzung ok.
+- Board: T-934 bleibt **claimed** (nicht done) bis Live-Follow-up; T-914 deferred.
+
+Details: docs/proofs/T-934/ (handoff, live-status). Composer-502/Timeout = Inference/Selektor, nicht dieser PR.
+
 
 > **Aktualisiert 2026-09-12:** **G-001 abgeschlossen** — alle Zeilen der
 > v1.0-Definition-of-Done verifiziert (`docs/proofs/G-001/g001-abschluss-2026-09-12.json`).
