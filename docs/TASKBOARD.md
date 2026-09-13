@@ -85,7 +85,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-917 | API-Bridge-Modellkatalog und Auto-Router isolieren | done `grok-agent` / `refactor/T-917-api-bridge-catalog` |
 | T-918 | API-Bridge-JSON/SSE-Antwortkoerper isolieren | done `grok-agent` / `refactor/T-918-api-bridge-protocol` |
 | T-919 | API-Bridge-Browser-Inference-Lauf isolieren | Refactoring-Scope: `src/api_bridge/inference.rs` |
-| T-920 | API-Bridge-Modulkarte nach Phase 11 aktualisieren | claimed `grok-agent` / `docs/T-920-api-bridge-architecture` |
+| T-920 | API-Bridge-Modulkarte nach Phase 11 aktualisieren | done `grok-agent` / `docs/T-920-api-bridge-architecture` |
 | T-921 | Phase-11-Module kontrolliert in Root-Datei integrieren | Integrations-Scope: `src/api_bridge.rs` | blocked bis Vorgänger done |
 
 **Phase-9-Status (2026-09-12):** T-901 done (zai stabil 4/4, reasoning_toggle-Fix, Beweis docs/proofs/T-901/), T-902 done (AutoRouter-Live-Beleg, proofs/T-902/), T-903 done (chatgpt-Slideover-Drift vermessen, proofs/T-903/), T-904 done (VerifiedFree-Providergrenze dokumentiert, proofs/T-904/), T-905 done (Web-UI echt an /api/* angebunden, Beweis proofs/T-905/), T-906 done (Web-UI-Restluecken: Gruppenlauf-Live, Upload, Brain-Fenster, Beweis proofs/T-906/).

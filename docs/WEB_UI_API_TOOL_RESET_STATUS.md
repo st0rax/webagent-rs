@@ -1,6 +1,12 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-918 Antwortkoerper
+## Aktuell: 2026-09-13, T-920 Modulkarte
+
+`grok-agent` hat T-920 auf `docs/T-920-api-bridge-architecture` abgeschlossen.
+`docs/API_BRIDGE_ARCHITECTURE.md` unterscheidet verdrahtet vs. orphan.
+T-914/T-919 deferred. Beweis: `docs/proofs/T-920/`.
+
+## Vorher: 2026-09-13, T-918 Antwortkoerper
 
 `grok-agent` hat T-918 auf `refactor/T-918-api-bridge-protocol` abgeschlossen.
 JSON/SSE-Renderer in `src/api_bridge/response_protocol.rs`. T-914 und T-919 frei.

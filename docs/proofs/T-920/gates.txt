@@ -1,0 +1,12 @@
+T-920 gates 2026-09-13 (branch docs/T-920-api-bridge-architecture)
+
+git diff --check
+  (at commit)
+
+Dokument vs src/api_bridge:
+  verdrahtet: boundary, provider_handlers, routing, tests, transport, wire
+  orphan: store, content, catalog, response_protocol
+  deferred in Root: media (T-914), inference (T-919)
+
+cargo test --features webview --lib betriebs_markdown_hat_eine_wahrheit
+  (run before commit)
