@@ -5,16 +5,19 @@
 Dieser Block ist vor dem historischen Projektkontext zu lesen und ist die
 maßgebliche Einstiegslage für laufende Arbeit:
 
-- Checkout: `C:\Users\storax\projects\GitHub\webagent-rs`
-- Branch: `master`
-- HEAD: `0adc062`; die Arbeitskopie muss vor jeder Implementierung erneut geprüft werden.
+- **Referenz ist ausschließlich der GitHub-Branch `master`.**
+- Aktueller dokumentierter Master-Stand: `a2175c8`.
+- Vor jeder Arbeit: `git pull origin master`, `git status` und
+  `git log -1 --oneline` ausführen. Eine lokale Arbeitskopie mit uncommitteten
+  Änderungen ist kein Master-Stand und darf nicht als solcher ausgegeben werden.
 - **Release `v0.11.3` veröffentlicht** (Windows/Linux/Android, `https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3`).
 - **Phase-8 (Brain-Vereinheitlichung T-801–T-808) vollständig done**: gemeinsamer
   Brain-Vertrag, einheitliches Senden, Antwortstream, Profil-Lease, Probe/Proof,
   Taskabschluss-Verifikation (E2E belegt), Run-Ledger/Crash-Recovery und
   Live-Abnahme inkl. Windows-Prozessproben. Die bisherigen Phasen sind
-  abgeschlossen; Phase 10 enthält die freien Refactoring-Slots T-907–T-912.
-  Neue Aufgaben stehen zunächst `free` und werden erst nach einem Claim bearbeitet.
+  abgeschlossen. Der aktuelle neue Bedarf ist in Phase 10 als T-907–T-913
+  beschrieben; diese Tasks sind zunächst `free` und dürfen erst nach Claim
+  bearbeitet werden.
 - Der aktuelle Stand gilt als v1.0-Anwärter: Der technische Fahrplan steht in
   `docs/BRAIN_UNIFICATION_PLAN.md`; Live-Matrix-Belegen in
   `docs/CAPABILITY_MATRIX.json` (`as_of` 2026-09-12, 46 frische Verify-Belege).
@@ -110,10 +113,11 @@ Arbeiten unter `C:\Users`.)
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
    auf `"done"` setzen und `done_at` ergänzen.
 
-**Aktueller Stand:** Phase-8 (T-801–T-808) ist abgeschlossen. Alle bisherigen
-Tasks sind `done`; neue Aufgaben werden als `free` in `docs/TASKBOARD.json`
-angelegt und übernommen wie oben beschrieben. Vor der Übernahme immer die
-aktuelle JSON-Quelle lesen (Claim = Quelle der Wahrheit).
+**Aktueller Stand:** Phase-8 (T-801–T-808) ist abgeschlossen. Die freien
+Phase-10-Tasks T-907–T-912 sind eigenständige Vorarbeiten; T-913 ist bis zum
+Abschluss dieser Vorgänger blockiert. Vor der Übernahme immer die aktuelle
+JSON-Quelle lesen (Claim = Quelle der Wahrheit). Lokale OpenCode-Entwürfe sind
+kein Claim und werden nicht parallel von anderen Agenten bearbeitet.
 
 **Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
 
@@ -132,14 +136,16 @@ cargo check --no-default-features
 # (optional) Binärgewicht im Release-Artefakt für das <10-MB-Budget
 ```
 
-Bekannter Stand: 1388 passed / 0 failed / 1 ignored (Stand 2026‑09‑12).
+Bekannter Master-Stand: 1388 passed / 0 failed / 1 ignored (Stand 2026‑09‑12).
+Nach jeder Änderung ist der Teststand im Übergabebeleg neu zu erfassen.
 
 ## 5. Verbleibende Arbeit
 
 - Phase-8 abgeschlossen (T-801–T-808 done), Release v0.11.3 veröffentlicht.
 - Offene Matrix-Grenzen sind dokumentierte Befunde (`failed`/`unreachable`/
   `removed`/`not_run` laut `docs/CAPABILITY_MATRIX.json`), kein offener Task.
-- Neuer Bedarf wird als freie Aufgabe im TASKBOARD eintragen und nach dem
+- Refactoring-Bedarf: T-907–T-913 in `docs/TASKBOARD.json`.
+- Neuer Bedarf wird als freie Aufgabe im TASKBOARD eingetragen und nach dem
   Claim-Verfahren umgesetzt.
 
 ## 6. Grenzen (nicht überschreiten)
