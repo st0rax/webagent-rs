@@ -915,7 +915,7 @@
       "phase": "12",
       "type": "refactoring",
       "title": "API-Bridge Content echt verdrahten (T-916-Nachzug)",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "feature/T-923-wire-content",
       "claimed_at": "2026-09-13",
@@ -934,7 +934,8 @@
       "dod": "mod content verdrahtet; keine Root-Kopie der Normalizer; Tests bestehen; Beweis docs/proofs/T-923/.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check; rg \"^mod content\" src/api_bridge.rs",
       "proof_path": "docs/proofs/T-923/",
-      "handoff": "Kopplungsliste, entfernte Root-Bloecke, Testausgabe, Branch und PR."
+      "handoff": "Kopplungsliste, entfernte Root-Bloecke, Testausgabe, Branch und PR.",
+      "done_at": "2026-09-14"
     },
     {
       "id": "T-924",
