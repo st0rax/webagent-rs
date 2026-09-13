@@ -686,7 +686,7 @@
       "id": "T-914",
       "phase": "11",
       "type": "refactoring",
-      "title": "API-Bridge-Medienhandler (Bild/Audio/Multipart) isolieren",
+      "title": "[DEFERRED] API-Bridge-Medienhandler (Bild/Audio/Multipart) isolieren",
       "status": "free",
       "owner": null,
       "branch": null,
@@ -695,7 +695,7 @@
       "scope": [
         "src/api_bridge/media.rs"
       ],
-      "objective": "Image-Generation, Audio-Transcription/Translation/Speech und Multipart-Parsing aus der Root-Datei in ein Medienmodul ueberfuehren.",
+      "objective": "Image-Generation, Audio-Transcription/Translation/Speech und Multipart-Parsing aus der Root-Datei in ein Medienmodul ueberfuehren. USER-SKIP 2026-09-13: nicht claimen, bis explizit freigegeben.",
       "non_goals": [
         "Keine Aenderung an MIME-Grenzen, Base64- oder Upload-Semantik.",
         "Keine Prompt-/Tool-Normalizer und keinen Response-Store verschieben."
@@ -803,7 +803,7 @@
       "id": "T-919",
       "phase": "11",
       "type": "refactoring",
-      "title": "API-Bridge-Browser-Inference-Lauf isolieren",
+      "title": "[DEFERRED] API-Bridge-Browser-Inference-Lauf isolieren",
       "status": "free",
       "owner": null,
       "branch": null,
@@ -812,7 +812,7 @@
       "scope": [
         "src/api_bridge/inference.rs"
       ],
-      "objective": "run_task_blocking/streaming, Fake-Antworten und Auto-Attach-Fehlerannotation in ein Inference-Modul legen.",
+      "objective": "run_task_blocking/streaming, Fake-Antworten und Auto-Attach-Fehlerannotation in ein Inference-Modul legen. USER-SKIP 2026-09-13: nicht claimen, bis explizit freigegeben.",
       "non_goals": [
         "Keine Aenderung an Browser-Selektoren, Locks oder Timeouts.",
         "Kein Provider-HTTP-Protokoll aendern."
@@ -856,26 +856,251 @@
       "branch": null,
       "claimed_at": null,
       "depends_on": [
-        "T-914",
         "T-915",
         "T-916",
         "T-917",
         "T-918",
-        "T-919",
-        "T-920"
+        "T-920",
+        "T-922",
+        "T-923"
       ],
       "scope": [
         "src/api_bridge.rs"
       ],
-      "objective": "T-914 bis T-920 verdrahten, doppelte Root-Logik entfernen, Gesamtstand gegen Regressionen pruefen.",
+      "objective": "T-914/T-919 bleiben laut User deferred in Root. Verdrahten: bereits extrahierte und nachgeschaerfte Module; doppelte Root-Logik entfernen; Gesamtstand gegen Regressionen pruefen. Media/Inference bleiben Root bis eigene Slots.",
       "non_goals": [
         "Keine neue fachliche Refaktorierung waehrend der Integration.",
+        "T-914/T-919 nicht nachziehen (User-Skip), ausser explizit freigegeben.",
         "Keine Aenderung ausserhalb von src/api_bridge.rs und notwendigen Moduldeklarationen."
       ],
       "dod": "mod-Zeilen gesetzt, keine Duplikate, Clippy -D warnings und cargo test --lib gruen.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib; git diff --check",
       "proof_path": "docs/proofs/T-921/",
       "handoff": "Integrationsprotokoll, Diff-Scope, Testausgaben, Branch und Commit."
+    },
+    {
+      "id": "T-922",
+      "phase": "12",
+      "type": "refactoring",
+      "title": "API-Bridge Store echt verdrahten (T-915-Nachzug)",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-915"
+      ],
+      "scope": [
+        "src/api_bridge.rs",
+        "src/api_bridge/store.rs"
+      ],
+      "objective": "Columbo-P0: store.rs ist orphan. mod store setzen, Root-Duplikate (retrieve/delete/tenant/persist/…) entfernen oder reexport-only, Produktion laeuft ueber Kindmodul.",
+      "non_goals": [
+        "Keine Semantik-/Pfad-Aenderung an openai-local-state-v1.",
+        "Kein content/media/inference-Umzug."
+      ],
+      "dod": "mod store verdrahtet; Root ohne zweite Store-Implementierung; api_bridge::tests und Clippy -D warnings gruen; Beweis docs/proofs/T-922/.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check; rg \"^mod store\" src/api_bridge.rs",
+      "proof_path": "docs/proofs/T-922/",
+      "handoff": "Diff-Scope, was aus Root entfernt wurde, Testausgabe, Branch und PR."
+    },
+    {
+      "id": "T-923",
+      "phase": "12",
+      "type": "refactoring",
+      "title": "API-Bridge Content echt verdrahten (T-916-Nachzug)",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-916"
+      ],
+      "scope": [
+        "src/api_bridge.rs",
+        "src/api_bridge/content.rs"
+      ],
+      "objective": "content.rs orphan bzw. unverdrahtet: mod content, Root-Duplikate Prompt/Tool/reject_unsupported entfernen; Unsupported bleibt hart.",
+      "non_goals": [
+        "Keine JSON-Feldvertraege aendern.",
+        "Kein SSE/Browser-Inference-Umzug."
+      ],
+      "dod": "mod content verdrahtet; keine Root-Kopie der Normalizer; Tests bestehen; Beweis docs/proofs/T-923/.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check; rg \"^mod content\" src/api_bridge.rs",
+      "proof_path": "docs/proofs/T-923/",
+      "handoff": "Kopplungsliste, entfernte Root-Bloecke, Testausgabe, Branch und PR."
+    },
+    {
+      "id": "T-924",
+      "phase": "12",
+      "type": "test",
+      "title": "CI-Gate: api_bridge Kinddateien muessen verdrahtet sein",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/",
+        "scripts/",
+        "docs/proofs/T-924/"
+      ],
+      "objective": "Verhindere Orphan-Module: Test oder Script failt, wenn src/api_bridge/*.rs existiert ohne passende mod-Zeile in api_bridge.rs (ausser tests).",
+      "non_goals": [
+        "Keine fachliche Refaktorierung.",
+        "Kein Umbau fremder CI-Jobs ausser dem Gate."
+      ],
+      "dod": "Gate in cargo test oder CI-Skript; reproduzierbarer Fail bei orphan; Beweis docs/proofs/T-924/.",
+      "verification": "cargo test --features webview --lib; git diff --check",
+      "proof_path": "docs/proofs/T-924/",
+      "handoff": "Gate-Pfad, Beispiel-Fail, Branch und PR."
+    },
+    {
+      "id": "T-925",
+      "phase": "12",
+      "type": "docs",
+      "title": "Phase-11/12 Modulkarte: unwired≠done + Skip T-914/T-919",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "docs/API_BRIDGE_ARCHITECTURE.md",
+        "START_HERE.md",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Architekturdoku und START_HERE an store/content + Claim-Regel unwired≠done anpassen; User-Skips T-914/T-919 dokumentieren; Phase-12-Slots nennen.",
+      "non_goals": [
+        "Kein Produktionscode ausser Links/Status.",
+        "Keine Live-Faehigkeitsaussagen."
+      ],
+      "dod": "Dokumente spiegeln master-Dateien und Board; Archiv-/Referenz-Banner wo noetig.",
+      "verification": "git diff --check; Dokument gegen src/api_bridge abgleichen",
+      "proof_path": "docs/proofs/T-925/",
+      "handoff": "Doc-Diff, Unsicherheiten, Branch und PR."
+    },
+    {
+      "id": "T-926",
+      "phase": "12",
+      "type": "code",
+      "title": "Free-Cloud: ersten VerifiedFree-Adapter echt anbinden",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/free_cloud_chat.rs",
+        "docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md"
+      ],
+      "objective": "Aus FREE_CLOUD_STATUS: Registry/decide mit genau einem belegten VerifiedFree-Adapter verbinden (kein Credit-Pfad, free_only-Invariante halten).",
+      "non_goals": [
+        "Keine HuggingFace-Credits-Route.",
+        "Kein Browser-Space-Scraping als VerifiedFree ohne Vertrag."
+      ],
+      "dod": "Adapter-Test + CLI decide Auto nur fuer VerifiedFree; Statusdok aktualisiert; Beweis docs/proofs/T-926/.",
+      "verification": "cargo fmt --check; cargo clippy --no-default-features -- -D warnings; cargo test --no-default-features free_cloud; git diff --check",
+      "proof_path": "docs/proofs/T-926/",
+      "handoff": "Adapter-ID, Invarianten, Testausgabe, Branch und PR."
+    },
+    {
+      "id": "T-927",
+      "phase": "12",
+      "type": "proof",
+      "title": "Matrix: model/auto Live-Beleg nachziehen",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "docs/CAPABILITY_MATRIX.json",
+        "docs/proofs/T-927/"
+      ],
+      "objective": "model/auto ist not_run. Live oder ehrlich unreachable/failed mit Beleg; Matrix as_of aktualisieren.",
+      "non_goals": [
+        "Keine Fake-Passes.",
+        "Kein Umbau des Auto-Routers ausser Selektor-/Beweisbedarf."
+      ],
+      "dod": "Zelle model/auto nicht mehr not_run ohne Begruendung; JSON-Beweis unter proofs/T-927/.",
+      "verification": "Matrix-Schema valid; Belegpfad gesetzt; git diff --check",
+      "proof_path": "docs/proofs/T-927/",
+      "handoff": "Ergebnisstatus, Session-Hinweis, Branch und PR."
+    },
+    {
+      "id": "T-928",
+      "phase": "12",
+      "type": "proof",
+      "title": "Effort-Spalte ehrlich bereinigen (not_run vs unreachable)",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "docs/CAPABILITY_MATRIX.json",
+        "docs/proofs/T-928/",
+        "selectors/"
+      ],
+      "objective": "Offene effort-Zellen (chatgpt/deepseek/gemini/mistral/perplexity/zai/auto, kimi failed): Survey/Verify oder dokumentiert unreachable; keine stillen not_run ohne Datum.",
+      "non_goals": [
+        "T-914/T-919 nicht anfassen.",
+        "managed_tools by-design failed nicht umdeuten."
+      ],
+      "dod": "Jede effort-Zelle hat frischen Beleg oder begruendetes unreachable/failed; as_of neu.",
+      "verification": "Matrix konsistent; Belege vorhanden; git diff --check",
+      "proof_path": "docs/proofs/T-928/",
+      "handoff": "Tabelle Brain→Status, Branch und PR."
+    },
+    {
+      "id": "T-929",
+      "phase": "12",
+      "type": "fix",
+      "title": "Linux-CI Flake config::profiles reclaimed isolieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/config/",
+        "docs/proofs/T-929/"
+      ],
+      "objective": "Columbo: Linux build&test flake profiles…reclaimed. Test mutex/Isolation oder Determinismus, damit master zuverlaessig gruen bleibt.",
+      "non_goals": [
+        "Keine Feature-Arbeit an Profilen.",
+        "Kein Skip des Tests ohne Beleg."
+      ],
+      "dod": "Repro oder Root-Cause notiert; Fix oder harte Serialisierung; CI-Hinweis im Beweis.",
+      "verification": "cargo test --lib config::profiles; git diff --check",
+      "proof_path": "docs/proofs/T-929/",
+      "handoff": "Ursache, Fix, Testausgabe, Branch und PR."
+    },
+    {
+      "id": "T-930",
+      "phase": "12",
+      "type": "test",
+      "title": "Web-UI Smoke gegen Loopback-API (:8788)",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "web/",
+        "src/web_ui.rs",
+        "docs/proofs/T-930/"
+      ],
+      "objective": "Automatisierter Smoke: UI-Assets + /api Health/Sessions/Chat-Minimalpfad gegen lokalen Listener; fangt T-905/T-906 Regressionen.",
+      "non_goals": [
+        "Kein neues UI-Design.",
+        "Keine Live-Brain-Abhaengigkeit (Fake/Bridge-lokal ok)."
+      ],
+      "dod": "Test oder Script gruen in CI/lokal; Beweis docs/proofs/T-930/.",
+      "verification": "cargo test --features webview --lib; git diff --check",
+      "proof_path": "docs/proofs/T-930/",
+      "handoff": "Smoke-Schritte, Ports, Testausgabe, Branch und PR."
     }
   ]
 }
