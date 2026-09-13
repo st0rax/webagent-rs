@@ -25,3 +25,4 @@ target-gnu/
 scripts/t404/node_modules/
 /_tmp_parse.py
 /docs/proofs/T-501/_parse_chatgpt_menu.txt
+/runtime/

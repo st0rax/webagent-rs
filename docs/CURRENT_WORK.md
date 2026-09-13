@@ -1,5 +1,16 @@
 # Aktueller Arbeitsstand
 
+## T-934 Pi-Bridge-Reparatur (chatgpt-codex, 2026-09-13)
+
+Claim auf origin/master: c8682d6. Arbeitsbranch: fix/T-934-pi-bridge-roundtrip.
+Isolierte Arbeitskopie: C:/Users/storax/projects/GitHub/webagent-bridge-repair.
+Reparatur und Live-Belege: docs/proofs/T-934/README.md.
+Systemkontext, null-Content bei Assistant-Tool-Calls und Tool-Ergebnisse sind normalisiert;
+OpenAI-Chat leitet Client-Tools zur Browser-Inference weiter. Die laufende EXE liegt in
+der Reparaturkopie unter runtime/ samt WebView2Loader.dll. 60 Bridge-Tests, Build und Clippy
+sind gruen; echte Pi-Begrues­sung und read/ENOENT-Fortsetzung sind belegt.
+Integration ist separat; T-914/T-919 bleiben deferred.
+
 > **Aktualisiert 2026-09-12:** **G-001 abgeschlossen** — alle Zeilen der
 > v1.0-Definition-of-Done verifiziert (`docs/proofs/G-001/g001-abschluss-2026-09-12.json`).
 > - Voll-Gates am Abschluss-Stand (`2589b0a`) erneut grün: `cargo fmt --all -- --check`,

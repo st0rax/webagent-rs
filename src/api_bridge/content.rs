@@ -397,23 +397,16 @@ pub(crate) fn conversation_prompt(
     if messages.is_empty() {
         return Err("messages darf nicht leer sein.".to_string());
     }
-    if system.is_some_and(|value| !value.trim().is_empty()) {
-        return Err(concat!(
-            "System-/Instructions-Semantik ist im sauberen Browser-Textprofil noch nicht ",
-            "unterstuetzt; WebAgent schreibt sie nicht als versteckte Nutzernachricht in den Chat."
-        )
-        .to_string());
-    }
+    let system_context = system
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!("[system (sichtbarer Kontext)]\n{value}\n\n"))
+        .unwrap_or_default();
 
     for message in messages {
-        if !message.tool_calls.is_empty() || message.tool_call_id.is_some() {
-            return Err(concat!(
-                "Tool-Call-Verlaeufe sind im sauberen Browser-Textprofil noch nicht ",
-                "unterstuetzt; WebAgent injiziert keine Tool-Protokolle in den Chat."
-            )
-            .to_string());
-        }
-        if !matches!(message.role.as_str(), "user" | "assistant") {
+        if !matches!(
+            message.role.as_str(),
+            "system" | "developer" | "user" | "assistant" | "tool"
+        ) {
             return Err(format!(
                 "Rolle '{}' ist im sauberen Browser-Textprofil nicht unterstuetzt.",
                 message.role
@@ -424,7 +417,7 @@ pub(crate) fn conversation_prompt(
     let current = messages
         .last()
         .ok_or_else(|| "messages darf nicht leer sein.".to_string())?;
-    if current.role != "user" {
+    if !matches!(current.role.as_str(), "user" | "tool") {
         return Err(
             "Die letzte Nachricht muss im sauberen Browser-Textprofil die Rolle 'user' haben."
                 .to_string(),
@@ -435,22 +428,38 @@ pub(crate) fn conversation_prompt(
     let current_text = content_to_prompt(&current.content, &mut attachments)?;
     if messages.len() == 1 {
         return Ok(PromptBundle {
-            text: current_text,
+            text: system_context + &current_text,
             attachments,
         });
     }
 
-    let mut task = String::from("Gespraechsverlauf mit [brain]:\n\n");
+    let mut task = system_context + "Gespraechsverlauf mit [brain]:\n\n";
     for message in &messages[..messages.len() - 1] {
         // Historische Anhaenge werden nur als Textmarker erwaehnt. Sie duerfen
         // nicht bei jeder Fortsetzung erneut in die Browser-UI hochgeladen
         // werden und den aktuellen Composer blockieren.
         let mut historical_attachments = Vec::new();
-        let content = content_to_prompt(&message.content, &mut historical_attachments)?;
+        let mut content = if message.role == "assistant"
+            && message.content.is_null()
+            && !message.tool_calls.is_empty()
+        {
+            String::new()
+        } else {
+            content_to_prompt(&message.content, &mut historical_attachments)?
+        };
+        if !message.tool_calls.is_empty() {
+            content.push_str(&format!(
+                "\n[tool_calls] {}",
+                serde_json::to_string(&message.tool_calls).map_err(|error| error.to_string())?
+            ));
+        }
+        if let Some(id) = &message.tool_call_id {
+            content = format!("[tool_call_id: {id}]\n{content}");
+        }
         let label = if message.role == "assistant" {
             "brain"
         } else {
-            "user"
+            message.role.as_str()
         };
         task.push_str(&format!("[{label}]\n{content}\n\n"));
     }
@@ -471,6 +480,9 @@ pub(crate) fn content_to_prompt(
 ) -> Result<String, String> {
     if let Some(text) = value.as_str() {
         return Ok(text.to_string());
+    }
+    if value.is_object() {
+        return Ok(value.to_string());
     }
     let Some(parts) = value.as_array() else {
         return Err("content muss ein Text oder ein Content-Array sein.".to_string());

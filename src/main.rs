@@ -660,6 +660,7 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
             brain,
             timeout_secs,
             headless,
+            debug,
             api_key_env,
         } => {
             // Ein Listener, zwei Rollen: `api serve` = `ui --api --no-open`.
@@ -672,7 +673,7 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
                 api_key_env,
                 brain,
                 timeout_secs,
-                headless,
+                headless: headless || !debug,
             })
         }
     }
