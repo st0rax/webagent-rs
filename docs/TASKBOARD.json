@@ -805,7 +805,7 @@
       "id": "T-919",
       "phase": "11",
       "type": "refactoring",
-      "title": "[DEFERRED] API-Bridge-Browser-Inference-Lauf isolieren",
+      "title": "API-Bridge-Browser-Inference-Lauf isolieren",
       "status": "free",
       "owner": null,
       "branch": null,
@@ -814,7 +814,7 @@
       "scope": [
         "src/api_bridge/inference.rs"
       ],
-      "objective": "run_task_blocking/streaming, Fake-Antworten und Auto-Attach-Fehlerannotation in ein Inference-Modul legen. USER-SKIP 2026-09-13: nicht claimen, bis explizit freigegeben.",
+      "objective": "run_task_blocking/streaming, Fake-Antworten und Auto-Attach-Fehlerannotation in ein Inference-Modul legen.",
       "non_goals": [
         "Keine Aenderung an Browser-Selektoren, Locks oder Timeouts.",
         "Kein Provider-HTTP-Protokoll aendern."
@@ -966,10 +966,10 @@
       "phase": "12",
       "type": "docs",
       "title": "Phase-11/12 Modulkarte: unwired≠done + Skip T-914/T-919",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "pflege",
+      "branch": "docs/T-925-modulkarte-sync",
+      "claimed_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "docs/API_BRIDGE_ARCHITECTURE.md",
@@ -984,7 +984,8 @@
       "dod": "Dokumente spiegeln master-Dateien und Board; Archiv-/Referenz-Banner wo noetig.",
       "verification": "git diff --check; Dokument gegen src/api_bridge abgleichen",
       "proof_path": "docs/proofs/T-925/",
-      "handoff": "Doc-Diff, Unsicherheiten, Branch und PR."
+      "handoff": "Doc-Diff, Unsicherheiten, Branch und PR.",
+      "done_at": "2026-09-13"
     },
     {
       "id": "T-926",
