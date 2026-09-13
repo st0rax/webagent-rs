@@ -1,3 +1,4 @@
+<!-- **Referenz: Beleg der T-923-Abnahme; keine aktuelle Betriebsanweisung.** -->
 # T-923 Handoff — Content echt verdrahten
 
 - Task: T-923
