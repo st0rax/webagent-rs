@@ -12,7 +12,8 @@ impl WebBrainBackend {
     /// verwirft bei `Input.insertText` alles hinter dem ersten Zeilenumbruch;
     /// `execCommand('insertParagraph')` geht dagegen durch seinen Editor-State.
     pub(super) fn fill_composer_rich_multiline(&self, composer_js: &str, text: &str) -> bool {
-        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return {x:r.left+r.width/2,y:r.top+r.height/2};}";
+        // Viewport-clamped click target (see fill_composer): tall ProseMirror rects.
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);if(bot-top<1||right-left<1){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top};}return {x:(left+right)/2,y:(top+bot)/2};}}";
         let coords = self
             .eval(&Self::js_scan(composer_js, coord_body, "null"))
             .unwrap_or(Value::Null);
@@ -62,7 +63,7 @@ impl WebBrainBackend {
 
     /// Playwright-`fill()`-Äquivalent: DOM setzen + input/change-Events (Angular/React).
     pub(super) fn fill_composer_dom_set(&self, composer_js: &str, text: &str) -> bool {
-        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);if(bot-top<1||right-left<1){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top};}return {x:(left+right)/2,y:(top+bot)/2};}}";
         let coords = self
             .eval(&Self::js_scan(composer_js, coord_body, "null"))
             .unwrap_or(Value::Null);
@@ -128,8 +129,10 @@ impl WebBrainBackend {
     /// Setzt den Text in den Composer (fokussiert, `value`/`textContent`, feuert
     /// `input`). Gibt true, wenn ein Composer gefunden wurde.
     pub(super) fn fill_composer(&self, composer_js: &str, text: &str) -> bool {
-        // 1) Mittelpunkt-Koordinaten des Composers holen (nicht gefunden -> false).
-        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}";
+        // 1) Klickpunkt = Viewport-Schnitt des Composer-Rects (nicht gefunden -> false).
+        //    ChatGPT-ProseMirror meldet bei grossen Prompts h=13k/y=-10k; geometrischer
+        //    Mittelpunkt liegt dann ausserhalb der WebView (Live: Composer-Feld-Timeout).
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);if(bot-top<1||right-left<1){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top};}return {x:(left+right)/2,y:(top+bot)/2};}}";
         let coords = self
             .eval(&Self::js_scan(composer_js, coord_body, "null"))
             .unwrap_or(Value::Null);
