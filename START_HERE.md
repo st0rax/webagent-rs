@@ -120,6 +120,9 @@ JSON-Quelle lesen (Claim = Quelle der Wahrheit). Lokale OpenCode-Entwürfe sind
 kein Claim und werden nicht parallel von anderen Agenten bearbeitet.
 
 **Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
+Jeder Agent darf jeden freien Task übernehmen; es gibt keine `suitable`- oder
+Kompetenzbeschränkung. Maßgeblich sind ausschließlich Task-Scope, Claim,
+Abhängigkeiten und die definierten Gates.
 
 ## 4. Verifikationskommandos
 
