@@ -1,6 +1,12 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-915 Store
+## Aktuell: 2026-09-13, T-916 Content
+
+`grok-agent` hat T-916 auf `refactor/T-916-api-bridge-content` abgeschlossen.
+Prompts, Tools, unsupported fields in `src/api_bridge/content.rs`.
+T-914 und T-919 bleiben frei. Beweis: `docs/proofs/T-916/`.
+
+## Vorher: 2026-09-13, T-915 Store
 
 `grok-agent` hat T-915 auf `refactor/T-915-api-bridge-store` abgeschlossen.
 Store/Lifecycle liegen in `src/api_bridge/store.rs` (Format `openai-local-state-v1`).

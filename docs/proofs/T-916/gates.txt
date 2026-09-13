@@ -1,0 +1,17 @@
+T-916 gates 2026-09-13 (branch refactor/T-916-api-bridge-content)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  50 passed
+  rejects_unsupported_semantic_fields_ohne_sie_zu_ignorieren ... ok
+  openai_tools_and_choice_are_normalized ... ok
+  anthropic_tools_normalizes_input_schema ... ok
+
+git diff --check
+  diff_exit=0
