@@ -1,6 +1,13 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-908 Provider-Handler
+## Aktuell: 2026-09-13, T-909 Transport/Wire
+
+`grok-agent` hat T-909 auf `refactor/T-909-api-bridge-transport` abgeschlossen.
+HTTP-Parsing liegt in `src/api_bridge/transport.rs`, Antwortheader und SSE-Frames
+in `src/api_bridge/wire.rs`. Headervertraege unveraendert. T-913 verdrahtet die Module.
+Gates: fmt/clippy `-D warnings`/50 `api_bridge::tests` gruen. Beweis: `docs/proofs/T-909/`.
+
+## Vorher: 2026-09-13, T-908 Provider-Handler
 
 `grok-agent` hat T-908 auf `refactor/T-908-api-bridge-handlers` abgeschlossen.
 OpenAI-Chat, Anthropic und Responses (gepuffert + SSE) liegen in

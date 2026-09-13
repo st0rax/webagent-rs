@@ -1,0 +1,18 @@
+T-909 gates 2026-09-13 (branch refactor/T-909-api-bridge-transport)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 1348 filtered out; finished in 8.33s
+  response_renderer_sets_protocol_and_length ... ok
+  responses_sse_sequence_numbers_sind_monoton_und_lueckenlos ... ok
+
+git diff --check
+  diff_exit=0
+
+Hinweis: src/api_bridge.rs unveraendert. T-913 verdrahtet mod transport und mod wire.

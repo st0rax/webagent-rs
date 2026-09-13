@@ -558,10 +558,11 @@
       "phase": "10",
       "type": "refactoring",
       "title": "API-Bridge-HTTP-Transport und SSE-Schreiben isolieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "refactor/T-909-api-bridge-transport",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/transport.rs",
