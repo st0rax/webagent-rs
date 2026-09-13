@@ -76,7 +76,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-908 | API-Bridge-Provider-Handler fachlich trennen | done `grok-agent` / `refactor/T-908-api-bridge-handlers` |
 | T-909 | API-Bridge-HTTP-Transport und SSE-Schreiben isolieren | done `grok-agent` / `refactor/T-909-api-bridge-transport` |
 | T-910 | API-Bridge-Auth und Fehlervertrag als Boundary-Modul ordnen | done `grok-agent` / `refactor/T-910-api-bridge-boundary` |
-| T-911 | API-Bridge-Tests in eigenstaendige Testmodule ordnen | Test-Scope: `src/api_bridge/tests.rs` |
+| T-911 | API-Bridge-Tests in eigenstaendige Testmodule ordnen | claimed `grok-agent` / `refactor/T-911-api-bridge-tests` |
 | T-912 | API-Bridge-Architektur und Agenten-Einstieg dokumentieren | Docs-Scope: `docs/API_BRIDGE_ARCHITECTURE.md`, `START_HERE.md` |
 | T-913 | Ergebnisse T-907–T-912 kontrolliert in Root-Datei integrieren | Integrations-Scope: `src/api_bridge.rs` | blocked bis Vorgänger done |
 
@@ -91,4 +91,4 @@ dort genannten Scope und liefert die dort genannten Gates und Belege. Niemand
 aller Vorgänger. T-913 ist deshalb absichtlich blockiert, bis alle Vorgänger
 `done` sind.
 
-**Phase-10-Claims (2026-09-13):** T-907–T-910 done (`grok-agent`). T-910 Beweis `docs/proofs/T-910/`.
+**Phase-10-Claims (2026-09-13):** T-907–T-910 done (`grok-agent`). T-911 claimed (`grok-agent`, `refactor/T-911-api-bridge-tests`).
