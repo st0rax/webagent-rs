@@ -5,7 +5,8 @@
     "grok-agent",
     "manus",
     "local/opencode",
-    "chief"
+    "chief",
+    "spock"
   ],
   "as_of": "2026-09-13",
   "contract": "docs/WORK_CONTRACT.md",
@@ -1194,7 +1195,7 @@
       "type": "bugfix",
       "title": "Pi-Bridge: Systemkontext und Client-Tool-Rundlauf reparieren",
       "status": "claimed",
-      "owner": "grok-agent",
+      "owner": "spock",
       "branch": "fix/T-934-pi-bridge-roundtrip",
       "claimed_at": "2026-09-14",
       "depends_on": [],
