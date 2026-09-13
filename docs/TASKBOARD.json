@@ -865,7 +865,8 @@
         "T-920",
         "T-922",
         "T-923",
-        "T-931"
+        "T-931",
+        "T-933"
       ],
       "scope": [
         "src/api_bridge.rs"
@@ -948,7 +949,7 @@
         "scripts/",
         "docs/proofs/T-924/"
       ],
-      "objective": "Verhindere Orphan-Module: Test oder Script failt, wenn src/api_bridge/*.rs existiert ohne passende mod-Zeile in api_bridge.rs (ausser tests). Deckt store/content/catalog und kuenftige Kindmodule.",
+      "objective": "Verhindere Orphan-Module: Test oder Script failt, wenn src/api_bridge/*.rs existiert ohne passende mod-Zeile in api_bridge.rs (ausser tests). Deckt store/content/catalog und kuenftige Kindmodule. Inkl. response_protocol.",
       "non_goals": [
         "Keine fachliche Refaktorierung.",
         "Kein Umbau fremder CI-Jobs ausser dem Gate."
@@ -1154,6 +1155,32 @@
       "verification": "test -f LICENSE; git diff --check",
       "proof_path": "docs/proofs/T-932/",
       "handoff": "LICENSE-Diff, Branch und PR."
+    },
+    {
+      "id": "T-933",
+      "phase": "12",
+      "type": "refactoring",
+      "title": "API-Bridge response_protocol echt verdrahten (T-918-Nachzug)",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-918"
+      ],
+      "scope": [
+        "src/api_bridge.rs",
+        "src/api_bridge/response_protocol.rs"
+      ],
+      "objective": "T-918 Dateiextrakt orphan: mod response_protocol, Root-Duplikate JSON/SSE-Renderer entfernen oder reexport-only.",
+      "non_goals": [
+        "Keine sequence_number-/Headervertraege aendern (wire.rs).",
+        "Keine Handler-Orchestrierung."
+      ],
+      "dod": "mod response_protocol verdrahtet; keine Root-Kopie der Renderer; Tests+Clippy gruen; Beweis docs/proofs/T-933/.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check; rg \"^mod response_protocol\" src/api_bridge.rs",
+      "proof_path": "docs/proofs/T-933/",
+      "handoff": "Diff-Scope, Testausgabe, Branch und PR."
     }
   ]
 }
