@@ -129,7 +129,7 @@ Nachzug in T-922/T-923.
 | Task | Inhalt |
 |---|---|
 | T-922 | Store echt verdrahten (`mod store`, Root-Duplikate weg) | done `grok-agent` |
-| T-923 | Content echt verdrahten (`mod content`, Root-Duplikate weg) | claimed `grok-agent` |
+| T-923 | Content echt verdrahten — done (grok-agent, 8aa43f8) |
 | T-924 | CI-Gate gegen orphan `src/api_bridge/*.rs` |
 | T-925 | Phase-11/12 Modulkarte: unwired≠done + Skip T-914/T-919 — done (pflege) |
 | T-926 | Free-Cloud: ersten VerifiedFree-Adapter anbinden |
