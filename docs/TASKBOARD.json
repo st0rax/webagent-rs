@@ -1182,6 +1182,34 @@
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check; rg \"^mod response_protocol\" src/api_bridge.rs",
       "proof_path": "docs/proofs/T-933/",
       "handoff": "Diff-Scope, Testausgabe, Branch und PR."
+    },
+    {
+      "id": "T-934",
+      "phase": "12",
+      "type": "bugfix",
+      "title": "Pi-Bridge: Systemkontext und Client-Tool-Rundlauf reparieren",
+      "status": "claimed",
+      "owner": "chatgpt-codex",
+      "branch": "fix/T-934-pi-bridge-roundtrip",
+      "claimed_at": "2026-09-13",
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/content.rs",
+        "src/api_bridge/provider_handlers.rs",
+        "src/api_bridge/tests.rs",
+        "src/browser_inference.rs",
+        "src/cli.rs",
+        "src/main.rs"
+      ],
+      "objective": "Pi mit aktiven Client-Tools ueber die lokale Browser-API nutzbar machen: Systemkontext, assistant content:null bei tool_calls, Tool-Ergebnisse und Fortsetzungen korrekt normalisieren; Client-Tools zur Ausfuehrung an Pi zurueckgeben.",
+      "non_goals": [
+        "Keine Claims fuer deferred T-914/T-919.",
+        "Keine lokale Ausfuehrung von Pi-Tools durch die Bridge."
+      ],
+      "dod": "Gezielte Regressionstests und Build gruen; Live-Pi-Belege fuer Begruessung mit Tools, echten Dateiabruf und Fortsetzung nach Tool-Fehler; laufende EXE-Provenienz dokumentiert.",
+      "verification": "cargo test --features webview --lib; cargo build --features webview; Live-Pi-Roundtrip",
+      "proof_path": "docs/proofs/T-934/",
+      "handoff": "Patch, Build-Provenienz und echte Pi-Testresultate; kein Abschluss allein durch /v1/models."
     }
   ]
 }
