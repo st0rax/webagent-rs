@@ -80,7 +80,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-912 | API-Bridge-Architektur und Agenten-Einstieg dokumentieren | done `grok-agent` / `docs/T-912-api-bridge-architecture` |
 | T-913 | Ergebnisse T-907–T-912 kontrolliert in Root-Datei integrieren | done `grok-agent` / `refactor/T-913-api-bridge-integrate` |
 | T-914 | API-Bridge-Medienhandler (Bild/Audio/Multipart) isolieren | Refactoring-Scope: `src/api_bridge/media.rs` |
-| T-915 | API-Bridge-Response-Store und Lifecycle isolieren | claimed `grok-agent` / `refactor/T-915-api-bridge-store` |
+| T-915 | API-Bridge-Response-Store und Lifecycle isolieren | done `grok-agent` / `refactor/T-915-api-bridge-store` |
 | T-916 | API-Bridge-Prompt- und Tool-Normalizer isolieren | Refactoring-Scope: `src/api_bridge/content.rs` |
 | T-917 | API-Bridge-Modellkatalog und Auto-Router isolieren | Refactoring-Scope: `src/api_bridge/catalog.rs` |
 | T-918 | API-Bridge-JSON/SSE-Antwortkoerper isolieren | Refactoring-Scope: `src/api_bridge/response_protocol.rs` |
@@ -103,7 +103,7 @@ aller Vorgänger. T-913 ist deshalb absichtlich blockiert, bis alle Vorgänger
 
 ## Phase 11 (ab 2026-09-13) — Rest der Root-Datei zerlegen
 
-T-914 bleibt frei für webagent. T-915 claimed (`grok-agent`).
+T-914 bleibt frei für webagent. T-915 done (`grok-agent`, Beweis `docs/proofs/T-915/`).
 T-914 bis T-920 sind eigenständige Slots mit disjunkten Zielpfaden.
 Niemand ändert in diesen Slots `src/api_bridge.rs`; das macht erst T-921.
 Typen (`HttpRequest`, DTOs, `BridgeConfig`) bleiben in der Root-Datei, bis T-921

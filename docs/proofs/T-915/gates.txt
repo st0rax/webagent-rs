@@ -1,0 +1,17 @@
+T-915 gates 2026-09-13 (branch refactor/T-915-api-bridge-store)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  50 passed
+  persistent_state_ueberlebt_restart_und_trennt_mandanten ... ok
+  response_retrieval_requires_auth_and_returns_stored_object ... ok
+  response_input_items_and_delete_follow_lifecycle_contract ... ok
+
+git diff --check
+  diff_exit=0

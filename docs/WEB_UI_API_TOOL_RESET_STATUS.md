@@ -1,6 +1,12 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-913 Verdrahtung (Phase 10 done)
+## Aktuell: 2026-09-13, T-915 Store
+
+`grok-agent` hat T-915 auf `refactor/T-915-api-bridge-store` abgeschlossen.
+Store/Lifecycle liegen in `src/api_bridge/store.rs` (Format `openai-local-state-v1`).
+T-914 bleibt frei für webagent. T-921 verdrahtet. Beweis: `docs/proofs/T-915/`.
+
+## Vorher: 2026-09-13, T-913 Verdrahtung (Phase 10 done)
 
 `grok-agent` hat T-913 auf `refactor/T-913-api-bridge-integrate` abgeschlossen.
 `src/api_bridge.rs` verdrahtet routing, provider_handlers, transport, wire,
