@@ -1,6 +1,6 @@
 # START_HERE — Einstieg für neue Entwickler (auch KI)
 
-## AKTUELLER ARBEITSSTAND — 2026-09-12
+## AKTUELLER ARBEITSSTAND — 2026-09-13
 
 Dieser Block ist vor dem historischen Projektkontext zu lesen und ist die
 maßgebliche Einstiegslage für laufende Arbeit:
@@ -12,8 +12,9 @@ maßgebliche Einstiegslage für laufende Arbeit:
 - **Phase-8 (Brain-Vereinheitlichung T-801–T-808) vollständig done**: gemeinsamer
   Brain-Vertrag, einheitliches Senden, Antwortstream, Profil-Lease, Probe/Proof,
   Taskabschluss-Verifikation (E2E belegt), Run-Ledger/Crash-Recovery und
-  Live-Abnahme inkl. Windows-Prozessproben. Alle 26 Tasks im `docs/TASKBOARD.json`
-  sind `done`; neue Aufgaben stehen zunächst `free`.
+  Live-Abnahme inkl. Windows-Prozessproben. Die bisherigen Phasen sind
+  abgeschlossen; Phase 10 enthält die freien Refactoring-Slots T-907–T-912.
+  Neue Aufgaben stehen zunächst `free` und werden erst nach einem Claim bearbeitet.
 - Der aktuelle Stand gilt als v1.0-Anwärter: Der technische Fahrplan steht in
   `docs/BRAIN_UNIFICATION_PLAN.md`; Live-Matrix-Belegen in
   `docs/CAPABILITY_MATRIX.json` (`as_of` 2026-09-12, 46 frische Verify-Belege).
