@@ -77,7 +77,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-909 | API-Bridge-HTTP-Transport und SSE-Schreiben isolieren | done `grok-agent` / `refactor/T-909-api-bridge-transport` |
 | T-910 | API-Bridge-Auth und Fehlervertrag als Boundary-Modul ordnen | done `grok-agent` / `refactor/T-910-api-bridge-boundary` |
 | T-911 | API-Bridge-Tests in eigenstaendige Testmodule ordnen | done `grok-agent` / `refactor/T-911-api-bridge-tests` |
-| T-912 | API-Bridge-Architektur und Agenten-Einstieg dokumentieren | claimed `grok-agent` / `docs/T-912-api-bridge-architecture` |
+| T-912 | API-Bridge-Architektur und Agenten-Einstieg dokumentieren | done `grok-agent` / `docs/T-912-api-bridge-architecture` |
 | T-913 | Ergebnisse T-907–T-912 kontrolliert in Root-Datei integrieren | Integrations-Scope: `src/api_bridge.rs` | blocked bis Vorgänger done |
 
 **Phase-9-Status (2026-09-12):** T-901 done (zai stabil 4/4, reasoning_toggle-Fix, Beweis docs/proofs/T-901/), T-902 done (AutoRouter-Live-Beleg, proofs/T-902/), T-903 done (chatgpt-Slideover-Drift vermessen, proofs/T-903/), T-904 done (VerifiedFree-Providergrenze dokumentiert, proofs/T-904/), T-905 done (Web-UI echt an /api/* angebunden, Beweis proofs/T-905/), T-906 done (Web-UI-Restluecken: Gruppenlauf-Live, Upload, Brain-Fenster, Beweis proofs/T-906/).
@@ -91,4 +91,4 @@ dort genannten Scope und liefert die dort genannten Gates und Belege. Niemand
 aller Vorgänger. T-913 ist deshalb absichtlich blockiert, bis alle Vorgänger
 `done` sind.
 
-**Phase-10-Claims (2026-09-13):** T-907–T-911 done (`grok-agent`). T-912 claimed (`grok-agent`, `docs/T-912-api-bridge-architecture`).
+**Phase-10-Claims (2026-09-13):** T-907–T-912 done (`grok-agent`). T-913 ist claimbar.

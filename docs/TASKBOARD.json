@@ -631,10 +631,11 @@
       "phase": "10",
       "type": "docs",
       "title": "API-Bridge-Architektur und Agenten-Einstieg dokumentieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "docs/T-912-api-bridge-architecture",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "docs/API_BRIDGE_ARCHITECTURE.md",

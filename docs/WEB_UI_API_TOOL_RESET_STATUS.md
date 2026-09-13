@@ -1,6 +1,13 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-911 Tests ausgelagert
+## Aktuell: 2026-09-13, T-912 Architektur
+
+`grok-agent` hat T-912 auf `docs/T-912-api-bridge-architecture` abgeschlossen.
+Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`. START_HERE verweist darauf.
+T-913 ist das letzte Phase-10-Stück (Verdrahtung in `src/api_bridge.rs`).
+Beweis: `docs/proofs/T-912/`.
+
+## Vorher: 2026-09-13, T-911 Tests ausgelagert
 
 `grok-agent` hat T-911 auf `refactor/T-911-api-bridge-tests` abgeschlossen.
 50 `#[test]` liegen in `src/api_bridge/tests.rs` (gleiche Anzahl, thematische

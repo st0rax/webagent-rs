@@ -1,0 +1,10 @@
+T-912 gates 2026-09-13 (branch docs/T-912-api-bridge-architecture)
+
+git diff --check
+  exit=0
+
+cargo test --features webview --lib betriebs_markdown_hat_eine_wahrheit
+  ok
+
+Dokument gegen src/api_bridge/ abgeglichen: routing, provider_handlers,
+transport, wire, boundary, tests.rs vorhanden; Root noch unverdrahtet (T-913).

@@ -6,7 +6,6 @@ Dieser Block ist vor dem historischen Projektkontext zu lesen und ist die
 maßgebliche Einstiegslage für laufende Arbeit:
 
 - **Referenz ist ausschließlich der GitHub-Branch `master`.**
-- Aktueller dokumentierter Master-Stand: `a2175c8`.
 - Vor jeder Arbeit: `git pull origin master`, `git status` und
   `git log -1 --oneline` ausführen. Eine lokale Arbeitskopie mit uncommitteten
   Änderungen ist kein Master-Stand und darf nicht als solcher ausgegeben werden.
@@ -15,9 +14,9 @@ maßgebliche Einstiegslage für laufende Arbeit:
   Brain-Vertrag, einheitliches Senden, Antwortstream, Profil-Lease, Probe/Proof,
   Taskabschluss-Verifikation (E2E belegt), Run-Ledger/Crash-Recovery und
   Live-Abnahme inkl. Windows-Prozessproben. Die bisherigen Phasen sind
-  abgeschlossen. Der aktuelle neue Bedarf ist in Phase 10 als T-907–T-913
-  beschrieben; diese Tasks sind zunächst `free` und dürfen erst nach Claim
-  bearbeitet werden.
+  abgeschlossen. Phase 10 (API-Bridge-Refactoring): T-907–T-911 sind `done`.
+  T-912 (Modulkarte) ist `done`. Nächster freier Slot: T-913 verdrahtet die
+  Kindmodule in `src/api_bridge.rs`. Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`.
 - Der aktuelle Stand gilt als v1.0-Anwärter: Der technische Fahrplan steht in
   `docs/BRAIN_UNIFICATION_PLAN.md`; Live-Matrix-Belegen in
   `docs/CAPABILITY_MATRIX.json` (`as_of` 2026-09-12, 46 frische Verify-Belege).
@@ -49,6 +48,7 @@ lokale **Web-UI**, **OpenAI-kompatibler Endpunkt**, **Managed Tools** — siehe
 | 4 | `docs/WORK_CONTRACT.md` | **Arbeitsvertrag** — verbindlich für jeden, der eine Aufgabe übernimmt |
 | 4 | `docs/TASKBOARD.md` | Aufgabentafel (Spiegel); Claim-Quelle ist `docs/TASKBOARD.json` |
 | 4a | `docs/BRAIN_UNIFICATION_PLAN.md` | Aktueller gemeinsamer Brain-Vertrag, Reihenfolge, Abnahme und Befundgrenzen |
+| 4b | `docs/API_BRIDGE_ARCHITECTURE.md` | API-Bridge-Modulkarte, Abhängigkeitsrichtung, Claim-Regeln |
 | 5 | `docs/WEB_UI_API_TOOL_RESET_STATUS.md` | Aktueller Umsetzungsstand / Handover |
 | 6 | `docs/CAPABILITY_MATRIX.json` | Beleg-Matrix (130 Zellen, Status je Fähigkeit) |
 
@@ -113,11 +113,11 @@ Arbeiten unter `C:\Users`.)
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
    auf `"done"` setzen und `done_at` ergänzen.
 
-**Aktueller Stand:** Phase-8 (T-801–T-808) ist abgeschlossen. Die freien
-Phase-10-Tasks T-907–T-912 sind eigenständige Vorarbeiten; T-913 ist bis zum
-Abschluss dieser Vorgänger blockiert. Vor der Übernahme immer die aktuelle
-JSON-Quelle lesen (Claim = Quelle der Wahrheit). Lokale OpenCode-Entwürfe sind
-kein Claim und werden nicht parallel von anderen Agenten bearbeitet.
+**Aktueller Stand:** Phase-8 (T-801–T-808) ist abgeschlossen. Phase-10
+T-907–T-912 sind `done`. T-913 verdrahtet die Kindmodule in `src/api_bridge.rs`.
+Vor der Übernahme immer die aktuelle JSON-Quelle lesen (Claim = Quelle der
+Wahrheit). Lokale OpenCode-Entwürfe sind kein Claim und werden nicht parallel
+von anderen Agenten bearbeitet.
 
 **Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
 Jeder Agent darf jeden freien Task übernehmen; es gibt keine `suitable`- oder
@@ -147,7 +147,7 @@ Nach jeder Änderung ist der Teststand im Übergabebeleg neu zu erfassen.
 - Phase-8 abgeschlossen (T-801–T-808 done), Release v0.11.3 veröffentlicht.
 - Offene Matrix-Grenzen sind dokumentierte Befunde (`failed`/`unreachable`/
   `removed`/`not_run` laut `docs/CAPABILITY_MATRIX.json`), kein offener Task.
-- Refactoring-Bedarf: T-907–T-913 in `docs/TASKBOARD.json`.
+- Phase-10: T-907–T-911 done; T-912 Modulkarte; T-913 verdrahtet `src/api_bridge.rs`.
 - Neuer Bedarf wird als freie Aufgabe im TASKBOARD eingetragen und nach dem
   Claim-Verfahren umgesetzt.
 
