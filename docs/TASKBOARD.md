@@ -84,7 +84,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-916 | API-Bridge-Prompt- und Tool-Normalizer isolieren | done `grok-agent` / `refactor/T-916-api-bridge-content` |
 | T-917 | API-Bridge-Modellkatalog und Auto-Router isolieren | done `grok-agent` / `refactor/T-917-api-bridge-catalog` |
 | T-918 | API-Bridge-JSON/SSE-Antwortkoerper isolieren | done `grok-agent` / `refactor/T-918-api-bridge-protocol` |
-| T-919 | API-Bridge-Browser-Inference-Lauf isolieren | claimed `grok-agent` / `feature/T-919-wire-inference` |
+| T-919 | Inference-Lauf verdrahtet — done (grok-agent, 98ad7a5) |
 | T-920 | API-Bridge-Modulkarte nach Phase 11 aktualisieren | done `grok-agent` / `docs/T-920-api-bridge-architecture` |
 | T-921 | Phase-11-Module kontrolliert in Root-Datei integrieren | Integrations-Scope: `src/api_bridge.rs` | blocked bis Vorgänger done |
 
