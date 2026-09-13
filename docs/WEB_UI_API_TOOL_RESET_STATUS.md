@@ -1,6 +1,12 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-917 Katalog
+## Aktuell: 2026-09-13, T-918 Antwortkoerper
+
+`grok-agent` hat T-918 auf `refactor/T-918-api-bridge-protocol` abgeschlossen.
+JSON/SSE-Renderer in `src/api_bridge/response_protocol.rs`. T-914 und T-919 frei.
+Beweis: `docs/proofs/T-918/`.
+
+## Vorher: 2026-09-13, T-917 Katalog
 
 `grok-agent` hat T-917 auf `refactor/T-917-api-bridge-catalog` abgeschlossen.
 Katalog und Auto-Router in `src/api_bridge/catalog.rs`. T-914 und T-919 frei.

@@ -782,10 +782,11 @@
       "phase": "11",
       "type": "refactoring",
       "title": "API-Bridge-JSON/SSE-Antwortkoerper isolieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "refactor/T-918-api-bridge-protocol",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/response_protocol.rs"

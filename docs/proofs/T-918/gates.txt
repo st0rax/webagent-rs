@@ -1,0 +1,14 @@
+T-918 gates 2026-09-13 (branch refactor/T-918-api-bridge-protocol)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  50 passed
+  responses_sse_sequence_numbers_sind_monoton_und_lueckenlos ... ok
+  anthropic_response_renders_tool_use_blocks ... ok
+  responses_renderer_emits_completion_contract ... ok
