@@ -1,0 +1,17 @@
+T-908 gates 2026-09-13 (branch refactor/T-908-api-bridge-handlers)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+  Finished `dev` profile in 31.31s
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 1348 filtered out; finished in 7.47s
+
+git diff --check
+  diff_exit=0
+
+Hinweis: src/api_bridge.rs bleibt in diesem Slot unveraendert. T-913 verdrahtet mod provider_handlers.
