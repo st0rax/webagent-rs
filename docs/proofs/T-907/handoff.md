@@ -1,3 +1,4 @@
+<!-- **Referenz: Beleg der T-907-Abnahme; keine aktuelle Betriebsanweisung.** -->
 # T-907 Handoff — API-Bridge-Routing isolieren
 
 - Task: T-907

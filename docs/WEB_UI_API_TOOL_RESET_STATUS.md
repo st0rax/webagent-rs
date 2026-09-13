@@ -1,6 +1,13 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-910 Auth-Boundary
+## Aktuell: 2026-09-13, T-911 Tests ausgelagert
+
+`grok-agent` hat T-911 auf `refactor/T-911-api-bridge-tests` abgeschlossen.
+50 `#[test]` liegen in `src/api_bridge/tests.rs` (gleiche Anzahl, thematische
+Abschnitte). Root-Datei unveraendert; T-913 verdrahtet `mod tests`.
+Beweis: `docs/proofs/T-911/`.
+
+## Vorher: 2026-09-13, T-910 Auth-Boundary
 
 `grok-agent` hat T-910 auf `refactor/T-910-api-bridge-boundary` abgeschlossen.
 `authorize`, timing-sicherer Vergleich und OpenAI/Anthropic-Fehlerformen liegen in

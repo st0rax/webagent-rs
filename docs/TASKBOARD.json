@@ -607,10 +607,11 @@
       "phase": "10",
       "type": "tests",
       "title": "API-Bridge-Tests in eigenstaendige Testmodule ordnen",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "refactor/T-911-api-bridge-tests",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/tests.rs"

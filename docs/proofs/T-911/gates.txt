@@ -1,0 +1,17 @@
+T-911 gates 2026-09-13 (branch refactor/T-911-api-bridge-tests)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  api_bridge_test_exit=0
+  50 passed (vorher 50, nachher 50 in tests.rs)
+
+cargo test --features webview --lib betriebs_markdown_hat_eine_wahrheit
+  ok (Referenz-Banner in proofs/T-907..T-911)
+
+git diff --check
+  diff_exit=0

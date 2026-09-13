@@ -1,3 +1,4 @@
+<!-- **Referenz: Beleg der T-909-Abnahme; keine aktuelle Betriebsanweisung.** -->
 # T-909 Handoff — HTTP-Transport und SSE-Wire
 
 - Task: T-909

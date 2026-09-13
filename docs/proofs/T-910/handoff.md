@@ -1,3 +1,4 @@
+<!-- **Referenz: Beleg der T-910-Abnahme; keine aktuelle Betriebsanweisung.** -->
 # T-910 Handoff — Auth- und Fehler-Boundary
 
 - Task: T-910
