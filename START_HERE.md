@@ -16,7 +16,7 @@ maßgebliche Einstiegslage für laufende Arbeit:
   Live-Abnahme inkl. Windows-Prozessproben. Die bisherigen Phasen sind
   abgeschlossen. Phase 10 (API-Bridge-Refactoring): T-907–T-911 sind `done`.
   Phase 10 (T-907–T-913) ist `done` und verdrahtet. Phase 11: T-915–T-918
-  extrahiert (noch orphan bis T-922/T-923/T-931/T-933); T-914 deferred,
+  extrahiert (store verdrahtet (T-922); noch orphan: content/catalog/response_protocol → T-923/T-931/T-933); T-914 deferred,
   T-919 freigegeben. Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`.
   Phase 12: Verdrahtungs-Nachzug T-922+ (siehe TASKBOARD).
 - Fahrplan: `docs/BRAIN_UNIFICATION_PLAN.md`. Live-Faehigkeiten nur ueber
@@ -116,8 +116,7 @@ Arbeiten unter `C:\Users`.)
    auf `"done"` setzen und `done_at` ergänzen.
 
 **Aktueller Stand:** Phase-8 und Phase-10 sind abgeschlossen.
-T-914 bleibt DEFERRED; **T-919 ist freigegeben** (claimbar). Extrakte store/content/catalog/
-response_protocol sind
+T-914 bleibt DEFERRED; **T-919 ist freigegeben** (claimbar). Extrakte content/catalog/response_protocol sind (store seit T-922 verdrahtet);
 unwired ≠ done, bis T-922/T-923/T-931/T-933 mod setzen. T-921 nicht claimen, solange
 diese Vorgänger offen sind. Phase-12 in docs/TASKBOARD.json. Vor der Übernahme immer
 die JSON-Quelle lesen. Keine Fake-Live-Claims — Live nur über Capability-Matrix / proofs.
