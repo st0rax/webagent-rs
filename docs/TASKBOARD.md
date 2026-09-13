@@ -72,7 +72,7 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-904 | Free-Cloud-Scheibe: Registry/decide mit echten VerifiedFree-Adaptern verbinden | docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md |
 | T-905 | Web-UI: Fake-Prototyp -> echte API-Anbindung + Layout | docs/WEB_UI_API_TOOL_RESET.md (Status: sonst tote Scheibe) |
 | T-906 | Web-UI: T-905-Restluecken schliessen (Gruppenlauf-Live, Upload, Brain-Fenster) | T-905 Beweis verbleibende_grenzen |
-| T-907 | API-Bridge-Routing und Request-Dispatch isolieren | Refactoring-Scope: `src/api_bridge/routing.rs` |
+| T-907 | API-Bridge-Routing und Request-Dispatch isolieren | claimed `grok-agent` / `refactor/T-907-api-bridge-routing` |
 | T-908 | API-Bridge-Provider-Handler fachlich trennen | Refactoring-Scope: `src/api_bridge/provider_handlers.rs` |
 | T-909 | API-Bridge-HTTP-Transport und SSE-Schreiben isolieren | Refactoring-Scope: `src/api_bridge/transport.rs`, `src/api_bridge/wire.rs` |
 | T-910 | API-Bridge-Auth und Fehlervertrag als Boundary-Modul ordnen | Refactoring-Scope: `src/api_bridge/boundary.rs` |
@@ -84,9 +84,11 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 
 ## Phase 10 (ab 2026-09-13) — parallele API-Bridge-Refaktorierung
 
-T-907 bis T-912 sind freie, eigenständige Slots mit disjunkten Zielpfaden.
+T-907 bis T-912 sind eigenständige Slots mit disjunkten Zielpfaden.
 Jeder Agent claimt genau einen Task in `docs/TASKBOARD.json`, arbeitet nur im
 dort genannten Scope und liefert die dort genannten Gates und Belege. Niemand
 ändert in diesen Slots `src/api_bridge.rs`; das macht erst T-913 nach Abschluss
 aller Vorgänger. T-913 ist deshalb absichtlich blockiert, bis alle Vorgänger
 `done` sind.
+
+**Phase-10-Claims (2026-09-13):** T-907 claimed (`grok-agent`, `refactor/T-907-api-bridge-routing`).
