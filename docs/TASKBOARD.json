@@ -1138,10 +1138,10 @@
       "phase": "12",
       "type": "docs",
       "title": "LICENSE-Datei (MIT) ins Repo legen",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "pflege",
+      "branch": "docs/T-932-mit-license",
+      "claimed_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "LICENSE",
@@ -1155,7 +1155,8 @@
       "dod": "LICENSE vorhanden; GitHub erkennt MIT; Beweis docs/proofs/T-932/ oder PR-Notiz.",
       "verification": "test -f LICENSE; git diff --check",
       "proof_path": "docs/proofs/T-932/",
-      "handoff": "LICENSE-Diff, Branch und PR."
+      "handoff": "LICENSE-Diff, Branch und PR.",
+      "done_at": "2026-09-13"
     },
     {
       "id": "T-933",
