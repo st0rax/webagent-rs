@@ -806,10 +806,10 @@
       "phase": "11",
       "type": "refactoring",
       "title": "API-Bridge-Browser-Inference-Lauf isolieren",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "grok-agent",
+      "branch": "feature/T-919-wire-inference",
+      "claimed_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/inference.rs"
