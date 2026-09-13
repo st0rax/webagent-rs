@@ -1,39 +1,55 @@
-<!-- **Referenz: Modulkarte der API-Bridge (Phase 10); Betrieb bleibt docs/API_BRIDGE.md.** -->
+<!-- **Referenz: Modulkarte der API-Bridge (Phase 10–12); Betrieb bleibt docs/API_BRIDGE.md.** -->
 # API-Bridge — Architektur und Agenten-Einstieg
 
 Dieses Dokument beschreibt die **Modulgrenzen** der lokalen Provider-Bridge.
 Laufzeitvertrag (Bindung, Token, Endpunkte) steht in [`API_BRIDGE.md`](API_BRIDGE.md).
 Keine unbelegten Fähigkeitsaussagen: Live-Matrix bleibt [`CAPABILITY_MATRIX.json`](CAPABILITY_MATRIX.json).
 
-## Aktuelle Dateien
+**Regel:** Eine Datei unter `src/api_bridge/*.rs` ohne passende `mod`-Zeile in
+`src/api_bridge.rs` ist **orphan / unwired**. Unwired ist nicht gleich
+produktionswirksam. T-915–T-918 haben extrahiert; die Verdrahtung ist
+T-922 / T-923 / T-931 / T-933.
 
-| Pfad | Slot | Verantwortung |
+## Aktuelle Dateien (`src/api_bridge/`)
+
+| Pfad | Slot | `mod` in Root? | Verantwortung |
+|---|---|---|---|
+| `src/api_bridge.rs` | Root | — | Orchestrierung, Typen, Medien, Inference, noch Duplikate der Orphans |
+| `routing.rs` | T-907 | ja (T-913) | `classify`, Streaming-Policy |
+| `provider_handlers.rs` | T-908 | ja (T-913) | OpenAI-Chat, Anthropic, Responses |
+| `transport.rs` | T-909 | ja (T-913) | HTTP-Request-Parsing |
+| `wire.rs` | T-909 | ja (T-913) | Antwortheader, SSE-Frames, `sse_data` |
+| `boundary.rs` | T-910 | ja (T-913) | Auth, timing-sicherer Vergleich, Fehlerkörper |
+| `tests.rs` | T-911 | ja (T-913) | 50 Unit-Tests |
+| `store.rs` | T-915 | **nein** → T-922 | Mandanten-Store, Lifecycle |
+| `content.rs` | T-916 | **nein** → T-923 | Prompts, Tools, unsupported fields |
+| `catalog.rs` | T-917 | **nein** → T-931 | Katalog, Auto-Router |
+| `response_protocol.rs` | T-918 | **nein** → T-933 | JSON/SSE-Antwortkörper |
+
+Nicht als Kindmodul extrahiert (User-Skip, bleiben in der Root-Datei):
+
+| Thema | Slot | Status |
 |---|---|---|
-| `src/api_bridge.rs` | Root, T-913 | Orchestrierung, Typen, noch die alten Funktionen bis zur Verdrahtung |
-| `src/api_bridge/routing.rs` | T-907 | Routenentscheidung `classify`, Streaming-Policy |
-| `src/api_bridge/provider_handlers.rs` | T-908 | OpenAI-Chat, Anthropic, Responses (gepuffert + SSE) |
-| `src/api_bridge/transport.rs` | T-909 | HTTP-Request-Parsing, `find_bytes` |
-| `src/api_bridge/wire.rs` | T-909 | Antwortheader, SSE-Frames |
-| `src/api_bridge/boundary.rs` | T-910 | Auth, timing-sicherer Vergleich, Fehlerkörper |
-| `src/api_bridge/tests.rs` | T-911 | 50 Unit-Tests, thematische Abschnitte |
-
-T-913 hat die Kindmodule verdrahtet: `mod routing` / `mod provider_handlers` /
-`mod transport` / `mod wire` / `mod boundary` / `#[cfg(test)] mod tests`.
-Doppelte Root-Logik ist entfernt. `route_request` dispatcht über `classify`.
+| Bild/Audio/Multipart | T-914 | deferred, nicht claimen |
+| `run_task_blocking` / streaming | T-919 | deferred, nicht claimen |
 
 ## Erlaubte Abhängigkeitsrichtung
 
 ```
-transport  ->  (HttpRequest-Typen)
-wire       ->  HttpResponse, completion_id
-boundary   ->  Auth-Typen, HttpResponse
-routing    ->  Methode/Pfad/Body  (keine Handler, kein Browser)
-provider_handlers -> boundary/wire/store/prompt (Parent-Helfer), kein Selektor, kein Profil
-tests      ->  Parent
-api_bridge.rs (nach T-913) -> alle Kindmodule
+transport           -> HttpRequest-Typen (Root)
+wire                -> HttpResponse, completion_id (Root)
+boundary            -> Auth-Typen, HttpResponse
+routing             -> Methode/Pfad/Body (keine Handler, kein Browser)
+provider_handlers   -> Parent-Helfer; kein Selektor, kein Profil
+store / content / catalog / response_protocol
+                    -> Parent-Typen und -Helfer, bis T-922/923/931/933 verdrahten
+tests               -> Parent
+api_bridge.rs       -> verdrahtete Kindmodule
 ```
 
-Kindmodule dürfen **nicht** auf Browser-Selektoren, Circuit-Breaker-Politik oder Providerprofile zugreifen. Keine umgekehrte Abhängigkeit Root ← Kind für neue Fachlogik.
+Kindmodule dürfen **nicht** auf Browser-Selektoren oder Providerprofile zugreifen.
+Kein HTTP-Routing in `catalog.rs` (das bleibt `routing.rs`).
+`response_protocol` ändert keine Header; `sequence_number` bleibt `wire::sse_data`.
 
 ## Nicht-Ziele
 
@@ -41,7 +57,9 @@ Kindmodule dürfen **nicht** auf Browser-Selektoren, Circuit-Breaker-Politik ode
 - Keine neuen Auth-Arten.
 - Keine Live-Behauptungen über Brains; das ist die Capability-Matrix.
 
-## Gates (Phase 10)
+## Gates
+
+Kind-Extrakt (wie T-915–T-918):
 
 ```
 cargo fmt --all -- --check
@@ -50,24 +68,32 @@ cargo test --features webview --lib api_bridge::tests::
 git diff --check
 ```
 
-T-911/T-913 zusätzlich: `cargo test --features webview --lib`.
+Verdrahtung (T-913, T-921, T-922, T-923, T-931, T-933): zusätzlich
+`cargo test --features webview --lib`.
 
 ## Claim-Regeln
 
-Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe. Kind-Slots (T-907–T-912) ändern **nicht** `src/api_bridge.rs`. T-913 ist blockiert, bis T-907–T-912 `done` sind.
+Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe.
 
-## Verbleibende Risiken / Phase 11
+- T-914 und T-919 nicht claimen (deferred).
+- Orphan-Dateien (`store`, `content`, `catalog`, `response_protocol`) nicht
+  als fertige Produktion behandeln; Nachzug ist T-922 / T-923 / T-931 / T-933.
+- T-921 verdrahtet den Rest, ist aber `depends_on` T-915, T-916, T-917, T-918,
+  T-920, T-922, T-923, T-931, T-933 — nicht claimen, solange Vorgänger offen sind.
+- Typen (`HttpRequest`, DTOs, `BridgeConfig`) bleiben in der Root-Datei.
 
-Phase 10 ist verdrahtet. In der Root-Datei liegen noch Medienhandler, Store,
-Prompt/Tools, Katalog/Auto-Router, JSON/SSE-Renderer und der Inference-Lauf.
-Das sind die freien Slots T-914–T-920; T-921 verdrahtet. Typen bleiben in der
-Root-Datei (kein paralleler Types-Slot). `docs/API_BRIDGE.md` bleibt der
-Betriebsvertrag.
+## Verbleibende Risiken
+
+- Drift Root vs. Orphan, solange `mod` fehlt: Clippy sieht die Orphans nicht.
+- Medien und Inference bleiben in der Root-Datei (T-914/T-919 deferred).
+- `docs/API_BRIDGE.md` ist der Betriebsvertrag; dieses Dokument ist die Modulkarte.
+- Phase-12-Nachzug (T-922+) ist der Weg, Orphans zu schließen — nicht ein
+  zweites paralleles Extrakt ohne `mod`.
 
 ## Agenten-Einstieg
 
 1. `START_HERE.md` und `docs/WORK_CONTRACT.md`.
 2. `git pull origin master`.
 3. Freien Task in `docs/TASKBOARD.json` claimen, Branch nach `docs/GIT_GLOSSAR.md`.
-4. Nur den Scope der Aufgabe anfassen.
+4. Nur den Scope der Aufgabe anfassen. T-914/T-919 überspringen.
 5. Gates grün, Beleg unter `docs/proofs/T-…/`, Merge nach `master`.
