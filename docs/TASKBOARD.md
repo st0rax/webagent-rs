@@ -119,3 +119,23 @@ sie bei Bedarf nur verdrahtet — kein paralleler Types-Slot.
 | T-919 | `run_task_blocking` / streaming |
 | T-920 | Modulkarte aktualisieren |
 | T-921 | Verdrahtung (blocked) |
+
+## Phase 12 (ab 2026-09-13) — Verdrahtungs-Nachzug + Folgearbeit
+
+User-Skips: **T-914** und **T-919** bleiben deferred (nicht claimen).
+Columbo-P0: T-915/T-916 Dateiextrakte ohne `mod` gelten als **unwired ≠ done**;
+Nachzug in T-922/T-923.
+
+| Task | Inhalt |
+|---|---|
+| T-922 | Store echt verdrahten (`mod store`, Root-Duplikate weg) |
+| T-923 | Content echt verdrahten (`mod content`, Root-Duplikate weg) |
+| T-924 | CI-Gate gegen orphan `src/api_bridge/*.rs` |
+| T-925 | Modulkarte/START_HERE: unwired≠done + Skips dokumentieren |
+| T-926 | Free-Cloud: ersten VerifiedFree-Adapter anbinden |
+| T-927 | Matrix `model/auto` Live-Beleg |
+| T-928 | Effort-Spalte ehrlich bereinigen |
+| T-929 | Linux-CI Flake `config::profiles` …reclaimed |
+| T-930 | Web-UI Smoke gegen Loopback `:8788` |
+
+T-921 depends_on aktualisiert: T-915/916/917/918/920 + T-922/923; ohne T-914/T-919.
