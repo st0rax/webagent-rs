@@ -1066,6 +1066,12 @@ impl WebBrainBackend {
                 s.dismiss_consent();
                 s.fill_composer(js, t);
                 s.composer_contains(js, t)
+            }) || self.wait_fill_composer(&composer_js, text, |s, js, t| {
+                // Fallback: DOM-set after viewport-clamped focus — hilft wenn
+                // der erste trusted-Insert bei riesigem Prompt (Brain-Session/
+                // Pi-Tools) den Editor aufblaeht und der Center-Klick daneben lag.
+                s.dismiss_consent();
+                s.fill_composer_dom_set(js, t) && s.composer_contains(js, t)
             })
         };
         if !filled {
@@ -1524,10 +1530,14 @@ return best?best.slice(0,300):null;})()"#;
     {
         // Ein fehlender Composer ist ein lokaler UI-/Controller-Fehler. Zwölf
         // Sekunden pro Repair-Runde machten daraus die beobachteten Minuten-
-        // langen Leerlaufphasen. Der normale Provider-Response-Timeout greift
-        // erst nach erfolgreichem Senden; hier reichen 4 Sekunden.
-        let deadline = Instant::now() + Duration::from_secs(4);
+        // langen Leerlaufphasen. Basis bleibt 4s; grosse Pi-/Tool-Prompts
+        // (20k+ Zeichen) brauchen laenger, weil CDP Input.insertText in
+        // ProseMirror sonst mitten im Fuellen den 4s-Deadline reisst und der
+        // Retry dann in die Mitte eines 13k-px-hohen Editors klickt.
+        let boost = (text.len() as u64 / 4000).min(26);
+        let deadline = Instant::now() + Duration::from_secs(4 + boost);
         while Instant::now() < deadline {
+            self.wake_renderer();
             if fill(self, composer_js, text) {
                 return true;
             }
