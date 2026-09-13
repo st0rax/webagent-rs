@@ -583,10 +583,11 @@
       "phase": "10",
       "type": "refactoring",
       "title": "API-Bridge-Auth und Fehlervertrag als Boundary-Modul ordnen",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "refactor/T-910-api-bridge-boundary",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/boundary.rs"

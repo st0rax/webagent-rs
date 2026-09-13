@@ -1,6 +1,13 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-909 Transport/Wire
+## Aktuell: 2026-09-13, T-910 Auth-Boundary
+
+`grok-agent` hat T-910 auf `refactor/T-910-api-bridge-boundary` abgeschlossen.
+`authorize`, timing-sicherer Vergleich und OpenAI/Anthropic-Fehlerformen liegen in
+`src/api_bridge/boundary.rs`. Sicherheitssemantik unveraendert. T-913 verdrahtet das Modul.
+Gates: fmt/clippy `-D warnings`/50 `api_bridge::tests` gruen. Beweis: `docs/proofs/T-910/`.
+
+## Vorher: 2026-09-13, T-909 Transport/Wire
 
 `grok-agent` hat T-909 auf `refactor/T-909-api-bridge-transport` abgeschlossen.
 HTTP-Parsing liegt in `src/api_bridge/transport.rs`, Antwortheader und SSE-Frames

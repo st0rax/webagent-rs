@@ -1,0 +1,17 @@
+T-910 gates 2026-09-13 (branch refactor/T-910-api-bridge-boundary)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  test result: ok. 50 passed; 0 failed; 0 ignored
+  timing_safe_comparison_requires_equal_content ... ok
+  api_error_uses_provider_specific_shapes ... ok
+  accepts_x_api_key_header ... ok
+
+git diff --check
+  diff_exit=0
