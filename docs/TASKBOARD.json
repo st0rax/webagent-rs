@@ -710,10 +710,10 @@
       "phase": "11",
       "type": "refactoring",
       "title": "API-Bridge-Response-Store und Lifecycle isolieren",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "grok-agent",
+      "branch": "refactor/T-915-api-bridge-store",
+      "claimed_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/store.rs"
