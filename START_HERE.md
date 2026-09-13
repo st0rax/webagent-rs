@@ -15,7 +15,9 @@ maßgebliche Einstiegslage für laufende Arbeit:
   Taskabschluss-Verifikation (E2E belegt), Run-Ledger/Crash-Recovery und
   Live-Abnahme inkl. Windows-Prozessproben. Die bisherigen Phasen sind
   abgeschlossen. Phase 10 (API-Bridge-Refactoring): T-907–T-911 sind `done`.
-  Phase 10 (T-907–T-913) ist `done`. Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`.
+  Phase 10 (T-907–T-913) ist `done`. Phase 11 (T-914–T-921) zerlegt den Rest
+  der Root-Datei; T-914–T-920 sind `free`, T-921 ist blockiert. Modulkarte:
+  `docs/API_BRIDGE_ARCHITECTURE.md`.
 - Der aktuelle Stand gilt als v1.0-Anwärter: Der technische Fahrplan steht in
   `docs/BRAIN_UNIFICATION_PLAN.md`; Live-Matrix-Belegen in
   `docs/CAPABILITY_MATRIX.json` (`as_of` 2026-09-12, 46 frische Verify-Belege).
@@ -112,10 +114,9 @@ Arbeiten unter `C:\Users`.)
    `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
    auf `"done"` setzen und `done_at` ergänzen.
 
-**Aktueller Stand:** Phase-8 (T-801–T-808) und Phase-10 (T-907–T-913) sind
-abgeschlossen. Vor der Übernahme immer die aktuelle JSON-Quelle lesen
-(Claim = Quelle der Wahrheit). Lokale OpenCode-Entwürfe sind kein Claim und
-werden nicht parallel von anderen Agenten bearbeitet.
+**Aktueller Stand:** Phase-8 und Phase-10 sind abgeschlossen. Phase-11-Tasks
+T-914–T-920 sind `free` (disjunkte Vorarbeiten); T-921 ist blockiert, bis
+diese `done` sind. Vor der Übernahme immer die aktuelle JSON-Quelle lesen.
 
 **Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
 Jeder Agent darf jeden freien Task übernehmen; es gibt keine `suitable`- oder
@@ -145,7 +146,7 @@ Nach jeder Änderung ist der Teststand im Übergabebeleg neu zu erfassen.
 - Phase-8 abgeschlossen (T-801–T-808 done), Release v0.11.3 veröffentlicht.
 - Offene Matrix-Grenzen sind dokumentierte Befunde (`failed`/`unreachable`/
   `removed`/`not_run` laut `docs/CAPABILITY_MATRIX.json`), kein offener Task.
-- Phase-10 (T-907–T-913) done; Modulkarte `docs/API_BRIDGE_ARCHITECTURE.md`.
+- Phase-10 (T-907–T-913) done. Phase-11: T-914–T-921 in `docs/TASKBOARD.json`.
 - Neuer Bedarf wird als freie Aufgabe im TASKBOARD eingetragen und nach dem
   Claim-Verfahren umgesetzt.
 

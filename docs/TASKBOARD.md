@@ -79,6 +79,14 @@ Quelle: TASKBOARD.json; Abnahme und Reihenfolge: [BRAIN_UNIFICATION_PLAN.md](BRA
 | T-911 | API-Bridge-Tests in eigenstaendige Testmodule ordnen | done `grok-agent` / `refactor/T-911-api-bridge-tests` |
 | T-912 | API-Bridge-Architektur und Agenten-Einstieg dokumentieren | done `grok-agent` / `docs/T-912-api-bridge-architecture` |
 | T-913 | Ergebnisse T-907–T-912 kontrolliert in Root-Datei integrieren | done `grok-agent` / `refactor/T-913-api-bridge-integrate` |
+| T-914 | API-Bridge-Medienhandler (Bild/Audio/Multipart) isolieren | Refactoring-Scope: `src/api_bridge/media.rs` |
+| T-915 | API-Bridge-Response-Store und Lifecycle isolieren | Refactoring-Scope: `src/api_bridge/store.rs` |
+| T-916 | API-Bridge-Prompt- und Tool-Normalizer isolieren | Refactoring-Scope: `src/api_bridge/content.rs` |
+| T-917 | API-Bridge-Modellkatalog und Auto-Router isolieren | Refactoring-Scope: `src/api_bridge/catalog.rs` |
+| T-918 | API-Bridge-JSON/SSE-Antwortkoerper isolieren | Refactoring-Scope: `src/api_bridge/response_protocol.rs` |
+| T-919 | API-Bridge-Browser-Inference-Lauf isolieren | Refactoring-Scope: `src/api_bridge/inference.rs` |
+| T-920 | API-Bridge-Modulkarte nach Phase 11 aktualisieren | Docs-Scope: `docs/API_BRIDGE_ARCHITECTURE.md`, `START_HERE.md` |
+| T-921 | Phase-11-Module kontrolliert in Root-Datei integrieren | Integrations-Scope: `src/api_bridge.rs` | blocked bis Vorgänger done |
 
 **Phase-9-Status (2026-09-12):** T-901 done (zai stabil 4/4, reasoning_toggle-Fix, Beweis docs/proofs/T-901/), T-902 done (AutoRouter-Live-Beleg, proofs/T-902/), T-903 done (chatgpt-Slideover-Drift vermessen, proofs/T-903/), T-904 done (VerifiedFree-Providergrenze dokumentiert, proofs/T-904/), T-905 done (Web-UI echt an /api/* angebunden, Beweis proofs/T-905/), T-906 done (Web-UI-Restluecken: Gruppenlauf-Live, Upload, Brain-Fenster, Beweis proofs/T-906/).
 
@@ -92,3 +100,21 @@ aller Vorgänger. T-913 ist deshalb absichtlich blockiert, bis alle Vorgänger
 `done` sind.
 
 **Phase-10-Claims (2026-09-13):** T-907–T-913 done (`grok-agent`). Phase 10 abgeschlossen.
+
+## Phase 11 (ab 2026-09-13) — Rest der Root-Datei zerlegen
+
+T-914 bis T-920 sind freie, eigenständige Slots mit disjunkten Zielpfaden.
+Niemand ändert in diesen Slots `src/api_bridge.rs`; das macht erst T-921.
+Typen (`HttpRequest`, DTOs, `BridgeConfig`) bleiben in der Root-Datei, bis T-921
+sie bei Bedarf nur verdrahtet — kein paralleler Types-Slot.
+
+| Task | Inhalt |
+|---|---|
+| T-914 | Medien (Bild/Audio/Multipart) |
+| T-915 | Store + retrieve/delete/input_items |
+| T-916 | Prompts, Content, Tools, unsupported fields |
+| T-917 | Katalog + Auto-Router |
+| T-918 | JSON/SSE-Antwortkörper |
+| T-919 | `run_task_blocking` / streaming |
+| T-920 | Modulkarte aktualisieren |
+| T-921 | Verdrahtung (blocked) |

@@ -56,12 +56,13 @@ T-911/T-913 zusätzlich: `cargo test --features webview --lib`.
 
 Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe. Kind-Slots (T-907–T-912) ändern **nicht** `src/api_bridge.rs`. T-913 ist blockiert, bis T-907–T-912 `done` sind.
 
-## Verbleibende Risiken
+## Verbleibende Risiken / Phase 11
 
-- Doppelte Logik Root vs. Kindmodul bis T-913: Drift möglich, wenn jemand die Root-Datei und das Kind parallel ändert.
-- Kindmodule kompilieren erst nach `mod …` in der Root-Datei (Clippy sieht sie vorher nicht).
-- Image/Audio/Lifecycle-Handler bleiben bewusst in der Root-Datei (nicht T-908).
-- `docs/API_BRIDGE.md` ist der Betriebsvertrag; dieses Dokument ist die Modulkarte.
+Phase 10 ist verdrahtet. In der Root-Datei liegen noch Medienhandler, Store,
+Prompt/Tools, Katalog/Auto-Router, JSON/SSE-Renderer und der Inference-Lauf.
+Das sind die freien Slots T-914–T-920; T-921 verdrahtet. Typen bleiben in der
+Root-Datei (kein paralleler Types-Slot). `docs/API_BRIDGE.md` bleibt der
+Betriebsvertrag.
 
 ## Agenten-Einstieg
 

@@ -7,7 +7,7 @@
     "local/opencode",
     "chief"
   ],
-  "as_of": "2026-09-12",
+  "as_of": "2026-09-13",
   "contract": "docs/WORK_CONTRACT.md",
   "mirror": "docs/TASKBOARD.md",
   "note": "Kante = Abhaengigkeit. Ein Task mit depends_on ist BLOCKED, bis alle Vorgaenger in depends_on done sind. Leeres depends_on = kann parallel laufen. Nie eine verkettete Aufgabe aus dem Block reissen.",
@@ -681,6 +681,199 @@
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib; git diff --check",
       "proof_path": "docs/proofs/T-913/",
       "handoff": "Integrationsprotokoll mit geprueften Vorgangstasks, Diff-Scope, Testausgaben, Branch und Commit."
+    },
+    {
+      "id": "T-914",
+      "phase": "11",
+      "type": "refactoring",
+      "title": "API-Bridge-Medienhandler (Bild/Audio/Multipart) isolieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/media.rs"
+      ],
+      "objective": "Image-Generation, Audio-Transcription/Translation/Speech und Multipart-Parsing aus der Root-Datei in ein Medienmodul ueberfuehren.",
+      "non_goals": [
+        "Keine Aenderung an MIME-Grenzen, Base64- oder Upload-Semantik.",
+        "Keine Prompt-/Tool-Normalizer und keinen Response-Store verschieben."
+      ],
+      "dod": "Medienhandler liegen in media.rs, bestehende Audio/Bild-Tests bestehen, Root enthaelt keine Multipart-Schleife mehr nach T-921.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
+      "proof_path": "docs/proofs/T-914/",
+      "handoff": "Modulkarte, Kopplung, Testausgabe, Branch und Commit."
+    },
+    {
+      "id": "T-915",
+      "phase": "11",
+      "type": "refactoring",
+      "title": "API-Bridge-Response-Store und Lifecycle isolieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/store.rs"
+      ],
+      "objective": "Mandanten-Store, Persistenz, retrieve/delete/input_items und previous_response_id-Kontext in ein Store-Modul legen.",
+      "non_goals": [
+        "Kein neues Speicherformat, keine Aenderung an Mandantentrennung.",
+        "Keine SSE-Renderer und keine Medienhandler verschieben."
+      ],
+      "dod": "Store-API ist benannt, Restart- und Mandantentests bestehen, Dateipfade bleiben openai-local-state-v1.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
+      "proof_path": "docs/proofs/T-915/",
+      "handoff": "Store-Invarianten, Dateiliste, Testausgabe, Branch und Commit."
+    },
+    {
+      "id": "T-916",
+      "phase": "11",
+      "type": "refactoring",
+      "title": "API-Bridge-Prompt- und Tool-Normalizer isolieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/content.rs"
+      ],
+      "objective": "openai/anthropic/responses-Prompts, Content-Teile, Tool-Schemas, tool_choice und reject_unsupported in ein Content-Modul legen.",
+      "non_goals": [
+        "Keine JSON-Feldvertraege aendern, keine stillen Ignorierungen einfuehren.",
+        "Keine SSE-Bytes und keinen Browser-Inferenzlauf verschieben."
+      ],
+      "dod": "Normalizer sind modular, Unsupported-Felder bleiben hart, Prompt- und Tool-Tests bestehen.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
+      "proof_path": "docs/proofs/T-916/",
+      "handoff": "Kopplungsliste, Nicht-Ziele, Testausgabe, Branch und Commit."
+    },
+    {
+      "id": "T-917",
+      "phase": "11",
+      "type": "refactoring",
+      "title": "API-Bridge-Modellkatalog und Auto-Router isolieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/catalog.rs"
+      ],
+      "objective": "model_id, Metadaten, Modalitaeten, resolve_model und Auto-Router-Auswahl in ein Katalogmodul legen.",
+      "non_goals": [
+        "Keine neuen Modelle erfinden, keine Live-Verfuegbarkeit behaupten.",
+        "Kein HTTP-Routing (das bleibt routing.rs)."
+      ],
+      "dod": "Katalogform bleibt stabil, Auto-Router-Determinismus-Tests bestehen, resolve_model-Vertraege unveraendert.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
+      "proof_path": "docs/proofs/T-917/",
+      "handoff": "Katalogfelder, Auto-Regeln, Testausgabe, Branch und Commit."
+    },
+    {
+      "id": "T-918",
+      "phase": "11",
+      "type": "refactoring",
+      "title": "API-Bridge-JSON/SSE-Antwortkoerper isolieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/response_protocol.rs"
+      ],
+      "objective": "openai_sse, anthropic_sse, anthropic_response, openai_message und Responses-Objekte als Protokoll-Renderer kapseln.",
+      "non_goals": [
+        "Keine sequence_number- oder Headervertraege aendern (Wire bleibt wire.rs).",
+        "Keine Handler-Orchestrierung verschieben."
+      ],
+      "dod": "Renderer sind getrennt testbar, SSE-Sequenz- und Shape-Tests bestehen.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
+      "proof_path": "docs/proofs/T-918/",
+      "handoff": "Renderer-Liste, Invarianten, Testausgabe, Branch und Commit."
+    },
+    {
+      "id": "T-919",
+      "phase": "11",
+      "type": "refactoring",
+      "title": "API-Bridge-Browser-Inference-Lauf isolieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/inference.rs"
+      ],
+      "objective": "run_task_blocking/streaming, Fake-Antworten und Auto-Attach-Fehlerannotation in ein Inference-Modul legen.",
+      "non_goals": [
+        "Keine Aenderung an Browser-Selektoren, Locks oder Timeouts.",
+        "Kein Provider-HTTP-Protokoll aendern."
+      ],
+      "dod": "Ein Laufpfad, bestehende Auto-Attach- und Fake-Tests bestehen, keine doppelte Lock-Logik nach T-921.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
+      "proof_path": "docs/proofs/T-919/",
+      "handoff": "Laufvertrag, Kopplung zu browser_inference, Testausgabe, Branch und Commit."
+    },
+    {
+      "id": "T-920",
+      "phase": "11",
+      "type": "docs",
+      "title": "API-Bridge-Modulkarte nach Phase 11 aktualisieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "docs/API_BRIDGE_ARCHITECTURE.md",
+        "START_HERE.md"
+      ],
+      "objective": "Modulkarte, Abhaengigkeitsrichtung und Risiken an T-914–T-919 anpassen; veraltete Phase-10-Drift-Hinweise entfernen.",
+      "non_goals": [
+        "Keine Codeaenderung ausser Links/Status.",
+        "Keine unbewiesenen Laufzeitfaehigkeiten."
+      ],
+      "dod": "Dokument spiegelt src/api_bridge/* nach den Kindmodulen, Claim-Regeln und T-921-Blockade sind korrekt.",
+      "verification": "git diff --check; Dokument gegen aktuelle src/api_bridge-Struktur abgleichen",
+      "proof_path": "docs/proofs/T-920/",
+      "handoff": "Dokumentationsdiff, Unsicherheiten, Branch und Commit."
+    },
+    {
+      "id": "T-921",
+      "phase": "11",
+      "type": "integration",
+      "title": "Phase-11-Module kontrolliert in die Root-Datei integrieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-914",
+        "T-915",
+        "T-916",
+        "T-917",
+        "T-918",
+        "T-919",
+        "T-920"
+      ],
+      "scope": [
+        "src/api_bridge.rs"
+      ],
+      "objective": "T-914 bis T-920 verdrahten, doppelte Root-Logik entfernen, Gesamtstand gegen Regressionen pruefen.",
+      "non_goals": [
+        "Keine neue fachliche Refaktorierung waehrend der Integration.",
+        "Keine Aenderung ausserhalb von src/api_bridge.rs und notwendigen Moduldeklarationen."
+      ],
+      "dod": "mod-Zeilen gesetzt, keine Duplikate, Clippy -D warnings und cargo test --lib gruen.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib; git diff --check",
+      "proof_path": "docs/proofs/T-921/",
+      "handoff": "Integrationsprotokoll, Diff-Scope, Testausgaben, Branch und Commit."
     }
   ]
 }
