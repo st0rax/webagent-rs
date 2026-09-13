@@ -915,10 +915,10 @@
       "phase": "12",
       "type": "refactoring",
       "title": "API-Bridge Content echt verdrahten (T-916-Nachzug)",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "grok-agent",
+      "branch": "refactor/T-923-wire-content",
+      "claimed_at": "2026-09-13",
       "depends_on": [
         "T-916"
       ],
