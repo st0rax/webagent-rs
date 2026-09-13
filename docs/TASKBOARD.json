@@ -917,7 +917,7 @@
       "title": "API-Bridge Content echt verdrahten (T-916-Nachzug)",
       "status": "claimed",
       "owner": "grok-agent",
-      "branch": "refactor/T-923-wire-content",
+      "branch": "feature/T-923-wire-content",
       "claimed_at": "2026-09-13",
       "depends_on": [
         "T-916"

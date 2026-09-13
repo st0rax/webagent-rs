@@ -3,24 +3,26 @@
 //! # Modulgrenze
 //!
 //! JSON-Feldvertraege bleiben hart (kein stilles Ignorieren). Keine SSE-Bytes
-//! und kein Browser-Inferenzlauf. T-921 verdrahtet `mod content`.
+//! und kein Browser-Inferenzlauf. T-923 verdrahtet `mod content` und entfernt Root-Duplikate.
 //!
 //! Enthaelt: reject_unsupported, Prompts, Content-Teile, Tool-Schemas,
 //! tool_choice, Data-URL/Base64 fuer Attachments, text_content.
 
+#[cfg(test)]
+use super::ResponsesRequest;
 use super::{
-    api_error_code, AnthropicRequest, ConversationMessage, HttpResponse, OpenAiRequest,
-    OpenAiTool, PromptBundle, ResponsesRequest,
+    api_error_code, audio_mime, AnthropicRequest, ConversationMessage, HttpResponse,
+    OpenAiAssistantFunction, OpenAiAssistantToolCall, OpenAiRequest, OpenAiTool, PromptBundle,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
-pub(super) fn decode_json<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
+pub(crate) fn decode_json<T: DeserializeOwned>(body: &[u8]) -> Result<T, String> {
     serde_json::from_slice(body).map_err(|error| format!("Ungueltiger JSON-Body: {error}"))
 }
 
 /// Bekannte, aber nicht umsetzbare Semantikfelder: ablehnen statt still ignorieren.
-pub(super) fn reject_unsupported_openai_body(body: &[u8]) -> Result<(), HttpResponse> {
+pub(crate) fn reject_unsupported_openai_body(body: &[u8]) -> Result<(), HttpResponse> {
     let value: Value = match serde_json::from_slice(body) {
         Ok(value) => value,
         Err(_) => return Ok(()),
@@ -28,7 +30,7 @@ pub(super) fn reject_unsupported_openai_body(body: &[u8]) -> Result<(), HttpResp
     reject_unsupported_openai_fields(&value)
 }
 
-pub(super) fn reject_unsupported_openai_fields(value: &Value) -> Result<(), HttpResponse> {
+pub(crate) fn reject_unsupported_openai_fields(value: &Value) -> Result<(), HttpResponse> {
     let Some(obj) = value.as_object() else {
         return Ok(());
     };
@@ -63,7 +65,7 @@ pub(super) fn reject_unsupported_openai_fields(value: &Value) -> Result<(), Http
     Ok(())
 }
 
-pub(super) fn unsupported_parameter(param: &str) -> HttpResponse {
+pub(crate) fn unsupported_parameter(param: &str) -> HttpResponse {
     api_error_code(
         400,
         &format!("Parameter '{param}' wird nicht unterstuetzt."),
@@ -72,24 +74,24 @@ pub(super) fn unsupported_parameter(param: &str) -> HttpResponse {
     )
 }
 
-pub(super) fn unsupported_value(param: &str, message: &str) -> HttpResponse {
+pub(crate) fn unsupported_value(param: &str, message: &str) -> HttpResponse {
     api_error_code(400, message, param, "unsupported_value")
 }
 
-pub(super) fn default_true() -> bool {
+pub(crate) fn default_true() -> bool {
     true
 }
 
 #[cfg(test)]
-pub(super) fn openai_task(request: &OpenAiRequest) -> Result<String, String> {
+pub(crate) fn openai_task(request: &OpenAiRequest) -> Result<String, String> {
     Ok(openai_prompt(request)?.text)
 }
 
-pub(super) fn openai_prompt(request: &OpenAiRequest) -> Result<PromptBundle, String> {
+pub(crate) fn openai_prompt(request: &OpenAiRequest) -> Result<PromptBundle, String> {
     conversation_prompt(None, &request.messages)
 }
 
-pub(super) fn anthropic_prompt(request: &AnthropicRequest) -> Result<PromptBundle, String> {
+pub(crate) fn anthropic_prompt(request: &AnthropicRequest) -> Result<PromptBundle, String> {
     let system = match &request.system {
         Some(content) => Some(text_content(content)?),
         None => None,
@@ -98,12 +100,12 @@ pub(super) fn anthropic_prompt(request: &AnthropicRequest) -> Result<PromptBundl
 }
 
 #[cfg(test)]
-pub(super) fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
+pub(crate) fn responses_task(request: &ResponsesRequest) -> Result<String, String> {
     let messages = responses_messages(&request.input)?;
     Ok(conversation_prompt(request.instructions.clone(), &messages)?.text)
 }
 
-pub(super) fn responses_messages(input: &Value) -> Result<Vec<ConversationMessage>, String> {
+pub(crate) fn responses_messages(input: &Value) -> Result<Vec<ConversationMessage>, String> {
     let messages = match input {
         Value::String(text) => vec![ConversationMessage {
             role: "user".to_string(),
@@ -185,7 +187,7 @@ pub(super) fn responses_messages(input: &Value) -> Result<Vec<ConversationMessag
     Ok(messages)
 }
 
-pub(super) fn responses_content(value: &Value) -> Result<Value, String> {
+pub(crate) fn responses_content(value: &Value) -> Result<Value, String> {
     if value.is_string() {
         return Ok(value.clone());
     }
@@ -220,7 +222,7 @@ pub(super) fn responses_content(value: &Value) -> Result<Value, String> {
     Ok(value.clone())
 }
 
-pub(super) fn responses_function_output(value: &Value) -> Result<Value, String> {
+pub(crate) fn responses_function_output(value: &Value) -> Result<Value, String> {
     if value.is_string() {
         return Ok(value.clone());
     }
@@ -230,7 +232,9 @@ pub(super) fn responses_function_output(value: &Value) -> Result<Value, String> 
     Ok(Value::String(value.to_string()))
 }
 
-pub(super) fn responses_tools(tools: &[Value]) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
+pub(crate) fn responses_tools(
+    tools: &[Value],
+) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
     tools
         .iter()
         .map(|tool| {
@@ -260,7 +264,7 @@ pub(super) fn responses_tools(tools: &[Value]) -> Result<Vec<crate::browser_infe
         .collect()
 }
 
-pub(super) fn responses_tool_choice(
+pub(crate) fn responses_tool_choice(
     choice: Option<&Value>,
     tools: &[crate::browser_inference::BrowserTool],
 ) -> Result<crate::browser_inference::BrowserToolChoice, String> {
@@ -295,7 +299,9 @@ pub(super) fn responses_tool_choice(
     ))
 }
 
-pub(super) fn anthropic_tools(tools: &[Value]) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
+pub(crate) fn anthropic_tools(
+    tools: &[Value],
+) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
     tools
         .iter()
         .map(|tool| {
@@ -322,7 +328,7 @@ pub(super) fn anthropic_tools(tools: &[Value]) -> Result<Vec<crate::browser_infe
         .collect()
 }
 
-pub(super) fn anthropic_tool_choice(
+pub(crate) fn anthropic_tool_choice(
     choice: Option<&Value>,
     tools: &[crate::browser_inference::BrowserTool],
 ) -> Result<crate::browser_inference::BrowserToolChoice, String> {
@@ -361,20 +367,30 @@ pub(super) fn anthropic_tool_choice(
     }
 }
 
-pub(super) fn require_clean_text_tools(
+pub(crate) fn require_clean_text_tools(
     tools: &[crate::browser_inference::BrowserTool],
     choice: &crate::browser_inference::BrowserToolChoice,
 ) -> Result<(), String> {
+    if tools.is_empty() || matches!(choice, crate::browser_inference::BrowserToolChoice::None) {
+        return Ok(());
+    }
+    Err(concat!(
+        "Aktive Client-Tools sind im sauberen Browser-Textprofil noch nicht unterstuetzt. ",
+        "WebAgent injiziert weder Tool-Schemas noch Skill-/System-Protokolle in die ",
+        "Browser-Unterhaltung; verwaltete WebAgent-Tools folgen separat."
+    )
+    .to_string())
+}
 
 #[cfg(test)]
-pub(super) fn conversation_task(
+pub(crate) fn conversation_task(
     system: Option<String>,
     messages: &[ConversationMessage],
 ) -> Result<String, String> {
     Ok(conversation_prompt(system, messages)?.text)
 }
 
-pub(super) fn conversation_prompt(
+pub(crate) fn conversation_prompt(
     system: Option<String>,
     messages: &[ConversationMessage],
 ) -> Result<PromptBundle, String> {
@@ -449,7 +465,7 @@ pub(super) fn conversation_prompt(
 
 /// Rendert einen Provider-Content-Block in den textuellen Browser-Prompt und
 /// sammelt Bild-/Audio-Daten fuer den separaten Upload in die Weboberflaeche.
-pub(super) fn content_to_prompt(
+pub(crate) fn content_to_prompt(
     value: &Value,
     attachments: &mut Vec<crate::browser_inference::BrowserAttachment>,
 ) -> Result<String, String> {
@@ -578,7 +594,7 @@ pub(super) fn content_to_prompt(
     Ok(out)
 }
 
-pub(super) fn append_attachment(
+pub(crate) fn append_attachment(
     attachments: &mut Vec<crate::browser_inference::BrowserAttachment>,
     kind: crate::browser_inference::BrowserAttachmentKind,
     mime_type: String,
@@ -608,7 +624,7 @@ pub(super) fn append_attachment(
     format!("[{prefix} attachment: {mime_type}, {byte_count} bytes]")
 }
 
-pub(super) fn parse_data_url(
+pub(crate) fn parse_data_url(
     url: &str,
     expected: crate::browser_inference::BrowserAttachmentKind,
 ) -> Result<(String, Vec<u8>), String> {
@@ -634,7 +650,7 @@ pub(super) fn parse_data_url(
     Ok((mime, decode_base64(encoded)?))
 }
 
-pub(super) fn validate_mime(
+pub(crate) fn validate_mime(
     mime: &str,
     expected: crate::browser_inference::BrowserAttachmentKind,
 ) -> Result<(), String> {
@@ -649,7 +665,7 @@ pub(super) fn validate_mime(
     }
 }
 
-pub(super) fn decode_base64(encoded: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_base64(encoded: &str) -> Result<Vec<u8>, String> {
     let bytes: Vec<u8> = encoded
         .bytes()
         .filter(|byte| !byte.is_ascii_whitespace())
@@ -685,7 +701,7 @@ pub(super) fn decode_base64(encoded: &str) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
-pub(super) fn base64_value(byte: u8) -> Option<u8> {
+pub(crate) fn base64_value(byte: u8) -> Option<u8> {
     match byte {
         b'A'..=b'Z' => Some(byte - b'A'),
         b'a'..=b'z' => Some(byte - b'a' + 26),
@@ -696,7 +712,7 @@ pub(super) fn base64_value(byte: u8) -> Option<u8> {
     }
 }
 
-pub(super) fn openai_tools(
+pub(crate) fn openai_tools(
     tools: &[OpenAiTool],
 ) -> Result<Vec<crate::browser_inference::BrowserTool>, String> {
     tools
@@ -717,7 +733,7 @@ pub(super) fn openai_tools(
         .collect()
 }
 
-pub(super) fn openai_tool_choice(
+pub(crate) fn openai_tool_choice(
     choice: Option<&Value>,
     tools: &[crate::browser_inference::BrowserTool],
 ) -> Result<crate::browser_inference::BrowserToolChoice, String> {
@@ -751,7 +767,7 @@ pub(super) fn openai_tool_choice(
     Ok(BrowserToolChoice::Function(name.to_string()))
 }
 
-pub(super) fn text_content(value: &Value) -> Result<String, String> {
+pub(crate) fn text_content(value: &Value) -> Result<String, String> {
     if let Some(text) = value.as_str() {
         return Ok(text.to_string());
     }
