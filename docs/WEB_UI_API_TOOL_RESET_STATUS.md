@@ -1,6 +1,12 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-920 Modulkarte
+## Aktuell: 2026-09-13, T-922 Store verdrahtet
+
+`grok-agent` hat T-922 auf `refactor/T-922-wire-store` abgeschlossen.
+`mod store` in `src/api_bridge.rs`, Root-Duplikate entfernt. Format unveraendert.
+Beweis: `docs/proofs/T-922/`.
+
+## Vorher: 2026-09-13, T-920 Modulkarte
 
 `grok-agent` hat T-920 auf `docs/T-920-api-bridge-architecture` abgeschlossen.
 `docs/API_BRIDGE_ARCHITECTURE.md` unterscheidet verdrahtet vs. orphan.

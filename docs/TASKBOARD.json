@@ -888,10 +888,11 @@
       "phase": "12",
       "type": "refactoring",
       "title": "API-Bridge Store echt verdrahten (T-915-Nachzug)",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "refactor/T-922-wire-store",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [
         "T-915"
       ],

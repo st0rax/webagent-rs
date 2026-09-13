@@ -1,0 +1,16 @@
+T-922 gates 2026-09-13 (branch refactor/T-922-wire-store)
+
+rg "^mod store" src/api_bridge.rs
+  match: mod store;
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  50 passed
+  persistent_state_ueberlebt_restart_und_trennt_mandanten ... ok
+  response_retrieval_requires_auth_and_returns_stored_object ... ok
