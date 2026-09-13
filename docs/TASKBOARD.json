@@ -863,7 +863,8 @@
         "T-918",
         "T-920",
         "T-922",
-        "T-923"
+        "T-923",
+        "T-931"
       ],
       "scope": [
         "src/api_bridge.rs"
@@ -946,7 +947,7 @@
         "scripts/",
         "docs/proofs/T-924/"
       ],
-      "objective": "Verhindere Orphan-Module: Test oder Script failt, wenn src/api_bridge/*.rs existiert ohne passende mod-Zeile in api_bridge.rs (ausser tests).",
+      "objective": "Verhindere Orphan-Module: Test oder Script failt, wenn src/api_bridge/*.rs existiert ohne passende mod-Zeile in api_bridge.rs (ausser tests). Deckt store/content/catalog und kuenftige Kindmodule.",
       "non_goals": [
         "Keine fachliche Refaktorierung.",
         "Kein Umbau fremder CI-Jobs ausser dem Gate."
@@ -1102,6 +1103,56 @@
       "verification": "cargo test --features webview --lib; git diff --check",
       "proof_path": "docs/proofs/T-930/",
       "handoff": "Smoke-Schritte, Ports, Testausgabe, Branch und PR."
+    },
+    {
+      "id": "T-931",
+      "phase": "12",
+      "type": "refactoring",
+      "title": "API-Bridge Catalog echt verdrahten (T-917-Nachzug)",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-917"
+      ],
+      "scope": [
+        "src/api_bridge.rs",
+        "src/api_bridge/catalog.rs"
+      ],
+      "objective": "Columbo Full-Review: catalog.rs orphan wie store/content. mod catalog setzen, Root-Duplikate (available_brains/auto-router/resolve_model/…) entfernen oder reexport-only.",
+      "non_goals": [
+        "Keine neuen Modelle erfinden.",
+        "Kein HTTP-Routing aus routing.rs hierher."
+      ],
+      "dod": "mod catalog verdrahtet; keine Root-Kopie der Katalog/Auto-Router-Logik; api_bridge::tests + Clippy -D warnings gruen; Beweis docs/proofs/T-931/.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check; rg \"^mod catalog\" src/api_bridge.rs",
+      "proof_path": "docs/proofs/T-931/",
+      "handoff": "Diff-Scope, entfernte Root-Bloecke, Testausgabe, Branch und PR."
+    },
+    {
+      "id": "T-932",
+      "phase": "12",
+      "type": "docs",
+      "title": "LICENSE-Datei (MIT) ins Repo legen",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "LICENSE",
+        "README.md",
+        "Cargo.toml"
+      ],
+      "objective": "Cargo/README behaupten MIT, GitHub license null, /LICENSE 404. Offizielle MIT-LICENSE committen, SPDX konsistent.",
+      "non_goals": [
+        "Keine Lizenzwechsel ohne User-Freigabe."
+      ],
+      "dod": "LICENSE vorhanden; GitHub erkennt MIT; Beweis docs/proofs/T-932/ oder PR-Notiz.",
+      "verification": "test -f LICENSE; git diff --check",
+      "proof_path": "docs/proofs/T-932/",
+      "handoff": "LICENSE-Diff, Branch und PR."
     }
   ]
 }

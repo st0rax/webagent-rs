@@ -137,5 +137,7 @@ Nachzug in T-922/T-923.
 | T-928 | Effort-Spalte ehrlich bereinigen |
 | T-929 | Linux-CI Flake `config::profiles` …reclaimed |
 | T-930 | Web-UI Smoke gegen Loopback `:8788` |
+| T-931 | Catalog echt verdrahten (`mod catalog`, Root-Duplikate weg) |
+| T-932 | LICENSE (MIT) committen |
 
-T-921 depends_on aktualisiert: T-915/916/917/918/920 + T-922/923; ohne T-914/T-919.
+T-921 depends_on: T-915/916/917/918/920 + T-922/923/931; ohne T-914/T-919. T-932 parallel (LICENSE).
