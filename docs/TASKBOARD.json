@@ -758,10 +758,11 @@
       "phase": "11",
       "type": "refactoring",
       "title": "API-Bridge-Modellkatalog und Auto-Router isolieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "grok-agent",
       "branch": "refactor/T-917-api-bridge-catalog",
       "claimed_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "depends_on": [],
       "scope": [
         "src/api_bridge/catalog.rs"

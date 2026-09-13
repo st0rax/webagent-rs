@@ -1,0 +1,16 @@
+T-917 gates 2026-09-13 (branch refactor/T-917-api-bridge-catalog)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  50 passed
+  model_catalog_contains_all_builtin_brains ... ok
+  model_metadata_has_stable_catalog_shape ... ok
+  auto_router_classifies_requests_deterministically ... ok
+  auto_selection_follows_preference_order_and_skips_locked ... ok
+  model_resolution_routes_each_available_brain ... ok

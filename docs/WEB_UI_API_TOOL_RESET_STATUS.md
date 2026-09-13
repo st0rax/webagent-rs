@@ -1,6 +1,12 @@
 # Umsetzungsstatus WEB_UI_API_TOOL_RESET
 
-## Aktuell: 2026-09-13, T-916 Content
+## Aktuell: 2026-09-13, T-917 Katalog
+
+`grok-agent` hat T-917 auf `refactor/T-917-api-bridge-catalog` abgeschlossen.
+Katalog und Auto-Router in `src/api_bridge/catalog.rs`. T-914 und T-919 frei.
+Beweis: `docs/proofs/T-917/`.
+
+## Vorher: 2026-09-13, T-916 Content
 
 `grok-agent` hat T-916 auf `refactor/T-916-api-bridge-content` abgeschlossen.
 Prompts, Tools, unsupported fields in `src/api_bridge/content.rs`.
