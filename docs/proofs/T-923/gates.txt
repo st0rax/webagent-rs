@@ -1,0 +1,14 @@
+T-923 gates (Europe/Berlin 2026-09-13 ~23:25)
+
+Host: DESKTOP-R7QOBKI (Windows), branch feature/T-923-wire-content
+
+cargo fmt --check                          OK
+cargo clippy --features webview --all-targets -- -D warnings   OK
+cargo test --features webview --lib api_bridge::tests::        OK (50 passed / 0 failed)
+git diff --check                           OK
+rg "^mod content" src/api_bridge.rs        OK (mod content;)
+
+Notes:
+- content.rs orphan on master had empty require_clean_text_tools body; restored from root.
+- Root Prompt/Tool/reject_unsupported duplicates removed; pub(crate) use content::{...}.
+- browser_inference / T-919 not touched.
