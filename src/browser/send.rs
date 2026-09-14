@@ -1534,12 +1534,7 @@ return best?best.slice(0,300):null;})()"#;
         // (20k+ Zeichen) brauchen laenger, weil CDP Input.insertText in
         // ProseMirror sonst mitten im Fuellen den 4s-Deadline reisst und der
         // Retry dann in die Mitte eines 13k-px-hohen Editors klickt.
-        //
-        // Der frühere Deckel von 26 (= 30s gesamt) war auf ~100k Zeichen
-        // ausgelegt. Eine zustandslose Bridge-Session schickt aber den ganzen
-        // Verlauf pro Turn: bei 264k Zeichen fielen die Versuche reproduzierbar
-        // auf 34-39s, also knapp über den Deckel. 180 deckt ~720k ab.
-        let boost = (text.len() as u64 / 4000).min(180);
+        let boost = (text.len() as u64 / 4000).min(26);
         let deadline = Instant::now() + Duration::from_secs(4 + boost);
         while Instant::now() < deadline {
             self.wake_renderer();
