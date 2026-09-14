@@ -1560,7 +1560,7 @@ mod tests {
     fn composer_coords_expr(sel: &Selectors) -> String {
         js::js_scan(
             &sel.js("composer", &[]),
-            "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){return {x:r.left+r.width/2,y:r.top+r.height/2};}}",
+            "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);if(bot-top<1||right-left<1){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top};}return {x:(left+right)/2,y:(top+bot)/2};}}",
             "null",
         )
     }
