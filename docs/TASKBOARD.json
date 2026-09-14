@@ -1400,6 +1400,32 @@
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-941/",
       "handoff": "Messwerte vorher/nachher, Branch und Commit."
+    },
+    {
+      "id": "T-942",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Antworten verlieren Markdown-Struktur beim Auslesen",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/browser/operations.rs",
+        "src/browser/send.rs",
+        "selectors/"
+      ],
+      "objective": "Der Lesepfad entnimmt die Antwort per innerText beziehungsweise textContent aus dem bereits gerenderten DOM. Zu diesem Zeitpunkt hat die Oberflaeche das Markdown schon in HTML verwandelt; die Syntax ist weg und wird nirgends zurueckgewonnen. Die beiden Fundstellen fuer markdown in operations.rs und send.rs sind ein Selektor-Kandidat in einem Vermessungsskript und ein Kommentar ueber dekorative Knoten bei kimi, keine Rueckwandlung. Belegt am 2026-09-14 an zwei Kandidatenplaenen, die mit identischer Eingabe ueber die Bridge entstanden: im qwen-Plan sind alle Tabellen zerfallen, Kopfzeilen stehen einzeln untereinander und Zellen sind durch Tabs statt Pipes getrennt; im deepseek-Plan steht ein verwaistes text als Rest eines verlorenen Code-Fence. Fuer einen API-Aufrufer ist das stiller Datenverlust, und im Benchmark verzerrt es die Bewertung, weil schlechte Formatierung wie schlechte Arbeit des Kandidaten aussieht. Moegliche Wege: den Kopierknopf der Oberflaeche nutzen, der das Quell-Markdown liefert (send.rs hat bereits einen Clipboard-Pfad), oder das DOM gezielt nach Markdown zurueckfuehren. Vorher je Anbieter messen, welcher Weg verfuegbar ist.",
+      "non_goals": [
+        "Keine inhaltliche Nachbearbeitung der Antwort ueber die Struktur hinaus.",
+        "Keine Heuristik, die Tabellen aus Tab-getrenntem Text zu erraten versucht.",
+        "Die Zwischenablage des Nutzers nicht ueberschreiben, ohne sie wiederherzustellen."
+      ],
+      "dod": "Eine Antwort mit Tabelle, Code-Fence und Liste kommt strukturgleich beim Aufrufer an; der Vergleich Quell-Markdown gegen ausgelieferten Text liegt als Messung im proof_path.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-942/",
+      "handoff": "Messwerte vorher/nachher je Anbieter, Branch und Commit."
     }
   ]
 }
