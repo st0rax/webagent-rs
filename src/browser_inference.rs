@@ -322,6 +322,12 @@ fn truncate_chars(value: &str, limit: usize) -> String {
 /// unveraendert, ein nicht eindeutiger Umschlag scheitert weiter fail-closed.
 /// `C:\new` bleibt dagegen ein gueltiges `\n` und ist nicht reparierbar; dafuer
 /// verlangt die Umschlag-Anweisung verdoppelte Backslashes.
+///
+/// Unescapte Anfuehrungszeichen (T-954, etwa `test -z "$(find ...)"` in einem
+/// bash-Befehl): In gueltigem JSON folgt auf ein Stringende nach optionalem
+/// Leerraum immer `,`, `}`, `]`, `:` oder das Textende. Folgt etwas anderes,
+/// kann das Zeichen kein Stringende sein und wird escaped. Folgt eines dieser
+/// Zeichen, gilt es als Ende — ist das falsch, scheitert das Parsen weiter.
 fn repair_json_string_escapes(payload: &str) -> String {
     let mut out = String::with_capacity(payload.len() + 16);
     let mut in_string = false;
@@ -334,8 +340,16 @@ fn repair_json_string_escapes(payload: &str) -> String {
         }
         match c {
             '"' => {
-                in_string = false;
-                out.push(c);
+                let closes = matches!(
+                    chars.clone().find(|next| !next.is_whitespace()),
+                    None | Some(',' | '}' | ']' | ':')
+                );
+                if closes {
+                    in_string = false;
+                    out.push(c);
+                } else {
+                    out.push_str("\\\"");
+                }
             }
             '\\' => {
                 let valid_escape = match chars.peek() {
@@ -567,10 +581,32 @@ mod tests {
     }
 
     #[test]
+    fn unescaped_quotes_in_shell_command_are_repaired() {
+        // Real 2026-09-14 13:26 (chatgpt via Pi): "expected `,` or `}`" durch
+        // test -z "$(find ...)" im bash-Befehl.
+        let command = r#"test -z "$(find ../w -mindepth 1 -print -quit)" && echo 'workspace empty' || { echo 'workspace not empty'; exit 1; }"#;
+        let raw = format!(
+            "WEBAGENT_INFERENCE/1\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"read_file\",\"arguments\":{{\"command\":\"{command}\"}}}}]}}"
+        );
+        let response = parse_response(&raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap();
+        assert_eq!(response.tool_calls[0].arguments["command"], command);
+    }
+
+    #[test]
+    fn quote_followed_by_json_delimiter_is_not_guessed() {
+        // "x" gefolgt von "," sieht wie ein Stringende aus; der Rest bricht.
+        let raw = concat!(
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"echo "x", done"}}]}"#
+        );
+        assert!(parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).is_err());
+    }
+
+    #[test]
     fn ambiguous_envelope_still_fails_closed_with_raw_excerpt() {
         let raw = concat!(
             "WEBAGENT_INFERENCE/1\n",
-            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"a"b"}}]}"#
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"a", "b"}}]}"#
         );
         let error = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap_err();
         assert!(error.contains("Ungueltiger Browser-Tool-Call-Umschlag"));
