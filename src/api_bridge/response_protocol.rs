@@ -3,12 +3,12 @@
 //! # Modulgrenze
 //!
 //! Header und `sequence_number` bleiben in `wire.rs`. Keine Handler-Orchestrierung.
-//! T-921 verdrahtet `mod response_protocol`.
+//! T-933 verdrahtet `mod response_protocol`.
 
-use super::{sse_data, unix_seconds, HttpResponse};
+use super::{unix_seconds, wire::sse_data, HttpResponse};
 use serde_json::{json, Value};
 
-pub(super) fn anthropic_response(
+pub(crate) fn anthropic_response(
     id: &str,
     model: &str,
     answer: &crate::browser_inference::BrowserInferenceResponse,
@@ -47,7 +47,7 @@ pub(super) fn anthropic_response(
     })
 }
 
-pub(super) fn openai_message(answer: &crate::browser_inference::BrowserInferenceResponse) -> Value {
+pub(crate) fn openai_message(answer: &crate::browser_inference::BrowserInferenceResponse) -> Value {
     if answer.tool_calls.is_empty() {
         return json!({"role": "assistant", "content": answer.text});
     }
@@ -68,7 +68,7 @@ pub(super) fn openai_message(answer: &crate::browser_inference::BrowserInference
     json!({"role": "assistant", "content": null, "tool_calls": tool_calls})
 }
 
-pub(super) fn openai_sse(
+pub(crate) fn openai_sse(
     id: &str,
     model: &str,
     answer: &crate::browser_inference::BrowserInferenceResponse,
@@ -113,7 +113,7 @@ pub(super) fn openai_sse(
     HttpResponse::sse(format!("data: {first}\n\ndata: {last}\n\ndata: [DONE]\n\n"))
 }
 
-pub(super) fn response_object(id: &str, model: &str, text: &str) -> Value {
+pub(crate) fn response_object(id: &str, model: &str, text: &str) -> Value {
     json!({
         "id": id,
         "object": "response",
@@ -150,7 +150,7 @@ pub(super) fn response_object(id: &str, model: &str, text: &str) -> Value {
     })
 }
 
-pub(super) fn response_object_from_answer(
+pub(crate) fn response_object_from_answer(
     id: &str,
     model: &str,
     answer: &crate::browser_inference::BrowserInferenceResponse,
@@ -202,13 +202,16 @@ pub(super) fn response_object_from_answer(
     })
 }
 
-pub(super) fn response_with_state(mut response: Value, previous_response_id: Option<&str>) -> Value {
+pub(crate) fn response_with_state(
+    mut response: Value,
+    previous_response_id: Option<&str>,
+) -> Value {
     response["previous_response_id"] = previous_response_id.map_or(Value::Null, |id| json!(id));
     response
 }
 
 #[cfg(test)]
-pub(super) fn responses_sse(
+pub(crate) fn responses_sse(
     id: &str,
     model: &str,
     answer: &crate::browser_inference::BrowserInferenceResponse,
@@ -217,7 +220,7 @@ pub(super) fn responses_sse(
     responses_sse_with_object(id, model, answer, response)
 }
 
-pub(super) fn responses_sse_with_object(
+pub(crate) fn responses_sse_with_object(
     id: &str,
     _model: &str,
     answer: &crate::browser_inference::BrowserInferenceResponse,
@@ -309,7 +312,7 @@ pub(super) fn responses_sse_with_object(
     HttpResponse::sse(body)
 }
 
-pub(super) fn anthropic_sse(
+pub(crate) fn anthropic_sse(
     id: &str,
     model: &str,
     answer: &crate::browser_inference::BrowserInferenceResponse,
