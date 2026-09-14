@@ -1,0 +1,25 @@
+T-933 gates 2026-09-14 (branch refactor/T-933-wire-response-protocol, Basis origin/master 20f1d37)
+
+rg "^mod response_protocol" src/api_bridge.rs
+  match: mod response_protocol;
+
+git diff --check
+  clean
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  51 passed; 0 failed
+  responses_sse_sequence_numbers_sind_monoton_und_lueckenlos ... ok
+  anthropic_response_renders_tool_use_blocks ... ok
+
+cargo test --features webview --lib (vollstaendig)
+  test_exit=0
+  1426 passed; 0 failed; 1 ignored
+  watchdog::tests::test_run_watchdog_repair ... ok
+  executor::tests::test_timeout_no_leak_to_next_action ... ok
