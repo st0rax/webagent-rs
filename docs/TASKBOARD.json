@@ -1223,7 +1223,7 @@
       "phase": "12",
       "type": "bugfix",
       "title": "Composer-Fill stueckeln + Stabilitaets-Uhr tolerieren (Loop-Blockade)",
-      "status": "claimed",
+      "status": "done",
       "owner": "claude-code",
       "branch": "fix/T-935-chunked-fill-v2",
       "claimed_at": "2026-09-14",
@@ -1246,7 +1246,8 @@
       "dod": "Chunk-Nachweis per Mock-Test (Reihenfolge+Inhalt erhalten, klein bleibt 1 Call); stable_norm-Tests; Gates gruen; Live-Pi-Roundtrip mit grossem Prompt ohne Composer-Timeout.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib; Live-Pi-Roundtrip",
       "proof_path": "docs/proofs/T-935/",
-      "handoff": "Patch, Gates, Live-Beleg grosser Prompt; kein Abschluss allein durch Unit-Tests."
+      "handoff": "Patch, Gates, Live-Beleg grosser Prompt; kein Abschluss allein durch Unit-Tests.",
+      "done_at": "2026-09-14"
     },
     {
       "id": "T-936",
