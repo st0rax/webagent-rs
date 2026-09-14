@@ -1117,10 +1117,10 @@
       "phase": "12",
       "type": "refactoring",
       "title": "API-Bridge Catalog echt verdrahten (T-917-Nachzug)",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "refactor/T-931-wire-catalog",
+      "claimed_at": "2026-09-14",
       "depends_on": [
         "T-917"
       ],
