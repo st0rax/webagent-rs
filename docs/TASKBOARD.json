@@ -1531,6 +1531,30 @@
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-946/",
       "handoff": "Zeitverlauf vorher/nachher mit abgebrochenem Aufrufer, Branch und Commit."
+    },
+    {
+      "id": "T-947",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Relay sendet denselben Prompt bis zu dreimal in neue Chats",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-945"
+      ],
+      "scope": [
+        "src/relay.rs",
+        "src/browser/backend.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "relay.rs fuehrt je Anfrage ohne Anhaenge bis zu MAX_TURNS = 3 volle Turns aus, jeder mit new_chat, erneutem Senden des kompletten Prompts und wait_response mit dem vollen Zeitbudget. Endet ein Turn mit leerem Text, etwa timeout_no_message aus backend.rs, folgt der naechste. Am 2026-09-14 lieferte mistral fuenf Bridge-Anfragen mit 52.287 beziehungsweise 32.134 Zeichen, jede lief 856 bis 868 s, also dreimal das Budget von 270 s plus Aufwand. Das send meldete dabei jeweils Erfolg; der Anbieter bekam den grossen Prompt demnach bis zu 15 Mal in 15 neuen Konversationen, drei der fuenf Anfragen stammten von einem bereits beendeten Aufrufer (T-946). Zusammen mit Pis drei Wiederholungen je Anfrage kann eine einzige Client-Anfrage bis zu neun Sendungen ausloesen. Drei Folgen: Erstens nennt die Fehlermeldung timeout_budget=270s, obwohl der Client 856 s gewartet hat; Clients mit kuerzerem Zeitlimit brechen ab, waehrend die Bridge weiter sendet. Zweitens widerspricht das dem Kommentar im Code, leere Antworten nicht dreimal bis zum Client-Hang zu strecken, der nur fuer Anhaenge umgesetzt ist. Drittens erzeugt massenhaftes identisches Senden an Web-Chats vermeidbares Kontorisiko; ein ursaechlicher Zusammenhang mit der am selben Tag erfolgten Kontosperre bei einem Anbieter ist nicht belegt. Zu klaeren: timeout_no_message nach erfolgreichem Senden nicht wiederholen, weil dort unbekannt ist, ob der Anbieter die Nachricht verarbeitet; Gesamtbudget je Anfrage statt je Turn; Anzahl der Sendungen in brain_score protokollieren.",
+      "non_goals": [],
+      "dod": "",
+      "verification": "",
+      "proof_path": "",
+      "handoff": ""
     }
   ]
 }
