@@ -379,6 +379,37 @@ fn repair_json_string_escapes(payload: &str) -> String {
     out
 }
 
+/// Ausschnitt um die von serde_json gemeldete Fehlerstelle. Die ersten
+/// Zeichen eines langen Umschlags zeigen die Ursache meist nicht — am
+/// 2026-09-14 lag sie hinter Zeichen 400 (T-955). `>>>HIER<<<` markiert die
+/// Stelle; Steuerzeichen erscheinen escaped.
+fn excerpt_around_error(text: &str, error: &serde_json::Error) -> String {
+    let line_start: usize = text
+        .split_inclusive('\n')
+        .take(error.line().saturating_sub(1))
+        .map(str::len)
+        .sum();
+    let mut pos = (line_start + error.column().saturating_sub(1)).min(text.len());
+    while !text.is_char_boundary(pos) {
+        pos -= 1;
+    }
+    let mut start = pos.saturating_sub(200);
+    while !text.is_char_boundary(start) {
+        start -= 1;
+    }
+    let mut end = (pos + 120).min(text.len());
+    while !text.is_char_boundary(end) {
+        end += 1;
+    }
+    format!(
+        "{}{}>>>HIER<<<{}{}",
+        if start > 0 { "..." } else { "" },
+        text[start..pos].escape_debug(),
+        text[pos..end].escape_debug(),
+        if end < text.len() { "..." } else { "" }
+    )
+}
+
 #[derive(Deserialize)]
 struct ToolEnvelope {
     tool_calls: Vec<ToolEnvelopeCall>,
@@ -417,10 +448,12 @@ fn parse_response(
         Ok(envelope) => envelope,
         Err(strict_error) => {
             let repaired = repair_json_string_escapes(payload);
-            let envelope = serde_json::from_str(&repaired).map_err(|_| {
+            let envelope = serde_json::from_str(&repaired).map_err(|repaired_error| {
                 format!(
-                    "Ungueltiger Browser-Tool-Call-Umschlag: {strict_error}; Rohtext: {}",
-                    truncate_chars(&payload.escape_debug().to_string(), 400)
+                    "Ungueltiger Browser-Tool-Call-Umschlag: {strict_error}; nach Reparatur: {repaired_error}; Rohtext ({} Zeichen) beginnt: {}; an der Fehlerstelle: {}",
+                    payload.chars().count(),
+                    truncate_chars(&payload.escape_debug().to_string(), 120),
+                    excerpt_around_error(&repaired, &repaired_error)
                 )
             })?;
             crate::bench_events::eprint_line(&format!(
@@ -610,8 +643,24 @@ mod tests {
         );
         let error = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap_err();
         assert!(error.contains("Ungueltiger Browser-Tool-Call-Umschlag"));
-        assert!(error.contains("Rohtext:"));
+        assert!(error.contains("Rohtext ("));
         assert!(error.contains("read_file"));
+        assert!(error.contains(">>>HIER<<<"));
+    }
+
+    #[test]
+    fn error_excerpt_shows_the_failure_behind_a_long_prefix() {
+        // Real 2026-09-14 13:55: Fehler "line 2 column 1" hinter Zeichen 400.
+        let long = "x".repeat(600);
+        let raw = format!(
+            "WEBAGENT_INFERENCE/1\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"read_file\",\"arguments\":{{\"path\":\"{long}\"}}\nKAPUTT}}]}}"
+        );
+        let error = parse_response(&raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap_err();
+        let at = error.split("an der Fehlerstelle: ").nth(1).unwrap();
+        let (before, after) = at.split_once(">>>HIER<<<").unwrap();
+        assert!(before.ends_with("\\n"), "{error}");
+        assert!(after.starts_with("KAPUTT"), "{error}");
+        assert!(error.contains("Zeichen) beginnt:"));
     }
 
     #[test]
