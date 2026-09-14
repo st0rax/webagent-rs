@@ -1,5 +1,7 @@
 # T-934: Pi bridge repair
 
+**Referenz:** Nachweis zu T-934, Stand 2026-09-14. Verbindlich sind START_HERE.md und docs/TASKBOARD.json.
+
 Owner: spock (TASKBOARD.json, claimed 2026-09-14). Port: fix/T-934-port-master
 auf origin/master 7b27105 (viewport-clamp composer click) — Scope aus cb51e1f
 sauber uebertragen (content.rs, provider_handlers.rs, tests.rs, cli.rs, main.rs),

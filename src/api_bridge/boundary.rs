@@ -63,13 +63,7 @@ pub fn api_error_code(status: u16, message: &str, param: &str, code: &str) -> Ht
 /// einer strukturell kaputten Anfrage und koennen den Katalog neu laden,
 /// statt die Anfrage als unrettbar zu verwerfen.
 pub fn model_not_found(flavor: ApiFlavor, message: &str) -> HttpResponse {
-    api_error_with(
-        flavor,
-        404,
-        message,
-        Some("model"),
-        Some("model_not_found"),
-    )
+    api_error_with(flavor, 404, message, Some("model"), Some("model_not_found"))
 }
 
 pub fn api_error_with(

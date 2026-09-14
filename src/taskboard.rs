@@ -528,7 +528,9 @@ mod tests {
 
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/TASKBOARD.json");
         let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        let tasks = value["tasks"].as_array().expect("tasks muss eine Liste sein");
+        let tasks = value["tasks"]
+            .as_array()
+            .expect("tasks muss eine Liste sein");
 
         let mut ids = std::collections::BTreeSet::new();
         let mut claimed_branches = std::collections::BTreeMap::new();
@@ -565,7 +567,10 @@ mod tests {
                         }
                     }
                     if field("claimed_at").is_some_and(|date| date.as_str() >= CUTOFF) {
-                        assert!(field("owner").is_some(), "{id}: Claim ab {CUTOFF} ohne owner");
+                        assert!(
+                            field("owner").is_some(),
+                            "{id}: Claim ab {CUTOFF} ohne owner"
+                        );
                         let branch = field("branch")
                             .unwrap_or_else(|| panic!("{id}: Claim ab {CUTOFF} ohne branch"));
                         let (prefix, rest) = branch
