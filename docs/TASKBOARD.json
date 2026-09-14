@@ -1940,7 +1940,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "composer_contains: Nadel aus den ersten Woertern mit normalisiertem Leerraum",
-      "status": "claimed",
+      "status": "done",
       "owner": "claude-code",
       "branch": "fix/T-962-composer-needle",
       "claimed_at": "2026-09-14",
@@ -1957,7 +1957,8 @@
         "Keine Uebernahme von composer_element_present ohne Aufrufer."
       ],
       "proof_path": "docs/proofs/T-962/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-09-14"
     }
   ]
 }

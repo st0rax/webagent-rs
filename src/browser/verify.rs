@@ -1581,15 +1581,29 @@ mod tests {
     /// evaluieren. Muss im Mock registriert sein, seit die Send-Pfade den
     /// Inhalt nicht mehr nur ueber den Fill-Rueckgabewert annehmen.
     fn composer_contains_expr(sel: &Selectors, text: &str) -> String {
-        let needle = text.chars().take(8).collect::<String>();
+        let needle = WebBrainBackend::composer_needle(text);
         let n = serde_json::to_string(&needle).unwrap_or_else(|_| "\"\"".into());
         js::js_scan(
             &sel.js("composer", &[]),
             &format!(
-                "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');if(v.indexOf({n})!==-1)return true;}}"
+                "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');v=v.replace(/\\s+/g,' ');if(v.indexOf({n})!==-1)return true;}}"
             ),
             "false",
         )
+    }
+
+    #[test]
+    fn composer_nadel_ignoriert_fuehrenden_und_mehrfachen_leerraum() {
+        // T-962: take(8) ergab bei fuehrendem Umbruch "\n  [Iden", das der
+        // Editor nie wortgleich enthielt.
+        assert_eq!(
+            WebBrainBackend::composer_needle(
+                "\n  [Identitaet]  Du\tbist das Modell hinter dem Brain"
+            ),
+            "[Identitaet] Du bist das Modell hinter"
+        );
+        assert_eq!(WebBrainBackend::composer_needle("kurz"), "kurz");
+        assert_eq!(WebBrainBackend::composer_needle("   "), "");
     }
 
     fn click_first_expr(sel: &Selectors, key: &str) -> String {
