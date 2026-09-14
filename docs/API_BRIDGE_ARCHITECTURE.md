@@ -25,7 +25,7 @@ T-922 / T-923 / T-931 / T-933.
 | `store.rs` | T-915/T-922 | **ja** (T-922) | Mandanten-Store, Lifecycle |
 | `content.rs` | T-916/T-923 | **ja** (T-923) | Prompt/Tool-Normalizer |
 | `inference.rs` | T-919 | **ja** (T-919) | Browser-Inference-Lauf |
-| `catalog.rs` | T-917 | **nein** → T-931 | Katalog, Auto-Router |
+| `catalog.rs` | T-917 | **ja** (T-931) | Katalog, Auto-Router |
 | `response_protocol.rs` | T-918 | **nein** → T-933 | JSON/SSE-Antwortkörper |
 
 Nicht als Kindmodul extrahiert (User-Skip, bleiben in der Root-Datei):
@@ -43,8 +43,8 @@ wire                -> HttpResponse, completion_id (Root)
 boundary            -> Auth-Typen, HttpResponse
 routing             -> Methode/Pfad/Body (keine Handler, kein Browser)
 provider_handlers   -> Parent-Helfer; kein Selektor, kein Profil
-store / content / catalog / response_protocol
-                    -> Parent-Typen und -Helfer, bis T-922/923/931/933 verdrahten
+store / content / catalog (verdrahtet) / response_protocol
+                    -> Parent-Typen und -Helfer, bis T-933 verdrahtet
 tests               -> Parent
 api_bridge.rs       -> verdrahtete Kindmodule
 ```

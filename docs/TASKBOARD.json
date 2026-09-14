@@ -1169,10 +1169,10 @@
       "phase": "12",
       "type": "refactoring",
       "title": "API-Bridge response_protocol echt verdrahten (T-918-Nachzug)",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "refactor/T-933-wire-response-protocol",
+      "claimed_at": "2026-09-14",
       "depends_on": [
         "T-918"
       ],
