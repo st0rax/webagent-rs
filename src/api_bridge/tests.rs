@@ -12,6 +12,9 @@
 //! Prompt/Tools/Protokoll, Store/Lifecycle, Transport/HTTP, SDK-Blackbox.
 
 use super::*;
+use crate::api_bridge::response_protocol::{
+    anthropic_response, openai_message, response_object, response_with_state, responses_sse,
+};
 use std::io::{Read, Write};
 
 // --- Prompt / Content -------------------------------------------------------
