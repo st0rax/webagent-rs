@@ -1776,6 +1776,57 @@
       "proof_path": "docs/proofs/T-955/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "done_at": "2026-09-14"
+    },
+    {
+      "id": "T-956",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "SICHERHEIT: Lesestrecke verfaelscht Werkzeugargumente, die danach ausgefuehrt werden",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/browser/js.rs",
+        "src/browser/backend.rs",
+        "src/browser_inference.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Die Bridge liest Modellantworten aus der gerenderten Chat-Oberflaeche. Am 2026-09-14 zwischen 14:30 und 14:55 zeigte eine Pi-Session mit deepseek, dass dabei der Inhalt von Werkzeugargumenten veraendert wird, nicht nur Formatierung. Belegt in derselben Session: Sternchenpaare verschwinden, weil die Oberflaeche sie als Markdown-Kursivschrift rendert; zwei tatsaechlich ausgefuehrte bash-Aufrufe enthielten --include='.rs' statt '*.rs' und find -name 'protocol' statt vermutlich '*protocol*'. In einer als Text gelieferten Antwort derselben Session fehlten zusaetzlich Dollarzeichenpaare (\"$G\" wurde \"G\", $f wurde f), vermutlich weil Text zwischen zwei Dollarzeichen als LaTeX-Formel gerendert wird, und Zeilenumbrueche fehlten stellenweise (GitHub und echo aus zwei Zeilen wurden zu GitHubecho). Beide ausgefuehrten Aufrufe waren lesend und harmlos, lieferten aber falsche Ergebnisse. Derselbe Mechanismus kann zerstoererische Befehle veraendern, etwa rm -rf \"$DIR/\" zu rm -rf \"/\". Die JSON-Reparaturen aus T-952 und T-954 setzen auf diese Lesestrecke auf und koennen den Verlust nicht erkennen.",
+      "dod": "Werkzeugumschlaege werden aus einer Quelle gelesen, die Modelltext unveraendert liefert (etwa Code-Block-Quelltext, Math-Annotation oder Kopierfunktion), belegt je Brain fuer Sternchen, Dollarzeichen, Backslashes und Zeilenumbrueche; wo das nicht garantiert ist, lehnt die Bridge Werkzeugaufrufe fail-closed ab statt verfaelschte Argumente auszuliefern; ein Live-Test mit einem Befehl, der *, $VAR-Paare und mehrere Zeilen enthaelt, kommt je gepruftem Brain byte-identisch an.",
+      "handoff": "Tabelle je Brain: Zeichenklassen vorher/nachher, Live-Transkripte, Branch und Commit.",
+      "non_goals": [
+        "Keine heuristische Rekonstruktion verlorener Zeichen; verlorene Information bleibt ein Fehler.",
+        "Formatierung von Textantworten ohne Werkzeugaufruf ist T-942."
+      ],
+      "proof_path": "docs/proofs/T-956/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+    },
+    {
+      "id": "T-957",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "deepseek liefert natives DSML-Werkzeugformat als Klartext statt Umschlag",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-956"
+      ],
+      "scope": [
+        "src/browser_inference.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Am 2026-09-14 ab 14:51 antwortete deepseek in einer Pi-Session ueber die Bridge viermal statt mit WEBAGENT_INFERENCE/1 mit seinem internen Werkzeugformat als Text, etwa <｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name=\"write\"><｜｜DSML｜｜ parameter name=\"path\" string=\"true\">...</｜｜DSML｜｜ parameter></｜｜DSML｜｜ invoke></｜｜DSML｜｜ calls>. parse_response findet keinen Umschlag und liefert den Text als normale Antwort, Pi fuehrt nichts aus und die Sitzung stockt. Zu entscheiden: das Format als gleichwertige Umschlagsyntax erkennen und in tool_calls uebersetzen, oder es fail-closed als Protokollfehler melden, damit der Client nicht still eine Textantwort erhaelt. Eine Uebersetzung darf erst nach T-956 kommen, weil die Argumente aus derselben verfaelschenden Lesestrecke stammen.",
+      "dod": "Eine DSML-Antwort wird entweder in regulaere tool_calls mit exakt den Parametern uebersetzt oder als benannter Protokollfehler gemeldet, nie als Textantwort; Tests mit dem realen Beispiel belegen das; API_BRIDGE.md beschreibt die Entscheidung.",
+      "handoff": "Reales DSML-Beispiel, Ergebnis vorher/nachher, Branch und Commit.",
+      "non_goals": [
+        "Keine weiteren anbieterspezifischen Formate ohne Beleg."
+      ],
+      "proof_path": "docs/proofs/T-957/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
