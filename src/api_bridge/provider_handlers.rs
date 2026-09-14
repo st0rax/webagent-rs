@@ -96,7 +96,11 @@ pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> Htt
                 "finish_reason": answer.finish_reason(),
                 "logprobs": null
             }],
-            "usage": null,
+            // Eine Browser-Oberflaeche gibt keine Tokenzahlen her. OpenAI liefert
+            // hier aber immer ein Objekt, und Clients lesen `usage.total_tokens`
+            // direkt -- bei `null` laufen sie in einen Fehler. Nullen sind
+            // ehrlich und brechen niemanden; geschaetzte Zahlen waeren erfunden.
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             "system_fingerprint": null
         }),
     )

@@ -42,6 +42,11 @@ pub(crate) fn reject_unsupported_openai_fields(value: &Value) -> Result<(), Http
         "echo",
         "suffix",
         "top_logprobs",
+        // Ein Browser-Chat kann kein Ausgabeschema garantieren. Stillschweigend
+        // ignorieren waere der schlimmere Ausgang: Der Aufrufer verlaesst sich
+        // dann auf gueltiges JSON und bekommt Prosa. Gleiche Begruendung wie
+        // bei `seed` -- lieber ablehnen als eine Zusage vortaeuschen.
+        "response_format",
     ];
     for key in UNSUPPORTED {
         if obj.get(*key).is_some_and(|v| !v.is_null()) {
