@@ -1246,6 +1246,160 @@
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib; Live-Pi-Roundtrip",
       "proof_path": "docs/proofs/T-935/",
       "handoff": "Patch, Gates, Live-Beleg grosser Prompt; kein Abschluss allein durch Unit-Tests."
+    },
+    {
+      "id": "T-936",
+      "phase": "13",
+      "type": "code",
+      "title": "Sendepfad: Phase und Beobachtung je Turn protokollieren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/browser/send.rs",
+        "src/browser/composer.rs",
+        "src/brain_score.rs"
+      ],
+      "objective": "Ein einziger Fehlertext (Composer-Feld nicht gefunden) steht heute fuer mindestens fuenf Zustaende: nicht angemeldet, ausgeloggt mit Reauth, kein Selektor getroffen, Klick neben dem Element, Fuellen in die Deadline gelaufen. Bei deepseek sind login_indicator und composer dieselben Selektoren, die ersten beiden Faelle sind also prinzipiell ununterscheidbar. Am 2026-09-14 kostete das mehrere Stunden Ursachensuche; verschiedene Abbruchstellen liessen sich nur aus Latenzen erraten (chatgpt 77-90s gegen kimi 31-40s bei identischer Eingabe). Die Beobachtungen werden zur Laufzeit bereits berechnet und weggeworfen: getBoundingClientRect kennt die 13k-Pixel-Geometrie, der Clamp weiss ob er griff, composer_contains kennt den Feldinhalt. Je Turn einen Datensatz schreiben mit erreichter Phase (Selektor aufloesen, fokussieren, leeren, einfuegen, Inhalt pruefen, absenden, settlen, lesen), getroffenem Selektor-Index, Elementmassen, Clamp ausgeloest, Fokus angekommen, eingefuegte gegen erwartete Zeichen. Getrennte Fehlercodes je Phase statt eines Sammelstrings.",
+      "non_goals": [
+        "Kein Umbau des Sendeverfahrens selbst.",
+        "Keine neue Abhaengigkeit."
+      ],
+      "dod": "Ein fehlgeschlagener Turn nennt Phase und Beobachtung; brain_score enthaelt die Felder; die fuenf Zustaende sind in den Daten unterscheidbar.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-936/",
+      "handoff": "Messwerte vorher/nachher, Branch und Commit."
+    },
+    {
+      "id": "T-937",
+      "phase": "13",
+      "type": "code",
+      "title": "Composer fokussieren: Tastatur mit Verifikation statt Koordinatenklick",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-936"
+      ],
+      "scope": [
+        "src/browser/composer.rs",
+        "src/browser/send.rs"
+      ],
+      "objective": "Der Klick ist ein blinder Schuss: Koordinaten aus getBoundingClientRect, klicken, und erst am Ende faellt auf, dass kein Text im Feld steht. Bei ChatGPTs ProseMirror waechst der Editor laut Codekommentar auf h=13k/y=-10k, der geometrische Mittelpunkt liegt dann ausserhalb der WebView; der Viewport-Clamp behandelt nur das Symptom. Gemessen am 2026-09-14 bei identischer Eingabe von 52.287 Zeichen: gemini bestand im ersten Versuch in 33s, chatgpt und kimi scheiterten je dreimal. Tab liefert einen vertrauenswuerdigen Fokuswechsel ohne jede Koordinate, und nach jedem Druck laesst sich document.activeElement gegen den Composer-Selektor pruefen; die Schleife wird selbstkorrigierend und erzeugt die Beobachtungen aus T-936 nebenbei. Bausteine sind da: PageDriver::press_key existiert, das Muster focus-dann-pruefen steht in webview_runtime.rs:1198. Vorher messen: in send.rs ist dokumentiert, dass WebView2 activeElement veraltet stehen lassen kann. Rueckfallweg fuer Composer mit tabindex=-1 vorsehen; dessen Scheitern muss von 'Fokus kam nie an' unterscheidbar bleiben.",
+      "non_goals": [
+        "Keine Aenderung am Absendeweg oder am Warten auf die Antwort.",
+        "Kein Entfernen des Klickpfads, bevor der Tastaturweg gemessen besser ist."
+      ],
+      "dod": "Fokus wird per Tastatur gesetzt und verifiziert; bei identischer 52k-Eingabe bestehen chatgpt und kimi messbar oefter als mit Klick; Messreihe liegt im proof_path.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-937/",
+      "handoff": "Messwerte vorher/nachher, Branch und Commit."
+    },
+    {
+      "id": "T-938",
+      "phase": "13",
+      "type": "code",
+      "title": "Abweichungen im Fokuspfad erkennen und fail-closed behandeln",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-937"
+      ],
+      "scope": [
+        "src/browser/composer.rs",
+        "selectors/"
+      ],
+      "objective": "Laeuft die Tab-Runde aus T-937 nicht beim Composer an, ist das Inventar der Fokusstationen bereits die Diagnose: lauter Anmeldefelder heisst abgelaufene Sitzung, ein Dialogknopf heisst Interstitial, gar kein fokussierbares Element heisst Seite nicht fertig. Am 2026-09-14 real aufgetreten: eine Reauth-Loginseite bei claude, eine Sperrmeldung, und bei chatgpt ein Dialog, der anbot ohne Datenanalyse fortzufahren. Erst vollstaendig aufzaehlen, dann entscheiden; ein Klick mitten in der Runde veraendert das DOM und entwertet den Rest. Eine Runde, die nie zum Ausgangspunkt zurueckkehrt, bedeutet praezise 'modaler Dialog faengt den Fokus'. Behandlung als Positivliste je Anbieter in den Selektordateien, mehrsprachig wie dort ueblich: Bekanntes und Harmloses abweisen (Consent), Bekanntes und Diagnostisches mit benanntem Grund abbrechen (nicht angemeldet, gesperrt, Kontingent), Unbekanntes abbrechen und woertlich melden. Zustimmende Knoepfe niemals pauschal: ein Fortfahren ohne Werkzeug aendert stillschweigend die Faehigkeiten des Modells, Accept oder Upgrade koennen Bedingungen annehmen oder Kosten ausloesen. Jede Abwicklung gehoert in den Turn-Datensatz.",
+      "non_goals": [
+        "Cloudflare und Captcha werden nicht bedient; erklaerte Produktgrenze.",
+        "Keine Sonderfallliste im Rust-Code; Beschriftungen gehoeren in die Selektordateien."
+      ],
+      "dod": "Die beobachteten Zustaende werden unterschieden und benannt; unbekannte Abweichungen brechen ab statt zu raten; jede Abwicklung ist protokolliert.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-938/",
+      "handoff": "Messwerte vorher/nachher, Branch und Commit."
+    },
+    {
+      "id": "T-939",
+      "phase": "13",
+      "type": "refactoring",
+      "title": "brain_id-Verzweigungen aus dem Sendepfad in Selektordaten ueberfuehren",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-936"
+      ],
+      "scope": [
+        "src/browser/send.rs",
+        "src/browser/composer.rs",
+        "selectors/"
+      ],
+      "objective": "src/browser/send.rs enthaelt 13 Verzweigungen auf brain_id (gemini zweimal, mistral zweimal, kimi neunmal) quer durch Fuellen, Absenden und Warten. Die Unterschiede sind wahre Tatsachen ueber die Oberflaechen (kimis Lexical-Editor verschluckt Zeilenumbrueche, daher fill_composer_rich_multiline), gehoeren aber als deklarierte Daten in die Selektordatei statt als Kontrollfluss. Auffaellig: ausgerechnet die Anbieter mit Sonderbehandlung scheiterten am 2026-09-14 reproduzierbar, waehrend gemini ueber den generischen Weg bestand. Wichtiger noch als das Fuellen ist die Pruefung: der generische Pfad nutzt composer_contains, das nur die ersten acht Zeichen sucht. Bei Prompts mit gleichbleibendem Rahmen ist das wertlos und kann einen verdreckten Composer nicht erkennen. kimis composer_matches_text vergleicht den ganzen Inhalt und sollte ueberall gelten.",
+      "non_goals": [
+        "Keine Providerfaehigkeit entfernen, nur die Auswahl von Code nach Daten verschieben."
+      ],
+      "dod": "Keine brain_id-Verzweigung mehr im Sendepfad; Fuell- und Pruefstrategie stehen je Anbieter in der Selektordatei; composer_matches_text ist der Standard.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-939/",
+      "handoff": "Messwerte vorher/nachher, Branch und Commit."
+    },
+    {
+      "id": "T-940",
+      "phase": "13",
+      "type": "code",
+      "title": "Netzwerkbeobachtung der Oberflaeche fuer die Diagnose (nur lesend)",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-936"
+      ],
+      "scope": [
+        "src/webview_runtime.rs",
+        "src/browser/send.rs"
+      ],
+      "objective": "Alle Fehlschlaege des 2026-09-14 lagen vor dem Absenden; der Composer wurde nie gefuellt. Ein Blick auf den Verkehr der Oberflaeche haette sofort gezeigt, dass ueberhaupt keine Anfrage rausging, und damit Fuellfehler von Antwortfehler getrennt. CDP ist bereits verdrahtet (click_at_trusted_cdp). Ausschliesslich beobachten: ob eine Anfrage abging, welchen Status sie hatte, wie lange sie dauerte.",
+      "non_goals": [
+        "Keine Anfragen selbst erzeugen, nachbauen oder wiederholen.",
+        "Keine Request-Signaturen oder Anti-Bot-Header nachbilden; das waere Umgehung von Zugangsschutz und widerspricht der Produktgrenze.",
+        "Keine Antwortinhalte mitschreiben, die nicht ohnehin im Transcript landen."
+      ],
+      "dod": "Je Turn ist belegt, ob eine Provideranfrage abging und mit welchem Status; die Unterscheidung Fuellfehler gegen Antwortfehler steht in den Daten.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-940/",
+      "handoff": "Messwerte vorher/nachher, Branch und Commit."
+    },
+    {
+      "id": "T-941",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Start ohne WebView2Loader.dll scheitert lautlos",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/main.rs",
+        "src/startup.rs",
+        "build.rs"
+      ],
+      "objective": "Am 2026-09-14 startete ein frisch in einem Worktree gebautes Binary nicht: keine Fehlermeldung, keine Logzeile, --help gab nichts aus und beendete sich mit Exit 0. Ursache war die fehlende WebView2Loader.dll neben der Exe, die in target/debug eines neuen Worktrees nicht automatisch liegt; scripts/copy-webview2-loader.ps1 legt sie ab. Ein stiller Fehlstart mit Exit 0 ist die teuerste Fehlerart, weil er wie Erfolg aussieht.",
+      "non_goals": [
+        "Die DLL nicht ins Repository aufnehmen."
+      ],
+      "dod": "Fehlt die Laufzeitabhaengigkeit, endet der Start mit erklaerender Meldung und Exitcode ungleich 0; ein Test deckt den Fall ab.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-941/",
+      "handoff": "Messwerte vorher/nachher, Branch und Commit."
     }
   ]
 }
