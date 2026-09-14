@@ -36,7 +36,7 @@ mod wire;
 pub(crate) use boundary::api_error;
 #[cfg(test)]
 use boundary::constant_time_equal;
-use boundary::{api_error_code, authorize};
+use boundary::{api_error_code, authorize, model_not_found};
 use store::{
     append_response_message, handle_response_delete, handle_response_input_items,
     handle_response_retrieve, responses_context, store_response, tenant_id,

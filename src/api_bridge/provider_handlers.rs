@@ -26,7 +26,8 @@ use super::{
     anthropic_prompt, anthropic_response, anthropic_sse, anthropic_tool_choice, anthropic_tools,
     api_error, append_response_message, authorize, completion_id, decode_json, openai_message,
     openai_prompt, openai_sse, openai_tool_choice, openai_tools, reject_unsupported_openai_body,
-    require_clean_text_tools, resolve_model, response_object, response_object_from_answer,
+    model_not_found, require_clean_text_tools, resolve_model, response_object,
+    response_object_from_answer,
     response_with_state, responses_context, responses_sse_with_object, responses_tool_choice,
     responses_tools, run_task_blocking, run_task_streaming, session_service, store_response,
     stream_answer_snapshot, tenant_id, unix_seconds, write_data_frame, write_http_response,
@@ -53,7 +54,7 @@ pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> Htt
     };
     let brain = match resolve_model(&payload.model, &config.brain) {
         Ok(brain) => brain,
-        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+        Err(error) => return model_not_found(ApiFlavor::OpenAi, &error),
     };
     let prompt = match openai_prompt(&payload) {
         Ok(prompt) => prompt,
@@ -126,7 +127,7 @@ pub(super) fn handle_openai_incremental(
     let brain = match resolve_model(&payload.model, &config.brain) {
         Ok(brain) => brain,
         Err(error) => {
-            return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
+            return write_http_response(stream, model_not_found(ApiFlavor::OpenAi, &error))
         }
     };
     let prompt = match openai_prompt(&payload) {
@@ -255,7 +256,7 @@ pub(super) fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> 
     }
     let brain = match resolve_model(&payload.model, &config.brain) {
         Ok(brain) => brain,
-        Err(error) => return api_error(ApiFlavor::Anthropic, 400, &error),
+        Err(error) => return model_not_found(ApiFlavor::Anthropic, &error),
     };
     let prompt = match anthropic_prompt(&payload) {
         Ok(prompt) => prompt,
@@ -304,7 +305,7 @@ pub(super) fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> 
     };
     let brain = match resolve_model(&payload.model, &config.brain) {
         Ok(brain) => brain,
-        Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
+        Err(error) => return model_not_found(ApiFlavor::OpenAi, &error),
     };
     let tools = match responses_tools(&payload.tools) {
         Ok(tools) => tools,
@@ -373,7 +374,7 @@ pub(super) fn handle_responses_incremental(
     let brain = match resolve_model(&payload.model, &config.brain) {
         Ok(brain) => brain,
         Err(error) => {
-            return write_http_response(stream, api_error(ApiFlavor::OpenAi, 400, &error))
+            return write_http_response(stream, model_not_found(ApiFlavor::OpenAi, &error))
         }
     };
     let tools = responses_tools(&payload.tools)

@@ -58,6 +58,20 @@ pub fn api_error_code(status: u16, message: &str, param: &str, code: &str) -> Ht
     api_error_with(ApiFlavor::OpenAi, status, message, Some(param), Some(code))
 }
 
+/// Ein unbekannter Modellname ist in beiden APIs ein 404 mit `model_not_found`,
+/// kein 400. Clients unterscheiden daran einen Tippfehler im Modellnamen von
+/// einer strukturell kaputten Anfrage und koennen den Katalog neu laden,
+/// statt die Anfrage als unrettbar zu verwerfen.
+pub fn model_not_found(flavor: ApiFlavor, message: &str) -> HttpResponse {
+    api_error_with(
+        flavor,
+        404,
+        message,
+        Some("model"),
+        Some("model_not_found"),
+    )
+}
+
 pub fn api_error_with(
     flavor: ApiFlavor,
     status: u16,
