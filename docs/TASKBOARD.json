@@ -1216,6 +1216,36 @@
       "verification": "cargo test --features webview --lib; cargo build --features webview; Live-Pi-Roundtrip",
       "proof_path": "docs/proofs/T-934/",
       "handoff": "Patch, Build-Provenienz und echte Pi-Testresultate; kein Abschluss allein durch /v1/models."
+    },
+    {
+      "id": "T-935",
+      "phase": "12",
+      "type": "bugfix",
+      "title": "Composer-Fill stueckeln + Stabilitaets-Uhr tolerieren (Loop-Blockade)",
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "fix/T-935-chunked-fill",
+      "claimed_at": "2026-09-14",
+      "depends_on": [],
+      "scope": [
+        "src/browser/composer.rs",
+        "src/browser/backend.rs",
+        "src/browser/blocking.rs",
+        "src/browser/mod.rs",
+        "src/browser/send.rs",
+        "src/mock_page.rs",
+        "src/api_bridge/provider_handlers.rs"
+      ],
+      "objective": "25k-Zeichen-Bulk-Insert blockiert den WebView-Loop synchron ueber Sekunden: jeder andere Befehl laeuft in den 8s-Page-Timeout (blinkender Cursor, trotzdem 502). Fill in 2000er-Bloecken mit Loop-Freigabe; Stabilitaets-Uhr ignoriert Whitespace-Churn; stream-Flag pro Chat-Request loggen.",
+      "non_goals": [
+        "Keine Aenderung an Warte-Budgets oder Breaker-Schwellen.",
+        "Keine User-Meldungen umformulieren.",
+        "Kein Autofill von Altersabfragen oder Logins."
+      ],
+      "dod": "Chunk-Nachweis per Mock-Test (Reihenfolge+Inhalt erhalten, klein bleibt 1 Call); stable_norm-Tests; Gates gruen; Live-Pi-Roundtrip mit grossem Prompt ohne Composer-Timeout.",
+      "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib; Live-Pi-Roundtrip",
+      "proof_path": "docs/proofs/T-935/",
+      "handoff": "Patch, Gates, Live-Beleg grosser Prompt; kein Abschluss allein durch Unit-Tests."
     }
   ]
 }
