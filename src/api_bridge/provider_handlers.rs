@@ -67,16 +67,13 @@ pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> Htt
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
-    if let Err(error) = require_clean_text_tools(&tools, &tool_choice) {
-        return api_error(ApiFlavor::OpenAi, 400, &error);
-    }
     let answer = match run_task_blocking(
         config,
         &brain,
         &prompt.text,
         &prompt.attachments,
-        &[],
-        crate::browser_inference::BrowserToolChoice::None,
+        &tools,
+        tool_choice,
     ) {
         Ok(answer) => answer,
         Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
