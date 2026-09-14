@@ -241,7 +241,7 @@ fn prompt_with_tools(
     };
 
     Ok(format!(
-        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus (ohne Markdown oder weiteren Text):\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_eindeutig\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
+        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
     ))
 }
 
@@ -701,6 +701,9 @@ mod tests {
         assert!(prompt.contains("ein Tool ausdruecklich verlangt"));
         assert!(prompt.contains("dir nicht vorliegenden Daten"));
         assert!(prompt.contains("[Client-Werkzeuge]"));
+        // T-956: Umschlag im Codeblock, sonst frisst das Rendering Zeichen.
+        assert!(prompt.contains("in genau einem Markdown-Codeblock"));
+        assert!(prompt.contains("```text\nWEBAGENT_INFERENCE/1\n"));
         assert!(!prompt.contains("gehoeren dem aufrufenden API-Client"));
         assert!(!prompt.contains("niemals, sie seien in dieser Umgebung nicht verfuegbar"));
         assert!(prompt.contains("WEBAGENT_INFERENCE/1"));

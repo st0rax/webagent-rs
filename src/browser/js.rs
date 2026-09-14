@@ -21,6 +21,17 @@
 /// dabei auch die Playwright-Textformen (`text=foo`, `text=/re/i`,
 /// `button:has-text('x')`), die `querySelector` nicht kann. `TX(el)` liest Text
 /// mit zurueckgewonnener Mathe-Quelle.
+///
+/// `TXENV(el)` liefert einen Werkzeug-Umschlag verlustfrei aus einem
+/// Code-Block: Gerenderter Fliesstext verliert Sternchen (Kursiv), Dollarpaare
+/// (KaTeX), Backticks und Unterstriche — gemessen 2026-09-14 bei deepseek und
+/// qwen in ausgefuehrten Werkzeugargumenten (T-956). Der `textContent` eines
+/// `pre` ist dagegen der Modelltext. Nur wenn ausserhalb dieses Blocks
+/// hoechstens UI-Beschriftung (Sprache, Kopieren) steht, damit ein Beispiel-
+/// Umschlag in einer erklaerenden Antwort nicht als Aufruf gelesen wird.
+/// qwens Codeblock liefert Leerzeichen als NBSP (U+00A0, gemessen am selben
+/// Tag); in Shell-Befehlen waeren das keine Worttrenner mehr, daher zurueck
+/// zu normalen Leerzeichen.
 pub const JS_SEL_PRELUDE: &str = r#"
 var __p=function(s){var m=/^text=\/(.*)\/([a-z]*)$/.exec(s);if(m)return{base:'*',re:new RegExp(m[1],m[2])};
 m=/^text=(.*)$/.exec(s);if(m)return{base:'*',txt:m[1]};
@@ -31,7 +42,16 @@ for(var k=0;k<base.length;k++){var e=base[k],t=(e.innerText||e.textContent||'');
 if(p.re?p.re.test(t):t.indexOf(p.txt)!==-1)c.push(e);}
 return c.filter(function(e){return !c.some(function(o){return o!==e&&e.contains(o);});});};
 var Q=function(s){var r=QA(s);return r.length?r[0]:null;};
+var TXENV=function(el){if(!el||!el.querySelectorAll)return null;
+var ps=el.querySelectorAll('pre');
+for(var i=0;i<ps.length;i++){var t=(ps[i].textContent||'');var k=t.indexOf('WEBAGENT_INFERENCE/1');
+if(k<0)continue;
+var c=el.cloneNode(true);var cp=c.querySelectorAll('pre')[i];if(cp&&cp.parentNode)cp.parentNode.removeChild(cp);
+var rest=(c.innerText||c.textContent||'').replace(/\s+/g,'');
+if(rest.length<=40)return t.slice(k).replace(/\u00a0/g,' ');}
+return null;};
 var TX=function(el){if(!el)return '';
+var env=TXENV(el);if(env!==null)return env;
 if(!el.querySelector||!el.querySelector('.katex'))return (el.innerText||el.textContent||'');
 var c=el.cloneNode(true);
 var ks=c.querySelectorAll('.katex');
@@ -112,6 +132,17 @@ pub const FALLBACK_VISIBLE_BODY: &str = "var el=Q(S[i]);if(el){var r=el.getBound
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prelude_liest_umschlag_verlustfrei_aus_codeblock() {
+        // T-956: TX nimmt zuerst den Codeblock-Umschlag, nur bei fast leerem
+        // Rest, und normalisiert qwens NBSP.
+        assert!(JS_SEL_PRELUDE.contains("var TXENV=function(el)"));
+        assert!(JS_SEL_PRELUDE.contains("var env=TXENV(el);if(env!==null)return env;"));
+        assert!(JS_SEL_PRELUDE.contains("if(rest.length<=40)"));
+        assert!(JS_SEL_PRELUDE.contains(r"replace(/\u00a0/g,' ')"));
+        assert!(!JS_SEL_PRELUDE.contains('\u{a0}'));
+    }
 
     fn sample() -> serde_json::Value {
         serde_json::json!({
