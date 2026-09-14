@@ -1722,6 +1722,32 @@
       ],
       "proof_path": "docs/proofs/T-953/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+    },
+    {
+      "id": "T-954",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Umschlag: unescapte Anfuehrungszeichen in Strings strukturell reparieren",
+      "status": "claimed",
+      "owner": "claude-code",
+      "branch": "fix/T-954-unescaped-quotes",
+      "claimed_at": "2026-09-14",
+      "depends_on": [
+        "T-952"
+      ],
+      "scope": [
+        "src/browser_inference.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Nach T-952 enthaelt die Fehlermeldung den Rohtext. Am 2026-09-14 um 13:26 lieferte chatgpt ueber Pi dreimal denselben Umschlag mit einem bash-Befehl, der test -z \"$(find ...)\" enthielt. Die inneren Anfuehrungszeichen waren nicht escaped, serde_json brach mit expected , or } at line 1 column 248 ab, und Pi wiederholte die Anfrage jeweils unveraendert. Shell-Befehle mit Anfuehrungszeichen sind in agentischen Sitzungen der Normalfall. In gueltigem JSON folgt auf ein schliessendes Anfuehrungszeichen nach optionalem Leerraum immer ein Komma, eine schliessende Klammer oder ein Doppelpunkt. Ein Anfuehrungszeichen innerhalb eines Strings, auf das etwas anderes folgt, kann deshalb kein Stringende sein und ist als literales Zeichen zu behandeln.",
+      "dod": "repair_json_string_escapes behandelt ein Anfuehrungszeichen innerhalb eines Strings als literal, wenn nach optionalem Leerraum weder Komma noch schliessende Klammer noch Doppelpunkt noch Textende folgt; der reale Befehl aus dem 13:26-Fall parst danach mit exakt dem beabsichtigten Befehl; gueltige JSON bleibt byte-identisch; ein Umschlag, dessen Anfuehrungszeichen auch strukturell mehrdeutig ist, scheitert weiter fail-closed; Tests belegen alle Faelle.",
+      "handoff": "Rohtext des realen Falls, Parse-Ergebnis vorher/nachher, Testausgabe, Branch und Commit.",
+      "non_goals": [
+        "Keine Reparatur von Anfuehrungszeichen, auf die ein Komma, eine Klammer oder ein Doppelpunkt folgt; diese Faelle bleiben fail-closed.",
+        "Keine Aenderung an Fehlertyp, brain_score oder Korrekturversuch; das ist T-953."
+      ],
+      "proof_path": "docs/proofs/T-954/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
