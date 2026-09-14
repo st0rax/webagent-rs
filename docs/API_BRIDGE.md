@@ -349,6 +349,8 @@ Der Wire-Vertrag ist zusätzlich mit dem offiziellen OpenAI-Python-SDK 3.6.0 liv
 
 Der OpenAI-Adapter normalisiert Function-Tools und die Varianten `tool_choice=auto`, `none`, `required` sowie eine erzwungene Function. Für einen Tool-Aufruf fordert die Browser-Inference-Schicht vom Web-LLM einen strikten `WEBAGENT_INFERENCE/1`-Umschlag an und wandelt diesen anschließend in reguläre OpenAI-`tool_calls` um. Tool-Ergebnisse können im nächsten Request als `role=tool` mit `tool_call_id` zurückgegeben werden.
 
+Die Umschlag-Anweisung verlangt streng gültiges JSON: verdoppelte Backslashes, escapte Anführungszeichen und `\n` statt roher Zeilenumbrüche. Scheitert das strikte Parsen, repariert die Bridge genau zwei eindeutige Fehler innerhalb von String-Literalen — einen Backslash vor einem Zeichen, das kein JSON-Escape ist (etwa `C:\Users`), und rohe Steuerzeichen — und protokolliert die Reparatur. Jeder andere Fehler bleibt fail-closed; die Fehlermeldung enthält dann bis zu 400 Zeichen des Rohtexts (T-952).
+
 Viele Coding-Clients senden gleichzeitig mehrere Dutzend MCP-Werkzeuge mit sehr
 langen Beschreibungen. Vor dem Browserturn wird der serialisierte Toolblock
 deshalb stufenweise auf höchstens 64 KiB kompaktisiert: Werkzeugnamen und

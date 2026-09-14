@@ -226,7 +226,7 @@ fn prompt_with_tools(
     };
 
     Ok(format!(
-        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus (ohne Markdown oder weiteren Text):\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_eindeutig\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
+        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus (ohne Markdown oder weiteren Text):\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_eindeutig\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
     ))
 }
 
@@ -299,6 +299,57 @@ fn truncate_chars(value: &str, limit: usize) -> String {
     truncated
 }
 
+/// Repariert ausschliesslich eindeutige Fehler in JSON-String-Literalen, wie
+/// Browsermodelle sie im Umschlag erzeugen (beobachtet 2026-09-14, T-952):
+/// Ein Backslash vor einem Zeichen, das kein JSON-Escape ist — typisch fuer
+/// Windows-Pfade wie `C:\Users` —, wird zum literalen Backslash; rohe
+/// Steuerzeichen wie Zeilenumbrueche werden escaped. Alles andere bleibt
+/// unveraendert, ein nicht eindeutiger Umschlag scheitert weiter fail-closed.
+/// `C:\new` bleibt dagegen ein gueltiges `\n` und ist nicht reparierbar; dafuer
+/// verlangt die Umschlag-Anweisung verdoppelte Backslashes.
+fn repair_json_string_escapes(payload: &str) -> String {
+    let mut out = String::with_capacity(payload.len() + 16);
+    let mut in_string = false;
+    let mut chars = payload.chars().peekable();
+    while let Some(c) = chars.next() {
+        if !in_string {
+            in_string = c == '"';
+            out.push(c);
+            continue;
+        }
+        match c {
+            '"' => {
+                in_string = false;
+                out.push(c);
+            }
+            '\\' => {
+                let valid_escape = match chars.peek() {
+                    Some('"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't') => true,
+                    Some('u') => {
+                        let hex: Vec<char> = chars.clone().skip(1).take(4).collect();
+                        hex.len() == 4 && hex.iter().all(char::is_ascii_hexdigit)
+                    }
+                    _ => false,
+                };
+                if valid_escape {
+                    out.push(c);
+                    if let Some(next) = chars.next() {
+                        out.push(next);
+                    }
+                } else {
+                    out.push_str("\\\\");
+                }
+            }
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 #[derive(Deserialize)]
 struct ToolEnvelope {
     tool_calls: Vec<ToolEnvelopeCall>,
@@ -332,8 +383,23 @@ fn parse_response(
         });
     };
 
-    let envelope: ToolEnvelope = serde_json::from_str(payload.trim())
-        .map_err(|error| format!("Ungueltiger Browser-Tool-Call-Umschlag: {error}"))?;
+    let payload = payload.trim();
+    let envelope: ToolEnvelope = match serde_json::from_str(payload) {
+        Ok(envelope) => envelope,
+        Err(strict_error) => {
+            let repaired = repair_json_string_escapes(payload);
+            let envelope = serde_json::from_str(&repaired).map_err(|_| {
+                format!(
+                    "Ungueltiger Browser-Tool-Call-Umschlag: {strict_error}; Rohtext: {}",
+                    truncate_chars(&payload.escape_debug().to_string(), 400)
+                )
+            })?;
+            crate::bench_events::eprint_line(&format!(
+                "[inference] Tool-Call-Umschlag repariert (String-Escapes): {strict_error}"
+            ));
+            envelope
+        }
+    };
     if envelope.tool_calls.is_empty() {
         return Err("Browser-Tool-Call-Umschlag enthaelt keine Tool Calls.".to_string());
     }
@@ -448,6 +514,53 @@ mod tests {
         );
         let error = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap_err();
         assert!(error.contains("unbekanntes Tool"));
+    }
+
+    #[test]
+    fn windows_path_with_single_backslashes_is_repaired() {
+        // Real 2026-09-14 (chatgpt via Pi): "invalid escape" durch C:\Users.
+        let raw = concat!(
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"C:\Users\storax\README.md"}}]}"#
+        );
+        let response = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap();
+        assert_eq!(
+            response.tool_calls[0].arguments["path"],
+            r"C:\Users\storax\README.md"
+        );
+    }
+
+    #[test]
+    fn raw_newline_inside_string_is_repaired() {
+        // Real 2026-09-14: "control character found while parsing a string".
+        let raw = concat!(
+            "WEBAGENT_INFERENCE/1\n",
+            "{\"tool_calls\":[{\"id\":\"call_1\",\"name\":\"read_file\",\"arguments\":{\"path\":\"a\nb\"}}]}"
+        );
+        let response = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap();
+        assert_eq!(response.tool_calls[0].arguments["path"], "a\nb");
+    }
+
+    #[test]
+    fn repair_keeps_valid_escapes_and_structure() {
+        let valid = r#"{"a":"C:\\Users","b":"say \"hi\"","c":"\u00e4\n","d":[1,{"e":null}]}"#;
+        assert_eq!(repair_json_string_escapes(valid), valid);
+        assert_eq!(
+            repair_json_string_escapes(r#"{"p":"C:\users\x"}"#),
+            r#"{"p":"C:\\users\\x"}"#
+        );
+    }
+
+    #[test]
+    fn ambiguous_envelope_still_fails_closed_with_raw_excerpt() {
+        let raw = concat!(
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"a"b"}}]}"#
+        );
+        let error = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap_err();
+        assert!(error.contains("Ungueltiger Browser-Tool-Call-Umschlag"));
+        assert!(error.contains("Rohtext:"));
+        assert!(error.contains("read_file"));
     }
 
     #[test]
