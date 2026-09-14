@@ -1585,6 +1585,31 @@
       ],
       "proof_path": "docs/proofs/T-948/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+    },
+    {
+      "id": "T-949",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Dialog-Schliesser fuer mistral koennte Nutzungsbedingungen bestaetigen",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "selectors/mistral.json",
+        "src/browser/operations.rs",
+        "src/browser/js.rs"
+      ],
+      "objective": "dismiss_consent in operations.rs klickt automatisch jeden Treffer aus dialog_dismiss_button. Fuer mistral stehen dort unter anderem div[role='dialog'][data-state='open'] button:has-text('Continue') und button:has-text('OK'). has-text ist laut JS_SEL_PRELUDE in js.rs eine Teilstring-Suche im innerText. Ein englischsprachiger Zustimmungsdialog mit einem Knopf wie Accept and Continue oder OK, I agree wuerde damit von der Bridge ohne Rueckfrage bestaetigt. Am 2026-09-14 zeigte mistral genau einen solchen Dialog, Vibe Nutzungsbedingungen mit Akzeptieren und fortfahren; er blieb nur deshalb unberuehrt, weil die Oberflaeche deutsch war (T-948). Der generische dismiss_modal_buttons trifft ihn nicht: seine Woerter lehnen ab oder vertagen, und Knoepfe ueber 24 Zeichen werden uebersprungen. Unter den Selektordateien aller Brains sind die beiden mistral-Eintraege die einzigen automatisch geklickten Selektoren mit derart offenen Bestaetigungswoertern. Zustimmung zu Bedingungen muss beim Menschen bleiben.",
+      "dod": "Kein automatisch geklickter Selektor trifft Knoepfe, deren Text zustimmt (accept, agree, akzeptieren, zustimmen, einverstanden); dismiss_consent prueft das vor jedem Klick und klickt im Zweifel nicht; ein Test mit Mock-DOM belegt, dass Accept and Continue und OK, I agree in einem offenen Dialog nicht geklickt werden, Got it und Close weiterhin schon.",
+      "handoff": "Liste der entfernten oder verengten Selektoren, Testausgabe, Branch und Commit.",
+      "non_goals": [
+        "Cookie-Ablehnung und Nur-notwendige-Cookies nicht einschraenken; das ist die datensparsame Wahl.",
+        "Keinen Weg bauen, Zustimmungsdialoge automatisch zu bestaetigen."
+      ],
+      "proof_path": "docs/proofs/T-949/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
