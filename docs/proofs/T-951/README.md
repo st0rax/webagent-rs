@@ -27,6 +27,9 @@ nach dem Kandidatennamen "claude".
 
 ## Grenzen
 
-- `auto` erhaelt keine Identitaetszeile, weil erst der Pool das Brain waehlt.
+- `webagent/auto` erhaelt die Identitaetszeile des vom Auto-Router gewaehlten
+  Brains, weil `api_bridge/inference.rs` das Brain vor dem Browserturn
+  aufloest. (Korrigiert 2026-09-14: eine fruehere Fassung behauptete, `auto`
+  bleibe ohne Zeile.)
 - chatgpt, gemini, kimi, mistral, claude und zai sind in diesem Nachweis nicht
   geprueft.

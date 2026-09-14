@@ -212,7 +212,9 @@ fn validate_tools(tools: &[BrowserTool], choice: &BrowserToolChoice) -> Result<(
 /// Nennt dem Modell sein Brain, bevor irgendetwas anderes kommt. Hinter der
 /// Bridge wissen Web-Modelle sonst nicht, unter welchem Namen sie angesprochen
 /// werden — am 2026-09-14 nannte sich deepseek ueber Pi "claude" (T-951).
-/// Bei `auto` waehlt erst der Pool das Brain; eine Behauptung waere dann falsch.
+/// Die API-Bridge loest `webagent/auto` vorher in ein konkretes Brain auf
+/// (`api_bridge::inference`); kommt trotzdem `auto` an, ist das Brain noch
+/// unbekannt und eine Behauptung waere falsch.
 fn prompt_with_identity(brain: &str, prompt: &str) -> String {
     let brain = brain.trim();
     if brain.is_empty() || brain == "auto" {
