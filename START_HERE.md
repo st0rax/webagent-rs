@@ -1,188 +1,146 @@
-# START_HERE — Einstieg für neue Entwickler (auch KI)
+# START_HERE — verbindlicher Einstieg (Mensch und Agent)
 
-## AKTUELLER ARBEITSSTAND — 2026-09-13
+> Diese Datei ist **stabil**. Sie enthält keine Phasen-, Task- oder
+> Versionsstände, weil die veralten und dann falsch anleiten. Der aktuelle
+> Stand steht ausschließlich in `docs/CURRENT_WORK.md` (Prosa) und
+> `docs/TASKBOARD.json` (maschinenlesbar). Widersprechen sich Dokumente,
+> gewinnt die JSON.
 
-Dieser Block ist vor dem historischen Projektkontext zu lesen und ist die
-maßgebliche Einstiegslage für laufende Arbeit:
+---
 
-- **Referenz ist ausschließlich der GitHub-Branch `master`.**
-- Vor jeder Arbeit: `git pull origin master`, `git status` und
-  `git log -1 --oneline` ausführen. Eine lokale Arbeitskopie mit uncommitteten
-  Änderungen ist kein Master-Stand und darf nicht als solcher ausgegeben werden.
-- **Release `v0.11.3` veröffentlicht** (Windows/Linux/Android, `https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3`).
-- **Phase-8 (Brain-Vereinheitlichung T-801–T-808) vollständig done**: gemeinsamer
-  Brain-Vertrag, einheitliches Senden, Antwortstream, Profil-Lease, Probe/Proof,
-  Taskabschluss-Verifikation (E2E belegt), Run-Ledger/Crash-Recovery und
-  Live-Abnahme inkl. Windows-Prozessproben. Die bisherigen Phasen sind
-  abgeschlossen. Phase 10 (API-Bridge-Refactoring): T-907–T-911 sind `done`.
-  Phase 10 (T-907–T-913) ist `done` und verdrahtet. Phase 11: T-915–T-918
-  extrahiert (store/content/inference verdrahtet (T-922/T-923/T-919); noch orphan: catalog/response_protocol → T-931/T-933); T-914 deferred,
-  T-919 done (inference verdrahtet). Modulkarte: `docs/API_BRIDGE_ARCHITECTURE.md`.
-  Phase 12: Verdrahtungs-Nachzug T-922+ (siehe TASKBOARD).
-- Fahrplan: `docs/BRAIN_UNIFICATION_PLAN.md`. Live-Faehigkeiten nur ueber
-  `docs/CAPABILITY_MATRIX.json` (Stand dort nachlesen — keine eingefrorene
-  Zellen-/Verify-Zahl hier). "v1.0-Anwaerter" ist Absicht, kein Abnahmebeleg.
-- Historische Branch-, Build-, Binary- und Run-Angaben aus älteren Übergaben sind kein aktueller Beleg. Aktuelle Runs und Artefakte müssen im jeweiligen Run-Verzeichnis neu nachgewiesen werden.
+## 0. Wo bin ich? — zuerst beantworten
 
-Das Dokument `docs/HANDOVER_TO_CODEX_2026-08-25.md` ist historische Übergabe
-und keine aktuelle Wahrheitsquelle. Für den Einstieg gelten diese Datei und
-`docs/CURRENT_WORK.md`.
+Dieses Repo ist **in viele Arbeitsverzeichnisse gleichzeitig ausgecheckt**.
+Sie sehen alle wie „das Repo" aus, stehen aber auf verschiedenen Branches.
+Wer das nicht prüft, arbeitet im falschen Baum oder baut aus dem falschen
+Stand. Das ist der häufigste Orientierungsfehler hier.
 
-> **Der dauerhafte Einstieg.** Du bist neu im Repo (Mensch oder Agent wie
-> ChatGPT-Codex, Claude Code, Grok, Manus)? Dann starte hier. Diese Datei
-> verweist auf das, was du konkret ansehen und tun sollst.
+```bash
+git rev-parse --show-toplevel     # in welchem Baum stehe ich?
+git branch --show-current         # auf welchem Branch?
+git worktree list                 # welche Bäume gibt es sonst, auf welchem Branch?
+```
+
+Drei Regeln dazu:
+
+1. **`master` ist die einzige Referenz.** Ein anderer Baum ist Arbeitsstand,
+   kein Wahrheitsstand — auch wenn dort etwas funktioniert.
+2. **Funktioniert etwas nur in einem Nebenbaum, ist es nicht im Produkt.**
+   Ein Branch, der nicht in `master` gemergt ist, verschwindet beim nächsten
+   Build aus `master` spurlos. Niemand bemerkt es an der Quelle.
+3. **Ein Binary weiß nicht, woher es kommt.** Wer ein `webagent.exe`
+   vorfindet, kann ihm nicht ansehen, aus welchem Baum und Stand es gebaut
+   wurde. Vor jeder Schlussfolgerung über Laufzeitverhalten prüfen:
+
+```bash
+stat -c '%y %n' target/debug/webagent.exe src/<geänderte Datei>   # Binary älter als Quelle?
+grep -qa "<neuer Funktionsname>" target/debug/webagent.exe        # Symbol wirklich drin?
+```
+
+Kommentare und Zeichenketten aus Kommentaren stehen **nicht** im Binary; als
+Probe taugen nur Namen, die der Compiler ausgibt (Funktionen, Typen). Eine
+Gegenprobe mit einem Symbol, das vorher schon existierte, gehört dazu.
+
+---
 
 ## 1. Was ist dieses Repo?
 
-Ein **lokaler, browserbasierter Agent** (Rust-Port) mit eigener Provider-Bridge:
-Er nutzt echte Chat-Brains (ChatGPT, Claude, Gemini, …) über Browser-Sessions
-und bietet eine lokale, OpenAI-kompatible API. Aktueller Umbau („3 Flächen"):
-lokale **Web-UI**, **OpenAI-kompatibler Endpunkt**, **Managed Tools** — siehe
-`docs/WEB_UI_API_TOOL_RESET.md`.
+Ein lokaler, browserbasierter Agent (Rust): echte Chat-Sitzungen im
+eingebetteten Browser sind das „Brain", die lokale Shell führt aus. Darüber
+liegt eine **lokale, OpenAI-kompatible API** (`webagent api serve`), damit
+beliebige Harnesses die angemeldeten Chats wie eine API ansprechen können.
 
-## 2. Pflicht-Lese (in dieser Reihenfolge)
+---
 
-| Schritt | Datei | Worum es geht |
+## 2. Pflichtlese, in dieser Reihenfolge
+
+| # | Datei | Worum es geht |
 |---|---|---|
-| 1 | `AGENTS.md` | Repo-Regeln, Mapping zur Bot-Architektur |
-| 2 | `GOALS.md` | **Nordstern (G-001): das Projekt soll fertig werden** — für ALLE Agents, Richtung = Mensch |
-| 3 | `docs/WEB_UI_API_TOOL_RESET.md` | **Verbindlicher Umsetzungsplan** (Phasen 0–7) |
-| 4 | `docs/WORK_CONTRACT.md` | **Arbeitsvertrag** — verbindlich für jeden, der eine Aufgabe übernimmt |
-| 4 | `docs/TASKBOARD.md` | Aufgabentafel (Spiegel); Claim-Quelle ist `docs/TASKBOARD.json` |
-| 4a | `docs/BRAIN_UNIFICATION_PLAN.md` | Aktueller gemeinsamer Brain-Vertrag, Reihenfolge, Abnahme und Befundgrenzen |
-| 4b | `docs/API_BRIDGE_ARCHITECTURE.md` | API-Bridge-Modulkarte, Abhängigkeitsrichtung, Claim-Regeln |
-| 5 | `docs/WEB_UI_API_TOOL_RESET_STATUS.md` | Aktueller Umsetzungsstand / Handover |
-| 6 | `docs/CAPABILITY_MATRIX.json` | Beleg-Matrix (130 Zellen, Status je Fähigkeit) |
+| 1 | `AGENTS.md` | Repo-Regeln, verbindlich |
+| 2 | `GOALS.md` | Nordstern G-001, Richtung bestimmt der Mensch |
+| 3 | `docs/WORK_CONTRACT.md` | Arbeitsvertrag für jeden, der eine Aufgabe übernimmt |
+| 4 | `docs/CURRENT_WORK.md` | aktueller Stand und nächste sichere Aktion |
+| 5 | `docs/TASKBOARD.json` | Claim-Quelle der Wahrheit |
+| 6 | `docs/GIT_GLOSSAR.md` | Branch-Namensschema und git-Begriffe |
 
-Außerhalb des Repos (nur lokal relevante Umgebung:
-`C:\AGENTS.md` = Arbeitsdirektive mit den zwölf Direktiven; gilt für alle
-Arbeiten unter `C:\Users`.)
+`docs/TASKBOARD.md` ist ein **Spiegel** zum Durchsehen, keine Quelle.
+Dateien mit `*_PLAN.md`, `*_CONCEPT.md`, `PROGRESS.md`, `STATUS_LIVE.md` und
+datierte Übergaben sind **Log oder Entwurf**, kein Soll-Zustand.
 
-> **Grundmodell (wichtig):** `master` ist der **Stamm / `main`** und bleibt
-> **zuverlässig grün** (baut + testet) — Ziel, nicht Garantie ohne Flakes; Linux-CI config::profiles …reclaimed → **T-929**. Sichtbare Arbeit läuft **nicht direkt** auf
-> dem Stamm, sondern auf **kurzen, klar benannten Arbeits-Zweigen** (Branches):
-> `feature/<T-…>-<kurz>`, `fix/…`, `docs/…`, `chore/…`, `refactor/…`, `test/…`.
-> Regel: nie am Ende einen „Riesen-Branch" pushen — sobald ein Zweig eine
-> **grüne, abgeschlossene Einheit** hat, wird er **häufig & klein** in `master`
-> gemergt. `archive/tui-ui` ist nur ein lesbares Archiv des alten TUI-Stands,
-> kein Entwicklungszweig.
->
-> **Arbeitsweise je Schritt:**
-> 1. Auf `master`: `git pull` (aktuell), eigenen Zweig anlegen:
->    `git switch -c feature/T-102-tool-registry`
-> 2. Kleine Commits mit eigener Identität (`scripts/commit-as-agent.ps1`),
->    Gates vor jedem Commit grün.
-> 3. Sobald eine Einheit grün & in sich abgeschlossen ist: zurück zu `master`
->    (`git switch master`), Zweig in `master` mergen, prüfen, und `git push`.
->
-> **Fachbegriffe:** Wer unsicher ist, welche git-Ausdrücke gelten, findet in
-> `docs/GIT_GLOSSAR.md` die verbindliche Kurzliste (Stamm/Branch/Push/Merge)
-> **inkl. Branch-Namensschema**.
+---
 
-## 3. So übernimmst du eine Aufgabe (Claim zuerst)
+## 3. Eine Aufgabe übernehmen
 
-**Die Aufgabentafel liegt unter `docs/`:**
+Ein Task, ein Branch, ein Scope. Nichts davon ist optional.
 
-| Datei | Zweck |
-|---|---|
-| `docs/TASKBOARD.md` | menschenlesbare Tabelle zum Durchsehen |
-| `docs/TASKBOARD.json` | **Claim-Quelle der Wahrheit** — hier setzt du dich ein |
-
-**So trägst du dich ein — konkret:**
-
-1. Lies `docs/WORK_CONTRACT.md` und akzeptiere ihn.
-2. Wähle eine freie Aufgabe (Status `"free"`) aus `docs/TASKBOARD.md`.
-3. Öffne `docs/TASKBOARD.json` und setze bei deiner Aufgabe (`id`, z. B.
-   `"T-102"`):
-   ```json
-   "status": "claimed",
-   "owner": "claude-code",
-   "branch": "feature/T-102-tool-registry",
-   "claimed_at": "2026-09-02"
-   ```
-4. Lege einen **kurzen, benannten Arbeits-Zweig** an (Namensschema in
-   `docs/GIT_GLOSSAR.md`), arbeite dort mit kleinen Commits, Gates grün
-   (Abschnitt 4). Jeder Agent committet mit **eigener Identität** — ein Enum:
-   ```pwsh
+1. Freien Task (`"status": "free"`) in `docs/TASKBOARD.json` wählen.
+2. Dort eintragen: `status: "claimed"`, `owner`, `branch`, `claimed_at`.
+3. **Genau den Branch anlegen, der im Board steht** — Namensschema in
+   `docs/GIT_GLOSSAR.md`:
+   ```bash
    git switch -c feature/T-102-tool-registry
-   pwsh -File scripts/commit-as-agent.ps1 -Agent claude-code -Message "T-102: tools registry"
    ```
-   (Agent-Schlüssel & Mapping: `docs/GIT_AGENTS.md`.) Sobald eine grüne,
-   abgeschlossene Einheit steht: zurück zu `master`, kleinen Merge, prüfen und
-   `git push origin master`. Danach separat
-   `git push origin master`.
-5. Beim Abschluss: Belegpfad (Matrix-Zelle) eintragen, Statusdatei
-   `docs/WEB_UI_API_TOOL_RESET_STATUS.md` aktualisieren, in der JSON Zelle
-   auf `"done"` setzen und `done_at` ergänzen.
+4. Nur im `scope` des Tasks arbeiten. Das Board führt pro Task ein
+   `scope`-Feld; ein Commit, der darüber hinausgeht, gehört zu einem anderen
+   Task und macht beide unprüfbar.
+5. Kleine Commits mit eigener Identität
+   (`scripts/commit-as-agent.ps1`, Schlüssel in `docs/GIT_AGENTS.md`).
 
-**Aktueller Stand:** Phase-8 und Phase-10 sind abgeschlossen.
-T-914 bleibt DEFERRED; **T-919 done** (inference verdrahtet). Extrakte catalog/response_protocol sind noch unwired (store/content/inference verdrahtet);
-unwired ≠ done, bis T-922/T-923/T-931/T-933 mod setzen. T-921 nicht claimen, solange
-diese Vorgänger offen sind. Phase-12 in docs/TASKBOARD.json. Vor der Übernahme immer
-die JSON-Quelle lesen. Keine Fake-Live-Claims — Live nur über Capability-Matrix / proofs.
+**Der Branch im Board und der Branch, auf dem du committest, müssen derselbe
+sein.** Weichen sie ab, ist der Claim wertlos: niemand findet die Arbeit.
 
-**Regel:** Ein Entwickler, eine Aufgabe. Niemand arbeitet ohne Claim.
-Jeder Agent darf jeden freien Task übernehmen; es gibt keine `suitable`- oder
-Kompetenzbeschränkung. Maßgeblich sind ausschließlich Task-Scope, Claim,
-Abhängigkeiten und die definierten Gates.
+---
 
+## 4. Fertig heißt gemergt
 
-### Warum Bridge-Brains oft nicht claimen können
+`done` ist **kein** Selbstbericht. Ein Task ist fertig, wenn sein Branch in
+`master` steht — und das ist prüfbar:
 
-Ein **vollständiger Claim** ist mehr als eine Board-Zeile. Er braucht:
-
-1. Eintrag in `docs/TASKBOARD.json`: `status`/`owner`/`branch`/`claimed_at`
-2. Den genannten **Branch anlegen und pushen** (siehe `docs/GIT_GLOSSAR.md`)
-
-**Crew / lokale Agents** (Laptop): `git` und `gh` laufen mit dem
-System-Credential-Store als `st0rax`. Push und PR funktionieren deshalb.
-
-**Brains hinter der API-Bridge** (ChatGPT/Claude/… über Browser+GitHub-App)
-nutzen oft eine **GitHub-Integration/App**, nicht den lokalen `gh`-Login.
-Typische Fehlermeldung: `Resource not accessible by integration` — die App
-darf Refs/Branches nicht schreiben (häufig read-only). Die Bridge reicht den
-Laptop-`gh`-Login **nicht** in diese Integration durch.
-
-**Folge:** Ein Board-only-Claim ohne pushbaren Branch ist ungültig. Entweder
-lokal wie die Crew pushen, oder die Integration braucht echte Schreibrechte —
-sonst 403. Deferred Tasks nicht claimen.
-
-## 4. Verifikationskommandos
-
-```pwsh
-# Default-Gate (webview-only, TUI hinter Feature)
-cargo test --lib
-
-# TUI baut weiterhin hinter seinem Feature
-cargo check --features tui
-
-# Ohne Defaultfeatures (CI-Zweig)
-cargo check --no-default-features
-
-# (optional) Binärgewicht im Release-Artefakt für das <10-MB-Budget
+```bash
+git branch --merged master | grep <dein-branch>
 ```
 
-Kein eingefrorener Pass-Count in dieser Datei. Nach jeder Änderung den
-aktuellen cargo test --lib-Stand im Übergabebeleg / proof neu erfassen —
-Zahlen hier wären schnell Lüge.
+Taucht er dort nicht auf, ist der Task höchstens `claimed`, egal wie grün die
+Gates lokal waren. Ein Branch, der funktionierende Fähigkeiten enthält und
+monatelang ungemergt liegt, ist eine Falle: Jeder Build aus `master` entfernt
+diese Fähigkeiten wieder, ohne dass jemand eine Änderung sieht.
 
-## 5. Verbleibende Arbeit
+Erst nach dem Merge: `done` und `done_at` im Board setzen, Belegpfad
+eintragen.
 
-- Phase-8 abgeschlossen (T-801–T-808 done), Release v0.11.3 veröffentlicht.
-- Offene Matrix-Grenzen sind dokumentierte Befunde (`failed`/`unreachable`/
-  `removed`/`not_run` laut `docs/CAPABILITY_MATRIX.json`), kein offener Task.
-- Phase-10 done. Phase-11/12: T-914 deferred; T-919 done; Orphans verdrahten T-931/T-933 (store/content/inference done).
-  Modulkarte docs/API_BRIDGE_ARCHITECTURE.md. Linux-CI Flake config::profiles
-  …reclaimed → **T-929**.
-- Neuer Bedarf wird als freie Aufgabe im TASKBOARD eingetragen und nach dem
-  Claim-Verfahren umgesetzt.
-- Docs dürfen keine unbelegten Live-Passed-Claims setzen.
+---
 
-## 6. Grenzen (nicht überschreiten)
+## 5. Gates
 
-- `C:\Users\storax\.zcode\v2\config.json` **nicht anfassen**.
-- Keine Secrets/Tokens auslesen, kopieren oder committen.
-- Keine Force-Pushes / History-Rewrites; Rücknahmen als neue Commits.
-- Live-Claude-Web-Tests nur im Rahmen zulässiger Nutzung (Anthropic Consumer
-  Terms) und nur nach Freigabe.
-- Keine unbelegten `100 %`-Aussagen; Belege gehören in die Capability-Matrix.
+```bash
+cargo test --lib                    # Default-Gate
+cargo check --features tui          # TUI hinter Feature
+cargo check --no-default-features   # CI-Zweig, ohne WebView
+cargo clippy --all-targets -- -D warnings
+```
+
+Keine eingefrorenen Testzahlen in dieser Datei — sie wären binnen Tagen
+falsch. Aktuelle Zahlen gehören in den jeweiligen Beleg.
+
+---
+
+## 6. Belege statt Behauptungen
+
+Live-Fähigkeiten gelten nur über `docs/CAPABILITY_MATRIX.json` und
+`data/capability/proofs.jsonl`. Ein grüner Exit-Code, eine Aussage eines
+Brains oder eine ältere Statusdatei sind **keine** Belege. Ein Beleg altert:
+Er verfällt und wird durch eine geänderte Selektordatei ungültig.
+
+Keine unbelegten Prozentangaben, keine „funktioniert"-Aussagen ohne Messung
+mit Datum.
+
+---
+
+## 7. Grenzen
+
+- Keine Force-Pushes, keine History-Rewrites. Rücknahmen sind neue Commits.
+- Keine Secrets oder Tokens lesen, kopieren oder committen.
+- `data/` und `profiles/` enthalten Cookies und Sitzungen — niemals committen.
+- `C:\Users\storax\.zcode\v2\config.json` nicht anfassen.
+- Live-Tests gegen Anbieter nur im Rahmen deren Nutzungsbedingungen und nur
+  nach ausdrücklicher Freigabe.

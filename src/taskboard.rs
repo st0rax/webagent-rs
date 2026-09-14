@@ -512,4 +512,77 @@ mod tests {
 
         fs::remove_dir_all(&d).ok();
     }
+
+    /// Invarianten des **echten** Boards, damit Claims nicht auseinanderlaufen.
+    ///
+    /// Harte Regeln gelten fuer jeden Eintrag. Vollstaendigkeits- und
+    /// Schemaregeln greifen erst ab `CUTOFF`: Der Altbestand enthaelt Claims
+    /// ohne `owner`/`claimed_at` und Branchnamen aus der Zeit vor dem Schema
+    /// (`feat/browser-inference-provider`, `master`). Die nachtraeglich zu
+    /// erfinden waere geraten, nicht belegt -- also wird Altlast eingefroren
+    /// und nur neue Drift verhindert.
+    #[test]
+    fn taskboard_invarianten_halten() {
+        const CUTOFF: &str = "2026-09-14";
+        const PREFIXES: &[&str] = &["feature", "fix", "docs", "chore", "refactor", "test"];
+
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/TASKBOARD.json");
+        let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let tasks = value["tasks"].as_array().expect("tasks muss eine Liste sein");
+
+        let mut ids = std::collections::BTreeSet::new();
+        let mut claimed_branches = std::collections::BTreeMap::new();
+
+        for task in tasks {
+            let id = task["id"].as_str().unwrap_or_default().to_string();
+            assert!(!id.is_empty(), "Task ohne id");
+            assert!(ids.insert(id.clone()), "doppelte id: {id}");
+
+            let status = task["status"].as_str().unwrap_or_default();
+            let field = |key: &str| {
+                task[key]
+                    .as_str()
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+            };
+
+            match status {
+                "free" => assert!(
+                    field("owner").is_none() && field("branch").is_none(),
+                    "{id}: 'free' darf keine Claim-Reste tragen"
+                ),
+                "deferred" => {}
+                "claimed" | "done" => {
+                    if status == "done" {
+                        assert!(field("done_at").is_some(), "{id}: 'done' ohne done_at");
+                    }
+                    if status == "claimed" {
+                        if let Some(branch) = field("branch") {
+                            if let Some(other) = claimed_branches.insert(branch.clone(), id.clone())
+                            {
+                                panic!("{id} und {other} beanspruchen denselben Branch {branch}");
+                            }
+                        }
+                    }
+                    if field("claimed_at").is_some_and(|date| date.as_str() >= CUTOFF) {
+                        assert!(field("owner").is_some(), "{id}: Claim ab {CUTOFF} ohne owner");
+                        let branch = field("branch")
+                            .unwrap_or_else(|| panic!("{id}: Claim ab {CUTOFF} ohne branch"));
+                        let (prefix, rest) = branch
+                            .split_once('/')
+                            .unwrap_or_else(|| panic!("{id}: Branch '{branch}' ohne Praefix"));
+                        assert!(
+                            PREFIXES.contains(&prefix),
+                            "{id}: unbekannter Branch-Praefix in '{branch}', erlaubt: {PREFIXES:?}"
+                        );
+                        assert!(
+                            rest.starts_with("T-"),
+                            "{id}: Branch '{branch}' nennt keine Task-ID"
+                        );
+                    }
+                }
+                other => panic!("{id}: unbekannter Status '{other}'"),
+            }
+        }
+    }
 }
