@@ -26,7 +26,7 @@ T-922 / T-923 / T-931 / T-933.
 | `content.rs` | T-916/T-923 | **ja** (T-923) | Prompt/Tool-Normalizer |
 | `inference.rs` | T-919 | **ja** (T-919) | Browser-Inference-Lauf |
 | `catalog.rs` | T-917 | **ja** (T-931) | Katalog, Auto-Router |
-| `response_protocol.rs` | T-918 | **nein** → T-933 | JSON/SSE-Antwortkörper |
+| `response_protocol.rs` | T-918 | **ja** (T-933) | JSON/SSE-Antwortkörper |
 
 Nicht als Kindmodul extrahiert (User-Skip, bleiben in der Root-Datei):
 
