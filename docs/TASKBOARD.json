@@ -1728,7 +1728,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Umschlag: unescapte Anfuehrungszeichen in Strings strukturell reparieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "claude-code",
       "branch": "fix/T-954-unescaped-quotes",
       "claimed_at": "2026-09-14",
@@ -1747,7 +1747,8 @@
         "Keine Aenderung an Fehlertyp, brain_score oder Korrekturversuch; das ist T-953."
       ],
       "proof_path": "docs/proofs/T-954/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-09-14"
     }
   ]
 }
