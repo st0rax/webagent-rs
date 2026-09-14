@@ -1643,13 +1643,14 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Bridge nennt dem Brain weder seine Identitaet noch spricht sie es im Verlauf an",
-      "status": "claimed",
+      "status": "done",
       "owner": "claude-code",
       "branch": "fix/T-951-identity-framing",
       "claimed_at": "2026-09-14",
       "depends_on": [],
       "scope": [
         "docs/API_BRIDGE.md",
+        "docs/WEB_UI_API_TOOL_RESET.md",
         "src/api_bridge/content.rs",
         "src/api_bridge/tests.rs",
         "src/browser_inference.rs"
@@ -1662,7 +1663,8 @@
         "Keine Aenderung am Werkzeug-Umschlag; nur die Rahmung des Verlaufs."
       ],
       "proof_path": "docs/proofs/T-951/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-09-14"
     },
     {
       "id": "T-952",
