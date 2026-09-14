@@ -1856,4 +1856,40 @@ mod tests {
             .expect("qwen should soft-accept vanished input after native Ok");
         assert!(state.set_file_input_files_calls() >= 1);
     }
+
+    /// Grosse Prompts duerfen den WebView-Loop nicht in einem Stueck
+    /// blockieren (8s-Page-Befehl-Timeout bei lebendiger Seite, blinkender
+    /// Cursor): fill_composer stueckelt insert_text in Bloecke, kleine Texte
+    /// bleiben ein einziger Aufruf.
+    #[test]
+    fn fill_composer_chunks_large_prompts() {
+        let state = MockPageState::new().with_default_eval(json!({"x": 5.0, "y": 5.0}));
+        let backend = WebBrainBackend::from_config("deepseek").expect("deepseek");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state.clone())));
+        let composer_js = backend.sel_js("composer", &[]);
+        let big = "x".repeat(5000);
+        backend.fill_composer(&composer_js, &big);
+        let payloads = state.insert_text_payloads();
+        assert_eq!(
+            payloads.len(),
+            3,
+            "5000 Zeichen muessen in 3 Bloecken a 2000 landen"
+        );
+        assert_eq!(
+            payloads.concat(),
+            big,
+            "Bloecke muessen Reihenfolge und Inhalt erhalten"
+        );
+
+        let state2 = MockPageState::new().with_default_eval(json!({"x": 5.0, "y": 5.0}));
+        let backend2 = WebBrainBackend::from_config("deepseek").expect("deepseek");
+        backend2.attach_page_driver(Box::new(MockPageDriver::new(state2.clone())));
+        let composer_js2 = backend2.sel_js("composer", &[]);
+        backend2.fill_composer(&composer_js2, "klein");
+        assert_eq!(
+            state2.insert_text_calls(),
+            1,
+            "kleine Texte bleiben ein einziger Aufruf"
+        );
+    }
 }

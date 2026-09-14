@@ -6,7 +6,10 @@
 //! erreicht er die privaten Interna des Backends ohne jede
 //! Sichtbarkeitsaenderung.
 
-use super::{block_phrase_in_text, classify_completion, Completion, SessionState, WebBrainBackend};
+use super::{
+    block_phrase_in_text, classify_completion, stable_norm, Completion, SessionState,
+    WebBrainBackend,
+};
 use crate::brain::{BrainBackend, BrainResponse};
 // Beide nur mit `webview`: ohne das Feature gibt es weder das Modul noch einen
 // Aufrufer, und die CI baut mit `--no-default-features`.
@@ -301,6 +304,7 @@ impl BrainBackend for WebBrainBackend {
         // Verschwinden des Stop-Buttons (bzw. ein vollständiges Protokoll-Dokument);
         // reine Textstabilität ist nur der Fallback für UIs ohne Stop-Button.
         let mut last_text = String::new();
+        let mut last_norm = String::new();
         let mut stable_since = Instant::now();
         let mut stop_seen_ever = false;
         let mut stop_inventory_done = false;
@@ -355,7 +359,13 @@ impl BrainBackend for WebBrainBackend {
                 if !current.trim().is_empty() {
                     on_update(&current);
                 }
-                stable_since = Instant::now();
+                // Nur inhaltliche Aenderung startet die Stabilitaets-Uhr neu;
+                // Whitespace-Churn ist kein neues Token (siehe stable_norm).
+                let norm = stable_norm(&current);
+                if norm != last_norm {
+                    last_norm = norm;
+                    stable_since = Instant::now();
+                }
             }
             let stable_secs = stable_since.elapsed().as_secs_f64();
 

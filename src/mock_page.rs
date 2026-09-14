@@ -36,6 +36,8 @@ struct MockStateInner {
     file_uploads: Vec<Vec<String>>,
     /// Whether `set_file_input_files` succeeds (`true`) or returns NotAvailable.
     file_upload_ok: bool,
+    /// Recorded `insert_text` payloads, one entry per call (chunked-fill tests).
+    inserted_texts: Vec<String>,
 }
 
 impl MockPageState {
@@ -126,6 +128,22 @@ impl MockPageState {
             .map(|g| g.pointer_moves.clone())
             .unwrap_or_default()
     }
+
+    /// How often `insert_text` was invoked on drivers sharing this state.
+    pub fn insert_text_calls(&self) -> usize {
+        self.inner
+            .lock()
+            .map(|g| g.inserted_texts.len())
+            .unwrap_or(0)
+    }
+
+    /// Payload of each `insert_text` call, in order (chunked-fill tests).
+    pub fn insert_text_payloads(&self) -> Vec<String> {
+        self.inner
+            .lock()
+            .map(|g| g.inserted_texts.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// Mock-Implementierung von [`PageDriver`] — Antworten per `MockPageState::on_eval`.
@@ -191,7 +209,10 @@ impl PageDriver for MockPageDriver {
         Ok(())
     }
 
-    fn insert_text(&mut self, _text: &str) -> Result<()> {
+    fn insert_text(&mut self, text: &str) -> Result<()> {
+        if let Ok(mut guard) = self.state.inner.lock() {
+            guard.inserted_texts.push(text.to_string());
+        }
         Ok(())
     }
 

@@ -31,7 +31,7 @@ pub(crate) use blocking::{
     banner_is_prompt_echo, BLOCK_BANNER_MAX_CHARS, PROSE_STABILITY_SECONDS, STABILITY_SECONDS,
     TRUNCATED_STABILITY_SECONDS,
 };
-pub(crate) use blocking::{block_phrase_in_text, classify_completion, Completion};
+pub(crate) use blocking::{block_phrase_in_text, classify_completion, stable_norm, Completion};
 pub use send::is_send_disabled_error;
 #[cfg(test)]
 pub(crate) use send::submit_verify_rounds;

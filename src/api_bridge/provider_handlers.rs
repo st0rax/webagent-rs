@@ -67,6 +67,12 @@ pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> Htt
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
+    eprintln!(
+        "[api] chat model={} stream={} tools={}",
+        payload.model,
+        payload.stream.unwrap_or(false),
+        tools.len()
+    );
     if let Err(error) = require_clean_text_tools(&tools, &tool_choice) {
         return api_error(ApiFlavor::OpenAi, 400, &error);
     }
