@@ -1505,6 +1505,32 @@
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-945/",
       "handoff": "Statuscodes und Header vorher/nachher, Branch und Commit."
+    },
+    {
+      "id": "T-946",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Abgebrochene Anfrage laeuft im Browser weiter und haelt die Brain-Sperre",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/inference.rs",
+        "src/api_bridge/transport.rs",
+        "src/browser_inference.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Am 2026-09-14 wurde ein Pi-Aufrufer fuer mistral um 10:35:25 beendet, waehrend sein Browser-Turn lief. Die Bridge fuehrte den Turn trotzdem bis 10:44:08 weiter, insgesamt 867.530 ms, fuer eine Antwort, die niemand mehr abholte. run_task_blocking in api_bridge/inference.rs nimmt vor dem Browser-Turn browser_run_lock mit dem Brain als Schluessel, also eine Sperre je Brain. Eine nachfolgende Anfrage an dasselbe Brain wartet damit, bis der verwaiste Turn endet; eine Direktanfrage an mistral mit 900 s Client-Zeitlimit verbrachte so den groessten Teil ihrer Zeit mit Warten. Anfragen an andere Brains liefen dagegen parallel weiter: gemini von 10:35:28 bis 10:35:54 und kimi von 10:36:02 bis 10:36:25, beide waehrend des mistral-Turns. Das ist korrektes Verhalten der Sperre, widerspricht aber API_BRIDGE.md, das beim Limit von acht Verbindungen festhaelt, die Bridge lasse keine parallelen Browserruns zu; tatsaechlich wird nur je Brain serialisiert. Die Benchmark-Spec verlangt, dass nach einem Timeout keine fruehere Konversation im Providerkontext verbleibt; ein weiterlaufender Turn nach Abbruch gefaehrdet genau das.",
+      "non_goals": [
+        "Keine globale Serialisierung einfuehren; Parallelitaet ueber verschiedene Brains ist nicht der Fehler.",
+        "Einen bereits abgesendeten Prompt nicht stillschweigend ein zweites Mal senden."
+      ],
+      "dod": "Bricht der Aufrufer die Verbindung ab, wird der Browser-Turn beendet oder als verwaist markiert und die Brain-Sperre freigegeben; ein Test belegt, dass eine Folgeanfrage an dasselbe Brain nicht auf einen verwaisten Turn wartet; API_BRIDGE.md beschreibt die Serialisierung je Brain korrekt.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-946/",
+      "handoff": "Zeitverlauf vorher/nachher mit abgebrochenem Aufrufer, Branch und Commit."
     }
   ]
 }
