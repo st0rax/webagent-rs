@@ -311,6 +311,59 @@ struct ToolEnvelopeCall {
     arguments: Value,
 }
 
+fn repair_tool_envelope_json(payload: &str) -> String {
+    let bs = char::from(92);
+    let quote = char::from(34);
+    let mut out = String::with_capacity(payload.len() + 16);
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut chars = payload.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if !in_string {
+            if ch == quote {
+                in_string = true;
+            }
+            out.push(ch);
+            continue;
+        }
+        if escaped {
+            out.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == bs {
+            let nxt = chars.peek().copied();
+            let valid = matches!(nxt, Some(c) if c == quote || c == bs || c == char::from(47) || c == char::from(98) || c == char::from(102) || c == char::from(110) || c == char::from(114) || c == char::from(116) || c == char::from(117));
+            if valid {
+                out.push(bs);
+                escaped = true;
+            } else {
+                out.push(bs);
+                out.push(bs);
+            }
+            continue;
+        }
+        if ch == quote {
+            in_string = false;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn parse_envelope_lenient(payload: &str) -> Result<ToolEnvelope, serde_json::Error> {
+    match serde_json::from_str(payload) {
+        Ok(value) => Ok(value),
+        Err(first_error) => {
+            let repaired = repair_tool_envelope_json(payload);
+            match serde_json::from_str(&repaired) {
+                Ok(value) => Ok(value),
+                Err(_) => Err(first_error),
+            }
+        }
+    }
+}
+
 fn parse_response(
     raw: &str,
     tools: &[BrowserTool],
@@ -332,7 +385,7 @@ fn parse_response(
         });
     };
 
-    let envelope: ToolEnvelope = serde_json::from_str(payload.trim())
+    let envelope: ToolEnvelope = parse_envelope_lenient(payload.trim())
         .map_err(|error| format!("Ungueltiger Browser-Tool-Call-Umschlag: {error}"))?;
     if envelope.tool_calls.is_empty() {
         return Err("Browser-Tool-Call-Umschlag enthaelt keine Tool Calls.".to_string());
@@ -495,5 +548,21 @@ mod tests {
         assert!(serialized.contains("keep_this_tool"));
         assert!(serialized.contains("\"path\""));
         assert!(!serialized.contains(&"x".repeat(2048)));
+    }
+
+    #[test]
+    fn windows_path_in_arguments_is_repaired() {
+        let tools = [read_tool()];
+        let raw = "WEBAGENT_INFERENCE/1\n{\"tool_calls\":[{\"id\":\"c1\",\"name\":\"read_file\",\"arguments\":{\"path\":\"C:\\\\Users\\\\storax\\\\file.txt\"}}]}\n";
+        let response = parse_response(raw, &tools, &BrowserToolChoice::Auto).unwrap();
+        assert_eq!(response.tool_calls.len(), 1);
+    }
+
+    #[test]
+    fn genuinely_broken_envelope_still_fails_closed() {
+        let tools = [read_tool()];
+        let raw = "WEBAGENT_INFERENCE/1\n".to_string() + "{not valid json at all}";
+        let error = parse_response(&raw, &tools, &BrowserToolChoice::Auto).unwrap_err();
+        assert!(error.contains("Ungueltiger Browser-Tool-Call-Umschlag"));
     }
 }

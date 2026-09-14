@@ -370,4 +370,127 @@ mod tests {
             "{out}"
         );
     }
+
+    // --- T-930: Web-UI Smoke Tests gegen Loopback-API -----------------------
+
+    /// Startet die Web-UI mit API-Rolle für einen One-Shot-Request.
+    fn one_shot_with_api(request: &[u8]) -> String {
+        let listener = bind_listener("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let config = UiConfig {
+            bind: addr,
+            open_browser: false,
+            api_bridge: Some(test_bridge_config()),
+        };
+        thread::spawn(move || {
+            if let Ok(mut stream) = listener.accept().map(|(s, _)| s) {
+                let state = UiState::default();
+                let limiter = Arc::new(crate::api_bridge::ConnectionLimiter::default());
+                let _ = handle_connection(&mut stream, &state, &config, &limiter);
+            }
+        });
+        thread::sleep(Duration::from_millis(20));
+        let mut client = StdTcp::connect_timeout(&addr, Duration::from_secs(2)).unwrap();
+        client.write_all(request).unwrap();
+        let mut out = String::new();
+        client.read_to_string(&mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn smoke_webui_assets_served() {
+        let out = one_shot_with_api(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(
+            out.contains("HTTP/1.1 200"),
+            "index.html should return 200: {}",
+            out
+        );
+        assert!(
+            out.contains("WebAgent"),
+            "UI should contain WebAgent branding: {}",
+            out
+        );
+        assert!(
+            out.contains("/api/health/brains"),
+            "UI should reference API endpoints: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn smoke_api_health_brains() {
+        let out = one_shot_with_api(b"GET /api/health/brains HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(
+            out.contains("HTTP/1.1 200"),
+            "/api/health/brains should return 200: {}",
+            out
+        );
+        assert!(
+            out.contains("\"brains\""),
+            "Response should contain brains list: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn smoke_api_sessions_list() {
+        let out = one_shot_with_api(b"GET /api/sessions HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(
+            out.contains("HTTP/1.1 200"),
+            "/api/sessions should return 200: {}",
+            out
+        );
+        assert!(
+            out.contains("\"sessions\"") || out.contains("[]"),
+            "Response should contain sessions list: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn smoke_api_health_ui_role() {
+        let out = one_shot_with_api(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(
+            out.contains("HTTP/1.1 200"),
+            "/health with API role should return 200: {}",
+            out
+        );
+        assert!(
+            out.contains("\"service\":\"webagent-provider-bridge\""),
+            "Should return bridge health: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn smoke_v1_models_with_token() {
+        let out = one_shot_with_api(
+            b"GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer test-secret\r\n\r\n",
+        );
+        assert!(
+            out.contains("HTTP/1.1 200"),
+            "/v1/models with token should return 200: {}",
+            out
+        );
+        assert!(
+            out.contains("\"object\":\"list\""),
+            "Should return model list: {}",
+            out
+        );
+        assert!(
+            out.contains("\"auto\""),
+            "Should include auto model: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn smoke_v1_models_without_token_rejected() {
+        let out = one_shot_with_api(b"GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(
+            out.contains("HTTP/1.1 401"),
+            "/v1/models without token should return 401: {}",
+            out
+        );
+    }
 }

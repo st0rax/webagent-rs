@@ -1419,3 +1419,66 @@ fn t404_sdk_blackbox_official_sdks_and_two_clients() {
         eprintln!("t404: skip fetch_client.mjs (node missing)");
     }
 }
+
+// --- CI Gate: Orphan Module Detection (T-924) ----------------------------------
+
+#[test]
+fn orphan_module_gate() {
+    use std::fs;
+    use std::path::Path;
+
+    // CARGO_MANIFEST_DIR is set at compile time, pointing to the crate root
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let src_dir = Path::new(manifest_dir).join("src");
+    let bridge_dir = src_dir.join("api_bridge");
+
+    // The root api_bridge.rs is in src/, not src/api_bridge/
+    let root_file = src_dir.join("api_bridge.rs");
+    let root_content =
+        fs::read_to_string(&root_file).unwrap_or_else(|e| panic!("Cannot read api_bridge.rs: {e}"));
+
+    // Extract mod declarations from api_bridge.rs
+    let mut declared_modules = std::collections::HashSet::new();
+    for line in root_content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("mod ") {
+            let mod_name = rest
+                .strip_suffix(';')
+                .unwrap_or(rest)
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim();
+            if !mod_name.is_empty() && mod_name != "tests" {
+                declared_modules.insert(mod_name.to_string());
+            }
+        }
+    }
+
+    // Scan for .rs files in src/api_bridge/
+    let mut orphan_modules = Vec::new();
+    for entry in fs::read_dir(&bridge_dir)
+        .unwrap_or_else(|e| panic!("Cannot read api_bridge dir: {e}"))
+        .flatten()
+    {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            // Skip test files and the root file itself
+            if file_name == "tests" || file_name == "api_bridge" {
+                continue;
+            }
+            // Check if this module is declared
+            if !declared_modules.contains(file_name) {
+                orphan_modules.push(file_name.to_string());
+            }
+        }
+    }
+
+    if !orphan_modules.is_empty() {
+        panic!(
+            "Orphan modules detected in src/api_bridge/: {}. Each .rs file (except tests.rs) must have a corresponding `mod <name>;` declaration in api_bridge.rs",
+            orphan_modules.join(", ")
+        );
+    }
+}
