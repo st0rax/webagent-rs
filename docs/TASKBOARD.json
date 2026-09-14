@@ -1661,6 +1661,34 @@
       ],
       "proof_path": "docs/proofs/T-951/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+    },
+    {
+      "id": "T-952",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Ungueltiger Werkzeug-Umschlag endet als 502 ohne Rohtext und ohne Korrekturversuch",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-936",
+        "T-951"
+      ],
+      "scope": [
+        "src/browser_inference.rs",
+        "src/api_bridge/provider_handlers.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Am 2026-09-14 um 12:45 lieferte chatgpt in einer Pi-Session ueber die Bridge erstmals einen Werkzeugaufruf mit WEBAGENT_INFERENCE/1. parse_response in browser_inference.rs verlangt, dass der getrimmte Antworttext mit dem Umschlag beginnt, und parst den gesamten Rest mit serde_json::from_str. Das scheiterte mit expected , or } at line 1 column 118. Der Client erhielt HTTP 502 mit type invalid_request_error, obwohl die Anfrage des Clients gueltig war und der Fehler in der Modellausgabe lag; brain_score meldete denselben Turn als Erfolg. Weder Fehlermeldung noch Protokoll enthalten den Rohtext, die Ursache ist deshalb nicht feststellbar: unescapte Anfuehrungszeichen oder Pfade in den Argumenten sind ebenso moeglich wie Zeichen, die das Auslesen per innerText hinzufuegt oder veraendert (T-942), etwa Quellenhinweise der Oberflaeche, die chatgpt in derselben Session bereits an Textantworten anhaengte (T-950). Die Session blieb danach stehen; eine Aufforderung an das Modell, den Aufruf korrigiert zu wiederholen, gibt es nicht.",
+      "dod": "Bei ungueltigem Umschlag protokolliert die Bridge den Rohtext begrenzt und ohne Geheimnisse; die Fehlerantwort nennt einen Fehlertyp, der die Modellausgabe statt der Client-Anfrage als Ursache ausweist; brain_score zaehlt den Turn nicht als Erfolg; die Bridge fordert das Modell hoechstens einmal in derselben Konversation zur korrigierten Wiederholung auf; Tests decken unescapte Anfuehrungszeichen, Windows-Pfade und angehaengten Oberflaechentext ab.",
+      "handoff": "Beispiel-Rohtexte vorher/nachher, Testausgabe, Branch und Commit.",
+      "non_goals": [
+        "Kein toleranter Parser, der unklare Aufrufe erraet; ein nicht eindeutiger Aufruf bleibt fail-closed.",
+        "Keine erneute Ausfuehrung eines Aufrufs ohne erneute Modellantwort."
+      ],
+      "proof_path": "docs/proofs/T-952/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
