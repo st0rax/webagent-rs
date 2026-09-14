@@ -1194,9 +1194,9 @@
       "phase": "12",
       "type": "bugfix",
       "title": "Pi-Bridge: Systemkontext und Client-Tool-Rundlauf reparieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "spock",
-      "branch": "fix/T-934-pi-bridge-roundtrip",
+      "branch": "fix/T-934-port-master",
       "claimed_at": "2026-09-14",
       "depends_on": [],
       "scope": [
@@ -1215,7 +1215,8 @@
       "dod": "Gezielte Regressionstests und Build gruen; Live-Pi-Belege fuer Begruessung mit Tools, echten Dateiabruf und Fortsetzung nach Tool-Fehler; laufende EXE-Provenienz dokumentiert.",
       "verification": "cargo test --features webview --lib; cargo build --features webview; Live-Pi-Roundtrip",
       "proof_path": "docs/proofs/T-934/",
-      "handoff": "Patch, Build-Provenienz und echte Pi-Testresultate; kein Abschluss allein durch /v1/models."
+      "handoff": "Patch, Build-Provenienz und echte Pi-Testresultate; kein Abschluss allein durch /v1/models.",
+      "done_at": "2026-09-14"
     },
     {
       "id": "T-935",
@@ -1667,10 +1668,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Ungueltiger Werkzeug-Umschlag endet als 502 ohne Rohtext und ohne Korrekturversuch",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "claude-code",
+      "branch": "fix/T-952-envelope-escaping",
+      "claimed_at": "2026-09-14",
       "depends_on": [
         "T-936",
         "T-951"
