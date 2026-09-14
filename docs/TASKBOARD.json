@@ -1426,6 +1426,33 @@
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-942/",
       "handoff": "Messwerte vorher/nachher je Anbieter, Branch und Commit."
+    },
+    {
+      "id": "T-943",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Gekuerzte Eingabe wird als Erfolg gemeldet",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-939"
+      ],
+      "scope": [
+        "src/browser/composer.rs",
+        "src/browser/send.rs",
+        "src/brain_limits.rs"
+      ],
+      "objective": "Am 2026-09-14 meldete die Bridge fuer gemini bei einer Eingabe von 52.287 Zeichen zweimal Erfolg (26 bis 28 s). gemini hatte die Eingabe aber nur gekuerzt erhalten: seine Antwort war eine Rueckfrage mit dem Hinweis, die Nachricht sei beim Tabellenformat der Aktionen abgeschnitten. Weil die Anweisung am Ende stand, sah das Modell den Auftrag nie. Die Bridge kuerzt den Prompt selbst nicht; truncate_chars in browser_inference.rs greift nur bei Tool-Beschreibungen, und eine brain_limits.json mit gemessenen Grenzen existiert nicht. Die Kuerzung passiert beim Befuellen des Composers oder im Eingabelimit des Anbieters. Unbemerkt bleibt sie, weil composer_contains nur die ersten acht Zeichen des Prompts sucht; ein abgeschnittener Anfang besteht die Pruefung. Der OpenAI-kompatible Endpunkt liefert damit HTTP 200 fuer eine Antwort auf einen unvollstaendigen Auftrag. Schaetzung ohne Messung: die Aktionstabelle beginnt in SPEC.md bei Zeichen 14.619, davor liegen rund 17.300 Zeichen Systemprompt, der Schnitt liegt also grob bei 32.000 bis 33.500 Zeichen, nahe 32.768. Vor der Behebung messen: Eingaben knapp unter und ueber dieser Grenze mit einer Markierung am Ende, je Anbieter.",
+      "non_goals": [
+        "Die Eingabe nicht stillschweigend selbst kuerzen, um unter eine Grenze zu passen.",
+        "Keine geschaetzten Grenzen fest einbauen; nur gemessene Werte verwenden."
+      ],
+      "dod": "Nach dem Befuellen wird geprueft, dass der vollstaendige Text im Composer steht; eine unvollstaendige Befuellung fuehrt zu einem benannten Fehler statt zu HTTP 200; die gemessene Eingabegrenze je Anbieter liegt im proof_path.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-943/",
+      "handoff": "Grenzmessung je Anbieter, Branch und Commit."
     }
   ]
 }
