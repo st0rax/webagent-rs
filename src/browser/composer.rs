@@ -155,11 +155,28 @@ impl WebBrainBackend {
         std::thread::sleep(Duration::from_millis(80));
         let clear_body = "var el=Q(S[i]);if(el){el.focus();try{if('value' in el){el.value='';}else{el.textContent='';}el.dispatchEvent(new InputEvent('input',{bubbles:true}));}catch(e){}return true;}";
         let _ = self.eval_bool(&Self::js_scan(composer_js, clear_body, "false"));
-        // 3) Echt tippen via PageDriver::insert_text.
+        // 3) Echt tippen via PageDriver::insert_text — in Bloecken, damit der
+        //    WebView-Loop zwischen den Bloecken ansprechbar bleibt. Ein einziger
+        //    25k-Zeichen-execCommand blockiert ihn synchron ueber Sekunden
+        //    (ProseMirror-Reflow eines 13k-px-Editors): jeder andere Befehl
+        //    (Klick, Navigation, Verify) liefe dann in den 8s-Page-Befehl-Timeout
+        //    ("eingefroren"), obwohl die Seite lebt und der Cursor blinkt.
+        //    Kleine Texte unveraendert in einem Aufruf (kein Verhaltenswechsel).
         {
             let mut guard = self.driver.borrow_mut();
             if let Some(driver) = guard.as_mut() {
-                let _ = driver.insert_text(text);
+                const INSERT_CHUNK_CHARS: usize = 2000;
+                let chars: Vec<char> = text.chars().collect();
+                if chars.len() <= INSERT_CHUNK_CHARS {
+                    let _ = driver.insert_text(text);
+                } else {
+                    for piece in chars.chunks(INSERT_CHUNK_CHARS) {
+                        let part: String = piece.iter().collect();
+                        if driver.insert_text(&part).is_err() {
+                            break;
+                        }
+                    }
+                }
             }
         }
         let t = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());

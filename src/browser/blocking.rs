@@ -27,6 +27,15 @@ pub(crate) const PROSE_STABILITY_SECONDS: f64 = 8.0;
 /// statt bis zum Provider-Timeout auf Bytes zu warten, die nie mehr kommen.
 pub(crate) const TRUNCATED_STABILITY_SECONDS: f64 = 8.0;
 
+/// Normalisierte Vergleichsform fuer die Stabilitaets-Uhr in Phase 2: reiner
+/// Whitespace-/Formatierungs-Churn (stille Reflows, unsichtbare Zeichen) startet
+/// die Uhr nicht neu — sonst kostet jeder stille Reflow bis zu 8 s extra,
+/// obwohl die Antwort laengst steht. Echte Tokens aendern immer auch diese
+/// Form; geerntet wird weiter der Rohtext. Siehe `wait_response_streaming`.
+pub(crate) fn stable_norm(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Phrasen, die auf eine externe Blockierung hindeuten (Tages-/Nachrichtenlimit,
 /// Login, Cloudflare) — DE+EN. Geteilt zwischen `detect_block_banner` (JS-Scan der
 /// ganzen Seite) und `block_phrase_in_text` (reine Rust-Pruefung des bereits
@@ -296,5 +305,25 @@ pub(crate) fn classify_completion(
         Completion::Complete
     } else {
         Completion::Continue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stable_norm;
+
+    #[test]
+    fn stable_norm_ignores_whitespace_churn() {
+        assert_eq!(stable_norm("Hallo  Welt\n"), stable_norm("Hallo Welt"));
+        assert_eq!(stable_norm(""), stable_norm("   \n\t "));
+    }
+
+    #[test]
+    fn stable_norm_keeps_real_tokens() {
+        assert_ne!(stable_norm("Hallo Welt"), stable_norm("Hallo Welt!"));
+        assert_ne!(
+            stable_norm("Antwort steht"),
+            stable_norm("Antwort steht fast")
+        );
     }
 }

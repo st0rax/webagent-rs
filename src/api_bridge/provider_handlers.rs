@@ -68,6 +68,12 @@ pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> Htt
         Ok(choice) => choice,
         Err(error) => return api_error(ApiFlavor::OpenAi, 400, &error),
     };
+    eprintln!(
+        "[api] chat model={} stream={} tools={}",
+        payload.model,
+        payload.stream.unwrap_or(false),
+        tools.len()
+    );
     let answer = match run_task_blocking(
         config,
         &brain,
