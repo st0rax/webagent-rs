@@ -43,8 +43,8 @@ wire                -> HttpResponse, completion_id (Root)
 boundary            -> Auth-Typen, HttpResponse
 routing             -> Methode/Pfad/Body (keine Handler, kein Browser)
 provider_handlers   -> Parent-Helfer; kein Selektor, kein Profil
-store / content / catalog (verdrahtet) / response_protocol
-                    -> Parent-Typen und -Helfer, bis T-933 verdrahtet
+store / content / catalog / response_protocol (verdrahtet)
+response_protocol   -> nur Parent-Helfer: `unix_seconds`, `wire::sse_data`, `HttpResponse`; keine Header
 tests               -> Parent
 api_bridge.rs       -> verdrahtete Kindmodule
 ```
