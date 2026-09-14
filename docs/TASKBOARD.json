@@ -1478,6 +1478,33 @@
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-944/",
       "handoff": "Messung je Anbieter mit Denkmodus, Branch und Commit."
+    },
+    {
+      "id": "T-945",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Offener Circuit-Breaker als 502 ohne Retry-After gemeldet",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/provider_handlers.rs",
+        "src/api_bridge/boundary.rs",
+        "src/api_bridge/wire.rs",
+        "src/api_bridge.rs",
+        "src/relay.rs"
+      ],
+      "objective": "provider_handlers.rs bildet in Zeile 80 und 335 jeden Fehler der Browser-Inferenz auf HTTP 502 ab. Darunter faellt auch circuit_open aus relay.rs, das die exakte Restsperre bereits im Text traegt (etwa noch 891s Cooldown). Einen Retry-After-Header gibt es in der gesamten API-Bridge nicht; HttpResponse kennt ausser Content-Type ueberhaupt keine Header, render_http_response in wire.rs muesste dafuer erweitert werden. Clients werten 502 als voruebergehend und wiederholen, Pi dreimal je Anfrage. Nach drei aufeinander folgenden Fehlschlaegen oeffnet der Breaker fuer 900 s. Am 2026-09-14 hat das bei chatgpt, kimi und claude wiederholt die Wiederholungen eines einzigen Aufrufers in eine Sperre fuer alle Aufrufer verwandelt; die restlichen Wiederholungen derselben Anfrage erreichten den Browser gar nicht mehr und liefen nur gegen circuit_open. Die Bridge kennt den richtigen Weg bereits: fuer ihr Limit von acht gleichzeitigen Verbindungen antwortet sie mit 503 und der Aufforderung, spaeter erneut zu fragen, und API_BRIDGE.md legt in Zeile 52 fest, dass ein Brain mit offenem Breaker nicht angeboten wird. Ein offener Breaker ist ein nicht verfuegbarer bekannter Anbieter; 503 mit Retry-After gleich der Restsperre bringt Clients zum Warten statt zum erneuten Senden. Die Benchmark-Spec des Projekts (dummywebagent SPEC.md) formuliert denselben Vertrag: ein nicht verfuegbarer bekannter Anbieter ergibt 503. Mit zu klaeren: ob Wiederholungen derselben Client-Anfrage als getrennte Fehlschlaege fuer den Breaker zaehlen sollen.",
+      "non_goals": [
+        "Keine Aenderung an Schwellen oder Sperrdauern des Breakers.",
+        "Echte Sendefehler bleiben Fehler; es aendern sich nur Statusklasse und Warte-Hinweis."
+      ],
+      "dod": "circuit_open wird als 503 mit Retry-After in Sekunden gemeldet; ein Test belegt Status und Header; ein zweiter Test belegt, dass ein anderer Browserfehler weiterhin als 502 kommt.",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "proof_path": "docs/proofs/T-945/",
+      "handoff": "Statuscodes und Header vorher/nachher, Branch und Commit."
     }
   ]
 }
