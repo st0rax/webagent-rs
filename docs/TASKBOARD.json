@@ -1558,6 +1558,33 @@
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-947/",
       "handoff": "Sendungen und Dauer je Anfrage vorher/nachher gegen ein stummes Mock-Backend, Branch und Commit."
+    },
+    {
+      "id": "T-948",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "mistral: nach dem Senden wird laengenunabhaengig nie eine Antwort erkannt",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-936"
+      ],
+      "scope": [
+        "src/browser/backend.rs",
+        "src/browser/send.rs",
+        "src/browser/operations.rs"
+      ],
+      "objective": "Am 2026-09-14 endeten sechs Bridge-Anfragen an mistral ohne Antwort, alle mit timeout_no_message aus backend.rs: vier ueber Pi mit 52.287 Zeichen, eine direkt mit 32.134 Zeichen nach Bridge-Neustart und eine Kontrolle mit 77 Zeichen, die nur eine Zahl als Antwort verlangte (11:28:55 bis 11:34:18, dreimal je 92 s Budget). Das Senden meldete jedes Mal Erfolg; danach sah Phase 1 von wait_response_streaming weder eine neue Assistant-Nachricht noch einen Stop-Button noch eine Textaenderung. Laenge und Pi sind damit als Ursache ausgeschlossen. Unentschieden ist, ob die Nachricht mistral gar nicht erreicht, etwa weil das Absenden im ProseMirror-Composer nicht ausgeloest wird oder ein Modal den Button verdeckt (operations.rs beschreibt einen frueheren solchen Fall), oder ob mistral antwortet und die Selektoren fuer Nachrichten und Stop-Button nicht mehr passen. Die Bridge lief headless; das Fenster war nicht einsehbar, und die Laeufe hinterlassen keine DOM-Momentaufnahme. Weitere Belege nur mit dem Phasenprotokoll aus T-936 oder einem sichtbaren Lauf.",
+      "dod": "Ein Lauf gegen mistral mit kurzer Eingabe liefert eine Antwort, oder die Bridge meldet einen benannten Grund statt timeout_no_message; bei Timeout nach erfolgreichem Senden wird eine DOM-Momentaufnahme des Chatbereichs als Beleg gespeichert.",
+      "handoff": "Protokoll eines sichtbaren mistral-Laufs mit Phasen, gefundener Ursache, Branch und Commit.",
+      "non_goals": [
+        "Kein Umbau des Sendepfads fuer andere Brains; die Datenumstellung ist T-939.",
+        "Keine Wiederholungslogik aendern; das ist T-947."
+      ],
+      "proof_path": "docs/proofs/T-948/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
