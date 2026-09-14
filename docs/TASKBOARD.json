@@ -1883,6 +1883,30 @@
       "proof_path": "docs/proofs/T-959/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "done_at": "2026-09-14"
+    },
+    {
+      "id": "T-960",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "API-Bridge liefert Fehlerseite des Anbieters als erfolgreiche Antwort",
+      "status": "claimed",
+      "owner": "claude-code",
+      "branch": "fix/T-960-provider-error-as-answer",
+      "claimed_at": "2026-09-14",
+      "depends_on": [],
+      "scope": [
+        "src/relay.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Am 2026-09-14 um 18:54 erhielt eine Pi-Session ueber webagent/auto von chatgpt als Antworttext Something went wrong. If this issue persists please contact us through our help center at help.openai.com. Erneut versuchen. Die Bridge lieferte das mit HTTP 200 aus, brain_score verbuchte Erfolg. crate::brain::is_retryable_empty_response erkennt genau diesen Text bereits, samt Test in brain.rs, wird aber nur vom Agenten-Harness (controller.rs, contract.rs, design_vote.rs) aufgerufen, nicht von relay.rs, ueber das die API-Bridge laeuft. Die Pruefung auf leeren Text in relay.rs kennt nur leere Antworten und UI-Chrome.",
+      "dod": "relay.rs behandelt eine Antwort, die is_retryable_empty_response als Anbieter-Fehlerseite oder UI-Glitch einstuft, wie eine leere Antwort mit eigenem, benanntem Grund; Antworten mit WEBAGENT_INFERENCE/1-Umschlag sind ausgenommen, damit Werkzeugargumente mit solchen Phrasen nicht verworfen werden; ein Test mit dem realen Text belegt die Einstufung; brain_score verbucht keinen Erfolg.",
+      "handoff": "Realer Text vorher/nachher, Testausgabe, Branch und Commit.",
+      "non_goals": [
+        "Keine neuen Phrasen; die vorhandene Erkennung wird nur verdrahtet.",
+        "Wiederholungslogik bleibt wie sie ist; das ist T-947."
+      ],
+      "proof_path": "docs/proofs/T-960/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
