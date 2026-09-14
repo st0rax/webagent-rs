@@ -1889,7 +1889,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "API-Bridge liefert Fehlerseite des Anbieters als erfolgreiche Antwort",
-      "status": "claimed",
+      "status": "done",
       "owner": "claude-code",
       "branch": "fix/T-960-provider-error-as-answer",
       "claimed_at": "2026-09-14",
@@ -1906,7 +1906,8 @@
         "Wiederholungslogik bleibt wie sie ist; das ist T-947."
       ],
       "proof_path": "docs/proofs/T-960/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-09-14"
     }
   ]
 }

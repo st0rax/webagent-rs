@@ -334,6 +334,13 @@ pub fn relay_single_turn_with_attachments_streaming(
             );
             continue;
         }
+        if is_provider_error_page(&text) {
+            last_err = format!(
+                "Anbieter-Fehlerseite statt Antwort: {}",
+                text.chars().take(160).collect::<String>()
+            );
+            continue;
+        }
         answer = Some(text);
         break;
     }
@@ -403,6 +410,21 @@ fn resolve_attach_aware_timeouts(
 /// weiterer kompletter Browserturn nur Zeit verbraucht: sichtbare Blockade,
 /// deaktivierter Sendeknopf oder fehlender Absende-Beweis. Transiente CDP- und
 /// Navigationsfehler bleiben dagegen retry-faehig.
+/// Fehlerseite oder UI-Glitch des Anbieters statt einer Modellantwort (T-960).
+///
+/// Die Erkennung existiert in `brain::is_retryable_empty_response`, war aber nur
+/// im Agenten-Harness verdrahtet; am 2026-09-14 lieferte die API-Bridge
+/// ChatGPTs „Something went wrong. If this issue persists …" mit HTTP 200 aus.
+/// Nur kurze Texte ohne Werkzeug-Umschlag: Anbieter-Banner sind kurz, und eine
+/// echte Antwort oder ein Werkzeugargument darf Phrasen wie „usage limit"
+/// enthalten, ohne verworfen zu werden.
+fn is_provider_error_page(text: &str) -> bool {
+    const MAX_BANNER_CHARS: usize = 400;
+    !text.contains("WEBAGENT_INFERENCE/1")
+        && text.chars().count() <= MAX_BANNER_CHARS
+        && crate::brain::is_retryable_empty_response(text)
+}
+
 fn is_deterministic_send_failure(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
     is_attachment_capability_failure(error)
@@ -442,6 +464,26 @@ fn is_attachment_capability_failure(error: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_error_page_is_not_an_answer() {
+        // Real 2026-09-14 18:54, chatgpt ueber webagent/auto.
+        assert!(is_provider_error_page(
+            "Something went wrong. If this issue persists please contact us through our help center at help.openai.com. Erneut versuchen"
+        ));
+        assert!(!is_provider_error_page("Hallo, wie kann ich helfen?"));
+    }
+
+    #[test]
+    fn tool_envelope_and_long_answers_with_banner_phrases_stay_answers() {
+        let envelope = "WEBAGENT_INFERENCE/1\n{\"tool_calls\":[{\"id\":\"call_1\",\"name\":\"bash\",\"arguments\":{\"command\":\"grep -rn 'something went wrong' src\"}}]}";
+        assert!(!is_provider_error_page(envelope));
+        let long = format!(
+            "{} Ihr usage limit laesst sich im Konto nachsehen.",
+            "Ausfuehrliche Erklaerung. ".repeat(30)
+        );
+        assert!(!is_provider_error_page(&long));
+    }
 
     #[test]
     fn relay_error_on_bad_brain_id() {
