@@ -1,0 +1,25 @@
+T-931 gates 2026-09-14 (branch refactor/T-931-wire-catalog, Basis origin/master 0b26212)
+
+rg "^mod catalog" src/api_bridge.rs
+  match: mod catalog;
+
+git diff --check
+  clean
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib api_bridge::tests::
+  test_exit=0
+  51 passed; 0 failed
+  model_resolution_routes_each_available_brain ... ok
+  responses_sse_sequence_numbers_sind_monoton_und_lueckenlos ... ok
+
+cargo test --features webview --lib (vollstaendig)
+  test_exit=0
+  1426 passed; 0 failed; 1 ignored
+  watchdog::tests::test_run_watchdog_repair ... ok
+  run_store::tests::laufender_lauf_wird_vorgemerkt_und_spaeter_repariert ... ok
