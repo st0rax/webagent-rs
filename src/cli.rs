@@ -941,6 +941,9 @@ pub enum ApiCommands {
         /// Browser ohne sichtbares Fenster ausfuehren.
         #[arg(long)]
         headless: bool,
+        /// Sichtbare Browserfenster zur Fehlersuche aktivieren.
+        #[arg(long)]
+        debug: bool,
         /// Name der Umgebungsvariable mit dem lokalen Bearer-Token.
         #[arg(long, default_value = "WEBAGENT_API_KEY")]
         api_key_env: String,
