@@ -1417,7 +1417,7 @@
         "src/browser/send.rs",
         "selectors/"
       ],
-      "objective": "Der Lesepfad entnimmt die Antwort per innerText beziehungsweise textContent aus dem bereits gerenderten DOM. Zu diesem Zeitpunkt hat die Oberflaeche das Markdown schon in HTML verwandelt; die Syntax ist weg und wird nirgends zurueckgewonnen. Die beiden Fundstellen fuer markdown in operations.rs und send.rs sind ein Selektor-Kandidat in einem Vermessungsskript und ein Kommentar ueber dekorative Knoten bei kimi, keine Rueckwandlung. Belegt am 2026-09-14 an zwei Kandidatenplaenen, die mit identischer Eingabe ueber die Bridge entstanden: im qwen-Plan sind alle Tabellen zerfallen, Kopfzeilen stehen einzeln untereinander und Zellen sind durch Tabs statt Pipes getrennt; im deepseek-Plan steht ein verwaistes text als Rest eines verlorenen Code-Fence. Fuer einen API-Aufrufer ist das stiller Datenverlust, und im Benchmark verzerrt es die Bewertung, weil schlechte Formatierung wie schlechte Arbeit des Kandidaten aussieht. Moegliche Wege: den Kopierknopf der Oberflaeche nutzen, der das Quell-Markdown liefert (send.rs hat bereits einen Clipboard-Pfad), oder das DOM gezielt nach Markdown zurueckfuehren. Vorher je Anbieter messen, welcher Weg verfuegbar ist.",
+      "objective": "Der Lesepfad entnimmt die Antwort per innerText beziehungsweise textContent aus dem bereits gerenderten DOM. Zu diesem Zeitpunkt hat die Oberflaeche das Markdown schon in HTML verwandelt; die Syntax ist weg und wird nirgends zurueckgewonnen. Die beiden Fundstellen fuer markdown in operations.rs und send.rs sind ein Selektor-Kandidat in einem Vermessungsskript und ein Kommentar ueber dekorative Knoten bei kimi, keine Rueckwandlung. Belegt am 2026-09-14 an zwei Kandidatenplaenen, die mit identischer Eingabe ueber die Bridge entstanden: im qwen-Plan sind alle Tabellen zerfallen, Kopfzeilen stehen einzeln untereinander und Zellen sind durch Tabs statt Pipes getrennt; im deepseek-Plan steht ein verwaistes text als Rest eines verlorenen Code-Fence. Fuer einen API-Aufrufer ist das stiller Datenverlust, und im Benchmark verzerrt es die Bewertung, weil schlechte Formatierung wie schlechte Arbeit des Kandidaten aussieht. Moegliche Wege: den Kopierknopf der Oberflaeche nutzen, der das Quell-Markdown liefert (send.rs hat bereits einen Clipboard-Pfad), oder das DOM gezielt nach Markdown zurueckfuehren. Vorher je Anbieter messen, welcher Weg verfuegbar ist. Beleg 2026-09-14 14:05 (wahrscheinlich, nicht bewiesen): In einem Werkzeugaufruf von deepseek ueber die Bridge stand im bash-Befehl grep -rn 'fn capture_submit_failure_trace' -A 30 src/browser/.rs. Ein Glob src/browser/*.rs mit einem spaeteren zweiten Sternchen im selben Befehl wuerde als Markdown-Kursivschrift gerendert und beim Auslesen per innerText beide Sternchen verlieren. Die Lesestrecke veraendert damit moeglicherweise nicht nur Formatierung, sondern den Inhalt von Werkzeugargumenten. Derselbe Turn und ein weiterer scheiterten zusaetzlich mit invalid escape bei grep-Mustern wie zu lang\\|too long.",
       "non_goals": [
         "Keine inhaltliche Nachbearbeitung der Antwort ueber die Struktur hinaus.",
         "Keine Heuristik, die Tabellen aus Tab-getrenntem Text zu erraten versucht.",
@@ -1755,7 +1755,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Umschlagfehler zeigt Rohtext ab Anfang statt um die Fehlerstelle",
-      "status": "claimed",
+      "status": "done",
       "owner": "claude-code",
       "branch": "fix/T-955-raw-excerpt-at-error",
       "claimed_at": "2026-09-14",
@@ -1774,7 +1774,8 @@
         "Kein unbegrenztes Protokollieren des Rohtexts."
       ],
       "proof_path": "docs/proofs/T-955/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-09-14"
     }
   ]
 }
