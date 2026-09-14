@@ -1782,7 +1782,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "SICHERHEIT: Lesestrecke verfaelscht Werkzeugargumente, die danach ausgefuehrt werden",
-      "status": "claimed",
+      "status": "done",
       "owner": "claude-code",
       "branch": "fix/T-956-lossless-tool-read",
       "claimed_at": "2026-09-14",
@@ -1794,14 +1794,15 @@
         "docs/API_BRIDGE.md"
       ],
       "objective": "Die Bridge liest Modellantworten aus der gerenderten Chat-Oberflaeche. Am 2026-09-14 zwischen 14:30 und 14:55 zeigte eine Pi-Session mit deepseek, dass dabei der Inhalt von Werkzeugargumenten veraendert wird, nicht nur Formatierung. Belegt in derselben Session: Sternchenpaare verschwinden, weil die Oberflaeche sie als Markdown-Kursivschrift rendert; zwei tatsaechlich ausgefuehrte bash-Aufrufe enthielten --include='.rs' statt '*.rs' und find -name 'protocol' statt vermutlich '*protocol*'. In einer als Text gelieferten Antwort derselben Session fehlten zusaetzlich Dollarzeichenpaare (\"$G\" wurde \"G\", $f wurde f), vermutlich weil Text zwischen zwei Dollarzeichen als LaTeX-Formel gerendert wird, und Zeilenumbrueche fehlten stellenweise (GitHub und echo aus zwei Zeilen wurden zu GitHubecho). Beide ausgefuehrten Aufrufe waren lesend und harmlos, lieferten aber falsche Ergebnisse. Derselbe Mechanismus kann zerstoererische Befehle veraendern, etwa rm -rf \"$DIR/\" zu rm -rf \"/\". Die JSON-Reparaturen aus T-952 und T-954 setzen auf diese Lesestrecke auf und koennen den Verlust nicht erkennen. Basismessung 15:05 (Bridge-Build 84dd57f): Einzelanfrage an deepseek mit Werkzeug write und einem fuenfzeiligen content. Gesendet: A=*x* und *y* / B=\"$HOME\" und $PATH und $X$ / C=C:\\Users\\a\\b / D=`code` _unter_ **fett** / E=Zeile5. Angekommen als Werkzeugargument: Sternchen 4 statt 8, Dollarzeichen 0 statt 4, Backslashes 2 statt 3, Backticks 0 statt 2, Unterstriche 0 statt 2. Zeile B wurde zu B=\"PATH und X, Zeile D zu D=code unter fett, und \\b am Ende von Zeile C wurde als gueltiges JSON-Escape zum Steuerzeichen Backspace. qwen im selben Test: Sternchen 0 statt 8, Dollarzeichen 0 statt 4, Backslashes 2 statt 3, Backticks und Unterstriche je 0 statt 2; Zeile A wurde zu A=x und y, Zeile B zu B=\"HOME\" und PATH und. Beide Brains sind betroffen.",
-      "dod": "Werkzeugumschlaege werden aus einer Quelle gelesen, die Modelltext unveraendert liefert (etwa Code-Block-Quelltext, Math-Annotation oder Kopierfunktion), belegt je Brain fuer Sternchen, Dollarzeichen, Backslashes und Zeilenumbrueche; wo das nicht garantiert ist, lehnt die Bridge Werkzeugaufrufe fail-closed ab statt verfaelschte Argumente auszuliefern; ein Live-Test mit einem Befehl, der *, $VAR-Paare und mehrere Zeilen enthaelt, kommt je gepruftem Brain byte-identisch an.",
+      "dod": "Werkzeugumschlaege werden aus einem Codeblock gelesen, dessen Quelltext Modelltext unveraendert liefert; ein Live-Test mit Sternchen, Dollarzeichenpaaren, Backslashes, Backticks, Unterstrichen und mehreren Zeilen kommt bei deepseek und qwen zeichengleich an (abgesehen von einem vom Modell angehaengten Zeilenumbruch). Der fail-closed-Teil fuer Umschlaege ohne Codeblock ist nach T-958 abgespalten.",
       "handoff": "Tabelle je Brain: Zeichenklassen vorher/nachher, Live-Transkripte, Branch und Commit.",
       "non_goals": [
         "Keine heuristische Rekonstruktion verlorener Zeichen; verlorene Information bleibt ein Fehler.",
         "Formatierung von Textantworten ohne Werkzeugaufruf ist T-942."
       ],
       "proof_path": "docs/proofs/T-956/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-09-14"
     },
     {
       "id": "T-957",
@@ -1826,6 +1827,33 @@
         "Keine weiteren anbieterspezifischen Formate ohne Beleg."
       ],
       "proof_path": "docs/proofs/T-957/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+    },
+    {
+      "id": "T-958",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "SICHERHEIT: Umschlag ohne Codeblock fail-closed statt verlustbehaftet ausliefern",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-956"
+      ],
+      "scope": [
+        "src/browser/js.rs",
+        "src/browser/mod.rs",
+        "src/browser_inference.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Abgespalten aus T-956. Die Bridge liest einen Werkzeug-Umschlag jetzt verlustfrei aus einem Codeblock. Schreibt ein Modell den Umschlag trotzdem als Fliesstext, nimmt TX weiter den gerenderten Text, in dem Sternchen, Dollarzeichenpaare, Backticks und Unterstriche fehlen koennen, und parse_response liefert daraus ausfuehrbare tool_calls. Die Herkunft des Texts ist in parse_response heute nicht erkennbar, weil TX nur eine Zeichenkette zurueckgibt.",
+      "dod": "Die Lesestrecke kennzeichnet, ob ein Umschlag aus einem Codeblock stammt; ein Umschlag aus Fliesstext fuehrt zu einem benannten Fehler statt zu tool_calls, optional mit einmaliger Aufforderung an das Modell, den Codeblock zu verwenden; Tests belegen beide Wege; ein Live-Test zeigt, dass deepseek und qwen weiter Werkzeuge aufrufen koennen.",
+      "handoff": "Fehlerbild vorher/nachher fuer einen Fliesstext-Umschlag, Live-Transkripte, Branch und Commit.",
+      "non_goals": [
+        "Keine Rekonstruktion verlorener Zeichen."
+      ],
+      "proof_path": "docs/proofs/T-958/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
