@@ -1749,6 +1749,32 @@
       "proof_path": "docs/proofs/T-954/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "done_at": "2026-09-14"
+    },
+    {
+      "id": "T-955",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Umschlagfehler zeigt Rohtext ab Anfang statt um die Fehlerstelle",
+      "status": "claimed",
+      "owner": "claude-code",
+      "branch": "fix/T-955-raw-excerpt-at-error",
+      "claimed_at": "2026-09-14",
+      "depends_on": [
+        "T-952"
+      ],
+      "scope": [
+        "src/browser_inference.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "T-952 haengt an einen gescheiterten Umschlag die ersten 400 Zeichen des Rohtexts an. Am 2026-09-14 um 13:55 scheiterte ein Umschlag von deepseek mit expected , or } at line 2 column 1; die 400 Zeichen endeten mitten im bash-Befehl der ersten Zeile, die Fehlerstelle lag dahinter. Die Ursache war damit wieder nicht feststellbar. serde_json liefert Zeile und Spalte des Fehlers; der Ausschnitt muss diese Stelle enthalten.",
+      "dod": "Die Fehlermeldung eines gescheiterten Umschlags enthaelt einen begrenzten Ausschnitt um die von serde_json gemeldete Fehlerposition samt Markierung der Stelle und nennt die Gesamtlaenge; der Anfang des Rohtexts bleibt erkennbar; Tests belegen, dass eine Fehlerstelle hinter Zeichen 400 im Ausschnitt liegt.",
+      "handoff": "Fehlermeldung vorher/nachher fuer einen langen Umschlag, Testausgabe, Branch und Commit.",
+      "non_goals": [
+        "Keine neuen Reparaturregeln; das ist T-952 und T-954.",
+        "Kein unbegrenztes Protokollieren des Rohtexts."
+      ],
+      "proof_path": "docs/proofs/T-955/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
