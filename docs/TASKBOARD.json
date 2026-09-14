@@ -1908,6 +1908,32 @@
       "proof_path": "docs/proofs/T-960/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "done_at": "2026-09-14"
+    },
+    {
+      "id": "T-961",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "chatgpt verneint Werkzeugzugriff direkt nach eigenem erfolgreichen Werkzeugaufruf",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [
+        "T-951"
+      ],
+      "scope": [
+        "src/api_bridge/content.rs",
+        "src/browser_inference.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Pi-Session mit webagent/chatgpt, 2026-09-14 ab 20:59 (Bridge 6d3e00b mit T-951, T-956, T-959, T-960). Turn 2: read auf AUFTRAG.txt als Werkzeugaufruf, erfolgreich. Turn 13: erneut read, erfolgreich. Turn 15, direkt nach diesem Werkzeugergebnis: chatgpt schreibt, der im eingefuegten Auftrag beschriebene read/bash/edit/write-Pi-Werkzeugsatz sei in dieser ChatGPT-Sitzung nicht tatsaechlich verfuegbar, und ruft nichts auf. Turn 9 enthielt dieselbe Behauptung. Die Werkzeuge funktionieren also nachweislich, das Modell haelt sie aber fuer blossen Text. Unbelegte Vermutung: Pis Systemprompt steht unter [system (sichtbarer Kontext)] und Werkzeugergebnisse als [tool] im Verlauf; die Rahmung laesst beides wie zitierten Inhalt wirken statt wie eine aktive Umgebung. Eine zweite Moeglichkeit ist ein Zustand im ChatGPT-Konto wie gespeicherte Erinnerungen aus frueheren Sitzungen, in denen chatgpt Werkzeuge verneinte.",
+      "dod": "Die Ursache ist mit einem Live-Vergleich eingegrenzt (Rahmung variiert, Konto-Zustand geprueft); nach dem Fix ruft chatgpt in einer Mehrturn-Session nach einem Werkzeugergebnis weiter Werkzeuge auf statt sie zu verneinen, belegt mit einem Transkript von mindestens fuenf aufeinanderfolgenden Werkzeugturns.",
+      "handoff": "Transkripte vorher/nachher, gepruefte Varianten, Branch und Commit.",
+      "non_goals": [
+        "Keine Kontoeinstellungen ohne Zustimmung des Nutzers aendern."
+      ],
+      "proof_path": "docs/proofs/T-961/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
