@@ -1610,6 +1610,32 @@
       ],
       "proof_path": "docs/proofs/T-949/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+    },
+    {
+      "id": "T-950",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Websuche des Anbieters umgeht Client-Werkzeuge und ist unsichtbar",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/browser_inference.rs",
+        "src/browser/operations.rs",
+        "selectors/",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "Am 2026-09-14 um 12:41 schickte der Nutzer Pi ueber die Bridge an chatgpt nur eine URL auf eine oeffentliche Textdatei. Pi hatte Client-Werkzeuge mitgesendet, und prompt_with_tools in browser_inference.rs verlangt fuer Werkzeuge den Maschinenumschlag. chatgpt rief kein Werkzeug auf, sondern oeffnete die URL mit der eigenen Websuche der ChatGPT-Oberflaeche; die Antwort fasste den Inhalt korrekt zusammen und trug den Quellenhinweis GitHub. Dieser Abruf erscheint weder im Pi-Transkript noch in brain_score noch sonst in der Bridge. Folgen: Erstens sieht der Client eine Antwort auf Daten, die er nie angefordert hat, und kann den Zugriff weder erlauben noch pruefen. Zweitens hebelt es jede Isolation aus, die ueber das Client-Transkript nachgewiesen wird, etwa im Benchmark dummywebagent das Verbot, fremde results-Branches zu lesen. Nur deepseek.json und zai.json kennen ueberhaupt einen web_search_toggle; die Bridge schaltet die Websuche bei keinem Brain aus und prueft ihren Zustand nicht. Zu klaeren je Brain: laesst sich die Websuche abschalten und der Zustand belegen, und erkennt die Bridge Quellenhinweise in der Antwort als Zeichen eines Abrufs.",
+      "dod": "Fuer jedes Brain ist dokumentiert, ob die Websuche abschaltbar ist; wo sie es ist, schaltet die Bridge sie fuer API-Anfragen aus und belegt den Zustand vor dem Senden; wo nicht, kennzeichnet die Bridge das Brain in /v1/models und API_BRIDGE.md als nicht isolierbar; ein erkannter Quellenhinweis in der Antwort wird in brain_score protokolliert.",
+      "handoff": "Tabelle je Brain mit Websuche abschaltbar ja/nein und Beleg, Branch und Commit.",
+      "non_goals": [
+        "Keine Umgehung von Anbieterfunktionen ueber private APIs; nur die sichtbare Oberflaeche.",
+        "Kontoeinstellungen nicht dauerhaft aendern; nur den Zustand der jeweiligen Konversation."
+      ],
+      "proof_path": "docs/proofs/T-950/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
