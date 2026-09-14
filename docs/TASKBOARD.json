@@ -1934,6 +1934,30 @@
       ],
       "proof_path": "docs/proofs/T-961/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+    },
+    {
+      "id": "T-962",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "composer_contains: Nadel aus den ersten Woertern mit normalisiertem Leerraum",
+      "status": "claimed",
+      "owner": "claude-code",
+      "branch": "fix/T-962-composer-needle",
+      "claimed_at": "2026-09-14",
+      "depends_on": [],
+      "scope": [
+        "src/browser/composer.rs",
+        "src/browser/verify.rs"
+      ],
+      "objective": "Beitrag aus einer Pi-Session mit deepseek am 2026-09-14 (15:53 und 16:02), die ungeprueft direkt in webagent-rs-master-merge editierte; ein Build daraus lief von 15:56 bis 15:58 in der Bridge. composer_contains in composer.rs sucht nur die ersten acht Zeichen des Prompts im Composer. Beginnt der Prompt mit Zeilenumbruch oder Einrueckung, rendert der Editor den Leerraum anders, indexOf trifft nie und der Aufrufer meldet Composer-Feld nicht gefunden. deepseeks Aenderung nimmt die ersten sechs Woerter mit normalisiertem Leerraum und normalisiert auch den Composer-Inhalt. Ihre zweite, nirgends aufgerufene Funktion composer_element_present wird nicht uebernommen.",
+      "dod": "composer_contains vergleicht die ersten sechs Woerter leerraum-normalisiert; die Mock-Ausdruecke in verify.rs passen dazu; ein Test belegt die Nadel fuer einen Prompt mit fuehrendem Umbruch; webagent-rs-master-merge ist danach sauber.",
+      "handoff": "Patch-Herkunft, Testausgabe, Branch und Commit.",
+      "non_goals": [
+        "Kein Umbau auf Selektordaten; das ist T-939.",
+        "Keine Uebernahme von composer_element_present ohne Aufrufer."
+      ],
+      "proof_path": "docs/proofs/T-962/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
