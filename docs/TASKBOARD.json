@@ -996,10 +996,11 @@
       "phase": "12",
       "type": "code",
       "title": "Free-Cloud: ersten VerifiedFree-Adapter echt anbinden",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "feature/T-926-verifiedfree-adapter",
+      "claimed_at": "2026-09-14",
+      "done_at": "2026-09-14",
       "depends_on": [],
       "scope": [
         "src/free_cloud_chat.rs",
@@ -1119,10 +1120,11 @@
       "phase": "12",
       "type": "refactoring",
       "title": "API-Bridge Catalog echt verdrahten (T-917-Nachzug)",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "refactor/T-931-wire-catalog",
       "claimed_at": "2026-09-14",
+      "done_at": "2026-09-14",
       "depends_on": [
         "T-917"
       ],

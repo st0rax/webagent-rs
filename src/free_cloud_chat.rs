@@ -720,6 +720,23 @@ pub fn stream_hub_metadata_fixture(
 pub fn default_registry() -> Vec<CloudModel> {
     vec![
         CloudModel {
+            model_id: "webagent/local-mock-stream".to_string(),
+            display_name: "WebAgent local deterministic mock".to_string(),
+            provider: "WebAgent local test adapter".to_string(),
+            source_url: "local://webagent/mock-stream".to_string(),
+            profiles: vec![ModelProfile::Auto, ModelProfile::Custom],
+            languages: vec!["de".to_string(), "en".to_string()],
+            tags: vec![
+                "local".to_string(),
+                "deterministic".to_string(),
+                "mock".to_string(),
+                "verified-free".to_string(),
+            ],
+            access: AccessMode::VerifiedFree,
+            adapter_compatible: true,
+            last_verified_at: Some("local-contract".to_string()),
+        },
+        CloudModel {
             model_id: "huggingchat/catalog".to_string(),
             display_name: "HuggingChat-Modellkatalog".to_string(),
             provider: "Hugging Face".to_string(),
@@ -977,6 +994,23 @@ mod tests {
             decide_route(&model, true),
             RouteDecision::Auto { .. }
         ));
+    }
+
+    #[test]
+    fn registry_contains_exactly_one_verified_free_auto_route() {
+        let results = search_registry(&default_registry(), ModelProfile::Auto, "", true);
+        let auto_routes: Vec<_> = results
+            .iter()
+            .filter(|result| !result.manual_only)
+            .collect();
+        assert_eq!(
+            auto_routes.len(),
+            1,
+            "Registry must contain exactly one VerifiedFree adapter with adapter_compatible=true for free_only auto routing"
+        );
+        assert_eq!(auto_routes[0].model.model_id, DETERMINISTIC_MOCK_MODEL_ID);
+        assert_eq!(auto_routes[0].model.access, AccessMode::VerifiedFree);
+        assert!(auto_routes[0].model.adapter_compatible);
     }
 
     #[test]
