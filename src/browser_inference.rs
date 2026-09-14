@@ -328,13 +328,39 @@ fn truncate_chars(value: &str, limit: usize) -> String {
 /// Leerraum immer `,`, `}`, `]`, `:` oder das Textende. Folgt etwas anderes,
 /// kann das Zeichen kein Stringende sein und wird escaped. Folgt eines dieser
 /// Zeichen, gilt es als Ende — ist das falsch, scheitert das Parsen weiter.
+///
+/// Nicht geschlossene Objekte vor `]` (T-959, deepseek schrieb
+/// `"timeout":90}]}` statt `"timeout":90}}]}`): Steht ausserhalb eines Strings
+/// ein `]`, waehrend oben auf dem Klammerstapel noch `{` offen ist, ist `}` die
+/// einzige Fortsetzung, die alle Zeichen in ihrer Reihenfolge behaelt. Offene
+/// Klammern am Textende werden bewusst nicht geschlossen: das waere bei einer
+/// abgeschnittenen Antwort ein unvollstaendiger Aufruf.
 fn repair_json_string_escapes(payload: &str) -> String {
     let mut out = String::with_capacity(payload.len() + 16);
     let mut in_string = false;
+    let mut open: Vec<char> = Vec::new();
     let mut chars = payload.chars().peekable();
     while let Some(c) = chars.next() {
         if !in_string {
-            in_string = c == '"';
+            match c {
+                '"' => in_string = true,
+                '{' | '[' => open.push(c),
+                '}' => {
+                    if open.last() == Some(&'{') {
+                        open.pop();
+                    }
+                }
+                ']' => {
+                    while open.last() == Some(&'{') {
+                        out.push('}');
+                        open.pop();
+                    }
+                    if open.last() == Some(&'[') {
+                        open.pop();
+                    }
+                }
+                _ => {}
+            }
             out.push(c);
             continue;
         }
@@ -623,6 +649,36 @@ mod tests {
         );
         let response = parse_response(&raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap();
         assert_eq!(response.tool_calls[0].arguments["command"], command);
+    }
+
+    #[test]
+    fn unclosed_call_object_before_bracket_is_closed() {
+        // Real 2026-09-14 15:21 und 15:22 (deepseek): "timeout":90}]} statt }}]}.
+        let raw = concat!(
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"command":"find . -name '*.json' | head -20","timeout":90}]}"#
+        );
+        let response = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap();
+        assert_eq!(
+            response.tool_calls[0].arguments["command"],
+            "find . -name '*.json' | head -20"
+        );
+        assert_eq!(response.tool_calls[0].arguments["timeout"], 90);
+    }
+
+    #[test]
+    fn surplus_or_crossed_brackets_and_truncation_stay_errors() {
+        for payload in [
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{}}}]}"#,
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":[1}}]}"#,
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"a"}"#,
+        ] {
+            let raw = format!("WEBAGENT_INFERENCE/1\n{payload}");
+            assert!(
+                parse_response(&raw, &[read_tool()], &BrowserToolChoice::Auto).is_err(),
+                "{payload}"
+            );
+        }
     }
 
     #[test]

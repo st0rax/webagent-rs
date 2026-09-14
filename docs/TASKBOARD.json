@@ -1860,8 +1860,8 @@
       "id": "T-959",
       "phase": "13",
       "type": "bugfix",
-      "title": "Umschlag: fehlende schliessende Objektklammern vor ] und am Ende strukturell ergaenzen",
-      "status": "claimed",
+      "title": "Umschlag: fehlende schliessende Objektklammer vor ] strukturell ergaenzen",
+      "status": "done",
       "owner": "claude-code",
       "branch": "fix/T-959-unclosed-objects",
       "claimed_at": "2026-09-14",
@@ -1874,13 +1874,14 @@
         "docs/API_BRIDGE.md"
       ],
       "objective": "Nach T-955 zeigt die Fehlermeldung die Fehlerstelle. Am 2026-09-14 um 15:21 und 15:22 scheiterten zwei Umschlaege von deepseek mit expected , or } kurz vor dem Ende; beide endeten mit \"timeout\":90}]} statt \"timeout\":90}}]}, das Objekt des Werkzeugaufrufs wurde also nicht geschlossen. Beide kamen bereits verlustfrei aus dem Codeblock (T-956), der Fehler lag in der Modellausgabe. deepseek brach die Werkzeugnutzung danach ab. Steht ausserhalb eines Strings ein ], waehrend oben auf dem Klammerstapel noch ein { offen ist, ist } die einzige Fortsetzung, die alle vorhandenen Zeichen in ihrer Reihenfolge behaelt; dasselbe gilt fuer offene Klammern am Textende.",
-      "dod": "Die Reparatur ergaenzt ausserhalb von Strings fehlende } vor einem ] und fehlende } und ] am Textende anhand des Klammerstapels; beide realen Umschlaege parsen danach mit unveraenderten Argumenten; gueltiges JSON bleibt byte-identisch; ueberzaehlige oder falsch verschachtelte Klammern bleiben fail-closed; Tests belegen alle Faelle.",
+      "dod": "Die Reparatur ergaenzt ausserhalb von Strings fehlende } vor einem ] anhand des Klammerstapels; der reale Umschlag parst danach mit unveraenderten Argumenten; gueltiges JSON bleibt byte-identisch; ueberzaehlige oder verschraenkte Klammern und offene Klammern am Textende bleiben fail-closed, weil eine abgeschnittene Antwort sonst ein unvollstaendiger Aufruf wuerde; Tests belegen alle Faelle.",
       "handoff": "Reale Umschlaege vorher/nachher, Testausgabe, Branch und Commit.",
       "non_goals": [
         "Keine Entfernung ueberzaehliger Klammern und kein Umsortieren; das waere Raten."
       ],
       "proof_path": "docs/proofs/T-959/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-09-14"
     }
   ]
 }
