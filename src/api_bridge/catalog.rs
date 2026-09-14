@@ -16,13 +16,13 @@ pub fn available_brains() -> Vec<String> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AutoPurpose {
+pub enum AutoPurpose {
     Chat,
     ImageGeneration,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AutoRoute {
+pub enum AutoRoute {
     Default,
     AudioInput,
     ImageInput,
@@ -32,7 +32,7 @@ pub(crate) enum AutoRoute {
     CurrentResearch,
 }
 
-pub(crate) fn classify_auto_route(
+pub fn classify_auto_route(
     task: &str,
     attachments: &[crate::browser_inference::BrowserAttachment],
     has_tools: bool,
@@ -101,7 +101,7 @@ pub(crate) fn classify_auto_route(
     AutoRoute::Default
 }
 
-pub(crate) fn first_available_auto_brain(preferences: &[&str]) -> Option<String> {
+pub fn first_available_auto_brain(preferences: &[&str]) -> Option<String> {
     let available = available_brains();
     first_available_auto_brain_in(preferences, &available, |brain| {
         crate::circuit_breaker::check(brain).is_none()
@@ -110,7 +110,7 @@ pub(crate) fn first_available_auto_brain(preferences: &[&str]) -> Option<String>
 
 /// Kern der Auto-Auswahl mit injizierbarer Verfügbarkeit/Entsperrtheit —
 /// deterministisch testbar ohne reale Brain-Installation oder Circuit-Breaker.
-pub(super) fn first_available_auto_brain_in(
+pub fn first_available_auto_brain_in(
     preferences: &[&str],
     available: &[String],
     is_unlocked: impl Fn(&str) -> bool,
@@ -121,7 +121,7 @@ pub(super) fn first_available_auto_brain_in(
         .map(|brain| (*brain).to_string())
 }
 
-pub(super) fn select_auto_brain(
+pub fn select_auto_brain(
     config: &BridgeConfig,
     task: &str,
     attachments: &[crate::browser_inference::BrowserAttachment],
@@ -143,7 +143,7 @@ pub fn select_auto_brain_for_cli(task: &str) -> Result<String, String> {
     select_auto_brain_with_default(task, &[], false, AutoPurpose::Chat, "chatgpt")
 }
 
-pub(super) fn select_auto_brain_with_default(
+pub fn select_auto_brain_with_default(
     task: &str,
     attachments: &[crate::browser_inference::BrowserAttachment],
     has_tools: bool,
@@ -172,7 +172,7 @@ pub(super) fn select_auto_brain_with_default(
     Ok(selected)
 }
 
-pub(super) fn resolve_model(requested: &str, default_brain: &str) -> Result<String, String> {
+pub fn resolve_model(requested: &str, default_brain: &str) -> Result<String, String> {
     let brain = if requested == "webagent" {
         default_brain
     } else if requested == "auto"
@@ -206,7 +206,7 @@ pub(super) fn resolve_model(requested: &str, default_brain: &str) -> Result<Stri
     ))
 }
 
-pub(super) fn model_id(brain: &str) -> String {
+pub fn model_id(brain: &str) -> String {
     format!("webagent/{brain}")
 }
 
@@ -219,7 +219,7 @@ pub(super) fn model_id(brain: &str) -> String {
 /// chatgpt/claude (Bild+Audio). Brain ohne bestätigten Smoke (qwen/zai/
 /// perplexity) melden nur Text, damit Clients nicht blind in einen
 /// unbestätigten Pfad senden.
-pub(super) fn advertised_input_modalities(brain: &str) -> &'static [&'static str] {
+pub fn advertised_input_modalities(brain: &str) -> &'static [&'static str] {
     match brain {
         "auto" => &["text", "image", "audio"],
         "gemini" => &["text", "image", "audio"],
@@ -236,7 +236,7 @@ pub(super) fn advertised_input_modalities(brain: &str) -> &'static [&'static str
 /// (relay_image_generation + estuary-Fetch). Die übrigen Brains liefern über
 /// den Endpoint derzeit nur Text, bis eine Bildgeneration tatsächlich
 /// verifiziert ist.
-pub(super) fn advertised_output_modalities(brain: &str) -> &'static [&'static str] {
+pub fn advertised_output_modalities(brain: &str) -> &'static [&'static str] {
     match brain {
         "auto" | "chatgpt" => &["text", "image"],
         _ => &["text"],
@@ -248,7 +248,7 @@ pub(super) fn advertised_output_modalities(brain: &str) -> &'static [&'static st
 /// `context_window`/`max_tokens` bleiben konservativ als gemeinsame Defaults
 /// (keine verifizierten pro-Brain-Kontingente im Repo); `advertised_*` liefern
 /// die tatsächlich bestätigten Modalitäten.
-pub(super) fn model_metadata(brain: &str) -> Value {
+pub fn model_metadata(brain: &str) -> Value {
     let mut metadata = json!({
         "id": model_id(brain),
         "object": "model",
