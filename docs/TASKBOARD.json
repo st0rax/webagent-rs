@@ -1636,6 +1636,31 @@
       ],
       "proof_path": "docs/proofs/T-950/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+    },
+    {
+      "id": "T-951",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "Gespraechsverlauf-Rahmen laesst das Modell als Aussenstehenden antworten",
+      "status": "free",
+      "owner": null,
+      "branch": null,
+      "claimed_at": null,
+      "depends_on": [],
+      "scope": [
+        "src/api_bridge/content.rs",
+        "src/api_bridge/tests.rs",
+        "docs/API_BRIDGE.md"
+      ],
+      "objective": "conversation_prompt in api_bridge/content.rs reicht nur eine einzelne Nachricht unveraendert durch. Ab der zweiten Nachricht baut es einen Textrahmen: optional [system (sichtbarer Kontext)], dann Gespraechsverlauf mit [brain]:, jede fruehere Nachricht unter [user], [tool] oder [brain] fuer die eigenen Antworten des Modells, zuletzt Aktuelle Nachricht:. Das Modell wird dabei nie als [brain] angesprochen. Am 2026-09-14 zwischen 12:40 und 12:43 antwortete chatgpt in einer Pi-Session entsprechend als Berater ueber einen Dritten: auf einen Arbeitsauftrag mit Ich wuerde den Brain damit jetzt starten lassen, statt die mitgesendeten Werkzeuge aufzurufen. Der Nutzer musste in Pi klarstellen, du bist brain. Der erste Turn derselben Session ohne Rahmen verhielt sich normal. Jede agentische Mehrturn-Session ueber die Bridge ist davon betroffen, weil ab dem zweiten Turn immer der Rahmen greift. Der Test in api_bridge/tests.rs Zeile 843 schreibt das heutige Format fest. Zu klaeren: eine Rahmung in zweiter Person, die das Modell ausdruecklich als Absender der [brain]-Beitraege und als Adressat der aktuellen Nachricht benennt, oder die Fortsetzung in derselben Web-Konversation statt eines neu gerahmten Verlaufs.",
+      "dod": "Der Mehrturn-Prompt benennt das Modell eindeutig als Autor der frueheren Assistenten-Beitraege und als Adressaten der aktuellen Nachricht; ein Live-Beleg gegen mindestens zwei Brains zeigt, dass eine agentische Anweisung im zweiten Turn einen Werkzeugaufruf statt einer Empfehlung an Dritte ausloest; Test und API_BRIDGE.md beschreiben das neue Format.",
+      "handoff": "Prompt vorher/nachher, Pi-Transkript des zweiten Turns je Brain, Branch und Commit.",
+      "non_goals": [
+        "Kein Wiederhochladen historischer Anhaenge; das bestehende Verhalten bleibt.",
+        "Keine Aenderung am Werkzeug-Umschlag; nur die Rahmung des Verlaufs."
+      ],
+      "proof_path": "docs/proofs/T-951/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
     }
   ]
 }
