@@ -123,6 +123,7 @@ pub fn complete_streaming_with_attachments(
     validate_attachments(attachments)?;
 
     let prompt = prompt_with_tools(request.prompt, request.tools, &request.tool_choice)?;
+    let prompt = prompt_with_identity(request.brain, &prompt);
     let forward_updates =
         request.tools.is_empty() || matches!(request.tool_choice, BrowserToolChoice::None);
     let mut relay_update = |snapshot: &str| {
@@ -206,6 +207,20 @@ fn validate_tools(tools: &[BrowserTool], choice: &BrowserToolChoice) -> Result<(
         }
     }
     Ok(())
+}
+
+/// Nennt dem Modell sein Brain, bevor irgendetwas anderes kommt. Hinter der
+/// Bridge wissen Web-Modelle sonst nicht, unter welchem Namen sie angesprochen
+/// werden — am 2026-09-14 nannte sich deepseek ueber Pi "claude" (T-951).
+/// Bei `auto` waehlt erst der Pool das Brain; eine Behauptung waere dann falsch.
+fn prompt_with_identity(brain: &str, prompt: &str) -> String {
+    let brain = brain.trim();
+    if brain.is_empty() || brain == "auto" {
+        return prompt.to_string();
+    }
+    format!(
+        "[Identitaet] Du bist das Modell hinter dem WebAgent-Brain \"{brain}\" (API-Modell webagent/{brain}). Fragt jemand nach deinem Namen oder deiner Identitaet, nenne \"{brain}\".\n\n{prompt}"
+    )
 }
 
 fn prompt_with_tools(
@@ -561,6 +576,21 @@ mod tests {
         assert!(error.contains("Ungueltiger Browser-Tool-Call-Umschlag"));
         assert!(error.contains("Rohtext:"));
         assert!(error.contains("read_file"));
+    }
+
+    #[test]
+    fn prompt_names_the_brain_first() {
+        let prompt = prompt_with_identity("deepseek", "Wer bist du?");
+        assert!(prompt
+            .starts_with("[Identitaet] Du bist das Modell hinter dem WebAgent-Brain \"deepseek\""));
+        assert!(prompt.contains("webagent/deepseek"));
+        assert!(prompt.ends_with("\n\nWer bist du?"));
+    }
+
+    #[test]
+    fn auto_brain_gets_no_identity_claim() {
+        assert_eq!(prompt_with_identity("auto", "Hallo"), "Hallo");
+        assert_eq!(prompt_with_identity("  ", "Hallo"), "Hallo");
     }
 
     #[test]

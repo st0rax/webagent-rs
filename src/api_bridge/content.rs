@@ -438,7 +438,11 @@ pub(crate) fn conversation_prompt(
         });
     }
 
-    let mut task = system_context + "Gespraechsverlauf mit [brain]:\n\n";
+    // Zweite Person statt Protokoll zwischen Dritten: Unter "[brain]" hielten
+    // Modelle ihre eigenen Beitraege fuer die eines anderen und antworteten
+    // als Berater statt Werkzeuge aufzurufen (T-951).
+    let mut task = system_context
+        + "Bisheriger Verlauf deiner Unterhaltung. Beitraege unter [du] hast du selbst geschrieben.\n\n";
     for message in &messages[..messages.len() - 1] {
         // Historische Anhaenge werden nur als Textmarker erwaehnt. Sie duerfen
         // nicht bei jeder Fortsetzung erneut in die Browser-UI hochgeladen
@@ -462,13 +466,13 @@ pub(crate) fn conversation_prompt(
             content = format!("[tool_call_id: {id}]\n{content}");
         }
         let label = if message.role == "assistant" {
-            "brain"
+            "du"
         } else {
             message.role.as_str()
         };
         task.push_str(&format!("[{label}]\n{content}\n\n"));
     }
-    task.push_str("Aktuelle Nachricht:\n\n");
+    task.push_str("Aktuelle Nachricht an dich:\n\n");
     task.push_str(&current_text);
 
     Ok(PromptBundle {

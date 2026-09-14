@@ -343,6 +343,8 @@ Responses werden standardmäßig in einem auf 256 Einträge und 64 MiB serialisi
 
 Der Wire-Vertrag ist zusätzlich mit dem offiziellen OpenAI-Python-SDK 3.6.0 live geprüft: Modellliste, Response-Retrieval, inkrementeller Responses-Textstream, Responses-Function-Call-Stream und inkrementeller Chat-Completions-Textstream werden vom SDK ohne Sonderadapter geparst; `get_final_response()` bzw. die Chat-Chunk-Faltung liefern jeweils das vollständige Ergebnis. Die SSE-Reihenfolge enthält dafür die kanonischen `output_item`-, `content_part`-, Delta-, Done- und Completion-Ereignisse.
 
+Jeder Browserturn beginnt mit einer Identitätszeile: `[Identitaet] Du bist das Modell hinter dem WebAgent-Brain "<brain>" (API-Modell webagent/<brain>)`. Bei `auto` entfällt sie, weil erst der Pool das Brain wählt. Mehrturn-Verläufe sind in zweiter Person gerahmt: frühere Assistenten-Beiträge stehen unter `[du]`, die neue Nachricht unter „Aktuelle Nachricht an dich“. Unter dem früheren Label `[brain]` hielten Modelle ihre eigenen Beiträge für die eines Dritten (T-951).
+
 `--timeout-secs` setzt optional das Zeitlimit für den einzelnen Browserturn. Ohne Angabe verwendet WebAgent die bestehende dynamische Timeout-Auflösung des ausgewählten Brains.
 
 ## OpenAI-Tool-Calling

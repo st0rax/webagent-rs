@@ -172,8 +172,10 @@ Es gibt kuenftig zwei explizite Modi:
 - kein `WEBAGENT_INFERENCE/1`;
 - keine Behauptung einer System- oder Developer-Rolle gegenueber dem
   Browser-Brain;
-- fruehere Nutzer- und Brain-Beitraege erscheinen als klar markiertes Zitat
-  eines bisherigen Gespraechs mit `[brain]`;
+- fruehere Nutzer- und Brain-Beitraege erscheinen als klar markierter
+  bisheriger Verlauf in zweiter Person, eigene Beitraege des Brains unter
+  `[du]` (bis 2026-09-14 `[brain]`, geaendert mit T-951, weil Modelle sich
+  darunter fuer einen Dritten hielten);
 - die letzte Nutzernachricht steht separat und unveraendert;
 - nur Anhaenge der aktuellen Nutzernachricht werden hochgeladen;
 - nicht verlustfrei darstellbare Rollen oder Content-Typen werden abgelehnt,

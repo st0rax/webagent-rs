@@ -840,10 +840,13 @@ fn responses_state_is_stored_and_can_extend_context() {
         .messages
         .extend(responses_messages(&json!("Wie lautet es?")).unwrap());
     let task = conversation_task(None, &stored.messages).unwrap();
-    assert!(task.starts_with("Gespraechsverlauf mit [brain]:"));
+    assert!(task.starts_with(
+        "Bisheriger Verlauf deiner Unterhaltung. Beitraege unter [du] hast du selbst geschrieben."
+    ));
     assert!(task.contains("[user]\nMein Codewort ist Otter."));
-    assert!(task.contains("[brain]\nVerstanden."));
-    assert!(task.ends_with("Aktuelle Nachricht:\n\nWie lautet es?"));
+    assert!(task.contains("[du]\nVerstanden."));
+    assert!(!task.contains("[brain]"));
+    assert!(task.ends_with("Aktuelle Nachricht an dich:\n\nWie lautet es?"));
     assert!(response["previous_response_id"].is_null());
 }
 
