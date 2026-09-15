@@ -1,0 +1,25 @@
+T-921 gates 2026-09-14 (branch refactor/T-921-wire-integration, Basis origin/master 8c1269b)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib
+  test_exit=0
+  1426 passed; 0 failed; 1 ignored
+  browser::verify::tests::sendefehler_ist_chat_failed ... ok
+  watchdog::tests::test_run_watchdog_repair ... ok
+
+git diff --check
+  clean
+
+Integrations-Strukturpruefung (manuell):
+- src/api_bridge/: boundary, catalog, content, inference, provider_handlers,
+  response_protocol, routing, store, tests, transport, wire -- alle 10
+  Geschwisterdateien haben eine mod-Zeile im Root (tests via #[cfg(test)]).
+- Definitionen-Duplikat-Scan (fn/struct/enum/const/static Namen): Root vs.
+  jedes Kindmodul = 0 Ueberlappungen.
+- Keine Root-Doppellogik von store/content/catalog/inference/response_protocol
+  mehr (vorherige T-922/T-923/T-919/T-931/T-933 entfernt).
