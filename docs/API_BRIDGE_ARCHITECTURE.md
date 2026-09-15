@@ -15,7 +15,7 @@ T-922 / T-923 / T-931 / T-933.
 
 | Pfad | Slot | `mod` in Root? | Verantwortung |
 |---|---|---|---|
-| `src/api_bridge.rs` | Root | — | Orchestrierung, Typen, Medien, noch Duplikate der Orphans (Inference in inference.rs) |
+| `src/api_bridge.rs` | Root | — | Orchestrierung, Typen, Medien (T-914 deferred) |
 | `routing.rs` | T-907 | ja (T-913) | `classify`, Streaming-Policy |
 | `provider_handlers.rs` | T-908 | ja (T-913) | OpenAI-Chat, Anthropic, Responses |
 | `transport.rs` | T-909 | ja (T-913) | HTTP-Request-Parsing |
@@ -78,10 +78,9 @@ Verdrahtung (T-913, T-921, T-922, T-923, T-931, T-933): zusätzlich
 Quelle: `docs/TASKBOARD.json`. Ein Entwickler, eine Aufgabe.
 
 - T-914 nicht claimen (deferred). T-919 done (inference verdrahtet).
-- Orphan-Dateien (`catalog`, `response_protocol`; `store`/`content`/`inference` verdrahtet) nicht
-  als fertige Produktion behandeln; Nachzug ist T-931 / T-933 (`store`/`content` done).
-- T-921 verdrahtet den Rest, ist aber `depends_on` T-915, T-916, T-917, T-918,
-  T-920, T-922, T-923, T-931, T-933 — nicht claimen, solange Vorgänger offen sind.
+- Alle extrahierten Module verdrahtet: `store`/`content`/`catalog`/`response_protocol`
+  (T-922/T-923/T-931/T-933) plus `inference` (T-919); keine Orphan-Dateien mehr.
+- T-921 (Integration) done: Verifikationspass, mod-Zeilen gesetzt, keine Duplikate.
 - Typen (`HttpRequest`, DTOs, `BridgeConfig`) bleiben in der Root-Datei.
 
 ## Verbleibende Risiken
