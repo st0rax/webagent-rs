@@ -1,0 +1,28 @@
+T-937 gates 2026-09-16 (branch refactor/T-937-keyboard-focus, Basis origin/master d2bb98e)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --lib  (Verification laut Board: ohne --features)
+  test_exit=0
+  1437 passed; 0 failed; 1 ignored
+  (1433 T-936-Basis + 4 T-937-Tests)
+
+cargo test --features webview --lib  (House-Vergleichsbasis, wie T-930)
+  test_exit=0
+  1437 passed; 0 failed; 1 ignored
+
+Neue T-937-Tests (src/browser/composer.rs mod tests):
+  tastaturfokus_erreicht_composer_ohne_koordinaten                ... ok
+  tabindex_rueckfall_erreicht_composer_und_bleibt_unterscheidbar  ... ok
+  fokus_kam_nie_an_bleibt_als_none_unterscheidbar                 ... ok
+  klick_bleibt_als_letzter_rueckfall_ausgewiesen                  ... ok
+
+Mock-Erweiterung (reiner Test-Harness, src/mock_page.rs):
+  press_key wird jetzt aufgezeichnet (press_key_calls/press_key_payloads),
+  damit Tastatur-Fokus-Tests den Tab-Versuchszaehler deterministisch pruefen.
+
+git diff --check  -> clean (nur LF/CRLF-Hinweis, unkritisch)

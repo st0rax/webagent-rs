@@ -38,6 +38,9 @@ struct MockStateInner {
     file_upload_ok: bool,
     /// Recorded `insert_text` payloads, one entry per call (chunked-fill tests).
     inserted_texts: Vec<String>,
+    /// Recorded `press_key` calls (key, code, virtual_key, text) — T-937
+    /// Tastatur-Fokusweg: Tests zaehlen die Tab-Drucke vor der Verifikation.
+    pressed_keys: Vec<(String, String, i64, String)>,
 }
 
 impl MockPageState {
@@ -144,6 +147,19 @@ impl MockPageState {
             .map(|g| g.inserted_texts.clone())
             .unwrap_or_default()
     }
+
+    /// How often `press_key` was invoked on drivers sharing this state.
+    pub fn press_key_calls(&self) -> usize {
+        self.inner.lock().map(|g| g.pressed_keys.len()).unwrap_or(0)
+    }
+
+    /// Keys pressed via `press_key`, in order (Tastatur-Fokus-Tests, T-937).
+    pub fn press_key_payloads(&self) -> Vec<(String, String, i64, String)> {
+        self.inner
+            .lock()
+            .map(|g| g.pressed_keys.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// Mock-Implementierung von [`PageDriver`] — Antworten per `MockPageState::on_eval`.
@@ -205,7 +221,15 @@ impl PageDriver for MockPageDriver {
         Ok(guard.url.clone())
     }
 
-    fn press_key(&mut self, _key: &str, _code: &str, _virtual_key: i64, _text: &str) -> Result<()> {
+    fn press_key(&mut self, key: &str, code: &str, virtual_key: i64, text: &str) -> Result<()> {
+        if let Ok(mut guard) = self.state.inner.lock() {
+            guard.pressed_keys.push((
+                key.to_string(),
+                code.to_string(),
+                virtual_key,
+                text.to_string(),
+            ));
+        }
         Ok(())
     }
 
