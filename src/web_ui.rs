@@ -370,4 +370,122 @@ mod tests {
             "{out}"
         );
     }
+
+    // Abschnitt: T-930 Smoke gegen den laufenden serve()-Listener.
+
+    fn spawn_serve(config: UiConfig, port: u16) -> SocketAddr {
+        let probe = bind_listener(format!("127.0.0.1:{port}").parse().unwrap()).unwrap();
+        let addr = probe.local_addr().unwrap();
+        drop(probe);
+        let mut config = config;
+        config.bind = addr;
+        thread::spawn(move || {
+            let _ = serve(config);
+        });
+        for _ in 0..50 {
+            if StdTcp::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
+                return addr;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        panic!("T-930 Smoke-Server wurde nicht erreichbar: {addr}");
+    }
+
+    fn smoke_request(addr: &SocketAddr, request: &[u8]) -> String {
+        let mut client = StdTcp::connect_timeout(addr, Duration::from_secs(2)).unwrap();
+        client.write_all(request).unwrap();
+        let mut out = String::new();
+        client.read_to_string(&mut out).unwrap();
+        out
+    }
+
+    fn t930_config() -> UiConfig {
+        UiConfig {
+            bind: "127.0.0.1:0".parse().unwrap(),
+            open_browser: false,
+            api_bridge: Some(crate::api_bridge::BridgeConfig {
+                bind: "127.0.0.1:0".parse().unwrap(),
+                brain: "auto".to_string(),
+                timeout_secs: None,
+                headless: true,
+                api_key: "t930-secret".to_string(),
+                fake_reply: Some("T930-FAKE-REPLY".to_string()),
+            }),
+        }
+    }
+
+    #[test]
+    fn smoke_ui_assets_health_sessions_chat_gegen_live_listener() {
+        let addr = spawn_serve(t930_config(), 0);
+
+        let root = smoke_request(&addr, b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(root.contains("HTTP/1.1 200"), "UI-Asset: {root}");
+        assert!(root.contains("WebAgent"), "UI-Asset: {root}");
+        assert!(
+            root.contains("api/health/brains"),
+            "UI live verdrahtet: {root}"
+        );
+
+        let health = smoke_request(&addr, b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(health.contains("HTTP/1.1 200"), "Bridge-Health: {health}");
+        assert!(
+            health.contains("\"service\":\"webagent-provider-bridge\""),
+            "Bridge-Health: {health}"
+        );
+
+        let brains = smoke_request(
+            &addr,
+            b"GET /api/health/brains HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+        );
+        assert!(brains.contains("HTTP/1.1 200"), "/api-Health: {brains}");
+        assert!(brains.contains("\"brains\""), "/api-Health: {brains}");
+
+        let session_body = br#"{"brain":"auto","task":"hi"}"#;
+        let sessions = format!(
+            "POST /api/sessions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            session_body.len(),
+            std::str::from_utf8(session_body).unwrap()
+        );
+        let sessions = smoke_request(&addr, sessions.as_bytes());
+        assert!(sessions.contains("HTTP/1.1 201"), "Sessions: {sessions}");
+        assert!(sessions.contains("\"run_id\""), "Sessions: {sessions}");
+
+        let chat_body = br#"{"model":"auto","messages":[{"role":"user","content":"hi"}]}"#;
+        let chat = format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nAuthorization: Bearer t930-secret\r\nContent-Length: {}\r\n\r\n{}",
+            chat_body.len(),
+            std::str::from_utf8(chat_body).unwrap()
+        );
+        let chat = smoke_request(&addr, chat.as_bytes());
+        assert!(chat.contains("HTTP/1.1 200"), "Chat: {chat}");
+        assert!(chat.contains("T930-FAKE-REPLY"), "Fake-Antwort: {chat}");
+        assert!(chat.contains("\"role\":\"assistant\""), "Chat: {chat}");
+
+        let chat_no_key = format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            chat_body.len(),
+            std::str::from_utf8(chat_body).unwrap()
+        );
+        let chat_no_key = smoke_request(&addr, chat_no_key.as_bytes());
+        assert!(
+            chat_no_key.contains("HTTP/1.1 401"),
+            "Tokenschutz: {chat_no_key}"
+        );
+    }
+
+    #[test]
+    fn smoke_default_port_8788_laesst_sich_starten_wenn_frei() {
+        if std::net::TcpListener::bind(("127.0.0.1", DEFAULT_PORT)).is_err() {
+            eprintln!("t930: Port {DEFAULT_PORT} belegt, :8788-Smoke uebersprungen");
+            return;
+        }
+        let addr = spawn_serve(t930_config(), DEFAULT_PORT);
+        assert_eq!(addr.port(), DEFAULT_PORT);
+        let health = smoke_request(&addr, b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        assert!(health.contains("HTTP/1.1 200"), "{health}");
+        assert!(
+            health.contains("\"service\":\"webagent-provider-bridge\""),
+            "{health}"
+        );
+    }
 }
