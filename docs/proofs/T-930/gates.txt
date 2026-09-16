@@ -1,0 +1,31 @@
+T-930 gates 2026-09-14 (branch refactor/T-930-web-ui-smoke, Basis origin/master 3216be3)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib
+  test_exit=0
+  1429 passed; 0 failed; 1 ignored
+  files: 1426 Basisfront (letzter Task) + 1 T-924-Gate-Test + 2 T-930-Smoke
+
+Smoke-Tests (gezielter Lauf):
+  cargo test --features webview --lib smoke
+    web_ui::tests::smoke_ui_assets_health_sessions_chat_gegen_live_listener ... ok
+    web_ui::tests::smoke_default_port_8788_laesst_sich_starten_wenn_frei ... ok
+    result: ok. 2 passed; 0 failed
+  (kein "Port 8788 belegt"-Skip: der :8788-Lauf hat real auf 127.0.0.1:8788
+   gebunden, assert_eq!(addr.port(), 8788) war gruen)
+
+Smoke-Umfang gegen den laufenden serve()-Listener (ein Listener, zwei Rollen):
+  1. GET /                  -> 200, "WebAgent", "api/health/brains"   (UI-Asset, T-905)
+  2. GET /health            -> 200, "service":"webagent-provider-bridge" (API-Rolle)
+  3. GET /api/health/brains -> 200, "brains"                            (Health, T-906)
+  4. POST /api/sessions     -> 201, "run_id"                            (Sessions)
+  5. POST /v1/chat/completions mit Bearer -> 200, "T930-FAKE-REPLY", assistant
+     (Chat-Minimalpfad ohne Live-Brain ueber fake_reply)
+  6. POST /v1/chat/completions ohne Token -> 401                        (Schutz)
+
+git diff --check  -> clean (nur LF/CRLF-Hinweis, unkritisch)
