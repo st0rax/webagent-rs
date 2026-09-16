@@ -1259,10 +1259,11 @@
       "phase": "13",
       "type": "code",
       "title": "Sendepfad: Phase und Beobachtung je Turn protokollieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "refactor/T-936-sendphase-log",
       "claimed_at": "2026-09-14",
+      "done_at": "2026-09-16",
       "depends_on": [],
       "scope": [
         "src/browser/send.rs",
