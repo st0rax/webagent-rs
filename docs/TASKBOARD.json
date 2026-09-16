@@ -945,10 +945,11 @@
       "phase": "12",
       "type": "test",
       "title": "CI-Gate: api_bridge Kinddateien muessen verdrahtet sein",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "refactor/T-924-ci-gate-wired-modules",
       "claimed_at": "2026-09-14",
+      "done_at": "2026-09-14",
       "depends_on": [],
       "scope": [
         "src/api_bridge/",
