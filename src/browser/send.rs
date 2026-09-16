@@ -155,6 +155,9 @@ impl WebBrainBackend {
         text: &str,
         attachments: &[BrowserAttachment],
     ) -> Result<i32, String> {
+        // T-936: jeder Sendevorgang startet mit einer frischen Turn-Beobachtung;
+        // send_generic füllt dann Phase/Metriken, record_event konsumiert sie.
+        crate::brain_score::set_pending_turn(crate::brain_score::TurnObservation::default());
         if !attachments.is_empty() {
             self.prepare_attachment_mode(attachments)?;
             self.attach_files(attachments)?;
@@ -1042,7 +1045,13 @@ impl WebBrainBackend {
         let baseline = self.prepare_send_baseline();
         let user_baseline = self.user_message_count();
         if self.sel("composer").is_empty() {
-            return Err("Keine Composer-Selektoren konfiguriert".into());
+            crate::brain_score::update_pending_turn(|obs| {
+                obs.phase = crate::brain_score::SendPhase::SelectorResolve;
+            });
+            return Err(crate::brain_score::phase_error(
+                crate::brain_score::SendPhase::SelectorResolve,
+                "Keine Composer-Selektoren konfiguriert",
+            ));
         }
         // Werbe-/Consent-Modals wegklicken, bevor gefuellt wird — sonst blockiert
         // z.B. mistrals "Vibe CLI"-Announcement den Composer und jeder Versuch scheitert.
@@ -1056,6 +1065,9 @@ impl WebBrainBackend {
         // kimis Lexical-Editor meldete fill_composer frueher Erfolg, obwohl das Feld
         // leer blieb — dann ging Enter ins Leere und verify_submitted meldete
         // faelschlich "abgeschickt". Vor jedem Fuell-Versuch nochmal Modals schliessen.
+        crate::brain_score::update_pending_turn(|obs| {
+            obs.phase = crate::brain_score::SendPhase::Focus;
+        });
         let filled = if self.brain_id == "kimi" {
             self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 s.dismiss_consent();
@@ -1076,8 +1088,35 @@ impl WebBrainBackend {
         };
         if !filled {
             self.capture_submit_failure_trace();
-            return Err("Composer-Feld nicht gefunden (Timeout)".into());
+            // T-936: der gemeinsame Fehlertext "Composer-Feld nicht gefunden"
+            // meint je nach Lage mindestens zwei Zustaende. Durch die
+            // Beobachtungen unterscheidbar: Elementmasse liegt vor = Klick daneben
+            // / Inhalt nie akzeptiert (ContentCheck), keine Masse = Selektor
+            // traf kein Element (Insert). Der alte Substring bleibt fuer externe
+            // Erkennung im Detail erhalten.
+            let phase = if crate::brain_score::pending_turn_snapshot()
+                .and_then(|obs| obs.element_w)
+                .is_some()
+            {
+                crate::brain_score::SendPhase::ContentCheck
+            } else {
+                crate::brain_score::SendPhase::Insert
+            };
+            crate::brain_score::update_pending_turn(|obs| {
+                obs.phase = phase;
+                obs.pasted_chars = Some(self.composer_char_count());
+                obs.expected_chars = Some(text.chars().count());
+            });
+            return Err(crate::brain_score::phase_error(
+                phase,
+                "Composer-Feld nicht gefunden (Timeout)",
+            ));
         }
+        crate::brain_score::update_pending_turn(|obs| {
+            obs.phase = crate::brain_score::SendPhase::ContentCheck;
+            obs.pasted_chars = Some(self.composer_char_count());
+            obs.expected_chars = Some(text.chars().count());
+        });
         if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
             eprintln!("[submit] composer fill confirmed; dispatch begins");
         }
@@ -1091,6 +1130,10 @@ impl WebBrainBackend {
         // der Schleife ermittelt, damit die 5 Versuche konsistent denselben
         // Absendeweg nehmen statt zwischen Echt- und Synthetik-Klick zu flippen.
         let pointer_transparent = self.send_button_pointer_transparent();
+        // T-936: Submit-Phase erreicht; die Beweiswartezeit ist die Settle-Phase.
+        crate::brain_score::update_pending_turn(|obs| {
+            obs.phase = crate::brain_score::SendPhase::Submit;
+        });
         // Fuenf Versuche statt drei: das Absenden in Lexical-/contenteditable-Editoren
         // (kimi) greift pro Versuch nur ~zur Haelfte; jeder weitere Versuch, der bei
         // Erfolg gar nicht erst laeuft, hebt die Zuverlaessigkeit deutlich. Bei einem
@@ -1131,6 +1174,9 @@ impl WebBrainBackend {
                 if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
                     eprintln!("[submit] submission proved");
                 }
+                crate::brain_score::update_pending_turn(|obs| {
+                    obs.phase = crate::brain_score::SendPhase::Settle;
+                });
                 return Ok(baseline);
             }
         }
@@ -1153,9 +1199,18 @@ impl WebBrainBackend {
     /// ("gemini lebt um 11:19:06" aus einem alten Chat).
     fn submit_failed_error(&self, attempts: u32) -> String {
         self.capture_submit_failure_trace();
+        // T-936: fehlgeschlagener Submit meldet Phase; der Banner-Text geht
+        // gekuerzt und ohne PII in den Turn-Record (events.jsonl).
+        crate::brain_score::update_pending_turn(|obs| {
+            obs.phase = crate::brain_score::SendPhase::Submit;
+            obs.pasted_chars = Some(self.composer_char_count());
+        });
         if let Some(banner) = self.detect_block_banner() {
+            crate::brain_score::update_pending_turn(|obs| {
+                obs.banner = Some(crate::brain_score::turn_banner(&banner));
+            });
             return format!(
-                "blockiert: kein Absende-Beweis nach {attempts} Versuchen -- Seite zeigt: {banner}"
+                "send_phase=submit: blockiert: kein Absende-Beweis nach {attempts} Versuchen -- Seite zeigt: {banner}"
             );
         }
         // Keine BEKANNTE Phrase getroffen. Frueher endete die Meldung hier — und
@@ -1176,7 +1231,7 @@ impl WebBrainBackend {
         let actual = self.composer_char_count();
         if intended > 0 && actual + actual / 10 < intended {
             return format!(
-                "Absenden fehlgeschlagen nach {attempts} Versuchen: der Composer enthaelt \
+                "send_phase=submit: Absenden fehlgeschlagen nach {attempts} Versuchen: der Composer enthaelt \
                  nur {actual} von {intended} Zeichen — die Eingabe wurde von der \
                  Oberflaeche gekuerzt oder gar nicht uebernommen, es ist KEINE Blockade"
             );
@@ -1189,20 +1244,20 @@ impl WebBrainBackend {
         // eine Ablehnung, die nur ein grauer Knopf ist, nie sehen.
         if self.send_button_disabled() == Some(true) {
             return format!(
-                "{SEND_DISABLED_MARKER}: Absendeknopf ist deaktiviert, obwohl der Text \
+                "send_phase=submit: {SEND_DISABLED_MARKER}: Absendeknopf ist deaktiviert, obwohl der Text \
                  vollstaendig im Composer steht ({attempts} Versuche) — die Oberflaeche \
                  verweigert das Absenden ohne Meldung"
             );
         }
         if let Some(overlay) = self.blocking_dialog_text() {
             return format!(
-                "Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen. \
+                "send_phase=submit: Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen. \
                  Unbekannter Dialog ueber dem Composer, Text: \"{overlay}\" \
                  -- falls das eine Blockade ist, gehoert die Formulierung in BLOCK_PHRASES"
             );
         }
         format!(
-            "Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen \
+            "send_phase=submit: Absenden fehlgeschlagen: kein Absende-Beweis nach {attempts} Versuchen \
              (Text steht vollstaendig im Composer, kein Dialog gefunden — moeglich \
              sind ein deaktivierter Absendeknopf oder eine stumm verworfene Eingabe)"
         )
@@ -1486,7 +1541,15 @@ return best?best.slice(0,300):null;})()"#;
         }) && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
             s.fill_composer_dom_set(js, t) && s.composer_contains(js, t)
         }) {
-            return Err("Composer-Feld nicht gefunden (Timeout)".into());
+            crate::brain_score::update_pending_turn(|obs| {
+                obs.phase = crate::brain_score::SendPhase::ContentCheck;
+                obs.pasted_chars = Some(self.composer_char_count());
+                obs.expected_chars = Some(text.chars().count());
+            });
+            return Err(crate::brain_score::phase_error(
+                crate::brain_score::SendPhase::ContentCheck,
+                "Composer-Feld nicht gefunden (Timeout)",
+            ));
         }
         std::thread::sleep(Duration::from_millis(300));
         let url_before = self.get_conversation_ref();

@@ -41,6 +41,114 @@ use crate::scoring::wilson_lower_bound;
 /// aktuellen Score -- das ist die "Recency"-Komponente ohne Decay-Formel.
 const WINDOW_SIZE: usize = 40;
 
+/// Maximale Laenge des Banner-Textes im Turn-Record (PII-Schutz).
+const BANNER_TRUNCATE: usize = 200;
+
+// ---------------------------------------------------------------------------
+// T-936: Phase und Beobachtung je Turn
+// ---------------------------------------------------------------------------
+
+/// Sendephase, die ein Browser-Turn erreicht hat. Die Fuenf-Zustaende aus dem
+/// Objective werden durch Phase + Beobachtungen (element_w/h, clamp, pasted vs
+/// expected, banner) in den Daten unterscheidbar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SendPhase {
+    #[default]
+    SelectorResolve,
+    Focus,
+    Clear,
+    Insert,
+    ContentCheck,
+    Submit,
+    Settle,
+    Read,
+}
+
+impl SendPhase {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SelectorResolve => "selector_resolve",
+            Self::Focus => "focus",
+            Self::Clear => "clear",
+            Self::Insert => "insert",
+            Self::ContentCheck => "content_check",
+            Self::Submit => "submit",
+            Self::Settle => "settle",
+            Self::Read => "read",
+        }
+    }
+}
+
+/// Laufzeit-Beobachtungen eines Sendevorgangs. Wird pro Turn in die
+/// events.jsonl geschrieben und ermoeglicht die Unterscheidung der
+/// Fuenf-Zustaende (nicht angemeldet, ausgeloggt, kein Selektor getroffen,
+/// Klick daneben, Fuellen gelaufen).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TurnObservation {
+    pub phase: SendPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selector_index: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_w: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_h: Option<f64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub clamp_triggered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus_arrived: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pasted_chars: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_chars: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub banner: Option<String>,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
+// Beobachtungs-Puffer: send_generic (send.rs) traegt den aktuellen Stand ein,
+// record_event_at (unten) konsumiert ihn beim Schreiben.
+lazy_static! {
+    static ref PENDING_TURN: std::sync::Mutex<Option<TurnObservation>> =
+        std::sync::Mutex::new(None);
+}
+
+/// Aktuelle Turn-Beobachtung eintragen (von send.rs / composer.rs).
+pub fn set_pending_turn(obs: TurnObservation) {
+    *PENDING_TURN.lock().unwrap() = Some(obs);
+}
+
+/// Einzelne Felder der laufenden Turn-Beobachtung ergaenzen/aktualisieren,
+/// ohne den Rest zu ueberschreiben. Legt eine leere Beobachtung an, wenn noch
+/// keine vorhanden ist.
+pub fn update_pending_turn(update: impl FnOnce(&mut TurnObservation)) {
+    let mut guard = PENDING_TURN.lock().unwrap();
+    update(guard.get_or_insert_with(TurnObservation::default));
+}
+
+/// Kopie des aktuellen Stands (send.rs nutzt sie nach dem Fuell-Loop, um
+/// ContentCheck vs. Insert zu unterscheiden).
+pub fn pending_turn_snapshot() -> Option<TurnObservation> {
+    PENDING_TURN.lock().unwrap().clone()
+}
+
+/// Standardisierte Fehlernachricht mit Phase-Präfix statt eines kombinierten
+/// Sammelstrings. Der alte Substring ("Composer-Feld nicht gefunden") bleibt
+/// im Detailteil erhalten, damit bestehende externe Erkennung (is_send_disabled
+/// etc.) weiter funktioniert.
+pub fn phase_error(phase: SendPhase, detail: &str) -> String {
+    format!("send_phase={}: {}", phase.as_str(), detail)
+}
+
+/// Banner-Text fuer den Turn-Record: gekuerzt auf BANNER_TRUNCATE Zeichen,
+/// getrimmt — kein PII-/Langtext-Risiko in events.jsonl.
+pub fn turn_banner(banner: &str) -> String {
+    banner.trim().chars().take(BANNER_TRUNCATE).collect()
+}
+
 lazy_static! {
     static ref WRITE_LOCK: Mutex<()> = Mutex::new(());
 }
@@ -53,6 +161,8 @@ struct Event {
     reason: Option<String>,
     latency_ms: u64,
     prompt_chars: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    turn: Option<TurnObservation>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +213,7 @@ fn record_event_at(
             return;
         }
     }
+    let turn = PENDING_TURN.lock().unwrap().take();
     let event = Event {
         brain_id: brain_id.to_string(),
         ts: crate::now_rfc3339(),
@@ -110,6 +221,7 @@ fn record_event_at(
         reason: reason.map(str::to_string),
         latency_ms,
         prompt_chars,
+        turn,
     };
     let Ok(line) = serde_json::to_string(&event) else {
         return;
@@ -406,5 +518,150 @@ mod tests {
         assert!(!score.is_nan());
         assert!(!score.is_infinite());
         assert!((0.0..=1.0).contains(&score));
+    }
+
+    // -----------------------------------------------------------------------
+    // T-936: Turn-Beobachtungen
+    // -----------------------------------------------------------------------
+
+    /// Signatur eines Zustands in den Daten: Phase + welche Beobachtungen
+    /// gesetzt sind. Die DoD-Fuenf-Zustaende muessen sich paarweise dadurch
+    /// unterscheiden.
+    fn signature(obs: &TurnObservation) -> (String, bool, bool, bool, Option<bool>, bool, bool) {
+        (
+            obs.phase.as_str().to_string(),
+            obs.element_w.is_some(),
+            obs.element_h.is_some(),
+            obs.clamp_triggered,
+            obs.focus_arrived,
+            obs.pasted_chars == obs.expected_chars,
+            obs.banner.is_some(),
+        )
+    }
+
+    #[test]
+    fn turn_fuenf_zustaende_sind_in_den_daten_unterscheidbar() {
+        // 1. Nicht angemeldet: Composer Insert erreicht, aber Login-Banner zeigt.
+        let nicht_angemeldet = TurnObservation {
+            phase: SendPhase::Insert,
+            banner: Some("Bitte melde dich an".to_string()),
+            pasted_chars: Some(0),
+            expected_chars: Some(12),
+            ..Default::default()
+        };
+        // 2. Ausgeloggt mit Reauth: Composition abgebrochen, Reauth-Banner da.
+        let ausgeloggt_reauth = TurnObservation {
+            phase: SendPhase::SelectorResolve,
+            banner: Some("session expired".to_string()),
+            ..Default::default()
+        };
+        // 3. Kein Selektor getroffen: kein Element lokalisiert (keine Masse),
+        //    nichts eingefuegt.
+        let kein_selektor = TurnObservation {
+            phase: SendPhase::Insert,
+            element_w: None,
+            pasted_chars: Some(0),
+            expected_chars: Some(77),
+            ..Default::default()
+        };
+        // 4. Klick neben dem Element: Elementmerkmale da, Feld blieb aber leer.
+        let klick_daneben = TurnObservation {
+            phase: SendPhase::ContentCheck,
+            element_w: Some(640.0),
+            element_h: Some(48.0),
+            clamp_triggered: true,
+            focus_arrived: Some(true),
+            pasted_chars: Some(0),
+            expected_chars: Some(43),
+            ..Default::default()
+        };
+        // 5. Fuellen in Deadline gelaufen: teilweise eingefuegt, Deadline verfehlt.
+        let deadline_past = TurnObservation {
+            phase: SendPhase::Insert,
+            element_w: Some(640.0),
+            pasted_chars: Some(240),
+            expected_chars: Some(4000),
+            clamp_triggered: true,
+            ..Default::default()
+        };
+        let states = [
+            (&nicht_angemeldet, "nicht_angemeldet"),
+            (&ausgeloggt_reauth, "ausgeloggt_reauth"),
+            (&kein_selektor, "kein_selektor"),
+            (&klick_daneben, "klick_daneben"),
+            (&deadline_past, "deadline_past"),
+        ];
+        for (i, (a, a_name)) in states.iter().enumerate() {
+            for (b, b_name) in states.iter().skip(i + 1) {
+                assert_ne!(
+                    signature(a),
+                    signature(b),
+                    "{a_name} und {b_name} muessen in den Daten unterscheidbar sein"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn record_event_at_konsumiert_pending_turn() {
+        let path = unique_path();
+        set_pending_turn(TurnObservation {
+            phase: SendPhase::Settle,
+            selector_index: Some(3),
+            element_w: Some(640.0),
+            element_h: Some(48.0),
+            pasted_chars: Some(4000),
+            expected_chars: Some(4000),
+            ..Default::default()
+        });
+        record_event_at("kimi", false, Some("blocked"), 1500, 4000, &path);
+        // Puffer ist konsumiert: der naechste Ereignis ohne neuen Pending hat
+        // keinen turn-Anteil (kein Stale-Data-Anhaengen an Folgeturns).
+        record_event_at("kimi", false, Some("blocked"), 1500, 4000, &path);
+        let events = load_events(&path);
+        assert_eq!(events.len(), 2);
+        let first = events[0].turn.as_ref().expect("turn-Beobachtung fehlt");
+        assert_eq!(first.phase, SendPhase::Settle);
+        assert_eq!(first.selector_index, Some(3));
+        assert_eq!(first.element_w, Some(640.0));
+        assert_eq!(first.element_h, Some(48.0));
+        assert_eq!(first.pasted_chars, Some(4000));
+        assert!(events[1].turn.is_none(), "ohne Pending kein turn im Event");
+    }
+
+    #[test]
+    fn phase_error_nennt_phase_und_behaelt_detail() {
+        let msg = phase_error(SendPhase::Insert, "Composer-Feld nicht gefunden (Timeout)");
+        assert!(
+            msg.starts_with("send_phase=insert: "),
+            "unbekanntes Präfix: {msg}"
+        );
+        assert!(
+            msg.contains("Composer-Feld nicht gefunden"),
+            "alter Substring muss fuer externe Erkennung erhalten bleiben"
+        );
+        for phase in [
+            SendPhase::SelectorResolve,
+            SendPhase::Focus,
+            SendPhase::Clear,
+            SendPhase::Insert,
+            SendPhase::ContentCheck,
+            SendPhase::Submit,
+            SendPhase::Settle,
+            SendPhase::Read,
+        ] {
+            assert!(
+                phase_error(phase, "x").starts_with(&format!("send_phase={}: ", phase.as_str()))
+            );
+        }
+    }
+
+    #[test]
+    fn turn_banner_kuerzt_auf_200_zeichen() {
+        let lang = format!("  {}  ", "x".repeat(500));
+        let kurz = turn_banner(&lang);
+        assert_eq!(kurz.chars().count(), BANNER_TRUNCATE);
+        assert_eq!(kurz.chars().next(), Some('x'));
+        assert_eq!(turn_banner(""), "");
     }
 }
