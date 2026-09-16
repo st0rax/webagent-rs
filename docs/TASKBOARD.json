@@ -1094,10 +1094,11 @@
       "phase": "12",
       "type": "test",
       "title": "Web-UI Smoke gegen Loopback-API (:8788)",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "refactor/T-930-web-ui-smoke",
       "claimed_at": "2026-09-14",
+      "done_at": "2026-09-14",
       "depends_on": [],
       "scope": [
         "web/",
