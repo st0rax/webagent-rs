@@ -1,0 +1,26 @@
+T-924 gates 2026-09-14 (branch refactor/T-924-ci-gate-wired-modules, Basis origin/master 168da7d)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --features webview --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --features webview --lib
+  test_exit=0
+  1427 passed; 0 failed; 1 ignored
+  api_bridge::tests::kindmodul_dateien_sind_im_root_verdrahtet ... ok
+
+git diff --check
+  clean
+
+Beispiel-Fail (reproduzierbar, Orphan-Probe):
+  1. temporaer src/api_bridge/zz_gate_probe.rs angelegt (kein mod zz_gate_probe;)
+  2. cargo test --features webview --lib kindmodul
+     -> FAILED, panic: "Orphan-Kindmodule ohne mod-Zeile in
+        api_bridge.rs: zz_gate_probe", exit=101
+  3. Probe entfernt, Re-Run -> ok (1 passed)
+
+Gate-Pfad in CI: laeuft ueber den bestehenden Job "Test (volle Features)"
+in .github/workflows/ci.yml (`cargo test --lib --verbose`); kein fremder
+CI-Job angefasst.

@@ -1438,3 +1438,40 @@ fn t404_sdk_blackbox_official_sdks_and_two_clients() {
         eprintln!("t404: skip fetch_client.mjs (node missing)");
     }
 }
+
+// Abschnitt: CI-Gate (T-924) - Kindmodule muessen verdrahtet sein.
+
+#[test]
+fn kindmodul_dateien_sind_im_root_verdrahtet() {
+    let bridge_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("api_bridge");
+    let root_source =
+        std::fs::read_to_string(bridge_dir.with_extension("rs")).expect("api_bridge.rs lesbar");
+    let mut orphans: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(&bridge_dir)
+        .expect("src/api_bridge lesbar")
+        .flatten()
+    {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+            continue;
+        }
+        let stem = match path.file_stem().and_then(|stem| stem.to_str()) {
+            Some(stem) => stem,
+            None => continue,
+        };
+        if stem == "tests" || stem == "mod" {
+            continue;
+        }
+        let expected = format!("mod {stem};");
+        if !root_source.lines().any(|line| line.trim() == expected) {
+            orphans.push(stem.to_string());
+        }
+    }
+    assert!(
+        orphans.is_empty(),
+        "Orphan-Kindmodule ohne mod-Zeile in api_bridge.rs: {}",
+        orphans.join(", ")
+    );
+}
