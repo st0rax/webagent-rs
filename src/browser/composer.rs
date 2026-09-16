@@ -8,15 +8,40 @@ use serde_json::Value;
 use std::time::Duration;
 
 impl WebBrainBackend {
+    /// T-936: Koordinatenergebnis (Index, Masse, Clamp) in die laufende
+    /// Turn-Beobachtung eintragen — die Metadaten, die heute berechnet und
+    /// weggeworfen werden.
+    fn note_composer_metrics(&self, coords: &Value) {
+        let idx = coords.get("i").and_then(Value::as_u64).map(|i| i as u32);
+        let w = coords.get("w").and_then(Value::as_f64);
+        let h = coords.get("h").and_then(Value::as_f64);
+        let clamp = coords
+            .get("clamp")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        crate::brain_score::update_pending_turn(|obs| {
+            obs.phase = crate::brain_score::SendPhase::Focus;
+            obs.selector_index = idx;
+            obs.element_w = w;
+            obs.element_h = h;
+            obs.clamp_triggered = clamp;
+        });
+    }
+
     /// Fuellt einen contenteditable Rich-Text-Editor absatzweise. Lexical
     /// verwirft bei `Input.insertText` alles hinter dem ersten Zeilenumbruch;
     /// `execCommand('insertParagraph')` geht dagegen durch seinen Editor-State.
     pub(super) fn fill_composer_rich_multiline(&self, composer_js: &str, text: &str) -> bool {
         // Viewport-clamped click target (see fill_composer): tall ProseMirror rects.
-        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);if(bot-top<1||right-left<1){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top};}return {x:(left+right)/2,y:(top+bot)/2};}}";
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);var clamp=(bot-top<1||right-left<1);if(clamp){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top,w:r.width,h:r.height,clamp:clamp,i:i};}return {x:(left+right)/2,y:(top+bot)/2,w:r.width,h:r.height,clamp:clamp,i:i};}}";
         let coords = self
             .eval(&Self::js_scan(composer_js, coord_body, "null"))
             .unwrap_or(Value::Null);
+        if coords.get("x").and_then(Value::as_f64).is_some()
+            && coords.get("y").and_then(Value::as_f64).is_some()
+        {
+            self.note_composer_metrics(&coords);
+        }
         if let (Some(x), Some(y)) = (
             coords.get("x").and_then(Value::as_f64),
             coords.get("y").and_then(Value::as_f64),
@@ -63,10 +88,15 @@ impl WebBrainBackend {
 
     /// Playwright-`fill()`-Äquivalent: DOM setzen + input/change-Events (Angular/React).
     pub(super) fn fill_composer_dom_set(&self, composer_js: &str, text: &str) -> bool {
-        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);if(bot-top<1||right-left<1){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top};}return {x:(left+right)/2,y:(top+bot)/2};}}";
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);var clamp=(bot-top<1||right-left<1);if(clamp){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top,w:r.width,h:r.height,clamp:clamp,i:i};}return {x:(left+right)/2,y:(top+bot)/2,w:r.width,h:r.height,clamp:clamp,i:i};}}";
         let coords = self
             .eval(&Self::js_scan(composer_js, coord_body, "null"))
             .unwrap_or(Value::Null);
+        if coords.get("x").and_then(Value::as_f64).is_some()
+            && coords.get("y").and_then(Value::as_f64).is_some()
+        {
+            self.note_composer_metrics(&coords);
+        }
         let (x, y) = match (
             coords.get("x").and_then(|v| v.as_f64()),
             coords.get("y").and_then(|v| v.as_f64()),
@@ -132,10 +162,15 @@ impl WebBrainBackend {
         // 1) Klickpunkt = Viewport-Schnitt des Composer-Rects (nicht gefunden -> false).
         //    ChatGPT-ProseMirror meldet bei grossen Prompts h=13k/y=-10k; geometrischer
         //    Mittelpunkt liegt dann ausserhalb der WebView (Live: Composer-Feld-Timeout).
-        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);if(bot-top<1||right-left<1){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top};}return {x:(left+right)/2,y:(top+bot)/2};}}";
+        let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);var clamp=(bot-top<1||right-left<1);if(clamp){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top,w:r.width,h:r.height,clamp:clamp,i:i};}return {x:(left+right)/2,y:(top+bot)/2,w:r.width,h:r.height,clamp:clamp,i:i};}}";
         let coords = self
             .eval(&Self::js_scan(composer_js, coord_body, "null"))
             .unwrap_or(Value::Null);
+        if coords.get("x").and_then(Value::as_f64).is_some()
+            && coords.get("y").and_then(Value::as_f64).is_some()
+        {
+            self.note_composer_metrics(&coords);
+        }
         let (x, y) = match (
             coords.get("x").and_then(|v| v.as_f64()),
             coords.get("y").and_then(|v| v.as_f64()),
@@ -155,6 +190,16 @@ impl WebBrainBackend {
         std::thread::sleep(Duration::from_millis(80));
         let clear_body = "var el=Q(S[i]);if(el){el.focus();try{if('value' in el){el.value='';}else{el.textContent='';}el.dispatchEvent(new InputEvent('input',{bubbles:true}));}catch(e){}return true;}";
         let _ = self.eval_bool(&Self::js_scan(composer_js, clear_body, "false"));
+        // T-936: ist der Fokus nach Klick+focus() wirklich im Editor gelandet?
+        // (activeElement kann von WebView2 veraltet stehen bleiben — bewusst
+        // als Observation, nicht als Abbruchkriterium, T-937 loest das.)
+        let focus_probe =
+            "var el=Q(S[i]);if(el){return (document.activeElement===el||el.matches(':focus'));}";
+        let focus_arrived = self.eval_bool(&Self::js_scan(composer_js, focus_probe, "false"));
+        crate::brain_score::update_pending_turn(|obs| {
+            obs.phase = crate::brain_score::SendPhase::Focus;
+            obs.focus_arrived = Some(focus_arrived);
+        });
         // 3) Echt tippen via PageDriver::insert_text — in Bloecken, damit der
         //    WebView-Loop zwischen den Bloecken ansprechbar bleibt. Ein einziger
         //    25k-Zeichen-execCommand blockiert ihn synchron ueber Sekunden

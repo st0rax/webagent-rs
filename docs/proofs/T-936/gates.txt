@@ -1,0 +1,28 @@
+T-936 gates 2026-09-16 (branch refactor/T-936-sendphase-log, Basis origin/master dddeae0)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --lib  (Verification laut Board: ohne --features)
+  test_exit=0
+  1433 passed; 0 failed; 1 ignored
+  (1426 Basisfront + 1 T-924-Gate + 2 T-930-Smoke + 4 T-936-Tests)
+
+cargo test --features webview --lib  (House-Vergleichsbasis, wie T-930)
+  test_exit=0
+  1433 passed; 0 failed; 1 ignored
+
+Neue T-936-Tests (src/brain_score.rs mod tests):
+  turn_fuenf_zustaende_sind_in_den_daten_unterscheidbar    ... ok
+  record_event_at_konsumiert_pending_turn                  ... ok
+  phase_error_nennt_phase_und_behaelt_detail               ... ok
+  turn_banner_kuerzt_auf_200_zeichen                       ... ok
+
+Nebenbei repariert (im T-936-Lauf): browser::verify::Tests-Erwartung
+composer_coords_expr auf den neuen coord_body (w/h/clamp/i) synchronisiert —
+Mock matcht eval-Strings exakt.
+
+git diff --check  -> clean (nur LF/CRLF-Hinweis, unkritisch)
