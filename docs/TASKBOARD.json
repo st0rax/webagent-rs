@@ -1285,10 +1285,10 @@
       "phase": "13",
       "type": "code",
       "title": "Composer fokussieren: Tastatur mit Verifikation statt Koordinatenklick",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "refactor/T-937-keyboard-focus",
+      "claimed_at": "2026-09-16",
       "depends_on": [
         "T-936"
       ],
