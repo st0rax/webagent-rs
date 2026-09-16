@@ -97,6 +97,18 @@ pub struct TurnObservation {
     pub clamp_triggered: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub focus_arrived: Option<bool>,
+    /// T-937: wie der Fokus zustande kam — "keyboard" (Tab), "el_focus"
+    /// (In-Page focus(), tabindex=-1-faehig), "click" (letzter Rueckfall)
+    /// oder "none".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_method: Option<String>,
+    /// T-937: verbrauchte Tab-Drucke (keyboard) / Rueckfallstufe sonst.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_tries: Option<u32>,
+    /// T-937: Zeichen fuer "der Composer ist per Tab nie erreichbar (tabindex=-1),
+    /// el_focus hat geholfen" — muss von "Fokus kam nie an" unterscheidbar sein.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub tabindex_fallback: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pasted_chars: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
