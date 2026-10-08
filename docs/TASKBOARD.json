@@ -1312,10 +1312,12 @@
       "phase": "13",
       "type": "code",
       "title": "Abweichungen im Fokuspfad erkennen und fail-closed behandeln",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "refactor/T-938-focus-gate",
       "claimed_at": "2026-09-16",
+      "done_at": "2026-09-16",
+      "proof": "docs/proofs/T-938/handoff.md",
       "depends_on": [
         "T-937"
       ],
