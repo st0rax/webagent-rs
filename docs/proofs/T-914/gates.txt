@@ -1,0 +1,17 @@
+# Gates T-914 (ausgefuehrt im Worktree webagent-rs-t914)
+
+cargo fmt --check
+# -> FMT-CLEAN (exit 0)
+
+cargo clippy --features webview --all-targets -- -D warnings
+# -> Finished `dev` profile (exit 0, keine warnings/errors)
+
+cargo test --features webview --lib
+# -> test result: ok. 1423 passed; 0 failed; 1 ignored; finished in 81.40s
+
+git diff --check HEAD^ HEAD
+# -> DIFF-CHECK-CLEAN (exit 0)
+
+# Hinweis: C: war voll (os error 112). Belegt -> Platte aufgeraeumt
+# (target/ geloescht, cargo registry/src + npm-/pnpm-caches bereinigt),
+# Gates danach gruen.
