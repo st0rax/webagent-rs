@@ -109,6 +109,19 @@ pub struct TurnObservation {
     /// el_focus hat geholfen" — muss von "Fokus kam nie an" unterscheidbar sein.
     #[serde(default, skip_serializing_if = "is_false")]
     pub tabindex_fallback: bool,
+    /// T-938: Die Tab-Runde kehrte nie zum Ausgangspunkt zurueck (modaler
+    /// Dialog faengt den Fokus): ueber alle Tastatur-Versuche blieb genau eine
+    /// Station stehen und der Composer kam nie an.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub focus_trap: bool,
+    /// T-938: benannter Grund nach Abweichungs-Diagnose des Fokus-Inventars —
+    /// "not_logged_in", "blocked", "quota", "consent_dialog", "no_focusable",
+    /// "unknown". `unknown` traegt im Detail den woertlichen Inventar-Auszug.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_diagnosis: Option<String>,
+    /// T-938: Anzahl der beim Fehlschlag sichtbaren Fokus-Stationen im Inventar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_stations: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pasted_chars: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]

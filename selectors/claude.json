@@ -118,5 +118,27 @@
   "reasoning_effort_path": [
     "Aufwand",
     "Hoch"
+  ],
+  "focus_login": [
+    "input[type='email']",
+    "input[type='password']",
+    "input[autocomplete='email']",
+    "input[autocomplete='username']",
+    "input[autocomplete='current-password']",
+    "a[href*='/login']",
+    "button:has-text('Log in')",
+    "a:has-text('Log in')",
+    "button:has-text('Sign in')",
+    "a:has-text('Sign in')",
+    "button:has-text('Anmelden')"
+  ],
+  "focus_quota": [
+    "text=You have reached your usage limit",
+    "text=usage limit",
+    "text=rate limit",
+    "text=limit reached",
+    "text=Nutzungslimit",
+    "text=Kontingent",
+    "text=Begrenzung"
   ]
 }

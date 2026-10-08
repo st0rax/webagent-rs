@@ -32,6 +32,15 @@ pub(super) struct FocusOutcome {
 /// So viele Tab-Drucke maximal, bevor `el.focus()`/Klick als Rueckfall greift.
 const FOCUS_TAB_TRIES: u32 = 5;
 
+/// Ergebnis des Tastatur-Loops: Treffer-Versuchszahl (None = Composer kam nie
+/// an) und ob der Fokus dabei auf genau einer Station haengen blieb (T-938:
+/// modaler Dialog faengt den Fokus, die Runde kehrt nie zum Start zurueck).
+#[derive(Debug, Clone, Copy)]
+struct KeyboardFocus {
+    tries: Option<u32>,
+    trapped: bool,
+}
+
 impl WebBrainBackend {
     /// T-936: Koordinatenergebnis (Index, Masse, Clamp) in die laufende
     /// Turn-Beobachtung eintragen — die Metadaten, die heute berechnet und
@@ -77,17 +86,47 @@ impl WebBrainBackend {
     /// T-937: Composer per Tastatur fokussieren und nach jedem Druck gegen
     /// `document.activeElement` verifizieren (Tastatur-Loop, selbstkorrigierend).
     /// Liefert die Zahl der noetigen Tab-Drucke, sobald der Fokus angekommen ist.
-    fn focus_composer_keyboard(&self, composer_js: &str) -> Option<u32> {
+    /// T-938: `trapped` meldet, wenn die Runde auf genau einer Station haengen
+    /// blieb (nie auf dem Composer) — die Fokus-Falle des modalen Dialogs.
+    fn focus_composer_keyboard(&self, composer_js: &str) -> KeyboardFocus {
         let probe = self.composer_focus_probe_expr(composer_js);
+        let mut stations = std::collections::HashSet::new();
         for try_n in 1..=FOCUS_TAB_TRIES {
             if self.press_simple_key("Tab", "Tab", 9).is_err() {
-                return None;
+                return KeyboardFocus {
+                    tries: None,
+                    trapped: false,
+                };
             }
             if self.eval_bool(&probe) {
-                return Some(try_n);
+                return KeyboardFocus {
+                    tries: Some(try_n),
+                    trapped: false,
+                };
+            }
+            let d = self.active_element_descriptor();
+            if !d.is_empty() {
+                stations.insert(d);
             }
         }
-        None
+        KeyboardFocus {
+            tries: None,
+            trapped: !stations.is_empty() && stations.len() == 1,
+        }
+    }
+
+    /// Beschreibung des aktuell fokussierten Elements (`tag#id|label|role`
+    /// plus gekuerztem Text) fuer die T-938-Fallen-Erkennung.
+    fn active_element_descriptor(&self) -> String {
+        self.eval(&self.active_element_descriptor_expr())
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default()
+    }
+
+    fn active_element_descriptor_expr(&self) -> String {
+        let body = "var el=document.activeElement||document.body;var lab=(el.getAttribute('aria-label')||el.getAttribute('placeholder')||el.getAttribute('name')||'').trim();var t=(el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,40);return (el.tagName.toLowerCase())+'#'+(el.id||'')+'|'+lab+'|'+(el.getAttribute('role')||'')+'|'+t;";
+        Self::js_scan("[]", body, "")
     }
 
     /// T-937 Rueckfallweg: In-Page `focus()` + Verifikation (Muster
@@ -112,8 +151,11 @@ impl WebBrainBackend {
     /// Reihenfolge: Tastatur (Tab), In-Page focus() (tabindex=-1), Klick.
     /// Der Klick wird beibehalten, bis der Tastaturweg gemessen besser ist
     /// (Non-Goal), aber auch nach dem Klick wird die Fokus-Lage aufgezeichnet.
+    /// T-938: Gelingt keiner der Wege und es gibt keine Koordinaten, wird das
+    /// Fokus-Inventar aufgenommen und fail-closed benannt (nie geraten).
     fn focus_composer_verified(&self, composer_js: &str, coords: &Value) -> FocusOutcome {
-        if let Some(tries) = self.focus_composer_keyboard(composer_js) {
+        let keyboard = self.focus_composer_keyboard(composer_js);
+        if let Some(tries) = keyboard.tries {
             return FocusOutcome {
                 method: FocusMethod::Keyboard,
                 arrived: true,
@@ -143,12 +185,115 @@ impl WebBrainBackend {
                 tabindex_fallback: false,
             };
         }
+        // T-938: keine Koordinaten, kein Fokus — Fokus-Inventar aufnehmen und
+        // fail-closed benennen statt zu raten oder einen unbekannten Knopf zu
+        // klicken. Jede Abweichung wird in der Turn-Beobachtung protokolliert.
+        let (diagnosis, detail, stations) = self.diagnose_focus_failure();
+        crate::brain_score::update_pending_turn(|obs| {
+            obs.phase = crate::brain_score::SendPhase::Focus;
+            obs.focus_trap = keyboard.trapped;
+            obs.focus_diagnosis = Some(diagnosis.to_string());
+            obs.focus_stations = Some(stations);
+            if !detail.is_empty() {
+                obs.banner = Some(detail);
+            }
+        });
         FocusOutcome {
             method: FocusMethod::None,
             arrived: false,
             tries: FOCUS_TAB_TRIES,
             tabindex_fallback: false,
         }
+    }
+
+    /// T-938: Kategorien fuer das Fokus-Inventar aus den Selektordateien
+    /// (`focus_consent`, `focus_login`, `focus_blocked`, `focus_quota`).
+    /// Leere Listen sind erlaubt — dann faellt der Bereich auf fail-closed.
+    fn focus_categories(&self) -> Vec<(String, Vec<String>)> {
+        let keys = [
+            ("focus_blocked", "blocked"),
+            ("focus_quota", "quota"),
+            ("focus_login", "login"),
+            ("focus_consent", "consent"),
+        ];
+        keys.into_iter()
+            .map(|(key, cat)| (cat.to_string(), self.selectors.list(key)))
+            .collect()
+    }
+
+    /// T-938: Das Fokus-Inventar — alle sichtbaren fokussierbaren Elemente,
+    /// klassifiziert gegen die Fokus-Kategorien (`{cat,tag,role,label,text,ae}`).
+    /// Eine einzige Page-Eval-Runde (kein Klick mitten in der Diagnose).
+    fn focus_inventory(&self) -> Vec<Value> {
+        self.eval(&self.focus_inventory_expr())
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+    }
+
+    fn focus_inventory_expr(&self) -> String {
+        let cats = self.focus_categories();
+        let map = cats
+            .into_iter()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let cser = serde_json::to_string(&map).unwrap_or_else(|_| "{}".into());
+        let body = format!(
+            "var cats={cser};var out=[];var all=document.querySelectorAll('input,textarea,select,button,[tabindex],[contenteditable],a[href],[role]');for(var i=0;i<all.length;i++){{var el=all[i];if(!el.offsetParent&&el.tagName!=='HTML'&&el.tagName!=='BODY')continue;var r=el.getBoundingClientRect();if(r.width<=0&&r.height<=0)continue;var cat='';for(var k in cats){{if(mm(el,cats[k])){{cat=k;break;}}}}var lab=(el.getAttribute('aria-label')||el.getAttribute('placeholder')||el.getAttribute('name')||'').trim();var txt=(el.textContent||'').replace(/\\s+/g,' ').trim();if(txt.length>60)txt=txt.slice(0,57)+'...';out.push({{'cat':cat,'tag':el.tagName.toLowerCase(),'role':el.getAttribute('role')||'','label':lab,'text':txt,'ae':(document.activeElement===el)}});}}return out;"
+        );
+        Self::js_scan("[]", &body, "[]")
+    }
+
+    /// T-938: Diagnose des Fokusfehlers — nie geraten. Prioritaet:
+    /// blocked > quota > login (→ "not_logged_in"), sonst "unknown" mit
+    /// woertlichem Bestandsauszug (bis 3 Elemente, im banner), nur bekannte
+    /// harmlose Consent-Stationen → "consent_dialog", leeres Inventar →
+    /// "no_focusable". Nie pauschal Accept/Upgrade (kann Kosten).
+    fn diagnose_focus_failure(&self) -> (&'static str, String, u32) {
+        let inv = self.focus_inventory();
+        let stations = inv.len() as u32;
+        let pick = |cat: &str| {
+            inv.iter()
+                .find(|e| e.get("cat").and_then(Value::as_str) == Some(cat))
+        };
+        if pick("blocked").is_some() {
+            return ("blocked", String::new(), stations);
+        }
+        if pick("quota").is_some() {
+            return ("quota", String::new(), stations);
+        }
+        if pick("login").is_some() {
+            return ("not_logged_in", String::new(), stations);
+        }
+        if pick("consent").is_some() {
+            return ("consent_dialog", String::new(), stations);
+        }
+        if inv.is_empty() {
+            return ("no_focusable", String::new(), 0);
+        }
+        let mut detail = String::new();
+        for item in inv.iter().take(3) {
+            if !detail.is_empty() {
+                detail.push_str(" | ");
+            }
+            let tag = item.get("tag").and_then(Value::as_str).unwrap_or("");
+            let label = item
+                .get("label")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let text = item.get("text").and_then(Value::as_str).unwrap_or_default();
+            let piece = if !label.is_empty() {
+                format!("{tag}#{label}")
+            } else if !text.is_empty() {
+                format!("{tag}:{text}")
+            } else {
+                format!(
+                    "{tag}({})",
+                    item.get("role").and_then(Value::as_str).unwrap_or("")
+                )
+            };
+            detail.push_str(&piece);
+        }
+        ("unknown", detail, stations)
     }
 
     /// Fokus-Beobachtung (T-936/T-937) in die laufende Turn-Beobachtung eintragen.
@@ -530,5 +675,155 @@ mod tests {
         assert_eq!(obs.focus_method.as_deref(), Some("click"));
         assert_eq!(obs.focus_arrived, Some(false));
         assert!(!obs.tabindex_fallback);
+    }
+
+    /// T-938: Reauth-Login abfangen. Die Tab-Runde bleibt auf einer Station
+    /// stehen (modaler Dialog / Anmeldefeld), der Composer kommt nie an, und
+    /// das Fokus-Inventar stuft eine Station als `login` ein → benannter
+    /// Abbruch "not_logged_in", keine Klicks, kein Raten.
+    #[test]
+    fn login_dialog_wird_als_nicht_angemeldet_benannt() {
+        let backend = backend_for("qwen", MockPageState::new());
+        let inv = backend.focus_inventory_expr();
+        let state = MockPageState::new().on_eval(
+            inv,
+            json!([
+                {"cat": "login", "tag": "button", "role": "", "label": "Anmelden", "text": "Anmelden", "ae": true},
+                {"cat": "", "tag": "input", "role": "textbox", "label": "email", "text": "", "ae": false}
+            ]),
+        );
+        let backend = backend_for("qwen", state);
+
+        let (reason, _detail, stations) = backend.diagnose_focus_failure();
+
+        assert_eq!(reason, "not_logged_in");
+        assert_eq!(stations, 2);
+    }
+
+    /// T-938: Sperrbanner wird benannt, nicht als Sammelstring.
+    #[test]
+    fn sperrbanner_wird_als_blocked_benannt() {
+        let backend = backend_for("qwen", MockPageState::new());
+        let inv = backend.focus_inventory_expr();
+        let state = MockPageState::new().on_eval(
+            inv,
+            json!([{"cat": "blocked", "tag": "div", "role": "banner", "label": "", "text": "Suspended", "ae": false}]),
+        );
+        let backend = backend_for("qwen", state);
+
+        let (reason, _detail, stations) = backend.diagnose_focus_failure();
+
+        assert_eq!(reason, "blocked");
+        assert_eq!(stations, 1);
+    }
+
+    /// T-938: Unbekannte Stationen brechen fail-closed ab und melden woertlich
+    /// statt zu raten oder einen unbekannten Knopf zu klicken.
+    #[test]
+    fn unbekannte_station_bricht_woertlich_ab() {
+        let backend = backend_for("qwen", MockPageState::new());
+        let inv = backend.focus_inventory_expr();
+        let state = MockPageState::new().on_eval(
+            inv,
+            json!([
+                {"cat": "", "tag": "button", "role": "button", "label": "", "text": "Weiter ohne Analyse", "ae": true},
+                {"cat": "", "tag": "input", "role": "textbox", "label": "", "text": "", "ae": false}
+            ]),
+        );
+        let backend = backend_for("qwen", state);
+
+        let (reason, detail, stations) = backend.diagnose_focus_failure();
+
+        assert_eq!(reason, "unknown");
+        assert!(detail.contains("Weiter ohne Analyse"), "detail={detail}");
+        assert_eq!(stations, 2);
+    }
+
+    /// T-938: Nur bekannte, harmlose Consent-Stationen → eigener benannter
+    /// Grund (es wird NICHT pauschal akzeptiert; die Abwicklung ist protokolliert).
+    #[test]
+    fn consent_dialog_bleibt_benannt_ohne_pauschales_akzeptieren() {
+        let backend = backend_for("qwen", MockPageState::new());
+        let inv = backend.focus_inventory_expr();
+        let state = MockPageState::new().on_eval(
+            inv,
+            json!([{"cat": "consent", "tag": "button", "role": "button", "label": "Accept all", "text": "Accept all", "ae": true}]),
+        );
+        let backend = backend_for("qwen", state);
+
+        let (reason, _detail, stations) = backend.diagnose_focus_failure();
+
+        assert_eq!(reason, "consent_dialog");
+        assert_eq!(stations, 1);
+    }
+
+    /// T-938: Gar kein fokussierbares Element = Seite nicht fertig
+    /// ("no_focusable"), kein Raten.
+    #[test]
+    fn leeres_inventar_heisst_seite_nicht_fertig() {
+        let backend = backend_for("qwen", MockPageState::new());
+        let inv = backend.focus_inventory_expr();
+        let state = MockPageState::new().on_eval(inv, json!([]));
+        let backend = backend_for("qwen", state);
+
+        let (reason, _detail, stations) = backend.diagnose_focus_failure();
+
+        assert_eq!(reason, "no_focusable");
+        assert_eq!(stations, 0);
+    }
+
+    /// T-938: Der komplette Fehlweg — Tab-Runde bleibt auf genau einer Station
+    /// stehen (Trap), kein Fokus, keine Koordinaten, Inventar sagt unknown:
+    /// Beobachtung traegt focus_trap + focus_diagnosis + Stationszahl.
+    #[test]
+    fn fehlweg_erzeugt_trap_und_diagnose_in_der_beobachtung() {
+        let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
+        let composer_js = sel.js("composer", &[]);
+        let probe = focus_probe_expr(&composer_js);
+        let el_focus = el_focus_expr(&composer_js);
+        let backend_pre = backend_for("qwen", MockPageState::new());
+        let desc = backend_pre.active_element_descriptor_expr();
+        let inv = backend_pre.focus_inventory_expr();
+        let state = MockPageState::new()
+            .on_eval_seq(
+                probe,
+                vec![
+                    json!(false),
+                    json!(false),
+                    json!(false),
+                    json!(false),
+                    json!(false),
+                ],
+            )
+            .on_eval_seq(
+                desc,
+                vec![
+                    json!("button#dlg|Accept all||dialog"),
+                    json!("button#dlg|Accept all||dialog"),
+                    json!("button#dlg|Accept all||dialog"),
+                    json!("button#dlg|Accept all||dialog"),
+                    json!("button#dlg|Accept all||dialog"),
+                ],
+            )
+            .on_eval(el_focus, json!(false))
+            .on_eval(
+                inv,
+                json!([{"cat": "", "tag": "button", "role": "dialog", "label": "Accept all", "text": "Accept all", "ae": true}]),
+            );
+        let backend = backend_for("qwen", state);
+
+        let filled = backend.fill_composer(&composer_js, "Hallo Welt");
+
+        assert!(!filled);
+        let obs = crate::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
+        assert_eq!(obs.focus_method.as_deref(), Some("none"));
+        assert_eq!(obs.focus_arrived, Some(false));
+        assert!(obs.focus_trap);
+        assert_eq!(obs.focus_diagnosis.as_deref(), Some("unknown"));
+        assert!(obs
+            .banner
+            .as_deref()
+            .map(|b| b.contains("Accept all"))
+            .unwrap_or(false));
     }
 }
