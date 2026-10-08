@@ -1737,6 +1737,9 @@ mod tests {
         // `file_upload_button` ist der Mistral-spezifische zweite Menü-Schritt
         // (Plus-Knopf -> "Upload files"), der dieselbe `attach_button`-
         // Faehigkeit bedient und daher als dessen Name klassifiziert wird.
+        // T-938: `focus_*` sind Diagnose-Merkmale der Fokus-Falle, die bewusst
+        // die gleichen Elemente wie login/consent/send benennen — sie werden
+        // vom Klassifizierer daher denselben Faehigkeiten zugeordnet.
         let benign = |s: &String| {
             s.contains("/login_indicator")
                 || s.contains("/login_button")
@@ -1745,6 +1748,7 @@ mod tests {
                 || s.contains("/model_menu")
                 || s.contains("/mode_option")
                 || s.contains("/file_upload_button")
+                || s.contains("/focus_")
         };
         let real: Vec<&String> = wrong.iter().filter(|s| !benign(s)).collect();
         assert!(real.is_empty(), "falsche Zuordnungen: {real:#?}");

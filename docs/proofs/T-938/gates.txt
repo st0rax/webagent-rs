@@ -1,0 +1,29 @@
+T-938 gates 2026-09-16 (branch refactor/T-938-focus-gate, Basis origin/master fd3f05d)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --lib  (Verification laut Board: ohne --features)
+  test_exit=0
+  1443 passed; 0 failed; 1 ignored
+  (1437 T-937-Basis + 6 T-938-Tests)
+
+cargo test --features webview --lib  (House-Vergleichsbasis, wie T-930)
+  test_exit=0
+  1443 passed; 0 failed; 1 ignored
+
+Neue T-938-Tests (src/browser/composer.rs mod tests):
+  login_dialog_wird_als_nicht_angemeldet_benannt                  ... ok
+  sperrbanner_wird_als_blocked_benannt                            ... ok
+  unbekannte_station_bricht_woertlich_ab                          ... ok
+  consent_dialog_bleibt_benannt_ohne_pauschales_akzeptieren       ... ok
+  leeres_inventar_heisst_seite_nicht_fertig                       ... ok
+  fehlweg_erzeugt_trap_und_diagnose_in_der_beobachtung            ... ok
+
+Angepasster bestehender Test (src/brain_probe.rs):
+  gegenprobe_schlaegt_nichts_falsches_vor                         ... ok
+  (benign-Liste um /focus_ erweitert: Diagnose-Merkmale benennen
+   bewusst dieselben Elemente wie login/consent/send)

@@ -151,5 +151,18 @@
     "button:has-text('本地文件')",
     "[role='menuitem']:has-text('File')",
     "[role='option']:has-text('上传')"
+  ],
+  "focus_login": [
+    "input[type='email']",
+    "input[type='password']",
+    "input[autocomplete='email']",
+    "input[autocomplete='username']",
+    "input[autocomplete='current-password']",
+    "button:has-text('Continue with Google')",
+    "button:has-text('Continue with Email')",
+    "button:has-text('Continue with Github')",
+    "button:has-text('Sign in')",
+    "button:has-text('Log in')",
+    "button:has-text('Anmelden')"
   ]
 }
