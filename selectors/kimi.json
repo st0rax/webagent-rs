@@ -106,5 +106,13 @@
     "#v-3-menu-trigger"
   ],
   "_reasoning_effort_note": "Effort-Trigger '#v-3-menu-trigger' ('Denkaufwand Hoch') nur im offenen Modell-Menue sichtbar. Pfad ['Denkaufwand Hoch', 'Hoch'] klickt erfolgreich, aber verify-Pfad-Check schlaegt fehl: reasoning_effort_menu zeigt auf model_menu, Label bleibt 'Schnell' (Modellname), kein persistenter Effort-Label ausserhalb des Menues. Strukturelle UI-Eigenart, kein Selektor-Defekt.",
-  "reasoning_effort_path": ["Denkaufwand Hoch", "Hoch"]
+  "reasoning_effort_path": ["Denkaufwand Hoch", "Hoch"],
+  "attach_image_paste": ["yes"],
+  "attach_settle_ms": ["1500"],
+  "attach_draft_settle_ms": ["300"],
+  "attach_reset_stale_drafts": ["yes"],
+  "attach_inject_file_objects": ["yes"],
+  "composer_fill": ["rich_multiline"],
+  "composer_submit_button": ["yes"],
+  "composer_proof_consumed_first": ["yes"]
 }

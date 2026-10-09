@@ -164,5 +164,6 @@
     "button:has-text('Sign in')",
     "button:has-text('Log in')",
     "button:has-text('Anmelden')"
-  ]
+  ],
+  "attach_trusted_cdp": ["yes"]
 }

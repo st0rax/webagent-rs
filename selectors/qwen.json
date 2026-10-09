@@ -165,5 +165,6 @@
     "[class*='qwen-chat-v2-dropdown-menu-item' i]",
     "[role='menu'] [class*='dropdown-menu-item' i]",
     "[aria-label='Thinking'] [class*='dropdown-menu-item' i]"
-  ]
+  ],
+  "attach_trusted_cdp": ["yes"]
 }

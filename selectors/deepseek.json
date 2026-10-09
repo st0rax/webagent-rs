@@ -67,5 +67,7 @@
     "text=Search",
     "div:has-text('Search')",
     "span:has-text('Search')"
-  ]
+  ],
+  "attach_image_mode_segment": ["Vision"],
+  "attach_image_mode_reset": ["Instant"]
 }

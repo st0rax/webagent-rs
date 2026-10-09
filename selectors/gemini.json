@@ -109,5 +109,8 @@
     "new_chat",
     "stop_generation",
     "model_switch"
-  ]
+  ],
+  "image_gen_enabled": ["yes"],
+  "image_gen_provider_name": ["Gemini"],
+  "image_gen_open_trusted": ["yes"]
 }

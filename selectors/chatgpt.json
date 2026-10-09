@@ -67,5 +67,7 @@
     "text=Projects",
     "a:has-text('Projekte')",
     "a:has-text('Projects')"
-  ]
+  ],
+  "image_gen_enabled": ["yes"],
+  "image_gen_provider_name": ["ChatGPT"]
 }
