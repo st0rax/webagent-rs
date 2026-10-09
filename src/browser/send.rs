@@ -1130,11 +1130,7 @@ impl WebBrainBackend {
                 "Composer-Feld nicht gefunden (Timeout)",
             ));
         }
-        crate::brain_score::update_pending_turn(|obs| {
-            obs.phase = crate::brain_score::SendPhase::ContentCheck;
-            obs.pasted_chars = Some(self.composer_char_count());
-            obs.expected_chars = Some(text.chars().count());
-        });
+        self.ensure_composer_full(text)?;
         if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
             eprintln!("[submit] composer fill confirmed; dispatch begins");
         }
@@ -1458,6 +1454,36 @@ impl WebBrainBackend {
         self.eval(&js).ok().and_then(|v| v.as_u64()).unwrap_or(0) as usize
     }
 
+    /// T-943: Nach dem Fuellen gegenpruefen, dass der **vollstaendige** Text im
+    /// Composer steht. Einige Oberflaechen kuertzen sehr lange Eingaben still
+    /// (gemini z.B. bei ~32k Zeichen), waehrend das Fuellen aus Sicht des
+    /// Verifizierers gelingt und der Absendeknopf aktiv bleibt — die Antwort war
+    /// dann eine Rueckfrage statt der Aufgabe, aber es kam HTTP 200 zurueck.
+    ///
+    /// Die Pruefung vergleicht die Zeichenzahl des tatsaechlichen Composerinhalts
+    /// mit der gewuenschten und erlaubt 10% Abweichung fuer Normalisierung
+    /// (z.B. Whitespace in contenteditable/ProseMirror). Wird mehr gekuerzt,
+    /// gibt es einen benannten ContentCheck-Fehler statt eines falschen Erfolgs.
+    fn ensure_composer_full(&self, text: &str) -> Result<(), String> {
+        let intended = text.chars().count();
+        let actual = self.composer_char_count();
+        crate::brain_score::update_pending_turn(|obs| {
+            obs.phase = crate::brain_score::SendPhase::ContentCheck;
+            obs.pasted_chars = Some(actual);
+            obs.expected_chars = Some(intended);
+        });
+        if intended > 0 && actual + actual / 10 < intended {
+            return Err(crate::brain_score::phase_error(
+                crate::brain_score::SendPhase::ContentCheck,
+                &format!(
+                    "Composer enthaelt nur {} von {} Zeichen (Eingabe wurde gekuerzt)",
+                    actual, intended
+                ),
+            ));
+        }
+        Ok(())
+    }
+
     /// Text eines echten Dialogs ueber dem Composer, gekuerzt.
     ///
     /// Absichtlich OHNE Phrasenliste — hier geht es um den Fall, dass die Liste
@@ -1519,6 +1545,7 @@ return best?best.slice(0,300):null;})()"#;
             let _ = self.fill_composer_dom_set(&composer_js, text);
             let _ = self.type_text_char_by_char(text);
         }
+        self.ensure_composer_full(text)?;
         let url_before = self.get_conversation_ref();
         for attempt in 0..3 {
             // Wenn der Composer den Text schon konsumiert hat (geleert), ist das
@@ -1569,6 +1596,7 @@ return best?best.slice(0,300):null;})()"#;
                 "Composer-Feld nicht gefunden (Timeout)",
             ));
         }
+        self.ensure_composer_full(text)?;
         std::thread::sleep(Duration::from_millis(300));
         let url_before = self.get_conversation_ref();
         for attempt in 0..4 {
@@ -1799,6 +1827,48 @@ mod tests {
             mime_type: "image/png".into(),
             data: vec![0x89, 0x50, 0x4e, 0x47],
         }
+    }
+
+    /// T-943: Der `composer_char_count`-Ausdruck, den `ensure_composer_full`
+    /// gegen die gewuenschte Textlaenge prueft.
+    fn char_count_expr(backend: &WebBrainBackend) -> String {
+        let list = WebBrainBackend::js_selectors(&backend.sel("composer"));
+        WebBrainBackend::js_scan(
+            &list,
+            "var el=Q(S[i]);if(el){return (el.value!==undefined?el.value:(el.innerText||'')).length;}",
+            "0",
+        )
+    }
+
+    /// T-943: Eine still gekuerzte Eingabe (Composer enthaelt deutlich weniger
+    /// Zeichen als der gewuenschte Text — z.B. gemini bei ~32k) wird als
+    /// benannter ContentCheck-Fehler gemeldet, nicht als Erfolg.
+    #[test]
+    fn gekuerzte_eingabe_ist_contentcheck_fehler() {
+        let text = "x".repeat(1000);
+        let probe = WebBrainBackend::from_config("gemini").expect("gemini");
+        let expr = char_count_expr(&probe);
+        let state = MockPageState::new().on_eval(&expr, json!(200));
+        let backend = WebBrainBackend::from_config("gemini").expect("gemini");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state)));
+        let err = backend
+            .ensure_composer_full(&text)
+            .expect_err("gekuerzte Eingabe muss scheitern");
+        assert!(err.contains("gekuerzt"), "{err}");
+        assert!(err.contains("200 von 1000"), "{err}");
+    }
+
+    /// T-943: Eine vollstaendige Eingabe passiert die Pruefung (kein falscher
+    /// Alarm fuer den Normalfall).
+    #[test]
+    fn vollstaendige_eingabe_passiert_contentcheck() {
+        let text = "x".repeat(1000);
+        let probe = WebBrainBackend::from_config("gemini").expect("gemini");
+        let expr = char_count_expr(&probe);
+        let state = MockPageState::new().on_eval(&expr, json!(1000));
+        let backend = WebBrainBackend::from_config("gemini").expect("gemini");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state)));
+        assert!(backend.ensure_composer_full(&text).is_ok());
     }
 
     /// Minimal eval map so attach_files can reach the native CDP call without a

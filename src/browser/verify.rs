@@ -1596,6 +1596,18 @@ mod tests {
         )
     }
 
+    /// Der `composer_char_count`-Ausdruck (Zeichenzahl des Composerinhalts), den
+    /// `ensure_composer_full` (T-943) nach dem Fuellen gegen die gewuenschte
+    /// Textlaenge prueft. Muss im Mock den echten Text liefern, sonst schlaegt
+    /// die Vollstaendigkeitspruefung faelschlich als "gekuerzt" an.
+    fn composer_char_count_expr(sel: &Selectors) -> String {
+        js::js_scan(
+            &sel.js("composer", &[]),
+            "var el=Q(S[i]);if(el){return (el.value!==undefined?el.value:(el.innerText||'')).length;}",
+            "0",
+        )
+    }
+
     fn click_first_expr(sel: &Selectors, key: &str) -> String {
         js::js_scan(
             &js::js_selectors(&sel.list(key)),
@@ -1649,6 +1661,10 @@ mod tests {
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
             .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
+            .on_eval(
+                composer_char_count_expr(&sel),
+                json!(PROBE.chars().count() as u64),
+            )
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             .on_eval(click_first_expr(&sel, "stop_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
@@ -1762,6 +1778,10 @@ mod tests {
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
             .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
+            .on_eval(
+                composer_char_count_expr(&sel),
+                json!(PROBE.chars().count() as u64),
+            )
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
@@ -1816,6 +1836,10 @@ mod tests {
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
             .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
+            .on_eval(
+                composer_char_count_expr(&sel),
+                json!(PROBE.chars().count() as u64),
+            )
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
@@ -1869,6 +1893,10 @@ mod tests {
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
             .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
+            .on_eval(
+                composer_char_count_expr(&sel),
+                json!(PROBE.chars().count() as u64),
+            )
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             .on_eval(click_first_expr(&sel, "stop_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
@@ -1918,6 +1946,10 @@ mod tests {
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
             .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
+            .on_eval(
+                composer_char_count_expr(&sel),
+                json!(PROBE.chars().count() as u64),
+            )
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Zaehler waechst nie → verify_submitted scheitert 4×, dann Fehler.
             .on_eval(assistant_count_expr(&sel), json!(0))
