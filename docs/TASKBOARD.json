@@ -1445,10 +1445,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Gekuerzte Eingabe wird als Erfolg gemeldet",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "refactor/T-943-composer-fulltext-check",
+      "claimed_at": "2026-09-16",
       "depends_on": [
         "T-939"
       ],
