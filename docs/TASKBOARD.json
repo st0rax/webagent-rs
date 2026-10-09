@@ -1340,7 +1340,7 @@
       "phase": "13",
       "type": "refactoring",
       "title": "brain_id-Verzweigungen aus dem Sendepfad in Selektordaten ueberfuehren",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "refactor/T-939-send-data",
       "claimed_at": "2026-09-16",
@@ -1359,7 +1359,9 @@
       "dod": "Keine brain_id-Verzweigung mehr im Sendepfad; Fuell- und Pruefstrategie stehen je Anbieter in der Selektordatei; composer_matches_text ist der Standard.",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-939/",
-      "handoff": "Messwerte vorher/nachher, Branch und Commit."
+      "handoff": "Messwerte/Branch/Commits: siehe docs/proofs/T-939/handoff.md",
+      "done_at": "2026-09-16",
+      "proof": "docs/proofs/T-939/handoff.md"
     },
     {
       "id": "T-940",
