@@ -73,7 +73,7 @@ T-943 und wird hier nur zitiert, nicht neu gemessen:
 
 | Anbieter | Eingabegrenze (gemessen) | Quelle | Datum |
 |---|---|---|---|
-| gemini | ~32.000-32.400 Zeichen (Eingabe 52.287 -> gekuerzt) | Board T-943 objective | 2026-09-14 |
+| gemini | zwischen ~31.900 und ~32.080 Zeichen. Kontrollzahl in neutralem Fuelltext bei 20.000 Zeichen exakt erkannt, bei 32.134 Zeichen nicht; runde Grenze 32.000 vereinbar, nicht bewiesen. Eingabe 52.287 -> gekuerzt | Board T-943 objective | 2026-09-14 |
 | uebrige Anbieter | unbekannt | - | - |
 
 Die Pruefung ist damit ein **nachgelagerter Ist-Soll-Vergleich** und keine
