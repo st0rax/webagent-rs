@@ -1445,7 +1445,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Gekuerzte Eingabe wird als Erfolg gemeldet",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "refactor/T-943-composer-fulltext-check",
       "claimed_at": "2026-09-16",
@@ -1465,7 +1465,9 @@
       "dod": "Nach dem Befuellen wird geprueft, dass der vollstaendige Text im Composer steht; eine unvollstaendige Befuellung fuehrt zu einem benannten Fehler statt zu HTTP 200; die gemessene Eingabegrenze je Anbieter liegt im proof_path.",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-943/",
-      "handoff": "Grenzmessung je Anbieter, Branch und Commit."
+      "handoff": "Grenzmessung je Anbieter, Branch und Commit.",
+      "done_at": "2026-09-16",
+      "proof": "docs/proofs/T-943/handoff.md"
     },
     {
       "id": "T-944",
