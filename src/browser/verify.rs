@@ -1579,34 +1579,21 @@ mod tests {
         )
     }
 
-    /// Der `composer_contains`-Ausdruck (8-Zeichen-Praefix), den `send_generic`,
-    /// `send_gemini` und `send_qwen` heute als Fill-Nachweis und Consumed-Check
-    /// evaluieren. Muss im Mock registriert sein, seit die Send-Pfade den
-    /// Inhalt nicht mehr nur ueber den Fill-Rueckgabewert annehmen.
-    fn composer_contains_expr(sel: &Selectors, text: &str) -> String {
-        let needle = WebBrainBackend::composer_needle(text);
-        let n = serde_json::to_string(&needle).unwrap_or_else(|_| "\"\"".into());
+    /// Der `composer_matches_text`-Ausdruck (ganzer Editorinhalt, nur Leerraum
+    /// normalisiert), den `send_generic`, `send_gemini` und `send_qwen` seit
+    /// T-939 als Fill-Nachweis und Consumed-Check evaluieren. Muss im Mock
+    /// registriert sein, seit die Send-Pfade den Inhalt nicht mehr nur ueber den
+    /// Fill-Rueckgabewert annehmen.
+    fn composer_matches_text_expr(sel: &Selectors, text: &str) -> String {
+        let expected = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let expected = serde_json::to_string(&expected).unwrap_or_else(|_| "\"\"".into());
         js::js_scan(
             &sel.js("composer", &[]),
             &format!(
-                "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');v=v.replace(/\\s+/g,' ');if(v.indexOf({n})!==-1)return true;}}"
+                "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');return v.replace(/\\s+/g,' ').trim()==={expected};}}"
             ),
             "false",
         )
-    }
-
-    #[test]
-    fn composer_nadel_ignoriert_fuehrenden_und_mehrfachen_leerraum() {
-        // T-962: take(8) ergab bei fuehrendem Umbruch "\n  [Iden", das der
-        // Editor nie wortgleich enthielt.
-        assert_eq!(
-            WebBrainBackend::composer_needle(
-                "\n  [Identitaet]  Du\tbist das Modell hinter dem Brain"
-            ),
-            "[Identitaet] Du bist das Modell hinter"
-        );
-        assert_eq!(WebBrainBackend::composer_needle("kurz"), "kurz");
-        assert_eq!(WebBrainBackend::composer_needle("   "), "");
     }
 
     fn click_first_expr(sel: &Selectors, key: &str) -> String {
@@ -1661,7 +1648,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
-            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             .on_eval(click_first_expr(&sel, "stop_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
@@ -1774,7 +1761,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
-            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
@@ -1828,7 +1815,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
-            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
             // → kein Klick), der zweite ist die Baseline vor dem Senden, der
@@ -1881,7 +1868,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
-            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             .on_eval(click_first_expr(&sel, "stop_button"), json!(true))
             // Drei Werte: der erste geht an die Hygiene-Pruefung (leerer Thread
@@ -1930,7 +1917,7 @@ mod tests {
         state = state
             .on_eval(composer_coords_expr(&sel), json!({"x": 10.0, "y": 12.0}))
             .on_eval(composer_set_expr(&sel, PROBE), json!(true))
-            .on_eval(composer_contains_expr(&sel, PROBE), json!(true))
+            .on_eval(composer_matches_text_expr(&sel, PROBE), json!(true))
             .on_eval(click_first_expr(&sel, "send_button"), json!(true))
             // Zaehler waechst nie → verify_submitted scheitert 4×, dann Fehler.
             .on_eval(assistant_count_expr(&sel), json!(0))

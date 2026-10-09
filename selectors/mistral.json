@@ -83,5 +83,7 @@
     "voice_input",
     "projects",
     "stop_generation"
-  ]
+  ],
+  "attach_trusted_cdp": ["yes"],
+  "attach_clipboard_paste": ["yes"]
 }

@@ -47,12 +47,6 @@ pub fn submit_verify_rounds(prompt_chars: usize) -> u32 {
 pub const SEND_DISABLED_MARKER: &str = "ABSENDEKNOPF_DEAKTIVIERT";
 
 /// `true`, wenn der Fehler eine Ablehnung per deaktiviertem Absendeknopf ist.
-/// Brains whose SPA rejects synthetic JS FileList/paste and need the trusted
-/// CDP FileChooser / `Input.dispatchDragEvent` path first (T-501).
-pub(crate) fn prefers_trusted_cdp_upload(brain_id: &str) -> bool {
-    matches!(brain_id, "qwen" | "zai" | "mistral")
-}
-
 pub fn is_send_disabled_error(message: &str) -> bool {
     message.contains(SEND_DISABLED_MARKER)
 }
@@ -73,20 +67,40 @@ fn submission_is_proven(
 }
 
 impl WebBrainBackend {
+    /// T-939: Brains waehlen Sende-/Attach-Strategien ueber deklarative Daten
+    /// in ihrer Selektordatei statt ueber brain_id-Verzweigungen im Code.
+    /// Ein Wahrheits-Key (Markierwert) ist gesetzt wenn er Eintraege hat.
+    fn strat_flag(&self, key: &str) -> bool {
+        !self.sel(key).is_empty()
+    }
+
+    /// Erster Eintrag eines Strategie-Keys als Zeichenkette (z.B.
+    /// `attach_image_mode_segment: ["Vision"]`), sonst `None`.
+    fn strat_first(&self, key: &str) -> Option<String> {
+        self.sel(key).first().cloned()
+    }
+
+    /// Erster Miller-Eintrag eines Strategie-Keys als ganze Zahl (z.B.
+    /// `attach_settle_ms: ["1500"]`), sonst `default`.
+    fn strat_ms(&self, key: &str, default: u64) -> u64 {
+        self.sel(key)
+            .first()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    }
+
     /// Aktiviert den expliziten Bildgenerator aus dem Composer-Werkzeugmenue.
     /// ChatGPT und Gemini bieten beide einen sichtbaren Eintrag "Bild
     /// erstellen"/"Create image" an. Ein normaler Textprompt routet im
     /// aktuell ausgewaehlten Webmodell nicht zwingend zum Bildtool.
     pub fn enable_image_generation_mode(&self) -> Result<(), String> {
-        if !matches!(self.brain_id.as_str(), "chatgpt" | "gemini") {
+        if !self.strat_flag("image_gen_enabled") {
             return Ok(());
         }
-        let provider = if self.brain_id == "gemini" {
-            "Gemini"
-        } else {
-            "ChatGPT"
-        };
-        let surface_opened = if self.brain_id == "gemini" {
+        let provider = self
+            .strat_first("image_gen_provider_name")
+            .unwrap_or_else(|| "ChatGPT".to_string());
+        let surface_opened = if self.strat_flag("image_gen_open_trusted") {
             let deadline = Instant::now() + Duration::from_secs(10);
             let mut opened = false;
             while Instant::now() < deadline {
@@ -176,22 +190,28 @@ impl WebBrainBackend {
         let wants_image = attachments
             .iter()
             .any(|attachment| attachment.kind == BrowserAttachmentKind::Image);
-        if self.brain_id != "deepseek" || !wants_image {
+        let Some(mode) = self.strat_first("attach_image_mode_segment") else {
+            return Ok(());
+        };
+        if !wants_image {
             return Ok(());
         }
 
-        if self.select_segment("mode_option", "Vision").is_ok() {
+        if self.select_segment("mode_option", &mode).is_ok() {
             return Ok(());
         }
 
-        // Wenn Vision bereits aktiv war, gibt es durch einen erneuten Klick
-        // keine Zustandsaenderung und `select_segment` kann den Erfolg nicht
-        // belegen. Ein einmaliger Wechsel ueber Instant erzeugt in diesem Fall
-        // einen messbaren Zustand; anschließend muss Vision belegbar sein.
-        let _ = self.select_segment("mode_option", "Instant");
-        self.select_segment("mode_option", "Vision")
+        // Wenn der Zielmodus bereits aktiv war, gibt es durch einen erneuten
+        // Klick keine Zustandsaenderung und `select_segment` kann den Erfolg
+        // nicht belegen. Ein einmaliger Wechsel ueber den alternativen Modus
+        // erzeugt in diesem Fall einen messbaren Zustand; anschließend muss der
+        // Zielmodus belegbar sein.
+        if let Some(reset) = self.strat_first("attach_image_mode_reset") {
+            let _ = self.select_segment("mode_option", &reset);
+        }
+        self.select_segment("mode_option", &mode)
             .map(|_| ())
-            .map_err(|error| format!("DeepSeek-Vision-Modus nicht aktivierbar: {error}"))
+            .map_err(|error| format!("Bildmodus '{mode}' nicht aktivierbar: {error}"))
     }
 
     fn attach_files(&mut self, attachments: &[BrowserAttachment]) -> Result<(), String> {
@@ -205,8 +225,8 @@ impl WebBrainBackend {
         let native_image_paste = attachments
             .iter()
             .all(|attachment| attachment.kind == BrowserAttachmentKind::Image);
-        let kimi_image_paste = self.brain_id == "kimi" && native_image_paste;
-        let trusted_first = prefers_trusted_cdp_upload(&self.brain_id);
+        let kimi_image_paste = self.strat_flag("attach_image_paste") && native_image_paste;
+        let trusted_first = self.strat_flag("attach_trusted_cdp");
         let already_revealed = self.revealed.get();
         let mut revealed_for_attach = false;
 
@@ -214,20 +234,18 @@ impl WebBrainBackend {
         // Provider wie Kimi hydrieren alte Draft-Karten erst beim Öffnen der
         // Attach-Oberfläche; erst jetzt sind sie zuverlässig löschbar.
         // qwen/zai/mistral only need a short settle before the trusted CDP path.
-        let settle_ms = if self.brain_id == "kimi" { 1500 } else { 250 };
+        let settle_ms = self.strat_ms("attach_settle_ms", 250);
         std::thread::sleep(Duration::from_millis(settle_ms));
         self.remove_all_attachment_previews();
-        std::thread::sleep(Duration::from_millis(if self.brain_id == "kimi" {
-            300
-        } else {
-            50
-        }));
+        std::thread::sleep(Duration::from_millis(
+            self.strat_ms("attach_draft_settle_ms", 50),
+        ));
         // A failed Kimi upload leaves an error tile which disables Send and
         // cannot always be dismissed while the Vue uploader is still in its
         // failed state.  This is a stale *draft*, not part of the API
         // request.  Reset that draft once and continue in a clean chat rather
         // than replaying the stale files forever.
-        if self.brain_id == "kimi" && self.attachment_signal_count() > 0 {
+        if self.strat_flag("attach_reset_stale_drafts") && self.attachment_signal_count() > 0 {
             if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
                 eprintln!("[upload] Kimi stale failed attachment: reset clean draft");
             }
@@ -268,7 +286,7 @@ impl WebBrainBackend {
             }
             // Mistral still accepts OS clipboard paste when the window is alive;
             // try it offscreen before paying for a reveal.
-            if self.brain_id == "mistral"
+            if self.strat_flag("attach_clipboard_paste")
                 && native_image_paste
                 && self.paste_images_via_native_clipboard(attachments)
             {
@@ -303,7 +321,7 @@ impl WebBrainBackend {
                         }
                         return Ok(());
                     }
-                    if self.brain_id == "mistral"
+                    if self.strat_flag("attach_clipboard_paste")
                         && native_image_paste
                         && self.paste_images_via_native_clipboard(attachments)
                     {
@@ -333,7 +351,7 @@ impl WebBrainBackend {
         // Kimi zwar dispatcht, aber als untrusted verworfen; der native
         // Clipboard-Pfad schreibt deshalb zuerst ein echtes CF_DIB und loest
         // eine trusted CDP-Tastatursequenz aus.
-        if self.brain_id == "kimi"
+        if self.strat_flag("attach_image_paste")
             && native_image_paste
             && self.paste_images_via_native_clipboard(attachments)
         {
@@ -342,7 +360,7 @@ impl WebBrainBackend {
         // Kimi's transient file input is acknowledged by WebView2 but its
         // Vue uploader only enables Send after the editor's paste/drop handler
         // has seen the File objects. Prefer that browser-native path first.
-        if self.brain_id == "kimi"
+        if self.strat_flag("attach_inject_file_objects")
             && !kimi_image_paste
             && self.inject_attachments_via_paste_or_drop(&serialized)
             && self.send_button_is_enabled()
@@ -428,7 +446,7 @@ impl WebBrainBackend {
         if self.file_input_count() > 0 {
             return;
         }
-        let trusted_first = prefers_trusted_cdp_upload(&self.brain_id);
+        let trusted_first = self.strat_flag("attach_trusted_cdp");
         // qwen/zai ignore untrusted toolbar clicks for the file chooser; prefer
         // a trusted pointer first, then fall back to the DOM click path.
         let opened = if trusted_first {
@@ -550,7 +568,7 @@ impl WebBrainBackend {
         // vision turn decide; callers still fail without a RED reply.
         // Only soft-accept when the control vanished (not when an empty
         // input is still sitting there after a failed FileList write).
-        if prefers_trusted_cdp_upload(&self.brain_id) && self.file_input_count() == 0 {
+        if self.strat_flag("attach_trusted_cdp") && self.file_input_count() == 0 {
             if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
                 eprintln!(
                     "[upload] {} replaced/cleared native chooser input; continue to provider proof",
@@ -1068,7 +1086,7 @@ impl WebBrainBackend {
         crate::brain_score::update_pending_turn(|obs| {
             obs.phase = crate::brain_score::SendPhase::Focus;
         });
-        let filled = if self.brain_id == "kimi" {
+        let filled = if self.strat_flag("composer_fill") {
             self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 s.dismiss_consent();
                 s.fill_composer_rich_multiline(js, t) && s.composer_matches_text(js, t)
@@ -1077,13 +1095,13 @@ impl WebBrainBackend {
             self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 s.dismiss_consent();
                 s.fill_composer(js, t);
-                s.composer_contains(js, t)
+                s.composer_matches_text(js, t)
             }) || self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 // Fallback: DOM-set after viewport-clamped focus — hilft wenn
                 // der erste trusted-Insert bei riesigem Prompt (Brain-Session/
                 // Pi-Tools) den Editor aufblaeht und der Center-Klick daneben lag.
                 s.dismiss_consent();
-                s.fill_composer_dom_set(js, t) && s.composer_contains(js, t)
+                s.fill_composer_dom_set(js, t) && s.composer_matches_text(js, t)
             })
         };
         if !filled {
@@ -1144,7 +1162,7 @@ impl WebBrainBackend {
             // fuellen/senden — sonst ensteht ein Doppel-Send bei Brains, deren
             // Send-Registrierung (perplexity/deepseek ~20s) laenger dauert als
             // das Beweisfenster des ersten Versuchs.
-            let consumed = !self.composer_contains(&composer_js, text);
+            let consumed = !self.composer_matches_text(&composer_js, text);
             if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
                 eprintln!("[submit] attempt {} consumed={consumed}", attempt + 1);
             }
@@ -1153,7 +1171,7 @@ impl WebBrainBackend {
                 // actual send affordance is the arrow button inside the
                 // send-button container, so do not spend the first attempt
                 // on a keystroke which can never submit this provider.
-                if self.brain_id == "kimi" && has_send_button {
+                if self.strat_flag("composer_submit_button") && has_send_button {
                     if !self.click_visible_real("send_button") {
                         self.click_first("send_button");
                     }
@@ -1487,7 +1505,7 @@ return best?best.slice(0,300):null;})()"#;
         // tippen (`fill_composer`: Klick + trusted `Input.insertText`) und den
         // Inhalt bestaetigen; DOM-Set + Zeichen-Nachtippen nur als Fallback.
         if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.fill_composer(js, t) && s.composer_contains(js, t)
+            s.fill_composer(js, t) && s.composer_matches_text(js, t)
         }) {
             let _ = self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 s.fill_composer_dom_set(js, t) && s.type_text_char_by_char(t).is_ok()
@@ -1507,7 +1525,7 @@ return best?best.slice(0,300):null;})()"#;
             // Senden bereits im Gange: dann NUR den Beweis abwarten, nicht neu
             // fuellen/senden — sonst Doppel-Send (registers long nach DeepSeek/
             // perplexity). Gleiche Garantie wie in send_generic.
-            let consumed = !self.composer_contains(&composer_js, text);
+            let consumed = !self.composer_matches_text(&composer_js, text);
             if !consumed {
                 // Abwechselnd echten Klick und Enter: Geminis "Nachricht senden"-Button
                 // ignoriert gelegentlich den trusted Klick (Anti-Automation), Enter
@@ -1537,9 +1555,9 @@ return best?best.slice(0,300):null;})()"#;
         // Fuellen und bestaetigen, dass der Text wirklich im Editor steht —
         // gleiche Forderung wie in send_generic (nur Fill-Erfolg zaehlt nicht).
         if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.fill_composer(js, t) && s.composer_contains(js, t)
+            s.fill_composer(js, t) && s.composer_matches_text(js, t)
         }) && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.fill_composer_dom_set(js, t) && s.composer_contains(js, t)
+            s.fill_composer_dom_set(js, t) && s.composer_matches_text(js, t)
         }) {
             crate::brain_score::update_pending_turn(|obs| {
                 obs.phase = crate::brain_score::SendPhase::ContentCheck;
@@ -1557,7 +1575,7 @@ return best?best.slice(0,300):null;})()"#;
             // Consumed bedeutet: das Senden ist bereits registriert (qwen braucht
             // fuer die Send-Registrierung teils mehrere Sekunden) — dann nur den
             // Beweis abwarten, nie neu fuellen (Doppel-Send-Gegenprobe).
-            let consumed = !self.composer_contains(&composer_js, text);
+            let consumed = !self.composer_matches_text(&composer_js, text);
             if !consumed {
                 if attempt % 2 == 0 {
                     if !self.click_visible_real("send_button") {
@@ -1668,7 +1686,7 @@ return best?best.slice(0,300):null;})()"#;
             // — die UI "startet eine neue Session statt zu senden". Der Beweis steht
             // erst, wenn die Oberflaeche die Eingabe konsumiert hat (Composer leer)
             // ODER eine neue Antwort/Stop erschienen ist.
-            let composer_consumed = !self.composer_contains(&composer_js, &sent);
+            let composer_consumed = !self.composer_matches_text(&composer_js, &sent);
             let user_echo = user_baseline
                 .zip(self.user_message_count())
                 .is_some_and(|(before, now)| now > before);
@@ -1692,7 +1710,7 @@ return best?best.slice(0,300):null;})()"#;
             // nodes.  Their hydration can grow the generic assistant count
             // before anything was sent.  For this provider an answer/stop
             // signal only proves submission once the editor consumed text.
-            let proven = if self.brain_id == "kimi" {
+            let proven = if self.strat_flag("composer_proof_consumed_first") {
                 composer_consumed && (stop_visible || assistant_grew || url_changed)
             } else {
                 proven
@@ -1746,7 +1764,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{prefers_trusted_cdp_upload, submission_is_proven};
+    use super::submission_is_proven;
     use crate::browser::WebBrainBackend;
     use crate::browser_inference::{BrowserAttachment, BrowserAttachmentKind};
     use crate::mock_page::{MockPageDriver, MockPageState};
@@ -1759,13 +1777,19 @@ mod tests {
         assert!(submission_is_proven(true, false, false, true, false, false));
     }
 
+    /// T-939: Die Wahl des trusted-CDP-Uploads ist keine brain_id-Verzweigung
+    /// mehr, sondern deklarierte Selektordaten. qwen/zai/mistral tragen den
+    /// Marker, kimi/chatgpt/gemini nicht.
     #[test]
-    fn qwen_zai_mistral_prefer_trusted_cdp_upload() {
+    fn qwen_zai_mistral_waehlen_trusted_cdp_aus_selektordaten() {
         for id in ["qwen", "zai", "mistral"] {
-            assert!(prefers_trusted_cdp_upload(id), "{id}");
+            let backend = WebBrainBackend::from_config(id).expect(id);
+            assert!(!backend.sel("attach_trusted_cdp").is_empty(), "{id}");
         }
-        assert!(!prefers_trusted_cdp_upload("kimi"));
-        assert!(!prefers_trusted_cdp_upload("chatgpt"));
+        for id in ["kimi", "chatgpt", "gemini"] {
+            let backend = WebBrainBackend::from_config(id).expect(id);
+            assert!(backend.sel("attach_trusted_cdp").is_empty(), "{id}");
+        }
     }
 
     fn png_attachment() -> BrowserAttachment {

@@ -504,32 +504,6 @@ impl WebBrainBackend {
         );
         self.eval_bool(&Self::js_scan(composer_js, &set_body, "false"))
     }
-
-    /// True, wenn der Composer sichtbar den Anfang von `text` enthaelt — also das
-    /// Fuellen **als der Editor es sieht** gegriffen hat. `fill_composer` allein meldet
-    /// nur, dass ein Feld existiert; bei kimis Lexical-Editor kann es leer bleiben. Nur
-    /// senden, wenn der Text wirklich drinsteht.
-    pub(super) fn composer_contains(&self, composer_js: &str, text: &str) -> bool {
-        let needle = Self::composer_needle(text);
-        let n = serde_json::to_string(&needle).unwrap_or_else(|_| "\"\"".into());
-        let body = format!(
-            "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');v=v.replace(/\\s+/g,' ');if(v.indexOf({n})!==-1)return true;}}"
-        );
-        self.eval_bool(&Self::js_scan(composer_js, &body, "false"))
-    }
-
-    /// Nadel fuer [`Self::composer_contains`]: die ersten sechs Woerter mit
-    /// normalisiertem Leerraum. Ein rohes `take(8)` scheiterte, sobald der Prompt
-    /// mit Umbruch oder Einrueckung beginnt: Der Editor rendert den Leerraum
-    /// anders, `indexOf` traf nie, und der Aufrufer meldete faelschlich
-    /// „Composer-Feld nicht gefunden". Beitrag aus einer deepseek-Pi-Session
-    /// vom 2026-09-14 (T-962).
-    pub(super) fn composer_needle(text: &str) -> String {
-        text.split_whitespace()
-            .take(6)
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
 }
 
 #[cfg(test)]

@@ -1,0 +1,26 @@
+T-939 gates 2026-09-16 (branch refactor/T-939-send-data, Basis origin/e6c698c)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --lib  (Verification laut Board)
+  test_exit=0
+  1442 passed; 0 failed; 1 ignored
+  (1443 T-938-Basis - 1 entfernte T-962-Nadel-Test + umgestellter
+   trusted-cdp-Test; composer_matches_text ersetzt composer_contains)
+
+cargo test --features webview --lib  (House-Vergleichsbasis, wie T-930)
+  test_exit=0
+  1442 passed; 0 failed; 1 ignored
+
+Umgestellte Tests:
+  qwen_zai_mistral_waehlen_trusted_cdp_aus_selektordaten  (statt
+  qwen_zai_mistral_prefer_trusted_cdp_upload)              ... ok
+Entfernter Test (Code weg, T-962-Nadel war nur Helfer von composer_contains):
+  composer_nadel_ignoriert_fuehrenden_und_mehrfachen_leerraum
+
+Hinweis: 21,7 GB target-Verzeichnisse fertiger Worktrees geloescht
+(frei vorher 0 Byte, danach 19,4 GB) - nur Build-Artefakte, keine Quellen.
