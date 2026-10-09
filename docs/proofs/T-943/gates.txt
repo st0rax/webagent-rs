@@ -1,0 +1,30 @@
+T-943 gates 2026-09-16 (branch refactor/T-943-composer-fulltext-check, Basis origin/a6693dc)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --lib  (Verification laut Board)
+  test_exit=0
+  1444 passed; 0 failed; 1 ignored
+  (T-939-Basis 1442 + 2 neue T-943-Tests:
+   gekuerzte_eingabe_ist_contentcheck_fehler,
+   vollstaendige_eingabe_passiert_contentcheck)
+
+cargo test --features webview --lib  (House-Vergleichsbasis, wie T-930/T-939)
+  test_exit=0
+  1444 passed; 0 failed; 1 ignored
+
+Neue Tests:
+  browser::send::tests::gekuerzte_eingabe_ist_contentcheck_fehler    ... ok
+  browser::send::tests::vollstaendige_eingabe_passiert_contentcheck  ... ok
+
+Angepasste verify-Tests (der neue ContentCheck-Eval wird jetzt im Mock
+beantwortet, sonst schlaegt die Vollstaendigkeitspruefung faelschlich an):
+  eine_sitzung_belegt_new_chat_chat_und_stop              ... ok
+  sendefehler_ist_chat_failed                             ... ok
+  stop_klick_kommt_nicht_an_ist_unreachable              ... ok
+  stop_klick_ohne_wirkung_ist_unreachable                ... ok
+  stop_nie_sichtbar_ist_failed                            ... ok
