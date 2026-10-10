@@ -1,0 +1,23 @@
+T-945 gates 2026-09-16 (branch fix/T-945-circuit-open-503, Basis origin/5d04ded)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --lib  (Verification laut Board)
+  test_exit=0
+  1449 passed; 0 failed; 1 ignored
+  (T-943-Basis 1444 + 5 neue T-945-Tests, siehe unten)
+
+cargo test --features webview --lib  (House-Vergleichsbasis, wie T-930/T-939/T-943)
+  test_exit=0
+  1449 passed; 0 failed; 1 ignored
+
+Neue Tests:
+  relay::tests::circuit_open_meldung_und_parser_passen_zusammen  ... ok
+  relay::tests::parser_ignoriert_fremde_und_kaputte_meldungen    ... ok
+  api_bridge::wire::tests::offener_breaker_wird_zu_503_mit_retry_after      ... ok
+  api_bridge::wire::tests::andere_browserfehler_bleiben_502_ohne_retry_after ... ok
+  api_bridge::wire::tests::json_ohne_retry_after_haelt_den_headervertrag     ... ok

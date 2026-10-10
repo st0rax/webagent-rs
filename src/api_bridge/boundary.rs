@@ -54,6 +54,20 @@ pub fn api_error(flavor: ApiFlavor, status: u16, message: &str) -> HttpResponse 
     api_error_with(flavor, status, message, None, None)
 }
 
+/// Fehler eines Web-Brain-Laufs in eine HTTP-Antwort uebersetzen.
+///
+/// Ein offener Circuit-Breaker ist kein Serverfehler der Bridge, sondern eine
+/// temporaere Sperre des Web-Brains: die Meldung nennt die restliche
+/// Cooldown-Zeit. Daraus wird 503 mit `Retry-After`, damit ein Client wartet
+/// statt den vorhersehbaren Fehler sofort zu wiederholen. Alle uebrigen
+/// Browser-Fehler bleiben 502 (Bad Gateway) und kuendigen keine Wartezeit an.
+pub fn browser_inference_error(flavor: ApiFlavor, message: &str) -> HttpResponse {
+    match crate::relay::open_circuit_remaining_secs(message) {
+        Some(seconds) => api_error(flavor, 503, message).with_retry_after(seconds),
+        None => api_error(flavor, 502, message),
+    }
+}
+
 pub fn api_error_code(status: u16, message: &str, param: &str, code: &str) -> HttpResponse {
     api_error_with(ApiFlavor::OpenAi, status, message, Some(param), Some(code))
 }
