@@ -1,0 +1,22 @@
+T-947 gates 2026-09-16 (branch fix/T-947-relay-single-send, Basis origin/9e0735d)
+
+cargo fmt --check
+  fmt_exit=0
+
+cargo clippy --all-targets -- -D warnings
+  clippy_exit=0
+
+cargo test --lib  (Verification laut Board)
+  test_exit=0
+  1453 passed; 0 failed; 1 ignored
+  (T-945-Basis 1449 + 4 neue T-947-Tests, siehe unten)
+
+cargo test --features webview --lib  (House-Vergleichsbasis, wie T-930/T-939/T-943/T-945)
+  test_exit=0
+  1453 passed; 0 failed; 1 ignored
+
+Neue Tests:
+  relay::tests::stummer_anbieter_erhaelt_genau_eine_sendung  ... ok
+  relay::tests::sendefehler_ohne_absenden_wird_weiter_versucht ... ok
+  brain_score::tests::sends_werden_pro_ereignis_geschrieben  ... ok
+  brain_score::tests::sends_fehlen_bei_ein_turn_ereignissen   ... ok

@@ -345,7 +345,7 @@ Der Wire-Vertrag ist zusätzlich mit dem offiziellen OpenAI-Python-SDK 3.6.0 liv
 
 Jeder Browserturn beginnt mit einer Identitätszeile: `[Identitaet] Du bist das Modell hinter dem WebAgent-Brain "<brain>" (API-Modell webagent/<brain>)`. Bei `webagent/auto` wählt `api_bridge/inference.rs` das konkrete Brain vor dem Browserturn aus, die Zeile nennt dann dieses Brain; nur ein direkt übergebenes `auto` bliebe ohne Zeile, und diesen Aufrufer gibt es in der Bridge nicht. Mehrturn-Verläufe sind in zweiter Person gerahmt: frühere Assistenten-Beiträge stehen unter `[du]`, die neue Nachricht unter „Aktuelle Nachricht an dich“. Unter dem früheren Label `[brain]` hielten Modelle ihre eigenen Beiträge für die eines Dritten (T-951).
 
-`--timeout-secs` setzt optional das Zeitlimit für den einzelnen Browserturn. Ohne Angabe verwendet WebAgent die bestehende dynamische Timeout-Auflösung des ausgewählten Brains.
+`--timeout-secs` setzt optional das Zeitlimit für die Anfrage — nicht je Browserturn, sondern über die gesamte Anfrage, also über alle Wiederholungs-Turns zusammen. Ohne Angabe verwendet WebAgent die bestehende dynamische Timeout-Auflösung des ausgewählten Brains. Eine Anfrage ohne API kann bis zu drei volle Turns fahren (je `new_chat` + Senden + Warten); vorher galt das Limit je Turn, sodass ein Client bis zu dreimal so lange warten konnte wie zugesagt. Ein Turn, dessen Senden bereits erfolgreich war und der dann ohne Nachricht bleibt (`timeout_no_message`), wird nicht wiederholt: ob der Anbieter die Nachricht verarbeitet hat, ist unbekannt, und ein erneutes Senden würde den identischen Prompt duplizieren (T-947). Die Absende-Gesamtzahl steht je Anfrage im Brain-Score-Log und in der Fehlermeldung.
 
 ## OpenAI-Tool-Calling
 
