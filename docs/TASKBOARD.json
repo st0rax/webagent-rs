@@ -1499,7 +1499,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Offener Circuit-Breaker als 502 ohne Retry-After gemeldet",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "fix/T-945-circuit-open-503",
       "claimed_at": "2026-09-16",
@@ -1519,7 +1519,9 @@
       "dod": "circuit_open wird als 503 mit Retry-After in Sekunden gemeldet; ein Test belegt Status und Header; ein zweiter Test belegt, dass ein anderer Browserfehler weiterhin als 502 kommt.",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-945/",
-      "handoff": "Statuscodes und Header vorher/nachher, Branch und Commit."
+      "handoff": "Statuscodes und Header vorher/nachher, Branch und Commit.",
+      "done_at": "2026-09-16",
+      "proof": "docs/proofs/T-945/handoff.md"
     },
     {
       "id": "T-946",
