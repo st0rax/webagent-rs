@@ -188,6 +188,10 @@ struct Event {
     prompt_chars: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     turn: Option<TurnObservation>,
+    /// T-947: Anzahl der Sendungen (Prompt an den Anbieter) je Anfrage. `None`
+    /// fuer Aufrufer, die nur den Ein-Turn-Fall protokollieren.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sends: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -220,6 +224,29 @@ pub fn record_event(
         reason,
         latency_ms,
         prompt_chars,
+        None,
+        &events_path(),
+    );
+}
+
+/// Wie [`record_event`], zusaetzlich mit der Anzahl der Sendungen je Anfrage
+/// (T-947: ein stummer Anbieter darf nur eine Sendung erhalten; die Zahl macht
+/// das in `events.jsonl` nachpruefbar).
+pub fn record_event_with_sends(
+    brain_id: &str,
+    success: bool,
+    reason: Option<&str>,
+    latency_ms: u64,
+    prompt_chars: usize,
+    sends: u32,
+) {
+    record_event_at(
+        brain_id,
+        success,
+        reason,
+        latency_ms,
+        prompt_chars,
+        Some(sends),
         &events_path(),
     );
 }
@@ -230,6 +257,7 @@ fn record_event_at(
     reason: Option<&str>,
     latency_ms: u64,
     prompt_chars: usize,
+    sends: Option<u32>,
     path: &PathBuf,
 ) {
     let _guard = WRITE_LOCK.lock();
@@ -247,6 +275,7 @@ fn record_event_at(
         latency_ms,
         prompt_chars,
         turn,
+        sends,
     };
     let Ok(line) = serde_json::to_string(&event) else {
         return;
@@ -434,10 +463,10 @@ mod tests {
     fn reliable_brain_scores_higher_than_flaky_one() {
         let path = unique_path();
         for _ in 0..10 {
-            record_event_at("kimi", true, None, 1000, 20, &path);
+            record_event_at("kimi", true, None, 1000, 20, None, &path);
         }
         for _ in 0..10 {
-            record_event_at("qwen", false, Some("blocked"), 500, 20, &path);
+            record_event_at("qwen", false, Some("blocked"), 500, 20, None, &path);
         }
         let kimi = stats_at("kimi", &path).unwrap();
         let qwen = stats_at("qwen", &path).unwrap();
@@ -453,10 +482,10 @@ mod tests {
         // Erst WINDOW_SIZE Fehlschlaege, dann genug Erfolge, um sie komplett aus
         // dem Fenster zu verdraengen.
         for _ in 0..WINDOW_SIZE {
-            record_event_at("zai", false, Some("timeout"), 100, 10, &path);
+            record_event_at("zai", false, Some("timeout"), 100, 10, None, &path);
         }
         for _ in 0..WINDOW_SIZE {
-            record_event_at("zai", true, None, 100, 10, &path);
+            record_event_at("zai", true, None, 100, 10, None, &path);
         }
         let s = stats_at("zai", &path).unwrap();
         assert_eq!(s.window_events, WINDOW_SIZE);
@@ -468,10 +497,10 @@ mod tests {
     fn leaderboard_sorts_by_reliability_descending() {
         let path = unique_path();
         for _ in 0..5 {
-            record_event_at("kimi", true, None, 100, 10, &path);
+            record_event_at("kimi", true, None, 100, 10, None, &path);
         }
         for _ in 0..5 {
-            record_event_at("qwen", false, Some("blocked"), 100, 10, &path);
+            record_event_at("qwen", false, Some("blocked"), 100, 10, None, &path);
         }
         let board = leaderboard_at(&path);
         assert_eq!(board.len(), 2);
@@ -488,7 +517,7 @@ mod tests {
         let _guard = crate::bench_events::test_bus_mutex().lock();
         crate::bench_events::clear();
         let path = unique_path();
-        record_event_at("kimi", true, Some("grund"), 123, 456, &path);
+        record_event_at("kimi", true, Some("grund"), 123, 456, None, &path);
         let events = crate::bench_events::snapshot();
         assert!(
             !events
@@ -639,10 +668,10 @@ mod tests {
             expected_chars: Some(4000),
             ..Default::default()
         });
-        record_event_at("kimi", false, Some("blocked"), 1500, 4000, &path);
+        record_event_at("kimi", false, Some("blocked"), 1500, 4000, None, &path);
         // Puffer ist konsumiert: der naechste Ereignis ohne neuen Pending hat
         // keinen turn-Anteil (kein Stale-Data-Anhaengen an Folgeturns).
-        record_event_at("kimi", false, Some("blocked"), 1500, 4000, &path);
+        record_event_at("kimi", false, Some("blocked"), 1500, 4000, None, &path);
         let events = load_events(&path);
         assert_eq!(events.len(), 2);
         let first = events[0].turn.as_ref().expect("turn-Beobachtung fehlt");
@@ -652,6 +681,26 @@ mod tests {
         assert_eq!(first.element_h, Some(48.0));
         assert_eq!(first.pasted_chars, Some(4000));
         assert!(events[1].turn.is_none(), "ohne Pending kein turn im Event");
+    }
+
+    /// T-947: Die Anzahl der Sendungen je Anfrage landet im Ereignis.
+    #[test]
+    fn sends_werden_pro_ereignis_geschrieben() {
+        let path = unique_path();
+        record_event_at("kimi", true, None, 10, 5, Some(3), &path);
+        let events = load_events(&path);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].sends, Some(3));
+    }
+
+    /// T-947: Ein-Turn-Aufrufer ohne Sendungszahl schreiben kein Feld.
+    #[test]
+    fn sends_fehlen_bei_ein_turn_ereignissen() {
+        let path = unique_path();
+        record_event_at("kimi", true, None, 10, 5, None, &path);
+        let events = load_events(&path);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].sends, None);
     }
 
     #[test]

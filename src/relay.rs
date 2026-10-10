@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::brain::{BrainBackend, SessionState};
+use crate::brain::{BrainBackend, BrainResponse, SessionState};
 use crate::browser::WebBrainBackend;
 use crate::browser_inference::BrowserAttachment;
 use crate::timeouts::resolve_timeout;
@@ -46,6 +46,51 @@ pub(crate) fn open_circuit_remaining_secs(error: &str) -> Option<i64> {
     digits.parse::<i64>().ok().filter(|seconds| *seconds > 0)
 }
 
+/// Backend-Schnittstelle, die die Turn-Schleife braucht.
+///
+/// `WebBrainBackend` delegiert nur. Die Trennung existiert, damit die Schleife
+/// mit einem Mock-Backend pruefbar ist (T-947: ein stummer Anbieter darf nur
+/// eine Sendung erhalten) — ohne echten Browser/CDP.
+trait RelayBackend {
+    fn relay_new_chat(&mut self) -> Result<(), String>;
+    fn relay_send_with_attachments(
+        &mut self,
+        text: &str,
+        attachments: &[BrowserAttachment],
+    ) -> Result<i32, String>;
+    fn relay_wait_response_streaming(
+        &mut self,
+        baseline_count: i32,
+        timeout: f64,
+        on_update: &mut dyn FnMut(&str),
+    ) -> Result<BrainResponse, String>;
+    fn relay_stop(&mut self) -> Result<(), String>;
+}
+
+impl RelayBackend for WebBrainBackend {
+    fn relay_new_chat(&mut self) -> Result<(), String> {
+        WebBrainBackend::new_chat(self)
+    }
+    fn relay_send_with_attachments(
+        &mut self,
+        text: &str,
+        attachments: &[BrowserAttachment],
+    ) -> Result<i32, String> {
+        WebBrainBackend::send_with_attachments(self, text, attachments)
+    }
+    fn relay_wait_response_streaming(
+        &mut self,
+        baseline_count: i32,
+        timeout: f64,
+        on_update: &mut dyn FnMut(&str),
+    ) -> Result<BrainResponse, String> {
+        WebBrainBackend::wait_response_streaming(self, baseline_count, timeout, on_update)
+    }
+    fn relay_stop(&mut self) -> Result<(), String> {
+        WebBrainBackend::stop(self)
+    }
+}
+
 /// Fuehrt einen Browserturn aus und wartet auf ein echtes Bildartefakt statt
 /// auf Text. Das ist bewusst ein eigener Pfad: Bildgeneratoren koennen ein Bild
 /// fertigstellen, ohne jemals eine auswertbare Assistenten-Textnachricht zu
@@ -75,7 +120,7 @@ pub fn relay_image_generation(
         .ensure_ready(ready_timeout)
         .unwrap_or(SessionState::Error);
     if state != SessionState::Ready {
-        let _ = backend.stop();
+        let _ = backend.relay_stop();
         return Err(RelayError(format!("session_state={state:?}")));
     }
     if trace {
@@ -84,22 +129,22 @@ pub fn relay_image_generation(
             started.elapsed().as_secs_f64()
         );
     }
-    if let Err(error) = backend.new_chat() {
-        let _ = backend.stop();
+    if let Err(error) = backend.relay_new_chat() {
+        let _ = backend.relay_stop();
         return Err(RelayError(error));
     }
     if let Err(error) = backend.enable_image_generation_mode() {
-        let _ = backend.stop();
+        let _ = backend.relay_stop();
         return Err(RelayError(error));
     }
     // Das Aktivieren des Bildtools rendert selbst Icons/Previews. Erst danach
     // markieren, damit diese UI-Bilder nie als Generator-Ergebnis gelten.
     if let Err(error) = backend.mark_image_generation_baseline() {
-        let _ = backend.stop();
+        let _ = backend.relay_stop();
         return Err(RelayError(error));
     }
     if let Err(error) = backend.send(prompt) {
-        let _ = backend.stop();
+        let _ = backend.relay_stop();
         return Err(RelayError(error));
     }
     if trace {
@@ -143,7 +188,7 @@ pub fn relay_image_generation(
         }
         std::thread::sleep(std::time::Duration::from_millis(750));
     };
-    let _ = backend.stop();
+    let _ = backend.relay_stop();
     result
 }
 
@@ -219,7 +264,7 @@ pub fn relay_single_turn_with_attachments_streaming(
         .ensure_ready(ready_timeout)
         .unwrap_or(SessionState::Error);
     if state != SessionState::Ready {
-        let _ = backend.stop();
+        let _ = backend.relay_stop();
         let reason = format!("session_state={state:?}");
         crate::circuit_breaker::record_failure(brain_id, &reason);
         crate::brain_score::record_event(
@@ -260,19 +305,54 @@ pub fn relay_single_turn_with_attachments_streaming(
             }
         }
     }
+    run_turn_loop(
+        &mut backend,
+        brain_id,
+        message,
+        attachments,
+        wait_timeout,
+        started,
+        prompt_chars,
+        on_update,
+    )
+}
+
+/// Kern der Turn-Schleife: bis zu drei volle Turns (new_chat + send +
+/// wait_response), Zeitbudget ueber die ganze Anfrage, Sendungen gezaehlt.
+///
+/// Generic ueber [`RelayBackend`], damit die DoD (T-947) "ein stummer Anbieter
+/// erhaelt genau eine Sendung" mit einem Mock-Backend testbar ist.
+#[allow(clippy::too_many_arguments)]
+fn run_turn_loop<B: RelayBackend>(
+    backend: &mut B,
+    brain_id: &str,
+    message: &str,
+    attachments: &[BrowserAttachment],
+    wait_timeout: f64,
+    started: Instant,
+    prompt_chars: usize,
+    on_update: &mut dyn FnMut(&str),
+) -> Result<String, RelayError> {
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
     // sind unvermeidlich flakig: Submit oder Antworterkennung koennen scheitern.
     // Jeder Turn startet mit einem frischen `new_chat`, also entsteht kein
-    // Doppel-Post im selben Thread — ein evtl. schon gesendeter, aber unerkannter
-    // Vorgaenger bleibt in seiner eigenen (verlassenen) Konversation.
+    // Doppel-Post im selben Thread.
+    //
     // Rate-Limit wird NICHT wiederholt: das ist ein echtes "spaeter wieder", kein
-    // transienter Fehler. Retries gehen sichtbar nach stderr, werden also nicht
-    // versteckt.
-    // Attachment-Turns: ein Versuch. Upload-Fehler sind deterministisch; leere
-    // Antworten nach dem Budget nicht 3x bis zum Client-Hang (ca. 240s) strecken.
+    // transienter Fehler. Retries gehen sichtbar nach stderr.
+    //
+    // T-947: Das Warte-Budget gilt fuer die GANZE Anfrage, nicht je Turn — sonst
+    // wartet der Client bis zu dreimal so lange wie zugesagt (856 s statt 270 s).
+    // Und ein Turn, dessen Senden bereits erfolgreich war, wird bei leerer
+    // Antwort (timeout_no_message) NICHT wiederholt: ob der Anbieter die
+    // Nachricht verarbeitet hat, ist dann unbekannt, ein erneutes Senden
+    // dupliziert den Prompt (massenhaftes identisches Senden = Kontorisiko).
+    // Attachment-Turns: ein Versuch (Upload-Fehler sind deterministisch).
     const MAX_TURNS: usize = 3;
     let max_turns = if attachments.is_empty() { MAX_TURNS } else { 1 };
+    let deadline = started + std::time::Duration::from_secs_f64(wait_timeout.max(1.0));
     let mut last_err = format!("kein Versuch ausgefuehrt fuer {brain_id}");
+    let mut sends: u32 = 0;
     let mut answer: Option<String> = None;
     for turn in 0..max_turns {
         if turn > 0 {
@@ -282,12 +362,25 @@ pub fn relay_single_turn_with_attachments_streaming(
             ));
             std::thread::sleep(std::time::Duration::from_millis(700));
         }
-        if let Err(e) = backend.new_chat() {
+        if let Err(e) = backend.relay_new_chat() {
             last_err = e;
             continue;
         }
-        let baseline = match backend.send_with_attachments(message, attachments) {
-            Ok(b) => b,
+        // Gesamtbudget erschoepft (nur moeglich, wenn ein frueherer Turn bereits
+        // Wartezeit verbraucht hat): kein weiterer Versuch.
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            last_err = format!(
+                "keine Antwort innerhalb des Gesamtbudgets ({wait_timeout:.0}s, {sends} Sendungen)"
+            );
+            break;
+        }
+        let turn_wait = remaining.as_secs_f64().min(wait_timeout);
+        let baseline = match backend.relay_send_with_attachments(message, attachments) {
+            Ok(b) => {
+                sends += 1;
+                b
+            }
             Err(e) => {
                 last_err = e;
                 if is_deterministic_send_failure(&last_err) {
@@ -299,7 +392,7 @@ pub fn relay_single_turn_with_attachments_streaming(
                 continue;
             }
         };
-        let response = match backend.wait_response_streaming(baseline, wait_timeout, on_update) {
+        let response = match backend.relay_wait_response_streaming(baseline, turn_wait, on_update) {
             Ok(r) => r,
             Err(e) => {
                 last_err = e;
@@ -307,31 +400,33 @@ pub fn relay_single_turn_with_attachments_streaming(
             }
         };
         if response.backend_status == "rate_limit" {
-            let _ = backend.stop();
+            let _ = backend.relay_stop();
             crate::circuit_breaker::record_failure(brain_id, "rate_limit");
-            crate::brain_score::record_event(
+            crate::brain_score::record_event_with_sends(
                 brain_id,
                 false,
                 Some("rate_limit"),
                 started.elapsed().as_millis() as u64,
                 prompt_chars,
+                sends,
             );
             return Err(RelayError(
-                "rate_limited: Brain ist aktuell limitiert/nicht verfügbar".into(),
+                "rate_limited: Brain ist aktuell limitiert/nicht verfuegbar".into(),
             ));
         }
         // Externe Blockierung (Rate-/Nachrichtenlimit, Login, Cloudflare) auf der
         // Seite erkannt. Terminal — ein Retry hilft nicht. Distinkt mit "blocked:"-
         // Praefix, damit Messungen es flaggen statt als Tool-Defekt zu werten.
         if response.backend_status == "blocked" {
-            let _ = backend.stop();
+            let _ = backend.relay_stop();
             crate::circuit_breaker::record_failure(brain_id, "blocked");
-            crate::brain_score::record_event(
+            crate::brain_score::record_event_with_sends(
                 brain_id,
                 false,
                 Some("blocked"),
                 started.elapsed().as_millis() as u64,
                 prompt_chars,
+                sends,
             );
             return Err(RelayError(format!(
                 "blocked: {brain_id}: {}",
@@ -340,19 +435,20 @@ pub fn relay_single_turn_with_attachments_streaming(
         }
         // Leerer Text = Timeout ohne erkannte Antwort. wait_response gibt das als
         // Ok mit leerem Text zurueck; ohne diese Pruefung zaehlte ein Timeout als
-        // Erfolg (so entstand frueher "5/8 PASS" ohne eine echte Antwort).
-        // UI-Chrome / CoT-Echo (Thinking..., 14:28, Kimi reasoning) zaehlen
-        // ebenfalls als leer — sonst landet Status als vermeintliche Antwort.
+        // Erfolg. UI-Chrome / CoT-Echo zaehlen ebenfalls als leer.
         let raw = response.text.trim().to_string();
         let text = crate::observer::chat_answer_text(&raw);
         if text.is_empty() {
+            let total = started.elapsed().as_secs_f64();
             last_err = format!(
-                "keine Antwort erhalten (timeout_budget={wait_timeout:.0}s, backend_status={}, generation_complete={}, raw_chars={})",
+                "keine Antwort erhalten (timeout_budget={wait_timeout:.0}s, gesamt={total:.0}s, sendungen={sends}, backend_status={}, generation_complete={}, raw_chars={})",
                 response.backend_status,
                 response.generation_complete,
                 raw.chars().count()
             );
-            continue;
+            // Senden war erfolgreich: ob der Anbieter die Nachricht verarbeitet
+            // hat, ist unbekannt. Nicht erneut senden (T-947).
+            break;
         }
         if is_provider_error_page(&text) {
             last_err = format!(
@@ -365,12 +461,19 @@ pub fn relay_single_turn_with_attachments_streaming(
         break;
     }
     // Shared-Pool: `stop` respektiert `persist_browser_tabs()` (Tab bleibt offen).
-    let _ = backend.stop();
+    let _ = backend.relay_stop();
     let latency_ms = started.elapsed().as_millis() as u64;
     match answer {
         Some(text) => {
             crate::circuit_breaker::record_success(brain_id);
-            crate::brain_score::record_event(brain_id, true, None, latency_ms, prompt_chars);
+            crate::brain_score::record_event_with_sends(
+                brain_id,
+                true,
+                None,
+                latency_ms,
+                prompt_chars,
+                sends,
+            );
             // Send+Wait gegen den echten Browser = das Brain kann Text
             // senden und eine Antwort lesen. Das ist der Beleg fuer "chat".
             crate::capability_proof::record_route_proof(
@@ -382,19 +485,20 @@ pub fn relay_single_turn_with_attachments_streaming(
             Ok(text)
         }
         None => {
-            // Fehlender Datei-Upload ist eine bekannte Fähigkeitsgrenze für
+            // Fehlender Datei-Upload ist eine bekannte Faehigkeitsgrenze fuer
             // multimodale Requests, kein Ausfall des Text-Brains. Er darf
-            // deshalb weder den Circuit Breaker öffnen noch den allgemeinen
-            // Brain-Score verschlechtern: Ein späterer text-only Turn kann
+            // deshalb weder den Circuit Breaker oeffnen noch den allgemeinen
+            // Brain-Score verschlechtern: Ein spaeterer text-only Turn kann
             // mit demselben Brain problemlos funktionieren.
             if !is_attachment_capability_failure(&last_err) {
                 crate::circuit_breaker::record_failure(brain_id, &last_err);
-                crate::brain_score::record_event(
+                crate::brain_score::record_event_with_sends(
                     brain_id,
                     false,
                     Some(&last_err),
                     latency_ms,
                     prompt_chars,
+                    sends,
                 );
             }
             Err(RelayError(last_err))
@@ -523,6 +627,119 @@ mod tests {
             open_circuit_remaining_secs("circuit_open: qwen uebersprungen, noch 0s Cooldown"),
             None
         );
+    }
+
+    /// Mock-Backend, das jedes Senden zaehlt und nie eine Antwort liefert.
+    struct StummerAnbieter {
+        sends: u32,
+    }
+
+    impl RelayBackend for StummerAnbieter {
+        fn relay_new_chat(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn relay_send_with_attachments(
+            &mut self,
+            _text: &str,
+            _attachments: &[BrowserAttachment],
+        ) -> Result<i32, String> {
+            self.sends += 1;
+            Ok(1)
+        }
+        fn relay_wait_response_streaming(
+            &mut self,
+            _baseline: i32,
+            _timeout: f64,
+            _on_update: &mut dyn FnMut(&str),
+        ) -> Result<BrainResponse, String> {
+            Ok(BrainResponse {
+                text: String::new(),
+                backend_status: "timeout_no_message".to_string(),
+                ..Default::default()
+            })
+        }
+        fn relay_stop(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// DoD T-947: ein Anbieter, dessen Senden erfolgreich war und der dann
+    /// stumm bleibt (timeout_no_message), darf den Prompt nicht erneut
+    /// erhalten. Vorher lief die Schleife bis zu dreimal mit je einer neuen
+    /// Konversation.
+    #[test]
+    fn stummer_anbieter_erhaelt_genau_eine_sendung() {
+        let mut backend = StummerAnbieter { sends: 0 };
+        let result = run_turn_loop(
+            &mut backend,
+            "mock",
+            "hallo",
+            &[],
+            1.0,
+            Instant::now(),
+            5,
+            &mut |_| {},
+        );
+        assert!(
+            result.is_err(),
+            "stummer Anbieter darf keinen Erfolg melden"
+        );
+        assert_eq!(
+            backend.sends, 1,
+            "der Prompt darf nur einmal gesendet werden"
+        );
+        let msg = result.unwrap_err().0;
+        assert!(
+            msg.contains("sendungen=1"),
+            "Fehlermeldung nennt Sendungen: {msg}"
+        );
+    }
+
+    /// Gegenprobe: scheitert das Senden selbst, wird weiter versucht — hier
+    /// erreicht genau KEINE Sendung den Anbieter, also darf der Retry laufen
+    /// (3 Versuche), ohne dass sich die Sperre als Erfolg tarnt.
+    #[test]
+    fn sendefehler_ohne_absenden_wird_weiter_versucht() {
+        struct Sendefehler {
+            attempts: u32,
+        }
+        impl RelayBackend for Sendefehler {
+            fn relay_new_chat(&mut self) -> Result<(), String> {
+                Ok(())
+            }
+            fn relay_send_with_attachments(
+                &mut self,
+                _text: &str,
+                _attachments: &[BrowserAttachment],
+            ) -> Result<i32, String> {
+                self.attempts += 1;
+                Err("transient: CDP-Ausfall".to_string())
+            }
+            fn relay_wait_response_streaming(
+                &mut self,
+                _baseline: i32,
+                _timeout: f64,
+                _on_update: &mut dyn FnMut(&str),
+            ) -> Result<BrainResponse, String> {
+                unreachable!("ohne erfolgreichen Send darf nicht gewartet werden")
+            }
+            fn relay_stop(&mut self) -> Result<(), String> {
+                Ok(())
+            }
+        }
+        let mut backend = Sendefehler { attempts: 0 };
+        let result = run_turn_loop(
+            &mut backend,
+            "mock",
+            "hallo",
+            &[],
+            1.0,
+            Instant::now(),
+            5,
+            &mut |_| {},
+        );
+        assert!(result.is_err());
+        assert!(backend.attempts > 0, "Retry-Send muss versucht werden");
     }
 
     #[test]
