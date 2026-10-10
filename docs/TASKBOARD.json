@@ -1554,7 +1554,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Relay sendet denselben Prompt bis zu dreimal in neue Chats",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "fix/T-947-relay-single-send",
       "claimed_at": "2026-09-16",
@@ -1574,6 +1574,8 @@
       "dod": "Ein Turn, dessen Senden erfolgreich war und der mit timeout_no_message endet, wird nicht mit erneutem Senden wiederholt; das Zeitbudget gilt je Anfrage statt je Turn und die Fehlermeldung nennt die tatsaechliche Gesamtdauer; brain_score protokolliert die Anzahl der Sendungen je Anfrage; ein Test belegt mit einem Mock-Backend, dass ein stummer Anbieter genau eine Sendung erhaelt.",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-947/",
+      "done_at": "2026-09-16",
+      "proof": "docs/proofs/T-947/handoff.md",
       "handoff": "Sendungen und Dauer je Anfrage vorher/nachher gegen ein stummes Mock-Backend, Branch und Commit."
     },
     {
