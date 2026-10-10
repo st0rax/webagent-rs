@@ -22,6 +22,30 @@ impl std::fmt::Display for RelayError {
     }
 }
 
+/// Praefix einer Breaker-Sperre. Erzeuger (`circuit_open_message`) und Parser
+/// (`open_circuit_remaining_secs`) teilen sich denselben Wortlaut, damit die
+/// Uebersetzung in HTTP 503 nicht leise kaputtgeht, wenn der Text sich aendert.
+const CIRCUIT_OPEN_PREFIX: &str = "circuit_open: ";
+
+/// Einheitliche Meldung, wenn der Breaker ein Brain ueberspringt.
+pub(crate) fn circuit_open_message(brain_id: &str, remaining_secs: i64) -> String {
+    format!("{CIRCUIT_OPEN_PREFIX}{brain_id} uebersprungen, noch {remaining_secs}s Cooldown")
+}
+
+/// Restliche Cooldown-Sekunden, falls `error` von einem offenen Circuit-Breaker
+/// stammt. `None` heisst: kein offener Breaker, die Meldung kuendigt keine
+/// Wartezeit an.
+pub(crate) fn open_circuit_remaining_secs(error: &str) -> Option<i64> {
+    let rest = error.strip_prefix(CIRCUIT_OPEN_PREFIX)?;
+    let marker = "noch ";
+    let idx = rest.rfind(marker)?;
+    let digits: String = rest[idx + marker.len()..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse::<i64>().ok().filter(|seconds| *seconds > 0)
+}
+
 /// Fuehrt einen Browserturn aus und wartet auf ein echtes Bildartefakt statt
 /// auf Text. Das ist bewusst ein eigener Pfad: Bildgeneratoren koennen ein Bild
 /// fertigstellen, ohne jemals eine auswertbare Assistenten-Textnachricht zu
@@ -34,9 +58,7 @@ pub fn relay_image_generation(
 ) -> Result<GeneratedImage, RelayError> {
     let trace = std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some();
     if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
-        return Err(RelayError(format!(
-            "circuit_open: {brain_id} uebersprungen, noch {remaining}s Cooldown"
-        )));
+        return Err(RelayError(circuit_open_message(brain_id, remaining)));
     }
     let started = Instant::now();
     let mut backend = WebBrainBackend::from_config(brain_id).map_err(RelayError)?;
@@ -184,9 +206,7 @@ pub fn relay_single_turn_with_attachments_streaming(
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
     // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
     if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
-        return Err(RelayError(format!(
-            "circuit_open: {brain_id} uebersprungen, noch {remaining}s Cooldown"
-        )));
+        return Err(RelayError(circuit_open_message(brain_id, remaining)));
     }
     let started = Instant::now();
     let prompt_chars = message.chars().count();
@@ -472,6 +492,37 @@ mod tests {
             "Something went wrong. If this issue persists please contact us through our help center at help.openai.com. Erneut versuchen"
         ));
         assert!(!is_provider_error_page("Hallo, wie kann ich helfen?"));
+    }
+
+    #[test]
+    fn circuit_open_meldung_und_parser_passen_zusammen() {
+        // DoD T-945: die restliche Cooldown-Zeit muss aus der Meldung
+        // zurueckgelesen werden koennen -- sonst kann die Bridge kein
+        // `Retry-After` setzen.
+        let msg = circuit_open_message("qwen", 812);
+        assert_eq!(msg, "circuit_open: qwen uebersprungen, noch 812s Cooldown");
+        assert_eq!(open_circuit_remaining_secs(&msg), Some(812));
+    }
+
+    #[test]
+    fn parser_ignoriert_fremde_und_kaputte_meldungen() {
+        assert_eq!(open_circuit_remaining_secs("timeout_no_text"), None);
+        assert_eq!(open_circuit_remaining_secs(""), None);
+        // Praefix fehlt: keine Wartezeit, auch wenn "noch Ns Cooldown" vorkommt.
+        assert_eq!(
+            open_circuit_remaining_secs("qwen uebersprungen, noch 5s Cooldown"),
+            None
+        );
+        // Praefix da, aber keine Zahl.
+        assert_eq!(
+            open_circuit_remaining_secs("circuit_open: qwen uebersprungen, noch s Cooldown"),
+            None
+        );
+        // 0 Sekunden ist kein sinnvolles Retry-After.
+        assert_eq!(
+            open_circuit_remaining_secs("circuit_open: qwen uebersprungen, noch 0s Cooldown"),
+            None
+        );
     }
 
     #[test]

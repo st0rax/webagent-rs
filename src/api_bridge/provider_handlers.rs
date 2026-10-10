@@ -24,15 +24,15 @@
 
 use super::{
     anthropic_prompt, anthropic_response, anthropic_sse, anthropic_tool_choice, anthropic_tools,
-    api_error, append_response_message, authorize, completion_id, decode_json, model_not_found,
-    openai_message, openai_prompt, openai_sse, openai_tool_choice, openai_tools,
-    reject_unsupported_openai_body, require_clean_text_tools, resolve_model, response_object,
-    response_object_from_answer, response_with_state, responses_context, responses_sse_with_object,
-    responses_tool_choice, responses_tools, run_task_blocking, run_task_streaming, session_service,
-    store_response, stream_answer_snapshot, tenant_id, unix_seconds, write_data_frame,
-    write_http_response, write_sse_comment, write_sse_event, write_sse_headers, AnthropicRequest,
-    ApiFlavor, BridgeConfig, HttpRequest, HttpResponse, OpenAiRequest, ResponsesRequest,
-    StoredResponse,
+    api_error, append_response_message, authorize, browser_inference_error, completion_id,
+    decode_json, model_not_found, openai_message, openai_prompt, openai_sse, openai_tool_choice,
+    openai_tools, reject_unsupported_openai_body, require_clean_text_tools, resolve_model,
+    response_object, response_object_from_answer, response_with_state, responses_context,
+    responses_sse_with_object, responses_tool_choice, responses_tools, run_task_blocking,
+    run_task_streaming, session_service, store_response, stream_answer_snapshot, tenant_id,
+    unix_seconds, write_data_frame, write_http_response, write_sse_comment, write_sse_event,
+    write_sse_headers, AnthropicRequest, ApiFlavor, BridgeConfig, HttpRequest, HttpResponse,
+    OpenAiRequest, ResponsesRequest, StoredResponse,
 };
 use serde_json::json;
 use std::{
@@ -83,7 +83,7 @@ pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> Htt
         tool_choice,
     ) {
         Ok(answer) => answer,
-        Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
+        Err(error) => return browser_inference_error(ApiFlavor::OpenAi, &error),
     };
     let id = completion_id("chatcmpl");
     if payload.stream.unwrap_or(false) {
@@ -288,7 +288,7 @@ pub(super) fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> 
         crate::browser_inference::BrowserToolChoice::None,
     ) {
         Ok(answer) => answer,
-        Err(error) => return api_error(ApiFlavor::Anthropic, 502, &error),
+        Err(error) => return browser_inference_error(ApiFlavor::Anthropic, &error),
     };
     let id = completion_id("msg");
     let response = anthropic_response(&id, &payload.model, &answer);
@@ -338,7 +338,7 @@ pub(super) fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> 
         crate::browser_inference::BrowserToolChoice::None,
     ) {
         Ok(answer) => answer,
-        Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
+        Err(error) => return browser_inference_error(ApiFlavor::OpenAi, &error),
     };
     let id = completion_id("resp");
     append_response_message(&mut messages, &answer);

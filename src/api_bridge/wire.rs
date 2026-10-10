@@ -9,6 +9,8 @@
 //!
 //! Invarianten:
 //! - JSON-Antworten: `Cache-Control: no-store`, `Content-Length` = Body-Laenge.
+//! - `Retry-After` erscheint nur, wenn die Antwort eine Wartezeit nennt (503
+//!   bei offenem Circuit-Breaker); sonst fehlt der Header unveraendert.
 //! - Live-SSE-Header: `Content-Type: text/event-stream; charset=utf-8`,
 //!   `Cache-Control: no-cache`.
 //! - Responses-SSE: `sequence_number` ab 0, monoton, ohne Luecke.
@@ -40,13 +42,21 @@ pub fn render_http_response(response: &HttpResponse) -> Vec<u8> {
         _ => "Internal Server Error",
     };
     let request_id = completion_id("req");
+    // `Retry-After` ist optional: ohne Wartezeitangabe bleibt der Headerblock
+    // exakt so wie zuvor (die leere Zeile erzeugt dann nur das abschliessende
+    // CRLF). Mit Angabe sitzt der Header vor der leerzeiligen Trennung.
+    let retry_after = match response.retry_after_secs {
+        Some(seconds) => format!("Retry-After: {seconds}\r\n"),
+        None => String::new(),
+    };
     let headers = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Request-Id: {}\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Request-Id: {}\r\n{}\r\n",
         response.status,
         reason,
         response.content_type,
         response.body.len(),
-        request_id
+        request_id,
+        retry_after
     );
     let mut bytes = headers.into_bytes();
     bytes.extend_from_slice(&response.body);
@@ -119,8 +129,48 @@ pub fn write_sse_comment(stream: &mut TcpStream, comment: &str) -> Result<(), St
 
 #[cfg(test)]
 mod tests {
-    use super::sse_data;
+    use super::super::{browser_inference_error, ApiFlavor};
+    use super::{render_http_response, sse_data};
     use serde_json::json;
+
+    #[test]
+    fn offener_breaker_wird_zu_503_mit_retry_after() {
+        // DoD T-945: ein offener Circuit-Breaker nennt die restliche
+        // Cooldown-Zeit. Statt 502 ohne Wartehinweis muss 503 mit
+        // `Retry-After: <sekunden>` auf die Leitung.
+        let response = browser_inference_error(
+            ApiFlavor::OpenAi,
+            "circuit_open: qwen uebersprungen, noch 812s Cooldown",
+        );
+        let rendered = String::from_utf8(render_http_response(&response)).expect("UTF-8");
+        assert!(
+            rendered.starts_with("HTTP/1.1 503 Service Unavailable\r\n"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("\r\nRetry-After: 812\r\n"), "{rendered}");
+        // Der Originalgrund bleibt im Koerper erhalten (Diagnose).
+        assert!(rendered.contains("circuit_open: qwen"), "{rendered}");
+    }
+
+    #[test]
+    fn andere_browserfehler_bleiben_502_ohne_retry_after() {
+        let response = browser_inference_error(ApiFlavor::OpenAi, "timeout_no_text");
+        let rendered = String::from_utf8(render_http_response(&response)).expect("UTF-8");
+        assert!(
+            rendered.starts_with("HTTP/1.1 502 Bad Gateway\r\n"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("Retry-After"), "{rendered}");
+    }
+
+    #[test]
+    fn json_ohne_retry_after_haelt_den_headervertrag() {
+        // Regression: Antworten ohne Wartezeit behalten den bisherigen
+        // Headerblock unveraendert (kein zusaetzliches Retry-After).
+        let response = super::super::HttpResponse::json(200, json!({"ok": true}));
+        let rendered = String::from_utf8(render_http_response(&response)).expect("UTF-8");
+        assert!(!rendered.contains("Retry-After"), "{rendered}");
+    }
 
     #[test]
     fn sse_sequence_numbers_are_monotonic_from_zero() {

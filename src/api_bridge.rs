@@ -38,7 +38,7 @@ mod wire;
 pub(crate) use boundary::api_error;
 #[cfg(test)]
 use boundary::constant_time_equal;
-use boundary::{api_error_code, authorize, model_not_found};
+use boundary::{api_error_code, authorize, browser_inference_error, model_not_found};
 use store::{
     append_response_message, handle_response_delete, handle_response_input_items,
     handle_response_retrieve, responses_context, store_response, tenant_id,
@@ -425,7 +425,7 @@ fn handle_image_generation(request: &HttpRequest, config: &BridgeConfig) -> Http
     };
     let image = match run_image_generation_blocking(config, &brain, &generation_prompt) {
         Ok(image) => image,
-        Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
+        Err(error) => return browser_inference_error(ApiFlavor::OpenAi, &error),
     };
     let item = if response_format == "b64_json" {
         json!({"b64_json": image.base64, "revised_prompt": Value::Null})
@@ -502,7 +502,7 @@ fn handle_audio_transcription(
         crate::browser_inference::BrowserToolChoice::None,
     ) {
         Ok(answer) => answer,
-        Err(error) => return api_error(ApiFlavor::OpenAi, 502, &error),
+        Err(error) => return browser_inference_error(ApiFlavor::OpenAi, &error),
     };
     let text = answer.text.unwrap_or_default().trim().to_string();
     if text.is_empty() {
@@ -520,6 +520,7 @@ fn handle_audio_transcription(
             status: 200,
             content_type: "text/plain; charset=utf-8",
             body: text.into_bytes(),
+            retry_after_secs: None,
         };
     }
     let body = if response_format == "verbose_json" {
@@ -814,6 +815,10 @@ pub(crate) struct HttpResponse {
     status: u16,
     content_type: &'static str,
     body: Vec<u8>,
+    /// Zusaetzlicher `Retry-After`-Header in Sekunden. Nur gesetzt, wenn dem
+    /// Client eine konkrete Wartezeit genannt werden kann (offener
+    /// Circuit-Breaker), sonst `None` und der Header entfaellt.
+    retry_after_secs: Option<i64>,
 }
 
 impl HttpResponse {
@@ -824,6 +829,7 @@ impl HttpResponse {
             status,
             content_type: "application/json; charset=utf-8",
             body,
+            retry_after_secs: None,
         }
     }
 
@@ -832,7 +838,16 @@ impl HttpResponse {
             status: 200,
             content_type: "text/event-stream; charset=utf-8",
             body: body.into_bytes(),
+            retry_after_secs: None,
         }
+    }
+
+    /// Antwort mit `Retry-After: <seconds>` versehen. Ein Wert unter 1 wird auf
+    /// 1 angehoben, weil `Retry-After: 0` beim Client wie ein sofortiger
+    /// Wiederholungsauftrag wirkt und den Breaker ad absurdum fuehrt.
+    fn with_retry_after(mut self, seconds: i64) -> Self {
+        self.retry_after_secs = Some(seconds.max(1));
+        self
     }
 }
 
