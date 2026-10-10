@@ -1554,10 +1554,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Relay sendet denselben Prompt bis zu dreimal in neue Chats",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "fix/T-947-relay-single-send",
+      "claimed_at": "2026-09-16",
       "depends_on": [
         "T-945"
       ],
