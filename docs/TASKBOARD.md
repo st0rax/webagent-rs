@@ -144,16 +144,18 @@ Nachzug in T-922/T-923.
 T-921 depends_on: T-915/916/917/918/920 + T-922/923/931; ohne T-914/T-919. T-932 parallel (LICENSE).
 
 
-## Phase 14 (2026-10-15) — Repository-Einstieg und Bazaar-konforme Prompt-Integration
+## Phase 14 (2026-10-15) — Repository onboarding, Bazaar integration, and documentation language
 
-Quelle der Wahrheit bleibt `docs/TASKBOARD.json`. Der Pi-inspirierte Coding-Agent-Auftrag ist ein zusätzlicher Entwicklungsauftrag; er ersetzt weder den bestehenden WebAgent-Betrieb noch die vorhandene Architektur.
+The source of truth remains `docs/TASKBOARD.json`. The Pi-inspired coding-agent prompt is an additional development prompt; it does not replace the existing WebAgent runtime or architecture.
 
-| Task | Inhalt | Status | Branch |
+| Task | Description | Status | Branch |
 |---|---|---|---|
-| T-963 | Pi-inspirierten Coding-Agent-Auftrag Bazaar-konform integrieren | done — chatgpt-codex | `docs/T-934-bazaar-agent-prompt` |
-| T-964 | Repository ohne Chat-Kontext verständlich machen | done — chatgpt-codex | `docs/T-964-newcomer-onboarding` |
+| T-963 | Integrate the Pi-inspired coding-agent prompt into the Bazaar workflow | done — chatgpt-codex | `docs/T-934-bazaar-agent-prompt` |
+| T-964 | Make the repository understandable without chat context | done — chatgpt-codex | `docs/T-964-newcomer-onboarding` |
+| T-965 | Standardize maintained project documentation on English | claimed — chatgpt-codex | `docs/T-965-english-first-docs` |
 
-Scope: `docs/PI_INSPIRED_CODING_AGENT.md`, Taskboard-JSON und -Spiegel sowie aktueller Handover-Stand. Keine Rust-Code-, Laufzeit-, Login-Profil- oder Release-Änderungen.
+T-964 was completed in PR #73 (merge commit `76ba3b30`). The central newcomer guide is `docs/NEWCOMER_GUIDE.md`, linked from the README.
 
+**Documentation language policy:** English is the default for maintained documentation, task titles, agent instructions, issues, and pull requests. Preserve dated historical reports and evidence when rewriting them would harm traceability; add an English summary when useful. User-facing output language is a separate product/runtime decision.
 
-T-964 abgeschlossen: PR #73 gemergt (Merge-Commit `76ba3b30`). Die zentrale Einstiegsübersicht liegt in `docs/NEWCOMER_GUIDE.md`; die README führt dorthin. Quelle der Wahrheit für Status und Claim bleibt `docs/TASKBOARD.json`.
+T-965 scope: translate the README and newcomer guide, record this policy in maintained entry points, and keep the taskboard mirror and current handover consistent. No Rust code, runtime, login-profile, or release changes.
