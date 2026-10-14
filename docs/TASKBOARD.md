@@ -142,3 +142,14 @@ Nachzug in T-922/T-923.
 | T-933 | response_protocol echt verdrahten (T-918-Nachzug) |
 
 T-921 depends_on: T-915/916/917/918/920 + T-922/923/931; ohne T-914/T-919. T-932 parallel (LICENSE).
+
+
+## Phase 14 (2026-10-15) — Bazaar-konforme Prompt-Integration
+
+Quelle der Wahrheit bleibt `docs/TASKBOARD.json`. Der Pi-inspirierte Coding-Agent-Auftrag ist ein zusätzlicher Entwicklungsauftrag; er ersetzt weder den bestehenden WebAgent-Betrieb noch die vorhandene Architektur.
+
+| Task | Inhalt | Status | Branch |
+|---|---|---|---|
+| T-963 | Pi-inspirierten Coding-Agent-Auftrag Bazaar-konform integrieren | claimed — chatgpt-codex | `docs/T-934-bazaar-agent-prompt` |
+
+Scope: `docs/PI_INSPIRED_CODING_AGENT.md`, Taskboard-JSON und -Spiegel sowie aktueller Handover-Stand. Keine Rust-Code-, Laufzeit-, Login-Profil- oder Release-Änderungen.

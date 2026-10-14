@@ -8,7 +8,7 @@
     "chief",
     "spock"
   ],
-  "as_of": "2026-09-13",
+  "as_of": "2026-10-15",
   "contract": "docs/WORK_CONTRACT.md",
   "mirror": "docs/TASKBOARD.md",
   "note": "Kante = Abhaengigkeit. Ein Task mit depends_on ist BLOCKED, bis alle Vorgaenger in depends_on done sind. Leeres depends_on = kann parallel laufen. Nie eine verkettete Aufgabe aus dem Block reissen.",
@@ -1976,6 +1976,33 @@
       "proof_path": "docs/proofs/T-962/",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "done_at": "2026-09-14"
+    },
+    {
+      "id": "T-963",
+      "phase": "14",
+      "type": "docs",
+      "title": "Pi-inspirierten Coding-Agent-Auftrag Bazaar-konform integrieren",
+      "status": "claimed",
+      "owner": "chatgpt-codex",
+      "branch": "docs/T-934-bazaar-agent-prompt",
+      "claimed_at": "2026-10-15",
+      "depends_on": [],
+      "scope": [
+        "docs/PI_INSPIRED_CODING_AGENT.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/CURRENT_WORK.md"
+      ],
+      "objective": "Den in docs/PI_INSPIRED_CODING_AGENT.md abgelegten OpenCode-Auftrag in den bestehenden Bazaar-Arbeitsprozess einordnen, ohne den bestehenden webagent-rs-Betrieb oder seine Architektur zu überschreiben. Die Aufgabe muss in TASKBOARD.json als Quelle der Wahrheit stehen; Markdown-Spiegel und aktueller Handover-Stand werden konsistent aktualisiert.",
+      "dod": "Der Task ist in TASKBOARD.json korrekt geclaimt; TASKBOARD.md spiegelt T-963; CURRENT_WORK.md beschreibt Scope, Branch und Verifikationsstatus; Prompt-Dokument bleibt ein zusätzlicher Entwicklungsauftrag und ändert weder Rust-Code noch Laufzeitkonfiguration; JSON ist parsebar und git diff --check ist als erforderliches lokales Gate dokumentiert.",
+      "handoff": "Links zu Prompt und Taskboard; geänderte Pfade; Commit-/PR-Link; Verifikationsstatus klar als remote-dokumentarisch oder lokal ausgeführt unterscheiden.",
+      "non_goals": [
+        "Keine Rust-Codeänderungen.",
+        "Keine automatische Implementierung des Coding-Agenten in diesem Task.",
+        "Keine Änderung an Release, Tags, Login-Profilen oder Laufzeitkonfiguration."
+      ],
+      "proof_path": "docs/PI_INSPIRED_CODING_AGENT.md; docs/TASKBOARD.json; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
+      "verification": "JSON parse; TASKBOARD.md enthält T-963; git diff --check"
     }
   ]
 }
