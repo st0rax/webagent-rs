@@ -1,5 +1,17 @@
 # Aktueller Arbeitsstand
 
+## 2026-10-15 — T-963: Bazaar-konforme Integration des Pi-inspirierten Coding-Agent-Auftrags
+
+- **Branch:** `docs/T-934-bazaar-agent-prompt`
+- **Claim:** `docs/TASKBOARD.json`, Task T-963, Owner `chatgpt-codex`.
+- **Ziel:** `docs/PI_INSPIRED_CODING_AGENT.md` als zusätzlichen OpenCode-Arbeitsauftrag integrieren, ohne den bestehenden WebAgent-Betrieb zu ersetzen oder zu verändern.
+- **Scope:** Prompt-Dokument, Taskboard-JSON, Taskboard-Spiegel und diese Übergabedatei.
+- **Nicht im Scope:** Rust-Code, Laufzeitkonfiguration, Browserprofile/Logins, Tags oder Releases.
+- **Verifikation:** GitHub-Änderungen werden über den Branch und die PR nachvollzogen. In dieser Umgebung wurden keine lokalen Rust-Builds oder Tests ausgeführt; für reine Dokumentationsänderungen sind JSON-Parsing, Taskboard-Konsistenz und `git diff --check` die vorgesehenen Gates.
+- **Wichtig:** Die ursprüngliche Prompt-Datei wurde bereits direkt auf `master` abgelegt. Dieser Task stellt nachträglich den Bazaar-Claim und die nachvollziehbare Übergabe her; er behauptet nicht, dass der frühere Commit Teil eines Bazaar-Branches war.
+
+---
+
 > **Aktualisiert 2026-09-12:** **G-001 abgeschlossen** — alle Zeilen der
 > v1.0-Definition-of-Done verifiziert (`docs/proofs/G-001/g001-abschluss-2026-09-12.json`).
 > - Voll-Gates am Abschluss-Stand (`2589b0a`) erneut grün: `cargo fmt --all -- --check`,
