@@ -1,4 +1,17 @@
-# Aktueller Arbeitsstand
+# Current Work
+
+## 2026-10-15 — T-965: English-first maintained documentation
+
+- **Status:** claimed; documentation changes prepared on the task branch.
+- **Branch:** `docs/T-965-english-first-docs`; task claim recorded in `docs/TASKBOARD.json` and mirrored in `docs/TASKBOARD.md`.
+- **Policy:** English is the default for maintained documentation, task titles, agent instructions, issues, and pull requests. Preserve dated historical reports/evidence when rewriting would damage traceability; add English summaries where useful. Product-facing output language remains a separate runtime decision.
+- **Changed scope:** `README.md` rewritten in English with a concise quick start, security boundaries, platform notes, and links to authoritative docs; `docs/NEWCOMER_GUIDE.md` translated into English and given the policy section; Phase 14 in the Markdown taskboard updated.
+- **Non-goals:** no Rust code, runtime behavior, release, tag, login-profile, or provider configuration changes. This is not a claim that every historical or maintained document in the repository has already been translated; remaining maintained docs should be migrated in follow-up tasks.
+- **Verification:** `docs/TASKBOARD.json` parsed successfully after claiming T-965. GitHub contents were edited sequentially on the task branch. Local `git diff --check`, link-check tooling, and Rust tests have not been run in this remote editing session.
+- **Next step:** inspect the branch diff for unintended changes and link/anchor correctness, then open a pull request. Update the task to `done` only after integration and verified handover.
+
+---
+
 
 ## 2026-10-15 — T-964: Kontextfreier Repository-Einstieg abgeschlossen
 
