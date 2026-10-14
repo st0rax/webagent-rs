@@ -60,6 +60,14 @@ The chat plans; your computer executes. To check whether the interface is usable
 
 > **Android/Termux:** The aarch64 binary includes the core, REPL, and CLI, but **does not include an embedded browser**. An APK would be required for that; browser-based brains cannot currently run there.
 
+## Release status and provider evidence
+
+**Released version:** [v0.11.3](https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3). The local web UI is the primary interface and is connected to the real `/api/*` endpoints. It supports Brain health, creating and switching sessions, live chat events, source selection (`/quelle`), multi-Brain group runs, file uploads, Brain-window visibility, a capability matrix, and a doctor report. See `docs/CURRENT_WORK.md` for the current handover and commit-specific verification.
+
+**Historical provider evidence:** On 2026-07-16, all eight tested Brains returned headless relay responses. This is historical evidence, not a promise of current availability; web UIs, sessions, and quotas change. Measurements and later capability history are in [`docs/PROVIDER_STATUS.md`](docs/PROVIDER_STATUS.md).
+
+An earlier claim that only five of eight Brains worked headlessly because ChatGPT, Claude, and Mistral were blocked by Cloudflare was incorrect: the recorded `cloudflare` result was false for all eight. Three bugs had masked the results (a tao event-loop panic on a non-main thread, a JavaScript wrapper that returned a Promise and caused `evaluate` to yield `{}`, and a “headless” window without focus so Enter was not delivered). See `docs/PROVIDER_STATUS.md` for the detailed history.
+
 ## Architecture
 
 A Brain plans using the `webagent/1` JSON protocol. The controller executes actions serially and sends observations back to the Brain. Browser control, the agent loop, tool execution, the API bridge, and the web UI are separate layers.
