@@ -150,6 +150,6 @@ Quelle der Wahrheit bleibt `docs/TASKBOARD.json`. Der Pi-inspirierte Coding-Agen
 
 | Task | Inhalt | Status | Branch |
 |---|---|---|---|
-| T-963 | Pi-inspirierten Coding-Agent-Auftrag Bazaar-konform integrieren | claimed — chatgpt-codex | `docs/T-934-bazaar-agent-prompt` |
+| T-963 | Pi-inspirierten Coding-Agent-Auftrag Bazaar-konform integrieren | done — chatgpt-codex | `docs/T-934-bazaar-agent-prompt` |
 
 Scope: `docs/PI_INSPIRED_CODING_AGENT.md`, Taskboard-JSON und -Spiegel sowie aktueller Handover-Stand. Keine Rust-Code-, Laufzeit-, Login-Profil- oder Release-Änderungen.
