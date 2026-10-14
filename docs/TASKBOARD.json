@@ -1982,7 +1982,7 @@
       "phase": "14",
       "type": "docs",
       "title": "Pi-inspirierten Coding-Agent-Auftrag Bazaar-konform integrieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "chatgpt-codex",
       "branch": "docs/T-934-bazaar-agent-prompt",
       "claimed_at": "2026-10-15",
@@ -2001,8 +2001,9 @@
         "Keine automatische Implementierung des Coding-Agenten in diesem Task.",
         "Keine Änderung an Release, Tags, Login-Profilen oder Laufzeitkonfiguration."
       ],
-      "proof_path": "docs/PI_INSPIRED_CODING_AGENT.md; docs/TASKBOARD.json; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
-      "verification": "JSON parse; TASKBOARD.md enthält T-963; git diff --check"
+      "proof_path": "PR #72; merge commit 23ccca28; docs/PI_INSPIRED_CODING_AGENT.md; docs/TASKBOARD.json; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
+      "verification": "JSON parse erfolgreich; T-963 in TASKBOARD.md und CURRENT_WORK.md verifiziert; keine abschliessenden Leerzeichen in den vier geprüften Dateien; lokales git diff --check und Rust-Tests in dieser Remote-Umgebung nicht ausgeführt",
+      "done_at": "2026-10-15"
     }
   ]
 }
