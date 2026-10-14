@@ -151,9 +151,9 @@ Quelle der Wahrheit bleibt `docs/TASKBOARD.json`. Der Pi-inspirierte Coding-Agen
 | Task | Inhalt | Status | Branch |
 |---|---|---|---|
 | T-963 | Pi-inspirierten Coding-Agent-Auftrag Bazaar-konform integrieren | done — chatgpt-codex | `docs/T-934-bazaar-agent-prompt` |
-| T-964 | Repository ohne Chat-Kontext verständlich machen | claimed — chatgpt-codex | `docs/T-964-newcomer-onboarding` |
+| T-964 | Repository ohne Chat-Kontext verständlich machen | done — chatgpt-codex | `docs/T-964-newcomer-onboarding` |
 
 Scope: `docs/PI_INSPIRED_CODING_AGENT.md`, Taskboard-JSON und -Spiegel sowie aktueller Handover-Stand. Keine Rust-Code-, Laufzeit-, Login-Profil- oder Release-Änderungen.
 
 
-T-964 erstellt eine zentrale Einstiegsübersicht in `docs/NEWCOMER_GUIDE.md` und macht die README zur klaren Landeseite. Quelle der Wahrheit für Status und Claim bleibt `docs/TASKBOARD.json`.
+T-964 abgeschlossen: PR #73 gemergt (Merge-Commit `76ba3b30`). Die zentrale Einstiegsübersicht liegt in `docs/NEWCOMER_GUIDE.md`; die README führt dorthin. Quelle der Wahrheit für Status und Claim bleibt `docs/TASKBOARD.json`.
