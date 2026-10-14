@@ -2,14 +2,13 @@
 
 ## 2026-10-15 — T-965: English-first maintained documentation
 
-- **Status:** claimed; documentation changes prepared on the task branch.
-- **Branch:** `docs/T-965-english-first-docs`; task claim recorded in `docs/TASKBOARD.json` and mirrored in `docs/TASKBOARD.md`.
+- **Status:** `done`; PR [#76](https://github.com/st0rax/webagent-rs/pull/76) merged.
+- **Merge commit:** `3778f31a83535690e3746501cd642c46b873c70e`.
+- **Branch:** `docs/T-965-english-first-docs`; task status is `done` in `docs/TASKBOARD.json` and mirrored in `docs/TASKBOARD.md`.
 - **Policy:** English is the default for maintained documentation, task titles, agent instructions, issues, and pull requests. Preserve dated historical reports/evidence when rewriting would damage traceability; add English summaries where useful. Product-facing output language remains a separate runtime decision.
-- **Changed scope:** `README.md` rewritten in English with a concise quick start, security boundaries, platform notes, and links to authoritative docs; `docs/NEWCOMER_GUIDE.md` translated into English and given the policy section; Phase 14 in the Markdown taskboard updated.
-- **Non-goals:** no Rust code, runtime behavior, release, tag, login-profile, or provider configuration changes. This is not a claim that every historical or maintained document in the repository has already been translated; remaining maintained docs should be migrated in follow-up tasks.
-- **Verification:** `docs/TASKBOARD.json` parsed successfully after claiming T-965. GitHub contents were edited sequentially on the task branch. Local `git diff --check`, link-check tooling, and Rust tests have not been run in this remote editing session.
-- **Review:** PR [#76](https://github.com/st0rax/webagent-rs/pull/76) opened. The changed README/guide links to existing Markdown files were checked through GitHub; the quick-start anchor matches its heading. Local `git diff --check` and Rust tests remain unrun. Keep T-965 claimed until the PR is integrated and the handover is verified.
-
+- **Changed scope:** `README.md` and `docs/NEWCOMER_GUIDE.md` are now in English; the README retains the quick start, architecture/module map, commands, profile and environment-variable guidance, release/platform boundaries, and historical provider context. The policy and T-965 status are recorded in the taskboard and handover.
+- **Non-goals:** no Rust code, runtime behavior, release, tag, login-profile, or provider configuration changes. This does not claim that every maintained or historical document in the repository has already been translated; remaining maintained docs should be migrated in follow-up tasks.
+- **Verification:** PR #76 merged; `docs/TASKBOARD.json` parsed successfully; README and newcomer-guide section headings are English; links to existing Markdown files and the README quick-start anchor were checked through GitHub. Local `git diff --check`, automated link-check tooling, and Rust tests were not run in this remote editing session.
 ---
 
 
