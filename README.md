@@ -11,6 +11,14 @@ Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: Session-Web-UI,
 REPL und CLI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
 (`wry`/`tao`) auf Windows über WebView2 und auf Linux über WebKitGTK.
 
+## Neu hier?
+
+Die [Einstiegsübersicht](docs/NEWCOMER_GUIDE.md) erklärt das Projekt ohne vorausgehenden Chat und führt je nach Ziel zum Benutzen, Verstehen oder Entwickeln. Für Coding-Agenten sind [START_HERE.md](START_HERE.md) und [AGENTS.md](AGENTS.md) verbindlich. Den aktuellen Arbeitsstand findest du in [docs/CURRENT_WORK.md](docs/CURRENT_WORK.md); Task-Status und Claims stehen ausschließlich in [docs/TASKBOARD.json](docs/TASKBOARD.json).
+
+**Du willst nur webagent verwenden?** Weiter mit dem Schnellstart. **Du willst beitragen?** Erst die Einstiegsübersicht und danach die verbindlichen Entwicklungsregeln lesen.
+
+---
+
 ## Schnellstart (Benutzen, nicht Entwickeln)
 
 Du brauchst **kein** Rust und keinen Quellcode — nur das fertige Programm aus
@@ -69,11 +77,11 @@ Der Chat plant, dein Rechner führt aus. Prüfen, ob eine Oberfläche fahrbar is
 
 ---
 
-> **Neu im Projekt?** Beginne mit [`START_HERE.md`](START_HERE.md). Der kurze
-> aktuelle Arbeitsstand steht in
-> [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md), der Entwicklungsprozess in
-> [`CONTRIBUTING.md`](CONTRIBUTING.md) und die Zusammenarbeit in
-> [`docs/COLLABORATION.md`](docs/COLLABORATION.md).
+> **Für einen kontextfreien Einstieg:** [`docs/NEWCOMER_GUIDE.md`](docs/NEWCOMER_GUIDE.md).
+> Für aktive Entwicklung gelten zusätzlich [`START_HERE.md`](START_HERE.md),
+> [`AGENTS.md`](AGENTS.md) und [`CONTRIBUTING.md`](CONTRIBUTING.md).
+> Der operative Stand steht in [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md);
+> Task-Claims und Status werden ausschließlich in [`docs/TASKBOARD.json`](docs/TASKBOARD.json) gepflegt.
 
 > **Status (v0.11.3, veröffentlicht):** Die lokale **Web-UI ist die primäre Oberfläche**
 > und **echt an `/api/*` angebunden** (kein Prototyp mehr): Brain-Health,

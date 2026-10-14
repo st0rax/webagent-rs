@@ -144,12 +144,16 @@ Nachzug in T-922/T-923.
 T-921 depends_on: T-915/916/917/918/920 + T-922/923/931; ohne T-914/T-919. T-932 parallel (LICENSE).
 
 
-## Phase 14 (2026-10-15) — Bazaar-konforme Prompt-Integration
+## Phase 14 (2026-10-15) — Repository-Einstieg und Bazaar-konforme Prompt-Integration
 
 Quelle der Wahrheit bleibt `docs/TASKBOARD.json`. Der Pi-inspirierte Coding-Agent-Auftrag ist ein zusätzlicher Entwicklungsauftrag; er ersetzt weder den bestehenden WebAgent-Betrieb noch die vorhandene Architektur.
 
 | Task | Inhalt | Status | Branch |
 |---|---|---|---|
 | T-963 | Pi-inspirierten Coding-Agent-Auftrag Bazaar-konform integrieren | done — chatgpt-codex | `docs/T-934-bazaar-agent-prompt` |
+| T-964 | Repository ohne Chat-Kontext verständlich machen | claimed — chatgpt-codex | `docs/T-964-newcomer-onboarding` |
 
 Scope: `docs/PI_INSPIRED_CODING_AGENT.md`, Taskboard-JSON und -Spiegel sowie aktueller Handover-Stand. Keine Rust-Code-, Laufzeit-, Login-Profil- oder Release-Änderungen.
+
+
+T-964 erstellt eine zentrale Einstiegsübersicht in `docs/NEWCOMER_GUIDE.md` und macht die README zur klaren Landeseite. Quelle der Wahrheit für Status und Claim bleibt `docs/TASKBOARD.json`.

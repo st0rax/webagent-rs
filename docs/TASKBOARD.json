@@ -2004,6 +2004,34 @@
       "proof_path": "PR #72; merge commit 23ccca28; docs/PI_INSPIRED_CODING_AGENT.md; docs/TASKBOARD.json; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
       "verification": "JSON parse erfolgreich; T-963 in TASKBOARD.md und CURRENT_WORK.md verifiziert; keine abschliessenden Leerzeichen in den vier geprüften Dateien; lokales git diff --check und Rust-Tests in dieser Remote-Umgebung nicht ausgeführt",
       "done_at": "2026-10-15"
+    },
+    {
+      "id": "T-964",
+      "phase": "14",
+      "type": "docs",
+      "title": "Repository ohne Chat-Kontext verständlich machen",
+      "status": "claimed",
+      "owner": "chatgpt-codex",
+      "branch": "docs/T-964-newcomer-onboarding",
+      "claimed_at": "2026-10-15",
+      "depends_on": [],
+      "scope": [
+        "README.md",
+        "docs/NEWCOMER_GUIDE.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/CURRENT_WORK.md"
+      ],
+      "objective": "Das Repository so strukturieren und erklären, dass ein neuer Mensch oder Agent ohne vorherigen Chat Zweck, aktuelle Realität, Einstiegspunkte und sichere erste Schritte versteht. README als verlässliche Landeseite, klare Trennung zwischen Benutzen/Entwickeln und deutlich markierte aktuelle versus historische Informationen.",
+      "dod": "README führt in wenigen Minuten zu Zweck, Download/Nutzung, Entwicklungseinstieg und autoritativen Quellen; NEWCOMER_GUIDE erklärt Projektmodell, Architekturkarte, Dokumentrollen, Einstieg für Nutzer/Contributor/Agent sowie Claim/Test/PR-Ablauf; veraltete Statusbehauptungen werden nicht als aktueller Zustand ausgegeben; Taskboard-Spiegel und CURRENT_WORK sind konsistent; JSON parsebar und git diff --check sauber.",
+      "handoff": "Änderungspfade, PR/Commit, geprüfte Links und Inhaltskonsistenz; klar angeben, dass in der Remote-Umgebung keine lokalen Rust-Gates ausgeführt wurden.",
+      "non_goals": [
+        "Keine Rust-Codeänderungen oder Verhaltensänderungen.",
+        "Keine Release-, Tag-, Login- oder Laufzeitänderungen.",
+        "Keine historischen Befunde löschen; nur als Historie kennzeichnen oder verlinken."
+      ],
+      "proof_path": "docs/NEWCOMER_GUIDE.md; README.md; docs/TASKBOARD.json; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
+      "verification": "Dokumentationsreview, Link-/Zielpfadprüfung, JSON-Parse; git diff --check falls lokal verfügbar. Keine Rust-Tests für reine Dokumentationsänderungen."
     }
   ]
 }
