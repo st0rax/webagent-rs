@@ -1,12 +1,14 @@
 # Aktueller Arbeitsstand
 
-## 2026-10-15 — T-964: Kontextfreier Repository-Einstieg
+## 2026-10-15 — T-964: Kontextfreier Repository-Einstieg abgeschlossen
 
-- **Status:** in Arbeit; Branch `docs/T-964-newcomer-onboarding`.
-- **Ziel:** README als Landeseite und eine zentrale Einstiegsübersicht, damit neue Menschen/Agenten ohne Chatverlauf Zweck, Dokumentenrollen, aktuellen Status und sichere erste Schritte finden.
-- **Änderungen bisher:** `docs/NEWCOMER_GUIDE.md` erstellt; README und Taskboard-Spiegel auf den Einstieg verlinkt; T-964 in `docs/TASKBOARD.json` geclaimt.
-- **Scope:** nur Dokumentation und Taskboard; keine Rust-Code-, Laufzeit-, Login-Profil-, Tag- oder Release-Änderungen.
-- **Verifikation offen:** Links und Konsistenz prüfen. Remote-GitHub-Änderungen erlauben hier keine lokale Ausführung von `git diff --check` oder Rust-Gates.
+- **Status:** `done`; PR [#73](https://github.com/st0rax/webagent-rs/pull/73) gemergt.
+- **Merge-Commit:** `76ba3b303d78135e8927b2bd7f1cd382732fdc8e`.
+- **Branch:** `docs/T-964-newcomer-onboarding`; Taskboard-Abschluss wird über den Folge-PR dokumentiert.
+- **Einstieg:** [`docs/NEWCOMER_GUIDE.md`](NEWCOMER_GUIDE.md) ist die zentrale Landkarte für neue Menschen und Coding-Agenten; die README verlinkt sie sichtbar und trennt Benutzung von Entwicklung.
+- **Quellenklarheit:** Guide erklärt Projektmodell, Dokumentenrollen, Architekturbegriffe, historische vs. aktuelle Informationen, Bazaar-Claim und Sicherheitsgrenzen.
+- **Scope:** nur README, Einstiegsdokument und Taskboard/Handover; keine Rust-Code-, Laufzeit-, Login-Profil-, Tag- oder Release-Änderungen.
+- **Verifikation:** Taskboard-JSON geparst; relevante Guide-Zielpfade auf GitHub geprüft; Taskboard-Spiegel enthält T-964 und den Guide-Link. `git diff --check` und Rust-Gates wurden nicht lokal ausgeführt; für reine Dokumentation wurden keine Rust-Tests gestartet.
 
 
 ## 2026-10-15 — T-963: Bazaar-konforme Integration abgeschlossen

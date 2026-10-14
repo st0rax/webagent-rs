@@ -2010,7 +2010,7 @@
       "phase": "14",
       "type": "docs",
       "title": "Repository ohne Chat-Kontext verständlich machen",
-      "status": "claimed",
+      "status": "done",
       "owner": "chatgpt-codex",
       "branch": "docs/T-964-newcomer-onboarding",
       "claimed_at": "2026-10-15",
@@ -2030,8 +2030,9 @@
         "Keine Release-, Tag-, Login- oder Laufzeitänderungen.",
         "Keine historischen Befunde löschen; nur als Historie kennzeichnen oder verlinken."
       ],
-      "proof_path": "docs/NEWCOMER_GUIDE.md; README.md; docs/TASKBOARD.json; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
-      "verification": "Dokumentationsreview, Link-/Zielpfadprüfung, JSON-Parse; git diff --check falls lokal verfügbar. Keine Rust-Tests für reine Dokumentationsänderungen."
+      "proof_path": "PR #73 (https://github.com/st0rax/webagent-rs/pull/73); merge commit 76ba3b303d78135e8927b2bd7f1cd382732fdc8e; docs/NEWCOMER_GUIDE.md; README.md; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
+      "verification": "TASKBOARD.json erfolgreich geparst; PR #73 gemergt; Guide-Zielpfade fuer API_BRIDGE.md und PROTOCOL_SCHEMA.md sowie START_HERE, AGENTS, GOALS, WORK_CONTRACT, OVERVIEW, ARCHITECTURE, COLLABORATION, GIT_GLOSSAR und README geprüft; Taskboard-Spiegel enthält T-964 und Guide-Link; keine Rust-Codeänderungen. Lokales git diff --check nicht ausgeführt.",
+      "done_at": "2026-10-15"
     }
   ]
 }
