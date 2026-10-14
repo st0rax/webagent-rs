@@ -66,6 +66,24 @@ A Brain plans using the `webagent/1` JSON protocol. The controller executes acti
 
 For the current conceptual design, see [docs/OVERVIEW.md](docs/OVERVIEW.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Verify implementation details against the current code and tests.
 
+### Module map
+
+| Module | Responsibility |
+|---|---|
+| `protocol` | `webagent/1` parser, including the raw `WEBAGENT/1 SHELL` format |
+| `controller` | Plan/Act/Observe state machine, resume, loop and budget guards |
+| `brain` | Browser-neutral `BrainBackend` trait |
+| `browser`, `webview_runtime`, `page_driver` | Embedded WebView backend (`wry`/`tao`) |
+| `browser_pool` | Shared profile: one runtime and one tab per Brain |
+| `executor` | Shell execution (PowerShell on Windows; sh/bash on Unix) |
+| `run_store`, `transcript`, `memory` | JSON-Lines persistence |
+| `comms` | Internal agent-to-agent messaging and per-agent inboxes |
+| `doctor`, `watchdog`, `brains_health` | Diagnostics and pre-flight checks |
+| `relay`, `oobe` | Single-turn relay and first-run setup wizard |
+| `timeouts`, `loop_guard`, `observer`, `prompts`, `config` | Policies and heuristics |
+
+Provider selectors live in [`selectors/`](selectors/); porting rules are in [`CONVENTIONS.md`](CONVENTIONS.md).
+
 ## Build and test
 
 A Rust toolchain is required for development. Common checks include:
@@ -96,6 +114,44 @@ For manual or platform-specific release steps, follow the current instructions i
 
 ## Usage
 
+The local **web UI** is the default interface: running `webagent` without arguments starts it and opens `http://127.0.0.1:8788/`. It is connected to the real API and provides Brain health, local sessions, live chat events, source selection, multi-Brain group runs, file upload, Brain window visibility, a capability matrix, and a doctor report.
+
+The line-oriented **REPL** is `webagent repl`; the pool/wall/benchmark view is `webagent tui`. From a pipe, use `webagent tui --force-tui --view=session`. On Windows, Brain windows are arranged above the TUI.
+
+**REPL questions versus autonomous tasks:** normal REPL input runs an autonomous task (the Brain can modify files and execute local shell commands). `/chat <text>` is conversation without tools. Common slash commands include `/new`, `/resume`, `/status`, `/model`, `/dashboard`, and `/quit`.
+
+The local browser-inference bridge for Pi is a separate integration: `webagent api serve` starts a token-protected loopback endpoint. See [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md) for setup and examples.
+
+### Common commands
+
+```
+webagent login             --brain <id> [--timeout <seconds>] [--force] [--auto]
+webagent show              --brain <id> [--port 8788]
+webagent hide              --brain <id> [--port 8788]
+webagent login-all         [--timeout <seconds>] [--force] [--parallel N]
+webagent ask                --task "<task>" [--brain <id>|auto] [--auto|--chat] [--resume <run_id>] [--headless] [--max-cycles N] [--no-memory] [--json]
+webagent run                --task "<task>" [--brain <id>|auto] [--headless] [--max-cycles N] [--resume <run_id>] [--no-memory]
+webagent repl               [--brain <id>|auto] [--headless]
+webagent relay              --message "<text>" [--brain <id>|auto] [--headless] [--timeout <seconds>] [--json]
+webagent diagnose           --brain <id> [--headless]
+webagent doctor             [--brain <id>]... [--json]
+webagent watchdog           [--repair] [--json]
+webagent brains-health      [--allow-empty-profile]
+webagent autoresearch       --brain <id> --goal "<text>" --eval "<command>" [--direction higher|lower]
+webagent oobe               [--brains <csv>] [--skip-login] [--yes]
+webagent maintenance-check  [--json]
+```
+
+`ask` is the unified input command: by default it starts an autonomous run; `--chat` performs a single conversational turn without the controller/shell loop. `run` remains a compatible alias for an autonomous run, and `relay` is a conversational single-turn alias. The auto-router can choose a Brain for `ask`, `run`, `repl`, and `relay` when no Brain is specified or `--brain auto` is used.
+
+`relay --json` and `ask --chat --json` return one send-and-wait turn as machine-readable JSON. In the protocol, file changes use native `edit` (exactly one matching anchor) and `write` actions rather than shell-escaped text.
+
+**Autoresearch:** the `--eval` command must print a number as its final stdout line. Improved iterations are committed on an `autoresearch/` branch; regressions are reverted. Merging remains manual. Logs are stored under `data/autoresearch/<run_id>/log.md`.
+
+**Wiki memory:** Markdown pages with `[[links]]` and `index.md` live under `data/memory/wiki/`. The index can be included as context in autonomous runs. REPL commands include `/wiki`, `/wiki <search>`, and `/wiki lint`.
+
+Available built-in Brains: `chatgpt, deepseek, kimi, gemini, qwen, claude, mistral, zai`.
+
 ### Login
 
 Use `webagent login --brain <brain>` to open the browser for a provider and sign in interactively. Never place credentials, cookies, or private browser profiles in the repository.
@@ -104,13 +160,36 @@ Use `webagent login --brain <brain>` to open the browser for a provider and sign
 
 Profile and pool behavior is documented in the architecture and operational docs. Runtime profile data belongs in the user's data directory, not in Git. Do not delete or replace an authenticated profile as a troubleshooting shortcut.
 
+### Profiles and multi-Brain operation
+
+| Path | Role |
+|---|---|
+| `profiles/<brain>/` | Canonical login profile written by `login` / `login-all` |
+| `profiles/reference/<brain>/` | Optional golden template; preferred Swarm source when present |
+| `profiles/swarm/<run>_<brain>/` | Per-participant runtime copy, cleaned up after the run |
+| Shared profile | Default for normal `/chat` and `run` when no override is set |
+
+A Swarm run gives each Brain an isolated profile copy. The orchestrator is fixed when explicitly selected; otherwise it uses the reliability of responding Brains. Live voting is optional and can be enabled with `WEBAGENT_SWARM_VOTE=1`. Swarm profiles are cleaned up afterward.
+
 ### Configuration
 
-Configuration options and environment variables are documented alongside the relevant implementation and operational guides. Verify names and defaults against the current code; historical examples may be stale.
+| Variable | Effect |
+|---|---|
+| `WEBAGENT_TIMEOUT_MULT` / `WEBAGENT_TIMEOUT_MIN` / `WEBAGENT_TIMEOUT_MAX` | Scale dynamic timeouts |
+| `WEBAGENT_SHARED_BROWSER` | Enable a shared profile and `BrowserPool` |
+| `WEBAGENT_PERSIST_TABS` | Keep tabs open after relay/run in pool mode |
+| `WEBAGENT_SHELL_STRICT` | Set to `1` to restrict shell execution to lower-risk prefixes plus a denylist |
+| `WEBAGENT_LOGIN_TO_REFERENCE` | Set to `1` to copy profiles to `profiles/reference/<brain>` after `login-all` |
+| `WEBAGENT_SWARM_VOTE` | Set to `1` to enable phase-two live voting in `/swarm`; otherwise use reliability scores |
+| `WEBAGENT_PROFILE_DIR` | Override the profile root (default: `profiles`) |
+
+Verify names and defaults against the current code before relying on them; historical examples may be stale.
 
 ## Data and security
 
-Runtime state and browser profiles are stored outside the source tree. Browser profiles contain cookies and are excluded from version control.
+Runs are stored under `data/runs/<run_id>/` (`meta.json`, `transcript.jsonl`, `events.jsonl`); long-term memory is stored in `data/memory.jsonl`. Browser profiles live under `profiles/`. Both runtime data and profiles are excluded from version control.
+
+Browser profiles contain cookies. Never commit them, copy credentials into the repository, or replace an authenticated profile as a troubleshooting shortcut.
 
 The Brain can request shell commands in the logged-in user's context. The shell policy blocks known dangerous patterns and records executions, but it is **not an operating-system sandbox**. Use webagent only in a trusted environment and with appropriately limited user permissions.
 
