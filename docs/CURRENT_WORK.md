@@ -1,5 +1,14 @@
 # Aktueller Arbeitsstand
 
+## 2026-10-15 — T-964: Kontextfreier Repository-Einstieg
+
+- **Status:** in Arbeit; Branch `docs/T-964-newcomer-onboarding`.
+- **Ziel:** README als Landeseite und eine zentrale Einstiegsübersicht, damit neue Menschen/Agenten ohne Chatverlauf Zweck, Dokumentenrollen, aktuellen Status und sichere erste Schritte finden.
+- **Änderungen bisher:** `docs/NEWCOMER_GUIDE.md` erstellt; README und Taskboard-Spiegel auf den Einstieg verlinkt; T-964 in `docs/TASKBOARD.json` geclaimt.
+- **Scope:** nur Dokumentation und Taskboard; keine Rust-Code-, Laufzeit-, Login-Profil-, Tag- oder Release-Änderungen.
+- **Verifikation offen:** Links und Konsistenz prüfen. Remote-GitHub-Änderungen erlauben hier keine lokale Ausführung von `git diff --check` oder Rust-Gates.
+
+
 ## 2026-10-15 — T-963: Bazaar-konforme Integration abgeschlossen
 
 - **Status:** `done`; PR [#72](https://github.com/st0rax/webagent-rs/pull/72) gemergt.
