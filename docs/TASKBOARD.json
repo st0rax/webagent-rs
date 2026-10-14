@@ -2059,8 +2059,8 @@
         "No release, tag, login-profile, or provider configuration changes.",
         "Do not rewrite dated historical reports or evidence; translate maintained entry points first and leave bulk migration for follow-up tasks."
       ],
-      "proof_path": "TBD: PR and merged documentation commit",
-      "verification": "Pending: parse TASKBOARD.json and inspect taskboard mirror and links; local git diff --check is not available in this remote editing session."
+      "proof_path": "PR #76 (https://github.com/st0rax/webagent-rs/pull/76); docs/NEWCOMER_GUIDE.md; README.md; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
+      "verification": "JSON parsed after claim; README and newcomer-guide section headings are English; README/guide links to existing Markdown files checked through GitHub; quick-start anchor matches the README heading; taskboard mirror contains T-965. Local git diff --check, link-check tooling, and Rust tests were not run in this remote editing session."
     }
   ]
 }
