@@ -1,14 +1,14 @@
 # Aktueller Arbeitsstand
 
-## 2026-10-15 — T-963: Bazaar-konforme Integration des Pi-inspirierten Coding-Agent-Auftrags
+## 2026-10-15 — T-963: Bazaar-konforme Integration abgeschlossen
 
-- **Branch:** `docs/T-934-bazaar-agent-prompt`
-- **Claim:** `docs/TASKBOARD.json`, Task T-963, Owner `chatgpt-codex`.
-- **Ziel:** `docs/PI_INSPIRED_CODING_AGENT.md` als zusätzlichen OpenCode-Arbeitsauftrag integrieren, ohne den bestehenden WebAgent-Betrieb zu ersetzen oder zu verändern.
-- **Scope:** Prompt-Dokument, Taskboard-JSON, Taskboard-Spiegel und diese Übergabedatei.
-- **Nicht im Scope:** Rust-Code, Laufzeitkonfiguration, Browserprofile/Logins, Tags oder Releases.
-- **Verifikation:** GitHub-Änderungen werden über den Branch und die PR nachvollzogen. In dieser Umgebung wurden keine lokalen Rust-Builds oder Tests ausgeführt; für reine Dokumentationsänderungen sind JSON-Parsing, Taskboard-Konsistenz und `git diff --check` die vorgesehenen Gates.
-- **Wichtig:** Die ursprüngliche Prompt-Datei wurde bereits direkt auf `master` abgelegt. Dieser Task stellt nachträglich den Bazaar-Claim und die nachvollziehbare Übergabe her; er behauptet nicht, dass der frühere Commit Teil eines Bazaar-Branches war.
+- **Status:** `done`; PR [#72](https://github.com/st0rax/webagent-rs/pull/72) gemergt.
+- **Merge-Commit:** `23ccca28dfd856d2bc90bcc9744aae136d4866b9`.
+- **Branch:** `docs/T-934-bazaar-agent-prompt`; Taskboard-Claim und Handover sind dokumentiert.
+- **Prompt:** [`docs/PI_INSPIRED_CODING_AGENT.md`](https://github.com/st0rax/webagent-rs/blob/master/docs/PI_INSPIRED_CODING_AGENT.md).
+- **Repo-Workflow:** T-963 steht in `docs/TASKBOARD.json` (Quelle der Wahrheit) und `docs/TASKBOARD.md` (Spiegel). Der vorhandene Bazaar-Arbeitsprozess bleibt erhalten.
+- **Scope eingehalten:** nur Dokumentation und Taskboard; keine Rust-Code-, Laufzeit-, Browserprofil-, Login-, Tag- oder Release-Änderungen.
+- **Verifikation:** Taskboard-JSON erfolgreich geparst; Taskboard-Spiegel und Handover geprüft; keine abschliessenden Leerzeichen in den vier geprüften Dateien. Lokales `git diff --check` und Rust-Tests wurden in dieser Remote-Umgebung nicht ausgeführt.
 
 ---
 
