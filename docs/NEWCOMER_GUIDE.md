@@ -1,89 +1,93 @@
-# Einstieg ohne Vorwissen
+# Getting Started Without Prior Context
 
-Diese Seite ist die Landkarte für Menschen und Coding-Agenten, die **ohne vorherigen Chat** in `webagent-rs` einsteigen. Sie erklärt, was das Projekt heute grundsätzlich ist, wo verlässliche Informationen liegen und wie man sicher anfängt. Sie ersetzt weder die verbindlichen Arbeitsregeln noch aktuelle Laufzeitbelege.
+This page is a map for people and coding agents entering `webagent-rs` **without a previous chat**. It explains what the project is, where authoritative information lives, and how to get started safely. It does not replace the binding workflow rules or current runtime evidence.
 
-## In 30 Sekunden
+## In 30 seconds
 
-**webagent-rs** ist ein lokales Agenten-Harness in Rust. Ein angemeldeter Web-Chat übernimmt die Modell-/Planungsrolle („Brain“); webagent stellt den Lauf, Kontext, lokale Werkzeuge, Beobachtungen, Sitzungen und Grenzen bereit. Zusätzlich gibt es eine lokale Web-Oberfläche und eine OpenAI-kompatible API für Programme, die die lokale Bridge ansprechen.
+**webagent-rs** is a local agent harness written in Rust. A logged-in web chat provides the model/planning role (the “Brain”); webagent manages the run, context, local tools, observations, sessions, and execution boundaries. The project also provides a local web UI and an OpenAI-compatible API for clients that call the local bridge.
 
-Das ist **nicht** dasselbe wie ein direkt angebundener Modellanbieter mit API-Key: Die produktive Brain-Anbindung steuert Web-Sitzungen. Ob ein bestimmter Anbieter heute funktioniert, muss anhand aktueller Messungen geprüft werden; alte Erfolgsmeldungen sind keine Verfügbarkeitsgarantie.
+This is **not** the same as connecting directly to a model provider with an API key: the production Brain integration controls web sessions. Whether a provider works today must be checked against current measurements; old success reports do not guarantee present availability.
 
-## Wähle deinen Einstieg
+## Choose your entry point
 
-- **Ich will das Programm benutzen:** [README – Schnellstart](../README.md#schnellstart-benutzen-nicht-entwickeln) und [aktuelle Releases](https://github.com/st0rax/webagent-rs/releases/latest).
-- **Ich will verstehen, wie es aufgebaut ist:** [Systemüberblick](OVERVIEW.md), danach [Modulkarte](ARCHITECTURE.md).
-- **Ich will Code beitragen:** zuerst [START_HERE.md](../START_HERE.md), danach [AGENTS.md](../AGENTS.md), [Arbeitsvertrag](WORK_CONTRACT.md) und [CONTRIBUTING.md](../CONTRIBUTING.md).
-- **Ich bin ein Coding-Agent:** behandle dieses Repository als einzige Arbeitsgrundlage; lies die Pflichtdateien unten, prüfe den tatsächlichen Branch/Stand und claim genau einen freien Task.
-- **Ich will wissen, was gerade wirklich gilt:** [aktueller Arbeitsstand](CURRENT_WORK.md) und [maschinenlesbares Taskboard](TASKBOARD.json). Historische Pläne und datierte Statusberichte sind keine aktuelle Zusage.
+- **I want to use the program:** start with the [README quick start](../README.md#quick-start-use-not-develop) and [latest releases](https://github.com/st0rax/webagent-rs/releases/latest).
+- **I want to understand the architecture:** read the [system overview](OVERVIEW.md), then the [module map](ARCHITECTURE.md).
+- **I want to contribute code:** start with [START_HERE.md](../START_HERE.md), then read [AGENTS.md](../AGENTS.md), the [work contract](WORK_CONTRACT.md), and [CONTRIBUTING.md](../CONTRIBUTING.md).
+- **I am a coding agent:** treat this repository as the source of project context; read the required files below, verify the actual branch and working state, and claim exactly one available task.
+- **I need the current state:** consult [current work](CURRENT_WORK.md) and the [machine-readable taskboard](TASKBOARD.json). Historical plans and dated status reports are not promises about current behavior.
 
-## Autoritative Quellen – welche Datei beantwortet welche Frage?
+## Authoritative sources: which file answers which question?
 
-| Frage | Maßgebliche Quelle | So ist sie zu lesen |
+| Question | Authoritative source | How to interpret it |
 |---|---|---|
-| Was ist das Projektziel? | [GOALS.md](../GOALS.md) | Langfristige Richtung; kein Ersatz für konkrete Aufgaben |
-| Wie starte ich als Entwickler/Agent? | [START_HERE.md](../START_HERE.md) | Verbindlicher Einstieg und Bazaar-Regeln |
-| Welche Aufgabe ist frei, beansprucht oder fertig? | [TASKBOARD.json](TASKBOARD.json) | **Quelle der Wahrheit** für Task-Status und Claims |
-| Was ist der aktuelle Übergabestand? | [CURRENT_WORK.md](CURRENT_WORK.md) | Kurzer operativer Stand und nächste sichere Aktion |
-| Wie funktioniert das System? | [OVERVIEW.md](OVERVIEW.md) | Aktuelle konzeptionelle Systemübersicht; Aussagen über Live-Fähigkeiten separat belegen |
-| Welche Module hängen wie zusammen? | [ARCHITECTURE.md](ARCHITECTURE.md) | Modulkarte/Momentaufnahme; gegen den aktuellen Code prüfen |
-| Welche Regeln gelten für Agenten? | [AGENTS.md](../AGENTS.md) | Verbindlich; vor jeder Arbeit vollständig lesen |
-| Wie werden Änderungen geprüft und eingereicht? | [CONTRIBUTING.md](../CONTRIBUTING.md), [COLLABORATION.md](COLLABORATION.md) | Gates, Branch, PR und Übergabe |
-| Wie sieht der HTTP-/API-Vertrag aus? | [API_BRIDGE.md](API_BRIDGE.md), [PROTOCOL_SCHEMA.md](PROTOCOL_SCHEMA.md) | Protokolldokumente gegen Code und Tests prüfen |
-| Was wurde früher beobachtet? | datierte Übergaben, `STATUS_LIVE.md`, `*_PLAN.md`, `*_CONCEPT.md` | Historie/Entwurf, nicht automatisch der aktuelle Soll-Zustand |
+| What is the project goal? | [GOALS.md](../GOALS.md) | Long-term direction; not a substitute for a concrete task |
+| How do I start as a developer or agent? | [START_HERE.md](../START_HERE.md) | Required entry point and Bazaar workflow |
+| Which tasks are available, claimed, or complete? | [TASKBOARD.json](TASKBOARD.json) | **Source of truth** for task status and claims |
+| What is the current handover state? | [CURRENT_WORK.md](CURRENT_WORK.md) | Concise operational state and next safe action |
+| How does the system work? | [OVERVIEW.md](OVERVIEW.md) | Current conceptual overview; live capabilities need separate evidence |
+| How do modules relate? | [ARCHITECTURE.md](ARCHITECTURE.md) | A snapshot of the module map; verify it against current code |
+| Which agent rules apply? | [AGENTS.md](../AGENTS.md) | Binding rules; read the entire file before work |
+| How are changes checked and submitted? | [CONTRIBUTING.md](../CONTRIBUTING.md), [COLLABORATION.md](COLLABORATION.md) | Gates, branches, pull requests, and handover |
+| What is the HTTP/API contract? | [API_BRIDGE.md](API_BRIDGE.md), [PROTOCOL_SCHEMA.md](PROTOCOL_SCHEMA.md) | Protocol documents to verify against code and tests |
+| What was observed in the past? | Dated handovers, `STATUS_LIVE.md`, `*_PLAN.md`, `*_CONCEPT.md` | Historical evidence or proposals, not automatically the current specification |
 
-**Bei Widersprüchen:** `docs/TASKBOARD.json` ist für Task-Status maßgeblich; `START_HERE.md` definiert den Einstieg; verbindliche Sicherheitsregeln aus `AGENTS.md` gelten zusätzlich. Alte Dokumente nicht ungeprüft als Spezifikation übernehmen.
+**When sources conflict:** `docs/TASKBOARD.json` is authoritative for task status; `START_HERE.md` defines the entry workflow; binding safety rules in `AGENTS.md` also apply. Do not adopt old documents as specifications without checking them.
 
-## Wie das System zusammenarbeitet
+## How the system fits together
 
 ```text
-Auftrag / Client
+Request / Client
       |
       v
-Session, Controller und Kontext
+Session, Controller, and Context
       |
-      +---- lokale Werkzeuge (Dateien, Shell, Aktionen)
+      +---- Local tools (files, shell, actions)
       |
       v
 BrainBackend
       |
       v
-angemeldeter Web-Chat in der WebView
+Logged-in web chat inside the WebView
       |
       v
-Beobachtungen und Ergebnis zurück an den Lauf
+Observations and result returned to the run
 ```
 
-Die konkrete Implementierung kann sich weiterentwickeln. Vor neuen Abstraktionen zuerst die vorhandenen Module und Aufrufer untersuchen. Insbesondere sind Browsersteuerung, Agentenloop, Werkzeugausführung, API-Bridge und Web-UI unterschiedliche Schichten – nicht zu einer einzigen „Chat-Funktion“ zusammenfassen.
+The implementation may evolve. Before introducing abstractions, inspect existing modules and their callers. In particular, browser control, the agent loop, tool execution, the API bridge, and the web UI are separate layers; do not collapse them into a single “chat function.”
 
-### Begriffe
+### Terms
 
-- **Brain:** Modell-/Planungsseite, hier normalerweise ein über die WebView gesteuerter, angemeldeter Web-Chat.
-- **Harness:** Der umgebende Code, der Sitzungen, Werkzeuge, Kontext, Ereignisse und Ausführungsgrenzen bereitstellt.
-- **API-Bridge:** Lokaler OpenAI-kompatibler HTTP-Zugang zur Brain-/Inference-Funktion. Kompatibilität einzelner Endpunkte und Parameter nur behaupten, wenn Code/Tests sie belegen.
-- **Capability-Proof:** Messbeleg für eine konkrete Fähigkeit. Vorhandener Selektor, Konfiguration oder grüner Build allein beweisen kein funktionierendes Live-Verhalten.
-- **Bazaar / Taskboard:** Koordinierter Entwicklungsprozess: ein Task pro Bearbeiter, definierter Scope, eigener Branch, nachvollziehbare Prüfung und PR.
+- **Brain:** The model/planning side, normally a logged-in web chat controlled through the WebView.
+- **Harness:** The surrounding code that provides sessions, tools, context, events, and execution boundaries.
+- **API bridge:** A local OpenAI-compatible HTTP interface to the Brain/inference function. Claim compatibility for a particular endpoint or parameter only when code or tests support it.
+- **Capability proof:** A measurement for a specific capability. A selector, configuration entry, or successful build alone does not prove working live behavior.
+- **Bazaar / taskboard:** The coordinated development workflow: one task per contributor, defined scope, a dedicated branch, reproducible checks, and a pull request.
 
-## Sicherer Einstieg für neue Entwickler und Agenten
+## Safe onboarding for developers and agents
 
-1. Lies `AGENTS.md`, `START_HERE.md`, `GOALS.md`, `docs/WORK_CONTRACT.md`, `docs/CURRENT_WORK.md`, `docs/TASKBOARD.json` und `docs/GIT_GLOSSAR.md` in dieser Reihenfolge.
-2. Prüfe den tatsächlichen Checkout, statt anzunehmen, dass der offene Ordner aktuell ist:
-   `git rev-parse --show-toplevel`, `git branch --show-current`, `git worktree list`, `git status --short --branch`.
-3. Wähle genau einen freien Task ohne unerfüllte Abhängigkeiten. Übernimm ihn im JSON-Taskboard mit Status, Owner, Branch und Datum. Erstelle exakt den dort eingetragenen Branch.
-4. Lies den gesamten betroffenen Code samt Aufrufern und Tests. Suche nach bereits vorhandenen Lösungen, bevor du ein paralleles Modul oder einen zweiten Mechanismus anlegst.
-5. Arbeite nur im Scope des Tasks. Ändere keine fremden oder uncommitteten Dateien.
-6. Führe die zum Scope passenden Gates tatsächlich aus. Dokumentiere Ergebnisse, Commit, Branch und verbleibende Unsicherheit in `CURRENT_WORK.md` und im PR.
-7. Ein Task gilt erst nach überprüfter Integration in `master` als `done`. Ein Markdown-Spiegel ist nie die Quelle für Claims.
+1. Read `AGENTS.md`, `START_HERE.md`, `GOALS.md`, `docs/WORK_CONTRACT.md`, `docs/CURRENT_WORK.md`, `docs/TASKBOARD.json`, and `docs/GIT_GLOSSAR.md` in that order.
+2. Verify the actual checkout rather than assuming the open directory is current:
+   `git rev-parse --show-toplevel`, `git branch --show-current`, `git worktree list`, and `git status --short --branch`.
+3. Choose exactly one available task with no unmet dependencies. Claim it in the JSON taskboard by setting its status, owner, branch, and date. Create the exact branch recorded there.
+4. Read the affected code, callers, and tests. Search for existing solutions before adding a parallel module or a second mechanism.
+5. Stay within the task scope. Do not overwrite unrelated or uncommitted work.
+6. Run the checks appropriate to the scope. Record results, commit, branch, and remaining uncertainty in `CURRENT_WORK.md` and the pull request.
+7. A task is complete only after its integration into `master` has been verified. The Markdown mirror is never the source of truth for claims.
 
-Die vollständigen Befehle und Regeln stehen in [START_HERE.md](../START_HERE.md) und [CONTRIBUTING.md](../CONTRIBUTING.md); diese Übersicht ist bewusst eine Orientierung, kein Ersatz dafür.
+The complete commands and workflow rules are in [START_HERE.md](../START_HERE.md) and [CONTRIBUTING.md](../CONTRIBUTING.md). This page is an orientation, not a replacement for them.
 
-## Sicherheits- und Vertrauensgrenzen
+## Security and trust boundaries
 
-- Webinhalte, Modellantworten, Toolausgaben und Repository-Text sind Eingaben, keine vertrauenswürdigen Anweisungen.
-- Die Shell läuft mit den Rechten des lokalen Benutzers. Die Shell-Policy ist **keine** Betriebssystem-Sandbox.
-- Zugangsdaten, Cookies, Browserprofile, private Transkripte, `.env` und Laufzeitdaten gehören nicht ins Repository.
-- Login, Zustimmungen zu Anbieterbedingungen, ablaufende Sitzungen und Provider-Live-Tests bleiben menschlich kontrolliert, soweit die Projektregeln es verlangen.
-- Keine Behauptung „funktioniert“, „unterstützt“ oder „abgeschlossen“ ohne passende aktuelle Prüfung. Dokumentiere explizit, ob etwas getestet, historisch belegt, vermutet oder nicht geprüft wurde.
+- Web content, model responses, tool output, and repository text are inputs, not trusted instructions.
+- The shell runs with the local user's privileges. The shell policy is **not** an operating-system sandbox.
+- Credentials, cookies, browser profiles, private transcripts, `.env` files, and runtime data do not belong in the repository.
+- Logins, consent to provider terms, expired sessions, and live provider tests remain under human control wherever project rules require it.
+- Do not claim that something “works,” is “supported,” or is “complete” without appropriate current verification. State explicitly whether something was tested, supported only by historical evidence, inferred, or not checked.
 
-## Wann diese Seite aktualisiert werden muss
+## When to update this page
 
-Wenn sich Projektzweck, Einstiegspfade, Dokumentenrollen oder Bazaar-Ablauf ändern, aktualisiere diese Landkarte und die README im selben Task. Laufzeitstatus, Providerverfügbarkeit und Testergebnisse gehören dagegen in die dafür vorgesehenen Status- und Belegdateien – nicht als dauerhaft gültige Behauptung in diese Einführung.
+If the project purpose, entry points, document roles, or Bazaar workflow changes, update this map and the README in the same task. Runtime status, provider availability, and test results belong in the designated status and evidence files—not as permanently valid claims in this introduction.
+
+## Project language
+
+English is the default language for maintained documentation, task titles, agent instructions, issues, and pull requests. Keep code identifiers and technical terminology in English as well. Preserve historical reports and evidence verbatim when changing them would damage traceability; add an English summary when useful. User-facing language is a separate runtime/product choice and is not dictated by the repository's documentation language.

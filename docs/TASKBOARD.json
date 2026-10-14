@@ -2033,6 +2033,34 @@
       "proof_path": "PR #73 (https://github.com/st0rax/webagent-rs/pull/73); merge commit 76ba3b303d78135e8927b2bd7f1cd382732fdc8e; docs/NEWCOMER_GUIDE.md; README.md; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
       "verification": "TASKBOARD.json erfolgreich geparst; PR #73 gemergt; Guide-Zielpfade fuer API_BRIDGE.md und PROTOCOL_SCHEMA.md sowie START_HERE, AGENTS, GOALS, WORK_CONTRACT, OVERVIEW, ARCHITECTURE, COLLABORATION, GIT_GLOSSAR und README geprüft; Taskboard-Spiegel enthält T-964 und Guide-Link; keine Rust-Codeänderungen. Lokales git diff --check nicht ausgeführt.",
       "done_at": "2026-10-15"
+    },
+    {
+      "id": "T-965",
+      "phase": "14",
+      "type": "docs",
+      "title": "Standardize maintained project documentation on English",
+      "status": "claimed",
+      "owner": "chatgpt-codex",
+      "branch": "docs/T-965-english-first-docs",
+      "claimed_at": "2026-10-15",
+      "depends_on": [],
+      "scope": [
+        "README.md",
+        "docs/NEWCOMER_GUIDE.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/CURRENT_WORK.md"
+      ],
+      "objective": "Establish English as the default language for maintained project documentation and translate the repository entry points. Preserve technical meaning, links, safety boundaries, and historical evidence; do not imply that the entire repository has already been translated.",
+      "dod": "README and newcomer guide are fully English; a concise English-first policy is recorded in the maintained entry points; T-965 is claimed in TASKBOARD.json and mirrored in TASKBOARD.md; CURRENT_WORK.md records scope and verification honestly; JSON parses and changed Markdown links/headings are internally consistent.",
+      "handoff": "Report changed paths, branch, commit/PR, verified links and checks. Distinguish remote GitHub inspection from local git diff --check or Rust tests.",
+      "non_goals": [
+        "No Rust code or runtime behavior changes.",
+        "No release, tag, login-profile, or provider configuration changes.",
+        "Do not rewrite dated historical reports or evidence; translate maintained entry points first and leave bulk migration for follow-up tasks."
+      ],
+      "proof_path": "PR #76 (https://github.com/st0rax/webagent-rs/pull/76); docs/NEWCOMER_GUIDE.md; README.md; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
+      "verification": "JSON parsed after claim; README and newcomer-guide section headings are English; README/guide links to existing Markdown files checked through GitHub; quick-start anchor matches the README heading; taskboard mirror contains T-965. Local git diff --check, link-check tooling, and Rust tests were not run in this remote editing session."
     }
   ]
 }

@@ -1,337 +1,227 @@
 # webagent (Rust)
 
-> **Verbindliche Arbeitsgrundlage:** Vor jeder Arbeit ist [`AGENTS.md`](AGENTS.md) vollständig zu lesen und strikt zu befolgen. Projektspezifische Regeln gelten ergänzend; bei Konflikten gilt die strengere Schutzregel.
+> **Required before contributing:** Read [`AGENTS.md`](AGENTS.md) in full and follow it. Project-specific rules apply as well; where rules conflict, follow the stricter safety requirement.
 
-Ein **lokaler, browsergesteuerter Agent**: ein Web-Chat („Brain") plant, lokale
-Werkzeuge (PowerShell/Shell) führen aus. Die Brains sind austauschbare Web-Chats
-(ChatGPT, Claude, DeepSeek, Gemini, Kimi, Qwen, Mistral, Z.ai) — kein API-Key,
-sondern die im Browser angemeldete Session.
+webagent is a **local, browser-driven agent harness**. A logged-in web chat (“Brain”) plans; local tools such as PowerShell or a shell execute actions. Brains are interchangeable web chats (ChatGPT, Claude, DeepSeek, Gemini, Kimi, Qwen, Mistral, Z.ai). The browser session is used instead of a provider API key.
 
-Dies ist der **Rust-Port** des ursprünglichen Python-Projekts: Session-Web-UI,
-REPL und CLI auf Windows, Linux und Android (Termux); Embedded-WebView-Brains
-(`wry`/`tao`) auf Windows über WebView2 und auf Linux über WebKitGTK.
+This is the Rust port of the original Python project. It provides a session web UI, REPL, and CLI on Windows, Linux, and Android/Termux. Embedded WebView brains use WebView2 on Windows and WebKitGTK on Linux.
 
-## Neu hier?
+## New here?
 
-Die [Einstiegsübersicht](docs/NEWCOMER_GUIDE.md) erklärt das Projekt ohne vorausgehenden Chat und führt je nach Ziel zum Benutzen, Verstehen oder Entwickeln. Für Coding-Agenten sind [START_HERE.md](START_HERE.md) und [AGENTS.md](AGENTS.md) verbindlich. Den aktuellen Arbeitsstand findest du in [docs/CURRENT_WORK.md](docs/CURRENT_WORK.md); Task-Status und Claims stehen ausschließlich in [docs/TASKBOARD.json](docs/TASKBOARD.json).
+The [Newcomer Guide](docs/NEWCOMER_GUIDE.md) explains the project without requiring previous chat context and links to the right entry point for users, contributors, and agents.
 
-**Du willst nur webagent verwenden?** Weiter mit dem Schnellstart. **Du willst beitragen?** Erst die Einstiegsübersicht und danach die verbindlichen Entwicklungsregeln lesen.
+- **Use the program:** follow the [Quick start](#quick-start-use-not-develop).
+- **Understand the design:** read [the system overview](docs/OVERVIEW.md) and [architecture map](docs/ARCHITECTURE.md).
+- **Contribute:** read [`START_HERE.md`](START_HERE.md), [`AGENTS.md`](AGENTS.md), and [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- **Current work and claims:** [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md) and [`docs/TASKBOARD.json`](docs/TASKBOARD.json). The JSON file is the sole source of truth for task status and claims.
 
----
+## Quick start (use, not develop)
 
-## Schnellstart (Benutzen, nicht Entwickeln)
+You do **not** need Rust or the source code to use a release. Download the appropriate binary from [GitHub Releases](https://github.com/st0rax/webagent-rs/releases/latest) and have an active browser session with the chat service you intend to use. No provider API key is required.
 
-Du brauchst **kein** Rust und keinen Quellcode — nur das fertige Programm aus
-[Releases](https://github.com/st0rax/webagent-rs/releases/latest) und ein
-angemeldeter Browser bei einem der Chat-Dienste, die du nutzen willst
-(kein API-Key).
+### 1. Download and prepare
 
-**1. Herunterladen und ausführbar machen**
+On Linux, make the binary executable:
 
-```bash
-# Linux
+```
 chmod +x webagent-linux-x86_64
 ```
 
-Unter Windows: `webagent-windows-x86_64.exe` und `WebView2Loader.dll` in
-denselben Ordner legen.
+On Windows, place `webagent-windows-x86_64.exe` and `WebView2Loader.dll` in the same directory.
 
-**2. Systempakete (nur Linux)**
+### 2. Install Linux system dependencies
 
-Der eingebettete Browser nutzt WebKitGTK. Unter Debian/Ubuntu:
+The embedded browser uses WebKitGTK. On Debian or Ubuntu:
 
-```bash
+```
 sudo apt update && sudo apt install -y libwebkit2gtk-4.1-0
 ```
 
-Unter Windows ist WebView2 in aktuellen Systemen bereits vorhanden.
+WebView2 is already available on current Windows systems.
 
-**3. Einrichten und anmelden**
+### 3. Initialize and sign in
 
-```bash
+```
 ./webagent-linux-x86_64 oobe
 ./webagent-linux-x86_64 login --brain chatgpt
 ```
 
-`login` öffnet ein Browserfenster. **Du meldest dich dort selbst an** — das
-Programm fragt nie nach Zugangsdaten und speichert keine. Die Sitzung bleibt
-im eigenen Profil erhalten, eine Anmeldung je Dienst genügt.
+The `login` command opens a browser window. **You sign in yourself**; the program does not ask for or store your credentials. The session remains in its own profile, so one sign-in per service is normally sufficient.
 
-**4. Erste Aufgabe**
-
-```bash
-./webagent-linux-x86_64 run --brain chatgpt --task "Liste die Dateien hier auf und fasse zusammen, worum es geht"
-```
-
-Der Chat plant, dein Rechner führt aus. Prüfen, ob eine Oberfläche fahrbar ist:
-`diagnose --brain chatgpt`.
-
-> **Stand Linux:** Der WebView-Build für Linux ist neu und bisher nur *gebaut*,
-> nicht auf einem Linux-Desktop *erprobt*. Unter Windows läuft er im täglichen
-> Gebrauch. Wenn unter Linux etwas klemmt, ist das kein Bedienfehler — bitte ein
-> Issue aufmachen.
-
-> **Android/Termux:** Das aarch64-Binary enthält Kern, REPL und CLI, aber
-> **keinen** eingebetteten Browser — dafür bräuchte es ein APK. Brains lassen
-> sich dort nicht fahren.
-
----
-
-> **Für einen kontextfreien Einstieg:** [`docs/NEWCOMER_GUIDE.md`](docs/NEWCOMER_GUIDE.md).
-> Für aktive Entwicklung gelten zusätzlich [`START_HERE.md`](START_HERE.md),
-> [`AGENTS.md`](AGENTS.md) und [`CONTRIBUTING.md`](CONTRIBUTING.md).
-> Der operative Stand steht in [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md);
-> Task-Claims und Status werden ausschließlich in [`docs/TASKBOARD.json`](docs/TASKBOARD.json) gepflegt.
-
-> **Status (v0.11.3, veröffentlicht):** Die lokale **Web-UI ist die primäre Oberfläche**
-> und **echt an `/api/*` angebunden** (kein Prototyp mehr): Brain-Health,
-> Sessions anlegen/wechseln, Chat live als Event-Stream, Quellen (`/quelle`),
-> Gruppenläufe (Runden + Synthese), Datei-Upload, Brain-Fenster show/hide,
-> Capability-Matrix & Doctor-Report. Der genaue aktuelle Abnahme- und
-> Arbeitsstand steht in [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md); lokale Testergebnisse sind
-> immer an den dort genannten Commit gebunden.
->
-> **Historischer Provider-Nachweis:** Am 2026-07-16 antworteten 8 von 8 Brains
-> headless — chatgpt, deepseek, kimi, gemini, qwen, claude, mistral und zai.
-> Das waren echte `relay`-Antworten, nicht nur erfolgreiche Exit-Codes. Wegen
-> veränderlicher Web-UIs, Sessions und Quoten ist dies keine aktuelle
-> Verfügbarkeitszusage. Messwerte und spätere Capability-Historie:
-> [`docs/PROVIDER_STATUS.md`](docs/PROVIDER_STATUS.md).
->
-> ⚠️ Die frühere Aussage „5/8 headless, chatgpt/claude/mistral scheitern an Cloudflare"
-> war **falsch**: `cloudflare: false` bei allen acht. Drei Bugs hatten alles maskiert
-> (tao-EventLoop panicte im Nicht-Main-Thread; `evaluate` lieferte für jeden Ausdruck
-> `{}`, weil der JS-Wrapper ein Promise zurückgab; „headless" war ein Fenster ohne
-> Fokus, sodass Enter nirgends ankam). Details in `docs/PROVIDER_STATUS.md`.
-
-## Architektur
-
-Ein Brain plant im `webagent/1`-Protokoll (JSON), der Controller führt die Actions
-strikt seriell aus, Beobachtungen fließen zurück ins Brain:
+### 4. Run a first task
 
 ```
-Brain (Web-Chat)  ──plan──▶  Controller  ──shell──▶  Executor (PowerShell/sh)
-      ▲                          │
-      └──────── Observation ◀────┘
+./webagent-linux-x86_64 run --brain chatgpt --task "List the files here and summarize what they contain"
 ```
 
-| Modul | Verantwortung (siehe [`docs/OVERVIEW.md`](docs/OVERVIEW.md) und [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) für Details) |
+The chat plans; your computer executes. To check whether the interface is usable, run `diagnose --brain chatgpt`.
+
+> **Linux status:** The Linux WebView build has been built but has not yet been exercised on a Linux desktop. The Windows version is used regularly. If Linux does not work as expected, open an issue.
+
+> **Android/Termux:** The aarch64 binary includes the core, REPL, and CLI, but **does not include an embedded browser**. An APK would be required for that; browser-based brains cannot currently run there.
+
+## Release status and provider evidence
+
+**Released version:** [v0.11.3](https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3). The local web UI is the primary interface and is connected to the real `/api/*` endpoints. It supports Brain health, creating and switching sessions, live chat events, source selection (`/quelle`), multi-Brain group runs, file uploads, Brain-window visibility, a capability matrix, and a doctor report. See `docs/CURRENT_WORK.md` for the current handover and commit-specific verification.
+
+**Historical provider evidence:** On 2026-07-16, all eight tested Brains returned headless relay responses. This is historical evidence, not a promise of current availability; web UIs, sessions, and quotas change. Measurements and later capability history are in [`docs/PROVIDER_STATUS.md`](docs/PROVIDER_STATUS.md).
+
+An earlier claim that only five of eight Brains worked headlessly because ChatGPT, Claude, and Mistral were blocked by Cloudflare was incorrect: the recorded `cloudflare` result was false for all eight. Three bugs had masked the results (a tao event-loop panic on a non-main thread, a JavaScript wrapper that returned a Promise and caused `evaluate` to yield `{}`, and a “headless” window without focus so Enter was not delivered). See `docs/PROVIDER_STATUS.md` for the detailed history.
+
+## Architecture
+
+A Brain plans using the `webagent/1` JSON protocol. The controller executes actions serially and sends observations back to the Brain. Browser control, the agent loop, tool execution, the API bridge, and the web UI are separate layers.
+
+For the current conceptual design, see [docs/OVERVIEW.md](docs/OVERVIEW.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Verify implementation details against the current code and tests.
+
+### Module map
+
+| Module | Responsibility |
 |---|---|
-| `protocol` | `webagent/1`-Parser inkl. `WEBAGENT/1 SHELL`-Rohformat |
-| `controller` | Plan/Act/Observe-Zustandsmaschine, Resume, Loop-/Budget-Schutz |
-| `brain` | Trait `BrainBackend` (Browser-neutral) |
-| `browser` + `webview_runtime` + `page_driver` | Embedded WebView-Backend (`wry`/`tao`) |
-| `browser_pool` | Shared-Profil: ein Runtime, ein Tab pro Brain |
-| `executor` | Shell-Ausführung (Windows: PowerShell, Unix: sh/bash) |
-| `run_store` · `transcript` · `memory` | Persistenz (JSON-Lines) |
-| `comms` | Internal agent-to-agent messaging (data/comms/ history + per-agent inbox; wired to CLI/Controller) |
-| `doctor` · `watchdog` · `brains_health` | Diagnose & Pre-flight |
-| `relay` · `oobe` | Single-turn Relay, Ersteinrichtungs-Wizard |
-| `timeouts` · `loop_guard` · `observer` · `prompts` · `config` | Politik & Heuristiken |
+| `protocol` | `webagent/1` parser, including the raw `WEBAGENT/1 SHELL` format |
+| `controller` | Plan/Act/Observe state machine, resume, loop and budget guards |
+| `brain` | Browser-neutral `BrainBackend` trait |
+| `browser`, `webview_runtime`, `page_driver` | Embedded WebView backend (`wry`/`tao`) |
+| `browser_pool` | Shared profile: one runtime and one tab per Brain |
+| `executor` | Shell execution (PowerShell on Windows; sh/bash on Unix) |
+| `run_store`, `transcript`, `memory` | JSON-Lines persistence |
+| `comms` | Internal agent-to-agent messaging and per-agent inboxes |
+| `doctor`, `watchdog`, `brains_health` | Diagnostics and pre-flight checks |
+| `relay`, `oobe` | Single-turn relay and first-run setup wizard |
+| `timeouts`, `loop_guard`, `observer`, `prompts`, `config` | Policies and heuristics |
 
-Selektoren pro Provider liegen in [`selectors/`](selectors/); Portierungsregeln in
-[`CONVENTIONS.md`](CONVENTIONS.md).
+Provider selectors live in [`selectors/`](selectors/); porting rules are in [`CONVENTIONS.md`](CONVENTIONS.md).
 
-> **Aktueller Systemüberblick:** [`docs/OVERVIEW.md`](docs/OVERVIEW.md) — Ziel,
-> Vertrauensleiter, Reifegrade und Betrieb. Die detaillierte
-> [`Modulkarte`](docs/ARCHITECTURE.md) ist eine datierte Momentaufnahme.
+## Build and test
 
-## Bauen
-
-Voraussetzung: eine Rust-Toolchain. Auf Windows **ohne** Visual Studio genügt die
-GNU-Toolchain (bringt ihren eigenen Linker mit):
-
-```powershell
-rustup toolchain install stable-x86_64-pc-windows-gnu
-rustup override set stable-x86_64-pc-windows-gnu   # im Projektordner
-# Ein-Schritt Release inkl. WebView2Loader.dll (Windows)
-pwsh -File scripts/build-release.ps1
-# oder manuell:
-#   cargo build --release
-#   pwsh -File scripts/copy-webview2-loader.ps1 -Profile release
-cargo test --no-default-features   # CI-Parität (ohne WebView/GTK)
-cargo test                         # mit WebView-Feature (lokal)
-```
-
-Der Kern baut rein-Rust (`serde`, `serde_json`, `regex`, `fancy-regex`, `clap`, `time`).
-WebView-Deps (`wry`, `tao`) sind optional (`--no-default-features` für headless CI).
-
-## Nutzung
-
-Die lokale **Web-UI** ist die Standard-Oberflaeche: `webagent` **ohne Parameter**
-startet sie und oeffnet den Browser auf `http://127.0.0.1:8788/`. Die UI ist
-**echt angebunden** (`src/web_ui_api.rs`): Seitenleiste mit Brain-Health und
-lokalen Sessions, Chat-Stream wird live ueber `events?since=` angebunden
-(Textdeltas, Tool-Start/Result, Synthese, Done), Quelle wechselbar
-(`/quelle`-API, inkl. `--save`), Gruppen 2-6 Brains mit Rundenlauf, Datei-
-Upload-Feld, Brain-Fenster anzeigen/verstecken, Capability-Matrix und
-Doctor-Report. Die zeilenweise **REPL** ist `webagent repl`
-(siehe unten), die Pool-/Wand-/Bench-Ansicht `webagent tui`.
-
-**REPL fragen vs. autonom:** In der REPL laufen normale Eingaben als
-**autonome Aufgabe** (das Brain darf Dateien aendern und lokale Shell ausfuehren).
-`/chat <text>` ist dagegen **reine Konversation** ohne Werkzeuge. Derselbe
-Slash-Parser gilt in beiden Oberflaechen: `/new`, `/resume`, `/status`,
-`/model`, `/dashboard`, `/quit`.
-
-Aus einer Pipe: `webagent tui --force-tui --view=session`. Unter Windows stehen
-die Brain-Fenster oben, die TUI unten — `AGENTS.md` §6.
-
-Die lokale Browser-Inference-Bridge fuer Pi (`webagent api serve`, Loopback,
-Token-geschuetzt) ist ein separates Integrationsthema — Details, Pi-Konfiguration
-und Beispielskripte in [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md).
+A Rust toolchain is required for development. Common checks include:
 
 ```
-webagent login            --brain <id> [--timeout <sek>] [--force] [--auto]
-webagent show             --brain <id> [--port 8788]
-webagent hide             --brain <id> [--port 8788]
-webagent login-all        [--timeout <sek>] [--force] [--parallel N]
-webagent ask              --task "<aufgabe>" [--brain <id>|auto] [--auto|--chat] [--resume <run_id>] [--headless] [--max-cycles N] [--no-memory] [--json]
-webagent run              --task "<aufgabe>" [--brain <id>|auto] [--headless] [--max-cycles N] [--resume <run_id>] [--no-memory]
-webagent repl             [--brain <id>|auto] [--headless]
-webagent relay            --message "<text>" [--brain <id>|auto] [--headless] [--timeout <sek>] [--json]
-webagent diagnose         --brain <id> [--headless]
-webagent doctor           [--brain <id>]... [--json]
-webagent watchdog         [--repair] [--json]
-webagent brains-health    [--allow-empty-profile]
-webagent autoresearch     --brain <id> --goal "<text>" --eval "<cmd>" [--direction higher|lower]
-                          [--max-iterations N] [--no-improve-abort N] [--eval-timeout <sek>] [--workdir <pfad>]
-webagent oobe             [--brains <csv>] [--skip-login] [--yes]
-webagent maintenance-check [--json]
+cargo fmt --all -- --check
+cargo test --locked
 ```
 
-`ask` ist die einheitliche Eingabe: **Default = autonomer Run** (Controller + Shell,
-beendet bei `status=done`). `--chat` macht daraus einen reinen Konversations-
-Einzelturn (kein Controller/Shell). `run`/`relay` bleiben kompatible Aliasse:
-`run` = `ask --auto` mit denselben Run-Flags; `relay` = Konversations-Einzelturn
-mit `--message` statt `--task`.
+For the browser-free build and tests:
 
-Der Auto-Router waehlt bei `ask`, `run`, `repl` und `relay` ohne `--brain` (bzw.
-mit `--brain auto`) das passende Brain je Aufgabe: Bild-/Coding-/Recherche-Tasks
-landen bei passenden Brains, sonst beim ersten verfuegbaren Text-Brain. Die
-Wahl wird mit `[auto-router] selected=<id> reason=<grund>` auf stderr sichtbar.
-
-`relay --json` bzw. `ask --chat --json` liefern einen einzelnen send+wait-Turn
-maschinenlesbar (`{"brain","ok","answer","latency_ms","reason"}`).
-
-**Datei-Aktionen im Protokoll:** Brains ändern Dateien über `edit`
-(path/old_string/new_string, Anker muss exakt einmal matchen) und `write`
-(neue Datei) — nativ ausgeführt, ohne Shell-Escaping-Risiko.
-
-**Autoresearch** (Karpathy-Muster): `--eval` muss als letzte stdout-Zeile eine
-Zahl liefern; verbesserte Iterationen werden auf einem `autoresearch/`-Branch
-committet, verschlechterte komplett revertet. Merge bleibt manuell.
-Log: `data/autoresearch/<run_id>/log.md`.
-
-**Wiki-Memory** (Karpathy-LLM-Wiki): Markdown-Seiten mit `[[links]]` und
-`index.md` unter `data/memory/wiki/`; der Index fließt automatisch als Kontext
-in autonome Runs, Brains pflegen Seiten per edit/write. REPL: `/wiki`,
-`/wiki <suche>`, `/wiki lint`.
-
-Verfügbare Brains: `chatgpt, deepseek, kimi, gemini, qwen, claude, mistral, zai`.
-
-Typischer Erstlauf: `webagent login-all` (oder `login --brain claude`), dann
-`webagent diagnose --brain claude` (prüfen), dann `webagent run …` bzw. REPL `/swarm`.
-
-Beispiel:
-
-```powershell
-webagent run --brain deepseek --task "Schreibe ein PowerShell-Skript, das die 10 groessten Dateien in C:\ auflistet"
+```
+cargo test --locked --no-default-features
 ```
 
-Der Standard ist **sichtbarer** Browser. `--headless` öffnet ein **verstecktes**
-Fenster (Hidden-Window-Policy), kein echtes Headless-Chromium.
+Use the exact verification gates required by your task in [docs/WORK_CONTRACT.md](docs/WORK_CONTRACT.md) and [CONTRIBUTING.md](CONTRIBUTING.md). Do not report a check as passing unless it was actually run.
 
-Live-Proofs/Matrix/API/Streaming bleiben **offscreen** (`headless`); headed nur
-für Login/Captcha. Laufendes Fenster toggeln: `webagent show --brain <id>` /
-`webagent hide --brain <id>` (HTTP an `ui`/`api serve` auf Port 8788).
+### Windows release build
+
+The Windows release includes `WebView2Loader.dll`. The repository script copies it into the release output:
+
+```
+cargo build --release
+pwsh -File scripts/copy-webview2-loader.ps1 -Profile release
+```
+
+For manual or platform-specific release steps, follow the current instructions in the repository's release workflow and contribution docs rather than relying on historical status notes.
+
+## Usage
+
+The local **web UI** is the default interface: running `webagent` without arguments starts it and opens `http://127.0.0.1:8788/`. It is connected to the real API and provides Brain health, local sessions, live chat events, source selection, multi-Brain group runs, file upload, Brain window visibility, a capability matrix, and a doctor report.
+
+The line-oriented **REPL** is `webagent repl`; the pool/wall/benchmark view is `webagent tui`. From a pipe, use `webagent tui --force-tui --view=session`. On Windows, Brain windows are arranged above the TUI.
+
+**REPL questions versus autonomous tasks:** normal REPL input runs an autonomous task (the Brain can modify files and execute local shell commands). `/chat <text>` is conversation without tools. Common slash commands include `/new`, `/resume`, `/status`, `/model`, `/dashboard`, and `/quit`.
+
+The local browser-inference bridge for Pi is a separate integration: `webagent api serve` starts a token-protected loopback endpoint. See [`docs/API_BRIDGE.md`](docs/API_BRIDGE.md) for setup and examples.
+
+### Common commands
+
+```
+webagent login             --brain <id> [--timeout <seconds>] [--force] [--auto]
+webagent show              --brain <id> [--port 8788]
+webagent hide              --brain <id> [--port 8788]
+webagent login-all         [--timeout <seconds>] [--force] [--parallel N]
+webagent ask                --task "<task>" [--brain <id>|auto] [--auto|--chat] [--resume <run_id>] [--headless] [--max-cycles N] [--no-memory] [--json]
+webagent run                --task "<task>" [--brain <id>|auto] [--headless] [--max-cycles N] [--resume <run_id>] [--no-memory]
+webagent repl               [--brain <id>|auto] [--headless]
+webagent relay              --message "<text>" [--brain <id>|auto] [--headless] [--timeout <seconds>] [--json]
+webagent diagnose           --brain <id> [--headless]
+webagent doctor             [--brain <id>]... [--json]
+webagent watchdog           [--repair] [--json]
+webagent brains-health      [--allow-empty-profile]
+webagent autoresearch       --brain <id> --goal "<text>" --eval "<command>" [--direction higher|lower]
+webagent oobe               [--brains <csv>] [--skip-login] [--yes]
+webagent maintenance-check  [--json]
+```
+
+`ask` is the unified input command: by default it starts an autonomous run; `--chat` performs a single conversational turn without the controller/shell loop. `run` remains a compatible alias for an autonomous run, and `relay` is a conversational single-turn alias. The auto-router can choose a Brain for `ask`, `run`, `repl`, and `relay` when no Brain is specified or `--brain auto` is used.
+
+`relay --json` and `ask --chat --json` return one send-and-wait turn as machine-readable JSON. In the protocol, file changes use native `edit` (exactly one matching anchor) and `write` actions rather than shell-escaped text.
+
+**Autoresearch:** the `--eval` command must print a number as its final stdout line. Improved iterations are committed on an `autoresearch/` branch; regressions are reverted. Merging remains manual. Logs are stored under `data/autoresearch/<run_id>/log.md`.
+
+**Wiki memory:** Markdown pages with `[[links]]` and `index.md` live under `data/memory/wiki/`. The index can be included as context in autonomous runs. REPL commands include `/wiki`, `/wiki <search>`, and `/wiki lint`.
+
+Available built-in Brains: `chatgpt, deepseek, kimi, gemini, qwen, claude, mistral, zai`.
 
 ### Login
 
-`webagent login --brain <id>` öffnet ein **sichtbares** WebView-Fenster auf der
-Provider-Seite und wartet, bis du dich **selbst** angemeldet hast — es werden
-**keine Zugangsdaten eingegeben oder gespeichert**; der Agent pollt nur den
-Login-Zustand. Danach nutzen `run`/`diagnose`/`relay` diese Session im
-persistente Profil (`profiles/<brain>/` oder Shared-Profil). Prüfen mit
-`webagent diagnose --brain <id>`.
+Use `webagent login --brain <brain>` to open the browser for a provider and sign in interactively. Never place credentials, cookies, or private browser profiles in the repository.
 
-`webagent login-all` (REPL: `/login-all`, optional `parallel=N`) loggt **alle**
-Brains ein
-(`--parallel N` startet N Kindprozesse gleichzeitig, max 3 — je Brain eine
-eigene WebView2-Runtime; bei `WEBAGENT_USE_SHARED_BROWSER=1` automatisch
-sequenziell, weil alle Brains dort in EIN Profil schreiben). Schon eingeloggte
-Profile werden übersprungen (`--force` erzwingt erneut).
+### Profiles and multi-Brain operation
 
-### Profile (Swarm)
-
-| Pfad | Rolle |
+| Path | Role |
 |---|---|
-| `profiles/<brain>/` | **Canonical Login** — von `login` / `login-all` geschrieben |
-| `profiles/reference/<brain>/` | Optional: goldene Vorlage (falls vorhanden, bevorzugte Swarm-Quelle) |
-| `profiles/swarm/<run>_<brain>/` | Laufzeit-**Kopie** pro Swarm-Teilnehmer (Lock-frei, wird aufgeräumt) |
-| Shared-Profil | Default für normalen `/chat` und `run` (kein Override) |
+| `profiles/<brain>/` | Canonical login profile written by `login` / `login-all` |
+| `profiles/reference/<brain>/` | Optional golden template; preferred Swarm source when present |
+| `profiles/swarm/<run>_<brain>/` | Per-participant runtime copy, cleaned up after the run |
+| Shared profile | Default for normal `/chat` and `run` when no override is set |
 
-`/swarm` Ablauf (REPL):
+A Swarm run gives each Brain an isolated profile copy. The orchestrator is fixed when explicitly selected; otherwise it uses the reliability of responding Brains. Live voting is optional and can be enabled with `WEBAGENT_SWARM_VOTE=1`. Swarm profiles are cleaned up afterward.
 
-1. Jedes Brain antwortet isoliert (Profil-Kopie, kein Shared-Pool).  
-2. Orchestrator: fest (`/swarm 3 …`), sonst **Reliability** der Antwortenden;  
-   teure Live-Abstimmung nur mit `WEBAGENT_SWARM_VOTE=1` (mit Antwort-Snippets).  
-3. Nur der Orchestrator synthetisiert; Swarm-Profile werden aufgeräumt.
+### Configuration
 
-```powershell
-# optional: Live-Vote statt Score
-$env:WEBAGENT_SWARM_VOTE = "1"
-```
-
-## Konfiguration (Umgebungsvariablen)
-
-| Variable | Wirkung |
+| Variable | Effect |
 |---|---|
-| `WEBAGENT_TIMEOUT_MULT` / `_MIN` / `_MAX` | Skalierung der dynamischen Timeouts |
-| `WEBAGENT_SHARED_BROWSER` | Gemeinsames Profil + `BrowserPool` aktivieren |
-| `WEBAGENT_PERSIST_TABS` | Tabs nach Relay/Run offen lassen (Pool) |
-| `WEBAGENT_SHELL_STRICT` | `1` = Shell nur risk-arme Prefixe + Denylist |
-| `WEBAGENT_LOGIN_TO_REFERENCE` | `1` = nach `login-all` Profil zusätzlich nach `profiles/reference/<brain>` spiegeln |
-| `WEBAGENT_SWARM_VOTE` | `1` = `/swarm` Phase-2 Live-Abstimmung (sonst Reliability-Score) |
-| `WEBAGENT_PROFILE_DIR` | Überschreibt das Profil-Root (sonst `…/profiles`) |
+| `WEBAGENT_TIMEOUT_MULT` / `WEBAGENT_TIMEOUT_MIN` / `WEBAGENT_TIMEOUT_MAX` | Scale dynamic timeouts |
+| `WEBAGENT_SHARED_BROWSER` | Enable a shared profile and `BrowserPool` |
+| `WEBAGENT_PERSIST_TABS` | Keep tabs open after relay/run in pool mode |
+| `WEBAGENT_SHELL_STRICT` | Set to `1` to restrict shell execution to lower-risk prefixes plus a denylist |
+| `WEBAGENT_LOGIN_TO_REFERENCE` | Set to `1` to copy profiles to `profiles/reference/<brain>` after `login-all` |
+| `WEBAGENT_SWARM_VOTE` | Set to `1` to enable phase-two live voting in `/swarm`; otherwise use reliability scores |
+| `WEBAGENT_PROFILE_DIR` | Override the profile root (default: `profiles`) |
 
-## Daten
+Verify names and defaults against the current code before relying on them; historical examples may be stale.
 
-Runs liegen unter `data/runs/<run_id>/` (`meta.json`, `transcript.jsonl`,
-`events.jsonl`), das Langzeitgedächtnis unter `data/memory.jsonl`. Browser-Profile
-in `profiles/` — beide sind per `.gitignore` ausgeschlossen (enthalten Cookies).
+## Data and security
 
-## Sicherheitsmodell
+Runs are stored under `data/runs/<run_id>/` (`meta.json`, `transcript.jsonl`, `events.jsonl`); long-term memory is stored in `data/memory.jsonl`. Browser profiles live under `profiles/`. Both runtime data and profiles are excluded from version control.
 
-Das Brain führt Shell-Befehle im angemeldeten Nutzerkontext aus.
-`shell_policy` blockiert bekannte gefährliche Muster und protokolliert
-Ausführungen, ist aber keine Betriebssystem-Sandbox. Nur in einer
-vertrauenswürdigen Umgebung und mit angemessen begrenzten Nutzerrechten nutzen.
+Browser profiles contain cookies. Never commit them, copy credentials into the repository, or replace an authenticated profile as a troubleshooting shortcut.
 
-## Entwicklung
+The Brain can request shell commands in the logged-in user's context. The shell policy blocks known dangerous patterns and records executions, but it is **not an operating-system sandbox**. Use webagent only in a trusted environment and with appropriately limited user permissions.
 
-- Einstieg und Übernahme: [`START_HERE.md`](START_HERE.md)
-- Workflow und Abnahme: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Aktuelle Arbeit: [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md)
-- GitHub-Kommunikation: [`docs/COLLABORATION.md`](docs/COLLABORATION.md)
-- Portierungskonventionen: [`CONVENTIONS.md`](CONVENTIONS.md)
-- Parität vs. Python: [`docs/MERGE_AND_PARITY.md`](docs/MERGE_AND_PARITY.md)
-- Tests: `cargo test --no-default-features` (kein echter Browser in Unit-Tests;
-  `MockPageDriver` für Browser-Logik). Live-Provider-Checks: `cargo run --example inspect -- <brain>`.
+Never commit credentials, tokens, cookies, private transcripts, `.env` files, or runtime data.
 
-## Plattformen und Release-Binaries
+## Development and collaboration
 
-| Plattform | Artifact | Was darin steckt |
+- [Newcomer Guide](docs/NEWCOMER_GUIDE.md) — context-free orientation.
+- [START_HERE.md](START_HERE.md) — required developer/agent entry point.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — workflow and acceptance checks.
+- [docs/CURRENT_WORK.md](docs/CURRENT_WORK.md) — current handover state.
+- [docs/COLLABORATION.md](docs/COLLABORATION.md) — GitHub collaboration.
+- [CONVENTIONS.md](CONVENTIONS.md) — porting conventions.
+- [docs/MERGE_AND_PARITY.md](docs/MERGE_AND_PARITY.md) — parity with the Python project.
+- [docs/TASKBOARD.json](docs/TASKBOARD.json) — authoritative task status and claims; [`docs/TASKBOARD.md`](docs/TASKBOARD.md) is only a mirror.
+
+**Documentation language:** English is the default for maintained documentation, task titles, agent instructions, issues, and pull requests. Preserve dated historical reports and evidence when rewriting them would damage traceability; add an English summary when useful. The repository language does not dictate the language used in the product's user-facing output.
+
+## Platforms and release binaries
+
+| Platform | Artifact | Notes |
 |---|---|---|
-| Windows x86_64 | `webagent-windows-x86_64.exe` + `WebView2Loader.dll` | Web-UI (Standard), REPL, Pool/Wand, Embedded WebView2 |
-| Linux x86_64 | `webagent-linux-x86_64` | Web-UI (Standard), REPL, CLI **und Embedded WebView über WebKitGTK** (`--features tui,webview`); braucht `libwebkit2gtk-4.1-0` |
-| Android aarch64 | `webagent-aarch64-linux-android` | dasselbe für Termux, kein Play-Store-APK, kein Embedded WebView |
+| Windows x86_64 | `webagent-windows-x86_64.exe` + `WebView2Loader.dll` | Web UI by default, REPL, CLI, embedded WebView2 |
+| Linux x86_64 | `webagent-linux-x86_64` | Web UI by default, REPL, CLI, embedded WebView via WebKitGTK; requires `libwebkit2gtk-4.1-0` |
+| Android aarch64 | `webagent-aarch64-linux-android` | Core, REPL, and CLI for Termux; no Play Store APK or embedded WebView |
 
-GitHub-Releases entstehen beim Tag `v*` (`.github/workflows/release.yml`).
-Embedded-WebView-Brains laufen unter Windows (WebView2) und Linux (WebKitGTK).
-Android/Termux nutzt denselben Kern **ohne** eingebetteten Browser — dafür
-bräuchte es ein APK, kein CLI-Binary. Android-CI baut denselben Termux-Target (`.github/workflows/android.yml`).
+GitHub Releases are created from `v*` tags by [the release workflow](.github/workflows/release.yml). Embedded-WebView brains run on Windows (WebView2) and Linux (WebKitGTK). Android/Termux uses the same core without an embedded browser.
 
-## Lizenz
+## License
 
 MIT.
