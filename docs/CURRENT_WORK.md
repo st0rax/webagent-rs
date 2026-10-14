@@ -8,7 +8,7 @@
 - **Changed scope:** `README.md` rewritten in English with a concise quick start, security boundaries, platform notes, and links to authoritative docs; `docs/NEWCOMER_GUIDE.md` translated into English and given the policy section; Phase 14 in the Markdown taskboard updated.
 - **Non-goals:** no Rust code, runtime behavior, release, tag, login-profile, or provider configuration changes. This is not a claim that every historical or maintained document in the repository has already been translated; remaining maintained docs should be migrated in follow-up tasks.
 - **Verification:** `docs/TASKBOARD.json` parsed successfully after claiming T-965. GitHub contents were edited sequentially on the task branch. Local `git diff --check`, link-check tooling, and Rust tests have not been run in this remote editing session.
-- **Next step:** inspect the branch diff for unintended changes and link/anchor correctness, then open a pull request. Update the task to `done` only after integration and verified handover.
+- **Review:** PR [#76](https://github.com/st0rax/webagent-rs/pull/76) opened. The changed README/guide links to existing Markdown files were checked through GitHub; the quick-start anchor matches its heading. Local `git diff --check` and Rust tests remain unrun. Keep T-965 claimed until the PR is integrated and the handover is verified.
 
 ---
 
