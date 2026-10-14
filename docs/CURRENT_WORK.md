@@ -4,7 +4,7 @@
 
 - **Status:** `done`; PR [#73](https://github.com/st0rax/webagent-rs/pull/73) gemergt.
 - **Merge-Commit:** `76ba3b303d78135e8927b2bd7f1cd382732fdc8e`.
-- **Branch:** `docs/T-964-newcomer-onboarding`; Taskboard-Abschluss wird über den Folge-PR dokumentiert.
+- **Branch:** `docs/T-964-newcomer-onboarding`; Taskboard-Abschluss in [PR #74](https://github.com/st0rax/webagent-rs/pull/74) dokumentiert.
 - **Einstieg:** [`docs/NEWCOMER_GUIDE.md`](NEWCOMER_GUIDE.md) ist die zentrale Landkarte für neue Menschen und Coding-Agenten; die README verlinkt sie sichtbar und trennt Benutzung von Entwicklung.
 - **Quellenklarheit:** Guide erklärt Projektmodell, Dokumentenrollen, Architekturbegriffe, historische vs. aktuelle Informationen, Bazaar-Claim und Sicherheitsgrenzen.
 - **Scope:** nur README, Einstiegsdokument und Taskboard/Handover; keine Rust-Code-, Laufzeit-, Login-Profil-, Tag- oder Release-Änderungen.
