@@ -158,10 +158,6 @@ Use `webagent login --brain <brain>` to open the browser for a provider and sign
 
 ### Profiles and multi-Brain operation
 
-Profile and pool behavior is documented in the architecture and operational docs. Runtime profile data belongs in the user's data directory, not in Git. Do not delete or replace an authenticated profile as a troubleshooting shortcut.
-
-### Profiles and multi-Brain operation
-
 | Path | Role |
 |---|---|
 | `profiles/<brain>/` | Canonical login profile written by `login` / `login-all` |
