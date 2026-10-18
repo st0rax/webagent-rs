@@ -1,3 +1,4 @@
+<!-- **Reference: onboarding entry point, not archived.** -->
 # Getting Started Without Prior Context
 
 This page is a map for people and coding agents entering `webagent-rs` **without a previous chat**. It explains what the project is, where authoritative information lives, and how to get started safely. It does not replace the binding workflow rules or current runtime evidence.

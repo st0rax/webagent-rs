@@ -110,6 +110,8 @@ mod tests {
             "docs/WEB_UI_API_TOOL_RESET_STATUS.md",
             "docs/WEB_UI_API_TOOL_RESET.md",
             "docs/BRAIN_UNIFICATION_PLAN.md",
+            "docs/NEWCOMER_GUIDE.md",
+            "docs/PI_INSPIRED_CODING_AGENT.md",
         ];
         for rel in living {
             let text = std::fs::read_to_string(root.join(rel)).unwrap();
