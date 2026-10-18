@@ -1854,7 +1854,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "SICHERHEIT: Umschlag ohne Codeblock fail-closed statt verlustbehaftet ausliefern",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "fix/T-958-envelope-fail-closed",
       "claimed_at": "2026-10-19",
@@ -1874,7 +1874,9 @@
         "Keine Rekonstruktion verlorener Zeichen."
       ],
       "proof_path": "docs/proofs/T-958/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-10-19",
+      "proof": "docs/proofs/T-958/handoff.md"
     },
     {
       "id": "T-959",
