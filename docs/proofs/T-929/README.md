@@ -15,7 +15,7 @@ The stale-lease predicate requires both an expired heartbeat and a dead owner PI
 
 ## Verification
 
-Pending CI for branch `fix/T-929-linux-lease-test-isolation`. Required command: `cargo test --lib config::profiles`; also check `git diff --check`.
+CI passed on commit `553f62a491f8dced7da040a07a38840813a32c9e`: standard build and tests, Linux WebView build, Windows full-feature build and tests, and aarch64/Termux build. The required `config::profiles` regression test is included in the successful test run.
 
 ## CI hint
 
