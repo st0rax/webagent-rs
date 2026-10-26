@@ -1297,6 +1297,10 @@ mod lease_tests {
         // Absturz simulieren: tote PID + stark veralteter Heartbeat.
         let mut dead = SwarmProfileOwner::new("run-x", "gemini");
         dead.pid = Some(dead_pid());
+        assert!(
+            !pid_is_alive(dead.pid.unwrap()),
+            "a reaped child process must be recognized as dead"
+        );
         dead.heartbeat_ns =
             Some(now_ns().saturating_sub((stale_heartbeat_secs() + 60) * 1_000_000_000));
         dead.scope_key = swarm_profile_scope_key("run-x", "gemini");
