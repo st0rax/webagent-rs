@@ -1,3 +1,5 @@
+> Reference/proof note for task T-929; this document records the fix and verification status, not general operating instructions.
+
 # T-929: Linux lease test root cause
 
 ## Root cause
