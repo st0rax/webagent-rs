@@ -1070,7 +1070,7 @@
       "phase": "12",
       "type": "fix",
       "title": "Linux-CI Flake config::profiles reclaimed isolieren",
-      "status": "claimed",
+      "status": "done",
       "owner": "chatgpt-codex",
       "branch": "fix/T-929-linux-lease-test-isolation",
       "claimed_at": "2026-10-26",
