@@ -1936,10 +1936,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "chatgpt verneint Werkzeugzugriff direkt nach eigenem erfolgreichen Werkzeugaufruf",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "chatgpt-codex",
+      "branch": "fix/T-961-tool-context-framing",
+      "claimed_at": "2026-10-26",
       "depends_on": [
         "T-951"
       ],
