@@ -754,10 +754,10 @@ fn process_stamp() -> (u64, u64) {
     (std::process::id() as u64, start)
 }
 
-/// Lebt der Prozess mit `pid` noch? Windows fragt das Betriebssystem
-/// (`PROCESS_QUERY_LIMITED_INFORMATION` + `GetExitCodeProcess`); ausserhalb
-/// von Windows gilt der Heartbeat als autoritativ (kein libc-Dependency im
-/// Kern), also `true`, bis der Heartbeat nachweislich verwaist ist.
+/// Lebt der Prozess mit `pid` noch? Auf Windows wird der Prozessstatus
+/// direkt abgefragt. Linux nutzt `/proc/<pid>`; auf anderen Unix-Systemen
+/// fragt `kill -0` die Prozess-Existenz ab, ohne eine libc-Abhaengigkeit
+/// in den Kern aufzunehmen.
 #[cfg(windows)]
 pub(crate) fn pid_is_alive(pid: u64) -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
@@ -776,7 +776,22 @@ pub(crate) fn pid_is_alive(pid: u64) -> bool {
     ok != 0 && code == (STILL_ACTIVE as u32)
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub(crate) fn pid_is_alive(pid: u64) -> bool {
+    Path::new("/proc").join(pid.to_string()).exists()
+}
+
+#[cfg(all(unix, not(target_os = "linux")))]
+pub(crate) fn pid_is_alive(pid: u64) -> bool {
+    std::process::Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(true)
+}
+
+#[cfg(not(any(windows, unix)))]
 pub(crate) fn pid_is_alive(_pid: u64) -> bool {
     true
 }
