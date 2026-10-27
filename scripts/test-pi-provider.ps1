@@ -6,8 +6,9 @@ Live-Smoke-Test fuer eine laufende WebAgent-Bridge mit einer lokalen Pi-Installa
 Der Test kopiert bewusst examples/pi/models.json in ein temporaeres,
 isoliertes PI_CODING_AGENT_DIR. Er veraendert weder die regulaere
 Pi-Konfiguration unter ~/.pi noch das Repository.
-Zuerst wird ein reiner Textturn geprueft, danach ein echter Pi-read-Tool-Loop
-gegen eine zufaellige Datei in einem temporaeren Verzeichnis.
+Zuerst wird ein reiner Textturn geprueft, danach werden fuenf sequenzielle Pi-read-Tool-Aufrufe
+gegen Markerdateien in einem temporaeren Verzeichnis ausgefuehrt. Mit -TranscriptPath
+kann die rohe JSON-Modus-Ausgabe fuer die manuelle Abnahme gespeichert werden.
 #>
 
 param(
