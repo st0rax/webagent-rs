@@ -9,15 +9,16 @@ This directory is reserved for the live evidence required by T-961. **This READM
 Use the same ChatGPT account, selected model/effort, Pi version, bridge configuration, task prompt, and temporary workspace for both runs.
 
 1. Record the account's relevant personalization/memory state without changing settings. Record only the relevant state; redact unrelated personal data. If it cannot be inspected, write `not accessible` rather than assuming it is clean.
-2. Check out the parent revision before the fix (`dd78128e5d7ace05a7589e466d8c98206b663bcc`) and run the task once. Save the complete Pi JSON transcript, including assistant tool calls, tool execution results, and final response, as `before.json`.
-3. Check out the fix revision (`c7e8a5a6a26db1320ee56a880b8a0ba05311f864`) and repeat the same task in a fresh workspace. Save the transcript as `after.json`.
-4. In the fixed run, require at least five consecutive successful tool executions in the same conversation. A tool turn counts only when the transcript shows an assistant tool call, a successful execution result, and the assistant continuing the original task afterward. Record the exact consecutive range in `analysis.md`.
-5. Add `environment.txt` with commit SHAs, Pi version, bridge version/config (secrets redacted), model/effort, timestamps, and pass/fail result.
+2. Start a bridge built from the parent revision before the fix (`dd78128e5d7ace05a7589e466d8c98206b663bcc`). With the current checkout, run `./scripts/test-pi-provider.ps1 -TranscriptPath docs/proofs/T-961/before.jsonl` (PowerShell: `./scripts/test-pi-provider.ps1 -TranscriptPath docs/proofs/T-961/before.jsonl`). This saves Pi's raw JSON-mode event stream; it is a baseline only if the failure reproduces or the result is explicitly analyzed.
+3. Start a bridge built from the fix revision (`c7e8a5a6a26db1320ee56a880b8a0ba05311f864`) and repeat with a fresh temporary workspace: `./scripts/test-pi-provider.ps1 -TranscriptPath docs/proofs/T-961/after.jsonl`.
+4. Review each transcript manually. For the fixed run, identify at least five consecutive tool cycles with assistant tool call, successful result, and continuation of the same task. The smoke script checks for at least five tool-start events and all five unique file markers, but that check alone is not the final acceptance proof.
+5. Record the exact consecutive range in `analysis.md`.
+6. Add `environment.txt` with commit SHAs, Pi version, bridge version/config (secrets redacted), model/effort, timestamps, and pass/fail result.
 
 ## Required files
 
-- `before.json` — unmodified baseline transcript.
-- `after.json` — fixed transcript containing at least five consecutive successful tool turns.
+- `before.jsonl` — unmodified baseline Pi JSON-mode event stream.
+- `after.jsonl` — fixed Pi JSON-mode event stream containing at least five consecutive successful tool turns.
 - `analysis.md` — concise comparison, root-cause evidence, turn range, and account-state check.
 - `environment.txt` — reproducibility metadata; no API keys, cookies, or other secrets.
 
