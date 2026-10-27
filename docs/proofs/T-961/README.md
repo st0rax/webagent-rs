@@ -1,3 +1,5 @@
+**Referenzstatus:** laufendes Abnahmeprotokoll; diese Datei ist ein Testplan, kein Ergebnisbeleg.
+
 # T-961 live acceptance — pending
 
 This directory is reserved for the live evidence required by T-961. **This README is a test plan, not evidence.** Do not mark T-961 done or merge PR #78 until the evidence below exists.
