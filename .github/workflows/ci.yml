@@ -37,17 +37,32 @@ jobs:
   linux-webview:
     name: build (Linux, WebView via WebKitGTK)
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
       # wry nutzt unter Linux WebKitGTK statt WebView2. Ohne diese Pakete
-      # scheitert schon das Kompilieren, nicht erst der Start.
+      # scheitert schon das Kompilieren, nicht erst beim Start.
       - name: WebKitGTK-Abhaengigkeiten
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev pkg-config
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          # GitHub-hosted runners occasionally stall during apt index refresh.
+          # Bound each attempt and retry transient mirror/network failures.
+          for attempt in 1 2 3; do
+            if timeout 360s sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "apt-get update failed after 3 bounded attempts" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          timeout 600s sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev pkg-config
       # Eigener Job, damit ein Bruch der Linux-WebView-Variante hier auffaellt
       # und nicht erst beim Release-Tag. Bauen genuegt: Ein WebView laesst sich
       # ohne Anzeige nicht sinnvoll starten, und ein gruener Testlauf wuerde
@@ -71,7 +86,6 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       # Warum dieser Job existiert:
       #
       # Der Linux-Job baut mit `--no-default-features`, also OHNE `webview` und

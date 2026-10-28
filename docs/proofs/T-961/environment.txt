@@ -1,0 +1,25 @@
+# T-961 Environment Metadata
+
+## Commits
+- Parent (before): dd78128e5d7ace05a7589e466d8c98206b663bcc
+- Fix (after): c7e8a5a6a26db1320ee56a880b8a0ba05311f864
+
+## Bridge / Provider
+- Pi version: PENDING
+- Bridge version: PENDING  
+- Base URL: http://127.0.0.1:8787
+- Model: webagent/chatgpt
+- Effort: PENDING
+
+## Environment
+- OS: PENDING
+- Timestamps: PENDING
+- Secrets redacted: YES
+
+## Result
+- before.jsonl: NOT-RUN
+- after.jsonl: NOT-RUN
+- 5 consecutive tool turns: NOT-VERIFIED
+- Account-state check: NOT-RUN
+
+Status: BLOCKED_BY_MISSING_EVIDENCE

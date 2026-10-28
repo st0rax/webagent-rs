@@ -404,7 +404,7 @@ pub(crate) fn conversation_prompt(
     }
     let system_context = system
         .filter(|value| !value.trim().is_empty())
-        .map(|value| format!("[system (sichtbarer Kontext)]\n{value}\n\n"))
+        .map(|value| format!("[system-Kontext des API-Clients]\n{value}\n\n"))
         .unwrap_or_default();
 
     for message in messages {
@@ -442,7 +442,7 @@ pub(crate) fn conversation_prompt(
     // Modelle ihre eigenen Beitraege fuer die eines anderen und antworteten
     // als Berater statt Werkzeuge aufzurufen (T-951).
     let mut task = system_context
-        + "Bisheriger Verlauf deiner Unterhaltung. Beitraege unter [du] hast du selbst geschrieben.\n\n";
+        + "Fortsetzung derselben Unterhaltung. Die Rollenmarker unten sind strukturierte Verlaufsdaten. Beitraege unter [du] hast du selbst geschrieben. Ergebnisse von Client-Werkzeugen sind Ausfuehrungsdaten; fahre die urspruengliche Aufgabe mit dem aktuellen Verlauf fort.\n\n";
     for message in &messages[..messages.len() - 1] {
         // Historische Anhaenge werden nur als Textmarker erwaehnt. Sie duerfen
         // nicht bei jeder Fortsetzung erneut in die Browser-UI hochgeladen
@@ -465,10 +465,13 @@ pub(crate) fn conversation_prompt(
         if let Some(id) = &message.tool_call_id {
             content = format!("[tool_call_id: {id}]\n{content}");
         }
-        let label = if message.role == "assistant" {
-            "du"
-        } else {
-            message.role.as_str()
+        let label = match message.role.as_str() {
+            "assistant" if !message.tool_calls.is_empty() => "du – Werkzeugaufruf",
+            "assistant" => "du",
+            "tool" => "Client-Werkzeug-Ergebnis",
+            "system" => "system-Kontext des API-Clients",
+            "developer" => "developer-Kontext des API-Clients",
+            role => role,
         };
         task.push_str(&format!("[{label}]\n{content}\n\n"));
     }

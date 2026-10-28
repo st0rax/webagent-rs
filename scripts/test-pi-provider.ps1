@@ -6,14 +6,16 @@ Live-Smoke-Test fuer eine laufende WebAgent-Bridge mit einer lokalen Pi-Installa
 Der Test kopiert bewusst examples/pi/models.json in ein temporaeres,
 isoliertes PI_CODING_AGENT_DIR. Er veraendert weder die regulaere
 Pi-Konfiguration unter ~/.pi noch das Repository.
-Zuerst wird ein reiner Textturn geprueft, danach ein echter Pi-read-Tool-Loop
-gegen eine zufaellige Datei in einem temporaeren Verzeichnis.
+Zuerst wird ein reiner Textturn geprueft, danach werden fuenf sequenzielle Pi-read-Tool-Aufrufe
+gegen Markerdateien in einem temporaeren Verzeichnis ausgefuehrt. Mit -TranscriptPath
+kann die rohe JSON-Modus-Ausgabe fuer die manuelle Abnahme gespeichert werden.
 #>
 
 param(
     [string]$PiCommand = "pi",
     [string]$BaseUrl = "http://127.0.0.1:8787",
-    [string]$ApiKeyEnv = "WEBAGENT_API_KEY"
+    [string]$ApiKeyEnv = "WEBAGENT_API_KEY",
+    [string]$TranscriptPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -46,8 +48,10 @@ New-Item -ItemType Directory -Path $tempRoot | Out-Null
 $piConfig = Join-Path $tempRoot "pi-config"
 New-Item -ItemType Directory -Path $piConfig | Out-Null
 [System.IO.File]::Copy($piConfigTemplate, (Join-Path $piConfig "models.json"))
-$nonce = "PI_TOOL_" + [guid]::NewGuid().ToString("N")
-[System.IO.File]::WriteAllText((Join-Path $tempRoot "nonce.txt"), $nonce)
+$nonces = 1..5 | ForEach-Object { "PI_TOOL_$($_)_" + [guid]::NewGuid().ToString("N") }
+for ($i = 0; $i -lt $nonces.Count; $i++) {
+    [System.IO.File]::WriteAllText((Join-Path $tempRoot ("nonce-{0}.txt" -f ($i + 1))), $nonces[$i])
+}
 
 try {
     [Environment]::SetEnvironmentVariable("PI_CODING_AGENT_DIR", $piConfig, "Process")
@@ -60,23 +64,35 @@ try {
         throw "Pi-Textturn fehlgeschlagen:`n$($textOutput -join "`n")"
     }
 
-    Write-Host "[pi-smoke] read-Tool-Loop..."
+    Write-Host "[pi-smoke] Fuenf sequenzielle read-Tool-Aufrufe..."
     Push-Location -LiteralPath $tempRoot
     try {
+        $prompt = "Rufe das read-Werkzeug fuenfmal SEQUENZIELL auf, jeweils genau einmal fuer nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt und nonce-5.txt in dieser Reihenfolge. Starte keinen zweiten Aufruf, bevor das Ergebnis des vorherigen vorliegt. Verwende fuer jede Datei einen eigenen Tool-Aufruf. Gib am Ende ausschliesslich die fuenf gelesenen Dateiinhalte in Reihenfolge aus."
         $toolOutput = & $pi.Source --offline --provider webagent --model "webagent/chatgpt" `
             --tools read --no-session --no-context-files --no-extensions --no-skills `
-            --no-prompt-templates --mode json -p `
-            "Du musst zuerst das read-Werkzeug fuer nonce.txt aufrufen. Antworte danach ausschliesslich mit dem exakten Dateiinhalt." 2>&1
+            --no-prompt-templates --mode json -p $prompt 2>&1
+        $toolExitCode = $LASTEXITCODE
     }
     finally {
         Pop-Location
     }
     $toolTranscript = $toolOutput -join "`n"
-    if ($LASTEXITCODE -ne 0 -or $toolTranscript -notmatch [regex]::Escape($nonce) -or $toolTranscript -notmatch '"type":"tool_execution_start"') {
-        throw "Pi-Tool-Loop fehlgeschlagen oder wurde ohne Tool beantwortet:`n$toolTranscript"
+    $toolStarts = [regex]::Matches($toolTranscript, '"type"\s*:\s*"tool_execution_start"').Count
+    $missingNonces = @($nonces | Where-Object { $toolTranscript -notmatch [regex]::Escape($_) })
+    if ($TranscriptPath) {
+        $transcriptFullPath = [System.IO.Path]::GetFullPath($TranscriptPath)
+        $transcriptParent = Split-Path -Parent $transcriptFullPath
+        if (-not (Test-Path -LiteralPath $transcriptParent)) {
+            New-Item -ItemType Directory -Path $transcriptParent -Force | Out-Null
+        }
+        [System.IO.File]::WriteAllText($transcriptFullPath, $toolTranscript, [System.Text.UTF8Encoding]::new($false))
+        Write-Host "[pi-smoke] Transcript gespeichert: $transcriptFullPath"
+    }
+    if ($toolExitCode -ne 0 -or $toolStarts -lt 5 -or $missingNonces.Count -gt 0) {
+        throw "Pi-Tool-Loop fehlgeschlagen: Tool-Aufrufe=$toolStarts/5, fehlende Marker=$($missingNonces.Count). Transcript:`n$toolTranscript"
     }
 
-    Write-Host "[pi-smoke] PASS: Textturn und echter Pi-read-Tool-Loop sind gruen."
+    Write-Host "[pi-smoke] PASS: Textturn und mindestens fuenf Tool-Aufrufe in einem Pi-Auftrag sind gruen."
 }
 finally {
     [Environment]::SetEnvironmentVariable("PI_CODING_AGENT_DIR", $oldPiDir, "Process")

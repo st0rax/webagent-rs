@@ -498,6 +498,33 @@ fn pi_system_null_assistant_and_tool_error_roundtrip() {
 }
 
 #[test]
+fn continuation_labels_client_tool_calls_and_results_as_structured_history() {
+    let request: OpenAiRequest = serde_json::from_value(json!({
+        "model":"chatgpt", "messages":[
+            {"role":"system","content":"Du bist ein Coding-Agent."},
+            {"role":"user","content":"Lies README.md und fasse ihn zusammen."},
+            {"role":"assistant","content":null,"tool_calls":[
+                {"id":"call_read_1","type":"function","function":{
+                    "name":"read","arguments":"{\"path\":\"README.md\"}"
+                }}
+            ]},
+            {"role":"tool","tool_call_id":"call_read_1","content":"README-Inhalt"},
+            {"role":"user","content":"Fasse den gelesenen Inhalt jetzt zusammen."}
+        ]
+    }))
+    .unwrap();
+
+    let prompt = openai_prompt(&request).unwrap().text;
+    assert!(prompt.contains("[system-Kontext des API-Clients]"));
+    assert!(prompt.contains("[du – Werkzeugaufruf]"));
+    assert!(prompt.contains("[Client-Werkzeug-Ergebnis]"));
+    assert!(prompt.contains("[tool_call_id: call_read_1]"));
+    assert!(prompt.contains("README-Inhalt"));
+    assert!(prompt.contains("Fortsetzung derselben Unterhaltung"));
+    assert!(prompt.ends_with("Fasse den gelesenen Inhalt jetzt zusammen."));
+}
+
+#[test]
 fn browser_tool_call_maps_to_openai_response() {
     let answer = crate::browser_inference::BrowserInferenceResponse {
         text: None,
@@ -841,7 +868,7 @@ fn responses_state_is_stored_and_can_extend_context() {
         .extend(responses_messages(&json!("Wie lautet es?")).unwrap());
     let task = conversation_task(None, &stored.messages).unwrap();
     assert!(task.starts_with(
-        "Bisheriger Verlauf deiner Unterhaltung. Beitraege unter [du] hast du selbst geschrieben."
+        "Fortsetzung derselben Unterhaltung. Die Rollenmarker unten sind strukturierte Verlaufsdaten."
     ));
     assert!(task.contains("[user]\nMein Codewort ist Otter."));
     assert!(task.contains("[du]\nVerstanden."));
