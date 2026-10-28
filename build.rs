@@ -1,8 +1,15 @@
+//! Bettet den Git-Commit (kurz) + Dirty-Flag als WEBAGENT_GIT_HASH ins Binary ein,
+//! damit `webagent --version` zeigt, aus welchem Stand ein deploytes Binary gebaut
+//! wurde (Abgleich deployte Kopie vs. HEAD, siehe delivery/post_deploy_check.ps1).
+//! Bewusst nur std — kein zusätzliches Build-Dependency.
+
 use std::process::Command;
 
 fn git(args: &[&str]) -> Option<String> {
     let out = Command::new("git").args(args).output().ok()?;
-    if !out.status.success() { return None; }
+    if !out.status.success() {
+        return None;
+    }
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
@@ -14,11 +21,11 @@ fn main() {
     println!("cargo:rustc-env=WEBAGENT_GIT_HASH={stamp}");
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/index");
-    // G-003: statische All-in-One-Verteilung (eingebettete DLLs, keine externen .res-Dateien)
+
     let target = std::env::var("TARGET").unwrap_or_default();
     if target.contains("windows") {
         let mut resource = winres::WindowsResource::new();
-        resource.set("FileDescription", "WebAgent (static all-in-one)");
+        resource.set("FileDescription", "WebAgent");
         resource.set("ProductName", "WebAgent");
         resource.set("CompanyName", "st0rax");
         resource.set("LegalCopyright", "MIT License");
@@ -26,12 +33,16 @@ fn main() {
         resource.set("InternalName", "webagent");
         resource.set("ProductVersion", env!("CARGO_PKG_VERSION"));
         resource.set("FileVersion", env!("CARGO_PKG_VERSION"));
-        resource.compile().expect("Windows version resource compilation failed");
-        // G-003: statisch verlinken (kein externes .res, kein Kopieren von DLLs nötig)
+        resource
+            .compile()
+            .expect("Windows version resource compilation failed");
         let target_lower = target.to_ascii_lowercase();
         if target_lower.contains("gnu") && !target_lower.contains("android") {
             let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR missing");
-            println!("cargo:rustc-link-arg={}", std::path::Path::new(&out_dir).join("resource.o").display());
+            println!(
+                "cargo:rustc-link-arg={}",
+                std::path::Path::new(&out_dir).join("resource.o").display()
+            );
         }
     }
 }
