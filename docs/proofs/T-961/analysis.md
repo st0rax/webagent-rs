@@ -1,3 +1,11 @@
+# ARCHIV / REFERENZ — T-961 Live Acceptance Evidence
+
+> **Referenz-Status:** Live-Acceptance-Protokoll für PR #78 (v0.11.4)
+> **Archiv-Regel:** Nicht-lebende Dokumente tragen Archiv-/Referenz-Banner.
+> **Status:** Fertig — alle 6 Tool-Turns verifiziert.
+
+---
+
 # T-961 Live Acceptance Analysis — PR #78
 
 ## Before (parent: dd78128)
@@ -17,3 +25,4 @@ The fix clarifies that tool results are execution data (not model output) and th
 
 ## Acceptance Result
 PASS — 5+ consecutive tool turns verified, account state checked, no secrets in evidence.
+
