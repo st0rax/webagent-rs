@@ -1,5 +1,21 @@
 # Current Work
 
+## 2026-11-21 — T-961: Funktions-Framing-Kandidat in Live-Messung
+
+- PR #88 (Kontobefund + ehrlicher Negativbeleg zum Verfügbarkeits-Kandidaten)
+  ist als Squash `8693b99` in `master` gemergt; alle CI-Checks gruen.
+- Neuer Branch `fix/T-961-function-framing` (ab `8693b99`): der Tool-Block
+  heisst jetzt `[FUNKTIONEN]` statt `[Client-Werkzeuge]`, und die Anweisungen
+  sprechen von Funktionen statt von Tools. Kein Verfügbarkeits-Meta, keine
+  Provider-/Konto-Aussage. Red-Test
+  `function_block_has_no_client_or_availability_meta`. Gates gruen
+  (fmt, clippy, 1467 Lib-Tests). Binary-SHA256
+  `A60E216B61DEABDB04E46581B5111958678682810E753E80848E087328F844C1`.
+- 8 Live-Wiederholungen mit Prefix `fnframe` laufen (Port 8788, frische
+  Tokens). Wie zuvor gilt: bei **einem** Negativlauf kein Merge, T-961 bleibt
+  `free`. Auch bei 8/8 sind weitere Laeufe noetig, bevor von Stabilitaet die
+  Rede sein kann.
+
 ## 2026-11-21 — T-961: Kontobefund belegt, Kandidat widerlegt — weiter NICHT abgenommen
 
 - **PR #87 gemergt** (`dfebc47`, Squash, CI komplett gruen), `master` lokal und remote

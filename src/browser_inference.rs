@@ -236,14 +236,14 @@ fn prompt_with_tools(
 
     let tools_json = compact_tool_json(tools)?;
     let choice_text = match choice {
-        BrowserToolChoice::Auto => "Waehle selbst, ob ein Tool erforderlich ist. Wenn die Nutzeranfrage ein Tool ausdruecklich verlangt oder die Antwort von lokalen, aktuellen oder dir nicht vorliegenden Daten abhaengt, rufe das passende Tool auf.".to_string(),
-        BrowserToolChoice::Required => "Rufe mindestens ein Tool auf.".to_string(),
-        BrowserToolChoice::Function(name) => format!("Rufe das Tool '{name}' auf."),
+        BrowserToolChoice::Auto => "Waehle selbst, ob eine Funktion erforderlich ist. Wenn die Nutzeranfrage eine Funktion ausdruecklich verlangt oder die Antwort von lokalen, aktuellen oder dir nicht vorliegenden Daten abhaengt, rufe die passende Funktion auf.".to_string(),
+        BrowserToolChoice::Required => "Rufe mindestens eine Funktion auf.".to_string(),
+        BrowserToolChoice::Function(name) => format!("Rufe die Funktion '{name}' auf."),
         BrowserToolChoice::None => unreachable!("oben behandelt"),
     };
 
     Ok(format!(
-        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
+        "{prompt}\n\n[FUNKTIONEN]\n{tools_json}\n\n{choice_text} Fuer einen Aufruf gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.\nWenn keine Funktion erforderlich ist, antworte normal ohne Maschinenumschlag."
     ))
 }
 
@@ -833,15 +833,37 @@ mod tests {
         )
         .unwrap();
 
-        assert!(prompt.contains("ein Tool ausdruecklich verlangt"));
+        assert!(prompt.contains("eine Funktion ausdruecklich verlangt"));
         assert!(prompt.contains("dir nicht vorliegenden Daten"));
-        assert!(prompt.contains("[Client-Werkzeuge]"));
+        assert!(prompt.contains("[FUNKTIONEN]"));
         // T-956: Umschlag im Codeblock, sonst frisst das Rendering Zeichen.
         assert!(prompt.contains("in genau einem Markdown-Codeblock"));
         assert!(prompt.contains("```text\nWEBAGENT_INFERENCE/1\n"));
         assert!(!prompt.contains("gehoeren dem aufrufenden API-Client"));
         assert!(!prompt.contains("niemals, sie seien in dieser Umgebung nicht verfuegbar"));
         assert!(prompt.contains("WEBAGENT_INFERENCE/1"));
+    }
+
+    #[test]
+    fn function_block_has_no_client_or_availability_meta() {
+        // T-961: "Client-Werkzeuge" invited the model to treat the schema as
+        // something owned by another party and therefore unavailable to it.
+        // An explicit availability rule was even worse (2/8 green in live
+        // runs). Label the block as plain functions and add no meta claim.
+        let prompt = prompt_with_tools(
+            "Lies die Dateien nonce-1.txt bis nonce-5.txt.",
+            &[read_tool()],
+            &BrowserToolChoice::Auto,
+        )
+        .unwrap();
+
+        assert!(prompt.contains("[FUNKTIONEN]"));
+        assert!(prompt.contains("Fuer einen Aufruf gib ausschliesslich"));
+        assert!(!prompt.contains("[Client-Werkzeuge]"));
+        assert!(!prompt.contains("Client-Werkzeugen"));
+        assert!(!prompt.contains("verfuegbar"));
+        assert!(!prompt.contains("ausfuehrbar"));
+        assert!(!prompt.contains("Provider-Bridge"));
     }
 
     #[test]
