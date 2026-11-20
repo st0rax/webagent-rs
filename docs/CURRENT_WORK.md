@@ -1,5 +1,27 @@
 # Current Work
 
+## 2026-11-21 — T-961: zwei Prompt-Kandidaten widerlegt — weiter NICHT abgenommen
+
+- **PR #88 gemergt** (`8693b99`, Squash, alle CI-Checks gruen): Kontobefund und
+  der ehrliche 2/8-Negativbeleg zum Verfügbarkeits-Kandidaten liegen jetzt in
+  `master`.
+- **Zweiter Kandidat ebenfalls widerlegt:** `f899ed3` nannte den Schema-Block
+  `[FUNKTIONEN]` statt `[Client-Werkzeuge]` und vermied jedes Meta-Wort zur
+  Verfügbarkeit. Alle lokalen Gates gruen (fmt, clippy, 1467 Tests), aber
+  8 echte Live-Laeufe lieferten **6/8 streng gruen** und zwei Laeufe mit exakt
+  der T-961-Fehlerklasse („Das read-Werkzeug ist in dieser Sitzung nicht
+  verfügbar"). Das ist nicht besser als die 3/4-Baseline von `master`. Die
+  Code-Aenderung wurde auf dem Branch mit `a7eb7ef` zurueckgenommen; Rohtrans-
+  kripte und Auswertung liegen unter `docs/proofs/T-961/function-*`.
+- **Ergebnis der Prompt-Versuche:** ausdrückliche Verfügbarkeitsregel 2/8,
+  reine Umbenennung 6/8 (Baseline 3/4). Reine Prompt-Wortwahl ist als Richtung
+  widerlegt; der Kontozustand scheidet als Ursache aus. Die Ursache bleibt
+  **ungeklärt** (modellseitige Stochastik ist eine Vermutung, kein Beleg).
+- **Entscheidung:** kein PASS, kein `done`, kein Merge eines Kandidaten,
+  kein Tag/Release. **T-961 bleibt `free`**, G-009 bleibt offen. Die Bridge
+  dokumentiert die bekannte Grenze jetzt in `docs/API_BRIDGE.md`, damit
+  Aufrufer unvollständige Werkzeugläufe anhand der Marker pruefen.
+
 ## 2026-11-21 — T-961: Kontobefund belegt, Kandidat widerlegt — weiter NICHT abgenommen
 
 - **PR #87 gemergt** (`dfebc47`, Squash, CI komplett gruen), `master` lokal und remote
