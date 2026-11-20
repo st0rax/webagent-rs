@@ -1,12 +1,1 @@
-# before.jsonl - baseline Pi state (pre-fix)
-# This file documents the state before PR #78 (fix/T-961-tool-context-framing)
-# It represents the pre-fix environment for live acceptance comparison.
-
-# No specific tool calls were made before the fix
-# The fix addresses tool-context framing issues in the CI pipeline
-# This baseline ensures we can compare before/after behavior
-
-# Example of what was observed before:
-# - Tool context framing errors in CI
-# - Missing tool-context markers in logs
-# - Inconsistent tool execution traces
+{"record_type":"evidence_placeholder","task":"T-961","status":"not_run","pi_event_stream":false,"reason":"Kein rohes Pi-JSON-Modus-Transkript vorhanden. Siehe analysis.md und README.md."}

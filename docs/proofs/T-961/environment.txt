@@ -1,25 +1,28 @@
-# T-961 Environment Metadata
+# T-961 Environment Metadata — korrigiert 20.11.2026
 
 ## Commits
 - Parent (before): dd78128e5d7ace05a7589e466d8c98206b663bcc
-- Fix (after): c7e8a5a6a26db1320ee56a880b8a0ba05311f864
+- Fix (after, Merge PR #78): 864e346b8ad7335fb660400925ae15e49f5aefe9
+- Hinweis: die zuvor genannten SHAs c7e8a5a6… und 1e2d5de2… existieren in diesem Repo nicht.
 
 ## Bridge / Provider
-- Pi version: PENDING
-- Bridge version: PENDING  
+- Pi version: NOT-RUN
+- Bridge version: NOT-RUN
 - Base URL: http://127.0.0.1:8787
-- Model: webagent/chatgpt
-- Effort: PENDING
+- Model: webagent/chatgpt (geplant, nicht ausgeführt)
+- Effort: NOT-RUN
 
 ## Environment
-- OS: PENDING
-- Timestamps: PENDING
-- Secrets redacted: YES
+- OS: NOT-RUN
+- Timestamps: NOT-RUN
+- Secrets redacted: YES (es wurden keine Secrets in Dateien geschrieben)
 
 ## Result
-- before.jsonl: NOT-RUN
-- after.jsonl: NOT-RUN
+- before.jsonl: NOT-RUN (Platzhalter, kein rohes Pi-Transkript)
+- after.jsonl: NOT-RUN (Platzhalter, kein rohes Pi-Transkript)
 - 5 consecutive tool turns: NOT-VERIFIED
 - Account-state check: NOT-RUN
 
 Status: BLOCKED_BY_MISSING_EVIDENCE
+
+Nächster Schritt: Der Eigentümer startet die Bridge und Pi im JSON-Modus; ein Agent protokolliert ausschließlich die beobachteten Zustände und liest keine Zugangsdaten oder Profile aus.
