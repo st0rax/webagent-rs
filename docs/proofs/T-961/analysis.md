@@ -1,84 +1,94 @@
 **Referenz.** Ehrliche Auswertung der echten Live-Laeufe vom 20.11.2026; **kein
 Abnahmebeleg**. T-961 bleibt `free`. Operativer Stand: `docs/CURRENT_WORK.md`.
 
-# T-961 Live Acceptance - NICHT ABGENOMMEN (intermittierendes Verhalten)
+# T-961 Live Acceptance - NICHT ABGENOMMEN (Intermittenz besteht fort)
 
 ## Kurzergebnis
 
-Es gibt jetzt einen **echten, gruenen Lauf** (`after.jsonl`): Textturn antwortet
-`PI_BRIDGE_OK`, und der Tool-Turn liest alle fuenf Nonces in Folge erfolgreich
-und gibt sie in der Schlussantwort zurueck. Fruehere Laeufe an diesem Tag
-scheiterten an drei **deterministischen** Blockern, die alle behoben und gemergt
-sind (PR #82, #83, #84).
+Drei deterministische Blocker sind behoben und gemergt (PR #82/#83/#84). Eine
+weitere, objektiv nachweisbare Rahmungsasymmetrie wurde gefunden und mit PR #86
+(`eaed3d1`) behoben: das **aktuelle** Werkzeugergebnis war im Browser-Prompt
+nackter Text, waehrend historische Ergebnisse als `[Client-Werkzeug-Ergebnis]`
+mit `[tool_call_id]` gerahmt waren.
 
-Aber: ein weiterer Lauf **mit exakt demselben Binary** (`after-negative-intermittent.jsonl`,
-Minuten vor dem gruenen Lauf) reproduziert das **urspruengliche T-961-Symptom**:
-nach dem erfolgreichen ersten `read` schreibt chatgpt *„Der Rückgabewert von
-nonce-1.txt fehlt. Daher kann ich den zweiten sequenziellen Aufruf noch nicht
-starten."* und bricht ab. Das ist genau die gemeldete Fehlerklasse (Werkzeug
-leugnen direkt nach erfolgreichem Werkzeugaufruf).
+Der Live-Erfolg ist **nicht stabil**: mit dem finalen Binary `eaed3d1` waren 3
+von 4 aufeinanderfolgenden Laeufen gruen, aber der erste Lauf reproduzierte die
+T-961-Fehlerklasse erneut — diesmal nach vier erfolgreichen Reads mit dem Wortlaut
+*„Das fünfte read-Werkzeug ist in dieser Sitzung nicht verfügbar."*
+**Deshalb kein PASS, kein `done`, T-961 bleibt `free`.**
 
-**Deshalb kein PASS, kein `done`.** Ein einzelner gruener Lauf beweist bei einem
-nachweislich intermittierenden Verhalten nicht, dass die Ursache behoben ist.
-Die DoD verlangt einen belastbaren Beleg, nicht einen guenstigen Zufall. Die
-Reproduzierbarkeit ist offen; T-961 bleibt `free`.
-
-## Die drei behobenen deterministischen Blocker
+## Behobene deterministische Blocker
 
 | Blocker | Symptom im Live-Lauf | Fix (gemergt) |
 |---|---|---|
-| Selektor-Drift | Antwort war im DOM sichtbar, `probe_generation` sah `count=0/text=""` -> `timeout_no_message`; Bridge 502 | PR #82 `901e8e1` (`selectors/chatgpt.json`) |
-| Inference-Envelope | chatgpt gab gueltigen Tool-Call aus, aber mit `Nur Text\n` davor -> `strip_prefix` verwarf ihn, Pi sah nur Text, 0 Tool-Starts | PR #83 `5355e18` (`src/browser_inference.rs`) |
-| Login-Vorabpruefe | `session_state=Unbestimmt` (False Positive) blockierte den Prompt, obwohl die Sitzung funktionierte | PR #84 `976abd3` (`src/brain.rs`, `src/relay.rs`) |
+| Selektor-Drift | Antwort im DOM sichtbar, `probe_generation` sah `count=0/text=""` -> `timeout_no_message`, Bridge 502 | PR #82 `901e8e1` (`selectors/chatgpt.json`) |
+| Inference-Envelope | gueltiger Tool-Call mit `Nur Text\n` davor -> `strip_prefix` verwarf ihn, 0 Tool-Starts | PR #83 `5355e18` (`src/browser_inference.rs`) |
+| Login-Vorabpruefe | `session_state=Unbestimmt` (False Positive) blockierte den Prompt | PR #84 `976abd3` (`src/brain.rs`, `src/relay.rs`) |
+| Rahmung des aktuellen Tool-Ergebnisses | letzte Nachricht (`role=tool`) ohne Label -> Modell musste sie aus Rohtext als eigene Ausfuehrungsdaten erraten | PR #86 `eaed3d1` (`src/api_bridge/content.rs`, Red/Green-Test) |
 
-Diese Fixes sind Code-Aenderungen; der gruene Lauf ist der erste echte Live-Nachweis,
-dass die Kette Textturn + Tool-Fortsetzung jetzt ueberhaupt durchlaeuft.
+PR #86 ist ein korrekter, unit-getesteter Fix der Asymmetrie, aber **kein
+Nachweis der Ursache**: der negative Live-Lauf blieb.
 
-## Was der gruene Lauf (`after.jsonl`, 51.529 B) wirklich zeigt
+## Alle echten Live-Laeufe (20.11.2026)
 
-| Pruefung | Ergebnis |
-|---|---|
-| Textturn assistant | `stop=stop`, `content="PI_BRIDGE_OK"` (echte Antwort, kein Echo) |
-| Tool-Starts | 6 (call_1 doppelt, dann call_2..call_5) |
-| Nonces gelesen | nonce-1..5, alle `isError=false` |
-| Schlussantwort | enthält alle fuenf `PI_TOOL_*`-Marker in Reihenfolge |
-| `SESSION_ERRORS` | 0 |
-| `CIRCUIT_ERRORS` | 0 |
-| `SUSPECT_PATTERNS` | 0 |
-| Harness-Gates | `toolStarts -lt 5` und fehlende-Marker-Pruefung unveraendert aktiv |
-| Secret-Scan | 0 Treffer fuer Bearer/apiKey/cookie/authorization/sk-/WEBAGENT_API_KEY |
+| Datei | Binary | Tool-Starts | Ergebnis | SHA256 (rohes Transkript) |
+|---|---|---:|---|---|
+| `before.jsonl` | `dd78128` | 0/5 | Baseline: `session_state=Unbestimmt`, `circuit_open` | – |
+| `after.jsonl` | `976abd3` | 6/5 | gruen: alle 5 Nonces `isError=false`, Finalanswer mit allen Markern | `71FD0429...C8977` |
+| `after-negative-intermittent.jsonl` | `976abd3` | 1/5 | **negativ**: „Der Rückgabewert von nonce-1.txt fehlt ..." | `ECAF124A...C935C` |
+| `after-premerge-green-1.jsonl` | `37fe0fc` (Fix-Branch) | 5/5 | gruen | `EBDC87A1...C2B8` |
+| `after-premerge-green-2.jsonl` | `37fe0fc` (Fix-Branch) | 5/5 | gruen | `6F3CD623...E835` |
+| `after-framing-negative.jsonl` | `eaed3d1` (master) | 4/5 | **negativ**: „Das fünfte read-Werkzeug ist in dieser Sitzung nicht verfügbar." | `167FACC5...28B9` |
+| `after-framing-green-1.jsonl` | `eaed3d1` (master) | 5/5 | gruen | `A1E92F04...CB75` |
+| `after-framing-green-2.jsonl` | `eaed3d1` (master) | 5/5 | gruen | `A0A26019...5304` |
+| `after-framing-green-3.jsonl` | `eaed3d1` (master) | 5/5 | gruen | `229478DD...26C2` |
 
-Die 112 Hex-Treffer im groben `[A-Fa-f0-9]{32,}`-Scan sind ausschliesslich die
-fuenf absichtlichen `PI_TOOL_*`-Nonces und die Temp-Verzeichnis-GUID — keine
-Zugangsdaten.
+Alle Laeufe: gleiche Prompts, Pi 1.5.2, Port 8788, frische Prozess-Tokens,
+frisches Temp-Verzeichnis. Die Transkripte sind rohe Pi-JSON-Modus-Streams;
+`docs/proofs/T-961/*.jsonl` sind per `.gitattributes` bytegenau gespeichert
+(keine CRLF-Konvertierung), damit die SHA256-Werte stimmen.
 
-## Was der negative Lauf (`after-negative-intermittent.jsonl`, 27.075 B) zeigt
+## Was die gruenen Laeufe belegen
 
-Gleicher Binary (`976abd3`), gleiche Prompts, frisches Temp-Verzeichnis,
-Minuten vor dem gruenen Lauf:
+- Textturn: assistant `stop=stop`, echter Inhalt `PI_BRIDGE_OK` (kein Echo).
+- Tool-Turn: fuenf aufeinanderfolgende `read`-Aufrufe, alle `isError=false`,
+  Schlussantwort enthaelt alle fuenf `PI_TOOL_*`-Marker in Reihenfolge.
+- `SESSION_ERRORS=0`, `CIRCUIT_ERRORS=0`, `SUSPECT_PATTERNS=0`.
+- Harness-Gates unveraendert: `toolStarts -lt 5` und fehlende-Marker-Pruefung
+  sind aktiv; `SCRIPT_OK` wurde nicht erleichtert.
+- Secret-Scan ueber alle Transkripte: 0 Treffer fuer Bearer/apiKey/cookie/
+  authorization/sk-/WEBAGENT_API_KEY. Hex-Treffer sind die absichtlichen
+  `PI_TOOL_*`-Nonces und Temp-GUIDs.
 
-- Textturn: `PI_BRIDGE_OK`, 0 Session-/Circuit-Fehler (die PR-#84-Schwelle wirkt).
-- Tool-Turn: `tool_execution_start` call_1 -> `PI_TOOL_1_...`, `isError=false`.
-- Danach assistant `stop=stop`: *„Der Rückgabewert von nonce-1.txt fehlt. Daher
-  kann ich den zweiten sequenziellen Aufruf noch nicht starten."*
-- `TOOL_STARTS=1`, fehlende Marker 4, `SCRIPT_OK=False`.
+## Was der negative Final-Lauf (`after-framing-negative.jsonl`, 42.458 B) belegt
 
-Pi sendete das `toolResult` mit `PI_TOOL_1_...` korrekt an die Bridge (im
-Transcript sichtbar). Der Fehler liegt im weiterleitungspfad bzw. im Modell,
-nicht in Pi. Die Rahmenung in `conversation_prompt` (PR #78/`864e346`, bereits
-in `master`) labels Tool-Ergebnisse als `[Client-Werkzeug-Ergebnis]`; warum das
-Ergebnis manchmal nicht als ausfuehrungsdaten erkannt wird, ist **ungeklaert**.
+- Textturn: `PI_BRIDGE_OK`, 0 Session-/Circuit-Fehler.
+- call_1..call_4: erfolgreich (`isError=false`), Nonces 1..4 gelesen.
+- Danach assistant `stop=stop`: *„Die ersten vier Dateiinhalte liegen vor. Das
+  fünfte read-Werkzeug ist in dieser Sitzung nicht verfügbar."* — die vier
+  bekannten Marker werden ausgegeben, der fuenfte fehlt.
+- `TOOL_STARTS=4`, fehlender Marker 5, `SCRIPT_OK=False`.
+
+Damit ist die Fehlerklasse der Task (Werkzeugzugriff nach eigenem erfolgreichen
+Aufruf verneinen) **weiterhin reproduzierbar**, nur an anderer Stelle und mit
+anderem Wortlaut. Pi uebermittelt die `toolResult`-Nachrichten korrekt; die
+Ursache liegt im Browser-Inferenzpfad bzw. im Modellverhalten und ist
+**ungeklaert**.
 
 ## Einordnung / naechster Schritt
 
-1. **Nicht abnehmen.** Ein gruener Lauf bei gleichzeitigem Negativlauf mit dem
-   selben Binary ist kein Beleg fuer eine behobene Ursache.
-2. Ursache der Intermittenz eingrenzen: Tool-Ergebnis-Rahmung variieren
-   (Klarstellung „Ausfuehrungsdaten, nicht zitierter Inhalt"), Konto-/Memory-
-   Zustand ihres chatgpt-Kontos pruefen (möglicher Einfluss gespeicherter
-   Erinnerungen aus Sitzungen, in denen Werkzeuge verneint wurden — nur durch
-   Eigentuemer einsehbar, kein Agent liest Profile).
-3. Danach mehrere aufeinanderfolgende gruene Laeufe fordern und hier ablegen;
-   erst bei stabilem Verhalten T-961 auf `done` setzen.
+1. **Nicht abnehmen.** 3/4 gruen ist besser als vorher, aber ein Negativlauf mit
+   demselben Binary verbietet `done`. Die DoD verlangt eine eingegrenzte Ursache
+   und eine belastbare Transkriptfolge.
+2. **Konto-Zustand ist der naechste, nicht-agentseitige Schritt.** Der DoD nennt
+   ausdruecklich die moeglichen gespeicherten Erinnerungen aus Sitzungen, in
+   denen chatgpt Werkzeuge verneinte. Dies kann nur der Eigentuemer in seinem
+   ChatGPT-Konto einsehen (Einstellungen → Personalisierung → Erinnerungen/
+   Speicher). Kein Agent liest Profile, Cookies oder Zugangsdaten. Der
+   anmeldeseitige Zustand ist geprueft (`diagnose`: Ready, logged_in=true);
+   der Inhalt des Konto-Speichers nicht.
+3. Danach erneut mehrere aufeinanderfolgende gruene Laeufe mit dem dann
+   unveraenderten Binary fordern und hier ablegen; erst bei stabilen Laeufen
+   T-961 auf `done` setzen.
 4. Bis dahin: `Status: NICHT ABGENOMMEN / INTERMITTIEREND`. Kein PASS, kein
    `done`, kein Tag/Release (G-009 bleibt offen).

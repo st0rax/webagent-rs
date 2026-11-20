@@ -1,0 +1,4 @@
+# Raw T-961 Pi JSON-mode transcripts are audit evidence: store byte-for-byte.
+# Without this, core.autocrlf rewrites LF to CRLF on checkout and the recorded
+# SHA256 values no longer match the files.
+docs/proofs/T-961/*.jsonl -text

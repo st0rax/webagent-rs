@@ -2,7 +2,7 @@
 
 # T-961 live acceptance — pending (intermittent)
 
-This directory holds the live evidence required by T-961. **This README is a test plan, not evidence.** PRs #82/#83/#84 are merged (`901e8e1`/`5355e18`/`976abd3`); those merges are code changes, not live evidence. Do not mark T-961 done until the evidence below is stable. Status as of 20.11.2026: `NICHT ABGENOMMEN / INTERMITTIEREND` — a raw green run (`after.jsonl`) now exists (text turn `PI_BRIDGE_OK`, 5/5 nonces read, 0 errors), but a run minutes earlier with the **same binary** (`after-negative-intermittent.jsonl`) reproduced the original symptom (tool result denied after a successful call). See `analysis.md` and `environment.txt`.
+This directory holds the live evidence required by T-961. **This README is a test plan, not evidence.** PRs #82/#83/#84/#86 are merged (`901e8e1`/`5355e18`/`976abd3`/`eaed3d1`); those merges are code changes, not live evidence. Do not mark T-961 done until the evidence below is stable. Status as of 20.11.2026: `NICHT ABGENOMMEN / INTERMITTIEREND` — several raw green runs exist (text turn `PI_BRIDGE_OK`, 5/5 nonces read, 0 errors), but a negative run with the **final binary** `eaed3d1` (`after-framing-negative.jsonl`) still denies the fifth tool after four successful calls. Three of four consecutive runs with that binary were green. See `analysis.md` and `environment.txt`.
 
 ## Reproducible before/after run
 
@@ -18,19 +18,25 @@ Use the same ChatGPT account, selected model/effort, Pi version, bridge configur
 ## Required files
 
 - `before.jsonl` — unmodified baseline Pi JSON-mode event stream.
-- `after.jsonl` — fixed Pi JSON-mode event stream containing at least five consecutive successful tool turns (currently green, but one green run is not acceptance).
-- `after-negative-intermittent.jsonl` — same binary, negative run reproducing the original symptom; documents why T-961 is not accepted.
+- `after.jsonl` — green run with binary `976abd3` (5+ successful tool turns).
+- `after-negative-intermittent.jsonl` — same binary `976abd3`, negative run reproducing the original symptom.
+- `after-premerge-green-{1,2}.jsonl` — green runs with the fix-branch binary `37fe0fc`.
+- `after-framing-green-{1,2,3}.jsonl` — green runs with the final `master` binary `eaed3d1`.
+- `after-framing-negative.jsonl` — same final binary, negative run (4/5, tool denied); decisive against acceptance.
 - `analysis.md` — concise comparison, root-cause evidence, turn range, and account-state check.
 - `environment.txt` — reproducibility metadata; no API keys, cookies, or other secrets.
+
+All `*.jsonl` files are byte-exact raw Pi streams (`.gitattributes` marks them `-text`); their SHA256 values are listed in `environment.txt`.
 
 ## Acceptance checklist
 
 - [x] Raw before/after Pi JSON-mode transcripts exist and are secret-scan clean.
 - [x] Account state checked via the bridge API / WebView DOM (not read from profile files): login confirmed via successful completions; no credentials or profiles read.
 - [x] Same conditions used for before/after comparison (Pi 1.5.2, port 8788, model `webagent/chatgpt`, fresh process token).
-- [x] Three deterministic blockers diagnosed and fixed (selector drift, envelope prefix, login pre-check; PRs #82/#83/#84).
-- [x] Fixed run shows at least five consecutive successful tool turns — **achieved in `after.jsonl`** (6 tool starts, all 5 nonces, final answer with all markers).
-- [ ] **Stable / reproducible:** a negative run with the same binary reproduces the original symptom — **open**, root cause of the intermittency unclear.
-- [ ] Evidence linked from the T-961 taskboard entry with a passing, stable result — **pending**: repeated green runs and owner release required.
+- [x] Four blockers diagnosed and fixed (selector drift, envelope prefix, login pre-check, current tool-result framing; PRs #82/#83/#84/#86).
+- [x] Fixed runs show at least five consecutive successful tool turns — **achieved repeatedly** (`after.jsonl`, `after-premerge-green-*`, `after-framing-green-*`).
+- [ ] **Stable / reproducible:** `after-framing-negative.jsonl` with the final binary `eaed3d1` still denies a tool after four successful calls. **Open**; root cause of the intermittency unclear.
+- [ ] **Account memory checked:** the owner must inspect ChatGPT personalization/memory; not accessible to an agent.
+- [ ] Evidence linked from the T-961 taskboard entry with a passing, stable result — **pending**: T-961 stays `free`, no tag/release.
 
 Do not fabricate transcripts or infer a live result from unit tests/CI.
