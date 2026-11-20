@@ -1,5 +1,21 @@
 # Current Work
 
+## 2026-11-20 — T-949 (Branch `fix/T-949-consent-guard`)
+
+- **G-008, lokal abgeschlossen:** `dismiss_consent` prueft vor dem Klick auf
+  `dialog_dismiss_button` die Beschriftung des Treffers. Zustimmungstexte
+  (`Accept and Continue`, `OK, I agree`, `Akzeptieren`, `Zustimmen`,
+  `einverstanden`) werden nicht geklickt; fail-closed bei nicht lesbarer
+  Beschriftung. Cookie-Ablehnung und Nur-notwendige-Cookies bleiben bewusst
+  unangetastet (non-goal, ueber `NON_AGREEMENT_MARKERS` explizit erlaubt).
+- **Beleg:** `docs/proofs/T-949/measurement.md` (Mock-DOM-Tests + Gate-Ergebnisse,
+  kein Live-Anspruch). `cargo fmt --check`, `cargo clippy --all-targets --
+  -D warnings`, `cargo test --lib` (1460 gruen) und
+  `taskboard_invarianten_halten` gruen. T-949 im Board auf `done`, Spiegel
+  synchron (13 freie Tasks).
+- **Nicht erledigt:** kein Live-Zustimmungsdialog gefahren (gehoert zu T-948);
+  Board-Status liegt auf dem Branch und wird mit dem Merge wirksam.
+
 ## 2026-11-20 — Zielstack G-005..G-007 (autonomer Fortschritt)
 
 - **G-005 done:** PR [#80](https://github.com/st0rax/webagent-rs/pull/80) wurde als Squash-Commit `493e9a613d72dcf319151b813ed7ffc84662c657` in `master` gemergt; lokaler `master` ist auf `origin/master` fast-forwarded und war bei Beginn dieser Scheibe sauber.
