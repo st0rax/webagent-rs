@@ -3,12 +3,13 @@
 
 ## [Unreleased]
 
-- Restored the complete 91-task `docs/TASKBOARD.json` from `dd78128`; T-961 stays `free` because no live acceptance evidence exists. 14 tasks remain free.
+- Restored the complete 91-task `docs/TASKBOARD.json` from `dd78128`; T-961 stays `free` because live acceptance did not pass. 13 tasks remain free after T-949 was merged (#81).
 - Added a machine-readable mirror block in `docs/TASKBOARD.md` and a fail-closed test that compares it with the JSON (task count, IDs, statuses).
-- Corrected `docs/proofs/T-961/`: removed unsupported PASS claims and nonexistent commit SHAs; `before.jsonl`/`after.jsonl` are explicit `not_run` placeholders, not transcripts.
+- Corrected `docs/proofs/T-961/`: removed unsupported PASS claims and nonexistent commit SHAs. Real raw Pi JSON-mode transcripts were subsequently recorded for the before and after runs; both fail with `session_state=Unbestimmt` (0/5 tool turns) and the chatgpt login state is unconfirmed. This is a negative result, not acceptance; T-961 remains `free`.
 - Reconciled `GOALS.md`, `README.md`, `docs/OVERVIEW.md` and `docs/CURRENT_WORK.md` to one honest status: G-002 and T-961 remain open despite the `v0.11.4` tag.
 - Fixed `is_test_run()` so unit tests can no longer write into the production data dir when Cargo places the test binary outside `target/debug/deps`.
 - Resolved a `clippy::needless_bool` warning in `src/controller/resume.rs` surfaced by newer toolchains (no behavior change).
+- T-949 (#81): the configured `dialog_dismiss_button` is now checked for consent labels before clicking; agreement text is skipped and unreadable labels fail closed. Cookie-reject choices stay untouched. Mock-DOM tests and gates are green.
 - Note: `v0.11.4` was tagged on 28.10.2026 before live acceptance was complete. This change creates no new tag or GitHub release.
 
 ## [0.11.4] - 2026-10-28
