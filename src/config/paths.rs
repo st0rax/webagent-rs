@@ -83,10 +83,15 @@ pub fn data_dir() -> PathBuf {
 
 /// Läuft der Prozess unter `cargo test`?
 ///
-/// Cargo setzt beim Testlauf keine eindeutige Variable, aber die Testbinary
-/// liegt immer unter `target/…/deps/`. Das ist das verlässlichste Signal ohne
-/// zusätzliche Verdrahtung; wer es überstimmen muss, setzt
-/// `WEBAGENT_FORCE_REAL_DATA=1`.
+/// Cargo setzt beim Testlauf keine eindeutige Variable. Früher wurde nur
+/// geprüft, ob die Binary unter `target/…/deps/` liegt. Auf dieser Werkbank
+/// legt Cargo die Unit-Testbinary jedoch unter
+/// `target/debug/build/webagent/<hash>/out/…` ab — die Annahme war also falsch,
+/// und Tests schrieben in `%LOCALAPPDATA%\webagent\data` (das echte
+/// Leaderboard). Wir prüfen deshalb zusätzlich `cfg!(test)` (Unit-Tests der
+/// Lib) und das unverwechselbare Cargo-Testbinary-Muster
+/// `webagent-<16 Hex>.exe` (Integrations-/Bin-Tests). Wer es überstimmen muss,
+/// setzt `WEBAGENT_FORCE_REAL_DATA=1`.
 pub(crate) fn is_test_run() -> bool {
     if env::var("WEBAGENT_FORCE_REAL_DATA")
         .map(|v| v == "1")
@@ -94,13 +99,21 @@ pub(crate) fn is_test_run() -> bool {
     {
         return false;
     }
-    std::env::current_exe()
-        .map(|p| {
-            p.parent()
-                .and_then(|d| d.file_name())
-                .map(|n| n == "deps")
-                .unwrap_or(false)
-        })
+    if cfg!(test) {
+        return true;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    if let Some(hash) = name.strip_prefix("webagent-") {
+        if hash.len() >= 16 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            return true;
+        }
+    }
+    exe.parent()
+        .and_then(|d| d.file_name())
+        .map(|n| n == "deps")
         .unwrap_or(false)
 }
 

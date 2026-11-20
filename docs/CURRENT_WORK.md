@@ -1,5 +1,28 @@
 # Current Work
 
+## 2026-11-20 — T-966: Acceptance integrity (Arbeitsstand)
+
+- **Status:** Branch `fix/T-966-acceptance-integrity` (abgezweigt von `master` bei `eaac398`) ist gepusht; PR [#80](https://github.com/st0rax/webagent-rs/pull/80) ist offen und nicht gemergt. Zwei Commits: `cac7c29` (Taskboard/Gates), `b0628a2` (Belege/Doku).
+- **Ausgangslage:** `GOALS.md` behauptete „Projekt abgeschlossen“ und G-002 done, obwohl `docs/TASKBOARD.json` auf einen 1-Task-Stub reduziert war, `docs/proofs/T-961/environment.txt` `BLOCKED_BY_MISSING_EVIDENCE` meldet und PR #69 offene Live-Belege hat.
+- **Korrigiert:**
+  - Vollständiges Taskboard aus `dd78128` wiederhergestellt (91 Tasks, 77 done, 14 free); T-961 bleibt `free`. Kein History-Rewrite, kein Force-Push.
+  - `docs/TASKBOARD.md` um einen maschinenlesbaren Spiegelblock ergänzt; `src/taskboard.rs` prüft Taskzahl, IDs und Spiegelabgleich im normalen `cargo test` und damit auch in CI.
+  - T-961-Belege bereinigt: keine PASS-Behauptung, keine nicht existierenden SHAs, `before.jsonl`/`after.jsonl` als ausdrückliche `not_run`-Platzhalter.
+  - Statusdokumente auf eine ehrliche Version gebracht; `README.md` nennt den realen Tag `v0.11.4` mit Hinweis auf die offene Abnahme.
+- **Gates (20.11.2026, Windows/GNU, Rust 1.100):**
+  - `cargo fmt --all -- --check` ✅
+  - `git diff --check` ✅
+  - `cargo clippy --locked --no-default-features --all-targets -- -D warnings` ✅ (nur zwei Cargo-Manifest-Hinweise zu ungenutzten optionalen Deps ohne `webview`; keine Rust-Warnungen)
+  - `cargo test --locked --no-default-features` ✅ — Lib 1448 passed / 0 failed / 1 ignored, Bin 7 passed, Doc 0
+  - Negativprobe: `docs/TASKBOARD.md` wurde absichtlich auf `| T-001 | free |` geändert; `taskboard_invarianten_halten` schlug mit „nicht mit docs/TASKBOARD.json synchron“ fehl und die Datei wurde sofort wiederhergestellt.
+  - Ein erster Testlauf scheiterte an einer veralteten lokalen Linker-Umgebungsvariable sowie einem fehlenden C-Compiler; beides war Werkbank-Setup, kein Repo-Code. Die Defensive gegen Ersteres (`is_test_run`) ist jetzt Teil des Fixes.
+  - `cargo clippy --locked --all-targets -- -D warnings` (Default-Features/WebView) ✅
+  - `cargo test --locked` (Default-Features/WebView) ✅ — Lib 1454 passed / 0 failed / 1 ignored, Bin 7 passed, Doc 0
+- **GitHub-CI auf PR #80:** alle Checks grün in beiden Läufen (Push + PR-Event): `build & test`, `build & test (Windows, volle Features)`, `build (Linux, WebView via WebKitGTK)`, `aarch64`.
+- **PR #69** ([Kommentar](https://github.com/st0rax/webagent-rs/pull/69#issuecomment-7048051133)): bewusst nicht gemergt, weil der PR selbst Live-Pi-Re-run und generisches curl/SDK Chat+Tools als `pending` führt.
+- **Offen / nicht übernommen:** Echte Live-Rezertifizierung (Eigentümer muss anwesend sein; ein Agent liest keine Zugangsdaten oder Profile), PR #69 mit `pending`-Live-Belegen, kein neuer Tag/Release ohne Freigabe.
+- **Nächste Aktion:** Integrationsentscheidung zu PR #80 durch den Eigentümer. T-961 bleibt `free`, bis echte rohe Pi-Transkripte vor/nach dem Fix und eine Kontozustandsprüfung vorliegen; danach darf der Eigentümer Tag/Release auslösen.
+
 ## 2026-10-15 — T-965: English-first maintained documentation
 
 - **Status:** `done`; PR [#76](https://github.com/st0rax/webagent-rs/pull/76) merged.

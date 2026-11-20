@@ -1,7 +1,17 @@
 # Changelog
 > **Referenz:** Versionshistorie. Der aktuelle Produktzustand steht in `docs/OVERVIEW.md`, der operative Arbeitsstand in `docs/CURRENT_WORK.md`.
 
-## [0.11.4] - 2026-09-13
+## [Unreleased]
+
+- Restored the complete 91-task `docs/TASKBOARD.json` from `dd78128`; T-961 stays `free` because no live acceptance evidence exists. 14 tasks remain free.
+- Added a machine-readable mirror block in `docs/TASKBOARD.md` and a fail-closed test that compares it with the JSON (task count, IDs, statuses).
+- Corrected `docs/proofs/T-961/`: removed unsupported PASS claims and nonexistent commit SHAs; `before.jsonl`/`after.jsonl` are explicit `not_run` placeholders, not transcripts.
+- Reconciled `GOALS.md`, `README.md`, `docs/OVERVIEW.md` and `docs/CURRENT_WORK.md` to one honest status: G-002 and T-961 remain open despite the `v0.11.4` tag.
+- Fixed `is_test_run()` so unit tests can no longer write into the production data dir when Cargo places the test binary outside `target/debug/deps`.
+- Resolved a `clippy::needless_bool` warning in `src/controller/resume.rs` surfaced by newer toolchains (no behavior change).
+- Note: `v0.11.4` was tagged on 28.10.2026 before live acceptance was complete. This change creates no new tag or GitHub release.
+
+## [0.11.4] - 2026-10-28
 
 ### Added
 - **login-all --parallel N** (echte Parallelitaet, max 3): pro Brain ein eigener `login-worker`-Kindprozess (re-exec), JSON-Ergebnis per Tempdatei (`WEBAGENT_LOGIN_WORKER_RESULT`), Live-Fortschritt via stdout-Inheritance; automatisch sequenziell bei `WEBAGENT_USE_SHARED_BROWSER=1` (SingletonLock-Race)

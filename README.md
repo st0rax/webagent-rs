@@ -62,7 +62,7 @@ The chat plans; your computer executes. To check whether the interface is usable
 
 ## Release status and provider evidence
 
-**Released version:** [v0.11.3](https://github.com/st0rax/webagent-rs/releases/tag/v0.11.3). The local web UI is the primary interface and is connected to the real `/api/*` endpoints. It supports Brain health, creating and switching sessions, live chat events, source selection (`/quelle`), multi-Brain group runs, file uploads, Brain-window visibility, a capability matrix, and a doctor report. See `docs/CURRENT_WORK.md` for the current handover and commit-specific verification.
+**Released version:** [v0.11.4](https://github.com/st0rax/webagent-rs/releases/tag/v0.11.4) (tagged 28.10.2026). The tag was published before live acceptance T-961 was complete; current status is recorded honestly in [`GOALS.md`](GOALS.md) and [`docs/CURRENT_WORK.md`](docs/CURRENT_WORK.md). The local web UI is the primary interface and is connected to the real `/api/*` endpoints. It supports Brain health, creating and switching sessions, live chat events, source selection (`/quelle`), multi-Brain group runs, file uploads, Brain-window visibility, a capability matrix, and a doctor report. See `docs/CURRENT_WORK.md` for the current handover and commit-specific verification.
 
 **Historical provider evidence:** On 2026-07-16, all eight tested Brains returned headless relay responses. This is historical evidence, not a promise of current availability; web UIs, sessions, and quotas change. Measurements and later capability history are in [`docs/PROVIDER_STATUS.md`](docs/PROVIDER_STATUS.md).
 
