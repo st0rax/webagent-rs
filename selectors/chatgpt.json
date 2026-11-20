@@ -1,10 +1,14 @@
 {
   "composer": [
+    "div[aria-label*='ChatGPT fragen' i]",
+    "div[aria-label*='Ask ChatGPT' i]",
     "div#prompt-textarea",
     "textarea[data-id='root']",
     "div[contenteditable='true']"
   ],
   "send_button": [
+    "button[aria-label*='Senden' i]",
+    "button[aria-label*='Send' i]",
     "button[data-testid='send-button']",
     "button[aria-label='Send prompt']"
   ],
@@ -15,12 +19,21 @@
     "button[aria-label='Generierung beenden']"
   ],
   "assistant_message": [
+    "div[data-dil-response]",
+    "div[data-response-body]",
+    "div[data-markdown-text-style='assistant-message']",
+    "div[data-content-search-unit-key$=':assistant']",
     "div[data-message-author-role='assistant']"
   ],
   "user_message": [
+    "div[data-user-message-bubble='true']",
+    "div[data-content-search-unit-key$=':user']",
     "div[data-message-author-role='user']"
   ],
   "new_chat_button": [
+    "button[aria-label*='Neuer Chat' i]",
+    "button[aria-label*='New chat' i]",
+    "button:has-text('Neuer Chat')",
     "a[href='/']",
     "button[data-testid='new-chat-button']"
   ],
@@ -30,8 +43,11 @@
     "text=Log in"
   ],
   "login_indicator": [
-    "div#prompt-textarea",
-    "textarea[data-id='root']"
+    "button[aria-label*='Profil' i]",
+    "button[aria-label*='Profilmenü' i]",
+    "button[aria-label*='Profile' i]",
+    "button[aria-label*='Account' i]",
+    "button[aria-label*='Konto' i]"
   ],
   "google_sso_button": [
     "button:has-text('Continue with Google')",
