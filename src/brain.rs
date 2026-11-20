@@ -23,6 +23,27 @@ pub enum SessionState {
     Error,
 }
 
+impl SessionState {
+    /// Autoritaere Barriere: hier bringt ein Prompt-Versuch nichts, weil die
+    /// WebView-Verbindung tot ist (`Error`) oder die Seite aktiv blockiert
+    /// (`Cloudflare`). Nur diese Zustaende duerfen den Prompt verhindern.
+    pub fn is_hard_block(self) -> bool {
+        matches!(self, SessionState::Error | SessionState::Cloudflare)
+    }
+
+    /// Weicher Login-Zweifel: kein Beleg fuer „bereit", aber auch kein Beleg
+    /// fuer eine echte Anmelde-Wand. Beides kann ein FALSE POSITIVE sein —
+    /// `Unbestimmt` vor allem bei Selektor-Drift, `LoginRequired` bei einem
+    /// veralteten Login-Knopf-Selektor. Die echte Antwort entscheidet: kommt
+    /// sie zurueck, war die Vorabpruefung falsch.
+    ///
+    /// History: am 07.08.2026 sperrte genau diese Vermischung alle acht Brains
+    /// fuer sechs Stunden, obwohl alle angemeldet waren (siehe `Unbestimmt`).
+    pub fn is_soft_login_doubt(self) -> bool {
+        matches!(self, SessionState::Unbestimmt | SessionState::LoginRequired)
+    }
+}
+
 /// Antwort vom Brain-Backend nach einer Nachricht.
 #[derive(Debug, Clone)]
 pub struct BrainResponse {
@@ -334,6 +355,34 @@ mod tests {
     fn test_session_state_enum() {
         assert_eq!(SessionState::Ready, SessionState::Ready);
         assert_ne!(SessionState::Ready, SessionState::LoginRequired);
+    }
+
+    #[test]
+    fn nur_echte_barrieren_sind_harte_blocks() {
+        assert!(SessionState::Error.is_hard_block());
+        assert!(SessionState::Cloudflare.is_hard_block());
+        assert!(!SessionState::Ready.is_hard_block());
+        assert!(!SessionState::Unbestimmt.is_hard_block());
+        assert!(!SessionState::LoginRequired.is_hard_block());
+    }
+
+    #[test]
+    fn login_zweifel_ist_weich_und_nicht_ready() {
+        assert!(SessionState::Unbestimmt.is_soft_login_doubt());
+        assert!(SessionState::LoginRequired.is_soft_login_doubt());
+        assert!(!SessionState::Ready.is_soft_login_doubt());
+        assert!(!SessionState::Error.is_soft_login_doubt());
+        assert!(!SessionState::Cloudflare.is_soft_login_doubt());
+        // Kein Zustand ist gleichzeitig harte Barriere und weicher Zweifel.
+        for state in [
+            SessionState::Ready,
+            SessionState::LoginRequired,
+            SessionState::Cloudflare,
+            SessionState::Unbestimmt,
+            SessionState::Error,
+        ] {
+            assert!(!(state.is_hard_block() && state.is_soft_login_doubt()));
+        }
     }
 
     #[test]
