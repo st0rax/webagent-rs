@@ -119,9 +119,16 @@ pub fn relay_image_generation(
     let state = backend
         .ensure_ready(ready_timeout)
         .unwrap_or(SessionState::Error);
-    if state != SessionState::Ready {
+    if state.is_hard_block() {
         let _ = backend.relay_stop();
         return Err(RelayError(format!("session_state={state:?}")));
+    }
+    if state.is_soft_login_doubt() {
+        // Weicher Zweifel darf kein hartes "geht nicht" sein: trotzdem versuchen.
+        // Kommt ein Bild zurueck, war die Vorabpruefung ein False Positive.
+        crate::bench_events::eprint_line(&format!(
+            "[image] {brain_id}: Login-Vorabpruefung={state:?} (weich) — erzeuge trotzdem; das Ergebnis entscheidet"
+        ));
     }
     if trace {
         eprintln!(
@@ -263,7 +270,7 @@ pub fn relay_single_turn_with_attachments_streaming(
     let state = backend
         .ensure_ready(ready_timeout)
         .unwrap_or(SessionState::Error);
-    if state != SessionState::Ready {
+    if state.is_hard_block() {
         let _ = backend.relay_stop();
         let reason = format!("session_state={state:?}");
         crate::circuit_breaker::record_failure(brain_id, &reason);
@@ -276,6 +283,19 @@ pub fn relay_single_turn_with_attachments_streaming(
         );
         return Err(RelayError(reason));
     }
+    // Weicher Login-Zweifel (Unbestimmt/LoginRequired) ist kein Beleg gegen
+    // eine funktionierende Sitzung — Selektor-Drift oder eine veraltete
+    // Login-Knopf-Regel koennen beides ausloesen. Nicht blockieren, sondern
+    // den echten Prompt entscheiden lassen; ein positives Ergebnis markieren
+    // wir unten als bestaetigten False Positive.
+    let soft_login_doubt = if state.is_soft_login_doubt() {
+        crate::bench_events::eprint_line(&format!(
+            "[relay] {brain_id}: Login-Vorabpruefung={state:?} (weich) — prompt trotzdem; die echte Antwort entscheidet"
+        ));
+        Some(state)
+    } else {
+        None
+    };
     if let Some(want) = model {
         match backend.switch_model(want) {
             Ok(now) => {
@@ -313,6 +333,7 @@ pub fn relay_single_turn_with_attachments_streaming(
         wait_timeout,
         started,
         prompt_chars,
+        soft_login_doubt,
         on_update,
     )
 }
@@ -331,6 +352,7 @@ fn run_turn_loop<B: RelayBackend>(
     wait_timeout: f64,
     started: Instant,
     prompt_chars: usize,
+    soft_login_doubt: Option<SessionState>,
     on_update: &mut dyn FnMut(&str),
 ) -> Result<String, RelayError> {
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
@@ -465,6 +487,15 @@ fn run_turn_loop<B: RelayBackend>(
     let latency_ms = started.elapsed().as_millis() as u64;
     match answer {
         Some(text) => {
+            if let Some(state) = soft_login_doubt {
+                // Die echte Antwort ist der Beleg: die Vorabpruefung war falsch.
+                // Sichtbar protokollieren, damit ein solcher Fall nicht erneut
+                // als "Login noetig" fehlinterpretiert wird.
+                crate::bench_events::eprint_line(&format!(
+                    "[relay] {brain_id}: Login-False-Positive bestaetigt (Vorabpruefung={state:?}, echte Antwort {}-Zeichen)",
+                    text.chars().count()
+                ));
+            }
             crate::circuit_breaker::record_success(brain_id);
             crate::brain_score::record_event_with_sends(
                 brain_id,
@@ -678,6 +709,7 @@ mod tests {
             1.0,
             Instant::now(),
             5,
+            None,
             &mut |_| {},
         );
         assert!(
@@ -736,6 +768,7 @@ mod tests {
             1.0,
             Instant::now(),
             5,
+            None,
             &mut |_| {},
         );
         assert!(result.is_err());
