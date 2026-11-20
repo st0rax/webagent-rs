@@ -2,7 +2,7 @@
 
 # T-961 live acceptance — pending
 
-This directory is reserved for the live evidence required by T-961. **This README is a test plan, not evidence.** PR #78 is already merged (`864e346`); that merge is a code change, not live evidence. Do not mark T-961 done until the evidence below exists. Status as of 20.11.2026: `BLOCKED_BY_MISSING_EVIDENCE`.
+This directory holds the live evidence required by T-961. **This README is a test plan, not evidence.** PR #78 is already merged (`864e346`); that merge is a code change, not live evidence. Do not mark T-961 done until the evidence below passes. Status as of 20.11.2026: `BLOCKED_BY_UNCONFIRMED_LOGIN` — real raw `before.jsonl`/`after.jsonl` now exist, but both runs failed with `session_state=Unbestimmt` (0/5 tool turns) and the chatgpt login state is not confirmed. See `analysis.md` and `environment.txt`.
 
 ## Reproducible before/after run
 
@@ -24,10 +24,11 @@ Use the same ChatGPT account, selected model/effort, Pi version, bridge configur
 
 ## Acceptance checklist
 
-- [ ] Baseline reproduces the false tool-access denial after a successful tool result, or documents precisely why it does not reproduce.
-- [ ] Fixed run completes at least five consecutive successful tool turns without falsely denying tool availability.
-- [ ] Same conditions used for before/after comparison; relevant account state explicitly checked or marked not accessible.
-- [ ] Transcripts and environment metadata reviewed for secrets and unrelated personal data before committing.
-- [ ] Evidence is committed here and linked from the T-961 taskboard entry.
+- [x] Raw before/after Pi JSON-mode transcripts exist and are secret-scan clean.
+- [x] Relevant account state checked via the bridge API (not read from profile files): chatgpt `login_state = "unknown (old)"`, login not confirmed.
+- [x] Same conditions used for before/after comparison (Pi 1.5.2, port 8788, model `webagent/chatgpt`, fresh process token).
+- [ ] Baseline reproduces the original false tool-access denial after a successful tool result — **not reached**: both runs fail earlier at `session_state=Unbestimmt`.
+- [ ] Fixed run completes at least five consecutive successful tool turns — **failed**: 0/5 in the after run.
+- [ ] Evidence committed here and linked from the T-961 taskboard entry with a passing result — **pending**: owner must confirm/login the chatgpt browser, then rerun.
 
 Do not fabricate transcripts or infer a live result from unit tests/CI.

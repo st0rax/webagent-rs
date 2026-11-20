@@ -1,29 +1,65 @@
-**Referenzstatus:** Historischer Analyseentwurf, kein Abnahmebeleg (korrigiert 20.11.2026).
+**Referenz.** Ehrliche Auswertung der echten Live-Laeufe vom 20.11.2026; **kein
+Abnahmebeleg**. T-961 bleibt `free`. Operativer Stand: `docs/CURRENT_WORK.md`.
 
-# T-961 Live Acceptance Analysis — NICHT ABGENOMMEN
+# T-961 Live Acceptance - NICHT ABGENOMMEN
 
-## Befund
+## Kurzergebnis
 
-Die zuvor in dieser Datei behauptete PASS-Aussage („5+ consecutive tool turns verified", „account state checked", „no secrets in evidence") war durch die vorliegenden Dateien nicht gedeckt:
+Rohe Pi-JSON-Modus-Transkripte vor und nach dem Fix liegen jetzt vor
+(`before.jsonl`, `after.jsonl`). Sie belegen das **Gegenteil** einer Abnahme:
+beide Laeufe scheitern an derselben Ursache. Es gab **keinen** einzigen
+`tool_execution_start`, keine verwertbare Assistant-Antwort und keine
+fuenf aufeinanderfolgenden Werkzeugturns. Der Kontozustand wurde geprueft; die
+Anmeldung des chatgpt-Browsers ist **nicht bestaetigt**.
 
-- `environment.txt` meldet `before.jsonl: NOT-RUN`, `after.jsonl: NOT-RUN`, `5 consecutive tool turns: NOT-VERIFIED`, `Account-state check: NOT-RUN` und `Status: BLOCKED_BY_MISSING_EVIDENCE`.
-- `before.jsonl` enthielt nur einen Kommentar, keine Pi-JSON-Modus-Ereignisse.
-- `after.jsonl` enthielt sechs handformatierte Objekte mit konstanten Zeitstempeln und Feldern wie `context_framed: true`, aber keine rohen Pi-Ereignisse (`tool_execution_start`, `tool_execution_end`, …), keine Session-/Run-IDs und keine Antwort-Texte. Das ist kein Transkript.
-- Die genannten Fix-SHAs `c7e8a5a6…` und `1e2d5de2…` existieren in diesem Repository nicht. Der Merge von PR #78 ist `864e346b8ad7335fb660400925ae15e49f5aefe9`, der Parent `dd78128e5d7ace05a7589e466d8c98206b663bcc`.
+## Was jetzt tatsaechlich gemessen wurde
 
-## Code-Stand
+| Beleg | Before (dd78128) | After (d0856d9, enthaelt Fix 864e346 via 493e9a6) |
+|---|---|---|
+| Rohtranscript | 29.021 Bytes, 2 Turns | 29.305 Bytes, 2 Turns |
+| Assistant-Text | leer, `stopReason: error` | leer, `stopReason: error` (`assistant_ok=False`) |
+| Fehlermeldung | `Browser-Inference fehlgeschlagen: session_state=Unbestimmt` | identisch |
+| `tool_execution_start` | 0 / 5 | 0 / 5 |
+| `session_state=Unbestimmt` | 13x | 3x |
+| `circuit_open` | 10x | 20x (Breaker nach 5 Fehlschlaegen erneut 900 s offen) |
+| Secret-Scan | 0 Treffer | 0 Treffer |
 
-Der Fix für die Werkzeug-Kontext-Rahmung ist in `master` enthalten (PR #78, Merge `864e346`). Das ist eine Code-Änderung, kein Live-Nachweis. Ob chatgpt in einer echten Mehrturn-Sitzung nach einem Werkzeugergebnis weiter Werkzeuge aufruft, ist damit **nicht** belegt.
+Die erste After-Ausfuehrung (20:49 lokal) produzierte wegen eines
+StrictMode-Fehlers im temporaeren Harness-Skript kein Transkript; das Skript
+wurde korrigiert (Events ohne `message`-Feld werden uebersprungen, Rohausgabe
+wird immer gespeichert) und der Lauf wiederholt. Das hier ausgewertete
+`after.jsonl` stammt aus diesem zweiten, echten Lauf.
 
-## Root Cause (unverifizierte Arbeitshypothese)
+## Kontozustand (Direktive 7/8: keine Zugangsdaten, keine Profile)
 
-Die Rahmung von Systemkontext und Werkzeugergebnissen könnte wie zitierter Inhalt wirken statt wie eine aktive Umgebung. Eine zweite Möglichkeit ist ein Zustand im ChatGPT-Konto aus früheren Sitzungen. Beides ist nicht live eingegrenzt; die Hypothese darf nicht als Beleg zitiert werden.
+Pruefung ueber `GET /api/health/brains` der laufenden Bridge, ohne Oeffnen oder
+Lesen einer Profildatei und ohne Zugangsdaten:
 
-## Offene Belege
+- `chatgpt`: `login_state = "unknown (old)"`, `profile_exists = true`,
+  `last_done_run = ""`, `recovery_hint` verweist auf `webagent login --brain chatgpt`.
+- Bewertung: **Anmeldung nicht bestaetigt**. Das deckt sich mit dem wiederholten
+  `session_state=Unbestimmt` aus der Live-Inferenz.
 
-1. Rohe, unveränderte Pi-JSON-Modus-Transkripte vor und nach dem Fix bei identischen Bedingungen (Konto, Modell/Effort, Pi-Version, Prompt, Workspace).
-2. Manuell identifizierte Folge von mindestens fünf aufeinanderfolgenden Werkzeugturns mit erfolgreichem Ergebnis und Fortsetzung derselben Aufgabe.
-3. Nicht verändernde Prüfung des relevanten Kontozustands; nicht zugänglich → `not accessible` vermerken.
-4. `environment.txt` mit echten Versionen, SHAs, Zeitstempeln und Ergebnis — ohne Secrets.
+Damit ist der Account-Check durchgefuehrt (nicht `not accessible`), sein Ergebnis
+ist aber keine Freigabe. Die Bridge kann den Sitzungszustand nicht bestaetigen;
+ein Agent darf die Anmeldung nicht selbst vornehmen.
 
-Erst wenn diese Punkte vorliegen, darf T-961 auf `done` gesetzt werden. Bis dahin: **BLOCKED_BY_MISSING_EVIDENCE**.
+## Einordnung des Fix
+
+Der Code-Fix fuer die Werkzeug-Kontext-Rahmung liegt in `master`
+(PR #78 `864e346`, enthalten im PR-#80-Squash `493e9a6`). Das ist eine
+Code-Aenderung, kein Live-Nachweis. Da die Bridge schon vor dem Senden der
+eigentlichen Antwort an `session_state=Unbestimmt` scheitert, wird der
+Werkzeug-Fortsetzungspfad in diesem Lauf gar nicht erst erreicht. Der Fix
+kann hier weder bestaetigt noch widerlegt werden.
+
+## Offene Punkte / naechster Schritt
+
+1. Eigentuemer meldet den chatgpt-Browser an (`webagent login --brain chatgpt`
+   bzw. TUI/WebView-Fenster). Der Agent tippt keine Zugangsdaten und liest keine
+   Profile.
+2. Danach denselben Harness-Lauf erneut ausfuehren und nur bei echtem Erfolg
+   (`assistant_ok=True`, >= 5 `tool_execution_start`, keine Session-/Circuit-
+   Fehler, bestaetigter Kontozustand) T-961 auf `done` setzen.
+3. Bis dahin: `Status: BLOCKED_BY_UNCONFIRMED_LOGIN`. Kein PASS, kein `done`,
+   kein Tag/Release (G-009 bleibt offen).

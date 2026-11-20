@@ -1,28 +1,54 @@
-# T-961 Environment Metadata — korrigiert 20.11.2026
+# T-961 Environment Metadata - echte Messung 20.11.2026 (NICHT ABGENOMMEN)
 
-## Commits
-- Parent (before): dd78128e5d7ace05a7589e466d8c98206b663bcc
-- Fix (after, Merge PR #78): 864e346b8ad7335fb660400925ae15e49f5aefe9
-- Hinweis: die zuvor genannten SHAs c7e8a5a6… und 1e2d5de2… existieren in diesem Repo nicht.
+Dies ist die ehrliche Rueckmeldung der tatsaechlich ausgefuehrten Laeufe. Fruehere
+PASS-Behauptungen in diesem Verzeichnis waren nicht durch Dateien gedeckt und
+wurden am 20.11.2026 korrigiert.
+
+## Commits / Binaries
+- Before-Binary: dd78128e5d7ace05a7589e466d8c98206b663bcc (Parent der T-961-Aenderung)
+- After-Binary: d0856d9b759ae4eae365adabeda65e09ea50a622 (Branch fix/T-949-consent-guard,
+  gebaut 20:49 lokal). Enthaelt master 493e9a613d72dcf319151b813ed7ffc84662c657
+  (Squash PR #80) und damit den T-961-Fix 864e346b8ad7335fb660400925ae15e49f5aefe9
+  (PR #78). Der zusaetzliche T-949-Dialog-Guard beruehrt nicht den Werkzeug-Loop-Pfad.
+- Hinweis: die frueher genannten SHAs c7e8a5a6. und 1e2d5de2. existieren in diesem
+  Repository nicht und sind entfernt.
 
 ## Bridge / Provider
-- Pi version: NOT-RUN
-- Bridge version: NOT-RUN
-- Base URL: http://127.0.0.1:8787
-- Model: webagent/chatgpt (geplant, nicht ausgeführt)
-- Effort: NOT-RUN
+- Pi version: 1.5.2 (EarendilWorks.pi, WinGet)
+- Bridge version: webagent 0.11.3 (target/debug/webagent.exe)
+- Base URL: http://127.0.0.1:8788 (Port 8787 bewusst unberuehrt: fremder Free-Router-Prozess)
+- Modell: webagent/chatgpt
+- Effort: nicht explizit gesetzt; Transkript meldet thinkingLevel="off"
+- Token: frische GUID pro Lauf, nur in der Prozessumgebung, nie gespeichert,
+  nie geloggt, nie in ein Transkript oder eine Datei geschrieben
 
 ## Environment
-- OS: NOT-RUN
-- Timestamps: NOT-RUN
-- Secrets redacted: YES (es wurden keine Secrets in Dateien geschrieben)
+- OS: Windows (win32), Rust-Ziel x86_64-pc-windows-gnu
+- Before: Pi-Session 2026-11-20T19:20:53Z, rohes Transkript 29.021 Bytes
+- After: Pi-Sessions 2026-11-20T20:08:47Z (Textturn) und 20:12:04Z (Toolturn),
+  rohes Transkript 29.305 Bytes
+- Account-Check: 2026-11-20T19:53:33 durch die Bridge-API GET /api/health/brains
+- Secret-Scan: 0 Treffer fuer Bearer/apiKey/cookie/authorization/sk-/WEBAGENT_API_KEY
+  in beiden Transkripten
 
 ## Result
-- before.jsonl: NOT-RUN (Platzhalter, kein rohes Pi-Transkript)
-- after.jsonl: NOT-RUN (Platzhalter, kein rohes Pi-Transkript)
-- 5 consecutive tool turns: NOT-VERIFIED
-- Account-state check: NOT-RUN
+- before.jsonl: rohes Pi-JSON-Modus-Transkript, 2 Turns, 0/5 tool_execution_start,
+  13x session_state=Unbestimmt, 10x circuit_open
+- after.jsonl: rohes Pi-JSON-Modus-Transkript, 0/5 tool_execution_start,
+  3x session_state=Unbestimmt, 20x circuit_open, assistant_ok=False
+- Assistant-Antwort (beide Laeufe): stopReason="error",
+  errorMessage="Browser-Inference fehlgeschlagen: session_state=Unbestimmt",
+  content=[] - also keine verwertbare Antwort
+- 5 aufeinanderfolgende Werkzeugturns: NICHT erreicht (0/5 in beiden Laeufen)
+- Account-state check: DURCHGEFUEHRT (nicht "not accessible"). chatgpt:
+  login_state="unknown (old)", profile_exists=true, last_done_run leer,
+  kein erfolgreicher Run -> Anmeldung NICHT BESTAETIGT. Der Agent hat keine
+  Zugangsdaten und keine Profildateien gelesen; der Status wurde ausschliesslich
+  ueber die Bridge-API abgefragt.
+- Circuit Breaker: oeffnete in beiden Laeufen erneut (900 s) nach wiederholten
+  session_state=Unbestimmt-Fehlschlaegen.
 
-Status: BLOCKED_BY_MISSING_EVIDENCE
-
-Nächster Schritt: Der Eigentümer startet die Bridge und Pi im JSON-Modus; ein Agent protokolliert ausschließlich die beobachteten Zustände und liest keine Zugangsdaten oder Profile aus.
+Status: NICHT ABGENOMMEN / BLOCKED. Der Live-Lauf schlaegt auch nach dem Fix fehl;
+die Anmeldung des chatgpt-Browsers ist nicht bestaetigt. T-961 bleibt `free`.
+Eine Rezertifizierung erfordert eine Anmeldung durch den Eigentuemer (Agenten
+tippen keine Zugangsdaten und lesen keine Profile).
