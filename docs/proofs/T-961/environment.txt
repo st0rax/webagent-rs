@@ -1,21 +1,24 @@
 # T-961 Environment Metadata - echte Messung 20.11.2026 (NICHT ABGENOMMEN)
 
-Dies ist die ehrliche Rueckmeldung der tatsaechlich ausgefuehrten Laeufe. Fruehere
-PASS-Behauptungen in diesem Verzeichnis waren nicht durch Dateien gedeckt und
-wurden am 20.11.2026 korrigiert.
+Dies ist die ehrliche Rueckmeldung der tatsaechlich ausgefuehrten Laeufe.
+Fruehere PASS-Behauptungen in diesem Verzeichnis waren nicht durch Dateien
+gedeckt und wurden am 20.11.2026 korrigiert. Ein gruener Lauf liegt jetzt vor,
+aber ein Negativlauf mit demselben Binary reproduziert das Ursprungssymptom -
+daher weiterhin keine Abnahme.
 
 ## Commits / Binaries
-- Before-Binary: dd78128e5d7ace05a7589e466d8c98206b663bcc (Parent der T-961-Aenderung)
-- After-Binary: d0856d9b759ae4eae365adabeda65e09ea50a622 (Branch fix/T-949-consent-guard,
-  gebaut 20:49 lokal). Enthaelt master 493e9a613d72dcf319151b813ed7ffc84662c657
-  (Squash PR #80) und damit den T-961-Fix 864e346b8ad7335fb660400925ae15e49f5aefe9
-  (PR #78). Der zusaetzliche T-949-Dialog-Guard beruehrt nicht den Werkzeug-Loop-Pfad.
-- Hinweis: die frueher genannten SHAs c7e8a5a6. und 1e2d5de2. existieren in diesem
-  Repository nicht und sind entfernt.
+- Vor-Fix-Binary (URSPRUENGLICHER baseline): dd78128e5d7ace05a7589e466d8c98206b663bcc
+- Frueherer after-Binary (alter negativer Beleg): d0856d9b759ae4eae365adabeda65e09ea50a622
+- Aktueller After-Binary (alle drei Fixes): 976abd3 (master, Squash PR #84)
+  - 901e8e1 PR #82: Selektor-Drift chatgpt.json
+  - 5355e18 PR #83: Inference-Envelope tolerate chatter
+  - 976abd3 PR #84: soft login pre-check
+- Hinweis: die frueher genannten SHAs c7e8a5a6. und 1e2d5de2. existieren in
+  diesem Repository nicht und sind entfernt.
 
 ## Bridge / Provider
 - Pi version: 1.5.2 (EarendilWorks.pi, WinGet)
-- Bridge version: webagent 0.11.3 (target/debug/webagent.exe)
+- Bridge version: webagent 0.11.3 (target/debug/webagent.exe, gebaut aus 976abd3)
 - Base URL: http://127.0.0.1:8788 (Port 8787 bewusst unberuehrt: fremder Free-Router-Prozess)
 - Modell: webagent/chatgpt
 - Effort: nicht explizit gesetzt; Transkript meldet thinkingLevel="off"
@@ -25,30 +28,35 @@ wurden am 20.11.2026 korrigiert.
 ## Environment
 - OS: Windows (win32), Rust-Ziel x86_64-pc-windows-gnu
 - Before: Pi-Session 2026-11-20T19:20:53Z, rohes Transkript 29.021 Bytes
-- After: Pi-Sessions 2026-11-20T20:08:47Z (Textturn) und 20:12:04Z (Toolturn),
-  rohes Transkript 29.305 Bytes
-- Account-Check: 2026-11-20T19:53:33 durch die Bridge-API GET /api/health/brains
+- Negativer Zwischenlauf (d0856d9): 2 Turns, 29.305 Bytes
+- Negativlauf mit aktuellem Binary (976abd3): 22:21 lokal, 27.075 Bytes
+  (after-negative-intermittent.jsonl) - Textturn OK, Tool-Turn 1/5
+- Gruener Lauf (976abd3): 22:22-22:25 lokal, 51.529 Bytes
+  (after.jsonl, SHA256 71FD04294508626C64A812FC072B710C8F96731D421F1C23A2D2BCCD975C8977)
+- Account-Check: 2026-11-20T20:23:11Z ueber Bridge-API GET /api/health/brains
 - Secret-Scan: 0 Treffer fuer Bearer/apiKey/cookie/authorization/sk-/WEBAGENT_API_KEY
-  in beiden Transkripten
+  in allen Transkripten; Hex-Treffer sind absichtliche Nonces/Temp-GUIDs
 
 ## Result
-- before.jsonl: rohes Pi-JSON-Modus-Transkript, 2 Turns, 0/5 tool_execution_start,
-  13x session_state=Unbestimmt, 10x circuit_open
-- after.jsonl: rohes Pi-JSON-Modus-Transkript, 0/5 tool_execution_start,
-  3x session_state=Unbestimmt, 20x circuit_open, assistant_ok=False
-- Assistant-Antwort (beide Laeufe): stopReason="error",
-  errorMessage="Browser-Inference fehlgeschlagen: session_state=Unbestimmt",
-  content=[] - also keine verwertbare Antwort
-- 5 aufeinanderfolgende Werkzeugturns: NICHT erreicht (0/5 in beiden Laeufen)
+- before.jsonl: rohes Pi-JSON-Modus-Transkript, 0/5 tool_execution_start,
+  13x session_state=Unbestimmt, 10x circuit_open (deterministischer Block).
+- after.jsonl (976abd3, GRUEN): Textturn assistant `PI_BRIDGE_OK`, 6 Tool-Starts,
+  alle fuenf Nonces isError=false, Schlussantwort mit allen fuenf Markern,
+  0 Session-/Circuit-Fehler, 0 Suspect-Patterns.
+- after-negative-intermittent.jsonl (976abd3, NEGATIV): gleicher Binary, Textturn
+  `PI_BRIDGE_OK`, aber Tool-Turn stop nach call_1 mit „Rückgabewert fehlt":
+  1/5 Tool-Starts, 4 fehlende Marker. Exakt das T-961-Ursprungssymptom.
 - Account-state check: DURCHGEFUEHRT (nicht "not accessible"). chatgpt:
-  login_state="unknown (old)", profile_exists=true, last_done_run leer,
-  kein erfolgreicher Run -> Anmeldung NICHT BESTAETIGT. Der Agent hat keine
-  Zugangsdaten und keine Profildateien gelesen; der Status wurde ausschliesslich
-  ueber die Bridge-API abgefragt.
-- Circuit Breaker: oeffnete in beiden Laeufen erneut (900 s) nach wiederholten
-  session_state=Unbestimmt-Fehlschlaegen.
+  login_state="unknown (old)", profile_exists=true, last_done_run leer.
+  Der healthe API-Check ist veraltet; die echte Anmeldung ist jedoch durch
+  die erfolgreichen Bridge-Completions und den DOM-/Profil-Button-Befund
+  (`diagnose`: Ready, logged_in=true) bestaetigt. Kein Agent hat Zugangsdaten
+  oder Profildateien gelesen; der Status wurde ueber Bridge-API, WebView/DOM
+  und Process-only-Tokens abgefragt.
+- Circuit Breaker: im gruenen Lauf keine Oeffnung (0 circuit errors).
 
-Status: NICHT ABGENOMMEN / BLOCKED. Der Live-Lauf schlaegt auch nach dem Fix fehl;
-die Anmeldung des chatgpt-Browsers ist nicht bestaetigt. T-961 bleibt `free`.
-Eine Rezertifizierung erfordert eine Anmeldung durch den Eigentuemer (Agenten
-tippen keine Zugangsdaten und lesen keine Profile).
+Status: NICHT ABGENOMMEN / INTERMITTIEREND. Der Live-Lauf schafft den gruenen
+Fall, reproduziert aber mit demselben Binary kurz zuvor das Ursprungssymptom.
+Die Ursache der Intermittenz ist ungeklaert; T-961 bleibt `free`. Eine Abnahme
+erfordert stabile, reproduzierbare gruene Laeufe und die Freigabe des Owners.
+Kein Tag/Release ohne vollstaendige Abnahme (G-009 bleibt offen).

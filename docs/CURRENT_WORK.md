@@ -1,5 +1,42 @@
 # Current Work
 
+## 2026-11-20 — T-961: drei Blocker behoben, gruener Lauf, aber intermittierend — NICHT abgenommen
+
+- **Branch/PRs (alle gemergt):** PR #82 `901e8e1` (Selektor-Drift `selectors/chatgpt.json`),
+  PR #83 `5355e18` (Inference-Envelope toleriert Text vor `WEBAGENT_INFERENCE/1`),
+  PR #84 `976abd3` (Login-Vorabpruefe weich: nur `Error`/`Cloudflare` hart,
+  `Unbestimmt`/`LoginRequired` entscheidet die echte Antwort). Lokal `master`
+  = `976abd3`, fast-forward mit `origin/master`. CI aller drei PRs gruen; lokal
+  `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test --lib` (1465 passed) gruen.
+- **Live-Diagnose (Port 8788, frischer Prozess-Token, keine Zugangsdaten/Profile gelesen):**
+  drei deterministische Blocker gefunden und behoben:
+  1. chatgpt-DOM hatte `data-message-author-role` entfernt -> Antwort im DOM
+     sichtbar, aber `probe_generation` sah 0 Antworten -> `timeout_no_message`,
+     Bridge 502. Neue stabile Anker (`data-dil-response`, `data-response-body`,
+     `data-markdown-text-style='assistant-message'`, ...).
+  2. chatgpt gab einen gueltigen Tool-Call mit `Nur Text\n` davor aus ->
+     `strip_prefix` verwarf ihn, Pi sah nur Text, 0 Tool-Starts.
+  3. `session_state=Unbestimmt` (False Positive) blockierte den Prompt trotz
+     funktionierender Sitzung.
+- **Echter gruener Lauf** (`docs/proofs/T-961/after.jsonl`, 51.529 B, SHA256
+  `71FD0429...975C8977`): Textturn `PI_BRIDGE_OK` (`assistant_ok=True`), 6
+  Tool-Starts, alle fuenf Nonces `isError=false`, Schlussantwort mit allen
+  fuenf Markern, 0 Session-/Circuit-Fehler, 0 Suspect-Patterns. Harness-Gates
+  (`toolStarts -lt 5`, fehlende Marker) waren unveraendert aktiv; Secret-Scan 0.
+- **ABER nicht abgenommen:** `after-negative-intermittent.jsonl` (27.075 B),
+  Minuten vorher mit **exakt demselben Binary** `976abd3`, reproduziert das
+  Ursprungssymptom: call_1 erfolgreich (`isError=false`), dann *„Der
+  Rückgabewert von nonce-1.txt fehlt..."*, 1/5 Tool-Starts. Ein einzelner
+  gruener Lauf beweist bei nachweislich intermittierendem Verhalten keine
+  geheilte Ursache. **T-961 bleibt `free`**, kein PASS, kein `done`.
+- **Offen:** Intermittenz eingrenzen (Tool-Ergebnis-Rahmung in
+  `conversation_prompt` variieren; Konto-Memory nur durch Eigentuemer
+  einsehbar), dann mehrere stabile gruene Laeufe fordern. G-008 bleibt offen;
+  G-009 (Tag/Release) bleibt offen. Belege: `docs/proofs/T-961/analysis.md`,
+  `environment.txt`, `README.md`, `after-summary.txt`,
+  `after-negative-intermittent-summary.txt`.
+
 ## 2026-11-20 — G-006 abgeschlossen: echte T-961-Belege (negativ)
 
 - **Rohe Transkripte jetzt vorhanden:** `docs/proofs/T-961/before.jsonl` (29.021 B)
