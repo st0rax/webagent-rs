@@ -1,3 +1,5 @@
+**Referenz.** Code-/Mock-DOM-Beleg zu T-949, kein Betrieb und kein Live-Nachweis. Operativer Arbeitsstand: `docs/CURRENT_WORK.md`.
+
 # T-949 — Messung: Zustimmungs-Texte werden vom Dialog-Schliesser nicht geklickt
 
 **Art des Belegs:** Code-/Mock-DOM-Test. Es wurde **kein** Live-Dialog mit einem Anbieter
