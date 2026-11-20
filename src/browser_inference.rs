@@ -9,6 +9,12 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
+
+/// T-961: Neutral availability rule for client tools. Earlier wording that
+/// talked about "provider bridges" triggered meta replies on other brains, so
+/// this states only the observable session contract: tools stay callable and
+/// a previous result does not exhaust them. No claim about browser internals.
+const TOOL_AVAILABILITY_TEXT: &str = "Die hier aufgefuehrten Werkzeuge sind in dieser Sitzung aktiv und ausfuehrbar. Ein bereits geliefertes Werkzeugergebnis bedeutet nicht, dass das Werkzeug aufgebraucht oder nicht mehr verfuegbar ist; wenn die Aufgabe weitere Aufrufe verlangt, rufe das passende Werkzeug erneut auf.";
 // Browser chat UIs are substantially less tolerant of a giant tool prompt
 // than their HTTP APIs. Keep the serialized schema block bounded while still
 // retaining every tool name and its argument shape for the model.
@@ -243,7 +249,7 @@ fn prompt_with_tools(
     };
 
     Ok(format!(
-        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
+        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{TOOL_AVAILABILITY_TEXT} {choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
     ))
 }
 
@@ -842,6 +848,28 @@ mod tests {
         assert!(!prompt.contains("gehoeren dem aufrufenden API-Client"));
         assert!(!prompt.contains("niemals, sie seien in dieser Umgebung nicht verfuegbar"));
         assert!(prompt.contains("WEBAGENT_INFERENCE/1"));
+    }
+
+    #[test]
+    fn tool_availability_is_stated_without_provider_meta() {
+        // T-961: ChatGPT sometimes claimed after successful calls that the
+        // tool was no longer available in the session. State the observable
+        // contract neutrally, without the earlier provider/meta wording that
+        // caused meta replies on other brains.
+        let prompt = prompt_with_tools(
+            "Lies die Dateien nonce-1.txt bis nonce-5.txt.",
+            &[read_tool()],
+            &BrowserToolChoice::Auto,
+        )
+        .unwrap();
+
+        assert!(prompt.contains("sind in dieser Sitzung aktiv und ausfuehrbar"));
+        assert!(
+            prompt.contains("nicht, dass das Werkzeug aufgebraucht oder nicht mehr verfuegbar ist")
+        );
+        assert!(prompt.contains("weitere Aufrufe verlangt"));
+        assert!(!prompt.contains("Provider-Bridge"));
+        assert!(!prompt.contains("gehoeren dem aufrufenden API-Client"));
     }
 
     #[test]
