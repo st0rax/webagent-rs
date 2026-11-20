@@ -525,6 +525,32 @@ fn continuation_labels_client_tool_calls_and_results_as_structured_history() {
 }
 
 #[test]
+fn current_tool_result_gets_explicit_label_and_call_id() {
+    // T-961: Pi sendet das Werkzeugergebnis als LETZTE Nachricht (Rolle "tool").
+    // Diese lief bisher als nackter Text unter "Aktuelle Nachricht an dich",
+    // waehrend historische Tool-Ergebnisse [Client-Werkzeug-Ergebnis] +
+    // [tool_call_id] bekamen. Das Modell musste aus dem Rohtext erraten, dass
+    // es sich um die Ausfuehrungsdaten des eigenen Aufrufs handelt, und
+    // behauptete gelegentlich "der Rueckgabewert fehlt" (Intermittenz).
+    let request: OpenAiRequest = serde_json::from_value(json!({
+        "model":"chatgpt", "messages":[
+            {"role":"system","content":"Du bist ein Coding-Agent."},
+            {"role":"user","content":"Lies nonce-1.txt und dann nonce-2.txt."},
+            {"role":"assistant","content":null,"tool_calls":[
+                {"id":"call_1","type":"function","function":{"name":"read","arguments":"{\"path\":\"nonce-1.txt\"}"}}
+            ]},
+            {"role":"tool","tool_call_id":"call_1","content":"PI_TOOL_1_abc"}
+        ]
+    }))
+    .unwrap();
+
+    let prompt = openai_prompt(&request).unwrap().text;
+    assert!(prompt.contains("[Client-Werkzeug-Ergebnis]"));
+    assert!(prompt.contains("[tool_call_id: call_1]"));
+    assert!(prompt.contains("PI_TOOL_1_abc"));
+}
+
+#[test]
 fn browser_tool_call_maps_to_openai_response() {
     let answer = crate::browser_inference::BrowserInferenceResponse {
         text: None,

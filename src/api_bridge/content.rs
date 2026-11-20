@@ -438,6 +438,23 @@ pub(crate) fn conversation_prompt(
         });
     }
 
+    // T-961: Das aktuelle Werkzeugergebnis kam bisher als nackter Text unter
+    // "Aktuelle Nachricht an dich" an, waehrend historische Ergebnisse im
+    // Verlauf explizit als Ausfuehrungsdaten gerahmt sind. Ohne diese Markierung
+    // erkannte das Modell den Rueckgabewert des eigenen Aufrufs nicht
+    // zuverlaessig und behauptete gelegentlich, er fehle. Gleiche Rahmenung wie
+    // im Verlauf: Label + tool_call_id direkt vor dem Inhalt.
+    let current_text = if current.role == "tool" {
+        let call_id = current
+            .tool_call_id
+            .as_deref()
+            .filter(|id| !id.trim().is_empty())
+            .unwrap_or("unbekannt");
+        format!("[Client-Werkzeug-Ergebnis] [tool_call_id: {call_id}]\n{current_text}")
+    } else {
+        current_text
+    };
+
     // Zweite Person statt Protokoll zwischen Dritten: Unter "[brain]" hielten
     // Modelle ihre eigenen Beitraege fuer die eines anderen und antworteten
     // als Berater statt Werkzeuge aufzurufen (T-951).
