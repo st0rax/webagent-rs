@@ -159,3 +159,101 @@ T-964 was completed in PR #73 (merge commit `76ba3b30`). The central newcomer gu
 **Documentation language policy:** English is the default for maintained documentation, task titles, agent instructions, issues, and pull requests. Preserve dated historical reports and evidence when rewriting them would harm traceability; add an English summary when useful. User-facing output language is a separate product/runtime decision.
 
 T-965 scope: translate the README and newcomer guide, record this policy in maintained entry points, and keep the taskboard mirror and current handover consistent. No Rust code, runtime, login-profile, or release changes.
+
+## Machine-readable mirror (generated from docs/TASKBOARD.json)
+
+<!-- TASKBOARD-MIRROR-BEGIN -->
+| ID | Status |
+|---|---|
+| T-001 | done |
+| T-101 | done |
+| T-102 | done |
+| T-103 | done |
+| T-104 | done |
+| T-201 | done |
+| T-202 | done |
+| T-203 | done |
+| T-301 | done |
+| T-302 | done |
+| T-401 | done |
+| T-402 | done |
+| T-403 | done |
+| T-404 | done |
+| T-501 | done |
+| T-601 | done |
+| T-602 | done |
+| T-701 | done |
+| T-801 | done |
+| T-802 | done |
+| T-803 | done |
+| T-804 | done |
+| T-805 | done |
+| T-806 | done |
+| T-807 | done |
+| T-808 | done |
+| T-901 | done |
+| T-902 | done |
+| T-903 | done |
+| T-904 | done |
+| T-905 | done |
+| T-906 | done |
+| T-907 | done |
+| T-908 | done |
+| T-909 | done |
+| T-910 | done |
+| T-911 | done |
+| T-912 | done |
+| T-913 | done |
+| T-914 | free |
+| T-915 | done |
+| T-916 | done |
+| T-917 | done |
+| T-918 | done |
+| T-919 | done |
+| T-920 | done |
+| T-921 | done |
+| T-922 | done |
+| T-923 | done |
+| T-924 | done |
+| T-925 | done |
+| T-926 | free |
+| T-927 | free |
+| T-928 | free |
+| T-929 | done |
+| T-930 | done |
+| T-931 | done |
+| T-932 | done |
+| T-933 | done |
+| T-934 | done |
+| T-935 | done |
+| T-936 | done |
+| T-937 | done |
+| T-938 | done |
+| T-939 | done |
+| T-940 | free |
+| T-941 | done |
+| T-942 | free |
+| T-943 | done |
+| T-944 | free |
+| T-945 | done |
+| T-946 | free |
+| T-947 | done |
+| T-948 | free |
+| T-949 | free |
+| T-950 | free |
+| T-951 | done |
+| T-952 | done |
+| T-953 | free |
+| T-954 | done |
+| T-955 | done |
+| T-956 | done |
+| T-957 | free |
+| T-958 | done |
+| T-959 | done |
+| T-960 | done |
+| T-961 | free |
+| T-962 | done |
+| T-963 | done |
+| T-964 | done |
+| T-965 | done |
+<!-- TASKBOARD-MIRROR-END -->

@@ -525,14 +525,27 @@ mod tests {
     fn taskboard_invarianten_halten() {
         const CUTOFF: &str = "2026-09-14";
         const PREFIXES: &[&str] = &["feature", "fix", "docs", "chore", "refactor", "test"];
+        // T-966: Ein 1-Task-Stub hatte die vollstaendige Tafel ersetzt, ohne
+        // dass eine bestehende Invariante ihn erkannt hat. Mindestumfang und
+        // Spiegelabgleich machen genau diesen Bruch im normalen Test sichtbar.
+        const MIN_TASKS: usize = 91;
+        const MIRROR_BEGIN: &str = "<!-- TASKBOARD-MIRROR-BEGIN -->";
+        const MIRROR_END: &str = "<!-- TASKBOARD-MIRROR-END -->";
 
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/TASKBOARD.json");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = root.join("docs/TASKBOARD.json");
         let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         let tasks = value["tasks"]
             .as_array()
             .expect("tasks muss eine Liste sein");
+        assert!(
+            tasks.len() >= MIN_TASKS,
+            "Taskboard unvollstaendig: {} statt mindestens {MIN_TASKS} Tasks",
+            tasks.len()
+        );
 
         let mut ids = std::collections::BTreeSet::new();
+        let mut statuses = std::collections::BTreeMap::new();
         let mut claimed_branches = std::collections::BTreeMap::new();
 
         for task in tasks {
@@ -541,6 +554,7 @@ mod tests {
             assert!(ids.insert(id.clone()), "doppelte id: {id}");
 
             let status = task["status"].as_str().unwrap_or_default();
+            statuses.insert(id.clone(), status.to_string());
             let field = |key: &str| {
                 task[key]
                     .as_str()
@@ -589,5 +603,36 @@ mod tests {
                 other => panic!("{id}: unbekannter Status '{other}'"),
             }
         }
+
+        // `docs/TASKBOARD.md` ist ein Spiegel, keine zweite Wahrheit: Er muss
+        // exakt dieselben IDs und Statuswerte enthalten wie die JSON-Datei.
+        let mirror = fs::read_to_string(root.join("docs/TASKBOARD.md")).unwrap();
+        let start = mirror
+            .find(MIRROR_BEGIN)
+            .unwrap_or_else(|| panic!("TASKBOARD.md ohne {MIRROR_BEGIN}"));
+        let body = &mirror[start + MIRROR_BEGIN.len()..];
+        let end = body
+            .find(MIRROR_END)
+            .unwrap_or_else(|| panic!("TASKBOARD.md ohne {MIRROR_END}"));
+        let mut mirror_statuses = std::collections::BTreeMap::new();
+        for line in body[..end].lines() {
+            let line = line.trim();
+            if !line.starts_with("| T-") {
+                continue;
+            }
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            assert!(cells.len() >= 4, "Spiegelzeile ohne Status: {line}");
+            assert!(
+                mirror_statuses
+                    .insert(cells[1].to_string(), cells[2].to_string())
+                    .is_none(),
+                "doppelter Spieleintrag: {}",
+                cells[1]
+            );
+        }
+        assert_eq!(
+            mirror_statuses, statuses,
+            "docs/TASKBOARD.md ist nicht mit docs/TASKBOARD.json synchron"
+        );
     }
 }

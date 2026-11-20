@@ -146,10 +146,7 @@ pub(crate) fn is_valid_resume_conversation_ref(reference: &str) -> bool {
     } else {
         hostport.split(':').next().unwrap_or(hostport)
     };
-    if host.is_empty() || is_blocked_resume_host(host) {
-        return false;
-    }
-    true
+    !(host.is_empty() || is_blocked_resume_host(host))
 }
 
 impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
