@@ -182,11 +182,104 @@ pub(crate) fn click_first(driver: &mut dyn PageDriver, sel: &Selectors, key: &st
     eval_bool(driver, &expr)
 }
 
+/// Beschriftungen, die eine Zustimmung zu Bedingungen bedeuten. Ein
+/// automatischer Klick darauf waere eine rechtliche Bindung (AGENTS.md,
+/// Direktive 6). Die Liste ist die einzige Quelle fuer die Entscheidung in
+/// `is_agreement_label` und den Test-Spiegel in `dismiss_consent_tests`.
+///
+/// Nicht enthalten: `ok` allein (mistral hat ein harmloses `button:has-text('OK')`)
+/// und `necessary`/`only necessary` — die Nur-notwendige-Cookies-Auswahl ist
+/// ausdruecklich erlaubt (T-949 non-goal).
+const AGREEMENT_LABEL_WORDS: &[&str] = &[
+    "accept",
+    "agree",
+    "i agree",
+    "agree and continue",
+    "akzeptier",
+    "zustimm",
+    "stimm",
+    "einverstanden",
+];
+
+/// Ausnahmen, die vor der Zustimmungs-Pruefung greifen: Cookie-Ablehnung und
+/// Nur-notwendige-Cookies sind datensparsam und ausdruecklich erlaubt
+/// (T-949 non-goal). Enthaelt der Text z.B. `Accept only necessary cookies`
+/// oder `Continue without accepting`, ist er KEINE Zustimmung zu Bedingungen.
+const NON_AGREEMENT_MARKERS: &[&str] = &[
+    "without accepting",
+    "ohne zu akzeptieren",
+    "necessary",
+    "notwendig",
+    "erforderlich",
+    "essential",
+    "reject",
+    "ablehnen",
+    "decline",
+    "no thanks",
+    "not now",
+];
+
+/// Erkennt Zustimmungs-Beschriftungen anhand der gemeinsamen Wortlisten.
+fn is_agreement_label(label: &str) -> bool {
+    let lowered = label.trim().to_lowercase();
+    if NON_AGREEMENT_MARKERS
+        .iter()
+        .any(|marker| lowered.contains(*marker))
+    {
+        return false;
+    }
+    AGREEMENT_LABEL_WORDS
+        .iter()
+        .any(|word| lowered.contains(*word))
+}
+
+/// Rumpf der Beschriftungslese: geht vom Treffer zum klickbaren Vorfahren
+/// (dasselbe Muster wie beim Zustandsauslesen in `js.rs`) und liefert dessen
+/// Text. Leer, wenn kein Treffer existiert.
+const DIALOG_LABEL_BODY: &str = "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button]')||el;return ((t.innerText||t.textContent||'')+'').trim();}return '';";
+
+/// Rumpf des Klicks auf den ersten Treffer der Dialog-Schliesser-Liste.
+const DIALOG_CLICK_BODY: &str = "var el=Q(S[i]);if(el){el.click();return true;}";
+
+/// Baut das Lese- und das Klick-Expression fuer `dialog_dismiss_button` aus
+/// derselben Selektorliste, damit beide auf dasselbe Element wirken.
+fn dialog_dismiss_exprs(sels: &[String]) -> (String, String) {
+    let list = js::js_selectors(sels);
+    (
+        js::js_scan(&list, DIALOG_LABEL_BODY, "\"\""),
+        js::js_scan(&list, DIALOG_CLICK_BODY, "false"),
+    )
+}
+
+/// Klickt einen konfigurierten Dialog-Schliesser NUR, wenn die Beschriftung
+/// des Treffers keine Zustimmung enthaelt (T-949). Die Beschriftung wird vor
+/// dem Klick gelesen; ist sie nicht lesbar, wird im Zweifel nicht geklickt.
+fn click_dialog_dismiss_guarded(driver: &mut dyn PageDriver, sel: &Selectors) -> bool {
+    let sels = sel.list("dialog_dismiss_button");
+    if sels.is_empty() {
+        return false;
+    }
+    let (label_expr, click_expr) = dialog_dismiss_exprs(&sels);
+    let label = match eval(driver, &label_expr)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+    {
+        Some(label) => label,
+        None => return false,
+    };
+    if is_agreement_label(&label) {
+        return false;
+    }
+    eval_bool(driver, &click_expr)
+}
+
 /// Schliesst Consent- und Werbe-Dialoge; zusätzliche Signale kommen aus dem Profil.
 pub(crate) fn dismiss_consent(driver: &mut dyn PageDriver, sel: &Selectors) -> bool {
+    // Cookie-Ablehnung / Nur-notwendige-Cookies bleiben unangetastet (non-goal).
     let mut dismissed = click_first(driver, sel, "consent_reject_button");
-    // Konfigurierte Dialog-Schliesser (bisher tote Config — nie aufgerufen).
-    dismissed |= click_first(driver, sel, "dialog_dismiss_button");
+    // Konfigurierte Dialog-Schliesser: mit Zustimmungs-Guard, weil mistral hier
+    // offene `has-text('Continue')`/`has-text('OK')`-Selektoren trägt (T-949).
+    dismissed |= click_dialog_dismiss_guarded(driver, sel);
     // Generischer Werbe-/Ankuendigungs-Modal-Schliesser. mistral warf z.B. ein
     // "Mistral Vibe CLI"-Announcement ueber den Composer, das jede Eingabe
     // blockierte — der Grund fuer konsistente mistral-Timeouts. Nur Buttons
@@ -195,6 +288,94 @@ pub(crate) fn dismiss_consent(driver: &mut dyn PageDriver, sel: &Selectors) -> b
     dismissed |= click_first(driver, sel, "notice_close_button");
     dismissed |= click_first(driver, sel, "profile_block_button");
     dismissed
+}
+
+#[cfg(test)]
+mod dismiss_consent_tests {
+    use super::*;
+    use crate::mock_page::{MockPageDriver, MockPageState};
+    use serde_json::json;
+
+    fn dialog_sel() -> Selectors {
+        Selectors::from_value(json!({
+            "dialog_dismiss_button": ["div[role='dialog'] button:has-text('OK')"]
+        }))
+    }
+
+    fn exprs() -> (String, String) {
+        let sel = dialog_sel();
+        dialog_dismiss_exprs(&sel.list("dialog_dismiss_button"))
+    }
+
+    #[test]
+    fn zustimmungsbeschriftungen_werden_erkannt() {
+        for label in [
+            "Accept and Continue",
+            "OK, I agree",
+            "Akzeptieren",
+            "Zustimmen",
+            "Ich bin einverstanden",
+            "I accept the terms",
+        ] {
+            assert!(is_agreement_label(label), "Label: {label}");
+        }
+    }
+
+    #[test]
+    fn harmlose_beschriftungen_bleiben_erlaubt() {
+        // Hinweis: `OK` allein und Nur-notwendige-Cookies duerfen nicht blockiert werden.
+        for label in [
+            "Got it",
+            "Close",
+            "OK",
+            "Continue on web",
+            "Accept only necessary cookies",
+            "Nur notwendige Cookies",
+            "Alle unbedingt erforderlichen Cookies akzeptieren",
+            "Continue without accepting",
+            "Reject non-essential cookies",
+        ] {
+            assert!(!is_agreement_label(label), "Label: {label}");
+        }
+    }
+
+    /// Mock-DOM: der Treffer im offenen Dialog traegt die gegebene
+    /// Beschriftung; der Klick-Expression ist im Mock `true`, d.h. er wuerde
+    /// zuklicken, wenn `dismiss_consent` ihn aufriefe.
+    fn dismisses(label: &str) -> bool {
+        let (label_expr, click_expr) = exprs();
+        let mut driver = MockPageDriver::new(
+            MockPageState::new()
+                .on_eval(&label_expr, json!(label))
+                .on_eval(&click_expr, json!(true)),
+        );
+        dismiss_consent(&mut driver, &dialog_sel())
+    }
+
+    #[test]
+    fn mock_dom_klickt_accept_and_continue_nicht() {
+        assert!(!dismisses("Accept and Continue"));
+    }
+
+    #[test]
+    fn mock_dom_klickt_ok_i_agree_nicht() {
+        assert!(!dismisses("OK, I agree"));
+    }
+
+    #[test]
+    fn mock_dom_klickt_got_it_und_close_weiterhin() {
+        assert!(dismisses("Got it"));
+        assert!(dismisses("Close"));
+    }
+
+    #[test]
+    fn nicht_lesbare_beschriftung_klickt_nicht() {
+        // Fail-closed: ohne Beschriftungs-Mock bleibt der Klick aus.
+        let (_label_expr, click_expr) = exprs();
+        let mut driver =
+            MockPageDriver::new(MockPageState::new().on_eval(&click_expr, json!(true)));
+        assert!(!dismiss_consent(&mut driver, &dialog_sel()));
+    }
 }
 
 /// Schliesst Werbe-/Ankuendigungs-Modals: klickt einen „Spaeter/Later/Skip/Got

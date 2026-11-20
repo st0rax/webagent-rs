@@ -1613,10 +1613,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Dialog-Schliesser fuer mistral koennte Nutzungsbedingungen bestaetigen",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-949-consent-guard",
+      "claimed_at": "2026-11-20",
       "depends_on": [],
       "scope": [
         "selectors/mistral.json",
@@ -1630,8 +1630,9 @@
         "Cookie-Ablehnung und Nur-notwendige-Cookies nicht einschraenken; das ist die datensparsame Wahl.",
         "Keinen Weg bauen, Zustimmungsdialoge automatisch zu bestaetigen."
       ],
-      "proof_path": "docs/proofs/T-949/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "proof_path": "docs/proofs/T-949/measurement.md",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-11-20"
     },
     {
       "id": "T-950",
