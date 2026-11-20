@@ -1,8 +1,18 @@
 # Current Work
 
+## 2026-11-20 — Zielstack G-005..G-007 (autonomer Fortschritt)
+
+- **G-005 done:** PR [#80](https://github.com/st0rax/webagent-rs/pull/80) wurde als Squash-Commit `493e9a613d72dcf319151b813ed7ffc84662c657` in `master` gemergt; lokaler `master` ist auf `origin/master` fast-forwarded und war bei Beginn dieser Scheibe sauber.
+- **G-006 in_progress:** Echte T-961-Live-Messung wurde vorbereitet und der Vor-Fix-Lauf ausgefuehrt. Frisch gebaute Binaries: `master` (`493e9a6`, `webagent 0.11.3`) und isolierter Worktree `dd78128` (`webagent 0.11.3`). Pi ist installiert als **1.5.2** (nicht mehr die im alten Plan genannte 0.84.4). Die Bridge startet auf `127.0.0.1:8788` mit frischem, nicht gespeichertem Prozess-Token; Port 8787 bleibt bewusst unberuehrt (dort laeuft ein fremder Free-Router-Prozess).
+  - Vor-Fix-Rohtranscript: `C:\Users\storax\AppData\Local\Temp\webagent-t961-harness\before.jsonl` (29.021 Bytes, frei von Token-/Cookie-/Key-Mustern). Beide Pi-Turns endeten mit `502: Browser-Inference fehlgeschlagen: session_state=Unbestimmt`; `tool_execution_start` = 0/5. Der Circuit Breaker fuer `chatgpt` waren daraufhin 900 s offen.
+  - Wichtiger Befund: Das Repo-Skript `scripts/test-pi-provider.ps1` erkennt `PI_BRIDGE_OK` im echoenden User-Prompt und meldet den Textturn daher falsch als erfolgreich. Die temporaere Harness-Kopie prueft jetzt nur noch die Assistant-Nachricht. Live-Eingaben (Prompts, Modell, Port) blieben unveraendert.
+  - Der Nach-Fix-Lauf ist nach Ablauf des Breakers als Hintergrundjob gestartet und noch nicht abgeschlossen. T-961 bleibt bis zur Pruefung und Committing der echten Belege `free`.
+- **G-007 done:** PR [#69](https://github.com/st0rax/webagent-rs/pull/69) wurde am 20.11.2026 19:32 UTC bewusst als **ueberholt geschlossen**, nicht gemergt. Sein Code (Systemkontext, `content:null` + `tool_calls`, Tool-Fortsetzung) liegt bereits via PR #78/`864e346` und PR #80/`493e9a6` in `master`; gegenueber `master` verblieben nur T-934-Referenzbelege. Die offen gebliebenen Live-Gates auf dem veralteten Head-SHA `f361402` wurden nicht fabriziert.
+- **Offen:** G-006 Nach-Fix-Ergebnis, G-008 Triagierung der restlichen 14 freien Tasks, G-009 Tag/Release erst nach vollstaendiger Abnahme und Freigabe.
+
 ## 2026-11-20 — T-966: Acceptance integrity (Arbeitsstand)
 
-- **Status:** Branch `fix/T-966-acceptance-integrity` (abgezweigt von `master` bei `eaac398`) ist gepusht; PR [#80](https://github.com/st0rax/webagent-rs/pull/80) ist offen und nicht gemergt. Zwei Commits: `cac7c29` (Taskboard/Gates), `b0628a2` (Belege/Doku).
+- **Status (historisch zum Zeitpunkt der Arbeit):** Branch `fix/T-966-acceptance-integrity` (abgezweigt von `master` bei `eaac398`) wurde gepusht; PR [#80](https://github.com/st0rax/webagent-rs/pull/80) war zu diesem Zeitpunkt offen. Zwei Commits: `cac7c29` (Taskboard/Gates), `b0628a2` (Belege/Doku). **Inzwischen gemergt** als `493e9a6`, siehe Abschnitt oben.
 - **Ausgangslage:** `GOALS.md` behauptete „Projekt abgeschlossen“ und G-002 done, obwohl `docs/TASKBOARD.json` auf einen 1-Task-Stub reduziert war, `docs/proofs/T-961/environment.txt` `BLOCKED_BY_MISSING_EVIDENCE` meldet und PR #69 offene Live-Belege hat.
 - **Korrigiert:**
   - Vollständiges Taskboard aus `dd78128` wiederhergestellt (91 Tasks, 77 done, 14 free); T-961 bleibt `free`. Kein History-Rewrite, kein Force-Push.
@@ -21,7 +31,7 @@
 - **GitHub-CI auf PR #80:** alle Checks grün in beiden Läufen (Push + PR-Event): `build & test`, `build & test (Windows, volle Features)`, `build (Linux, WebView via WebKitGTK)`, `aarch64`.
 - **PR #69** ([Kommentar](https://github.com/st0rax/webagent-rs/pull/69#issuecomment-7048051133)): bewusst nicht gemergt, weil der PR selbst Live-Pi-Re-run und generisches curl/SDK Chat+Tools als `pending` führt.
 - **Offen / nicht übernommen:** Echte Live-Rezertifizierung (Eigentümer muss anwesend sein; ein Agent liest keine Zugangsdaten oder Profile), PR #69 mit `pending`-Live-Belegen, kein neuer Tag/Release ohne Freigabe.
-- **Nächste Aktion:** Integrationsentscheidung zu PR #80 durch den Eigentümer. T-961 bleibt `free`, bis echte rohe Pi-Transkripte vor/nach dem Fix und eine Kontozustandsprüfung vorliegen; danach darf der Eigentümer Tag/Release auslösen.
+- **Nächste Aktion (damals):** Integrationsentscheidung zu PR #80 durch den Eigentümer. PR #80 ist inzwischen gemergt; T-961 bleibt `free`, bis echte rohe Pi-Transkripte vor/nach dem Fix und eine Kontozustandsprüfung vorliegen. Tag/Release erst nach vollstaendiger Abnahme und Freigabe.
 
 ## 2026-10-15 — T-965: English-first maintained documentation
 
