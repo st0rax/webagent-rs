@@ -80,15 +80,19 @@ Ursache liegt im Browser-Inferenzpfad bzw. im Modellverhalten und ist
 1. **Nicht abnehmen.** 3/4 gruen ist besser als vorher, aber ein Negativlauf mit
    demselben Binary verbietet `done`. Die DoD verlangt eine eingegrenzte Ursache
    und eine belastbare Transkriptfolge.
-2. **Konto-Zustand ist der naechste, nicht-agentseitige Schritt.** Der DoD nennt
-   ausdruecklich die moeglichen gespeicherten Erinnerungen aus Sitzungen, in
-   denen chatgpt Werkzeuge verneinte. Dies kann nur der Eigentuemer in seinem
-   ChatGPT-Konto einsehen (Einstellungen → Personalisierung → Erinnerungen/
-   Speicher). Kein Agent liest Profile, Cookies oder Zugangsdaten. Der
-   anmeldeseitige Zustand ist geprueft (`diagnose`: Ready, logged_in=true);
-   der Inhalt des Konto-Speichers nicht.
+2. **Konto-Zustand ist geprueft (20.11.2026, read-only WebView-DOM).** Die
+   Personalisierungsseite der angemeldeten WebView zeigt den aktivierten
+   Erinnerungs-Schalter und den Abschnitt „Benutzerdefinierte Anweisungen".
+   Die „Erinnerungszusammenfassung" wurde geoeffnet; nach 30 s war der
+   Inhalt aktuell („Gerade aktualisiert"/„Überblick") und enthielt **keinen**
+   Eintrag, der Werkzeugzugriff verneint. Persönliche Inhalte sind nicht in
+   das Repository aufgenommen, keine Einstellungen geändert, keine Profile,
+   Cookies oder Zugangsdaten gelesen. Details: `account-state.md`. Die
+   Intermittenz wird dadurch nicht erklaert.
 3. Danach erneut mehrere aufeinanderfolgende gruene Laeufe mit dem dann
    unveraenderten Binary fordern und hier ablegen; erst bei stabilen Laeufen
-   T-961 auf `done` setzen.
+   T-961 auf `done` setzen. Ein Kandidat mit neutraler Werkzeug-
+   Verfuegbarkeitsregel (`0039cd4`, Branch `fix/T-961-tool-availability`)
+   wird dafuer gerade live gemessen; das Ergebnis ist noch nicht eingegangen.
 4. Bis dahin: `Status: NICHT ABGENOMMEN / INTERMITTIEREND`. Kein PASS, kein
    `done`, kein Tag/Release (G-009 bleibt offen).

@@ -1,5 +1,43 @@
 # Current Work
 
+## 2026-11-20 — T-961: Kontobefund + Kandidat mit neutraler Verfuegbarkeitsregel — weiter NICHT abgenommen
+
+- **PR #87 gemergt** (`dfebc47`, Squash, CI komplett gruen), `master` lokal und remote
+  bei `e4386f0`. Er dokumentiert ehrlich, dass der Rahmungsfix die Intermittenz
+  nicht beseitigt hat.
+- **Kontozustand autonom geprueft** (DoD-Punkt, bisher als Eigentuemer-Auftrag
+  markiert): read-only DOM der angemeldeten ChatGPT-WebView auf
+  `/settings/personalisation` und im geoeffneten Dialog
+  „Erinnerungszusammenfassung". Erinnerung aktiv, Abschnitt
+  „Benutzerdefinierte Anweisungen" vorhanden, Zusammenfassung aktuell
+  („Gerade aktualisiert"/„Überblick"), **kein Eintrag, der Werkzeugzugriff
+  verneint**. Keine Einstellung geaendert, keine Zugangsdaten/Profile/Cookies
+  gelesen, temporaere Diagnose-Patches vollstaendig zurueckgerollt. Persönliche
+  Inhalte bewusst nicht committet. Beleg: `docs/proofs/T-961/account-state.md`.
+- **Modellwechsel nicht moeglich:** `webagent model --brain chatgpt` meldet
+  `aktuell ''` und `'model_menu' nicht anklickbar`; sichtbarer Modus lief in eine
+  Navigation timeout. Kein Menue- und kein Konto-Settings-Eingriff vorgenommen.
+- **Neuer Kandidat** auf Branch `fix/T-961-tool-availability`, Commit `0039cd4`
+  (gepusht, noch kein PR): `src/browser_inference.rs` ergaenzt neben dem Tool-
+  Schema eine neutrale Sitzungsregel — Werkzeuge sind aktiv und ausfuehrbar, ein
+  bereits geliefertes Ergebnis bedeutet nicht, dass das Werkzeug aufgebraucht
+  ist, weitere Aufrufe verwenden dasselbe Werkzeug. Bewusst **keine**
+  Provider-/Bridge-/Konto-Meta-Aussage (die alter Formulierung `2b576ed` erzeugte
+  auf anderen Brains Meta-Antworten). Red-Test
+  `tool_availability_is_stated_without_provider_meta`, `docs/API_BRIDGE.md`
+  dokumentiert die Regel. Gates gruen: `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (1467 passed).
+  Binary-SHA256 `8B902256...BBB6AA`.
+- **Live-Messung laeuft:** 8 Wiederholungen mit Prefix `avail` (Port 8788,
+  frische Prozess-Tokens, temporaere Harness-Kopie). Auswertung ausschliesslich
+  ueber die rohen Pi-Transkripte mit `verify-runs.ps1 avail 8`. Bei **einem**
+  Negativlauf bleibt der Kandidat ungemergt und T-961 `free`; auch bei 8/8 sind
+  weitere Laeufe und eine PR/CI-Entscheidung noetig, bevor von Stabilitaet die
+  Rede sein kann.
+- **Entscheidung jetzt:** kein PASS, kein `done`, kein Merge, kein Tag/Release.
+  G-009 bleibt offen. Naechster Schritt nach den Laeufen: Rohtranskripte und
+  Hashes unter `docs/proofs/T-961/` ablegen, danach PR und CI abwarten.
+
 ## 2026-11-20 — T-961: Rahmungsfix gemergt, Intermittenz bleibt — weiter NICHT abgenommen
 
 - **PR #86 gemergt** (`eaed3d1`, Squash, CI gruen, Branch geloescht). Ursache:

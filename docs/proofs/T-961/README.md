@@ -8,7 +8,7 @@ This directory holds the live evidence required by T-961. **This README is a tes
 
 Use the same ChatGPT account, selected model/effort, Pi version, bridge configuration, task prompt, and workspace layout for both runs. The script creates a fresh isolated temporary directory each time; do not reuse state between runs.
 
-1. Record the account's relevant personalization/memory state without changing settings. Record only the relevant state; redact unrelated personal data. If it cannot be inspected, write `not accessible` rather than assuming it is clean. Only the owner can inspect their account memory.
+1. Record the account's relevant personalization/memory state without changing settings. Record only the relevant state; redact unrelated personal data. If it cannot be inspected, write `not accessible` rather than assuming it is clean. A logged-in WebView DOM inspection is sufficient (see `account-state.md`); no profile, cookie, or credential file may be read.
 2. Start a bridge built from the parent revision before the fix (`dd78128e5d7ace05a7589e466d8c98206b663bcc`). With the current checkout, run `./scripts/test-pi-provider.ps1 -TranscriptPath docs/proofs/T-961/before.jsonl` (PowerShell: `./scripts/test-pi-provider.ps1 -TranscriptPath docs/proofs/T-961/before.jsonl`). This saves Pi's raw JSON-mode event stream; it is a baseline only if the failure reproduces or the result is explicitly analyzed.
 3. Start a bridge built from the fix revision and repeat with a fresh temporary workspace: `./scripts/test-pi-provider.ps1 -TranscriptPath docs/proofs/T-961/after.jsonl`.
 4. Review each transcript manually. For the fixed run, identify at least five consecutive tool cycles with assistant tool call, successful result, and continuation of the same task. The smoke script checks for at least five tool-start events and all five unique file markers, but that check alone is not the final acceptance proof.
@@ -24,6 +24,7 @@ Use the same ChatGPT account, selected model/effort, Pi version, bridge configur
 - `after-framing-green-{1,2,3}.jsonl` — green runs with the final `master` binary `eaed3d1`.
 - `after-framing-negative.jsonl` — same final binary, negative run (4/5, tool denied); decisive against acceptance.
 - `analysis.md` — concise comparison, root-cause evidence, turn range, and account-state check.
+- `account-state.md` — read-only WebView DOM finding: memory enabled, custom-instructions section present, no tool-denying entry; personal content redacted.
 - `environment.txt` — reproducibility metadata; no API keys, cookies, or other secrets.
 
 All `*.jsonl` files are byte-exact raw Pi streams (`.gitattributes` marks them `-text`); their SHA256 values are listed in `environment.txt`.
@@ -36,7 +37,7 @@ All `*.jsonl` files are byte-exact raw Pi streams (`.gitattributes` marks them `
 - [x] Four blockers diagnosed and fixed (selector drift, envelope prefix, login pre-check, current tool-result framing; PRs #82/#83/#84/#86).
 - [x] Fixed runs show at least five consecutive successful tool turns — **achieved repeatedly** (`after.jsonl`, `after-premerge-green-*`, `after-framing-green-*`).
 - [ ] **Stable / reproducible:** `after-framing-negative.jsonl` with the final binary `eaed3d1` still denies a tool after four successful calls. **Open**; root cause of the intermittency unclear.
-- [ ] **Account memory checked:** the owner must inspect ChatGPT personalization/memory; not accessible to an agent.
+- [x] **Account memory checked:** read-only WebView DOM inspection of personalization/memory; no entry denying tool access (`account-state.md`). Personal content redacted, no settings changed, no credentials/profiles read.
 - [ ] Evidence linked from the T-961 taskboard entry with a passing, stable result — **pending**: T-961 stays `free`, no tag/release.
 
 Do not fabricate transcripts or infer a live result from unit tests/CI.
