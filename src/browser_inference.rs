@@ -450,13 +450,48 @@ struct ToolEnvelopeCall {
     arguments: Value,
 }
 
+/// Findet den Maschinenumschlag auch dann, wenn das Modell davor Text
+/// geschrieben hat (real am 2026-11-20: ChatGPT antwortete
+/// `Nur Text\nWEBAGENT_INFERENCE/1\n{...}`). Der Marker muss am Zeilenanfang
+/// stehen — eine blosse Erwaehnung im Fliesstext ist KEIN Tool-Call. Ein
+/// Markdown-Codeblock-Abschluss wird entfernt, damit der JSON-Parser nicht
+/// an den drei Backticks hängen bleibt.
+fn envelope_payload(raw: &str) -> Option<&str> {
+    if let Some(rest) = raw.strip_prefix(TOOL_ENVELOPE) {
+        return Some(rest.trim());
+    }
+    let marker = format!("\n{TOOL_ENVELOPE}");
+    let mut from = 0usize;
+    while let Some(rel) = raw[from..].find(&marker) {
+        let at = from + rel;
+        let rest = &raw[at + marker.len()..];
+        // Direkt nach dem Marker muss Whitespace oder eine Codeblock-Klammer
+        // kommen, sonst war es bloss ein Wort im Satz.
+        if rest
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_whitespace() || c == '`')
+        {
+            let mut payload = rest.trim();
+            if let Some(stripped) = payload.strip_suffix("```") {
+                payload = stripped.trim();
+            }
+            if !payload.is_empty() {
+                return Some(payload);
+            }
+        }
+        from = at + marker.len();
+    }
+    None
+}
+
 fn parse_response(
     raw: &str,
     tools: &[BrowserTool],
     choice: &BrowserToolChoice,
 ) -> Result<BrowserInferenceResponse, String> {
     let trimmed = raw.trim();
-    let Some(payload) = trimmed.strip_prefix(TOOL_ENVELOPE) else {
+    let Some(payload) = envelope_payload(trimmed) else {
         if matches!(
             choice,
             BrowserToolChoice::Required | BrowserToolChoice::Function(_)
@@ -594,6 +629,48 @@ mod tests {
         assert_eq!(response.finish_reason(), "tool_calls");
         assert_eq!(response.tool_calls[0].name, "read_file");
         assert_eq!(response.tool_calls[0].arguments["path"], "README.md");
+    }
+
+    #[test]
+    fn chatter_before_envelope_is_tolerated() {
+        // Real 2026-11-20 (chatgpt via Pi, T-961): das Modell schrieb "Nur Text"
+        // vor den Umschlag. Ein striktes strip_prefix verwarf den Tool-Call und
+        // lieferte ihn als Text an Pi — der Tool-Loop blieb bei 0 Starts stehen.
+        let raw = concat!(
+            "Nur Text\n",
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"nonce-1.txt"}}]}"#
+        );
+        let response = parse_response(raw, &[read_tool()], &BrowserToolChoice::Required).unwrap();
+        assert_eq!(response.finish_reason(), "tool_calls");
+        assert_eq!(response.tool_calls[0].name, "read_file");
+        assert_eq!(response.tool_calls[0].arguments["path"], "nonce-1.txt");
+    }
+
+    #[test]
+    fn fenced_envelope_with_leading_chatter_is_tolerated() {
+        let raw = concat!(
+            "Hier ist der Aufruf:\n",
+            "```text\n",
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"nonce-2.txt"}}]}"#,
+            "\n```"
+        );
+        let response = parse_response(raw, &[read_tool()], &BrowserToolChoice::Required).unwrap();
+        assert_eq!(response.tool_calls[0].arguments["path"], "nonce-2.txt");
+    }
+
+    #[test]
+    fn inline_marker_mention_is_not_a_tool_call() {
+        // Der Marker muss am Zeilenanfang stehen, sonst ist er erklaerender
+        // Fliesstext und darf keinen Tool-Call erfinden.
+        let raw = "Der Marker WEBAGENT_INFERENCE/1 wird hier nur erwaehnt.";
+        let response = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap();
+        assert!(response.tool_calls.is_empty());
+        assert!(response
+            .text
+            .unwrap_or_default()
+            .contains("WEBAGENT_INFERENCE/1"));
     }
 
     #[test]
