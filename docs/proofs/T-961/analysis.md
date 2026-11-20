@@ -91,8 +91,12 @@ Ursache liegt im Browser-Inferenzpfad bzw. im Modellverhalten und ist
    Intermittenz wird dadurch nicht erklaert.
 3. Danach erneut mehrere aufeinanderfolgende gruene Laeufe mit dem dann
    unveraenderten Binary fordern und hier ablegen; erst bei stabilen Laeufen
-   T-961 auf `done` setzen. Ein Kandidat mit neutraler Werkzeug-
-   Verfuegbarkeitsregel (`0039cd4`, Branch `fix/T-961-tool-availability`)
-   wird dafuer gerade live gemessen; das Ergebnis ist noch nicht eingegangen.
+   T-961 auf `done` setzen. Der Kandidat mit neutraler Werkzeug-
+   Verfuegbarkeitsregel (`0039cd4`) wurde live gemessen und ist **gescheitert**:
+   nur 2/8 Laeufe gruen, teils Absagen vor dem ersten Werkzeugaufruf. Die
+   Code-Aenderung wurde zurueckgenommen; Rohtranskripte und Auswertung liegen
+   in `availability-negative-{1..8}.jsonl` und
+   `availability-candidate-result.md`. Das spricht dafuer, bereits das
+   Meta-Thema „Verfuegbarkeit" im Prompt zu vermeiden.
 4. Bis dahin: `Status: NICHT ABGENOMMEN / INTERMITTIEREND`. Kein PASS, kein
    `done`, kein Tag/Release (G-009 bleibt offen).
