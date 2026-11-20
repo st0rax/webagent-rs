@@ -1,5 +1,39 @@
 # Current Work
 
+## 2026-11-20 — T-961: Rahmungsfix gemergt, Intermittenz bleibt — weiter NICHT abgenommen
+
+- **PR #86 gemergt** (`eaed3d1`, Squash, CI gruen, Branch geloescht). Ursache:
+  `conversation_prompt` labelte Tool-Ergebnisse im **Verlauf** mit
+  `[Client-Werkzeug-Ergebnis]` + `[tool_call_id]`, rendering aber die **letzte**
+  Nachricht (genau Pi's `toolResult`) als nackten Text unter „Aktuelle Nachricht
+  an dich". Red-Test zuerst (`current_tool_result_gets_explicit_label_and_call_id`),
+  danach Fix in `src/api_bridge/content.rs`; Einzelnachricht-Pfad unveraendert.
+  `docs/API_BRIDGE.md` dokumentiert die Rahmenung jetzt ausdruecklich.
+- **Gates gruen:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test --lib` (1466 passed), davon 54 `api_bridge`-Tests. PR #85
+  (Belegdoku) ist ebenfalls gemergt (`4b8a80c`). Lokal `master` = `eaed3d1`,
+  Working Tree bis auf die hier dokumentierte Belegergaenzung sauber.
+- **Neue echte Live-Laeufe mit finalem Binary `eaed3d1`** (SHA256
+  `A2913A3D...904C7`, 4 aufeinanderfolgende Laeufe, gleiche Prompts, frische
+  Tokens, Port 8788): 3 gruen (jeweils 5/5 Nonces `isError=false`, Finalanswer
+  mit allen Markern, 0 Session-/Circuit-Fehler), aber **Lauf 1 negativ**:
+  call_1..call_4 erfolgreich, dann *„Das fünfte read-Werkzeug ist in dieser
+  Sitzung nicht verfügbar."* (4/5, fehlender Marker 5). Zwei Vorab-Laeufe mit
+  dem Fix-Branch-Binary `37fe0fc` waren ebenfalls gruen.
+- **Entscheidung: kein PASS, kein `done`.** T-961 bleibt `free`. Der Rahmungsfix
+  ist korrekt und unit-getestet, aber die Fehlerklasse (Werkzeugzugriff nach
+  eigenem Erfolg verneinen) ist mit dem finalen Binary reproduzierbar. Ein
+  gruener Lauf, auch drei von vieren, beweist keine geheilte Ursache.
+- **Naechster Schritt (nur Eigentuemer):** ChatGPT-Konto-Speicher /
+  Personalisierung auf Erinnerungen pruefen, die Werkzeuge verneinen (DoD nennt
+  das ausdruecklich). Kein Agent liest Profile, Cookies oder Zugangsdaten. Danach
+  erneut mehrere stabile gruene Laeufe fordern. G-008 und G-009 bleiben offen.
+- **Belege:** `docs/proofs/T-961/analysis.md`, `environment.txt`, `README.md`,
+  `after-framing-negative.jsonl`, `after-framing-green-{1,2,3}.jsonl`,
+  `after-premerge-green-{1,2}.jsonl` (jeweils mit `-summary.txt`). Neue
+  `.gitattributes`-Regel haelt die Rohtranskripte bytegenau, damit die
+  dokumentierten SHA256-Werte stimmen.
+
 ## 2026-11-20 — T-961: drei Blocker behoben, gruener Lauf, aber intermittierend — NICHT abgenommen
 
 - **Branch/PRs (alle gemergt):** PR #82 `901e8e1` (Selektor-Drift `selectors/chatgpt.json`),

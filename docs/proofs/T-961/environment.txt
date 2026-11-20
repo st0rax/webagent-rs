@@ -2,23 +2,29 @@
 
 Dies ist die ehrliche Rueckmeldung der tatsaechlich ausgefuehrten Laeufe.
 Fruehere PASS-Behauptungen in diesem Verzeichnis waren nicht durch Dateien
-gedeckt und wurden am 20.11.2026 korrigiert. Ein gruener Lauf liegt jetzt vor,
-aber ein Negativlauf mit demselben Binary reproduziert das Ursprungssymptom -
+gedeckt und wurden am 20.11.2026 korrigiert. Es gibt mehrere gruene Laeufe,
+aber auch mit dem finalen Binary einen Negativlauf mit derselben Fehlerklasse -
 daher weiterhin keine Abnahme.
 
 ## Commits / Binaries
 - Vor-Fix-Binary (URSPRUENGLICHER baseline): dd78128e5d7ace05a7589e466d8c98206b663bcc
 - Frueherer after-Binary (alter negativer Beleg): d0856d9b759ae4eae365adabeda65e09ea50a622
-- Aktueller After-Binary (alle drei Fixes): 976abd3 (master, Squash PR #84)
+- Deterministische Live-Blocker behoben (master):
   - 901e8e1 PR #82: Selektor-Drift chatgpt.json
   - 5355e18 PR #83: Inference-Envelope tolerate chatter
   - 976abd3 PR #84: soft login pre-check
+  - 4b8a80c PR #85: ehrliche Belegdokumentation (kein Code)
+  - eaed3d1 PR #86: aktuelle Tool-Ergebnisse gerahmt (src/api_bridge/content.rs)
+- Fix-Branch-Binary fuer zwei Vorab-Laeufe: 37fe0fc (identischer Code zu eaed3d1,
+  zusaetzlich nur die Doku-Aenderung an docs/API_BRIDGE.md)
+- Finales Binary: `target/debug/webagent.exe` aus eaed3d1,
+  SHA256 A2913A3DF17311D15F3883CCC5E08638F5A3370D9E8FEB649F932FCA5AD904C7
 - Hinweis: die frueher genannten SHAs c7e8a5a6. und 1e2d5de2. existieren in
   diesem Repository nicht und sind entfernt.
 
 ## Bridge / Provider
 - Pi version: 1.5.2 (EarendilWorks.pi, WinGet)
-- Bridge version: webagent 0.11.3 (target/debug/webagent.exe, gebaut aus 976abd3)
+- Bridge version: webagent 0.11.3
 - Base URL: http://127.0.0.1:8788 (Port 8787 bewusst unberuehrt: fremder Free-Router-Prozess)
 - Modell: webagent/chatgpt
 - Effort: nicht explizit gesetzt; Transkript meldet thinkingLevel="off"
@@ -27,12 +33,25 @@ daher weiterhin keine Abnahme.
 
 ## Environment
 - OS: Windows (win32), Rust-Ziel x86_64-pc-windows-gnu
+- core.autocrlf=true; `.gitattributes` markiert `docs/proofs/T-961/*.jsonl`
+  als `-text`, damit die Rohtranskripte bytegenau (LF) bleiben und die
+  dokumentierten SHA256-Werte mit den Dateien uebereinstimmen.
 - Before: Pi-Session 2026-11-20T19:20:53Z, rohes Transkript 29.021 Bytes
 - Negativer Zwischenlauf (d0856d9): 2 Turns, 29.305 Bytes
-- Negativlauf mit aktuellem Binary (976abd3): 22:21 lokal, 27.075 Bytes
-  (after-negative-intermittent.jsonl) - Textturn OK, Tool-Turn 1/5
-- Gruener Lauf (976abd3): 22:22-22:25 lokal, 51.529 Bytes
-  (after.jsonl, SHA256 71FD04294508626C64A812FC072B710C8F96731D421F1C23A2D2BCCD975C8977)
+- Negativlauf (976abd3): 22:21 lokal, 27.075 Bytes,
+  after-negative-intermittent.jsonl (1/5, „Rückgabewert fehlt")
+- Gruener Lauf (976abd3): 22:22-22:25 lokal, 51.529 Bytes,
+  after.jsonl, SHA256 71FD04294508626C64A812FC072B710C8F96731D421F1C23A2D2BCCD975C8977
+- Vorab-Laeufe (37fe0fc): 22:42-22:46 lokal, 46.792 / 46.775 Bytes, beide gruen
+- Finale Laeufe (eaed3d1): 22:47-22:57 lokal
+  - after-framing-negative.jsonl: 42.458 Bytes, SHA256
+    167FACC58DF1AF9BE65CB53862E9C52BABCA308BEED95E0EBADF6450B79728B9 (4/5)
+  - after-framing-green-1.jsonl: 46.770 Bytes, SHA256
+    A1E92F049499D6F258811BD0BFF1A61D49DB98571B930724DB8E860C997BCB75 (5/5)
+  - after-framing-green-2.jsonl: 46.782 Bytes, SHA256
+    A0A2601908C9FB1281AF471B768BF13BC415B61C0127ECED7D351BF61F255304 (5/5)
+  - after-framing-green-3.jsonl: 43.772 Bytes, SHA256
+    229478DD018766DF1F367ABF4A43AE0948E7323E931C604F40C87B3C6EF26C2D (5/5)
 - Account-Check: 2026-11-20T20:23:11Z ueber Bridge-API GET /api/health/brains
 - Secret-Scan: 0 Treffer fuer Bearer/apiKey/cookie/authorization/sk-/WEBAGENT_API_KEY
   in allen Transkripten; Hex-Treffer sind absichtliche Nonces/Temp-GUIDs
@@ -40,23 +59,26 @@ daher weiterhin keine Abnahme.
 ## Result
 - before.jsonl: rohes Pi-JSON-Modus-Transkript, 0/5 tool_execution_start,
   13x session_state=Unbestimmt, 10x circuit_open (deterministischer Block).
-- after.jsonl (976abd3, GRUEN): Textturn assistant `PI_BRIDGE_OK`, 6 Tool-Starts,
-  alle fuenf Nonces isError=false, Schlussantwort mit allen fuenf Markern,
-  0 Session-/Circuit-Fehler, 0 Suspect-Patterns.
-- after-negative-intermittent.jsonl (976abd3, NEGATIV): gleicher Binary, Textturn
-  `PI_BRIDGE_OK`, aber Tool-Turn stop nach call_1 mit „Rückgabewert fehlt":
-  1/5 Tool-Starts, 4 fehlende Marker. Exakt das T-961-Ursprungssymptom.
+- Gruene Laeufe: Textturn assistant `PI_BRIDGE_OK`; 5-6 Tool-Starts; alle
+  Nonces isError=false; Schlussantwort mit allen fuenf Markern; 0 Session-/
+  Circuit-Fehler; 0 Suspect-Patterns.
+- Negative Laeufe: gleicher Binary wie jeweilige gruene Laeufe, Textturn
+  `PI_BRIDGE_OK`, aber Tool-Turn bricht nach call_1 (976abd3) bzw. call_4
+  (eaed3d1) ab und verneint den Werkzeugzugriff. Exakt die T-961-Fehlerklasse.
 - Account-state check: DURCHGEFUEHRT (nicht "not accessible"). chatgpt:
   login_state="unknown (old)", profile_exists=true, last_done_run leer.
   Der healthe API-Check ist veraltet; die echte Anmeldung ist jedoch durch
   die erfolgreichen Bridge-Completions und den DOM-/Profil-Button-Befund
   (`diagnose`: Ready, logged_in=true) bestaetigt. Kein Agent hat Zugangsdaten
   oder Profildateien gelesen; der Status wurde ueber Bridge-API, WebView/DOM
-  und Process-only-Tokens abgefragt.
-- Circuit Breaker: im gruenen Lauf keine Oeffnung (0 circuit errors).
+  und Process-only-Tokens abgefragt. Der Inhalt des ChatGPT-Konto-Speichers
+  (Personalisierung/Erinnerungen) kann nur der Eigentuemer einsehen und ist
+  daher NICHT geprueft.
+- Circuit Breaker: in allen Laeufen nach PR #84 keine Oeffnung
+  (0 circuit errors).
 
-Status: NICHT ABGENOMMEN / INTERMITTIEREND. Der Live-Lauf schafft den gruenen
-Fall, reproduziert aber mit demselben Binary kurz zuvor das Ursprungssymptom.
+Status: NICHT ABGENOMMEN / INTERMITTIEREND. Die Rahmung ist korrigiert, aber
+ein Negativlauf mit dem finalen Binary `eaed3d1` reproduziert die Fehlerklasse.
 Die Ursache der Intermittenz ist ungeklaert; T-961 bleibt `free`. Eine Abnahme
 erfordert stabile, reproduzierbare gruene Laeufe und die Freigabe des Owners.
 Kein Tag/Release ohne vollstaendige Abnahme (G-009 bleibt offen).
