@@ -1,5 +1,39 @@
 # Current Work
 
+## 2026-11-21 — T-961: Kontobefund belegt, Kandidat widerlegt — weiter NICHT abgenommen
+
+- **PR #87 gemergt** (`dfebc47`, Squash, CI komplett gruen), `master` lokal und remote
+  bei `e4386f0`. Er dokumentiert ehrlich, dass der Rahmungsfix die Intermittenz
+  nicht beseitigt hat.
+- **Kontozustand autonom geprueft** (DoD-Punkt, bisher als Eigentuemer-Auftrag
+  markiert): read-only DOM der angemeldeten ChatGPT-WebView auf
+  `/settings/personalisation` und im geoeffneten Dialog
+  „Erinnerungszusammenfassung". Erinnerung aktiv, Abschnitt
+  „Benutzerdefinierte Anweisungen" vorhanden, Zusammenfassung aktuell
+  („Gerade aktualisiert"/„Überblick"), **kein Eintrag, der Werkzeugzugriff
+  verneint**. Keine Einstellung geaendert, keine Zugangsdaten/Profile/Cookies
+  gelesen, temporaere Diagnose-Patches vollstaendig zurueckgerollt. Persönliche
+  Inhalte bewusst nicht committet. Beleg: `docs/proofs/T-961/account-state.md`.
+- **Modellwechsel nicht moeglich:** `webagent model --brain chatgpt` meldet
+  `aktuell ''` und `'model_menu' nicht anklickbar`; sichtbarer Modus lief in eine
+  Navigation timeout. Kein Menue- und kein Konto-Settings-Eingriff vorgenommen.
+- **Kandidat widerlegt:** `0039cd4` ergaenzte den Browser-Prompt um eine neutral
+  formulierte Regel (Werkzeuge seien aktiv und ausfuehrbar, ein Ergebnis
+  verbrauche das Werkzeug nicht). Alle lokalen Gates waren gruen (1467 Tests),
+  aber 8 echte Live-Laeufe mit diesem Binary (Port 8788, frische Tokens,
+  identische Prompts) lieferten nur **2/8 streng gruen**. In fuenf Laeufen
+  verneinte das Modell den Werkzeugzugriff — teils schon vor dem ersten Aufruf
+  („ist in dieser Sitzung nicht ausführbar"), teils nach drei Reads; ein Lauf
+  endete in `ABSENDEKNOPF_DEAKTIVIERT` + `circuit_open`. Die Formulierung hat
+  das Meta-Thema „Verfuegbarkeit" also eher provoziert. Die Code-Aenderung
+  wurde auf dem Branch mit `63a6f7a` zurueckgenommen; der Branch enthaelt nur
+  noch die Belegdokumentation (`docs/proofs/T-961/availability-*`).
+- **Entscheidung jetzt:** kein PASS, kein `done`, kein Merge des Kandidaten,
+  kein Tag/Release. G-009 bleibt offen. **T-961 bleibt `free`.** Die
+  Intermittenz ist nicht erklaert; der Kontozustand scheidet als Ursache aus.
+  Ein naechster Versuch muss ohne jedes Verfügbarkeits-Meta im Prompt auskommen
+  und braucht erneut eine belastbare Raw-Transkript-Reihe.
+
 ## 2026-11-20 — T-961: Rahmungsfix gemergt, Intermittenz bleibt — weiter NICHT abgenommen
 
 - **PR #86 gemergt** (`eaed3d1`, Squash, CI gruen, Branch geloescht). Ursache:
