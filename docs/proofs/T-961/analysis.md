@@ -97,6 +97,6 @@ Ursache liegt im Browser-Inferenzpfad bzw. im Modellverhalten und ist
    Code-Aenderung wurde zurueckgenommen; Rohtranskripte und Auswertung liegen
    in `availability-negative-{1..8}.jsonl` und
    `availability-candidate-result.md`. Das spricht dafuer, bereits das
-   Meta-Thema „Verfuegbarkeit" im Prompt zu vermeiden.
+   Meta-Thema „Verfuegbarkeit" im Prompt zu vermeiden. Ein zweiter Kandidat ohne dieses Meta (Block `[FUNKTIONEN]` statt `[Client-Werkzeuge]`, `f899ed3`) erreichte 6/8 streng gruen, scheiterte aber in zwei Laeufen mit exakt derselben Fehlerklasse — keine Verbesserung gegenueber der 3/4-Baseline. Auch er wurde zurueckgenommen; Belege: `function-negative-{1..8}.jsonl`, `function-negative-verify.txt`, `function-framing-result.md`. Reine Prompt-Wortwahl ist damit als Richtung widerlegt.
 4. Bis dahin: `Status: NICHT ABGENOMMEN / INTERMITTIEREND`. Kein PASS, kein
    `done`, kein Tag/Release (G-009 bleibt offen).

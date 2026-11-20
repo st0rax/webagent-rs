@@ -28,6 +28,9 @@ Use the same ChatGPT account, selected model/effort, Pi version, bridge configur
 - `availability-negative-{1..8}.jsonl` — raw runs with candidate `0039cd4` (neutral availability rule); only 2/8 strict green.
 - `availability-negative-verify.txt` — unmodified strict verifier output for those eight runs.
 - `availability-candidate-result.md` — honest evaluation: the rule triggered tool-availability meta replies; code reverted.
+- `function-negative-{1..8}.jsonl` — raw runs with candidate `f899ed3` (`[FUNKTIONEN]` block); 6/8 strict green, 2 negatives.
+- `function-negative-verify.txt` — unmodified strict verifier output for those eight runs.
+- `function-framing-result.md` — evaluation: no improvement over the 3/4 baseline; code reverted.
 - `environment.txt` — reproducibility metadata; no API keys, cookies, or other secrets.
 
 All `*.jsonl` files are byte-exact raw Pi streams (`.gitattributes` marks them `-text`); their SHA256 values are listed in `environment.txt`.
@@ -39,7 +42,7 @@ All `*.jsonl` files are byte-exact raw Pi streams (`.gitattributes` marks them `
 - [x] Same conditions used for before/after comparison (Pi 1.5.2, port 8788, model `webagent/chatgpt`, fresh process token).
 - [x] Four blockers diagnosed and fixed (selector drift, envelope prefix, login pre-check, current tool-result framing; PRs #82/#83/#84/#86).
 - [x] Fixed runs show at least five consecutive successful tool turns — **achieved repeatedly** (`after.jsonl`, `after-premerge-green-*`, `after-framing-green-*`).
-- [ ] **Stable / reproducible:** `after-framing-negative.jsonl` with the final binary `eaed3d1` still denies a tool after four successful calls. The availability-rule candidate was even worse (2/8 green). **Open**; root cause of the intermittency unclear.
+- [ ] **Stable / reproducible:** `after-framing-negative.jsonl` with the final binary `eaed3d1` still denies a tool after four successful calls. Two further candidates were measured and reverted: availability rule 2/8 green, function framing 6/8 green (no better than the 3/4 baseline). **Open**; root cause of the intermittency unclear.
 - [x] **Account memory checked:** read-only WebView DOM inspection of personalization/memory; no entry denying tool access (`account-state.md`). Personal content redacted, no settings changed, no credentials/profiles read.
 - [ ] Evidence linked from the T-961 taskboard entry with a passing, stable result — **pending**: T-961 stays `free`, no tag/release.
 
