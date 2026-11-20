@@ -2,7 +2,7 @@
 
 ## 2026-11-20 — T-966: Acceptance integrity (Arbeitsstand)
 
-- **Status:** `in_progress` auf `fix/T-966-acceptance-integrity`, abgezweigt von `master` bei `eaac398`. Noch nicht gemergt.
+- **Status:** Branch `fix/T-966-acceptance-integrity` (abgezweigt von `master` bei `eaac398`) ist gepusht; PR [#80](https://github.com/st0rax/webagent-rs/pull/80) ist offen und nicht gemergt. Zwei Commits: `cac7c29` (Taskboard/Gates), `b0628a2` (Belege/Doku).
 - **Ausgangslage:** `GOALS.md` behauptete „Projekt abgeschlossen“ und G-002 done, obwohl `docs/TASKBOARD.json` auf einen 1-Task-Stub reduziert war, `docs/proofs/T-961/environment.txt` `BLOCKED_BY_MISSING_EVIDENCE` meldet und PR #69 offene Live-Belege hat.
 - **Korrigiert:**
   - Vollständiges Taskboard aus `dd78128` wiederhergestellt (91 Tasks, 77 done, 14 free); T-961 bleibt `free`. Kein History-Rewrite, kein Force-Push.
@@ -18,8 +18,10 @@
   - Ein erster Testlauf scheiterte an einer veralteten lokalen Linker-Umgebungsvariable sowie einem fehlenden C-Compiler; beides war Werkbank-Setup, kein Repo-Code. Die Defensive gegen Ersteres (`is_test_run`) ist jetzt Teil des Fixes.
   - `cargo clippy --locked --all-targets -- -D warnings` (Default-Features/WebView) ✅
   - `cargo test --locked` (Default-Features/WebView) ✅ — Lib 1454 passed / 0 failed / 1 ignored, Bin 7 passed, Doc 0
+- **GitHub-CI auf PR #80:** alle Checks grün in beiden Läufen (Push + PR-Event): `build & test`, `build & test (Windows, volle Features)`, `build (Linux, WebView via WebKitGTK)`, `aarch64`.
+- **PR #69** ([Kommentar](https://github.com/st0rax/webagent-rs/pull/69#issuecomment-7048051133)): bewusst nicht gemergt, weil der PR selbst Live-Pi-Re-run und generisches curl/SDK Chat+Tools als `pending` führt.
 - **Offen / nicht übernommen:** Echte Live-Rezertifizierung (Eigentümer muss anwesend sein; ein Agent liest keine Zugangsdaten oder Profile), PR #69 mit `pending`-Live-Belegen, kein neuer Tag/Release ohne Freigabe.
-- **Nächste Aktion:** Gates grün machen, Branch pushen, PR #69 mit klarer Begründung kommentieren, Integrationsentscheidung durch den Eigentümer.
+- **Nächste Aktion:** Integrationsentscheidung zu PR #80 durch den Eigentümer. T-961 bleibt `free`, bis echte rohe Pi-Transkripte vor/nach dem Fix und eine Kontozustandsprüfung vorliegen; danach darf der Eigentümer Tag/Release auslösen.
 
 ## 2026-10-15 — T-965: English-first maintained documentation
 
