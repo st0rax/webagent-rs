@@ -1,5 +1,26 @@
 # Current Work
 
+## 2026-11-20 — G-006 abgeschlossen: echte T-961-Belege (negativ)
+
+- **Rohe Transkripte jetzt vorhanden:** `docs/proofs/T-961/before.jsonl` (29.021 B)
+  und `after.jsonl` (29.305 B) sind echte Pi-1.5.2-JSON-Modus-Streams, secret-gescannt
+  (0 Treffer). Commit `1049369` auf `master`. Vorher lag nur ein Platzhalter vor.
+- **Ergebnis ehrlich negativ:** Beide Laeufe scheitern mit
+  `Browser-Inference fehlgeschlagen: session_state=Unbestimmt`; `assistant_ok=False`,
+  `tool_execution_start = 0/5`, Circuit Breaker oeffnet erneut (900 s). Der
+  Nach-Fix-Lauf wurde nach einem Harness-StrictMode-Fehler korrigiert wiederholt;
+  das ausgewertete `after.jsonl` stammt aus diesem echten zweiten Lauf.
+- **Kontozustand geprueft** (nicht `not accessible`): `GET /api/health/brains` meldet
+  fuer chatgpt `login_state="unknown (old)"`, `profile_exists=true`, keinen
+  erfolgreichen Run — Anmeldung **nicht bestaetigt**. Kein Agent hat Zugangsdaten
+  oder Profildateien gelesen.
+- **Konsequenz:** T-961 bleibt `free`. Das ist ein Negativbeleg, keine Abnahme.
+  Rezertifizierung erst nach Anmeldung durch den Eigentuemer
+  (`webagent login --brain chatgpt`) und erneutem Lauf. G-006 ist als
+  "Belege beschafft" done; G-008/G-009 bleiben offen.
+- **PR #81 (T-949) gemergt:** Squash `0f80973`, alle CI-Checks gruen; lokaler
+  `master` auf `origin/master`, danach dieser Handover-Stand committed.
+
 ## 2026-11-20 — T-949 (Branch `fix/T-949-consent-guard`)
 
 - **G-008, lokal abgeschlossen:** `dismiss_consent` prueft vor dem Klick auf
@@ -41,7 +62,7 @@ Defer-Beschluss. Ein solcher Beschluss wird nicht stellvertretend erfunden.
 - **G-006 in_progress:** Echte T-961-Live-Messung wurde vorbereitet und der Vor-Fix-Lauf ausgefuehrt. Frisch gebaute Binaries: `master` (`493e9a6`, `webagent 0.11.3`) und isolierter Worktree `dd78128` (`webagent 0.11.3`). Pi ist installiert als **1.5.2** (nicht mehr die im alten Plan genannte 0.84.4). Die Bridge startet auf `127.0.0.1:8788` mit frischem, nicht gespeichertem Prozess-Token; Port 8787 bleibt bewusst unberuehrt (dort laeuft ein fremder Free-Router-Prozess).
   - Vor-Fix-Rohtranscript: `C:\Users\storax\AppData\Local\Temp\webagent-t961-harness\before.jsonl` (29.021 Bytes, frei von Token-/Cookie-/Key-Mustern). Beide Pi-Turns endeten mit `502: Browser-Inference fehlgeschlagen: session_state=Unbestimmt`; `tool_execution_start` = 0/5. Der Circuit Breaker fuer `chatgpt` waren daraufhin 900 s offen.
   - Wichtiger Befund: Das Repo-Skript `scripts/test-pi-provider.ps1` erkennt `PI_BRIDGE_OK` im echoenden User-Prompt und meldet den Textturn daher falsch als erfolgreich. Die temporaere Harness-Kopie prueft jetzt nur noch die Assistant-Nachricht. Live-Eingaben (Prompts, Modell, Port) blieben unveraendert.
-  - Der Nach-Fix-Lauf ist nach Ablauf des Breakers als Hintergrundjob gestartet und noch nicht abgeschlossen. T-961 bleibt bis zur Pruefung und Committing der echten Belege `free`.
+  - Der Nach-Fix-Lauf wurde nach Ablauf des Breakers ausgefuehrt; echte rohe Belege und der Kontozustand sind inzwischen committed (siehe Abschnitt G-006 oben). Ergebnis negativ, T-961 bleibt `free`.
 - **G-007 done:** PR [#69](https://github.com/st0rax/webagent-rs/pull/69) wurde am 20.11.2026 19:32 UTC bewusst als **ueberholt geschlossen**, nicht gemergt. Sein Code (Systemkontext, `content:null` + `tool_calls`, Tool-Fortsetzung) liegt bereits via PR #78/`864e346` und PR #80/`493e9a6` in `master`; gegenueber `master` verblieben nur T-934-Referenzbelege. Die offen gebliebenen Live-Gates auf dem veralteten Head-SHA `f361402` wurden nicht fabriziert.
 - **Offen:** G-006 Nach-Fix-Ergebnis, G-008 Triagierung der restlichen 14 freien Tasks, G-009 Tag/Release erst nach vollstaendiger Abnahme und Freigabe.
 
