@@ -16,6 +16,25 @@
 - **Nicht erledigt:** kein Live-Zustimmungsdialog gefahren (gehoert zu T-948);
   Board-Status liegt auf dem Branch und wird mit dem Merge wirksam.
 
+## 2026-11-20 — G-008 Triage der restlichen freien Tasks
+
+Einordnung der freien Tasks nach dem, was **ohne** Zugangsdaten/Profile und ohne
+Live-Anbieter-Sitzung ehrlich abgeschlossen werden kann. Diese Triage ist keine
+Abnahme und kein Defer-Beschluss; sie bereitet die Entscheidungsvorlage fuer den
+Eigentuemer vor (G-008 bleibt offen, G-009 bleibt offen).
+
+| Kategorie | Tasks | Begruendung |
+|---|---|---|
+| A — lokal umgesetzt + geprueft | T-949 | Code-/Mock-DOM-Beleg, PR #81 offen; nach CI-Fix (Referenz-Banner im Proof) erneut in CI. |
+| B — lokal umsetzbar, noch offen | T-926, T-940, T-946, T-953, T-957 | DoD mit `cargo test --lib` und/oder statischem Beleg erfuellbar; keine Live-Sitzung noetig. Kandidaten fuer weitere Scheiben. |
+| C — braucht echte Live-Sitzung / Anmeldung | T-927, T-928, T-948, T-961 | DoD verlangt frische Live-Matrix-/Effort-Belege, einen echten mistral-Zustimmungsdialog bzw. rohe Pi-Transkripte vor/nach Fix. Integrator liest keine Zugangsdaten und keine Profile. T-961-Lauf siehe G-006. |
+| D — teils Live-Messung noetig | T-942, T-944, T-950 | DoD verlangt zusaetzlich eine Messung je Anbieter (Quell-Markdown gegen ausgelieferten Text, Denkmodus-Turn, Websuche-Zustand vor dem Senden); nicht rein lokal belegbar. |
+| E — explizit deferred | T-914 | Im Taskboard bereits `[DEFERRED]` markiert; kein aktiver Auftrag. |
+
+Konsequenz: autonom weiter bearbeitbar sind Kategorie B; Kategorie C/D benoetigen
+entweder eine Anmeldung durch den Eigentuemer oder einen ausdruecklichen
+Defer-Beschluss. Ein solcher Beschluss wird nicht stellvertretend erfunden.
+
 ## 2026-11-20 — Zielstack G-005..G-007 (autonomer Fortschritt)
 
 - **G-005 done:** PR [#80](https://github.com/st0rax/webagent-rs/pull/80) wurde als Squash-Commit `493e9a613d72dcf319151b813ed7ffc84662c657` in `master` gemergt; lokaler `master` ist auf `origin/master` fast-forwarded und war bei Beginn dieser Scheibe sauber.
