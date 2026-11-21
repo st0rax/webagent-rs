@@ -1831,10 +1831,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "deepseek liefert natives DSML-Werkzeugformat als Klartext statt Umschlag",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "fix/T-957-dsml-fail-closed",
+      "claimed_at": "2026-11-21",
       "depends_on": [
         "T-956"
       ],
