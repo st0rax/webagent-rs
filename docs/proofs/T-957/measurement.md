@@ -1,3 +1,5 @@
+**Referenz.** Lokaler Red-/Green-Beleg zu T-957, kein Betrieb und kein Live-Nachweis. Operativer Arbeitsstand: `docs/CURRENT_WORK.md`.
+
 # T-957 — DSML-Werkzeugformat fail-closed
 
 Datum: 2026-11-21  
