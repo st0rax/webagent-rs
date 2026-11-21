@@ -1,5 +1,42 @@
 # Current Work
 
+## 2026-11-21 — Eigentümer-Entscheidungen zu den Rest-Tasks
+
+Der Nutzer hat am 2026-11-21 ausdrücklich freigegeben:
+
+- **T-914:** USER-SKIP aufgehoben — Medienhandler-Refactor darf geclaimt und
+  umgesetzt werden.
+- **T-961:** „Auto→Required freigeben" — der Auto-Modus darf Tool-Calls
+  erzwingen. Das ist eine bewusste Semantikänderung und verlangt eine neue
+  Abnahme mit frischer Live-Matrix; der bisherige Negativbefund bleibt als
+  Historie unter `docs/proofs/T-961/` erhalten.
+- **Live-Läufe:** erlaubt. Harness ausschließlich auf Port `8788`, frische
+  prozess-only Tokens, keine Repo-Datei während eines Laufs ändern. Logins,
+  CAPTCHAs und Einmalcodes bedient der Nutzer im Fenster; ich lese keine
+  Profil-/Cookie-/Token-Dateien und gebe keine Zugangsdaten ein.
+
+Abarbeitung: T-914 zuerst (lokal), dann T-961 mit Live-Matrix, danach die
+übrigen Live-Belege. Kein Tag/Release ohne vollständige Abnahme und neue
+ausdrückliche Freigabe.
+
+## 2026-11-21 — G-010: T-914 Branch fertig (Medienmodul), PR folgt
+
+- **Branch:** `refactor/T-914-media-module` (ab `master` `e71a375`). Noch kein
+  Push, kein PR, kein Merge.
+- **Refactor:** Zehn Medienblöcke (Bildgenerierung, Audio-Transkription,
+  -Absageerkennung, -Speech, Multipart-Parser, `audio_mime`, Request-Typen)
+  unverändert nach `src/api_bridge/media.rs` übernommen; nur Sichtbarkeit
+  `pub(super)` für Root und Tests. Root hat keine Multipart-Schleife mehr.
+- **Beleg:** `docs/proofs/T-914/measurement.md` mit Block-für-Block-Vergleich
+  gegen `HEAD` (10/10 identisch nach Normalisierung von Sichtbarkeit und
+  `rustfmt`-Whitespace, SHA256 `338C4B57…`), Schleifenzähler 1 → 0 und den
+  bestehenden Audio/Bild-Tests. Kein Live-Aufruf der Endpunkte.
+- **Gates:** `cargo fmt --all -- --check`,
+  `cargo clippy --features webview --all-targets -- -D warnings`,
+  `cargo test --features webview --lib api_bridge::tests::` (54 grün),
+  `cargo test --lib` (1483 grün, 1 ignored), `git diff --check`.
+- **Board:** T-914 auf `done`, Stand 83/91 `done`, 8 `free`.
+
 ## 2026-11-21 — G-010: T-948 abgeschlossen (Preflight vor dem Senden)
 
 - **PR #94 gemergt** (Squash `23879aa`, alle CI-Checks grün), Branch

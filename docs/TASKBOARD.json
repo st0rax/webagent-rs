@@ -688,15 +688,15 @@
       "phase": "11",
       "type": "refactoring",
       "title": "[DEFERRED] API-Bridge-Medienhandler (Bild/Audio/Multipart) isolieren",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "refactor/T-914-media-module",
+      "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [
         "src/api_bridge/media.rs"
       ],
-      "objective": "Image-Generation, Audio-Transcription/Translation/Speech und Multipart-Parsing aus der Root-Datei in ein Medienmodul ueberfuehren. USER-SKIP 2026-09-13: nicht claimen, bis explizit freigegeben.",
+      "objective": "Image-Generation, Audio-Transcription/Translation/Speech und Multipart-Parsing aus der Root-Datei in ein Medienmodul ueberfuehren. USER-SKIP 2026-09-13: nicht claimen, bis explizit freigegeben. Am 2026-11-21 vom Nutzer ausdruecklich freigegeben und umgesetzt.",
       "non_goals": [
         "Keine Aenderung an MIME-Grenzen, Base64- oder Upload-Semantik.",
         "Keine Prompt-/Tool-Normalizer und keinen Response-Store verschieben."
@@ -704,7 +704,9 @@
       "dod": "Medienhandler liegen in media.rs, bestehende Audio/Bild-Tests bestehen, Root enthaelt keine Multipart-Schleife mehr nach T-921.",
       "verification": "cargo fmt --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --features webview --lib api_bridge::tests::; git diff --check",
       "proof_path": "docs/proofs/T-914/",
-      "handoff": "Modulkarte, Kopplung, Testausgabe, Branch und Commit."
+      "handoff": "Modulkarte, Kopplung, Testausgabe, Branch und Commit.",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-914/measurement.md"
     },
     {
       "id": "T-915",
