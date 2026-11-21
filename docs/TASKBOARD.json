@@ -1588,10 +1588,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "mistral: abgemeldete Seite mit Zustimmungsdialog wird als erfolgreiches Senden gemeldet",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-948-consent-preflight",
+      "claimed_at": "2026-11-21",
       "depends_on": [
         "T-936"
       ],
@@ -1608,7 +1608,9 @@
         "Keine Wiederholungslogik aendern; das ist T-947."
       ],
       "proof_path": "docs/proofs/T-948/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-948/measurement.md"
     },
     {
       "id": "T-949",

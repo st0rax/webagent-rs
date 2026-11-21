@@ -58,14 +58,22 @@
     "a[href*='/login']",
     "button:has-text('Log in')",
     "button:has-text('Sign in')",
-    "button:has-text('Se connecter')"
+    "button:has-text('Se connecter')",
+    "button:has-text('Anmelden')",
+    "a:has-text('Anmelden')"
   ],
   "login_indicator": [
-    "div.ProseMirror[contenteditable='true']",
-    "textarea[placeholder*='Ask' i]",
-    "textarea[aria-label*='message' i]",
-    "div[role='textbox'][contenteditable='true']"
+    "button[aria-label*='Profil' i]",
+    "button[aria-label*='Profile' i]",
+    "button[aria-label*='Account' i]",
+    "button[aria-label*='Konto' i]"
   ],
+  "terms_consent_dialog": [
+    "div[role='dialog'][data-state='open']:has-text('Nutzungsbedingungen')",
+    "div[role='dialog'][data-state='open']:has-text('Terms of Use')",
+    "div[role='dialog'][data-state='open']:has-text('Terms and Conditions')"
+  ],
+  "send_preflight_guard": ["yes"],
   "google_sso_button": [
     "button:has-text('Continue with Google')",
     "button:has-text('Sign in with Google')",

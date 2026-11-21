@@ -41,6 +41,9 @@ struct MockStateInner {
     /// Recorded `press_key` calls (key, code, virtual_key, text) — T-937
     /// Tastatur-Fokusweg: Tests zaehlen die Tab-Drucke vor der Verifikation.
     pressed_keys: Vec<(String, String, i64, String)>,
+    /// Every evaluated expression, in order — T-948: belegt, dass ein
+    /// Zustimmungsknopf nie auch nur anvisiert wurde.
+    evaluated: Vec<String>,
 }
 
 impl MockPageState {
@@ -160,6 +163,14 @@ impl MockPageState {
             .map(|g| g.pressed_keys.clone())
             .unwrap_or_default()
     }
+
+    /// Wie oft ein exaktes JS-Expression ausgewertet wurde (T-948).
+    pub fn eval_count_for(&self, expression: &str) -> usize {
+        self.inner
+            .lock()
+            .map(|g| g.evaluated.iter().filter(|e| *e == expression).count())
+            .unwrap_or(0)
+    }
 }
 
 /// Mock-Implementierung von [`PageDriver`] — Antworten per `MockPageState::on_eval`.
@@ -180,6 +191,7 @@ impl PageDriver for MockPageDriver {
             .inner
             .lock()
             .map_err(|_| PageDriverError::Protocol("Mock-Sperre verloren".into()))?;
+        guard.evaluated.push(expression.to_string());
         if let Some(seq) = guard.sequences.get_mut(expression) {
             if seq.len() > 1 {
                 return Ok(seq.remove(0));

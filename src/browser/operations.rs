@@ -66,6 +66,43 @@ pub fn is_logged_in(driver: &mut dyn PageDriver, sel: &Selectors) -> bool {
     any_visible(driver, sel, "composer") || any_visible(driver, sel, "new_chat_button")
 }
 
+/// T-948: Stabiler Marker fuer eine abgemeldete Seite. Der Aufrufer bekommt
+/// ihn statt eines 92-s-Timeouts, damit Fuellfehler und Anmeldebedarf nicht
+/// denselben Fehlertext teilen.
+pub const LOGIN_REQUIRED_MARKER: &str = "login_required";
+
+/// T-948: Stabiler Marker fuer einen offenen Nutzungsbedingungen-Dialog.
+/// Zustimmen bleibt dem Menschen vorbehalten; die Bridge bricht ab, statt
+/// den Zustimmungsknopf zu klicken oder den Prompt in den blockierten
+/// Composer zu schreiben.
+pub const TERMS_CONSENT_REQUIRED_MARKER: &str = "terms_consent_required";
+
+/// T-948: Vorab-Pruefung des Sendepfads (nur lesend).
+///
+/// Ein sichtbarer Nutzungsbedingungen-Dialog oder Anmeldeknopf wird VOR dem
+/// Fuellen erkannt und als benannter Grund gemeldet. Damit andere Brains von
+/// weichen Login-Zweifeln (T-946/T-953: Selektor-Drift, gerade noch ladende
+/// Seite) nicht betroffen sind, schaltet allein das Brain den Guard ein, das
+/// `send_preflight_guard` deklariert. Ein sichtbarer Anmeldeknopf schlaegt auch
+/// hier jeden positiven Indikator — genau wie in `is_logged_in`.
+pub(crate) fn pre_send_block_reason(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+) -> Option<&'static str> {
+    if sel.list("send_preflight_guard").is_empty() {
+        return None;
+    }
+    if !sel.list("terms_consent_dialog").is_empty()
+        && any_visible(driver, sel, "terms_consent_dialog")
+    {
+        return Some(TERMS_CONSENT_REQUIRED_MARKER);
+    }
+    if any_visible(driver, sel, "login_button") {
+        return Some(LOGIN_REQUIRED_MARKER);
+    }
+    None
+}
+
 /// Anzahl der Assistenten-Nachrichten (robust über die Selektorliste).
 pub fn assistant_count(driver: &mut dyn PageDriver, sel: &Selectors) -> i32 {
     let list = sel.js("assistant_message", &["div.prose"]);
