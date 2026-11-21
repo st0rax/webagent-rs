@@ -1631,7 +1631,7 @@ mod tests {
     fn probe_expr(sel: &Selectors) -> String {
         let assistant_js = sel.js("assistant_message", &["div.prose"]);
         let stop_js = WebBrainBackend::js_selectors(&sel.list("stop_button"));
-        WebBrainBackend::probe_generation_js(&assistant_js, &stop_js, -1)
+        WebBrainBackend::probe_generation_js(&assistant_js, &stop_js, "[]", -1)
     }
 
     fn fallback_expr(sel: &Selectors, needs: &[&str]) -> String {
