@@ -1058,6 +1058,28 @@ impl WebBrainBackend {
     }
 
     pub(crate) fn send_generic(&mut self, text: &str) -> Result<i32, String> {
+        // T-948: vor dem Fuellen pruefen, ob die Seite ueberhaupt einen Prompt
+        // annimmt. Ein offener Nutzungsbedingungen-Dialog oder eine abgemeldete
+        // Seite lieferte frueher einen Absende-„Erfolg" und danach
+        // `timeout_no_message`; jetzt bekommt der Aufrufer sofort einen
+        // benannten Grund. Der Guard ist rein lesend und nur fuer Brains aktiv,
+        // die ihn in ihrer Selektordatei deklarieren.
+        {
+            let mut guard = self.driver.borrow_mut();
+            if let Some(driver) = guard.as_mut() {
+                if let Some(reason) =
+                    super::operations::pre_send_block_reason(driver.as_mut(), &self.selectors)
+                {
+                    crate::brain_score::update_pending_turn(|obs| {
+                        obs.phase = crate::brain_score::SendPhase::SelectorResolve;
+                    });
+                    return Err(format!(
+                        "send_phase=preflight: {reason}: {} ist nicht bereit, den Prompt anzunehmen; Modals und Anmeldung bleiben beim Menschen",
+                        self.brain_id
+                    ));
+                }
+            }
+        }
         // Whole send path (fill → click/enter) needs a live renderer first.
         self.wake_renderer();
         let baseline = self.prepare_send_baseline();

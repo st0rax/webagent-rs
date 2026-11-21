@@ -2139,4 +2139,117 @@ mod tests {
         assert_eq!(records[0].outcome, ProofOutcome::Passed);
         assert_eq!(records[0].selector_hash, 42);
     }
+
+    // ---- T-948: Preflight vor dem Senden --------------------------------
+
+    /// Sichtbarkeits-Ausdruck exakt wie `operations::any_visible`.
+    fn visible_expr(sel: &Selectors, key: &str) -> String {
+        js::js_scan(
+            &js::js_selectors(&sel.list(key)),
+            "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return true;}",
+            "false",
+        )
+    }
+
+    /// Klick-Ausdruck des Dialog-Schliessers exakt wie
+    /// `operations::dialog_dismiss_exprs` (T-949).
+    fn consent_click_expr(sel: &Selectors) -> String {
+        js::js_scan(
+            &js::js_selectors(&sel.list("dialog_dismiss_button")),
+            "var el=Q(S[i]);if(el){el.click();return true;}",
+            "false",
+        )
+    }
+
+    /// DoD T-948: der gemessene „Vibe Nutzungsbedingungen"-Dialog fuehrt zu
+    /// einem benannten Fehler, bevor irgendetwas in den Composer geschrieben
+    /// wird. Der Zustimmungsknopf wird nicht einmal anvisiert.
+    #[test]
+    fn mistral_terms_dialog_bricht_vor_dem_senden_ab() {
+        let sel = backend_for("mistral", MockPageState::new())
+            .selectors
+            .clone();
+        let terms = visible_expr(&sel, "terms_consent_dialog");
+        let login = visible_expr(&sel, "login_button");
+        let consent_click = consent_click_expr(&sel);
+        let state = MockPageState::new()
+            .on_eval("1", json!(1))
+            .on_eval(terms, json!(true))
+            .on_eval(login, json!(false))
+            .on_eval(consent_click.clone(), json!(true));
+        let mut backend = backend_for("mistral", state.clone());
+
+        let error = backend.send(PROBE).expect_err("Dialog darf nicht senden");
+        assert!(
+            error.contains(operations::TERMS_CONSENT_REQUIRED_MARKER),
+            "{error}"
+        );
+        assert_eq!(state.insert_text_calls(), 0, "kein Prompt geschrieben");
+        assert_eq!(state.press_key_calls(), 0, "kein Enter gedrueckt");
+        assert_eq!(
+            state.eval_count_for(&consent_click),
+            0,
+            "Zustimmungsknopf nie geklickt"
+        );
+    }
+
+    /// DoD T-948: die abgemeldete Seite mit dem gemessenen „Anmelden"-Knopf
+    /// meldet `login_required` statt nach drei Zeitbudgets zu verstummen.
+    #[test]
+    fn mistral_anmelden_knopf_bricht_vor_dem_senden_ab() {
+        let sel = backend_for("mistral", MockPageState::new())
+            .selectors
+            .clone();
+        let state = MockPageState::new()
+            .on_eval("1", json!(1))
+            .on_eval(visible_expr(&sel, "terms_consent_dialog"), json!(false))
+            .on_eval(visible_expr(&sel, "login_button"), json!(true));
+        let mut backend = backend_for("mistral", state.clone());
+
+        let error = backend
+            .send(PROBE)
+            .expect_err("abgemeldet darf nicht senden");
+        assert!(error.contains(operations::LOGIN_REQUIRED_MARKER), "{error}");
+        assert_eq!(state.insert_text_calls(), 0, "kein Prompt geschrieben");
+        assert_eq!(state.press_key_calls(), 0, "kein Enter gedrueckt");
+    }
+
+    /// DoD T-948: der neue `login_indicator` ist nur im angemeldeten Zustand
+    /// sichtbar. Die abgemeldete Seite hat den Composer, aber keinen
+    /// Profil-Knopf — genau das war der alte Fehlbefund.
+    #[test]
+    fn mistral_login_indicator_trifft_nicht_die_abgemeldete_seite() {
+        let sel = backend_for("mistral", MockPageState::new())
+            .selectors
+            .clone();
+        let composer = visible_expr(&sel, "composer");
+        let login = visible_expr(&sel, "login_button");
+        let indicator = visible_expr(&sel, "login_indicator");
+
+        let logged_out = MockPageState::new()
+            .on_eval("1", json!(1))
+            .on_eval(composer, json!(true))
+            .on_eval(login.clone(), json!(true))
+            .on_eval(indicator.clone(), json!(false));
+        assert!(!backend_for("mistral", logged_out).is_logged_in());
+
+        let logged_in = MockPageState::new()
+            .on_eval("1", json!(1))
+            .on_eval(login, json!(false))
+            .on_eval(indicator, json!(true));
+        assert!(backend_for("mistral", logged_in).is_logged_in());
+    }
+
+    /// T-948 non-goal: andere Brains behalten ihr weiches Login-Verhalten;
+    /// der Guard greift nur, wenn er in der Selektordatei deklariert ist.
+    #[test]
+    fn preflight_guard_ist_nur_fuer_deklarierte_brains_aktiv() {
+        let sel = Selectors::from_value(json!({
+            "login_button": ["button:text('Log in')"],
+        }));
+        let login = visible_expr(&sel, "login_button");
+        let state = MockPageState::new().on_eval(login, json!(true));
+        let mut driver = MockPageDriver::new(state);
+        assert_eq!(operations::pre_send_block_reason(&mut driver, &sel), None);
+    }
 }

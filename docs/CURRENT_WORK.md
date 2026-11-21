@@ -1,5 +1,37 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-948 (Preflight vor dem Senden) — Branch fertig, PR folgt
+
+- **Branch:** `fix/T-948-consent-preflight` (abgezweigt von `master` bei
+  `32aa2e0`). Working Tree trägt die hier dokumentierten Änderungen; noch kein
+  Push, kein PR, kein Merge.
+- **Ursache (Messbefund 2026-09-14):** Sechs mistral-Anfragen endeten mit
+  `timeout_no_message`, obwohl das Senden Erfolg meldete. `webagent shot`
+  belegte eine abgemeldete Seite mit „Anmelden"/„Registrieren" und einem
+  modalen „Vibe Nutzungsbedingungen"-Dialog. `login_indicator` zeigte auf den
+  Composer (auch abgemeldet im DOM), `login_button` kannte „Anmelden" nicht.
+- **Fix (rein lesend, nur für deklarierte Brains):** `send_generic` ruft
+  `operations::pre_send_block_reason` vor `wake_renderer`/Fill. Sichtbarer
+  Zustimmungsdialog → `terms_consent_required`, sichtbarer Anmeldeknopf →
+  `login_required`; Meldung `send_phase=preflight: …`, HTTP 502 mit Marker im
+  Text. Kein Zustimmungsknopf, keine Anmeldung, kein Prompt — beides bleibt beim
+  Menschen. `selectors/mistral.json` korrigiert `login_indicator` auf
+  Profil-/Konto-Knöpfe, ergänzt „Anmelden" und `send_preflight_guard`.
+- **Belege:** `docs/proofs/T-948/measurement.md` mit Mock-DOM-Tests und echter
+  Red-/Green-Demonstration (beide Guard-Tests ohne Guard:
+  `send_phase=insert: Composer-Feld nicht gefunden (Timeout)`, Exit 101; danach
+  grün). `docs/API_BRIDGE.md` nennt die Marker. **Kein Live-Anspruch:** die
+  neuen Profil-/Anmelde-Selektoren sind nicht live vermessen; der `handoff`
+  „Fehlermeldung nachher gegen den abgemeldeten Zustand" bleibt offen.
+- **Gates lokal grün:** `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (1483 grün,
+  0 failed, 1 ignored), `git diff --check`.
+- **Board:** T-948 im JSON und Spiegel auf `done`, Stand 82/91 `done`,
+  9 `free`. Kein Tag/Release. G-010 bleibt in_progress.
+- **Offen:** T-914 (expliziter USER-SKIP) und T-961 (Semantik-Freigabe) bleiben
+  ohne Eigentümer-Entscheidung offen; 100 % sind ehrlich unerreicht. Kein
+  Tag/Release ohne neue ausdrückliche Freigabe.
+
 ## 2026-11-21 — G-010: T-946 abgeschlossen (verwaiste Anfrage / Brain-Sperre)
 
 - **PR #93 gemergt** (Squash `ae9cb2c`, alle CI-Checks grün), Branch
