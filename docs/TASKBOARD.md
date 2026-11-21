@@ -204,7 +204,7 @@ T-965 scope: translate the README and newcomer guide, record this policy in main
 | T-911 | done |
 | T-912 | done |
 | T-913 | done |
-| T-914 | free |
+| T-914 | done |
 | T-915 | done |
 | T-916 | done |
 | T-917 | done |
