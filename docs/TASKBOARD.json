@@ -1722,7 +1722,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Umschlagfehler: Fehlertyp, brain_score und einmaliger Korrekturversuch",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "fix/T-953-model-output-error",
       "claimed_at": "2026-11-21",
@@ -1743,7 +1743,9 @@
         "Kein erneutes Senden des vollen Prompts in einen neuen Chat; das ist T-947."
       ],
       "proof_path": "docs/proofs/T-953/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-953/measurement.md"
     },
     {
       "id": "T-954",

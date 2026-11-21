@@ -1,5 +1,36 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-953 abgeschlossen (Modellausgabe-Fehler)
+
+- **PR #92 gemergt** (Squash `02b6987`, alle CI-Checks grün), Branch
+  `fix/T-953-model-output-error` gelöscht. `master` lokal und remote bei
+  `02b6987`, Working Tree vor der hiesigen Statusfortschreibung sauber.
+- **DoD 1 — Fehlertyp:** Jeder `parse_response`-Fehler trägt jetzt den stabilen
+  Marker `MODEL_OUTPUT_ERROR:`. `inference_failure_response()` in
+  `provider_handlers.rs` meldet 502 mit OpenAI-`type: server_error` und
+  `code: model_output_envelope_invalid` (Anthropic entsprechend) statt
+  `invalid_request_error`. Andere Fehler behalten ihre alte Übersetzung; der
+  DSML-Fehler aus T-957 ist nun ebenfalls als Modellausgabe gekennzeichnet.
+- **DoD 2 — brain_score:** `relay::run_turn_loop` prüft die Ausgabe über
+  `OutputCheck::validate`, bevor `answer` gesetzt wird. Ein ungueltiger
+  Umschlag ist ein Fehlschlag mit dem eigenen Grund
+  `model_output_envelope_invalid`; der Circuit-Breaker bleibt bewusst unberührt
+  (Brain war erreichbar). Vorher wurde der Turn als Erfolg verbucht.
+- **DoD 3 — Korrekturgrenze:** Höchstens eine Korrektur im selben Chat (kein
+  `new_chat`) mit der Parserfehlermeldung; danach fail-closed. Das Zeitbudget
+  gilt für die gesamte Anfrage inklusive Korrektur. Mock-Backend-Tests prüfen
+  `new_chats=1`, `sends=2` und den brain_score-Eintrag.
+- **Beleg:** `docs/proofs/T-953/measurement.md` mit Rot-/Green-Tests, echten
+  Event-Zeilen aus dem Test-Data-Verzeichnis und Vorher/Nachher. Lokal
+  `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test --lib` (1474 grün), `git diff --check`. `docs/API_BRIDGE.md`
+  beschreibt Fehlerklasse, Grund und Korrekturgrenze.
+- **Board:** T-953 nach dem Merge auf `done`, Spiegel synchron. Stand damit
+  80/91 `done`, 11 `free`. Kein Tag/Release. G-010 bleibt in_progress.
+- **Offen:** T-914 (expliziter USER-SKIP) und T-961 (Semantik-Freigabe) sind
+  ohne Eigentümer-Entscheidung nicht abschließbar; 100 % bleiben ehrlich
+  unerreicht.
+
 ## 2026-11-21 — G-010: T-957 abgeschlossen (DSML fail-closed)
 
 - **PR #91 gemergt** (Squash `f2a5aac`, alle CI-Checks grün), Branch
