@@ -1023,10 +1023,10 @@
       "phase": "12",
       "type": "proof",
       "title": "Matrix: model/auto Live-Beleg nachziehen",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "docs/T-927",
+      "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [
         "docs/CAPABILITY_MATRIX.json",
@@ -1040,17 +1040,19 @@
       "dod": "Zelle model/auto nicht mehr not_run ohne Begruendung; JSON-Beweis unter proofs/T-927/.",
       "verification": "Matrix-Schema valid; Belegpfad gesetzt; git diff --check",
       "proof_path": "docs/proofs/T-927/",
-      "handoff": "Ergebnisstatus, Session-Hinweis, Branch und PR."
+      "handoff": "Ergebnisstatus, Session-Hinweis, Branch und PR.",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-927/model-auto-evidence.json"
     },
     {
       "id": "T-928",
       "phase": "12",
       "type": "proof",
       "title": "Effort-Spalte ehrlich bereinigen (not_run vs unreachable)",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "docs/T-928",
+      "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [
         "docs/CAPABILITY_MATRIX.json",
@@ -1065,6 +1067,8 @@
       "dod": "Jede effort-Zelle hat frischen Beleg oder begruendetes unreachable/failed; as_of neu.",
       "verification": "Matrix konsistent; Belege vorhanden; git diff --check",
       "proof_path": "docs/proofs/T-928/",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-928/effort-survey-evidence.json",
       "handoff": "Tabelle BrainÔåÆStatus, Branch und PR."
     },
     {

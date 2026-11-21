@@ -1,5 +1,28 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-927/T-928 — Matrix ehrlich bereinigt, beide `done`
+
+- **Methode:** read-only DOM-Surveys (`webagent survey --brain <brain> --dump
+  --headless`) mit dem Binary aus `cd76926` (SHA256 `61DC1281…`). Kein `--write`,
+  keine Zugangsdaten eingegeben, keine Kontoeinstellung geändert, keine
+  Profil-/Cookie-/Token-Datei gelesen.
+- **T-927 (`done`):** `model/auto` war `not_run`, obwohl T-902 den Routing-Pfad
+  schon live belegt hatte (HTTP 200, `AUTO-ROUTER-OK`, `selected=chatgpt`).
+  Frischer Survey: `Unbekanntes Brain: auto` → auto ist ein virtueller Router
+  ohne eigene Oberfläche. Zelle jetzt `passed` **nur für den Routing-Pfad**, mit
+  explizitem Hinweis, dass keine Browser-Modellwahl behauptet wird. Beleg:
+  `docs/proofs/T-927/model-auto-evidence.json` + roher Survey-Dump.
+- **T-928 (`done`):** alle offenen `effort`-Zellen haben jetzt Datum, Status und
+  Belegpfad: chatgpt/deepseek/gemini/mistral/perplexity/zai/auto → `unreachable`
+  (fehlende Oberfläche, abgelaufene Sitzung oder Brain nicht registriert), kimi
+  bleibt `failed` mit dokumentiertem Strukturbefund. claude/qwen (`passed`)
+  unverändert. **Kein `passed` erfunden.** Beleg:
+  `docs/proofs/T-928/effort-survey-evidence.json` + 7 rohe Survey-Dumps.
+- **Matrix:** `as_of` 2026-09-12 → 2026-11-21; `live_verify` (alter
+  Gesamt-Live-Lauf vom 12.09.) bewusst unangetastet. `.gitattributes` sichert die
+  Rohdumps bytegenau. Board-Spiegel: 85 `done`, 6 `free`, 91 gesamt. T-961 bleibt
+  `free` (0/7 sauber), kein Tag/Release.
+
 ## 2026-11-21 — G-010: T-961 frische Live-Matrix — 0/7 sauber, weiter `free`
 
 - **Binary:** `target/debug/webagent.exe` aus `0d7d802` (Code identisch zum

@@ -1,0 +1,81 @@
+{
+  "task": "T-928",
+  "title": "CAPABILITY_MATRIX effort-Spalte — ehrliche DOM-Vermessung 2026-11-21",
+  "date": "2026-11-21",
+  "method": "read-only DOM-Survey pro Brain: webagent survey --brain <brain> --dump --headless. Kein --write, keine Zugangsdaten eingegeben, keine Kontoeinstellung geaendert, keine Profil-/Cookie-/Token-Datei gelesen.",
+  "binary": {
+    "path": "target/debug/webagent.exe",
+    "sha256": "61DC1281EA96EAC5B8B788C3D3CBE1418F2F4BB1E83FFAE1456949ABCDFDB69E",
+    "commit": "cd76926"
+  },
+  "status_vocabulary": "unreachable = im vermessenen DOM nicht erreichbar bzw. ohne Eigentuemer-Login nicht vermessbar; failed = erreicht, aber Faehigkeit nicht nutzbar (struktureller Defekt). Es wird kein passed erfunden.",
+  "brains": {
+    "auto": {
+      "status": "unreachable",
+      "date": "2026-11-21",
+      "reason": "AutoRouter ist ein virtuelles Routing-Ziel ohne eigene Browser-Oberflaeche; survey --brain auto meldet 'Unbekanntes Brain: auto'. Ein reasoning_effort_Pfad ist nicht anwendbar.",
+      "raw": "docs/proofs/T-927/auto-survey-2026-11-21.txt",
+      "sha256": "D5A419DA61828948"
+    },
+    "chatgpt": {
+      "status": "unreachable",
+      "date": "2026-11-21",
+      "reason": "Live-DOM vorhanden (composer=2), aber kein eigenes Effort-Steuerelement: 5 Optionen (chat, new_chat, temporary_chat, voice_input, projects). Einzig 'Nachdenken' als binaerer Thinking-Toggle erscheint im dump; dieser ist gemaess capability.rs:924 bewusst NICHT reasoning_effort. Der Versuch mit --open model_menu lieferte byte-identische Ausgabe, es wurden also keine Menueintraege erfasst.",
+      "raw": "docs/proofs/T-928/chatgpt-survey-2026-11-21.txt",
+      "sha256": "737F2C3AE5AF4082",
+      "open_menu_attempt": "--open model_menu: exit 0, Ausgabe byte-identisch zum Basis-Dump (kein Menue-Inhalt erfasst)"
+    },
+    "deepseek": {
+      "status": "unreachable",
+      "date": "2026-11-21",
+      "reason": "Sitzung abgelaufen: survey landete auf https://chat.deepseek.com/sign_in (6 Buttons, composer=false, 'Log in with Google'/'Login with Apple'). Ohne Eigentuemer-Login nicht vermessbar; keine Zugangsdaten eingegeben.",
+      "raw": "docs/proofs/T-928/deepseek-survey-2026-11-21.txt",
+      "sha256": "6E01CC9321562B98"
+    },
+    "gemini": {
+      "status": "unreachable",
+      "date": "2026-11-21",
+      "reason": "Abgemeldet: DOM zeigt mehrfach 'Anmelden' (login_indicator=5). Vermessene Optionen chat, new_chat, voice_input; kein Effort-Steuerelement erreichbar. Ohne Eigentuemer-Login nicht vermessbar.",
+      "raw": "docs/proofs/T-928/gemini-survey-2026-11-21.txt",
+      "sha256": "23A08C1472788129"
+    },
+    "mistral": {
+      "status": "unreachable",
+      "date": "2026-11-21",
+      "reason": "Live-DOM vorhanden (composer=1), aber nur 2 Optionen (chat, voice_mode) und kein Modell-/Effort-Selektor im DOM. Konsistent mit der bereits dokumentierten Zelle model/mistral = unreachable ('kein sichtbarer Modellselektor').",
+      "raw": "docs/proofs/T-928/mistral-survey-2026-11-21.txt",
+      "sha256": "F3601C83909E3921"
+    },
+    "perplexity": {
+      "status": "unreachable",
+      "date": "2026-11-21",
+      "reason": "survey --brain perplexity meldet 'Unbekanntes Brain: perplexity' (exit 1). Das Brain ist im aktuellen Survey-Kontext nicht registriert; kein Effort-DOM vermessbar.",
+      "raw": "docs/proofs/T-928/perplexity-survey-2026-11-21.txt",
+      "sha256": "9339EE71EACACAF9"
+    },
+    "zai": {
+      "status": "unreachable",
+      "date": "2026-11-21",
+      "reason": "Live-DOM vorhanden (composer=3, send_button=4), aber nur 2 Optionen (chat, projects) und kein Effort-Steuerelement. Das vorhandene reasoning_toggle ist eine andere Faehigkeit (T-914/919-Scope) und wird nicht als reasoning_effort umgedeutet.",
+      "raw": "docs/proofs/T-928/zai-survey-2026-11-21.txt",
+      "sha256": "FAEE25AA29E8C777"
+    },
+    "kimi": {
+      "status": "failed",
+      "date": "2026-11-21",
+      "reason": "Bestehender, dokumentierter Strukturbefund bleibt bestehen: selectors/kimi.json:_reasoning_effort_note beschreibt, dass der Trigger nur im offenen Modell-Menue sichtbar ist und der verify-Pfad trotz Klick fehlschlaegt (Label bleibt 'Schnell'). Die frische Survey zeigt zusaetzlich abgemeldeten Zustand ('Anmelden'), daher keine Live-Re-Verifizierung ohne Eigentuemer-Login. Kein Umdeuten in passed.",
+      "raw": "docs/proofs/T-928/kimi-survey-2026-11-21.txt",
+      "sha256": "FFE3EAADE729C0D8",
+      "structural_reference": "selectors/kimi.json:_reasoning_effort_note"
+    }
+  },
+  "unchanged_passed_cells": {
+    "claude": "passed (unberuehrt, T-302)",
+    "qwen": "passed (unberuehrt, verify_qwen_effort_2026-09-06.txt)"
+  },
+  "conclusion": "Alle zuvor stillen not_run-Zellen haben jetzt Datum, Status und Belegpfad. Es wurde kein passed erfunden: 7 Zellen sind ehrlich unreachable (fehlende Oberflaeche, abgelaufene Sitzung oder aquivalente strukturelle Begruendung), kimi bleibt failed mit dokumentiertem Strukturbefund as_of aktualisiert.",
+  "matrix_update": {
+    "as_of": "2026-11-21",
+    "proof_path": "docs/proofs/T-928/effort-survey-evidence.json"
+  }
+}

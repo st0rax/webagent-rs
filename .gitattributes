@@ -2,3 +2,7 @@
 # Without this, core.autocrlf rewrites LF to CRLF on checkout and the recorded
 # SHA256 values no longer match the files.
 docs/proofs/T-961/*.jsonl -text
+
+# Raw DOM survey dumps (T-927/T-928) are audit evidence: store byte-for-byte.
+docs/proofs/T-927/*.txt -text
+docs/proofs/T-928/*.txt -text

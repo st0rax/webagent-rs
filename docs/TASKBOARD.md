@@ -217,8 +217,8 @@ T-965 scope: translate the README and newcomer guide, record this policy in main
 | T-924 | done |
 | T-925 | done |
 | T-926 | free |
-| T-927 | free |
-| T-928 | free |
+| T-927 | done |
+| T-928 | done |
 | T-929 | done |
 | T-930 | done |
 | T-931 | done |

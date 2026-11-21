@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-09-12",
+  "as_of": "2026-11-21",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "live_verify": {
     "as_of": "2026-09-12",
@@ -356,24 +356,24 @@
     {
       "area": "model",
       "brain": "auto",
-      "status": "not_run",
-      "date": "2026-09-11",
+      "status": "passed",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "auto ist ein virtueller Auto-Router-Brain (kein eigenes Browser-UI/Modellmenue, routed an ein eingeloggtes Brain; api_bridge.rs AutoRouter). Modellwahl ist nicht anwendbar — analog effort/auto. Verify bleibt ehrlich Quest (kein reasoning_effort_path/model selectors). ROUTING-PFAD LIVE BELEGT (T-902, 2026-09-12): POST /v1/chat/completions model=webagent/auto -> HTTP 200, Antwort 'AUTO-ROUTER-OK', Serverlog '[auto-router] selected=chatgpt reason=default' + '[auto-router] execute brain=chatgpt' - docs/proofs/T-902/auto-router-live-proof-2026-09-12.json"
+      "proof_path": "docs/proofs/T-927/model-auto-evidence.json",
+      "note": "T-927: nicht mehr not_run. Der Routing-Pfad ist live belegt (T-902, 2026-09-12: POST /v1/chat/completions model=webagent/auto -> HTTP 200, 'AUTO-ROUTER-OK', Log '[auto-router] selected=chatgpt reason=default'). auto ist ein virtueller AutoRouter ohne eigene Browser-Oberflaeche: frischer Survey 2026-11-21 meldet 'Unbekanntes Brain: auto'. 'passed' bezieht sich ausschliesslich auf den Routing-Pfad; eine eigene Browser-Modellwahl existiert nicht und wird nicht behauptet. Beleg: docs/proofs/T-927/model-auto-evidence.json"
     },
     {
       "area": "effort",
       "brain": "chatgpt",
-      "status": "not_run",
-      "date": "2026-09-11",
+      "status": "unreachable",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Kein eigenes Effort-Control (Survey 2026-09-11): Composer-Pill 'Sofort' ist Modell UND einziges Effort in einem; reasoning_effort_menu == model_menu, kein separater Denkstufen-Waehler. Effort wahlbar wuerde mode_switch-artigen zweiten Pill erfordern, existiert nicht. Kein reasoning_effort_path (verify bleibt Quest)."
+      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
+      "note": "T-928: frischer read-only DOM-Survey 2026-11-21 (live, angemeldet). Nur 5 Optionen (chat, new_chat, temporary_chat, voice_input, projects); 'Nachdenken' ist ein binaerer Thinking-Toggle und gemaess capability.rs:924 bewusst kein reasoning_effort. --open model_menu lieferte byte-identische Ausgabe, keine Menueeintraege erfasst. Kein separates Effort-Control erreichbar; kein reasoning_effort_path. Beleg: docs/proofs/T-928/chatgpt-survey-2026-11-21.txt"
     },
     {
       "area": "effort",
@@ -388,57 +388,57 @@
     {
       "area": "effort",
       "brain": "deepseek",
-      "status": "not_run",
-      "date": "2026-09-11",
+      "status": "unreachable",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Fruehere effort-Zelle hing am reasoning_toggle-Belego (DeepThink-Zustandswechsel, 30350ms) statt an einer Denkstufen-Wahl; es gibt auf deepseek nie ein mehrstufiges Effortmenue. Die drei Segmente (Instant/Expert/Vision) wurden 2026-09-11 vom Anbieter entfernt (siehe model-Zelle removed). Composer zeigt nur noch DeepThink/Search-Toggles = reasoning_toggle, kein reasoning_effort. Kein reasoning_effort_path (verify bleibt Quest)."
+      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
+      "note": "T-928: read-only DOM-Survey 2026-11-21 landete auf https://chat.deepseek.com/sign_in (6 Buttons, composer=false, 'Log in with Google'/'Login with Apple'), exit 1. Sitzung abgelaufen; ohne Eigentuemer-Login nicht vermessbar. Keine Zugangsdaten eingegeben. Zusaetzlich historisch belegt: mehrstufiges Effortmenue vom Anbieter entfernt (model-Zelle removed). Beleg: docs/proofs/T-928/deepseek-survey-2026-11-21.txt"
     },
     {
       "area": "effort",
       "brain": "gemini",
-      "status": "not_run",
-      "date": "2026-09-11",
+      "status": "unreachable",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Kein Effort-/Denkstufen-Waehler (Survey 2026-09-11, im geoeffneten Modellmenue): Composer zeigt nur Modusauswahl 'Flash' (model_menu), Temporaerer Chat, Uploads & Tools, Spracheingabe. Kein Think/Effort/Sonar-Aequivalent, keine Denkstufen-Optionen in Menues. Kein reasoning_effort_path (verify bleibt Quest)."
+      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
+      "note": "T-928: read-only DOM-Survey 2026-11-21 zeigt abgemeldeten Zustand ('Anmelden' mehrfach, login_indicator=5); Optionen nur chat, new_chat, voice_input. Ohne Eigentuemer-Login nicht vermessbar, kein Effort-Control erreichbar. Keine Zugangsdaten eingegeben. Beleg: docs/proofs/T-928/gemini-survey-2026-11-21.txt"
     },
     {
       "area": "effort",
       "brain": "kimi",
       "status": "failed",
-      "date": "2026-09-11",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Pfad ['Denkaufwand Hoch', 'Hoch'] konfiguriert (2026-09-11). Kette funktioniert (Klicks gelingen), aber verify-Schluss: Label bleibt 'Schnell' (Modellname) — Effort-Label ist nur im offenen Modell-Menue sichtbar, kein persistenter Effort-Trigger ausserhalb. Strukturelle UI-Eigenart, kein Selektor-Defekt."
+      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
+      "note": "T-928: Status failed bleibt ehrlich bestehen (kein Umdeuten in passed). Pfad ['Denkaufwand Hoch','Hoch'] konfiguriert; Klicks gelingen, aber verify-Schluss scheitert: Label bleibt 'Schnell' (Modellname), Effort-Label nur im offenen Modellmenue, kein persistenter Trigger (selectors/kimi.json:_reasoning_effort_note). Frischer Survey 2026-11-21 zeigt zusaetzlich abgemeldeten Zustand, daher keine Live-Re-Verifizierung ohne Eigentuemer-Login. Beleg: docs/proofs/T-928/kimi-survey-2026-11-21.txt"
     },
     {
       "area": "effort",
       "brain": "mistral",
-      "status": "not_run",
-      "date": "2026-09-11",
+      "status": "unreachable",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Kein Effort-/Modellmenue (Survey 2026-09-11): nur chat, voice_mode, projects aus 39 Buttons; model_menu nicht anklickbar (kein Modellselektor). Kein Denkstufen-Waehler im DOM. Kein reasoning_effort_path (verify bleibt Quest)."
+      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
+      "note": "T-928: frischer read-only DOM-Survey 2026-11-21 (composer=1) zeigt nur 2 Optionen (chat, voice_mode) und keinen Modell-/Effort-Selektor; konsistent mit model/mistral = unreachable. Kein Denkstufen-Waehler im DOM, kein reasoning_effort_path. Beleg: docs/proofs/T-928/mistral-survey-2026-11-21.txt"
     },
     {
       "area": "effort",
       "brain": "perplexity",
-      "status": "not_run",
-      "date": "2026-09-11",
+      "status": "unreachable",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Kein Effort-/Denkstufen-Waehler (Survey 2026-09-11, im geoeffneten Modellmenue): 83 Buttons, Optionen nur chat, canvas, regenerate, voice_input, voice_mode, projects. Modellmenue ist Radix-Portal ohne Effort-Optionen. Kein reasoning_effort_path (verify bleibt Quest)."
+      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
+      "note": "T-928: survey --brain perplexity meldet 2026-11-21 'Unbekanntes Brain: perplexity' (exit 1) — Brain im aktuellen Survey-Kontext nicht registriert. Kein Effort-DOM vermessbar. Historisch (2026-09-11) ebenfalls kein Denkstufen-Waehler im Modellmenue gefunden. Beleg: docs/proofs/T-928/perplexity-survey-2026-11-21.txt"
     },
     {
       "area": "effort",
@@ -454,24 +454,24 @@
     {
       "area": "effort",
       "brain": "zai",
-      "status": "not_run",
-      "date": "2026-09-11",
+      "status": "unreachable",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": "docs/proofs/T-501/effort_verify_system_deterministic_2026-09-04.json",
-      "note": "Kein mehrstufiges Effortmenue (Survey 2026-09-11, im geoeffneten Modellmenue): zai hat nur 'DeepThink Deaktivierung' (reasoning_toggle, Ein/Aus) als Effort-Control; kein Denkstufen-Waehler mit Ebenen. Kein reasoning_effort_path (verify bleibt Quest). T-901-Ergaenzung (2026-09-12): reasoning_toggle-Selektor-Drift korrigiert (Text-Fallback DeepThink) und live belegt - Zustand false->true via webagent toggle; zai chat stabil 4/4 (DeepThink aktiv, ohne Thought-Process-Praefix). Beleg docs/proofs/T-901/zai-flaky-survey-2026-09-12.json."
+      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
+      "note": "T-928: frischer read-only DOM-Survey 2026-11-21 (composer=3, send_button=4) zeigt nur 2 Optionen (chat, projects) und kein Effort-Steuerelement. Vorhandenes reasoning_toggle (DeepThink, T-901 live belegt) ist eine andere Faehigkeit und wird nicht als reasoning_effort umgedeutet. Kein reasoning_effort_path. Beleg: docs/proofs/T-928/zai-survey-2026-11-21.txt"
     },
     {
       "area": "effort",
       "brain": "auto",
-      "status": "not_run",
-      "date": "2026-09-04",
+      "status": "unreachable",
+      "date": "2026-11-21",
       "model": null,
       "selector_hash": null,
       "latency_ms": null,
-      "proof_path": null,
-      "note": "Web-UI-only: ersetzt Live-Browser-Session pro Brain (reasoning_effort_path); Verify ist fail-safe ehrlich (kein Pass ohne Pfad, Unit-Test gruen)."
+      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
+      "note": "T-928: AutoRouter ist ein virtuelles Routing-Ziel ohne eigene Browser-Oberflaeche; survey --brain auto meldete 2026-11-21 'Unbekanntes Brain: auto' (exit 1). Ein reasoning_effort_Pfad ist strukturell nicht anwendbar (Modell/Effort werden vom Ziel-Brain getragen). Beleg: docs/proofs/T-927/auto-survey-2026-11-21.txt"
     },
     {
       "area": "attachment",

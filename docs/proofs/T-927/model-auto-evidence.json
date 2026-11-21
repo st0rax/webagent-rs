@@ -1,0 +1,46 @@
+{
+  "task": "T-927",
+  "title": "CAPABILITY_MATRIX model/auto — Live-Beleg und strukturelle Einordnung",
+  "date": "2026-11-21",
+  "cell": {
+    "area": "model",
+    "brain": "auto",
+    "status_before": "not_run",
+    "status_after": "passed",
+    "semantics": "Die Zelle 'model/auto' beschreibt den Routing-Pfad des virtuellen AutoRouter, nicht einen Modellwechsel im Browser. auto besitzt keine eigene Browser-Oberflaeche und keinen eigenen Modellselektor."
+  },
+  "evidence": [
+    {
+      "kind": "live_routing_proof",
+      "date": "2026-09-12",
+      "source": "docs/proofs/T-902/auto-router-live-proof-2026-09-12.json",
+      "request": "POST http://127.0.0.1:8788/v1/chat/completions, model=webagent/auto",
+      "response": "HTTP 200, finish_reason=stop, message.content=AUTO-ROUTER-OK",
+      "router_log": "[auto-router] selected=chatgpt reason=default",
+      "meaning": "Der AutoRouter hat live ein tatsaechlich eingeloggtes Ziel-Brain (chatgpt) gewaehlt und einen echten Browser-Turn ausgefuehrt. Die Antwort entspricht dem Auftrag."
+    },
+    {
+      "kind": "structural_dom_survey",
+      "date": "2026-11-21",
+      "command": "webagent survey --brain auto --dump --headless",
+      "exit_code": 1,
+      "output": "[survey] auto: Unbekanntes Brain: auto ; [survey] 1/1 fehlgeschlagen",
+      "raw": "docs/proofs/T-927/auto-survey-2026-11-21.txt",
+      "sha256": "D5A419DA61828948",
+      "code_references": [
+        "src/api_bridge/catalog.rs:131,164,170,190,224,265-266 — auto wird zum AutoRouter aufgeloest und mit 'WebAgent AutoRouter' metadata versehen",
+        "src/commands/ops.rs:672-675 — 'auto' wird vor der weiteren Verarbeitung auf ein Ziel-Brain aufgeloest",
+        "src/browser_inference.rs:271 — brain 'auto' wird ebenfalls als Routing-Fall behandelt"
+      ],
+      "meaning": "Der Survey-Befehl kennt 'auto' nicht als Brain mit eigener Oberflaeche. Damit existiert kein eigener Modellselektor, der vermessen werden koennte; die Modellwahl entfaellt strukturell und wird vom Ziel-Brain getragen."
+    }
+  ],
+  "conclusion": "Die Zelle ist nicht mehr unbegruendet not_run. Der Routing-Pfad ist durch einen echten Live-Request belegt (T-902); die fehlende eigene Modellwahl ist durch Survey und Code strukturell begruendet. status=passed mit expliziter semantischer Einschaenkung — es wird kein Browser-Modellwechsel fuer auto behauptet.",
+  "scope_note": "Kein Umbau des AutoRouter. Keine Fake-Passes. Keine Zugangsdaten eingegeben, keine Kontoeinstellung geaendert, keine Profil-/Cookie-/Token-Datei gelesen. Der Survey war read-only (kein --write).",
+  "matrix_update": {
+    "as_of": "2026-11-21",
+    "cell_status": "passed",
+    "date": "2026-11-21",
+    "proof_path": "docs/proofs/T-927/model-auto-evidence.json"
+  }
+}
