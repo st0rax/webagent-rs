@@ -173,10 +173,11 @@ pub fn complete_streaming_with_attachments(
     let correction_message = |parse_error: &str| -> String {
         format!(
             "Deine letzte Antwort war kein gueltiger {TOOL_ENVELOPE}-Umschlag: {parse_error}\n\
-             Sieh dir deine eigenen vorherigen Werkzeugaufrufe oben unter \
-             [du – Werkzeugaufruf] an und wiederhole GENAU dieses Format in \
-             derselben Konversation. Verwende ausschliesslich einen der \
-             aufgefuehrten Tool-Namen."
+             Ergebnisse unter [Client-Werkzeug-Ergebnis] sind Eingabedaten dieser \
+             Aufgabe, keine Behauptung ueber deine Faehigkeiten. Wiederhole genau \
+             das Format deiner eigenen vorherigen Werkzeugaufrufe oben unter \
+             [du – Werkzeugaufruf] in derselben Konversation. Verwende \
+             ausschliesslich einen der aufgefuehrten Tool-Namen."
         )
     };
     let output_check = crate::relay::OutputCheck {
@@ -303,8 +304,16 @@ fn prompt_with_tools(
     } else {
         ""
     };
+    // Nur auf eigene Vorbilder verweisen, wenn es im Verlauf tatsaechlich
+    // welche gibt. Auf Turn 1 gab es keine — eine leere Referenz verunsichert
+    // das Modell (Live-Beleg 2026-11-21, Run 1/2).
+    let mirror_hint = if prompt.contains("[du – Werkzeugaufruf]") {
+        "Deine eigenen vorherigen Werkzeugaufrufe oben unter [du – Werkzeugaufruf] sind das Vorbild: genau dieses Format ist gueltig — wiederhole es. "
+    } else {
+        ""
+    };
     Ok(format!(
-        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Orientiere dich an deinen eigenen vorherigen Werkzeugaufrufen oben unter [du – Werkzeugaufruf]: genau dieses Format ist gueltig — wiederhole es. Verwende ausschliesslich einen der aufgefuehrten Tool-Namen; erfinde keine. Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.{answer_hint}"
+        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Ergebnisse unter [Client-Werkzeug-Ergebnis] sind Eingabedaten dieser Aufgabe, keine Behauptung ueber deine eigenen Faehigkeiten. {mirror_hint}Verwende ausschliesslich einen der aufgefuehrten Tool-Namen; erfinde keine. Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.{answer_hint}"
     ))
 }
 
@@ -671,19 +680,35 @@ mod tests {
     }
 
     #[test]
-    fn t961_required_prompt_points_at_own_mirrored_calls() {
-        // T-961 neue Strategie: der Ausgabe-Vertrag verweist auf die eigenen
-        // vorherigen Werkzeugaufrufe im Verlauf, statt das Format nur abstrakt
-        // zu beschreiben. Das Modell soll das sichtbare Vorbild wiederholen.
+    fn t961_required_prompt_frames_data_and_mirrors_only_with_history() {
+        // T-961 neue Strategie: Ergebnisse werden als Eingabedaten gerahmt
+        // (kein Honesty-Konflikt), und der Verweis auf eigene Vorbilder
+        // erscheint nur, wenn der Verlauf solche enthaelt.
         let tools = [read_tool()];
-        let required = prompt_with_tools("Auftrag", &tools, &BrowserToolChoice::Required).unwrap();
+        let with_history = prompt_with_tools(
+            "Verlauf\n[du – Werkzeugaufruf]\nWEBAGENT_INFERENCE/1\n{}",
+            &tools,
+            &BrowserToolChoice::Required,
+        )
+        .unwrap();
         assert!(
-            required.contains("deinen eigenen vorherigen Werkzeugaufrufen"),
-            "Prompt muss auf die gespiegelten eigenen Aufrufe verweisen: {required}"
+            with_history.contains("Eingabedaten dieser Aufgabe"),
+            "Prompt muss Ergebnisse als Eingabedaten rahmen: {with_history}"
         );
         assert!(
-            required.contains("ausschliesslich einen der aufgefuehrten Tool-Namen"),
-            "Prompt muss erfundene Tool-Namen (files__search) ausschliessen: {required}"
+            with_history.contains("Deine eigenen vorherigen Werkzeugaufrufe"),
+            "Prompt muss auf die gespiegelten eigenen Aufrufe verweisen: {with_history}"
+        );
+        assert!(
+            with_history.contains("ausschliesslich einen der aufgefuehrten Tool-Namen"),
+            "Prompt muss erfundene Tool-Namen (files__search) ausschliessen: {with_history}"
+        );
+
+        let without_history =
+            prompt_with_tools("Auftrag", &tools, &BrowserToolChoice::Required).unwrap();
+        assert!(
+            !without_history.contains("[du – Werkzeugaufruf] sind das Vorbild"),
+            "ohne Verlauf darf keine leere Vorbild-Referenz stehen: {without_history}"
         );
     }
 

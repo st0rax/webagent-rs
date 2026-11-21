@@ -622,10 +622,11 @@ fn t961_history_tool_calls_mirror_the_exact_output_envelope() {
 }
 
 #[test]
-fn t961_continuation_after_tool_result_anchors_tool_reality() {
-    // T-961 neue Strategie: nach einem Werkzeugergebnis muss der Prompt
-    // ausdruecklich verankern, dass die Werkzeuge in dieser Sitzung echt und
-    // aktiv sind und fruehere Zweifel daran ignoriert werden.
+fn t961_continuation_frames_results_as_input_data() {
+    // T-961 neue Strategie: nach einem Werkzeugergebnis muessen die Resultate
+    // als Eingabedaten der Protokoll-Aufgabe gerahmt werden, nicht als
+    // Behauptung ueber die eigenen Faehigkeiten. Das vermeidet den
+    // Honesty-Konflikt, der das Modell zur Verweigerung brachte.
     let request: OpenAiRequest = serde_json::from_value(json!({
         "model":"chatgpt", "messages":[
             {"role":"user","content":"Lies nonce-1.txt und dann nonce-2.txt."},
@@ -640,12 +641,12 @@ fn t961_continuation_after_tool_result_anchors_tool_reality() {
 
     let prompt = openai_prompt(&request).unwrap().text;
     assert!(
-        prompt.contains("weiterhin aktiv"),
-        "Prompt muss die Werkzeugverfuegbarkeit verankern: {prompt}"
+        prompt.contains("Eingabedaten deiner Aufgabe"),
+        "Prompt muss Ergebnisse als Eingabedaten rahmen: {prompt}"
     );
     assert!(
-        prompt.contains("ignoriere"),
-        "Prompt muss fruehere Zweifel explizit entkraeften: {prompt}"
+        prompt.contains("keine Behauptung ueber deine eigenen Faehigkeiten"),
+        "Prompt muss den Honesty-Konflikt explizit nehmen: {prompt}"
     );
 }
 

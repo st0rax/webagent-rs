@@ -1,26 +1,44 @@
 # Current Work
 
-## 2026-11-21 — G-010: T-961 NEUE STRATEGIE implementiert — Code grün, Live ausstehend
+## 2026-11-21 — G-010: T-961 NEUE STRATEGIE live NEGATIV (0/6) — T-961 bleibt `free`
 
 - **Freigabe:** Der Eigentümer hat am 2026-11-21 eine neue Strategie für T-961
   freigegeben; die Auto→Required-Eskalation (0/7 sauber) gilt als widerlegt.
-- **Strategie „Selbstspiegelung + Verfügbarkeitsanker":** Statt den Tool-Call zu
+- **Strategie „Selbstspiegelung + Daten-Framing":** Statt den Tool-Call zu
   erzwingen, werden die eigenen früheren Werkzeugaufrufe im Verlauf in **genau
   dem `WEBAGENT_INFERENCE/1`-Umschlag** gerendert, den das Modell ausgeben soll
   (`src/api_bridge/content.rs`, `tool_calls_to_envelope`). Direkt vor der
-  aktuellen Nachricht verankert der Prompt, dass die Werkzeuge weiterhin aktiv
-  sind und frühere Zweifel ignoriert werden sollen. Der Ausgabe-Vertrag und die
-  T-953-Korrektur verweisen auf dieses Vorbild und verbieten erfundene
-  Tool-Namen (`src/browser_inference.rs`). Die Eskalation bleibt default-off;
-  die neue Strategie hängt nicht von ihr ab.
-- **Red/Green:** drei neue Tests zuerst rot, dann grün; `cargo test --lib`
-  1488 passed / 0 failed / 1 ignored; `cargo fmt --check`, `cargo clippy
-  --all-targets -- -D warnings`, `git diff --check` alle grün.
-- **Beleg (Code):** `docs/proofs/T-961/self-mirror-strategy.md`. Branch
-  `fix/T-961-self-mirror`. **Kein Abnahmebeleg** — T-961 bleibt `free`.
-- **Nächster Schritt:** frische Raw-Live-Matrix auf Port `8788` (nur dort),
-  frische prozess-only Tokens, strikter Verifier; mindestens fünf
-  aufeinanderfolgende saubere Werkzeugturns nötig. Kein Tag/Release.
+  aktuellen Nachricht werden Werkzeugergebnisse als **Eingabedaten der Aufgabe,
+  keine Behauptung über die eigenen Fähigkeiten** gerahmt. Der Ausgabe-Vertrag
+  verweist nur bei echtem Verlauf auf das eigene Vorbild und verbietet
+  erfundene Tool-Namen (`src/browser_inference.rs`). Die Eskalation bleibt
+  default-off; die neue Strategie hängt nicht von ihr ab.
+- **Live-Ergebnis: 0/6 saubere Läufe, alle Verifier `FAIL`.** Sechs Läufe auf
+  Port `8788` (nur dort), frische prozess-only GUID-Tokens, Eskalation OFF,
+  strikter Verifier. Lauf 1: Turn 1 korrekter Tool-Call, Turn 2 sofort
+  Verweigerung. Läufe 2/4/5 und der Bestätigungslauf 6 mit dem finalen Binary
+  (`598DB09F…4818A`): sofortige Verweigerung bzw. Drift, kein Tool-Call.
+  Lauf 3: Harness-Crash vor der Antwort (StrictMode), danach gefixt; weiterhin
+  als `FAIL` gezählt, nicht ausgelassen.
+- **Entscheidender Nachweis:** Das Bridge-Log aus Lauf 5 enthält mit
+  `[T961-DEBUG FINAL PROMPT]` den vollständigen Prompt (Identität,
+  `[Client-Werkzeuge]`, Daten-Framing, Tool-Namen-Regel, `WEBAGENT_INFERENCE/1`).
+  Das Modell erhielt also den neuen Prompt — die Verweigerung ist kein
+  falscher Code-Pfad. Die temporäre Diagnostik wurde danach vollständig
+  entfernt; der finale Code enthält keine `WEBAGENT_DEBUG_PROMPT`-Variable.
+- **Gates (final):** `cargo test --lib` 1488 passed / 0 failed / 1 ignored;
+  3 T-961-Tests grün; `cargo fmt --check`, `cargo clippy --all-targets --
+  -D warnings`, `cargo build`, `git diff --check` alle grün.
+- **Belege:** `docs/proofs/T-961/self-mirror-strategy.md` (Code) und
+  `docs/proofs/T-961/self-mirror-live-result.md` (Negativlive, Hashes,
+  Verifier-Logik). Branch `fix/T-961-self-mirror`. **Kein `PASS`, kein
+  `done`, kein Tag, kein Release.**
+- **Offen:** T-961-DoD „Konto-Zustand geprüft" — gespeicherte Erinnerungen /
+  Account-Einstellungen im ChatGPT-Konto müssen vom Eigentümer geprüft
+  werden. Für eine erneute Matrix ist eine neue Freigabe nötig.
+- **Rohdaten:** `C:\Users\storax\AppData\Local\Temp\opencode\T961-selfmirror-20261121\`
+  (Transkripte, Bridge-Logs, Harness, Verifier; GUID-Marker — nicht ins Repo
+  kopieren).
 
 ## 2026-11-21 — G-010: T-927/T-928 — Matrix ehrlich bereinigt, beide `done`
 

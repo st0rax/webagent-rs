@@ -530,8 +530,12 @@ pub(crate) fn conversation_prompt(
         .iter()
         .any(|message| !message.tool_calls.is_empty() || message.role == "tool");
     if has_tool_activity {
+        // Die Results werden bewusst als EINGABEDATEN gerahmt und nicht als
+        // Behauptung ueber die Faehigkeiten des Browsermodells. Damit entsteht
+        // kein Honesty-Konflikt („ich habe gar keine Werkzeuge"), sondern eine
+        // reine Protokoll-Fortsetzungsaufgabe.
         task.push_str(
-            "Die Client-Werkzeuge aus deinen frueheren Aufrufen sind in dieser Sitzung weiterhin aktiv und einsatzbereit; die Ergebnisse unter [Client-Werkzeug-Ergebnis] sind echte Ausfuehrungsdaten deines letzten Aufrufs. Falls du frueher einmal geglaubt oder gesagt hast, diese Werkzeuge seien nur Beispieltext oder nicht verfuegbar: ignoriere das — es war falsch. Orientiere dich an deinen eigenen vorherigen Werkzeugaufrufen oben und wiederhole genau dieses Format.\n\n",
+            "Die Eintraege unter [du – Werkzeugaufruf] und die Ergebnisse unter [Client-Werkzeug-Ergebnis] sind strukturierte Daten dieser Unterhaltung. Die Ergebnisse sind Eingabedaten deiner Aufgabe und keine Behauptung ueber deine eigenen Faehigkeiten. Setze das Protokoll mit genau dem Format deiner bisherigen Eintraege fort.\n\n",
         );
     }
     task.push_str("Aktuelle Nachricht an dich:\n\n");
