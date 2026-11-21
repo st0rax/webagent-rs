@@ -585,6 +585,71 @@ fn current_tool_result_gets_explicit_label_and_call_id() {
 }
 
 #[test]
+fn t961_history_tool_calls_mirror_the_exact_output_envelope() {
+    // T-961 neue Strategie: die eigenen frueheren Werkzeugaufrufe stehen im
+    // Verlauf in GENAU dem Format, das das Modell jetzt ausgeben soll. Damit
+    // wird die Antwort aus dem Kontext gespiegelt statt aus einer abstrakten
+    // Schema-Beschreibung erraten.
+    let request: OpenAiRequest = serde_json::from_value(json!({
+        "model":"chatgpt", "messages":[
+            {"role":"user","content":"Lies nonce-1.txt."},
+            {"role":"assistant","content":null,"tool_calls":[
+                {"id":"call_1","type":"function","function":{
+                    "name":"read","arguments":"{\"path\":\"nonce-1.txt\"}"}}
+            ]},
+            {"role":"tool","tool_call_id":"call_1","content":"PI_TOOL_1_abc"}
+        ]
+    }))
+    .unwrap();
+
+    let prompt = openai_prompt(&request).unwrap().text;
+    // Der eigene Aufruf steht als WEBAGENT_INFERENCE/1-Umschlag mit
+    // aufgeloestem arguments-Objekt im Verlauf — nicht als OpenAI-[tool_calls].
+    assert!(
+        prompt.contains("WEBAGENT_INFERENCE/1"),
+        "historischer Werkzeugaufruf muss das Ausgabeformat spiegeln: {prompt}"
+    );
+    assert!(
+        prompt.contains(
+            r#"{"tool_calls":[{"id":"call_1","name":"read","arguments":{"path":"nonce-1.txt"}}]}"#
+        ),
+        "arguments muss als JSON-Objekt gespiegelt werden: {prompt}"
+    );
+    assert!(
+        !prompt.contains("[tool_calls]"),
+        "OpenAI-Rohformat darf nicht mehr als Vorbild stehen: {prompt}"
+    );
+}
+
+#[test]
+fn t961_continuation_after_tool_result_anchors_tool_reality() {
+    // T-961 neue Strategie: nach einem Werkzeugergebnis muss der Prompt
+    // ausdruecklich verankern, dass die Werkzeuge in dieser Sitzung echt und
+    // aktiv sind und fruehere Zweifel daran ignoriert werden.
+    let request: OpenAiRequest = serde_json::from_value(json!({
+        "model":"chatgpt", "messages":[
+            {"role":"user","content":"Lies nonce-1.txt und dann nonce-2.txt."},
+            {"role":"assistant","content":null,"tool_calls":[
+                {"id":"call_1","type":"function","function":{
+                    "name":"read","arguments":"{\"path\":\"nonce-1.txt\"}"}}
+            ]},
+            {"role":"tool","tool_call_id":"call_1","content":"PI_TOOL_1_abc"}
+        ]
+    }))
+    .unwrap();
+
+    let prompt = openai_prompt(&request).unwrap().text;
+    assert!(
+        prompt.contains("weiterhin aktiv"),
+        "Prompt muss die Werkzeugverfuegbarkeit verankern: {prompt}"
+    );
+    assert!(
+        prompt.contains("ignoriere"),
+        "Prompt muss fruehere Zweifel explizit entkraeften: {prompt}"
+    );
+}
+
+#[test]
 fn browser_tool_call_maps_to_openai_response() {
     let answer = crate::browser_inference::BrowserInferenceResponse {
         text: None,

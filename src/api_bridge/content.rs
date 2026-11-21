@@ -395,6 +395,32 @@ pub(crate) fn conversation_task(
     Ok(conversation_prompt(system, messages)?.text)
 }
 
+/// Rendert fruehere Assistant-Werkzeugaufrufe in GENAU dem Format, das das
+/// Modell auch jetzt ausgeben soll (T-961, neue Strategie). Der Verlauf wird
+/// damit zum sichtbaren Vorbild statt zu einer abstrakten Schema-Beschreibung:
+/// das Modell spiegelt seine eigenen erfolgreichen Aufrufe. OpenAI-`arguments`
+/// ist ein JSON-String; er wird zu einem echten Objekt aufgeloest. Scheitert
+/// das, bleibt der Rohstring erhalten (kein Datenverlust, kein erfundenes
+/// Argument).
+fn tool_calls_to_envelope(calls: &[OpenAiAssistantToolCall]) -> String {
+    let quote = |value: &str| serde_json::to_string(value).unwrap_or_else(|_| "\"?\"".to_string());
+    let rendered: Vec<String> = calls
+        .iter()
+        .map(|call| {
+            let arguments = serde_json::from_str::<serde_json::Value>(&call.function.arguments)
+                .unwrap_or_else(|_| serde_json::Value::String(call.function.arguments.clone()));
+            let arguments = serde_json::to_string(&arguments).unwrap_or_else(|_| "{}".to_string());
+            format!(
+                r#"{{"id":{},"name":{},"arguments":{}}}"#,
+                quote(&call.id),
+                quote(&call.function.name),
+                arguments
+            )
+        })
+        .collect();
+    format!(r#"{{"tool_calls":[{}]}}"#, rendered.join(","))
+}
+
 pub(crate) fn conversation_prompt(
     system: Option<String>,
     messages: &[ConversationMessage],
@@ -474,9 +500,12 @@ pub(crate) fn conversation_prompt(
             content_to_prompt(&message.content, &mut historical_attachments)?
         };
         if !message.tool_calls.is_empty() {
+            // T-961 neue Strategie: der eigene Aufruf steht als ausfuehrbares
+            // Vorbild im Umschlagformat, nicht als OpenAI-Transport-JSON.
             content.push_str(&format!(
-                "\n[tool_calls] {}",
-                serde_json::to_string(&message.tool_calls).map_err(|error| error.to_string())?
+                "\n{}\n{}",
+                crate::browser_inference::TOOL_ENVELOPE,
+                tool_calls_to_envelope(&message.tool_calls)
             ));
         }
         if let Some(id) = &message.tool_call_id {
@@ -491,6 +520,19 @@ pub(crate) fn conversation_prompt(
             role => role,
         };
         task.push_str(&format!("[{label}]\n{content}\n\n"));
+    }
+    // T-961 neue Strategie: direkt vor der aktuellen Nachricht die
+    // Werkzeugrealitaet verankern. Das Browsermodell behauptete nach einem
+    // erfolgreichen Aufruf gelegentlich, die Werkzeuge seien nur Beispieltext
+    // und nicht verfuegbar. Der Anker nennt die eigenen frueheren Aufrufe als
+    // Beleg und entkraeften ausdruecklich jede gegenteilige fruehere Ueberzeugung.
+    let has_tool_activity = messages
+        .iter()
+        .any(|message| !message.tool_calls.is_empty() || message.role == "tool");
+    if has_tool_activity {
+        task.push_str(
+            "Die Client-Werkzeuge aus deinen frueheren Aufrufen sind in dieser Sitzung weiterhin aktiv und einsatzbereit; die Ergebnisse unter [Client-Werkzeug-Ergebnis] sind echte Ausfuehrungsdaten deines letzten Aufrufs. Falls du frueher einmal geglaubt oder gesagt hast, diese Werkzeuge seien nur Beispieltext oder nicht verfuegbar: ignoriere das — es war falsch. Orientiere dich an deinen eigenen vorherigen Werkzeugaufrufen oben und wiederhole genau dieses Format.\n\n",
+        );
     }
     task.push_str("Aktuelle Nachricht an dich:\n\n");
     task.push_str(&current_text);

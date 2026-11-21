@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
-const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
+pub(crate) const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
 /// Stabiler Marker fuer Fehler, die in der MODELLAUSGABE liegen (T-953).
 /// `api_bridge/provider_handlers.rs` erkennt ihn und meldet `server_error` statt
 /// `invalid_request_error`: die Client-Anfrage war gueltig, das Browsermodell
@@ -173,8 +173,10 @@ pub fn complete_streaming_with_attachments(
     let correction_message = |parse_error: &str| -> String {
         format!(
             "Deine letzte Antwort war kein gueltiger {TOOL_ENVELOPE}-Umschlag: {parse_error}\n\
-             Wiederhole sie in derselben Konversation und liefere genau einen \
-             gueltigen {TOOL_ENVELOPE}-Umschlag mit den Werkzeugaufrufen."
+             Sieh dir deine eigenen vorherigen Werkzeugaufrufe oben unter \
+             [du – Werkzeugaufruf] an und wiederhole GENAU dieses Format in \
+             derselben Konversation. Verwende ausschliesslich einen der \
+             aufgefuehrten Tool-Namen."
         )
     };
     let output_check = crate::relay::OutputCheck {
@@ -302,7 +304,7 @@ fn prompt_with_tools(
         ""
     };
     Ok(format!(
-        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.{answer_hint}"
+        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Orientiere dich an deinen eigenen vorherigen Werkzeugaufrufen oben unter [du – Werkzeugaufruf]: genau dieses Format ist gueltig — wiederhole es. Verwende ausschliesslich einen der aufgefuehrten Tool-Namen; erfinde keine. Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.{answer_hint}"
     ))
 }
 
@@ -666,6 +668,23 @@ mod tests {
         .unwrap();
         assert!(!function.contains(TEXT_HINT));
         assert!(function.contains("Rufe das Tool 'read_file' auf."));
+    }
+
+    #[test]
+    fn t961_required_prompt_points_at_own_mirrored_calls() {
+        // T-961 neue Strategie: der Ausgabe-Vertrag verweist auf die eigenen
+        // vorherigen Werkzeugaufrufe im Verlauf, statt das Format nur abstrakt
+        // zu beschreiben. Das Modell soll das sichtbare Vorbild wiederholen.
+        let tools = [read_tool()];
+        let required = prompt_with_tools("Auftrag", &tools, &BrowserToolChoice::Required).unwrap();
+        assert!(
+            required.contains("deinen eigenen vorherigen Werkzeugaufrufen"),
+            "Prompt muss auf die gespiegelten eigenen Aufrufe verweisen: {required}"
+        );
+        assert!(
+            required.contains("ausschliesslich einen der aufgefuehrten Tool-Namen"),
+            "Prompt muss erfundene Tool-Namen (files__search) ausschliessen: {required}"
+        );
     }
 
     #[test]

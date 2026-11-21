@@ -1,5 +1,27 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-961 NEUE STRATEGIE implementiert — Code grün, Live ausstehend
+
+- **Freigabe:** Der Eigentümer hat am 2026-11-21 eine neue Strategie für T-961
+  freigegeben; die Auto→Required-Eskalation (0/7 sauber) gilt als widerlegt.
+- **Strategie „Selbstspiegelung + Verfügbarkeitsanker":** Statt den Tool-Call zu
+  erzwingen, werden die eigenen früheren Werkzeugaufrufe im Verlauf in **genau
+  dem `WEBAGENT_INFERENCE/1`-Umschlag** gerendert, den das Modell ausgeben soll
+  (`src/api_bridge/content.rs`, `tool_calls_to_envelope`). Direkt vor der
+  aktuellen Nachricht verankert der Prompt, dass die Werkzeuge weiterhin aktiv
+  sind und frühere Zweifel ignoriert werden sollen. Der Ausgabe-Vertrag und die
+  T-953-Korrektur verweisen auf dieses Vorbild und verbieten erfundene
+  Tool-Namen (`src/browser_inference.rs`). Die Eskalation bleibt default-off;
+  die neue Strategie hängt nicht von ihr ab.
+- **Red/Green:** drei neue Tests zuerst rot, dann grün; `cargo test --lib`
+  1488 passed / 0 failed / 1 ignored; `cargo fmt --check`, `cargo clippy
+  --all-targets -- -D warnings`, `git diff --check` alle grün.
+- **Beleg (Code):** `docs/proofs/T-961/self-mirror-strategy.md`. Branch
+  `fix/T-961-self-mirror`. **Kein Abnahmebeleg** — T-961 bleibt `free`.
+- **Nächster Schritt:** frische Raw-Live-Matrix auf Port `8788` (nur dort),
+  frische prozess-only Tokens, strikter Verifier; mindestens fünf
+  aufeinanderfolgende saubere Werkzeugturns nötig. Kein Tag/Release.
+
 ## 2026-11-21 — G-010: T-927/T-928 — Matrix ehrlich bereinigt, beide `done`
 
 - **Methode:** read-only DOM-Surveys (`webagent survey --brain <brain> --dump
