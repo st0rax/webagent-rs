@@ -26,6 +26,7 @@ pub mod group_run;
 pub mod https_client;
 pub mod loop_guard;
 pub mod memory;
+pub mod network_observation;
 pub mod observer;
 pub mod oobe;
 pub mod protocol;
