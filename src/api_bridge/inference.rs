@@ -13,7 +13,7 @@
 //! - Auto+Attachments: Timeout-Budget ueber `timeouts::resolve_auto_attach_budget`.
 //! - Fehlerpfade bleiben sichtbar (kein stilles Schlucken).
 
-use super::{select_auto_brain, AutoPurpose, BridgeConfig};
+use super::{select_auto_brain, transport::ClientPresence, AutoPurpose, BridgeConfig};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex, OnceLock},
@@ -31,6 +31,40 @@ pub(super) fn browser_run_lock(brain: &str) -> Arc<Mutex<()>> {
         .entry(brain.to_ascii_lowercase())
         .or_insert_with(|| Arc::new(Mutex::new(())))
         .clone()
+}
+
+/// Stabiler Marker: der Aufrufer war weg, bevor bzw. waehrend ein Browser-Turn
+/// lief. Kein Brain-Fehler und kein Client-Fehler — der Turn wird als verwaist
+/// abgebrochen, die Brain-Sperre wird freigegeben (T-946).
+pub(super) const CLIENT_DISCONNECTED: &str = "client_disconnected";
+
+fn disconnected_error(brain: &str) -> String {
+    format!("{CLIENT_DISCONNECTED}: Aufrufer nicht mehr verbunden; kein Browserturn fuer {brain}")
+}
+
+/// Fuehrt `run` nur dann unter der per-Brain-Sperre aus, wenn der Aufrufer noch
+/// verbunden ist (T-946).
+///
+/// Der Check VOR dem Lock verhindert, dass eine bereits verwaiste Anfrage
+/// ueberhaupt in die Warteschlange vor der Brain-Sperre gelangt. Der zweite
+/// Check NACH dem Lock verhindert, dass sie nach dem Warten trotzdem noch einen
+/// Browser-Turn startet. In beiden Faellen wird die Sperre nicht gehalten
+/// bzw. sofort wieder freigegeben. Eine globale Serialisierung entsteht nicht:
+/// der Lock-Key bleibt das Brain.
+fn with_browser_lock<T>(
+    brain: &str,
+    presence: &dyn ClientPresence,
+    run: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    if !presence.connected() {
+        return Err(disconnected_error(brain));
+    }
+    let lock = browser_run_lock(brain);
+    let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !presence.connected() {
+        return Err(disconnected_error(brain));
+    }
+    run()
 }
 
 fn fake_inference_response(text: &str) -> crate::browser_inference::BrowserInferenceResponse {
@@ -58,6 +92,7 @@ pub(super) fn run_task_blocking(
     attachments: &[crate::browser_inference::BrowserAttachment],
     tools: &[crate::browser_inference::BrowserTool],
     tool_choice: crate::browser_inference::BrowserToolChoice,
+    presence: &dyn ClientPresence,
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
     if let Some(text) = config.fake_reply.as_deref() {
         return Ok(fake_inference_response(text));
@@ -82,23 +117,23 @@ pub(super) fn run_task_blocking(
             timeout_secs
         );
     }
-    let lock = browser_run_lock(&brain);
-    let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-
     let started = Instant::now();
-    crate::browser_inference::complete_with_attachments(
-        crate::browser_inference::BrowserInferenceRequest {
-            brain: &brain,
-            prompt: task,
-            tools,
-            tool_choice,
-            headless: config.headless,
-            timeout_secs,
-            model: None,
-        },
-        attachments,
-        &mut |_| {},
-    )
+    with_browser_lock(&brain, presence, || {
+        crate::browser_inference::complete_with_attachments(
+            crate::browser_inference::BrowserInferenceRequest {
+                brain: &brain,
+                prompt: task,
+                tools,
+                tool_choice,
+                headless: config.headless,
+                timeout_secs,
+                model: None,
+            },
+            attachments,
+            &mut |_| {},
+            presence,
+        )
+    })
     .map_err(|error| {
         annotate_auto_routed_inference_error(via_auto, &brain, &error, started.elapsed())
     })
@@ -110,6 +145,7 @@ pub(super) fn run_task_streaming(
     task: &str,
     attachments: &[crate::browser_inference::BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
+    presence: &dyn ClientPresence,
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
     if let Some(text) = config.fake_reply.as_deref() {
         emit_fake_stream(text, on_update);
@@ -129,23 +165,23 @@ pub(super) fn run_task_streaming(
             timeout_secs
         );
     }
-    let lock = browser_run_lock(&brain);
-    let _browser_run = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-
     let started = Instant::now();
-    crate::browser_inference::complete_streaming_with_attachments(
-        crate::browser_inference::BrowserInferenceRequest {
-            brain: &brain,
-            prompt: task,
-            tools: &[],
-            tool_choice: crate::browser_inference::BrowserToolChoice::None,
-            headless: config.headless,
-            timeout_secs,
-            model: None,
-        },
-        attachments,
-        on_update,
-    )
+    with_browser_lock(&brain, presence, || {
+        crate::browser_inference::complete_streaming_with_attachments(
+            crate::browser_inference::BrowserInferenceRequest {
+                brain: &brain,
+                prompt: task,
+                tools: &[],
+                tool_choice: crate::browser_inference::BrowserToolChoice::None,
+                headless: config.headless,
+                timeout_secs,
+                model: None,
+            },
+            attachments,
+            on_update,
+            presence,
+        )
+    })
     .map_err(|error| {
         annotate_auto_routed_inference_error(via_auto, &brain, &error, started.elapsed())
     })
@@ -219,4 +255,76 @@ pub(super) fn annotate_auto_routed_inference_error(
         return format!("Browser-Inference fehlgeschlagen: {error}; via=auto→{routed_brain}");
     }
     format!("Browser-Inference fehlgeschlagen: {error}; via=auto→{routed_brain}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api_bridge::TestPresence;
+    use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+
+    /// DoD T-946: eine Anfrage, deren Aufrufer bereits verschwunden ist,
+    /// wartet nicht in der Warteschlange vor der Brain-Sperre. Der Vorab-Check
+    /// schlaegt zu, bevor ueberhaupt `lock()` aufgerufen wird — die Closure
+    /// laeuft nicht, die fremde Sperre bleibt unberuehrt.
+    #[test]
+    fn verwaisste_anfrage_wartet_nicht_auf_die_brain_sperre() {
+        let brain = "mock_sperre_verwaist";
+        let lock = browser_run_lock(brain);
+        let _fremder_turn = lock.lock().unwrap_or_else(|p| p.into_inner());
+        let presence = TestPresence::connected(false);
+        let ran = AtomicBool::new(false);
+        let started = Instant::now();
+        let result = with_browser_lock(brain, &presence, || {
+            ran.store(true, SeqCst);
+            Ok(())
+        });
+        assert!(result.is_err(), "{result:?}");
+        assert!(
+            result.unwrap_err().contains(CLIENT_DISCONNECTED),
+            "stabiler Grund fehlt"
+        );
+        assert!(!ran.load(SeqCst), "Turn darf nicht gestartet werden");
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "darf nicht auf die fremde Sperre warten"
+        );
+    }
+
+    /// DoD T-946: eine Folgeanfrage an dasselbe Brain wartet nicht auf einen
+    /// verwaisten Turn. Turn A haelt die Sperre; sein Aufrufer verschwindet,
+    /// der Turn endet frueh (wie im Wait-Poll des Relay bewiesen) und gibt die
+    /// Sperre frei. B laeuft unmittelbar danach — nicht nach A's Zeitbudget.
+    #[test]
+    fn folgeanfrage_wartet_nicht_auf_verwaisten_turn() {
+        let brain = "mock_folge_verwaist";
+        let presence_a = TestPresence::connected(true);
+        let presence_b = TestPresence::connected(true);
+        let in_turn = Arc::new(AtomicBool::new(false));
+        let in_turn_a = in_turn.clone();
+        let a = presence_a.clone();
+        let turn_a = std::thread::spawn(move || {
+            with_browser_lock(brain, &a, || {
+                in_turn_a.store(true, SeqCst);
+                // Simuliert den Relay-Wait-Poll: der Turn endet, sobald der
+                // Aufrufer verschwindet (im Relay ueber `cancelled` belegt).
+                while a.connected() {
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                Ok("A")
+            })
+        });
+        while !in_turn.load(SeqCst) {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        presence_a.set(false);
+        let started = Instant::now();
+        let follow_up = with_browser_lock(brain, &presence_b, || Ok("B"));
+        assert_eq!(follow_up.unwrap(), "B");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "Folgeanfrage darf nicht auf den verwaisten Turn warten"
+        );
+        assert_eq!(turn_a.join().expect("turn_a"), Ok("A"));
+    }
 }

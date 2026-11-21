@@ -40,6 +40,279 @@ fn draft_is_dirty(backend: &WebBrainBackend) -> bool {
     backend.eval_bool(&expression)
 }
 
+impl WebBrainBackend {
+    /// Wie [`BrainBackend::wait_response_streaming`], aber `cancelled` wird
+    /// in beiden Poll-Phasen geprueft. Ein verwaisster Aufrufer (T-946)
+    /// beendet den Turn mit `backend_status=client_disconnected`, statt den
+    /// Browser bis zum vollen Timeout weiterlaufen zu lassen.
+    pub(crate) fn wait_response_streaming_with_cancel(
+        &mut self,
+        baseline_count: i32,
+        timeout: f64,
+        on_update: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<BrainResponse, String> {
+        let start = Instant::now();
+        // Headed NOACTIVATE tiles often need a pointer nudge *before* the first
+        // poll, not only every ~2s — otherwise send already landed on a frozen
+        // document and we burn the full timeout waiting for mouseover.
+        self.wake_renderer();
+        let _ = self.ensure_renderer_responsive();
+        // Selektor-Literale einmal bauen (ändern sich zur Laufzeit nie), dann pro
+        // Poll-Iteration nur einen einzigen CDP-Roundtrip fahren.
+        let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
+        let stop_sel = self.sel("stop_button");
+        let has_stop = !stop_sel.is_empty();
+        let stop_js = Self::js_selectors(&stop_sel);
+
+        let mk = |text: String, idx: i32, done: bool, status: &str| BrainResponse {
+            text,
+            message_index: idx,
+            generation_complete: done,
+            backend_status: status.to_string(),
+            ..Default::default()
+        };
+
+        // Phase 1: warten auf (a) neue Nachricht, (b) sichtbaren Stop-Button ODER
+        // (c) geänderten Text der letzten Nachricht — Trigger (c) fängt Brains ab,
+        // deren Zähler nicht inkrementiert (Container-Selektor / bestehende Konversation).
+        let baseline_text = self.baseline_text.borrow().clone();
+        let mut block_polls = 0u32;
+        loop {
+            // T-946: ein verwaisster Aufrufer beendet den Turn sofort.
+            if cancelled() {
+                return Ok(mk(String::new(), -1, false, "client_disconnected"));
+            }
+            let (count, text, stop) = self.probe_generation(&assistant_js, &stop_js, -1);
+            let text_changed = !text.trim().is_empty() && text != baseline_text;
+            if count > baseline_count || (has_stop && stop) || text_changed {
+                break;
+            }
+            // Frueh (statt erst beim Timeout) auf ein Block-Banner pruefen, damit ein
+            // Rate-/Nachrichtenlimit nicht ~timeout Sekunden je Turn kostet. ~alle 2 s.
+            // Same cadence: nudge the renderer so headed NOACTIVATE tiles do not
+            // stay frozen for the full timeout, and fail loudly if CDP is dead.
+            block_polls += 1;
+            // ~0.9s cadence (was ~2.1s): User still sees mouseover hangs when
+            // the tile freezes mid-wait; wake earlier and fail loud on dead CDP.
+            if block_polls.is_multiple_of(3) {
+                self.wake_renderer();
+                self.ensure_renderer_responsive()?;
+            }
+            if block_polls.is_multiple_of(7) {
+                if let Some(banner) = self.detect_block_banner() {
+                    return Ok(mk(banner, -1, false, "blocked"));
+                }
+            }
+            if start.elapsed().as_secs_f64() >= timeout {
+                if let Some(banner) = self.detect_block_banner() {
+                    return Ok(mk(banner, -1, false, "blocked"));
+                }
+                // Empty after wakes: prefer an unresponsive-UI hint over a blank timeout.
+                return Ok(mk(
+                    String::new(),
+                    -1,
+                    false,
+                    "timeout_no_message: renderer may be unresponsive after wake — move mouse or restart brain",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+
+        // Phase 2: Generierung überwachen. Autoritatives Fertigsignal ist das
+        // Verschwinden des Stop-Buttons (bzw. ein vollständiges Protokoll-Dokument);
+        // reine Textstabilität ist nur der Fallback für UIs ohne Stop-Button.
+        let mut last_text = String::new();
+        let mut last_norm = String::new();
+        let mut stable_since = Instant::now();
+        let mut stop_seen_ever = false;
+        let mut stop_inventory_done = false;
+        // `baseline_count` ist eine ANZAHL, kein nullbasierter Index. Einige UIs
+        // (real: ChatGPT nach DOM-Rehydration) ersetzen den letzten Assistant-
+        // Container, ohne die Anzahl zu erhoehen. Das fruehere
+        // `(count - 1).max(baseline_count)` las dann Index `count` und damit
+        // dauerhaft hinter das Array: sichtbare fertige Antwort, aber
+        // `timeout_no_text`. Immer den aktuell letzten existierenden Container
+        // verfolgen; separat sicherstellen, dass dessen Inhalt wirklich neu ist.
+        let mut target =
+            latest_response_target(self.probe_generation(&assistant_js, &stop_js, -1).0);
+        let mut response_started = false;
+
+        let mut p2_polls = 0u32;
+        loop {
+            // T-946: ein verwaisster Aufrufer beendet den Turn sofort.
+            if cancelled() {
+                return Ok(mk(String::new(), -1, false, "client_disconnected"));
+            }
+            // Provider-Unterbrechungen (z.B. Geminis Antwort-Vergleich) wegklicken,
+            // sonst bleibt der Antwort-Container leer und die Erkennung timeoutet.
+            self.handle_interruptions();
+            let (count, current, stop_raw) = self.probe_generation(&assistant_js, &stop_js, target);
+            target = latest_response_target(count);
+            let stop_visible = has_stop && stop_raw;
+            stop_seen_ever |= stop_visible;
+            response_started |=
+                response_has_started(count, baseline_count, &current, &baseline_text);
+
+            if current != last_text {
+                // Der Text waechst gerade, also generiert die Oberflaeche
+                // gerade — und trotzdem kennt kein Selektor den Stop-Button.
+                // JETZT ist der einzige Moment, in dem er im DOM steht: die
+                // Warnung nach Antwortende kommt zu spaet, da ist er weg.
+                //
+                // Also einmal je Prozess und Brain aufschreiben, welche
+                // Bedienelemente stattdessen sichtbar sind. Damit liefert der
+                // Dauerlauf die Beweise fuer korrekte Selektoren selbst, statt
+                // dass ich sie in einer Extra-Sitzung von Hand suchen muesste.
+                if has_stop && !stop_seen_ever && !stop_inventory_done {
+                    stop_inventory_done = true;
+                    // Nur auf Anforderung protokollieren (WEBAGENT_STOP_INVENTORY=1):
+                    // das Inventar ist ein Suchwerkzeug, kein Dauerlauf-Log.
+                    if std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1") {
+                        let inventar = self.visible_button_inventory();
+                        if !inventar.is_empty() {
+                            crate::bench_events::eprint_line(&format!(
+                                "[browser] {}: kein Stop-Button erkannt, sichtbare Bedienelemente waehrend der Generierung: {inventar}",
+                                self.brain_id
+                            ));
+                        }
+                    }
+                }
+                last_text = current.clone();
+                if !current.trim().is_empty() {
+                    on_update(&current);
+                }
+                // Nur inhaltliche Aenderung startet die Stabilitaets-Uhr neu;
+                // Whitespace-Churn ist kein neues Token (siehe stable_norm).
+                let norm = stable_norm(&current);
+                if norm != last_norm {
+                    last_norm = norm;
+                    stable_since = Instant::now();
+                }
+            }
+            let stable_secs = stable_since.elapsed().as_secs_f64();
+
+            // Auch in Phase 2 frueh auf ein Block-Banner pruefen (~alle 2 s), solange
+            // noch kein echter Text steht — sonst kostet ein Limit den vollen Timeout.
+            // mistrals „Nachrichtenlimit erreicht" erscheint erst NACH dem Senden,
+            // also bricht Phase 1 vorher ab und nur hier wird es rechtzeitig erkannt.
+            // Wake on the same cadence so a frozen NOACTIVATE tile does not sit
+            // silent until timeout_no_text.
+            p2_polls += 1;
+            // Wake even when some text already arrived — a NOACTIVATE tile can
+            // freeze mid-stream and then only resume after a real mouse move.
+            if p2_polls.is_multiple_of(3) {
+                self.wake_renderer();
+                self.ensure_renderer_responsive()?;
+            }
+            if last_text.trim().is_empty() && p2_polls.is_multiple_of(7) {
+                if let Some(banner) = self.detect_block_banner() {
+                    return Ok(mk(banner, target, false, "blocked"));
+                }
+            }
+
+            // Ein Stop-Signal kann vor dem ersten Textchunk auftauchen. In
+            // diesem Fenster steht im letzten Container noch die alte Antwort;
+            // sie darf keinesfalls als neue, bereits valide Antwort geerntet
+            // werden.
+            let completion = if response_started {
+                classify_completion(
+                    &current,
+                    has_stop,
+                    stop_seen_ever,
+                    stop_visible,
+                    stable_secs,
+                    !self.sel("rate_limit_banner").is_empty(),
+                )
+            } else {
+                Completion::Continue
+            };
+            match completion {
+                Completion::RateLimited => return Ok(mk(current, target, false, "rate_limit")),
+                Completion::Complete => {
+                    // Kurzes Settle: der letzte Chunk committet oft erst, nachdem
+                    // der Stop-Button verschwunden ist. Danach final nachlesen.
+                    std::thread::sleep(Duration::from_millis(500));
+                    let finalized = self.assistant_text(target);
+                    let text = if finalized.len() >= current.len() {
+                        finalized
+                    } else {
+                        current
+                    };
+                    // Manche Provider (qwen) rendern ihr Limit-/Fehler-Banner NICHT
+                    // separat auf der Seite, sondern als Text IM Antwort-Container --
+                    // das ist dann eine "vollstaendige, stabile" Antwort im Sinne von
+                    // classify_completion, obwohl es keine echte ist. Ohne diese
+                    // Pruefung landet der Limit-Text als vermeintlich echte Antwort
+                    // (siehe swarm-Test: qwens "daily usage limit" wurde als Antwort
+                    // gezaehlt statt als "blocked").
+                    // Ein Stop-Selektor, der eine ganze Antwort lang nie
+                    // gegriffen hat, ist Dekoration: das autoritative
+                    // Fertigsignal fehlt und die Erkennung haengt am
+                    // Stabilitaetsfenster. Genau daran wurde bei kimi mitten im
+                    // Stream Reasoning-Prosa geerntet. „Selektor vorhanden" ist
+                    // nicht „Selektor funktioniert" — also sagen wir es laut,
+                    // statt es still zu kompensieren.
+                    //
+                    // Die Meldung sagt bewusst NICHT mehr „Selektoren pruefen".
+                    // Am 30.07.2026 hat die Bestandsaufnahme fuer deepseek und
+                    // zai gezeigt, dass ihr Stop-Knopf DASSELBE Element ist wie
+                    // der Senden-Knopf (`ds-button--primary ds-button--filled
+                    // ds-button--circle` bzw. `p-2 bg-black rounded-full`), nur
+                    // mit anderem Icon — kein Attribut unterscheidet die beiden.
+                    // Ein Selektor darauf waere aktiv schaedlich: der Stop-Knopf
+                    // gaelte dauerhaft als sichtbar, und weil auf „war da, ist
+                    // jetzt weg" gewartet wird, liefe JEDER Lauf ins Timeout.
+                    // Fuer diese Brains ist das Stabilitaetsfenster nicht die
+                    // Kruecke, sondern der einzige korrekte Mechanismus.
+                    // Auch diese Bestandsaufnahme ist ein Suchwerkzeug: nur auf
+                    // Anforderung (WEBAGENT_STOP_INVENTORY=1) statt bei jeder
+                    // Generation, sonst spamt der Dauerlauf.
+                    if has_stop
+                        && !stop_seen_ever
+                        && std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1")
+                    {
+                        crate::bench_events::eprint_line(&format!(
+                            "[browser] {}: kein Stop-Knopf erkannt — Fertigsignal kommt aus \
+                             Textstabilitaet. Bestandsaufnahme im Log zeigt, ob ein \
+                             unterscheidbarer Knopf ueberhaupt existiert",
+                            self.brain_id
+                        ));
+                    }
+                    if let Some(hit) = block_phrase_in_text(&text) {
+                        crate::bench_events::eprint_line(&format!(
+                            "[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt",
+                            self.brain_id
+                        ));
+                        return Ok(mk(text, target, false, "blocked"));
+                    }
+                    return Ok(mk(text, target, true, "ok"));
+                }
+                Completion::Continue => {}
+            }
+
+            if start.elapsed().as_secs_f64() >= timeout {
+                // Kam keine (stabile) Antwort, aber ein Limit-/Block-Banner steht auf
+                // der Seite (mistral: „Nachrichtenlimit erreicht") -> als Block melden.
+                if last_text.trim().is_empty() {
+                    if let Some(banner) = self.detect_block_banner() {
+                        return Ok(mk(banner, target, false, "blocked"));
+                    }
+                }
+                let status = if stop_visible {
+                    "timeout_still_generating"
+                } else if last_text.trim().is_empty() {
+                    "timeout_no_text: renderer may be unresponsive after wake — move mouse or restart brain"
+                } else {
+                    "timeout_unstable"
+                };
+                return Ok(mk(last_text, target, false, status));
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    }
+}
+
 impl BrainBackend for WebBrainBackend {
     fn brain_id(&self) -> &str {
         &self.brain_id
@@ -237,256 +510,7 @@ impl BrainBackend for WebBrainBackend {
         timeout: f64,
         on_update: &mut dyn FnMut(&str),
     ) -> Result<BrainResponse, String> {
-        let start = Instant::now();
-        // Headed NOACTIVATE tiles often need a pointer nudge *before* the first
-        // poll, not only every ~2s — otherwise send already landed on a frozen
-        // document and we burn the full timeout waiting for mouseover.
-        self.wake_renderer();
-        let _ = self.ensure_renderer_responsive();
-        // Selektor-Literale einmal bauen (ändern sich zur Laufzeit nie), dann pro
-        // Poll-Iteration nur einen einzigen CDP-Roundtrip fahren.
-        let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
-        let stop_sel = self.sel("stop_button");
-        let has_stop = !stop_sel.is_empty();
-        let stop_js = Self::js_selectors(&stop_sel);
-
-        let mk = |text: String, idx: i32, done: bool, status: &str| BrainResponse {
-            text,
-            message_index: idx,
-            generation_complete: done,
-            backend_status: status.to_string(),
-            ..Default::default()
-        };
-
-        // Phase 1: warten auf (a) neue Nachricht, (b) sichtbaren Stop-Button ODER
-        // (c) geänderten Text der letzten Nachricht — Trigger (c) fängt Brains ab,
-        // deren Zähler nicht inkrementiert (Container-Selektor / bestehende Konversation).
-        let baseline_text = self.baseline_text.borrow().clone();
-        let mut block_polls = 0u32;
-        loop {
-            let (count, text, stop) = self.probe_generation(&assistant_js, &stop_js, -1);
-            let text_changed = !text.trim().is_empty() && text != baseline_text;
-            if count > baseline_count || (has_stop && stop) || text_changed {
-                break;
-            }
-            // Frueh (statt erst beim Timeout) auf ein Block-Banner pruefen, damit ein
-            // Rate-/Nachrichtenlimit nicht ~timeout Sekunden je Turn kostet. ~alle 2 s.
-            // Same cadence: nudge the renderer so headed NOACTIVATE tiles do not
-            // stay frozen for the full timeout, and fail loudly if CDP is dead.
-            block_polls += 1;
-            // ~0.9s cadence (was ~2.1s): User still sees mouseover hangs when
-            // the tile freezes mid-wait; wake earlier and fail loud on dead CDP.
-            if block_polls.is_multiple_of(3) {
-                self.wake_renderer();
-                self.ensure_renderer_responsive()?;
-            }
-            if block_polls.is_multiple_of(7) {
-                if let Some(banner) = self.detect_block_banner() {
-                    return Ok(mk(banner, -1, false, "blocked"));
-                }
-            }
-            if start.elapsed().as_secs_f64() >= timeout {
-                if let Some(banner) = self.detect_block_banner() {
-                    return Ok(mk(banner, -1, false, "blocked"));
-                }
-                // Empty after wakes: prefer an unresponsive-UI hint over a blank timeout.
-                return Ok(mk(
-                    String::new(),
-                    -1,
-                    false,
-                    "timeout_no_message: renderer may be unresponsive after wake — move mouse or restart brain",
-                ));
-            }
-            std::thread::sleep(Duration::from_millis(300));
-        }
-
-        // Phase 2: Generierung überwachen. Autoritatives Fertigsignal ist das
-        // Verschwinden des Stop-Buttons (bzw. ein vollständiges Protokoll-Dokument);
-        // reine Textstabilität ist nur der Fallback für UIs ohne Stop-Button.
-        let mut last_text = String::new();
-        let mut last_norm = String::new();
-        let mut stable_since = Instant::now();
-        let mut stop_seen_ever = false;
-        let mut stop_inventory_done = false;
-        // `baseline_count` ist eine ANZAHL, kein nullbasierter Index. Einige UIs
-        // (real: ChatGPT nach DOM-Rehydration) ersetzen den letzten Assistant-
-        // Container, ohne die Anzahl zu erhoehen. Das fruehere
-        // `(count - 1).max(baseline_count)` las dann Index `count` und damit
-        // dauerhaft hinter das Array: sichtbare fertige Antwort, aber
-        // `timeout_no_text`. Immer den aktuell letzten existierenden Container
-        // verfolgen; separat sicherstellen, dass dessen Inhalt wirklich neu ist.
-        let mut target =
-            latest_response_target(self.probe_generation(&assistant_js, &stop_js, -1).0);
-        let mut response_started = false;
-
-        let mut p2_polls = 0u32;
-        loop {
-            // Provider-Unterbrechungen (z.B. Geminis Antwort-Vergleich) wegklicken,
-            // sonst bleibt der Antwort-Container leer und die Erkennung timeoutet.
-            self.handle_interruptions();
-            let (count, current, stop_raw) = self.probe_generation(&assistant_js, &stop_js, target);
-            target = latest_response_target(count);
-            let stop_visible = has_stop && stop_raw;
-            stop_seen_ever |= stop_visible;
-            response_started |=
-                response_has_started(count, baseline_count, &current, &baseline_text);
-
-            if current != last_text {
-                // Der Text waechst gerade, also generiert die Oberflaeche
-                // gerade — und trotzdem kennt kein Selektor den Stop-Button.
-                // JETZT ist der einzige Moment, in dem er im DOM steht: die
-                // Warnung nach Antwortende kommt zu spaet, da ist er weg.
-                //
-                // Also einmal je Prozess und Brain aufschreiben, welche
-                // Bedienelemente stattdessen sichtbar sind. Damit liefert der
-                // Dauerlauf die Beweise fuer korrekte Selektoren selbst, statt
-                // dass ich sie in einer Extra-Sitzung von Hand suchen muesste.
-                if has_stop && !stop_seen_ever && !stop_inventory_done {
-                    stop_inventory_done = true;
-                    // Nur auf Anforderung protokollieren (WEBAGENT_STOP_INVENTORY=1):
-                    // das Inventar ist ein Suchwerkzeug, kein Dauerlauf-Log.
-                    if std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1") {
-                        let inventar = self.visible_button_inventory();
-                        if !inventar.is_empty() {
-                            crate::bench_events::eprint_line(&format!(
-                                "[browser] {}: kein Stop-Button erkannt, sichtbare Bedienelemente waehrend der Generierung: {inventar}",
-                                self.brain_id
-                            ));
-                        }
-                    }
-                }
-                last_text = current.clone();
-                if !current.trim().is_empty() {
-                    on_update(&current);
-                }
-                // Nur inhaltliche Aenderung startet die Stabilitaets-Uhr neu;
-                // Whitespace-Churn ist kein neues Token (siehe stable_norm).
-                let norm = stable_norm(&current);
-                if norm != last_norm {
-                    last_norm = norm;
-                    stable_since = Instant::now();
-                }
-            }
-            let stable_secs = stable_since.elapsed().as_secs_f64();
-
-            // Auch in Phase 2 frueh auf ein Block-Banner pruefen (~alle 2 s), solange
-            // noch kein echter Text steht — sonst kostet ein Limit den vollen Timeout.
-            // mistrals „Nachrichtenlimit erreicht" erscheint erst NACH dem Senden,
-            // also bricht Phase 1 vorher ab und nur hier wird es rechtzeitig erkannt.
-            // Wake on the same cadence so a frozen NOACTIVATE tile does not sit
-            // silent until timeout_no_text.
-            p2_polls += 1;
-            // Wake even when some text already arrived — a NOACTIVATE tile can
-            // freeze mid-stream and then only resume after a real mouse move.
-            if p2_polls.is_multiple_of(3) {
-                self.wake_renderer();
-                self.ensure_renderer_responsive()?;
-            }
-            if last_text.trim().is_empty() && p2_polls.is_multiple_of(7) {
-                if let Some(banner) = self.detect_block_banner() {
-                    return Ok(mk(banner, target, false, "blocked"));
-                }
-            }
-
-            // Ein Stop-Signal kann vor dem ersten Textchunk auftauchen. In
-            // diesem Fenster steht im letzten Container noch die alte Antwort;
-            // sie darf keinesfalls als neue, bereits valide Antwort geerntet
-            // werden.
-            let completion = if response_started {
-                classify_completion(
-                    &current,
-                    has_stop,
-                    stop_seen_ever,
-                    stop_visible,
-                    stable_secs,
-                    !self.sel("rate_limit_banner").is_empty(),
-                )
-            } else {
-                Completion::Continue
-            };
-            match completion {
-                Completion::RateLimited => return Ok(mk(current, target, false, "rate_limit")),
-                Completion::Complete => {
-                    // Kurzes Settle: der letzte Chunk committet oft erst, nachdem
-                    // der Stop-Button verschwunden ist. Danach final nachlesen.
-                    std::thread::sleep(Duration::from_millis(500));
-                    let finalized = self.assistant_text(target);
-                    let text = if finalized.len() >= current.len() {
-                        finalized
-                    } else {
-                        current
-                    };
-                    // Manche Provider (qwen) rendern ihr Limit-/Fehler-Banner NICHT
-                    // separat auf der Seite, sondern als Text IM Antwort-Container --
-                    // das ist dann eine "vollstaendige, stabile" Antwort im Sinne von
-                    // classify_completion, obwohl es keine echte ist. Ohne diese
-                    // Pruefung landet der Limit-Text als vermeintlich echte Antwort
-                    // (siehe swarm-Test: qwens "daily usage limit" wurde als Antwort
-                    // gezaehlt statt als "blocked").
-                    // Ein Stop-Selektor, der eine ganze Antwort lang nie
-                    // gegriffen hat, ist Dekoration: das autoritative
-                    // Fertigsignal fehlt und die Erkennung haengt am
-                    // Stabilitaetsfenster. Genau daran wurde bei kimi mitten im
-                    // Stream Reasoning-Prosa geerntet. „Selektor vorhanden" ist
-                    // nicht „Selektor funktioniert" — also sagen wir es laut,
-                    // statt es still zu kompensieren.
-                    //
-                    // Die Meldung sagt bewusst NICHT mehr „Selektoren pruefen".
-                    // Am 30.07.2026 hat die Bestandsaufnahme fuer deepseek und
-                    // zai gezeigt, dass ihr Stop-Knopf DASSELBE Element ist wie
-                    // der Senden-Knopf (`ds-button--primary ds-button--filled
-                    // ds-button--circle` bzw. `p-2 bg-black rounded-full`), nur
-                    // mit anderem Icon — kein Attribut unterscheidet die beiden.
-                    // Ein Selektor darauf waere aktiv schaedlich: der Stop-Knopf
-                    // gaelte dauerhaft als sichtbar, und weil auf „war da, ist
-                    // jetzt weg" gewartet wird, liefe JEDER Lauf ins Timeout.
-                    // Fuer diese Brains ist das Stabilitaetsfenster nicht die
-                    // Kruecke, sondern der einzige korrekte Mechanismus.
-                    // Auch diese Bestandsaufnahme ist ein Suchwerkzeug: nur auf
-                    // Anforderung (WEBAGENT_STOP_INVENTORY=1) statt bei jeder
-                    // Generation, sonst spamt der Dauerlauf.
-                    if has_stop
-                        && !stop_seen_ever
-                        && std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1")
-                    {
-                        crate::bench_events::eprint_line(&format!(
-                            "[browser] {}: kein Stop-Knopf erkannt — Fertigsignal kommt aus \
-                             Textstabilitaet. Bestandsaufnahme im Log zeigt, ob ein \
-                             unterscheidbarer Knopf ueberhaupt existiert",
-                            self.brain_id
-                        ));
-                    }
-                    if let Some(hit) = block_phrase_in_text(&text) {
-                        crate::bench_events::eprint_line(&format!(
-                            "[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt",
-                            self.brain_id
-                        ));
-                        return Ok(mk(text, target, false, "blocked"));
-                    }
-                    return Ok(mk(text, target, true, "ok"));
-                }
-                Completion::Continue => {}
-            }
-
-            if start.elapsed().as_secs_f64() >= timeout {
-                // Kam keine (stabile) Antwort, aber ein Limit-/Block-Banner steht auf
-                // der Seite (mistral: „Nachrichtenlimit erreicht") -> als Block melden.
-                if last_text.trim().is_empty() {
-                    if let Some(banner) = self.detect_block_banner() {
-                        return Ok(mk(banner, target, false, "blocked"));
-                    }
-                }
-                let status = if stop_visible {
-                    "timeout_still_generating"
-                } else if last_text.trim().is_empty() {
-                    "timeout_no_text: renderer may be unresponsive after wake — move mouse or restart brain"
-                } else {
-                    "timeout_unstable"
-                };
-                return Ok(mk(last_text, target, false, status));
-            }
-            std::thread::sleep(Duration::from_millis(300));
-        }
+        self.wait_response_streaming_with_cancel(baseline_count, timeout, on_update, &|| false)
     }
 
     fn is_logged_in(&self) -> bool {

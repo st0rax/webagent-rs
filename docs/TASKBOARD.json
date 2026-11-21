@@ -1531,10 +1531,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Abgebrochene Anfrage laeuft im Browser weiter und haelt die Brain-Sperre",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-946-client-disconnect-lock",
+      "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [
         "src/api_bridge/inference.rs",
@@ -1550,7 +1550,9 @@
       "dod": "Bricht der Aufrufer die Verbindung ab, wird der Browser-Turn beendet oder als verwaist markiert und die Brain-Sperre freigegeben; ein Test belegt, dass eine Folgeanfrage an dasselbe Brain nicht auf einen verwaisten Turn wartet; API_BRIDGE.md beschreibt die Serialisierung je Brain korrekt.",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-946/",
-      "handoff": "Zeitverlauf vorher/nachher mit abgebrochenem Aufrufer, Branch und Commit."
+      "handoff": "Zeitverlauf vorher/nachher mit abgebrochenem Aufrufer, Branch und Commit.",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-946/measurement.md"
     },
     {
       "id": "T-947",

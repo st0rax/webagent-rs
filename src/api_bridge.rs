@@ -72,6 +72,9 @@ pub use catalog::{
 use transport::find_bytes;
 pub(crate) use transport::read_http_request;
 #[cfg(test)]
+pub(crate) use transport::TestPresence;
+pub(crate) use transport::{AlwaysConnected, ClientPresence, TcpClientPresence};
+#[cfg(test)]
 use wire::render_http_response;
 pub(crate) use wire::write_http_response;
 use wire::{write_data_frame, write_sse_comment, write_sse_event, write_sse_headers};
@@ -294,9 +297,19 @@ pub(crate) fn route_request(
     request: &HttpRequest,
     config: &BridgeConfig,
 ) -> Result<(), String> {
+    // T-946: ein zweiter Handle auf demselben Socket beobachtet waehrend des
+    // Browserturns, ob der Aufrufer noch da ist. Kein Clone moeglich -> der
+    // Turn laeuft wie bisher (lieber ausfuehren als falsch abbrechen).
+    static ALWAYS: AlwaysConnected = AlwaysConnected;
+    let owned = TcpClientPresence::new(stream);
+    let presence: &dyn ClientPresence = owned.as_ref().map_or(&ALWAYS, |p| p);
     match classify(&request.method, &request.path, &request.body) {
-        BridgeRoute::ResponsesIncremental => handle_responses_incremental(stream, request, config),
-        BridgeRoute::ChatIncremental => handle_openai_incremental(stream, request, config),
+        BridgeRoute::ResponsesIncremental => {
+            handle_responses_incremental(stream, request, config, presence)
+        }
+        BridgeRoute::ChatIncremental => {
+            handle_openai_incremental(stream, request, config, presence)
+        }
         BridgeRoute::Health => write_http_response(
             stream,
             HttpResponse::json(
@@ -351,21 +364,29 @@ pub(crate) fn route_request(
         BridgeRoute::ResponseDelete { path } => {
             write_http_response(stream, handle_response_delete(request, config, &path))
         }
-        BridgeRoute::ChatCompletions => write_http_response(stream, handle_openai(request, config)),
+        BridgeRoute::ChatCompletions => {
+            write_http_response(stream, handle_openai(request, config, presence))
+        }
         BridgeRoute::ImageGenerations => {
             write_http_response(stream, handle_image_generation(request, config))
         }
-        BridgeRoute::AudioTranscriptions => {
-            write_http_response(stream, handle_audio_transcription(request, config, false))
-        }
-        BridgeRoute::AudioTranslations => {
-            write_http_response(stream, handle_audio_transcription(request, config, true))
-        }
+        BridgeRoute::AudioTranscriptions => write_http_response(
+            stream,
+            handle_audio_transcription(request, config, false, presence),
+        ),
+        BridgeRoute::AudioTranslations => write_http_response(
+            stream,
+            handle_audio_transcription(request, config, true, presence),
+        ),
         BridgeRoute::AudioSpeech => {
             write_http_response(stream, handle_audio_speech(request, config))
         }
-        BridgeRoute::Responses => write_http_response(stream, handle_responses(request, config)),
-        BridgeRoute::Messages => write_http_response(stream, handle_anthropic(request, config)),
+        BridgeRoute::Responses => {
+            write_http_response(stream, handle_responses(request, config, presence))
+        }
+        BridgeRoute::Messages => {
+            write_http_response(stream, handle_anthropic(request, config, presence))
+        }
         BridgeRoute::NotFound { anthropic } => {
             let flavor = if anthropic {
                 ApiFlavor::Anthropic
@@ -442,6 +463,7 @@ fn handle_audio_transcription(
     request: &HttpRequest,
     config: &BridgeConfig,
     translate_to_english: bool,
+    presence: &dyn ClientPresence,
 ) -> HttpResponse {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return response;
@@ -500,6 +522,7 @@ fn handle_audio_transcription(
         &[attachment],
         &[],
         crate::browser_inference::BrowserToolChoice::None,
+        presence,
     ) {
         Ok(answer) => answer,
         Err(error) => return browser_inference_error(ApiFlavor::OpenAi, &error),

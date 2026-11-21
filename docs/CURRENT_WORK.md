@@ -1,5 +1,39 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-946 (verwaiste Anfrage / Brain-Sperre) — Branch fertig, PR folgt
+
+- **Branch:** `fix/T-946-client-disconnect-lock` (abgezweigt von `master` bei
+  `1870a98`), Working Tree vor diesem Handover sauber bis auf die hier
+  dokumentierten Änderungen. Noch kein Push, kein PR, kein Merge.
+- **Ursache:** Eine abgebrochene mistral-Anfrage lief am 2026-09-14 dreimal
+  (~867/867/861 s) im Browser weiter, obwohl der Client längst weg war. Die
+  per-Brain-Sperre hielt den verwaisten Turn; Folgeanfragen an dasselbe Brain
+  warteten. Andere Brains liefen parallel — das war korrekt, aber
+  `docs/API_BRIDGE.md` behauptete fälschlich keine parallelen Browserruns.
+- **Fix (drei Ebenen, ohne globale Serialisierung):**
+  1. `TcpClientPresence` in `api_bridge/transport.rs` beobachtet den Client über
+     einen zweiten Socket-Handle (20 ms Peek, Lese-Timeout sofort restore).
+  2. `with_browser_lock` in `api_bridge/inference.rs` prüft vor und nach dem
+     Sperrerwerb; verwaisste Anfragen starten keinen Turn.
+  3. `run_turn_loop` in `relay.rs` prüft zu Beginn jedes Turns und übergibt
+     einen `cancelled`-Closure an `wait_response_streaming_with_cancel`
+     (`browser/backend.rs`, Checks in beiden Poll-Phasen). Abbruch →
+     `backend_status=client_disconnected`, `relay_stop`, brain_score-Grund
+     `client_disconnected`, Sperre frei. Kein erneutes Senden eines bereits
+     gesendeten Prompts.
+- **Belege:** `docs/proofs/T-946/measurement.md` mit echtem TCP-Loopback-Test,
+  vier Red-/Green-Tests, echten brain_score-Zeilen und Vorher/Nachher. Lokal
+  `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test --lib` (1479 grün, 1 ignored), `git diff --check`. Ein einmaliger
+  `ConnectionReset` im unabhängigen Web-UI-One-Shot-Test war nicht
+  reproduzierbar (5 Einzel- + 2 Gesamtwiederholungen grün). `docs/API_BRIDGE.md`
+  beschreibt jetzt Serialisierung je Brain und Abbruchverhalten korrekt.
+- **Board:** T-946 im JSON und Spiegel auf `done` gesetzt (wird mit dem Merge
+  auf `master` wirksam). Stand dann 81/91 `done`, 10 `free`.
+- **Offen:** T-914 (expliziter USER-SKIP) und T-961 (Semantik-Freigabe) bleiben
+  ohne Eigentümer-Entscheidung offen; 100 % sind ehrlich unerreicht. Kein
+  Tag/Release ohne neue ausdrückliche Freigabe. G-010 bleibt in_progress.
+
 ## 2026-11-21 — G-010: T-953 abgeschlossen (Modellausgabe-Fehler)
 
 - **PR #92 gemergt** (Squash `02b6987`, alle CI-Checks grün), Branch

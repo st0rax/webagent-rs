@@ -2,6 +2,7 @@
 
 use std::time::Instant;
 
+use crate::api_bridge::ClientPresence;
 use crate::brain::{BrainBackend, BrainResponse, SessionState};
 use crate::browser::WebBrainBackend;
 use crate::browser_inference::BrowserAttachment;
@@ -63,6 +64,7 @@ trait RelayBackend {
         baseline_count: i32,
         timeout: f64,
         on_update: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
     ) -> Result<BrainResponse, String>;
     fn relay_stop(&mut self) -> Result<(), String>;
 }
@@ -71,6 +73,10 @@ trait RelayBackend {
 /// war. Stabiler brain_score-Grund, damit Fehler der Modellausgabe nicht als
 /// Erfolg oder als Transportfehler erscheinen (T-953).
 pub const MODEL_OUTPUT_FAILURE_REASON: &str = "model_output_envelope_invalid";
+
+/// Stabiler Grund fuer einen Turn, der abgebrochen wurde, weil der Aufrufer
+/// die Verbindung getrennt hat (T-946). Kein Brain-Fehler, kein Erfolg.
+pub const CLIENT_GONE_REASON: &str = "client_disconnected";
 
 /// Pruefung der Modellausgabe, bevor der Turn als Erfolg verbucht wird.
 ///
@@ -100,8 +106,15 @@ impl RelayBackend for WebBrainBackend {
         baseline_count: i32,
         timeout: f64,
         on_update: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
     ) -> Result<BrainResponse, String> {
-        WebBrainBackend::wait_response_streaming(self, baseline_count, timeout, on_update)
+        WebBrainBackend::wait_response_streaming_with_cancel(
+            self,
+            baseline_count,
+            timeout,
+            on_update,
+            cancelled,
+        )
     }
     fn relay_stop(&mut self) -> Result<(), String> {
         WebBrainBackend::stop(self)
@@ -272,6 +285,7 @@ pub fn relay_single_turn_with_attachments_streaming(
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
 ) -> Result<String, RelayError> {
+    let always = crate::api_bridge::AlwaysConnected;
     relay_single_turn_checked(
         brain_id,
         message,
@@ -281,6 +295,7 @@ pub fn relay_single_turn_with_attachments_streaming(
         attachments,
         on_update,
         None,
+        &always,
     )
 }
 
@@ -297,6 +312,7 @@ pub fn relay_single_turn_with_attachments_streaming_checked(
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
     output_check: &OutputCheck<'_>,
+    presence: &dyn ClientPresence,
 ) -> Result<String, RelayError> {
     relay_single_turn_checked(
         brain_id,
@@ -307,6 +323,7 @@ pub fn relay_single_turn_with_attachments_streaming_checked(
         attachments,
         on_update,
         Some(output_check),
+        presence,
     )
 }
 
@@ -320,6 +337,7 @@ fn relay_single_turn_checked(
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
     output_check: Option<&OutputCheck<'_>>,
+    presence: &dyn ClientPresence,
 ) -> Result<String, RelayError> {
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
     // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
@@ -402,6 +420,7 @@ fn relay_single_turn_checked(
         soft_login_doubt,
         on_update,
         output_check,
+        presence,
     )
 }
 
@@ -422,6 +441,7 @@ fn run_turn_loop<B: RelayBackend>(
     soft_login_doubt: Option<SessionState>,
     on_update: &mut dyn FnMut(&str),
     output_check: Option<&OutputCheck<'_>>,
+    presence: &dyn ClientPresence,
 ) -> Result<String, RelayError> {
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
     // sind unvermeidlich flakig: Submit oder Antworterkennung koennen scheitern.
@@ -445,6 +465,25 @@ fn run_turn_loop<B: RelayBackend>(
     let mut sends: u32 = 0;
     let mut answer: Option<String> = None;
     for turn in 0..max_turns {
+        // T-946: kein Browser-Turn fuer einen Aufrufer, der schon in der
+        // Warteschlange vor der Brain-Sperre verschwunden ist. Der Turn wird
+        // als verwaist markiert (brain_score) und die Sperre wird nicht
+        // gehalten. Ein Client, der mitten im Turn verschwindet, wird unten
+        // ueber `cancelled` im Wait-Poll erkannt.
+        if !presence.connected() {
+            let _ = backend.relay_stop();
+            crate::brain_score::record_event_with_sends(
+                brain_id,
+                false,
+                Some(CLIENT_GONE_REASON),
+                started.elapsed().as_millis() as u64,
+                prompt_chars,
+                sends,
+            );
+            return Err(RelayError(format!(
+                "{CLIENT_GONE_REASON}: Aufrufer von {brain_id} ist weg; Turn nicht gestartet"
+            )));
+        }
         if turn > 0 {
             crate::bench_events::eprint_line(&format!(
                 "[relay] {brain_id}: Wiederholung {turn}/{}  (vorher: {last_err})",
@@ -482,13 +521,30 @@ fn run_turn_loop<B: RelayBackend>(
                 continue;
             }
         };
-        let response = match backend.relay_wait_response_streaming(baseline, turn_wait, on_update) {
+        let cancelled = || !presence.connected();
+        let response = match backend
+            .relay_wait_response_streaming(baseline, turn_wait, on_update, &cancelled)
+        {
             Ok(r) => r,
             Err(e) => {
                 last_err = e;
                 continue;
             }
         };
+        if response.backend_status == CLIENT_GONE_REASON {
+            let _ = backend.relay_stop();
+            crate::brain_score::record_event_with_sends(
+                brain_id,
+                false,
+                Some(CLIENT_GONE_REASON),
+                started.elapsed().as_millis() as u64,
+                prompt_chars,
+                sends,
+            );
+            return Err(RelayError(format!(
+                "{CLIENT_GONE_REASON}: Aufrufer von {brain_id} hat die Verbindung getrennt; Turn als verwaist beendet"
+            )));
+        }
         if response.backend_status == "rate_limit" {
             let _ = backend.relay_stop();
             crate::circuit_breaker::record_failure(brain_id, "rate_limit");
@@ -601,6 +657,7 @@ fn run_turn_loop<B: RelayBackend>(
                     correction_baseline,
                     correction_wait,
                     on_update,
+                    &cancelled,
                 ) {
                     Ok(response) => response,
                     Err(error) => {
@@ -832,6 +889,7 @@ mod tests {
             _baseline: i32,
             _timeout: f64,
             _on_update: &mut dyn FnMut(&str),
+            _cancelled: &dyn Fn() -> bool,
         ) -> Result<BrainResponse, String> {
             Ok(BrainResponse {
                 text: String::new(),
@@ -862,6 +920,7 @@ mod tests {
             None,
             &mut |_| {},
             None,
+            &crate::api_bridge::AlwaysConnected,
         );
         assert!(
             result.is_err(),
@@ -903,6 +962,7 @@ mod tests {
                 _baseline: i32,
                 _timeout: f64,
                 _on_update: &mut dyn FnMut(&str),
+                _cancelled: &dyn Fn() -> bool,
             ) -> Result<BrainResponse, String> {
                 unreachable!("ohne erfolgreichen Send darf nicht gewartet werden")
             }
@@ -922,6 +982,7 @@ mod tests {
             None,
             &mut |_| {},
             None,
+            &crate::api_bridge::AlwaysConnected,
         );
         assert!(result.is_err());
         assert!(backend.attempts > 0, "Retry-Send muss versucht werden");
@@ -1033,6 +1094,7 @@ mod tests {
             _baseline: i32,
             _timeout: f64,
             _on_update: &mut dyn FnMut(&str),
+            _cancelled: &dyn Fn() -> bool,
         ) -> Result<BrainResponse, String> {
             let fallback = self.antworten.last().cloned().unwrap_or_default();
             let text = self.antworten.get(self.index).cloned().unwrap_or(fallback);
@@ -1101,6 +1163,7 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
+            &crate::api_bridge::AlwaysConnected,
         );
         assert!(
             result.is_err(),
@@ -1148,6 +1211,7 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
+            &crate::api_bridge::AlwaysConnected,
         );
         assert!(result.is_err());
         assert_eq!(backend.new_chats, 1);
@@ -1173,11 +1237,169 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
+            &crate::api_bridge::AlwaysConnected,
         );
         assert!(result.is_ok(), "{result:?}");
         assert_eq!(backend.new_chats, 1);
         assert_eq!(backend.sends, 2);
         let event = letztes_score_ereignis(brain_id);
         assert_eq!(event.get("success").and_then(|v| v.as_bool()), Some(true));
+    }
+
+    // ---- T-946: verwaisste Anfragen -------------------------------------
+
+    /// Mock-Backend, das einen laufenden Turn nachbildet: `wait` pollt den
+    /// `cancelled`-Closure und beendet den Turn mit `client_disconnected`,
+    /// sobald der Aufrufer verschwunden ist. Zaehlt new_chat/send/stop, damit
+    /// der Beleg "kein Turn gestartet" und "relay_stop gerufen" pruefbar ist.
+    struct AbbruchAnbieter {
+        new_chats: u32,
+        sends: u32,
+        stops: u32,
+    }
+
+    impl AbbruchAnbieter {
+        fn new() -> Self {
+            Self {
+                new_chats: 0,
+                sends: 0,
+                stops: 0,
+            }
+        }
+    }
+
+    impl RelayBackend for AbbruchAnbieter {
+        fn relay_new_chat(&mut self) -> Result<(), String> {
+            self.new_chats += 1;
+            Ok(())
+        }
+        fn relay_send_with_attachments(
+            &mut self,
+            _text: &str,
+            _attachments: &[BrowserAttachment],
+        ) -> Result<i32, String> {
+            self.sends += 1;
+            Ok(1)
+        }
+        fn relay_wait_response_streaming(
+            &mut self,
+            _baseline: i32,
+            _timeout: f64,
+            _on_update: &mut dyn FnMut(&str),
+            cancelled: &dyn Fn() -> bool,
+        ) -> Result<BrainResponse, String> {
+            // Wie WebBrainBackend::wait_response_streaming_with_cancel: der
+            // Wait-Poll beobachtet den Aufrufer und bricht terminal ab.
+            for _ in 0..400 {
+                if cancelled() {
+                    return Ok(BrainResponse {
+                        text: String::new(),
+                        backend_status: CLIENT_GONE_REASON.to_string(),
+                        ..Default::default()
+                    });
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            Ok(BrainResponse {
+                text: "zu spaet".to_string(),
+                backend_status: "ok".to_string(),
+                ..Default::default()
+            })
+        }
+        fn relay_stop(&mut self) -> Result<(), String> {
+            self.stops += 1;
+            Ok(())
+        }
+    }
+
+    /// DoD T-946: ein Aufrufer, der schon verschwunden ist, bevor der Turn
+    /// beginnt, startet keinen Browser-Turn. Es gibt kein new_chat, kein send,
+    /// aber ein relay_stop und ein brain_score-Event mit dem stabilen Grund.
+    #[test]
+    fn verwaiste_anfrage_startet_keinen_turn() {
+        let brain_id = "mock_verwaist_start";
+        let mut backend = AbbruchAnbieter::new();
+        let presence = crate::api_bridge::TestPresence::connected(false);
+        let result = run_turn_loop(
+            &mut backend,
+            brain_id,
+            "hallo",
+            &[],
+            5.0,
+            Instant::now(),
+            5,
+            None,
+            &mut |_| {},
+            None,
+            &presence,
+        );
+        assert!(result.is_err(), "{result:?}");
+        assert!(
+            result.unwrap_err().0.contains(CLIENT_GONE_REASON),
+            "stabiler Grund fehlt"
+        );
+        assert_eq!(backend.new_chats, 0, "kein Browser-Turn starten");
+        assert_eq!(backend.sends, 0, "kein Prompt senden");
+        assert_eq!(backend.stops, 1, "relay_stop muss gerufen werden");
+        let event = letztes_score_ereignis(brain_id);
+        assert_eq!(
+            event.get("success").and_then(|v| v.as_bool()),
+            Some(false),
+            "verwaiste Anfrage ist kein Erfolg: {event}"
+        );
+        assert_eq!(
+            event.get("reason").and_then(|v| v.as_str()),
+            Some(CLIENT_GONE_REASON),
+            "Grund fehlt: {event}"
+        );
+    }
+
+    /// DoD T-946: verschwindet der Aufrufer waehrend des Turns, beendet der
+    /// `cancelled`-Closure den Turn terminal. Der Follow-up muss nicht auf das
+    /// volle Wartebudget warten — hier bricht der Turn nach wenigen ms ab,
+    /// nicht nach den konfigurierten 5 s. relay_stop und brain_score folgen.
+    #[test]
+    fn abbruch_im_warteloop_beendet_turn_frueh() {
+        let brain_id = "mock_verwaist_mitten";
+        let mut backend = AbbruchAnbieter::new();
+        let presence = crate::api_bridge::TestPresence::connected(true);
+        let flip = presence.clone();
+        let flipper = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            flip.set(false);
+        });
+        let started = Instant::now();
+        let result = run_turn_loop(
+            &mut backend,
+            brain_id,
+            "hallo",
+            &[],
+            5.0,
+            started,
+            5,
+            None,
+            &mut |_| {},
+            None,
+            &presence,
+        );
+        flipper.join().expect("flipper");
+        assert!(result.is_err(), "{result:?}");
+        assert!(
+            result.unwrap_err().0.contains(CLIENT_GONE_REASON),
+            "stabiler Grund fehlt"
+        );
+        assert_eq!(backend.new_chats, 1, "der Turn wurde gestartet");
+        assert_eq!(backend.sends, 1, "genau ein Prompt gesendet");
+        assert_eq!(backend.stops, 1, "relay_stop muss gerufen werden");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "Turn muss frueh enden, nicht das volle Budget verbrauchen"
+        );
+        let event = letztes_score_ereignis(brain_id);
+        assert_eq!(
+            event.get("reason").and_then(|v| v.as_str()),
+            Some(CLIENT_GONE_REASON),
+            "Grund fehlt: {event}"
+        );
     }
 }
