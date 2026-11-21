@@ -1,0 +1,7 @@
+﻿T-961 required-mode run req-5
+BRIDGE_HEALTHY
+[required-client] FAIL: TURN5 failed: HTTP_ERROR Der Remoteserver hat einen Fehler zurückgegeben: (502) Ungültiges Gateway. BODY {"error":{"code":null,"message":"Browser-Inference fehlgeschlagen: Das Browsermodell lieferte trotz verpflichtendem Tool-Call nur Text.","param":null,"type":"invalid_request_error"}}
+[required-client] Transcript: C:\Users\storax\AppData\Local\Temp\webagent-t961-harness\req-5.jsonl
+CLIENT_EXIT=1
+TRANSCRIPT_BYTES=21921
+SHA256=8199C92553109F14BA68EA16645130829041475B0AAA30D30E6AD0108AB789FF

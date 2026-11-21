@@ -1,0 +1,482 @@
+### TURN1 REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     }
+                 ],
+    "tool_choice":  "required",
+    "model":  "webagent/chatgpt"
+}
+### TURN1 RESPONSE {"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"path\":\"nonce-1.txt\"}","name":"read"},"id":"call_1","type":"function"}]}}],"created":1795218320,"id":"chatcmpl-18e9e58d16727c94","model":"webagent/chatgpt","object":"chat.completion","system_fingerprint":null,"usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0}}
+### TURN1 TOOL_RESULT PI_TOOL_1_4cc54f993af44631af5c627ab99856bb
+### TURN2 REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-1.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_1",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_1",
+                         "content":  "PI_TOOL_1_4cc54f993af44631af5c627ab99856bb",
+                         "role":  "tool"
+                     }
+                 ],
+    "tool_choice":  "required",
+    "model":  "webagent/chatgpt"
+}
+### TURN2 RESPONSE {"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"path\":\"nonce-2.txt\"}","name":"read"},"id":"call_2","type":"function"}]}}],"created":1795218341,"id":"chatcmpl-18e9e591f47a6188","model":"webagent/chatgpt","object":"chat.completion","system_fingerprint":null,"usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0}}
+### TURN2 TOOL_RESULT PI_TOOL_2_79d42aa26ff74121a7f3c52679bf1770
+### TURN3 REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-1.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_1",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_1",
+                         "content":  "PI_TOOL_1_4cc54f993af44631af5c627ab99856bb",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-2.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_2",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_2",
+                         "content":  "PI_TOOL_2_79d42aa26ff74121a7f3c52679bf1770",
+                         "role":  "tool"
+                     }
+                 ],
+    "tool_choice":  "required",
+    "model":  "webagent/chatgpt"
+}
+### TURN3 RESPONSE {"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"path\":\"nonce-3.txt\"}","name":"read"},"id":"call_3","type":"function"}]}}],"created":1795218359,"id":"chatcmpl-18e9e59625b4d680","model":"webagent/chatgpt","object":"chat.completion","system_fingerprint":null,"usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0}}
+### TURN3 TOOL_RESULT PI_TOOL_3_01077f029c1f498ba8e8d98b26332a1f
+### TURN4 REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-1.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_1",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_1",
+                         "content":  "PI_TOOL_1_4cc54f993af44631af5c627ab99856bb",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-2.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_2",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_2",
+                         "content":  "PI_TOOL_2_79d42aa26ff74121a7f3c52679bf1770",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-3.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_3",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_3",
+                         "content":  "PI_TOOL_3_01077f029c1f498ba8e8d98b26332a1f",
+                         "role":  "tool"
+                     }
+                 ],
+    "tool_choice":  "required",
+    "model":  "webagent/chatgpt"
+}
+### TURN4 RESPONSE {"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"path\":\"nonce-4.txt\"}","name":"read"},"id":"call_4","type":"function"}]}}],"created":1795218378,"id":"chatcmpl-18e9e59a9c177c20","model":"webagent/chatgpt","object":"chat.completion","system_fingerprint":null,"usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0}}
+### TURN4 TOOL_RESULT PI_TOOL_4_088478e2450145cbab432a6fa22909ed
+### TURN5 REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-1.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_1",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_1",
+                         "content":  "PI_TOOL_1_4cc54f993af44631af5c627ab99856bb",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-2.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_2",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_2",
+                         "content":  "PI_TOOL_2_79d42aa26ff74121a7f3c52679bf1770",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-3.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_3",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_3",
+                         "content":  "PI_TOOL_3_01077f029c1f498ba8e8d98b26332a1f",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-4.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_4",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_4",
+                         "content":  "PI_TOOL_4_088478e2450145cbab432a6fa22909ed",
+                         "role":  "tool"
+                     }
+                 ],
+    "tool_choice":  "required",
+    "model":  "webagent/chatgpt"
+}
+### TURN5 RESPONSE {"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"path\":\"nonce-5.txt\"}","name":"read"},"id":"call_5","type":"function"}]}}],"created":1795218406,"id":"chatcmpl-18e9e5a112d8ccf0","model":"webagent/chatgpt","object":"chat.completion","system_fingerprint":null,"usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0}}
+### TURN5 TOOL_RESULT PI_TOOL_5_11c762aaef464babbaaa69dc653bbbab
+### FINAL REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-1.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_1",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_1",
+                         "content":  "PI_TOOL_1_4cc54f993af44631af5c627ab99856bb",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-2.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_2",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_2",
+                         "content":  "PI_TOOL_2_79d42aa26ff74121a7f3c52679bf1770",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-3.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_3",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_3",
+                         "content":  "PI_TOOL_3_01077f029c1f498ba8e8d98b26332a1f",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-4.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_4",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_4",
+                         "content":  "PI_TOOL_4_088478e2450145cbab432a6fa22909ed",
+                         "role":  "tool"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-5.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_5",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_5",
+                         "content":  "PI_TOOL_5_11c762aaef464babbaaa69dc653bbbab",
+                         "role":  "tool"
+                     }
+                 ],
+    "tool_choice":  "none",
+    "model":  "webagent/chatgpt"
+}
+### FINAL RESPONSE HTTP_ERROR Der Remoteserver hat einen Fehler zurückgegeben: (502) Ungültiges Gateway. BODY {"error":{"code":null,"message":"Browser-Inference fehlgeschlagen: keine Antwort erhalten (timeout_budget=213s, gesamt=220s, sendungen=1, backend_status=timeout_no_text: renderer may be unresponsive after wake — move mouse or restart brain, generation_complete=false, raw_chars=0)","param":null,"type":"invalid_request_error"}}

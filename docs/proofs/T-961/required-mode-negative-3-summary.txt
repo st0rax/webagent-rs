@@ -1,0 +1,7 @@
+﻿T-961 required-mode run req-3
+BRIDGE_HEALTHY
+[required-client] PASS: 5 consecutive tool turns, tool_choice=required, markers complete.
+[required-client] Transcript: C:\Users\storax\AppData\Local\Temp\webagent-t961-harness\req-3.jsonl
+CLIENT_EXIT=0
+TRANSCRIPT_BYTES=22145
+SHA256=1A836AD304F1544FFCC85AAF4D0ECCAB58E29CDDD8D2D9C1236A1C6CA03728B1

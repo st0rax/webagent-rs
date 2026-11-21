@@ -2,7 +2,7 @@
 
 # T-961 live acceptance — pending (intermittent)
 
-This directory holds the live evidence required by T-961. **This README is a test plan, not evidence.** PRs #82/#83/#84/#86 are merged (`901e8e1`/`5355e18`/`976abd3`/`eaed3d1`); those merges are code changes, not live evidence. Do not mark T-961 done until the evidence below is stable. Status as of 20.11.2026: `NICHT ABGENOMMEN / INTERMITTIEREND` — several raw green runs exist (text turn `PI_BRIDGE_OK`, 5/5 nonces read, 0 errors), but a negative run with the **final binary** `eaed3d1` (`after-framing-negative.jsonl`) still denies the fifth tool after four successful calls. Three of four consecutive runs with that binary were green. See `analysis.md` and `environment.txt`.
+This directory holds the live evidence required by T-961. **This README is a test plan, not evidence.** PRs #82/#83/#84/#86 are merged (`901e8e1`/`5355e18`/`976abd3`/`eaed3d1`); those merges are code changes, not live evidence. Do not mark T-961 done until the evidence below is stable. Status as of 21.11.2026: `NICHT ABGENOMMEN / INTERMITTIEREND` — several raw green runs exist (text turn `PI_BRIDGE_OK`, 5/5 nonces read, 0 errors), but a negative run with the final binary `eaed3d1` (`after-framing-negative.jsonl`) still denies the fifth tool after four successful calls. Three measured directions are now falsified: availability rule 2/8, `[FUNKTIONEN]` framing 6/8, forced `tool_choice=required` 1/8. See `analysis.md`, the result documents below, and `environment.txt`.
 
 ## Reproducible before/after run
 
@@ -31,9 +31,14 @@ Use the same ChatGPT account, selected model/effort, Pi version, bridge configur
 - `function-negative-{1..8}.jsonl` — raw runs with candidate `f899ed3` (`[FUNKTIONEN]` block); 6/8 strict green, 2 negatives.
 - `function-negative-verify.txt` — unmodified strict verifier output for those eight runs.
 - `function-framing-result.md` — evaluation: no improvement over the 3/4 baseline; code reverted.
+- `required-mode-negative-{1..8}.jsonl` — raw direct-client OpenAI transcripts with `tool_choice=required` on `master` `bf0a65b`; only 1/8 strict green. **These are HTTP transcripts, not Pi streams.**
+- `required-mode-negative-{1..8}-summary.txt` — per-run orchestration summaries.
+- `required-mode-negative-verify.txt` — unmodified strict verifier output for those eight runs.
+- `required-mode-validation-green.jsonl` — earlier validation run with five clean required tool turns but a trailing renderer timeout (different script variant).
+- `required-mode-result.md` — evaluation: forced tool choice converts the denial into fail-closed 502s, does not fix the loop; no code change.
 - `environment.txt` — reproducibility metadata; no API keys, cookies, or other secrets.
 
-All `*.jsonl` files are byte-exact raw Pi streams (`.gitattributes` marks them `-text`); their SHA256 values are listed in `environment.txt`.
+All `*.jsonl` files are byte-exact raw streams (`.gitattributes` marks them `-text`); their SHA256 values are listed in `environment.txt`. Files without a `required-mode-` prefix are Pi JSON-mode streams; `required-mode-*` files are raw HTTP request/response transcripts from the direct OpenAI client.
 
 ## Acceptance checklist
 
@@ -42,7 +47,7 @@ All `*.jsonl` files are byte-exact raw Pi streams (`.gitattributes` marks them `
 - [x] Same conditions used for before/after comparison (Pi 1.5.2, port 8788, model `webagent/chatgpt`, fresh process token).
 - [x] Four blockers diagnosed and fixed (selector drift, envelope prefix, login pre-check, current tool-result framing; PRs #82/#83/#84/#86).
 - [x] Fixed runs show at least five consecutive successful tool turns — **achieved repeatedly** (`after.jsonl`, `after-premerge-green-*`, `after-framing-green-*`).
-- [ ] **Stable / reproducible:** `after-framing-negative.jsonl` with the final binary `eaed3d1` still denies a tool after four successful calls. Two further candidates were measured and reverted: availability rule 2/8 green, function framing 6/8 green (no better than the 3/4 baseline). **Open**; root cause of the intermittency unclear.
+- [ ] **Stable / reproducible:** `after-framing-negative.jsonl` with the final binary `eaed3d1` still denies a tool after four successful calls. Three measured directions failed: availability rule 2/8 green, function framing 6/8 green (no better than the 3/4 baseline), forced `tool_choice=required` 1/8 green. **Open**; root cause of the intermittency unclear.
 - [x] **Account memory checked:** read-only WebView DOM inspection of personalization/memory; no entry denying tool access (`account-state.md`). Personal content redacted, no settings changed, no credentials/profiles read.
 - [ ] Evidence linked from the T-961 taskboard entry with a passing, stable result — **pending**: T-961 stays `free`, no tag/release.
 
