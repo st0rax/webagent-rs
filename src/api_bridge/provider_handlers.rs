@@ -41,6 +41,40 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Fehler eines Browserturns in eine HTTP-Antwort uebersetzen (T-953).
+///
+/// Ein Fehler mit dem stabilen `MODEL_OUTPUT_ERROR:`-Marker liegt in der
+/// MODELLAUSGABE, nicht in der Client-Anfrage: die Bridge antwortet 502 mit
+/// `server_error` und dem stabilen Code `model_output_envelope_invalid` aus,
+/// statt wie bisher `invalid_request_error` zu behaupten. Der Marker kann durch
+/// die Auto-Router-Annotation auch mittig im Text stehen, deshalb `contains`.
+/// Alle anderen Fehler behalten die bestehende Uebersetzung.
+fn inference_failure_response(flavor: ApiFlavor, message: &str) -> HttpResponse {
+    if message.contains(crate::browser_inference::MODEL_OUTPUT_ERROR_MARKER) {
+        return match flavor {
+            ApiFlavor::OpenAi => HttpResponse::json(
+                502,
+                json!({
+                    "error": {
+                        "message": message,
+                        "type": "server_error",
+                        "param": null,
+                        "code": "model_output_envelope_invalid"
+                    }
+                }),
+            ),
+            ApiFlavor::Anthropic => HttpResponse::json(
+                502,
+                json!({
+                    "type": "error",
+                    "error": {"type": "server_error", "message": message}
+                }),
+            ),
+        };
+    }
+    browser_inference_error(flavor, message)
+}
+
 pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return response;
@@ -83,7 +117,7 @@ pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> Htt
         tool_choice,
     ) {
         Ok(answer) => answer,
-        Err(error) => return browser_inference_error(ApiFlavor::OpenAi, &error),
+        Err(error) => return inference_failure_response(ApiFlavor::OpenAi, &error),
     };
     let id = completion_id("chatcmpl");
     if payload.stream.unwrap_or(false) {
@@ -288,7 +322,7 @@ pub(super) fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> 
         crate::browser_inference::BrowserToolChoice::None,
     ) {
         Ok(answer) => answer,
-        Err(error) => return browser_inference_error(ApiFlavor::Anthropic, &error),
+        Err(error) => return inference_failure_response(ApiFlavor::Anthropic, &error),
     };
     let id = completion_id("msg");
     let response = anthropic_response(&id, &payload.model, &answer);
@@ -338,7 +372,7 @@ pub(super) fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> 
         crate::browser_inference::BrowserToolChoice::None,
     ) {
         Ok(answer) => answer,
-        Err(error) => return browser_inference_error(ApiFlavor::OpenAi, &error),
+        Err(error) => return inference_failure_response(ApiFlavor::OpenAi, &error),
     };
     let id = completion_id("resp");
     append_response_message(&mut messages, &answer);
@@ -587,4 +621,43 @@ pub(super) fn handle_responses_incremental(
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn body(response: &HttpResponse) -> serde_json::Value {
+        serde_json::from_slice(&response.body).expect("JSON-Antwort")
+    }
+
+    /// DoD T-953 (1): die Fehlerantwort nennt die Modellausgabe als Ursache —
+    /// `server_error` mit stabilem Code statt `invalid_request_error`.
+    #[test]
+    fn modellausgabe_fehler_ist_server_error_mit_stabilem_code() {
+        let message = "Browser-Inference fehlgeschlagen: MODEL_OUTPUT_ERROR: Ungueltiger Browser-Tool-Call-Umschlag; via=auto→chatgpt";
+        let openai = inference_failure_response(ApiFlavor::OpenAi, message);
+        assert_eq!(openai.status, 502);
+        let value = body(&openai);
+        assert_eq!(value["error"]["type"], "server_error");
+        assert_eq!(value["error"]["code"], "model_output_envelope_invalid");
+        assert!(value["error"]["message"]
+            .as_str()
+            .is_some_and(|text| text.contains("MODEL_OUTPUT_ERROR")));
+
+        let anthropic = inference_failure_response(ApiFlavor::Anthropic, message);
+        assert_eq!(anthropic.status, 502);
+        let value = body(&anthropic);
+        assert_eq!(value["error"]["type"], "server_error");
+        assert!(value["error"]["message"]
+            .as_str()
+            .is_some_and(|text| text.contains("MODEL_OUTPUT_ERROR")));
+    }
+
+    #[test]
+    fn andere_fehler_bleiben_invalid_request_error() {
+        let response = inference_failure_response(ApiFlavor::OpenAi, "keine Antwort erhalten");
+        assert_eq!(response.status, 502);
+        assert_eq!(body(&response)["error"]["type"], "invalid_request_error");
+    }
 }

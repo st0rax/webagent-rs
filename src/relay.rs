@@ -67,6 +67,23 @@ trait RelayBackend {
     fn relay_stop(&mut self) -> Result<(), String>;
 }
 
+/// Begruendung eines fehlgeschlagenen Turns, dessen Modellausgabe ungueltig
+/// war. Stabiler brain_score-Grund, damit Fehler der Modellausgabe nicht als
+/// Erfolg oder als Transportfehler erscheinen (T-953).
+pub const MODEL_OUTPUT_FAILURE_REASON: &str = "model_output_envelope_invalid";
+
+/// Pruefung der Modellausgabe, bevor der Turn als Erfolg verbucht wird.
+///
+/// `validate` bewertet den Rohtext. Schlaegt sie fehl, sendet die Turn-Schleife
+/// `correction_message` hoechstens einmal im selben Chat (kein `new_chat`) und
+/// wertet die Antwort erneut. Ohne diese Grenze zaehlte relay.rs einen Turn mit
+/// kaputtem Werkzeugumschlag als Erfolg, weil die Antwort vor der Parse-Pruefung
+/// verbucht wurde (T-953).
+pub struct OutputCheck<'a> {
+    pub validate: &'a dyn Fn(&str) -> Result<(), String>,
+    pub correction_message: &'a dyn Fn(&str) -> String,
+}
+
 impl RelayBackend for WebBrainBackend {
     fn relay_new_chat(&mut self) -> Result<(), String> {
         WebBrainBackend::new_chat(self)
@@ -255,6 +272,55 @@ pub fn relay_single_turn_with_attachments_streaming(
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
 ) -> Result<String, RelayError> {
+    relay_single_turn_checked(
+        brain_id,
+        message,
+        headless,
+        timeout_override,
+        model,
+        attachments,
+        on_update,
+        None,
+    )
+}
+
+/// Wie [`relay_single_turn_with_attachments_streaming`], aber die Modellausgabe
+/// wird vor der Erfolgsverbuchung geprueft und bei einem Fehler genau einmal
+/// in derselben Konversation zur Korrektur aufgefordert (T-953).
+#[allow(clippy::too_many_arguments)]
+pub fn relay_single_turn_with_attachments_streaming_checked(
+    brain_id: &str,
+    message: &str,
+    headless: bool,
+    timeout_override: Option<f64>,
+    model: Option<&str>,
+    attachments: &[BrowserAttachment],
+    on_update: &mut dyn FnMut(&str),
+    output_check: &OutputCheck<'_>,
+) -> Result<String, RelayError> {
+    relay_single_turn_checked(
+        brain_id,
+        message,
+        headless,
+        timeout_override,
+        model,
+        attachments,
+        on_update,
+        Some(output_check),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn relay_single_turn_checked(
+    brain_id: &str,
+    message: &str,
+    headless: bool,
+    timeout_override: Option<f64>,
+    model: Option<&str>,
+    attachments: &[BrowserAttachment],
+    on_update: &mut dyn FnMut(&str),
+    output_check: Option<&OutputCheck<'_>>,
+) -> Result<String, RelayError> {
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
     // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
     if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
@@ -335,6 +401,7 @@ pub fn relay_single_turn_with_attachments_streaming(
         prompt_chars,
         soft_login_doubt,
         on_update,
+        output_check,
     )
 }
 
@@ -354,6 +421,7 @@ fn run_turn_loop<B: RelayBackend>(
     prompt_chars: usize,
     soft_login_doubt: Option<SessionState>,
     on_update: &mut dyn FnMut(&str),
+    output_check: Option<&OutputCheck<'_>>,
 ) -> Result<String, RelayError> {
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
     // sind unvermeidlich flakig: Submit oder Antworterkennung koennen scheitern.
@@ -479,7 +547,89 @@ fn run_turn_loop<B: RelayBackend>(
             );
             continue;
         }
-        answer = Some(text);
+        // T-953: die Modellausgabe pruefen, BEVOR der Turn verbucht wird. Vorher
+        // zaehlte ein kaputter Werkzeugumschlag als Erfolg, weil parse_response
+        // erst NACH der Erfolgsverbuchung in browser_inference.rs lief. Bei einem
+        // Fehler geht genau EINE Korrektur in derselben Konversation raus (kein
+        // new_chat), mit der Parserfehlermeldung als Inhalt. Scheitert sie, ist
+        // der Turn ein Fehlschlag mit eigenem Grund — kein Retry, kein Erfolg.
+        //
+        // Der Circuit-Breaker wird bewusst NICHT geoeffnet: das Brain ist
+        // erreichbar und antwortet, nur die Ausgabe war ungueltig. Der eigene
+        // brain_score-Grund macht den Unterschied zur Nichtverfuegbarkeit sichtbar.
+        let mut final_text = text;
+        if let Some(check) = output_check {
+            let fail = |detail: String, current_sends: u32| -> RelayError {
+                crate::brain_score::record_event_with_sends(
+                    brain_id,
+                    false,
+                    Some(MODEL_OUTPUT_FAILURE_REASON),
+                    started.elapsed().as_millis() as u64,
+                    prompt_chars,
+                    current_sends,
+                );
+                RelayError(format!("{MODEL_OUTPUT_FAILURE_REASON}: {detail}"))
+            };
+            if let Err(parse_error) = (check.validate)(&final_text) {
+                crate::bench_events::eprint_line(&format!(
+                    "[relay] {brain_id}: ungueltige Modellausgabe, Korrektur in derselben Konversation: {parse_error}"
+                ));
+                let correction = (check.correction_message)(&parse_error);
+                let correction_baseline =
+                    match backend.relay_send_with_attachments(&correction, &[]) {
+                        Ok(baseline) => {
+                            sends += 1;
+                            baseline
+                        }
+                        Err(error) => {
+                            return Err(fail(
+                                format!("{parse_error}; Korrektur nicht gesendet: {error}"),
+                                sends,
+                            ));
+                        }
+                    };
+                let correction_wait = deadline
+                    .saturating_duration_since(Instant::now())
+                    .as_secs_f64();
+                if correction_wait <= 0.0 {
+                    return Err(fail(
+                        format!("{parse_error}; kein Zeitbudget fuer Korrektur"),
+                        sends,
+                    ));
+                }
+                let correction_response = match backend.relay_wait_response_streaming(
+                    correction_baseline,
+                    correction_wait,
+                    on_update,
+                ) {
+                    Ok(response) => response,
+                    Err(error) => {
+                        return Err(fail(
+                            format!("{parse_error}; Korrektur-Antwort fehlgeschlagen: {error}"),
+                            sends,
+                        ));
+                    }
+                };
+                let correction_raw = correction_response.text.trim().to_string();
+                let correction_text = crate::observer::chat_answer_text(&correction_raw);
+                if correction_text.is_empty() {
+                    return Err(fail(
+                        format!("{parse_error}; Korrektur lieferte keine Antwort"),
+                        sends,
+                    ));
+                }
+                match (check.validate)(&correction_text) {
+                    Ok(()) => final_text = correction_text,
+                    Err(second_error) => {
+                        return Err(fail(
+                            format!("{parse_error}; auch nach Korrektur ungueltig: {second_error}"),
+                            sends,
+                        ));
+                    }
+                }
+            }
+        }
+        answer = Some(final_text);
         break;
     }
     // Shared-Pool: `stop` respektiert `persist_browser_tabs()` (Tab bleibt offen).
@@ -711,6 +861,7 @@ mod tests {
             5,
             None,
             &mut |_| {},
+            None,
         );
         assert!(
             result.is_err(),
@@ -770,6 +921,7 @@ mod tests {
             5,
             None,
             &mut |_| {},
+            None,
         );
         assert!(result.is_err());
         assert!(backend.attempts > 0, "Retry-Send muss versucht werden");
@@ -837,5 +989,195 @@ mod tests {
         assert!(is_attachment_capability_failure(
             "Browseroberflaeche hat nur 0 von 1 Dateien uebernommen"
         ));
+    }
+
+    /// Mock-Backend mit Antwortfolge: protokolliert Senden und `new_chat`, damit
+    /// die Grenze "hoechstens eine Korrektur in derselben Konversation" pruefbar
+    /// ist (T-953).
+    struct Antwortfolge {
+        antworten: Vec<String>,
+        index: usize,
+        sends: u32,
+        new_chats: u32,
+        gesendet: Vec<String>,
+    }
+
+    impl Antwortfolge {
+        fn new(antworten: &[&str]) -> Self {
+            Self {
+                antworten: antworten.iter().map(|s| s.to_string()).collect(),
+                index: 0,
+                sends: 0,
+                new_chats: 0,
+                gesendet: Vec::new(),
+            }
+        }
+    }
+
+    impl RelayBackend for Antwortfolge {
+        fn relay_new_chat(&mut self) -> Result<(), String> {
+            self.new_chats += 1;
+            Ok(())
+        }
+        fn relay_send_with_attachments(
+            &mut self,
+            text: &str,
+            _attachments: &[BrowserAttachment],
+        ) -> Result<i32, String> {
+            self.sends += 1;
+            self.gesendet.push(text.to_string());
+            Ok(1)
+        }
+        fn relay_wait_response_streaming(
+            &mut self,
+            _baseline: i32,
+            _timeout: f64,
+            _on_update: &mut dyn FnMut(&str),
+        ) -> Result<BrainResponse, String> {
+            let fallback = self.antworten.last().cloned().unwrap_or_default();
+            let text = self.antworten.get(self.index).cloned().unwrap_or(fallback);
+            self.index += 1;
+            Ok(BrainResponse {
+                text,
+                backend_status: "ok".to_string(),
+                ..Default::default()
+            })
+        }
+        fn relay_stop(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn letztes_score_ereignis(brain_id: &str) -> serde_json::Value {
+        let path = crate::config::data_dir()
+            .join("brain_score")
+            .join("events.jsonl");
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        content
+            .lines()
+            .rev()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find(|event| event.get("brain_id").and_then(|v| v.as_str()) == Some(brain_id))
+            .unwrap_or_else(|| panic!("kein brain_score-Ereignis fuer {brain_id}"))
+    }
+
+    fn validate_mock(text: &str) -> Result<(), String> {
+        if text.contains("WEBAGENT_INFERENCE/1") {
+            Ok(())
+        } else {
+            Err("MODEL_OUTPUT_ERROR: Ungueltiger Browser-Tool-Call-Umschlag".to_string())
+        }
+    }
+
+    fn correction_mock(parse_error: &str) -> String {
+        format!("Korrigiere deine Ausgabe: {parse_error}")
+    }
+
+    fn ungueltiger_umschlag() -> OutputCheck<'static> {
+        static VALIDATE: fn(&str) -> Result<(), String> = validate_mock;
+        static CORRECTION: fn(&str) -> String = correction_mock;
+        OutputCheck {
+            validate: &VALIDATE,
+            correction_message: &CORRECTION,
+        }
+    }
+
+    /// DoD T-953 (1+2): ein ungueltiger Umschlag ist ein Fehlschlag mit dem
+    /// eigenen Grund `model_output_envelope_invalid` und keiner Korrektur als
+    /// Erfolg getarnt.
+    #[test]
+    fn ungueltiger_umschlag_ist_fehlschlag_mit_eigenem_grund() {
+        let brain_id = "mock_modellausgabe_fehler";
+        let mut backend = Antwortfolge::new(&["kaputter umschlag", "immer noch kaputt"]);
+        let check = ungueltiger_umschlag();
+        let result = run_turn_loop(
+            &mut backend,
+            brain_id,
+            "hallo",
+            &[],
+            5.0,
+            Instant::now(),
+            5,
+            None,
+            &mut |_| {},
+            Some(&check),
+        );
+        assert!(
+            result.is_err(),
+            "ungueltiger Umschlag darf kein Erfolg sein"
+        );
+        let msg = result.unwrap_err().0;
+        assert!(msg.contains("MODEL_OUTPUT_ERROR"), "{msg}");
+        assert_eq!(
+            backend.new_chats, 1,
+            "Korrektur im selben Chat, kein neues new_chat"
+        );
+        assert_eq!(backend.sends, 2, "ein Original + genau eine Korrektur");
+        assert!(
+            backend.gesendet[1].contains("Korrigiere deine Ausgabe"),
+            "Korrektur enthaelt die Parserfehlermeldung: {:?}",
+            backend.gesendet
+        );
+        let event = letztes_score_ereignis(brain_id);
+        assert_eq!(
+            event.get("success").and_then(|v| v.as_bool()),
+            Some(false),
+            "brain_score muss Fehlschlag verbuchen: {event}"
+        );
+        assert_eq!(
+            event.get("reason").and_then(|v| v.as_str()),
+            Some(MODEL_OUTPUT_FAILURE_REASON),
+            "eigener Grund fehlt: {event}"
+        );
+    }
+
+    /// DoD T-953 (3): hoechstens eine Korrektur, kein Retry mit neuem Chat —
+    /// auch wenn der Anbieter beliebig oft antwortet.
+    #[test]
+    fn korrektur_nur_einmal_in_derselben_konversation() {
+        let mut backend = Antwortfolge::new(&["kaputt", "kaputt", "kaputt", "kaputt"]);
+        let check = ungueltiger_umschlag();
+        let result = run_turn_loop(
+            &mut backend,
+            "mock_nur_einmal",
+            "hallo",
+            &[],
+            5.0,
+            Instant::now(),
+            5,
+            None,
+            &mut |_| {},
+            Some(&check),
+        );
+        assert!(result.is_err());
+        assert_eq!(backend.new_chats, 1);
+        assert_eq!(backend.sends, 2, "hoechstens eine Korrektur, kein Retry");
+    }
+
+    /// Gegenprobe: die Korrektur fuehrt zum gueltigen Umschlag, dann erst wird
+    /// Erfolg verbucht — und genau einmal.
+    #[test]
+    fn erfolgreiche_korrektur_wird_als_erfolg_verbucht() {
+        let brain_id = "mock_korrektur_erfolg";
+        let mut backend =
+            Antwortfolge::new(&["kaputt", "WEBAGENT_INFERENCE/1\n{\"tool_calls\":[]}"]);
+        let check = ungueltiger_umschlag();
+        let result = run_turn_loop(
+            &mut backend,
+            brain_id,
+            "hallo",
+            &[],
+            5.0,
+            Instant::now(),
+            5,
+            None,
+            &mut |_| {},
+            Some(&check),
+        );
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(backend.new_chats, 1);
+        assert_eq!(backend.sends, 2);
+        let event = letztes_score_ereignis(brain_id);
+        assert_eq!(event.get("success").and_then(|v| v.as_bool()), Some(true));
     }
 }

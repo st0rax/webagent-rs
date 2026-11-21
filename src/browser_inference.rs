@@ -9,6 +9,17 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
+/// Stabiler Marker fuer Fehler, die in der MODELLAUSGABE liegen (T-953).
+/// `api_bridge/provider_handlers.rs` erkennt ihn und meldet `server_error` statt
+/// `invalid_request_error`: die Client-Anfrage war gueltig, das Browsermodell
+/// lieferte einen unbrauchbaren Werkzeugumschlag.
+pub const MODEL_OUTPUT_ERROR_MARKER: &str = "MODEL_OUTPUT_ERROR:";
+
+/// Kennzeichnet einen Parserfehler der Modellausgabe mit dem stabilen Marker.
+fn model_output_error(message: impl std::fmt::Display) -> String {
+    format!("{MODEL_OUTPUT_ERROR_MARKER} {message}")
+}
+
 /// Stabiler Fehlername für das native DSML-Werkzeugformat (T-957).
 const DSML_TOOL_FORMAT_ERROR: &str = "DSML_TOOL_FORMAT_UNSUPPORTED";
 /// DSML-Marker aus dem realen deepseek-Beispiel (2026-09-14). Die zweite Form
@@ -138,7 +149,27 @@ pub fn complete_streaming_with_attachments(
             on_update(&normalized);
         }
     };
-    let text = crate::relay::relay_single_turn_with_attachments_streaming(
+    // T-953: der Parser muss VOR der Erfolgsverbuchung im Relay laufen. Der
+    // Check verwendet exakt dieselbe Normalisierung und denselben Parser wie
+    // der finale Aufruf unten. Bei einem Fehler geht hoechstens einmal im
+    // selben Chat eine Korrektur mit der Parserfehlermeldung raus; bleibt sie
+    // erfolglos, verbucht relay.rs einen Fehlschlag mit eigenem Grund.
+    let validate = |raw: &str| -> Result<(), String> {
+        let normalized = normalize_provider_text(request.brain, raw);
+        parse_response(&normalized, request.tools, &request.tool_choice).map(|_| ())
+    };
+    let correction_message = |parse_error: &str| -> String {
+        format!(
+            "Deine letzte Antwort war kein gueltiger {TOOL_ENVELOPE}-Umschlag: {parse_error}\n\
+             Wiederhole sie in derselben Konversation und liefere genau einen \
+             gueltigen {TOOL_ENVELOPE}-Umschlag mit den Werkzeugaufrufen."
+        )
+    };
+    let output_check = crate::relay::OutputCheck {
+        validate: &validate,
+        correction_message: &correction_message,
+    };
+    let text = crate::relay::relay_single_turn_with_attachments_streaming_checked(
         request.brain,
         &prompt,
         request.headless,
@@ -146,6 +177,7 @@ pub fn complete_streaming_with_attachments(
         request.model,
         attachments,
         &mut relay_update,
+        &output_check,
     )
     .map_err(|error| error.0)?;
 
@@ -499,19 +531,19 @@ fn parse_response(
     let trimmed = raw.trim();
     let Some(payload) = envelope_payload(trimmed) else {
         if DSML_MARKERS.iter().any(|marker| trimmed.contains(marker)) {
-            return Err(format!(
+            return Err(model_output_error(format!(
                 "{DSML_TOOL_FORMAT_ERROR}: Das Browsermodell lieferte natives DSML-Werkzeugformat statt eines {TOOL_ENVELOPE}-Umschlags. Rohtext ({} Zeichen) beginnt: {}",
                 trimmed.chars().count(),
                 truncate_chars(&trimmed.escape_debug().to_string(), 120)
-            ));
+            )));
         }
         if matches!(
             choice,
             BrowserToolChoice::Required | BrowserToolChoice::Function(_)
         ) {
-            return Err(
-                "Das Browsermodell lieferte trotz verpflichtendem Tool-Call nur Text.".to_string(),
-            );
+            return Err(model_output_error(
+                "Das Browsermodell lieferte trotz verpflichtendem Tool-Call nur Text.",
+            ));
         }
         return Ok(BrowserInferenceResponse {
             text: Some(trimmed.to_string()),
@@ -525,12 +557,12 @@ fn parse_response(
         Err(strict_error) => {
             let repaired = repair_json_string_escapes(payload);
             let envelope = serde_json::from_str(&repaired).map_err(|repaired_error| {
-                format!(
+                model_output_error(format!(
                     "Ungueltiger Browser-Tool-Call-Umschlag: {strict_error}; nach Reparatur: {repaired_error}; Rohtext ({} Zeichen) beginnt: {}; an der Fehlerstelle: {}",
                     payload.chars().count(),
                     truncate_chars(&payload.escape_debug().to_string(), 120),
                     excerpt_around_error(&repaired, &repaired_error)
-                )
+                ))
             })?;
             crate::bench_events::eprint_line(&format!(
                 "[inference] Tool-Call-Umschlag repariert (String-Escapes): {strict_error}"
@@ -539,7 +571,9 @@ fn parse_response(
         }
     };
     if envelope.tool_calls.is_empty() {
-        return Err("Browser-Tool-Call-Umschlag enthaelt keine Tool Calls.".to_string());
+        return Err(model_output_error(
+            "Browser-Tool-Call-Umschlag enthaelt keine Tool Calls.",
+        ));
     }
 
     let allowed: BTreeSet<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
@@ -547,20 +581,22 @@ fn parse_response(
     let mut calls = Vec::with_capacity(envelope.tool_calls.len());
     for call in envelope.tool_calls {
         if call.id.trim().is_empty() || !ids.insert(call.id.clone()) {
-            return Err("Tool-Call-IDs muessen nichtleer und eindeutig sein.".to_string());
+            return Err(model_output_error(
+                "Tool-Call-IDs muessen nichtleer und eindeutig sein.",
+            ));
         }
         if !allowed.contains(call.name.as_str()) {
-            return Err(format!(
+            return Err(model_output_error(format!(
                 "Browsermodell rief unbekanntes Tool '{}' auf.",
                 call.name
-            ));
+            )));
         }
         if let BrowserToolChoice::Function(required) = choice {
             if &call.name != required {
-                return Err(format!(
+                return Err(model_output_error(format!(
                     "Browsermodell rief '{}' statt des verlangten Tools '{}' auf.",
                     call.name, required
-                ));
+                )));
             }
         }
         calls.push(BrowserToolCall {
@@ -817,6 +853,34 @@ mod tests {
         assert!(error.contains("Rohtext ("));
         assert!(error.contains("read_file"));
         assert!(error.contains(">>>HIER<<<"));
+    }
+
+    /// DoD T-953 (1): jeder Parserfehler der Modellausgabe traegt den stabilen
+    /// Marker, anhand dessen die Bridge `server_error` statt
+    /// `invalid_request_error` meldet. Gueltige Antworten bleiben unmarkiert.
+    #[test]
+    fn parse_fehler_tragen_den_modellausgabe_marker() {
+        let broken = concat!(
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"a", "b"}}]}"#
+        );
+        let error = parse_response(broken, &[read_tool()], &BrowserToolChoice::Auto).unwrap_err();
+        assert!(
+            error.starts_with(MODEL_OUTPUT_ERROR_MARKER),
+            "Marker fehlt: {error}"
+        );
+
+        let required = "nur Text, kein Umschlag";
+        let error =
+            parse_response(required, &[read_tool()], &BrowserToolChoice::Required).unwrap_err();
+        assert!(
+            error.starts_with(MODEL_OUTPUT_ERROR_MARKER),
+            "Marker fehlt: {error}"
+        );
+
+        let ok = parse_response("normale Antwort", &[read_tool()], &BrowserToolChoice::Auto)
+            .expect("Textantwort ist bei Auto gueltig");
+        assert!(ok.text.is_some());
     }
 
     #[test]
