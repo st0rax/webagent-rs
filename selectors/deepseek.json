@@ -1,4 +1,5 @@
 {
+  "answer_markdown": ["1"],
   "_hygiene_model_vs_mode": "Am 2026-09-11 entfernt: DeepSeek hat die Instant/Expert/Vision-Segmentleiste kommentarlos entfernt (User bestaetigt Konsolidierung; OCR+Screenshot belegen: Composer zeigt nur noch DeepThink/Search-Toggles). Damit sind model_switch UND mode_switch im aktuellen UI nicht vorhanden (by-design). model_menu/model_option bleiben leer, mode_option wird nicht mehr getroffen -> als removed dokumentiert (siehe Beleg deepseek_mode_model_removed_2026-09-11.md).",
   "model_menu": [],
   "model_option": [],

@@ -403,8 +403,18 @@ impl WebBrainBackend {
     /// waere wirkungslos geblieben.
     fn assistant_text(&self, index: i32) -> String {
         let list = self.sel_js("assistant_message", &["div.prose"]);
+        // T-942: `answer_markdown` ist ein data-driven Opt-in in der
+        // Selektordatei. Wo es gesetzt ist, wird die Antwort strukturell aus
+        // dem DOM zurueckgefuehrt (Tabellen/Pipes, Code-Fences, Listen) statt
+        // als gerendertes innerText ausgelesen. Ohne den Schluessel bleibt TX
+        // unverantwortet — keine stillschweigende Verhaltensaenderung.
+        let reader = if self.selectors.list("answer_markdown").is_empty() {
+            "TX"
+        } else {
+            "TXMD"
+        };
         let body = format!(
-            "var els=QA(S[i]);if(els.length>{idx}){{return TX(els[{idx}]).trim();}}",
+            "var els=QA(S[i]);if(els.length>{idx}){{return {reader}(els[{idx}]).trim();}}",
             idx = index
         );
         // Claude rendert seine Denk-Zusammenfassung in denselben Container und

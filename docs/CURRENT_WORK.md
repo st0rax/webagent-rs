@@ -1,5 +1,38 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-942 Markdown-Struktur live zurueckgewonnen
+
+- **Branch:** `feature/T-942-markdown-structure`, ausgehend von
+  `feature/T-940-network-observation` (`2241eeb`). Die abgelehnte T-961-Scheibe
+  wurde **nicht** mitgezogen.
+- **Vorher-Negativbeleg:** deepseek `T942-05223CD7`, gemini `T942-F228D3C9` —
+  Tabellen als Tab-Text, Fences weg, UI-Labels `Copy`/`Download` im Antworttext,
+  Listenmarker weg. Binary `A0B5D0D1…3306CD`, Exit 0.
+- **Fix:** neues `TXMD` im gemeinsamen JS-Prelude (`src/browser/js.rs`)
+  rekonstruiert Markdown aus echten DOM-Elementen (`table`/`pre`/`ul`/`ol`/`h*`)
+  und verwirft UI-Chrome; Opt-in `answer_markdown` in `src/browser/mod.rs`,
+  gesetzt in `selectors/deepseek.json` und `selectors/gemini.json`. Ohne Flag
+  bleibt `TX` unverändert. Kein Raten aus Tab-Text, keine Zwischenablage.
+- **Nachher-Livebeleg (finales Binary `9EE80CE4…B760`):** deepseek
+  `T942H-23A8FEF4` (11,3 s), gemini `T942H-C9CE5F14` (9,0 s), beide Exit 0,
+  leeres stderr. Ausgelieferter Text ist **STRUKTURGLEICH** mit dem bekannten
+  Quell-Markdown (115/115 Zeichen nach CRLF→LF): Tabelle mit Pipes und
+  Separatorzeile, rust-Code-Fence, Listen mit `-`. Kein Copy/Download/`?`-Icon.
+- **Gates:** `cargo test --lib` 1499 passed / 0 failed / 1 ignored (neuer Test
+  `t942_prelude_fuehrt_markdown_strukturell_zurueck`); `cargo fmt --all`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo build`, `git diff --check`
+  grün.
+- **Beleg:** `docs/proofs/T-942/markdown-structure-live-result.md` mit
+  Vorher/Nachher, Rohhashes und Einschränkungen (nur deepseek/gemini gemessen,
+  andere Brains unverändert). Rohdaten unter
+  `C:\\Users\\storax\\AppData\\Local\\Temp\\opencode\\T942-markdown-structure-20261121\\`
+  und `…\\T942-markdown-fix-20261121\\` (nicht ins Repo kopieren). Board: T-942
+  `done`, 88 `done` / 3 `free` / 91.
+- **Offen:** T-944 und T-950 brauchen weiterhin echte DOM-/Antwortmessungen.
+  T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6; kein
+  `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
+  ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.
+
 ## 2026-11-21 — G-010: T-940 lesende Netzwerkbeobachtung live belegt
 
 - **Branch:** `feature/T-940-network-observation`, ausgehend von
