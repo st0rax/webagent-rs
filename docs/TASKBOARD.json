@@ -1722,10 +1722,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Umschlagfehler: Fehlertyp, brain_score und einmaliger Korrekturversuch",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "fix/T-953-model-output-error",
+      "claimed_at": "2026-11-21",
       "depends_on": [
         "T-952"
       ],
