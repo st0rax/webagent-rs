@@ -1,10 +1,10 @@
 # Current Work
 
-## 2026-11-21 — G-010: T-948 (Preflight vor dem Senden) — Branch fertig, PR folgt
+## 2026-11-21 — G-010: T-948 abgeschlossen (Preflight vor dem Senden)
 
-- **Branch:** `fix/T-948-consent-preflight` (abgezweigt von `master` bei
-  `32aa2e0`). Working Tree trägt die hier dokumentierten Änderungen; noch kein
-  Push, kein PR, kein Merge.
+- **PR #94 gemergt** (Squash `23879aa`, alle CI-Checks grün), Branch
+  `fix/T-948-consent-preflight` gelöscht. `master` lokal und remote bei
+  `23879aa`, Working Tree vor dieser Statusfortschreibung sauber.
 - **Ursache (Messbefund 2026-09-14):** Sechs mistral-Anfragen endeten mit
   `timeout_no_message`, obwohl das Senden Erfolg meldete. `webagent shot`
   belegte eine abgemeldete Seite mit „Anmelden"/„Registrieren" und einem
