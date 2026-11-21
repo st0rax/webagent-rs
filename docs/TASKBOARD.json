@@ -1831,7 +1831,7 @@
       "phase": "13",
       "type": "bugfix",
       "title": "deepseek liefert natives DSML-Werkzeugformat als Klartext statt Umschlag",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "fix/T-957-dsml-fail-closed",
       "claimed_at": "2026-11-21",
@@ -1849,7 +1849,9 @@
         "Keine weiteren anbieterspezifischen Formate ohne Beleg."
       ],
       "proof_path": "docs/proofs/T-957/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-957/measurement.md"
     },
     {
       "id": "T-958",

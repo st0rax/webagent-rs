@@ -1,5 +1,30 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-957 abgeschlossen (DSML fail-closed)
+
+- **PR #91 gemergt** (Squash `f2a5aac`, alle CI-Checks grün), Branch
+  `fix/T-957-dsml-fail-closed` gelöscht. `master` lokal und remote bei
+  `f2a5aac`, Working Tree vor der hiesigen Statusfortschreibung sauber.
+- **Entscheidung fail-closed statt Übersetzung:** `parse_response` erkennt den
+  DSML-Marker aus dem realen deepseek-Beispiel (Vollbreiten-Form und die im
+  Taskboard gespeicherte verformte Form) und meldet
+  `DSML_TOOL_FORMAT_UNSUPPORTED`. Keine Übersetzung in `tool_calls`, weil die
+  Argumente aus derselben verformenden Lesestrecke stammen, die T-956 nur für
+  den JSON-Umschlag abgesichert hat. Gültige `WEBAGENT_INFERENCE/1`-Umschläge
+  bleiben unberührt. `docs/API_BRIDGE.md` beschreibt die Grenze.
+- **Beleg:** `docs/proofs/T-957/measurement.md` mit Red-Test (vorher
+  `Ok(Textantwort)`, `tool_calls: []`), Green-Tests und Gates. Lokal
+  `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test --lib` (1468 grün), `git diff --check`. Der erste CI-Lauf war
+  rot, weil ein neues Beleg-Markdown das Referenz-Banner brauchte; mit Banner
+  sind alle Checks grün. MinGW liegt lokal in einem WinGet-Paket und wurde nur
+  für die Cargo-Läufe an `PATH` gehängt (keine Repo-Änderung).
+- **Board:** T-957 nach dem Merge auf `done`, Spiegel synchron. Stand damit
+  79/91 `done`, 12 `free`. Kein Tag/Release. G-010 bleibt in_progress.
+- **Offen:** T-914 (expliziter USER-SKIP) und T-961 (Semantik-Freigabe) sind
+  ohne Eigentümer-Entscheidung nicht abschließbar; 100 % bleiben ehrlich
+  unerreicht.
+
 ## 2026-11-21 — T-961: auch erzwungener Tool-Call widerlegt — weiter NICHT abgenommen
 
 - **Dritte Richtung geprüft (strukturell, ohne Code-Änderung):** ein direkter
