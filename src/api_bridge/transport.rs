@@ -11,9 +11,112 @@
 //! - Header endet bei CRLF-CRLF; Body folgt `Content-Length`.
 //! - `transfer-encoding` ausser `identity` wird abgelehnt.
 //! - Query wird von der Pfadzeile getrennt, nicht ins Routing gemischt.
+//! - T-946: die Verbindung wird waehrend des Browserturns beobachtet. Ein
+//!   verwaisster Turn beendet sich selbst und gibt die Brain-Sperre frei.
 
 use super::{HttpRequest, MAX_REQUEST_BYTES};
-use std::{collections::BTreeMap, io::Read, net::TcpStream};
+#[cfg(test)]
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::{
+    collections::BTreeMap,
+    io::{self, Read},
+    net::TcpStream,
+    sync::Mutex,
+    time::Duration,
+};
+
+/// Beobachtet, ob der HTTP-Aufrufer noch verbunden ist (T-946).
+///
+/// Bewusst ein Trait: die Bridge benutzt einen echten TCP-Socket, Tests einen
+/// schaltbaren Stub. Damit ist der Beleg "Folgeanfrage wartet nicht auf einen
+/// verwaisten Turn" ohne echten Browser und ohne Zugangsdaten pruefbar.
+pub trait ClientPresence: Send + Sync {
+    fn connected(&self) -> bool;
+}
+
+/// Immer verbunden — fuer `fake_reply` und Pfade ohne echten Socket.
+pub struct AlwaysConnected;
+
+impl ClientPresence for AlwaysConnected {
+    fn connected(&self) -> bool {
+        true
+    }
+}
+
+/// Kurzer Peek-Timeout: ein EOF liegt sofort vor, ein ruhender aber
+/// lebendiger Client liefert `WouldBlock`/`TimedOut` und gilt als verbunden.
+const PRESENCE_PEEK_TIMEOUT: Duration = Duration::from_millis(20);
+
+/// Echte TCP-Beobachtung ueber einen zweiten Handle auf demselben Socket.
+pub struct TcpClientPresence {
+    probe: Mutex<TcpStream>,
+    restore_read_timeout: Option<Duration>,
+}
+
+impl TcpClientPresence {
+    /// Zweiten Handle ableiten. Bei Misserfolg gilt der Client als verbunden —
+    /// lieber einen echten Turn als einen falschen Abbruch.
+    pub fn new(stream: &TcpStream) -> Option<Self> {
+        Some(Self {
+            probe: Mutex::new(stream.try_clone().ok()?),
+            restore_read_timeout: stream.read_timeout().ok().flatten(),
+        })
+    }
+}
+
+impl ClientPresence for TcpClientPresence {
+    fn connected(&self) -> bool {
+        let Ok(probe) = self.probe.lock() else {
+            return true;
+        };
+        // Der Handle teilt sich die Socket-Optionen mit dem Haupthandle. Wir
+        // setzen das Lese-Timeout nur fuer diesen Peek und stellen es sofort
+        // wieder her; waehrend des Turn liest niemand sonst von dem Socket.
+        let _ = probe.set_read_timeout(Some(PRESENCE_PEEK_TIMEOUT));
+        let mut byte = [0u8; 1];
+        let peeked = probe.peek(&mut byte);
+        let _ = probe.set_read_timeout(self.restore_read_timeout);
+        match peeked {
+            Ok(0) => false, // FIN: der Aufrufer ist weg
+            Ok(_) => true,  // pipelined Daten: definitiv verbunden
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) =>
+            {
+                true // keine Daten, aber kein EOF
+            }
+            Err(_) => false, // Reset oder anderer Socketfehler
+        }
+    }
+}
+
+/// Schaltbarer Stub fuer Tests (kein Socket, keine Browser-Abhaengigkeit).
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct TestPresence(pub Arc<AtomicBool>);
+
+#[cfg(test)]
+impl TestPresence {
+    pub(crate) fn connected(value: bool) -> Self {
+        Self(Arc::new(AtomicBool::new(value)))
+    }
+
+    pub(crate) fn set(&self, value: bool) {
+        self.0.store(value, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+impl ClientPresence for TestPresence {
+    fn connected(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
 
 /// Liest eine HTTP/1.1-Anfrage (Header + Body nach Content-Length).
 pub fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
@@ -115,7 +218,13 @@ pub fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::find_bytes;
+    use super::{find_bytes, ClientPresence, TcpClientPresence};
+    use std::{
+        io::{Read, Write},
+        net::{TcpListener, TcpStream},
+        thread,
+        time::Duration,
+    };
 
     #[test]
     fn find_bytes_locates_header_terminator() {
@@ -123,5 +232,45 @@ mod tests {
         let at = find_bytes(buf, b"\r\n\r\n").unwrap();
         assert_eq!(&buf[at..at + 4], b"\r\n\r\n");
         assert!(find_bytes(b"nope", b"\r\n\r\n").is_none());
+    }
+
+    /// DoD T-946: ein geschlossener Peer wird am echten Socket erkannt —
+    /// ohne Browser, ohne Zugangsdaten, nur lokal auf Loopback.
+    #[test]
+    fn tcp_presence_erkennt_geschlossenen_peer() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback listener");
+        let addr = listener.local_addr().expect("addr");
+        let mut client = TcpStream::connect(addr).expect("connect");
+        let (mut server, _) = listener.accept().expect("accept");
+        server
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .expect("read timeout");
+        let presence = TcpClientPresence::new(&server).expect("clone");
+        assert!(presence.connected(), "offener Client gilt als verbunden");
+
+        client.write_all(b"x").expect("keepalive byte");
+        assert!(presence.connected(), "Daten bedeuten: verbunden");
+        // Wie read_http_request: die angekommenen Bytes verbrauchen, sonst
+        // verdeckt das unaufgelesene Byte im Peek-Puffer das spaetere EOF.
+        let mut drained = [0u8; 1];
+        server.read_exact(&mut drained).expect("byte verbrauchen");
+        assert_eq!(drained[0], b'x');
+
+        drop(client);
+        let mut gone = false;
+        for _ in 0..40 {
+            if !presence.connected() {
+                gone = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        assert!(gone, "EOF muss als getrennt erkannt werden");
+
+        // Der Haupthandle behaelt trotzdem seinen Lese-Timeout (Restore).
+        assert_eq!(
+            server.read_timeout().expect("read timeout"),
+            Some(Duration::from_secs(1))
+        );
     }
 }

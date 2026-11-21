@@ -104,7 +104,12 @@ impl BrowserInferenceResponse {
 
 /// Fuehrt genau einen Browser-Modellturn ohne Agent-Harness aus.
 pub fn complete(request: BrowserInferenceRequest<'_>) -> Result<BrowserInferenceResponse, String> {
-    complete_with_attachments(request, &[], &mut |_| {})
+    complete_with_attachments(
+        request,
+        &[],
+        &mut |_| {},
+        &crate::api_bridge::AlwaysConnected,
+    )
 }
 
 /// Wie [`complete`], jedoch mit Dateien, die vor dem Senden an den Browser-
@@ -113,8 +118,9 @@ pub fn complete_with_attachments(
     request: BrowserInferenceRequest<'_>,
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
+    presence: &dyn crate::api_bridge::ClientPresence,
 ) -> Result<BrowserInferenceResponse, String> {
-    complete_streaming_with_attachments(request, attachments, on_update)
+    complete_streaming_with_attachments(request, attachments, on_update, presence)
 }
 
 /// Wie `complete`, liefert bei reinen Textturns bereits wachsende Snapshots.
@@ -124,7 +130,12 @@ pub fn complete_streaming(
     request: BrowserInferenceRequest<'_>,
     on_update: &mut dyn FnMut(&str),
 ) -> Result<BrowserInferenceResponse, String> {
-    complete_streaming_with_attachments(request, &[], on_update)
+    complete_streaming_with_attachments(
+        request,
+        &[],
+        on_update,
+        &crate::api_bridge::AlwaysConnected,
+    )
 }
 
 /// Streaming-Variante mit optionalen Bild-/Audio-Anhängen.
@@ -132,6 +143,7 @@ pub fn complete_streaming_with_attachments(
     request: BrowserInferenceRequest<'_>,
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
+    presence: &dyn crate::api_bridge::ClientPresence,
 ) -> Result<BrowserInferenceResponse, String> {
     if request.prompt.trim().is_empty() {
         return Err("Inference-Prompt darf nicht leer sein.".to_string());
@@ -178,6 +190,7 @@ pub fn complete_streaming_with_attachments(
         attachments,
         &mut relay_update,
         &output_check,
+        presence,
     )
     .map_err(|error| error.0)?;
 

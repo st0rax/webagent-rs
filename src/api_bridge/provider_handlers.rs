@@ -31,8 +31,8 @@ use super::{
     responses_sse_with_object, responses_tool_choice, responses_tools, run_task_blocking,
     run_task_streaming, session_service, store_response, stream_answer_snapshot, tenant_id,
     unix_seconds, write_data_frame, write_http_response, write_sse_comment, write_sse_event,
-    write_sse_headers, AnthropicRequest, ApiFlavor, BridgeConfig, HttpRequest, HttpResponse,
-    OpenAiRequest, ResponsesRequest, StoredResponse,
+    write_sse_headers, AnthropicRequest, ApiFlavor, BridgeConfig, ClientPresence, HttpRequest,
+    HttpResponse, OpenAiRequest, ResponsesRequest, StoredResponse,
 };
 use serde_json::json;
 use std::{
@@ -75,7 +75,11 @@ fn inference_failure_response(flavor: ApiFlavor, message: &str) -> HttpResponse 
     browser_inference_error(flavor, message)
 }
 
-pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
+pub(super) fn handle_openai(
+    request: &HttpRequest,
+    config: &BridgeConfig,
+    presence: &dyn ClientPresence,
+) -> HttpResponse {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return response;
     }
@@ -115,6 +119,7 @@ pub(super) fn handle_openai(request: &HttpRequest, config: &BridgeConfig) -> Htt
         &prompt.attachments,
         &tools,
         tool_choice,
+        presence,
     ) {
         Ok(answer) => answer,
         Err(error) => return inference_failure_response(ApiFlavor::OpenAi, &error),
@@ -151,6 +156,7 @@ pub(super) fn handle_openai_incremental(
     stream: &mut TcpStream,
     request: &HttpRequest,
     config: &BridgeConfig,
+    presence: &dyn ClientPresence,
 ) -> Result<(), String> {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return write_http_response(stream, response);
@@ -240,6 +246,7 @@ pub(super) fn handle_openai_incremental(
             &prompt.text,
             &prompt.attachments,
             &mut on_update,
+            presence,
         )
     };
     let answer = match answer {
@@ -279,7 +286,11 @@ pub(super) fn handle_openai_incremental(
         .map_err(|error| format!("Chat-SSE-Abschluss nicht flushbar: {error}"))
 }
 
-pub(super) fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
+pub(super) fn handle_anthropic(
+    request: &HttpRequest,
+    config: &BridgeConfig,
+    presence: &dyn ClientPresence,
+) -> HttpResponse {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::Anthropic) {
         return response;
     }
@@ -320,6 +331,7 @@ pub(super) fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> 
         &prompt.attachments,
         &[],
         crate::browser_inference::BrowserToolChoice::None,
+        presence,
     ) {
         Ok(answer) => answer,
         Err(error) => return inference_failure_response(ApiFlavor::Anthropic, &error),
@@ -332,7 +344,11 @@ pub(super) fn handle_anthropic(request: &HttpRequest, config: &BridgeConfig) -> 
     HttpResponse::json(200, response)
 }
 
-pub(super) fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> HttpResponse {
+pub(super) fn handle_responses(
+    request: &HttpRequest,
+    config: &BridgeConfig,
+    presence: &dyn ClientPresence,
+) -> HttpResponse {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return response;
     }
@@ -370,6 +386,7 @@ pub(super) fn handle_responses(request: &HttpRequest, config: &BridgeConfig) -> 
         &prompt.attachments,
         &[],
         crate::browser_inference::BrowserToolChoice::None,
+        presence,
     ) {
         Ok(answer) => answer,
         Err(error) => return inference_failure_response(ApiFlavor::OpenAi, &error),
@@ -398,6 +415,7 @@ pub(super) fn handle_responses_incremental(
     stream: &mut TcpStream,
     request: &HttpRequest,
     config: &BridgeConfig,
+    presence: &dyn ClientPresence,
 ) -> Result<(), String> {
     if let Err(response) = authorize(&request.headers, config, ApiFlavor::OpenAi) {
         return write_http_response(stream, response);
@@ -530,6 +548,7 @@ pub(super) fn handle_responses_incremental(
             &prompt.text,
             &prompt.attachments,
             &mut on_update,
+            presence,
         )
     };
 
