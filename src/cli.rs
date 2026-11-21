@@ -671,6 +671,12 @@ pub enum Commands {
         /// Browser ohne sichtbares Fenster ausfuehren (nur --api)
         #[arg(long)]
         headless: bool,
+
+        /// T-961: tool_choice=auto serverseitig zu required eskalieren (nur --api).
+        /// Achtung: erzwingt einen Werkzeugaufruf pro Turn und verhindert damit
+        /// eine Textabschlussantwort im Werkzeugloop.
+        #[arg(long)]
+        auto_tool_choice_required: bool,
     },
 
     /// Pool/Wand/Bench-TUI. Ohne Subcommand startet `webagent` die Web-UI;
@@ -947,6 +953,11 @@ pub enum ApiCommands {
         /// Name der Umgebungsvariable mit dem lokalen Bearer-Token.
         #[arg(long, default_value = "WEBAGENT_API_KEY")]
         api_key_env: String,
+        /// T-961: tool_choice=auto serverseitig zu required eskalieren.
+        /// Erzwingt einen Werkzeugaufruf pro Turn; eine Textabschlussantwort
+        /// im Werkzeugloop ist dann nicht mehr moeglich.
+        #[arg(long)]
+        auto_tool_choice_required: bool,
     },
 }
 

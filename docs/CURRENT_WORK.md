@@ -1,5 +1,28 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-961 Auto→Required-Eskalation — Branch fertig, PR folgt
+
+- **Branch:** `fix/T-961-auto-required-escalation` (ab `master` `21afb42`). Noch
+  kein Push, kein PR, kein Merge.
+- **Freigabe umgesetzt:** `effective_tool_choice` eskaliert `Auto` → `Required`,
+  wenn der Betreiber `--auto-tool-choice-required` bzw.
+  `WEBAGENT_AUTO_TOOL_CHOICE_REQUIRED=1` setzt. Opt-in, default aus: `required`
+  verhindert eine Textabschlussantwort im Werkzeugloop. Explizites `none`,
+  `required`, Function und Tool-freie Requests bleiben unverändert. Alle fünf
+  Parser-Aufrufstellen sind verdrahtet.
+- **Zusatzfix:** Der Prompt bot bei `Required`/`Function` widersprüchlich eine
+  Textantwort an; der Hinweis steht jetzt nur noch bei `Auto`.
+- **Belege:** `docs/proofs/T-961/auto-required-escalation.md` mit echter
+  Red-/Green-Demonstration (ohne Eskalation `left: Auto, right: Required`, Exit
+  101; danach grün) und Prompt-Test. `docs/API_BRIDGE.md` dokumentiert den
+  Schalter und die Folge für Aufrufer (Schlussturn `none` oder ohne Tools).
+- **Gates:** `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D
+  warnings`, `cargo test --lib` (1485 grün, 1 ignored),
+  `taskboard_invarianten_halten`, `git diff --check`.
+- **T-961 bleibt `free`:** Kein Live-Nachweis. Die frische Live-Matrix auf Port
+  8788 mit prozess-only Tokens und gesetztem Schalter steht noch aus; jeder
+  Negativlauf blockiert die Abnahme. Kein Tag/Release.
+
 ## 2026-11-21 — Eigentümer-Entscheidungen zu den Rest-Tasks
 
 Der Nutzer hat am 2026-11-21 ausdrücklich freigegeben:

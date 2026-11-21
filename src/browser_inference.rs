@@ -293,8 +293,16 @@ fn prompt_with_tools(
         BrowserToolChoice::None => unreachable!("oben behandelt"),
     };
 
+    // Bei `Required`/`Function` waere der Text-Hinweis widerspruechlich: der
+    // Parser weist eine Textantwort dort fail-closed zurueck (T-961). Nur bei
+    // `Auto` darf das Modell ohne Werkzeug antworten.
+    let answer_hint = if matches!(choice, BrowserToolChoice::Auto) {
+        " Wenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
+    } else {
+        ""
+    };
     Ok(format!(
-        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.\nWenn kein Werkzeug erforderlich ist, antworte normal ohne Maschinenumschlag."
+        "{prompt}\n\n[Client-Werkzeuge]\n{tools_json}\n\n{choice_text} Wenn du ein Werkzeug verwendest, gib ausschliesslich diesen Maschinenumschlag aus, und zwar in genau einem Markdown-Codeblock mit drei Backticks und ohne jeden Text davor oder danach, weil Text ausserhalb eines Codeblocks beim Auslesen Zeichen wie * $ ` _ verliert:\n```text\n{TOOL_ENVELOPE}\n{{\"tool_calls\":[{{\"id\":\"call_1\",\"name\":\"tool_name\",\"arguments\":{{}}}}]}}\n```\nDas JSON muss streng gueltig sein: in Strings jeden Backslash verdoppeln (C:\\\\Users), Anfuehrungszeichen als \\\" und Zeilenumbrueche als \\n schreiben; Pfade moeglichst mit / angeben.{answer_hint}"
     ))
 }
 
@@ -636,6 +644,28 @@ mod tests {
             description: Some("Datei lesen".to_string()),
             parameters: json!({"type": "object", "properties": {"path": {"type": "string"}}}),
         }
+    }
+
+    #[test]
+    fn required_prompt_bietet_keine_textantwort_an() {
+        const TEXT_HINT: &str = "Wenn kein Werkzeug erforderlich ist, antworte normal";
+        let tools = [read_tool()];
+
+        let auto = prompt_with_tools("Auftrag", &tools, &BrowserToolChoice::Auto).unwrap();
+        assert!(auto.contains(TEXT_HINT));
+
+        let required = prompt_with_tools("Auftrag", &tools, &BrowserToolChoice::Required).unwrap();
+        assert!(!required.contains(TEXT_HINT));
+        assert!(required.contains("Rufe mindestens ein Tool auf."));
+
+        let function = prompt_with_tools(
+            "Auftrag",
+            &tools,
+            &BrowserToolChoice::Function("read_file".into()),
+        )
+        .unwrap();
+        assert!(!function.contains(TEXT_HINT));
+        assert!(function.contains("Rufe das Tool 'read_file' auf."));
     }
 
     #[test]

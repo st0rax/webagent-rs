@@ -77,6 +77,7 @@ fn run() -> i32 {
         brain: "chatgpt".to_string(),
         timeout_secs: None,
         headless: false,
+        auto_tool_choice_required: false,
     });
 
     let exit_code = if matches!(
@@ -380,6 +381,7 @@ fn dispatch(command: Commands) -> i32 {
             brain,
             timeout_secs,
             headless,
+            auto_tool_choice_required,
         } => cmd_ui(UiLaunch {
             bind,
             port,
@@ -389,6 +391,7 @@ fn dispatch(command: Commands) -> i32 {
             brain,
             timeout_secs,
             headless,
+            auto_tool_choice_required,
         }),
 
         Commands::Tui {
@@ -597,6 +600,7 @@ struct UiLaunch {
     brain: String,
     timeout_secs: Option<f64>,
     headless: bool,
+    auto_tool_choice_required: bool,
 }
 
 fn cmd_ui(launch: UiLaunch) -> i32 {
@@ -627,6 +631,16 @@ fn cmd_ui(launch: UiLaunch) -> i32 {
             eprintln!("[api] --timeout-secs muss groesser als 0 sein.");
             return 2;
         }
+        // T-961: expliziter Betreiber-Schalter (CLI oder Prozess-Umgebung).
+        // Default aus: das Erzwingen von Werkzeugaufrufen nimmt dem Modell die
+        // Moeglichkeit, einen Werkzeugloop mit einer Textantwort abzuschliessen.
+        let auto_tool_choice_required = launch.auto_tool_choice_required
+            || std::env::var("WEBAGENT_AUTO_TOOL_CHOICE_REQUIRED").is_ok_and(|v| v == "1");
+        if auto_tool_choice_required {
+            eprintln!(
+                "[api] auto_tool_choice_required aktiv (T-961): auto wird zu required eskaliert."
+            );
+        }
         Some(webagent::api_bridge::BridgeConfig {
             bind: addr,
             brain: launch.brain,
@@ -634,6 +648,7 @@ fn cmd_ui(launch: UiLaunch) -> i32 {
             headless: launch.headless,
             api_key,
             fake_reply: None,
+            auto_tool_choice_required,
         })
     } else {
         None
@@ -662,6 +677,7 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
             headless,
             debug,
             api_key_env,
+            auto_tool_choice_required,
         } => {
             // Ein Listener, zwei Rollen: `api serve` = `ui --api --no-open`.
             // Der Port ist gemeinsamer Standard (DEFAULT_PORT), 8787 ist tot.
@@ -674,6 +690,7 @@ fn cmd_api(command: cli::ApiCommands) -> i32 {
                 brain,
                 timeout_secs,
                 headless: headless || !debug,
+                auto_tool_choice_required,
             })
         }
     }

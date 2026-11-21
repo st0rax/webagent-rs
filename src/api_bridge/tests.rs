@@ -461,6 +461,40 @@ fn openai_tools_and_choice_are_normalized() {
 }
 
 #[test]
+fn auto_tool_choice_required_eskaliert_nur_auto_mit_tools() {
+    use crate::browser_inference::BrowserToolChoice;
+    let tools = vec![crate::browser_inference::BrowserTool {
+        name: "read".to_string(),
+        description: None,
+        parameters: json!({"type": "object"}),
+    }];
+
+    // Schalter aus: clientseitige Bedeutung bleibt unveraendert.
+    assert_eq!(
+        effective_tool_choice(BrowserToolChoice::Auto, &tools, false),
+        BrowserToolChoice::Auto
+    );
+    // Schalter an: nur Auto wird eskaliert.
+    assert_eq!(
+        effective_tool_choice(BrowserToolChoice::Auto, &tools, true),
+        BrowserToolChoice::Required
+    );
+    // Explizite Wahl des Clients bleibt immer erhalten.
+    for choice in [
+        BrowserToolChoice::None,
+        BrowserToolChoice::Required,
+        BrowserToolChoice::Function("read".to_string()),
+    ] {
+        assert_eq!(effective_tool_choice(choice.clone(), &tools, true), choice);
+    }
+    // Ohne Tools gibt es nichts zu erzwingen.
+    assert_eq!(
+        effective_tool_choice(BrowserToolChoice::Auto, &[], true),
+        BrowserToolChoice::Auto
+    );
+}
+
+#[test]
 fn tool_result_is_replayed_as_visible_browser_context() {
     let request = OpenAiRequest {
         model: "webagent".to_string(),
@@ -959,6 +993,7 @@ fn response_retrieval_requires_auth_and_returns_stored_object() {
         headless: true,
         api_key: "test-secret".to_string(),
         fake_reply: None,
+        auto_tool_choice_required: false,
     };
     let authorized = HttpRequest {
         method: "GET".to_string(),
@@ -1202,6 +1237,7 @@ fn accepts_x_api_key_header() {
         headless: true,
         api_key: "test-secret".to_string(),
         fake_reply: None,
+        auto_tool_choice_required: false,
     };
     let headers = BTreeMap::from([("x-api-key".to_string(), "test-secret".to_string())]);
 
@@ -1217,6 +1253,7 @@ fn rejects_non_positive_timeout_before_binding() {
         headless: true,
         api_key: "test-secret".to_string(),
         fake_reply: None,
+        auto_tool_choice_required: false,
     })
     .unwrap_err();
 
@@ -1290,6 +1327,7 @@ fn spawn_fake_bridge(reply: &str) -> SocketAddr {
         headless: true,
         api_key: "t404-secret".to_string(),
         fake_reply: Some(reply.to_string()),
+        auto_tool_choice_required: false,
     };
     thread::spawn(move || {
         let _ = accept_loop(listener, config);

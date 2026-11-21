@@ -85,8 +85,9 @@ use wire::{write_data_frame, write_sse_comment, write_sse_event, write_sse_heade
 
 pub(crate) use content::{
     anthropic_prompt, anthropic_tool_choice, anthropic_tools, conversation_prompt, decode_json,
-    default_true, openai_prompt, openai_tool_choice, openai_tools, reject_unsupported_openai_body,
-    require_clean_text_tools, responses_messages, responses_tool_choice, responses_tools,
+    default_true, effective_tool_choice, openai_prompt, openai_tool_choice, openai_tools,
+    reject_unsupported_openai_body, require_clean_text_tools, responses_messages,
+    responses_tool_choice, responses_tools,
 };
 #[cfg(test)]
 pub(crate) use content::{
@@ -187,6 +188,11 @@ pub struct BridgeConfig {
     /// Test double: if set, browser inference is skipped and this text is returned.
     /// Production (`webagent api serve`) leaves this `None`.
     pub fake_reply: Option<String>,
+    /// T-961: escort `tool_choice: auto` (and an omitted choice with tools) to
+    /// `required` on the server side. Opt-in and off by default: forcing a tool
+    /// call removes the model's ability to finish a tool loop with a plain text
+    /// answer, so only an operator who accepts that semantics may enable it.
+    pub auto_tool_choice_required: bool,
 }
 
 /// Startet den lokalen Dienst und blockiert, bis der Prozess beendet wird.
