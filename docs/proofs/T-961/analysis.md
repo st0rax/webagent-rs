@@ -98,5 +98,14 @@ Ursache liegt im Browser-Inferenzpfad bzw. im Modellverhalten und ist
    in `availability-negative-{1..8}.jsonl` und
    `availability-candidate-result.md`. Das spricht dafuer, bereits das
    Meta-Thema „Verfuegbarkeit" im Prompt zu vermeiden. Ein zweiter Kandidat ohne dieses Meta (Block `[FUNKTIONEN]` statt `[Client-Werkzeuge]`, `f899ed3`) erreichte 6/8 streng gruen, scheiterte aber in zwei Laeufen mit exakt derselben Fehlerklasse — keine Verbesserung gegenueber der 3/4-Baseline. Auch er wurde zurueckgenommen; Belege: `function-negative-{1..8}.jsonl`, `function-negative-verify.txt`, `function-framing-result.md`. Reine Prompt-Wortwahl ist damit als Richtung widerlegt.
+   Eine dritte, strukturelle Richtung wurde ebenfalls gemessen: erzwungenes
+   `tool_choice=required` über einen direkten OpenAI-Client auf dem
+   unveränderten `master` `bf0a65b` ergab nur **1/8** streng grüne Läufe. In
+   sechs Läufen lieferte das Modell trotz Verpflichtung nur Text (fail-closed
+   502), zwei Läufe scheiterten an `ABSENDEKNOPF_DEAKTIVIERT`. Belege:
+   `required-mode-negative-{1..8}.jsonl`, `required-mode-negative-verify.txt`,
+   `required-mode-result.md`. Damit ist auch die strukturelle Variante ohne
+   API-Semantik-Änderung widerlegt; eine serverseitige Auto→Required-Eskalation
+   oder ein versteckter Retry bleibt eine Freigabeentscheidung des Eigentümers.
 4. Bis dahin: `Status: NICHT ABGENOMMEN / INTERMITTIEREND`. Kein PASS, kein
    `done`, kein Tag/Release (G-009 bleibt offen).

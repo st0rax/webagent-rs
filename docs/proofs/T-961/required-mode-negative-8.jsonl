@@ -1,0 +1,32 @@
+### TURN1 REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     }
+                 ],
+    "tool_choice":  "required",
+    "model":  "webagent/chatgpt"
+}
+### TURN1 RESPONSE HTTP_ERROR Der Remoteserver hat einen Fehler zurückgegeben: (502) Ungültiges Gateway. BODY {"error":{"code":null,"message":"Browser-Inference fehlgeschlagen: send_phase=submit: ABSENDEKNOPF_DEAKTIVIERT: Absendeknopf ist deaktiviert, obwohl der Text vollstaendig im Composer steht (5 Versuche) — die Oberflaeche verweigert das Absenden ohne Meldung","param":null,"type":"invalid_request_error"}}

@@ -1,0 +1,84 @@
+### TURN1 REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     }
+                 ],
+    "tool_choice":  "required",
+    "model":  "webagent/chatgpt"
+}
+### TURN1 RESPONSE {"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"path\":\"nonce-1.txt\"}","name":"read"},"id":"call_1","type":"function"}]}}],"created":1795218846,"id":"chatcmpl-18e9e6077fc5beac","model":"webagent/chatgpt","object":"chat.completion","system_fingerprint":null,"usage":{"completion_tokens":0,"prompt_tokens":0,"total_tokens":0}}
+### TURN1 TOOL_RESULT PI_TOOL_1_35858b6c2db44fe0b75cf772aaec8605
+### TURN2 REQUEST {
+    "tools":  [
+                  {
+                      "function":  {
+                                       "description":  "Read a local text file and return its exact content.",
+                                       "name":  "read",
+                                       "parameters":  {
+                                                          "properties":  {
+                                                                             "path":  {
+                                                                                          "type":  "string",
+                                                                                          "description":  "Path of the file to read"
+                                                                                      }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "path"
+                                                                       ]
+                                                      }
+                                   },
+                      "type":  "function"
+                  }
+              ],
+    "messages":  [
+                     {
+                         "content":  "Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop.",
+                         "role":  "user"
+                     },
+                     {
+                         "content":  null,
+                         "tool_calls":  [
+                                            {
+                                                "function":  {
+                                                                 "arguments":  "{\"path\":\"nonce-1.txt\"}",
+                                                                 "name":  "read"
+                                                             },
+                                                "id":  "call_1",
+                                                "type":  "function"
+                                            }
+                                        ],
+                         "role":  "assistant"
+                     },
+                     {
+                         "tool_call_id":  "call_1",
+                         "content":  "PI_TOOL_1_35858b6c2db44fe0b75cf772aaec8605",
+                         "role":  "tool"
+                     }
+                 ],
+    "tool_choice":  "required",
+    "model":  "webagent/chatgpt"
+}
+### TURN2 RESPONSE HTTP_ERROR Der Remoteserver hat einen Fehler zurückgegeben: (502) Ungültiges Gateway. BODY {"error":{"code":null,"message":"Browser-Inference fehlgeschlagen: Das Browsermodell lieferte trotz verpflichtendem Tool-Call nur Text.","param":null,"type":"invalid_request_error"}}

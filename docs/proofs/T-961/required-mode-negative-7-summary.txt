@@ -1,0 +1,7 @@
+﻿T-961 required-mode run req-7
+BRIDGE_HEALTHY
+[required-client] FAIL: TURN2 failed: HTTP_ERROR Der Remoteserver hat einen Fehler zurückgegeben: (502) Ungültiges Gateway. BODY {"error":{"code":null,"message":"Browser-Inference fehlgeschlagen: send_phase=submit: ABSENDEKNOPF_DEAKTIVIERT: Absendeknopf ist deaktiviert, obwohl der Text vollstaendig im Composer steht (5 Versuche) - die Oberflaeche verweigert das Absenden ohne Meldung","param":null,"type":"invalid_request_error"}}
+[required-client] Transcript: C:\Users\storax\AppData\Local\Temp\webagent-t961-harness\req-7.jsonl
+CLIENT_EXIT=1
+TRANSCRIPT_BYTES=5742
+SHA256=270EA2DA60FD5B7B5237E9652DEBB3F44FF532732E7E7134261ACAB01C468FE8

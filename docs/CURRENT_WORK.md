@@ -1,5 +1,29 @@
 # Current Work
 
+## 2026-11-21 — T-961: auch erzwungener Tool-Call widerlegt — weiter NICHT abgenommen
+
+- **Dritte Richtung geprüft (strukturell, ohne Code-Änderung):** ein direkter
+  OpenAI-Client auf dem unveränderten `master` `bf0a65b` (frisch gebaut,
+  SHA256 `3532478D...F710`) sendete auf fünf aufeinanderfolgenden Turns
+  `tool_choice: "required"` — bereits vom Adapter unterstützt, also keine
+  API-Semantik-Änderung und keine Freigabe nötig. Ergebnis aus 8 Läufen:
+  **1/8 streng grün**. Sechs Läufe lieferten trotz Verpflichtung nur Text
+  (fail-closed 502), zwei scheiterten an `ABSENDEKNOPF_DEAKTIVIERT`. Ein
+  zusätzlicher Validierungslauf mit fünf sauberen Tool-Turns hatte einen
+  abschliessenden Renderer-Timeout und ist nicht Teil der Vergleichsreihe.
+  Rohbelege: `docs/proofs/T-961/required-mode-*`, Auswertung
+  `required-mode-result.md`, 0 Secret-Treffer.
+- **Einordnung:** `required` macht die Absage für Aufrufer sichtbar (502 statt
+  Text), beseitigt aber die Fehlerklasse nicht. Damit sind drei Richtungen
+  gemessen: Verfügbarkeitsregel 2/8, `[FUNKTIONEN]` 6/8, `required` 1/8.
+  Eine serverseitige Auto→Required-Eskalation oder ein versteckter Retry
+  würde API-Semantik ändern und braucht eine ausdrückliche Eigentümer-Freigabe
+  samt eigener Abnahme; beides ist **nicht** implementiert.
+- **Eigentümer-Entscheidung vom 21.11.2026:** Negativbefund dokumentieren,
+  **T-961 offen lassen**. Kein PASS, kein `done`, kein Code-Merge, kein
+  Tag/Release. G-009 bleibt offen. Die bekannte Grenze steht jetzt in
+  `docs/API_BRIDGE.md` inklusive des `required`-Befunds.
+
 ## 2026-11-21 — T-961: zwei Prompt-Kandidaten widerlegt — weiter NICHT abgenommen
 
 - **PR #88 gemergt** (`8693b99`, Squash, alle CI-Checks gruen): Kontobefund und
