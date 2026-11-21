@@ -1,10 +1,10 @@
 # Current Work
 
-## 2026-11-21 — G-010: T-946 (verwaiste Anfrage / Brain-Sperre) — Branch fertig, PR folgt
+## 2026-11-21 — G-010: T-946 abgeschlossen (verwaiste Anfrage / Brain-Sperre)
 
-- **Branch:** `fix/T-946-client-disconnect-lock` (abgezweigt von `master` bei
-  `1870a98`), Working Tree vor diesem Handover sauber bis auf die hier
-  dokumentierten Änderungen. Noch kein Push, kein PR, kein Merge.
+- **PR #93 gemergt** (Squash `ae9cb2c`, alle CI-Checks grün), Branch
+  `fix/T-946-client-disconnect-lock` gelöscht. `master` lokal und remote bei
+  `ae9cb2c`, Working Tree sauber.
 - **Ursache:** Eine abgebrochene mistral-Anfrage lief am 2026-09-14 dreimal
   (~867/867/861 s) im Browser weiter, obwohl der Client längst weg war. Die
   per-Brain-Sperre hielt den verwaisten Turn; Folgeanfragen an dasselbe Brain
@@ -28,8 +28,8 @@
   `ConnectionReset` im unabhängigen Web-UI-One-Shot-Test war nicht
   reproduzierbar (5 Einzel- + 2 Gesamtwiederholungen grün). `docs/API_BRIDGE.md`
   beschreibt jetzt Serialisierung je Brain und Abbruchverhalten korrekt.
-- **Board:** T-946 im JSON und Spiegel auf `done` gesetzt (wird mit dem Merge
-  auf `master` wirksam). Stand dann 81/91 `done`, 10 `free`.
+- **Board:** T-946 im JSON und Spiegel auf `done`, Stand 81/91 `done`,
+  10 `free`. Kein Tag/Release. G-010 bleibt in_progress.
 - **Offen:** T-914 (expliziter USER-SKIP) und T-961 (Semantik-Freigabe) bleiben
   ohne Eigentümer-Entscheidung offen; 100 % sind ehrlich unerreicht. Kein
   Tag/Release ohne neue ausdrückliche Freigabe. G-010 bleibt in_progress.
