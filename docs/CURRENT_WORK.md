@@ -1,9 +1,10 @@
 # Current Work
 
-## 2026-11-21 — G-010: T-961 Auto→Required-Eskalation — Branch fertig, PR folgt
+## 2026-11-21 — G-010: T-961 Auto→Required-Eskalation — Code gemergt, Live-Abnahme offen
 
-- **Branch:** `fix/T-961-auto-required-escalation` (ab `master` `21afb42`). Noch
-  kein Push, kein PR, kein Merge.
+- **PR #96 gemergt** (Squash `f85010a`, alle CI-Checks grün), Branch
+  `fix/T-961-auto-required-escalation` gelöscht. `master` lokal und remote bei
+  `f85010a`, Working Tree vor dieser Statusfortschreibung sauber.
 - **Freigabe umgesetzt:** `effective_tool_choice` eskaliert `Auto` → `Required`,
   wenn der Betreiber `--auto-tool-choice-required` bzw.
   `WEBAGENT_AUTO_TOOL_CHOICE_REQUIRED=1` setzt. Opt-in, default aus: `required`
@@ -19,9 +20,11 @@
 - **Gates:** `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D
   warnings`, `cargo test --lib` (1485 grün, 1 ignored),
   `taskboard_invarianten_halten`, `git diff --check`.
-- **T-961 bleibt `free`:** Kein Live-Nachweis. Die frische Live-Matrix auf Port
-  8788 mit prozess-only Tokens und gesetztem Schalter steht noch aus; jeder
-  Negativlauf blockiert die Abnahme. Kein Tag/Release.
+- **T-961 bleibt `free`:** Der PR liefert nur die freigegebene Code-Semantik,
+  keinen Live-Nachweis. Die frische Live-Matrix auf Port 8788 mit prozess-only
+  Tokens und gesetztem Schalter steht noch aus; jeder Negativlauf blockiert die
+  Abnahme. Kein Tag/Release. Die bisherige Messreihe `required-mode-*`
+  (clientseitiges `required`, 1/8 grün) bleibt ein Negativbefund.
 
 ## 2026-11-21 — Eigentümer-Entscheidungen zu den Rest-Tasks
 
