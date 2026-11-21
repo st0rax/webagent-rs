@@ -9,6 +9,12 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 
 const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
+/// Stabiler Fehlername für das native DSML-Werkzeugformat (T-957).
+const DSML_TOOL_FORMAT_ERROR: &str = "DSML_TOOL_FORMAT_UNSUPPORTED";
+/// DSML-Marker aus dem realen deepseek-Beispiel (2026-09-14). Die zweite Form
+/// ist die im Taskboard gespeicherte, durch eine Zeichencodierung verformte
+/// Variante desselben Markers.
+const DSML_MARKERS: [&str; 2] = ["｜｜DSML｜｜", "´¢£´¢£DSML´¢£´¢£"];
 // Browser chat UIs are substantially less tolerant of a giant tool prompt
 // than their HTTP APIs. Keep the serialized schema block bounded while still
 // retaining every tool name and its argument shape for the model.
@@ -492,6 +498,13 @@ fn parse_response(
 ) -> Result<BrowserInferenceResponse, String> {
     let trimmed = raw.trim();
     let Some(payload) = envelope_payload(trimmed) else {
+        if DSML_MARKERS.iter().any(|marker| trimmed.contains(marker)) {
+            return Err(format!(
+                "{DSML_TOOL_FORMAT_ERROR}: Das Browsermodell lieferte natives DSML-Werkzeugformat statt eines {TOOL_ENVELOPE}-Umschlags. Rohtext ({} Zeichen) beginnt: {}",
+                trimmed.chars().count(),
+                truncate_chars(&trimmed.escape_debug().to_string(), 120)
+            ));
+        }
         if matches!(
             choice,
             BrowserToolChoice::Required | BrowserToolChoice::Function(_)
@@ -671,6 +684,29 @@ mod tests {
             .text
             .unwrap_or_default()
             .contains("WEBAGENT_INFERENCE/1"));
+    }
+
+    #[test]
+    fn real_dsml_example_never_becomes_a_text_answer() {
+        // Reales Beispiel aus docs/TASKBOARD.json (T-957, deepseek, 14.09.2026).
+        // Die Zeichen zwischen den Tags sind die im Board gespeicherte, durch
+        // eine Zeichencodierung verformte Form des DSML-Markers.
+        let raw = "<´¢£´¢£DSML´¢£´¢£ calls><´¢£´¢£DSML´¢£´¢£ invoke name=\"write\"><´¢£´¢£DSML´¢£´¢£ parameter name=\"path\" string=\"true\">...</´¢£´¢£DSML´¢£´¢£ parameter></´¢£´¢£DSML´¢£´¢£ invoke></´¢£´¢£DSML´¢£´¢£ calls>";
+        let error = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap_err();
+        assert!(error.contains("DSML_TOOL_FORMAT_UNSUPPORTED"), "{error}");
+        assert!(error.contains("WEBAGENT_INFERENCE/1"), "{error}");
+    }
+
+    #[test]
+    fn dsml_with_fullwidth_marker_and_chatter_fails_closed() {
+        let raw = concat!(
+            "Ich rufe das Werkzeug auf:\n",
+            "<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name=\"write\"><｜｜DSML｜｜ parameter name=\"path\" string=\"true\">nonce-1.txt</｜｜DSML｜｜ parameter></｜｜DSML｜｜ invoke></｜｜DSML｜｜ calls>"
+        );
+        for choice in [BrowserToolChoice::Auto, BrowserToolChoice::Required] {
+            let error = parse_response(raw, &[read_tool()], &choice).unwrap_err();
+            assert!(error.contains("DSML_TOOL_FORMAT_UNSUPPORTED"), "{error}");
+        }
     }
 
     #[test]
