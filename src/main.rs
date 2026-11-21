@@ -572,6 +572,36 @@ fn cmd_cloud(command: cli::CloudCommands) -> i32 {
                 })
             })
             .map_err(|error| error.to_string()),
+        cli::CloudCommands::WebViewStream {
+            brain,
+            prompt,
+            headless,
+        } => {
+            use webagent::free_cloud_chat::{
+                webview_oauth_model, BrowserInferenceWebViewTransport, TextStreamAdapter,
+                TextStreamRequest, WEBVIEW_OAUTH_ADAPTER,
+            };
+            let adapter = webagent::free_cloud_chat::WebViewSessionAdapter::new(
+                BrowserInferenceWebViewTransport::new(headless, None),
+                &brain,
+            );
+            adapter
+                .stream(&TextStreamRequest {
+                    model: webview_oauth_model(),
+                    prompt,
+                    free_only: true,
+                })
+                .map(|events| {
+                    serde_json::json!({
+                        "adapter": WEBVIEW_OAUTH_ADAPTER,
+                        "brain": brain,
+                        "oauth_session": true,
+                        "api_key": false,
+                        "events": events,
+                    })
+                })
+                .map_err(|error| error.to_string())
+        }
     };
 
     match result {

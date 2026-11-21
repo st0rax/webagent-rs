@@ -245,6 +245,142 @@ pub fn stream_deterministic_mock(prompt: &str) -> Result<Vec<TextStreamEvent>, T
     })
 }
 
+/// Stabile Kennung des einen WebView-OAuth-Adapters. Es gibt bewusst keinen
+/// API-Key und keine Credit-Route: Die Sitzung liegt im browsergehörigen
+/// OAuth-Profil des Nutzers (T-926).
+pub const WEBVIEW_OAUTH_MODEL_ID: &str = "webagent/webview-oauth-session";
+pub const WEBVIEW_OAUTH_ADAPTER: &str = "webview_oauth";
+
+/// Modellmetadaten des WebView-OAuth-Adapters. Datum und Registry-Aufnahme
+/// erfolgten erst nach drei echten Live-Turns mit frischen Nonces
+/// (`docs/proofs/T-926/webview-oauth-live-result.md`).
+pub fn webview_oauth_model() -> CloudModel {
+    CloudModel {
+        model_id: WEBVIEW_OAUTH_MODEL_ID.to_string(),
+        display_name: "WebView-OAuth-Session (nutzergehörig, kein API-Key)".to_string(),
+        provider: "WebAgent WebView-OAuth".to_string(),
+        source_url: "oauth://webview/native-session".to_string(),
+        profiles: vec![ModelProfile::Auto, ModelProfile::Fast, ModelProfile::Custom],
+        languages: vec!["de".to_string(), "en".to_string()],
+        tags: vec![
+            "webview".to_string(),
+            "oauth".to_string(),
+            "no-api-key".to_string(),
+            "verified-free".to_string(),
+        ],
+        access: AccessMode::VerifiedFree,
+        adapter_compatible: true,
+        last_verified_at: Some("2026-11-21".to_string()),
+    }
+}
+
+/// Injizierbare Nahtstelle für genau einen Turn über eine bestehende
+/// WebView-OAuth-Session. Es gibt absichtlich keinen Key- und keinen
+/// Token-Parameter: Die Sitzung gehört zum Browserprofil des Nutzers.
+pub trait WebViewSessionTransport {
+    fn complete(&self, brain: &str, prompt: &str) -> Result<String, String>;
+}
+
+/// Echter Transport über die harnessfreie Browser-Inferenzgrenze.
+#[derive(Debug, Clone, Copy)]
+pub struct BrowserInferenceWebViewTransport {
+    headless: bool,
+    timeout_secs: Option<f64>,
+}
+
+impl BrowserInferenceWebViewTransport {
+    pub fn new(headless: bool, timeout_secs: Option<f64>) -> Self {
+        Self {
+            headless,
+            timeout_secs,
+        }
+    }
+}
+
+impl WebViewSessionTransport for BrowserInferenceWebViewTransport {
+    fn complete(&self, brain: &str, prompt: &str) -> Result<String, String> {
+        use crate::browser_inference::{BrowserInferenceRequest, BrowserToolChoice};
+        let response = crate::browser_inference::complete(BrowserInferenceRequest {
+            brain,
+            prompt,
+            tools: &[],
+            tool_choice: BrowserToolChoice::None,
+            headless: self.headless,
+            timeout_secs: self.timeout_secs,
+            model: None,
+        })?;
+        response
+            .text
+            .filter(|text| !text.trim().is_empty())
+            .ok_or_else(|| "WebView-OAuth-Session lieferte keinen Text.".to_string())
+    }
+}
+
+/// Text-Adapter auf einer bestehenden WebView-OAuth-Session.
+#[derive(Debug, Clone)]
+pub struct WebViewSessionAdapter<T> {
+    transport: T,
+    brain: String,
+}
+
+impl<T> WebViewSessionAdapter<T> {
+    pub fn new(transport: T, brain: impl Into<String>) -> Self {
+        Self {
+            transport,
+            brain: brain.into(),
+        }
+    }
+}
+
+impl<T: WebViewSessionTransport> TextStreamAdapter for WebViewSessionAdapter<T> {
+    fn stream(&self, request: &TextStreamRequest) -> Result<Vec<TextStreamEvent>, TextStreamError> {
+        if request.prompt.trim().is_empty() {
+            return Err(TextStreamError::InvalidRequest {
+                reason: "prompt must not be empty".to_string(),
+            });
+        }
+        // Die zentrale Free-only-Grenze bleibt auch fuer echte Adapter die
+        // erste Instanz: vor einer verweigerten Route wird die Sitzung nie
+        // angefasst.
+        let decision = decide_route(&request.model, request.free_only);
+        if !matches!(decision, RouteDecision::Auto { .. }) {
+            return Err(TextStreamError::RouteDenied { decision });
+        }
+        // Genau eine Kennung ist belegt. Ein anderes (selbst als free
+        // markiertes) Modell darf nicht durch denselben Adapter laufen.
+        if request.model.model_id != WEBVIEW_OAUTH_MODEL_ID {
+            return Err(TextStreamError::InvalidRequest {
+                reason: format!(
+                    "{WEBVIEW_OAUTH_ADAPTER} adapter only accepts {WEBVIEW_OAUTH_MODEL_ID}, got {}",
+                    request.model.model_id
+                ),
+            });
+        }
+        let text = self
+            .transport
+            .complete(&self.brain, request.prompt.trim())
+            .map_err(|reason| TextStreamError::AdapterFailure {
+                adapter: WEBVIEW_OAUTH_ADAPTER.to_string(),
+                reason,
+            })?;
+        if text.trim().is_empty() {
+            return Err(TextStreamError::AdapterFailure {
+                adapter: WEBVIEW_OAUTH_ADAPTER.to_string(),
+                reason: "WebView-OAuth-Session lieferte eine leere Antwort.".to_string(),
+            });
+        }
+        Ok(vec![
+            TextStreamEvent::Started {
+                model_id: request.model.model_id.clone(),
+            },
+            TextStreamEvent::Token { text },
+            TextStreamEvent::Completed {
+                model_id: request.model.model_id.clone(),
+            },
+        ])
+    }
+}
+
 /// Schema for the deterministic local Free-Cloud health contract.
 pub const FREE_CLOUD_HEALTH_SCHEMA_VERSION: u32 = 1;
 
@@ -719,6 +855,7 @@ pub fn stream_hub_metadata_fixture(
 }
 pub fn default_registry() -> Vec<CloudModel> {
     vec![
+        webview_oauth_model(),
         CloudModel {
             model_id: "huggingchat/catalog".to_string(),
             display_name: "HuggingChat-Modellkatalog".to_string(),
@@ -920,6 +1057,160 @@ fn score_model(model: &CloudModel, terms: &[String], free_only: bool) -> SearchR
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[derive(Debug, Clone)]
+    struct RecordingTransport {
+        reply: Result<String, String>,
+        calls: Rc<RefCell<Vec<(String, String)>>>,
+    }
+
+    impl RecordingTransport {
+        fn replying(text: &str) -> Self {
+            Self {
+                reply: Ok(text.to_string()),
+                calls: Rc::new(RefCell::new(Vec::new())),
+            }
+        }
+    }
+
+    impl WebViewSessionTransport for RecordingTransport {
+        fn complete(&self, brain: &str, prompt: &str) -> Result<String, String> {
+            self.calls
+                .borrow_mut()
+                .push((brain.to_string(), prompt.to_string()));
+            self.reply.clone()
+        }
+    }
+
+    #[test]
+    fn t926_webview_adapter_emits_events_from_session_text() {
+        let transport = RecordingTransport::replying("Echte OAuth-Antwort aus dem WebView.");
+        let adapter = WebViewSessionAdapter::new(transport.clone(), "gemini");
+
+        let events = adapter
+            .stream(&TextStreamRequest {
+                model: webview_oauth_model(),
+                prompt: "Sag hallo".to_string(),
+                free_only: true,
+            })
+            .unwrap();
+
+        assert_eq!(events.len(), 3);
+        assert!(
+            matches!(events.first(), Some(TextStreamEvent::Started { model_id }) if model_id == WEBVIEW_OAUTH_MODEL_ID)
+        );
+        assert!(
+            matches!(events.get(1), Some(TextStreamEvent::Token { text }) if text == "Echte OAuth-Antwort aus dem WebView.")
+        );
+        assert!(
+            matches!(events.last(), Some(TextStreamEvent::Completed { model_id }) if model_id == WEBVIEW_OAUTH_MODEL_ID)
+        );
+        assert_eq!(
+            transport.calls.borrow().as_slice(),
+            &[("gemini".to_string(), "Sag hallo".to_string())]
+        );
+    }
+
+    #[test]
+    fn t926_transport_never_called_on_denied_route() {
+        let transport = RecordingTransport::replying("darf nicht passieren");
+        let adapter = WebViewSessionAdapter::new(transport.clone(), "gemini");
+        let denied_model = default_registry()
+            .into_iter()
+            .find(|model| model.model_id == "huggingface/inference-providers")
+            .unwrap();
+
+        let error = adapter
+            .stream(&TextStreamRequest {
+                model: denied_model,
+                prompt: "Sag hallo".to_string(),
+                free_only: true,
+            })
+            .unwrap_err();
+
+        assert!(matches!(error, TextStreamError::RouteDenied { .. }));
+        assert!(transport.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn t926_webview_adapter_rejects_foreign_model() {
+        let transport = RecordingTransport::replying("darf nicht passieren");
+        let adapter = WebViewSessionAdapter::new(transport.clone(), "gemini");
+        let mut foreign = webview_oauth_model();
+        foreign.model_id = "anderer/anbieter".to_string();
+
+        let error = adapter
+            .stream(&TextStreamRequest {
+                model: foreign,
+                prompt: "Sag hallo".to_string(),
+                free_only: true,
+            })
+            .unwrap_err();
+
+        assert!(matches!(error, TextStreamError::InvalidRequest { .. }));
+        assert!(transport.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn t926_webview_adapter_maps_transport_failure() {
+        let transport = RecordingTransport {
+            reply: Err("Sitzung abgelaufen".to_string()),
+            calls: Rc::new(RefCell::new(Vec::new())),
+        };
+        let adapter = WebViewSessionAdapter::new(transport, "gemini").stream(&TextStreamRequest {
+            model: webview_oauth_model(),
+            prompt: "Sag hallo".to_string(),
+            free_only: true,
+        });
+
+        match adapter {
+            Err(TextStreamError::AdapterFailure { adapter, reason }) => {
+                assert_eq!(adapter, WEBVIEW_OAUTH_ADAPTER);
+                assert!(reason.contains("Sitzung abgelaufen"));
+            }
+            other => panic!("erwartete AdapterFailure, erhalten {other:?}"),
+        }
+    }
+
+    #[test]
+    fn t926_webview_adapter_rejects_empty_reply() {
+        let transport = RecordingTransport::replying("   ");
+        let adapter = WebViewSessionAdapter::new(transport, "gemini").stream(&TextStreamRequest {
+            model: webview_oauth_model(),
+            prompt: "Sag hallo".to_string(),
+            free_only: true,
+        });
+
+        assert!(matches!(
+            adapter,
+            Err(TextStreamError::AdapterFailure { .. })
+        ));
+    }
+
+    #[test]
+    fn t926_webview_model_is_verified_free_and_adapter_compatible() {
+        let model = webview_oauth_model();
+        assert_eq!(model.access, AccessMode::VerifiedFree);
+        assert!(model.adapter_compatible);
+        assert_eq!(model.last_verified_at.as_deref(), Some("2026-11-21"));
+        assert!(matches!(
+            decide_route(&model, true),
+            RouteDecision::Auto { .. }
+        ));
+    }
+
+    #[test]
+    fn t926_registry_has_exactly_one_auto_routable_verified_free_entry() {
+        let auto_ids = default_registry()
+            .into_iter()
+            .filter(|model| matches!(decide_route(model, true), RouteDecision::Auto { .. }))
+            .map(|model| model.model_id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(auto_ids, vec![WEBVIEW_OAUTH_MODEL_ID.to_string()]);
+    }
 
     #[test]
     fn free_only_never_auto_routes_credit_limited_provider() {

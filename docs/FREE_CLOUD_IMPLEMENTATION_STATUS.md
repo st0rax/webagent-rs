@@ -2,9 +2,11 @@
 
 > **Referenz.** Dieses Dokument beschreibt die aktuelle Free-Cloud-Arbeitsscheibe und ist zusammen mit dem getesteten Repositorystand zu lesen.
 
-> **Stand:** 20. August 2026  
-> **Arbeitsbaum:** `C:\Users\storax\Documents\Codex\2026-08-12\kann\work\webagent-harness-abnahme`  
-> **Status:** Die lokale Registry-/Policy-Scheibe und ihr deterministischer Adaptervertrag sind implementiert, getestet und Ã¼ber die lokale CLI nachgewiesen. Sie ist **noch keine vollstÃ¤ndige Cloud-Chat-ProduktionseinfÃ¼hrung**, weil reale externe Inferenz, Browser-/Space-Adapter und Credential-Routen bewusst noch nicht implementiert sind.
+> **Stand:** 21. November 2026
+>
+> **Arbeitsbaum:** `C:\Users\storax\Documents\Standardprojekt\webagent-rs`
+>
+> **Status:** Die lokale Registry-/Policy-Scheibe und ihr deterministischer Adaptervertrag sind implementiert und getestet. **Neu (T-926):** Es gibt genau **einen** real belegten `VerifiedFree`-Adapter. Er nutzt ausschließlich eine nutzergehörige **WebView-OAuth-Session** — **keinen API-Key**, keine Credit-Route. Drei echte Live-Turns mit frischen Nonces sind belegt unter `docs/proofs/T-926/webview-oauth-live-result.md`. Space-Adapter und kostenpflichtige Fallbacks bleiben weiterhin ausgeschlossen.
 
 ## Umgesetzte Scheibe
 
@@ -19,7 +21,8 @@ Die erste sichere Umsetzung des Nutzerplans besteht aus `src/free_cloud_chat.rs`
 | Unicode-Tokenisierung | Ja | Test mit Rust-Unicode-Escapes für `Ü`, `ü`, `ä` |
 | Mehrbegriff-Ranking | Ja | `u32`-Score und Test für zusätzliche reale Treffer |
 | Lokale CLI-Struktur | Ja, kompiliert | `cloud list`, `cloud search`, `cloud decide` |
-| Externe Inferenz, Streaming, Spaces-Adapter | Nein, bewusst zurückgestellt | Kein Token, keine Browserautomation, keine Kostenroute |
+| Externe Inferenz über WebView-OAuth | Ja, genau ein Adapter | `WebViewSessionAdapter`, 3 echte Live-Turns, `docs/proofs/T-926/webview-oauth-live-result.md` |
+| Spaces-Adapter, API-Key-/Credit-Routen | Nein, bewusst ausgeschlossen | Kein Token, keine Kostenroute, keine Key-Argumente |
 
 ## Kosten- und Sicherheitsentscheidung
 
@@ -67,7 +70,38 @@ Der Free-Cloud-Pfad besitzt jetzt einen separaten, deterministischen Health- und
 Claude Opus und OpenCode prÃ¼ften die Zustandsgrenzen unabhÃ¤ngig. Der von OpenCode hervorgehobene ZÃ¤hlerfortschritt nach einem Half-Open-Fehler wurde mit einer expliziten Assertion korrigiert. Die Scheibe enthÃ¤lt keine Persistenz, keine Timeout-/Panikkapselung und keinen Live-Health-Probe; diese Eigenschaften gehÃ¶ren erst zu einem ausdrÃ¼cklich freigegebenen I/O-Adapter.
 ## NÃ¤chste Abnahmeschritte
 
-Der nÃ¤chste **externe** Schritt wÃ¤re ein echter Hub-Transport mit ausdrÃ¼cklicher Nutzerfreigabe, einer I/O-sicheren Health-Probe Ã¼ber den vorhandenen Breaker-Vertrag, parserseitigen Schema-/DatenschutzprÃ¼fungen und dokumentierten Kosten-/Freiheitsnachweisen. Dieser Schritt ist nicht Teil der aktuellen Scheibe und wird weder automatisch noch ohne ausdrÃ¼ckliche Freigabe ausgefÃ¼hrt. Erst danach kann ein realer Streaming-Adapter geprÃ¼ft werden. Kostenpflichtige Fallbacks bleiben im Free-only-Modus deaktiviert.
+Der nächste **externe** Schritt wäre ein echter Hub-Metadaten-Transport mit ausdrücklicher Nutzerfreigabe, einer I/O-sicheren Health-Probe über den vorhandenen Breaker-Vertrag und dokumentierten Kosten-/Datenschutznachweisen. Dieser Schritt ist nicht Teil der aktuellen Scheibe und wird weder automatisch noch ohne ausdrückliche Freigabe ausgeführt. Publishing bleibt bis zur vollständigen Gesamtabnahme gesperrt; es gibt keinen Tag und kein GitHub-Release. Kostenpflichtige Fallbacks bleiben im Free-only-Modus deaktiviert.
+
+## VerifiedFree-Adapter über WebView-OAuth (T-926, 2026-11-21)
+
+Der Eigentümer hat ausdrücklich **„keine api keys. nur oauth."** vorgegeben und
+anschließend die WebView-Session als VerifiedFree-Basis bestätigt. Deshalb wurde
+**kein** keybasierter Anbieter angebunden.
+
+`src/free_cloud_chat.rs` enthält jetzt:
+
+- `WEBVIEW_OAUTH_MODEL_ID = "webagent/webview-oauth-session"` als einzige
+  Registry-Kennung mit `AccessMode::VerifiedFree`;
+- `WebViewSessionTransport` als injizierbare Nahtstelle **ohne** Key- oder
+  Token-Parameter — die Sitzung liegt im Nutzerprofil;
+- `BrowserInferenceWebViewTransport` als echter Transport über
+  `browser_inference::complete()` mit `tools: &[]` und `tool_choice: None`;
+- `WebViewSessionAdapter<T>` als `TextStreamAdapter`. Er erzwingt zuerst die
+  zentrale Free-only-Route, dann die Modellbindung und erst danach den
+  Sitzungszugriff. Verweigerte Routen, fremde Modellkennungen, Transportfehler
+  und leere Antworten erzeugen keine Teilereignisse.
+
+Die CLI lautet
+`webagent cloud web-view-stream --brain <brain> --prompt <prompt> [--headless]`.
+Sie meldet `oauth_session: true` und `api_key: false`.
+`huggingface/inference-providers` bleibt `ExplicitCredits` und wird weiterhin
+`manual_only` bescheinigt; der Test
+`t926_registry_has_exactly_one_auto_routable_verified_free_entry` stellt sicher,
+dass im Free-only-Modus nur die WebView-OAuth-Kennung automatisch routet.
+
+Live-Beleg: drei Läufe (2× gemini, 1× deepseek) mit frischen GUID-Nonces,
+Exit 0 und `started → token → completed`; Details, Hashes und ehrliche
+Einschränkungen in `docs/proofs/T-926/webview-oauth-live-result.md`.
 
 ## Quellen
 

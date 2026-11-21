@@ -999,10 +999,10 @@
       "phase": "12",
       "type": "code",
       "title": "Free-Cloud: ersten VerifiedFree-Adapter echt anbinden",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "feat/T-926-webview-oauth-adapter",
+      "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [
         "src/free_cloud_chat.rs",
@@ -1014,9 +1014,11 @@
         "Kein Browser-Space-Scraping als VerifiedFree ohne Vertrag."
       ],
       "dod": "Adapter-Test + CLI decide Auto nur fuer VerifiedFree; Statusdok aktualisiert; Beweis docs/proofs/T-926/.",
-      "verification": "cargo fmt --check; cargo clippy --no-default-features -- -D warnings; cargo test --no-default-features free_cloud; git diff --check",
+      "verification": "cargo fmt --all --check; cargo clippy --all-targets -- -D warnings; cargo test --lib; cargo build; git diff --check",
       "proof_path": "docs/proofs/T-926/",
-      "handoff": "Adapter-ID, Invarianten, Testausgabe, Branch und PR."
+      "handoff": "Adapter-ID, Invarianten, Testausgabe, Branch und PR.",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-926/webview-oauth-live-result.md"
     },
     {
       "id": "T-927",
