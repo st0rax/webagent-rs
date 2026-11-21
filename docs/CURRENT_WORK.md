@@ -19,10 +19,11 @@ Abarbeitung: T-914 zuerst (lokal), dann T-961 mit Live-Matrix, danach die
 übrigen Live-Belege. Kein Tag/Release ohne vollständige Abnahme und neue
 ausdrückliche Freigabe.
 
-## 2026-11-21 — G-010: T-914 Branch fertig (Medienmodul), PR folgt
+## 2026-11-21 — G-010: T-914 abgeschlossen (Medienmodul)
 
-- **Branch:** `refactor/T-914-media-module` (ab `master` `e71a375`). Noch kein
-  Push, kein PR, kein Merge.
+- **PR #95 gemergt** (Squash `a6d6909`, alle CI-Checks grün), Branch
+  `refactor/T-914-media-module` gelöscht. `master` lokal und remote bei
+  `a6d6909`, Working Tree vor dieser Statusfortschreibung sauber.
 - **Refactor:** Zehn Medienblöcke (Bildgenerierung, Audio-Transkription,
   -Absageerkennung, -Speech, Multipart-Parser, `audio_mime`, Request-Typen)
   unverändert nach `src/api_bridge/media.rs` übernommen; nur Sichtbarkeit
