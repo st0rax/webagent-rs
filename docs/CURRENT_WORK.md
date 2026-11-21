@@ -1,5 +1,51 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-950 Websuche-Isolation und Quellenhinweise live belegt
+
+- **Branch:** `feature/T-950-websearch-isolation`, ausgehend von
+  `feature/T-944-reasoning-exclude` (`584f071`). Kein Tag, kein Release, kein
+  Merge ohne neue ausdrückliche Freigabe.
+- **Surveys (Binary `64ADA47A…C90`):** je Brain DOM-Survey mit frischer
+  WebView-OAuth-Session. Nur DeepSeek hat einen sichtbaren Websuche-Schalter
+  (`Search`, `ds-toggle-button--selected`); chatgpt/gemini zeigen nur die
+  Chatverlaufssuche, kimi/mistral/qwen keinen Schalter, zai trifft einen
+  Sidebar-Menüeintrag ohne Zustandswechsel, claude ist nicht angemeldet,
+  perplexity unbekannt.
+- **Toggle-Beleg:** deepseek `aria-pressed=true|…--selected →
+  aria-pressed=false|…` (Hash `FC4869A0…4DB8AF3F`). Folge-Survey wieder
+  `selected` — nur Konversationszustand, keine dauerhafte Kontoänderung.
+- **Umsetzung:** `WebSearchObservation` + Puffer und Event-Felder `web_search` /
+  `source_hints` in `src/brain_score.rs`; `source_hints(text)` in
+  `src/observer.rs` (nur explizit markierte Hinweise, kein Fließtext-Raten,
+  Text unverändert); `ensure_web_search_off()` mit bounded Wait nach
+  `new_chat` in `src/browser/ui.rs`; Turn-Verdrahtung in `src/relay.rs`;
+  `web_search_isolation(brain)` + `/v1/models`-Feld in
+  `src/api_bridge/catalog.rs` und Test in `src/api_bridge/tests.rs`.
+- **Bridge-Livebeleg (Port 8788, frischer prozess-only Token, Final-Binary
+  `20DC7552…82FB8`):** `/v1/models` markiert nur deepseek als
+  `switchable_disabled_for_api`, alle übrigen als `not_isolatable`. Turn
+  `T950F-CDD54DDB` (chatgpt, URL auf öffentliche Rust-README): Antwort endet
+  `Quelle: Offizielle Rust-README.md auf GitHub.` → Event mit
+  `source_hints=["Offizielles Rust-README.md auf GitHub"]` und
+  `web_search=not_isolatable`. Turn `T950G-C9645851` (deepseek): Event mit
+  `web_search=off_before_send` und belegtem Zustandswechsel. Beide
+  `success=true`, `sends=1`. Während der Läufe keine Repo-Änderung, Rohdaten nur
+  unter `C:\\Users\\storax\\AppData\\Local\\Temp\\opencode\\T950-websearch-20261121\\`.
+- **Ehrlicher Zwischenbefund:** ein erster Lauf mit Zwischen-Binary
+  `2D67A22…29078` meldete deepseek `not_isolatable` („nicht im DOM"), weil die
+  SPA den Schalter direkt nach `new_chat` noch nicht gerendert hatte; bounded
+  Wait (20 × 150 ms) behebt das, Final-Lauf ist `off_before_send`. Grenze
+  bleiben stille Provider-Abrufe ohne Quellenhinweis: sie sind für die Bridge
+  nicht erkennbar und werden nicht behauptet.
+- **Gates:** `cargo test --lib` 1505 passed / 0 failed / 1 ignored; fmt,
+  clippy (`-D warnings`), build, `git diff --check`, Board-Invariante grün.
+- **Beleg:** `docs/proofs/T-950/websearch-isolation-live-result.md` und
+  `docs/API_BRIDGE.md` (neuer Abschnitt „Anbieterseitige Websuche"). Board:
+  T-950 `done`, 90 `done` / 1 `free` / 91.
+- **Offen:** nur noch T-961 `free` (beide Richtungen live widerlegt: 0/7 und
+  0/6; kein `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
+  ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.
+
 ## 2026-11-21 — G-010: T-944 Reasoning-Ausschluss live belegt
 
 - **Branch:** `feature/T-944-reasoning-exclude`, ausgehend von
@@ -37,7 +83,8 @@
   DOM-Beleg, Rohhashes und Einschränkungen. Rohdaten unter
   `C:\\Users\\storax\\AppData\\Local\\Temp\\opencode\\T944-reasoning-20261121\\`
   (nicht ins Repo kopiert). Board: T-944 `done`, 89 `done` / 2 `free` / 91.
-- **Offen:** T-950 braucht weiterhin echte DOM-/Antwortmessungen zur Websuche.
+- **Offen (Stand der Uebergabe):** T-950 brauchte damals noch echte
+  DOM-/Antwortmessungen; T-950 ist inzwischen oben dokumentiert `done`.
   T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6; kein
   `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
   ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.

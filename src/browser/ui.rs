@@ -317,12 +317,8 @@ impl WebBrainBackend {
         if self.sel(key).is_empty() {
             return true;
         }
-        let state = self.toggle_state(key).to_lowercase();
-        let active = state.contains("aria-pressed=true")
-            || state.contains("aria-checked=true")
-            || state.contains("data-state=on")
-            || state.contains("data-active=true");
-        if !active {
+        let state = self.toggle_state(key);
+        if !Self::toggle_state_is_active(&state) {
             return true;
         }
         crate::bench_events::eprint_line(&format!(
@@ -330,6 +326,66 @@ impl WebBrainBackend {
             self.brain_id
         ));
         self.click_toggle(key)
+    }
+
+    /// Erkennbar aktiver Zustand eines Umschalters. Bewusst nur explizite
+    /// Zustandsmarker aus `data-*`/`aria-*` und die von mehreren Oberflaechen
+    /// genutzte `--selected`-Klasse — kein Raten aus Label-Text.
+    fn toggle_state_is_active(state: &str) -> bool {
+        let state = state.to_lowercase();
+        state.contains("aria-pressed=true")
+            || state.contains("aria-checked=true")
+            || state.contains("data-state=on")
+            || state.contains("data-active=true")
+            || state.contains("--selected")
+    }
+
+    /// T-950: Websuche nach `new_chat` und vor dem Senden abschalten und den
+    /// Zustand belegen. Nur die sichtbare Oberflaeche; die Umschaltung gilt
+    /// ausschliesslich dieser Konversation, keine Kontoeinstellung wird
+    /// dauerhaft geaendert. Ohne brauchbaren Umschalter wird das Brain als
+    /// nicht isolierbar gemeldet statt einen Erfolg zu behaupten.
+    pub(crate) fn ensure_web_search_off(&self) -> crate::brain_score::WebSearchObservation {
+        use crate::brain_score::WebSearchObservation;
+        const KEY: &str = "web_search_toggle";
+        if self.sel(KEY).is_empty() {
+            return WebSearchObservation::not_isolatable("kein web_search_toggle konfiguriert");
+        }
+        // Nach `new_chat` rendert die SPA den Umschalter oft erst mit
+        // Verzoegerung (gemessen: im Bridge-Turn noch nicht im DOM, in einer
+        // frischen CLI-Sitzung dagegen sofort). Kurz bounded warten, statt
+        // einen vorhandenen, aber noch nicht gerenderten Schalter falsch als
+        // "nicht isolierbar" zu melden.
+        let mut before = self.toggle_state(KEY);
+        let mut tries = 0;
+        while before.trim().is_empty() && tries < 20 {
+            std::thread::sleep(Duration::from_millis(150));
+            before = self.toggle_state(KEY);
+            tries += 1;
+        }
+        if before.trim().is_empty() {
+            return WebSearchObservation::not_isolatable("web_search_toggle nicht im DOM gefunden");
+        }
+        if !Self::toggle_state_is_active(&before) {
+            return WebSearchObservation::already_off(&before);
+        }
+        crate::bench_events::eprint_line(&format!(
+            "[browser] {}: web_search_toggle ist aktiv, wird vor dem Senden ausgeschaltet",
+            self.brain_id
+        ));
+        let _ = self.click_toggle(KEY);
+        std::thread::sleep(Duration::from_millis(300));
+        let mut after = self.toggle_state(KEY);
+        tries = 0;
+        while !after.trim().is_empty() && Self::toggle_state_is_active(&after) && tries < 10 {
+            std::thread::sleep(Duration::from_millis(150));
+            after = self.toggle_state(KEY);
+            tries += 1;
+        }
+        if after.trim().is_empty() || Self::toggle_state_is_active(&after) {
+            return WebSearchObservation::toggle_failed(&before, &after);
+        }
+        WebSearchObservation::turned_off(&before, &after)
     }
 
     /// Das JS hinter [`Self::click_toggle`] — aus demselben Grund ausgelagert

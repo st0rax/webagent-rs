@@ -240,7 +240,7 @@ T-965 scope: translate the README and newcomer guide, record this policy in main
 | T-947 | done |
 | T-948 | done |
 | T-949 | done |
-| T-950 | free |
+| T-950 | done |
 | T-951 | done |
 | T-952 | done |
 | T-953 | done |

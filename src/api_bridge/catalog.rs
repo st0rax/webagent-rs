@@ -243,6 +243,52 @@ pub fn advertised_output_modalities(brain: &str) -> &'static [&'static str] {
     }
 }
 
+/// T-950: live vermessene Isolierbarkeit der anbieterseitigen Websuche.
+///
+/// `switchable_disabled_for_api` bedeutet: die Oberflaeche hat einen sichtbaren
+/// Umschalter, die Bridge schaltet ihn nach `new_chat` vor dem Senden aus und
+/// belegt den Zustand im brain_score-Event. Alles andere ist ausdruecklich
+/// **nicht isolierbar** — der Client muss wissen, dass ein Provider-Abruf
+/// ausserhalb seines Transkripts stattfinden kann. Keine Vermutung wird als
+/// Faehigkeit ausgegeben.
+pub fn web_search_isolation(brain: &str) -> (&'static str, &'static str) {
+    match brain {
+        "deepseek" => (
+            "switchable_disabled_for_api",
+            "web_search_toggle (Search) im live DOM; Zustandswechsel aria-pressed=true -> false belegt",
+        ),
+        "zai" => (
+            "not_isolatable",
+            "web_search_toggle trifft einen Sidebar-Menueeintrag; kein Zustandswechsel messbar",
+        ),
+        "chatgpt" => (
+            "not_isolatable",
+            "kein Websuche-Umschalter im live DOM; 'Suche' ist die Chatverlaufssuche",
+        ),
+        "gemini" => (
+            "not_isolatable",
+            "kein Websuche-Umschalter im live DOM; 'Chats durchsuchen' ist die Verlaufssuche",
+        ),
+        "claude" => (
+            "not_isolatable",
+            "ohne Eigentuemer-Login nicht vermessbar",
+        ),
+        "kimi" | "mistral" | "qwen" => (
+            "not_isolatable",
+            "kein Websuche-Umschalter im live DOM",
+        ),
+        "perplexity" => (
+            "not_isolatable",
+            "kein konfiguriertes Brain; survey meldet 'Unbekanntes Brain'",
+        ),
+        "auto" => (
+            "not_isolatable",
+            "virtuelles Routing-Ziel; Isolierung haengt vom gewaehlten Brain ab",
+        ),
+        _ => ("not_isolatable", "unbekanntes Brain"),
+    }
+}
+
 /// Einheitliche, pro-Brain-Metadaten für den `/v1/models`-Katalog.
 ///
 /// `context_window`/`max_tokens` bleiben konservativ als gemeinsame Defaults
@@ -261,6 +307,11 @@ pub fn model_metadata(brain: &str) -> Value {
             "input": advertised_input_modalities(brain),
             "output": advertised_output_modalities(brain)
         }
+    });
+    let (isolation_status, isolation_reason) = web_search_isolation(brain);
+    metadata["web_search_isolation"] = json!({
+        "status": isolation_status,
+        "reason": isolation_reason
     });
     if brain == "auto" {
         metadata["name"] = json!("WebAgent AutoRouter");

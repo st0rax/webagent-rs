@@ -67,6 +67,11 @@ trait RelayBackend {
         cancelled: &dyn Fn() -> bool,
     ) -> Result<BrainResponse, String>;
     fn relay_stop(&mut self) -> Result<(), String>;
+    /// T-950: Websuche nach `new_chat` und vor dem Senden pruefen. Das
+    /// Mock-Backend hat keine Oberflaeche und meldet deshalb `None`.
+    fn relay_web_search_state(&mut self) -> Option<crate::brain_score::WebSearchObservation> {
+        None
+    }
 }
 
 /// Begruendung eines fehlgeschlagenen Turns, dessen Modellausgabe ungueltig
@@ -118,6 +123,9 @@ impl RelayBackend for WebBrainBackend {
     }
     fn relay_stop(&mut self) -> Result<(), String> {
         WebBrainBackend::stop(self)
+    }
+    fn relay_web_search_state(&mut self) -> Option<crate::brain_score::WebSearchObservation> {
+        Some(self.ensure_web_search_off())
     }
 }
 
@@ -465,6 +473,10 @@ fn run_turn_loop<B: RelayBackend>(
     let mut sends: u32 = 0;
     let mut answer: Option<String> = None;
     for turn in 0..max_turns {
+        // T-950: der Quellenhinweis-Puffer ist prozessglobal. Mit jedem Turn
+        // neu leeren, damit ein abgelehnter Versuch seine Hinweise nicht in
+        // den naechsten, verbuchten Turn schleppt.
+        crate::brain_score::set_pending_source_hints(Vec::new());
         // T-946: kein Browser-Turn fuer einen Aufrufer, der schon in der
         // Warteschlange vor der Brain-Sperre verschwunden ist. Der Turn wird
         // als verwaist markiert (brain_score) und die Sperre wird nicht
@@ -494,6 +506,19 @@ fn run_turn_loop<B: RelayBackend>(
         if let Err(e) = backend.relay_new_chat() {
             last_err = e;
             continue;
+        }
+        // T-950: die Websuche ist eine Eigenschaft der jeweiligen Konversation
+        // und kann nach `new_chat` wieder aktiv sein. Deshalb genau hier,
+        // unmittelbar vor dem Senden, messen und ausschalten. Ohne brauchbaren
+        // Umschalter bleibt das Brain im Event als nicht isolierbar markiert.
+        if let Some(web_search) = backend.relay_web_search_state() {
+            if !web_search.is_off() {
+                crate::bench_events::eprint_line(&format!(
+                    "[relay] {brain_id}: Websuche nicht isolierbar ({})",
+                    web_search.status
+                ));
+            }
+            crate::brain_score::set_pending_web_search(web_search);
         }
         // Gesamtbudget erschoepft (nur moeglich, wenn ein frueherer Turn bereits
         // Wartezeit verbraucht hat): kein weiterer Versuch.
@@ -595,6 +620,17 @@ fn run_turn_loop<B: RelayBackend>(
             // Senden war erfolgreich: ob der Anbieter die Nachricht verarbeitet
             // hat, ist unbekannt. Nicht erneut senden (T-947).
             break;
+        }
+        // T-950: ein Quellenhinweis der Oberflaeche belegt einen Provider-Abruf,
+        // der im Client-Transkript unsichtbar bleibt. Er wird protokolliert,
+        // nicht aus dem Antworttext entfernt (keine inhaltliche Filterung).
+        let source_hints = crate::observer::source_hints(&text);
+        if !source_hints.is_empty() {
+            crate::bench_events::eprint_line(&format!(
+                "[relay] {brain_id}: {} Quellenhinweis(e) in der Antwort erkannt",
+                source_hints.len()
+            ));
+            crate::brain_score::set_pending_source_hints(source_hints);
         }
         if is_provider_error_page(&text) {
             last_err = format!(

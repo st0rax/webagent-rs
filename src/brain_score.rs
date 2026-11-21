@@ -130,15 +130,84 @@ pub struct TurnObservation {
     pub banner: Option<String>,
 }
 
+/// T-950: Zustand der anbieterseitigen Websuche unmittelbar vor dem Senden.
+/// Der Zustand wird nicht erfunden: `status` beschreibt, ob ein Umschalter
+/// vorhanden und erfolgreich ausgeschaltet wurde oder ob das Brain nicht
+/// isolierbar ist. `before`/`after` sind die gemessenen Zustandsstrings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebSearchObservation {
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+}
+
+/// Zustandsstrings koennen bei manchen Oberflaechen sehr lange Klassenlisten
+/// sein; im Log reicht der Beleg, nicht das ganze DOM.
+fn clip_state(state: &str) -> String {
+    state.trim().chars().take(160).collect()
+}
+
+impl WebSearchObservation {
+    pub fn turned_off(before: &str, after: &str) -> Self {
+        Self {
+            status: "off_before_send".to_string(),
+            before: Some(clip_state(before)),
+            after: Some(clip_state(after)),
+        }
+    }
+    pub fn already_off(state: &str) -> Self {
+        Self {
+            status: "already_off".to_string(),
+            before: Some(clip_state(state)),
+            after: None,
+        }
+    }
+    pub fn not_isolatable(reason: &str) -> Self {
+        Self {
+            status: "not_isolatable".to_string(),
+            before: Some(clip_state(reason)),
+            after: None,
+        }
+    }
+    pub fn toggle_failed(before: &str, after: &str) -> Self {
+        Self {
+            status: "toggle_failed".to_string(),
+            before: Some(clip_state(before)),
+            after: Some(clip_state(after)),
+        }
+    }
+    pub fn is_off(&self) -> bool {
+        matches!(self.status.as_str(), "off_before_send" | "already_off")
+    }
+}
+
 fn is_false(v: &bool) -> bool {
     !*v
 }
 
-// Beobachtungs-Puffer: send_generic (send.rs) traegt den aktuellen Stand ein,
-// record_event_at (unten) konsumiert ihn beim Schreiben.
+// Beobachtungs-Puffer: send_generic (send.rs) traegt den Turn-Stand ein,
+// relay.rs traegt Websuchzustand und Quellenhinweise ein; record_event_at
+// (unten) konsumiert alles beim Schreiben.
 lazy_static! {
     static ref PENDING_TURN: std::sync::Mutex<Option<TurnObservation>> =
         std::sync::Mutex::new(None);
+    static ref PENDING_WEB_SEARCH: std::sync::Mutex<Option<WebSearchObservation>> =
+        std::sync::Mutex::new(None);
+    static ref PENDING_SOURCE_HINTS: std::sync::Mutex<Vec<String>> =
+        std::sync::Mutex::new(Vec::new());
+}
+
+/// T-950: gemessenen Websuchzustand fuer das naechste Ereignis vormerken.
+pub fn set_pending_web_search(obs: WebSearchObservation) {
+    *PENDING_WEB_SEARCH.lock().unwrap() = Some(obs);
+}
+
+/// T-950: im Antworttext erkannte Quellenhinweise fuer das naechste Ereignis
+/// vormerken. Leere Liste löscht eine zuvor vorgemerkte Liste.
+pub fn set_pending_source_hints(hints: Vec<String>) {
+    *PENDING_SOURCE_HINTS.lock().unwrap() = hints;
 }
 
 /// Aktuelle Turn-Beobachtung eintragen (von send.rs / composer.rs).
@@ -192,6 +261,12 @@ struct Event {
     /// fuer Aufrufer, die nur den Ein-Turn-Fall protokollieren.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     sends: Option<u32>,
+    /// T-950: Websuchzustand vor dem Senden (nur Bridge-Turns).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    web_search: Option<WebSearchObservation>,
+    /// T-950: erkannte Quellenhinweise im Antworttext (nur Bridge-Turns).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_hints: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -267,6 +342,16 @@ fn record_event_at(
         }
     }
     let turn = PENDING_TURN.lock().unwrap().take();
+    let web_search = PENDING_WEB_SEARCH.lock().unwrap().take();
+    let source_hints = {
+        let mut hints = PENDING_SOURCE_HINTS.lock().unwrap();
+        std::mem::take(&mut *hints)
+    };
+    let source_hints = if source_hints.is_empty() {
+        None
+    } else {
+        Some(source_hints)
+    };
     let event = Event {
         brain_id: brain_id.to_string(),
         ts: crate::now_rfc3339(),
@@ -276,6 +361,8 @@ fn record_event_at(
         prompt_chars,
         turn,
         sends,
+        web_search,
+        source_hints,
     };
     let Ok(line) = serde_json::to_string(&event) else {
         return;
@@ -506,6 +593,44 @@ mod tests {
         assert_eq!(board.len(), 2);
         assert_eq!(board[0].brain_id, "kimi");
         assert_eq!(board[1].brain_id, "qwen");
+    }
+
+    #[test]
+    fn t950_websuchzustand_und_quellenhinweise_landen_im_event() {
+        let path = unique_path();
+        set_pending_web_search(WebSearchObservation::turned_off(
+            "aria-pressed=true|ds-toggle-button--selected",
+            "aria-pressed=false|ds-toggle-button",
+        ));
+        set_pending_source_hints(vec!["Offizielle Rust-README.md auf GitHub".to_string()]);
+        record_event_at("chatgpt", true, None, 100, 10, Some(1), &path);
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let line = raw.lines().next().unwrap();
+        let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        assert_eq!(event["web_search"]["status"], "off_before_send");
+        assert!(event["web_search"]["before"]
+            .as_str()
+            .unwrap()
+            .contains("aria-pressed=true"));
+        assert!(event["web_search"]["after"]
+            .as_str()
+            .unwrap()
+            .contains("aria-pressed=false"));
+        assert_eq!(
+            event["source_hints"][0],
+            "Offizielle Rust-README.md auf GitHub"
+        );
+
+        // Beide Puffer sind nach dem Schreiben leer — kein Fortschleppen in
+        // das naechste Ereignis eines anderen Brains.
+        record_event_at("kimi", true, None, 100, 10, Some(1), &path);
+        let raw2 = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = raw2.lines().collect();
+        assert_eq!(lines.len(), 2);
+        let second: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        assert!(second.get("web_search").is_none());
+        assert!(second.get("source_hints").is_none());
     }
 
     #[test]
