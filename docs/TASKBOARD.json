@@ -1001,7 +1001,7 @@
       "title": "Free-Cloud: ersten VerifiedFree-Adapter echt anbinden",
       "status": "done",
       "owner": "local/opencode",
-      "branch": "feat/T-926-webview-oauth-adapter",
+      "branch": "feature/T-926-webview-oauth-adapter",
       "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [

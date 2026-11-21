@@ -2,7 +2,7 @@
 
 ## 2026-11-21 — G-010: T-926 VerifiedFree-Adapter live belegt (WebView-OAuth, kein API-Key)
 
-- **Branch:** `feat/T-926-webview-oauth-adapter`, ausgehend von `master`
+- **Branch:** `feature/T-926-webview-oauth-adapter`, ausgehend von `master`
   (`9017249`) — die abgelehnte T-961-Scheibe wurde **nicht** mitgezogen.
 - **Freigabe:** Der Eigentümer hat „keine api keys. nur oauth." vorgegeben und
   die WebView-Session als Basis bestätigt. Es gibt bewusst **kein** Key-Argument

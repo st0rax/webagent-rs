@@ -132,7 +132,7 @@ Nachzug in T-922/T-923.
 | T-923 | Content echt verdrahten — done (grok-agent, 8aa43f8) |
 | T-924 | CI-Gate gegen orphan `src/api_bridge/*.rs` |
 | T-925 | Phase-11/12 Modulkarte: unwired≠done + Skip T-914/T-919 — done (pflege) |
-| T-926 | Free-Cloud: ersten VerifiedFree-Adapter anbinden - done (local/opencode, WebView-OAuth, `feat/T-926-webview-oauth-adapter`) |
+| T-926 | Free-Cloud: ersten VerifiedFree-Adapter anbinden - done (local/opencode, WebView-OAuth, `feature/T-926-webview-oauth-adapter`) |
 | T-927 | Matrix `model/auto` Live-Beleg |
 | T-928 | Effort-Spalte ehrlich bereinigen |
 | T-929 | Linux-CI Flake `config::profiles` …reclaimed |
