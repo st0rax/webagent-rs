@@ -117,6 +117,7 @@ mod tests {
             headless: true,
             api_key: "test-secret".to_string(),
             fake_reply: None,
+            auto_tool_choice_required: false,
         }
     }
 

@@ -808,6 +808,26 @@ pub(crate) fn openai_tool_choice(
     Ok(BrowserToolChoice::Function(name.to_string()))
 }
 
+/// Escaliert `Auto` zu `Required`, wenn der Betreiber das explizit aktiviert
+/// hat (T-961, freigegebene Semantikaenderung). `None`, `Required` und
+/// `Function(name)` bleiben unveraendert; ohne Tools gibt es nichts zu
+/// erzwingen. Die Entscheidung liegt hier und nicht in den drei
+/// Parser-Funktionen, damit die clientseitige Bedeutung von `auto`, `none`,
+/// `required` und Funktionsauswahl in den Providern unveraendert dokumentiert
+/// bleibt und nur der Bridge-Betreiber die Eskalation zuschaltet.
+pub(crate) fn effective_tool_choice(
+    choice: crate::browser_inference::BrowserToolChoice,
+    tools: &[crate::browser_inference::BrowserTool],
+    auto_tool_choice_required: bool,
+) -> crate::browser_inference::BrowserToolChoice {
+    use crate::browser_inference::BrowserToolChoice;
+    if auto_tool_choice_required && !tools.is_empty() && matches!(choice, BrowserToolChoice::Auto) {
+        BrowserToolChoice::Required
+    } else {
+        choice
+    }
+}
+
 pub(crate) fn text_content(value: &Value) -> Result<String, String> {
     if let Some(text) = value.as_str() {
         return Ok(text.to_string());

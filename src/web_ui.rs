@@ -257,6 +257,7 @@ mod tests {
             headless: true,
             api_key: "test-secret".to_string(),
             fake_reply: None,
+            auto_tool_choice_required: false,
         }
     }
 
@@ -410,6 +411,7 @@ mod tests {
                 headless: true,
                 api_key: "t930-secret".to_string(),
                 fake_reply: Some("T930-FAKE-REPLY".to_string()),
+                auto_tool_choice_required: false,
             }),
         }
     }
