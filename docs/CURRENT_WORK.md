@@ -1,5 +1,20 @@
 # Current Work
 
+## 2026-11-21 — Entscheidung zu T-961: keine Änderung
+
+- Der Eigentümer hat den Konto-Check mit **„Angemeldet / OK"** beantwortet.
+- Ein konkreter neuer Strategievorschlag („Auftrag statt Werkzeug-Meta":
+  Tool-Schema als Preamble nach vorn, Choice-/Verfügbarkeitssätze entfernt,
+  auftragsförmiger User-Turn ohne Werkzeug-Meta, ≥5 aufeinanderfolgende saubere
+  Raw-Läufe) wurde mit Ziel, Umfang, erwarteter Wirkung und Messplan vorgelegt.
+- Der Eigentümer hat ausdrücklich **„Keine Änderung"** gewählt. Damit gilt:
+  T-961 bleibt bewusst `free`, **kein Code, kein Live-Lauf, kein Tag, kein
+  GitHub-Release, kein Merge**. Die bereits widerlegten Richtungen (0/7 und
+  0/6) bleiben die letzte Aussage; es gibt kein `PASS` und kein `done`.
+- Endstand des Boards: **90 `done` / 1 `free` (T-961) / 0 `claimed` / 91**.
+  Damit ist „100 %" ohne neue, ausdrücklich freigegebene Strategie nicht
+  erreichbar — ehrliche Grenze statt decayed Status.
+
 ## 2026-11-21 — G-010: T-950 Websuche-Isolation und Quellenhinweise live belegt
 
 - **Branch:** `feature/T-950-websearch-isolation`, ausgehend von
