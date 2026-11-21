@@ -1,5 +1,31 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-961 frische Live-Matrix — 0/7 sauber, weiter `free`
+
+- **Binary:** `target/debug/webagent.exe` aus `0d7d802` (Code identisch zum
+  gemergten `f85010a`), SHA256 `61DC1281EA96EAC5B8B788C3D3CBE1418F2F4BB1E83FFAE1456949ABCDFDB69E`.
+- **Harness:** ausschließlich Port 8788, pro Lauf frischer GUID-Token nur in der
+  Prozessumgebung, keine Repo-Datei während eines Laufs geändert, keine
+  Zugangsdaten/Profile/Cookies gelesen, keine Kontoeinstellung geändert. Der
+  Textturn bestätigte die bestehende Anmeldung (`PI_BRIDGE_OK`). Temporäre
+  Harness-Kopie unter `%TEMP%\opencode\T961-live-20261121\`; dortige
+  `models.json` nur für Pi 1.5.2 auf `input: [text, image]` korrigiert.
+- **Ergebnis:** sieben Läufe (2 Pi, 5 direkte OpenAI-Client-Läufe), **0 sauber**.
+  Direct 3/4/5: HTTP 502 `model_output_envelope_invalid` in Turn 3/4/1. Pi 2:
+  0/5 Tools, Navigationstimeout. Pi 3: 18 Tool-Starts, aber 15
+  Relay-Korrekturen, 20 `stopReason=error`, 6 Auto-Retries, kein `stopReason=stop`
+  — der Pi-Harness meldete hier fälschlich „PASS"; der neue strikte Verifier
+  weist ihn zurück. Direct 6: fünf Tool-Turns clientseitig sauber, aber 3
+  Relay-Korrekturen und 180-s-Timeout im `none`-Schlussturn.
+- **Beleg:** `docs/proofs/T-961/auto-required-live-result.md` mit Methodik,
+  Ergebnistabelle, Hash-Tabelle und Rohdateien (`auto-required-*.jsonl` /
+  `auto-required-*-bridge-*.log`). `README.md`, `analysis.md` und
+  `API_BRIDGE.md` sind aktualisiert. Secret-Scan: 0 Treffer.
+- **Entscheidung:** T-961 bleibt `free`. Kein PASS, kein `done`, kein Tag/Release.
+  Die Eskalation ist funktional verdrahtet, aber nicht stabil; eine Änderung der
+  Strategie braucht eine neue ausdrückliche Freigabe. Die übrigen sieben
+  `free`-Tasks brauchen weiterhin echte Live-Belege.
+
 ## 2026-11-21 — G-010: T-961 Auto→Required-Eskalation — Code gemergt, Live-Abnahme offen
 
 - **PR #96 gemergt** (Squash `f85010a`, alle CI-Checks grün), Branch

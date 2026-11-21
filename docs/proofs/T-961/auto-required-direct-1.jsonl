@@ -1,0 +1,12 @@
+### ENV binary=61DC1281EA96EAC5B8B788C3D3CBE1418F2F4BB1E83FFAE1456949ABCDFDB69E flag=WEBAGENT_AUTO_TOOL_CHOICE_REQUIRED=1 port=8788
+### TURN1 REQUEST {"messages":[{"role":"user","content":"Read the files nonce-1.txt, nonce-2.txt, nonce-3.txt, nonce-4.txt, nonce-5.txt one at a time, in exactly that order, using the read tool once per file. Start no second call before the result of the previous one is present. After the last result, summarise nothing and stop."}],"tools":[{"type":"function","function":{"name":"read","description":"Read a local text file and return its exact content.","parameters":{"required":["path"],"type":"object","properties":{"path":{"type":"string","description":"Path of the file to read"}}}}}],"model":"webagent/chatgpt","tool_choice":"auto","stream":false}
+### TURN1 HTTP_ERROR 
+{
+  "error": {
+    "code": null,
+    "message": "Browser-Inference fehlgeschlagen: Navigation timeout after 8.01s to https://chatgpt.com/ (limit 15s): page-timeout: Page-Befehl timeout (WebView moeglicherweise eingefroren)",
+    "param": null,
+    "type": "invalid_request_error"
+  }
+}
+### RESULT ok=False tool_turns=5 tool_choice_turns=auto final_turn=none

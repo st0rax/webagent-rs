@@ -17,6 +17,24 @@ T-961-Fehlerklasse erneut — diesmal nach vier erfolgreichen Reads mit dem Wort
 *„Das fünfte read-Werkzeug ist in dieser Sitzung nicht verfügbar."*
 **Deshalb kein PASS, kein `done`, T-961 bleibt `free`.**
 
+## Nachtrag 21.11.2026: freigegebene Auto→Required-Eskalation — 0/7 sauber
+
+Der Eigentuemer hat am 21.11.2026 die serverseitige Eskalation `auto` →
+`required` freigegeben (PR #96, `f85010a`; Code im Rebuild `61DC1281…`). Die
+frische Live-Matrix mit sieben Laeufen auf Port 8788, frischen Prozess-Tokens
+und gesetztem Schalter ist in `auto-required-live-result.md` dokumentiert.
+Ergebnis: **kein einziger sauberer Lauf**. Das Modell liefert wiederholt trotz
+`required` reine Textantworten; die vorbestehende T-953-Relay-Korrektur rettet
+einzelne Turns, scheitert aber oftmals ihrerseits („Umschlag enthaelt keine Tool
+Calls", „unbekanntes Tool `files__search`"). Zwei Pi-Laeufe und vier direkte
+Laeufe endeten mit HTTP 502 `model_output_envelope_invalid`, Navigationstimeouts
+oder einem 180-s-Timeout im Schlussturn. Ein Pi-Lauf meldete zwar „PASS", hatte
+aber 15 Relay-Korrekturen, 20 `stopReason=error` und keine Textabschlussantwort;
+der strikte Verifier weist ihn zurueck.
+
+Damit ist auch diese Richtung live widerlegt. T-961 bleibt `free`; eine erneute
+Aenderung der Eskalationsstrategie braucht eine neue Freigabe. Kein Tag/Release.
+
 ## Behobene deterministische Blocker
 
 | Blocker | Symptom im Live-Lauf | Fix (gemergt) |
