@@ -1657,10 +1657,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Websuche des Anbieters umgeht Client-Werkzeuge und ist unsichtbar",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "feature/T-950-websearch-isolation",
+      "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [
         "src/browser_inference.rs",
@@ -1676,7 +1676,9 @@
         "Kontoeinstellungen nicht dauerhaft aendern; nur den Zustand der jeweiligen Konversation."
       ],
       "proof_path": "docs/proofs/T-950/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-950/websearch-isolation-live-result.md"
     },
     {
       "id": "T-951",

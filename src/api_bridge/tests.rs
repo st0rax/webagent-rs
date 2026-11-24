@@ -226,6 +226,38 @@ fn model_metadata_has_stable_catalog_shape() {
 }
 
 #[test]
+fn t950_nur_deepseek_wird_als_websearch_isolierbar_ausgegeben() {
+    let deepseek = model_metadata("deepseek");
+    assert_eq!(
+        deepseek["web_search_isolation"]["status"],
+        "switchable_disabled_for_api"
+    );
+    for brain in [
+        "auto",
+        "chatgpt",
+        "claude",
+        "gemini",
+        "kimi",
+        "mistral",
+        "perplexity",
+        "qwen",
+        "zai",
+    ] {
+        let meta = model_metadata(brain);
+        assert_eq!(
+            meta["web_search_isolation"]["status"], "not_isolatable",
+            "{brain} darf nicht als isolierbar ausgegeben werden"
+        );
+        assert!(
+            meta["web_search_isolation"]["reason"]
+                .as_str()
+                .is_some_and(|r| r.len() > 10),
+            "{brain} braucht eine begruendete Einschränkung"
+        );
+    }
+}
+
+#[test]
 fn audio_capability_refusals_are_not_returned_as_transcripts() {
     assert!(is_audio_capability_refusal(
         "Ich kann die Audiodatei in dieser Umgebung nicht zuverlässig transkribieren."
