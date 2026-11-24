@@ -1,5 +1,43 @@
 # Current Work
 
+## 2026-11-24 — Audit: Board-Status gegenueber `master`, Gates nachgemessen
+
+- **Auftrag:** Stand/Audit prüfen. Der Eigentuemer hat danach die
+  Projektverantwortung an diesen Agenten delegiert. Daraus wurde **keine**
+  Freigabe fuer Merge, Tag, Release oder Live-/Kontozugriff abgeleitet.
+- **Gepruefter Baum:** `webagent-rs`, `feature/T-950-websearch-isolation`,
+  HEAD `956425f`, identisch mit `origin/...`; Working Tree vor und nach dem
+  Audit sauber. Remote-`master` per `git ls-remote`:
+  `9017249157a3182de900fa927ae6f4d8ee33f906` (lokal gleich).
+- **Board:** 91 Tasks, 90 `done`, 1 `free` (T-961), 0 `claimed`. Der
+  maschinenlesbare Spiegelblock in `docs/TASKBOARD.md` ist synchron;
+  `taskboard::tests::taskboard_invarianten_halten` gruen (1 passed, 1505
+  gefiltert). Aeltere Prosotabellen im selben File sind historisch und nicht
+  die Quelle.
+- **Gates am 24.11. auf HEAD nachgemessen:** `cargo test --lib` 1505 passed /
+  0 failed / 1 ignored; `cargo fmt --all -- --check` Exit 0;
+  `cargo clippy --all-targets -- -D warnings` Exit 0; `git diff --check`
+  Exit 0. Diese Zahlen gelten fuer den Feature-Branch, **nicht** fuer
+  `master`.
+- **Befund (Diskrepanz):** `START_HERE.md` Abschnitt 4 und `AGENTS.md`
+  Regel 5 definieren `done` als „Branch in `master` gemergt". Fuer `T-926`,
+  `T-940`, `T-942`, `T-944`, `T-950` steht das Board auf `done`, der Code
+  liegt aber nur auf den gleichnamigen, gepushten Feature-Branches.
+  `git branch --merged master` fuehrt keinen davon; `git grep` in `master`
+  findet `WebViewSessionAdapter`, `answer_markdown`, `reasoning_exclude`,
+  `source_hints`, `web_search_isolation` nicht, auf HEAD dagegen schon.
+  `docs/CURRENT_WORK.md` verbietet Merge ohne neue ausdrueckliche Freigabe —
+  der Board-Status `done` behauptet hier mehr, als `master` ausliefert.
+- **Entscheidung dieses Agenten:** Befund dokumentieren, **keinen** Merge,
+  keinen Tag, kein Release, keine Statuskorrektur im Board ohne Freigabe.
+  T-961 bleibt `free` („Keine Aenderung" des Eigentuemers), kein `PASS`, kein
+  `done`. Empfehlung: fuer die fuenf Branches zuerst PRs oeffnen und pruefen
+  und `done`/`done_at` erst nach tatsaechlichem Merge bestaetigen; alternativ
+  den Board-Status bewusst korrigieren — beides braucht eine ausdrueckliche
+  Entscheidung des Eigentuemers.
+- **Keine Live-Laeufe**, keine Zugangsdaten, keine Profil-/Cookie-/Token-
+  Dateien, kein Eingriff in FreeRouter (8787) oder Opencode-Supervisor (4096).
+
 ## 2026-11-21 — Entscheidung zu T-961: keine Änderung
 
 - Der Eigentümer hat den Konto-Check mit **„Angemeldet / OK"** beantwortet.
