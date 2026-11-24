@@ -21,7 +21,8 @@ jobs:
   # T-967: kein Build und kein Publish, bevor Tag/Version und Tests geprueft sind.
   # Bei workflow_dispatch auf einem Branch gibt es keinen Release-Tag; dort
   # laeuft nur der Testteil. Tag-Refs muessen zusaetzlich die Versionspruefung
-  # bestehen (fail-closed, Exit-Codes 0/1/2).
+  # bestehen (fail-closed, Exit-Codes 0/1/2). Verify und die drei Build-Jobs
+  # brauchen nur Lesezugriff; `contents: write` bleibt dem publish-Job vorbehalten.
   verify:
     name: verify tag, manifest, tests
     runs-on: ubuntu-latest
@@ -61,6 +62,8 @@ jobs:
     name: windows-x86_64
     needs: [verify]
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -95,6 +98,8 @@ jobs:
     name: linux-x86_64
     needs: [verify]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -127,6 +132,8 @@ jobs:
     name: android-aarch64
     needs: [verify]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 

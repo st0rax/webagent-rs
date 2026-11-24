@@ -12,8 +12,9 @@
 - **Implementierung:** `scripts/verify-release-version.ps1` (fail-closed,
   Exit 0/1/2, nur `Cargo.toml` + `Cargo.lock`); `release.yml` mit `verify`-Job
   (Versionspruefung nur fuer Tag-Refs plus `cargo test --lib --locked`) und
-  `needs: [verify]` an allen Build-/Publish-Jobs; `ci.yml` mit Push nur auf
-  `master`; Version `0.11.5` in Manifest und Lockfile; `docs/RELEASE.md`,
+  `needs: [verify]` an allen Build-/Publish-Jobs, `contents: read` fuer Verify
+  und Builds; `ci.yml` mit Push nur auf `master`; Version `0.11.5` in Manifest
+  und Lockfile; `docs/RELEASE.md`,
   `CHANGELOG.md`, Beleg und Board nachgezogen.
 - **Gates (real gemessen):** Skript `v0.11.5` → 0, `v0.11.4` → 1,
   `0.11.5` → 2; vor der Hebung `v0.11.3` → 0 und `v0.11.4` → 1; PyYAML

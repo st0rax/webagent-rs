@@ -23,6 +23,8 @@ und ohne Tests. Umgesetzt:
   `publish` hängen davon ab. Bei `workflow_dispatch` auf einem Branch läuft
   nur der Testteil. Der Job installiert WebKitGTK mit gebundenen/apt-Retries,
   weil `default = ["webview"]` sonst schon beim Kompilieren auf Ubuntu scheitert.
+  `verify` und die drei Build-Jobs haben nur `contents: read`; Schreibrechte
+  bleiben ausschließlich beim `publish`-Job.
 - `.github/workflows/ci.yml` — Push nur noch auf `master`; PR-Heads werden
   nicht doppelt geprüft.
 - `Cargo.toml`/`Cargo.lock` — `0.11.5`.
