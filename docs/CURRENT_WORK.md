@@ -17,7 +17,7 @@
   `CHANGELOG.md`, Beleg und Board nachgezogen.
 - **Gates (real gemessen):** Skript `v0.11.5` → 0, `v0.11.4` → 1,
   `0.11.5` → 2; vor der Hebung `v0.11.3` → 0 und `v0.11.4` → 1; PyYAML
-  `safe_load` beider Workflows OK; `cargo fmt --all -- --check`,
+  `safe_load` und `actionlint 1.7.12` auf beiden Workflows OK; `cargo fmt --all -- --check`,
   `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (1505 passed /
   0 failed / 1 ignored), `git diff --check` gruen. Nachtrag zum `verify`-Job:
   Ubuntu-Runner haben `pwsh`, aber `default = ["webview"]` braucht WebKitGTK;

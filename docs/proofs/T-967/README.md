@@ -37,6 +37,7 @@ und ohne Tests. Umgesetzt:
 | `-Tag v0.11.4` | Exit 1, Mismatch-Meldung mit `0.11.4` vs. `0.11.5` |
 | `-Tag 0.11.5` | Exit 2, Formatmeldung (erwartet `vX.Y.Z`) |
 | PyYAML `safe_load` beider Workflows | OK (`release.yml` 5 Jobs, `ci.yml` 3 Jobs) |
+| `actionlint 1.7.12` auf beiden Workflows | Exit 0, keine Befunde |
 | `cargo fmt --all -- --check` | grün |
 | `cargo clippy --all-targets -- -D warnings` | grün |
 | `cargo test --lib` | 1505 passed / 0 failed / 1 ignored |
