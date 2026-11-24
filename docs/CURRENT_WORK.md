@@ -1,5 +1,40 @@
 # Current Work
 
+## 2026-11-24 — PR-Kette zur Abnahme vorbereitet, CI-Blocker behoben
+
+- **Freigabeumfang:** Der Eigentuemer hat den Audit-Vorschlag bestaetigt und die
+  Projektverantwortung uebertragen. Umgesetzt wurden PR-Eroeffnung und
+  CI-Reparaturen. **Kein Merge, kein Tag, kein GitHub-Release**; T-961 bleibt
+  `free` („Keine Aenderung"), kein Live-Lauf, keine Zugangsdaten/Profile/
+  Cookies/Tokens, kein Eingriff in FreeRouter (8787) oder Supervisor (4096).
+- **Fuenf PRs, kaskadierend** (je ein Task, ein Branch):
+  [#97](https://github.com/st0rax/webagent-rs/pull/97) T-926 → `master`,
+  [#98](https://github.com/st0rax/webagent-rs/pull/98) T-940 → T-926,
+  [#99](https://github.com/st0rax/webagent-rs/pull/99) T-942 → T-940,
+  [#100](https://github.com/st0rax/webagent-rs/pull/100) T-944 → T-942,
+  [#101](https://github.com/st0rax/webagent-rs/pull/101) T-950 → T-944.
+  Alle fünf sind `OPEN`, `MERGEABLE`, mit Scope, Livebelegen (Nonces/Hashes),
+  Gates und ehrlichen Grenzen beschrieben. Merge-Reihenfolge nur 1 → 2 → 3 →
+  4 → 5; die Branches bauen linear aufeinander auf.
+- **Zwei CI-Blocker aus aelteren Pushes behoben** (neue Commits, kein
+  Force-Push): `attach_network_observation` war nur unter `#[cfg(windows)]`
+  definiert, aber unbedingt aufgerufen → Nicht-Windows-Stub `Ok(None)` auf
+  T-940/T-942/T-944/T-950 (`dd833c3`, `223e2ca`, `1c6173d`, `4a863d9`). Im
+  T-944-Livebeleg fehlte das `**Referenz**`-Banner →
+  `betriebs_markdown_hat_eine_wahrheit` rot; mit `5b34bde` ergaenzt, auf T-950
+  war es bereits vorhanden.
+- **CI-Stand nach den Fixes:** alle fuenf Prueflaeufe gruen (T-926 `success`,
+  T-940 `success`, T-942 `success`, T-950 `success`, T-944 nach einem
+  einmaligen Flake `executor::tests::test_stderr_capture` — leere Streams bei
+  Exit 0, Push-Lauf desselben SHA gruen — im Rerun ebenfalls `success`).
+  Lokal auf T-950-Head: `cargo test --lib` 1505 passed / 0 failed / 1 ignored,
+  fmt/clippy/build/`git diff --check` gruen.
+- **Abnahmeuebersicht (nicht im Repo):** `%TEMP%\opencode\pr-acceptance-overview.md`
+  mit PR-Tabelle, Branch-SHAs, Gates, Reparaturen und Grenzen. Der Board-Status
+  `done` bleibt gegenueber `master` (`9017249`) inkonsistent, bis die PRs
+  tatsaechlich gemergt sind; das ist weiterhin nicht durch diesen Agenten
+  erledigt.
+
 ## 2026-11-24 — Audit: Board-Status gegenueber `master`, Gates nachgemessen
 
 - **Auftrag:** Stand/Audit prüfen. Der Eigentuemer hat danach die
