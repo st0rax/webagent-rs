@@ -1,5 +1,37 @@
 # Current Work
 
+## 2026-11-24 — T-967 unabhaengig im getrennten Worktree umgesetzt
+
+- **Parallele Arbeit:** DeepSeek arbeitet auf `chore/T-967-release-gate`; zur
+  Vermeidung von Dateikonflikten liegt diese Umsetzung im Worktree
+  `webagent-rs-t967-opencode` auf `chore/T-967-release-gate-opencode` (ab
+  `b7d75fd`). Der Versuch, einen neuen DeepSeek-Child-Agenten zu starten,
+  scheiterte mit `Free usage limit reached` (Reset laut Eigentuemer 1:31); von
+  diesem Child wurde nichts ausgefuehrt. Eine laufende DeepSeek-Session kann
+  nicht von hier gesteuert werden.
+- **Implementierung:** `scripts/verify-release-version.ps1` (fail-closed,
+  Exit 0/1/2, nur `Cargo.toml` + `Cargo.lock`); `release.yml` mit `verify`-Job
+  (Versionspruefung nur fuer Tag-Refs plus `cargo test --lib --locked`) und
+  `needs: [verify]` an allen Build-/Publish-Jobs; `ci.yml` mit Push nur auf
+  `master`; Version `0.11.5` in Manifest und Lockfile; `docs/RELEASE.md`,
+  `CHANGELOG.md`, Beleg und Board nachgezogen.
+- **Gates (real gemessen):** Skript `v0.11.5` → 0, `v0.11.4` → 1,
+  `0.11.5` → 2; vor der Hebung `v0.11.3` → 0 und `v0.11.4` → 1; PyYAML
+  `safe_load` beider Workflows OK; `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (1505 passed /
+  0 failed / 1 ignored), `git diff --check` gruen.
+- **Board:** T-967 auf diesem Branch `done` mit `done_at` und echtem
+  Pruefprotokoll; T-961 bleibt `free` (Userentscheidung „Keine Aenderung").
+  Der Spiegelblock in `docs/TASKBOARD.md` ist synchron.
+- **Grenzen:** kein Tag, kein GitHub-Release, kein Deployment, kein Merge nach
+  `master`. Der historische Tag `v0.11.4` ist unangetastet; ein Workflow-Lauf
+  dagegen scheitert absichtlich. Die GitHub-Action wurde nicht live auf einem
+  Tag ausgefuehrt. Keine Live-Provider-Laeufe, keine Zugangsdaten, keine
+  Profile/Cookies/Tokens, keine Kontoeinstellung angefasst.
+- **Offen:** die parallele DeepSeek-Umsetzung auf `chore/T-967-release-gate`
+  ist nicht bewertet; beide Stände muessen vor einer etwaigen Abnahme
+  verglichen werden. Kein Merge ohne ausdrueckliche Freigabe.
+
 ## 2026-11-24 — PR-Kette nach Freigabe vollstaendig nach `master` gemergt
 
 - **Freigabe:** Der Eigentuemer hat auf die Frage „Soll ich die PR-Kette jetzt in

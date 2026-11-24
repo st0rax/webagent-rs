@@ -18,8 +18,30 @@ permissions:
   contents: write
 
 jobs:
+  # T-967: kein Build und kein Publish, bevor Tag/Version und Tests geprueft sind.
+  # Bei workflow_dispatch auf einem Branch gibt es keinen Release-Tag; dort
+  # laeuft nur der Testteil. Tag-Refs muessen zusaetzlich die Versionspruefung
+  # bestehen (fail-closed, Exit-Codes 0/1/2).
+  verify:
+    name: verify tag, manifest, tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Tag entspricht Cargo.toml und Cargo.lock
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: pwsh -File scripts/verify-release-version.ps1 -Tag "$env:GITHUB_REF_NAME"
+      - name: Tests mit gesperrten Abhaengigkeiten
+        run: cargo test --lib --locked
+
   windows:
     name: windows-x86_64
+    needs: [verify]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +75,7 @@ jobs:
 
   linux:
     name: linux-x86_64
+    needs: [verify]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,6 +107,7 @@ jobs:
 
   android:
     name: android-aarch64
+    needs: [verify]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -118,7 +142,7 @@ jobs:
 
   publish:
     name: github-release
-    needs: [windows, linux, android]
+    needs: [verify, windows, linux, android]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

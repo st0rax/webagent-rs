@@ -1,7 +1,12 @@
 name: CI
 
 on:
+  # T-967: vorher lief die volle Matrix bei jedem Branch-Push UND erneut beim
+  # zugehoerigen PR — derselbe Head wurde zweimal bezahlt. Push nur auf master,
+  # PRs bleiben unverändert voll geprueft.
   push:
+    branches:
+      - master
   pull_request:
 
 env:
