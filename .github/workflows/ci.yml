@@ -12,6 +12,10 @@ on:
 env:
   RUSTUP_TOOLCHAIN: stable
 
+# T-967: die CI jobs lesen nur den Checkout; kein Job braucht Schreibrechte.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: build & test

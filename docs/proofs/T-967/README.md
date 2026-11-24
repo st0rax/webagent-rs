@@ -26,7 +26,7 @@ und ohne Tests. Umgesetzt:
   `verify` und die drei Build-Jobs haben nur `contents: read`; Schreibrechte
   bleiben ausschließlich beim `publish`-Job.
 - `.github/workflows/ci.yml` — Push nur noch auf `master`; PR-Heads werden
-  nicht doppelt geprüft.
+  nicht doppelt geprüft. Alle Jobs laufen mit `contents: read`.
 - `Cargo.toml`/`Cargo.lock` — `0.11.5`.
 - `docs/RELEASE.md`, `CHANGELOG.md`, `docs/CURRENT_WORK.md`,
   `docs/TASKBOARD.json`/`.md` — Verfahren, Grenzen und Status.
