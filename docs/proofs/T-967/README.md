@@ -44,6 +44,7 @@ und ohne Tests. Umgesetzt:
 | `cargo clippy --all-targets -- -D warnings` | grün |
 | `cargo test --lib` | 1505 passed / 0 failed / 1 ignored |
 | `cargo test --lib --locked` | 1505 passed / 0 failed / 1 ignored (Lockfile unverändert) |
+| `cargo test --no-default-features` | 1499 + 7 passed / 0 failed / 1 ignored |
 | `git diff --check` | grün |
 
 Vor der Versionshebung wurde das Skript zusätzlich gegen den alten Stand
