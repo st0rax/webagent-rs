@@ -1,5 +1,47 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-944 Reasoning-Ausschluss live belegt
+
+- **Branch:** `feature/T-944-reasoning-exclude`, ausgehend von
+  `feature/T-942-markdown-structure` (`19e8c6f`). Die abgelehnte T-961-Scheibe
+  wurde **nicht** mitgezogen.
+- **DOM-Beleg:** DeepSeek rendert den Denkbereich als Geschwister
+  `.ds-think-content` (Textbeginn `We need answer...`) neben
+  `div.ds-markdown.ds-assistant-message-main-content`; Dump
+  `A62C877F…830C2A`. Gemini zeigte im gemessenen Turn **keinen** separaten
+  Denkbereich (`3DD89CC0…353D`), deshalb dort auch kein Ausschluss erfunden.
+  ZAI-Toggle nicht anklickbar, ChatGPT ohne Reasoning-Key, Claude nicht
+  angemeldet — für diese wird keine Ausschluss-Behauptung aufgestellt.
+- **Fix:** deklarierter Ausschluss `reasoning_exclude` nur in
+  `selectors/deepseek.json`; beide Auslesepfade (`answer_read_body` und
+  `probe_generation_js` in `src/browser/mod.rs`) entfernen die Knoten aus einer
+  DOM-Kopie vor `TX`/`TXMD`, mit Rückfall auf den Originaltext. Ohne
+  Deklaration bytegenau unverändert, kein Text-/Formulierungsfilter
+  (non_goals eingehalten). `src/browser/verify.rs`: Signatur mit `"[]"`.
+  Temporärer DOM-Dump (`WEBAGENT_T944_DOMDUMP`) vor dem Final-Build entfernt.
+- **Zustand:** DeepThink war eingeschaltet; erster Toggle `true → false`,
+  sofortiger Restore `false → true`, Abschluss-Survey weiterhin
+  `ds-toggle-button--selected`. Kein dauerhafter Kontoeingriff. (DeepSeek
+  `Search` war ebenfalls selected — T-950, nicht verändert.)
+- **Finaler Livebeleg (Binary `64ADA47A…C90`, 1501 Tests grün):** deepseek
+  `T944Z-9FDB9E20`, gemini `T944Z-B2AC9CFF`, qwen `T944Z-A651188A`, zai
+  `T944Z-FD92CE43`, chatgpt `T944Z-E7002AD0`; alle Exit 0, `webview_oauth`,
+  `api_key: false`, `oauth_session: true`, keine Reasoning-Marker in den
+  Antworten. Ehrliche Grenze: chatgpt lieferte die Nonce nicht mit (Antwort
+  nur `391`) — dieser Lauf belegt nur „kein Reasoning im Text". kimi/mistral
+  Exit 2 mit leerer stdout, claude ohne Login → keine Aussage.
+- **Gates:** `cargo test --lib` 1501 passed / 0 failed / 1 ignored (zwei neue
+  T-944-Tests); `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo build`, `git diff --check` grün.
+- **Beleg:** `docs/proofs/T-944/reasoning-exclusion-live-result.md` mit
+  DOM-Beleg, Rohhashes und Einschränkungen. Rohdaten unter
+  `C:\\Users\\storax\\AppData\\Local\\Temp\\opencode\\T944-reasoning-20261121\\`
+  (nicht ins Repo kopiert). Board: T-944 `done`, 89 `done` / 2 `free` / 91.
+- **Offen:** T-950 braucht weiterhin echte DOM-/Antwortmessungen zur Websuche.
+  T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6; kein
+  `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
+  ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.
+
 ## 2026-11-21 — G-010: T-942 Markdown-Struktur live zurueckgewonnen
 
 - **Branch:** `feature/T-942-markdown-structure`, ausgehend von
@@ -28,7 +70,8 @@
   `C:\\Users\\storax\\AppData\\Local\\Temp\\opencode\\T942-markdown-structure-20261121\\`
   und `…\\T942-markdown-fix-20261121\\` (nicht ins Repo kopieren). Board: T-942
   `done`, 88 `done` / 3 `free` / 91.
-- **Offen:** T-944 und T-950 brauchen weiterhin echte DOM-/Antwortmessungen.
+- **Offen (Stand der Uebergabe):** T-944 und T-950 brauchten damals noch echte
+  DOM-/Antwortmessungen; T-944 ist inzwischen oben dokumentiert `done`.
   T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6; kein
   `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
   ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.

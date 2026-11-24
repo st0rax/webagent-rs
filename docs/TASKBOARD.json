@@ -1489,10 +1489,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Denkprozess des Anbieters wird als Antwort ausgeliefert",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "feature/T-944-reasoning-exclude",
+      "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [
         "src/browser/operations.rs",
@@ -1507,7 +1507,9 @@
       "dod": "Je Anbieter mit sichtbarem Denkbereich ist ein Ausschluss-Selektor deklariert; ein Turn mit aktivem Denkmodus liefert nur die Antwort aus; die Messung liegt im proof_path.",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-944/",
-      "handoff": "Messung je Anbieter mit Denkmodus, Branch und Commit."
+      "handoff": "Messung je Anbieter mit Denkmodus, Branch und Commit.",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-944/reasoning-exclusion-live-result.md"
     },
     {
       "id": "T-945",

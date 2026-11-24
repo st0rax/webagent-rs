@@ -316,6 +316,19 @@ impl WebBrainBackend {
         js::js_scan(list_js, body, default)
     }
 
+    /// Lesekörper für `assistant_text`: ohne Ausschluss unverändert, mit
+    /// deklariertem Ausschluss Entfernung der Denkknoten aus einer DOM-Kopie.
+    fn answer_read_body(reader: &str, idx: i32, exclude: &[String]) -> String {
+        if exclude.is_empty() {
+            format!("var els=QA(S[i]);if(els.length>{idx}){{return {reader}(els[{idx}]).trim();}}")
+        } else {
+            let ex = Self::js_selectors(exclude);
+            format!(
+                "var els=QA(S[i]);if(els.length>{idx}){{var c=els[{idx}].cloneNode(true);var ex={ex};for(var j=0;j<ex.length;j++){{try{{var bad=c.querySelectorAll(ex[j]);for(var k=0;k<bad.length;k++){{if(bad[k].parentNode)bad[k].parentNode.removeChild(bad[k]);}}}}catch(e){{}}}}return {reader}(c).trim();}}"
+            )
+        }
+    }
+
     /// Führt ein JS im Seitenkontext aus (mit ausgeliehenem Client).
     fn eval(&self, expr: &str) -> Result<Value, String> {
         let mut guard = self.driver.borrow_mut();
@@ -413,10 +426,11 @@ impl WebBrainBackend {
         } else {
             "TXMD"
         };
-        let body = format!(
-            "var els=QA(S[i]);if(els.length>{idx}){{return {reader}(els[{idx}]).trim();}}",
-            idx = index
-        );
+        // T-944: wo die Oberfläche einen sichtbaren Denkbereich als *Geschwister*
+        // des Antwortknotens rendert, entfernt der deklarierte Ausschluss-Selektor
+        // diesen Knoten aus einer Kopie, bevor gelesen wird. Ohne Deklaration bleibt
+        // der Lesekörper bytegenau wie zuvor — kein stillschweigendes Eingreifen.
+        let body = Self::answer_read_body(reader, index, &self.sel("reasoning_exclude"));
         // Claude rendert seine Denk-Zusammenfassung in denselben Container und
         // das DOM liefert sie doppelt — sie gehoert nicht in die Antwort.
         crate::observer::strip_repeated_lead_line(
@@ -501,7 +515,8 @@ impl WebBrainBackend {
         // taeten, flogen in den catch. Ohne Stop-Signal haengt die Fertig-
         // Erkennung am Stabilitaetsfenster — daran wurde mitten im Stream
         // Reasoning-Prosa als Antwort geerntet.
-        let expr = Self::probe_generation_js(assistant_js, stop_js, target);
+        let exclude_js = Self::js_selectors(&self.sel("reasoning_exclude"));
+        let expr = Self::probe_generation_js(assistant_js, stop_js, &exclude_js, target);
         match self.eval(&expr) {
             Ok(v) => (
                 v.get("count").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
@@ -520,19 +535,25 @@ impl WebBrainBackend {
     /// Baut das JS für [`Self::probe_generation`] — getrennt, damit prüfbar ist,
     /// dass es das Prelude mitbringt (siehe Test
     /// `jeder_selektor_auswertende_pfad_bringt_das_prelude_mit`).
-    fn probe_generation_js(assistant_js: &str, stop_js: &str, target: i32) -> String {
+    fn probe_generation_js(
+        assistant_js: &str,
+        stop_js: &str,
+        exclude_js: &str,
+        target: i32,
+    ) -> String {
         format!(
             r#"(function(){{{prelude}
 var A={assistant_js};var count=0,els=null;
 for(var i=0;i<A.length;i++){{try{{var e=QA(A[i]);if(e.length>0){{count=e.length;els=e;break;}}}}catch(x){{}}}}
 var ti={target};if(ti<0)ti=count-1;
-var text="";if(els&&ti>=0&&els.length>ti){{text=TX(els[ti]).trim();}}
+var text="";if(els&&ti>=0&&els.length>ti){{var el=els[ti];var ex={exclude_js};if(ex.length){{try{{var c=el.cloneNode(true);for(var k=0;k<ex.length;k++){{try{{var bad=c.querySelectorAll(ex[k]);for(var m=0;m<bad.length;m++){{if(bad[m].parentNode)bad[m].parentNode.removeChild(bad[m]);}}}}catch(x){{}}}}text=TX(c).trim();}}catch(x){{text=TX(el).trim();}}}}else{{text=TX(el).trim();}}}}
 var stop=false;var S={stop_js};
 for(var j=0;j<S.length;j++){{try{{var el=Q(S[j]);if(el){{var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){{stop=true;break;}}}}}}catch(x){{}}}}
 return {{count:count,text:text,stop:stop}};}})()"#,
             prelude = Self::JS_SEL_PRELUDE,
             assistant_js = assistant_js,
             stop_js = stop_js,
+            exclude_js = exclude_js,
             target = target
         )
     }
@@ -908,9 +929,10 @@ mod tests {
         let assistant = b.sel_js("assistant_message", &[]);
         let stop = b.sel_js("stop_button", &[]);
 
-        let probe = WebBrainBackend::probe_generation_js(&assistant, &stop, 0);
+        let probe = WebBrainBackend::probe_generation_js(&assistant, &stop, "[]", 0);
         assert!(
-            probe.contains("TX(els[") && !probe.contains("els[ti].innerText"),
+            (probe.contains("TX(el)") || probe.contains("TX(c)"))
+                && !probe.contains("els[ti].innerText"),
             "probe_generation liest noch roh: {probe}"
         );
 
@@ -949,7 +971,7 @@ mod tests {
         for (name, js) in [
             (
                 "probe_generation",
-                WebBrainBackend::probe_generation_js(&assistant, &stop, 0),
+                WebBrainBackend::probe_generation_js(&assistant, &stop, "[]", 0),
             ),
             ("account_label", b.account_label_js()),
         ] {
@@ -966,6 +988,43 @@ mod tests {
                 "{name}: wertet Selektoren roh aus statt via QA()"
             );
         }
+    }
+
+    #[test]
+    fn t944_reasoning_exclude_removes_only_declared_nodes() {
+        let plain = WebBrainBackend::answer_read_body("TXMD", 0, &[]);
+        assert_eq!(
+            plain,
+            "var els=QA(S[i]);if(els.length>0){return TXMD(els[0]).trim();}"
+        );
+
+        let exclude = vec![".ds-think-content".to_string()];
+        let filtered = WebBrainBackend::answer_read_body("TXMD", 1, &exclude);
+        assert!(filtered.contains("els[1].cloneNode(true)"));
+        assert!(filtered.contains("var ex=[\".ds-think-content\"]"));
+        assert!(filtered.contains("c.querySelectorAll(ex[j])"));
+        assert!(filtered.contains("removeChild(bad[k])"));
+        assert!(filtered.contains("return TXMD(c).trim();"));
+        // Kein Text-/Formulierungsfilter, nur DOM-Knoten.
+        assert!(!filtered.contains("Thought"));
+    }
+
+    #[test]
+    fn t944_probe_pfad_entfernt_denkbereich_aus_dom_kopie() {
+        let plain = WebBrainBackend::probe_generation_js("[\"div.prose\"]", "[]", "[]", -1);
+        assert!(plain.contains("text=TX(el).trim();"));
+        assert!(plain.contains("var ex=[]"));
+
+        let filtered = WebBrainBackend::probe_generation_js(
+            "[\"div.prose\"]",
+            "[]",
+            "[\".ds-think-content\"]",
+            -1,
+        );
+        assert!(filtered.contains("var ex=[\".ds-think-content\"]"));
+        assert!(filtered.contains("c.querySelectorAll(ex[k])"));
+        assert!(filtered.contains("removeChild(bad[m])"));
+        assert!(filtered.contains("text=TX(c).trim();"));
     }
 
     #[test]
