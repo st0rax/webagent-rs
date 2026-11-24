@@ -59,6 +59,63 @@ for(var i=0;i<ks.length;i++){var a=ks[i].querySelector('annotation[encoding="app
 var src=a?(a.textContent||''):'';
 ks[i].parentNode.replaceChild(document.createTextNode(src),ks[i]);}
 return (c.innerText||c.textContent||'');};
+/// T-942: strukturelle Markdown-Rueckfuehrung aus dem gerenderten DOM.
+/// Kein Raten aus Tab-getrenntem Text: `<table>`, `<pre>`, `<ul>/<ol>` und
+/// Ueberschriften tragen ihre Struktur im DOM und werden gezielt zurueck-
+/// gefuehrt. UI-Chrome (Copy/Download-Buttons, SVG, Style/Script) wird
+/// verworfen. TXENV (Werkzeugumschlag) und KaTeX-Quellen haben Vorrang.
+var TXMD=function(el){if(!el)return '';
+var env=TXENV(el);if(env!==null)return env;
+var c=el.cloneNode(true);
+var ks=c.querySelectorAll('.katex');
+for(var i=0;i<ks.length;i++){var a=ks[i].querySelector('annotation[encoding="application/x-tex"]');
+var src=a?(a.textContent||''):'';
+ks[i].parentNode.replaceChild(document.createTextNode(src),ks[i]);}
+var walk=function(n){
+if(n.nodeType===3)return n.nodeValue||'';
+if(n.nodeType!==1)return '';
+var t=(n.tagName||'').toLowerCase();
+var cls=(n.className||'')+'';
+var role=n.getAttribute('role')||'';
+var al=(n.getAttribute('aria-label')||'').toLowerCase();
+if(t==='button'||t==='svg'||t==='style'||t==='script'||t==='img')return '';
+if(role==='button'||role==='img'||n.getAttribute('aria-hidden')==='true')return '';
+if(/copy|download|kopier|herunterladen/.test(al))return '';
+if(/ds-button|copy-button|download-button|mat-icon|gem-icon|md-code-block-banner|code-block-decoration/.test(cls))return '';
+if(t==='br')return '\n';
+if(t==='pre'){
+var code=n.querySelector('code')||n;
+var cls2=((code.className||'')+' '+(n.className||''))+'';
+var m=/language-([a-z0-9_+#.\-]+)/i.exec(cls2);
+var lang=m?m[1]:'';
+if(!lang&&n.parentNode){
+var hdr=n.parentNode.querySelector('.md-code-block-banner,.code-block-decoration');
+if(hdr){var sp=hdr.querySelectorAll('span');
+for(var q=0;q<sp.length;q++){var st=(sp[q].textContent||'').trim();
+if(st&&st.length<20&&!/copy|download|kopier|herunterladen/i.test(st)){lang=st.toLowerCase();break;}}}}
+var raw=(code.textContent||'').replace(/\u00a0/g,' ').replace(/\s+$/,'');
+return '\n```'+lang+'\n'+raw+'\n```\n';}
+if(t==='table'){
+var rows=[],trs=n.querySelectorAll('tr');
+for(var i=0;i<trs.length;i++){
+var cells=[],cs=trs[i].children;
+for(var j=0;j<cs.length;j++){var cj=cs[j];if(cj.tagName!=='TD'&&cj.tagName!=='TH')continue;
+cells.push((cj.textContent||'').replace(/\s+/g,' ').trim().replace(/\|/g,'\\|'));}
+if(!cells.length)continue;
+rows.push('| '+cells.join(' | ')+' |');
+if(i===0)rows.push('| '+cells.map(function(){return '---';}).join(' | ')+' |');}
+return '\n'+rows.join('\n')+'\n';}
+if(t==='ul'||t==='ol'){
+var items=[],kids=n.children,nm=1;
+for(var i=0;i<kids.length;i++){var li=kids[i];if(li.tagName!=='LI')continue;
+var prefix=t==='ol'?(nm++)+'. ':'- ';
+items.push(prefix+walk(li).replace(/\s+/g,' ').trim());}
+return '\n'+items.join('\n')+'\n';}
+if(/^h[1-6]$/.test(t))return '\n'+Array(+t.slice(1)+1).join('#')+' '+walk(n).trim()+'\n';
+var s='';for(var i=0;i<n.childNodes.length;i++)s+=walk(n.childNodes[i]);
+if(t==='p'||t==='div'||t==='li'||t==='blockquote'||t==='tr')s='\n'+s+'\n';
+return s;};
+return walk(c).replace(/\n{3,}/g,'\n\n');};
 "#;
 
 /// JS-Array-Literal aus einer Selektorliste (sicher escaped).
@@ -142,6 +199,21 @@ mod tests {
         assert!(JS_SEL_PRELUDE.contains("if(rest.length<=40)"));
         assert!(JS_SEL_PRELUDE.contains(r"replace(/\u00a0/g,' ')"));
         assert!(!JS_SEL_PRELUDE.contains('\u{a0}'));
+    }
+
+    #[test]
+    fn t942_prelude_fuehrt_markdown_strukturell_zurueck() {
+        // Keine Heuristik aus Tab-Text: echte DOM-Elemente tragen die Struktur.
+        assert!(JS_SEL_PRELUDE.contains("var TXMD=function(el)"));
+        assert!(JS_SEL_PRELUDE.contains("TXENV(el);if(env!==null)return env;"));
+        assert!(JS_SEL_PRELUDE.contains("if(t==='table')"));
+        assert!(JS_SEL_PRELUDE.contains("if(t==='pre')"));
+        assert!(JS_SEL_PRELUDE.contains("if(t==='ul'||t==='ol')"));
+        // UI-Chrome darf nicht in der Antwort landen (Live 2026-11-21).
+        assert!(JS_SEL_PRELUDE.contains("role==='button'"));
+        assert!(JS_SEL_PRELUDE.contains("getAttribute('aria-hidden')==='true'"));
+        assert!(JS_SEL_PRELUDE.contains("md-code-block-banner"));
+        assert!(JS_SEL_PRELUDE.contains("code-block-decoration"));
     }
 
     fn sample() -> serde_json::Value {

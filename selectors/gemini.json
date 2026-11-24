@@ -1,4 +1,5 @@
 {
+  "answer_markdown": ["1"],
   "composer": [
     "rich-textarea > div > p",
     "rich-textarea div[contenteditable='true']",

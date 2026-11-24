@@ -1432,10 +1432,10 @@
       "phase": "13",
       "type": "bugfix",
       "title": "Antworten verlieren Markdown-Struktur beim Auslesen",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "feature/T-942-markdown-structure",
+      "claimed_at": "2026-11-21",
       "depends_on": [],
       "scope": [
         "src/browser/operations.rs",
@@ -1451,7 +1451,9 @@
       "dod": "Eine Antwort mit Tabelle, Code-Fence und Liste kommt strukturgleich beim Aufrufer an; der Vergleich Quell-Markdown gegen ausgelieferten Text liegt als Messung im proof_path.",
       "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib",
       "proof_path": "docs/proofs/T-942/",
-      "handoff": "Messwerte vorher/nachher je Anbieter, Branch und Commit."
+      "handoff": "Messwerte vorher/nachher je Anbieter, Branch und Commit.",
+      "done_at": "2026-11-21",
+      "proof": "docs/proofs/T-942/markdown-structure-live-result.md"
     },
     {
       "id": "T-943",
