@@ -924,6 +924,18 @@ pub enum CloudCommands {
         #[arg(long)]
         prompt: String,
     },
+    /// Fuehrt genau einen Turn ueber die bestehende WebView-OAuth-Session aus.
+    /// Kein API-Key, kein Token-Argument: die Sitzung liegt im Nutzerprofil.
+    WebViewStream {
+        /// Brain, dessen angemeldete WebView-Session verwendet wird.
+        #[arg(long)]
+        brain: String,
+        #[arg(long)]
+        prompt: String,
+        /// Browser ohne sichtbares Fenster ausfuehren (Default: sichtbar).
+        #[arg(long)]
+        headless: bool,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]

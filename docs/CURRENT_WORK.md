@@ -1,5 +1,38 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-926 VerifiedFree-Adapter live belegt (WebView-OAuth, kein API-Key)
+
+- **Branch:** `feature/T-926-webview-oauth-adapter`, ausgehend von `master`
+  (`9017249`) — die abgelehnte T-961-Scheibe wurde **nicht** mitgezogen.
+- **Freigabe:** Der Eigentümer hat „keine api keys. nur oauth." vorgegeben und
+  die WebView-Session als Basis bestätigt. Es gibt bewusst **kein** Key-Argument
+  in Code oder CLI; Groq/Gemini-Key/Cloudflare/NVIDIA/OpenRouter wurden nicht
+  angebunden.
+- **Implementierung:** `WebViewSessionTransport` (ohne Key/Token-Parameter),
+  `BrowserInferenceWebViewTransport` über `browser_inference::complete()`,
+  `WebViewSessionAdapter<T>` als `TextStreamAdapter`, und die einzige
+  `VerifiedFree`-Registry-Kennung `webagent/webview-oauth-session`. Der Adapter
+  prüft Free-only-Route → Modellbindung → Sitzung; verweigerte Routen rühren die
+  Sitzung nicht an.
+- **Red/Green:** sechs Tests rot gegen den leeren Rumpf (5 `FAILED`), danach
+  sieben grün; `cargo test --lib` 1491 passed / 0 failed / 1 ignored; `cargo
+  fmt --all --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build`,
+  `git diff --check` alle grün.
+- **Live-Nachweis:** drei echte Turne auf frisch angemeldeten WebViews — 2×
+  gemini (Nonces `T926-0A8327B448`, `T926-38A1C3E14F`) und 1× deepseek
+  (`T926-AD4B110890`), alle Exit 0, `oauth_session: true`, `api_key: false`,
+  `started → token → completed`. Binary `97E4B4DB…B611FB`. Lauf 1 enthielt
+  zusätzlich UI-Text, Lauf 3 einen harmlosen WebView2-Teardown-Hinweis; das ist
+  im Beleg dokumentiert. Kein HTTP-Port, keine Repo-Änderung während der Läufe.
+- **Belege:** `docs/proofs/T-926/webview-oauth-live-result.md` und
+  `docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md` aktualisiert. Rohdaten unter
+  `C:\Users\storax\AppData\Local\Temp\opencode\T926-webview-oauth-20261121\`
+  (nicht ins Repo kopieren).
+- **Offen:** T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6;
+  die zugehörigen Belege liegen auf `fix/T-961-self-mirror`). T-940, T-942,
+  T-944, T-950 brauchen weiterhin echte DOM-/CDP-Messungen. TASKBOARD-Status
+  wird erst bei vollständiger Abnahme geändert. Kein Tag/Release.
+
 ## 2026-11-21 — G-010: T-927/T-928 — Matrix ehrlich bereinigt, beide `done`
 
 - **Methode:** read-only DOM-Surveys (`webagent survey --brain <brain> --dump
