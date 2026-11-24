@@ -2127,7 +2127,7 @@
         "Do not rewrite historical taskboard entries or the stacked T-944/T-950 branches."
       ],
       "proof_path": "docs/proofs/T-967/README.md",
-      "verification": "2026-11-24: verify-release-version.ps1 v0.11.5 exit 0, v0.11.4 exit 1 (Mismatch), 0.11.5 exit 2 (Format); PyYAML safe_load beider Workflows OK (release 5 Jobs, ci 3 Jobs); cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --lib (1505 passed / 0 failed / 1 ignored), git diff --check alle gruen."
+      "verification": "2026-11-24: verify-release-version.ps1 v0.11.5 exit 0, v0.11.4 exit 1 (Mismatch), 0.11.5 exit 2 (Format); PyYAML safe_load beider Workflows OK (release 5 Jobs, ci 3 Jobs); release.yml verify installiert WebKitGTK mit gebundenen apt-Retries (default = [\"webview\"]); cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --lib (1505 passed / 0 failed / 1 ignored), git diff --check alle gruen."
     }
   ]
 }

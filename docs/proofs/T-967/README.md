@@ -21,7 +21,8 @@ und ohne Tests. Umgesetzt:
 - `.github/workflows/release.yml` — `verify`-Job mit Versionsprüfung für
   Tag-Refs und `cargo test --lib --locked`; `windows`, `linux`, `android` und
   `publish` hängen davon ab. Bei `workflow_dispatch` auf einem Branch läuft
-  nur der Testteil.
+  nur der Testteil. Der Job installiert WebKitGTK mit gebundenen/apt-Retries,
+  weil `default = ["webview"]` sonst schon beim Kompilieren auf Ubuntu scheitert.
 - `.github/workflows/ci.yml` — Push nur noch auf `master`; PR-Heads werden
   nicht doppelt geprüft.
 - `Cargo.toml`/`Cargo.lock` — `0.11.5`.

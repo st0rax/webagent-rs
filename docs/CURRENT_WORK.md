@@ -19,7 +19,9 @@
   `0.11.5` → 2; vor der Hebung `v0.11.3` → 0 und `v0.11.4` → 1; PyYAML
   `safe_load` beider Workflows OK; `cargo fmt --all -- --check`,
   `cargo clippy --all-targets -- -D warnings`, `cargo test --lib` (1505 passed /
-  0 failed / 1 ignored), `git diff --check` gruen.
+  0 failed / 1 ignored), `git diff --check` gruen. Nachtrag zum `verify`-Job:
+  Ubuntu-Runner haben `pwsh`, aber `default = ["webview"]` braucht WebKitGTK;
+  die gebundene apt-Installation aus `ci.yml` wurde ergänzt und erneut geprüft.
 - **Board:** T-967 auf diesem Branch `done` mit `done_at` und echtem
   Pruefprotokoll; T-961 bleibt `free` (Userentscheidung „Keine Aenderung").
   Der Spiegelblock in `docs/TASKBOARD.md` ist synchron.
