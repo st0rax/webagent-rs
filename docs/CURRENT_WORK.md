@@ -37,6 +37,10 @@
   `pending`-PR #69. Korrigiert auf `master` 91/90/1 bzw. diesen Branch
   92/91/1; PR #69 ist `CLOSED` ohne Merge; die rohen T-961-Transkripte sind
   vorhanden, aber negativ (0/5 Tool-Turns, Anmeldestatus unbestaetigt).
+- **PR #102:** https://github.com/st0rax/webagent-rs/pull/102 geöffnet
+  (`chore/T-967-release-gate-opencode` → `master`). Alle vier CI-Checks des PRs
+  sind grün (Linux-WebView 1m42s, aarch64 2m37s, build & test 2m16s,
+  Windows 3m38s). Nicht gemergt.
 - **Offen:** die parallele DeepSeek-Umsetzung auf `chore/T-967-release-gate`
   ist nicht bewertet; beide Stände muessen vor einer etwaigen Abnahme
   verglichen werden. Kein Merge ohne ausdrueckliche Freigabe.

@@ -48,6 +48,7 @@ und ohne Tests. Umgesetzt:
 | `cargo test --lib --locked` | 1505 passed / 0 failed / 1 ignored (Lockfile unverändert) |
 | `cargo test --no-default-features` | 1499 + 7 passed / 0 failed / 1 ignored |
 | `git diff --check` | grün |
+| PR #102 CI (`gh pr checks --watch`) | 4/4 Checks grün; kein Merge |
 
 Vor der Versionshebung wurde das Skript zusätzlich gegen den alten Stand
 gemessen: `v0.11.3` → Exit 0, `v0.11.4` → Exit 1. Damit ist der historische
