@@ -1,6 +1,6 @@
 # Webagent: Systemüberblick
 
-**Stand:** 25.11.2026 (Release `v0.11.4` ist getaggt, die Live-Abnahme T-961 ist jedoch offen). Diese Datei ist die Produkt- und Architekturübersicht; die operative Wahrheit liegt in `docs/CURRENT_WORK.md`, die maschinenlesbare in `docs/TASKBOARD.json`. Dort stehen auf `master` 91 Tasks / 90 `done` / 1 `free` (T-961); auf diesem Branch zusätzlich T-967 mit 92 Tasks / 91 `done` / 1 `free`.
+**Stand:** 25.11.2026 (Release `v0.11.4` ist getaggt, die Live-Abnahme T-961 ist jedoch offen). Diese Datei ist die Produkt- und Architekturübersicht; die operative Wahrheit liegt in `docs/CURRENT_WORK.md`, die maschinenlesbare in `docs/TASKBOARD.json`. Nach PR #102 stehen auf `master` 92 Tasks / 91 `done` / 1 `free` (T-961); T-967 ist gemergt, aber es wurde kein neuer Tag und kein GitHub-Release erzeugt.
 
 **Wichtig:** Ein grüner lokaler Build-/Testlauf ist kein Live-Nachweis. G-002 bleibt offen: rohe Pi-Transkripte vor und nach dem Fix liegen zwar vor, beide Läufe scheitern aber mit `session_state=Unbestimmt` und 0/5 Tool-Turns; eine bestätigte Kontozustandsprüfung fehlt. Die weiter unten stehende Abnahmetabelle ist historisch (Stand 23.08.2026) und kein aktueller Freigabestand.
 

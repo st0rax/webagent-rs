@@ -48,7 +48,7 @@ und ohne Tests. Umgesetzt:
 | `cargo test --lib --locked` | 1505 passed / 0 failed / 1 ignored (Lockfile unverändert) |
 | `cargo test --no-default-features` | 1499 + 7 passed / 0 failed / 1 ignored |
 | `git diff --check` | grün |
-| PR #102 CI (`gh pr checks --watch`) | 4/4 Checks grün; kein Merge |
+| PR #102 CI (`gh pr checks --watch`) | 4/4 Checks grün; danach Squash-Merge `c0890d5` nach `master` |
 
 Vor der Versionshebung wurde das Skript zusätzlich gegen den alten Stand
 gemessen: `v0.11.3` → Exit 0, `v0.11.4` → Exit 1. Damit ist der historische
@@ -56,7 +56,8 @@ Mismatch direkt nachgestellt.
 
 ## Ehrliche Grenzen
 
-- Kein Tag, kein GitHub-Release, kein Deployment, kein Merge nach `master`.
+- Kein Tag, kein GitHub-Release, kein Deployment. Der Stand wurde nach
+  ausdrücklicher Freigabe via PR #102 (`c0890d5`) nach `master` gemergt.
   Der bestehende Tag `v0.11.4` wurde nicht verschoben, gelöscht oder
   force-gepusht. Ein erneuter Workflow-Lauf gegen ihn scheitert absichtlich.
 - Die GitHub-Action selbst wurde **nicht** live auf einem Tag ausgeführt;

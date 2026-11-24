@@ -24,26 +24,27 @@
   0 failed / 1 ignored), `git diff --check` gruen. Nachtrag zum `verify`-Job:
   Ubuntu-Runner haben `pwsh`, aber `default = ["webview"]` braucht WebKitGTK;
   die gebundene apt-Installation aus `ci.yml` wurde ergänzt und erneut geprüft.
-- **Board:** T-967 auf diesem Branch `done` mit `done_at` und echtem
-  Pruefprotokoll; T-961 bleibt `free` (Userentscheidung „Keine Aenderung").
-  Der Spiegelblock in `docs/TASKBOARD.md` ist synchron.
-- **Grenzen:** kein Tag, kein GitHub-Release, kein Deployment, kein Merge nach
-  `master`. Der historische Tag `v0.11.4` ist unangetastet; ein Workflow-Lauf
+- **Board:** T-967 ist nach PR #102 auf `master` `done` mit `done_at` und
+  echtem Pruefprotokoll; T-961 bleibt `free` (Userentscheidung „Keine
+  Aenderung"). Der Spiegelblock in `docs/TASKBOARD.md` ist synchron.
+- **Grenzen:** PR #102 wurde nach ausdruecklicher Freigabe per Squash nach
+  `master` gemergt (`c0890d5`); **kein** Tag, kein GitHub-Release, kein
+  Deployment. Der historische Tag `v0.11.4` ist unangetastet; ein Workflow-Lauf
   dagegen scheitert absichtlich. Die GitHub-Action wurde nicht live auf einem
   Tag ausgefuehrt. Keine Live-Provider-Laeufe, keine Zugangsdaten, keine
   Profile/Cookies/Tokens, keine Kontoeinstellung angefasst.
 - **Dokumentenabgleich (25.11.2026):** `GOALS.md` und `docs/OVERVIEW.md` zeigten
   noch veraltete Zaehlungen (91 Tasks / 14 frei) und einen angeblichen
-  `pending`-PR #69. Korrigiert auf `master` 91/90/1 bzw. diesen Branch
-  92/91/1; PR #69 ist `CLOSED` ohne Merge; die rohen T-961-Transkripte sind
-  vorhanden, aber negativ (0/5 Tool-Turns, Anmeldestatus unbestaetigt).
-- **PR #102:** https://github.com/st0rax/webagent-rs/pull/102 geöffnet
-  (`chore/T-967-release-gate-opencode` → `master`). Alle vier CI-Checks des PRs
-  sind grün (Linux-WebView 1m42s, aarch64 2m37s, build & test 2m16s,
-  Windows 3m38s). Nicht gemergt.
+  `pending`-PR #69. Nach PR #102 stehen auf `master` 92/91/1; PR #69 ist
+  `CLOSED` ohne Merge; die rohen T-961-Transkripte sind vorhanden, aber
+  negativ (0/5 Tool-Turns, Anmeldestatus unbestaetigt).
+- **PR #102:** https://github.com/st0rax/webagent-rs/pull/102 ist `MERGED`
+  (`chore/T-967-release-gate-opencode` → `master`, Squash `c0890d5`). Alle vier
+  CI-Checks des PRs waren grün (Linux-WebView 1m42s, aarch64 2m37s,
+  build & test 2m16s, Windows 3m38s). Kein Tag, kein Release.
 - **Offen:** die parallele DeepSeek-Umsetzung auf `chore/T-967-release-gate`
-  ist nicht bewertet; beide Stände muessen vor einer etwaigen Abnahme
-  verglichen werden. Kein Merge ohne ausdrueckliche Freigabe.
+  ist nicht bewertet. Weitere Merge-, Tag- oder Release-Schritte brauchen
+  erneut eine ausdrueckliche Freigabe.
 
 ## 2026-11-24 — PR-Kette nach Freigabe vollstaendig nach `master` gemergt
 
