@@ -40,6 +40,7 @@ und ohne Tests. Umgesetzt:
 | `cargo fmt --all -- --check` | grün |
 | `cargo clippy --all-targets -- -D warnings` | grün |
 | `cargo test --lib` | 1505 passed / 0 failed / 1 ignored |
+| `cargo test --lib --locked` | 1505 passed / 0 failed / 1 ignored (Lockfile unverändert) |
 | `git diff --check` | grün |
 
 Vor der Versionshebung wurde das Skript zusätzlich gegen den alten Stand
