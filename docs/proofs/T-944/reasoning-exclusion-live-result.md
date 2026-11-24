@@ -1,3 +1,8 @@
+> **Referenz.** Echter DOM- und Vorher/Nachher-Livebeleg für T-944: der
+> sichtbare Denkbereich des Anbieters wurde als Antwort ausgeliefert. Der Fix
+> schliesst deklarierte Denkknoten aus beiden Lesepfaden aus. Kein Tag, kein
+> Release. Operativer Stand: `docs/CURRENT_WORK.md`.
+
 # T-944 — Denkprozess wird nicht mehr als Antwort ausgeliefert
 
 **Datum:** 2026-11-21
