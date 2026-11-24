@@ -30,6 +30,11 @@
   dagegen scheitert absichtlich. Die GitHub-Action wurde nicht live auf einem
   Tag ausgefuehrt. Keine Live-Provider-Laeufe, keine Zugangsdaten, keine
   Profile/Cookies/Tokens, keine Kontoeinstellung angefasst.
+- **Dokumentenabgleich (25.11.2026):** `GOALS.md` und `docs/OVERVIEW.md` zeigten
+  noch veraltete Zaehlungen (91 Tasks / 14 frei) und einen angeblichen
+  `pending`-PR #69. Korrigiert auf `master` 91/90/1 bzw. diesen Branch
+  92/91/1; PR #69 ist `CLOSED` ohne Merge; die rohen T-961-Transkripte sind
+  vorhanden, aber negativ (0/5 Tool-Turns, Anmeldestatus unbestaetigt).
 - **Offen:** die parallele DeepSeek-Umsetzung auf `chore/T-967-release-gate`
   ist nicht bewertet; beide Stände muessen vor einer etwaigen Abnahme
   verglichen werden. Kein Merge ohne ausdrueckliche Freigabe.
