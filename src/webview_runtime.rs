@@ -589,6 +589,16 @@ fn pump_runtime(rt: &mut SharedRuntime, event_loop: &mut EventLoop<()>) -> bool 
 /// keine Antwort- oder Anfragemanipulation. Die drei Events landen im
 /// prozessglobalen, URL-redaktierten Log aus `network_observation`. Die
 /// Closure im Rueckgabewert meldet die Receiver beim Tab-Ende wieder ab.
+/// Nicht-Windows: CDP-Netzwerkbeobachtung ist an WebView2 gebunden. Der Opt-in
+/// bleibt dort ohne Receiver, statt den plattformuebergreifenden Build zu brechen.
+#[cfg(not(windows))]
+fn attach_network_observation(
+    _webview: &wry::WebView,
+    _event_loop: &mut EventLoop<()>,
+) -> Result<Option<Box<dyn FnOnce()>>> {
+    Ok(None)
+}
+
 #[cfg(windows)]
 fn attach_network_observation(
     webview: &wry::WebView,
