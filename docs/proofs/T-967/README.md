@@ -1,8 +1,11 @@
+> **Referenz.** Claim- und Beleg-Scaffold für T-967 — noch kein Abnahmebeleg.
+> Kein Tag, kein Release. Operativer Stand: `docs/CURRENT_WORK.md`.
+
 # T-967 — Release gate (work in progress)
 
-**Reference:** claim and proof scaffold. This is not acceptance evidence yet.
-T-967 is `claimed` on `chore/T-967-release-gate`; no tag or release is created by
-this task.
+Dies ist ausschließlich ein Claim- und Beleg-Scaffold, **kein** Abnahmebeleg.
+T-967 ist `claimed` auf `chore/T-967-release-gate`; dieser Task erzeugt keinen
+Tag und kein Release.
 
 ## Problem
 
