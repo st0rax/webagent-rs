@@ -388,9 +388,89 @@ pub fn chat_answer_text(raw: &str) -> String {
     cleaned.to_string()
 }
 
+/// T-950: von der Anbieteroberflaeche an eine Antwort gehaengte
+/// Quellenhinweise. Solche Hinweise belegen einen Abruf ausserhalb des
+/// Client-Transkripts und müssen im brain_score sichtbar werden.
+///
+/// Erkannt werden nur **ausdruecklich markierte** Hinweise (`Quelle:`,
+/// `Quellen:`, `Sources:` …) samt folgender Eintraege. Ein blosses Erwaehnen
+/// von "GitHub" im Fliesstext ist kein Beleg und wird nicht geraten. Keine
+/// inhaltliche Veränderung des Antworttexts — die Hinweise werden nur
+/// protokolliert.
+pub fn source_hints(text: &str) -> Vec<String> {
+    const LABELS: &[&str] = &[
+        "quelle",
+        "quellen",
+        "source",
+        "sources",
+        "referenz",
+        "referenzen",
+        "reference",
+        "references",
+    ];
+    let mut hints: Vec<String> = Vec::new();
+    let mut in_section = false;
+    for line in text.lines() {
+        let trimmed = line.trim().trim_start_matches('#').trim();
+        let (label_raw, rest) = match trimmed.split_once(':').or_else(|| trimmed.split_once('：'))
+        {
+            Some(parts) => parts,
+            None => (trimmed, ""),
+        };
+        let label = label_raw.trim().to_lowercase();
+        if LABELS.contains(&label.as_str()) {
+            in_section = true;
+            push_source_hint(&mut hints, rest);
+            continue;
+        }
+        if !in_section || trimmed.is_empty() {
+            continue;
+        }
+        // Fettgedruckte Zwischenueberschriften ohne URL sind kein Quelleneintrag.
+        if trimmed.starts_with("**") && trimmed.ends_with("**") && !trimmed.contains("http") {
+            continue;
+        }
+        push_source_hint(&mut hints, trimmed);
+        if hints.len() >= 12 {
+            break;
+        }
+    }
+    hints
+}
+
+fn push_source_hint(out: &mut Vec<String>, value: &str) {
+    let hint = value.trim().trim_end_matches('.').trim();
+    if hint.is_empty() || out.iter().any(|existing| existing == hint) {
+        return;
+    }
+    out.push(hint.chars().take(200).collect());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn t950_erkannter_quellenhinweis_aus_live_antwort() {
+        // Woertlicher Schlusssatz des live reproduzierten chatgpt-Turns
+        // `T950S-160D2F43` (oeffentliche Rust-README per Provider-Websuche).
+        let answer = "Rust ist speichersicher.\n\nQuelle: Offizielle Rust-README.md auf GitHub.";
+        assert_eq!(
+            source_hints(answer),
+            vec!["Offizielle Rust-README.md auf GitHub".to_string()]
+        );
+    }
+
+    #[test]
+    fn t950_quellenabschnitt_liefert_eintraege_ohne_fliesstext_raten() {
+        let answer = "Antwort.\n\nSources:\n- https://example.org/a\n- https://example.org/b\n";
+        let hints = source_hints(answer);
+        assert!(hints.iter().any(|h| h.contains("https://example.org/a")));
+        assert!(hints.iter().any(|h| h.contains("https://example.org/b")));
+
+        // Blosse Erwaehnung ohne Markierung ist kein Quellenhinweis.
+        assert!(source_hints("Ich habe GitHub erwaehnt.").is_empty());
+    }
 
     #[test]
     fn pruefwachstum_ergibt_append_delta_unicode_sicher() {

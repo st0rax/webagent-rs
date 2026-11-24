@@ -103,6 +103,18 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8788/v1/chat/completions `
 
 OpenAI Chat Completions modelliert eine Unterhaltung als Nachrichtenliste und kann eine reguläre Completion oder gestreamte Chunks liefern.[3] Die Bridge übernimmt dabei Text sowie die beschriebenen Bild-/Audio-Content-Parts. Anthropic Messages erwartet `messages` und `max_tokens`; Systeminstruktionen liegen dort auf Top-Level statt in einer `system`-Rolle.[4]
 
+### Anbieterseitige Websuche (T-950)
+
+Die Websuche der Anbieteroberfläche ist **kein** Client-Werkzeug und erscheint nicht im Client-Transkript. Die Bridge macht dieses Risiko sichtbar, statt eine vollständige Isolation zu behaupten:
+
+- **`/v1/models`** enthält je Brain ein Feld `web_search_isolation` mit `status` und `reason`. `switchable_disabled_for_api` bedeutet: die Oberfläche hat einen sichtbaren Umschalter, die Bridge schaltet ihn nach `new_chat` vor dem Senden aus und belegt den Zustand in `brain_score/events.jsonl`. `not_isolatable` bedeutet: kein bedienbarer Umschalter oder nicht vermessbar — ein Provider-Abruf außerhalb des Transkripts ist möglich.
+- **Live belegt (2026-11-21):** nur `webagent/deepseek` ist `switchable_disabled_for_api` (`Search`-Toggle, Zustandswechsel `aria-pressed=true → false` vor dem Senden). Alle anderen Brains — chatgpt, gemini, claude, kimi, mistral, perplexity, qwen, zai und das virtuelle `auto` — sind `not_isolatable`. Bei chatgpt ist „Suche" die Chatverlaufssuche, kein Websuche-Schalter; beim ZAI-Toggle war kein Zustandswechsel feststellbar; claude blieb ohne Login nicht vermessbar.
+- **`brain_score/events.jsonl`** enthält für Bridge-Turns zwei neue Felder: `web_search` (`status`, `before`, `after` als gekürzte Zustandsstrings) und `source_hints` (im Antworttext **explizit markierte** Quellenhinweise wie `Quelle: …`, `Sources: …`). Ein bloßes Erwähnen von „GitHub" im Fließtext wird nicht als Beleg geraten; der Antworttext wird nicht verändert.
+- **Grenze:** ein *stiller* Provider-Abruf ohne Quellenhinweis bleibt für die Bridge unsichtbar. Aufrufer müssen `web_search_isolation.status` und `source_hints` prüfen und dürfen bei `not_isolatable` nicht von einer Isolation ausgehen.
+- Der Websuche-Umschalter wird nur für die jeweilige Konversation gesetzt; es wird keine dauerhafte Kontoeinstellung geändert.
+
+Beleg: `docs/proofs/T-950/websearch-isolation-live-result.md`.
+
 ## Fortsetzung nach Client-Werkzeugaufrufen
 
 Bei mehrstufigen Chat-Completions werden frühere Assistant-Tool-Calls als `[du – Werkzeugaufruf]` und zurückgelieferte `role=tool`-Nachrichten als `[Client-Werkzeug-Ergebnis]` im Browser-Kontext markiert. Das gilt auch, wenn das Werkzeugergebnis die letzte Nachricht des Requests ist (T-961): dann stehen `[Client-Werkzeug-Ergebnis]` und `[tool_call_id: …]` direkt vor dem Inhalt, damit das Modell den Rückgabewert des eigenen Aufrufs nicht als fehlend behandelt. Bei einer einzelnen Nachricht ohne Verlauf bleibt der Inhalt unverändert. Die Markierungen kennzeichnen Verlauf und Ausführungsdaten; sie ersetzen weder die Tool-Schemata des aktuellen Requests noch führen sie Werkzeuge lokal in WebAgent aus. Nach einem Tool-Ergebnis soll das Modell die ursprüngliche Aufgabe anhand der zurückgelieferten Daten fortsetzen. Die Rollenlabels dienen ausschließlich der Prompt-Serialisierung und ändern nicht die OpenAI-Nachrichtenrollen in der API.

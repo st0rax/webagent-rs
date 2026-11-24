@@ -1,5 +1,215 @@
 # Current Work
 
+## 2026-11-24 — PR-Kette nach Freigabe vollstaendig nach `master` gemergt
+
+- **Freigabe:** Der Eigentuemer hat auf die Frage „Soll ich die PR-Kette jetzt in
+  der Reihenfolge 97 bis 101 nach master mergen?" ausdruecklich „Ja, alle fuenf"
+  geantwortet. Damit war der Merge freigegeben; **kein Tag, kein
+  GitHub-Release**, keine Live-Laeufe, keine Zugangsdaten/Profile/Cookies/
+  Tokens, kein Eingriff in FreeRouter (8787) oder Supervisor (4096).
+- **Reihenfolge und Squash-Merges:** #97 T-926 `a3f27ec`, #98 T-940 `df9e4b5`,
+  #99 T-942 `ae595a5`, #100 T-944 `4d206cc`, #101 T-950 `e0b1ea8`. Alle fuenf
+  PRs `MERGED`; `master` lokal und remote `e0b1ea8`.
+- **Retarget und Sync:** Weil die PRs auf ihre Vorgaenger-Branches basierten,
+  wurden #98–#101 vor dem Merge auf `master` retargetet. Je Branch ein Sync-Merge
+  von `origin/master` (neue Commits, kein Rebase, kein Force-Push); Konflikte in
+  `docs/CURRENT_WORK.md`, `src/cli.rs`, `src/main.rs`, `selectors/deepseek.json`
+  und `src/browser/mod.rs` zugunsten des weiter fortgeschrittenen Chain-HEADs
+  geloest — die T-926/T-940/T-942-Abschnitte und -Code waren dort bereits
+  enthalten. Sync-Commits: T-940 `438e8bb`, T-942 `2780c6d`, T-944 `34efaec`,
+  T-950 `e62acc5`.
+- **CI und Gates vor jedem Merge:** alle Jobs des jeweiligen Head gruen; lokal
+  nach jedem Sync `cargo test --lib` (1498 / 1499 / 1501 / 1505 passed, 0 failed,
+  1 ignored), `cargo check --all-targets` und `git diff --check` gruen.
+- **Verifikation auf echtem `master`:** `WebViewSessionAdapter`
+  (`src/free_cloud_chat.rs`), `answer_markdown` (`src/browser/mod.rs`,
+  `selectors/{deepseek,gemini}.json`), `reasoning_exclude`
+  (`selectors/deepseek.json`), `source_hints` (`src/observer.rs`,
+  `src/brain_score.rs`, `src/relay.rs`) und `web_search_isolation`
+  (`src/api_bridge/catalog.rs`, `docs/API_BRIDGE.md`) sind vorhanden. Board
+  unveraendert 91 Tasks / 90 `done` / 1 `free` (T-961, Userentscheidung „Keine
+  Aenderung") / 0 `claimed`; die fuenf `done`-Zellen sind jetzt durch den echten
+  Merge gedeckt und nicht mehr nur eine dokumentierte Diskrepanz zu `master`.
+- Der waehrend der Merge-Arbeit frisch erschienene Remote-Branch
+  `chore/T-967-release-gate` wurde nicht angefasst.
+
+## 2026-11-24 — PR-Kette zur Abnahme vorbereitet, CI-Blocker behoben
+
+- **Freigabeumfang:** Der Eigentuemer hat den Audit-Vorschlag bestaetigt und die
+  Projektverantwortung uebertragen. Umgesetzt wurden PR-Eroeffnung und
+  CI-Reparaturen. **Kein Merge, kein Tag, kein GitHub-Release**; T-961 bleibt
+  `free` („Keine Aenderung"), kein Live-Lauf, keine Zugangsdaten/Profile/
+  Cookies/Tokens, kein Eingriff in FreeRouter (8787) oder Supervisor (4096).
+- **Fuenf PRs, kaskadierend** (je ein Task, ein Branch):
+  [#97](https://github.com/st0rax/webagent-rs/pull/97) T-926 → `master`,
+  [#98](https://github.com/st0rax/webagent-rs/pull/98) T-940 → T-926,
+  [#99](https://github.com/st0rax/webagent-rs/pull/99) T-942 → T-940,
+  [#100](https://github.com/st0rax/webagent-rs/pull/100) T-944 → T-942,
+  [#101](https://github.com/st0rax/webagent-rs/pull/101) T-950 → T-944.
+  Alle fünf sind `OPEN`, `MERGEABLE`, mit Scope, Livebelegen (Nonces/Hashes),
+  Gates und ehrlichen Grenzen beschrieben. Merge-Reihenfolge nur 1 → 2 → 3 →
+  4 → 5; die Branches bauen linear aufeinander auf.
+- **Zwei CI-Blocker aus aelteren Pushes behoben** (neue Commits, kein
+  Force-Push): `attach_network_observation` war nur unter `#[cfg(windows)]`
+  definiert, aber unbedingt aufgerufen → Nicht-Windows-Stub `Ok(None)` auf
+  T-940/T-942/T-944/T-950 (`dd833c3`, `223e2ca`, `1c6173d`, `4a863d9`). Im
+  T-944-Livebeleg fehlte das `**Referenz**`-Banner →
+  `betriebs_markdown_hat_eine_wahrheit` rot; mit `5b34bde` ergaenzt, auf T-950
+  war es bereits vorhanden.
+- **CI-Stand nach den Fixes:** alle fuenf Prueflaeufe gruen (T-926 `success`,
+  T-940 `success`, T-942 `success`, T-950 `success`, T-944 nach einem
+  einmaligen Flake `executor::tests::test_stderr_capture` — leere Streams bei
+  Exit 0, Push-Lauf desselben SHA gruen — im Rerun ebenfalls `success`).
+  Lokal auf T-950-Head: `cargo test --lib` 1505 passed / 0 failed / 1 ignored,
+  fmt/clippy/build/`git diff --check` gruen.
+- **Abnahmeuebersicht (nicht im Repo):** `%TEMP%\opencode\pr-acceptance-overview.md`
+  mit PR-Tabelle, Branch-SHAs, Gates, Reparaturen und Grenzen. Der Board-Status
+  `done` bleibt gegenueber `master` (`9017249`) inkonsistent, bis die PRs
+  tatsaechlich gemergt sind; das war zu diesem Zeitpunkt noch nicht erledigt
+  und ist jetzt im Abschnitt oben nachgeholt.
+
+## 2026-11-24 — Audit: Board-Status gegenueber `master`, Gates nachgemessen
+
+- **Auftrag:** Stand/Audit prüfen. Der Eigentuemer hat danach die
+  Projektverantwortung an diesen Agenten delegiert. Daraus wurde **keine**
+  Freigabe fuer Merge, Tag, Release oder Live-/Kontozugriff abgeleitet.
+- **Gepruefter Baum:** `webagent-rs`, `feature/T-950-websearch-isolation`,
+  HEAD `956425f`, identisch mit `origin/...`; Working Tree vor und nach dem
+  Audit sauber. Remote-`master` per `git ls-remote`:
+  `9017249157a3182de900fa927ae6f4d8ee33f906` (lokal gleich).
+- **Board:** 91 Tasks, 90 `done`, 1 `free` (T-961), 0 `claimed`. Der
+  maschinenlesbare Spiegelblock in `docs/TASKBOARD.md` ist synchron;
+  `taskboard::tests::taskboard_invarianten_halten` gruen (1 passed, 1505
+  gefiltert). Aeltere Prosotabellen im selben File sind historisch und nicht
+  die Quelle.
+- **Gates am 24.11. auf HEAD nachgemessen:** `cargo test --lib` 1505 passed /
+  0 failed / 1 ignored; `cargo fmt --all -- --check` Exit 0;
+  `cargo clippy --all-targets -- -D warnings` Exit 0; `git diff --check`
+  Exit 0. Diese Zahlen gelten fuer den Feature-Branch, **nicht** fuer
+  `master`.
+- **Befund (Diskrepanz):** `START_HERE.md` Abschnitt 4 und `AGENTS.md`
+  Regel 5 definieren `done` als „Branch in `master` gemergt". Fuer `T-926`,
+  `T-940`, `T-942`, `T-944`, `T-950` steht das Board auf `done`, der Code
+  liegt aber nur auf den gleichnamigen, gepushten Feature-Branches.
+  `git branch --merged master` fuehrt keinen davon; `git grep` in `master`
+  findet `WebViewSessionAdapter`, `answer_markdown`, `reasoning_exclude`,
+  `source_hints`, `web_search_isolation` nicht, auf HEAD dagegen schon.
+  `docs/CURRENT_WORK.md` verbietet Merge ohne neue ausdrueckliche Freigabe —
+  der Board-Status `done` behauptet hier mehr, als `master` ausliefert.
+- **Entscheidung dieses Agenten:** Befund dokumentieren, **keinen** Merge,
+  keinen Tag, kein Release, keine Statuskorrektur im Board ohne Freigabe.
+  T-961 bleibt `free` („Keine Aenderung" des Eigentuemers), kein `PASS`, kein
+  `done`. Empfehlung: fuer die fuenf Branches zuerst PRs oeffnen und pruefen
+  und `done`/`done_at` erst nach tatsaechlichem Merge bestaetigen; alternativ
+  den Board-Status bewusst korrigieren — beides braucht eine ausdrueckliche
+  Entscheidung des Eigentuemers.
+- **Keine Live-Laeufe**, keine Zugangsdaten, keine Profil-/Cookie-/Token-
+  Dateien, kein Eingriff in FreeRouter (8787) oder Opencode-Supervisor (4096).
+
+## 2026-11-21 — Entscheidung zu T-961: keine Änderung
+
+- Der Eigentümer hat den Konto-Check mit **„Angemeldet / OK"** beantwortet.
+- Ein konkreter neuer Strategievorschlag („Auftrag statt Werkzeug-Meta":
+  Tool-Schema als Preamble nach vorn, Choice-/Verfügbarkeitssätze entfernt,
+  auftragsförmiger User-Turn ohne Werkzeug-Meta, ≥5 aufeinanderfolgende saubere
+  Raw-Läufe) wurde mit Ziel, Umfang, erwarteter Wirkung und Messplan vorgelegt.
+- Der Eigentümer hat ausdrücklich **„Keine Änderung"** gewählt. Damit gilt:
+  T-961 bleibt bewusst `free`, **kein Code, kein Live-Lauf, kein Tag, kein
+  GitHub-Release, kein Merge**. Die bereits widerlegten Richtungen (0/7 und
+  0/6) bleiben die letzte Aussage; es gibt kein `PASS` und kein `done`.
+- Endstand des Boards: **90 `done` / 1 `free` (T-961) / 0 `claimed` / 91**.
+  Damit ist „100 %" ohne neue, ausdrücklich freigegebene Strategie nicht
+  erreichbar — ehrliche Grenze statt decayed Status.
+
+## 2026-11-21 — G-010: T-950 Websuche-Isolation und Quellenhinweise live belegt
+
+- **Branch:** `feature/T-950-websearch-isolation`, ausgehend von
+  `feature/T-944-reasoning-exclude` (`584f071`). Kein Tag, kein Release, kein
+  Merge ohne neue ausdrückliche Freigabe.
+- **Surveys (Binary `64ADA47A…C90`):** je Brain DOM-Survey mit frischer
+  WebView-OAuth-Session. Nur DeepSeek hat einen sichtbaren Websuche-Schalter
+  (`Search`, `ds-toggle-button--selected`); chatgpt/gemini zeigen nur die
+  Chatverlaufssuche, kimi/mistral/qwen keinen Schalter, zai trifft einen
+  Sidebar-Menüeintrag ohne Zustandswechsel, claude ist nicht angemeldet,
+  perplexity unbekannt.
+- **Toggle-Beleg:** deepseek `aria-pressed=true|…--selected →
+  aria-pressed=false|…` (Hash `FC4869A0…4DB8AF3F`). Folge-Survey wieder
+  `selected` — nur Konversationszustand, keine dauerhafte Kontoänderung.
+- **Umsetzung:** `WebSearchObservation` + Puffer und Event-Felder `web_search` /
+  `source_hints` in `src/brain_score.rs`; `source_hints(text)` in
+  `src/observer.rs` (nur explizit markierte Hinweise, kein Fließtext-Raten,
+  Text unverändert); `ensure_web_search_off()` mit bounded Wait nach
+  `new_chat` in `src/browser/ui.rs`; Turn-Verdrahtung in `src/relay.rs`;
+  `web_search_isolation(brain)` + `/v1/models`-Feld in
+  `src/api_bridge/catalog.rs` und Test in `src/api_bridge/tests.rs`.
+- **Bridge-Livebeleg (Port 8788, frischer prozess-only Token, Final-Binary
+  `20DC7552…82FB8`):** `/v1/models` markiert nur deepseek als
+  `switchable_disabled_for_api`, alle übrigen als `not_isolatable`. Turn
+  `T950F-CDD54DDB` (chatgpt, URL auf öffentliche Rust-README): Antwort endet
+  `Quelle: Offizielle Rust-README.md auf GitHub.` → Event mit
+  `source_hints=["Offizielles Rust-README.md auf GitHub"]` und
+  `web_search=not_isolatable`. Turn `T950G-C9645851` (deepseek): Event mit
+  `web_search=off_before_send` und belegtem Zustandswechsel. Beide
+  `success=true`, `sends=1`. Während der Läufe keine Repo-Änderung, Rohdaten nur
+  unter `C:\\Users\\storax\\AppData\\Local\\Temp\\opencode\\T950-websearch-20261121\\`.
+- **Ehrlicher Zwischenbefund:** ein erster Lauf mit Zwischen-Binary
+  `2D67A22…29078` meldete deepseek `not_isolatable` („nicht im DOM"), weil die
+  SPA den Schalter direkt nach `new_chat` noch nicht gerendert hatte; bounded
+  Wait (20 × 150 ms) behebt das, Final-Lauf ist `off_before_send`. Grenze
+  bleiben stille Provider-Abrufe ohne Quellenhinweis: sie sind für die Bridge
+  nicht erkennbar und werden nicht behauptet.
+- **Gates:** `cargo test --lib` 1505 passed / 0 failed / 1 ignored; fmt,
+  clippy (`-D warnings`), build, `git diff --check`, Board-Invariante grün.
+- **Beleg:** `docs/proofs/T-950/websearch-isolation-live-result.md` und
+  `docs/API_BRIDGE.md` (neuer Abschnitt „Anbieterseitige Websuche"). Board:
+  T-950 `done`, 90 `done` / 1 `free` / 91.
+- **Offen:** nur noch T-961 `free` (beide Richtungen live widerlegt: 0/7 und
+  0/6; kein `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
+  ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.
+
+## 2026-11-21 — G-010: T-944 Reasoning-Ausschluss live belegt
+
+- **Branch:** `feature/T-944-reasoning-exclude`, ausgehend von
+  `feature/T-942-markdown-structure` (`19e8c6f`). Die abgelehnte T-961-Scheibe
+  wurde **nicht** mitgezogen.
+- **DOM-Beleg:** DeepSeek rendert den Denkbereich als Geschwister
+  `.ds-think-content` (Textbeginn `We need answer...`) neben
+  `div.ds-markdown.ds-assistant-message-main-content`; Dump
+  `A62C877F…830C2A`. Gemini zeigte im gemessenen Turn **keinen** separaten
+  Denkbereich (`3DD89CC0…353D`), deshalb dort auch kein Ausschluss erfunden.
+  ZAI-Toggle nicht anklickbar, ChatGPT ohne Reasoning-Key, Claude nicht
+  angemeldet — für diese wird keine Ausschluss-Behauptung aufgestellt.
+- **Fix:** deklarierter Ausschluss `reasoning_exclude` nur in
+  `selectors/deepseek.json`; beide Auslesepfade (`answer_read_body` und
+  `probe_generation_js` in `src/browser/mod.rs`) entfernen die Knoten aus einer
+  DOM-Kopie vor `TX`/`TXMD`, mit Rückfall auf den Originaltext. Ohne
+  Deklaration bytegenau unverändert, kein Text-/Formulierungsfilter
+  (non_goals eingehalten). `src/browser/verify.rs`: Signatur mit `"[]"`.
+  Temporärer DOM-Dump (`WEBAGENT_T944_DOMDUMP`) vor dem Final-Build entfernt.
+- **Zustand:** DeepThink war eingeschaltet; erster Toggle `true → false`,
+  sofortiger Restore `false → true`, Abschluss-Survey weiterhin
+  `ds-toggle-button--selected`. Kein dauerhafter Kontoeingriff. (DeepSeek
+  `Search` war ebenfalls selected — T-950, nicht verändert.)
+- **Finaler Livebeleg (Binary `64ADA47A…C90`, 1501 Tests grün):** deepseek
+  `T944Z-9FDB9E20`, gemini `T944Z-B2AC9CFF`, qwen `T944Z-A651188A`, zai
+  `T944Z-FD92CE43`, chatgpt `T944Z-E7002AD0`; alle Exit 0, `webview_oauth`,
+  `api_key: false`, `oauth_session: true`, keine Reasoning-Marker in den
+  Antworten. Ehrliche Grenze: chatgpt lieferte die Nonce nicht mit (Antwort
+  nur `391`) — dieser Lauf belegt nur „kein Reasoning im Text". kimi/mistral
+  Exit 2 mit leerer stdout, claude ohne Login → keine Aussage.
+- **Gates:** `cargo test --lib` 1501 passed / 0 failed / 1 ignored (zwei neue
+  T-944-Tests); `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo build`, `git diff --check` grün.
+- **Beleg:** `docs/proofs/T-944/reasoning-exclusion-live-result.md` mit
+  DOM-Beleg, Rohhashes und Einschränkungen. Rohdaten unter
+  `C:\\Users\\storax\\AppData\\Local\\Temp\\opencode\\T944-reasoning-20261121\\`
+  (nicht ins Repo kopiert). Board: T-944 `done`, 89 `done` / 2 `free` / 91.
+- **Offen (Stand der Uebergabe):** T-950 brauchte damals noch echte
+  DOM-/Antwortmessungen; T-950 ist inzwischen oben dokumentiert `done`.
+  T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6; kein
+  `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
+  ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.
+
 ## 2026-11-21 — G-010: T-942 Markdown-Struktur live zurueckgewonnen
 
 - **Branch:** `feature/T-942-markdown-structure`, ausgehend von
@@ -28,7 +238,8 @@
   `C:\\Users\\storax\\AppData\\Local\\Temp\\opencode\\T942-markdown-structure-20261121\\`
   und `…\\T942-markdown-fix-20261121\\` (nicht ins Repo kopieren). Board: T-942
   `done`, 88 `done` / 3 `free` / 91.
-- **Offen:** T-944 und T-950 brauchen weiterhin echte DOM-/Antwortmessungen.
+- **Offen (Stand der Uebergabe):** T-944 und T-950 brauchten damals noch echte
+  DOM-/Antwortmessungen; T-944 ist inzwischen oben dokumentiert `done`.
   T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6; kein
   `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
   ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.
