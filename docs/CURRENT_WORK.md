@@ -1,5 +1,43 @@
 # Current Work
 
+## 2026-11-21 — G-010: T-940 lesende Netzwerkbeobachtung live belegt
+
+- **Branch:** `feature/T-940-network-observation`, ausgehend von
+  `feature/T-926-webview-oauth-adapter` (`9af4033`, nur
+  Branch-Präfixkorrektur). Die abgelehnte T-961-Scheibe wurde **nicht**
+  mitgezogen.
+- **Implementierung:** neues reines Modul `src/network_observation.rs`
+  (Redaktion auf `scheme://host`, 512-Eintrags-Grenze mit `dropped_events`,
+  gewichtete Auswahlheuristik mit `selection_reason`); drei **lesende**
+  CDP-Receiver in `src/webview_runtime.rs` (`Network.enable` sowie
+  `requestWillBeSent`/`responseReceived`/`loadingFinished`, kein Intercept,
+  kein Port/WebSocket); opt-in `--net-trace` in `src/cli.rs`/`src/main.rs`.
+- **Negativbefund zuerst:** Lauf 1 (`T940-EB0F8B8395`, Exit 0) lieferte die
+  richtige Antwort, aber die **falsche Klassifikation** — die Heuristik „jüngster
+  Request gewinnt" wählte einen 4-ms-Static-Fetch von
+  `fe-static.deepseek.com` statt des SSE-Provider-Calls. Daraufhin wurde die
+  Auswahl gewichtet (SSE +8, POST +3, Site-Origin +2, 2xx +1) und das Urteil
+  um `request_id`, `mime_type` und `selection_reason` erweitert.
+- **Live-Nachweis Lauf 2:** deepseek, Nonce `T940-A58B1F5DC0`, Exit 0, 14,9 s,
+  Token exakt. `verdict`: `request_id 7812.198`, Origin
+  `https://chat.deepseek.com`, `text/event-stream`, Status 200, 1101 ms,
+  `finished: true`, `selection_reason` „SSE-Antwort … POST, Origin der
+  Dokumentseite, 2xx". Rohereignisse 3198/3539/4299 ms ergeben exakt 1101 ms.
+  Zähler 74 Requests / 54 Responses / 54 Finished / 0 verworfen. Binary
+  `A0B5D0D1…3306CD`. Keine Repo-Änderung während der Läufe, kein HTTP-Port.
+- **Gates:** `cargo test --lib` 1498 passed / 0 failed / 1 ignored;
+  `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo build`,
+  `git diff --check` grün; sechs neue `t940_`-Tests grün.
+- **Beleg:** `docs/proofs/T-940/network-observation-live-result.md` mit beiden
+  Läufen, Korrektur, Rohereignissen und ehrlichen Einschränkungen (nur 2 Läufe,
+  nur deepseek, Heuristik statt Beweis). Rohdaten unter
+  `C:\Users\storax\AppData\Local\Temp\opencode\T940-network-observation-20261121\`
+  (nicht ins Repo kopieren). Board: T-940 `done`, 87 `done` / 4 `free` / 91.
+- **Offen:** T-942, T-944, T-950 brauchen weiterhin echte DOM-/Antwortmessungen.
+  T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6; kein
+  `PASS`, neue Strategie nur nach neuer ausdrücklicher Freigabe;
+  ChatGPT-Konto-Check-Ergebnis des Eigentümers weiter offen). Kein Tag/Release.
+
 ## 2026-11-21 — G-010: T-926 VerifiedFree-Adapter live belegt (WebView-OAuth, kein API-Key)
 
 - **Branch:** `feature/T-926-webview-oauth-adapter`, ausgehend von `master`
@@ -28,10 +66,11 @@
   `docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md` aktualisiert. Rohdaten unter
   `C:\Users\storax\AppData\Local\Temp\opencode\T926-webview-oauth-20261121\`
   (nicht ins Repo kopieren).
-- **Offen:** T-961 bleibt `free` (beide Richtungen live widerlegt: 0/7 und 0/6;
-  die zugehörigen Belege liegen auf `fix/T-961-self-mirror`). T-940, T-942,
-  T-944, T-950 brauchen weiterhin echte DOM-/CDP-Messungen. TASKBOARD-Status
-  wird erst bei vollständiger Abnahme geändert. Kein Tag/Release.
+- **Offen (Stand dieses Abschnitts):** T-961 bleibt `free` (beide Richtungen
+  live widerlegt: 0/7 und 0/6; die zugehörigen Belege liegen auf
+  `fix/T-961-self-mirror`). T-940, T-942, T-944, T-950 brauchten zu diesem
+  Zeitpunkt echte Messungen; **T-940 ist inzwischen `done`** (siehe Abschnitt
+  oben). Kein Tag/Release.
 
 ## 2026-11-21 — G-010: T-927/T-928 — Matrix ehrlich bereinigt, beide `done`
 

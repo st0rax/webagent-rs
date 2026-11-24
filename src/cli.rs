@@ -935,6 +935,10 @@ pub enum CloudCommands {
         /// Browser ohne sichtbares Fenster ausfuehren (Default: sichtbar).
         #[arg(long)]
         headless: bool,
+        /// T-940: nur lesende CDP-Netzwerkbeobachtung fuer diesen Turn beilegen.
+        /// URLs werden auf `scheme://host` redaktiert; keine Interception.
+        #[arg(long)]
+        net_trace: bool,
     },
 }
 

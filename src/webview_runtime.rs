@@ -142,6 +142,18 @@ struct PageSlot {
     /// das Fenster am Leben — faellt der Slot, schliesst sich das Fenster.
     window: tao::window::Window,
     webview: wry::WebView,
+    /// T-940: meldet die drei CDP-Netzwerk-Receiver beim Tab-Ende wieder ab.
+    /// Die Closure haelt Receiver und Handler bewusst am Leben; ohne sie
+    /// wuerde WebView2 auf einen bereits freigegebenen Callback feuern.
+    network_cleanup: Option<Box<dyn FnOnce()>>,
+}
+
+impl Drop for PageSlot {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.network_cleanup.take() {
+            cleanup();
+        }
+    }
 }
 
 struct SharedRuntime {
@@ -571,6 +583,142 @@ fn pump_runtime(rt: &mut SharedRuntime, event_loop: &mut EventLoop<()>) -> bool 
     false
 }
 
+/// T-940: registriert ausschließlich **lesende** CDP-Netzwerk-Sensoren.
+///
+/// Es wird nur `Network.enable` aufgerufen — kein Intercept, kein `Fetch.enable`,
+/// keine Antwort- oder Anfragemanipulation. Die drei Events landen im
+/// prozessglobalen, URL-redaktierten Log aus `network_observation`. Die
+/// Closure im Rueckgabewert meldet die Receiver beim Tab-Ende wieder ab.
+/// Nicht-Windows: CDP-Netzwerkbeobachtung ist an WebView2 gebunden. Der Opt-in
+/// bleibt dort ohne Receiver, statt den plattformuebergreifenden Build zu brechen.
+#[cfg(not(windows))]
+fn attach_network_observation(
+    _webview: &wry::WebView,
+    _event_loop: &mut EventLoop<()>,
+) -> Result<Option<Box<dyn FnOnce()>>> {
+    Ok(None)
+}
+
+#[cfg(windows)]
+fn attach_network_observation(
+    webview: &wry::WebView,
+    event_loop: &mut EventLoop<()>,
+) -> Result<Option<Box<dyn FnOnce()>>> {
+    use crate::network_observation as net;
+    use webview2_com::CoTaskMemPWSTR;
+    use windows::core::{HSTRING, PWSTR};
+    use windows::Win32::System::WinRT::EventRegistrationToken;
+    use wry::WebViewExtWindows;
+
+    if !net::observation_enabled() {
+        return Ok(None);
+    }
+
+    type NetReceiver =
+        webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2DevToolsProtocolEventReceiver;
+    // `create()` liefert die rohe COM-Schnittstelle, nicht den Wrapper.
+    type NetHandler =
+        webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2DevToolsProtocolEventReceivedEventHandler;
+    type NetRegistration = (NetReceiver, NetHandler, EventRegistrationToken);
+
+    let proto = |message: String| PageDriverError::Protocol(message);
+    unsafe {
+        let core = webview
+            .controller()
+            .CoreWebView2()
+            .map_err(|error| proto(error.to_string()))?;
+        let mut registrations: Vec<NetRegistration> = Vec::new();
+
+        macro_rules! register_net_event {
+            ($event_name:literal, |$value:ident| $body:block) => {{
+                let event_name = HSTRING::from($event_name);
+                let receiver = core
+                    .GetDevToolsProtocolEventReceiver(&event_name)
+                    .map_err(|error| proto(error.to_string()))?;
+                let handler = webview2_com::DevToolsProtocolEventReceivedEventHandler::create(
+                    Box::new(move |_sender, args| {
+                        if let Some(args) = args {
+                            let mut raw = PWSTR::null();
+                            if args.ParameterObjectAsJson(&mut raw).is_ok() {
+                                let json = CoTaskMemPWSTR::from(raw).to_string();
+                                if let Ok(value) = serde_json::from_str::<Value>(&json) {
+                                    let $value = value;
+                                    $body
+                                }
+                            }
+                        }
+                        Ok(())
+                    }),
+                );
+                let mut token = EventRegistrationToken::default();
+                receiver
+                    .add_DevToolsProtocolEventReceived(&handler, &mut token)
+                    .map_err(|error| proto(error.to_string()))?;
+                registrations.push((receiver, handler, token));
+            }};
+        }
+
+        register_net_event!("Network.requestWillBeSent", |event| {
+            let request = event.get("request").cloned().unwrap_or(Value::Null);
+            let request_id = event
+                .get("requestId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let method = request
+                .get("method")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let url = request.get("url").and_then(Value::as_str).unwrap_or("");
+            let resource = event.get("type").and_then(Value::as_str).unwrap_or("Other");
+            net::record_request(request_id, method, url, resource, net::now_ms());
+        });
+
+        register_net_event!("Network.responseReceived", |event| {
+            let response = event.get("response").cloned().unwrap_or(Value::Null);
+            let request_id = event
+                .get("requestId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let url = response.get("url").and_then(Value::as_str).unwrap_or("");
+            let status = response
+                .get("status")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+                .min(u16::MAX as u64) as u16;
+            let mime_type = response
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            net::record_response(request_id, url, status, mime_type, net::now_ms());
+        });
+
+        register_net_event!("Network.loadingFinished", |event| {
+            let request_id = event
+                .get("requestId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let encoded_bytes = event
+                .get("encodedDataLength")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            net::record_finish(request_id, net::now_ms(), encoded_bytes);
+        });
+
+        call_cdp_json(webview, "Network.enable", "{}", event_loop)?;
+
+        let cleanup: Box<dyn FnOnce()> = Box::new(move || {
+            for (receiver, _handler, token) in registrations {
+                let _ = receiver.remove_DevToolsProtocolEventReceived(token);
+            }
+        });
+        Ok(Some(cleanup))
+    }
+}
+
 fn open_page(
     rt: &mut SharedRuntime,
     event_loop: &mut EventLoop<()>,
@@ -668,6 +816,18 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
         ));
     }
 
+    // T-940: nur lesende Netzwerkbeobachtung, und nur mit ausdruecklichem
+    // Opt-in. Der Regelbetrieb registriert keine CDP-Receiver.
+    let network_cleanup = match attach_network_observation(&webview, event_loop) {
+        Ok(cleanup) => cleanup,
+        Err(error) => {
+            crate::bench_events::eprint_line(&format!(
+                "[T940] CDP-Netzwerkbeobachtung nicht aktivierbar: {error}"
+            ));
+            None
+        }
+    };
+
     rt.web_context = Some(web_context);
 
     let (page_tx, page_rx) = mpsc::channel();
@@ -677,6 +837,7 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
             page_rx,
             window,
             webview,
+            network_cleanup,
         },
     );
 

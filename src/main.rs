@@ -576,31 +576,62 @@ fn cmd_cloud(command: cli::CloudCommands) -> i32 {
             brain,
             prompt,
             headless,
+            net_trace,
         } => {
             use webagent::free_cloud_chat::{
                 webview_oauth_model, BrowserInferenceWebViewTransport, TextStreamAdapter,
                 TextStreamRequest, WEBVIEW_OAUTH_ADAPTER,
             };
+            use webagent::network_observation as net;
+
+            // Der Opt-in muss vor dem Start des WebView-Threads gesetzt werden.
+            if net_trace {
+                std::env::set_var(net::OBSERVE_ENV, "1");
+                net::reset();
+            }
             let adapter = webagent::free_cloud_chat::WebViewSessionAdapter::new(
                 BrowserInferenceWebViewTransport::new(headless, None),
                 &brain,
             );
-            adapter
-                .stream(&TextStreamRequest {
-                    model: webview_oauth_model(),
-                    prompt,
-                    free_only: true,
+            let outcome = adapter.stream(&TextStreamRequest {
+                model: webview_oauth_model(),
+                prompt,
+                free_only: true,
+            });
+
+            // Netzwerkbeleg wird auch bei einem Fehlschlag ausgegeben: genau
+            // dann trennt er Füllfehler (kein Request) von Antwortfehler
+            // (Request ohne Antwort).
+            let network_value = |log: net::NetworkLog| {
+                serde_json::json!({
+                    "verdict": log.verdict(),
+                    "events": log,
+                    "note": "Nur lesende CDP-Sensoren (Network.enable). URLs auf scheme://host redaktiert.",
                 })
-                .map(|events| {
-                    serde_json::json!({
+            };
+            match outcome {
+                Ok(events) => {
+                    let mut value = serde_json::json!({
                         "adapter": WEBVIEW_OAUTH_ADAPTER,
                         "brain": brain,
                         "oauth_session": true,
                         "api_key": false,
                         "events": events,
-                    })
-                })
-                .map_err(|error| error.to_string())
+                    });
+                    if net_trace {
+                        value["network"] = network_value(net::snapshot());
+                    }
+                    Ok(value)
+                }
+                Err(error) if net_trace => Ok(serde_json::json!({
+                    "adapter": WEBVIEW_OAUTH_ADAPTER,
+                    "brain": brain,
+                    "ok": false,
+                    "error": error.to_string(),
+                    "network": network_value(net::snapshot()),
+                })),
+                Err(error) => Err(error.to_string()),
+            }
         }
     };
 
