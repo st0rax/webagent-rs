@@ -1,11 +1,20 @@
 name: CI
 
 on:
+  # T-967: vorher lief die volle Matrix bei jedem Branch-Push UND erneut beim
+  # zugehoerigen PR — derselbe Head wurde zweimal bezahlt. Push nur auf master,
+  # PRs bleiben unverändert voll geprueft.
   push:
+    branches:
+      - master
   pull_request:
 
 env:
   RUSTUP_TOOLCHAIN: stable
+
+# T-967: die CI jobs lesen nur den Checkout; kein Job braucht Schreibrechte.
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -27,11 +36,11 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --no-default-features --all-targets -- -D warnings
+        run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
       - name: Build
-        run: cargo build --no-default-features --verbose
+        run: cargo build --locked --no-default-features --verbose
       - name: Test
-        run: cargo test --no-default-features --verbose
+        run: cargo test --locked --no-default-features --verbose
         # Kern-Unit-Tests ohne Embedded WebView (kein GTK/WebView2 in CI).
 
   linux-webview:
@@ -68,7 +77,7 @@ jobs:
       # ohne Anzeige nicht sinnvoll starten, und ein gruener Testlauf wuerde
       # eine Funktionsfaehigkeit behaupten, die er nicht geprueft hat.
       - name: Build (tui + webview)
-        run: cargo build --no-default-features --features tui,webview --verbose
+        run: cargo build --locked --no-default-features --features tui,webview --verbose
 
   windows:
     name: build & test (Windows, volle Features)
@@ -102,8 +111,8 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy (volle Features)
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: Build (volle Features)
-        run: cargo build --verbose
+        run: cargo build --locked --verbose
       - name: Test (volle Features)
-        run: cargo test --lib --verbose
+        run: cargo test --lib --locked --verbose
