@@ -1,5 +1,38 @@
 # Current Work
 
+## 2026-11-24 — PR-Kette nach Freigabe vollstaendig nach `master` gemergt
+
+- **Freigabe:** Der Eigentuemer hat auf die Frage „Soll ich die PR-Kette jetzt in
+  der Reihenfolge 97 bis 101 nach master mergen?" ausdruecklich „Ja, alle fuenf"
+  geantwortet. Damit war der Merge freigegeben; **kein Tag, kein
+  GitHub-Release**, keine Live-Laeufe, keine Zugangsdaten/Profile/Cookies/
+  Tokens, kein Eingriff in FreeRouter (8787) oder Supervisor (4096).
+- **Reihenfolge und Squash-Merges:** #97 T-926 `a3f27ec`, #98 T-940 `df9e4b5`,
+  #99 T-942 `ae595a5`, #100 T-944 `4d206cc`, #101 T-950 `e0b1ea8`. Alle fuenf
+  PRs `MERGED`; `master` lokal und remote `e0b1ea8`.
+- **Retarget und Sync:** Weil die PRs auf ihre Vorgaenger-Branches basierten,
+  wurden #98–#101 vor dem Merge auf `master` retargetet. Je Branch ein Sync-Merge
+  von `origin/master` (neue Commits, kein Rebase, kein Force-Push); Konflikte in
+  `docs/CURRENT_WORK.md`, `src/cli.rs`, `src/main.rs`, `selectors/deepseek.json`
+  und `src/browser/mod.rs` zugunsten des weiter fortgeschrittenen Chain-HEADs
+  geloest — die T-926/T-940/T-942-Abschnitte und -Code waren dort bereits
+  enthalten. Sync-Commits: T-940 `438e8bb`, T-942 `2780c6d`, T-944 `34efaec`,
+  T-950 `e62acc5`.
+- **CI und Gates vor jedem Merge:** alle Jobs des jeweiligen Head gruen; lokal
+  nach jedem Sync `cargo test --lib` (1498 / 1499 / 1501 / 1505 passed, 0 failed,
+  1 ignored), `cargo check --all-targets` und `git diff --check` gruen.
+- **Verifikation auf echtem `master`:** `WebViewSessionAdapter`
+  (`src/free_cloud_chat.rs`), `answer_markdown` (`src/browser/mod.rs`,
+  `selectors/{deepseek,gemini}.json`), `reasoning_exclude`
+  (`selectors/deepseek.json`), `source_hints` (`src/observer.rs`,
+  `src/brain_score.rs`, `src/relay.rs`) und `web_search_isolation`
+  (`src/api_bridge/catalog.rs`, `docs/API_BRIDGE.md`) sind vorhanden. Board
+  unveraendert 91 Tasks / 90 `done` / 1 `free` (T-961, Userentscheidung „Keine
+  Aenderung") / 0 `claimed`; die fuenf `done`-Zellen sind jetzt durch den echten
+  Merge gedeckt und nicht mehr nur eine dokumentierte Diskrepanz zu `master`.
+- Der waehrend der Merge-Arbeit frisch erschienene Remote-Branch
+  `chore/T-967-release-gate` wurde nicht angefasst.
+
 ## 2026-11-24 — PR-Kette zur Abnahme vorbereitet, CI-Blocker behoben
 
 - **Freigabeumfang:** Der Eigentuemer hat den Audit-Vorschlag bestaetigt und die
@@ -32,8 +65,8 @@
 - **Abnahmeuebersicht (nicht im Repo):** `%TEMP%\opencode\pr-acceptance-overview.md`
   mit PR-Tabelle, Branch-SHAs, Gates, Reparaturen und Grenzen. Der Board-Status
   `done` bleibt gegenueber `master` (`9017249`) inkonsistent, bis die PRs
-  tatsaechlich gemergt sind; das ist weiterhin nicht durch diesen Agenten
-  erledigt.
+  tatsaechlich gemergt sind; das war zu diesem Zeitpunkt noch nicht erledigt
+  und ist jetzt im Abschnitt oben nachgeholt.
 
 ## 2026-11-24 — Audit: Board-Status gegenueber `master`, Gates nachgemessen
 
