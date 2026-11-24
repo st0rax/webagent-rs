@@ -2088,6 +2088,41 @@
       "proof_path": "PR #76 (https://github.com/st0rax/webagent-rs/pull/76), merge commit 3778f31a83535690e3746501cd642c46b873c70e; README.md; docs/NEWCOMER_GUIDE.md; docs/TASKBOARD.md; docs/CURRENT_WORK.md",
       "verification": "PR #76 merged; TASKBOARD.json parsed after claim; README and newcomer-guide section headings are English; README/guide links to existing Markdown files checked through GitHub; quick-start anchor matches the README heading; taskboard mirror contains T-965. Local git diff --check, link-check tooling, and Rust tests were not run in this remote editing session.",
       "done_at": "2026-10-15"
+    },
+    {
+      "id": "T-967",
+      "phase": "14",
+      "type": "chore",
+      "title": "Harden the release gate: tag, manifest version, tests, and duplicate CI runs",
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "chore/T-967-release-gate",
+      "claimed_at": "2026-11-24",
+      "depends_on": [],
+      "scope": [
+        ".github/workflows/release.yml",
+        ".github/workflows/ci.yml",
+        "Cargo.toml",
+        "Cargo.lock",
+        "CHANGELOG.md",
+        "docs/RELEASE.md",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-967/README.md",
+        "scripts/verify-release-version.ps1"
+      ],
+      "objective": "Close the release-process gap that produced the v0.11.4 tag with Cargo.toml 0.11.3. The release workflow must verify tag == manifest version and run tests before building or publishing, the check must be runnable locally, and the release procedure must be documented. Also stop duplicate full CI runs for branch pushes that already have a pull request.",
+      "dod": "scripts/verify-release-version.ps1 passes for a matching tag and fails for a mismatch; release.yml runs the version check and cargo test --lib --locked before the build jobs and publish; Cargo.toml and Cargo.lock are on the next patch version; docs/RELEASE.md documents the bump, tag, merge, and historical v0.11.4 mismatch; ci.yml no longer runs the full matrix twice for the same pull-request head; local gates are green and the proof records positive and negative check outputs; no tag or release is created by this task.",
+      "handoff": "Changed paths, branch, commits/PR, local gate output, positive and negative version-check output, and an explicit note that the existing v0.11.4 tag is historical and is not rewritten. No live provider interaction.",
+      "non_goals": [
+        "Do not move, delete, or force-push the existing v0.11.4 tag.",
+        "Do not create a new tag, GitHub release, or deployment.",
+        "Do not change runtime behavior, provider selectors, or WebView code.",
+        "Do not rewrite historical taskboard entries or the stacked T-944/T-950 branches."
+      ],
+      "proof_path": "docs/proofs/T-967/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --all-targets -- -D warnings; cargo test --lib; pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.5 (pass) and -Tag v0.11.4 (fail); YAML parse of release.yml and ci.yml; git diff --check"
     }
   ]
 }

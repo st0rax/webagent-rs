@@ -153,6 +153,7 @@ The source of truth remains `docs/TASKBOARD.json`. The Pi-inspired coding-agent 
 | T-963 | Integrate the Pi-inspired coding-agent prompt into the Bazaar workflow | done — chatgpt-codex | `docs/T-934-bazaar-agent-prompt` |
 | T-964 | Make the repository understandable without chat context | done — chatgpt-codex | `docs/T-964-newcomer-onboarding` |
 | T-965 | Standardize maintained project documentation on English | done — chatgpt-codex | `docs/T-965-english-first-docs` |
+| T-967 | Harden the release gate: tag/manifest/tests and duplicate CI runs | claimed — local/opencode | `chore/T-967-release-gate` |
 
 T-964 was completed in PR #73 (merge commit `76ba3b30`). The central newcomer guide is `docs/NEWCOMER_GUIDE.md`, linked from the README.
 
@@ -256,4 +257,5 @@ T-965 scope: translate the README and newcomer guide, record this policy in main
 | T-963 | done |
 | T-964 | done |
 | T-965 | done |
+| T-967 | claimed |
 <!-- TASKBOARD-MIRROR-END -->
