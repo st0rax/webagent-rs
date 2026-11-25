@@ -1,5 +1,24 @@
 # Current Work
 
+## 2026-11-25 — Projektabschluss im erreichbaren Umfang
+
+- **Entscheidung:** Der Eigentuemer hat klargestellt, dass er sich nicht erneut
+  anmelden wird. Es wird deshalb **kein** weiterer Live-Lauf und keine
+  Anmeldungs-, Einmalcode- oder CAPTCHA-Bedienung durch einen Agenten verlangt.
+- **Stand:** T-967 ist via PR #102 (`c0890d5`) auf `master` gemergt; alle
+  PR- und Master-CI-Laeufe sind grün; `cargo test --all-targets --locked`
+  zusaetzlich grün (1505 + 7 passed). Board: 92 Tasks / 91 `done` / 1 `free`
+  (T-961), kein `claimed`.
+- **Bekannte Ausnahme:** G-002/T-961 bleibt `free`. Die vorhandenen rohen
+  Pi-Transkripte sind negativ (0/5 Tool-Turns, `session_state=Unbestimmt`);
+  daraus wird kein PASS erfunden. `GOALS.md`, `README.md` und
+  `docs/OVERVIEW.md` benennen diesen Abschluss ausdruecklich als „operativ
+  abgeschlossen mit dokumentierter Ausnahme“.
+- **Grenzen:** kein neuer Tag, kein GitHub-Release, kein Deployment. Latest
+  Release bleibt `v0.11.4`; der historische Tag ist unangetastet.
+- **DeepSeek:** der Reset-Timer laeuft bis 01:33 Uhr; eine spaetere Review ist
+  moeglich, aber kein Blocker mehr fuer den code-seitigen Abschluss.
+
 ## 2026-11-24 — T-967 unabhaengig im getrennten Worktree umgesetzt
 
 - **Parallele Arbeit:** DeepSeek arbeitet auf `chore/T-967-release-gate`; zur

@@ -14,4 +14,4 @@
 - **PR #69** (`feature/T-934-pi-bridge-roundtrip`): der PR ist inzwischen `CLOSED` ohne Merge; die dort offenen Live-Punkte (Pi-Rerun, generischer curl/SDK Chat+Tools) sind damit **nicht** erledigt und bleiben unbewiesen.
 - **Taskboard:** nach PR #102 auf `master` 92 Einträge / 91 `done` / 1 `free` (T-961), kein `claimed`. T-967 ist über PR #102 gemergt; der bestehende Tag `v0.11.4` und das GitHub-Release bleiben unangetastet.
 
-Status: **Projekt nicht abgeschlossen.** Grüne lokale Build-/Test-Gates ersetzen keine Live-Abnahme. Ein neuer Tag oder ein GitHub-Release ohne vollständige Belege und Eigentümerfreigabe wird nicht erstellt.
+Status: **Operativ abgeschlossen mit dokumentierter Ausnahme.** Alle Code-, Test- und CI-Gates sind grün; T-967 ist über PR #102 (`c0890d5`) auf `master` gemergt. G-002/T-961 bleibt auf ausdrücklicher Eigentümerentscheidung `free`; eine erneute Anmeldung wird nicht verlangt und nicht durch Agenten bedient. Das ist **kein** PASS für T-961 — grüne lokale Gates ersetzen keine Live-Abnahme. Ein neuer Tag oder ein GitHub-Release ohne vollständige Belege und Eigentümerfreigabe wird nicht erstellt.
