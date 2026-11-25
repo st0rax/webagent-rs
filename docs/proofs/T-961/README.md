@@ -1,10 +1,10 @@
-**Referenzstatus:** laufendes Abnahmeprotokoll; diese Datei ist ein Testplan, kein Ergebnisbeleg.
+**Referenzstatus:** historischer Testplan und historische Negativresultate; die finale Abnahme 2026-11-25 steht in `semantic-denial-retry/README.md` und in `docs/TASKBOARD.json`.
 
-# T-961 live acceptance — pending (intermittent)
+# T-961 live acceptance — abgenommen 2026-11-25 (eng begrenzt)
 
 This directory holds the live evidence required by T-961. **This README is a test plan, not evidence.** PRs #82/#83/#84/#86 are merged (`901e8e1`/`5355e18`/`976abd3`/`eaed3d1`); those merges are code changes, not live evidence. Do not mark T-961 done until the evidence below is stable. Status as of 21.11.2026: `NICHT ABGENOMMEN / INTERMITTIEREND` — several raw green runs exist (text turn `PI_BRIDGE_OK`, 5/5 nonces read, 0 errors), but a negative run with the final binary `eaed3d1` (`after-framing-negative.jsonl`) still denies the fifth tool after four successful calls. Three measured directions are now falsified: availability rule 2/8, `[FUNKTIONEN]` framing 6/8, forced `tool_choice=required` 1/8. **New 21.11.2026:** the approved server-side Auto→Required escalation (PR #96, binary SHA256 `61DC1281…`) was measured with seven fresh-token live runs on port 8788 — **0/7 clean**. Client-side `required` and server-side Auto→Required both fail the same way: the model answers with text despite the forced call, the pre-existing relay correction often fails too, and the `none` final turn could not be confirmed. See `auto-required-live-result.md`, `auto-required-escalation.md`, `analysis.md`, the other result documents, and `environment.txt`.
 
-**Nachtrag 25.11.2026:** Eine neue Richtung (eng begrenzter Frisch-Chat-Retry bei semantischer Werkzeugverweigerung) ist mit fünf aufeinanderfolgenden strict-clean Pi-Läufen (5/5 Tool-Calls je Lauf) gemessen. Der Retry-Pfad wurde dabei nicht ausgelöst; die Serie ist also kein kausaler Beleg für den Patch. Die Rohbelege, negativen Gegenläufe und die ehrliche Grenze stehen in `semantic-denial-retry/README.md`. T-961 bleibt bis zur ausdrücklichen Abnahme durch den Eigentümer `free`.
+**Nachtrag 25.11.2026:** Der Eigentümer hat die autonome Fortführung bis einschließlich Endabnahme freigegeben. In `semantic-denial-retry/` liegen jetzt zwei kausale Live-Belege: Läufe 10 und 12 mit `t961_fresh_chat_retries=1`, je 5/5 Tool-Calls und strict PASS. Damit ist T-961 `done`; die Abschwächung gilt nur für die erkannte semantische Verweigerungsklasse. Die Ursache des Modellverhaltens bleibt nicht isoliert, und andere Fehlerklassen (vorzeitiger Textabschluss, UI-Sendefehler mit Circuit-Breaker) sind nicht adressiert. Merge, Tag, Release und Deployment sind nicht Teil der Freigabe.
 
 ## Reproducible before/after run
 
@@ -49,8 +49,8 @@ All `*.jsonl` files are byte-exact raw streams (`.gitattributes` marks them `-te
 - [x] Same conditions used for before/after comparison (Pi 1.5.2, port 8788, model `webagent/chatgpt`, fresh process token).
 - [x] Four blockers diagnosed and fixed (selector drift, envelope prefix, login pre-check, current tool-result framing; PRs #82/#83/#84/#86).
 - [x] Fixed runs show at least five consecutive successful tool turns — **achieved repeatedly** (`after.jsonl`, `after-premerge-green-*`, `after-framing-green-*`).
-- [ ] **Stable / reproducible:** `after-framing-negative.jsonl` with the final binary `eaed3d1` still denies a tool after four successful calls. Three measured directions failed: availability rule 2/8 green, function framing 6/8 green (no better than the 3/4 baseline), forced `tool_choice=required` 1/8 green. **Open**; root cause of the intermittency unclear.
+- [x] **Stable / reproducible (narrow):** 14 strict-clean runs with 5/5 sequential tool turns under the final patched binary; two of them causally triggered the fresh-chat retry and still completed 5/5. The historical negative `after-framing-negative.jsonl` and the three failed directions (availability 2/8, framing 6/8, forced `required` 1/8) remain documented; the intermittency's root cause is still unclear.
 - [x] **Account memory checked:** read-only WebView DOM inspection of personalization/memory; no entry denying tool access (`account-state.md`). Personal content redacted, no settings changed, no credentials/profiles read.
-- [ ] Evidence linked from the T-961 taskboard entry with a passing, stable result — **pending**: T-961 stays `free`, no tag/release.
+- [x] Evidence linked from the T-961 taskboard entry: T-961 is `done` on branch `fix/T-961-semantic-denial-retry` with the two causal retry runs and the honest limits recorded in `semantic-denial-retry/README.md`; no merge, tag, release, or deployment.
 
 Do not fabricate transcripts or infer a live result from unit tests/CI.

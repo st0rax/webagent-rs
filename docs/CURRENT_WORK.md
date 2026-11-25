@@ -1,14 +1,14 @@
 # Current Work
 
-## 2026-11-25 - T-961/G-002: semantische Werkzeugverweigerung, Frisch-Chat-Retry (nicht abgenommen)
+## 2026-11-25 - T-961/G-002: Endabnahme des engen Frisch-Chat-Retries
 
-- **Einordnung der Freigabe:** „ja dann mach dich an t-961/g-002" wurde als Freigabe für lokale Code-/Testarbeit verstanden, **nicht** als Abnahme. Die Entscheidung vom 2026-11-21 („Keine Änderung") bezog sich auf einen konkreten damaligen Strategievorschlag; keine Statusänderung auf `done` ohne neue ausdrückliche Eigentümerentscheidung. Kein Merge, kein Tag, kein GitHub-Release, kein Deployment.
-- **Branch und Eigentümerschaft:** `fix/T-961-semantic-denial-retry`, abgezweigt von `master` bei `7481b02`. Zweck: eng begrenzter, falsifizierbarer Frisch-Chat-Retry bei semantischer Werkzeugverweigerung. Die Arbeit ist als `c6d8493` committet und auf `origin/fix/T-961-semantic-denial-retry` gepusht; Working Tree danach sauber. `master` wurde während der Arbeit nicht verändert; kein Merge, kein Tag, kein Release, kein Deployment.
-- **Code:** `src/api_bridge.rs`, `src/api_bridge/content.rs`, `src/api_bridge/inference.rs`, `src/api_bridge/provider_handlers.rs`, `src/api_bridge/media.rs`, `src/browser_inference.rs`, `src/free_cloud_chat.rs`. Erkennung nur bei „Werkzeugbegriff + Verneinung + Verfügbarkeits-/Zugriffsbegriff"; genau **ein** Retry im frischen Chat mit dem unveränderten ursprünglichen Auftrag plus den bisherigen Tool-Ergebnissen als Daten. Kein Korrektur-Meta, keine `required`-Eskalation. Erneute Verweigerung wird ehrlich gemeldet (`Retry erschoepft`), kein stilles PASS. Fixtures in `src/api_bridge/tests.rs` und `src/browser_inference.rs`. Doku: `docs/API_BRIDGE.md`.
+- **Freigabe:** Der Eigentümer hat am 2026-11-25 die autonome Fortführung „bis einschließlich endabnahme" freigegeben. Die vorherige Entscheidung „noch nicht abnehmen" und die vom 2026-11-21 („Keine Änderung") bezogen sich auf frühere konkrete Strategien und sind damit ersetzt. **Nicht** in der Freigabe enthalten: Merge, Tag, GitHub-Release und Deployment.
+- **Branch und Eigentümerschaft:** `fix/T-961-semantic-denial-retry`, abgezweigt von `master` bei `7481b02`. Code-Commits `c6d8493`, `0e00682`, `b7d8ba4`, gepusht und mit `origin` synchron. `master` bleibt bei `7481b02`; dieser Scheiben-Commit führt die finalen Belege und Statusdokumente auf dem Branch nach. Eigentümerschaft `local/opencode`.
+- **Code:** `src/api_bridge/content.rs`, `src/api_bridge/inference.rs`, `src/api_bridge/provider_handlers.rs`, `src/browser_inference.rs`. Erkennung nur bei „Werkzeugbegriff + Verneinung + Verfügbarkeits-/Zugriffsbegriff"; genau **ein** Retry im frischen Chat mit dem unveränderten ursprünglichen Auftrag plus den bisherigen Tool-Ergebnissen als Daten. Kein Korrektur-Meta, keine `required`-Eskalation. Erneute Verweigerung wird ehrlich gemeldet (`Retry erschoepft`), kein stilles PASS. Fixtures in `src/api_bridge/tests.rs` und `src/browser_inference.rs`. Doku: `docs/API_BRIDGE.md`.
 - **Gates real gemessen:** `cargo fmt --check`, `cargo build`, `cargo test --lib` (1516 passed / 0 failed / 1 ignored), `cargo clippy --all-targets -- -D warnings`, `git diff --check` grün. Ein einmaliges `web_ui::tests::api_rolle_zugriff_mit_token_liefert_modellliste` scheiterte bei laufendem Bridge-Prozess an der Port-Kollision und lief isoliert sowie im Rerun grün.
-- **Live-Belege (ohne neues Login, nur bestehende chatgpt-Sitzung, prozess-only Token, ohne `--auto-tool-choice-required`):** fünf aufeinanderfolgende strict-clean Pi-Läufe 5–9, je `tool_execution_start 5`, Nonces 5/5, `stopReason_error 0`, Transkript-Fehlermarker 0, Relay-Korrekturen 0, `t961_fresh_chat_retries 0`, `STRICT_RESULT=PASS`. Bytegenaue Transkripte, Bridge-Logs, Strict-Ausgaben und zwei ehrliche Negativläufe unter `docs/proofs/T-961/semantic-denial-retry/`; Secret-Scan sauber.
-- **Ehrliche Grenze:** der Retry-Pfad wurde in allen fünf grünen Läufen **nicht ausgelöst**; die Serie ist kein kausaler Beleg für den Patch. Negativlauf 1 endete vorzeitig ohne Verweigerung (3/5), Negativlauf 4 zeigte „nicht ausführbar verfügbar" mit der alten Erkennung (0/5) — im Patch behoben, aber nicht live nachgestellt. Die Ausgangslage war bereits intermittierend; die Ursache ist nicht eingegrenzt.
-- **Entscheidung des Eigentümers vom 2026-11-25: noch nicht abnehmen.** T-961 bleibt `free`; das Board (`docs/TASKBOARD.json`, `docs/TASKBOARD.md`) bleibt unverändert, kein `done`, kein `PASS`, kein Merge/Tag/Release/Deployment. Grund: der Retry-Pfad wurde live nie ausgelöst, die fünf grünen Läufe belegen keine Kausalwirkung des Patches. **Nächster Schritt:** gezielt weitere Live-Läufe, bis die Verweigerungsklasse reproduziert und der einmalige Frisch-Chat-Retry samt Ergebnis belegt ist; erst danach erneut zur Abnahme vorlegen.
+- **Kausale Live-Belege (ohne neues Login, nur bestehende chatgpt-Sitzung, prozess-only Token, ohne `--auto-tool-choice-required`):** 14 strict-clean Pi-Läufe mit je 5/5 Tool-Calls und Nonces (5–10, 12–17, 19–20), `stopReason_error 0`, Fehlermarker 0, Relay-Korrekturen 0. In **Lauf 10** und **Lauf 12** wurde die semantische Verweigerung live ausgelöst; `t961_fresh_chat_retries=1`, danach jeweils bis `call_5` weitergearbeitet, `STRICT_RESULT=PASS`. Transkript-SHA256: `0F022DF4EB9689FB30BC52E7E5C3D625B0B035EAB48F5419248F511DA18288E5` (10) und `8CC2BDB4C6955DD2CFAF839248043AA0233857BFF4BF8EE31D6C83F03DF9E198` (12). `t961_retry_exhausted=0` in allen Läufen; rohe Transkripte, Bridge-Logs, Strict-Ausgaben und Negativläufe unter `docs/proofs/T-961/semantic-denial-retry/`, Secret-Scan sauber.
+- **Ehrliche Grenze:** Die Ursache des Modellverhaltens bleibt nicht isoliert; keine Kontoeinstellung wurde geprüft oder geändert. Negativlauf 11 (4/5) und 18 (1/5) sind vorzeitiger Textabschluss ohne Verweigerung, Lauf 21 (0/5) ein `ABSENDEKNOPF_DEAKTIVIERT`-Sendefehler mit automatischem Circuit-Breaker (`open_until 1795630874`, nicht manuell zurückgesetzt). Diese Klassen werden vom Retry-Pfad nicht adressiert; der Mehrschritt-Loop bleibt nicht deterministisch.
+- **Abnahme:** T-961 ist in `docs/TASKBOARD.json` und `docs/TASKBOARD.md` auf `done` gesetzt, G-002 in `GOALS.md` geschlossen. Die Detailbegründung steht in `docs/proofs/T-961/semantic-denial-retry/README.md`. Kein Merge, kein Tag, kein Release, kein Deployment ohne neue ausdrückliche Freigabe.
 
 ## 2026-11-25 - T-968 via PR #103 nach `master` gemergt
 
@@ -16,12 +16,14 @@
   PR #103 (https://github.com/st0rax/webagent-rs/pull/103) wurde mit
   `a2a144a` als Squash nach `master` gemergt; alle vier PR-Checks waren vorher
   gruen. `master` lokal und remote steht auf `a2a144a`, kein Tag, kein
-  GitHub-Release, kein Deployment. Board jetzt 93 Tasks / 92 `done` / 1 `free`
-  (T-961) / 0 `claimed`; `GOALS.md`, `docs/OVERVIEW.md` und `CHANGELOG.md`
-  sind auf diesen Stand nachgezogen.
-- **Restliche Ausnahme:** T-961/G-002 bleibt `free`; die rohen Pi-Transkripte
-  sind negativ (0/5 Tool-Turns, `session_state=Unbestimmt`). Kein erfundenes
-  PASS und keine erneute Anmeldung durch einen Agenten.
+  GitHub-Release, kein Deployment. Board zu diesem Zeitpunkt: 93 Tasks /
+  92 `done` / 1 `free` (T-961) / 0 `claimed`; `GOALS.md`,
+  `docs/OVERVIEW.md` und `CHANGELOG.md` waren auf diesen Stand nachgezogen.
+- **Damalige Ausnahme:** T-961/G-002 war zu diesem Zeitpunkt `free`; die
+  damaligen rohen Pi-Transkripte waren negativ (0/5 Tool-Turns,
+  `session_state=Unbestimmt`). Kein erfundenes PASS und keine erneute
+  Anmeldung durch einen Agenten. Die spätere Endabnahme steht im Abschnitt
+  oben; `master` ist dadurch unverändert geblieben.
 
 ## 2026-11-25 - T-968: kimi `reasoning_effort` live belegt (umgesetzt im Worktree)
 
@@ -51,13 +53,14 @@
 - **Gates real gemessen:** `cargo fmt`, `cargo build`, `cargo test --lib`
   (1512 passed / 0 failed / 1 ignored), `cargo clippy --all-targets --
   -D warnings`, `git diff --check` alle gruen. Matrix `effort/kimi` nur aus dem
-  rohen Lauf auf `passed` gesetzt; Board 93 Tasks / 92 `done` / 1 `free`
-  (T-961) / 0 `claimed`, MD-Spiegel synchron.
+  rohen Lauf auf `passed` gesetzt; Board zu diesem Zeitpunkt 93 Tasks /
+  92 `done` / 1 `free` (T-961) / 0 `claimed`, MD-Spiegel synchron.
 - **Grenzen:** PR #103 wurde mit ausdruecklicher Freigabe geoeffnet und nach
   gruenen Checks (aarch64, build & test, Linux-WebView, Windows) als Squash
   `a2a144a` nach `master` gemergt; seither kein Tag, kein GitHub-Release, kein
   Deployment. Keine Zugangsdaten, Profile, Cookies oder Tokens gelesen, keine
-  Kontoeinstellung geaendert. T-961 bleibt `free`. Der Branch wurde als
+  Kontoeinstellung geaendert. T-961 war zu diesem Zeitpunkt `free`; die
+  spaetere Endabnahme steht im Abschnitt oben. Der Branch wurde als
   `88918df` (Umsetzung), `141736b` und `4da55d9` (Handoff) committet und
   gepusht; die Uebergabe enthaelt Pfad, Zweck und Eigentuemerschaft
   (`local/opencode`).
@@ -69,13 +72,12 @@
   Anmeldungs-, Einmalcode- oder CAPTCHA-Bedienung durch einen Agenten verlangt.
 - **Stand:** T-967 ist via PR #102 (`c0890d5`) auf `master` gemergt; alle
   PR- und Master-CI-Laeufe sind grün; `cargo test --all-targets --locked`
-  zusaetzlich grün (1505 + 7 passed). Board: 92 Tasks / 91 `done` / 1 `free`
-  (T-961), kein `claimed`.
-- **Bekannte Ausnahme:** G-002/T-961 bleibt `free`. Die vorhandenen rohen
-  Pi-Transkripte sind negativ (0/5 Tool-Turns, `session_state=Unbestimmt`);
-  daraus wird kein PASS erfunden. `GOALS.md`, `README.md` und
-  `docs/OVERVIEW.md` benennen diesen Abschluss ausdruecklich als „operativ
-  abgeschlossen mit dokumentierter Ausnahme“.
+  zusaetzlich grün (1505 + 7 passed). Board zu diesem Zeitpunkt: 92 Tasks /
+  91 `done` / 1 `free` (T-961), kein `claimed`.
+- **Damalige Ausnahme:** G-002/T-961 war zu diesem Zeitpunkt `free`. Die
+  damaligen rohen Pi-Transkripte sind negativ (0/5 Tool-Turns,
+  `session_state=Unbestimmt`); daraus wurde kein PASS erfunden. Die spaetere
+  Endabnahme mit kausalem Retry-Beleg steht im Abschnitt oben.
 - **Grenzen:** kein neuer Tag, kein GitHub-Release, kein Deployment. Latest
   Release bleibt `v0.11.4`; der historische Tag ist unangetastet.
 - **DeepSeek-Review (01:33 Uhr):** der Child-Agent war wieder verfuegbar und

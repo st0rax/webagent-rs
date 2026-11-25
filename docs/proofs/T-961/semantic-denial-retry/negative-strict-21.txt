@@ -1,0 +1,23 @@
+=== STRICT VERIFY run 21 ===
+tool_execution_start         0
+tool_execution_end           0
+stopReason_error             16
+auto_retry_events            4
+transcript_error_markers     35
+relay_korrekturen            0
+bridge_navigation_errors     0
+nonces                       0
+stopReason_stop              0
+t961_fresh_chat_retries      0
+t961_retry_exhausted         0
+harness_pass                 False
+bytes                        23030
+sha256                       830B5161106F881615DA80652A637551A9D35EB349DB4EE635C7FDEAFD417FE8
+STRICT_RESULT=FAIL
+  - weniger als 5 Tool-Starts: 0
+  - stopReason=error im Transcript: 16
+  - Pi-Auto-Retry im Transcript: 4
+  - Fehlermarker im Transcript: 35
+  - Marker nicht vollstaendig: 0/5
+  - keine erfolgreiche Textabschlussantwort (stopReason=stop)
+  - Harness-PASS fehlt

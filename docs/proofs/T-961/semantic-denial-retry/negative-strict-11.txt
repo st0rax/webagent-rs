@@ -1,0 +1,19 @@
+=== STRICT VERIFY run 11 ===
+tool_execution_start         4
+tool_execution_end           4
+stopReason_error             0
+auto_retry_events            0
+transcript_error_markers     0
+relay_korrekturen            0
+bridge_navigation_errors     0
+nonces                       4
+stopReason_stop              3
+t961_fresh_chat_retries      0
+t961_retry_exhausted         0
+harness_pass                 False
+bytes                        32685
+sha256                       41B8FEB062DCDDEADF42FBE291C83982F03DBC924C6CCCE0081503D2F255D882
+STRICT_RESULT=FAIL
+  - weniger als 5 Tool-Starts: 4
+  - Marker nicht vollstaendig: 4/5
+  - Harness-PASS fehlt

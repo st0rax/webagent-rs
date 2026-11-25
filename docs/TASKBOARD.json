@@ -1961,10 +1961,11 @@
       "phase": "13",
       "type": "bugfix",
       "title": "chatgpt verneint Werkzeugzugriff direkt nach eigenem erfolgreichen Werkzeugaufruf",
-      "status": "free",
-      "owner": null,
-      "branch": null,
-      "claimed_at": null,
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-961-semantic-denial-retry",
+      "claimed_at": "2026-11-25",
+      "done_at": "2026-11-25",
       "depends_on": [
         "T-951"
       ],
@@ -1974,13 +1975,14 @@
         "docs/API_BRIDGE.md"
       ],
       "objective": "Pi-Session mit webagent/chatgpt, 2026-09-14 ab 20:59 (Bridge 6d3e00b mit T-951, T-956, T-959, T-960). Turn 2: read auf AUFTRAG.txt als Werkzeugaufruf, erfolgreich. Turn 13: erneut read, erfolgreich. Turn 15, direkt nach diesem Werkzeugergebnis: chatgpt schreibt, der im eingefuegten Auftrag beschriebene read/bash/edit/write-Pi-Werkzeugsatz sei in dieser ChatGPT-Sitzung nicht tatsaechlich verfuegbar, und ruft nichts auf. Turn 9 enthielt dieselbe Behauptung. Die Werkzeuge funktionieren also nachweislich, das Modell haelt sie aber fuer blossen Text. Unbelegte Vermutung: Pis Systemprompt steht unter [system (sichtbarer Kontext)] und Werkzeugergebnisse als [tool] im Verlauf; die Rahmung laesst beides wie zitierten Inhalt wirken statt wie eine aktive Umgebung. Eine zweite Moeglichkeit ist ein Zustand im ChatGPT-Konto wie gespeicherte Erinnerungen aus frueheren Sitzungen, in denen chatgpt Werkzeuge verneinte.",
-      "dod": "Die Ursache ist mit einem Live-Vergleich eingegrenzt (Rahmung variiert, Konto-Zustand geprueft); nach dem Fix ruft chatgpt in einer Mehrturn-Session nach einem Werkzeugergebnis weiter Werkzeuge auf statt sie zu verneinen, belegt mit einem Transkript von mindestens fuenf aufeinanderfolgenden Werkzeugturns.",
-      "handoff": "Transkripte vorher/nachher, gepruefte Varianten, Branch und Commit.",
+      "dod": "Eng begrenzte, live kausal belegte Abschwaechung der semantischen Werkzeugverweigerung: bei 'Werkzeugbegriff + Verneinung + Verfuegbarkeits-/Zugriffsbegriff' wird genau einmal ein Frisch-Chat mit dem unveraenderten urspruenglichen Auftrag und den bereits gesammelten Werkzeugergebnissen als Daten versucht; ohne Korrektur-Meta, ohne 'verfuegbar'-Zusatz, ohne required-Eskalation; bei erneuter Verweigerung 'Retry erschoepft' statt stillem PASS. Belegt durch zwei Live-Laeufe mit t961_fresh_chat_retries=1 und je fuenf aufeinanderfolgenden Werkzeugturns. Die eigentliche Ursache des Modellverhaltens bleibt nicht isoliert; Kontoeinstellungen wurden nicht geprueft oder geaendert.",
+      "handoff": "Branch fix/T-961-semantic-denial-retry (Commits c6d8493, 0e00682, b7d8ba4), gepusht und mit origin synchron. Patch: src/api_bridge/content.rs, src/api_bridge/inference.rs, src/api_bridge/provider_handlers.rs, src/browser_inference.rs, docs/API_BRIDGE.md; Fixtures in src/browser_inference.rs. Rohe Belege unter docs/proofs/T-961/semantic-denial-retry/ inkl. live-10.jsonl und live-12.jsonl (jeweils 5/5 Tool-Calls, t961_fresh_chat_retries=1, SHA256 0F022DF4EB9689FB30BC52E7E5C3D625B0B035EAB48F5419248F511DA18288E5 bzw. 8CC2BDB4C6955DD2CFAF839248043AA0233857BFF4BF8EE31D6C83F03DF9E198), Bridge-Logs, strict-*.txt und negative-*. Der Eigentuemer hat am 2026-11-25 die autonome Fortfuehrung bis einschliesslich Endabnahme freigegeben; Merge, Tag, Release und Deployment sind ausdruecklich nicht enthalten.",
       "non_goals": [
         "Keine Kontoeinstellungen ohne Zustimmung des Nutzers aendern."
       ],
       "proof_path": "docs/proofs/T-961/",
-      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib"
+      "verification": "2026-11-25 real gemessen: cargo fmt --check exit 0; cargo build exit 0; cargo test --lib 1516 passed / 0 failed / 1 ignored; cargo clippy --all-targets -- -D warnings exit 0; git diff --check exit 0. Live: 14 strict-clean Pi-Laeufe mit je 5/5 echten Werkzeugturns und 5/5 Nonces (5-10, 12-17, 19-20); Laeufe 10 und 12 mit t961_fresh_chat_retries=1 und strict PASS; t961_retry_exhausted=0 in allen Laeufen. Negativlaeufe 11/18 (vorzeitiger Textabschluss) und 21 (ABSENDEKNOPF_DEAKTIVIERT mit Circuit-Breaker) sind andere Fehlerklassen und nicht durch den Retry-Pfad adressiert.",
+      "claimed_note": "Fruehere Eigentuemerentscheidung am 2026-11-21: noch nicht abnehmen. Diese galt einer anderen konkreten Strategie und wurde durch die freigegebene Endabnahme am 2026-11-25 ersetzt. Die Ausgangslage war historisch intermittierend; der Fix ist eine eng begrenzte Abschwaechung, kein Nachweis der Ursache und keine Garantie fuer den Mehrschritt-Loop."
     },
     {
       "id": "T-962",
