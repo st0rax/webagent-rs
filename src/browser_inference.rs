@@ -76,6 +76,10 @@ pub struct BrowserInferenceRequest<'a> {
     pub headless: bool,
     pub timeout_secs: Option<f64>,
     pub model: Option<&'a str>,
+    /// T-961: nur gesetzt von der OpenAI-Bridge auf einem Werkzeug-
+    /// Fortsetzungsturn. Bei einer semantischen Verfuegbarkeitsverweigerung
+    /// wird genau einmal in einem frischen Chat mit diesem Prompt retryt.
+    pub retry_prompt: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -181,7 +185,7 @@ pub fn complete_streaming_with_attachments(
         validate: &validate,
         correction_message: &correction_message,
     };
-    let text = crate::relay::relay_single_turn_with_attachments_streaming_checked(
+    let first = crate::relay::relay_single_turn_with_attachments_streaming_checked(
         request.brain,
         &prompt,
         request.headless,
@@ -194,8 +198,57 @@ pub fn complete_streaming_with_attachments(
     )
     .map_err(|error| error.0)?;
 
-    let text = normalize_provider_text(request.brain, &text);
-    parse_response(&text, request.tools, &request.tool_choice)
+    let text = normalize_provider_text(request.brain, &first);
+    let parsed = parse_response(&text, request.tools, &request.tool_choice)?;
+
+    // T-961: eine semantische Werkzeugverweigerung ist kein Parse-Fehler und
+    // wurde deshalb bisher als ganz normale Endantwort an den Client
+    // zurueckgegeben. Nur auf einem echten Werkzeug-Fortsetzungsturn (die
+    // Bridge liefert dann den ursprünglichen Auftrag als Retry-Prompt) und nur
+    // bei `Auto` einmal in einem FRISCHEN Chat mit genau diesem Auftrag
+    // retryen. Kein T-953-Korrekturtext, kein "verfuegbar"-Meta, keine
+    // Eskalation auf `required` — alle drei Richtungen sind live widerlegt.
+    let semantic_denial = parsed.tool_calls.is_empty() && is_semantic_tool_denial(&text);
+    let should_retry = semantic_denial
+        && request.retry_prompt.is_some()
+        && !request.tools.is_empty()
+        && matches!(request.tool_choice, BrowserToolChoice::Auto);
+    if !should_retry {
+        return Ok(parsed);
+    }
+    let retry_prompt = prompt_with_tools(
+        request
+            .retry_prompt
+            .expect("retry_prompt wurde vorher geprueft"),
+        request.tools,
+        &request.tool_choice,
+    )?;
+    let retry_prompt = prompt_with_identity(request.brain, &retry_prompt);
+    crate::bench_events::eprint_line(
+        "[T-961] semantische Werkzeugverweigerung; ein Frisch-Chat-Retry mit dem ursprünglichen Auftrag.",
+    );
+    let second = crate::relay::relay_single_turn_with_attachments_streaming_checked(
+        request.brain,
+        &retry_prompt,
+        request.headless,
+        request.timeout_secs,
+        request.model,
+        attachments,
+        &mut relay_update,
+        &output_check,
+        presence,
+    )
+    .map_err(|error| error.0)?;
+    let second = normalize_provider_text(request.brain, &second);
+    let second_parsed = parse_response(&second, request.tools, &request.tool_choice)?;
+    if second_parsed.tool_calls.is_empty() && is_semantic_tool_denial(&second) {
+        // Ehrlich: der zweite Turn darf nicht still als Erfolg gelten. Der
+        // Strict-Verifier markiert diese Antwort weiterhin als Fehlschlag.
+        crate::bench_events::eprint_line(
+            "[T-961] Retry erschoepft: auch der zweite Turn verweigert das Werkzeug; kein PASS.",
+        );
+    }
+    Ok(second_parsed)
 }
 
 /// Strip provider UI chrome / CoT echo before SSE deltas or final answers.
@@ -206,6 +259,33 @@ pub fn complete_streaming_with_attachments(
 /// or fail honestly instead of finishing on status text.
 fn normalize_provider_text(_brain: &str, text: &str) -> String {
     crate::observer::chat_answer_text(text)
+}
+
+/// T-961: eng gefasste Erkennung der beobachteten Fehlerklasse. Es muss
+/// gleichzeitig ein Werkzeugbegriff und eine explizite Verfuegbarkeits-/
+/// Zugriffsverneinung vorkommen. Ein normaler Textabschluss (z. B. eine
+/// Zusammenfassung nach dem letzten Read) loest bewusst KEINEN Retry aus.
+fn is_semantic_tool_denial(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let names_tool = lower.contains("werkzeug")
+        || lower.contains("tool")
+        || lower.contains("read")
+        || lower.contains("bash")
+        || lower.contains("edit")
+        || lower.contains("write");
+    let negates = lower.contains("nicht")
+        || lower.contains("kein")
+        || lower.contains("not ")
+        || lower.contains("cannot")
+        || lower.contains("can't")
+        || lower.contains("don't");
+    let availability = lower.contains("verfügbar")
+        || lower.contains("zugriff")
+        || lower.contains("berechtigung")
+        || lower.contains("aufrufen")
+        || lower.contains("available")
+        || lower.contains("access");
+    names_tool && negates && availability
 }
 
 fn validate_attachments(attachments: &[BrowserAttachment]) -> Result<(), String> {
@@ -647,6 +727,39 @@ mod tests {
     }
 
     #[test]
+    fn t961_semantic_denial_is_narrow() {
+        assert!(is_semantic_tool_denial(
+            "Das fünfte read-Werkzeug ist in dieser Sitzung nicht verfügbar."
+        ));
+        assert!(is_semantic_tool_denial(
+            "The bash tool is not available in this session."
+        ));
+        assert!(is_semantic_tool_denial(
+            "Das read-Werkzeug ist in dieser Sitzung nicht ausführbar verfügbar."
+        ));
+        assert!(is_semantic_tool_denial(
+            "Dieser Werkzeugzugriff ist mir verwehrt, kein Zugriff."
+        ));
+        assert!(!is_semantic_tool_denial(
+            "Ich habe AUFTRAG.txt gelesen und fahre mit der Aufgabe fort."
+        ));
+        assert!(!is_semantic_tool_denial("Das Wetter ist nicht verfügbar."));
+        assert!(!is_semantic_tool_denial("Die Antwort ist nicht eindeutig."));
+    }
+
+    #[test]
+    fn t961_plain_auto_text_is_not_a_denial() {
+        let parsed = parse_response(
+            "Hier ist die Zusammenfassung des gelesenen Texts.",
+            &[read_tool()],
+            &BrowserToolChoice::Auto,
+        )
+        .unwrap();
+        assert!(parsed.tool_calls.is_empty());
+        assert!(!is_semantic_tool_denial(&parsed.text.unwrap_or_default()));
+    }
+
+    #[test]
     fn required_prompt_bietet_keine_textantwort_an() {
         const TEXT_HINT: &str = "Wenn kein Werkzeug erforderlich ist, antworte normal";
         let tools = [read_tool()];
@@ -678,6 +791,7 @@ mod tests {
             headless: true,
             timeout_secs: None,
             model: None,
+            retry_prompt: None,
         })
         .unwrap_err();
 

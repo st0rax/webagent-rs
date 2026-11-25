@@ -308,6 +308,7 @@ impl WebViewSessionTransport for BrowserInferenceWebViewTransport {
             headless: self.headless,
             timeout_secs: self.timeout_secs,
             model: None,
+            retry_prompt: None,
         })?;
         response
             .text

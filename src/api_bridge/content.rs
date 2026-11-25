@@ -395,6 +395,58 @@ pub(crate) fn conversation_task(
     Ok(conversation_prompt(system, messages)?.text)
 }
 
+/// T-961: Baust den Prompt fuer genau einen Frisch-Chat-Retry nach einer
+/// semantischen Werkzeugverweigerung — auch schon vor dem ersten Tool-Call.
+/// Der ursprüngliche Auftrag bleibt bytegenau erhalten; die bereits erzielten
+/// Werkzeugergebnisse werden als reine Daten beigelegt. Bewusst KEIN
+/// "Fortsetzung derselben Unterhaltung", keine Rollen-Marker fuer Dritte und
+/// keine Korrektur-/Verfuegbarkeitsmeta.
+fn tool_continuation_retry_task(
+    system_context: &str,
+    messages: &[ConversationMessage],
+) -> Result<Option<String>, String> {
+    let Some(original) = messages.iter().find(|message| message.role == "user") else {
+        // Historische Transkripte ohne User-Turn (nur System + Tool) sind
+        // zulaessig; dort gibt es keinen ursprünglichen Auftrag zum Retry.
+        return Ok(None);
+    };
+    let mut ignored = Vec::new();
+    let mut retry = String::from(system_context);
+    // OpenAI-Chat uebergibt `system` als Nachricht, Anthropic als Feld. Beides
+    // muss im Retry erhalten bleiben, sonst fehlt dem Modell der Auftragsrahmen.
+    for message in messages
+        .iter()
+        .filter(|m| matches!(m.role.as_str(), "system" | "developer"))
+    {
+        let mut ignored = Vec::new();
+        let content = content_to_prompt(&message.content, &mut ignored)?;
+        let label = if message.role == "system" {
+            "system-Kontext des API-Clients"
+        } else {
+            "developer-Kontext des API-Clients"
+        };
+        retry.push_str(&format!("[{label}]\n{content}\n\n"));
+    }
+    retry.push_str(&content_to_prompt(&original.content, &mut ignored)?);
+    let tool_results = messages
+        .iter()
+        .filter(|m| m.role == "tool")
+        .map(|message| {
+            let mut ignored = Vec::new();
+            let content = content_to_prompt(&message.content, &mut ignored)?;
+            let id = message.tool_call_id.as_deref().unwrap_or("unbekannt");
+            Ok(format!("[tool_call_id: {id}]\n{content}\n\n"))
+        })
+        .collect::<Result<Vec<String>, String>>()?;
+    if !tool_results.is_empty() {
+        retry.push_str("\n\n[Bisherige Werkzeugergebnisse]\n");
+        for result in tool_results {
+            retry.push_str(&result);
+        }
+    }
+    Ok(Some(retry))
+}
+
 pub(crate) fn conversation_prompt(
     system: Option<String>,
     messages: &[ConversationMessage],
@@ -429,12 +481,15 @@ pub(crate) fn conversation_prompt(
         );
     }
 
+    let retry_task = tool_continuation_retry_task(&system_context, messages)?;
+
     let mut attachments = Vec::new();
     let current_text = content_to_prompt(&current.content, &mut attachments)?;
     if messages.len() == 1 {
         return Ok(PromptBundle {
             text: system_context + &current_text,
             attachments,
+            retry_task,
         });
     }
 
@@ -498,6 +553,7 @@ pub(crate) fn conversation_prompt(
     Ok(PromptBundle {
         text: task,
         attachments,
+        retry_task,
     })
 }
 

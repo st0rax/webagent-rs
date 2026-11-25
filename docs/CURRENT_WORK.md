@@ -1,5 +1,15 @@
 # Current Work
 
+## 2026-11-25 - T-961/G-002: semantische Werkzeugverweigerung, Frisch-Chat-Retry (nicht abgenommen)
+
+- **Einordnung der Freigabe:** „ja dann mach dich an t-961/g-002" wurde als Freigabe für lokale Code-/Testarbeit verstanden, **nicht** als Abnahme. Die Entscheidung vom 2026-11-21 („Keine Änderung") bezog sich auf einen konkreten damaligen Strategievorschlag; keine Statusänderung auf `done` ohne neue ausdrückliche Eigentümerentscheidung. Kein Merge, kein Tag, kein GitHub-Release, kein Deployment.
+- **Branch und Eigentümerschaft:** `fix/T-961-semantic-denial-retry`, abgezweigt von `master` bei `7481b02`. Zweck: eng begrenzter, falsifizierbarer Frisch-Chat-Retry bei semantischer Werkzeugverweigerung. Eigentümer der uncommitteten Arbeit bis zur Übergabe: dieser Agent; `master` wurde während der Arbeit nicht verändert.
+- **Code:** `src/api_bridge.rs`, `src/api_bridge/content.rs`, `src/api_bridge/inference.rs`, `src/api_bridge/provider_handlers.rs`, `src/api_bridge/media.rs`, `src/browser_inference.rs`, `src/free_cloud_chat.rs`. Erkennung nur bei „Werkzeugbegriff + Verneinung + Verfügbarkeits-/Zugriffsbegriff"; genau **ein** Retry im frischen Chat mit dem unveränderten ursprünglichen Auftrag plus den bisherigen Tool-Ergebnissen als Daten. Kein Korrektur-Meta, keine `required`-Eskalation. Erneute Verweigerung wird ehrlich gemeldet (`Retry erschoepft`), kein stilles PASS. Fixtures in `src/api_bridge/tests.rs` und `src/browser_inference.rs`. Doku: `docs/API_BRIDGE.md`.
+- **Gates real gemessen:** `cargo fmt --check`, `cargo build`, `cargo test --lib` (1516 passed / 0 failed / 1 ignored), `cargo clippy --all-targets -- -D warnings`, `git diff --check` grün. Ein einmaliges `web_ui::tests::api_rolle_zugriff_mit_token_liefert_modellliste` scheiterte bei laufendem Bridge-Prozess an der Port-Kollision und lief isoliert sowie im Rerun grün.
+- **Live-Belege (ohne neues Login, nur bestehende chatgpt-Sitzung, prozess-only Token, ohne `--auto-tool-choice-required`):** fünf aufeinanderfolgende strict-clean Pi-Läufe 5–9, je `tool_execution_start 5`, Nonces 5/5, `stopReason_error 0`, Transkript-Fehlermarker 0, Relay-Korrekturen 0, `t961_fresh_chat_retries 0`, `STRICT_RESULT=PASS`. Bytegenaue Transkripte, Bridge-Logs, Strict-Ausgaben und zwei ehrliche Negativläufe unter `docs/proofs/T-961/semantic-denial-retry/`; Secret-Scan sauber.
+- **Ehrliche Grenze:** der Retry-Pfad wurde in allen fünf grünen Läufen **nicht ausgelöst**; die Serie ist kein kausaler Beleg für den Patch. Negativlauf 1 endete vorzeitig ohne Verweigerung (3/5), Negativlauf 4 zeigte „nicht ausführbar verfügbar" mit der alten Erkennung (0/5) — im Patch behoben, aber nicht live nachgestellt. Die Ausgangslage war bereits intermittierend; die Ursache ist nicht eingegrenzt.
+- **Offen:** ausdrückliche Abnahme durch den Eigentümer einholen. Erst danach T-961 auf `done` setzen und `docs/TASKBOARD.json` / `docs/TASKBOARD.md` nachziehen. Bis dahin bleibt T-961 `free`.
+
 ## 2026-11-25 - T-968 via PR #103 nach `master` gemergt
 
 - **Freigabe und Merge:** Der Eigentuemer hat den Merge ausdruecklich freigegeben.

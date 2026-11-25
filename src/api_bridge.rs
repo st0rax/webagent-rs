@@ -121,6 +121,12 @@ struct StoredResponse {
 pub(crate) struct PromptBundle {
     text: String,
     attachments: Vec<crate::browser_inference::BrowserAttachment>,
+    /// T-961: ein alternativer Prompt fuer genau einen Frisch-Chat-Retry, wenn
+    /// das Modell auf einem Werkzeug-Fortsetzungsturn eine semantische
+    /// Verfuegbarkeitsverweigerung als ganz normale Textantwort liefert.
+    /// Enthaelt den urspruenglichen Auftrag unverändert plus die bereits
+    /// gesammelten Werkzeugergebnisse, ohne Korrektur- oder Meta-Wording.
+    retry_task: Option<String>,
 }
 
 #[derive(Default)]

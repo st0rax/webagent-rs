@@ -617,6 +617,57 @@ fn current_tool_result_gets_explicit_label_and_call_id() {
 }
 
 #[test]
+fn t961_retry_prompt_keeps_original_task_and_results_without_meta() {
+    // T-961: der Retry muss in einem frischen Chat mit dem UNVERAENDERTEN
+    // Auftrag starten und die bereits erzielten Ergebnisse nur als Daten
+    // beilegen. Kein "Fortsetzung"-Framing, kein Korrektur-/Verfuegbarkeitsmeta.
+    let original = "Lies nonce-1.txt und dann nonce-2.txt.";
+    let request: OpenAiRequest = serde_json::from_value(json!({
+        "model":"chatgpt", "messages":[
+            {"role":"system","content":"Du bist ein Coding-Agent."},
+            {"role":"user","content":original},
+            {"role":"assistant","content":null,"tool_calls":[
+                {"id":"call_1","type":"function","function":{"name":"read","arguments":"{\"path\":\"nonce-1.txt\"}"}}
+            ]},
+            {"role":"tool","tool_call_id":"call_1","content":"PI_TOOL_1_abc"}
+        ]
+    }))
+    .unwrap();
+
+    let prompt = openai_prompt(&request).unwrap();
+    let retry = prompt
+        .retry_task
+        .expect("Werkzeug-Fortsetzung muss einen Retry-Prompt liefern");
+    assert!(retry.starts_with("[system-Kontext des API-Clients]\n"));
+    assert!(retry.contains("Du bist ein Coding-Agent."));
+    assert!(retry.contains(original));
+    assert!(retry.contains("[tool_call_id: call_1]"));
+    assert!(retry.contains("PI_TOOL_1_abc"));
+    assert!(!retry.contains("Fortsetzung derselben Unterhaltung"));
+    assert!(!retry.contains("[du – Werkzeugaufruf]"));
+    assert!(!retry.contains("nicht verfügbar"));
+    assert!(!retry.contains("Korrektur"));
+}
+
+#[test]
+fn t961_first_user_turn_also_has_a_retry_prompt() {
+    // Auch die Verweigerung VOR dem ersten Tool-Call (0/5) muss genau einmal
+    // in einem frischen Chat mit dem unveränderten Auftrag retryt werden.
+    let request: OpenAiRequest = serde_json::from_value(json!({
+        "model":"chatgpt", "messages":[
+            {"role":"user","content":"Normale Frage mit Werkzeugbedarf."}
+        ]
+    }))
+    .unwrap();
+    let prompt = openai_prompt(&request).unwrap();
+    let retry = prompt
+        .retry_task
+        .expect("auch der erste Turn braucht einen Retry-Prompt");
+    assert!(retry.contains("Normale Frage mit Werkzeugbedarf."));
+    assert!(!retry.contains("[Bisherige Werkzeugergebnisse]"));
+}
+
+#[test]
 fn browser_tool_call_maps_to_openai_response() {
     let answer = crate::browser_inference::BrowserInferenceResponse {
         text: None,
