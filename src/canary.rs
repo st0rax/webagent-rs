@@ -38,10 +38,18 @@ pub fn default_probe(brain_id: &str) -> Result<(), String> {
     if sel.is_empty() {
         return Err("missing_selectors".into());
     }
-    if !Path::new(sel).is_file() {
+    if !selectors_available(brain_id, sel) {
         return Err("missing_selectors".into());
     }
     Ok(())
+}
+
+/// Selektoren sind vorhanden, wenn die Datei am (Build-)Pfad liegt ODER die
+/// ausgelieferte Binary eine eingebettete Kopie hat. Ohne zweiten Zweig meldet
+/// Canary auf einer deployten exe ohne Quellbaum sieben falsche Fehlschläge,
+/// obwohl `load_selectors` die eingebetteten Selektoren korrekt lädt.
+fn selectors_available(brain_id: &str, sel: &str) -> bool {
+    Path::new(sel).is_file() || crate::config::embedded_selector(brain_id).is_some()
 }
 
 /// Alle bekannten Brains mit injizierbarer Probe pruefen.
@@ -116,6 +124,14 @@ mod tests {
                 assert_eq!(r.reason, "ok");
             }
         }
+    }
+
+    #[test]
+    fn selectors_available_akzeptiert_eingebettete_kopie_ohne_datei() {
+        let absent = "C:/webagent-canary-absent/selectors/chatgpt.json";
+        assert!(!Path::new(absent).is_file());
+        assert!(selectors_available("chatgpt", absent));
+        assert!(!selectors_available(" brains-unbekannt ", absent));
     }
 
     #[test]
