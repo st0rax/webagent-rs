@@ -3,6 +3,11 @@
 
 ## [Unreleased]
 
+## [0.11.7] - 2026-11-26
+
+- Vier lokale Härtungsscheiben nach `master` zusammengeführt (PRs #108–#111; #109–#111 wurden wegen Doku-Konflikten als lokal gesquashte Commits mit PR-Referenz gepusht und anschließend geschlossen). T-969 liefert `docs/PROTOCOL.md` und `docs/SECURITY.md` aus dem Code; T-970 isoliert Turn-Beobachtungen thread-lokal (`PendingScope`), T-971 kennzeichnet `VerifiedFree` ehrlich als Registry-Beleg ohne Capability-Gate, T-972 teilt `controller.rs`/`webview_runtime.rs` in Untermodule (3349→1909 bzw. 3315→2229 Zeilen). Alle PR-Checks und die Gates auf dem zusammengeführten Stand sind grün (1521 passed / 0 failed / 1 ignored).
+- Der Boardstand T-969..T-972 ist `done`; `docs/CURRENT_WORK.md` hält den Merge- und Konfliktauflösungsweg fest. Kein Force-Push, keine History-Umschreibung.
+
 ## [0.11.6] - 2026-11-25
 
 - Release `v0.11.6`: published 2026-11-25 21:21:55 UTC via green workflow `45702611313` (PR #107, tag `1149dff`, seven SHA-256-verified assets). The publish job with `download-artifact@v8` and `action-gh-release@v3` was exercised for the first time; one internal `Buffer()` deprecation was logged, no Node-20 action warning. The local deploy target was updated to these assets with the `v0.11.5` files kept as rollback; `canary` is 8/8 `ok` there. No production deployment.
