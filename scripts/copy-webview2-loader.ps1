@@ -24,13 +24,20 @@ $root = Split-Path $PSScriptRoot -Parent  # webagent-rs/
 function Find-Loader([string]$targetDir) {
     $build = Join-Path $targetDir "build"
     if (-not (Test-Path $build)) { return $null }
-    $hit = Get-ChildItem $build -Directory -Filter "webview2-com-sys-*" -ErrorAction SilentlyContinue |
-        ForEach-Object {
-            $x64 = Join-Path $_.FullName "out\x64\WebView2Loader.dll"
-            if (Test-Path $x64) { $x64 }
-        } |
-        Select-Object -First 1
-    return $hit
+
+    # Cargo schreibt OUT_DIR inzwischen unter build/<crate>/<hash>/out (neu),
+    # frueher unter build/<crate>-<hash>/out (alt). Beide Layouts muessen
+    # funktionieren, sonst scheitert der Windows-Release-Schritt.
+    $sysDirs = @()
+    $sysDirs += @(Get-ChildItem $build -Directory -Filter "webview2-com-sys-*" -ErrorAction SilentlyContinue)
+    $sysDirs += @(Get-ChildItem $build -Directory -Filter "webview2-com-sys" -ErrorAction SilentlyContinue |
+        ForEach-Object { @(Get-ChildItem $_.FullName -Directory -ErrorAction SilentlyContinue) })
+
+    foreach ($dir in $sysDirs) {
+        $x64 = Join-Path $dir.FullName "out\x64\WebView2Loader.dll"
+        if (Test-Path -LiteralPath $x64 -PathType Leaf) { return $x64 }
+    }
+    return $null
 }
 
 function Copy-ForProfile([string]$name) {
@@ -42,7 +49,7 @@ function Copy-ForProfile([string]$name) {
     }
     $src = Find-Loader $dir
     if (-not $src) {
-        $msg = "${name}: WebView2Loader.dll nicht unter build/webview2-com-sys-*/out/x64 gefunden"
+        $msg = "${name}: WebView2Loader.dll nicht unter build/webview2-com-sys[-<hash>]/out/x64 bzw. build/webview2-com-sys/<hash>/out/x64 gefunden"
         if ($name -eq "release") {
             throw $msg
         }

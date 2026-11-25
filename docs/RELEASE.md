@@ -21,7 +21,7 @@ Workflows gegen `v0.11.4` scheitert absichtlich an der Versionsprüfung.
    `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.5`).
 2. **Lokal prüfen:**
    `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.5` → Exit 0.
-   Gegen `v0.11.4` muss das Skript Exit 1 liefern, gegen `0.11.5` Exit 2.
+   Gegen `v0.11.4` muss das Skript Exit 1 liefern.
 3. **Gates:** `cargo fmt --all -- --check`,
    `cargo clippy --all-targets -- -D warnings`, `cargo test --lib`,
    `git diff --check`.
@@ -31,6 +31,15 @@ Workflows gegen `v0.11.4` scheitert absichtlich an der Versionsprüfung.
 6. **Publish:** der Workflow `release.yml` führt zuerst den `verify`-Job aus
    (Versionsprüfung für Tag-Refs plus `cargo test --lib --locked`); alle Build-
    und Publish-Jobs hängen davon ab. ohne grünen `verify` kein Artefakt.
+
+## Windows-DLL bei aktueller Cargo-Toolchain
+
+Seit Rust/Cargo 1.100 liegt das Build-Skript-Verzeichnis unter
+`target/<profile>/build/<crate>/<hash>/out`, ältere Versionen nutzten
+`build/<crate>-<hash>/out`. `scripts/copy-webview2-loader.ps1` prüft beide
+Layouts. Der erste Lauf für `v0.11.5` scheiterte 2026-11-25 an genau diesem
+Unterschied, bevor ein GitHub-Release entstand; der Eigentümer hat danach
+freigegeben, den Tag auf den korrigierten Commit zu legen.
 
 ## Grenzen
 

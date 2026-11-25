@@ -1,5 +1,13 @@
 # Current Work
 
+## 2026-11-25 - Release v0.11.5: Windows-DLL-Pfad korrigiert
+
+- **Fehler:** Der Tag `v0.11.5` auf `8d7eae3` startete den Release-Workflow [`45680524253`](https://github.com/st0rax/webagent-rs/actions/runs/45680524253). `verify`, Android und Linux waren grün, der Windows-Build lief durch; `Copy WebView2Loader.dll` scheiterte mit `release: WebView2Loader.dll nicht unter build/webview2-com-sys-*/out/x64 gefunden` (`scripts/copy-webview2-loader.ps1:47`). Der `github-release`-Job wurde nicht ausgeführt: kein GitHub-Release, keine Assets.
+- **Ursache:** Mit Rust/Cargo 1.100 liegt `OUT_DIR` unter `target/<profile>/build/webview2-com-sys/<hash>/out`, nicht mehr wie früher unter `build/webview2-com-sys-<hash>/out`. Das Skript kannte nur das alte Layout. Belegt durch die lokale Datei `target/debug/build/webview2-com-sys/dc268415efa03ec9/out/x64/WebView2Loader.dll` und den CI-Log.
+- **Fix:** `Find-Loader` in `scripts/copy-webview2-loader.ps1` prüft jetzt beide Layouts; die Fehlermeldung nennt beide Pfade. Lokal geprüft: `-Profile debug` gegen das neue Layout → `[ok]`, simuliertes altes Layout mit `-Profile release` → `[ok]`. Keine Code-, Versions- oder Workflow-Änderung.
+- **Freigabe:** Der Eigentümer hat am 2026-11-25 ausdrücklich erlaubt, den bereits gepushten Tag `v0.11.5` nach dem Fix auf den neuen Commit zu legen. Deployment bleibt ausgeschlossen.
+- **Stand bei diesem Commit:** Fix und Doku werden auf `master` committet und gepusht; danach werden der Remote-Tag gelöscht und `v0.11.5` auf den neuen HEAD gelegt. Der danach gestartete Release-Workflow muss den `github-release`-Job grün abschließen; das Ergebnis wird in einem Folgecommission nachgetragen.
+
 ## 2026-11-25 - T-961/G-002: Endabnahme des engen Frisch-Chat-Retries
 
 - **Freigabe:** Der Eigentümer hat am 2026-11-25 zunächst die autonome Fortführung „bis einschließlich endabnahme" freigegeben. Die vorherige Entscheidung „noch nicht abnehmen" und die vom 2026-11-21 („Keine Änderung") bezogen sich auf frühere konkrete Strategien und sind damit ersetzt. Anschließend hat er separat den vollen Ablauf **PR + Merge + Release `v0.11.5`** freigegeben; Deployment ist weiterhin nicht enthalten.
