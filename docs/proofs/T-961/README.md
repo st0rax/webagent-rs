@@ -51,6 +51,6 @@ All `*.jsonl` files are byte-exact raw streams (`.gitattributes` marks them `-te
 - [x] Fixed runs show at least five consecutive successful tool turns — **achieved repeatedly** (`after.jsonl`, `after-premerge-green-*`, `after-framing-green-*`).
 - [x] **Stable / reproducible (narrow):** 14 strict-clean runs with 5/5 sequential tool turns under the final patched binary; two of them causally triggered the fresh-chat retry and still completed 5/5. The historical negative `after-framing-negative.jsonl` and the three failed directions (availability 2/8, framing 6/8, forced `required` 1/8) remain documented; the intermittency's root cause is still unclear.
 - [x] **Account memory checked:** read-only WebView DOM inspection of personalization/memory; no entry denying tool access (`account-state.md`). Personal content redacted, no settings changed, no credentials/profiles read.
-- [x] Evidence linked from the T-961 taskboard entry: T-961 is `done` on branch `fix/T-961-semantic-denial-retry` with the two causal retry runs and the honest limits recorded in `semantic-denial-retry/README.md`; no merge, tag, release, or deployment.
+- [x] Evidence linked from the T-961 taskboard entry: T-961 is `done` and merged via PR #104 (`ea88203`), with the two causal retry runs and the honest limits recorded in `semantic-denial-retry/README.md`. Release `v0.11.5` is approved; no deployment.
 
 Do not fabricate transcripts or infer a live result from unit tests/CI.
