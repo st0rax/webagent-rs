@@ -1,5 +1,12 @@
 # Current Work
 
+## 2026-11-25 - CI-Warnungen nach dem Release bereinigt
+
+- **Anlass:** `actions/checkout@v4`, `actions/cache@v4`, `actions/upload-artifact@v4`, `actions/download-artifact@v4` und `softprops/action-gh-release@v2` erzeugten Node-20-Deprecation-Warnungen. Der veröffentlichte Release blieb unverändert.
+- **Änderung:** PR [#105](https://github.com/st0rax/webagent-rs/pull/105) (`c1f01f0`) hebt auf checkout v7, cache v6, upload-artifact v7, download-artifact v8 und action-gh-release v3. Alle vier PR-Checks grün; YAML lokal geparst, lokale Gates grün. Zwei veraltete T-961-Belegsätze wurden auf den veröffentlichten Release nachgezogen.
+- **Verifiziert:** Release-Workflow per `workflow_dispatch` auf `master` ([Lauf `45690875482`](https://github.com/st0rax/webagent-rs/actions/runs/45690875482)) vollständig grün; `Copy WebView2Loader.dll` weiterhin ok, `github-release` wie erwartet übersprungen (kein Tag). Im Log des Laufs: 0 Zeilen mit `Node.js 20` oder `deprecated`. Tag `v0.11.5` zeigt weiter auf `9b2ad7e`; GitHub-Release unverändert mit 7 Assets.
+- **Grenze:** Der Publish-Job mit den neuen Action-Versionen wurde nicht ausgeführt — dafür wäre ein neuer Tag nötig, der nicht freigegeben ist. Die verwendeten Inputs (`generate_release_notes`, `files`, `merge-multiple`, `path`) wurden statisch gegen die `action.yml` der neuen Versionen geprüft. Kein Deployment.
+
 ## 2026-11-25 - Release v0.11.5: Windows-DLL-Pfad korrigiert
 
 - **Fehler:** Der Tag `v0.11.5` auf `8d7eae3` startete den Release-Workflow [`45680524253`](https://github.com/st0rax/webagent-rs/actions/runs/45680524253). `verify`, Android und Linux waren grün, der Windows-Build lief durch; `Copy WebView2Loader.dll` scheiterte mit `release: WebView2Loader.dll nicht unter build/webview2-com-sys-*/out/x64 gefunden` (`scripts/copy-webview2-loader.ps1:47`). Der `github-release`-Job wurde nicht ausgeführt: kein GitHub-Release, keine Assets.
