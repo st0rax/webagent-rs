@@ -511,7 +511,8 @@ fn print_goal_plan_result(result: Result<String, String>) -> i32 {
 
 fn cmd_cloud(command: cli::CloudCommands) -> i32 {
     use webagent::free_cloud_chat::{
-        decide_route, default_registry, search_registry, stream_deterministic_mock, ModelProfile,
+        decide_route, default_registry, search_registry, stream_deterministic_mock,
+        verification_basis, ModelProfile,
     };
 
     fn profile(value: &str) -> Result<ModelProfile, String> {
@@ -537,6 +538,9 @@ fn cmd_cloud(command: cli::CloudCommands) -> i32 {
             "schema_version": webagent::free_cloud_chat::REGISTRY_SCHEMA_VERSION,
             "free_only_default": true,
             "models": registry,
+            // T-971: indexgleich zu `models`; VerifiedFree ist ein Registry-
+            // Status mit datiertem Beleg, kein capability_proof-Eintrag.
+            "verification": registry.iter().map(verification_basis).collect::<Vec<_>>(),
         })),
         cli::CloudCommands::Search {
             profile: requested_profile,
@@ -560,6 +564,7 @@ fn cmd_cloud(command: cli::CloudCommands) -> i32 {
                 Ok(serde_json::json!({
                     "free_only": !allow_credits,
                     "decision": decide_route(model, !allow_credits),
+                    "verification": verification_basis(model),
                 }))
             })
             .unwrap_or_else(|| Err(format!("Unbekannte Registry-ID '{model_id}'."))),

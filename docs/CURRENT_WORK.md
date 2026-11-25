@@ -1,5 +1,15 @@
 # Current Work
 
+## 2026-11-25 - T-971: VerifiedFree ehrlich als Registry-Beleg gekennzeichnet
+
+- **Branch:** `fix/T-971-verifiedfree-proof`, Basis `23c10e9` (Claim-Commit). Nur lokale Änderungen; kein Merge, kein `done`, kein Live-Provider-Call.
+- **Befund:** `AccessMode::VerifiedFree` ist der einzige automatisch routbare Free-Status, hatte aber keinen Bezug zum einen Beleg-Gate. Der Live-Nachweis liegt als datiertes Markdown unter `docs/proofs/T-926/webview-oauth-live-result.md` (2026-11-21), nicht als Record in `capability/proofs.jsonl` (dort 0 Treffer auf `free|cloud|webview|stream|oauth`).
+- **Entscheidung:** Variante A — ehrliche Kennzeichnung ohne Store-Schreibzugriff und ohne Verhaltensänderung. Neu: `VerificationBasis` und `verification_basis()` in `src/free_cloud_chat.rs` (`kind = registry_only_dated_doc`, `at = 2026-11-21`, `proof_path = docs/proofs/T-926/...`, immer `capability_gate = false`); lokale Mock-/Hub-Verträge werden als `local_contract` ausgewiesen. `cloud list` (indexgleich zu `models`) und `cloud decide` geben das Feld `verification` aus. `decide_route`, `ProofState`, TTL und Store-Schema bleiben unangetastet; `src/capability_proof.rs` wurde bewusst nicht geändert. Kein nachträgliches Einfügen eines 2026-11-21-Records.
+- **Beleg:** Zwei neue Unit-Tests prüfen die Herkunftsangabe und die unveränderte Routing-Invariante sowie `ProofState::Never` auf einem frischen, unberührten Store-Pfad.
+- **Doku:** `docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md` nennt den Unterschied zwischen Registry-Beleg und Capability-Gate ausdrücklich.
+- **Gates real gemessen:** `cargo fmt --all -- --check` exit 0; `cargo clippy --all-targets -- -D warnings` exit 0; `cargo test --lib` 1519 passed / 0 failed / 1 ignored; `git diff --check` exit 0. Lokaler CLI-Smoke `cloud decide --model-id webagent/webview-oauth-session` exit 0 mit `capability_gate=false`, `kind=registry_only_dated_doc` und datiertem `proof_path`.
+- **Grenze:** Kein Login, keine Profil-/Token-Lektüre, kein zweiter Belegspeicher, kein Tag, kein Release, kein Deployment.
+
 ## 2026-11-25 - T-970: Turn-Beobachtungen thread-lokal isoliert
 
 - **Branch:** `fix/T-970-observation-scope`, Basis `23c10e9` (Claim-Commit). Nur lokale Änderungen; kein Merge, kein `done`, kein Live-Lauf.

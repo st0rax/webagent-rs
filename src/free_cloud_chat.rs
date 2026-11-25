@@ -41,6 +41,10 @@ impl ModelProfile {
 ///
 /// `VerifiedFree` ist absichtlich streng: erst ein wiederholter technischer
 /// Nachweis kann einen Eintrag in den automatischen Free-only-Router bringen.
+/// T-971: gemeint ist ein **Registry-Status mit datiertem Dokumentenbeleg**,
+/// kein Eintrag im einzigen Beleg-Gate (`capability_proof::proofs.jsonl`) und
+/// keine dort geltende TTL. Die Herkunft ist über `verification_basis`
+/// maschinell abfragbar; `decide_route` bleibt unverändert.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccessMode {
@@ -829,6 +833,54 @@ pub fn hub_metadata_adapter_model() -> CloudModel {
     }
 }
 
+/// Der datierte Dokumentenbeleg hinter dem einzigen automatisch routbaren
+/// `VerifiedFree`-Eintrag. Er ist ein Markdown-Beleg, **kein** Record in
+/// `capability/proofs.jsonl`; das capability_proof-Gate und seine TTL gelten
+/// hier nicht (T-971).
+pub const WEBVIEW_OAUTH_PROOF_DOC: &str = "docs/proofs/T-926/webview-oauth-live-result.md";
+
+/// Ehrliche Herkunftsangabe zu einem Registry-Eintrag.
+///
+/// `capability_gate = false` ist bewusst: `VerifiedFree` beschreibt einen
+/// technischen Nachweis mit Datum, aber keinen `ProofState::Proven` aus dem
+/// einen Belegspeicher. Es wird nichts geschrieben und kein Level abgeleitet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerificationBasis {
+    /// `registry_only_dated_doc`, `local_contract` oder `none`.
+    pub kind: String,
+    /// Datum bzw. Kennzeichnung aus `CloudModel::last_verified_at`.
+    pub at: Option<String>,
+    /// Pfad zum Rohbeleg, nur für den datierten Live-Nachweis.
+    pub proof_path: Option<String>,
+    /// Immer `false`: kein Eintrag in `capability/proofs.jsonl`.
+    pub capability_gate: bool,
+}
+
+/// Ableiten, worauf sich der `VerifiedFree`-Status eines Eintrags tatsächlich
+/// stützt. Reine Funktion ohne Datei-, Store- oder Providerzugriff.
+pub fn verification_basis(model: &CloudModel) -> VerificationBasis {
+    match model.model_id.as_str() {
+        WEBVIEW_OAUTH_MODEL_ID => VerificationBasis {
+            kind: "registry_only_dated_doc".to_string(),
+            at: model.last_verified_at.clone(),
+            proof_path: Some(WEBVIEW_OAUTH_PROOF_DOC.to_string()),
+            capability_gate: false,
+        },
+        DETERMINISTIC_MOCK_MODEL_ID | HUB_METADATA_ADAPTER_MODEL_ID => VerificationBasis {
+            kind: "local_contract".to_string(),
+            at: model.last_verified_at.clone(),
+            proof_path: None,
+            capability_gate: false,
+        },
+        _ => VerificationBasis {
+            kind: "none".to_string(),
+            at: model.last_verified_at.clone(),
+            proof_path: None,
+            capability_gate: false,
+        },
+    }
+}
+
 /// Deterministic local Hub metadata fixture. It is not a claim about a live Hub
 /// record and does not contact a provider.
 pub fn stream_hub_metadata_fixture(
@@ -1058,6 +1110,7 @@ fn score_model(model: &CloudModel, terms: &[String], free_only: bool) -> SearchR
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::capability_proof::{proof_state_at, ProofState};
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -1211,6 +1264,44 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(auto_ids, vec![WEBVIEW_OAUTH_MODEL_ID.to_string()]);
+    }
+
+    #[test]
+    fn t971_verified_free_basis_names_registry_doc_and_no_capability_gate() {
+        let model = webview_oauth_model();
+        let basis = verification_basis(&model);
+        assert_eq!(basis.kind, "registry_only_dated_doc");
+        assert_eq!(basis.at.as_deref(), Some("2026-11-21"));
+        assert_eq!(basis.proof_path.as_deref(), Some(WEBVIEW_OAUTH_PROOF_DOC));
+        assert!(!basis.capability_gate);
+        // Die ehrliche Kennzeichnung aendert die Routing-Invariante nicht.
+        assert!(matches!(
+            decide_route(&model, true),
+            RouteDecision::Auto { .. }
+        ));
+        // Lokale Vertraege werden nicht als Live-Beleg ausgegeben.
+        let local = verification_basis(&hub_metadata_adapter_model());
+        assert_eq!(local.kind, "local_contract");
+        assert!(!local.capability_gate);
+    }
+
+    #[test]
+    fn t971_webview_oauth_has_no_capability_proof_record() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let fresh = std::env::temp_dir().join(format!(
+            "webagent-t971-fresh-{}-{nanos}.jsonl",
+            std::process::id()
+        ));
+        assert!(!fresh.exists());
+        assert_eq!(
+            proof_state_at(WEBVIEW_OAUTH_MODEL_ID, "free_cloud_webview", 0, &fresh),
+            ProofState::Never
+        );
+        // Nichts geschrieben: der eine Belegspeicher bleibt unberuehrt.
+        assert!(!fresh.exists());
     }
 
     #[test]

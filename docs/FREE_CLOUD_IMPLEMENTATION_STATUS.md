@@ -30,6 +30,8 @@ Hugging Face dokumentiert für freie Konten ein monatliches Testguthaben von 0,1
 
 > **Verbindliche Invariante:** Im Modus `free_only=true` führt nur `VerifiedFree` **und** `adapter_compatible=true` zu `RouteDecision::Auto`. Jeder andere Status wird vor einer Adapterausführung zurückgewiesen.
 
+> **T-971-Klarstellung (25. November 2026):** `VerifiedFree` ist ein **Registry-Status mit datiertem Dokumentenbeleg** (`2026-11-21`, `docs/proofs/T-926/webview-oauth-live-result.md`), **kein** Eintrag im einzigen Beleg-Gate `data_dir()/capability/proofs.jsonl`. `verification_basis()` meldet für den WebView-OAuth-Eintrag `kind = registry_only_dated_doc` und `capability_gate = false`; die TTL aus `capability_proof` gilt hier nicht. `cloud list` und `cloud decide` geben die Herkunft maschinell mit aus. Die Routing-Invariante oben bleibt unverändert. Es wurde nichts in den Belegspeicher geschrieben und kein Beleg nachdatiert.
+
 Die Custom-Suche ist vorerst rein lokal. Der spätere Hub-Metadatenadapter kann die offizielle Modell-/Space-Suche verwenden, muss aber vor jeder automatischen Ausführung weiterhin Kostenstatus, Adaptervertrag, Healthcheck und Datenschutzangaben prüfen.[2] [3]
 
 ## Unabhängige Prüfung
