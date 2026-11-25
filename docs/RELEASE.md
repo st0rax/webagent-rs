@@ -2,6 +2,8 @@
 > `docs/CURRENT_WORK.md`. T-967 hat selbst keinen Tag und kein GitHub-Release
 > erzeugt. Der Eigentümer hat am 2026-11-25 den Release `v0.11.5` nach PR,
 > Merge und grüner CI freigegeben; dieser Vorgang läuft separat von T-967.
+> Der Patch-Release `v0.11.6` wurde am selben Tag über PR #107 (`1149dff`)
+> nach grüner CI getaggt und mit Workflow `45702611313` veröffentlicht.
 
 # Release-Vorgang (T-967)
 
