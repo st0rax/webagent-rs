@@ -29,7 +29,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
@@ -65,7 +65,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Rust toolchain
         run: rustup update stable && rustup default stable
@@ -89,7 +89,7 @@ jobs:
             ForEach-Object { "$($_.Hash.ToLower())  webagent-windows-x86_64.exe" } |
             Set-Content -NoNewline dist\webagent-windows-x86_64.exe.sha256
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-x86_64
           path: dist/*
@@ -101,7 +101,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Rust toolchain
         run: rustup update stable && rustup default stable
@@ -123,7 +123,7 @@ jobs:
           strip dist/webagent-linux-x86_64
           (cd dist && sha256sum webagent-linux-x86_64 > webagent-linux-x86_64.sha256)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-x86_64
           path: dist/*
@@ -135,7 +135,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
@@ -160,7 +160,7 @@ jobs:
           cp target/aarch64-linux-android/release/webagent dist/webagent-aarch64-linux-android
           (cd dist && sha256sum webagent-aarch64-linux-android > webagent-aarch64-linux-android.sha256)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android-aarch64
           path: dist/*
@@ -171,13 +171,13 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
 
       - name: Attach binaries to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
