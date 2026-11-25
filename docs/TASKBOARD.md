@@ -267,7 +267,7 @@ unchanged. No tag, release, or deployment.
 | T-958 | done |
 | T-959 | done |
 | T-960 | done |
-| T-961 | free |
+| T-961 | done |
 | T-962 | done |
 | T-963 | done |
 | T-964 | done |

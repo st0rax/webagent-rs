@@ -120,6 +120,7 @@ pub(super) fn handle_openai(
         &prompt.attachments,
         &tools,
         tool_choice,
+        prompt.retry_task.as_deref(),
         presence,
     ) {
         Ok(answer) => answer,
@@ -337,6 +338,7 @@ pub(super) fn handle_anthropic(
         &prompt.attachments,
         &[],
         crate::browser_inference::BrowserToolChoice::None,
+        None,
         presence,
     ) {
         Ok(answer) => answer,
@@ -393,6 +395,7 @@ pub(super) fn handle_responses(
         &prompt.attachments,
         &[],
         crate::browser_inference::BrowserToolChoice::None,
+        None,
         presence,
     ) {
         Ok(answer) => answer,

@@ -1,0 +1,16 @@
+=== STRICT VERIFY run 6 ===
+tool_execution_start         5
+tool_execution_end           5
+stopReason_error             0
+auto_retry_events            0
+transcript_error_markers     0
+relay_korrekturen            0
+bridge_navigation_errors     0
+nonces                       5
+stopReason_stop              3
+t961_fresh_chat_retries      0
+t961_retry_exhausted         0
+harness_pass                 True
+bytes                        37643
+sha256                       BFA2DC7C8463CA0DBA602A66FCE3A0D8FCFCBFBB1674D33762D0E30E5227D49D
+STRICT_RESULT=PASS

@@ -1,5 +1,7 @@
 > **Referenz.** Verbindliche Reihenfolge für Release-Tags. Operativer Stand:
-> `docs/CURRENT_WORK.md`. Kein Tag und kein GitHub-Release durch T-967.
+> `docs/CURRENT_WORK.md`. T-967 hat selbst keinen Tag und kein GitHub-Release
+> erzeugt. Der Eigentümer hat am 2026-11-25 den Release `v0.11.5` nach PR,
+> Merge und grüner CI freigegeben; dieser Vorgang läuft separat von T-967.
 
 # Release-Vorgang (T-967)
 

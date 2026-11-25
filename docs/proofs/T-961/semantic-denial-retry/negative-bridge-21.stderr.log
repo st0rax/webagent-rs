@@ -1,0 +1,12 @@
+[relay] chatgpt: Websuche nicht isolierbar (not_isolatable)
+[api] chat model=webagent/chatgpt stream=true tools=1
+[relay] chatgpt: Websuche nicht isolierbar (not_isolatable)
+[relay] chatgpt: kein Retry fuer deterministischen Sendefehler
+[api] chat model=webagent/chatgpt stream=true tools=1
+[relay] chatgpt: Websuche nicht isolierbar (not_isolatable)
+[relay] chatgpt: kein Retry fuer deterministischen Sendefehler
+[api] chat model=webagent/chatgpt stream=true tools=1
+[relay] chatgpt: Websuche nicht isolierbar (not_isolatable)
+[relay] chatgpt: kein Retry fuer deterministischen Sendefehler
+[circuit_breaker] chatgpt: offen fuer 900s nach 3 Fehlschlaegen (send_phase=submit: ABSENDEKNOPF_DEAKTIVIERT: Absendeknopf ist deaktiviert, obwohl der Text vollstaendig im Composer steht (5 Versuche) — die Oberflaeche verweigert das Absenden ohne Meldung)
+[api] chat model=webagent/chatgpt stream=true tools=1

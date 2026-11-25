@@ -141,6 +141,7 @@ pub(super) fn handle_audio_transcription(
         &[attachment],
         &[],
         crate::browser_inference::BrowserToolChoice::None,
+        None,
         presence,
     ) {
         Ok(answer) => answer,

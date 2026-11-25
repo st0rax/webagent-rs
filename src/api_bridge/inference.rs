@@ -85,6 +85,7 @@ fn emit_fake_stream(text: &str, on_update: &mut dyn FnMut(&str)) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn run_task_blocking(
     config: &BridgeConfig,
     brain: &str,
@@ -92,6 +93,7 @@ pub(super) fn run_task_blocking(
     attachments: &[crate::browser_inference::BrowserAttachment],
     tools: &[crate::browser_inference::BrowserTool],
     tool_choice: crate::browser_inference::BrowserToolChoice,
+    retry_prompt: Option<&str>,
     presence: &dyn ClientPresence,
 ) -> Result<crate::browser_inference::BrowserInferenceResponse, String> {
     if let Some(text) = config.fake_reply.as_deref() {
@@ -128,6 +130,7 @@ pub(super) fn run_task_blocking(
                 headless: config.headless,
                 timeout_secs,
                 model: None,
+                retry_prompt,
             },
             attachments,
             &mut |_| {},
@@ -176,6 +179,7 @@ pub(super) fn run_task_streaming(
                 headless: config.headless,
                 timeout_secs,
                 model: None,
+                retry_prompt: None,
             },
             attachments,
             on_update,
