@@ -1,5 +1,13 @@
 # Current Work
 
+## 2026-11-25 - Greenfield-Abgleich: vier lokale Härtungsscheiben geclaimt
+
+- **Auftrag:** Der Eigentümer hat nach dem Prompt-Abgleich "optimier das projekt soweit möglich" freigegeben. Der ursprünglich zu breit gefasste T-969 wurde auf ausdrücklichen Wunsch in vier Tasks mit je eigenem Branch und Typ zerlegt: **T-969** `docs/T-969-protocol-security` (PROTOCOL.md + SECURITY.md), **T-970** `fix/T-970-observation-scope` (globale Turn-Puffer), **T-971** `fix/T-971-verifiedfree-proof` (Belegpfad), **T-972** `refactor/T-972-controller-webview-split` (God-Files).
+- **Claims:** Alle vier stehen in `docs/TASKBOARD.json` auf `claimed`, Eigentümer `local/opencode`, Basis `master` = `1c93cfe`; der Markdown-Spiegel ist nachgezogen. `done` wird erst nach Merge gesetzt. Die Claim-Zeilen werden in einem gemeinsamen Basis-Commit festgehalten, damit jeder der vier Branches dieselbe Tafel trägt.
+- **Arbeitsstand:** Aktuell läuft T-969 auf `docs/T-969-protocol-security`. T-970 bis T-972 sind geclaimt, aber noch nicht begonnen; die Hintergrund-Recherche zu Puffern und Beleg-Gate läuft separat.
+- **T-969 (Doku, auf Branch):** `docs/PROTOCOL.md` und `docs/SECURITY.md` neu, aus Parser, Shell-Policy, Datei-Grenzen, Bridge-Auth, Redaktion, Run-Store und dem einen Proof-Gate abgeleitet. Beide tragen ein `**Referenz**`-Banner, damit der Betriebs-Dokumentationstest in `src/startup.rs` grün bleibt. Gates real gemessen: `cargo fmt --all -- --check` exit 0, `cargo clippy --all-targets -- -D warnings` exit 0, `cargo test --lib` 1517 passed / 0 failed / 1 ignored, `git diff --check` exit 0. Kein Merge, kein `done`.
+- **Grenzen unverändert:** Kein Login, keine CAPTCHA-/2FA-Bedienung, keine Lektüre von Profilen, Cookies oder Tokens, kein Live-Provider-Call, kein Tag, kein GitHub-Release, kein Deployment. Die vier Scheiben enden mit lokalen Gates und einem Push auf ihre Arbeitsbranches; ein Merge in `master` braucht weiterhin eine eigene Freigabe.
+
 ## 2026-11-25 - Release v0.11.6 mit Canary-Fix ausgeliefert
 
 - **Freigabe:** Der Eigentümer hat mit „kümmer dich drum" die eigenständige Auslieferung des bereits gemergten Canary-Fix per Patch-Release übernommen. Ein Produktiv-Deployment blieb nicht freigegeben; gesucht wurde dennoch in Diensten, geplanten Tasks und allen Laufwerken – kein Ziel gefunden.

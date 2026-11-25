@@ -274,4 +274,8 @@ unchanged. No tag, release, or deployment.
 | T-965 | done |
 | T-967 | done |
 | T-968 | done |
+| T-969 | claimed |
+| T-970 | claimed |
+| T-971 | claimed |
+| T-972 | claimed |
 <!-- TASKBOARD-MIRROR-END -->
