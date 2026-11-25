@@ -2128,6 +2128,37 @@
       ],
       "proof_path": "docs/proofs/T-967/README.md",
       "verification": "2026-11-24: verify-release-version.ps1 v0.11.5 exit 0, v0.11.4 exit 1 (Mismatch), 0.11.5 exit 2 (Format), isoliert fehlende Cargo.lock exit 1 (fail-closed); PyYAML safe_load und actionlint 1.7.12 auf beiden Workflows OK (release 5 Jobs, ci 3 Jobs); release.yml verify installiert WebKitGTK mit gebundenen apt-Retries (default = [\"webview\"]); cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --lib und cargo test --lib --locked (je 1505 passed / 0 failed / 1 ignored), cargo test --no-default-features (1499 + 7 passed); alle Cargo-Schritte aus ci.yml sowie verify und alle Builds aus release.yml mit --locked (Android-Target nur via CI, lokal ohne NDK nicht nachgefahren); actionlint 1.7.12 auch auf android.yml; git diff --check alle gruen."
+    },
+    {
+      "id": "T-968",
+      "phase": "13",
+      "type": "bugfix",
+      "title": "kimi: Denkaufwand-Roundtrip live belegbar machen",
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "fix/T-968-kimi-effort-roundtrip",
+      "claimed_at": "2026-11-25",
+      "depends_on": [],
+      "scope": [
+        "selectors/kimi.json",
+        "src/browser/verify.rs",
+        "src/browser/ui.rs",
+        "docs/CAPABILITY_MATRIX.json",
+        "docs/proofs/T-968/",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Am 2026-11-25 ist kimi eingeloggt (diagnose headless: Ready, logged_in=true, composer=ok). Der Live-Verifier scheitert reproduzierbar: `verify --brain kimi --cap reasoning_effort --headless` meldet nach 4838 ms 'Pfad [\"Denkaufwand Hoch\", \"Hoch\"] geklickt, aber Beschriftung zeigt weiterhin Schnell (vorher Schnell)'. Der DOM-Survey mit offenem Modellmenue zeigt den tatsaechlichen Trigger `[data-testid='model-select-trigger']` mit Text 'Schnell Hoch' (Modell plus Aufwand); `selectors/kimi.json` liest mit `reasoning_effort_menu` aber nur `div.current-model div.model-name span.name` und damit bloss 'Schnell'. `reasoning_effort_option` enthaelt nur `[role='menuitem']` und `#v-3-menu-trigger`; damit trifft der zweite Pfadschritt wieder den Aufwand-Trigger statt eines Eintrags im Untermenue. Der Fehler ist damit mindestens teilweise ein Lese-/Selektorfehler, nicht nur eine strukturelle UI-Grenze. Ziel: den vollen Triggertext lesen, die echten Untermenue-Eintraege treffen, einen Wechsel weg vom aktuellen Aufwand und den Rueckweg in derselben Sitzung belegen und die Matrix-Zelle nur mit rohem Live-Beleg aktualisieren. Wenn das Untermenue keinen alternativen Wert anbietet, bleibt die Zelle ehrlich failed mit benanntem Grund.",
+      "dod": "`reasoning_effort_menu` liest im Live-DOM den vollen Triggertext inklusive Aufwand ('Schnell Hoch'); `reasoning_effort_option` trifft die echten Eintraege des Aufwand-Untermenues und nicht erneut den Trigger; `verify_reasoning_effort` waehlt einen vom aktuellen Wert verschiedenen Aufwand, liest den Wechsel unabhaengig nach und stellt den Ausgangswert in derselben Sitzung wieder her; gibt es keinen alternativen Wert, endet der Lauf benannt als failed statt passed; Fixture-Tests decken Label-Parsing, Alternativwahl, erfolgreichen Roundtrip, fehlgeschlagenen Rueckweg und fehlende Alternative ab; ein roher Live-Lauf mit dem master-Binary liegt unter docs/proofs/T-968/; die Matrix-Zelle effort/kimi wird nur mit diesem Beleg auf passed gesetzt; cargo fmt --check, cargo clippy --all-targets -- -D warnings und cargo test --lib sind gruen.",
+      "handoff": "Live-Transkript vorher/nachher, geaenderte Selektoren und Verifier-Logik, Fixture-Ausgabe, Branch und Commit.",
+      "non_goals": [
+        "Kein Login und keine Kontoeinstellung aendern; die vorhandene kimi-Sitzung wird nur gelesen und ueber die sichtbare Oberflaeche bedient.",
+        "Keine Selektor- oder Verhaltensaenderung fuer andere Brains.",
+        "Kein Tag, Release oder Deployment."
+      ],
+      "proof_path": "docs/proofs/T-968/",
+      "verification": "cargo fmt --check; cargo clippy --all-targets -- -D warnings; cargo test --lib; webagent verify --brain kimi --cap reasoning_effort --headless (roher Live-Beleg)",
+      "claimed_note": "Belegte Ausgangslage 2026-11-25: diagnose kimi Ready/logged_in; verify reasoning_effort Failed 4838ms; survey --open model_menu zeigt model-select-trigger 'Schnell Hoch' und model-effort-item 'Denkaufwand Hoch'."
     }
   ]
 }

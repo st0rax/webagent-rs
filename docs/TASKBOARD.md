@@ -161,6 +161,14 @@ T-964 was completed in PR #73 (merge commit `76ba3b30`). The central newcomer gu
 
 T-965 scope: translate the README and newcomer guide, record this policy in maintained entry points, and keep the taskboard mirror and current handover consistent. No Rust code, runtime, login-profile, or release changes.
 
+## Phase 13 follow-up (2026-11-25) — live capability gaps
+
+The matrix still carries the structural gaps in `model`, `effort`, and `managed_tools`. On 2026-11-25 the following sessions were verified as logged in without a new login: `chatgpt`, `deepseek`, `gemini`, `kimi`, `qwen`, and `zai`; `claude` and `mistral` were logged out, and `perplexity` was not registered in the local configuration. T-968 therefore starts with the reproducible kimi effort failure instead of a speculative Claude/Perplexity model change.
+
+| Task | Description | Status | Branch |
+|---|---|---|---|
+| T-968 | kimi: make the reasoning-effort roundtrip live-verifiable (full trigger label, real submenu entries, change + restore) | claimed — local/opencode | `fix/T-968-kimi-effort-roundtrip` |
+
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
 <!-- TASKBOARD-MIRROR-BEGIN -->
@@ -258,4 +266,5 @@ T-965 scope: translate the README and newcomer guide, record this policy in main
 | T-964 | done |
 | T-965 | done |
 | T-967 | done |
+| T-968 | claimed |
 <!-- TASKBOARD-MIRROR-END -->
