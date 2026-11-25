@@ -96,16 +96,22 @@
     ".next-sidebar-history-item__link"
   ],
   "reasoning_effort_menu": [
+    "[data-testid='model-select-trigger']",
     "div.current-model div.model-name span.name",
     "[class*='current-model' i] div.model-name span.name",
     "[class*='current-model' i] span.name"
   ],
-  "reasoning_effort_option": [
-    "[role='menuitem']",
-    "[role='menuitem'][class*='effort']",
-    "#v-3-menu-trigger"
+  "effort_submenu": [
+    "[data-testid='model-effort-item']",
+    "#v-4-menu-trigger",
+    "button.effort-item"
   ],
-  "_reasoning_effort_note": "Effort-Trigger '#v-3-menu-trigger' ('Denkaufwand Hoch') nur im offenen Modell-Menue sichtbar. Pfad ['Denkaufwand Hoch', 'Hoch'] klickt erfolgreich, aber verify-Pfad-Check schlaegt fehl: reasoning_effort_menu zeigt auf model_menu, Label bleibt 'Schnell' (Modellname), kein persistenter Effort-Label ausserhalb des Menues. Strukturelle UI-Eigenart, kein Selektor-Defekt.",
+  "reasoning_effort_option": [
+    "[data-testid='model-effort-option'][role='menuitemradio']",
+    "[data-testid='model-effort-option']",
+    "button.effort-option"
+  ],
+  "_reasoning_effort_note": "T-968 roher DOM-Beleg 2026-11-25 (docs/proofs/T-968/shots/survey-effort-submenu-hover.txt): Trigger [data-testid='model-select-trigger'] zeigt 'Schnell Hoch' (Modell + Aufwand). Der Aufwand-Trigger [data-testid='model-effort-item'] ('Denkaufwand Hoch') sitzt im offenen Modellmenue und oeffnet sein Untermenue erst auf Hover; die echten Eintraege sind [data-testid='model-effort-option'][role='menuitemradio'] mit 'Standard' und 'Hoch'. Der alte Selektor traf mit [role='menuitem'] und #v-3-menu-trigger erneut den Trigger, und reasoning_effort_menu las nur den Modellnamen 'Schnell'. Beides war ein Lese-/Selektorfehler, keine strukturelle UI-Grenze.",
   "reasoning_effort_path": ["Denkaufwand Hoch", "Hoch"],
   "attach_image_paste": ["yes"],
   "attach_settle_ms": ["1500"],

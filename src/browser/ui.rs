@@ -42,6 +42,18 @@ impl WebBrainBackend {
         crate::browser::js::toggle_state_expr_for(&self.sel(key))
     }
 
+    /// JS, das den ersten Options-Treffer mit echten Pointer-Events klickt.
+    /// Genau eine Kopie fuer alle Menuepfade — ein zweiter handgepflegter
+    /// Klickausdruck waere der klassische Ort fuer still abweichendes Verhalten.
+    fn click_option_expr(list: &str, needle: &str) -> String {
+        format!(
+            "(function(){{{prelude}var S={list};var n={needle};function norm(s){{return ((s||'')+'').replace(/\\s+/g,' ').trim().toLowerCase();}}function clk(e){{var r=e.getBoundingClientRect();var cx=r.left+r.width/2,cy=r.top+r.height/2;var pd=new PointerEvent('pointerdown',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});var pu=new PointerEvent('pointerup',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t2){{e.dispatchEvent(t2==='pointerdown'?pd:t2==='pointerup'?pu:new MouseEvent(t2,{{clientX:cx,clientY:cy,bubbles:true,button:0}}));}});}}var exact=null,loose=null;for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=norm(els[k].innerText||els[k].textContent);if(!t)continue;if(t===n&&!exact)exact=els[k];else if(t.indexOf(n)!==-1&&!loose)loose=els[k];}}}}catch(e){{}}}}var hit=exact||loose;if(!hit)return false;clk(hit);return true;}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            list = list,
+            needle = needle
+        )
+    }
+
     /// Waehlt ueber mehrere Menuestufen, z.B. `["Aufwand", "Hoch"]`.
     ///
     /// Claude legt die Denkstufe in ein Untermenue des Modellmenues
@@ -94,12 +106,7 @@ impl WebBrainBackend {
             let needle = serde_json::to_string(&step_l).unwrap_or_else(|_| "\"\"".into());
             // Prefer exact label match (item "Fast") over parent popup text
             // that contains all of "Auto Think Fast".
-            let expr = format!(
-                "(function(){{{prelude}var S={list};var n={needle};function norm(s){{return ((s||'')+'').replace(/\\s+/g,' ').trim().toLowerCase();}}function clk(e){{var r=e.getBoundingClientRect();var cx=r.left+r.width/2,cy=r.top+r.height/2;var pd=new PointerEvent('pointerdown',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});var pu=new PointerEvent('pointerup',{{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'}});['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t2){{e.dispatchEvent(t2==='pointerdown'?pd:t2==='pointerup'?pu:new MouseEvent(t2,{{clientX:cx,clientY:cy,bubbles:true,button:0}}));}});}}var exact=null,loose=null;for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=norm(els[k].innerText||els[k].textContent);if(!t)continue;if(t===n&&!exact)exact=els[k];else if(t.indexOf(n)!==-1&&!loose)loose=els[k];}}}}catch(e){{}}}}var hit=exact||loose;if(!hit)return false;clk(hit);return true;}})()",
-                prelude = Self::JS_SEL_PRELUDE,
-                list = list,
-                needle = needle
-            );
+            let expr = Self::click_option_expr(&list, &needle);
             let mut clicked = self.eval_bool(&expr);
             if !clicked {
                 if let Some((x, y)) = self.option_point(&list, &needle) {
@@ -130,6 +137,96 @@ impl WebBrainBackend {
         Err(format!(
             "Pfad {path:?} geklickt, aber Beschriftung zeigt weiterhin '{after}' (vorher '{before}')"
         ))
+    }
+
+    /// Oeffnet ein Untermenue, dessen Trigger erst im Obermenue sichtbar ist.
+    /// Kimis Denkaufwand oeffnet erst auf Hover (`pointerenter`); ein nackter
+    /// Klick laesst `aria-expanded=false` und die Optionen fehlen im DOM
+    /// (roher Beleg: docs/proofs/T-968/shots/survey-effort-submenu-hover.txt).
+    fn open_effort_submenu(
+        &mut self,
+        menu_key: &str,
+        trigger_key: &str,
+        option_key: &str,
+    ) -> Result<String, String> {
+        if self.sel(menu_key).is_empty() {
+            return Err(format!("kein '{menu_key}' konfiguriert"));
+        }
+        if self.sel(trigger_key).is_empty() {
+            return Err(format!("kein '{trigger_key}' konfiguriert"));
+        }
+        if self.sel(option_key).is_empty() {
+            return Err(format!("kein '{option_key}' konfiguriert"));
+        }
+        // Frischer Zustand: ein noch offenes Menue würde beim naechsten
+        // open_menu wieder geschlossen und der Trigger waere nicht sichtbar.
+        let _ = self.press_key_escape();
+        std::thread::sleep(Duration::from_millis(300));
+        if !self.open_menu(menu_key) {
+            return Err(format!("'{menu_key}' nicht anklickbar"));
+        }
+        let trigger = self.sel(trigger_key);
+        let _ = self.eval_bool(&crate::browser::js::hover_pointer_expr_for(&trigger));
+        std::thread::sleep(Duration::from_millis(500));
+        if !self.eval_bool(&crate::browser::js::click_pointer_expr_for(&trigger)) {
+            return Err(format!("'{trigger_key}' nicht anklickbar"));
+        }
+        std::thread::sleep(Duration::from_millis(800));
+        let list = Self::js_selectors(&self.sel(option_key));
+        if !self.wait_for_options(&list, 26, 150) {
+            return Err(format!(
+                "Eintraege von '{option_key}' trotz Warten nicht im DOM"
+            ));
+        }
+        Ok(list)
+    }
+
+    /// Liest die Beschriftungen aller Effort-Optionen im geoffneten Untermenue.
+    /// Das ist die einzige Quelle fuer die Alternativwahl — nicht ein
+    /// geratenes Label aus der Konfiguration.
+    pub fn effort_options(
+        &mut self,
+        menu_key: &str,
+        trigger_key: &str,
+        option_key: &str,
+    ) -> Result<Vec<String>, String> {
+        let list = self.open_effort_submenu(menu_key, trigger_key, option_key)?;
+        let expr = format!(
+            "(function(){{{prelude}var S={list};var out=[];for(var i=0;i<S.length;i++){{try{{var els=QA(S[i]);for(var k=0;k<els.length;k++){{var t=((els[k].innerText||els[k].textContent||'')+'').replace(/\\s+/g,' ').trim();if(t&&out.indexOf(t)<0)out.push(t);}}}}catch(e){{}}}}return JSON.stringify(out);}})()",
+            prelude = Self::JS_SEL_PRELUDE,
+            list = list
+        );
+        let raw = self.eval_str(&expr);
+        serde_json::from_str(&raw).map_err(|e| e.to_string())
+    }
+
+    /// Klickt einen Effort-Wert im Untermenue und liest den Trigger danach
+    /// einmal nach. Der Rueckgabewert ist nur die Klick-Antwort; der Beleg
+    /// entsteht ausschliesslich durch das unabhaengige `menu_label` danach.
+    pub fn select_effort(
+        &mut self,
+        menu_key: &str,
+        trigger_key: &str,
+        option_key: &str,
+        value: &str,
+    ) -> Result<String, String> {
+        let list = self.open_effort_submenu(menu_key, trigger_key, option_key)?;
+        let needle =
+            serde_json::to_string(&value.trim().to_lowercase()).unwrap_or_else(|_| "\"\"".into());
+        let mut clicked = self.eval_bool(&Self::click_option_expr(&list, &needle));
+        if !clicked {
+            if let Some((x, y)) = self.option_point(&list, &needle) {
+                let mut guard = self.driver.borrow_mut();
+                if let Some(driver) = guard.as_mut() {
+                    clicked = driver.click_at(x, y).is_ok();
+                }
+            }
+        }
+        if !clicked {
+            return Err(format!("Effort '{value}' nicht im Untermenue gefunden"));
+        }
+        std::thread::sleep(Duration::from_millis(600));
+        Ok(self.menu_label(menu_key))
     }
 
     /// Oeffnet einen Bereich der Oberflaeche (Projekte, Bibliothek, …) und

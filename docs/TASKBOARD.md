@@ -167,7 +167,13 @@ The matrix still carries the structural gaps in `model`, `effort`, and `managed_
 
 | Task | Description | Status | Branch |
 |---|---|---|---|
-| T-968 | kimi: make the reasoning-effort roundtrip live-verifiable (full trigger label, real submenu entries, change + restore) | claimed — local/opencode | `fix/T-968-kimi-effort-roundtrip` |
+| T-968 | kimi: make the reasoning-effort roundtrip live-verifiable (full trigger label, real submenu entries, change + restore) | done — local/opencode | `fix/T-968-kimi-effort-roundtrip` |
+
+T-968 result: live `verify` passed headless on the existing kimi session —
+`Schnell Hoch` → `Standard`, independently read as `Schnell Standard`, original
+value restored in the same session (10054 ms). Raw transcript and DOM survey:
+`docs/proofs/T-968/README.md`. The remaining structural gaps in `model` and
+`managed_tools` are unchanged; no merge, tag, release, or deployment.
 
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
@@ -266,5 +272,5 @@ The matrix still carries the structural gaps in `model`, `effort`, and `managed_
 | T-964 | done |
 | T-965 | done |
 | T-967 | done |
-| T-968 | claimed |
+| T-968 | done |
 <!-- TASKBOARD-MIRROR-END -->

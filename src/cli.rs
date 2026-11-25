@@ -426,7 +426,8 @@ pub enum Commands {
         #[arg(long)]
         out: Option<String>,
         /// Vor der Aufnahme diesen Selektor-Schluessel anklicken, z.B.
-        /// `model_menu` — ein geschlossenes Menue zeigt seine Eintraege nicht
+        /// `model_menu` — ein geschlossenes Menue zeigt seine Eintraege nicht.
+        /// Verschachtelte Menues als Kette: `model_menu > effort_submenu`
         #[arg(long)]
         open: Option<String>,
         /// Headless ausfuehren (Default: sichtbar)
@@ -443,7 +444,9 @@ pub enum Commands {
         /// Ergebnis in die Nutzer-Selektordatei schreiben statt nur anzeigen
         #[arg(long)]
         write: bool,
-        /// Vor der Vermessung diesen Selektor-Schluessel anklicken (z.B. model_menu)
+        /// Vor der Vermessung diesen Selektor-Schluessel anklicken (z.B.
+        /// model_menu). Verschachtelte Menues als Kette:
+        /// `model_menu > effort_submenu`
         #[arg(long)]
         open: Option<String>,
 
