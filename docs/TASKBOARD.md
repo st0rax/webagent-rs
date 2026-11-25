@@ -172,9 +172,9 @@ The matrix still carries the structural gaps in `model`, `effort`, and `managed_
 T-968 result: live `verify` passed headless on the existing kimi session —
 `Schnell Hoch` → `Standard`, independently read as `Schnell Standard`, original
 value restored in the same session (10054 ms). Raw transcript and DOM survey:
-`docs/proofs/T-968/README.md`. PR #103 is open with all four CI checks green; the
-remaining structural gaps in `model` and `managed_tools` are unchanged. No
-merge, tag, release, or deployment.
+`docs/proofs/T-968/README.md`. PR #103 was merged to `master` as squash `a2a144a` after all four CI checks
+passed; the remaining structural gaps in `model` and `managed_tools` are
+unchanged. No tag, release, or deployment.
 
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 

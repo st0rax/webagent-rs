@@ -1,6 +1,19 @@
 # Current Work
 
-## 2026-11-25 - T-968: kimi `reasoning_effort` live belegt (Worktree, ungemergt)
+## 2026-11-25 - T-968 via PR #103 nach `master` gemergt
+
+- **Freigabe und Merge:** Der Eigentuemer hat den Merge ausdruecklich freigegeben.
+  PR #103 (https://github.com/st0rax/webagent-rs/pull/103) wurde mit
+  `a2a144a` als Squash nach `master` gemergt; alle vier PR-Checks waren vorher
+  gruen. `master` lokal und remote steht auf `a2a144a`, kein Tag, kein
+  GitHub-Release, kein Deployment. Board jetzt 93 Tasks / 92 `done` / 1 `free`
+  (T-961) / 0 `claimed`; `GOALS.md`, `docs/OVERVIEW.md` und `CHANGELOG.md`
+  sind auf diesen Stand nachgezogen.
+- **Restliche Ausnahme:** T-961/G-002 bleibt `free`; die rohen Pi-Transkripte
+  sind negativ (0/5 Tool-Turns, `session_state=Unbestimmt`). Kein erfundenes
+  PASS und keine erneute Anmeldung durch einen Agenten.
+
+## 2026-11-25 - T-968: kimi `reasoning_effort` live belegt (umgesetzt im Worktree)
 
 - **Fortsetzung von DeepSeek's Claim:** auf `b073d26` im Worktree
   `webagent-rs-t968-kimi-effort`, Branch `fix/T-968-kimi-effort-roundtrip`.
@@ -30,17 +43,14 @@
   -D warnings`, `git diff --check` alle gruen. Matrix `effort/kimi` nur aus dem
   rohen Lauf auf `passed` gesetzt; Board 93 Tasks / 92 `done` / 1 `free`
   (T-961) / 0 `claimed`, MD-Spiegel synchron.
-- **Grenzen:** PR #103 (https://github.com/st0rax/webagent-rs/pull/103) wurde
-  mit ausdruecklicher Freigabe geoeffnet; **kein** Merge nach `master`, kein Tag,
-  kein GitHub-Release, kein Deployment. Keine Zugangsdaten, Profile, Cookies
-  oder Tokens gelesen, keine Kontoeinstellung geaendert. T-961 bleibt `free`.
-  Der Branch ist als `88918df` (Umsetzung) und `141736b` (Handoff) committet und
-  auf `origin/fix/T-968-kimi-effort-roundtrip` gepusht; die Uebergabe enthaelt
-  Pfad, Zweck und Eigentuemerschaft (`local/opencode`). `master` bleibt
-  unangetastet bei `158eb10`. Alle vier PR-Checks sind gruen gemessen:
-  `aarch64` 2m1s, `build & test` 1m28s, Linux-WebView 1m44s, Windows 3m3s.
-  Ein Merge nach `master` braucht weiterhin eine erneute ausdrueckliche
-  Freigabe; kein Tag, Release oder Deployment.
+- **Grenzen:** PR #103 wurde mit ausdruecklicher Freigabe geoeffnet und nach
+  gruenen Checks (aarch64, build & test, Linux-WebView, Windows) als Squash
+  `a2a144a` nach `master` gemergt; seither kein Tag, kein GitHub-Release, kein
+  Deployment. Keine Zugangsdaten, Profile, Cookies oder Tokens gelesen, keine
+  Kontoeinstellung geaendert. T-961 bleibt `free`. Der Branch wurde als
+  `88918df` (Umsetzung), `141736b` und `4da55d9` (Handoff) committet und
+  gepusht; die Uebergabe enthaelt Pfad, Zweck und Eigentuemerschaft
+  (`local/opencode`).
 
 ## 2026-11-25 - Projektabschluss im erreichbaren Umfang
 

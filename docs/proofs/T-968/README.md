@@ -80,5 +80,5 @@ und `Hoch`. Der Trigger ist `[data-testid='model-effort-item']` mit
   dort sichtbaren Werte (`Standard`, `Hoch`). Aendert die Oberflaeche ihre
   Struktur, muss der Verifier erneut laufen.
 - T-961/G-002 bleibt `free`; daraus wird kein PASS erfunden.
-- PR #103 ist mit Freigabe geoeffnet; kein Merge nach `master`, kein Tag,
-  kein Release, kein Deployment ohne weitere ausdrueckliche Freigabe.
+- PR #103 wurde nach Freigabe als Squash `a2a144a` nach `master` gemergt;
+  kein Tag, kein Release, kein Deployment.
