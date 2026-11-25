@@ -23,6 +23,9 @@ pub fn isolated_query(
     headless: bool,
     profile_override: Option<std::path::PathBuf>,
 ) -> Result<String, String> {
+    // T-970: Swarm/Self-Research rufen dies in parallelen Threads auf. Der
+    // thread-lokale Scope haelt die Turn-Beobachtungen dieses Laufs getrennt.
+    let _scope = crate::brain_score::PendingScope::new();
     // Wiederholt blockierte/fehlgeschlagene Brains werden fuer eine Cooldown-
     // Zeit uebersprungen statt bei jedem Aufruf erneut den vollen Timeout zu
     // kosten (siehe circuit_breaker.rs).
@@ -254,6 +257,9 @@ impl PersistentBrain {
     }
 
     fn query(&mut self, prompt: &str, mode: ChatMode) -> Result<String, String> {
+        // T-970: jeder Pool-Thread laeuft seinen eigenen Turn; ohne Scope koennte
+        // ein abgebrochener Lauf Beobachtungen im naechsten hinterlassen.
+        let _scope = crate::brain_score::PendingScope::new();
         if let Some(remaining) = crate::circuit_breaker::check(&self.brain_id) {
             return Err(format!(
                 "circuit_open: uebersprungen, noch {remaining}s Cooldown"

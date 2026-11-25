@@ -1,11 +1,20 @@
 # Current Work
 
+## 2026-11-25 - T-970: Turn-Beobachtungen thread-lokal isoliert
+
+- **Branch:** `fix/T-970-observation-scope`, Basis `23c10e9` (Claim-Commit). Nur lokale Änderungen; kein Merge, kein `done`, kein Live-Lauf.
+- **Ursache:** `src/brain_score.rs` hielt `PENDING_TURN`, `PENDING_WEB_SEARCH` und `PENDING_SOURCE_HINTS` als prozessglobale Mutexe. `record_event_at` konsumierte alle drei bei jedem Event, auch bei Early Returns ohne eigenen Turn. Parallele Läufe (Bridge pro Verbindung, Swarm, REPL-Pool, Benchmark) konnten sich gegenseitig überschreiben; `brain_id` allein wäre als Schlüssel nicht ausreichend.
+- **Änderung:** Die drei Mutexe sind durch ein `thread_local!`-`RefCell<PendingObservations>` ersetzt. Ein `PendingScope` (RAII) nimmt beim Laufbeginn vorhandene Reste beiseite und stellt sie beim Verlassen wieder her; verschachtelte Scopes sind sicher. Guards an den Laufgrenzen: `src/relay.rs` (`relay_image_generation`, `relay_single_turn_checked`, `run_turn_loop`) und `src/repl/pool.rs` (`isolated_query`, `PersistentBrain::query`). Alle öffentlichen `set_pending_*`/`update_pending_turn`/`pending_turn_snapshot`-Signaturen und das Event-Format bleiben unverändert; `WRITE_LOCK` schützt weiterhin nur das Datei-Append.
+- **Beleg:** Zwei neue Unit-Tests: `t970_parallelaeufe_teilen_keine_beobachtungen` (zwei Threads, getrennte Websuch-/Quellenhinweise) und `t970_pending_scope_verhindert_reste_aus_frueheren_laeufen` (Reste aus früherem Lauf werden nicht in den frischen Scope gezogen und nach Ende wiederhergestellt).
+- **Gates real gemessen:** `cargo fmt --all -- --check` exit 0; `cargo clippy --all-targets -- -D warnings` exit 0; `cargo test --lib` 1519 passed / 0 failed / 1 ignored; `git diff --check` exit 0.
+- **Grenze:** Kein Umbau von Proof-Gate, Brain-Score-Formel oder Event-Schema; kein Login, keine Profil-/Token-Lektüre, kein Live-Provider-Call, kein Tag, kein Release, kein Deployment.
+
 ## 2026-11-25 - Greenfield-Abgleich: vier lokale Härtungsscheiben geclaimt
 
 - **Auftrag:** Der Eigentümer hat nach dem Prompt-Abgleich "optimier das projekt soweit möglich" freigegeben. Der ursprünglich zu breit gefasste T-969 wurde auf ausdrücklichen Wunsch in vier Tasks mit je eigenem Branch und Typ zerlegt: **T-969** `docs/T-969-protocol-security` (PROTOCOL.md + SECURITY.md), **T-970** `fix/T-970-observation-scope` (globale Turn-Puffer), **T-971** `fix/T-971-verifiedfree-proof` (Belegpfad), **T-972** `refactor/T-972-controller-webview-split` (God-Files).
 - **Claims:** Alle vier stehen in `docs/TASKBOARD.json` auf `claimed`, Eigentümer `local/opencode`, Basis `master` = `1c93cfe`; der Markdown-Spiegel ist nachgezogen. `done` wird erst nach Merge gesetzt. Die Claim-Zeilen werden in einem gemeinsamen Basis-Commit festgehalten, damit jeder der vier Branches dieselbe Tafel trägt.
-- **Arbeitsstand:** Aktuell läuft T-969 auf `docs/T-969-protocol-security`. T-970 bis T-972 sind geclaimt, aber noch nicht begonnen; die Hintergrund-Recherche zu Puffern und Beleg-Gate läuft separat.
-- **Grenzen unverändert:** Kein Login, keine CAPTCHA-/2FA-Bedienung, keine Lektüre von Profilen, Cookies oder Tokens, kein Live-Provider-Call, kein Tag, kein GitHub-Release, kein Deployment. Die vier Scheiben enden mit lokalen Gates und einem Pusht auf ihre Arbeitsbranches; ein Merge in `master` braucht weiterhin eine eigene Freigabe.
+- **Arbeitsstand:** T-969 ist mit `834e79f` auf `docs/T-969-protocol-security` gepusht. T-970 läuft auf `fix/T-970-observation-scope`, T-971 und T-972 sind geclaimt, aber noch nicht begonnen.
+- **Grenzen unverändert:** Kein Login, keine CAPTCHA-/2FA-Bedienung, keine Lektüre von Profilen, Cookies oder Tokens, kein Live-Provider-Call, kein Tag, kein GitHub-Release, kein Deployment. Die vier Scheiben enden mit lokalen Gates und einem Push auf ihre Arbeitsbranches; ein Merge in `master` braucht weiterhin eine eigene Freigabe.
 
 ## 2026-11-25 - Release v0.11.6 mit Canary-Fix ausgeliefert
 

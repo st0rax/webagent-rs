@@ -187,46 +187,84 @@ fn is_false(v: &bool) -> bool {
     !*v
 }
 
-// Beobachtungs-Puffer: send_generic (send.rs) traegt den Turn-Stand ein,
-// relay.rs traegt Websuchzustand und Quellenhinweise ein; record_event_at
-// (unten) konsumiert alles beim Schreiben.
-lazy_static! {
-    static ref PENDING_TURN: std::sync::Mutex<Option<TurnObservation>> =
-        std::sync::Mutex::new(None);
-    static ref PENDING_WEB_SEARCH: std::sync::Mutex<Option<WebSearchObservation>> =
-        std::sync::Mutex::new(None);
-    static ref PENDING_SOURCE_HINTS: std::sync::Mutex<Vec<String>> =
-        std::sync::Mutex::new(Vec::new());
+// Beobachtungs-Puffer: send.rs traegt den Turn-Stand ein, relay.rs traegt
+// Websuchzustand und Quellenhinweise ein; record_event_at (unten) konsumiert
+// alles beim Schreiben. T-970: der Zustand ist thread-lokal, damit parallele
+// Läufe (Bridge pro Verbindung, Swarm, REPL-Pool, Benchmark) sich nicht
+// gegenseitig mit Beobachtungen überschreiben. Ein PendingScope begrenzt die
+// Lebensdauer zusätzlich auf einen Lauf.
+#[derive(Default)]
+struct PendingObservations {
+    turn: Option<TurnObservation>,
+    web_search: Option<WebSearchObservation>,
+    source_hints: Vec<String>,
+}
+
+thread_local! {
+    static PENDING: std::cell::RefCell<PendingObservations> =
+        std::cell::RefCell::new(PendingObservations::default());
+}
+
+/// Frischer Beobachtungsbereich für genau einen Lauf im aktuellen Thread.
+///
+/// Beim Anlegen werden vorhandene Reste beiseitegenommen, beim Verlassen
+/// wiederhergestellt. Verschachtelte Scopes (Relay ruft `run_turn_loop` aus
+/// `relay_single_turn_checked`) sind dadurch sicher. Die öffentlichen
+/// `set_pending_*`-Funktionen behalten ihre Signaturen.
+pub struct PendingScope {
+    previous: PendingObservations,
+}
+
+impl PendingScope {
+    pub fn new() -> Self {
+        Self {
+            previous: PENDING.with(|p| std::mem::take(&mut *p.borrow_mut())),
+        }
+    }
+}
+
+impl Default for PendingScope {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for PendingScope {
+    fn drop(&mut self) {
+        PENDING.with(|p| *p.borrow_mut() = std::mem::take(&mut self.previous));
+    }
 }
 
 /// T-950: gemessenen Websuchzustand fuer das naechste Ereignis vormerken.
 pub fn set_pending_web_search(obs: WebSearchObservation) {
-    *PENDING_WEB_SEARCH.lock().unwrap() = Some(obs);
+    PENDING.with(|p| p.borrow_mut().web_search = Some(obs));
 }
 
 /// T-950: im Antworttext erkannte Quellenhinweise fuer das naechste Ereignis
 /// vormerken. Leere Liste löscht eine zuvor vorgemerkte Liste.
 pub fn set_pending_source_hints(hints: Vec<String>) {
-    *PENDING_SOURCE_HINTS.lock().unwrap() = hints;
+    PENDING.with(|p| p.borrow_mut().source_hints = hints);
 }
 
 /// Aktuelle Turn-Beobachtung eintragen (von send.rs / composer.rs).
 pub fn set_pending_turn(obs: TurnObservation) {
-    *PENDING_TURN.lock().unwrap() = Some(obs);
+    PENDING.with(|p| p.borrow_mut().turn = Some(obs));
 }
 
 /// Einzelne Felder der laufenden Turn-Beobachtung ergaenzen/aktualisieren,
 /// ohne den Rest zu ueberschreiben. Legt eine leere Beobachtung an, wenn noch
 /// keine vorhanden ist.
 pub fn update_pending_turn(update: impl FnOnce(&mut TurnObservation)) {
-    let mut guard = PENDING_TURN.lock().unwrap();
-    update(guard.get_or_insert_with(TurnObservation::default));
+    PENDING.with(|p| {
+        let mut pending = p.borrow_mut();
+        update(pending.turn.get_or_insert_with(TurnObservation::default));
+    });
 }
 
 /// Kopie des aktuellen Stands (send.rs nutzt sie nach dem Fuell-Loop, um
 /// ContentCheck vs. Insert zu unterscheiden).
 pub fn pending_turn_snapshot() -> Option<TurnObservation> {
-    PENDING_TURN.lock().unwrap().clone()
+    PENDING.with(|p| p.borrow().turn.clone())
 }
 
 /// Standardisierte Fehlernachricht mit Phase-Präfix statt eines kombinierten
@@ -341,12 +379,14 @@ fn record_event_at(
             return;
         }
     }
-    let turn = PENDING_TURN.lock().unwrap().take();
-    let web_search = PENDING_WEB_SEARCH.lock().unwrap().take();
-    let source_hints = {
-        let mut hints = PENDING_SOURCE_HINTS.lock().unwrap();
-        std::mem::take(&mut *hints)
-    };
+    let (turn, web_search, source_hints) = PENDING.with(|p| {
+        let mut pending = p.borrow_mut();
+        (
+            pending.turn.take(),
+            pending.web_search.take(),
+            std::mem::take(&mut pending.source_hints),
+        )
+    });
     let source_hints = if source_hints.is_empty() {
         None
     } else {
@@ -862,5 +902,54 @@ mod tests {
         assert_eq!(kurz.chars().count(), BANNER_TRUNCATE);
         assert_eq!(kurz.chars().next(), Some('x'));
         assert_eq!(turn_banner(""), "");
+    }
+
+    #[test]
+    fn t970_parallelaeufe_teilen_keine_beobachtungen() {
+        fn run(marker: &'static str) -> serde_json::Value {
+            let path = unique_path();
+            set_pending_web_search(WebSearchObservation::turned_off(
+                &format!("before-{marker}"),
+                &format!("after-{marker}"),
+            ));
+            set_pending_source_hints(vec![format!("hint-{marker}")]);
+            record_event_at(marker, true, None, 10, 5, Some(1), &path);
+            let raw = std::fs::read_to_string(&path).unwrap();
+            serde_json::from_str(raw.lines().next().unwrap()).unwrap()
+        }
+
+        let a = std::thread::spawn(|| run("alpha"));
+        let b = std::thread::spawn(|| run("beta"));
+        let a = a.join().unwrap();
+        let b = b.join().unwrap();
+
+        assert_eq!(a["web_search"]["before"], "before-alpha");
+        assert_eq!(a["source_hints"][0], "hint-alpha");
+        assert_eq!(b["web_search"]["before"], "before-beta");
+        assert_eq!(b["source_hints"][0], "hint-beta");
+    }
+
+    #[test]
+    fn t970_pending_scope_verhindert_reste_aus_frueheren_laeufen() {
+        let path = unique_path();
+        set_pending_web_search(WebSearchObservation::turned_off("alt", "neu"));
+        set_pending_source_hints(vec!["alter-hinweis".to_string()]);
+
+        {
+            let _scope = PendingScope::new();
+            record_event_at("frisch", true, None, 10, 5, Some(1), &path);
+        }
+        // Nach Ende des Scopes sind die alten Werte wiederhergestellt; der
+        // naechste Lauf sieht sie, statt sie stillschweigend zu verlieren.
+        record_event_at("danach", true, None, 10, 5, Some(1), &path);
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = raw.lines().collect();
+        let first: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        let second: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        assert!(first.get("web_search").is_none());
+        assert!(first.get("source_hints").is_none());
+        assert_eq!(second["web_search"]["before"], "alt");
+        assert_eq!(second["source_hints"][0], "alter-hinweis");
     }
 }

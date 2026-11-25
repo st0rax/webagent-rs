@@ -139,6 +139,10 @@ pub fn relay_image_generation(
     headless: bool,
     timeout_override: Option<f64>,
 ) -> Result<GeneratedImage, RelayError> {
+    // T-970: Bild-Turns schreiben Turn-Beobachtungen, buchen aber keinen Score-
+    // Event. Der Scope verhindert, dass diese Reste in einen spaeteren Turn
+    // desselben Threads wandern.
+    let _scope = crate::brain_score::PendingScope::new();
     let trace = std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some();
     if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
         return Err(RelayError(circuit_open_message(brain_id, remaining)));
@@ -347,6 +351,9 @@ fn relay_single_turn_checked(
     output_check: Option<&OutputCheck<'_>>,
     presence: &dyn ClientPresence,
 ) -> Result<String, RelayError> {
+    // T-970: ein frischer Beobachtungsbereich pro Relay-Lauf. Alle Events und
+    // set_pending_*-Aufrufe dieses Laufs liegen im selben Thread.
+    let _scope = crate::brain_score::PendingScope::new();
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
     // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
     if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
@@ -451,6 +458,9 @@ fn run_turn_loop<B: RelayBackend>(
     output_check: Option<&OutputCheck<'_>>,
     presence: &dyn ClientPresence,
 ) -> Result<String, RelayError> {
+    // T-970: verschachtelter Scope fuer den direkten Testaufruf dieses Loops;
+    // ein aeusserer Relay-Scope wird beim Verlassen wiederhergestellt.
+    let _scope = crate::brain_score::PendingScope::new();
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
     // sind unvermeidlich flakig: Submit oder Antworterkennung koennen scheitern.
     // Jeder Turn startet mit einem frischen `new_chat`, also entsteht kein

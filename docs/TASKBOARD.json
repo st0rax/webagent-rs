@@ -2204,6 +2204,8 @@
       "depends_on": [],
       "scope": [
         "src/brain_score.rs",
+        "src/relay.rs",
+        "src/repl/pool.rs",
         "docs/CURRENT_WORK.md",
         "docs/TASKBOARD.json",
         "docs/TASKBOARD.md"
@@ -2217,8 +2219,8 @@
         "Kein Tag, kein Release, kein Deployment."
       ],
       "proof_path": "docs/CURRENT_WORK.md",
-      "verification": "Noch offen; lokale Gates werden im Handover eingetragen.",
-      "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: globale PUFFER in src/brain_score.rs:193-210, Konsum in record_event_at."
+      "verification": "2026-11-25 auf fix/T-970-observation-scope real gemessen: cargo fmt --all -- --check exit 0; cargo clippy --all-targets -- -D warnings exit 0; cargo test --lib 1519 passed / 0 failed / 1 ignored (inkl. t970_parallelaeufe_teilen_keine_beobachtungen und t970_pending_scope_verhindert_reste_aus_frueheren_laeufen); git diff --check exit 0.",
+      "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: globale PUFFER in src/brain_score.rs:193-210, Konsum in record_event_at. Umsetzung: thread_local! RefCell statt drei Mutexe, PendingScope (RAII) an den Laufgrenzen in relay.rs und repl/pool.rs; öffentliche Signaturen und Event-Format unverändert."
     },
     {
       "id": "T-971",
