@@ -2232,7 +2232,8 @@
       "depends_on": [],
       "scope": [
         "src/free_cloud_chat.rs",
-        "src/capability_proof.rs",
+        "src/main.rs",
+        "docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md",
         "docs/CURRENT_WORK.md",
         "docs/TASKBOARD.json",
         "docs/TASKBOARD.md"
@@ -2246,8 +2247,8 @@
         "Kein Tag, kein Release, kein Deployment."
       ],
       "proof_path": "docs/CURRENT_WORK.md",
-      "verification": "Noch offen; lokale Gates werden im Handover eingetragen.",
-      "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: VerifiedFree ohne gate-gestuetzten Beleg, docs/proofs/T-926/ ist Markdown, kein proofs.jsonl-Eintrag."
+      "verification": "2026-11-25 auf fix/T-971-verifiedfree-proof real gemessen: cargo fmt --all -- --check exit 0; cargo clippy --all-targets -- -D warnings exit 0; cargo test --lib 1519 passed / 0 failed / 1 ignored (inkl. t971_verified_free_basis_names_registry_doc_and_no_capability_gate und t971_webview_oauth_has_no_capability_proof_record); git diff --check exit 0; lokaler CLI-Smoke `cloud decide --model-id webagent/webview-oauth-session` exit 0 mit capability_gate=false und datiertem proof_path. Kein Store-Schreibzugriff.",
+      "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: VerifiedFree ohne gate-gestuetzten Beleg, docs/proofs/T-926/ ist Markdown, kein proofs.jsonl-Eintrag. Umsetzung: VerificationBasis/verification_basis als reine Ableitung, capability_gate=false, Ausgabe in cloud list/cloud decide; src/capability_proof.rs bewusst unberuehrt."
     },
     {
       "id": "T-972",

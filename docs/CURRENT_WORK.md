@@ -1,11 +1,21 @@
 # Current Work
 
+## 2026-11-25 - T-971: VerifiedFree ehrlich als Registry-Beleg gekennzeichnet
+
+- **Branch:** `fix/T-971-verifiedfree-proof`, Basis `23c10e9` (Claim-Commit). Nur lokale Änderungen; kein Merge, kein `done`, kein Live-Provider-Call.
+- **Befund:** `AccessMode::VerifiedFree` ist der einzige automatisch routbare Free-Status, hatte aber keinen Bezug zum einen Beleg-Gate. Der Live-Nachweis liegt als datiertes Markdown unter `docs/proofs/T-926/webview-oauth-live-result.md` (2026-11-21), nicht als Record in `capability/proofs.jsonl` (dort 0 Treffer auf `free|cloud|webview|stream|oauth`).
+- **Entscheidung:** Variante A — ehrliche Kennzeichnung ohne Store-Schreibzugriff und ohne Verhaltensänderung. Neu: `VerificationBasis` und `verification_basis()` in `src/free_cloud_chat.rs` (`kind = registry_only_dated_doc`, `at = 2026-11-21`, `proof_path = docs/proofs/T-926/...`, immer `capability_gate = false`); lokale Mock-/Hub-Verträge werden als `local_contract` ausgewiesen. `cloud list` (indexgleich zu `models`) und `cloud decide` geben das Feld `verification` aus. `decide_route`, `ProofState`, TTL und Store-Schema bleiben unangetastet; `src/capability_proof.rs` wurde bewusst nicht geändert. Kein nachträgliches Einfügen eines 2026-11-21-Records.
+- **Beleg:** Zwei neue Unit-Tests prüfen die Herkunftsangabe und die unveränderte Routing-Invariante sowie `ProofState::Never` auf einem frischen, unberührten Store-Pfad.
+- **Doku:** `docs/FREE_CLOUD_IMPLEMENTATION_STATUS.md` nennt den Unterschied zwischen Registry-Beleg und Capability-Gate ausdrücklich.
+- **Gates real gemessen:** `cargo fmt --all -- --check` exit 0; `cargo clippy --all-targets -- -D warnings` exit 0; `cargo test --lib` 1519 passed / 0 failed / 1 ignored; `git diff --check` exit 0. Lokaler CLI-Smoke `cloud decide --model-id webagent/webview-oauth-session` exit 0 mit `capability_gate=false`, `kind=registry_only_dated_doc` und datiertem `proof_path`.
+- **Grenze:** Kein Login, keine Profil-/Token-Lektüre, kein zweiter Belegspeicher, kein Tag, kein Release, kein Deployment.
+
 ## 2026-11-25 - Greenfield-Abgleich: vier lokale Härtungsscheiben geclaimt
 
 - **Auftrag:** Der Eigentümer hat nach dem Prompt-Abgleich "optimier das projekt soweit möglich" freigegeben. Der ursprünglich zu breit gefasste T-969 wurde auf ausdrücklichen Wunsch in vier Tasks mit je eigenem Branch und Typ zerlegt: **T-969** `docs/T-969-protocol-security` (PROTOCOL.md + SECURITY.md), **T-970** `fix/T-970-observation-scope` (globale Turn-Puffer), **T-971** `fix/T-971-verifiedfree-proof` (Belegpfad), **T-972** `refactor/T-972-controller-webview-split` (God-Files).
 - **Claims:** Alle vier stehen in `docs/TASKBOARD.json` auf `claimed`, Eigentümer `local/opencode`, Basis `master` = `1c93cfe`; der Markdown-Spiegel ist nachgezogen. `done` wird erst nach Merge gesetzt. Die Claim-Zeilen werden in einem gemeinsamen Basis-Commit festgehalten, damit jeder der vier Branches dieselbe Tafel trägt.
-- **Arbeitsstand:** Aktuell läuft T-969 auf `docs/T-969-protocol-security`. T-970 bis T-972 sind geclaimt, aber noch nicht begonnen; die Hintergrund-Recherche zu Puffern und Beleg-Gate läuft separat.
-- **Grenzen unverändert:** Kein Login, keine CAPTCHA-/2FA-Bedienung, keine Lektüre von Profilen, Cookies oder Tokens, kein Live-Provider-Call, kein Tag, kein GitHub-Release, kein Deployment. Die vier Scheiben enden mit lokalen Gates und einem Pusht auf ihre Arbeitsbranches; ein Merge in `master` braucht weiterhin eine eigene Freigabe.
+- **Arbeitsstand:** T-969 ist mit `834e79f` auf `docs/T-969-protocol-security` gepusht, T-970 mit `b018bc9` auf `fix/T-970-observation-scope`. T-971 läuft hier, T-972 ist geclaimt, aber noch nicht begonnen.
+- **Grenzen unverändert:** Kein Login, keine CAPTCHA-/2FA-Bedienung, keine Lektüre von Profilen, Cookies oder Tokens, kein Live-Provider-Call, kein Tag, kein GitHub-Release, kein Deployment. Die vier Scheiben enden mit lokalen Gates und einem Push auf ihre Arbeitsbranches; ein Merge in `master` braucht weiterhin eine eigene Freigabe.
 
 ## 2026-11-25 - Release v0.11.6 mit Canary-Fix ausgeliefert
 
