@@ -1,11 +1,18 @@
 # Current Work
 
+## 2026-11-25 - Lokales Deployment von v0.11.5
+
+- **Freigabe und Ziel:** Der Eigentümer hat Deployment freigegeben und um einen Zielvorschlag gebeten. Im Workspace gibt es kein `delivery/deploy_webagent_rs.ps1`, kein `runtime-workers/` und kein `webagent-deploy-target/`; `webagent` ist weder im PATH noch als Prozess vorhanden. Gewählt wurde daher der lokale, klar benannte Zielordner `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\release\`. **Kein Fern- oder Produktiv-Deployment**, keine PATH-Änderung, kein Prozessstart, keine Zugangsdaten.
+- **Quelle und Prüfung:** Exakt die GitHub-Release-Assets `v0.11.5` (kein lokaler Rebuild). EXE-SHA256 `a1baa187bd435e4902beb1b519df7398029212e3b68f33e12940ca6dad4d562c` und DLL-SHA256 `465a7ddfb3a0da4c3965daf2ad6ac7548513f42329b58aebc337311c10ea0a6f` stimmen mit den Release-Digests überein; nach dem Kopieren erneut geprüft.
+- **Post-Deploy-Check:** `webagent.exe --version` → `webagent 0.11.5 (9b2ad7e6e)`, Exit 0; `WebView2Loader.dll` liegt neben der EXE. Die `.sha256`-Datei des Release liegt ebenfalls im Zielordner.
+- **Rückbau:** Zielordner löschen; sonst keine Systemänderung. Ein Produktiv-Deployment bleibt weiterhin eine gesonderte Entscheidung mit eigenem Ziel.
+
 ## 2026-11-25 - CI-Warnungen nach dem Release bereinigt
 
 - **Anlass:** `actions/checkout@v4`, `actions/cache@v4`, `actions/upload-artifact@v4`, `actions/download-artifact@v4` und `softprops/action-gh-release@v2` erzeugten Node-20-Deprecation-Warnungen. Der veröffentlichte Release blieb unverändert.
 - **Änderung:** PR [#105](https://github.com/st0rax/webagent-rs/pull/105) (`c1f01f0`) hebt auf checkout v7, cache v6, upload-artifact v7, download-artifact v8 und action-gh-release v3. Alle vier PR-Checks grün; YAML lokal geparst, lokale Gates grün. Zwei veraltete T-961-Belegsätze wurden auf den veröffentlichten Release nachgezogen.
 - **Verifiziert:** Release-Workflow per `workflow_dispatch` auf `master` ([Lauf `45690875482`](https://github.com/st0rax/webagent-rs/actions/runs/45690875482)) vollständig grün; `Copy WebView2Loader.dll` weiterhin ok, `github-release` wie erwartet übersprungen (kein Tag). Im Log des Laufs: 0 Zeilen mit `Node.js 20` oder `deprecated`. Tag `v0.11.5` zeigt weiter auf `9b2ad7e`; GitHub-Release unverändert mit 7 Assets.
-- **Grenze:** Der Publish-Job mit den neuen Action-Versionen wurde nicht ausgeführt — dafür wäre ein neuer Tag nötig, der nicht freigegeben ist. Die verwendeten Inputs (`generate_release_notes`, `files`, `merge-multiple`, `path`) wurden statisch gegen die `action.yml` der neuen Versionen geprüft. Kein Deployment.
+- **Grenze:** Der Publish-Job mit den neuen Action-Versionen wurde nicht ausgeführt — dafür wäre ein neuer Tag nötig, der nicht freigegeben ist. Die verwendeten Inputs (`generate_release_notes`, `files`, `merge-multiple`, `path`) wurden statisch gegen die `action.yml` der neuen Versionen geprüft. Zu diesem Zeitpunkt kein Deployment; siehe Abschnitt zum lokalen Deployment oben.
 
 ## 2026-11-25 - Release v0.11.5: Windows-DLL-Pfad korrigiert
 
