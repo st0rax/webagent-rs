@@ -1,5 +1,14 @@
 # Current Work
 
+## 2026-11-25 - T-972: Controller und WebView-Runtime aufgeteilt
+
+- **Branch:** `refactor/T-972-controller-webview-split`, Basis `23c10e9` (Claim-Commit). Nur lokale Änderungen; kein Merge, kein `done`.
+- **Ausgangslage:** Entgegen der geclaimten Schätzwerte hatte `src/controller.rs` 3349 und `src/webview_runtime.rs` 3315 Zeilen. Beide liegen jetzt bei 1909 bzw. 2229 Zeilen.
+- **Änderung (reine Bewegung):** `controller::tests` → `src/controller/tests.rs` (1439 Zeilen); `webview_runtime::tests` → `src/webview_runtime/tests.rs` (95 Zeilen); die kohärenten WebView2-Datei-Upload-Helfer (Chooser, FileList-Fallback, Remount-Watch, CDP-Setzen, MIME) → `src/webview_runtime/file_input.rs` (996 Zeilen). Nur `set_file_input_files_cdp` wurde für den bestehenden Aufrufer `pub(super)`; alle anderen Signaturen, `cfg(windows)`/`cfg(not(windows))`-Pfade und das Verhalten bleiben unverändert. Kein neues Modul mit eigener Verantwortung außer der Aufteilung.
+- **Gleichheit geprüft:** Testzahl vorher/nachher Controller 44 / Controller 44, WebView 6 / WebView 6; `cargo test --lib` 1517 passed / 0 failed / 1 ignored — identisch zur Basis.
+- **Gates real gemessen:** `cargo fmt --all -- --check` exit 0; `cargo clippy --all-targets -- -D warnings` exit 0; `cargo test --lib` 1517 passed / 0 failed / 1 ignored; `git diff --check` exit 0.
+- **Grenze:** Kein Login, kein WebView2-Fensterstart, kein Live-Provider-Call, kein Tag, kein Release, kein Deployment.
+
 ## 2026-11-25 - T-971: VerifiedFree ehrlich als Registry-Beleg gekennzeichnet
 
 - **Branch:** `fix/T-971-verifiedfree-proof`, Basis `23c10e9` (Claim-Commit). Nur lokale Änderungen; kein Merge, kein `done`, kein Live-Provider-Call.
