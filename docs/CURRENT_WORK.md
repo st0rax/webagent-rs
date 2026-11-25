@@ -37,8 +37,10 @@
   Der Branch ist als `88918df` (Umsetzung) und `141736b` (Handoff) committet und
   auf `origin/fix/T-968-kimi-effort-roundtrip` gepusht; die Uebergabe enthaelt
   Pfad, Zweck und Eigentuemerschaft (`local/opencode`). `master` bleibt
-  unangetastet bei `158eb10`. CI-Laeufe des PRs sind bei Uebergabe noch
-  `pending`; erst nach gruenem CI und erneuter Freigabe koennte gemergt werden.
+  unangetastet bei `158eb10`. Alle vier PR-Checks sind gruen gemessen:
+  `aarch64` 2m1s, `build & test` 1m28s, Linux-WebView 1m44s, Windows 3m3s.
+  Ein Merge nach `master` braucht weiterhin eine erneute ausdrueckliche
+  Freigabe; kein Tag, Release oder Deployment.
 
 ## 2026-11-25 - Projektabschluss im erreichbaren Umfang
 
