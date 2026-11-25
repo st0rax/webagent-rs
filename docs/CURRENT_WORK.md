@@ -6,7 +6,7 @@
 - **Ursache:** Mit Rust/Cargo 1.100 liegt `OUT_DIR` unter `target/<profile>/build/webview2-com-sys/<hash>/out`, nicht mehr wie früher unter `build/webview2-com-sys-<hash>/out`. Das Skript kannte nur das alte Layout. Belegt durch die lokale Datei `target/debug/build/webview2-com-sys/dc268415efa03ec9/out/x64/WebView2Loader.dll` und den CI-Log.
 - **Fix:** `Find-Loader` in `scripts/copy-webview2-loader.ps1` prüft jetzt beide Layouts; die Fehlermeldung nennt beide Pfade. Lokal geprüft: `-Profile debug` gegen das neue Layout → `[ok]`, simuliertes altes Layout mit `-Profile release` → `[ok]`. Keine Code-, Versions- oder Workflow-Änderung.
 - **Freigabe:** Der Eigentümer hat am 2026-11-25 ausdrücklich erlaubt, den bereits gepushten Tag `v0.11.5` nach dem Fix auf den neuen Commit zu legen. Deployment bleibt ausgeschlossen.
-- **Stand bei diesem Commit:** Fix und Doku werden auf `master` committet und gepusht; danach werden der Remote-Tag gelöscht und `v0.11.5` auf den neuen HEAD gelegt. Der danach gestartete Release-Workflow muss den `github-release`-Job grün abschließen; das Ergebnis wird in einem Folgecommission nachgetragen.
+- **Abschluss:** Der Fix wurde als `9b2ad7e` nach `master` gepusht. Der Remote-Tag `v0.11.5` wurde mit ausdrücklicher Freigabe gelöscht und auf `9b2ad7e` neu gesetzt (alter Tag: `8d7eae3`). Der neue Release-Workflow [`45684483569`](https://github.com/st0rax/webagent-rs/actions/runs/45684483569) ist vollständig grün: `verify`, Android, Linux, Windows (`Copy WebView2Loader.dll` jetzt grün) und `github-release`. Das [GitHub-Release](https://github.com/st0rax/webagent-rs/releases/tag/v0.11.5) ist am 25.11.2026 19:28:56 UTC veröffentlicht, nicht Draft/Prerelease, mit sieben Assets: Windows-EXE, `WebView2Loader.dll`, Linux-, Android-Binary und drei `.sha256`-Dateien. Die drei Hash-Dateien wurden heruntergeladen und stimmen mit den Asset-Digests überein. Kein Deployment.
 
 ## 2026-11-25 - T-961/G-002: Endabnahme des engen Frisch-Chat-Retries
 
@@ -23,7 +23,7 @@
 - **Freigabe:** Der Eigentümer hat nach der Endabnahme ausdrücklich den vollen Ablauf **PR + Merge + Release** freigegeben; Deployment ist weiterhin ausgeschlossen.
 - **PR/CI:** PR [#104](https://github.com/st0rax/webagent-rs/pull/104) wurde gegen `master` geöffnet. Alle vier Checks waren grün (`aarch64`, `build & test`, Windows volle Features, Linux-WebView). Der Squash-Merge ist `ea88203`.
 - **Versionsgate lokal:** `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.5` → Exit 0; `v0.11.4` → Exit 1 wie erwartet. `Cargo.toml` und `Cargo.lock` stehen auf `0.11.5`.
-- **Arbeitsstand:** `master` lokal und remote bei `ea88203`, Working Tree sauber. Tag und GitHub-Release `v0.11.5` folgen nach der Master-CI; `release.yml` erzeugt die Artefakte und das GitHub-Release selbst. Kein Deployment.
+- **Arbeitsstand zu diesem Zeitpunkt:** `master` war bei `ea88203`, Working Tree sauber. Tag und GitHub-Release `v0.11.5` wurden danach nach grüner Master-CI gesetzt; `release.yml` erzeugte die Artefakte und das GitHub-Release selbst. Kein Deployment.
 
 ## 2026-11-25 - T-968 via PR #103 nach `master` gemergt
 
