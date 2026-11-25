@@ -16,8 +16,12 @@
   abgeschlossen mit dokumentierter Ausnahme“.
 - **Grenzen:** kein neuer Tag, kein GitHub-Release, kein Deployment. Latest
   Release bleibt `v0.11.4`; der historische Tag ist unangetastet.
-- **DeepSeek:** der Reset-Timer laeuft bis 01:33 Uhr; eine spaetere Review ist
-  moeglich, aber kein Blocker mehr fuer den code-seitigen Abschluss.
+- **DeepSeek-Review (01:33 Uhr):** der Child-Agent war wieder verfuegbar und
+  hat den gemergten Stand read-only mit `review ok` bewertet. Zwei minimale
+  Befunde eingearbeitet: Taskboard-Branch/Handoff auf den gemergten Stand
+  korrigiert und `--locked` auch in die drei Release-Builds sowie den
+  Android-Build ergaenzt. Der Android-Target ist lokal ohne NDK nicht
+  nachgefahren; CI prueft ihn. Kein Logikfehler am Gate gefunden.
 
 ## 2026-11-24 — T-967 unabhaengig im getrennten Worktree umgesetzt
 
