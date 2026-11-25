@@ -1,5 +1,12 @@
 # Current Work
 
+## 2026-11-25 - Produktreife-Bewertung und Canary-Korrektur
+
+- **Bewertung:** `docs/PRODUCTION_READINESS.md` trennt Release-Reife (ja) von Produktivreife im Zielbetrieb (nicht vollständig belegt) und nennt sechs konkrete Restrisiken sowie Go/No-Go-Kriterien.
+- **Runtime-Smoke mit dem deployten Binary:** `webagent.exe ui --no-open --skip-startup-reconcile --port 8788` → Port nach 1 s im Listen-Zustand, `GET /` 200 (38358 Byte), `GET /health` 200 (31 Byte); Prozess gestoppt, Port danach frei. `webagent.exe brains-health` → Exit 0, `shared_profile=ok`, 8/8 `selectors=ok`, `bot2bot=MISSING`.
+- **Canary-Befund:** Dasselbe Binary meldete `canary` 7/8 `missing_selectors`, obwohl `load_selectors` eingebettete Selektoren korrekt lädt und `brains-health` sie mitzählt. Ursache: die leichte Probe in `src/canary.rs` prüfte nur die Datei am Build-Pfad. Korrektur plus Unit-Test (`selectors_available`, eingebettete Kopie gilt als vorhanden) liegen in diesem Scheiben; alle lokalen Gates grün. Die Korrektur ist **nicht** im veröffentlichten `v0.11.5` und braucht für die Auslieferung einen nächsten Release.
+- **Grenze:** Publish-Pfad mit den neuen Actions wurde nicht erneut ausgeführt (taggebunden), kein echter WebView2-Fensterstart, kein Produktivziel. Deployment weiterhin nur lokal.
+
 ## 2026-11-25 - Lokales Deployment von v0.11.5
 
 - **Freigabe und Ziel:** Der Eigentümer hat Deployment freigegeben und um einen Zielvorschlag gebeten. Im Workspace gibt es kein `delivery/deploy_webagent_rs.ps1`, kein `runtime-workers/` und kein `webagent-deploy-target/`; `webagent` ist weder im PATH noch als Prozess vorhanden. Gewählt wurde daher der lokale, klar benannte Zielordner `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\release\`. **Kein Fern- oder Produktiv-Deployment**, keine PATH-Änderung, kein Prozessstart, keine Zugangsdaten.
