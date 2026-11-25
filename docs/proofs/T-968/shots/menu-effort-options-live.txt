@@ -1,0 +1,3 @@
+[runs] Startup-Reconcile ├╝bersprungen (--skip-startup-reconcile).
+[menu] kimi/effort_submenu: aktuell ''''
+[menu] kimi/effort_submenu: 'effort_submenu' nicht anklickbar

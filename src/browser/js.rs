@@ -146,10 +146,31 @@ const TOGGLE_STATE_BODY: &str = "var el=Q(S[i]);if(el){var t=el.closest('button,
 /// Rumpf des Klicks auf den schaltbaren Vorfahren.
 const CLICK_TOGGLE_BODY: &str = "var el=Q(S[i]);if(el){var t=el.closest('button,[role=button],[role=switch],[role=checkbox],[class*=button],[class*=btn]')||el;t.click();return true;}";
 
+/// Rumpf fuer einen Klick mit echten Pointer-/Mouse-Events. Ein nacktes
+/// `el.click()` oeffnet Kimis Effort-Untermenue nicht (T-968), waehrend der
+/// vollstaendige Event-Strom aus `select_in_menu_path` zuverlaessig greift.
+/// Dumme, unsichtbare Treffer (0x0) werden uebergangen.
+const CLICK_POINTER_BODY: &str = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width<=0||r.height<=0)return false;var cx=r.left+r.width/2,cy=r.top+r.height/2;var pd=new PointerEvent('pointerdown',{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'});var pu=new PointerEvent('pointerup',{clientX:cx,clientY:cy,bubbles:true,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'});['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t){el.dispatchEvent(t==='pointerdown'?pd:t==='pointerup'?pu:new MouseEvent(t,{clientX:cx,clientY:cy,bubbles:true,button:0}));});return true;}";
+
 /// Ausdruck, der den Zustand des ersten passenden Elements als Zeichenkette
 /// liefert (leer, wenn keiner der Selektoren matcht).
 pub fn toggle_state_expr_for(selectors: &[String]) -> String {
     js_scan(&js_selectors(selectors), TOGGLE_STATE_BODY, "\"\"")
+}
+
+/// Ausdruck, der das erste sichtbar passende Element mit dem vollstaendigen
+/// Pointer-/Mouse-Event-Strom klickt (fuer verschachtelte Aufklappmenues).
+pub fn click_pointer_expr_for(selectors: &[String]) -> String {
+    js_scan(&js_selectors(selectors), CLICK_POINTER_BODY, "false")
+}
+
+/// Rumpf, der Hover-Events simuliert. Kimis Effort-Untermenue reagiert auf
+/// `pointerenter`, nicht auf einen nackten Klick (T-968).
+const HOVER_POINTER_BODY: &str = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width<=0||r.height<=0)return false;var cx=r.left+r.width/2,cy=r.top+r.height/2;var o={bubbles:true,clientX:cx,clientY:cy,pointerId:1,isPrimary:true,button:0,pointerType:'mouse'};['pointerover','pointerenter','mouseover','mouseenter','pointermove','mousemove'].forEach(function(t){el.dispatchEvent(t.indexOf('pointer')===0?new PointerEvent(t,o):new MouseEvent(t,o));});return true;}";
+
+/// Ausdruck, der das erste sichtbar passende Element mit Hover-Events versieht.
+pub fn hover_pointer_expr_for(selectors: &[String]) -> String {
+    js_scan(&js_selectors(selectors), HOVER_POINTER_BODY, "false")
 }
 
 /// Ausdruck, der den schaltbaren Vorfahren des ersten Treffers klickt; `false`,

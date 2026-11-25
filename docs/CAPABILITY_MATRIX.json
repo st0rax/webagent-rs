@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-11-21",
+  "as_of": "2026-11-25",
   "plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "live_verify": {
     "as_of": "2026-09-12",
@@ -11,7 +11,7 @@
     "notable": {
       "gemini_model_switch": "passed 11067ms bisheriger failed - Live-Wechsel 3.6 Flash->3.5 Flash-Lite, Rueckweg ok",
       "mistral_model_switch": "unreachable 4218ms kein sichtbarer Modellselektor",
-      "kimi_reasoning_effort": "failed - 'Denkaufwand Hoch' geklickt, Beschriftung bleibt 'Schnell'",
+      "kimi_reasoning_effort": "T-968 passed 2026-11-25 (10054ms) - 'Schnell Hoch' -> 'Standard', unabhaengig gelesen 'Schnell Standard', Rueckweg=true; roher Beleg docs/proofs/T-968/verify-live.txt",
       "gemini_new_chat": "failed - weder URL-Wechsel noch Verlauf geleert (1->1)",
       "kimi_projects": "failed - projects_button klick ohne Seitenwechsel",
       "chatgpt_claude_perplexity_model_switch": "failed - Modell nicht eindeutig in Laufzeitliste (ehrlich fail-closed)"
@@ -410,13 +410,13 @@
     {
       "area": "effort",
       "brain": "kimi",
-      "status": "failed",
-      "date": "2026-11-21",
+      "status": "passed",
+      "date": "2026-11-25",
       "model": null,
-      "selector_hash": null,
-      "latency_ms": null,
-      "proof_path": "docs/proofs/T-928/effort-survey-evidence.json",
-      "note": "T-928: Status failed bleibt ehrlich bestehen (kein Umdeuten in passed). Pfad ['Denkaufwand Hoch','Hoch'] konfiguriert; Klicks gelingen, aber verify-Schluss scheitert: Label bleibt 'Schnell' (Modellname), Effort-Label nur im offenen Modellmenue, kein persistenter Trigger (selectors/kimi.json:_reasoning_effort_note). Frischer Survey 2026-11-21 zeigt zusaetzlich abgemeldeten Zustand, daher keine Live-Re-Verifizierung ohne Eigentuemer-Login. Beleg: docs/proofs/T-928/kimi-survey-2026-11-21.txt"
+      "selector_hash": 2705021080,
+      "latency_ms": 10054,
+      "proof_path": "docs/proofs/T-968/README.md",
+      "note": "T-968 echter headless-Live-Roundtrip auf der bestehenden kimi-Sitzung (kein Login): Trigger 'Schnell Hoch' ->Options 'Standard'/'Hoch'-> Ziel 'Standard', unabhaengig nachgelesen 'Schnell Standard', Ursprung 'Schnell Hoch' in derselben Sitzung wiederhergestellt (Wechsel=true, Rueckweg=true). Proof-Store ts 2026-11-25T02:18:35Z, outcome=passed, selector_hash=2705021080. Der vorangegangene Fehlversuch mit dem alten User-Selektor-Override ('model-effort-item' als Option) ist unter docs/proofs/T-968/verify-live-failed-override.txt dokumentiert; der rohe DOM-Survey mit geoeffnetem Untermenue liegt unter shots/survey-effort-submenu-hover.txt. Kein Tag/Release/Deployment."
     },
     {
       "area": "effort",

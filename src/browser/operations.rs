@@ -553,8 +553,60 @@ pub(crate) fn live_survey(driver: &mut dyn PageDriver, sel: &Selectors) -> Resul
     live_survey_with(driver, sel, None)
 }
 
+/// Mittelpunkt des ersten sichtbaren Treffers einer Selektorliste.
+fn first_element_point(driver: &mut dyn PageDriver, sels: &[String]) -> Option<(f64, f64)> {
+    let body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0)return JSON.stringify([r.left+r.width/2,r.top+r.height/2]);}";
+    let expr = js::js_scan(&js::js_selectors(sels), body, "null");
+    let v = eval(driver, &expr).ok()?;
+    let arr = v.as_array()?;
+    Some((arr.first()?.as_f64()?, arr.get(1)?.as_f64()?))
+}
+
+/// Oeffnet eine Kette von Aufklappmenues (`model_menu > effort_submenu`).
+///
+/// Ein einzelner Klick erreicht nur die erste Ebene. Verschachtelte Menues —
+/// Kimis Denkaufwand sitzt im Modellmenue — brauchen beide Klicks, sonst
+/// vermisst der Scan die Untermenue-Eintraege gar nicht erst. Der Trenner `>`
+/// ist derselbe wie in `menu --set`. Kimis Untermenue oeffnet erst auf echte
+/// Pointer-Bewegung, deshalb geht der Klick ueber den trusted CDP-Pfad.
+fn click_key_chain(
+    driver: &mut dyn PageDriver,
+    sel: &Selectors,
+    chain: &str,
+) -> Result<(), String> {
+    let mut any = false;
+    for key in chain.split('>').map(str::trim).filter(|k| !k.is_empty()) {
+        any = true;
+        let sels = sel.list(key);
+        if sels.is_empty() {
+            return Err(format!("'{key}' nicht konfiguriert"));
+        }
+        let _ = eval_bool(driver, &js::hover_pointer_expr_for(&sels));
+        std::thread::sleep(Duration::from_millis(500));
+        let clicked = first_element_point(driver, &sels)
+            .and_then(|(x, y)| driver.click_at_trusted(x, y).ok())
+            .is_some()
+            || eval_bool(driver, &js::click_pointer_expr_for(&sels))
+            // Der Mock-Treiber kennt weder CDP noch Pointer-Events; der
+            // einfache DOM-Klick haelt die Fixture-Pfade gruen und bleibt
+            // live nur die letzte Reserve.
+            || click_first(driver, sel, key);
+        if !clicked {
+            return Err(format!("'{key}' nicht anklickbar"));
+        }
+        std::thread::sleep(Duration::from_millis(1200));
+    }
+    if !any {
+        return Err("leerer Menuepfad".into());
+    }
+    Ok(())
+}
+
 /// Wie [`live_survey`], oeffnet vorher optional ein Menue — sonst fehlen
 /// dessen Eintraege im DOM und man raet ihre Selektoren.
+///
+/// `open_key` darf eine Kette sein (`model_menu > effort_submenu`), damit
+/// auch verschachtelte Menues im Scan auftauchen.
 pub(crate) fn live_survey_with(
     driver: &mut dyn PageDriver,
     sel: &Selectors,
@@ -562,10 +614,7 @@ pub(crate) fn live_survey_with(
 ) -> Result<Value, String> {
     wait_for_labeled_controls(driver);
     if let Some(key) = open_key {
-        if !click_first(driver, sel, key) {
-            return Err(format!("'{key}' nicht anklickbar"));
-        }
-        std::thread::sleep(Duration::from_millis(1200));
+        click_key_chain(driver, sel, key)?;
     }
     dom_report(driver, sel)
 }
@@ -798,7 +847,8 @@ pub(crate) fn live_screenshot(
 /// Ein geschlossenes Menue hat keine Eintraege im DOM — und auf einem
 /// Screenshot des Startbildschirms sieht man sie ebenso wenig. Wer wissen
 /// will, was hinter `model_menu` steckt, muss es aufklappen und DANN
-/// aufnehmen, statt Rollen-Selektoren zu raten.
+/// aufnehmen, statt Rollen-Selektoren zu raten. `open_key` darf wie bei
+/// [`live_survey_with`] eine Kette sein (`model_menu > effort_submenu`).
 pub(crate) fn live_screenshot_with(
     driver: &mut dyn PageDriver,
     sel: &Selectors,
@@ -806,10 +856,7 @@ pub(crate) fn live_screenshot_with(
 ) -> Result<Vec<u8>, String> {
     wait_for_labeled_controls(driver);
     if let Some(key) = open_key {
-        if !click_first(driver, sel, key) {
-            return Err(format!("'{key}' nicht anklickbar"));
-        }
-        std::thread::sleep(Duration::from_millis(1200));
+        click_key_chain(driver, sel, key)?;
     }
     driver.capture_png().map_err(|e| e.to_string())
 }

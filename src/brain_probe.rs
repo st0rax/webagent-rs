@@ -1745,6 +1745,10 @@ mod tests {
                 || s.contains("/login_button")
                 || s.contains("/reasoning_effort_menu")
                 || s.contains("/reasoning_effort_option")
+                // T-968: der Aufwand-Trigger sitzt im Modellmenue und wird
+                // deshalb vom Klassifizierer als `model_menu` gelesen; er
+                // gehoert aber zur selben Faehigkeit `reasoning_effort`.
+                || s.contains("/effort_submenu")
                 || s.contains("/model_menu")
                 || s.contains("/mode_option")
                 || s.contains("/file_upload_button")

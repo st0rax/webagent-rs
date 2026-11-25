@@ -726,64 +726,166 @@ fn verify_model_switch(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<V
     vec![VerifyResult::new(m, outcome, hash, start)]
 }
 
-/// `reasoning_effort` braucht einen Untermenü-Pfad (`select_in_menu_path`);
-/// ohne konfigurierten `reasoning_effort_path` bleibt die Fähigkeit ehrlich
-/// eine Quest (§13 — Pfade müssen noch nachgetragen werden).
+/// Testboundary fuer den Denkaufwand. Der Triggertext wird unabhaengig vom
+/// Klickergebnis gelesen; die Optionen stammen aus dem Live-DOM, nicht aus
+/// einem geratenen Label in der Konfiguration.
+trait EffortMenuProbe {
+    fn selected(&self) -> String;
+    fn options(&mut self) -> Result<Vec<String>, String>;
+    fn select(&mut self, value: &str) -> Result<String, String>;
+}
+
+fn normalize_effort(s: &str) -> String {
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// Liest den aktuellen Aufwand aus dem Ganzlabel ("Schnell Hoch"). Der
+/// laengste Treffer gewinnt, damit "Hoch" nicht aus "Sehr Hoch" geraten wird.
+/// Ein Label ohne bekannten Aufwand ist absichtlich `None`: ein veralteter
+/// Konfigurationspfad darf nicht als aktueller Zustand ausgegeben werden.
+fn effort_from_label(label: &str, options: &[String]) -> Option<String> {
+    let l = normalize_effort(label);
+    let mut sorted: Vec<&String> = options.iter().collect();
+    sorted.sort_by_key(|o| std::cmp::Reverse(normalize_effort(o).len()));
+    sorted
+        .into_iter()
+        .find(|o| {
+            let n = normalize_effort(o);
+            !n.is_empty() && (l == n || l.ends_with(&format!(" {n}")))
+        })
+        .cloned()
+}
+
+/// Wechselt zu einem anderen Aufwand, liest den Wechsel unabhaengig nach und
+/// stellt den Ausgangswert in derselben Sitzung wieder her. Ohne Alternative
+/// oder mit unlesbarem Trigger bleibt der Lauf ausdruecklich failed.
+fn effort_roundtrip(probe: &mut impl EffortMenuProbe) -> Measurement {
+    let before = probe.selected();
+    let initial = || {
+        measure(
+            "reasoning_effort",
+            before.clone(),
+            before.clone(),
+            false,
+            String::new(),
+            None,
+        )
+    };
+    let options = match probe.options() {
+        Ok(o) => o,
+        Err(e) => {
+            let mut m = initial();
+            m.note = format!("Effort-Optionen nicht lesbar: {e}");
+            return m;
+        }
+    };
+    let Some(current) = effort_from_label(&before, &options) else {
+        let mut m = initial();
+        m.note = format!(
+            "Aktueller Denkaufwand nicht aus '{before}' lesbar (Optionen: {options:?}); kein Wechsel versucht"
+        );
+        return m;
+    };
+    let Some(target) = options
+        .iter()
+        .find(|o| normalize_effort(o) != normalize_effort(&current))
+        .cloned()
+    else {
+        let mut m = initial();
+        m.note = format!(
+            "Kein alternativer Denkaufwand in {options:?}; ein Klick auf den aktuellen Wert waere kein Beleg"
+        );
+        return m;
+    };
+    let forward = probe.select(&target);
+    // Unabhaengige Lesung: nicht das Rueckgabeergebnis des Klicks.
+    let after = probe.selected();
+    let changed = normalize_effort(&after) != normalize_effort(&before);
+    let selected = forward.is_ok()
+        && !forward.as_ref().is_ok_and(|s| s.contains("bereits aktiv"))
+        && changed
+        && effort_from_label(&after, &options).as_deref() == Some(target.as_str());
+    // Auch nach einem gemeldeten Fehler zuruecksetzen, wenn die Oberflaeche
+    // den Wechsel doch vorgenommen hat.
+    let restoration = if changed {
+        probe.select(&current)
+    } else {
+        Ok(before.clone())
+    };
+    let restored =
+        restoration.is_ok() && normalize_effort(&probe.selected()) == normalize_effort(&before);
+    let mut m = measure(
+        "reasoning_effort",
+        before.clone(),
+        after.clone(),
+        selected && restored,
+        String::new(),
+        None,
+    );
+    m.restored = Some(restored);
+    m.note = format!(
+        "Denkaufwand {before:?} -> {target:?}, unabhaengig gelesen {after:?}; Wechsel={selected}, Rueckweg={restored}"
+    );
+    if let Err(e) = forward {
+        m.note.push_str(&format!("; Auswahlfehler: {e}"));
+    }
+    if let Err(e) = restoration {
+        m.note.push_str(&format!("; Wiederherstellungsfehler: {e}"));
+    }
+    m
+}
+
+struct WebEffortProbe<'a> {
+    backend: &'a mut WebBrainBackend,
+}
+
+impl EffortMenuProbe for WebEffortProbe<'_> {
+    fn selected(&self) -> String {
+        self.backend.menu_label("reasoning_effort_menu")
+    }
+    fn options(&mut self) -> Result<Vec<String>, String> {
+        self.backend.effort_options(
+            "reasoning_effort_menu",
+            "effort_submenu",
+            "reasoning_effort_option",
+        )
+    }
+    fn select(&mut self, value: &str) -> Result<String, String> {
+        self.backend.select_effort(
+            "reasoning_effort_menu",
+            "effort_submenu",
+            "reasoning_effort_option",
+            value,
+        )
+    }
+}
+
+/// `reasoning_effort` braucht einen konfigurierten Untermenue-Pfad; ohne ihn
+/// bleibt die Faehigkeit ehrlich eine Quest (§13).
 fn verify_reasoning_effort(backend: &mut WebBrainBackend, cap: &Capability) -> Vec<VerifyResult> {
-    let start = Instant::now();
     if !has_sel(&backend.selectors, cap.needs) {
         return Vec::new(); // bleibt Quest
     }
-    let sel = backend.sel("reasoning_effort_path");
-    let path: Vec<&str> = sel.iter().map(|s| s.as_str()).collect();
-    if path.is_empty() {
+    if backend
+        .sel("reasoning_effort_path")
+        .iter()
+        .all(|s| s.trim().is_empty())
+    {
         return Vec::new(); // kein Pfad konfiguriert -> Quest
     }
+    let start = Instant::now();
     let hash = hash_for(backend, cap);
-    let menu_key = "reasoning_effort_menu";
-    let before = backend.menu_label(menu_key);
-    let last_step = path[path.len() - 1];
-    let option_key = if backend
-        .sel("reasoning_effort_option")
-        .iter()
-        .any(|s| !s.trim().is_empty())
-    {
-        "reasoning_effort_option"
+    let mut probe = WebEffortProbe { backend };
+    let m = effort_roundtrip(&mut probe);
+    let outcome = if m.proven {
+        ProofOutcome::Passed
     } else {
-        "model_option"
+        ProofOutcome::Failed
     };
-    match backend.select_in_menu_path(menu_key, option_key, &path) {
-        Ok(after) => {
-            let proven = after
-                .to_lowercase()
-                .contains(&last_step.trim().to_lowercase());
-            let note = if after.contains("bereits aktiv") {
-                after.clone()
-            } else {
-                format!("{before} -> {after}")
-            };
-            let m = measure(
-                cap.key,
-                before,
-                after,
-                proven,
-                note,
-                Some(path[0].to_string()),
-            );
-            let outcome = if proven {
-                ProofOutcome::Passed
-            } else {
-                ProofOutcome::Failed
-            };
-            vec![VerifyResult::new(m, outcome, hash, start)]
-        }
-        Err(e) => vec![VerifyResult::new(
-            measure(cap.key, before, String::new(), false, e, None),
-            ProofOutcome::Failed,
-            hash,
-            start,
-        )],
-    }
+    vec![VerifyResult::new(m, outcome, hash, start)]
 }
 
 /// Navigation via `open_section`: URL-Paar vorher/nachher als Beleg, dann
@@ -1464,6 +1566,145 @@ mod tests {
         let mut menu = ModelFixture::new(&["Model A", "Model B"]);
         menu.report_noop = true;
         let m = model_roundtrip(&mut menu);
+        assert!(!m.proven);
+        assert_eq!(m.restored, Some(true));
+    }
+
+    /// T-968: der Aufwand steht im Ganzlabel des Modell-triggers ("Schnell
+    /// Hoch"), die Optionen kommen aus dem Live-DOM. Die Fixture bildet genau
+    /// diese Trennung nach: `select` darf luegen, `selected` entscheidet.
+    struct EffortFixture {
+        label: String,
+        options: Vec<String>,
+        calls: Vec<String>,
+        ignore_switch: bool,
+        fail_restore: bool,
+        fail_after_change: bool,
+        fail_options: bool,
+        report_noop: bool,
+    }
+
+    impl EffortFixture {
+        fn new() -> Self {
+            Self {
+                label: "Schnell Hoch".into(),
+                options: vec!["Standard".into(), "Hoch".into()],
+                calls: Vec::new(),
+                ignore_switch: false,
+                fail_restore: false,
+                fail_after_change: false,
+                fail_options: false,
+                report_noop: false,
+            }
+        }
+    }
+
+    impl EffortMenuProbe for EffortFixture {
+        fn selected(&self) -> String {
+            self.label.clone()
+        }
+        fn options(&mut self) -> Result<Vec<String>, String> {
+            if self.fail_options {
+                return Err("DOM nicht geoeffnet".into());
+            }
+            Ok(self.options.clone())
+        }
+        fn select(&mut self, value: &str) -> Result<String, String> {
+            self.calls.push(value.into());
+            // Der Rueckweg zielt immer auf den Ausgangswert "Hoch".
+            if self.fail_restore && value == "Hoch" {
+                return Err("restore failed".into());
+            }
+            if !self.ignore_switch {
+                self.label = format!("Schnell {value}");
+            }
+            if self.fail_after_change && value != "Hoch" {
+                return Err("late failure".into());
+            }
+            if self.report_noop && value != "Hoch" {
+                return Ok(format!("{value} (bereits aktiv, kein Wechsel noetig)"));
+            }
+            Ok(value.into())
+        }
+    }
+
+    #[test]
+    fn effort_from_label_nimmt_den_laengsten_treffer() {
+        let options = vec!["Hoch".into(), "Sehr Hoch".into()];
+        assert_eq!(
+            effort_from_label("Schnell Sehr Hoch", &options).as_deref(),
+            Some("Sehr Hoch")
+        );
+        assert_eq!(
+            effort_from_label("Schnell Hoch", &options).as_deref(),
+            Some("Hoch")
+        );
+        assert_eq!(effort_from_label("Schnell", &options), None);
+    }
+
+    #[test]
+    fn effort_roundtrip_waehlt_alternative_und_restoriert() {
+        let mut fixture = EffortFixture::new();
+        let m = effort_roundtrip(&mut fixture);
+        assert!(m.proven, "{m:?}");
+        assert_eq!(m.before, "Schnell Hoch");
+        assert_eq!(m.after, "Schnell Standard");
+        assert_eq!(m.restored, Some(true));
+        assert_eq!(fixture.calls, ["Standard", "Hoch"]);
+        assert!(m.note.contains("Wechsel=true, Rueckweg=true"), "{m:?}");
+    }
+
+    #[test]
+    fn effort_roundtrip_verwirft_erfolgsmeldung_ohne_wechsel() {
+        let mut fixture = EffortFixture::new();
+        fixture.ignore_switch = true;
+        let m = effort_roundtrip(&mut fixture);
+        assert!(!m.proven);
+        assert_eq!(m.before, m.after);
+        assert_eq!(fixture.calls, ["Standard"], "kein Rueckweg noetig");
+    }
+
+    #[test]
+    fn effort_roundtrip_erkennt_fehlgeschlagenen_rueckweg() {
+        let mut fixture = EffortFixture::new();
+        fixture.fail_restore = true;
+        let m = effort_roundtrip(&mut fixture);
+        assert!(!m.proven);
+        assert_eq!(m.after, "Schnell Standard");
+        assert_eq!(m.restored, Some(false));
+        assert!(m.note.contains("Wiederherstellungsfehler"), "{m:?}");
+    }
+
+    #[test]
+    fn effort_roundtrip_verlangt_optionen_alternative_und_lesbaren_trigger() {
+        for mutate in [
+            |f: &mut EffortFixture| f.options = vec!["Hoch".into()],
+            |f: &mut EffortFixture| f.fail_options = true,
+            |f: &mut EffortFixture| f.label = "Schnell".into(),
+        ] {
+            let mut fixture = EffortFixture::new();
+            mutate(&mut fixture);
+            let m = effort_roundtrip(&mut fixture);
+            assert!(!m.proven, "{m:?}");
+            assert!(fixture.calls.is_empty(), "kein Klick ohne Belegbasis");
+        }
+    }
+
+    #[test]
+    fn effort_roundtrip_restoriert_nach_auswahlfehler_mit_seiteneffekt() {
+        let mut fixture = EffortFixture::new();
+        fixture.fail_after_change = true;
+        let m = effort_roundtrip(&mut fixture);
+        assert!(!m.proven);
+        assert_eq!(m.restored, Some(true));
+        assert_eq!(fixture.calls, ["Standard", "Hoch"]);
+    }
+
+    #[test]
+    fn effort_roundtrip_lehnt_noop_antwort_ab() {
+        let mut fixture = EffortFixture::new();
+        fixture.report_noop = true;
+        let m = effort_roundtrip(&mut fixture);
         assert!(!m.proven);
         assert_eq!(m.restored, Some(true));
     }

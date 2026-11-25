@@ -1,0 +1,5 @@
+[runs] Startup-Reconcile ├╝bersprungen (--skip-startup-reconcile).
+[verify] 1 Brain(s), 1 Faehigkeit(en): reasoning_effort
+[verify] kimi: Start
+[verify] kimi: reasoning_effort = Passed (10054ms) ÔÇö Denkaufwand "Schnell Hoch" -> "Standard", unabhaengig gelesen "Schnell Standard"; Wechsel=true, Rueckweg=true
+[1125/031835.310:ERROR:ui\gfx\win\window_impl.cc:172] Failed to unregister class Chrome_WidgetWin_0. Error = 1412

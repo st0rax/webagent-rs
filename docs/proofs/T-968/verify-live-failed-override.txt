@@ -1,0 +1,16 @@
+[runs] Startup-Reconcile übersprungen (--skip-startup-reconcile).
+[verify] 1 Brain(s), 1 Faehigkeit(en): reasoning_effort
+[verify] kimi: Start
+[verify] kimi: reasoning_effort = Failed (6827ms) — Denkaufwand "Schnell Hoch" -> "Denkaufwand Hoch", unabhaengig gelesen "Schnell Hoch"; Wechsel=false, Rueckweg=true
+
+# Einordnung (nicht Teil der Rohausgabe)
+
+Dieser Lauf lief mit dem damaligen Nutzer-Override
+`%LOCALAPPDATA%\webagent\selectors\kimi.json`, dessen
+`reasoning_effort_option` noch `[data-testid='model-effort-item']` enthielt:
+der Aufwand-Trigger wurde dadurch als auswaehlbare Option gelesen. Der Klick
+auf diesen Trigger war ein No-op; der Verifier hat das ehrlich als `Failed`
+gemeldet. Der alte Override ist als
+`%LOCALAPPDATA%\webagent\selectors\kimi.json.bak-T968-20261125` gesichert.
+Danach wurde nur der Options-Key auf die echten Untermenue-Eintraege
+korrigiert; der erfolgreiche Lauf steht in `verify-live.txt`.
