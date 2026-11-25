@@ -30,13 +30,15 @@
   -D warnings`, `git diff --check` alle gruen. Matrix `effort/kimi` nur aus dem
   rohen Lauf auf `passed` gesetzt; Board 93 Tasks / 92 `done` / 1 `free`
   (T-961) / 0 `claimed`, MD-Spiegel synchron.
-- **Grenzen:** kein Merge/PR nach `master`, kein Tag, kein GitHub-Release, kein
-  Deployment und keine Freigabe dafuer eingeholt. Keine Zugangsdaten, Profile,
-  Cookies oder Tokens gelesen, keine Kontoeinstellung geaendert. T-961 bleibt
-  `free`. Der Branch ist als `88918df` committet und auf
-  `origin/fix/T-968-kimi-effort-roundtrip` gepusht; die Uebergabe enthaelt
+- **Grenzen:** PR #103 (https://github.com/st0rax/webagent-rs/pull/103) wurde
+  mit ausdruecklicher Freigabe geoeffnet; **kein** Merge nach `master`, kein Tag,
+  kein GitHub-Release, kein Deployment. Keine Zugangsdaten, Profile, Cookies
+  oder Tokens gelesen, keine Kontoeinstellung geaendert. T-961 bleibt `free`.
+  Der Branch ist als `88918df` (Umsetzung) und `141736b` (Handoff) committet und
+  auf `origin/fix/T-968-kimi-effort-roundtrip` gepusht; die Uebergabe enthaelt
   Pfad, Zweck und Eigentuemerschaft (`local/opencode`). `master` bleibt
-  unangetastet bei `158eb10`; kein PR wurde eroeffnet.
+  unangetastet bei `158eb10`. CI-Laeufe des PRs sind bei Uebergabe noch
+  `pending`; erst nach gruenem CI und erneuter Freigabe koennte gemergt werden.
 
 ## 2026-11-25 - Projektabschluss im erreichbaren Umfang
 
