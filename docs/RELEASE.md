@@ -18,9 +18,9 @@ Workflows gegen `v0.11.4` scheitert absichtlich an der Versionsprüfung.
 ## Reihenfolge
 
 1. **Bump:** `Cargo.toml` `[package].version` und den `webagent`-Eintrag in
-   `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.5`).
+   `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.6`).
 2. **Lokal prüfen:**
-   `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.5` → Exit 0.
+   `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.6` → Exit 0.
    Gegen `v0.11.4` muss das Skript Exit 1 liefern.
 3. **Gates:** `cargo fmt --all -- --check`,
    `cargo clippy --all-targets -- -D warnings`, `cargo test --lib`,
