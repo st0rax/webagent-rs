@@ -24,7 +24,7 @@ genannten Restrisiken.
 
 ## Bekannte Grenzen / Restrisiken
 
-1. **Canary-Fehlalarm im ausgelieferten `v0.11.5`.** `webagent.exe canary` meldet 7/8 `missing_selectors`, weil die leichte Probe nur die Datei am Build-Pfad prüft. Das eigentliche `load_selectors` fällt auf eingebettete Selektoren zurück (`src/config/selectors.rs`), `brains-health` zählt sie korrekt mit. Die Korrektur in `src/canary.rs` wird mit diesem Scheiben nach `master` gemergt und ist **nicht** im veröffentlichten Binary.
+1. **Canary-Fehlalarm im ausgelieferten `v0.11.5`.** `webagent.exe canary` meldet 7/8 `missing_selectors`, weil die leichte Probe nur die Datei am Build-Pfad prüft. Das eigentliche `load_selectors` fällt auf eingebettete Selektoren zurück (`src/config/selectors.rs`), `brains-health` zählt sie korrekt mit. Die Korrektur in `src/canary.rs` ist mit PR [#106](https://github.com/st0rax/webagent-rs/pull/106) (`57584a8`) nach `master` gemergt, aber **nicht** im veröffentlichten `v0.11.5`.
 2. **Publish-Pfad mit neuen Actions nicht erneut ausgeführt.** `github-release` läuft nur bei `v*`; der Dispatch auf `master` hat ihn übersprungen. Die Inputs (`generate_release_notes`, `files`, `merge-multiple`, `path`) wurden statisch gegen die `action.yml` der neuen Versionen geprüft. Der nächste Tag wird es real ausführen.
 3. **Kein WebView2-Fensterstart im Release-Pfad.** Der Smoke testet den UI-/Health-Listener des deployten Binary, nicht das Öffnen eines echten Browserfensters oder einen Live-Browser-Relay-Turn.
 4. **Kein Produktivziel.** Es existiert kein `delivery/deploy_webagent_rs.ps1`, kein `runtime-workers/` und kein Fernziel im Workspace. Deployt wurde nur der lokale Ordner aus der Tabelle; kein Monitoring, keine Last-/Parallelitätstests, kein Prod-Rollback-Konzept.
