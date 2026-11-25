@@ -33,8 +33,10 @@
 - **Grenzen:** kein Merge/PR nach `master`, kein Tag, kein GitHub-Release, kein
   Deployment und keine Freigabe dafuer eingeholt. Keine Zugangsdaten, Profile,
   Cookies oder Tokens gelesen, keine Kontoeinstellung geaendert. T-961 bleibt
-  `free`. Der Branch ist lokal committet und gepusht; die Uebergabe enthaelt
-  Pfad, Zweck und Eigentuemerschaft.
+  `free`. Der Branch ist als `88918df` committet und auf
+  `origin/fix/T-968-kimi-effort-roundtrip` gepusht; die Uebergabe enthaelt
+  Pfad, Zweck und Eigentuemerschaft (`local/opencode`). `master` bleibt
+  unangetastet bei `158eb10`; kein PR wurde eroeffnet.
 
 ## 2026-11-25 - Projektabschluss im erreichbaren Umfang
 
