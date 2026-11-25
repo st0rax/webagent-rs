@@ -1,11 +1,20 @@
 # Current Work
 
+## 2026-11-25 - T-972: Controller und WebView-Runtime aufgeteilt
+
+- **Branch:** `refactor/T-972-controller-webview-split`, Basis `23c10e9` (Claim-Commit). Nur lokale Änderungen; kein Merge, kein `done`.
+- **Ausgangslage:** Entgegen der geclaimten Schätzwerte hatte `src/controller.rs` 3349 und `src/webview_runtime.rs` 3315 Zeilen. Beide liegen jetzt bei 1909 bzw. 2229 Zeilen.
+- **Änderung (reine Bewegung):** `controller::tests` → `src/controller/tests.rs` (1439 Zeilen); `webview_runtime::tests` → `src/webview_runtime/tests.rs` (95 Zeilen); die kohärenten WebView2-Datei-Upload-Helfer (Chooser, FileList-Fallback, Remount-Watch, CDP-Setzen, MIME) → `src/webview_runtime/file_input.rs` (996 Zeilen). Nur `set_file_input_files_cdp` wurde für den bestehenden Aufrufer `pub(super)`; alle anderen Signaturen, `cfg(windows)`/`cfg(not(windows))`-Pfade und das Verhalten bleiben unverändert. Kein neues Modul mit eigener Verantwortung außer der Aufteilung.
+- **Gleichheit geprüft:** Testzahl vorher/nachher Controller 44 / Controller 44, WebView 6 / WebView 6; `cargo test --lib` 1517 passed / 0 failed / 1 ignored — identisch zur Basis.
+- **Gates real gemessen:** `cargo fmt --all -- --check` exit 0; `cargo clippy --all-targets -- -D warnings` exit 0; `cargo test --lib` 1517 passed / 0 failed / 1 ignored; `git diff --check` exit 0.
+- **Grenze:** Kein Login, kein WebView2-Fensterstart, kein Live-Provider-Call, kein Tag, kein Release, kein Deployment.
+
 ## 2026-11-25 - Greenfield-Abgleich: vier lokale Härtungsscheiben geclaimt
 
 - **Auftrag:** Der Eigentümer hat nach dem Prompt-Abgleich "optimier das projekt soweit möglich" freigegeben. Der ursprünglich zu breit gefasste T-969 wurde auf ausdrücklichen Wunsch in vier Tasks mit je eigenem Branch und Typ zerlegt: **T-969** `docs/T-969-protocol-security` (PROTOCOL.md + SECURITY.md), **T-970** `fix/T-970-observation-scope` (globale Turn-Puffer), **T-971** `fix/T-971-verifiedfree-proof` (Belegpfad), **T-972** `refactor/T-972-controller-webview-split` (God-Files).
 - **Claims:** Alle vier stehen in `docs/TASKBOARD.json` auf `claimed`, Eigentümer `local/opencode`, Basis `master` = `1c93cfe`; der Markdown-Spiegel ist nachgezogen. `done` wird erst nach Merge gesetzt. Die Claim-Zeilen werden in einem gemeinsamen Basis-Commit festgehalten, damit jeder der vier Branches dieselbe Tafel trägt.
-- **Arbeitsstand:** Aktuell läuft T-969 auf `docs/T-969-protocol-security`. T-970 bis T-972 sind geclaimt, aber noch nicht begonnen; die Hintergrund-Recherche zu Puffern und Beleg-Gate läuft separat.
-- **Grenzen unverändert:** Kein Login, keine CAPTCHA-/2FA-Bedienung, keine Lektüre von Profilen, Cookies oder Tokens, kein Live-Provider-Call, kein Tag, kein GitHub-Release, kein Deployment. Die vier Scheiben enden mit lokalen Gates und einem Pusht auf ihre Arbeitsbranches; ein Merge in `master` braucht weiterhin eine eigene Freigabe.
+- **Arbeitsstand:** T-969 `834e79f`, T-970 `b018bc9` und T-971 `1f3bcd9` sind auf ihren Branches gepusht. T-972 läuft hier; danach sind alle vier Scheiben lokal fertig und warten auf PR/Freigabe.
+- **Grenzen unverändert:** Kein Login, keine CAPTCHA-/2FA-Bedienung, keine Lektüre von Profilen, Cookies oder Tokens, kein Live-Provider-Call, kein Tag, kein GitHub-Release, kein Deployment. Die vier Scheiben enden mit lokalen Gates und einem Push auf ihre Arbeitsbranches; ein Merge in `master` braucht weiterhin eine eigene Freigabe.
 
 ## 2026-11-25 - Release v0.11.6 mit Canary-Fix ausgeliefert
 

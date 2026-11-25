@@ -2261,12 +2261,15 @@
       "depends_on": [],
       "scope": [
         "src/controller.rs",
+        "src/controller/tests.rs",
         "src/webview_runtime.rs",
+        "src/webview_runtime/file_input.rs",
+        "src/webview_runtime/tests.rs",
         "docs/CURRENT_WORK.md",
         "docs/TASKBOARD.json",
         "docs/TASKBOARD.md"
       ],
-      "objective": "src/webview_runtime.rs (3150 Zeilen) und src/controller.rs (3091 Zeilen) verletzen die Prompt-Leitlinie, grosse Dateien auf Verantwortlichkeiten zu prüfen. Ziel: kohaerente Test-/Hilfsbloecke in Untermodule auslagern, damit beide Dateien unter 3000 Zeilen liegen, ohne Verhalten, API oder Plattformpfade zu aendern.",
+      "objective": "src/webview_runtime.rs (3315 Zeilen) und src/controller.rs (3349 Zeilen) verletzen die Prompt-Leitlinie, grosse Dateien auf Verantwortlichkeiten zu prüfen. Ziel: kohaerente Test-/Hilfsbloecke in Untermodule auslagern, damit beide Dateien unter 3000 Zeilen liegen, ohne Verhalten, API oder Plattformpfade zu aendern.",
       "dod": "Beide Dateien haben weniger als 3000 Zeilen; alle ausgelagerten Tests laufen weiterhin unter cargo test --lib; cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings und git diff --check gruen; kein neues Verhalten.",
       "handoff": "Claim 2026-11-25 durch local/opencode, Basis master 1c93cfe. Kein Merge und kein done vor PR und Freigabe.",
       "non_goals": [
@@ -2275,8 +2278,8 @@
         "Kein Tag, kein Release, kein Deployment."
       ],
       "proof_path": "docs/CURRENT_WORK.md",
-      "verification": "Noch offen; lokale Gates werden im Handover eingetragen.",
-      "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: zwei God-Files mit je ueber 3000 Zeilen."
+      "verification": "2026-11-25 auf refactor/T-972-controller-webview-split real gemessen: src/controller.rs 3349 -> 1909 Zeilen, src/webview_runtime.rs 3315 -> 2229 Zeilen; cargo fmt --all -- --check exit 0; cargo clippy --all-targets -- -D warnings exit 0; cargo test --lib 1517 passed / 0 failed / 1 ignored (unveraendert gegenueber Basis); git diff --check exit 0; Testzaehl vorher/nachher controller 44, webview 6.",
+      "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: zwei God-Files mit je ueber 3000 Zeilen. Umsetzung als reine Bewegung: controller::tests -> src/controller/tests.rs (1439 Zeilen); webview_runtime::tests -> src/webview_runtime/tests.rs (95 Zeilen); WebView2-Datei-Upload-Helfer -> src/webview_runtime/file_input.rs (996 Zeilen, nur set_file_input_files_cdp fuer den Aufrufer pub(super)). Kein Logik-, API- oder Plattformpfadwechsel."
     }
   ]
 }
