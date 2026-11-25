@@ -1,5 +1,13 @@
 # Current Work
 
+## 2026-11-26 - Vier Härtungsscheiben auf `master` zusammengeführt
+
+- **Freigabe:** Der Eigentümer hat am 2026-11-25 „absolute freigabe für alle sinnvollen vorgänge wie PR und merge etc" erteilt. Deployment und Live-Turn wurden später separat freigegeben.
+- **PRs und Checks:** [#108](https://github.com/st0rax/webagent-rs/pull/108) (T-969) wurde als Squash `d60a6c0` über GitHub gemergt. Für [#109](https://github.com/st0rax/webagent-rs/pull/109), [#110](https://github.com/st0rax/webagent-rs/pull/110) und [#111](https://github.com/st0rax/webagent-rs/pull/111) verweigerte GitHub den direkten Squash-Merge wegen Doku-Konflikten. Alle acht Check-Jobs auf den Retry-SHAs `17c0adb`, `e3ddb12`, `1c71e87`, `b3b23da7` waren zuvor `completed/success`.
+- **Lokale Squash-Commits:** `a161c8b` (T-970), `9d2692d` (T-971), `c2ff017` (T-972), jeweils mit PR-Referenz in der Commit-Message, auf `master` gepusht. GitHub erkennt manuell gepushte Squashes nicht als PR-Merge; die drei PRs wurden mit einem nachvollziehbaren Kommentar geschlossen. Kein Force-Push, keine History-Umschreibung.
+- **Konfliktauflösung:** Nur `docs/CURRENT_WORK.md` und `docs/TASKBOARD.json` waren betroffen. Alle vier Doku-Abschnitte bleiben erhalten; die Tafel behält die Master-Version und übernimmt pro Task nur den branchspezifischen Diff. Kein Code-Konflikt, kein Logikverlust.
+- **Gates auf dem zusammengeführten Stand:** `cargo fmt --all -- --check` exit 0; `cargo clippy --all-targets -- -D warnings` exit 0; `cargo test --lib` 1521 passed / 0 failed / 1 ignored; `git diff --check` exit 0. `master` und `origin/master` stehen auf `c2ff017`.
+- **Tafel:** T-969 bis T-972 sind jetzt `done`, der Markdown-Spiegel ist nachgezogen. Offen bleiben die Release-/Deploy-Scheibe und die Live-Turn-Abnahme mit vorhandener Nutzer-Sitzung.
 ## 2026-11-25 - T-972: Controller und WebView-Runtime aufgeteilt
 
 - **Branch:** `refactor/T-972-controller-webview-split`, Basis `23c10e9` (Claim-Commit). Nur lokale Änderungen; kein Merge, kein `done`.
