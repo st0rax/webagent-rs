@@ -21,7 +21,7 @@ pub use brains::{
 pub use clone::{CloneEntry, DryRunReport, ProfileClonePlan, ProfileClonePlanner};
 pub use limits::{
     max_observation_chars, max_observation_chars_for, max_run_wall_secs, resolve_max_run_wall_secs,
-    DEFAULT_MAX_OBSERVATION_CHARS, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT,
+    AcceptedChars, DEFAULT_MAX_OBSERVATION_CHARS, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT,
     MAX_RUN_WALL_SECONDS,
 };
 pub use paths::{

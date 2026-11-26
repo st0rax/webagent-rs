@@ -67,6 +67,14 @@ pub fn accepted_chars(brain_id: &str) -> Option<usize> {
     load().brains.get(brain_id).map(|l| l.accepted_chars)
 }
 
+/// Die Brain-ID als Auflösungsquelle für `config::max_observation_chars_for`.
+/// Die Messdatei bleibt hier; `config` bekommt nur den aufgelösten Wert.
+impl crate::config::AcceptedChars for &str {
+    fn accepted_chars(&self) -> Option<usize> {
+        accepted_chars(self)
+    }
+}
+
 /// Prüft, ob ein konfiguriertes Token-Limit gültig ist.
 /// Ein Limit von 0 oder ein negativer Wert wird als ungültig abgelehnt.
 fn check_token_limit(limit: i64) -> Result<(), String> {
@@ -283,6 +291,11 @@ pub fn looks_like_length_rejection(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Zwei Tests schreiben nacheinander in denselben Store-Pfad; ohne Lock
+    // koennen sie sich im Parallellauf gegenseitig die Datei wegziehen.
+    static STORE_LOCK: Mutex<()> = Mutex::new(());
 
     fn tmp_store() -> PathBuf {
         let n = std::process::id();
@@ -460,6 +473,7 @@ mod tests {
 
     #[test]
     fn token_limit_pruefung_bleibt_erfolgreich() {
+        let _guard = STORE_LOCK.lock().expect("Store-Lock");
         let path = store_path();
         let _ = std::fs::remove_file(&path);
         let limit = BrainLimit {
@@ -471,6 +485,38 @@ mod tests {
         record("test_brain", limit).expect("gueltiges Limit muss gespeichert werden");
         let store = load_at(&path);
         assert_eq!(store.brains["test_brain"].accepted_chars, 50_000);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn brain_id_wird_zum_config_parameter_aufgeloest() {
+        use crate::config::{max_observation_chars_for, AcceptedChars};
+
+        let _guard = STORE_LOCK.lock().expect("Store-Lock");
+        let path = store_path();
+        let _ = std::fs::remove_file(&path);
+        record(
+            "t1000_impl_brain",
+            BrainLimit {
+                accepted_chars: 90_000,
+                rejected_chars: None,
+                measured_at: "2026-11-26T10:00:00+00:00".to_string(),
+                note: "T-1000".to_string(),
+            },
+        )
+        .expect("gueltiges Limit muss gespeichert werden");
+
+        assert_eq!(
+            AcceptedChars::accepted_chars(&"t1000_impl_brain"),
+            Some(90_000)
+        );
+        // Beide Wege laufen durch dieselbe Env-Override-Logik; die Gleichheit
+        // gilt deshalb unabhaengig davon, ob WEBAGENT_MAX_OBSERVATION_CHARS
+        // in der Testumgebung gesetzt ist.
+        assert_eq!(
+            max_observation_chars_for("t1000_impl_brain"),
+            max_observation_chars_for(Some(90_000))
+        );
         let _ = std::fs::remove_file(&path);
     }
 }

@@ -1,5 +1,15 @@
 # Current Work
 
+## 2026-11-26 - T-1000 implemented: config no longer reaches brain_limits
+
+- **Branch/claim:** `refactor/T-1000-config-brain-limits-edge`, claim commit `3d038ea`, owner `local/opencode`. T-1000 stays `claimed`; no merge, no `done`, no PR. Formally `depends_on: T-999`, but the owner's "autonom weiterarbeiten" explicitly overrode that gate just as the earlier "mach" did; T-999 stays `claimed` because it is not merged.
+- **Bestand zuerst geprüft:** `src/config/limits.rs:47` called `crate::brain_limits::accepted_chars` while `brain_limits` reads `config::data_dir`. The inversion uses a small `AcceptedChars` trait: `config::limits` takes the resolved value by parameter (`Option<usize>` implements it) and `brain_limits` implements it for `&str`, delegating to the existing measurement-store lookup. The unchanged caller in `controller.rs` keeps compiling. `git grep -n "crate::brain_limits" -- src/config` is empty. Proof: `docs/proofs/T-1000/README.md`.
+- **Guard delta:** the `brain_limits,config` cycle is gone. Measured graph: 87 modules / 273 edges (was 274) / 5 cycles (was 6) / 32 upward edges (unchanged). `docs/arch/layer_exceptions.txt` lost the `cycle:brain_limits,config` line; no `edge:` line changed. The ratchet initially failed on the stale entry, which confirmed the removal before the exception was deleted.
+- **Gates measured:** `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --lib --quiet` 1523 passed / 0 failed / 1 ignored (claim-time baseline 1521 / 0 / 1, two tests added); `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1523 lib + 7 binary-unit + 4 integration passed; `cargo test --locked --no-default-features --test arch_layers --quiet` 4 passed; `git diff --check` 0.
+- **Deviation:** `src/config/mod.rs` is outside the board's two-file scope. The one-line `AcceptedChars` re-export is required because `mod limits;` is private; duplicating store parsing in `config` would create a second reader of the measurement file. No behavior change to CLI, WEBAGENT/1 protocol, API or shell policy. `Cargo.toml` and all `[profile.*]` settings are untouched.
+- **Binary smoke blocked, not a regression:** `--help` and `diagnose` still exit `-1073741515` (`0xC0000005`) before `main`, as measured at the claim-time baseline on the earlier phase-16 branches.
+- **Grenze / offen:** no login, credentials, live provider call, release, tag, deployment, PR or merge. T-1001..T-1005 remain free; T-1004 still needs explicit owner approval and was not touched. Per the owner's standing "autonom weiterarbeiten", the next free slice (T-1001) may be claimed; stop before T-1004.
+
 ## 2026-11-26 - T-999 implemented: config no longer reaches worker_pool
 
 - **Branch/claim:** `refactor/T-999-config-worker-pool-edge`, claim commit `928ea11`, implementation commit `d6a4b37`, owner `local/opencode`. T-999 stays `claimed`; no merge, no `done`, no PR. Both commits are pushed and the worktree is clean. T-997 and T-998 also stay `claimed`; the owner's "mach" again overrode the formal dependency.

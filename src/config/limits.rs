@@ -18,6 +18,23 @@ use std::env;
 /// 62.000 Zeichen, danach liest das Brain gezielt.
 pub const DEFAULT_MAX_OBSERVATION_CHARS: usize = 12_000;
 
+/// Auflösung eines gemessenen Annahmelimits.
+///
+/// `config` kennt nur den Wert, nicht die Messdatei: `Option<usize>` wird hier
+/// direkt übernommen, die Auflösung aus einer Brain-ID implementiert
+/// `brain_limits` (das ohnehin die Messdatei besitzt). Damit zeigt keine Kante
+/// mehr von `config` nach `brain_limits`, während bestehende Aufrufer mit einer
+/// Brain-ID unverändert kompilieren.
+pub trait AcceptedChars {
+    fn accepted_chars(&self) -> Option<usize>;
+}
+
+impl AcceptedChars for Option<usize> {
+    fn accepted_chars(&self) -> Option<usize> {
+        *self
+    }
+}
+
 /// Observation-Kappung für ein bestimmtes Brain — aus der Messung abgeleitet.
 ///
 /// Am 30.07.2026 mit `webagent measure-limits` gemessen: chatgpt, deepseek,
@@ -38,13 +55,13 @@ pub const DEFAULT_MAX_OBSERVATION_CHARS: usize = 12_000;
 ///
 /// Ohne Messwert bleibt der konservative Standard — bewusst klein, bis gemessen
 /// wurde, statt zu raten.
-pub fn max_observation_chars_for(brain_id: &str) -> usize {
+pub fn max_observation_chars_for<L: AcceptedChars>(limit: L) -> usize {
     if let Ok(v) = env::var("WEBAGENT_MAX_OBSERVATION_CHARS") {
         if let Some(n) = v.trim().parse::<usize>().ok().filter(|n| *n >= 1_000) {
             return n;
         }
     }
-    match crate::brain_limits::accepted_chars(brain_id) {
+    match limit.accepted_chars() {
         Some(gemessen) => (gemessen / 2).max(DEFAULT_MAX_OBSERVATION_CHARS),
         None => DEFAULT_MAX_OBSERVATION_CHARS,
     }
@@ -85,5 +102,19 @@ pub fn resolve_max_run_wall_secs(raw: Option<&str>) -> u64 {
             Ok(n) => n,
         },
         _ => MAX_RUN_WALL_SECONDS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parameter_wird_genutzt_und_fallback_bleibt() {
+        assert_eq!(max_observation_chars_for(Some(100_000)), 50_000);
+        assert_eq!(
+            max_observation_chars_for(None::<usize>),
+            DEFAULT_MAX_OBSERVATION_CHARS
+        );
     }
 }
