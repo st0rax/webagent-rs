@@ -19,6 +19,19 @@
 
 Der Präfix wird einmal pro autonome Aufgabe bzw. in jedem Turn gesendet, der ihn erneut mitschickt. Die Einsparung skaliert mit der Anzahl solcher Turns; sie betrifft ausschließlich den autonomen Controller-Pfad.
 
+## Minimaler Start-Input (bevorzugter Weg für neue Sessions)
+
+Eine neue Session startet ohne Verlauf. Statt Systemprompt und Anleitung vorab zu injizieren, bekommt das Brain nur die Quest und genau einen korrekt formatierten `read_file`-Aufruf; die Anleitung holt es sich selbst.
+
+| Variante | Bytes | cl100k_base | o200k_base |
+|---|---:|---:|---:|
+| Alter Systemprompt allein | 5691 | 1565 | 1365 |
+| Aktueller Systemprompt allein | 2777 | 748 | 666 |
+| Quest + `read_file`-Block | 321 | **88** | **83** |
+| Nur der `read_file`-Block | 114 | 35 | 37 |
+
+Gegenüber dem alten Systemprompt spart der minimale Start 1477 Tokens (`cl100k_base`, −94,4 %) bzw. 1282 Tokens (`o200k_base`, −93,9 %). Gegenüber dem bereits gekürzten Systemprompt sind es 660 bzw. 583 Tokens. Der Block ist das Wire-Format aus `src/browser_inference.rs` (`WEBAGENT_INFERENCE/1` + `tool_calls` mit `read_file`/`path`); die Quest steht in `docs/DOGFOODING.md`.
+
 ## Bash-Output (Kompaktionslogik)
 
 | Variante | Bytes | Zeilen | cl100k_base | o200k_base |
@@ -33,5 +46,6 @@ Vom Harness gemeldete Statistik: `totalLines=140`, `outputLines=51`, `duplicates
 
 - **Pi-/Bridge-Pfad spart 0 Tokens durch die Prompt-Kürzung.** `src/api_bridge/content.rs::conversation_prompt` injiziert kein `<WEBAGENT_SYSTEM_PROMPT>`; in der ausgewerteten Pi-Session `01a2162c` war die System-Nachricht 0 Zeichen. Es wurde nur die Nutzer-Nachricht eingefügt.
 - Die Bash-Zahl stammt aus einem synthetischen Fixture, nicht aus einem echten Pi-Turn. Die Erweiterung ist zum Zeitpunkt dieser Messung **nicht** in `%USERPROFILE%\.pi\agent\extensions\` installiert; es gibt noch keinen Live-Beleg für kompaktierten Output.
-- `docs/DOGFOODING.md` wird keinem Prompt injiziert und verändert daher keinen Tokenverbrauch; es ist nur eine auffindbare Anleitung.
+- `docs/DOGFOODING.md` wird keinem Prompt injiziert und verändert daher keinen Tokenverbrauch; es ist nur eine auffindbare Anleitung. Die 88/83 Tokens oben sind der vom Nutzer/Client übergebene Quest-Text samt Block, nicht vom Harness erzeugter Systemprompt-Overhead.
+- Der `read_file`-Aufruf setzt voraus, dass die Bridge das Tool im Turn anbietet ([Client-Werkzeuge] in `choice_text`). Ohne angebotenes Tool ist der Block ein Vorschlag, kein belegter Tool-Call.
 - Keine Zugangsdaten gelesen oder ausgegeben; `auth.json` unberührt; kein neues Deployment, kein PR, kein Merge.

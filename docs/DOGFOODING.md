@@ -1,32 +1,34 @@
-> **Referenz.** Lokale Dogfooding-Anleitung; beide JSON-Blöcke entsprechen den implementierten Verträgen. Nur Testbetrieb auf `127.0.0.1`, kein Fern-/Produktivzugriff, kein Deployment.
+> **Referenz.** Lokale Dogfooding-Anleitung; alle Blöcke entsprechen den implementierten Verträgen. Nur Testbetrieb auf `127.0.0.1`, kein Fern-/Produktivzugriff, kein Deployment.
 
 # Dogfooding mit der lokalen Bridge
 
-## Start-Quest für eine neue Session
+## Start-Quest für eine neue Session (minimaler Input)
 
-> Find raus was möglich ist. Hinweis: Es handelt sich um eine Bridge. Als Beispiel
-> den korrekt formatierten Block (unten). **Main Quest: Produkt verbessern.**
+> Find raus was möglich ist. Hinweis: Es handelt sich um eine Bridge. Main Quest:
+> Produkt verbessern. Wenn du die Bedienungsanleitung brauchst, lies sie mit dem
+> `read_file`-Tool. Beispiel im korrekten Format:
+
+```text
+WEBAGENT_INFERENCE/1
+{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"docs/DOGFOODING.md"}}]}
+```
 
 Die Bitte an das Brain dazu:
 
 > Ich möchte dich bitten, etwas Dogfooding durchzuführen (wenn man das so nennt).
-> Nutze den Block unten, damit du deine Bedienungsanleitung findest, und arbeite
-> danach eine kleine, prüfbare Verbesserung im Workspace ab.
+> Nutze den Block, damit du deine Bedienungsanleitung findest, und arbeite danach
+> eine kleine, prüfbare Verbesserung im Workspace ab.
 
-## Der korrekt formatierte Block (autonomer Pfad)
+**Warum so kurz:** Eine neue Session startet ohne Verlauf. Es wird deshalb kein
+Systemprompt und keine Anleitung vorab injiziert; der Agent fängt from scratch an
+und liest die Anleitung bei Bedarf selbst. Der Input für Quest plus Block misst
+321 Byte / 88 Tokens (`cl100k_base`) bzw. 83 Tokens (`o200k_base`) — gegenüber
+1565/1365 Tokens des alten Systemprompts (`docs/proofs/dogfooding-tokenverbrauch.md`).
 
-Der autonome WebAgent antwortet ausschließlich mit `webagent/1`. Eine Action ist eine
-echte Tool-Anforderung; der Harness führt sie im Workspace aus und gibt stdout,
-stderr und Exitcode als nächste Nachricht zurück. Diese Antwort liest die Anleitung:
-
-```text
-{"protocol":"webagent/1","actions":[{"id":"read-manual-1","type":"shell","command":"Get-Content -LiteralPath docs\\DOGFOODING.md -Encoding UTF8","timeout_seconds":60}]}
-```
-
-Regeln, die den Block gültig halten: ein Markdown-Codeblock `text` um die ganze
-Antwort, `protocol` und `actions` mit eindeutiger `id`, `timeout_seconds` als Zahl,
-kein `cd` und kein hartcodierter Pfad, Backslashes im JSON verdoppelt. Danach aus der
-Observation weiterarbeiten, nicht raten.
+Der Block ist das exakte Wire-Format aus `src/browser_inference.rs` (`TOOL_ENVELOPE`
+und `choice_text`-Vorlage): Marker `WEBAGENT_INFERENCE/1` am Zeilenanfang, danach
+streng gültiges JSON in **einem** Markdown-Codeblock `text`, ohne Text davor oder
+danach. `read_file` akzeptiert nur `path` (relativ, keine Traversal-Segmente).
 
 Damit findest du deine Bedienungsanleitung:
 
@@ -34,10 +36,27 @@ Damit findest du deine Bedienungsanleitung:
 - `docs/API_BRIDGE.md` — Bridge-Vertrag, Endpunkte, Pi-Anbindung.
 - `START_HERE.md` und `docs/CURRENT_WORK.md` — Repo-Regeln und aktueller Stand.
 
-## Der korrekte Block für Bridge-Clients (Pi, curl, OpenCode)
+## Weitere korrekte Blöcke
 
-**Wichtig:** Der Providerpfad interpretiert **kein** `webagent/1` und führt keine
-Shell-/Dateiwerkzeuge aus. Clients sprechen OpenAI Chat Completions:
+### Autonomer Pfad (`webagent/1`)
+
+Der autonome Controller antwortet ausschließlich mit `webagent/1`. Eine Action ist
+eine echte Tool-Anforderung; der Harness führt sie im Workspace aus und gibt stdout,
+stderr und Exitcode als nächste Nachricht zurück. Der Lesebefehl läuft hier über
+`shell`, weil `webagent/1` keinen eigenen `read`-ActionType kennt:
+
+```text
+{"protocol":"webagent/1","actions":[{"id":"read-manual-1","type":"shell","command":"Get-Content -LiteralPath docs\\DOGFOODING.md -Encoding UTF8","timeout_seconds":60}]}
+```
+
+Regeln: ein Markdown-Codeblock `text` um die ganze Antwort, `protocol` und `actions`
+mit eindeutiger `id`, `timeout_seconds` als Zahl, kein `cd` und kein hartcodierter
+Pfad, Backslashes im JSON verdoppelt. Danach aus der Observation weiterarbeiten.
+
+### Bridge-Clients (Pi, curl, OpenCode)
+
+Clients sprechen OpenAI Chat Completions; der Providerpfad interpretiert **kein**
+`webagent/1` und führt keine Shell-/Dateiwerkzeuge aus:
 
 ```json
 {
