@@ -176,6 +176,34 @@ value restored in the same session (10054 ms). Raw transcript and DOM survey:
 passed; the remaining structural gaps in `model` and `managed_tools` are
 unchanged. No tag, release, or deployment.
 
+## Play-Mode v0.3 (Protocol Detective) — ab 2026-11-26
+
+Quelle: `docs/TASKBOARD.json` (Schema v2). Spec: `docs/PLAY_MODE_SPEC.md`. Bestand: `docs/play/RECON.md`. Alle Tasks starten `free`; ein Claim ist nur zulaessig, wenn alle `depends_on` den Status `done` haben.
+
+| Task | Phase | Aufgabe | Typ | Status | Zuständig | Branch |
+|---|---|---|---|---|---|---|
+| T-978 | play-v03 | Recon + Taskboard-Merge (keine Codeaenderung) | docs | free | – | – |
+| T-979 | play-v03 | Proof-Typen: ProofSource, Authority, Proof | code | free | – | – |
+| T-980 | play-v03 | Claim-Typ + supports(): maschinenpruefbare Aussagen | code | free | – | – |
+| T-981 | play-v03 | Ledger: typisierte Proofs statt Zaehler | code | free | – | – |
+| T-982 | play-v03 | DiaryEntry + validate_entry (Anti-Halluzinations-Regel) | code | free | – | – |
+| T-983 | play-v03 | Save v2: diary-Feld + Migration | code | free | – | – |
+| T-984 | play-v03 | Ghost-Modell mit Bindungsbedingungen | code | free | – | – |
+| T-985 | play-v03 | ProtocolSource-Trait + FixtureSource (kein Netzwerk) | code | free | – | – |
+| T-986 | play-v03 | Fixture case001 (synthetisch, siehe Spec Abschnitt 7) | docs | free | – | – |
+| T-987 | play-v03 | Jetstream-Event-Parser (nur Parsing, kein Socket) | code | free | – | – |
+| T-988 | play-v03 | Tick: Evaluate/Mutate mit typisierten Proofs und Geistern | code | free | – | – |
+| T-989 | play-v03 | Brain-Wechsel erzeugt BrainDrift-Geist (Konsistenzfix) | fix | free | – | – |
+| T-990 | play-v03 | Failsafe-Nachrichten datengetrieben | code | free | – | – |
+| T-991 | play-v03 | Raumbeschreibungen + Rausch-Pools je Geist | code | free | – | – |
+| T-992 | play-v03 | Mission::Scan und Repair auf Protokoll-Faelle umschreiben | code | free | – | – |
+| T-993 | play-v03 | Integrationstest case001 mit Mock-Brain und Fixtures | tests | free | – | – |
+| T-994 | play-v03 | LiveSource hinter Feature play-live | code | free | – | – |
+| T-995 | play-v03 | Werkbank (Constellation-Korrelation) - Design-Task | docs | free | – | – |
+| T-996 | play-v03 | docs/PLAY_MODE.md auf v0.3 bringen | docs | free | – | – |
+
+Kanten und korrigierte Verify-Befehle stehen in der JSON. Die Filter `play::proof` … `play::live` finden Stand 2026-11-26 **0 Tests** (Nachweis in `docs/play/RECON.md`); sie sind Ziele der Tasks, keine aktuellen Belege.
+
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
 <!-- TASKBOARD-MIRROR-BEGIN -->
@@ -283,4 +311,23 @@ unchanged. No tag, release, or deployment.
 | T-975 | done |
 | T-976 | done |
 | T-977 | done |
+| T-978 | free |
+| T-979 | free |
+| T-980 | free |
+| T-981 | free |
+| T-982 | free |
+| T-983 | free |
+| T-984 | free |
+| T-985 | free |
+| T-986 | free |
+| T-987 | free |
+| T-988 | free |
+| T-989 | free |
+| T-990 | free |
+| T-991 | free |
+| T-992 | free |
+| T-993 | free |
+| T-994 | free |
+| T-995 | free |
+| T-996 | free |
 <!-- TASKBOARD-MIRROR-END -->

@@ -13,7 +13,8 @@
   "mirror": "docs/TASKBOARD.md",
   "note": "Kante = Abhaengigkeit. Ein Task mit depends_on ist BLOCKED, bis alle Vorgaenger in depends_on done sind. Leeres depends_on = kann parallel laufen. Nie eine verkettete Aufgabe aus dem Block reissen.",
   "rule": "Claim = Zelle auf claimed setzen (owner, branch, claimed_at). DoD und Arbeitsvertrag sind verbindlich. Ein Entwickler, eine Aufgabe.",
-  "schema_version": 1,
+  "schema_notes": "v2 ab T-978: neue Tasks sind frei und tragen depends_on, scope, description, acceptance und verify; aeltere Tasks bleiben grandfathered. acquire_claim verweigert einen Claim, solange ein Vorgaenger nicht done ist.",
+  "schema_version": 2,
   "source_plan": "docs/WEB_UI_API_TOOL_RESET.md",
   "tasks": [
     {
@@ -2287,8 +2288,7 @@
       "proof_path": "docs/CURRENT_WORK.md",
       "verification": "2026-11-25 auf refactor/T-972-controller-webview-split real gemessen: src/controller.rs 3349 -> 1909 Zeilen, src/webview_runtime.rs 3315 -> 2229 Zeilen; cargo fmt --all -- --check exit 0; cargo clippy --all-targets -- -D warnings exit 0; cargo test --lib 1517 passed / 0 failed / 1 ignored (unveraendert gegenueber Basis); git diff --check exit 0; Testzaehl vorher/nachher controller 44, webview 6.",
       "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: zwei God-Files mit je ueber 3000 Zeilen. Umsetzung als reine Bewegung: controller::tests -> src/controller/tests.rs (1439 Zeilen); webview_runtime::tests -> src/webview_runtime/tests.rs (95 Zeilen); WebView2-Datei-Upload-Helfer -> src/webview_runtime/file_input.rs (996 Zeilen, nur set_file_input_files_cdp fuer den Aufrufer pub(super)). Kein Logik-, API- oder Plattformpfadwechsel."
-    }
-,
+    },
     {
       "id": "T-973",
       "phase": "15",
@@ -2456,6 +2456,445 @@
       "verification": "fmt 0, clippy 0, 1525 passed / 0 failed / 1 ignored, diff-check 0. GET /v1/models gegen die neu gestartete Bridge: neun Modelle, context_window=1000000, max_tokens=65536. Neue Tests: modellgrenzen_defaults_sind_deutlich_hoever_als_128k, modellgrenzen_env_override_und_fallback, zentrale_dauern_sind_env_ueberschreibbar_und_fail_closed.",
       "proof_path": "docs/proofs/T-976/api-turn-reveal.md",
       "handoff": "Umschreibbare Env-Variablen: WEBAGENT_MODEL_CONTEXT_WINDOW, WEBAGENT_MODEL_MAX_TOKENS sowie WEBAGENT_RELAY_*_MS, WEBAGENT_BROWSER_*_MS, WEBAGENT_SEND_*_MS, WEBAGENT_SURFACE_*_MS, WEBAGENT_WEBVIEW_*_MS, WEBAGENT_STARTUP_GRACE_*_MS. Effektiv erst nach Bridge-Neustart wirksam."
+    },
+    {
+      "acceptance": [
+        "docs/play/RECON.md existiert und nennt fuer jeden der 6 Typen den Fundort",
+        "docs/TASKBOARD.json bleibt valides JSON und enthaelt alle PLAY-Tasks mit gueltigen depends_on",
+        "git diff zeigt nur die drei Dateien in scope",
+        "docs/TASKBOARD.md enthaelt exakt dieselben IDs und Statuswerte wie docs/TASKBOARD.json",
+        "cargo test --lib taskboard::tests::taskboard_invarianten_halten ist gruen"
+      ],
+      "depends_on": [],
+      "description": "1) Finde die tatsaechlichen Dateien/Pfade von Room, Save, BrainState, Mission, Ledger, ObservationHook-Nutzung und Save::write im Repo. Schreibe docs/play/RECON.md mit Pfad, Typname, aktueller Definition (kurz) und der aktuellen Save-Version. Kennzeichne, ob Save.ghosts ein Zaehler oder eine Liste ist. 2) Uebernimm alle Tasks aus TASKBOARD.play.json in docs/TASKBOARD.json im dortigen Schema (naechste freie T-IDs, depends_on umgemappt, scope an echte Pfade angepasst). Keine Quelldateien aendern. Korrektur gegen den Fragment-Stand: `docs/TASKBOARD.md` muss als Spiegel mitgehen (Sync-Test in `src/taskboard.rs`), und der echte Codepfad ist `src/repl/play.rs`, nicht `src/play/`.",
+      "dod": "docs/play/RECON.md existiert und nennt fuer jeden der 6 Typen den Fundort | docs/TASKBOARD.json bleibt valides JSON und enthaelt alle PLAY-Tasks mit gueltigen depends_on | git diff zeigt nur die drei Dateien in scope | docs/TASKBOARD.md enthaelt exakt dieselben IDs und Statuswerte wie docs/TASKBOARD.json | cargo test --lib taskboard::tests::taskboard_invarianten_halten ist gruen",
+      "id": "T-978",
+      "phase": "play-v03",
+      "scope": [
+        "docs/play/RECON.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "status": "free",
+      "title": "Recon + Taskboard-Merge (keine Codeaenderung)",
+      "type": "docs",
+      "verify": "python -c \"import json;json.load(open('docs/TASKBOARD.json'))\"; git diff --stat; cargo test --lib taskboard::tests::taskboard_invarianten_halten",
+      "verification": "python -c \"import json;json.load(open('docs/TASKBOARD.json'))\"; git diff --stat; cargo test --lib taskboard::tests::taskboard_invarianten_halten"
+    },
+    {
+      "acceptance": [
+        "authority(Pds|Plc|HandleResolution|Firehose) == Authoritative; Constellation|AppView == Indexed; Jetstream == Unverified",
+        "Proof serde-Roundtrip getestet",
+        "Kein anderes Modul geaendert ausser mod.rs (pub mod proof)",
+        "src/lib.rs enthaelt genau eine neue Zeile `pub mod play;`"
+      ],
+      "depends_on": [
+        "T-978"
+      ],
+      "description": "Neues Modul proof.rs gemaess Spec Abschnitt 3. ProofSource {Pds, Plc, HandleResolution, Firehose, Constellation, Jetstream, AppView}. Authority {Authoritative, Indexed, Unverified} mit const fn authority(source). Proof {id, source, subject, kind, ok, observed_at, fixture, summary, raw_ref}. ProofId als Newtype ueber String, Format P-NNNN. serde Serialize/Deserialize. Korrektur: `src/lib.rs` muss `pub mod play;` verdrahten; allein dieser Task beruehrt `src/lib.rs`.",
+      "dod": "authority(Pds|Plc|HandleResolution|Firehose) == Authoritative; Constellation|AppView == Indexed; Jetstream == Unverified | Proof serde-Roundtrip getestet | Kein anderes Modul geaendert ausser mod.rs (pub mod proof) | src/lib.rs enthaelt genau eine neue Zeile `pub mod play;`",
+      "id": "T-979",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/proof.rs",
+        "src/play/mod.rs",
+        "src/lib.rs"
+      ],
+      "status": "free",
+      "title": "Proof-Typen: ProofSource, Authority, Proof",
+      "type": "code",
+      "verify": "cargo test --lib play::proof",
+      "verification": "cargo test --lib play::proof"
+    },
+    {
+      "acceptance": [
+        "Tabellentest: je Claim-Variante mindestens ein Confirms-, ein Refutes- und ein Unrelated-Fall",
+        "Ein Proof mit ok=false liefert nie Confirms"
+      ],
+      "depends_on": [
+        "T-979"
+      ],
+      "description": "Enum Claim gemaess Spec Abschnitt 4: HandleBindsDid{handle,did}, HandleUnbound{did}, PdsIs{did,pds}, RecordExists{uri}, RecordAbsent{uri}, RecordCid{uri,cid}, AccountStatus{did,active,status}, AppviewMatchesPds{uri,matches}. Funktion supports(claim,&Proof)->Support {Confirms, Refutes, Unrelated} anhand von Proof.kind und Proof.subject. Rein deterministisch, keine IO.",
+      "dod": "Tabellentest: je Claim-Variante mindestens ein Confirms-, ein Refutes- und ein Unrelated-Fall | Ein Proof mit ok=false liefert nie Confirms",
+      "id": "T-980",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/claim.rs",
+        "src/play/mod.rs"
+      ],
+      "status": "free",
+      "title": "Claim-Typ + supports(): maschinenpruefbare Aussagen",
+      "type": "code",
+      "verify": "cargo test --lib play::claim",
+      "verification": "cargo test --lib play::claim"
+    },
+    {
+      "acceptance": [
+        "Bestehende Ledger-Tests laufen unveraendert gruen",
+        "Neue Tests fuer add_proof/proof/authoritative_ok"
+      ],
+      "depends_on": [
+        "T-979"
+      ],
+      "description": "Ledger haelt Vec<Proof>. Neue Methoden add_proof(Proof)->ProofId, proof(&ProofId)->Option<&Proof>, authoritative_ok()->impl Iterator. Bisherige Zaehler-API (proofs als Zahl) bleibt als proofs_count() erhalten, damit bestehende Missionen kompilieren. Alte Shell/Datei-Proofs werden als source=Unverified, kind=\"legacy\" abgebildet. Scope ist die echte Datei `src/repl/play.rs` — ausdruecklich genannte Ausnahme von der `src/play/`-Regel.",
+      "dod": "Bestehende Ledger-Tests laufen unveraendert gruen | Neue Tests fuer add_proof/proof/authoritative_ok",
+      "id": "T-981",
+      "phase": "play-v03",
+      "scope": [
+        "src/repl/play.rs"
+      ],
+      "status": "free",
+      "title": "Ledger: typisierte Proofs statt Zaehler",
+      "type": "code",
+      "verify": "cargo test --lib play",
+      "verification": "cargo test --lib play"
+    },
+    {
+      "acceptance": [
+        "Jetstream-Proof als gegenbeweis -> Speculative",
+        "PLC/PDS-Proof mit Confirms -> Verified",
+        "Fehlende oder unbekannte ProofId -> Speculative",
+        "Autoritativer Proof mit Refutes -> Refuted"
+      ],
+      "depends_on": [
+        "T-980",
+        "T-981"
+      ],
+      "description": "DiaryEntry {id, aussage:String, claim:Claim, quelle:ProofSource, verifiziert:bool, gegenbeweis:Option<ProofId>, spekulativ:bool, kontaminiert:bool, naechster_schritt:Option<String>, tick:u64}. validate_entry(&Ledger,&mut DiaryEntry)->Verdict. Regel: verifiziert=true nur, wenn gegenbeweis auf einen Proof zeigt mit authority==Authoritative, ok==true und supports(claim,proof)==Confirms. Sonst wird verifiziert=false und spekulativ=true gesetzt. Verdict {Verified, Speculative, Refuted}: Refuted, wenn ein autoritativer Proof den Claim widerlegt.",
+      "dod": "Jetstream-Proof als gegenbeweis -> Speculative | PLC/PDS-Proof mit Confirms -> Verified | Fehlende oder unbekannte ProofId -> Speculative | Autoritativer Proof mit Refutes -> Refuted",
+      "id": "T-982",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/diary.rs",
+        "src/play/mod.rs"
+      ],
+      "status": "free",
+      "title": "DiaryEntry + validate_entry (Anti-Halluzinations-Regel)",
+      "type": "code",
+      "verify": "cargo test --lib play::diary",
+      "verification": "cargo test --lib play::diary"
+    },
+    {
+      "acceptance": [
+        "Test laedt eine eingecheckte v1-Fixture-Datei erfolgreich und liefert version==2",
+        "Roundtrip write/load von v2 identisch",
+        "Save::write nutzt tmp-Datei + rename statt direktem std::fs::write"
+      ],
+      "depends_on": [
+        "T-982"
+      ],
+      "description": "Save bekommt diary: Vec<DiaryEntry> mit #[serde(default)] und ghost_log laut PLAY-006 vorbereitet (nur Feld, noch ohne Logik, sofern PLAY-006 nicht fertig). version von 1 auf 2. Beim Laden einer v1-Datei wird diary leer ergaenzt und version auf 2 gehoben. Save::write bleibt atomar (tmp + rename), falls es das nicht schon ist. Scope ist die echte Datei `src/repl/play.rs` — ausdruecklich genannte Ausnahme von der `src/play/`-Regel. `Save::write` ist Stand 2026-11-26 NICHT atomar (`std::fs::write` direkt); tmp+rename ist Teil dieses Tasks. Die v1-Fixture liegt unter `play/fixtures/v1_save.json`.",
+      "dod": "Test laedt eine eingecheckte v1-Fixture-Datei erfolgreich und liefert version==2 | Roundtrip write/load von v2 identisch | Save::write nutzt tmp-Datei + rename statt direktem std::fs::write",
+      "id": "T-983",
+      "phase": "play-v03",
+      "scope": [
+        "src/repl/play.rs",
+        "play/fixtures/v1_save.json"
+      ],
+      "status": "free",
+      "title": "Save v2: diary-Feld + Migration",
+      "type": "code",
+      "verify": "cargo test --lib play::save",
+      "verification": "cargo test --lib play::save"
+    },
+    {
+      "acceptance": [
+        "Pro GhostKind ein Test: ohne passende Proofs Unbound, mit passenden Bound(Confirmed|Refuted)",
+        "Jetstream-Proofs allein binden nie"
+      ],
+      "depends_on": [
+        "T-980",
+        "T-981"
+      ],
+      "description": "GhostKind {Identity, UnsignedCommit, AppviewSplit, Status, BrainDrift}. Ghost {id, kind, subject, raised_by:ProofId, bound_by:Option<ProofId>, outcome:Option<GhostOutcome>}. GhostOutcome {Confirmed, Refuted}. try_bind(&Ledger,&Ghost)->BindResult gemaess Spec Abschnitt 5 (Bindungstabelle). Binden bedeutet: Ursache diagnostiziert, egal ob die Behauptung stimmt oder nicht.",
+      "dod": "Pro GhostKind ein Test: ohne passende Proofs Unbound, mit passenden Bound(Confirmed|Refuted) | Jetstream-Proofs allein binden nie",
+      "id": "T-984",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/ghost.rs",
+        "src/play/mod.rs"
+      ],
+      "status": "free",
+      "title": "Ghost-Modell mit Bindungsbedingungen",
+      "type": "code",
+      "verify": "cargo test --lib play::ghost",
+      "verification": "cargo test --lib play::ghost"
+    },
+    {
+      "acceptance": [
+        "FixtureSource-Tests mit einer Mini-Fixture im tests-Verzeichnis",
+        "Keine Abhaengigkeit auf reqwest/websocket in diesem Modul"
+      ],
+      "depends_on": [
+        "T-979"
+      ],
+      "description": "Trait ProtocolSource mit: resolve_plc(did), plc_audit_log(did), describe_repo(pds,did), get_record(pds,uri), repo_status(pds,did), resolve_handle(handle), appview_get_profile(actor). Rueckgabe jeweils Result<Proof, SourceError>. FixtureSource liest JSON aus play/fixtures/<case>/ und setzt Proof.fixture=true. Fehlt eine Fixture, liefert sie SourceError::NotFound (deterministisch).",
+      "dod": "FixtureSource-Tests mit einer Mini-Fixture im tests-Verzeichnis | Keine Abhaengigkeit auf reqwest/websocket in diesem Modul",
+      "id": "T-985",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/source.rs",
+        "src/play/mod.rs",
+        "play/fixtures/source_mini/describe_repo.json"
+      ],
+      "status": "free",
+      "title": "ProtocolSource-Trait + FixtureSource (kein Netzwerk)",
+      "type": "code",
+      "verify": "cargo test --lib play::source",
+      "verification": "cargo test --lib play::source"
+    },
+    {
+      "acceptance": [
+        "Alle JSON-Dateien parsebar",
+        "Keine DID und kein Handle aus echten Netzwerken (README dokumentiert die Synthetik-Konvention)"
+      ],
+      "depends_on": [
+        "T-985"
+      ],
+      "description": "Lege die Fixtures fuer case001 gemaess Spec Abschnitt 7 an: synthetische DID (did:plc: + 24 Zeichen base32 a-z2-7), Handles unter der Domain example.test, PLC-Audit-Log (3 Eintraege), describeRepo mit handleIsCorrect=false, getRecord, Jetstream-Events als JSONL. Keine echten Accounts, keine echten DIDs.",
+      "dod": "Alle JSON-Dateien parsebar | Keine DID und kein Handle aus echten Netzwerken (README dokumentiert die Synthetik-Konvention)",
+      "id": "T-986",
+      "phase": "play-v03",
+      "scope": [
+        "play/fixtures/case001/*.json",
+        "play/fixtures/README.md"
+      ],
+      "status": "free",
+      "title": "Fixture case001 (synthetisch, siehe Spec Abschnitt 7)",
+      "type": "docs",
+      "verify": "python -c \"import glob,json;[json.load(open(f)) for f in glob.glob('play/fixtures/case001/*.json')]\"",
+      "verification": "python -c \"import glob,json;[json.load(open(f)) for f in glob.glob('play/fixtures/case001/*.json')]\""
+    },
+    {
+      "acceptance": [
+        "Je ein Beispiel-JSON pro kind als Test",
+        "Unbekannte Felder werden toleriert (kein deny_unknown_fields)",
+        "to_proof liefert immer Authority::Unverified"
+      ],
+      "depends_on": [
+        "T-979"
+      ],
+      "description": "serde-Typen fuer Jetstream-JSON: kind=identity (identity.did/handle/seq/time), kind=account (account.active/status), kind=commit (commit.rev/operation/collection/rkey/record/cid). time_us und optional cursor. parse_event(&str)->Result<JetstreamEvent,_>. Hilfsfunktion to_proof(&JetstreamEvent)->Proof mit source=Jetstream (immer Unverified).",
+      "dod": "Je ein Beispiel-JSON pro kind als Test | Unbekannte Felder werden toleriert (kein deny_unknown_fields) | to_proof liefert immer Authority::Unverified",
+      "id": "T-987",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/jetstream.rs",
+        "src/play/mod.rs"
+      ],
+      "status": "free",
+      "title": "Jetstream-Event-Parser (nur Parsing, kein Socket)",
+      "type": "code",
+      "verify": "cargo test --lib play::jetstream",
+      "verification": "cargo test --lib play::jetstream"
+    },
+    {
+      "acceptance": [
+        "Tick-Test mit Mock-Ledger je Pfad (Verified/Refuted/Speculative)",
+        "Save wird nach jedem Tick geschrieben (Test mit tempdir)"
+      ],
+      "depends_on": [
+        "T-983",
+        "T-984"
+      ],
+      "description": "Evaluate nutzt Ledger-Proofs und DiaryEntry-Verdicts statt Zaehler. Mutate: Verified -> xp/correct/Badge; Refuted bindet Geist (Outcome Refuted); Speculative -> wrong+1 und heal_pending. Persist nach jedem Tick bleibt. Mission-Abschlusskriterien: Spec Abschnitt 6. Scope ist die echte Datei `src/repl/play.rs` — ausdruecklich genannte Ausnahme von der `src/play/`-Regel.",
+      "dod": "Tick-Test mit Mock-Ledger je Pfad (Verified/Refuted/Speculative) | Save wird nach jedem Tick geschrieben (Test mit tempdir)",
+      "id": "T-988",
+      "phase": "play-v03",
+      "scope": [
+        "src/repl/play.rs"
+      ],
+      "status": "free",
+      "title": "Tick: Evaluate/Mutate mit typisierten Proofs und Geistern",
+      "type": "code",
+      "verify": "cargo test --lib play::tick",
+      "verification": "cargo test --lib play::tick"
+    },
+    {
+      "acceptance": [
+        "Nach Wechsel genau 1 neuer BrainDrift-Geist, unbound",
+        "Nach Re-Verify-Proof gebunden",
+        "ghosts-Zaehler ist aus ghost_log abgeleitet, nicht separat inkrementiert",
+        "ghosts bleibt eine abgeleitete Zahl und wird nicht separat inkrementiert"
+      ],
+      "depends_on": [
+        "T-984",
+        "T-983",
+        "T-988"
+      ],
+      "description": "Brain-Wechsel schreibt Diary-Eintrag skill=brain_wechsel (spekulativ=false, rein protokollarisch), registriert neues Brain in brains falls fehlend und erzeugt einen Ghost BrainDrift mit raised_by=None-Marker (eigener Proof vom Typ brain_switch). Bindung: das neue Brain muss den zuletzt verifizierten Diary-Eintrag mit einem neuen autoritativen Proof bestaetigen (Re-Verify). Scope ist die echte Datei `src/repl/play.rs`. Kante zu T-988 ergaenzt, weil beide Tasks dieselbe Datei beruehren und nicht parallel laufen duerfen.",
+      "dod": "Nach Wechsel genau 1 neuer BrainDrift-Geist, unbound | Nach Re-Verify-Proof gebunden | ghosts-Zaehler ist aus ghost_log abgeleitet, nicht separat inkrementiert | ghosts bleibt eine abgeleitete Zahl und wird nicht separat inkrementiert",
+      "id": "T-989",
+      "phase": "play-v03",
+      "scope": [
+        "src/repl/play.rs"
+      ],
+      "status": "free",
+      "title": "Brain-Wechsel erzeugt BrainDrift-Geist (Konsistenzfix)",
+      "type": "fix",
+      "verify": "cargo test --lib play::brain_switch",
+      "verification": "cargo test --lib play::brain_switch"
+    },
+    {
+      "acceptance": [
+        "Nachricht 001 wird bei Tick 0 faellig, nicht doppelt",
+        "Mindestens eine Nachricht mit reliability=Wrong und pruefbarem Claim"
+      ],
+      "depends_on": [
+        "T-980"
+      ],
+      "description": "FailsafeMessage {id, text, claims:Vec<Claim>, reliability:Reliability {Accurate, Partial, Wrong}, release_at:Release {Tick(u64)|Mission(Mission)}}. Nachrichten sind Daten (const Slice), nicht Code. due(&Save)->Vec<&FailsafeMessage>. Nachricht 001 laut Spec Abschnitt 7 (enthaelt bewusst eine falsche Teilaussage).",
+      "dod": "Nachricht 001 wird bei Tick 0 faellig, nicht doppelt | Mindestens eine Nachricht mit reliability=Wrong und pruefbarem Claim",
+      "id": "T-990",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/failsafe.rs",
+        "src/play/mod.rs"
+      ],
+      "status": "free",
+      "title": "Failsafe-Nachrichten datengetrieben",
+      "type": "code",
+      "verify": "cargo test --lib play::failsafe",
+      "verification": "cargo test --lib play::failsafe"
+    },
+    {
+      "acceptance": [
+        "Gleicher Seed -> gleicher Satz",
+        "Gebundener Geist erzeugt kein Rauschen mehr",
+        "Pool je Kind nicht leer (Test)"
+      ],
+      "depends_on": [
+        "T-984"
+      ],
+      "description": "Je GhostKind ein &'static [&'static str] mit 4-6 Saetzen (Deutsch, Protokolljargon korrekt). noise_for(room,&[Ghost])->Option<&'static str> deterministisch (Seed aus Save.tick), damit Tests stabil sind.",
+      "dod": "Gleicher Seed -> gleicher Satz | Gebundener Geist erzeugt kein Rauschen mehr | Pool je Kind nicht leer (Test)",
+      "id": "T-991",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/noise.rs",
+        "src/play/mod.rs"
+      ],
+      "status": "free",
+      "title": "Raumbeschreibungen + Rausch-Pools je Geist",
+      "type": "code",
+      "verify": "cargo test --lib play::noise",
+      "verification": "cargo test --lib play::noise"
+    },
+    {
+      "acceptance": [
+        "Pro Mission ein Test: Kriterium erfuellt/nicht erfuellt",
+        "Keine Aenderung an Work/Champion"
+      ],
+      "depends_on": [
+        "T-988",
+        "T-990",
+        "T-989"
+      ],
+      "description": "badge()/task()-Texte und Abschlusskriterien gemaess Spec Abschnitt 6 (Tabelle Mission -> Raum -> Abschlusskriterium). Tutorial: ein PLC-Proof ok. Scan: Identity-Geist erzeugt und gebunden. Repair: Status- oder AppviewSplit-Geist gebunden. Work/Champion bleiben vorerst unveraendert (siehe PLAY-017). Scope ist die echte Datei `src/repl/play.rs`. Kante zu T-989 ergaenzt, damit Missionen nach dem Brain-Wechsel seriell erfolgen.",
+      "dod": "Pro Mission ein Test: Kriterium erfuellt/nicht erfuellt | Keine Aenderung an Work/Champion",
+      "id": "T-992",
+      "phase": "play-v03",
+      "scope": [
+        "src/repl/play.rs"
+      ],
+      "status": "free",
+      "title": "Mission::Scan und Repair auf Protokoll-Faelle umschreiben",
+      "type": "code",
+      "verify": "cargo test --lib play::mission",
+      "verification": "cargo test --lib play::mission"
+    },
+    {
+      "acceptance": [
+        "Lauf deterministisch (zweimal identischer Save)",
+        "Endzustand: 1 Identity-Geist gebunden (Refuted), 2 Diary-Eintraege (1 Verified, 1 Refuted), Raum Bridge frei",
+        "Der Lauf macht keine Netzwerk- und keine WebView-Zugriffe"
+      ],
+      "depends_on": [
+        "T-986",
+        "T-988",
+        "T-989",
+        "T-990",
+        "T-992",
+        "T-987"
+      ],
+      "description": "Skriptierter Mock-Brain spielt die Sequenz aus Spec Abschnitt 7 mit FixtureSource durch. Pruefe Endzustand des Save als Golden-File (tests/golden/case001_save.json, ohne Zeitstempel). Kein Netzwerk, kein WebView. Kante zu T-987 (PLAY-009/Jetstream) ergaenzt: der Golden-Test darf nicht vor dem Event-Parser laufen. Kein Netzwerk, kein WebView.",
+      "dod": "Lauf deterministisch (zweimal identischer Save) | Endzustand: 1 Identity-Geist gebunden (Refuted), 2 Diary-Eintraege (1 Verified, 1 Refuted), Raum Bridge frei | Der Lauf macht keine Netzwerk- und keine WebView-Zugriffe",
+      "id": "T-993",
+      "phase": "play-v03",
+      "scope": [
+        "tests/play_case001.rs",
+        "tests/golden/case001_save.json"
+      ],
+      "status": "free",
+      "title": "Integrationstest case001 mit Mock-Brain und Fixtures",
+      "type": "tests",
+      "verify": "cargo test --test play_case001",
+      "verification": "cargo test --test play_case001"
+    },
+    {
+      "acceptance": [
+        "cargo build ohne Feature unveraendert",
+        "cargo test --features play-live nur Unit-Tests (URL-Bau, Fehlerabbildung), kein echter Request"
+      ],
+      "depends_on": [
+        "T-985"
+      ],
+      "description": "LiveSource implementiert ProtocolSource mit dem bereits vorhandenen HTTP-Client (keine neue Abhaengigkeit, falls moeglich; sonst im Task begruenden). Endpunkte laut Spec Abschnitt 8. Pflicht: Timeout 10 s, User-Agent webagent-play, Rate-Limit-Backoff, Antwortgroesse max 1 MiB, nur https. Standard-Build ohne Feature kompiliert ohne live.rs.",
+      "dod": "cargo build ohne Feature unveraendert | cargo test --features play-live nur Unit-Tests (URL-Bau, Fehlerabbildung), kein echter Request",
+      "id": "T-994",
+      "phase": "play-v03",
+      "scope": [
+        "src/play/live.rs",
+        "Cargo.toml",
+        "src/play/mod.rs"
+      ],
+      "status": "free",
+      "title": "LiveSource hinter Feature play-live",
+      "type": "code",
+      "verify": "cargo build && cargo test --features play-live --lib play::live",
+      "verification": "cargo build && cargo test --features play-live --lib play::live"
+    },
+    {
+      "acceptance": [
+        "Dokument nennt mindestens 3 konkrete Abfragen und die daraus ableitbaren Claims",
+        "Folge-Tasks als Vorschlag am Ende"
+      ],
+      "depends_on": [
+        "T-993"
+      ],
+      "description": "Nur Designdokument: Welche Constellation-Backlink-Abfragen, welche Claims daraus entstehen (Authority Indexed), wie Korrelation als Mission aussieht, wie Work/Champion darauf abgebildet werden. Kein Code.",
+      "dod": "Dokument nennt mindestens 3 konkrete Abfragen und die daraus ableitbaren Claims | Folge-Tasks als Vorschlag am Ende",
+      "id": "T-995",
+      "phase": "play-v03",
+      "scope": [
+        "docs/play/WERKBANK.md"
+      ],
+      "status": "free",
+      "title": "Werkbank (Constellation-Korrelation) - Design-Task",
+      "type": "docs",
+      "verify": "if (Test-Path docs/play/WERKBANK.md) { exit 0 } else { exit 1 }",
+      "verification": "if (Test-Path docs/play/WERKBANK.md) { exit 0 } else { exit 1 }"
+    },
+    {
+      "acceptance": [
+        "Simulation nutzt describeRepo/handleIsCorrect statt Profile-Record",
+        "Offene Punkte entsprechen dem Taskboard-Stand"
+      ],
+      "depends_on": [
+        "T-993"
+      ],
+      "description": "Konzept aus PLAY_MODE_SPEC.md uebernehmen, korrigierte Simulation (Abschnitt 7) einsetzen, offene Punkte aktualisieren.",
+      "dod": "Simulation nutzt describeRepo/handleIsCorrect statt Profile-Record | Offene Punkte entsprechen dem Taskboard-Stand",
+      "id": "T-996",
+      "phase": "play-v03",
+      "scope": [
+        "docs/PLAY_MODE.md"
+      ],
+      "status": "free",
+      "title": "docs/PLAY_MODE.md auf v0.3 bringen",
+      "type": "docs",
+      "verify": "if (Test-Path docs/PLAY_MODE.md) { exit 0 } else { exit 1 }",
+      "verification": "if (Test-Path docs/PLAY_MODE.md) { exit 0 } else { exit 1 }"
     }
   ]
 }
