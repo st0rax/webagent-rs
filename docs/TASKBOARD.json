@@ -2866,6 +2866,43 @@
       "claimed_at": "2026-11-26"
     },
     {
+      "id": "T-1012",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Extract browser/transport modules into webagent-transport",
+      "status": "claimed",
+      "depends_on": [],
+      "scope": [
+        "Cargo.toml",
+        "crates/webagent-transport/Cargo.toml",
+        "crates/webagent-transport/src/lib.rs",
+        "crates/webagent-transport/src/",
+        "src/lib.rs",
+        "src/",
+        "docs/arch/layers.toml",
+        "docs/arch/layer_exceptions.txt",
+        "docs/arch/CRATE_SPLIT.md",
+        "docs/proofs/T-1012/",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Move the browser/page/panel modules named in docs/arch/CRATE_SPLIT.md section 4.2 into the webagent-transport workspace member. Keep the root crate API and all existing paths working through re-exports, forward the webview feature, and move the concrete WebBackendFactory marker together with its BackendFactory impl so the orphan rule stays satisfied. Resolve root-only dependencies before the move; the architecture guard must remain green with crate_violations=0 and no new exception.",
+      "dod": "Claim before any source edit; transport crate owns the moved modules; root re-exports preserve public paths; before/after lib test counts and all gates recorded in docs/proofs/T-1012/README.md; branch pushed; no merge, done status or release.",
+      "non_goals": [
+        "No api module is moved in this slice.",
+        "No merge, PR, tag, release or deployment.",
+        "No change to dependency versions, [profile.*] values or runtime behavior.",
+        "No new ratchet exception for a crate-direction violation.",
+        "No credentials, live provider call, browser login or live brain session."
+      ],
+      "proof_path": "docs/proofs/T-1012/README.md",
+      "verification": "cargo metadata --no-deps --format-version 1; cargo fmt --all -- --check; cargo clippy --workspace --features webview --all-targets -- -D warnings; cargo test --workspace --lib --quiet (claim-time and final, before/after); cargo test --test arch_layers -- --nocapture; cargo test --workspace --all-targets --quiet; cargo test --workspace --locked --no-default-features --quiet; debug/release --version/--help; git diff --check",
+      "owner": "local/opencode",
+      "branch": "refactor/T-1012-transport-extraction",
+      "claimed_at": "2026-11-26"
+    },
+    {
       "id": "T-976",
       "phase": "15",
       "type": "fix",

@@ -1,3 +1,8 @@
+## 2026-11-26 - T-1012 claimed: transport extraction (no source edits yet)
+
+- **Claim:** `docs/TASKBOARD.json` and mirror carry T-1012 as `claimed`, owner `local/opencode`, branch `refactor/T-1012-transport-extraction`, 2026-11-26. It branches from the pushed T-1011 implementation commit `2635336` and stays `claimed` until merged. No source file was moved before this claim.
+- **Claim-time baseline:** workspace lib tests 924 root + 623 core = 1547 passed / 0 failed / 1 ignored; guard `modules=91, edges=278, cycles=3, upward_edges=26, crate_violations=0`; fmt/clippy 0; debug and release smoke 0. Known blocker to resolve first: `panel_sink` is a root module used by transport candidates, and the concrete `WebBackendFactory` marker must move with its `BackendFactory` impl.
+
 ## 2026-11-26 - T-1011 implemented: core modules extracted (branch pushed)
 
 - **Branch/claim:** `refactor/T-1011-core-extraction`, claim commit `6e421e6`, owner `local/opencode`. T-1011 was claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. Proof: `docs/proofs/T-1011/README.md`.
