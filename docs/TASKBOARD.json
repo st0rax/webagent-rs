@@ -2636,6 +2636,47 @@
       "owner": "local/opencode",
       "branch": "docs/T-1005-cli-groups",
       "claimed_at": "2026-11-26"
+    },
+    {
+      "id": "T-1006",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Public core traits and shared inference types in the current crate",
+      "status": "claimed",
+      "depends_on": [],
+      "scope": [
+        "src/inference_types.rs",
+        "src/brain.rs",
+        "src/relay.rs",
+        "src/browser/mod.rs",
+        "src/browser/backend.rs",
+        "src/browser/send.rs",
+        "src/browser/ui.rs",
+        "src/browser_inference.rs",
+        "src/api_bridge.rs",
+        "src/api_bridge/transport.rs",
+        "src/contract.rs",
+        "src/counting.rs",
+        "src/lib.rs",
+        "docs/arch/layers.toml",
+        "docs/arch/layer_exceptions.txt",
+        "docs/arch/CRATE_SPLIT.md",
+        "docs/proofs/T-1006/",
+        "docs/CURRENT_WORK.md"
+      ],
+      "objective": "Prepare the trait boundaries from the T-1004 cut plan without extracting a crate or merging. Add a low-rank public inference_types module for the shared request/response/attachment/tool types, ClientPresence/AlwaysConnected and WebSearchObservation; keep all old paths working through re-exports. Publish RelayBackend, BackendFactory and PageProbe from brain.rs, implement the factory and relay/page probes in the browser module, and route relay, counting and contract through the new boundaries instead of direct browser imports. Correct the T-1004 note that PageProbe alone fixes contract -> browser: contract only needs protocol helpers, while counting needs the factory. Shrink layer exceptions only for edges the guard proves gone.",
+      "dod": "All named call sites use the new public traits/types with unchanged behavior; old public paths remain available; arch guard stays green with only genuinely removed ratchet lines deleted; proof records claim-time and final test counts plus all four gates; branch pushed, no crate move and no merge.",
+      "non_goals": [
+        "No workspace or crate extraction.",
+        "No merge, PR, tag, release or deployment.",
+        "No CLI, provider-credential or live-browser behavior changes.",
+        "No [profile.*] or dependency changes in Cargo.toml."
+      ],
+      "proof_path": "docs/proofs/T-1006/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; git diff --check",
+      "owner": "local/opencode",
+      "branch": "refactor/T-1006-core-traits",
+      "claimed_at": "2026-11-26"
     }
   ]
 }
