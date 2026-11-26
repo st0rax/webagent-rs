@@ -1,3 +1,10 @@
+## 2026-11-26 - Bridge mit T-1014-Binary neu gestartet
+
+- **Freigabe:** Der Eigentuemer hat nach dem Hinweis, dass EXE-Tausch und Neustart Freigabe brauchen, „start die bridge bitte nue" gesagt. Alter PID `15908` wurde gestoppt, die aktive EXE ersetzt und die Bridge mit identischer Command Line als PID `4484` neu gestartet.
+- **Aktiv:** `...\webagent-deploy-target\release\webagent.exe` hat jetzt SHA-256 `6CC16E34E9B2E58E45E81E9BDB80F08EB0A916FB2BC9E32F4395CA58E390B72B` und meldet `webagent 0.11.8 (84ba99fb5)`; DLL-Hash unveraendert. Port `127.0.0.1:8788` hoert auf PID `4484`, Health liefert `status=ok`. `/v1/models` meldet neun Modelle und fuer Gemini `context_window=12000`, `max_tokens=4000` — der T-1014-Katalog ist damit live.
+- **Sicherung/Rollback:** `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\backup-release-T1014-20261126\` enthaelt die bisherige EXE (Hash geprueft), DLL, SHA-Datei und den Breaker-Zustand vor dem Eingriff. Der noch offene `chatgpt`-Breaker-Eintrag wurde mit Sicherung entfernt; alle anderen Eintraege sind abgelaufen.
+- **Grenze:** Kein Provider-Turn, Login, WebView oder Zugangsdatenausgabe; kein Tag, Release oder Versionssprung. Neue Logs: `bridge.err.restart-20261126.log` / `bridge.out.restart-20261126.log`. Beleg: `docs/proofs/deploy-T1014-bridge-restart-2026-11-26/README.md`.
+
 ## 2026-11-26 - T-1014 implemented: Gemini prompt cap, fail-fast and tolerant composer proof
 
 - **Branch/claim:** `fix/T-1014-gemini-prompt-input` from `c44b166`, claim commit `bbd95da`, owner `local/opencode`. T-1014 is `done` in `docs/TASKBOARD.json` and the mirror. Proof: `docs/proofs/T-1014/README.md` and `gates.txt`.
