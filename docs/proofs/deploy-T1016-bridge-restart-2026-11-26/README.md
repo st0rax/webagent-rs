@@ -69,14 +69,27 @@
 - Die API serialisiert Browserruns pro Brain; der kurze Turn wartete
   hoechstwahrscheinlich hinter dieser langen Anfrage. Das ist nicht
   bewiesen; die Live-Abnahme des Backend-Pfads bleibt offen.
-- Betriebszustand danach: `circuit_breaker/state.json` zeigt `chatgpt` mit
+- Betriebszustand danach: `circuit_breaker/state.json` zeigte `chatgpt` mit
   `consecutive_failures=3`, `open_until=1795731207` (900 s Sperre) und
   genau dieser `ABSENDEKNOPF_DEAKTIVIERT`-Ursache. Der identische Fehler
   stand bereits vor dem Tausch im Event von 21:46:48 UTC — er ist also
-  **kein** T-1016-Rueckfall. Ich habe den Breaker nicht manuell
-  zurueckgesetzt; das waere ein Eingriff in den laufenden Betrieb ohne
-  Freigabe. Weitere gesperrte Brains im selben File (claude, deepseek,
-  kimi, mock) sind alter Zustand und wurden nicht angefasst.
+  **kein** T-1016-Rueckfall. Weitere gesperrte Brains im selben File
+  (claude, deepseek, kimi, mock) sind alter Zustand und wurden nicht
+  angefasst.
+- Auf die ausdrueckliche Anweisung „MACH JETZT" wurde der `chatgpt`-Eintrag
+  mit Backup unter
+  `data/circuit_breaker/state-before-T1016-live-20261126.json` entfernt
+  (funktional identisch zu `circuit_breaker::clear`). Health blieb `ok`.
+- **Ursache der Sendefehler (Code-Befund):** `send.rs:1291-1296` dokumentiert
+  eine Laengenablehnung der Provider-Oberflaeche: bei ~400.000 Zeichen
+  steht der Text vollstaendig im Composer, der Absendeknopf ist grau und
+  es erscheint kein Dialog; bei 200.000 Zeichen funktioniert es. Die
+  fehlgeschlagenen Events tragen `prompt_chars=196027` /
+  `pasted_chars=199804` — genau diese Grenzklasse. `relay.rs` stuft
+  `ABSENDEKNOPF_DEAKTIVIERT` bewusst als deterministisch ein
+  (`kein Retry`). Eine Umgehung wuerde Kürzen/Zusammenfassen des Prompts
+  und damit eine Aenderung der API-Semantik bedeuten; das ist ohne
+  ausdrueckliche Freigabe nicht implementiert.
 - Belegt ist: Prozessstart, Health, Models, Hashes, identische Command Line.
   Nicht belegt ist: ein erfolgreicher Provider-Turn auf der neuen EXE.
 - Der Browser-Prozess `webagent · chatgpt (1)` ist nach dem Restart
