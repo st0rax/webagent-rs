@@ -2355,5 +2355,34 @@
       "proof_path": "docs/CURRENT_WORK.md",
       "verification": "Real gemessen: Supervisor erster Start und idempotenter Zweitlauf exit 0; Antwort e (Nein) stoppt die eigene Bridge und laesst die zyklische Pruefung no-op; Antwort j (Ja) setzt Opt-in und startet gesund; nach Stopp der eigenen PID startet die zyklische Pruefung die Bridge neu; setup -Remove entfernt Verknuepfung, Aufgabe, Opt-in und Bridge und wurde danach neu installiert; Task-Lauf LastTaskResult=0; echter Pi-Turn mit WEBAGENT-DAEMON-OK-20261126 exit 0. Beleg docs/proofs/T-974/daemon-abnahme.md. Gates: fmt 0, clippy 0, 1521 passed / 0 failed / 1 ignored, diff-check 0.",
       "claimed_note": "Direkte Nutzerentscheidung nach T-973: 'bitte bei windows start terminalfenster mit abfrage ob bridge gestartet werden soll'."
+    },
+    {
+      "id": "T-975",
+      "phase": "15",
+      "type": "chore",
+      "title": "Pi-Abdeckung schliessen: alle Brains und sichtbarer Anmelde-Dialog",
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "chore/T-975-pi-full-coverage",
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26",
+      "depends_on": [],
+      "scope": [
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-975/pi-volle-abdeckung.md"
+      ],
+      "objective": "Nach T-973/T-974 blieben zwei Abdeckungsluecken: in der Nutzer-Pi-Installation war nur webagent/chatgpt statisch konfiguriert, und das sichtbare Anmeldefenster wurde nicht ueber die echte Autostart-Verknuepfung ausgeloest.",
+      "dod": "Alle vom Endpoint gelieferten Brains sind in Pi registriert und mindestens ein weiteres Brain real durch einen Turn belegt; der Anmelde-Dialog wurde ueber die echte Verknuepfung mit sichtbarem Fenster ausgeloest und die Reaktion geprueft; Gates und Board gruen.",
+      "handoff": "Abgeschlossen 2026-11-26 durch local/opencode, Basis master c9050f3. Dynamische Extension in der Nutzer-Pi-Installation aktiv; alle neun Modelle real durchturnet; Anmelde-Dialog ueber die echte .lnk mit sichtbarem HWND geprueft. Kein Reboot ohne ausdrueckliche Freigabe. Kein Release, kein Tag, kein Deployment.",
+      "non_goals": [
+        "Kein Reboot/Re-Login ohne gesonderte ausdrueckliche Freigabe.",
+        "Keine Aenderung an der Bridge-Runtime, am Port oder an fremden Pi-Providern.",
+        "Kein Lesen von auth.json oder vorhandenen Tokens, keine Anmeldung."
+      ],
+      "proof_path": "docs/CURRENT_WORK.md",
+      "verification": "pi --list-models webagent exit 0 mit neun Modellen (auto, chatgpt, claude, deepseek, gemini, kimi, mistral, qwen, zai). Alle neun echten Pi-Turns exit 0 mit exaktem Marker WEBAGENT-<BRAIN>-OK-20261126. Dialog ueber echte Autostart-.lnk gestartet: sichtbares Fenster hwnd=23791118, visible=True, rect=122,130,1251,765; n{ENTER} -> optin=False port=False und prompt.log Antwort=aus; j{ENTER} -> optin=True port=True und Antwort=start, Bridge PID=7000 gesund. Beleg docs/proofs/T-975/pi-volle-abdeckung.md. Gates: fmt 0, clippy 0, 1521 passed / 0 failed / 1 ignored, diff-check 0.",
+      "claimed_note": "Direkte Nutzeranforderung: 'ja bitte auf 100% hinarbeiten'."
     }  ]
 }
