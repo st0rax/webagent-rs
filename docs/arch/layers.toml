@@ -1,0 +1,135 @@
+# Layer assignment for tests/arch_layers.rs.
+# Hand-maintained source of truth; rank must increase from low-level to application code.
+# An edge is legal when rank(source) >= rank(target); see docs/arch/LAYERS.md.
+
+[layer.cross]
+rank = 0
+modules = [
+  "acceptance",
+  "circuit_breaker",
+  "code_score",
+  "config",
+  "counting",
+  "executor",
+  "file_actions",
+  "loop_guard",
+  "scoring",
+  "shell_policy",
+  "taskboard",
+  "timeouts",
+  "tools",
+  "bench_events",
+  "brain_limits",
+  "pool_failover",
+  "pool_state",
+  "worker_pool",
+  "contract",
+]
+
+[layer.L0]
+rank = 1
+modules = [
+  "brain",
+  "brain_probe",
+  "browser_inference",
+  "comms",
+  "https_client",
+  "login",
+  "oobe",
+]
+
+[layer.L1]
+rank = 2
+modules = [
+  "browser",
+  "mock_page",
+  "page_driver",
+  "upload_spa_js",
+  "webview_reveal",
+  "webview_runtime",
+]
+
+[layer.L2]
+rank = 3
+modules = [
+  "browser_pool",
+  "free_cloud_chat",
+  "source_scope",
+  "bot2bot_worker",
+]
+
+[layer.L3]
+rank = 4
+modules = [
+  "relay",
+  "network_observation",
+  "watchdog",
+  "doctor",
+]
+
+[layer.L4]
+rank = 5
+modules = [
+  "session",
+  "run_store",
+  "transcript",
+  "memory",
+  "capability",
+  "capability_proof",
+  "wiki_memory",
+  "goal_plan",
+]
+
+[layer.L5]
+rank = 6
+modules = [
+  "protocol",
+  "observer",
+  "prompts",
+  "target_check",
+  "design_vote",
+  "round_tally",
+  "brain_score",
+]
+
+[layer.L6]
+rank = 7
+modules = [
+  "group_run",
+  "knockout",
+  "welcome",
+  "canary",
+  "fakebrain",
+]
+
+[layer.L7]
+rank = 8
+modules = [
+  "api_bridge",
+  "controller",
+  "repl",
+  "tui",
+  "tui_ansi",
+  "bin_hooks",
+  "tui_bench",
+  "tui_config",
+  "tui_footer",
+  "tui_keys",
+  "tui_load",
+  "tui_mouse",
+  "tui_render",
+  "tui_state",
+  "tui_widgets",
+  "web_ui",
+  "web_ui_api",
+  "startup",
+  "autoresearch",
+  "bench_harvest",
+  "bench_scoring",
+  "benchmark",
+  "runs_report",
+  "self_research",
+  "brain_grid",
+  "brain_wall",
+  "brains_health",
+]
