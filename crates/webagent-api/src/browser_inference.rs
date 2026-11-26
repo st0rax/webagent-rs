@@ -112,7 +112,58 @@ pub fn complete_streaming_with_attachments(
     .map_err(|error| error.0)?;
 
     let text = normalize_provider_text(request.brain, &first);
-    let parsed = parse_response(&text, request.tools, &request.tool_choice)?;
+    let mut parsed = parse_response(&text, request.tools, &request.tool_choice)?;
+    let mut current_text = text;
+
+    // T-1015: In der OpenCode-Session `Greeting` antwortete chatgpt auf
+    // Auftraege mit Tools wiederholt nur `chatgpt`, `Hallo.` oder
+    // `chatgpt bereit.`. Das war kein Parse-Fehler und wurde als Endantwort
+    // ausgeliefert. Nur bei aktiven Client-Tools und mit dem urspruenglichen
+    // Auftrag als Retry-Prompt: genau EIN Frisch-Chat mit demselben Auftrag
+    // plus einem kurzen Hinweis. Reine Textturns ohne Tools bleiben unberuehrt;
+    // wiederholt der zweite Turn den Stub, geben wir ihn ehrlich zurueck.
+    let greeting_stub = parsed.tool_calls.is_empty()
+        && !request.tools.is_empty()
+        && !matches!(request.tool_choice, BrowserToolChoice::None)
+        && webagent_core::brain::is_greeting_only_response(&current_text)
+        && request.retry_prompt.is_some();
+    if greeting_stub {
+        let original = request
+            .retry_prompt
+            .expect("retry_prompt wurde vorher geprueft");
+        let retry_prompt = prompt_with_tools(
+            &greeting_retry_prompt(original),
+            request.tools,
+            &request.tool_choice,
+        )?;
+        let retry_prompt = prompt_with_identity(request.brain, &retry_prompt);
+        webagent_core::bench_events::eprint_line(
+            "[T-1015] Begruessungs-Stub erkannt; ein Frisch-Chat-Retry mit dem urspruenglichen Auftrag.",
+        );
+        let second = crate::relay::relay_single_turn_with_attachments_streaming_checked(
+            request.brain,
+            &retry_prompt,
+            request.headless,
+            request.timeout_secs,
+            request.model,
+            attachments,
+            &mut relay_update,
+            &output_check,
+            presence,
+        )
+        .map_err(|error| error.0)?;
+        let second = normalize_provider_text(request.brain, &second);
+        let second_parsed = parse_response(&second, request.tools, &request.tool_choice)?;
+        if second_parsed.tool_calls.is_empty()
+            && webagent_core::brain::is_greeting_only_response(&second)
+        {
+            webagent_core::bench_events::eprint_line(
+                "[T-1015] Retry erschoepft: auch der zweite Turn ist nur eine Begruessung; kein PASS.",
+            );
+        }
+        parsed = second_parsed;
+        current_text = second;
+    }
 
     // T-961: eine semantische Werkzeugverweigerung ist kein Parse-Fehler und
     // wurde deshalb bisher als ganz normale Endantwort an den Client
@@ -121,7 +172,7 @@ pub fn complete_streaming_with_attachments(
     // bei `Auto` einmal in einem FRISCHEN Chat mit genau diesem Auftrag
     // retryen. Kein T-953-Korrekturtext, kein "verfuegbar"-Meta, keine
     // Eskalation auf `required` — alle drei Richtungen sind live widerlegt.
-    let semantic_denial = parsed.tool_calls.is_empty() && is_semantic_tool_denial(&text);
+    let semantic_denial = parsed.tool_calls.is_empty() && is_semantic_tool_denial(&current_text);
     let should_retry = semantic_denial
         && request.retry_prompt.is_some()
         && !request.tools.is_empty()
@@ -266,6 +317,16 @@ fn prompt_with_identity(brain: &str, prompt: &str) -> String {
     }
     format!(
         "[Identitaet] Du bist das Modell hinter dem WebAgent-Brain \"{brain}\" (API-Modell webagent/{brain}). Fragt jemand nach deinem Namen oder deiner Identitaet, nenne \"{brain}\".\n\n{prompt}"
+    )
+}
+
+/// T-1015: Ein Begruessungs-Stub ist keine Antwort auf einen Auftrag. Der
+/// Frisch-Chat-Retry traegt den urspruenglichen Auftrag bytegenau weiter und
+/// nur einen kurzen Hinweis voran — kein T-953-Korrekturtext, keine
+/// T-961-Verfuegbarkeitsmeta.
+fn greeting_retry_prompt(original: &str) -> String {
+    format!(
+        "Deine letzte Antwort war nur eine Begruessung. Bearbeite jetzt den urspruenglichen Auftrag und liefere eine inhaltliche Antwort oder einen {TOOL_ENVELOPE}-Umschlag.\n\n{original}"
     )
 }
 
@@ -502,6 +563,48 @@ struct ToolEnvelopeCall {
     arguments: Value,
 }
 
+/// T-1015: Schränkt den Payload auf das BALANCIERTE JSON-Objekt ein. Ein
+/// Markdown-Codeblock-Abschluss, ein Satz danach oder ein zweiter Block darf
+/// einen ansonsten vollständigen Werkzeugumschlag nicht ungültig machen
+/// (real am 2026-11-26: `...}]}\n``` ` → `trailing characters at line 2`).
+/// Klammern in Strings zählen nicht; fehlt die schließende Klammer, bleibt der
+/// Originalpayload für die strenge Fehlermeldung erhalten.
+fn envelope_json_slice(payload: &str) -> &str {
+    let trimmed = payload.trim();
+    let Some(start) = trimmed.find('{') else {
+        return trimmed;
+    };
+    let bytes = trimmed.as_bytes();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for index in start..bytes.len() {
+        let byte = bytes[index];
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match byte {
+            b'"' => in_string = true,
+            b'{' => depth += 1,
+            b'}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return &trimmed[start..=index];
+                }
+            }
+            _ => {}
+        }
+    }
+    trimmed
+}
+
 /// Findet den Maschinenumschlag auch dann, wenn das Modell davor Text
 /// geschrieben hat (real am 2026-11-20: ChatGPT antwortete
 /// `Nur Text\nWEBAGENT_INFERENCE/1\n{...}`). Der Marker muss am Zeilenanfang
@@ -565,7 +668,7 @@ fn parse_response(
         });
     };
 
-    let payload = payload.trim();
+    let payload = envelope_json_slice(payload.trim());
     let envelope: ToolEnvelope = match serde_json::from_str(payload) {
         Ok(envelope) => envelope,
         Err(strict_error) => {
@@ -777,6 +880,38 @@ mod tests {
         );
         let response = parse_response(raw, &[read_tool()], &BrowserToolChoice::Required).unwrap();
         assert_eq!(response.tool_calls[0].arguments["path"], "nonce-2.txt");
+    }
+
+    #[test]
+    fn trailing_markdown_and_prose_after_envelope_are_ignored() {
+        // T-1015: echter Fehler aus der OpenCode-Session `Greeting`: ein
+        // vollständiger write-Call scheiterte an `\n``` ` nach dem JSON.
+        let raw = concat!(
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"a{b}.txt"}}]}"#,
+            "\n```\nDas war der Aufruf."
+        );
+        let response = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap();
+        assert_eq!(response.finish_reason(), "tool_calls");
+        assert_eq!(response.tool_calls[0].arguments["path"], "a{b}.txt");
+    }
+
+    #[test]
+    fn truncated_envelope_still_fails_closed() {
+        let raw = concat!(
+            "WEBAGENT_INFERENCE/1\n",
+            r#"{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{}}"#
+        );
+        let error = parse_response(raw, &[read_tool()], &BrowserToolChoice::Auto).unwrap_err();
+        assert!(error.starts_with(MODEL_OUTPUT_ERROR_MARKER), "{error}");
+    }
+
+    #[test]
+    fn greeting_retry_prompt_keeps_original_task() {
+        let retry = greeting_retry_prompt("Leg bitte notizbuch.md an.");
+        assert!(retry.contains("Leg bitte notizbuch.md an."));
+        assert!(retry.contains("Begruessung"));
+        assert!(retry.contains(TOOL_ENVELOPE));
     }
 
     #[test]
