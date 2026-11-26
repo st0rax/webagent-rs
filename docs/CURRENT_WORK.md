@@ -1,5 +1,15 @@
 # Current Work
 
+## 2026-11-26 - T-1003 implemented: Windows GUI dependencies behind `webview`
+
+- **Branch/claim:** `chore/T-1003-feature-hygiene`, claim commit `a76d79d`, owner `local/opencode`. The initial `build/` name was renamed before the claim because the board invariant and commit script only allow `feature|fix|docs|chore|refactor|test`. T-1003 stays `claimed`; no merge, no `done`, no PR. Formal `depends_on: T-997` was overridden by the owner's standing "autonom weiterarbeiten".
+- **Bestand zuerst geprüft:** `windows` 0.58 is used only behind `cfg(all(windows, feature = "webview"))` (JobObjects in `worker_pool.rs`, ToolHelp in `brain_grid.rs`/`brain_wall.rs`, console handle in `lib.rs`/`main.rs`), so the browser-free build does not need it. `windows-sys` 0.59 is used by non-GUI code (`config/profiles.rs`, `config/writeback.rs`) and stays non-optional. Proof: `docs/proofs/T-1003/README.md`.
+- **Changes:** `Cargo.toml` only — `webview2-com`, `windows`, `arboard`, `clipboard-win`, `image` are optional and wired into the `webview` feature via `dep:`; `windows-sys` moved into the Windows target table. No `[profile.*]` line changed; `src/lib.rs` and `Cargo.lock` needed no edit.
+- **Measured:** Windows `cargo tree --no-default-features -e normal --depth 1` went from five GUI crates plus `windows-sys` to core crates plus `windows-sys`; Linux tree has no `windows-sys`. After `cargo clean -p webagent`, lib test binary 95,086,256 → 94,481,201 bytes (−605,055); wall-clock build+link 46.69 s → 47.66 s (no improvement, within noise). Default binary size unchanged at 150,514,926 bytes; browser-free binary 82,625,882 bytes.
+- **Gates measured:** `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --lib` 1523 passed / 0 failed / 1 ignored (unchanged); `cargo test --all-targets --quiet` 1523 lib + 7 bin-unit + 4 integration passed; `cargo test --locked --no-default-features --quiet` 1517 lib + 7 bin-unit + 4 integration passed / 0 failed / 1 ignored; `git diff --check` 0.
+- **Binary smoke:** default `webview` binary still crashes before `main` with `0xC0000005` on `--help` and `diagnose --brain deepseek --headless` (pre-existing, blocked DoD item). Browser-free binary: `--help` exit 0; `diagnose --brain deepseek --headless` exit 1 with the intended `page-unavailable: WebView-Feature nicht aktiviert` message. Linux cross-check blocked: `x86_64-linux-gnu-gcc` is not installed; the Linux dependency tree was checked instead.
+- **Grenze / offen:** no credentials, live provider call, release, tag, deployment, PR or merge. T-1004..T-1005 remain free; T-1004 still needs explicit owner approval — stop here.
+
 ## 2026-11-26 - T-1002 implemented: tui_load/tui_state cycle removed, legacy TUI cycle documented
 
 - **Branch/claim:** `refactor/T-1002-tui-cycles`, claim commit `06f5f2d`, owner `local/opencode`. T-1002 stays `claimed`; no merge, no `done`, no PR. Formal `depends_on: T-997` was overridden by the owner's standing "autonom weiterarbeiten"; T-997 stays `claimed`.

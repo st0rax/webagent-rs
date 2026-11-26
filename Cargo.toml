@@ -22,7 +22,6 @@ fancy-regex = "0.14"
 clap = { version = "4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
 lazy_static = "1.5"
 fs2 = "0.4"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "std", "local-offset", "macros"] }
 tokio = { version = "1", features = ["full"] }
 # T-601: HTTP/1.1 + rustls, kein reqwest, kein System-OpenSSL.
@@ -39,32 +38,36 @@ crossterm = { version = "0.28", optional = true }
 
 [features]
 default = ["webview"]
-# `webview` traegt nur die plattformfreien Crates. Die Windows-Bindings sitzen
-# in der `cfg(windows)`-Sektion unten und sind dort NICHT optional: So kann
-# derselbe Featurename auf Linux (WebKitGTK ueber wry) und auf Windows
-# (WebView2) gelten, ohne dass Linux an windows-only Crates scheitert.
-webview = ["dep:wry", "dep:tao"]
+# `webview` traegt die plattformfreien Crates und, auf Windows, die GUI-Bindings
+# aus der `cfg(windows)`-Sektion unten. Alle sind `optional = true`, damit
+# `--no-default-features` auch auf Windows keine GUI-Crates linkt. Derselbe
+# Featurename gilt auf Linux (WebKitGTK ueber wry) und auf Windows (WebView2),
+# ohne dass Linux an windows-only Crates scheitert.
+webview = ["dep:wry", "dep:tao", "dep:webview2-com", "dep:windows", "dep:arboard", "dep:clipboard-win", "dep:image"]
 # TUI bleibt hinter ihrem Feature als Legacy-Subcommand baubar
 # (docs/WEB_UI_API_TOOL_RESET.md, Phase 0 + 2), ist aber nicht mehr der
 # Defaultstart. Angelegter Stand: archive/tui-ui + tui-ui-preservation-2026-09-01.
 tui = ["dep:ratatui", "dep:crossterm"]
 
-# Nur unter Windows aufgeloest — auf Linux/Android existieren diese Crates gar
-# nicht, weshalb der Code sie durchgaengig hinter
-# `cfg(all(windows, feature = "webview"))` fuehrt.
+# Nur unter Windows aufgeloest. Die GUI-Crates sind optional und haengen am
+# `webview`-Feature; der Code fuehrt sie durchgaengig hinter
+# `cfg(all(windows, feature = "webview"))`. windows-sys bleibt nicht optional:
+# PID-Liveness und Atomarschreiben (config/) brauchen es auch ohne Browser.
 [target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 # Direktzugriff auf ICoreWebView2Settings, um native JS-Dialoge (alert/confirm)
 # abzuschalten — die blockieren sonst die geteilte Event-Loop.
-webview2-com = "0.33"
+webview2-com = { version = "0.33", optional = true }
 # Win32_UI_WindowsAndMessaging + ToolHelp: die Kachelansicht sucht das
-# Terminalfenster ueber die Elternkette (brain_grid.rs).
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
+# Terminalfenster ueber die Elternkette (brain_grid.rs). JobObjects beendet
+# Worker beim Prozessende (worker_pool.rs).
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"], optional = true }
 # Kimi dokumentiert Ctrl-V als den primaeren Bild-Uploadweg.  arboard setzt
 # dafuer das echte Windows-Bildformat (CF_DIB) in die Zwischenablage; image
 # decodiert die vom API-Client gelieferten PNG/JPEG/GIF/BMP/WebP-Bytes in RGBA.
-arboard = "3.6"
-clipboard-win = "5.4"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
+arboard = { version = "3.6", optional = true }
+clipboard-win = { version = "5.4", optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"], optional = true }
 
 [lib]
 name = "webagent"
