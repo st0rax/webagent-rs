@@ -1,5 +1,15 @@
 # Current Work
 
+## 2026-11-26 - T-1004 delivered: crate split decision (design only)
+
+- **Branch/claim:** `docs/T-1004-crate-split`, claim commit `f27928b`, owner `local/opencode`. T-1004 stays `claimed`; no merge, no `done`, no PR. The owner phrase `mach fertig den senf` approved finishing the design document only, not crate extraction. Formal `depends_on` is satisfied in substance by T-998..T-1003, but those branches are also still unmerged.
+- **Delivered:** `docs/arch/CRATE_SPLIT.md` with a re-measured baseline, the naive and recommended group graphs, per-crate module/Cargo trees, seven required trait boundaries, the workspace-root `[profile.*]` policy, nine ordered follow-up proposals and an explicit no-go list. Proof: `docs/proofs/T-1004/README.md`. No `src/`, Cargo, profile or test file was touched; no follow-up task ID was created.
+- **Decision:** three libraries (`webagent-core`, `webagent-transport`, `webagent-api`) plus the existing root binary crate. Recommended grouping measured at 34 core / 9 transport / 9 api / 36 root modules. Six cross-crate blockers remain before extraction: `contract`/`counting → browser`, `browser → browser_inference`, three `brain_grid` hooks, and `relay → WebBrainBackend`. They need `PageProbe`, shared inference types, `PanelSink` and `BackendFactory`; `RelayBackend` already exists privately in `relay.rs` and should become a public core trait.
+- **Baseline re-measured, not quoted:** `cargo test --lib --quiet` 1523 passed / 0 failed / 1 ignored (53.09 s); guard 88 modules / 274 edges / 3 cycles / 32 upward edges; clean lib test build+link 65.98 s with a 162,341,370-byte test executable; clean default binary build+link 40.47 s with a 150,514,926-byte `webagent.exe`; 21 direct Cargo dependencies. A scratch copy of the guard sanitizer under `%TEMP%\opencode\` produced the group matrices without touching repo files.
+- **Gates measured:** `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --lib --quiet` 1523 passed / 0 failed / 1 ignored (unchanged); `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1523 lib + 7 binary-unit + 4 integration passed; startup markdown-banner test 1 passed; `git diff --check` 0.
+- **Binary smoke blocked, not a regression:** default `webview` `--help` still exits `-1073741515` (`0xC0000005`) before `main` at the claim commit. No binary-affecting change was made, and `[profile.*]` (`codegen-units = 16`) was not touched.
+- **Grenze / offen:** no crate extraction, code change, credentials, live call, release, tag, deployment, PR or merge. Next extraction step requires a fresh, explicit owner approval; stop here.
+
 ## 2026-11-26 - T-1005 delivered: CLI grouping design (no code changes)
 
 - **Branch/claim:** `docs/T-1005-cli-groups`, claim commit `afd11c9`, owner `local/opencode`. T-1005 stays `claimed`; no merge, no `done`, no PR. Formal `depends_on: T-997` was overridden by the owner's standing "autonom weiterarbeiten"; T-997 stays `claimed`.
