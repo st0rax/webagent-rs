@@ -4,11 +4,10 @@ use std::time::Instant;
 
 #[cfg(test)]
 use crate::brain::BrainResponse;
-use crate::brain::{
-    BackendFactory, ImageGenerationBackend, RelayBackend, SessionState, WebBackendFactory,
-};
+use crate::brain::{BackendFactory, ImageGenerationBackend, RelayBackend, SessionState};
 use crate::inference_types::{BrowserAttachment, ClientPresence};
 use crate::timeouts::resolve_timeout;
+use crate::WebBackendFactory;
 
 #[derive(Debug)]
 pub struct RelayError(pub String);

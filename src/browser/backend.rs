@@ -12,7 +12,6 @@ use super::{
 };
 use crate::brain::{
     BackendFactory, BrainBackend, BrainResponse, ImageGenerationBackend, PageProbe, RelayBackend,
-    WebBackendFactory,
 };
 use crate::inference_types::{BrowserAttachment, WebSearchObservation};
 // Beide nur mit `webview`: ohne das Feature gibt es weder das Modul noch einen
@@ -713,6 +712,12 @@ impl ImageGenerationBackend for WebBrainBackend {
         WebBrainBackend::stop(self)
     }
 }
+
+/// Concrete [`BackendFactory`] marker for the browser backend.
+///
+/// The trait stays in `webagent-core`; the marker lives here so this local
+/// crate can implement the foreign trait for a local type (orphan rule).
+pub struct WebBackendFactory;
 
 impl BackendFactory for WebBackendFactory {
     fn create_brain_backend(brain_id: &str) -> Result<Box<dyn BrainBackend>, String> {

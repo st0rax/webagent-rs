@@ -19,7 +19,7 @@ use crate::circuit_breaker::contains_at_word_boundary;
 /// Bewusst grob: ein `{` oder ein `WEBAGENT/1`-Umschlag genügt. Es geht nicht
 /// darum, ob das Protokoll gültig ist (das prüft `protocol::parse`), sondern ob
 /// das Brain überhaupt angefangen hat zu antworten statt nur zu denken.
-pub(crate) fn has_protocol_payload(text: &str) -> bool {
+pub fn has_protocol_payload(text: &str) -> bool {
     let t = text.trim();
     t.contains('{') || t.contains("WEBAGENT/1")
 }
@@ -28,7 +28,7 @@ pub(crate) fn has_protocol_payload(text: &str) -> bool {
 /// Login, Cloudflare) — DE+EN. Geteilt zwischen `detect_block_banner` (JS-Scan der
 /// ganzen Seite) und `block_phrase_in_text` (reine Rust-Pruefung des bereits
 /// gelesenen Antworttexts), damit beide dieselbe Liste verwenden.
-pub(crate) const BLOCK_PHRASES: &[&str] = &[
+pub const BLOCK_PHRASES: &[&str] = &[
     "nachrichtenlimit",
     "message limit",
     "usage limit",
@@ -70,7 +70,7 @@ pub(crate) const BLOCK_PHRASES: &[&str] = &[
 /// im Swarm-Test "Verbesserungsvorschläge zu webagent-rs" auf: mistrals/
 /// deepseeks legitime Essays empfahlen Rate-Limiting und wurden als "blocked"
 /// verworfen.
-pub(crate) const BLOCK_BANNER_MAX_CHARS: usize = 400;
+pub const BLOCK_BANNER_MAX_CHARS: usize = 400;
 
 /// Prueft einen bereits gelesenen Antworttext (nicht die ganze Seite) auf eine
 /// Block-Phrase. Faengt Faelle wie qwen, wo das Limit-Banner NICHT separat auf der
@@ -78,7 +78,7 @@ pub(crate) const BLOCK_BANNER_MAX_CHARS: usize = 400;
 /// sah `wait_response` es vorher nicht, weil der periodische Banner-Scan nur laeuft,
 /// solange noch kein Text da ist, und ein bereits "vollstaendiger" Text-Block direkt
 /// als echte Antwort durchgereicht wurde.
-pub(crate) fn block_phrase_in_text(text: &str) -> Option<&'static str> {
+pub fn block_phrase_in_text(text: &str) -> Option<&'static str> {
     // Nur kurze Texte können ein Banner sein; in Fließtext ist die Phrase Inhalt.
     if text.chars().count() > BLOCK_BANNER_MAX_CHARS {
         return None;

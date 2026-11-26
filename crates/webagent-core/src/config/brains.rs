@@ -175,9 +175,14 @@ pub fn shared_debug_port() -> u16 {
         .unwrap_or(9222)
 }
 
-/// selectors/-Verzeichnis (ROOT/selectors/{brain}.json), wie SELECTORS_DIR in config.py.
+/// selectors/-Verzeichnis mit den mitgelieferten Asset-Dateien
+/// (`{brain}.json`), wie SELECTORS_DIR in config.py.
+///
+/// T-1011: the bundled assets moved together with `config/selectors.rs` into
+/// `crates/webagent-core/selectors/`, so this path is crate-local rather than
+/// derived from the workspace `root_dir()`.
 pub fn selectors_dir() -> PathBuf {
-    root_dir().join("selectors")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("selectors")
 }
 
 /// Statische Brain-Tabelle: (id, url) — exakt wie das BRAINS-Dict in config.py.

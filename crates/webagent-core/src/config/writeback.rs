@@ -133,7 +133,7 @@ pub fn write_back_dir_to_master(dir: &Path) -> Result<(), String> {
 /// Testable write-back entry point with explicit paths. It takes the same
 /// fail-closed lock as the production path.
 #[cfg_attr(not(feature = "webview"), allow(dead_code))]
-pub(crate) fn prepare_shared_profile_for_clone() -> Result<WriteBackLock, String> {
+pub fn prepare_shared_profile_for_clone() -> Result<WriteBackLock, String> {
     let master = shared_profile_dir();
     prepare_master_for_runtime_clone(&master)
 }
@@ -316,7 +316,7 @@ fn fail_and_restore_master(master: &Path, backup: &Path, error: String) -> Resul
 /// OS-managed cross-process lock for the irreversible shared-profile mutation.
 /// The advisory file lock is released by the operating system on process exit,
 /// so no stale-directory heuristic can steal a fresh writer or wedge recovery.
-pub(crate) struct WriteBackLock {
+pub struct WriteBackLock {
     file: File,
 }
 

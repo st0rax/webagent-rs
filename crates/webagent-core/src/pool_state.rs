@@ -205,7 +205,7 @@ impl PoolControl {
 
 /// Schreibt eine Datei vollständig in eine gleichgeordnete temporäre Datei und
 /// veröffentlicht sie anschließend per atomarem Replace.
-pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+pub fn atomic_write(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)?;
 

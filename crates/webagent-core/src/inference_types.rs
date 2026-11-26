@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub(crate) const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
+pub const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
 /// Stabiler Marker fuer Fehler, die in der MODELLAUSGABE liegen (T-953).
 /// `api_bridge/provider_handlers.rs` erkennt ihn und meldet `server_error` statt
 /// `invalid_request_error`: die Client-Anfrage war gueltig, das Browsermodell
@@ -17,21 +17,21 @@ pub(crate) const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
 pub const MODEL_OUTPUT_ERROR_MARKER: &str = "MODEL_OUTPUT_ERROR:";
 
 /// Kennzeichnet einen Parserfehler der Modellausgabe mit dem stabilen Marker.
-pub(crate) fn model_output_error(message: impl std::fmt::Display) -> String {
+pub fn model_output_error(message: impl std::fmt::Display) -> String {
     format!("{MODEL_OUTPUT_ERROR_MARKER} {message}")
 }
 
 /// Stabiler Fehlername für das native DSML-Werkzeugformat (T-957).
-pub(crate) const DSML_TOOL_FORMAT_ERROR: &str = "DSML_TOOL_FORMAT_UNSUPPORTED";
+pub const DSML_TOOL_FORMAT_ERROR: &str = "DSML_TOOL_FORMAT_UNSUPPORTED";
 /// DSML-Marker aus dem realen deepseek-Beispiel (2026-09-14). Die zweite Form
 /// ist die im Taskboard gespeicherte, durch eine Zeichencodierung verformte
 /// Variante desselben Markers.
-pub(crate) const DSML_MARKERS: [&str; 2] = ["｜｜DSML｜｜", "´¢£´¢£DSML´¢£´¢£"];
+pub const DSML_MARKERS: [&str; 2] = ["｜｜DSML｜｜", "´¢£´¢£DSML´¢£´¢£"];
 // Browser chat UIs are substantially less tolerant of a giant tool prompt
 // than their HTTP APIs. Keep the serialized schema block bounded while still
 // retaining every tool name and its argument shape for the model.
-pub(crate) const MAX_TOOL_SCHEMA_BYTES: usize = 64 * 1024;
-pub(crate) const TOOL_DESCRIPTION_LIMITS: &[usize] = &[1024, 512, 256, 128, 0];
+pub const MAX_TOOL_SCHEMA_BYTES: usize = 64 * 1024;
+pub const TOOL_DESCRIPTION_LIMITS: &[usize] = &[1024, 512, 256, 128, 0];
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BrowserTool {

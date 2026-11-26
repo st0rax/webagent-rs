@@ -701,7 +701,7 @@ mod tests {
         // Belegt den Groessenunterschied, um den es geht: die Gliederung von
         // protocol.rs ist ein Bruchteil der Datei. Am 30.07.2026 verbrauchte
         // zai alle 15 Zyklen einer Runde mit Lesen und kam nie zum Editieren.
-        let datei = crate::config::root_dir().join("src/protocol.rs");
+        let datei = crate::config::root_dir().join("crates/webagent-core/src/protocol/mod.rs");
         if !datei.is_file() {
             return; // im Zweifel nicht raten: Datei kann umbenannt worden sein
         }
@@ -716,9 +716,10 @@ mod tests {
         assert!(gliederung.contains("GLIEDERUNG"));
 
         // Und sie landet im Aufgabentext, sobald der Plan eine Zieldatei nennt.
-        let plan = "Zieldatei: src/protocol.rs. Implementiere dort eine Funktion.";
-        assert_eq!(target_file_of(plan).as_deref(), Some("src/protocol.rs"));
-        let prompt = build_task_prompt_in(plan, &crate::config::root_dir());
+        let ziel = "crates/webagent-core/src/protocol/mod.rs";
+        let plan = format!("Zieldatei: {ziel}. Implementiere dort eine Funktion.");
+        assert_eq!(target_file_of(&plan).as_deref(), Some(ziel));
+        let prompt = build_task_prompt_in(&plan, &crate::config::root_dir());
         assert!(prompt.contains("GLIEDERUNG"), "Gliederung fehlt im Prompt");
 
         // Ohne Zieldatei bleibt der Prompt unveraendert kurz.

@@ -627,7 +627,9 @@ mod tests {
         const MIRROR_BEGIN: &str = "<!-- TASKBOARD-MIRROR-BEGIN -->";
         const MIRROR_END: &str = "<!-- TASKBOARD-MIRROR-END -->";
 
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        // This test moved with the module into webagent-core; the board stays
+        // in the workspace root, two directories above the crate manifest.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let path = root.join("docs/TASKBOARD.json");
         let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(
