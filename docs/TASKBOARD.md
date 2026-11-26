@@ -197,6 +197,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1006 | 16 | Public core traits and shared inference types | refactor | claimed | local/opencode | refactor/T-1006-core-traits |
 | T-1007 | 16 | PanelSink boundary: remove transport hooks into brain_grid | refactor | claimed | local/opencode | refactor/T-1007-panel-sink |
 | T-1008 | 16 | Auto-copy WebView2Loader.dll and correct binary-smoke diagnosis | fix | claimed | local/opencode | fix/T-1008-webview-loader-smoke |
+| T-1009 | 16 | ImageBackend boundary: remove relay -> WebBrainBackend edge | refactor | claimed | local/opencode | refactor/T-1009-image-backend |
 
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
@@ -315,4 +316,5 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1006 | claimed |
 | T-1007 | claimed |
 | T-1008 | claimed |
+| T-1009 | claimed |
 <!-- TASKBOARD-MIRROR-END -->
