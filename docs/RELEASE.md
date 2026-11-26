@@ -8,6 +8,9 @@
 > mit vollständig grünem Workflow `45725669798`, sieben geprüften Assets und
 > lokalem Deployment; der Live-Turn-Beleg liegt unter
 > `docs/proofs/live-turn-2026-11-26/`.
+> Der Patch-Release `v0.11.8` (Tag-Commit `fb7b886`) wurde am 26.11.2026
+> veröffentlicht. Die 32 Commits danach (T-1007..T-1016) sind bewusst **nicht**
+> neu getaggt; ein weiterer Tag braucht eine neue ausdrückliche Freigabe (G-009).
 
 # Release-Vorgang (T-967)
 
@@ -24,9 +27,9 @@ Workflows gegen `v0.11.4` scheitert absichtlich an der Versionsprüfung.
 ## Reihenfolge
 
 1. **Bump:** `Cargo.toml` `[package].version` und den `webagent`-Eintrag in
-   `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.6`).
+   `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.8`).
 2. **Lokal prüfen:**
-   `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.6` → Exit 0.
+   `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.8` → Exit 0.
    Gegen `v0.11.4` muss das Skript Exit 1 liefern.
 3. **Gates:** `cargo fmt --all -- --check`,
    `cargo clippy --all-targets -- -D warnings`, `cargo test --lib`,

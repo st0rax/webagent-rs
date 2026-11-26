@@ -32,7 +32,7 @@ laufen. Niemals eine verkettete Aufgabe aus dem Block reissen.
 | T-201 | 2 | Eingebettete Assets + Loopback-Serverstart (eine Binary) | code | done | grok-agent | feature/T-201-web-ui-server |
 | T-202 | 2 | Endpunkte: Session/Capability/Health/Upload/Chat/Stop/Event | code | done | grok-agent | feature/T-202-ui-endpoints |
 | T-203 | 2 | Klickbarer Fake-Prototyp (Grok-Layout) + A11y-Gates | code | done | grok-agent | feature/T-203-grok-layout-prototype |
-| T-301 | 3 | Claude-Referenz: Delta-Streaming live (Freigabegrenze!) | live | claimed | grok-agent | – |
+| T-301 | 3 | Claude-Referenz: Delta-Streaming live (Freigabegrenze!) | live | done | grok-agent | – |
 | T-302 | 3 | Claude: Modelle/Aufwand runtime ermitteln, wählen, nachprüfen | live | done | local/opencode | feature/T-302-claude-runtime-model |
 | T-401 | 4 | DTOs feldvollständig + monotone sequence_number in Responses-SSE | code | done | grok-agent | feature/T-401-responses-sse-seq |
 | T-402 | 4 | Negativfelder/Fehler: seed/logprobs/... klar ablehnen; IDs/Header | code | done | grok-agent | feature/T-402-reject-unsupported |

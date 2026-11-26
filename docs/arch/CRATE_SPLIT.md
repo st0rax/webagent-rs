@@ -3,6 +3,16 @@
 > **Referenz.** Design decision for T-1004, not an extraction order. The live
 > tree is still one package; `Cargo.toml` and every `[profile.*]` section stay
 > unchanged. Any crate move needs a new, explicit owner approval.
+>
+> **Aktualisierung 26.11.2026 (historisch überholt):** Die unten stehenden
+> Abschnitte 3–8 beschreiben den damaligen Entwurf. T-1006/T-1007 haben die
+> Trait- und PanelSink-Grenzen bereits im Einzelpaket umgesetzt; T-1010..T-1013
+> haben danach workspace und vier Crates (`webagent-core`, `-transport`,
+> `-api`, Binärkrate) nach `master` gemergt (`crate_violations=0`). Die Aussagen
+> „live tree is still one package", „no crate extraction" und „all phase-16
+> branches remain claimed" gelten nicht mehr. Maßgeblich sind
+> `docs/CURRENT_WORK.md`, `docs/TASKBOARD.json` und die Belege unter
+> `docs/proofs/T-1010/` bis `T-1013/`.
 
 **Status:** decided on paper, blocked in reality. This document recommends a cut
 and lists the traits that must exist first. It does not create crates, tasks or

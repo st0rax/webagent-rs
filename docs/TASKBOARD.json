@@ -3102,7 +3102,7 @@
       "status": "done",
       "title": "Selector I/O error on second PC breaks backend creation",
       "type": "fix",
-      "verification": "fmt 0; clippy 0; lib 459+185+630+280=1554 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; release build 0; diff-check 0; 2 new regression tests; final release build from master 6ccec0e34 -> exe sha256 D96F4999693AE24F69DEE20A010483A55863B1CA8E813E32956E8781E573EEAB, staged in .../webagent-deploy-target/T1016-20261126/ (not active); details docs/proofs/T-1016/gates.txt"
+      "verification": "fmt 0; clippy 0; lib 459+185+630+280=1554 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; release build 0; diff-check 0; 2 new regression tests; final release build from master 6ccec0e34 -> exe sha256 D96F4999693AE24F69DEE20A010483A55863B1CA8E813E32956E8781E573EEAB, staged in .../webagent-deploy-target/T1016-20261126/ and, on later owner instruction ('ich warte immer noch auf ne neue binarsy'), activated locally as PID 16972 with health ok / 9 models; no live chat PASS (150 s timeout, concurrent tools=12 turn failed with ABSENDEKNOPF_DEAKTIVIERT); rollback backup-release-before-T1016-20261126; details docs/proofs/T-1016/gates.txt and docs/proofs/deploy-T1016-bridge-restart-2026-11-26/README.md"
     }
   ]
 }

@@ -1,3 +1,50 @@
+## 2026-11-26 - Abgleich: Bridge-Zweige und Doku-Stand
+
+- `git branch --no-merged origin/master` listet viele Zweige, deren Arbeit
+  **bereits auf `master` liegt** — sie wurden per Squash/PR oder Cherry-Pick
+  uebernommen, nicht vergessen. Belege: `chore/T-974-bridge-autostart` → PR
+  #114 (`c9050f3`), `chore/T-975-pi-full-coverage` → PR #115 (`93d33a3`),
+  `chore/actions-node24` → PR #105 (`c1f01f0`),
+  `fix/T-1014-gemini-prompt-input` → `a6c8b97`, `refactor/T-1000-…` →
+  `52b41f8`. Die payload-Dateien sind bytegleich auf `master`. **`Nicht`
+  erneut mergen und nicht loeschen** (Loeschen braucht Freigabe).
+- Board-Spiegel `docs/TASKBOARD.md` hatte T-301 noch `claimed`, obwohl die JSON
+  (Quelle der Wahrheit) `done` meldet; korrigiert. Living Docs `GOALS.md`,
+  `docs/OVERVIEW.md`, `docs/RELEASE.md` und `docs/arch/CRATE_SPLIT.md` hatten
+  veraltete Stand-/Release-Aussagen (93 Tasks, `v0.11.6/7`, „noch ein
+  Paket"); auf 122 Tasks / `v0.11.8` / vier Crates aktualisiert bzw. als
+  historisch markiert. Dated Log-Eintraege bleiben unveraendert Historie.
+- Goal-Stack (`~/.agents/goal/stack.json`): G-010 und G-011 mit Belegen
+  abgeschlossen; kein Tag und kein Release erzeugt (G-009 gilt weiter).
+- Re-Gates nach dem Abgleich: fmt 0; clippy 0; lib 459+185+630+280 = 1554
+  passed / 0 failed / 1 ignored; Architektur 5 passed (`modules=92,
+  edges=282, cycles=3, upward_edges=26, crate_violations=0`); tui 0;
+  `--no-default-features` 0; `git diff --check` 0.
+
+## 2026-11-26 - T-1016-EXE aktiv deployt (auf Eigentuemer-Anweisung)
+
+- **Anweisung:** Der Eigentuemer schrieb „kannst du bitte als
+  projektverantwortlicher dran arbeiten ohne alle 5 minuten aufzuhlren" und
+  „und ich warte immer noch auf ne neue binarsy". Das wurde als konkrete
+  Anweisung gelesen, die neue Binary in den aktiven Betrieb zu bringen; die
+  fruehere T-1016-Grenze „kein lokaler Restart" ist damit ersetzt.
+- **Tausch:** Backup in
+  `backup-release-before-T1016-20261126\` (alte T-1015-EXE
+  `E35A7092…80C8`, DLL, SHA-Datei, Breaker-State; Hashes nach Kopieren
+  geprueft). PID `2564` gestoppt, Port 8788 frei, neue aktive EXE
+  `D96F4999…EEAB` (`webagent 0.11.8 (6ccec0e34)`), DLL `465A7DDF…A0A6F`.
+  Neue PID `16972`, identische Command Line, Health `ok`, `/v1/models` 200
+  mit Header / 401 ohne.
+- **Ehrliche Live-Grenze:** Ein kontrollierter Chat-Turn lief 150 s und
+  wurde ohne eigenes `events.jsonl`-Event abgebrochen; parallel scheiterte
+  eine `tools=12`-Anfrage mit `prompt_chars=196027` an
+  `ABSENDEKNOPF_DEAKTIVIERT` (Event 21:53:36 UTC, `success=false`). Das ist
+  eine UI-Sende-Fehlerklasse, kein Selektoren-Fehler. Kein Live-PASS
+  behauptet. Details und Rueckweg:
+  `docs/proofs/deploy-T1016-bridge-restart-2026-11-26/README.md`.
+- **Grenze:** Kein Tag, Release, Versionssprung, Login oder
+  Zugangsdatenausgabe (Key nur als Header verwendet).
+
 ## 2026-11-26 - T-1016 umgesetzt: Selektoren-Fallback bei I/O-Fehler
 
 - **Auslöser:** Der Eigentuemer testete die Binary auf einem zweiten PC und
@@ -24,11 +71,12 @@
   — SHA-256 `D96F4999693AE24F69DEE20A010483A55863B1CA8E813E32956E8781E573EEAB`
   (DLL `465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311C10EA0A6F`).
   Die aktive lokale `release\`-EXE bleibt bei T-1015 (`E35A7092…`).
-- **Grenze:** Der lokale Bridge-Prozess (T-1015, PID `2564`) wurde nicht
-  angefasst. Ein EXE-Tausch oder Neustart braucht eine neue ausdrueckliche
-  Freigabe; auf dem zweiten PC muss der Eigentuemer die neue Binary selbst
-  einsetzen. Kein Tag, Release, Versionssprung oder Login; keine
-  Zugangsdatenausgabe.
+- **Damalige Grenze (durch den nachfolgenden Deploy-Abschnitt ersetzt):** Der
+  lokale Bridge-Prozess (T-1015, PID `2564`) wurde zunaechst nicht angefasst;
+  der spaetere Tausch erfolgte erst nach der oben dokumentierten
+  Eigentuemer-Anweisung. Auf dem zweiten PC muss der Eigentuemer die Binary
+  weiterhin selbst einsetzen. Kein Tag, Release, Versionssprung oder Login;
+  keine Zugangsdatenausgabe.
 
 ## 2026-11-26 - T-1015 live deployt und verifiziert
 
