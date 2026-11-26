@@ -1,5 +1,15 @@
 # Current Work
 
+## 2026-11-26 - T-975: Pi-Abdeckung geschlossen
+
+- **Branch:** `chore/T-975-pi-full-coverage`, Basis `master` `c9050f3`. T-975 ist `done` mit `done_at=2026-11-26`; Board und Markdown-Spiegel sind nachgezogen. Direkte Nutzeranforderung: „ja bitte auf 100% hinarbeiten". Keine Runtime-Änderung, kein Portwechsel, kein Eingriff in fremde Pi-Provider.
+- **Alle Brains registriert:** Die dynamische Extension `examples/pi/extensions/webagent-models.ts` wurde nach `%USERPROFILE%\.pi\agent\extensions\webagent-models.ts` installiert (Pfad aus der Pi-Dokumentation für auto-discovery/hot-reload). `pi --list-models webagent` liefert exit 0 mit neun Modellen: `auto`, `chatgpt`, `claude`, `deepseek`, `gemini`, `kimi`, `mistral`, `qwen`, `zai`; die letzten beiden ohne Bildunterstützung.
+- **Neun echte Turns:** Jedes registrierte Modell wurde einzeln mit `pi --offline --provider webagent --model webagent/<brain> --no-tools --no-session --no-context-files --no-skills --no-prompt-templates --mode json` gegen die dauerhaft laufende Bridge gefahren. Alle neun: exit 0, Marker `WEBAGENT-<BRAIN>-OK-20261126` exakt gefunden.
+- **Dialog über die echte Verknüpfung:** `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\WebAgent Bridge Start.lnk` real per `Start-Process` gestartet. Sichtbares Fenster `WebAgent Bridge Start` mit `hwnd=23791118`, `visible=True`, `rect=122,130,1251,765` (Win32 `GetWindowRect`/`IsWindowVisible`). `n{ENTER}` → `optin=False`, `port=False`, `prompt.log` `Antwort=aus`, Fenster nach 15 s automatisch zu. `j{ENTER}` → `optin=True`, `port=True`, `Antwort=start`, `supervisor.log` `Bridge gestartet PID=7000` und gesund.
+- **Beleg:** `docs/proofs/T-975/pi-volle-abdeckung.md` mit Katalogtabelle, allen neun Turn-Ergebnissen und den Dialog-Messwerten. Kein Tokenwert, kein `Bearer `, keine Cookies in Datei oder Ausgabe; `auth.json` blieb unberührt, es wurde keine Anmeldung durchgeführt.
+- **Gates:** `cargo fmt --all -- --check` 0; `cargo clippy --all-targets --locked -- -D warnings` 0; `cargo test --lib --locked` 1521 passed / 0 failed / 1 ignored; `git diff --check` 0.
+- **Grenze:** Der Anmelde-Dialog wurde über die echte Verknüpfung und das echte Skript geprüft, nicht durch einen echten Reboot/Re-Login – dafür ist eine gesonderte ausdrückliche Freigabe nötig. Kein Last-, Dauerlast- oder Parallelitätstest, keine neue Browser-Anmeldung, kein Release, kein Tag, kein Deployment.
+
 ## 2026-11-26 - T-974: Bridge-Dauerbetrieb mit Anmelde-Abfrage
 
 - **Branch:** `chore/T-974-bridge-autostart`, Basis `master` `d824b10`. T-974 ist `done` mit `done_at=2026-11-26`. Direkte Nutzerentscheidung: "bitte bei windows start terminalfenster mit abfrage ob bridge gestartet werden soll".
