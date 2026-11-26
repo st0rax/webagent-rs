@@ -2384,5 +2384,78 @@
       "proof_path": "docs/CURRENT_WORK.md",
       "verification": "pi --list-models webagent exit 0 mit neun Modellen (auto, chatgpt, claude, deepseek, gemini, kimi, mistral, qwen, zai). Alle neun echten Pi-Turns exit 0 mit exaktem Marker WEBAGENT-<BRAIN>-OK-20261126. Dialog ueber echte Autostart-.lnk gestartet: sichtbares Fenster hwnd=23791118, visible=True, rect=122,130,1251,765; n{ENTER} -> optin=False port=False und prompt.log Antwort=aus; j{ENTER} -> optin=True port=True und Antwort=start, Bridge PID=7000 gesund. Beleg docs/proofs/T-975/pi-volle-abdeckung.md. Gates: fmt 0, clippy 0, 1521 passed / 0 failed / 1 ignored, diff-check 0.",
       "claimed_note": "Direkte Nutzeranforderung: 'ja bitte auf 100% hinarbeiten'."
-    }  ]
+    },
+    {
+      "id": "T-976",
+      "phase": "15",
+      "type": "fix",
+      "title": "API-Turns decken geparkte Brain-Fenster auf",
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-976-api-turn-reveal",
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26",
+      "depends_on": [],
+      "scope": [
+        "src/browser/mod.rs",
+        "src/browser/backend.rs",
+        "src/relay.rs",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-976/api-turn-reveal.md"
+      ],
+      "objective": "Nach dem Reboot blieben Pi-Turns gegen die lokale Bridge haengen, obwohl das Brain-Fenster vorhanden war: ensure_ready parkt bei Ready, der API-Pfad ruft kein Reveal auf, wake_renderer ist nur ein CDP-Maus-Nudge. Ein frischer webagent/claude-Turn mit zwei Zeichen Prompt endete nach 94,6 s mit 'Request aborted' ohne Bridge-Event.",
+      "dod": "Der Bridge-/Relay-Pfad deckt das Brain-Fenster vor dem Turn auf und parkt es nach dem Turn zuverlaessig wieder; Unit-Tests belegen die Sichtbarkeits- und Rueckweg-Invariante; Gates gruen; echter Pi-Turn gegen die neu gebaute Bridge belegt.",
+      "handoff": "Geclaimt 2026-11-26 durch local/opencode auf master 93d33a3. Nutzeranforderung: 'ja fix und update meine test umgebung (wahrscheinlich fixen, bauen, bridge neu starten...you name it)'. Kein Login, keine Zugangsdaten, kein Fernzugriff.",
+      "non_goals": [
+        "Kein Eingriff in Pi-Sitzungsdateien, auth.json oder bestehende Tokens.",
+        "Kein Reboot/Re-Login ohne neue ausdrueckliche Freigabe.",
+        "Kein Fern- oder Produktiv-Deployment, kein neues Release ohne Freigabe.",
+        "Kein Umbau der Brain-Score- oder Proof-Gates."
+      ],
+      "proof_path": "docs/proofs/T-976/api-turn-reveal.md",
+      "verification": "Gates: fmt 0, clippy 0, 1525 passed / 0 failed / 1 ignored, diff-check 0. Release gebaut und deployt (SHA-256 8b7877c2136c035e8e5b3d8fa51c5fe92f76948ad2cd0e2146ceed5bb9696e52), Bridge neu gestartet PID 17372, health ok. Echter Pi-Turn webagent/auto 'hi' mit Antwort belegt; AUTO-Router fiel nach drei content_check-Fehlern auf gemini und lieferte sauber. Beleg docs/proofs/T-976/api-turn-reveal.md.",
+      "claimed_note": "Nutzerfreigabe zum Beenden der alten Pi-Session und Neustart; Deployment ausdruecklich freigegeben."
+    },
+    {
+      "id": "T-977",
+      "phase": "15",
+      "type": "fix",
+      "title": "Modellgrenzen anheben und Timeouts zentral konfigurierbar machen",
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-976-api-turn-reveal",
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26",
+      "depends_on": [],
+      "scope": [
+        "src/config/limits.rs",
+        "src/config/mod.rs",
+        "src/api_bridge/catalog.rs",
+        "src/api_bridge/tests.rs",
+        "src/timeouts.rs",
+        "src/relay.rs",
+        "src/browser/backend.rs",
+        "src/browser/send.rs",
+        "src/browser/surface.rs",
+        "src/webview_runtime.rs",
+        "src/worker_pool.rs",
+        "examples/pi/extensions/webagent-models.ts",
+        "examples/pi/models.json",
+        "docs/API_BRIDGE.md",
+        "docs/CURRENT_WORK.md"
+      ],
+      "objective": "Nutzeranforderung: '128k kommt mir zu wenig vor. ausserdem output limit erhoehen' und 'alle hard codierten timeouts muessen verschwinden'. Die beworbenen Modellgrenzen waren an fuenf Stellen dupliziert und die turnkritischen Zeitwerte verstreut hart codiert.",
+      "non_goals": [
+        "Keine Aenderung an der Semantik von resolve_timeout (Override bleibt Minimum ausser bei Auto+Attachment).",
+        "Keine UI-Mikro-Sleeps im Millisekundenbereich und keine Test-Fixtures umgebaut.",
+        "Keine verifizierten pro-Brain-Kontingente behauptet; die Werte sind beworbene Defaults."
+      ],
+      "dod": "Ein zentraler, env-ueberschreibbarer Ort fuer Kontext/Output (1.000.000 / 65.536) und alle turnkritischen Dauern; Katalog, Pi-Erweiterung, statische Vorlagen und Doku konsistent; Gates gruen; Werte am live Katalog belegt.",
+      "verification": "fmt 0, clippy 0, 1525 passed / 0 failed / 1 ignored, diff-check 0. GET /v1/models gegen die neu gestartete Bridge: neun Modelle, context_window=1000000, max_tokens=65536. Neue Tests: modellgrenzen_defaults_sind_deutlich_hoever_als_128k, modellgrenzen_env_override_und_fallback, zentrale_dauern_sind_env_ueberschreibbar_und_fail_closed.",
+      "proof_path": "docs/proofs/T-976/api-turn-reveal.md",
+      "handoff": "Umschreibbare Env-Variablen: WEBAGENT_MODEL_CONTEXT_WINDOW, WEBAGENT_MODEL_MAX_TOKENS sowie WEBAGENT_RELAY_*_MS, WEBAGENT_BROWSER_*_MS, WEBAGENT_SEND_*_MS, WEBAGENT_SURFACE_*_MS, WEBAGENT_WEBVIEW_*_MS, WEBAGENT_STARTUP_GRACE_*_MS. Effektiv erst nach Bridge-Neustart wirksam."
+    }
+  ]
 }

@@ -82,6 +82,9 @@ pub struct WebBrainBackend {
     view_id: RefCell<Option<u64>>,
     /// true, solange dieses Backend das Fenster per reveal auf dem Schirm haelt.
     revealed: std::cell::Cell<bool>,
+    /// T-976: true während eines API-/Relay-Turns. Solange darf `ensure_ready`
+    /// das Fenster nicht sofort wieder parken; der Drop der Instanz parkt es.
+    turn_visible: std::cell::Cell<bool>,
     pub(crate) driver: RefCell<Option<Box<dyn PageDriver>>>,
     /// Text der letzten Assistenten-Nachricht VOR dem Senden — damit wait_response
     /// den Antwortbeginn auch dann erkennt, wenn der Nachrichtenzähler nicht
@@ -132,6 +135,7 @@ impl WebBrainBackend {
             #[cfg(feature = "webview")]
             view_id: RefCell::new(None),
             revealed: std::cell::Cell::new(false),
+            turn_visible: std::cell::Cell::new(false),
             driver: RefCell::new(None),
             baseline_text: RefCell::new(String::new()),
             last_sent: RefCell::new(String::new()),
@@ -161,6 +165,7 @@ impl WebBrainBackend {
             #[cfg(feature = "webview")]
             view_id: RefCell::new(None),
             revealed: std::cell::Cell::new(false),
+            turn_visible: std::cell::Cell::new(false),
             driver: RefCell::new(None),
             baseline_text: RefCell::new(String::new()),
             last_sent: RefCell::new(String::new()),
@@ -248,6 +253,37 @@ impl WebBrainBackend {
         if self.revealed.get() {
             let _ = self.park_offscreen();
         }
+    }
+
+    /// T-976: API-/Relay-Turns brauchen einen wachen Renderer. Ein bei `-32000`
+    /// geparktes WebView ist per CDP nicht zuverlaessig aufzuwecken (`wake_renderer`
+    /// ist nur ein Maus-Nudge), deshalb wird es vor dem Turn hereingeholt und
+    /// bleibt bis zum Drop der Backend-Instanz sichtbar.
+    pub fn reveal_for_turn(&self) -> Result<(), String> {
+        self.turn_visible.set(true);
+        if let Err(e) = self.reveal_onscreen() {
+            self.turn_visible.set(false);
+            let _ = self.park_offscreen();
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// Beendet die Turn-Sichtbarkeit und parkt das Fenster wieder.
+    pub fn end_turn_visibility(&self) {
+        self.turn_visible.set(false);
+        self.park_if_revealed();
+    }
+
+    /// Ob dieses Backend sein Fenster gerade fuer einen Turn sichtbar haelt.
+    pub fn is_turn_visible(&self) -> bool {
+        self.turn_visible.get()
+    }
+
+    /// Reine Entscheidung fuer `ensure_ready`: bei `Ready` parken, ausser der
+    /// Turn hat das Fenster bewusst hereingeholt.
+    fn park_on_ready(&self) -> bool {
+        self.revealed.get() && !self.turn_visible.get()
     }
 
     /// Schneller Login-Check: Browser kurz starten, Zustand prüfen, stoppen.
@@ -559,9 +595,38 @@ return {{count:count,text:text,stop:stop}};}})()"#,
     }
 }
 
+/// T-976: der Rueckweg liegt am Ende der Backend-Instanz, damit jeder
+/// Rueckkehrpfad aus dem Relay (Erfolg, Fehler, Abbruch) das Fenster parkt.
+impl Drop for WebBrainBackend {
+    fn drop(&mut self) {
+        if self.turn_visible.get() {
+            self.end_turn_visibility();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn t976_turn_sichtbarkeit_verhindert_parken_bei_ready() {
+        let backend = WebBrainBackend::from_url("t976", "http://127.0.0.1/").unwrap();
+        assert!(!backend.park_on_ready());
+
+        backend.revealed.set(true);
+        assert!(backend.park_on_ready());
+
+        // Fuer einen API-Turn hereingeholt: `ensure_ready` darf nicht parken.
+        backend.turn_visible.set(true);
+        assert!(backend.is_turn_visible());
+        assert!(!backend.park_on_ready());
+
+        // Nach dem Turn ist der alte Zustand wieder hergestellt.
+        backend.turn_visible.set(false);
+        assert!(!backend.is_turn_visible());
+        assert!(backend.park_on_ready());
+    }
 
     #[test]
     fn absende_wartezeit_waechst_mit_der_nachrichtenlaenge() {

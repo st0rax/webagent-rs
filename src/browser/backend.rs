@@ -341,7 +341,7 @@ impl BrainBackend for WebBrainBackend {
                 .open_page(&profile, &self.url, headless, &self.brain_id)
                 .map_err(|e| e.to_string())?;
             let nav_start = Instant::now();
-            let nav_timeout = Duration::from_secs(15);
+            let nav_timeout = crate::timeouts::browser_nav_timeout();
             driver.navigate(&self.url, nav_timeout).map_err(|e| {
                 let elapsed = nav_start.elapsed();
                 // T-804: bekannter Navigationstimeout wird mit Herkunft im
@@ -415,14 +415,18 @@ impl BrainBackend for WebBrainBackend {
                     continue;
                 }
                 SessionState::Ready => {
-                    self.park_if_revealed();
+                    // T-976: waehrend eines API-Turns darf `ensure_ready` das
+                    // bewusst hereingeholte Fenster nicht sofort wieder parken.
+                    if self.park_on_ready() {
+                        self.park_if_revealed();
+                    }
                     return Ok(SessionState::Ready);
                 }
                 _ => std::thread::sleep(Duration::from_millis(1500)),
             }
         }
         let final_state = self.session_state();
-        if final_state == SessionState::Ready {
+        if final_state == SessionState::Ready && self.park_on_ready() {
             self.park_if_revealed();
         }
         Ok(final_state)
@@ -480,7 +484,7 @@ impl BrainBackend for WebBrainBackend {
             let mut guard = self.driver.borrow_mut();
             let driver = guard.as_mut().ok_or("Backend nicht gestartet")?;
             driver
-                .navigate(&url, Duration::from_secs(30))
+                .navigate(&url, crate::timeouts::browser_navigate_timeout())
                 .map_err(|e| e.to_string())?;
         }
         Ok(())
@@ -569,7 +573,7 @@ impl BrainBackend for WebBrainBackend {
             None => return Err("Browser-Driver nicht gestartet".into()),
         };
         driver
-            .navigate(reference, Duration::from_secs(30))
+            .navigate(reference, crate::timeouts::browser_navigate_timeout())
             .map(|_| true)
             .map_err(|e| e.to_string())
     }

@@ -291,9 +291,9 @@ pub fn web_search_isolation(brain: &str) -> (&'static str, &'static str) {
 
 /// Einheitliche, pro-Brain-Metadaten für den `/v1/models`-Katalog.
 ///
-/// `context_window`/`max_tokens` bleiben konservativ als gemeinsame Defaults
-/// (keine verifizierten pro-Brain-Kontingente im Repo); `advertised_*` liefern
-/// die tatsächlich bestätigten Modalitäten.
+/// `context_window`/`max_tokens` kommen aus der zentralen, env-ueberschreibbaren
+/// Konfiguration (`config::limits`), nicht aus einer zweiten hart codierten
+/// Zahl hier. `advertised_*` liefern die tatsaechlich bestaetigten Modalitaeten.
 pub fn model_metadata(brain: &str) -> Value {
     let mut metadata = json!({
         "id": model_id(brain),
@@ -301,8 +301,8 @@ pub fn model_metadata(brain: &str) -> Value {
         "created": 0,
         "owned_by": "webagent",
         "brain": brain,
-        "context_window": 128000,
-        "max_tokens": 16384,
+        "context_window": crate::config::model_context_window(),
+        "max_tokens": crate::config::model_max_tokens(),
         "modalities": {
             "input": advertised_input_modalities(brain),
             "output": advertised_output_modalities(brain)

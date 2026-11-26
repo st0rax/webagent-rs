@@ -216,7 +216,8 @@ impl WebViewRuntime {
         // internal wait here used to let a wedged WebView outlive the runner's
         // deadline, leaving only a black window and no terminal controller
         // event in the transcript.
-        let (_view_id, driver) = self.wake_and_wait(resp_rx, Duration::from_secs(15))?;
+        let (_view_id, driver) =
+            self.wake_and_wait(resp_rx, crate::timeouts::webview_wake_timeout())?;
         Ok(driver)
     }
 
@@ -229,7 +230,7 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
-        self.wake_and_wait(resp_rx, Duration::from_secs(15))
+        self.wake_and_wait(resp_rx, crate::timeouts::webview_wake_timeout())
     }
 
     /// Holt ein Tab-Fenster auf den Bildschirm (Brain-Kachelansicht) oder parkt es wieder.
@@ -251,7 +252,7 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
-        self.wake_and_wait(resp_rx, Duration::from_secs(15))
+        self.wake_and_wait(resp_rx, crate::timeouts::webview_wake_timeout())
     }
 
     /// Holt den Fokus ausdruecklich auf eine Kachel (`focus = true`) oder gibt
@@ -271,7 +272,7 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
-        self.wake_and_wait(resp_rx, Duration::from_secs(15))
+        self.wake_and_wait(resp_rx, crate::timeouts::webview_wake_timeout())
     }
 
     fn wake_and_wait<T>(&self, resp_rx: Receiver<Result<T>>, timeout: Duration) -> Result<T> {
@@ -324,11 +325,12 @@ impl WebViewPageDriver {
         // the polling loop and left the process looking frozen; the controller
         // needs a bounded failure so it can record the event and terminate the
         // run (or recreate the view).
-        rx.recv_timeout(Duration::from_secs(8)).map_err(|_| {
-            PageDriverError::Timeout(
-                "Page-Befehl timeout (WebView moeglicherweise eingefroren)".into(),
-            )
-        })?
+        rx.recv_timeout(crate::timeouts::webview_recv_timeout())
+            .map_err(|_| {
+                PageDriverError::Timeout(
+                    "Page-Befehl timeout (WebView moeglicherweise eingefroren)".into(),
+                )
+            })?
     }
 }
 
@@ -1650,7 +1652,12 @@ fn eval_js(
     expression: &str,
     event_loop: &mut EventLoop<()>,
 ) -> Result<Value> {
-    eval_js_with_timeout(webview, expression, event_loop, Duration::from_secs(35))
+    eval_js_with_timeout(
+        webview,
+        expression,
+        event_loop,
+        crate::timeouts::webview_eval_timeout(),
+    )
 }
 
 fn eval_js_with_timeout(

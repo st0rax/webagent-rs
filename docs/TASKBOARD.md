@@ -281,4 +281,6 @@ unchanged. No tag, release, or deployment.
 | T-973 | done |
 | T-974 | done |
 | T-975 | done |
+| T-976 | done |
+| T-977 | done |
 <!-- TASKBOARD-MIRROR-END -->

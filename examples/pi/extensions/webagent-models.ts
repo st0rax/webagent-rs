@@ -34,8 +34,10 @@ function modelConfig(entry: CatalogEntry) {
     name: `WebAgent ${brain}`,
     reasoning: false,
     input,
-    contextWindow: entry.context_window ?? 128000,
-    maxTokens: entry.max_tokens ?? 16384,
+    // Katalogwerte sind authoritative (config::limits, env-ueberschreibbar).
+    // Diese Fallbackwerte greifen nur, wenn der Bridge-Katalog das Feld nicht liefert.
+    contextWindow: entry.context_window ?? 1_000_000,
+    maxTokens: entry.max_tokens ?? 65_536,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     compat: {
       supportsStore: false,
