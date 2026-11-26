@@ -185,18 +185,18 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 
 | ID | Phase | Task | Type | Status | Owner | Branch |
 |---|---|---|---|---|---|---|
-| T-997 | 16 | Layer ratchet: guard test for module dependency direction and cycles | test | claimed | local/opencode | feature/T-997-arch-layers |
-| T-998 | 16 | Break protocol/brain -> browser edges | refactor | claimed | local/opencode | refactor/T-998-protocol-browser-edge |
-| T-999 | 16 | Remove config -> worker_pool dependency | refactor | claimed | local/opencode | refactor/T-999-config-worker-pool-edge |
-| T-1000 | 16 | Remove config -> brain_limits dependency | refactor | claimed | local/opencode | refactor/T-1000-config-brain-limits-edge |
-| T-1001 | 16 | Resolve capability <-> capability_proof cycle | refactor | claimed | local/opencode | refactor/T-1001-capability-cycle |
-| T-1002 | 16 | Resolve remaining TUI-side cycles | refactor | claimed | local/opencode | refactor/T-1002-tui-cycles |
-| T-1003 | 16 | Keep Windows GUI dependencies out of the browser-free build | build | claimed | local/opencode | chore/T-1003-feature-hygiene |
-| T-1004 | 16 | Crate split decision: core / transport / api (design only) | docs | claimed | local/opencode | docs/T-1004-crate-split |
-| T-1005 | 16 | CLI structure: command groups per layer (design only) | docs | claimed | local/opencode | docs/T-1005-cli-groups |
-| T-1006 | 16 | Public core traits and shared inference types | refactor | claimed | local/opencode | refactor/T-1006-core-traits |
-| T-1007 | 16 | PanelSink boundary: remove transport hooks into brain_grid | refactor | claimed | local/opencode | refactor/T-1007-panel-sink |
-| T-1008 | 16 | Auto-copy WebView2Loader.dll and correct binary-smoke diagnosis | fix | claimed | local/opencode | fix/T-1008-webview-loader-smoke |
+| T-997 | 16 | Layer ratchet: guard test for module dependency direction and cycles | test | done | local/opencode | feature/T-997-arch-layers |
+| T-998 | 16 | Break protocol/brain -> browser edges | refactor | done | local/opencode | refactor/T-998-protocol-browser-edge |
+| T-999 | 16 | Remove config -> worker_pool dependency | refactor | done | local/opencode | refactor/T-999-config-worker-pool-edge |
+| T-1000 | 16 | Remove config -> brain_limits dependency | refactor | done | local/opencode | refactor/T-1000-config-brain-limits-edge |
+| T-1001 | 16 | Resolve capability <-> capability_proof cycle | refactor | done | local/opencode | refactor/T-1001-capability-cycle |
+| T-1002 | 16 | Resolve remaining TUI-side cycles | refactor | done | local/opencode | refactor/T-1002-tui-cycles |
+| T-1003 | 16 | Keep Windows GUI dependencies out of the browser-free build | build | done | local/opencode | chore/T-1003-feature-hygiene |
+| T-1004 | 16 | Crate split decision: core / transport / api (design only) | docs | done | local/opencode | docs/T-1004-crate-split |
+| T-1005 | 16 | CLI structure: command groups per layer (design only) | docs | done | local/opencode | docs/T-1005-cli-groups |
+| T-1006 | 16 | Public core traits and shared inference types | refactor | done | local/opencode | refactor/T-1006-core-traits |
+| T-1007 | 16 | PanelSink boundary: remove transport hooks into brain_grid | refactor | done | local/opencode | refactor/T-1007-panel-sink |
+| T-1008 | 16 | Auto-copy WebView2Loader.dll and correct binary-smoke diagnosis | fix | done | local/opencode | fix/T-1008-webview-loader-smoke |
 
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
@@ -303,16 +303,16 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-973 | done |
 | T-974 | done |
 | T-975 | done |
-| T-997 | claimed |
-| T-998 | claimed |
-| T-999 | claimed |
-| T-1000 | claimed |
-| T-1001 | claimed |
-| T-1002 | claimed |
-| T-1003 | claimed |
-| T-1004 | claimed |
-| T-1005 | claimed |
-| T-1006 | claimed |
-| T-1007 | claimed |
-| T-1008 | claimed |
+| T-997 | done |
+| T-998 | done |
+| T-999 | done |
+| T-1000 | done |
+| T-1001 | done |
+| T-1002 | done |
+| T-1003 | done |
+| T-1004 | done |
+| T-1005 | done |
+| T-1006 | done |
+| T-1007 | done |
+| T-1008 | done |
 <!-- TASKBOARD-MIRROR-END -->

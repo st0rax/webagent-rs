@@ -2390,7 +2390,7 @@
       "phase": "16",
       "type": "test",
       "title": "Layer ratchet: guard test for module dependency direction and cycles",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "tests/arch_layers.rs",
@@ -2411,14 +2411,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "feature/T-997-arch-layers",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-998",
       "phase": "16",
       "type": "refactor",
       "title": "Break protocol/brain -> browser edges (shrinks the 7-module cycle)",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2440,14 +2441,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-998-protocol-browser-edge",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-999",
       "phase": "16",
       "type": "refactor",
       "title": "Remove config -> worker_pool dependency (atomic_write and retry constant)",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2468,14 +2470,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-999-config-worker-pool-edge",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1000",
       "phase": "16",
       "type": "refactor",
       "title": "Remove config -> brain_limits dependency",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-999"
       ],
@@ -2494,14 +2497,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1000-config-brain-limits-edge",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1001",
       "phase": "16",
       "type": "refactor",
       "title": "Resolve capability <-> capability_proof cycle",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2521,14 +2525,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1001-capability-cycle",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1002",
       "phase": "16",
       "type": "refactor",
       "title": "Resolve remaining TUI-side cycles ({repl, tui, tui_ansi}, {tui_load, tui_state})",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2551,14 +2556,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1002-tui-cycles",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1003",
       "phase": "16",
       "type": "build",
       "title": "Feature hygiene: keep Windows GUI dependencies out of the browser-free build",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2579,14 +2585,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check; cargo test --locked --no-default-features; cargo tree --no-default-features -e normal; run webagent --help and webagent diagnose --brain <id> --headless on the produced binary",
       "owner": "local/opencode",
       "branch": "chore/T-1003-feature-hygiene",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1004",
       "phase": "16",
       "type": "docs",
       "title": "Crate split decision: core / transport / api (design only)",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-998",
         "T-999",
@@ -2610,14 +2617,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "docs/T-1004-crate-split",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1005",
       "phase": "16",
       "type": "docs",
       "title": "CLI structure: command groups per layer with legacy aliases (design only)",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2635,14 +2643,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "docs/T-1005-cli-groups",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1006",
       "phase": "16",
       "type": "refactor",
       "title": "Public core traits and shared inference types in the current crate",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "src/inference_types.rs",
@@ -2676,14 +2685,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1006-core-traits",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1007",
       "phase": "16",
       "type": "refactor",
       "title": "PanelSink boundary: remove transport hooks into brain_grid",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "src/panel_sink.rs",
@@ -2711,14 +2721,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1007-panel-sink",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1008",
       "phase": "16",
       "type": "fix",
       "title": "Local runnable WebView2 build: auto-copy loader DLL and correct smoke diagnosis",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "build.rs",
@@ -2745,7 +2756,8 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; git diff --check; clean debug/release build; ./target/debug/webagent.exe --version/--help; ./target/release/webagent.exe --version/--help",
       "owner": "local/opencode",
       "branch": "fix/T-1008-webview-loader-smoke",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     }
   ]
 }

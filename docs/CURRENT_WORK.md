@@ -1,5 +1,26 @@
 # Current Work
 
+## 2026-11-26 - Phase 16 landed on master through T-1008
+
+- **Freigabe:** Der Eigentuemer hat die offene Arbeit aus der Session-Auswertung
+  bestaetigt: Release-Absturz schliessen und die ungemergte Phase-16-Kette nach
+  `master` legen. Kein Tag, kein GitHub-Release, kein Deployment, keine
+  Crate-Extraktion, kein Live-Lauf.
+- **Merge:** Fast-Forward `origin/master` `93d33a3` → `fa7c37d`
+  (`fix/T-1008-webview-loader-smoke`). 29 Commits, T-997 bis T-1008. T-1009
+  bleibt auf `refactor/T-1009-image-backend` und ist nicht enthalten.
+- **Absturz, selbst geprueft:** Exit `-1073741515` ist `0xC0000135`
+  (`STATUS_DLL_NOT_FOUND`), nicht `0xC0000005`. Frischer Worktree auf `fa7c37d`,
+  `cargo build --release --locked` Exit 0 in 11m 12s, `WebView2Loader.dll`
+  (165336 Bytes) lag ohne manuelles Skript neben der EXE.
+  `target/release/webagent.exe --version` → `webagent 0.11.7 (fa7c37dda)`, Exit 0.
+  `--help` Exit 0, 54 Zeilen. Kein Login, kein Browserfenster.
+- **Board:** T-997..T-1008 nach dem Merge auf `done` gesetzt (`done_at`
+  2026-11-26). Der Status behauptet damit nicht mehr als `master` ausliefert.
+- **Nicht erledigt:** Play-Mode-Branch `fix/T-976-api-turn-reveal`, T-1009
+  (ImageBackend, nur Claim), Tag/Release. Der User-PATH zeigt weiter auf
+  `webagent-rs-t967-opencode\target\debug`, nicht auf diesen Stand.
+
 ## 2026-11-26 - T-1008 implemented: local runnable WebView2 build
 
 - **Branch/claim:** `fix/T-1008-webview-loader-smoke`, claim commit `2d64df9`, owner `local/opencode`. T-1008 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. This is a local build fix, not crate extraction.
