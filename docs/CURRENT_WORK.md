@@ -1,5 +1,14 @@
 # Current Work
 
+## 2026-11-26 - T-997 implemented: module layer and cycle ratchet
+
+- **Branch/claim:** `feature/T-997-arch-layers`, implementation commit `2b875b5`, owner `local/opencode`. T-997 remains `claimed` in `docs/TASKBOARD.json` — no merge, no `done`. The board/mirror/claim commit is `fdff65c`. No next task claimed.
+- **Scope delivered:** `tests/arch_layers.rs` (source-based graph plus four tests), `docs/arch/layers.toml` (87 modules over `cross` + `L0..L7`), `docs/arch/layer_exceptions.txt` (6 cycles + 30 grandfathered upward edges), `docs/arch/LAYERS.md`, `docs/proofs/T-997/README.md`. Only the proof file and this handover are additional; no source module, CLI, protocol, API, `Cargo.toml` or `[profile.*]` change.
+- **Measurement:** the guard derives 87 top-level modules, 274 `crate::<module>` edges, 6 cycles and 30 upward edges from `master 93d33a3`. The prompt's 89 modules / five cycles did not reproduce: `browser_pool`, `bin_hooks` and a sixth `benchmark`/`controller` cycle were missing from its list; raw lines were 92,649 (64,130 after removing `#[cfg(test)]`). Differences and reasons are in the proof.
+- **Gates measured:** `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --lib --quiet` 1521 passed / 0 failed / 1 ignored (unchanged from base); `cargo test --test arch_layers -- --nocapture` 4 passed / 0 failed; `cargo test --all-targets --quiet` lib 1521 + binary-unit 7 + integration 4 passed; `cargo test --locked --no-default-features --test arch_layers --quiet` 4 passed; `git diff --check` 0. The three extra integration tests prove rejection of a new cycle, a new upward edge and a stale exception.
+- **Ratchet behavior:** every exception must still exist, so a removed edge/cycle makes the test fail until its line is deleted. Edges inside an excepted cycle are covered by the cycle line; the 30 remaining upward edges are explicit inventory, not hidden debt.
+- **Grenze / offen:** no browser, network, login, secrets, capability-proof record, behavior change, release, tag, deployment, PR or merge. T-998..T-1005 remain free; the crate-split decision (T-1004) still needs owner approval before any extraction.
+
 ## 2026-11-26 - Phase 16 board prepared, T-997 claimed (bookkeeping only)
 
 - **Branch:** `feature/T-997-arch-layers`, created from clean `master` `93d33a3` in worktree `C:\Users\storax\Documents\Standardprojekt\webagent-rs-phase16`. The initial `feat/…` name was renamed before any commit: `scripts/commit-as-agent.ps1` and `taskboard::tests::taskboard_invarianten_halten` only allow `feature|fix|docs|chore|refactor|test` prefixes for new claims. The Play branch `fix/T-976-api-turn-reveal` stays untouched at `3779d47` (pushed; no merge/PR/tag).
