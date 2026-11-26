@@ -1,3 +1,33 @@
+## 2026-11-26 - Live-PASS auf der aktiven T-1016-EXE
+
+- `POST /v1/chat/completions` auf `webagent/gemini` (`stream=false`,
+  `temperature=0`, `Antworte exakt mit T1016-LIVE-OK.`): **HTTP 200**,
+  Antwort exakt `T1016-LIVE-OK`, Event 22:27:26 UTC mit `success=true`,
+  `sends=1`, `pasted_chars=202/202`. Der erste Anlauf wurde im
+  ContentCheck gekuerzt (167/202) und vom bestehenden Relay-Retry
+  korrigiert. Damit ist der komplette Backend-Pfad auf der neuen Binary
+  live belegt.
+- `chatgpt` bleibt **nicht** live abgenommen: Ein externer, verbundener
+  `opencode-cli.exe serve --service` schickt fortlaufend `tools=12`-Turns
+  mit ~196.028 Zeichen; die Brain-Sperre serialisiert diese rund
+  4 Minuten langen Laeufe, sodass kurze Kontroll-Turns verhungern
+  (150 s / 420 s Client-Timeout, ein `client_disconnected`-Event mit
+  `pasted_chars=1`). Die grossen Turns scheitern an der bekannten
+  UI-Laengenablehnung `ABSENDEKNOPF_DEAKTIVIERT`, nicht an Selektoren.
+  Kein Rueckfall von T-1016; kein PASS fuer `chatgpt` behauptet.
+- Der `chatgpt`-Breaker wurde auf „MACH JETZT" zweimal mit Backup
+  zurueckgesetzt (`state-before-T1016-live-20261126.json`,
+  `state-before-T1016-isolated-20261126.json`). Health `ok`, PID `16972`,
+  aktive EXE unveraendert `D96F4999…EEAB`.
+- Zusatzbefund ohne Code-Aenderung: `composer_holds_text` gilt bei
+  Prompts ≤ 1.000 Zeichen ungeprueft als erfolgreich
+  (`crates/webagent-transport/src/browser/composer.rs:384-391`), was
+  kurzen Turns den Absende-Beweis ueber den Composer nimmt. Dokumentiert
+  im Deploy-Beleg; keine API-Semantik- oder Release-Aenderung ohne
+  Freigabe.
+- Beleg und Rueckweg:
+  `docs/proofs/deploy-T1016-bridge-restart-2026-11-26/README.md`.
+
 ## 2026-11-26 - Abgleich: Bridge-Zweige und Doku-Stand
 
 - `git branch --no-merged origin/master` listet viele Zweige, deren Arbeit
@@ -35,13 +65,13 @@
   `D96F4999…EEAB` (`webagent 0.11.8 (6ccec0e34)`), DLL `465A7DDF…A0A6F`.
   Neue PID `16972`, identische Command Line, Health `ok`, `/v1/models` 200
   mit Header / 401 ohne.
-- **Ehrliche Live-Grenze:** Ein kontrollierter Chat-Turn lief 150 s und
-  wurde ohne eigenes `events.jsonl`-Event abgebrochen; parallel scheiterte
-  eine `tools=12`-Anfrage mit `prompt_chars=196027` an
-  `ABSENDEKNOPF_DEAKTIVIERT` (Event 21:53:36 UTC, `success=false`). Das ist
-  eine UI-Sende-Fehlerklasse, kein Selektoren-Fehler. Kein Live-PASS
-  behauptet. Details und Rueckweg:
-  `docs/proofs/deploy-T1016-bridge-restart-2026-11-26/README.md`.
+- **Damalige Live-Grenze (spaeter durch den Live-PASS-Abschnitt oben
+  ergaenzt):** Ein kontrollierter Chat-Turn lief 150 s und wurde ohne
+  eigenes `events.jsonl`-Event abgebrochen; parallel scheiterte eine
+  `tools=12`-Anfrage mit `prompt_chars=196027` an
+  `ABSENDEKNOPF_DEAKTIVIERT` (Event 21:53:36 UTC, `success=false`). Das
+  ist eine UI-Sende-Fehlerklasse, kein Selektoren-Fehler. Details und
+  Rueckweg: `docs/proofs/deploy-T1016-bridge-restart-2026-11-26/README.md`.
 - **Grenze:** Kein Tag, Release, Versionssprung, Login oder
   Zugangsdatenausgabe (Key nur als Header verwendet).
 
