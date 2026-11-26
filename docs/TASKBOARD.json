@@ -3103,6 +3103,35 @@
       "title": "Selector I/O error on second PC breaks backend creation",
       "type": "fix",
       "verification": "fmt 0; clippy 0; lib 459+185+630+280=1554 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; release build 0; diff-check 0; 2 new regression tests; final release build from master 6ccec0e34 -> exe sha256 D96F4999693AE24F69DEE20A010483A55863B1CA8E813E32956E8781E573EEAB, staged in .../webagent-deploy-target/T1016-20261126/ and, on later owner instruction ('ich warte immer noch auf ne neue binarsy'), activated locally as PID 16972 with health ok / 9 models; live PASS on active EXE: webagent/gemini HTTP 200, exact T1016-LIVE-OK, event 2026-11-26T22:27:26Z success=true sends=1; chatgpt not live-accepted because an external opencode-cli client saturates the per-brain lock with 196k tools=12 turns failing at the provider UI length limit (ABSENDEKNOPF_DEAKTIVIERT), not a selector error; rollback backup-release-before-T1016-20261126; details docs/proofs/T-1016/gates.txt and docs/proofs/deploy-T1016-bridge-restart-2026-11-26/README.md"
+    },
+    {
+      "branch": "fix/T-1017-browser-prompt-budget",
+      "claimed_at": "2026-11-26",
+      "depends_on": [],
+      "dod": "Claim; Werkzeug-Schema auf 32 KiB begrenzt ohne Namen/Parameter zu verlieren; Prompt >180000 Zeichen vor dem Browserlauf benannt ablehnen; zwei Regressionstests; gates gruen; Branch gepusht und nach master gemergt; kein Tag, Release, Versionssprung oder Deploy ohne Freigabe; Live-Nachweis danach dokumentiert.",
+      "id": "T-1017",
+      "non_goals": [
+        "Kein Kuerzen, Zusammenfassen oder Umformulieren des Nutzerprompts.",
+        "Kein zweiter Beleg-Gate oder Aenderung an capability_proof.",
+        "Kein Tag, GitHub-Release, Versionssprung oder neues oeffentliches Artefakt."
+      ],
+      "objective": "chatgpt-Turns mit tools=12 scheitern bei ~196k Zeichen an der Browser-Oberflaeche (ABSENDEKNOPF_DEAKTIVIERT) und blockieren die Brain-Sperre ~4 Minuten. Das Werkzeug-Schema haerter komprimieren und einen schnellen, benannten Prompt-Budget-Guard vor dem Browserlauf ergaenzen.",
+      "owner": "local/opencode",
+      "phase": "16",
+      "proof_path": "docs/proofs/T-1017/README.md",
+      "scope": [
+        "crates/webagent-core/src/inference_types.rs",
+        "crates/webagent-api/src/browser_inference.rs",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-1017/README.md",
+        "docs/proofs/T-1017/gates.txt"
+      ],
+      "status": "claimed",
+      "title": "Browser prompt budget instead of silent UI length rejection",
+      "type": "fix",
+      "verification": "gates.txt: fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0; 2 neue Regressionstests. Finaler Build/Deploy/Live-Nachweis noch offen."
     }
   ]
 }

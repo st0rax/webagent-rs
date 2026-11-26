@@ -30,8 +30,19 @@ pub const DSML_MARKERS: [&str; 2] = ["｜｜DSML｜｜", "´¢£´¢£DSML´¢£
 // Browser chat UIs are substantially less tolerant of a giant tool prompt
 // than their HTTP APIs. Keep the serialized schema block bounded while still
 // retaining every tool name and its argument shape for the model.
-pub const MAX_TOOL_SCHEMA_BYTES: usize = 64 * 1024;
+//
+// 2026-11-26 (T-1017): live chatgpt turns with 12 client tools failed at
+// `ABSENDEKNOPF_DEAKTIVIERT` with a ~196k-char assembled prompt; the provider
+// UI rejects the input near 200k even though 200k was observed to work in
+// older measurements. 32 KiB halves the worst-case schema contribution while
+// keeping all names and parameter shapes; descriptions are compacted further
+// by `TOOL_DESCRIPTION_LIMITS` before anything is dropped.
+pub const MAX_TOOL_SCHEMA_BYTES: usize = 32 * 1024;
 pub const TOOL_DESCRIPTION_LIMITS: &[usize] = &[1024, 512, 256, 128, 0];
+/// Oberhalb dieser Groesse lehnt die Browser-Oberflaeche die Eingabe still ab
+/// (deaktivierter Absendeknopf). Ein zu grosser Prompt muss deshalb **vor** dem
+/// Browserlauf scheitern, statt vier Minuten die Brain-Sperre zu belegen.
+pub const MAX_BROWSER_PROMPT_CHARS: usize = 180_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BrowserTool {

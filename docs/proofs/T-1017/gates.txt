@@ -1,0 +1,35 @@
+T-1017 gates 2026-11-26 (branch fix/T-1017-browser-prompt-budget, base e75c895)
+
+cargo fmt --all -- --check
+  fmt=0
+
+cargo clippy -q --all-targets -- -D warnings
+  clippy=0
+
+cargo test --workspace --lib -q
+  lib=0
+  root:      459 passed; 0 failed; 1 ignored
+  api:       187 passed; 0 failed; 0 ignored  (2 neue T-1017-Tests)
+  core:      630 passed; 0 failed; 0 ignored
+  transport: 280 passed; 0 failed; 0 ignored
+  total:    1556 passed; 0 failed; 1 ignored
+
+cargo test -p webagent-api --lib browser_inference -- --nocapture
+  32 passed; 0 failed
+
+cargo test --test arch_layers -- --nocapture
+  arch=0
+  5 passed; modules=92, edges=282, cycles=3, upward_edges=26, crate_violations=0
+
+cargo check --features tui -q
+  tui=0
+
+cargo check --no-default-features -q
+  no-default=0
+
+git diff --check
+  diffcheck=0
+
+Hinweis: Diese Gates wurden vor dem Merge und vor dem Deploy gemessen.
+Der finale Release-Build aus master und der Live-Nachweis werden nach dem
+Merge in README.md und docs/CURRENT_WORK.md ergaenzt.

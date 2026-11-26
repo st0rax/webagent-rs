@@ -11,8 +11,8 @@ use std::collections::BTreeSet;
 // T-1006: the data shapes live in the browser-free core module. Re-exporting
 // them keeps every existing `crate::browser_inference::…` path source-compatible.
 pub(crate) use webagent_core::inference_types::{
-    model_output_error, DSML_MARKERS, DSML_TOOL_FORMAT_ERROR, MAX_TOOL_SCHEMA_BYTES,
-    TOOL_DESCRIPTION_LIMITS, TOOL_ENVELOPE,
+    model_output_error, DSML_MARKERS, DSML_TOOL_FORMAT_ERROR, MAX_BROWSER_PROMPT_CHARS,
+    MAX_TOOL_SCHEMA_BYTES, TOOL_DESCRIPTION_LIMITS, TOOL_ENVELOPE,
 };
 pub use webagent_core::inference_types::{
     BrowserAttachment, BrowserAttachmentKind, BrowserInferenceRequest, BrowserInferenceResponse,
@@ -70,6 +70,7 @@ pub fn complete_streaming_with_attachments(
 
     let prompt = prompt_with_tools(request.prompt, request.tools, &request.tool_choice)?;
     let prompt = prompt_with_identity(request.brain, &prompt);
+    check_browser_prompt_budget(&prompt)?;
     let forward_updates =
         request.tools.is_empty() || matches!(request.tool_choice, BrowserToolChoice::None);
     let mut relay_update = |snapshot: &str| {
@@ -307,6 +308,23 @@ fn validate_tools(tools: &[BrowserTool], choice: &BrowserToolChoice) -> Result<(
 /// Nennt dem Modell sein Brain, bevor irgendetwas anderes kommt. Hinter der
 /// Bridge wissen Web-Modelle sonst nicht, unter welchem Namen sie angesprochen
 /// werden — am 2026-09-14 nannte sich deepseek ueber Pi "claude" (T-951).
+/// T-1017: zu grosse Prompts scheitern in der Provider-Oberflaeche still
+/// (grauer Absendeknopf, `ABSENDEKNOPF_DEAKTIVIERT`) und belegen dabei die
+/// per-Brain-Sperre minutenlang. Die Pruefung gehoert deshalb VOR den
+/// Browserlauf — ein schneller, benannter Fehler ist besser als ein
+/// vierminuetiger Leerlauf mit anschliessendem Breaker-Eintrag.
+fn check_browser_prompt_budget(prompt: &str) -> Result<(), String> {
+    let chars = prompt.chars().count();
+    if chars > MAX_BROWSER_PROMPT_CHARS {
+        return Err(format!(
+            "Prompt zu gross fuer die Browser-Oberflaeche: {chars} Zeichen \
+             (Maximum {MAX_BROWSER_PROMPT_CHARS}); Werkzeugbeschreibungen sind \
+             bereits komprimiert"
+        ));
+    }
+    Ok(())
+}
+
 /// Die API-Bridge loest `webagent/auto` vorher in ein konkretes Brain auf
 /// (`api_bridge::inference`); kommt trotzdem `auto` an, ist das Brain noch
 /// unbekannt und eine Behauptung waere falsch.
@@ -1166,5 +1184,38 @@ mod tests {
         assert!(serialized.contains("keep_this_tool"));
         assert!(serialized.contains("\"path\""));
         assert!(!serialized.contains(&"x".repeat(2048)));
+    }
+
+    #[test]
+    fn twelve_verbose_tools_stay_within_the_browser_schema_budget() {
+        let verbose = "Ein sehr langer Werkzeugtext. ".repeat(400);
+        let tools: Vec<BrowserTool> = (0..12)
+            .map(|i| BrowserTool {
+                name: format!("tool_{i}"),
+                description: Some(verbose.clone()),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": verbose}
+                    }
+                }),
+            })
+            .collect();
+        let serialized = compact_tool_json(&tools).unwrap();
+        assert!(serialized.len() <= MAX_TOOL_SCHEMA_BYTES);
+        for tool in &tools {
+            assert!(serialized.contains(&tool.name));
+        }
+        assert!(serialized.contains("\"path\""));
+    }
+
+    #[test]
+    fn oversized_browser_prompt_is_rejected_before_the_browser_run() {
+        let at_limit = "x".repeat(MAX_BROWSER_PROMPT_CHARS);
+        assert!(check_browser_prompt_budget(&at_limit).is_ok());
+        let too_big = "x".repeat(MAX_BROWSER_PROMPT_CHARS + 1);
+        let error = check_browser_prompt_budget(&too_big).unwrap_err();
+        assert!(error.contains("Prompt zu gross fuer die Browser-Oberflaeche"));
+        assert!(error.contains("180001"));
     }
 }

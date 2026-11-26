@@ -1,3 +1,26 @@
+## 2026-11-26 - T-1017 umgesetzt (Prompt-Budget; Deploy/Live noch offen)
+
+- **Anlass:** Auf „kümmer dich drum" hin wurde die `chatgpt`-Längengrenze
+  bearbeitet, ohne Nutzerprompt-Text zu kürzen. Die aktive EXE blieb dabei
+  zunächst unverändert (`D96F4999…EEAB`, PID 16972, Health ok).
+- **Änderung auf `fix/T-1017-browser-prompt-budget` (vorige Basis
+  `e75c895`):** `MAX_TOOL_SCHEMA_BYTES` 64 KiB → 32 KiB; neu
+  `MAX_BROWSER_PROMPT_CHARS = 180_000` mit `check_browser_prompt_budget`
+  direkt vor dem Browserlauf. Namen/Parameter aller Tools bleiben erhalten;
+  überlange Prompts scheitern benannt statt nach ~4 Minuten mit
+  `ABSENDEKNOPF_DEAKTIVIERT`. Zwei Regressionstests neu.
+- **Gates:** fmt 0; clippy 0; lib 459+187+630+280 = 1556 passed / 0 failed /
+  1 ignored; arch 5 passed (`modules=92, edges=282, cycles=3,
+  upward_edges=26, crate_violations=0`); tui 0; no-default 0;
+  `git diff --check` 0. Beleg: `docs/proofs/T-1017/{README.md,gates.txt}`.
+- **Offen:** Branch committen/pushen, nach `master` mergen, Release-Build,
+  EXE-Tausch mit Backup und identischer Bridge-Command-Line, danach
+  `chatgpt`-Turn mit `tools=12` belegen. Kein PASS ohne `success=true`-Event
+  oder belegten, benannten Budgetfehler. Kein Tag/Release/Versionssprung,
+  keine Zugangsdatenausgabe.
+- **Betriebslage bei Beginn:** `chatgpt`-Breaker offen bis 23:44:38 Uhr
+  lokal; externer `opencode-cli` (PID 4944) sendet weiter `tools=12`-Turns.
+
 ## 2026-11-26 - Live-PASS auf der aktiven T-1016-EXE
 
 - `POST /v1/chat/completions` auf `webagent/gemini` (`stream=false`,

@@ -332,4 +332,5 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1016 | done |
 | T-976 | done |
 | T-977 | done |
+| T-1017 | claimed |
 <!-- TASKBOARD-MIRROR-END -->
