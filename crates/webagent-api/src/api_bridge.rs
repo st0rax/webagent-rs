@@ -36,7 +36,7 @@ mod tests;
 mod transport;
 mod wire;
 
-pub(crate) use boundary::api_error;
+pub use boundary::api_error;
 #[cfg(test)]
 use boundary::constant_time_equal;
 use boundary::{api_error_code, authorize, browser_inference_error, model_not_found};
@@ -74,13 +74,13 @@ pub use catalog::{
 };
 
 use transport::find_bytes;
-pub(crate) use transport::read_http_request;
+pub use transport::read_http_request;
 #[cfg(test)]
 pub(crate) use transport::TestPresence;
 pub(crate) use transport::{AlwaysConnected, ClientPresence, TcpClientPresence};
 #[cfg(test)]
 use wire::render_http_response;
-pub(crate) use wire::write_http_response;
+pub use wire::write_http_response;
 use wire::{write_data_frame, write_sse_comment, write_sse_event, write_sse_headers};
 
 pub(crate) use content::{
@@ -148,12 +148,12 @@ struct OnDiskStore {
 }
 
 #[derive(Default)]
-pub(crate) struct ConnectionLimiter {
+pub struct ConnectionLimiter {
     active: AtomicUsize,
 }
 
 impl ConnectionLimiter {
-    pub(crate) fn try_acquire(self: &Arc<Self>) -> Option<ConnectionPermit> {
+    pub fn try_acquire(self: &Arc<Self>) -> Option<ConnectionPermit> {
         let mut active = self.active.load(Ordering::Acquire);
         loop {
             if active >= MAX_CONCURRENT_CONNECTIONS {
@@ -172,7 +172,7 @@ impl ConnectionLimiter {
     }
 }
 
-pub(crate) struct ConnectionPermit(Arc<ConnectionLimiter>);
+pub struct ConnectionPermit(Arc<ConnectionLimiter>);
 
 impl Drop for ConnectionPermit {
     fn drop(&mut self) {
@@ -224,7 +224,7 @@ pub fn serve(config: BridgeConfig) -> Result<(), String> {
 
 /// Prueft die Bridge-Rolle vor dem Binden/Servieren (geteilt mit dem
 /// gemeinsamen Web-UI-Listener bei gesetzter API-Rolle).
-pub(crate) fn validate_bridge_config(config: &BridgeConfig) -> Result<(), String> {
+pub fn validate_bridge_config(config: &BridgeConfig) -> Result<(), String> {
     if config.timeout_secs.is_some_and(|timeout| timeout <= 0.0) {
         return Err("--timeout-secs muss groesser als 0 sein.".to_string());
     }
@@ -265,7 +265,7 @@ fn accept_loop(listener: TcpListener, config: BridgeConfig) -> Result<(), String
     Ok(())
 }
 
-pub(crate) fn overload_response() -> HttpResponse {
+pub fn overload_response() -> HttpResponse {
     HttpResponse::json(
         503,
         json!({
@@ -308,7 +308,7 @@ fn handle_connection(stream: &mut TcpStream, config: &BridgeConfig) -> Result<()
 /// Wird von `handle_connection` (Bridge-Eigenbetrieb) und vom gemeinsamen
 /// Web-UI-Listener (`web_ui::serve` bei gesetzter API-Rolle) aufgerufen:
 /// ein Port, gleiche Routing-Logik.
-pub(crate) fn route_request(
+pub fn route_request(
     stream: &mut TcpStream,
     request: &HttpRequest,
     config: &BridgeConfig,
@@ -417,7 +417,7 @@ pub(crate) fn route_request(
 /// Clean DOM/stream snapshots before SSE `delta.content` (Thinking..., clocks,
 /// Kimi CoT echo). Empty → no delta; caller may still keep-alive.
 fn stream_answer_snapshot(raw: &str) -> String {
-    crate::observer::chat_answer_text(raw)
+    webagent_core::observer::chat_answer_text(raw)
 }
 
 /// Einmalige, prozessweite Kern-Registrierung lebender Lauefe. Responses-Runs
@@ -515,20 +515,20 @@ pub(crate) struct OpenAiAssistantFunction {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum ApiFlavor {
+pub enum ApiFlavor {
     OpenAi,
     Anthropic,
 }
 
-pub(crate) struct HttpRequest {
-    pub(crate) method: String,
-    pub(crate) path: String,
-    pub(crate) query: String,
+pub struct HttpRequest {
+    pub method: String,
+    pub path: String,
+    pub query: String,
     pub(crate) headers: BTreeMap<String, String>,
-    pub(crate) body: Vec<u8>,
+    pub body: Vec<u8>,
 }
 
-pub(crate) struct HttpResponse {
+pub struct HttpResponse {
     status: u16,
     content_type: &'static str,
     body: Vec<u8>,

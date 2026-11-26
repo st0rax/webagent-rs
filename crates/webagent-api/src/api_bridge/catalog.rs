@@ -10,7 +10,7 @@ use super::BridgeConfig;
 use serde_json::{json, Value};
 
 pub fn available_brains() -> Vec<String> {
-    let mut brains: Vec<String> = crate::config::brains().into_keys().collect();
+    let mut brains: Vec<String> = webagent_core::config::brains().into_keys().collect();
     brains.sort();
     brains
 }
@@ -104,7 +104,7 @@ pub fn classify_auto_route(
 pub fn first_available_auto_brain(preferences: &[&str]) -> Option<String> {
     let available = available_brains();
     first_available_auto_brain_in(preferences, &available, |brain| {
-        crate::circuit_breaker::check(brain).is_none()
+        webagent_core::circuit_breaker::check(brain).is_none()
     })
 }
 
@@ -301,8 +301,8 @@ pub fn model_metadata(brain: &str) -> Value {
         "created": 0,
         "owned_by": "webagent",
         "brain": brain,
-        "context_window": crate::config::model_context_window(),
-        "max_tokens": crate::config::model_max_tokens(),
+        "context_window": webagent_core::config::model_context_window(),
+        "max_tokens": webagent_core::config::model_max_tokens(),
         "modalities": {
             "input": advertised_input_modalities(brain),
             "output": advertised_output_modalities(brain)

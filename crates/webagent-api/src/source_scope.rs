@@ -88,7 +88,7 @@ impl Default for SourceScope {
 
 impl SourceScope {
     pub fn providers_path() -> PathBuf {
-        crate::config::data_dir().join("providers.json")
+        webagent_core::config::data_dir().join("providers.json")
     }
 
     pub fn load_default() -> Self {

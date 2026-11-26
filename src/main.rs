@@ -52,6 +52,9 @@ fn run() -> i32 {
     // ohne Installation antwortet panel_sink mit dem leeren Fallback.
     let _ =
         webagent::panel_sink::install_panel_sink(Box::new(webagent::brain_grid::DesktopPanelSink));
+    // T-1013: relay lives in the api crate and uses the core factory provider;
+    // the concrete browser factory is installed once here for the process.
+    let _ = webagent::backend_factory::install::<webagent::WebBackendFactory>();
 
     let cli = Cli::parse();
     // Lokale Diagnose-/Registry-Befehle benÃ¶tigen weder persistierte

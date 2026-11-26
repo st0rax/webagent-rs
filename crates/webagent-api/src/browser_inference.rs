@@ -10,11 +10,11 @@ use std::collections::BTreeSet;
 
 // T-1006: the data shapes live in the browser-free core module. Re-exporting
 // them keeps every existing `crate::browser_inference::…` path source-compatible.
-pub(crate) use crate::inference_types::{
+pub(crate) use webagent_core::inference_types::{
     model_output_error, DSML_MARKERS, DSML_TOOL_FORMAT_ERROR, MAX_TOOL_SCHEMA_BYTES,
     TOOL_DESCRIPTION_LIMITS, TOOL_ENVELOPE,
 };
-pub use crate::inference_types::{
+pub use webagent_core::inference_types::{
     BrowserAttachment, BrowserAttachmentKind, BrowserInferenceRequest, BrowserInferenceResponse,
     BrowserTool, BrowserToolCall, BrowserToolChoice, MODEL_OUTPUT_ERROR_MARKER,
 };
@@ -25,7 +25,7 @@ pub fn complete(request: BrowserInferenceRequest<'_>) -> Result<BrowserInference
         request,
         &[],
         &mut |_| {},
-        &crate::inference_types::AlwaysConnected,
+        &webagent_core::inference_types::AlwaysConnected,
     )
 }
 
@@ -35,7 +35,7 @@ pub fn complete_with_attachments(
     request: BrowserInferenceRequest<'_>,
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
-    presence: &dyn crate::inference_types::ClientPresence,
+    presence: &dyn webagent_core::inference_types::ClientPresence,
 ) -> Result<BrowserInferenceResponse, String> {
     complete_streaming_with_attachments(request, attachments, on_update, presence)
 }
@@ -51,7 +51,7 @@ pub fn complete_streaming(
         request,
         &[],
         on_update,
-        &crate::inference_types::AlwaysConnected,
+        &webagent_core::inference_types::AlwaysConnected,
     )
 }
 
@@ -60,7 +60,7 @@ pub fn complete_streaming_with_attachments(
     request: BrowserInferenceRequest<'_>,
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
-    presence: &dyn crate::inference_types::ClientPresence,
+    presence: &dyn webagent_core::inference_types::ClientPresence,
 ) -> Result<BrowserInferenceResponse, String> {
     if request.prompt.trim().is_empty() {
         return Err("Inference-Prompt darf nicht leer sein.".to_string());
@@ -137,7 +137,7 @@ pub fn complete_streaming_with_attachments(
         &request.tool_choice,
     )?;
     let retry_prompt = prompt_with_identity(request.brain, &retry_prompt);
-    crate::bench_events::eprint_line(
+    webagent_core::bench_events::eprint_line(
         "[T-961] semantische Werkzeugverweigerung; ein Frisch-Chat-Retry mit dem ursprünglichen Auftrag.",
     );
     let second = crate::relay::relay_single_turn_with_attachments_streaming_checked(
@@ -157,7 +157,7 @@ pub fn complete_streaming_with_attachments(
     if second_parsed.tool_calls.is_empty() && is_semantic_tool_denial(&second) {
         // Ehrlich: der zweite Turn darf nicht still als Erfolg gelten. Der
         // Strict-Verifier markiert diese Antwort weiterhin als Fehlschlag.
-        crate::bench_events::eprint_line(
+        webagent_core::bench_events::eprint_line(
             "[T-961] Retry erschoepft: auch der zweite Turn verweigert das Werkzeug; kein PASS.",
         );
     }
@@ -171,7 +171,7 @@ pub fn complete_streaming_with_attachments(
 /// `delta.content`. Chrome-only snapshots become empty so callers keep waiting
 /// or fail honestly instead of finishing on status text.
 fn normalize_provider_text(_brain: &str, text: &str) -> String {
-    crate::observer::chat_answer_text(text)
+    webagent_core::observer::chat_answer_text(text)
 }
 
 /// T-961: eng gefasste Erkennung der beobachteten Fehlerklasse. Es muss
@@ -578,7 +578,7 @@ fn parse_response(
                     excerpt_around_error(&repaired, &repaired_error)
                 ))
             })?;
-            crate::bench_events::eprint_line(&format!(
+            webagent_core::bench_events::eprint_line(&format!(
                 "[inference] Tool-Call-Umschlag repariert (String-Escapes): {strict_error}"
             ));
             envelope

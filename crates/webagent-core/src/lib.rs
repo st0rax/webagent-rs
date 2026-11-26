@@ -7,6 +7,7 @@ pub mod support;
 pub use support::*;
 
 pub mod acceptance;
+pub mod backend_factory;
 pub mod bench_events;
 pub mod brain;
 pub mod brain_limits;

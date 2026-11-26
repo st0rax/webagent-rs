@@ -30,7 +30,7 @@ use std::{
 
 // T-1006: the presence contract is shared with relay/browser_inference and
 // therefore lives in the browser-free core module. Keep the old path alive.
-pub use crate::inference_types::{AlwaysConnected, ClientPresence};
+pub use webagent_core::inference_types::{AlwaysConnected, ClientPresence};
 
 /// Kurzer Peek-Timeout: ein EOF liegt sofort vor, ein ruhender aber
 /// lebendiger Client liefert `WouldBlock`/`TimedOut` und gilt als verbunden.

@@ -18,7 +18,10 @@
 # calls WebBackendFactory::create_brain_backend. T-1012 moves ten browser/page/
 # panel modules into webagent-transport; the measured graph is unchanged (91
 # modules, 278 edges, 3 cycles, 26 upward edges, crate_violations=0) and no
-# exception line was added or removed. Every entry below is
+# exception line was added or removed. T-1013 moves nine api/relay modules into
+# webagent-api and adds webagent-core::backend_factory (rank 1 next to brain):
+# the baseline is now 92 modules, 280 edges, 3 cycles, 26 upward edges,
+# crate_violations=0. No exception line was added or removed. Every entry below is
 # grandfathered debt; the test fails on a new entry and on a stale entry (so
 # the list can only shrink).
 #

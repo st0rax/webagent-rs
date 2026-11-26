@@ -223,8 +223,22 @@ Baseline measurement: 10 internal edges; 17 outbound to core, 1 to transport
 outbound edge, so the api crate now names no `WebBrainBackend`, no `wry`/`tao`
 type and no concrete page: brain access is `dyn BrainBackend`, `dyn
 RelayBackend`, `dyn ImageGenerationBackend` and `BackendFactory`.
-Cargo dependencies: `serde`, `serde_json`, `time`, `tokio`, `tokio-rustls`,
-`rustls`, `webpki-roots` (all via `https_client`). No GUI crate, no `clap`.
+**T-1013 status (2026-11-26).** The crate now owns all nine modules listed above
+(23 source files). The root re-exports `webagent_api::*`, so no caller path
+changed. Internal `crate::<core>` paths became explicit `webagent_core::` paths;
+several `pub(crate)` items in `api_bridge` were widened to `pub` because the
+root UI calls them through the re-export. The former `relay → transport` edge is
+gone: `relay` calls `webagent_core::backend_factory`, a process-wide single-
+assignment provider of constructor function pointers installed by the binary
+with `install::<WebBackendFactory>()`. `BackendFactory` is not dyn-compatible,
+so no trait object is used. `backend_factory` sits at L0 rank 1 next to `brain`
+(rank 0 was rejected as a new upward edge). Measured guard state: `modules=92,
+edges=280, cycles=3, upward_edges=26, crate_violations=0`; no exception line was
+added or removed and `api → transport` is still rejected.
+
+Design-time Cargo dependencies: `serde`, `serde_json`, `time`, `tokio`,
+`tokio-rustls`, `rustls`, `webpki-roots` (all via `https_client`). No GUI crate,
+no `clap`.
 
 ### 4.4 root `webagent` (36 modules + binary/build script)
 

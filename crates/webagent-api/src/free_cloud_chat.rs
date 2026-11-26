@@ -390,7 +390,7 @@ impl<T: WebViewSessionTransport> TextStreamAdapter for WebViewSessionAdapter<T> 
 pub const FREE_CLOUD_HEALTH_SCHEMA_VERSION: u32 = 1;
 
 /// Observable breaker state for one future external adapter. This is deliberately
-/// separate from `crate::circuit_breaker`, which tracks swarm brain sessions.
+/// separate from `webagent_core::circuit_breaker`, which tracks swarm brain sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FreeCloudCircuitState {
@@ -1110,9 +1110,9 @@ fn score_model(model: &CloudModel, terms: &[String], free_only: bool) -> SearchR
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capability_proof::{proof_state_at, ProofState};
     use std::cell::RefCell;
     use std::rc::Rc;
+    use webagent_core::capability_proof::{proof_state_at, ProofState};
 
     #[derive(Debug, Clone)]
     struct RecordingTransport {

@@ -2,12 +2,12 @@
 
 use std::time::Instant;
 
+use webagent_core::backend_factory;
 #[cfg(test)]
-use crate::brain::BrainResponse;
-use crate::brain::{BackendFactory, ImageGenerationBackend, RelayBackend, SessionState};
-use crate::inference_types::{BrowserAttachment, ClientPresence};
-use crate::timeouts::resolve_timeout;
-use crate::WebBackendFactory;
+use webagent_core::brain::BrainResponse;
+use webagent_core::brain::{ImageGenerationBackend, RelayBackend, SessionState};
+use webagent_core::inference_types::{BrowserAttachment, ClientPresence};
+use webagent_core::timeouts::resolve_timeout;
 
 #[derive(Debug)]
 pub struct RelayError(pub String);
@@ -48,7 +48,7 @@ pub(crate) fn open_circuit_remaining_secs(error: &str) -> Option<i64> {
     digits.parse::<i64>().ok().filter(|seconds| *seconds > 0)
 }
 
-// T-1006: `RelayBackend` is now a public core trait in `crate::brain`. The
+// T-1006: `RelayBackend` is now a public core trait in `webagent_core::brain`. The
 // turn loop stays generic over it, so the T-947 mocks keep working unchanged.
 
 /// Begruendung eines fehlgeschlagenen Turns, dessen Modellausgabe ungueltig
@@ -85,15 +85,16 @@ pub fn relay_image_generation(
     // T-970: Bild-Turns schreiben Turn-Beobachtungen, buchen aber keinen Score-
     // Event. Der Scope verhindert, dass diese Reste in einen spaeteren Turn
     // desselben Threads wandern.
-    let _scope = crate::brain_score::PendingScope::new();
+    let _scope = webagent_core::brain_score::PendingScope::new();
     let trace = std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some();
-    if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
+    if let Some(remaining) = webagent_core::circuit_breaker::check(brain_id) {
         return Err(RelayError(circuit_open_message(brain_id, remaining)));
     }
     let started = Instant::now();
-    // T-1009: api knows only the core trait; the browser backend is supplied by
-    // the factory. This removes the last `relay -> browser` crate edge.
-    let mut backend = WebBackendFactory::create_image_backend(brain_id).map_err(RelayError)?;
+    // T-1009/T-1013: api knows only the core trait; the concrete browser
+    // factory is installed by the binary in `core::backend_factory`. This
+    // removes the last `relay -> transport` crate edge.
+    let mut backend = backend_factory::image_backend(brain_id).map_err(RelayError)?;
     relay_image_turn(
         backend.as_mut(),
         brain_id,
@@ -135,7 +136,7 @@ fn relay_image_turn(
     if state.is_soft_login_doubt() {
         // Weicher Zweifel darf kein hartes "geht nicht" sein: trotzdem versuchen.
         // Kommt ein Bild zurueck, war die Vorabpruefung ein False Positive.
-        crate::bench_events::eprint_line(&format!(
+        webagent_core::bench_events::eprint_line(&format!(
             "[image] {brain_id}: Login-Vorabpruefung={state:?} (weich) — erzeuge trotzdem; das Ergebnis entscheidet"
         ));
     }
@@ -202,7 +203,7 @@ fn relay_image_turn(
                 wait_timeout,
             )));
         }
-        std::thread::sleep(crate::timeouts::relay_image_poll());
+        std::thread::sleep(webagent_core::timeouts::relay_image_poll());
     };
     let _ = backend.image_stop();
     result
@@ -264,7 +265,7 @@ pub fn relay_single_turn_with_attachments_streaming(
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
 ) -> Result<String, RelayError> {
-    let always = crate::inference_types::AlwaysConnected;
+    let always = webagent_core::inference_types::AlwaysConnected;
     relay_single_turn_checked(
         brain_id,
         message,
@@ -320,15 +321,15 @@ fn relay_single_turn_checked(
 ) -> Result<String, RelayError> {
     // T-970: ein frischer Beobachtungsbereich pro Relay-Lauf. Alle Events und
     // set_pending_*-Aufrufe dieses Laufs liegen im selben Thread.
-    let _scope = crate::brain_score::PendingScope::new();
+    let _scope = webagent_core::brain_score::PendingScope::new();
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
     // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
-    if let Some(remaining) = crate::circuit_breaker::check(brain_id) {
+    if let Some(remaining) = webagent_core::circuit_breaker::check(brain_id) {
         return Err(RelayError(circuit_open_message(brain_id, remaining)));
     }
     let started = Instant::now();
     let prompt_chars = message.chars().count();
-    let mut backend = WebBackendFactory::create_relay_backend(brain_id).map_err(RelayError)?;
+    let mut backend = backend_factory::relay_backend(brain_id).map_err(RelayError)?;
     let (ready_timeout, wait_timeout) =
         resolve_attach_aware_timeouts(brain_id, message, timeout_override, !attachments.is_empty());
 
@@ -336,7 +337,7 @@ fn relay_single_turn_checked(
     // T-976: ein geparktes WebView antwortet per CDP nicht zuverlaessig.
     // Aufdecken vor dem Turn; der Backend-Drop parkt wieder.
     if let Err(e) = backend.relay_reveal_for_turn() {
-        crate::bench_events::eprint_line(&format!(
+        webagent_core::bench_events::eprint_line(&format!(
             "[relay] {brain_id}: Turn-Reveal fehlgeschlagen ({e}); fahre ohne Aufdecken fort"
         ));
     }
@@ -346,8 +347,8 @@ fn relay_single_turn_checked(
     if state.is_hard_block() {
         let _ = backend.relay_stop();
         let reason = format!("session_state={state:?}");
-        crate::circuit_breaker::record_failure(brain_id, &reason);
-        crate::brain_score::record_event(
+        webagent_core::circuit_breaker::record_failure(brain_id, &reason);
+        webagent_core::brain_score::record_event(
             brain_id,
             false,
             Some(&reason),
@@ -362,7 +363,7 @@ fn relay_single_turn_checked(
     // den echten Prompt entscheiden lassen; ein positives Ergebnis markieren
     // wir unten als bestaetigten False Positive.
     let soft_login_doubt = if state.is_soft_login_doubt() {
-        crate::bench_events::eprint_line(&format!(
+        webagent_core::bench_events::eprint_line(&format!(
             "[relay] {brain_id}: Login-Vorabpruefung={state:?} (weich) — prompt trotzdem; die echte Antwort entscheidet"
         ));
         Some(state)
@@ -376,7 +377,7 @@ fn relay_single_turn_checked(
                 // Ziel schon vorher, also hat dieser Lauf den Antrieb nicht
                 // belegt. Erst ein gemessener Wechsel ist ein Live-Beweis.
                 if !now.contains("bereits aktiv") {
-                    crate::capability_proof::record_route_proof(
+                    webagent_core::capability_proof::record_route_proof(
                         brain_id,
                         "model_switch",
                         &format!("relay --model '{want}' (Beschriftung nachgeprueft)"),
@@ -386,8 +387,8 @@ fn relay_single_turn_checked(
             }
             Err(e) => {
                 let reason = format!("model_switch({want}): {e}");
-                crate::circuit_breaker::record_failure(brain_id, &reason);
-                crate::brain_score::record_event(
+                webagent_core::circuit_breaker::record_failure(brain_id, &reason);
+                webagent_core::brain_score::record_event(
                     brain_id,
                     false,
                     Some(&reason),
@@ -434,7 +435,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
 ) -> Result<String, RelayError> {
     // T-970: verschachtelter Scope fuer den direkten Testaufruf dieses Loops;
     // ein aeusserer Relay-Scope wird beim Verlassen wiederhergestellt.
-    let _scope = crate::brain_score::PendingScope::new();
+    let _scope = webagent_core::brain_score::PendingScope::new();
     // Bis zu drei volle Turns (new_chat + send + wait_response). Web-UIs ohne API
     // sind unvermeidlich flakig: Submit oder Antworterkennung koennen scheitern.
     // Jeder Turn startet mit einem frischen `new_chat`, also entsteht kein
@@ -460,7 +461,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         // T-950: der Quellenhinweis-Puffer ist prozessglobal. Mit jedem Turn
         // neu leeren, damit ein abgelehnter Versuch seine Hinweise nicht in
         // den naechsten, verbuchten Turn schleppt.
-        crate::brain_score::set_pending_source_hints(Vec::new());
+        webagent_core::brain_score::set_pending_source_hints(Vec::new());
         // T-946: kein Browser-Turn fuer einen Aufrufer, der schon in der
         // Warteschlange vor der Brain-Sperre verschwunden ist. Der Turn wird
         // als verwaist markiert (brain_score) und die Sperre wird nicht
@@ -468,7 +469,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         // ueber `cancelled` im Wait-Poll erkannt.
         if !presence.connected() {
             let _ = backend.relay_stop();
-            crate::brain_score::record_event_with_sends(
+            webagent_core::brain_score::record_event_with_sends(
                 brain_id,
                 false,
                 Some(CLIENT_GONE_REASON),
@@ -481,11 +482,11 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
             )));
         }
         if turn > 0 {
-            crate::bench_events::eprint_line(&format!(
+            webagent_core::bench_events::eprint_line(&format!(
                 "[relay] {brain_id}: Wiederholung {turn}/{}  (vorher: {last_err})",
                 max_turns.saturating_sub(1)
             ));
-            std::thread::sleep(crate::timeouts::relay_response_poll());
+            std::thread::sleep(webagent_core::timeouts::relay_response_poll());
         }
         if let Err(e) = backend.relay_new_chat() {
             last_err = e;
@@ -497,12 +498,12 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         // Umschalter bleibt das Brain im Event als nicht isolierbar markiert.
         if let Some(web_search) = backend.relay_web_search_state() {
             if !web_search.is_off() {
-                crate::bench_events::eprint_line(&format!(
+                webagent_core::bench_events::eprint_line(&format!(
                     "[relay] {brain_id}: Websuche nicht isolierbar ({})",
                     web_search.status
                 ));
             }
-            crate::brain_score::set_pending_web_search(web_search);
+            webagent_core::brain_score::set_pending_web_search(web_search);
         }
         // Gesamtbudget erschoepft (nur moeglich, wenn ein frueherer Turn bereits
         // Wartezeit verbraucht hat): kein weiterer Versuch.
@@ -522,7 +523,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
             Err(e) => {
                 last_err = e;
                 if is_deterministic_send_failure(&last_err) {
-                    crate::bench_events::eprint_line(&format!(
+                    webagent_core::bench_events::eprint_line(&format!(
                         "[relay] {brain_id}: kein Retry fuer deterministischen Sendefehler"
                     ));
                     break;
@@ -542,7 +543,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         };
         if response.backend_status == CLIENT_GONE_REASON {
             let _ = backend.relay_stop();
-            crate::brain_score::record_event_with_sends(
+            webagent_core::brain_score::record_event_with_sends(
                 brain_id,
                 false,
                 Some(CLIENT_GONE_REASON),
@@ -556,8 +557,8 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         }
         if response.backend_status == "rate_limit" {
             let _ = backend.relay_stop();
-            crate::circuit_breaker::record_failure(brain_id, "rate_limit");
-            crate::brain_score::record_event_with_sends(
+            webagent_core::circuit_breaker::record_failure(brain_id, "rate_limit");
+            webagent_core::brain_score::record_event_with_sends(
                 brain_id,
                 false,
                 Some("rate_limit"),
@@ -574,8 +575,8 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         // Praefix, damit Messungen es flaggen statt als Tool-Defekt zu werten.
         if response.backend_status == "blocked" {
             let _ = backend.relay_stop();
-            crate::circuit_breaker::record_failure(brain_id, "blocked");
-            crate::brain_score::record_event_with_sends(
+            webagent_core::circuit_breaker::record_failure(brain_id, "blocked");
+            webagent_core::brain_score::record_event_with_sends(
                 brain_id,
                 false,
                 Some("blocked"),
@@ -592,7 +593,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         // Ok mit leerem Text zurueck; ohne diese Pruefung zaehlte ein Timeout als
         // Erfolg. UI-Chrome / CoT-Echo zaehlen ebenfalls als leer.
         let raw = response.text.trim().to_string();
-        let text = crate::observer::chat_answer_text(&raw);
+        let text = webagent_core::observer::chat_answer_text(&raw);
         if text.is_empty() {
             let total = started.elapsed().as_secs_f64();
             last_err = format!(
@@ -608,13 +609,13 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         // T-950: ein Quellenhinweis der Oberflaeche belegt einen Provider-Abruf,
         // der im Client-Transkript unsichtbar bleibt. Er wird protokolliert,
         // nicht aus dem Antworttext entfernt (keine inhaltliche Filterung).
-        let source_hints = crate::observer::source_hints(&text);
+        let source_hints = webagent_core::observer::source_hints(&text);
         if !source_hints.is_empty() {
-            crate::bench_events::eprint_line(&format!(
+            webagent_core::bench_events::eprint_line(&format!(
                 "[relay] {brain_id}: {} Quellenhinweis(e) in der Antwort erkannt",
                 source_hints.len()
             ));
-            crate::brain_score::set_pending_source_hints(source_hints);
+            webagent_core::brain_score::set_pending_source_hints(source_hints);
         }
         if is_provider_error_page(&text) {
             last_err = format!(
@@ -636,7 +637,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
         let mut final_text = text;
         if let Some(check) = output_check {
             let fail = |detail: String, current_sends: u32| -> RelayError {
-                crate::brain_score::record_event_with_sends(
+                webagent_core::brain_score::record_event_with_sends(
                     brain_id,
                     false,
                     Some(MODEL_OUTPUT_FAILURE_REASON),
@@ -647,7 +648,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
                 RelayError(format!("{MODEL_OUTPUT_FAILURE_REASON}: {detail}"))
             };
             if let Err(parse_error) = (check.validate)(&final_text) {
-                crate::bench_events::eprint_line(&format!(
+                webagent_core::bench_events::eprint_line(&format!(
                     "[relay] {brain_id}: ungueltige Modellausgabe, Korrektur in derselben Konversation: {parse_error}"
                 ));
                 let correction = (check.correction_message)(&parse_error);
@@ -688,7 +689,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
                     }
                 };
                 let correction_raw = correction_response.text.trim().to_string();
-                let correction_text = crate::observer::chat_answer_text(&correction_raw);
+                let correction_text = webagent_core::observer::chat_answer_text(&correction_raw);
                 if correction_text.is_empty() {
                     return Err(fail(
                         format!("{parse_error}; Korrektur lieferte keine Antwort"),
@@ -718,13 +719,13 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
                 // Die echte Antwort ist der Beleg: die Vorabpruefung war falsch.
                 // Sichtbar protokollieren, damit ein solcher Fall nicht erneut
                 // als "Login noetig" fehlinterpretiert wird.
-                crate::bench_events::eprint_line(&format!(
+                webagent_core::bench_events::eprint_line(&format!(
                     "[relay] {brain_id}: Login-False-Positive bestaetigt (Vorabpruefung={state:?}, echte Antwort {}-Zeichen)",
                     text.chars().count()
                 ));
             }
-            crate::circuit_breaker::record_success(brain_id);
-            crate::brain_score::record_event_with_sends(
+            webagent_core::circuit_breaker::record_success(brain_id);
+            webagent_core::brain_score::record_event_with_sends(
                 brain_id,
                 true,
                 None,
@@ -734,7 +735,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
             );
             // Send+Wait gegen den echten Browser = das Brain kann Text
             // senden und eine Antwort lesen. Das ist der Beleg fuer "chat".
-            crate::capability_proof::record_route_proof(
+            webagent_core::capability_proof::record_route_proof(
                 brain_id,
                 "chat",
                 "relay_single_turn ok (send+wait gegen echten Browser)",
@@ -749,8 +750,8 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
             // Brain-Score verschlechtern: Ein spaeterer text-only Turn kann
             // mit demselben Brain problemlos funktionieren.
             if !is_attachment_capability_failure(&last_err) {
-                crate::circuit_breaker::record_failure(brain_id, &last_err);
-                crate::brain_score::record_event_with_sends(
+                webagent_core::circuit_breaker::record_failure(brain_id, &last_err);
+                webagent_core::brain_score::record_event_with_sends(
                     brain_id,
                     false,
                     Some(&last_err),
@@ -804,7 +805,7 @@ fn is_provider_error_page(text: &str) -> bool {
     const MAX_BANNER_CHARS: usize = 400;
     !text.contains("WEBAGENT_INFERENCE/1")
         && text.chars().count() <= MAX_BANNER_CHARS
-        && crate::brain::is_retryable_empty_response(text)
+        && webagent_core::brain::is_retryable_empty_response(text)
 }
 
 fn is_deterministic_send_failure(error: &str) -> bool {
@@ -1019,7 +1020,7 @@ mod tests {
             None,
             &mut |_| {},
             None,
-            &crate::inference_types::AlwaysConnected,
+            &webagent_core::inference_types::AlwaysConnected,
         );
         assert!(
             result.is_err(),
@@ -1081,7 +1082,7 @@ mod tests {
             None,
             &mut |_| {},
             None,
-            &crate::inference_types::AlwaysConnected,
+            &webagent_core::inference_types::AlwaysConnected,
         );
         assert!(result.is_err());
         assert!(backend.attempts > 0, "Retry-Send muss versucht werden");
@@ -1210,7 +1211,7 @@ mod tests {
     }
 
     fn letztes_score_ereignis(brain_id: &str) -> serde_json::Value {
-        let path = crate::config::data_dir()
+        let path = webagent_core::config::data_dir()
             .join("brain_score")
             .join("events.jsonl");
         let content = std::fs::read_to_string(&path).unwrap_or_default();
@@ -1262,7 +1263,7 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
-            &crate::inference_types::AlwaysConnected,
+            &webagent_core::inference_types::AlwaysConnected,
         );
         assert!(
             result.is_err(),
@@ -1310,7 +1311,7 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
-            &crate::inference_types::AlwaysConnected,
+            &webagent_core::inference_types::AlwaysConnected,
         );
         assert!(result.is_err());
         assert_eq!(backend.new_chats, 1);
@@ -1336,7 +1337,7 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
-            &crate::inference_types::AlwaysConnected,
+            &webagent_core::inference_types::AlwaysConnected,
         );
         assert!(result.is_ok(), "{result:?}");
         assert_eq!(backend.new_chats, 1);

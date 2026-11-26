@@ -221,9 +221,12 @@ fn model_metadata_has_stable_catalog_shape() {
     // eine zweite Zahl zu pflegen.
     assert_eq!(
         meta["context_window"],
-        crate::config::model_context_window()
+        webagent_core::config::model_context_window()
     );
-    assert_eq!(meta["max_tokens"], crate::config::model_max_tokens());
+    assert_eq!(
+        meta["max_tokens"],
+        webagent_core::config::model_max_tokens()
+    );
     assert_eq!(meta["modalities"]["output"][1], "image");
     let meta = model_metadata("kimi");
     assert_eq!(meta["modalities"]["input"][1], "image");
@@ -1441,7 +1444,9 @@ fn http_exchange(addr: SocketAddr, request: &str) -> String {
 }
 
 fn t404_script_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/t404")
+    // T-1013: api_bridge moved into the workspace member; the SDK scripts stay
+    // in the repository root, two levels above this crate's manifest.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/t404")
 }
 
 fn t404_dump_dir() -> PathBuf {
