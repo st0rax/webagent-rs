@@ -2288,5 +2288,39 @@
       "verification": "2026-11-25 auf refactor/T-972-controller-webview-split real gemessen: src/controller.rs 3349 -> 1909 Zeilen, src/webview_runtime.rs 3315 -> 2229 Zeilen; cargo fmt --all -- --check exit 0; cargo clippy --all-targets -- -D warnings exit 0; cargo test --lib 1517 passed / 0 failed / 1 ignored (unveraendert gegenueber Basis); git diff --check exit 0; Testzaehl vorher/nachher controller 44, webview 6.",
       "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: zwei God-Files mit je ueber 3000 Zeilen. Umsetzung als reine Bewegung: controller::tests -> src/controller/tests.rs (1439 Zeilen); webview_runtime::tests -> src/webview_runtime/tests.rs (95 Zeilen); WebView2-Datei-Upload-Helfer -> src/webview_runtime/file_input.rs (996 Zeilen, nur set_file_input_files_cdp fuer den Aufrufer pub(super)). Kein Logik-, API- oder Plattformpfadwechsel."
     }
-  ]
+,
+    {
+      "id": "T-973",
+      "phase": "15",
+      "type": "fix",
+      "title": "Pi-Provider: Port 8788, gueltiges Modell-Schema und Nutzerkonfiguration",
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-973-pi-provider-port-8788",
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26",
+      "depends_on": [],
+      "scope": [
+        "examples/pi/models.json",
+        "examples/pi/extensions/webagent-models.ts",
+        "scripts/test-pi-provider.ps1",
+        "docs/API_BRIDGE.md",
+        "docs/proofs/T-973/pi-tool-loop.json",
+        "docs/proofs/T-973/pi-user-config-turn.md",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Die aktiven Pi-Beispiele und der Smoke-Test nutzten den historisch toten Port 8787, und das Model-Schema enthielt audio, das Pi 1.5.2 ablehnt. Beides verhinderte einen echten Provider-Turn aus der kopierten Vorlage.",
+      "dod": "Aktive Pi-Dateien verwenden 8788 und nur text/image; der Smoke-Test laeuft gegen eine reale Bridge auf 8788 gruen; pi --list-models webagent und ein echter Turn mit der Nutzerkonfiguration sind gruen; cargo fmt --all -- --check, cargo clippy --all-targets -- -D warnings, cargo test --lib und git diff --check gruen.",
+      "handoff": "Abgeschlossen 2026-11-26 durch local/opencode, Basis master 4df9d3d. Nutzer-Pi-Konfiguration gesichert und ergaenzt; kein auth.json gelesen, kein bestehendes Secret ausgegeben, kein Login. Kein neues Release, kein Tag, kein Deployment, Dauerbetrieb nicht eingerichtet.",
+      "non_goals": [
+        "Keine Aenderung an historischen Belegen oder Dokumenten, die 8787 oder audio als damaligen Zustand beschreiben.",
+        "Kein Runtime-Code, kein Portwechsel der Bridge, kein neues Protokoll.",
+        "Kein Zugriff auf fremde Pi-Konfiguration oder vorhandene Tokens."
+      ],
+      "proof_path": "docs/CURRENT_WORK.md",
+      "verification": "Isolierter Pi-Smoke PASS (Textturn PI_BRIDGE_OK + fuenf sequenzielle read-Tool-Aufrufe) gegen deploytes v0.11.7 auf 8788, Transkript docs/proofs/T-973/pi-tool-loop.json. Nutzerkonfiguration: Backup models.json.bak-T973-20261126, pi --list-models webagent zeigt webagent/chatgpt, echter Turn WEBAGENT-PI-USER-OK-20261126 mit exit 0, Beleg docs/proofs/T-973/pi-user-config-turn.md. Gates: fmt 0, clippy 0, 1521 passed / 0 failed / 1 ignored, diff --check 0. Bridge nach beiden Laufen gestoppt, Port 8788 frei.",
+      "claimed_note": "Fund bei der Einrichtung des lokalen Pi-Providers am 2026-11-26."
+    }  ]
 }

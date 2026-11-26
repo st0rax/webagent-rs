@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-const BASE_URL = "http://127.0.0.1:8787/v1";
+const BASE_URL = "http://127.0.0.1:8788/v1";
 const FALLBACK_BRAINS = [
   "auto",
   "chatgpt",
@@ -23,11 +23,17 @@ type CatalogEntry = {
 
 function modelConfig(entry: CatalogEntry) {
   const brain = entry.brain ?? entry.id.replace(/^webagent\//, "");
+  // Pi 1.5.2 erlaubt nur "text" und "image". Der Katalog liefert fuer auto/gemini
+  // zusaetzlich "audio"; das wuerde die Modelle registrierungsunfaehig machen.
+  const input: Array<"text" | "image"> = (entry.modalities?.input ?? []).filter(
+    (m): m is "text" | "image" => m === "text" || m === "image",
+  );
+  if (input.length === 0) input.push("text");
   return {
     id: entry.id,
     name: `WebAgent ${brain}`,
     reasoning: false,
-    input: (entry.modalities?.input?.length ? entry.modalities.input : ["text", "image", "audio"]) as Array<"text" | "image" | "audio">,
+    input,
     contextWindow: entry.context_window ?? 128000,
     maxTokens: entry.max_tokens ?? 16384,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

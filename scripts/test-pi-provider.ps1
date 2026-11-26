@@ -13,7 +13,7 @@ kann die rohe JSON-Modus-Ausgabe fuer die manuelle Abnahme gespeichert werden.
 
 param(
     [string]$PiCommand = "pi",
-    [string]$BaseUrl = "http://127.0.0.1:8787",
+    [string]$BaseUrl = "http://127.0.0.1:8788",
     [string]$ApiKeyEnv = "WEBAGENT_API_KEY",
     [string]$TranscriptPath = ""
 )
@@ -27,8 +27,8 @@ $token = [Environment]::GetEnvironmentVariable($ApiKeyEnv, "Process")
 if ([string]::IsNullOrWhiteSpace($token)) {
     throw "Die Prozess-Umgebungsvariable $ApiKeyEnv fehlt. Sie muss denselben Token wie webagent api serve enthalten."
 }
-if ($BaseUrl.TrimEnd('/') -ne "http://127.0.0.1:8787") {
-    throw "Der isolierte Beispielprovider ist auf http://127.0.0.1:8787 festgelegt. Fuer einen anderen Port examples/pi/models.json kopieren und baseUrl anpassen."
+if ($BaseUrl.TrimEnd('/') -ne "http://127.0.0.1:8788") {
+    throw "Der isolierte Beispielprovider ist auf http://127.0.0.1:8788 festgelegt. Fuer einen anderen Port examples/pi/models.json kopieren und baseUrl anpassen."
 }
 
 $pi = Get-Command $PiCommand -ErrorAction Stop
