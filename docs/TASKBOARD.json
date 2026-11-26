@@ -2712,6 +2712,40 @@
       "owner": "local/opencode",
       "branch": "refactor/T-1007-panel-sink",
       "claimed_at": "2026-11-26"
+    },
+    {
+      "id": "T-1008",
+      "phase": "16",
+      "type": "fix",
+      "title": "Local runnable WebView2 build: auto-copy loader DLL and correct smoke diagnosis",
+      "status": "claimed",
+      "depends_on": [],
+      "scope": [
+        "build.rs",
+        "scripts/copy-webview2-loader.ps1",
+        "docs/proofs/T-1008/",
+        "docs/proofs/T-1004/README.md",
+        "docs/proofs/T-1006/README.md",
+        "docs/proofs/T-1007/README.md",
+        "docs/arch/CRATE_SPLIT.md",
+        "docs/arch/CLI_GROUPS.md",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Make a normal `cargo build` / `cargo build --release` produce a locally runnable default-feature binary by copying WebView2Loader.dll from the webview2-com-sys OUT_DIR next to webagent.exe in the existing root build.rs, keeping the manual script and the CI release copy as documented fallbacks. Correct the historical binary-smoke diagnosis: exit -1073741515 is 0xC0000135 (STATUS_DLL_NOT_FOUND, missing WebView2Loader.dll), not 0xC0000005 (access violation), and verify --version and --help on both debug and release binaries after a clean rebuild.",
+      "dod": "A clean default-feature build copies the DLL automatically into both target/debug and target/release; debug and release --version/--help exit 0 without a manual script call; claim-time and final lib test counts plus fmt/clippy/arch/all-targets/diff-check gates are recorded; corrected diagnosis is visible in proofs and handover; branch pushed with no merge or release.",
+      "non_goals": [
+        "No Cargo.toml, [profile.*] or dependency changes.",
+        "No merge, PR, tag, release or deployment.",
+        "No credentials, live provider call or browser login.",
+        "No change to the CI release packaging workflow."
+      ],
+      "proof_path": "docs/proofs/T-1008/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; git diff --check; clean debug/release build; ./target/debug/webagent.exe --version/--help; ./target/release/webagent.exe --version/--help",
+      "owner": "local/opencode",
+      "branch": "fix/T-1008-webview-loader-smoke",
+      "claimed_at": "2026-11-26"
     }
   ]
 }
