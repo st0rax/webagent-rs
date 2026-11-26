@@ -3,7 +3,9 @@
 - **Auslöser:** Der Eigentuemer schrieb „MACH ENDLICH", nachdem ich den Live-Test zurückgehalten hatte. Damit ist der kontrollierte Provider-Turn freigegeben; ich habe ihn gegen die bereits laufende Bridge PID `4484` ausgeführt.
 - **Gemini:** 2.041-Zeichen-Prompt → HTTP 200, Antwort exakt `T1014-GEMINI-OK`, 18,5 s, Event `pasted_chars=2210/2210`, `sends=1`, `success=true`. Der fruehere Zeichen-fuer-Zeichen-Fallback und die 69–667 s Laufzeiten sind nicht mehr aufgetreten.
 - **ChatGPT:** 48.041-Zeichen-Prompt → HTTP 200, Antwort `chatgpt  T1014-LANG-OK`, 35,5 s, Event `pasted_chars=48216/48213`, `sends=1`, `success=true`, `phase=settle`. Der alte `content_check`-Timeout bei ~45,6k Zeichen ist damit ebenfalls behoben.
-- **Logs:** `bridge.err.restart-20261126.log` zeigt nur die bekannten `not_isolatable`-Hinweise zur Websuche; kein `prompt_zu_lang`, kein Composer-Timeout, kein Absturz. PID `4484` und Port `8788` blieben aktiv. Kein Login, keine Zugangsdatenausgabe, kein Tag/Release.
+- **Over-Cap:** 25.000 Zeichen an Gemini → HTTP 502 `prompt_zu_lang` in 177 ms, Event mit `latency_ms=0` und ohne `turn`-Objekt, kein Browserstart, Breaker unverändert. Kein stilles Kuerzen.
+- **Weiteres Monitoring:** Elf echte Turns zwischen 19:22 und 19:35 UTC (zehn `chatgpt`, einer `gemini`) alle `success=true`, `sends=1`. Die `T-961`-Frisch-Chat-Retrys im Log sind dokumentiertes, einmaliges Verhalten eines abgeschlossenen Tasks, kein Defekt; `Retry erschoepft` kam nicht vor. `/v1/models` ohne Token weiter 401, Health `ok`, PID `4484` und Port `8788` stabil.
+- **Logs:** `bridge.err.restart-20261126.log` zeigt nur die bekannten `not_isolatable`-Hinweise und den bewusst ausgeloesten Over-Cap-Abbruch; kein Composer-Timeout, kein Browserabsturz. Kein Login, keine Zugangsdatenausgabe, kein Tag/Release.
 - **Beleg:** `docs/proofs/T-1014/live-verification.md`.
 
 ## 2026-11-26 - Bridge mit T-1014-Binary neu gestartet

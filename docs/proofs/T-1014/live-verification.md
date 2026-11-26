@@ -22,6 +22,17 @@
 - Event `2026-11-26T19:02:22.126891+00:00`: `success=true`, `reason=null`, `prompt_chars=48213`, `pasted_chars=48216`, `expected_chars=48213`, `sends=1`, `phase=settle`, `focus_arrived=true`, `focus_tries=3`.
 - Aussage: Die tolerante `composer_holds_text`-Prüfung trägt auch bei ~48k Zeichen; der Turn sendet genau einmal und schließt sauber ab. Die leichte Längenabweichung (3 Zeichen) liegt innerhalb der erlaubten 10-%-Bandbreite und ist kein truncierter Text.
 
+## 3. Over-Cap-Fail-fast — Pose ohne Browserstart
+
+- Prompt: 25.000 Zeichen `x ` an `webagent/gemini`, `stream=false`. Erhalten wurden 25.169 Zeichen inklusive Prompt-Rahmen; das Cap liegt bei 24.000.
+- Ergebnis: HTTP 502, `type=invalid_request_error`, Nachricht `prompt_zu_lang: gemini nimmt maximal 24000 Zeichen an (gemessen), erhalten 25169; bitte Kontext verkleinern`. Latenz 177 ms — vor jeder Breaker-, Backend- oder Browserarbeit.
+- Event `2026-11-26T19:37:07.165545+00:00`: `success=false`, `reason=prompt_zu_lang…`, `latency_ms=0`, `prompt_chars=25169`, **kein** `turn`-Objekt, `sends` nicht gesetzt. Der Breaker-Zustand blieb unverändert (kein `gemini`-Eintrag neu).
+- Aussage: Der ueberlange Prompt wird verworfen, nicht still gekuerzt und nicht an einen Browser übergeben. Damit ist auch der dritte T-1014-Pfad live belegt, nicht nur per Unit-Test.
+
+## Betrieb nach dem Restart
+
+Zwischen 19:22 und 19:35 UTC liefen elf weitere echte Turns durch die Bridge (zehn `chatgpt`, einer `gemini` aus Abschnitt 1), alle `success=true`, alle mit `sends=1`, `reason=null`. Im stderr erscheinen mehrfach `[T-961] semantische Werkzeugverweigerung; ein Frisch-Chat-Retry mit dem ursprünglichen Auftrag.` Das ist die dokumentierte, genau einmalige Eskalation aus T-961 (Task `done`), kein Fehler; `Retry erschoepft` kam nicht vor. `/health` bleibt `ok`, `/v1/models` liefert neun Modelle, `/v1/models` ohne Token liefert 401, PID `4484` und Port `8788` blieben stabil.
+
 ## Logbild nach den Turns
 
 `bridge.err.restart-20261126.log` enthält nur die bekannten, sachlichen Hinweise:
@@ -36,8 +47,8 @@
 [relay] chatgpt: Websuche nicht isolierbar (not_isolatable)
 ```
 
-Kein `prompt_zu_lang`, kein Composer-Timeout, kein Browserabsturz, kein Reconnect. Der Prozess PID `4484` und Port `8788` blieben nach beiden Turns unverändert aktiv.
+Bis auf den bewusst ausgelosten Over-Cap-Abbruch gab es kein `prompt_zu_lang`, keinen Composer-Timeout, keinen Browserabsturz und kein Reconnect. Der Prozess PID `4484` und Port `8788` blieben durchgehend aktiv.
 
 ## Grenze
 
-Zwei Turne, zwei Brains, bestehende Sitzungen, lokale Loopback-Brücke. Kein Dauerbetrieb, kein Fern-Deployment, kein Cap-Grenzfall jenseits von 24.000 Zeichen in diesem Lauf (der Fail-fast-Pfad ist in `docs/proofs/T-1014/gates.txt` per Unit-Test belegt). Keine Zugangsdaten gelesen oder ausgegeben.
+Drei kontrollierte Turne/Abbrüche, zwei Brains, bestehende Sitzungen, lokale Loopback-Brücke, dazu Beobachtung der anschliessenden Regelturns. Kein Dauerbetrieb, kein Fern-Deployment. Keine Zugangsdaten gelesen oder ausgegeben.
