@@ -1216,6 +1216,6 @@ mod tests {
         let too_big = "x".repeat(MAX_BROWSER_PROMPT_CHARS + 1);
         let error = check_browser_prompt_budget(&too_big).unwrap_err();
         assert!(error.contains("Prompt zu gross fuer die Browser-Oberflaeche"));
-        assert!(error.contains("180001"));
+        assert!(error.contains(&(MAX_BROWSER_PROMPT_CHARS + 1).to_string()));
     }
 }

@@ -1,3 +1,29 @@
+## 2026-11-27 - T-1017 live kalibriert: echte UI-Grenze ~140k statt 200k
+
+- Der erste T-1017-Build (`03dbe14be`, EXE `D4D54039…5B1`) wurde mit
+  Backup `backup-release-before-T1017-20261126\` und identischer
+  Command-Line aktiviert (PID 5688, Health ok, 9 Modelle).
+- **PASS:** `chatgpt`, `tools=12`, HTTP 200, Antwort exakt
+  `T1017-LIVE-OK`, 29,2 s; Event 23:44:52 `+01:00` `success=true`,
+  `sends=1`, `prompt_chars=27432`.
+- **Guard-PASS:** 192.439 Zeichen → 0,13 s, benannter Fehler
+  `Prompt zu gross fuer die Browser-Oberflaeche … (Maximum 180000)`,
+  kein Browserlauf, kein Breaker-Eintrag.
+- **Kalibrierung:** 159.505 und 147.459 Zeichen scheitern weiterhin an
+  `ABSENDEKNOPF_DEAKTIVIERT` (je ~90 s); 127.459 und 138.561 Zeichen
+  werden gesendet (`sends=1`), liefern aber auf synthetische Füllprompts
+  keine Antwort innerhalb 200 s / 260 s. Die alte Annahme „200.000
+  Zeichen gehen" ist falsch.
+- **Anpassung:** `MAX_TOOL_SCHEMA_BYTES` 32 KiB → 12 KiB,
+  `TOOL_DESCRIPTION_LIMITS = [256, 0]`, `MAX_BROWSER_PROMPT_CHARS`
+  180.000 → 140.000. Kein Nutzerprompt-Text gekürzt. Gates erneut grün
+  (fmt/clippy/lib/arch/tui/no-default/diff-check 0; 1556 passed).
+  Beleg: `docs/proofs/T-1017/{README.md,gates.txt}`.
+- Breaker wurde für die Messungen mehrfach mit Backup zurueckgesetzt
+  (`state-before-T1017-live-20261126.json`, `-size-120k`, `-size-100k`,
+  `-size-132k`). Kein Login, keine Zugangsdatenausgabe, kein Tag/Release.
+- **Offen:** angepassten Build erneut bauen/deployen und verifizieren.
+
 ## 2026-11-26 - T-1017 auf master (Build/Deploy noch offen)
 
 - Branch `bd0b350` (opencode-Identität) gepusht und per Fast-Forward nach

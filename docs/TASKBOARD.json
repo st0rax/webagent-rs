@@ -3131,7 +3131,7 @@
       "status": "done",
       "title": "Browser prompt budget instead of silent UI length rejection",
       "type": "fix",
-      "verification": "gates.txt: fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0; 2 neue Regressionstests. Branch bd0b350 gepusht und per Fast-Forward nach master bd0b350 gemergt. Finaler Release-Build, Deploy und Live-Nachweis stehen noch offen und werden in CURRENT_WORK/proofs nachgetragen.",
+      "verification": "gates.txt: zwei Gate-Serien gruen, zuletzt fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0; 2 Regressionstests. Branch bd0b350 gepusht und nach master gemergt. Live-Kalibrierung: chatgpt tools=12 HTTP 200, Antwort exakt T1017-LIVE-OK, Event 23:44:52 success=true sends=1 prompt_chars=27432; Guard 192439 Zeichen in 0,13s benannt abgelehnt; UI akzeptiert 138561, lehnt 147459 ab -> Schema 12 KiB, Guard 140000. Finaler Rebuild/Redeploy und zweiter Live-Nachweis offen.",
       "done_at": "2026-11-26"
     }
   ]

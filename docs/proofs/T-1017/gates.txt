@@ -30,6 +30,12 @@ cargo check --no-default-features -q
 git diff --check
   diffcheck=0
 
-Hinweis: Diese Gates wurden vor dem Merge und vor dem Deploy gemessen.
-Der finale Release-Build aus master und der Live-Nachweis werden nach dem
-Merge in README.md und docs/CURRENT_WORK.md ergaenzt.
+Zweite Gates-Serie nach der Live-Kalibrierung (12 KiB Schema, 140k Guard,
+Test mit dynamischer Grenze statt fest eingeschriebener 180001):
+  fmt=0; clippy=0; lib=0 (459+187+630+280 = 1556 passed, 0 failed, 1 ignored)
+  arch=0 (5 passed, modules=92, edges=282, crate_violations=0)
+  tui=0; no-default=0; diffcheck=0
+
+Hinweis: Die erste Gates-Serie lief vor dem Merge, die zweite nach der
+Live-Kalibrierung. Der finale Release-Build aus master und der zweite
+Live-Nachweis werden in README.md und docs/CURRENT_WORK.md ergaenzt.
