@@ -203,6 +203,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1010 | 16 | Workspace skeleton and multi-crate architecture guard | refactor | claimed | local/opencode | refactor/T-1010-workspace-guard |
 | T-1011 | 16 | Extract platform-neutral core modules into webagent-core | refactor | claimed | local/opencode | refactor/T-1011-core-extraction |
 | T-1012 | 16 | Extract browser/transport modules into webagent-transport | refactor | claimed | local/opencode | refactor/T-1012-transport-extraction |
+| T-1013 | 16 | Extract API/relay modules into webagent-api | refactor | claimed | local/opencode | refactor/T-1013-api-extraction |
 
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
@@ -325,6 +326,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1010 | claimed |
 | T-1011 | claimed |
 | T-1012 | claimed |
+| T-1013 | claimed |
 | T-976 | done |
 | T-977 | done |
 <!-- TASKBOARD-MIRROR-END -->

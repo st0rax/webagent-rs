@@ -1,3 +1,8 @@
+## 2026-11-26 - T-1013 claimed: api extraction (no source edits yet)
+
+- **Claim:** `docs/TASKBOARD.json` and mirror carry T-1013 as `claimed`, owner `local/opencode`, branch `refactor/T-1013-api-extraction`, 2026-11-26. It branches from the pushed T-1012 implementation commit `1910fec` and stays `claimed` until merged. No source file was moved before this claim.
+- **Claim-time baseline:** workspace lib tests 647 root + 623 core + 277 transport = 1547 passed / 0 failed / 1 ignored; guard `modules=91, edges=278, cycles=3, upward_edges=26, crate_violations=0`; fmt/clippy 0; debug and release smoke 0. Known blocker: `relay.rs` calls the concrete `WebBackendFactory` (transport), which api must not reference. It needs a core-side factory provider installed by the binary.
+
 ## 2026-11-26 - T-1012 implemented: transport modules extracted (branch pushed)
 
 - **Branch/claim:** `refactor/T-1012-transport-extraction`, claim commit `3c4388d`, owner `local/opencode`. T-1012 was claimed in board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. Proof: `docs/proofs/T-1012/README.md`.
