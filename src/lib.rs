@@ -55,6 +55,7 @@ pub mod inference_types;
 pub mod login;
 pub mod mock_page;
 pub mod page_driver;
+pub mod panel_sink;
 #[cfg(any(feature = "webview", test))]
 mod upload_spa_js;
 pub mod webview_reveal;

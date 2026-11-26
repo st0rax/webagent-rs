@@ -55,7 +55,7 @@ enum RuntimeMessage {
     /// das Verhalten ohne Kachelansicht.
     SetBounds {
         view_id: ViewId,
-        bounds: Option<crate::brain_grid::Rect>,
+        bounds: Option<crate::panel_sink::Rect>,
         respond: Sender<Result<()>>,
     },
     /// Fokus ausdruecklich auf eine Kachel holen (`true`) oder ihn ans
@@ -241,7 +241,7 @@ impl WebViewRuntime {
     pub fn set_bounds(
         &self,
         view_id: ViewId,
-        bounds: Option<crate::brain_grid::Rect>,
+        bounds: Option<crate::panel_sink::Rect>,
     ) -> Result<()> {
         let (resp_tx, resp_rx) = mpsc::channel();
         self.tx
@@ -926,7 +926,7 @@ fn show_without_activating(_window: &tao::window::Window) {}
 fn focus_terminal_window() {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
-    if let Some(hwnd) = crate::brain_grid::terminal_window_hwnd() {
+    if let Some(hwnd) = crate::panel_sink::panel_sink().terminal_window_hwnd() {
         unsafe {
             let _ = SetForegroundWindow(HWND(hwnd as *mut core::ffi::c_void));
         }
@@ -968,7 +968,7 @@ fn focus_view(rt: &mut SharedRuntime, view_id: ViewId, focus: bool) -> Result<()
 fn set_bounds(
     rt: &mut SharedRuntime,
     view_id: ViewId,
-    bounds: Option<crate::brain_grid::Rect>,
+    bounds: Option<crate::panel_sink::Rect>,
 ) -> Result<()> {
     let slot = rt
         .pages

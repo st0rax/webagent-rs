@@ -1,4 +1,4 @@
-//! Brain-Kachelansicht — Geometrie.
+//! Brain-Kachelansicht — Desktop-Anbindung.
 //!
 //! Die Brain-Fenster existieren bereits: [`crate::webview_runtime`] oeffnet pro
 //! Tab ein echtes Fenster und parkt es nur auf `OFFSCREEN_POS`, damit es
@@ -12,165 +12,37 @@
 //! Fokus bekommt eine Kachel nur auf ausdrueckliche Anforderung (Alt+Nummer),
 //! Esc gibt ihn ans Terminalfenster zurueck.
 //!
-//! Dieses Modul rechnet ausschliesslich — es fasst kein Fenster an. Genau
-//! deshalb ist es testbar: die Kachelaufteilung ist die Stelle, an der sich
-//! Ueberlappungen, Rundungsfehler und leere Faelle einschleichen, und keine
-//! davon braucht eine UI, um sichtbar zu werden.
+//! Die reine Geometrie und der `PanelSink` liegen in [`crate::panel_sink`].
+//! Dieses Modul liefert die Desktop-Fakten, dockt das Terminal und installiert
+//! den Sink fuer die Transport-Schicht. Die alten Pfade (`brain_grid::Rect`,
+//! `brain_grid::grid_layout`, …) bleiben als Re-Exporte erhalten.
 
-/// Rechteck in physischen Bildschirmkoordinaten.
+pub use crate::panel_sink::{
+    fitting_tile_count, grid_dimensions, grid_layout, split_areas, Rect, MIN_TILE_HEIGHT,
+    MIN_TILE_WIDTH,
+};
+
+/// Desktop-Implementierung des Transport-Sinks (T-1007).
 ///
-/// `x`/`y` sind vorzeichenbehaftet: ein Monitor links vom Hauptbildschirm hat
-/// negative Koordinaten, und die Parkposition der Fenster liegt ohnehin bei
-/// -32000.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Rect {
-    pub x: i32,
-    pub y: i32,
-    pub width: u32,
-    pub height: u32,
+/// Bewusst hier und nicht in `panel_sink`: die Win32-Suche nach Arbeitsbereich
+/// und Terminalfenster gehoert zur Anwendung, nicht zur Transport-Schicht.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DesktopPanelSink;
+
+impl crate::panel_sink::PanelSink for DesktopPanelSink {
+    fn work_area(&self) -> Option<Rect> {
+        primary_work_area()
+    }
+
+    fn terminal_window_hwnd(&self) -> Option<isize> {
+        terminal_window_hwnd()
+    }
 }
 
 /// Tab-Titel der Brain-Fenster. Der Host (Konsole / Windows Terminal)
 /// traegt das nicht — sonst wuerde die Suche ein Brain unten andocken.
 pub fn is_brain_tab_title(title: &str) -> bool {
     title.trim_start().starts_with("webagent ·")
-}
-
-impl Rect {
-    pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn right(&self) -> i32 {
-        self.x + self.width as i32
-    }
-
-    #[cfg(test)]
-    pub fn bottom(&self) -> i32 {
-        self.y + self.height as i32
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.width == 0 || self.height == 0
-    }
-
-    /// Ueberlappen sich zwei Kacheln? Beruehrende Kanten zaehlen nicht.
-    #[cfg(test)]
-    pub fn overlaps(&self, other: &Rect) -> bool {
-        if self.is_empty() || other.is_empty() {
-            return false;
-        }
-        self.x < other.right()
-            && other.x < self.right()
-            && self.y < other.bottom()
-            && other.y < self.bottom()
-    }
-
-    /// Liegt `self` vollstaendig in `outer`?
-    #[cfg(test)]
-    pub fn contained_in(&self, outer: &Rect) -> bool {
-        self.x >= outer.x
-            && self.y >= outer.y
-            && self.right() <= outer.right()
-            && self.bottom() <= outer.bottom()
-    }
-}
-
-/// Abstand zwischen zwei Kacheln in Pixeln.
-const GAP: u32 = 6;
-
-/// Unterhalb dieser Kachelgroesse schalten die Chat-Oberflaechen der Brains in
-/// Mobil-Layouts um und der Inhalt wird unlesbar. Die Kachelansicht verkleinert dann
-/// lieber die Zahl der Spalten, statt weiter zu schrumpfen.
-pub const MIN_TILE_WIDTH: u32 = 320;
-pub const MIN_TILE_HEIGHT: u32 = 240;
-
-/// Spalten/Zeilen fuer `n` Kacheln — moeglichst quadratisch, Rest in die
-/// letzte Zeile.
-pub fn grid_dimensions(n: usize) -> (usize, usize) {
-    if n == 0 {
-        return (0, 0);
-    }
-    let columns = (n as f64).sqrt().ceil() as usize;
-    let rows = n.div_ceil(columns);
-    (columns, rows)
-}
-
-/// Teilt `area` in `n` moeglichst gleich grosse Kacheln.
-///
-/// Die Restpixel der Ganzzahldivision werden auf die vorderen Spalten bzw.
-/// Zeilen verteilt, statt sie am Rand liegen zu lassen — sonst klafft rechts
-/// und unten je nach Aufloesung eine sichtbare Luecke.
-pub fn grid_layout(area: Rect, n: usize) -> Vec<Rect> {
-    if n == 0 || area.is_empty() {
-        return Vec::new();
-    }
-    let (columns, rows) = grid_dimensions(n);
-
-    // Zwischenraeume gehen von der verfuegbaren Flaeche ab, bevor geteilt wird.
-    let gaps_x = GAP.saturating_mul(columns.saturating_sub(1) as u32);
-    let gaps_y = GAP.saturating_mul(rows.saturating_sub(1) as u32);
-    let usable_width = area.width.saturating_sub(gaps_x);
-    let usable_height = area.height.saturating_sub(gaps_y);
-    if usable_width == 0 || usable_height == 0 {
-        return Vec::new();
-    }
-
-    let base_width = usable_width / columns as u32;
-    let base_height = usable_height / rows as u32;
-    let extra_width = usable_width % columns as u32;
-    let extra_height = usable_height % rows as u32;
-
-    // Spaltenbreiten und Zeilenhoehen vorab, damit die x/y-Positionen exakt
-    // aufsummieren und keine Rundung zweimal wirkt.
-    let column_widths: Vec<u32> = (0..columns)
-        .map(|c| base_width + u32::from((c as u32) < extra_width))
-        .collect();
-    let row_heights: Vec<u32> = (0..rows)
-        .map(|r| base_height + u32::from((r as u32) < extra_height))
-        .collect();
-
-    let mut tiles = Vec::with_capacity(n);
-    for index in 0..n {
-        let column = index % columns;
-        let row = index / columns;
-        let x = area.x
-            + column_widths[..column]
-                .iter()
-                .map(|w| (*w + GAP) as i32)
-                .sum::<i32>();
-        let y = area.y
-            + row_heights[..row]
-                .iter()
-                .map(|h| (*h + GAP) as i32)
-                .sum::<i32>();
-        tiles.push(Rect::new(x, y, column_widths[column], row_heights[row]));
-    }
-    tiles
-}
-
-/// Teilung des Arbeitsbereichs: Kachelwand oben, Terminal unten.
-///
-/// Storax' Wunsch (03.08.2026, Nachfolger): die Brain-Wall steht automatisch
-/// auf dem oberen Teil des Bildschirms, die TUI dockt sich darunter an. Das
-/// Terminal bekommt die unteren ~30 % der Hoehe, die Wall den Rest.
-pub fn split_areas(work: Rect) -> (Rect, Rect) {
-    let terminal_height = work.height * 3 / 10;
-    let wall_height = work.height - terminal_height;
-    let wall = Rect::new(work.x, work.y, work.width, wall_height);
-    let terminal = Rect::new(
-        work.x,
-        work.y + wall_height as i32,
-        work.width,
-        terminal_height,
-    );
-    (terminal, wall)
 }
 
 /// Rechteck des Terminalfensters, in dem dieser Prozess laeuft.
@@ -328,7 +200,7 @@ fn visible_window_of(pid: u32) -> Option<(windows::Win32::Foundation::HWND, Rect
         let n = GetWindowTextW(window, &mut title_buf);
         if n > 0 {
             let title = String::from_utf16_lossy(&title_buf[..n as usize]);
-            if crate::brain_grid::is_brain_tab_title(&title) {
+            if is_brain_tab_title(&title) {
                 return BOOL(1);
             }
         }
@@ -355,25 +227,6 @@ fn visible_window_of(pid: u32) -> Option<(windows::Win32::Foundation::HWND, Rect
         );
     }
     search.result
-}
-
-/// Passt die Kachelzahl an, wenn `n` Kacheln zu klein wuerden.
-///
-/// Gibt zurueck, wie viele Kacheln gleichzeitig sinnvoll darstellbar sind. Der
-/// Aufrufer entscheidet, was mit dem Rest passiert (blaettern, weglassen) —
-/// aber er soll es bewusst entscheiden und nicht acht unleserliche Briefmarken
-/// auf den Schirm legen.
-pub fn fitting_tile_count(area: Rect, desired: usize) -> usize {
-    for count in (1..=desired).rev() {
-        let tiles = grid_layout(area, count);
-        if tiles
-            .iter()
-            .all(|t| t.width >= MIN_TILE_WIDTH && t.height >= MIN_TILE_HEIGHT)
-        {
-            return count;
-        }
-    }
-    0
 }
 
 /// Nutzbare Flaeche des Hauptbildschirms (ohne Taskleiste).

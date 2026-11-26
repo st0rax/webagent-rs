@@ -440,7 +440,7 @@ impl BrowserPool {
     /// `None` stellt den Zustand ohne Kachelansicht wieder her.
     ///
     /// Gibt zurueck, wie viele Fenster angeordnet wurden. Passen nicht alle in
-    /// den Bereich (siehe [`crate::brain_grid::fitting_tile_count`]), werden die
+    /// den Bereich (siehe [`crate::panel_sink::fitting_tile_count`]), werden die
     /// ueberzaehligen bewusst geparkt statt zu Briefmarken gequetscht — der
     /// Aufrufer sieht das an der Differenz zu [`Self::open_brains`] und muss es
     /// melden.
@@ -449,7 +449,7 @@ impl BrowserPool {
     #[allow(dead_code)]
     pub fn arrange_brain_grid(
         &self,
-        area: Option<crate::brain_grid::Rect>,
+        area: Option<crate::panel_sink::Rect>,
     ) -> Result<usize, String> {
         let Some(runtime) = self.runtime.as_ref() else {
             return Ok(0);
@@ -466,8 +466,8 @@ impl BrowserPool {
             return Ok(0);
         };
 
-        let fitting = crate::brain_grid::fitting_tile_count(area, names.len());
-        let tiles = crate::brain_grid::grid_layout(area, fitting);
+        let fitting = crate::panel_sink::fitting_tile_count(area, names.len());
+        let tiles = crate::panel_sink::grid_layout(area, fitting);
         for (index, name) in names.iter().enumerate() {
             let Some(tab) = self.tabs.get(name) else {
                 continue;

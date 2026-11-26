@@ -1,5 +1,16 @@
 # Current Work
 
+## 2026-11-26 - T-1007 implemented: PanelSink boundary for transport
+
+- **Branch/claim:** `refactor/T-1007-panel-sink`, claim commit `6fec681`, owner `local/opencode`. T-1007 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. It is follow-up 3 from `docs/arch/CRATE_SPLIT.md`, not crate extraction.
+- **Delivered:** new dependency-free `src/panel_sink.rs` owns `Rect`, the pure grid/reveal geometry and the read-only `PanelSink` trait. `brain_grid` keeps the old re-exports and implements `DesktopPanelSink`; `main.rs` installs it before dispatch. `browser_pool`, `webview_reveal` and `webview_runtime` now reference `panel_sink` only; no `crate::brain_grid` remains in those three modules. Parking, docking and focus behavior is unchanged. Proof: `docs/proofs/T-1007/README.md`.
+- **Documented limit:** without installation (library users and unit tests), `panel_sink()` returns `NoPanelSink` and `reveal_rect()` uses the 80/80/1280×900 fallback. The binary installs the desktop sink, so production geometry is unchanged.
+- **Guard delta:** deleted `browser_pool→brain_grid`, `webview_reveal→brain_grid` and `webview_runtime→brain_grid` from the ratchet after the guard proved them stale; added `panel_sink` to L0. Measured 90 modules / 276 edges / 3 cycles / 26 upward edges (was 89 / 275 / 3 / 29). The `brain_probe,browser,browser_pool` cycle is unchanged; no exception was added.
+- **Tests re-measured:** claim 1528 total / 1527 passed / 0 failed / 1 ignored (50.71 s); final 1531 total / 1530 passed / 0 failed / 1 ignored (52.40 s). Three new unit tests in `panel_sink`. Gates green: `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1530 lib + 7 bin-unit + 4 integration; `cargo test --locked --no-default-features --quiet` final 1524 lib + 7 bin-unit + 4 integration; `git diff --check` 0.
+- **Flake, not hidden:** two parallel browser-free runs failed intermittently with `ConnectionReset` in the untouched `web_ui.rs` one-shot helper (two different tests). Isolated retry, full serial run and a third parallel run passed; the claim commit passed in parallel in a clean worktree. No regression from the changed modules was reproducible.
+- **Binary smoke blocked, not a regression:** `cargo build` succeeded, but default `webview` `--help` and `diagnose` still exit `-1073741515` (`0xC0000005`) before `main`, as at claim time. `Cargo.toml`, `[profile.*]` and dependencies were not touched.
+- **Grenze / offen:** no crate extraction, merge, PR, tag, release, deployment, credentials, live provider call or browser login. All phase-16 branches remain `claimed`; crate extraction still needs fresh explicit owner approval. Next owner choice: review/push this branch, or approve the image-backend follow-up explicitly.
+
 ## 2026-11-26 - T-1006 implemented: public core traits and shared inference types
 
 - **Branch/claim:** `refactor/T-1006-core-traits`, claim commit `9bf1841`, implementation commit `7f87e5c`, owner `local/opencode`. T-1006 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. This is F1 from the T-1004 follow-up list, not crate extraction.

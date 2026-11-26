@@ -6,7 +6,7 @@
 //! Aufrufreihenfolge und ist mit einem Mock unit-testbar — ohne echten
 //! WebView-Thread.
 
-use crate::brain_grid::Rect;
+use crate::panel_sink::{panel_sink, reveal_rect_for_work_area, Rect};
 use std::cell::RefCell;
 
 /// Steuerflaeche, die Reveal/Park auf ein Fenster anwendet.
@@ -33,16 +33,12 @@ pub fn park_offscreen(ctrl: &dyn ViewWindowControl) -> Result<(), String> {
 }
 
 /// Einzel-Brain-Rechteck: zentriert im Arbeitsbereich, sonst Fallback 1280x900.
+///
+/// Der Arbeitsbereich kommt vom installierten [`crate::panel_sink::PanelSink`],
+/// nicht aus der Root-Crate. Ohne Installation gilt derselbe Fallback wie
+/// bisher bei nicht ermittelbarem Arbeitsbereich.
 pub fn reveal_rect() -> Rect {
-    if let Some(work) = crate::brain_grid::primary_work_area() {
-        let width = work.width.clamp(800, 1280);
-        let height = work.height.clamp(600, 900);
-        let x = work.x + ((work.width.saturating_sub(width)) / 2) as i32;
-        let y = work.y + ((work.height.saturating_sub(height)) / 2) as i32;
-        Rect::new(x, y, width, height)
-    } else {
-        Rect::new(80, 80, 1280, 900)
-    }
+    reveal_rect_for_work_area(panel_sink().work_area())
 }
 
 /// Aufzeichnung fuer Unit-Tests (Reihenfolge reveal → park).

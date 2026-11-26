@@ -104,7 +104,7 @@ in the wrong direction or into another library:
 |---|---|---|
 | core → transport | `contract → browser`, `counting → browser` | `contract` only needed protocol helpers re-exported by `browser`; `counting` needs a `BackendFactory`. `PageProbe` is prepared for later panel work, not for these two edges. |
 | transport → api | `browser → browser_inference` | shared inference/tool value types moved to core |
-| transport → rest | `browser_pool → brain_grid`, `webview_reveal → brain_grid`, `webview_runtime → brain_grid` | `PanelSink`/`WindowLayout` callback in transport, implemented by the root app |
+| transport → rest | `browser_pool → brain_grid`, `webview_reveal → brain_grid`, `webview_runtime → brain_grid` | Done as T-1007: low-rank `panel_sink` owns `Rect`, pure layout and the desktop-fact `PanelSink`; root `brain_grid` implements and installs it. No file was moved. |
 | api → transport | `relay → browser` | public `BackendFactory` in core; the text path uses it since T-1006. The image path still constructs `WebBrainBackend` directly and needs a dedicated image-backend trait before extraction. |
 
 T-1006 correction to the original wording: `PageProbe` alone does not fix
@@ -246,11 +246,13 @@ no dependency is added or removed by the design.
    core. It is not the fix for `contract → browser` or `counting → browser`
    (see the correction in §3): the former was a re-exported protocol helper,
    the latter needs `BackendFactory`.
-6. **`PanelSink`/`WindowLayout` in transport.** `browser_pool`,
-   `webview_reveal` and `webview_runtime` reach `brain_grid` in the root app
-   for desktop tiling. Let transport emit layout intents through a callback;
-   the root crate implements it. This removes all three `transport → rest`
-   edges without parking or focus logic leaking into a library.
+6. **`PanelSink`/`WindowLayout` in transport.** Published in T-1007:
+   `browser_pool`, `webview_reveal` and `webview_runtime` no longer reach
+   `brain_grid`. The low-rank `panel_sink` module owns `Rect`, pure layout and
+   the read-only desktop-fact trait; root `brain_grid` supplies
+   `DesktopPanelSink` and the binary installs it. Parking and focus logic stay
+   in the root/runtime modules, so this removed all three `transport → rest`
+   edges without leaking window control into a library.
 7. **`BrainBackend::page(&dyn Any)` stays an escape hatch.** The trait method
    exists for diagnose tools. No downcast to a WebView type may appear in api
    or core; transport keeps the concrete page access.
@@ -291,8 +293,11 @@ before/after test count; none may merge without separate approval.
 2. **Break `browser → browser_inference`.** Move the shared value types to
    their new home, delete the exception only after the guard proves the edge
    is gone.
-3. **Break the three `brain_grid` hooks.** Introduce `PanelSink` and verify
-   window parking/focus behaviour against the existing T-1002 notes.
+3. **Break the three `brain_grid` hooks.** Done as T-1007 in the current crate:
+   `panel_sink` owns `Rect`, `WindowLayout` helpers and `PanelSink`; `brain_grid`
+   implements `DesktopPanelSink`, the binary installs it, and the three
+   transport modules no longer reference `brain_grid`. Parking, docking and
+   focus are unchanged; the guard dropped from 29 to 26 upward edges.
 4. **Break `contract`/`counting → browser`.** Done as T-1006: `contract` uses
    `crate::protocol` helpers and `counting` uses `BackendFactory`; both
    grandfathered `edge:` lines were removed only after the guard confirmed the

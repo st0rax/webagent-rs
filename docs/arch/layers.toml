@@ -31,6 +31,7 @@ modules = [
   "brain",
   "brain_probe",
   "inference_types",
+  "panel_sink",
   "comms",
   "https_client",
   "login",

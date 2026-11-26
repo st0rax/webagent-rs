@@ -48,6 +48,10 @@ fn init_console_utf8() {}
 fn run() -> i32 {
     // Muss vor der ersten Ausgabe laufen, sonst ist die erste Zeile Mojibake.
     init_console_utf8();
+    // Die Anwendung liefert die Desktop-Fakten fuer die Transport-Schicht;
+    // ohne Installation antwortet panel_sink mit dem leeren Fallback.
+    let _ =
+        webagent::panel_sink::install_panel_sink(Box::new(webagent::brain_grid::DesktopPanelSink));
 
     let cli = Cli::parse();
     // Lokale Diagnose-/Registry-Befehle benÃ¶tigen weder persistierte

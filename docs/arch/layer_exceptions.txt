@@ -2,10 +2,11 @@
 # Baseline on master 93d33a3: 87 modules, 274 crate::<module> edges, six SCCs.
 # T-1000 removed brain_limits/config, T-1001 capability/capability_proof,
 # T-1002 tui_load/tui_state, leaving three cycles. T-1006 adds inference_types
-# (89 modules, 275 edges, 29 upward edges) and shrinks the browser cycle from
-# six modules to three; contract->browser, contract->brain and counting->browser
-# are gone. Every entry below is grandfathered debt; the test fails on a new
-# entry and on a stale entry (so the list can only shrink).
+# and shrinks the browser cycle from six modules to three; contract->browser,
+# contract->brain and counting->browser are gone. T-1007 adds panel_sink
+# (90 modules, 276 edges, 3 cycles, 26 upward edges) and removes the three
+# transport->brain_grid edges. Every entry below is grandfathered debt; the
+# test fails on a new entry and on a stale entry (so the list can only shrink).
 #
 # Format: cycle:<sorted,comma-separated module names> | edge:<lower>-><higher>
 
@@ -34,6 +35,8 @@ cycle:bin_hooks,repl,tui,tui_ansi
 
 # Legacy upward edges kept in the conceptual layer model. These are not part
 # of the phase-16 cycle tasks; removing one requires deleting its line here.
+# T-1007 deleted browser_pool->brain_grid, webview_reveal->brain_grid and
+# webview_runtime->brain_grid after the guard proved those edges gone.
 edge:bot2bot_worker->controller
 edge:bot2bot_worker->run_store
 edge:brain->protocol
@@ -46,7 +49,6 @@ edge:browser->capability_proof
 edge:browser->observer
 edge:browser->protocol
 edge:browser_inference->observer
-edge:browser_pool->brain_grid
 edge:counting->brain
 edge:design_vote->knockout
 edge:doctor->run_store
@@ -60,6 +62,4 @@ edge:taskboard->run_store
 edge:timeouts->brain_score
 edge:tools->protocol
 edge:watchdog->run_store
-edge:webview_reveal->brain_grid
-edge:webview_runtime->brain_grid
 edge:webview_runtime->network_observation
