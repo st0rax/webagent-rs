@@ -23,6 +23,10 @@
   schrumpft das 12-Tool-Schema von ~9 KiB auf ~2,4 KiB. Kein
   Nutzerprompt-Text gekürzt, kein Login, keine Zugangsdatenausgabe, kein
   Tag/Release/Versionssprung. Board 123/123 `done`.
+- Für den zweiten PC liegt dieselbe EXE zusätzlich im lokalen Staging-Ordner
+  `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\T1017-20261127\`
+  (`webagent.exe`, DLL, README.txt, Hashes geprueft). Kein Tag/Release und
+  kein automatisches Deployment auf dem zweiten PC.
 - Beleg: `docs/proofs/T-1017/{README.md,gates.txt}`. Die Abschnitte
   „Build/Deploy noch offen" weiter unten sind historische Zwischenstaende.
 
