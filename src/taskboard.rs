@@ -105,9 +105,11 @@ fn with_board_lock<R>(
 
 /// Ein Task offiziell claimen (fail-closed).
 ///
-/// Erlaubt nur, wenn der Task existiert, `status == "free"` ist und kein
-/// `claim_lock` trägt. Schlägt fehl, sobald der Task bereits geclaimt, done
-/// oder gesperrt ist. Das gesamte Lesen-Pruefen-Schreiben steht unter einem
+/// Erlaubt nur, wenn der Task existiert, `status == "free"` ist, kein
+/// `claim_lock` trägt und jeder Vorgänger aus `depends_on` den Status `done`
+/// hat. Fehlende `depends_on` sind v1-Altbestand und bleiben parallel
+/// claimbar. Schlägt fehl, sobald der Task bereits geclaimt, done, gesperrt
+/// oder blockiert ist. Das gesamte Lesen-Pruefen-Schreiben steht unter einem
 /// prozessuebergreifenden Lock; parallele Doppel-Claims sind damit
 /// ausgeschlossen, nicht nur erkannt.
 pub fn acquire_claim(
@@ -120,12 +122,14 @@ pub fn acquire_claim(
         return Err("Task-ID, owner und branch sind Pflicht".into());
     }
     with_board_lock(taskboard, "acquire", |root| {
+        // Erst lesend pruefen: Der Dependency-Check darf den Task nicht
+        // teilweise uebernehmen, wenn ein Vorgaenger noch nicht done ist.
         let tasks = root
-            .get_mut("tasks")
-            .and_then(Value::as_array_mut)
+            .get("tasks")
+            .and_then(Value::as_array)
             .ok_or_else(|| "Taskboard enthält kein tasks-Array".to_string())?;
         let task = tasks
-            .iter_mut()
+            .iter()
             .find(|t| t.get("id").and_then(Value::as_str) == Some(task_id))
             .ok_or_else(|| format!("Unbekannte Task-ID: {task_id}"))?;
         if task.get("claim_lock").and_then(Value::as_bool) == Some(true) {
@@ -152,6 +156,49 @@ pub fn acquire_claim(
                 ))
             }
         }
+
+        // T-978ff (Schema v2): Ein Task ist BLOCKED, bis alle depends_on
+        // done sind. Fehlende depends_on sind Altbestand (v1) und erlauben
+        // den historischen Parallelclaim.
+        let mut predecessors = Vec::new();
+        if let Some(deps) = task.get("depends_on") {
+            let deps = deps
+                .as_array()
+                .ok_or_else(|| format!("Task {task_id}: depends_on ist keine Liste"))?;
+            for dep in deps {
+                let id = dep
+                    .as_str()
+                    .ok_or_else(|| format!("Task {task_id}: depends_on enthält keine Task-ID"))?;
+                if id == task_id {
+                    return Err(format!("Task {task_id} hängt von sich selbst ab"));
+                }
+                predecessors.push(id.to_string());
+            }
+        }
+        for id in predecessors {
+            let predecessor = tasks
+                .iter()
+                .find(|t| t.get("id").and_then(Value::as_str) == Some(id.as_str()))
+                .ok_or_else(|| format!("Task {task_id}: unbekannter Vorgänger {id}"))?;
+            let status = predecessor
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("fehlt");
+            if status != "done" {
+                return Err(format!(
+                    "Task {task_id} ist blockiert: Vorgänger {id} ist {status}"
+                ));
+            }
+        }
+        let task = root
+            .get_mut("tasks")
+            .and_then(Value::as_array_mut)
+            .and_then(|tasks| {
+                tasks
+                    .iter_mut()
+                    .find(|t| t.get("id").and_then(Value::as_str) == Some(task_id))
+            })
+            .ok_or_else(|| format!("Task {task_id} verschwand während des Claims"))?;
         task["status"] = Value::String("claimed".into());
         task["owner"] = Value::String(owner.into());
         task["branch"] = Value::String(branch.into());
@@ -330,6 +377,54 @@ mod tests {
         let board = d.join("TASKBOARD.json");
         board_with(&board, r#"{"tasks":[{"id":"T-1","status":"free"}]}"#);
         assert!(acquire_claim(&board, "T-404", "dev", "feature/x").is_err());
+    }
+
+    #[test]
+    fn acquire_respects_depends_on() {
+        let d = std::env::temp_dir().join(format!("webagent-acquire-deps-{}", std::process::id()));
+        let _ = fs::create_dir_all(&d);
+        let board = d.join("TASKBOARD.json");
+        board_with(
+            &board,
+            r#"{"tasks":[{"id":"T-1","status":"free"},{"id":"T-2","status":"free","depends_on":["T-1"]}]}"#,
+        );
+        let err = acquire_claim(&board, "T-2", "dev", "feature/T-2").unwrap_err();
+        assert!(err.contains("blockiert"), "unexpected: {err}");
+        let value: Value = serde_json::from_str(&fs::read_to_string(&board).unwrap()).unwrap();
+        assert_eq!(value["tasks"][1]["status"], "free");
+
+        let proof = d.join("proof");
+        fs::write(&proof, "proof").unwrap();
+        board_with(
+            &board,
+            r#"{"tasks":[{"id":"T-1","status":"claimed","owner":"a","branch":"feature/T-1"},{"id":"T-2","status":"free","depends_on":["T-1"]}]}"#,
+        );
+        complete_claim(&board, "T-1", "a", "feature/T-1", &proof).unwrap();
+        acquire_claim(&board, "T-2", "dev", "feature/T-2").unwrap();
+        let value: Value = serde_json::from_str(&fs::read_to_string(&board).unwrap()).unwrap();
+        assert_eq!(value["tasks"][1]["status"], "claimed");
+        assert_eq!(value["tasks"][1]["owner"], "dev");
+    }
+
+    #[test]
+    fn acquire_rejects_unknown_or_self_predecessor() {
+        let d =
+            std::env::temp_dir().join(format!("webagent-acquire-baddep-{}", std::process::id()));
+        let _ = fs::create_dir_all(&d);
+        let board = d.join("TASKBOARD.json");
+        board_with(
+            &board,
+            r#"{"tasks":[{"id":"T-2","status":"free","depends_on":["T-404"]}]}"#,
+        );
+        let err = acquire_claim(&board, "T-2", "dev", "feature/T-2").unwrap_err();
+        assert!(err.contains("unbekannter Vorgänger"), "unexpected: {err}");
+
+        board_with(
+            &board,
+            r#"{"tasks":[{"id":"T-2","status":"free","depends_on":["T-2"]}]}"#,
+        );
+        let err = acquire_claim(&board, "T-2", "dev", "feature/T-2").unwrap_err();
+        assert!(err.contains("sich selbst"), "unexpected: {err}");
     }
 
     #[test]
@@ -529,12 +624,18 @@ mod tests {
         // dass eine bestehende Invariante ihn erkannt hat. Mindestumfang und
         // Spiegelabgleich machen genau diesen Bruch im normalen Test sichtbar.
         const MIN_TASKS: usize = 91;
+        const V2_FIRST: u32 = 978;
         const MIRROR_BEGIN: &str = "<!-- TASKBOARD-MIRROR-BEGIN -->";
         const MIRROR_END: &str = "<!-- TASKBOARD-MIRROR-END -->";
 
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let path = root.join("docs/TASKBOARD.json");
         let value: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            value["schema_version"].as_u64(),
+            Some(2),
+            "Taskboard muss Schema v2 sein"
+        );
         let tasks = value["tasks"]
             .as_array()
             .expect("tasks muss eine Liste sein");
@@ -547,6 +648,8 @@ mod tests {
         let mut ids = std::collections::BTreeSet::new();
         let mut statuses = std::collections::BTreeMap::new();
         let mut claimed_branches = std::collections::BTreeMap::new();
+        let mut v2_dependencies: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
 
         for task in tasks {
             let id = task["id"].as_str().unwrap_or_default().to_string();
@@ -602,7 +705,98 @@ mod tests {
                 }
                 other => panic!("{id}: unbekannter Status '{other}'"),
             }
+
+            // Schema v2 gilt ab T-978. Aeltere Tasks bleiben ausdruecklich
+            // grandfathered: Ihre Kanten stehen als Prosa in `dod`, nicht
+            // als maschinenlesbare Felder.
+            let number = id
+                .strip_prefix("T-")
+                .and_then(|n| n.parse::<u32>().ok())
+                .unwrap_or(0);
+            if number >= V2_FIRST {
+                assert_eq!(status, "free", "{id}: neue Tasks starten immer frei");
+                let deps = task["depends_on"]
+                    .as_array()
+                    .unwrap_or_else(|| panic!("{id}: depends_on fehlt"));
+                let mut seen = std::collections::BTreeSet::new();
+                let mut predecessors = Vec::new();
+                for dep in deps {
+                    let dep = dep
+                        .as_str()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| panic!("{id}: depends_on ohne Task-ID"));
+                    assert!(seen.insert(dep.to_string()), "{id}: doppelte Kante {dep}");
+                    assert_ne!(dep, id, "{id}: Selbstkante in depends_on");
+                    predecessors.push(dep.to_string());
+                }
+                let scope = task["scope"]
+                    .as_array()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| panic!("{id}: scope fehlt oder ist leer"));
+                assert!(
+                    scope
+                        .iter()
+                        .all(|s| s.as_str().is_some_and(|s| !s.is_empty())),
+                    "{id}: scope enthält einen leeren Pfad"
+                );
+                for key in ["description", "verify"] {
+                    assert!(field(key).is_some(), "{id}: {key} fehlt im v2-Schema");
+                }
+                let acceptance = task["acceptance"]
+                    .as_array()
+                    .filter(|a| !a.is_empty())
+                    .unwrap_or_else(|| panic!("{id}: acceptance fehlt oder ist leer"));
+                assert!(
+                    acceptance
+                        .iter()
+                        .all(|a| a.as_str().is_some_and(|a| !a.is_empty())),
+                    "{id}: acceptance enthält einen leeren Eintrag"
+                );
+                v2_dependencies.insert(id.clone(), predecessors);
+            }
         }
+
+        // Kanten muessen auf existierende Tasks zeigen und zyklusfrei sein;
+        // sonst waere ein Bazaar-Claim dauerhaft blockiert oder heimlich
+        // erlaubt.
+        for (id, deps) in &v2_dependencies {
+            for dep in deps {
+                assert!(
+                    ids.contains(dep),
+                    "{id}: unbekannter Vorgänger {dep} in depends_on"
+                );
+            }
+        }
+        let mut remaining: std::collections::BTreeMap<String, usize> = v2_dependencies
+            .iter()
+            .map(|(id, deps)| (id.clone(), deps.len()))
+            .collect();
+        let mut ready: Vec<String> = remaining
+            .iter()
+            .filter(|(_, count)| **count == 0)
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut resolved = 0;
+        while let Some(id) = ready.pop() {
+            resolved += 1;
+            for (other, deps) in &v2_dependencies {
+                if deps.contains(&id) {
+                    let count = remaining
+                        .get_mut(other)
+                        .unwrap_or_else(|| panic!("{other} fehlt in der Kantenliste"));
+                    *count -= 1;
+                    if *count == 0 {
+                        ready.push(other.clone());
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            resolved,
+            v2_dependencies.len(),
+            "Zyklus in depends_on: nur {resolved} von {} Tasks aufloesbar",
+            v2_dependencies.len()
+        );
 
         // `docs/TASKBOARD.md` ist ein Spiegel, keine zweite Wahrheit: Er muss
         // exakt dieselben IDs und Statuswerte enthalten wie die JSON-Datei.
