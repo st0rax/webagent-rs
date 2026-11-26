@@ -3048,6 +3048,35 @@
       "title": "Gemini prompt input: measured cap and no per-character fallback",
       "type": "fix",
       "verification": "fmt 0; clippy 0; lib 466+182+627+280=1555 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=281, crate_violations=0); all-targets 0; no-default 0; release build 0; diff-check 0; details docs/proofs/T-1014/gates.txt"
+    },
+    {
+      "branch": "fix/T-1015-greeting-stub-retry",
+      "claimed_at": "2026-11-26",
+      "depends_on": [],
+      "dod": "Claim before source edits; greeting-only stubs with active client tools get exactly one fresh-chat retry with the original task; trailing markdown/prose after a tool envelope cannot invalidate an otherwise complete JSON; strict tests for both classes; gates green; branch pushed and merged to master; no release, tag or deployment.",
+      "id": "T-1015",
+      "non_goals": [
+        "No retry for plain text turns without client tools and no blanket suppression of legitimate greetings.",
+        "No credential access, login or live provider turn as part of the code change.",
+        "No new release, tag, version bump or redeployment of the active bridge."
+      ],
+      "objective": "The OpenCode session 'Greeting' (ses_de6ca134effeoxqH4z2uBVf4yx) showed chatgpt answering substantive tool-enabled requests with 'chatgpt', 'Hallo.' or 'chatgpt bereit.' instead of working on the task; one tool call also failed with trailing markdown after a valid WEBAGENT_INFERENCE/1 JSON. Detect narrow greeting-only stubs and retry once in a fresh chat; parse the balanced JSON object so trailing fences/prose cannot turn a valid tool call into model_output_envelope_invalid.",
+      "owner": "local/opencode",
+      "phase": "16",
+      "proof_path": "docs/proofs/T-1015/README.md",
+      "scope": [
+        "crates/webagent-core/src/brain.rs",
+        "crates/webagent-api/src/browser_inference.rs",
+        "docs/API_BRIDGE.md",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "done_at": "2026-11-26",
+      "status": "done",
+      "title": "Greeting-only stubs and trailing tool-envelope garbage",
+      "type": "fix",
+      "verification": "fmt 0; clippy 0; lib 459+185+628+280=1552 passed / 0 failed / 1 ignored; tui 0; no-default 0; diff-check 0; 4 new regression tests; details docs/proofs/T-1015/gates.txt"
     }
   ]
 }

@@ -1,3 +1,37 @@
+## 2026-11-26 - T-1015 umgesetzt: Begruessungs-Stubs und Umschlag-Trailer
+
+- **Auslöser/Auswertung:** Der Eigentuemer verlangte „session opencode „greeting"
+  auswerten fixes implementiern". Die Session `ses_de6ca134effeoxqH4z2uBVf4yx`
+  (Titel `Greeting`) zeigte auf Auftraege mit `tools=12` wiederholt nur
+  `chatgpt`, `Hallo.` oder `chatgpt bereit.` als Endantwort; genau ein
+  `write`-Call erzeugte `C:\Users\storax\Desktop\notizbuch.md` (4.011 Byte,
+  SHA-256 `39B99C3BC37FD4D6D58F4E18990168E8B6642A097E86AE556C5F2D94A9F3BFA1`).
+  Um 21:25:39 UTC scheiterte ein vollständiger Umschlag an `\n``` ` danach
+  (`trailing characters at line 2 column 1`, `model_output_envelope_invalid`).
+- **Claim/Branch:** `fix/T-1015-greeting-stub-retry` von `origin/master`
+  (`4dc5f8c`), Board-Eintrag vor den Source-Edits angelegt. Belege:
+  `docs/proofs/T-1015/README.md` und `gates.txt` (mit den Rohbeobachtungen).
+- **Geliefert:** `is_greeting_only_response` in `webagent-core` erkennt nur die
+  ganze Antwort als Stub (eng begrenzt, Protokoll und mehrsaetzige Antworten
+  ausgenommen). Bei aktiven Client-Tools und vorhandenem Ursprungsauftrag gibt
+  es genau EINEN Frisch-Chat-Retry mit diesem Auftrag plus kurzem Hinweis;
+  ein wiederholter Stub wird ehrlich zurueckgegeben. `envelope_json_slice`
+  begrenzt die Parser-Eingabe auf das balancierte JSON-Objekt; Trailer aus
+  Markdown/Prosa sind erlaubt, eine fehlende Klammer bleibt fail-closed.
+  `docs/API_BRIDGE.md` dokumentiert das Verhalten.
+- **Gates auf dem finalen Baum:** fmt 0; clippy 0; workspace lib 459 root +
+  185 api + 628 core + 280 transport = 1552 passed / 0 failed / 1 ignored;
+  `cargo check --features tui` 0; `--no-default-features` 0; `git diff --check` 0.
+  Vier neue Regressionstests. Ein erster Clippy-Lauf mit `-q` hinter `--`
+  scheiterte nur am Flag, ein Workspace-Lauf an einem transienten
+  `ConnectionReset` im Web-UI-Test; beide beim Rerun gruen.
+- **Grenze:** Die aktive Bridge laeuft weiter mit der T-1014-EXE (`84ba99fb5`),
+  PID `4484`, Port `8788`, Health `ok`. Kein EXE-Tausch, kein Neustart, kein
+  Live-Provider-Turn, kein Login, keine Zugangsdatenausgabe, kein Tag,
+  GitHub-Release, Versionssprung oder Deployment. Der Rollback-Ordner
+  `backup-release-T1014-20261126` bleibt unveraendert. Ein T-1015-Restart
+  braucht eine neue ausdrueckliche Freigabe.
+
 ## 2026-11-26 - T-1014 live am laufenden Bridge verifiziert
 
 - **Auslöser:** Der Eigentuemer schrieb „MACH ENDLICH", nachdem ich den Live-Test zurückgehalten hatte. Damit ist der kontrollierte Provider-Turn freigegeben; ich habe ihn gegen die bereits laufende Bridge PID `4484` ausgeführt.

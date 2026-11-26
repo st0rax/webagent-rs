@@ -297,6 +297,37 @@ pub fn is_retryable_empty_response(response: &str) -> bool {
         .all(is_ui_glitch_line)
 }
 
+/// `true`, wenn die GANZE Antwort nur eine Begruessung bzw. ein
+/// Identitaets-Stub ist und kein Auftrag bearbeitet wurde. Beobachtet in der
+/// OpenCode-Session `Greeting` am 2026-11-26: `chatgpt`, `Hallo.` und
+/// `chatgpt bereit.` als Endantwort auf Auftraege mit aktiven Client-Tools.
+///
+/// Bewusst eng: Protokoll-Nutzlast hat Vorrang, und mehrsaetzige Antworten
+/// (z. B. „chatgpt bereit. Was steht an?") fallen nicht hierunter. Ob ein
+/// solcher Stub ein Fehler ist, entscheidet der Aufrufer anhand des
+/// Tool-Kontexts — eine echte Begruessung ohne Tools bleibt unberuehrt.
+pub fn is_greeting_only_response(response: &str) -> bool {
+    let trimmed = response.trim();
+    if trimmed.is_empty() || crate::protocol::has_protocol_payload(trimmed) {
+        return false;
+    }
+    let normalized = trimmed
+        .trim_end_matches(|c: char| c.is_whitespace() || matches!(c, '.' | '!' | '?'))
+        .to_lowercase();
+    matches!(
+        normalized.as_str(),
+        "chatgpt"
+            | "chatgpt bereit"
+            | "chatgpt ist bereit"
+            | "bereit"
+            | "hallo"
+            | "hi"
+            | "hola"
+            | "hello"
+            | "hey"
+    )
+}
+
 /// Phrasen, die eine Anbieter-Blockade signalisieren (Kontingent erschöpft,
 /// Dienst überlastet). Spiegelt `browser::BLOCK_PHRASES` (dort für den
 /// Seiten-Scan) — Änderungen hier und dort zusammen pflegen. Bewusst mehrwortig,
@@ -381,6 +412,39 @@ mod tests {
         // ebenfalls "kein Inhalt" — geminis Originalfassung verneinte das,
         // konnte damit aber den realen zai-Fall nicht fangen.
         assert!(is_retryable_empty_response("SyntaxError: Unexpected token"));
+    }
+
+    #[test]
+    fn test_is_greeting_only_response() {
+        for stub in [
+            "chatgpt",
+            " ChatGPT ",
+            "hallo.",
+            " Hi! ",
+            "HOLA?",
+            "chatgpt bereit.",
+            "ChatGPT ist bereit",
+            "bereit",
+        ] {
+            assert!(
+                is_greeting_only_response(stub),
+                "Stub nicht erkannt: {stub:?}"
+            );
+        }
+        for real in [
+            "chatgpt bereit. Was steht an?",
+            "Hallo, wie kann ich helfen?",
+            "Die Datei wurde angelegt.",
+            "",
+        ] {
+            assert!(
+                !is_greeting_only_response(real),
+                "echte Antwort faelschlich als Stub: {real:?}"
+            );
+        }
+        assert!(!is_greeting_only_response(
+            "WEBAGENT_INFERENCE/1\n{\"tool_calls\":[]}"
+        ));
     }
 
     /// Dummy-Backend für Kompilier-Tests.

@@ -1,0 +1,44 @@
+T-1015 gates 2026-11-26 (branch fix/T-1015-greeting-stub-retry, base 4dc5f8c)
+
+cargo fmt --all -- --check
+  fmt=0
+
+cargo clippy -q --all-targets -- -D warnings
+  clippy=0
+
+cargo test --workspace --lib -q
+  lib=0
+  root:      459 passed; 0 failed; 1 ignored
+  api:       185 passed; 0 failed; 0 ignored
+  core:      628 passed; 0 failed; 0 ignored
+  transport: 280 passed; 0 failed; 0 ignored
+  total:    1552 passed; 0 failed; 1 ignored
+
+cargo check --features tui -q
+  tui=0
+
+cargo check --no-default-features -q
+  no-default=0
+
+git diff --check
+  diffcheck=0
+
+Gezielte Tests waehrend der Umsetzung:
+  cargo test -p webagent-core --lib test_is_greeting_only_response            -> 1 passed
+  cargo test -p webagent-api --lib envelope                                  -> 7 passed
+  cargo test -p webagent-api --lib greeting_retry_prompt_keeps_original_task -> 1 passed
+
+Neue Regressionstests:
+  brain::tests::test_is_greeting_only_response
+  browser_inference::tests::trailing_markdown_and_prose_after_envelope_are_ignored
+  browser_inference::tests::truncated_envelope_still_fails_closed
+  browser_inference::tests::greeting_retry_prompt_keeps_original_task
+
+Hinweis zum ersten Lauf: cargo clippy --all-targets -- -D warnings -q schlug
+mit "Unrecognized option: 'q'" fehl (Flag hinter --). Der gleiche Lauf mit
+`cargo clippy -q --all-targets -- -D warnings` war gruen. Ein Workspace-Lauf
+hatte einen transienten ConnectionReset im Web-UI-Listener-Test; der Einzel-
+und der erneute Gesamtlauf waren gruen.
+
+Live-Grenze: Bridge-PID 4484 und die deployte T-1014-EXE (84ba99fb5) blieben
+unveraendert. Kein Provider-Turn, kein Login, kein Neustart und kein Deployment.
