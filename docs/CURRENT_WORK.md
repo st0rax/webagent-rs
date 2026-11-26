@@ -1,5 +1,14 @@
 # Current Work
 
+## 2026-11-26 - T-999 implemented: config no longer reaches worker_pool
+
+- **Branch/claim:** `refactor/T-999-config-worker-pool-edge`, claim commit `928ea11`, implementation commit `d6a4b37`, owner `local/opencode`. T-999 stays `claimed`; no merge, no `done`, no PR. Both commits are pushed and the worktree is clean. T-997 and T-998 also stay `claimed`; the owner's "mach" again overrode the formal dependency.
+- **Bestand zuerst geprüft:** `src/fsutil.rs` does not exist and is not declared in `src/lib.rs`. The required leaf already exists in `src/pool_state.rs` (`atomic_write`, `RETRY_UNAVAILABLE_AFTER_SECS`) and `worker_pool.rs` already re-exports it. No new module was created; `src/lib.rs` and `docs/arch/layers.toml` were not touched. `src/config/brains.rs` now calls `crate::pool_state::…` directly, so `crate::worker_pool` has no match under `src/config`.
+- **Guard delta:** the cycle `brain_limits,circuit_breaker,config,pool_failover,worker_pool` shrank to `brain_limits,config`. Measured graph is unchanged at 87 modules / 274 edges / 6 cycles / 32 upward edges. `docs/arch/layer_exceptions.txt` holds the shorter cycle; no `edge:` line was added or removed. Proof: `docs/proofs/T-999/README.md`.
+- **Gates measured:** `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --lib --quiet` 1521 passed / 0 failed / 1 ignored; `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1521 lib + 7 binary-unit + 4 integration passed; `cargo test --locked --no-default-features --test arch_layers --quiet` 4 passed; `git diff --check` 0. Claim-time baseline was already 1521 / 0 / 1, so the test count is unchanged.
+- **Binary smoke blocked, not a regression:** `--help` and `diagnose` still exit `-1073741515` (`0xC0000005`) before `main`; binary size 150,498,536 bytes, identical to the T-998 branch head. The same crash was measured at claim commit `103967b` in a clean worktree. `Cargo.toml` and all `[profile.*]` settings remain untouched.
+- **Grenze / offen:** no behavior change to CLI, protocol, API or shell policy; no login, credentials, live call, release, tag, deployment, PR or merge. T-1000..T-1005 remain free; T-1004 still needs owner approval. Stop here and wait; do not claim T-1000 implicitly.
+
 ## 2026-11-26 - T-998 implemented: protocol/brain no longer reach browser
 
 - **Branch/claim:** `refactor/T-998-protocol-browser-edge`, claim commit `103967b`, implementation commit `5a24ddb`, owner `local/opencode`. T-998 stays `claimed` in `docs/TASKBOARD.json` — no merge, no `done`, no PR. T-997 also stays `claimed`; the owner's explicit "mach" overrode the formal dependency. Both commits are pushed and the worktree is clean.
