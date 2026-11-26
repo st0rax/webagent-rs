@@ -25,6 +25,11 @@
   Vier neue Regressionstests. Ein erster Clippy-Lauf mit `-q` hinter `--`
   scheiterte nur am Flag, ein Workspace-Lauf an einem transienten
   `ConnectionReset` im Web-UI-Test; beide beim Rerun gruen.
+- **Integration:** Implementierungscommit `573719d` auf
+  `origin/fix/T-1015-greeting-stub-retry` gepusht, Merge-Commit `7b61afc` auf
+  `master` gepusht. Der gemergte Baum ist inhaltlich identisch mit dem
+  geprüften Branch (`git diff 573719d 7b61afc` leer); kein Tag, Release oder
+  Versionssprung.
 - **Grenze:** Die aktive Bridge laeuft weiter mit der T-1014-EXE (`84ba99fb5`),
   PID `4484`, Port `8788`, Health `ok`. Kein EXE-Tausch, kein Neustart, kein
   Live-Provider-Turn, kein Login, keine Zugangsdatenausgabe, kein Tag,
