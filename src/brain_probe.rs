@@ -1626,7 +1626,8 @@ mod tests {
     }
 
     fn selector_files() -> Vec<(String, serde_json::Value)> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("selectors");
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/webagent-core/selectors");
         let mut out = Vec::new();
         for entry in std::fs::read_dir(dir).expect("selectors/ muss existieren") {
             let path = entry.expect("Eintrag").path();

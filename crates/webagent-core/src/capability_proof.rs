@@ -6,7 +6,7 @@
 //! Kein Browser. Die browserfahrende Verifikation liegt getrennt in
 //! `src/browser/verify.rs` (§8 des Capability-Proof-Plans).
 //!
-//! [`crate::brain_probe::Verdict`] ist die Messung, [`ProofOutcome`] das Urteil:
+//! `brain_probe::Verdict` im Wurzel-Crate ist die Messung, [`ProofOutcome`] das Urteil:
 //! die Messung sagt, was die Oberflaeche tat; das Urteil sagt, was das fuer das
 //! Level bedeutet.
 
@@ -134,7 +134,7 @@ fn proofs_path() -> PathBuf {
 
 /// Baut einen Record aus einer Messung. Getrennt, damit Tests dieselbe
 /// Zusammenstellung pruefen, die der Store schreibt — keine zweite Kopie.
-pub(crate) fn record_from_measurement(
+pub fn record_from_measurement(
     brain_id: &str,
     m: &Measurement,
     outcome: ProofOutcome,

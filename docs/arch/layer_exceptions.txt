@@ -10,9 +10,14 @@
 # and a crate-direction invariant (crate_violations=0); no exception line was
 # added or removed. Merging the released v0.11.8 master into this branch added
 # two edges (Play/T-976/T-977 code), so the post-merge baseline is 277 edges,
-# 90 modules, 3 cycles, 26 upward edges, crate_violations=0. Every entry below
-# is grandfathered debt; the test fails on
-# a new entry and on a stale entry (so the list can only shrink).
+# 90 modules, 3 cycles, 26 upward edges, crate_violations=0. T-1011 moves 34
+# core modules plus the shared lib.rs helpers into webagent-core/support; the
+# new top-level module `support` adds one rank-0 edge, so the baseline is now
+# 91 modules, 278 edges, 3 cycles, 26 upward edges, crate_violations=0. No
+# exception line was added or removed. `counting` stays in the root crate: it
+# calls WebBackendFactory::create_brain_backend. Every entry below is
+# grandfathered debt; the test fails on a new entry and on a stale entry (so
+# the list can only shrink).
 #
 # Format: cycle:<sorted,comma-separated module names> | edge:<lower>-><higher>
 

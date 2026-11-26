@@ -3326,6 +3326,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-rustls",
+ "webagent-core",
  "webpki-roots 0.26.11",
  "webview2-com",
  "windows",
@@ -3336,15 +3337,27 @@ dependencies = [
 
 [[package]]
 name = "webagent-api"
-version = "0.11.7"
+version = "0.11.8"
 
 [[package]]
 name = "webagent-core"
-version = "0.11.7"
+version = "0.11.8"
+dependencies = [
+ "fancy-regex",
+ "fs2",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "time",
+ "windows",
+ "windows-sys 0.59.0",
+]
 
 [[package]]
 name = "webagent-transport"
-version = "0.11.7"
+version = "0.11.8"
 
 [[package]]
 name = "webkit2gtk"

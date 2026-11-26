@@ -1,7 +1,7 @@
 //! Ereignisstrom des Benchmark-/Loop-Laufs.
 //!
 //! Bisher ging das Geschehen ausschliesslich als `println!` nach stdout — die
-//! ratatui-TUI in [`crate::tui`] konnte davon nichts sehen, weshalb
+//! ratatui-TUI `tui` im Wurzel-Crate konnte davon nichts sehen, weshalb
 //! `webagent tui` und die Benchmark-Ausgabe zwei getrennte Welten waren.
 //! Dieser Bus ist die gemeinsame Quelle: der Benchmark meldet hierher, die
 //! Konsole druckt weiter wie gehabt, und die TUI liest denselben Strom.
@@ -391,7 +391,7 @@ pub fn clear() {
 /// `clear()`/`len()` prüft oder `set_echo_bus` schaltet, darf nicht neben
 /// einem anderen laufen, der den Puffer fuellt. Deshalb greifen alle
 /// Bus-Tests auf denselben Mutex zu.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn test_bus_mutex() -> &'static Mutex<()> {
     static TEST_LOCK: Mutex<()> = Mutex::new(());
     &TEST_LOCK

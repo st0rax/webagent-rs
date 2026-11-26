@@ -250,7 +250,7 @@ pub(crate) fn is_hard_block(reason: &str) -> bool {
 /// Identifier-Zeichen (`_`, Buchstabe, Ziffer) zaehlen nicht als Grenze:
 /// `rate limit` trifft nicht `Rate Limiting`, `blocked` nicht
 /// `is_cloudflare_blocked`. Geteilt mit der Banner-Erkennung.
-pub(crate) fn contains_at_word_boundary(haystack: &str, needle: &str) -> bool {
+pub fn contains_at_word_boundary(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() || haystack.is_empty() {
         return false;
     }

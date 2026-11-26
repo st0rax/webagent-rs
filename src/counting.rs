@@ -8,8 +8,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use crate::brain::{BackendFactory, BrainBackend, SessionState, WebBackendFactory};
+use crate::brain::{BackendFactory, BrainBackend, SessionState};
 use crate::timeouts::resolve_timeout;
+use crate::WebBackendFactory;
 
 /// Ein Brain-Slot im Zaehlspiel: ID, trait-basiertes Backend, Bereitschaft.
 type BackendSlot = (String, Option<Box<dyn BrainBackend>>, bool);

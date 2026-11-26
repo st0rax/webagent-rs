@@ -3,7 +3,7 @@
 //! Gemeinsame Zustandsmaschine und Operationen fuer jeden Einstiegspunkt
 //! (Controller, REPL, Relay, Web-UI, API, Swarm). Der Vertrag ergaenzt —
 //! statt zu ersetzen — die bestehenden Typen: [`crate::brain::BrainBackend`]
-//! bleibt der Backend-Trait, [`crate::session::EventStream`] bleibt der
+//! bleibt der Backend-Trait, `session::EventStream` im Wurzel-Crate bleibt der
 //! UI-neutrale Run-Strom. Hier liegt die *Operationsebene*: typisierte,
 //! nachvollziehbare Ablaeufe mit attempt_id/run_id/brain_id/Lease-Generation/
 //! Phase/Revision und Herkunft, die `SurfaceOutcome` und `OperationEvent`

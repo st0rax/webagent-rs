@@ -1,9 +1,32 @@
 [package]
 name = "webagent-core"
-version = "0.11.7"
+version = "0.11.8"
 edition = "2021"
 license = "MIT"
 
 [lib]
 name = "webagent_core"
 path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+regex = "1"
+fancy-regex = "0.14"
+lazy_static = "1.5"
+fs2 = "0.4"
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "std", "local-offset", "macros"] }
+
+[features]
+# The shared helpers and worker_pool use native Windows handles only when the
+# root crate enables its webview feature; the crate stays buildable without it.
+webview = ["dep:windows"]
+# Root crate tests use the shared bus lock helper from bench_events.
+test-support = []
+# transcript.rs exposes TUI-facing helpers behind this feature.
+tui = []
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_JobObjects"], optional = true }

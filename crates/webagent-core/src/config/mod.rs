@@ -41,7 +41,7 @@ pub use selectors::{
     shipped_selector_table, shipped_selectors, user_selectors,
 };
 #[cfg(feature = "webview")]
-pub(crate) use writeback::prepare_shared_profile_for_clone;
+pub use writeback::prepare_shared_profile_for_clone;
 pub use writeback::{
     runtime_pool_profile_dir, seal_master_profile, unseal_master_profile, write_back_dir_to_master,
     write_back_session_to_master,

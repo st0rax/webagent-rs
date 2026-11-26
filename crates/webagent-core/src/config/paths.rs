@@ -2,11 +2,19 @@ use std::env;
 use std::path::PathBuf;
 
 /// Root-Verzeichnis der WebAgent-Installation (Elternverzeichnis von src/).
-/// Compile-Zeit-Pfad (CARGO_MANIFEST_DIR) — nur für mitgelieferte Assets
-/// (selectors/) und als Legacy-Quelle der Migration. Nutzerdaten (Profile/Data)
-/// hängen NICHT daran, siehe `webagent_root_stable`.
+/// Compile-Zeit-Pfad — nur als Legacy-Quelle der Migration und für
+/// Entwicklungs-Prompts. Nutzerdaten (Profile/Data) hängen NICHT daran,
+/// siehe `webagent_root_stable`.
+///
+/// T-1011: `config` moved into the `webagent-core` member. Two levels above
+/// that crate's manifest is the workspace root, which keeps the pre-extraction
+/// path semantics for callers in the root crate. Bundled selector assets are
+/// crate-local and have their own path in `config::selectors_dir()`.
 pub fn root_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // Prompt building canonicalizes the workspace root; make the helper agree
+    // so `build_task_prompt()` and its callers see the same string.
+    candidate.canonicalize().unwrap_or(candidate)
 }
 
 /// Stabiler, install-/release-unabhängiger Basisort für nutzergeschriebene

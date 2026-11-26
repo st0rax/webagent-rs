@@ -31,7 +31,7 @@ pub use crate::pool_failover::{
     select_expired_cooldowns, select_to_promote, BlockActions, FailoverPhase, FailoverRecord,
     RestoreActions,
 };
-pub(crate) use crate::pool_state::atomic_write;
+pub use crate::pool_state::atomic_write;
 pub use crate::pool_state::{
     PoolControl, PoolEntry, PoolState, BLOCK_COOLDOWN_SECS, RETRY_UNAVAILABLE_AFTER_SECS,
     STATUS_ACTIVE, STATUS_AVAILABLE, STATUS_COOLDOWN, STATUS_RETIRED, STATUS_UNAVAILABLE,

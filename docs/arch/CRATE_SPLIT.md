@@ -131,7 +131,7 @@ Module names are the top-level modules counted by the guard. The two selector
 files are submodules and follow their parent module: `browser/selectors.rs`
 goes with transport, `config/selectors.rs` with core.
 
-### 4.1 `webagent-core` (34 modules)
+### 4.1 `webagent-core` (34 modules moved in T-1011; `counting` stays in root)
 
 ```text
 webagent-core
@@ -147,6 +147,24 @@ webagent-core
 └── trait providers to add before extraction
     RelayBackend, BackendFactory, ClientPresence, PageProbe, InferenceTypes
 ```
+
+**T-1011 status (2026-11-26).** The crate now owns the modules above except
+`counting`, plus `inference_types` from T-1006 and a new `support` module that
+holds the shared helpers previously in the root `lib.rs` (`StageTimer`,
+`StageNote`, `civil_utc`, `now_rfc3339`, `now_run_stamp`, `timestamp`,
+`char_prefix`, `char_suffix`, `ProcessSnapshot`, `pid_alive`). The root crate
+re-exports everything with `pub use webagent_core::*;`, so no public path
+changed. `counting` stays in the root crate because it calls
+`WebBackendFactory::create_brain_backend`; the `BackendFactory` impl lives in
+`browser/backend.rs`. For the same orphan-rule reason the concrete
+`WebBackendFactory` marker moved from core `brain.rs` to root
+`browser/backend.rs` and is re-exported at the root. The selector JSON files
+(compile-time assets of `config/selectors.rs`) moved to
+`crates/webagent-core/selectors/`. Core has `webview`, `tui` and
+`test-support` features; the root forwards its `webview`/`tui` features and
+enables `test-support` as a dev-dependency for the shared bus test lock.
+Measured guard state: `modules=91, edges=278, cycles=3, upward_edges=26,
+crate_violations=0`.
 
 Measured: 50 internal edges; 19 inbound from transport, 17 from api and 77
 from the root crate; only the two `contract`/`counting → browser` edges leave

@@ -258,9 +258,6 @@ pub trait BackendFactory {
     fn create_image_backend(brain_id: &str) -> Result<Box<dyn ImageGenerationBackend>, String>;
 }
 
-/// Built-in browser-backed implementation of [`BackendFactory`].
-pub struct WebBackendFactory;
-
 /// `true`, wenn eine Brain-Antwort inhaltsleer ist und ein erneuter Versuch
 /// sinnvoll erscheint — leer, nur Whitespace, oder die Ausfallmeldung mancher
 /// Oberflächen. (Von gemini im Benchmark gebaut, Ernte 2026-07-21.)

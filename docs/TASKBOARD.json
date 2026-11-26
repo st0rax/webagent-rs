@@ -2829,6 +2829,43 @@
       "claimed_at": "2026-11-26"
     },
     {
+      "id": "T-1011",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Extract platform-neutral core modules into webagent-core",
+      "status": "claimed",
+      "depends_on": [],
+      "scope": [
+        "Cargo.toml",
+        "crates/webagent-core/Cargo.toml",
+        "crates/webagent-core/src/lib.rs",
+        "crates/webagent-core/src/",
+        "src/lib.rs",
+        "src/",
+        "docs/arch/layers.toml",
+        "docs/arch/layer_exceptions.txt",
+        "docs/arch/CRATE_SPLIT.md",
+        "docs/proofs/T-1011/",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Move the platform-neutral core modules and the lib.rs helper block into the webagent-core workspace member. Keep public paths available from the root crate with re-exports so binaries and tests continue to compile unchanged. Add the dependencies and the webview feature that the moved code needs, put the shared helper block in a support module at layer rank 0, and widen only those pub(crate) items that are now used across the crate boundary. The multi-crate architecture guard must stay green with crate_violations=0 and no new ratchet exception.",
+      "dod": "Claim before any source edit; core crate owns the moved modules; root re-exports preserve the existing public API; before/after lib test counts and all gates recorded in docs/proofs/T-1011/README.md; branch pushed; no merge, done status or release.",
+      "non_goals": [
+        "No transport or api module is moved in this slice.",
+        "No merge, PR, tag, release or deployment.",
+        "No change to dependency versions, [profile.*] values or runtime behavior.",
+        "No new ratchet exception for a crate-direction violation.",
+        "No credentials, live provider call or browser login."
+      ],
+      "proof_path": "docs/proofs/T-1011/README.md",
+      "verification": "cargo metadata --no-deps --format-version 1; cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (claim-time and final, before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; cargo test --locked --no-default-features --quiet; debug/release --version/--help; git diff --check",
+      "owner": "local/opencode",
+      "branch": "refactor/T-1011-core-extraction",
+      "claimed_at": "2026-11-26"
+    },
+    {
       "id": "T-976",
       "phase": "15",
       "type": "fix",

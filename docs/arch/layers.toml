@@ -23,6 +23,7 @@ modules = [
   "pool_failover",
   "pool_state",
   "worker_pool",
+  "support",
 ]
 
 [layer.L0]
