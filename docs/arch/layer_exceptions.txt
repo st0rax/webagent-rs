@@ -7,17 +7,23 @@
 
 # Cycles (six measured; the prompt listed five and missed browser_pool,
 # bin_hooks and the benchmark/controller cycle).
-cycle:api_bridge,brain,brain_probe,browser,browser_inference,browser_pool,protocol,relay
+cycle:api_bridge,brain_probe,browser,browser_inference,browser_pool,relay
 cycle:autoresearch,bench_harvest,bench_scoring,benchmark,controller,runs_report
 cycle:bin_hooks,repl,tui,tui_ansi
 cycle:brain_limits,circuit_breaker,config,pool_failover,worker_pool
 cycle:capability,capability_proof
 cycle:tui_load,tui_state
 
+# T-998: the former eight-module browser cycle shrank to six modules; `brain`
+# and `protocol` dropped out. `browser->protocol` was hidden inside that cycle
+# and is now visible; `brain->protocol` is the new call site for the moved
+# `has_protocol_payload` helper. Both are explicit debt, not new behavior.
+
 # Legacy upward edges kept in the conceptual layer model. These are not part
 # of the phase-16 cycle tasks; removing one requires deleting its line here.
 edge:bot2bot_worker->controller
 edge:bot2bot_worker->run_store
+edge:brain->protocol
 edge:brain_probe->capability
 edge:brain_probe->capability_proof
 edge:brain_probe->page_driver
@@ -25,6 +31,7 @@ edge:browser->brain_score
 edge:browser->capability
 edge:browser->capability_proof
 edge:browser->observer
+edge:browser->protocol
 edge:browser_inference->observer
 edge:browser_pool->brain_grid
 edge:contract->brain

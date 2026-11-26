@@ -12,6 +12,98 @@ pub use text::{
 };
 pub use types::{Action, ActionType, EditOperation, PROTOCOL_VERSION};
 
+use crate::circuit_breaker::contains_at_word_boundary;
+
+/// Enthält der Text überhaupt etwas, das eine Protokoll-Antwort sein könnte?
+///
+/// Bewusst grob: ein `{` oder ein `WEBAGENT/1`-Umschlag genügt. Es geht nicht
+/// darum, ob das Protokoll gültig ist (das prüft `protocol::parse`), sondern ob
+/// das Brain überhaupt angefangen hat zu antworten statt nur zu denken.
+pub(crate) fn has_protocol_payload(text: &str) -> bool {
+    let t = text.trim();
+    t.contains('{') || t.contains("WEBAGENT/1")
+}
+
+/// Phrasen, die auf eine externe Blockierung hindeuten (Tages-/Nachrichtenlimit,
+/// Login, Cloudflare) — DE+EN. Geteilt zwischen `detect_block_banner` (JS-Scan der
+/// ganzen Seite) und `block_phrase_in_text` (reine Rust-Pruefung des bereits
+/// gelesenen Antworttexts), damit beide dieselbe Liste verwenden.
+pub(crate) const BLOCK_PHRASES: &[&str] = &[
+    "nachrichtenlimit",
+    "message limit",
+    "usage limit",
+    "nutzungslimit",
+    "rate limit",
+    "ratelimit",
+    "daily limit",
+    "tageslimit",
+    "limit reached",
+    "limit erreicht",
+    "too many requests",
+    "quota exceeded",
+    "you have reached",
+    "verify you are human",
+    "checking your browser",
+    // Kapazitaets-/Auslastungsmeldungen — anderes Muster als "Limit erreicht":
+    // kein persoenliches Kontingent, sondern "der Dienst ist gerade ueberlastet".
+    // Ausloeser fuer diese Ergaenzung: kimi zeigt unter Last einen Dialog/Overlay,
+    // der den Composer blockiert; der genaue Wortlaut war zum Zeitpunkt des Fixes
+    // nicht reproduzierbar (live_diagnose traf kimi im Ready-Zustand), daher eine
+    // Bandbreite plausibler Formulierungen statt einer einzelnen bestaetigten Phrase.
+    "too many users",
+    "too many people",
+    "high traffic",
+    "currently busy",
+    "server is busy",
+    "at capacity",
+    "zu viele nutzer",
+    "zu viele anfragen",
+    "überlastet",
+    "derzeit ausgelastet",
+    "cloudflare",
+];
+
+/// Obergrenze (Zeichen), bis zu der ein Text als Block-*Banner* gelten darf.
+/// Echte Limit-/Auslastungs-Banner sind kurz (ein bis zwei Sätze). Eine lange
+/// inhaltliche Antwort, die "rate limit"/"usage limit" nur ERWÄHNT (z.B. als
+/// Verbesserungsvorschlag), ist KEIN Block — genau dieser False-Positive trat
+/// im Swarm-Test "Verbesserungsvorschläge zu webagent-rs" auf: mistrals/
+/// deepseeks legitime Essays empfahlen Rate-Limiting und wurden als "blocked"
+/// verworfen.
+pub(crate) const BLOCK_BANNER_MAX_CHARS: usize = 400;
+
+/// Prueft einen bereits gelesenen Antworttext (nicht die ganze Seite) auf eine
+/// Block-Phrase. Faengt Faelle wie qwen, wo das Limit-Banner NICHT separat auf der
+/// Seite steht, sondern als Text INNERHALB des Antwort-Containers erscheint — dort
+/// sah `wait_response` es vorher nicht, weil der periodische Banner-Scan nur laeuft,
+/// solange noch kein Text da ist, und ein bereits "vollstaendiger" Text-Block direkt
+/// als echte Antwort durchgereicht wurde.
+pub(crate) fn block_phrase_in_text(text: &str) -> Option<&'static str> {
+    // Nur kurze Texte können ein Banner sein; in Fließtext ist die Phrase Inhalt.
+    if text.chars().count() > BLOCK_BANNER_MAX_CHARS {
+        return None;
+    }
+    let low = text.to_lowercase();
+    let phrase_count = BLOCK_PHRASES
+        .iter()
+        .filter(|phrase| low.contains(**phrase))
+        .count();
+    // Kurze technische Aufzählungen wie `Tageslimit/Login/Cloudflare` kommen
+    // in Code und Diagnostik vor. Provider-Banner formulieren dagegen eine
+    // konkrete Meldung und listen nicht mehrere Kategorien per Slash auf.
+    if low.contains('/') && phrase_count >= 2 {
+        return None;
+    }
+    BLOCK_PHRASES
+        .iter()
+        .copied()
+        // `cloudflare` allein ist in Code, Logs und technischen Antworten ein
+        // normaler Begriff. Echte Challenges werden bereits durch die beiden
+        // spezifischen Phrasen sowie den separaten Seiten-/URL-Check erkannt.
+        .filter(|phrase| *phrase != "cloudflare")
+        .find(|phrase| contains_at_word_boundary(&low, phrase))
+}
+
 #[cfg(test)]
 mod tests {
     use super::parser::repair_unescaped_quotes_in_strings;

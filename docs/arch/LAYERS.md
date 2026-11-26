@@ -1,6 +1,6 @@
 # Top-level module layers
 
-> **Reference.** This is the layer model enforced by `tests/arch_layers.rs`.
+> **Referenz.** This is the layer model enforced by `tests/arch_layers.rs`.
 > The machine-readable assignment lives in [`layers.toml`](layers.toml), the
 > grandfathered debt in [`layer_exceptions.txt`](layer_exceptions.txt). This
 > document describes the model; it is not a second source of truth for either

@@ -167,7 +167,7 @@ pub fn is_retryable_empty_response(response: &str) -> bool {
     // Code und wurde vor dem Parser als `brain_unavailable` verworfen. Eine
     // begonnene Tool-Antwort muss stattdessen normal geparst bzw. repariert
     // werden; echte Provider-Banner enthalten keine WEBAGENT/1-Nutzlast.
-    if crate::browser::has_protocol_payload(trimmed) {
+    if crate::protocol::has_protocol_payload(trimmed) {
         return false;
     }
     let low = trimmed.to_lowercase();

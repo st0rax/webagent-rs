@@ -3,6 +3,7 @@ use regex::Regex;
 use serde_json::Value;
 use std::sync::OnceLock;
 
+use super::block_phrase_in_text;
 use super::types::{Action, ActionType, EditOperation, ParseResult, PROTOCOL_VERSION};
 
 fn json_block_regex() -> &'static Regex {
@@ -889,7 +890,7 @@ fn looks_like_capacity_notice(text: &str) -> bool {
     // allein wegen der Wörter "rate limit"/"capacity" nicht zum
     // Providerzustand umgedeutet werden. Das ist ein normaler Protokollfehler
     // und gehört in den Repair-Pfad.
-    crate::browser::block_phrase_in_text(text).is_some()
+    block_phrase_in_text(text).is_some()
 }
 
 #[cfg(test)]

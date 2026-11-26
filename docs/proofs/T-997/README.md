@@ -1,5 +1,8 @@
 # T-997 proof — architecture layer ratchet
 
+> **Referenz.** Historical proof for T-997. The live ratchet is
+> `tests/arch_layers.rs` with `docs/arch/layers.toml`.
+
 **Date:** 2026-11-26
 **Owner:** `local/opencode`
 **Branch:** `feature/T-997-arch-layers` (base `master` `93d33a3`)

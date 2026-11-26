@@ -27,24 +27,16 @@ mod send;
 mod surface;
 
 #[cfg(test)]
+pub(crate) use crate::protocol::BLOCK_BANNER_MAX_CHARS;
+pub(crate) use crate::protocol::{block_phrase_in_text, has_protocol_payload};
+#[cfg(test)]
 pub(crate) use blocking::{
-    banner_is_prompt_echo, BLOCK_BANNER_MAX_CHARS, PROSE_STABILITY_SECONDS, STABILITY_SECONDS,
-    TRUNCATED_STABILITY_SECONDS,
+    banner_is_prompt_echo, PROSE_STABILITY_SECONDS, STABILITY_SECONDS, TRUNCATED_STABILITY_SECONDS,
 };
-pub(crate) use blocking::{block_phrase_in_text, classify_completion, stable_norm, Completion};
+pub(crate) use blocking::{classify_completion, stable_norm, Completion};
 pub use send::is_send_disabled_error;
 #[cfg(test)]
 pub(crate) use send::submit_verify_rounds;
-
-/// Enthält der Text überhaupt etwas, das eine Protokoll-Antwort sein könnte?
-///
-/// Bewusst grob: ein `{` oder ein `WEBAGENT/1`-Umschlag genügt. Es geht nicht
-/// darum, ob das Protokoll gültig ist (das prüft `protocol::parse`), sondern ob
-/// das Brain überhaupt angefangen hat zu antworten statt nur zu denken.
-pub(crate) fn has_protocol_payload(text: &str) -> bool {
-    let t = text.trim();
-    t.contains('{') || t.contains("WEBAGENT/1")
-}
 
 /// Web-Chat-Backend für einen Provider (chatgpt, claude, …).
 /// Ergebnis einer Live-Diagnose (echter Browser gegen die Provider-Seite).
