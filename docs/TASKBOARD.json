@@ -2322,5 +2322,38 @@
       "proof_path": "docs/CURRENT_WORK.md",
       "verification": "Isolierter Pi-Smoke PASS (Textturn PI_BRIDGE_OK + fuenf sequenzielle read-Tool-Aufrufe) gegen deploytes v0.11.7 auf 8788, Transkript docs/proofs/T-973/pi-tool-loop.json. Nutzerkonfiguration: Backup models.json.bak-T973-20261126, pi --list-models webagent zeigt webagent/chatgpt, echter Turn WEBAGENT-PI-USER-OK-20261126 mit exit 0, Beleg docs/proofs/T-973/pi-user-config-turn.md. Gates: fmt 0, clippy 0, 1521 passed / 0 failed / 1 ignored, diff --check 0. Bridge nach beiden Laufen gestoppt, Port 8788 frei.",
       "claimed_note": "Fund bei der Einrichtung des lokalen Pi-Providers am 2026-11-26."
+    },
+    {
+      "id": "T-974",
+      "phase": "15",
+      "type": "ops",
+      "title": "Lokalen Bridge-Dauerbetrieb mit sichtbarer Anmelde-Abfrage absichern",
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "chore/T-974-bridge-autostart",
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26",
+      "depends_on": [],
+      "scope": [
+        "scripts/bridge-start-prompt.ps1",
+        "scripts/supervise-bridge.ps1",
+        "scripts/setup-bridge-autostart.ps1",
+        "docs/LOCAL_BRIDGE_DAEMON.md",
+        "docs/proofs/T-974/daemon-abnahme.md",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Der lokale Pi-Provider war nur manuell startbar. Der Eigentuemer wollte beim Windows-Start ein sichtbares Terminalfenster mit der Abfrage, ob die Bridge gestartet werden soll; die auto-matische Health-Pruefung darf nur nach ausdruecklicher Zustimmung greifen.",
+      "dod": "Anmeldefenster mit J/N-Abfrage, idempotenter Supervisor mit Opt-in-Gate, Installation und Rueckweg per Skript; echte Pruefung von Ja, Nein, Selbstheilung, Rueckweg und einem Pi-Turn; cargo-Gates und diff-check gruen.",
+      "handoff": "Abgeschlossen 2026-11-26 durch local/opencode, Basis master d824b10. Nur Loopback und aktueller Benutzer, kein Admin, kein Fernzugriff. Kein Reboot/Re-Login simuliert; Verknuepfung, Skripte und Task wurden real geprueft. Kein neues Release, kein Tag, kein Deployment.",
+      "non_goals": [
+        "Kein Windows-Dienst, kein Session-0-Browser und keine Rechteaenderung.",
+        "Kein Fernzugriff, kein internationales Frontend und keine Aenderung an der Bridge-Runtime.",
+        "Keine Lektuere von auth.json oder bestehenden Tokens, keine Anmeldung und kein Secret in Logs oder Belegen."
+      ],
+      "proof_path": "docs/CURRENT_WORK.md",
+      "verification": "Real gemessen: Supervisor erster Start und idempotenter Zweitlauf exit 0; Antwort e (Nein) stoppt die eigene Bridge und laesst die zyklische Pruefung no-op; Antwort j (Ja) setzt Opt-in und startet gesund; nach Stopp der eigenen PID startet die zyklische Pruefung die Bridge neu; setup -Remove entfernt Verknuepfung, Aufgabe, Opt-in und Bridge und wurde danach neu installiert; Task-Lauf LastTaskResult=0; echter Pi-Turn mit WEBAGENT-DAEMON-OK-20261126 exit 0. Beleg docs/proofs/T-974/daemon-abnahme.md. Gates: fmt 0, clippy 0, 1521 passed / 0 failed / 1 ignored, diff-check 0.",
+      "claimed_note": "Direkte Nutzerentscheidung nach T-973: 'bitte bei windows start terminalfenster mit abfrage ob bridge gestartet werden soll'."
     }  ]
 }

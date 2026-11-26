@@ -13,3 +13,6 @@ docs/proofs/T-928/*.txt -text
 # T-973 Pi-Rohtranskript und Turn-Beleg sind Audit-Evidenz: byte-for-byte speichern.
 docs/proofs/T-973/*.json -text
 docs/proofs/T-973/*.md -text
+
+# T-974 Daemon-Abnahme enthaelt ein eingebettetes Pi-Rohtranskript.
+docs/proofs/T-974/*.md -text
