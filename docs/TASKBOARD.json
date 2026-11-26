@@ -3022,7 +3022,7 @@
       "claimed_at": "2026-11-26",
       "depends_on": [],
       "dod": "Claim before source edits; measured Gemini composer cap is enforced before any browser start; no per-character typing fallback for long prompts; unit tests for cap and fail-fast; gates green; branch pushed; no release, tag or deployment.",
-      "done_at": null,
+      "done_at": "2026-11-26",
       "id": "T-1014",
       "non_goals": [
         "No credential access, login, live provider call or browser session.",
@@ -3037,15 +3037,17 @@
         "crates/webagent-core/src/config/limits.rs",
         "crates/webagent-api/src/relay.rs",
         "crates/webagent-api/src/api_bridge/catalog.rs",
+        "crates/webagent-transport/src/browser/composer.rs",
         "crates/webagent-transport/src/browser/send.rs",
+        "docs/API_BRIDGE.md",
         "docs/CURRENT_WORK.md",
         "docs/TASKBOARD.json",
         "docs/TASKBOARD.md"
       ],
-      "status": "claimed",
+      "status": "done",
       "title": "Gemini prompt input: measured cap and no per-character fallback",
       "type": "fix",
-      "verification": "cargo fmt --all -- --check; cargo clippy --workspace --features webview --all-targets --locked -- -D warnings; cargo test --workspace --lib --locked --quiet; cargo test --test arch_layers -- --nocapture; git diff --check"
+      "verification": "fmt 0; clippy 0; lib 466+182+627+280=1555 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=281, crate_violations=0); all-targets 0; no-default 0; release build 0; diff-check 0; details docs/proofs/T-1014/gates.txt"
     }
   ]
 }

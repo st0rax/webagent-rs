@@ -51,6 +51,20 @@ pub fn is_send_disabled_error(message: &str) -> bool {
     message.contains(SEND_DISABLED_MARKER)
 }
 
+/// Nur kurze Prompts duerfen als letzter Ausweg einzeln nachgetippt werden.
+///
+/// T-1014: `type_text_char_by_char` ist ein PageDriver-Aufruf PRO ZEICHEN.
+/// Bei 43.609 Zeichen war der Composer nach >5 min noch leer; der Client
+/// trennte die Verbindung, `sends=0`. Bis 256 Zeichen bleibt der Weg als
+/// ProseMirror-Registerierung erhalten, darueber wird nur noch chunk-basiert
+/// `insert_text` (2.000 Zeichen je Block) verwendet.
+pub const SHORT_PROMPT_TYPE_CHARS: usize = 256;
+
+/// Entscheidungshilfe fuer den Nachtipp-Fallback (rein, testbar).
+pub fn char_by_char_fallback_for(text: &str) -> bool {
+    text.chars().count() <= SHORT_PROMPT_TYPE_CHARS
+}
+
 fn submission_is_proven(
     chatgpt_user_baseline_known: bool,
     user_echo: bool,
@@ -1113,19 +1127,19 @@ impl WebBrainBackend {
         let filled = if self.strat_flag("composer_fill") {
             self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 s.dismiss_consent();
-                s.fill_composer_rich_multiline(js, t) && s.composer_matches_text(js, t)
+                s.fill_composer_rich_multiline(js, t) && s.composer_holds_text(js, t)
             })
         } else {
             self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 s.dismiss_consent();
                 s.fill_composer(js, t);
-                s.composer_matches_text(js, t)
+                s.composer_holds_text(js, t)
             }) || self.wait_fill_composer(&composer_js, text, |s, js, t| {
                 // Fallback: DOM-set after viewport-clamped focus — hilft wenn
                 // der erste trusted-Insert bei riesigem Prompt (Brain-Session/
                 // Pi-Tools) den Editor aufblaeht und der Center-Klick daneben lag.
                 s.dismiss_consent();
-                s.fill_composer_dom_set(js, t) && s.composer_matches_text(js, t)
+                s.fill_composer_dom_set(js, t) && s.composer_holds_text(js, t)
             })
         };
         if !filled {
@@ -1182,7 +1196,7 @@ impl WebBrainBackend {
             // fuellen/senden — sonst ensteht ein Doppel-Send bei Brains, deren
             // Send-Registrierung (perplexity/deepseek ~20s) laenger dauert als
             // das Beweisfenster des ersten Versuchs.
-            let consumed = !self.composer_matches_text(&composer_js, text);
+            let consumed = !self.composer_holds_text(&composer_js, text);
             if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
                 eprintln!("[submit] attempt {} consumed={consumed}", attempt + 1);
             }
@@ -1553,21 +1567,34 @@ return best?best.slice(0,300):null;})()"#;
         // + InputEvent) NICHT — der Absendeknopf bleibt dann deaktiviert und der
         // ehrliche Fehler "kein Absende-Beweis" war die Folge. Darum zuerst echt
         // tippen (`fill_composer`: Klick + trusted `Input.insertText`) und den
-        // Inhalt bestaetigen; DOM-Set + Zeichen-Nachtippen nur als Fallback.
+        // Inhalt bestaetigen; DOM-Set nur als Fallback, kein Zeichen-Nachtippen.
         if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.fill_composer(js, t) && s.composer_matches_text(js, t)
+            s.fill_composer(js, t) && s.composer_holds_text(js, t)
+        }) && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
+            s.fill_composer_dom_set(js, t) && s.composer_holds_text(js, t)
         }) {
-            let _ = self.wait_fill_composer(&composer_js, text, |s, js, t| {
-                s.fill_composer_dom_set(js, t) && s.type_text_char_by_char(t).is_ok()
+            webagent_core::brain_score::update_pending_turn(|obs| {
+                obs.phase = webagent_core::brain_score::SendPhase::ContentCheck;
+                obs.pasted_chars = Some(self.composer_char_count());
+                obs.expected_chars = Some(text.chars().count());
             });
+            return Err(webagent_core::brain_score::phase_error(
+                webagent_core::brain_score::SendPhase::ContentCheck,
+                "Composer-Feld nicht gefunden (Timeout)",
+            ));
         }
         std::thread::sleep(Duration::from_millis(200));
         // Gibt die Oberflaeche den Text nicht an ProseMirror weiter, bleibt der
-        // Absendeknopf grau — dann Zeichen fuer Zeichen nachtippen statt blind
-        // zu klicken (React/ProseMirror registriert echte Tastatur-Events).
+        // Absendeknopf grau. Frueher folgte ein Zeichen-fuer-Zeichen-Nachtippen —
+        // bei 43k Zeichen ein >5-min-Leerlauf ohne Absendung (T-1014). Jetzt:
+        // ein zweiter chunk-basierter insertText-Versuch; echte Tasten nur bei
+        // kurzen Prompts, wo ProseMirror sie noch registriert.
         if self.send_button_disabled() == Some(true) {
-            let _ = self.fill_composer_dom_set(&composer_js, text);
-            let _ = self.type_text_char_by_char(text);
+            if char_by_char_fallback_for(text) {
+                let _ = self.type_text_char_by_char(text);
+            } else {
+                let _ = self.fill_composer(&composer_js, text);
+            }
         }
         self.ensure_composer_full(text)?;
         let url_before = self.get_conversation_ref();
@@ -1576,7 +1603,7 @@ return best?best.slice(0,300):null;})()"#;
             // Senden bereits im Gange: dann NUR den Beweis abwarten, nicht neu
             // fuellen/senden — sonst Doppel-Send (registers long nach DeepSeek/
             // perplexity). Gleiche Garantie wie in send_generic.
-            let consumed = !self.composer_matches_text(&composer_js, text);
+            let consumed = !self.composer_holds_text(&composer_js, text);
             if !consumed {
                 // Abwechselnd echten Klick und Enter: Geminis "Nachricht senden"-Button
                 // ignoriert gelegentlich den trusted Klick (Anti-Automation), Enter
@@ -1606,9 +1633,9 @@ return best?best.slice(0,300):null;})()"#;
         // Fuellen und bestaetigen, dass der Text wirklich im Editor steht —
         // gleiche Forderung wie in send_generic (nur Fill-Erfolg zaehlt nicht).
         if !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.fill_composer(js, t) && s.composer_matches_text(js, t)
+            s.fill_composer(js, t) && s.composer_holds_text(js, t)
         }) && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
-            s.fill_composer_dom_set(js, t) && s.composer_matches_text(js, t)
+            s.fill_composer_dom_set(js, t) && s.composer_holds_text(js, t)
         }) {
             webagent_core::brain_score::update_pending_turn(|obs| {
                 obs.phase = webagent_core::brain_score::SendPhase::ContentCheck;
@@ -1627,7 +1654,7 @@ return best?best.slice(0,300):null;})()"#;
             // Consumed bedeutet: das Senden ist bereits registriert (qwen braucht
             // fuer die Send-Registrierung teils mehrere Sekunden) — dann nur den
             // Beweis abwarten, nie neu fuellen (Doppel-Send-Gegenprobe).
-            let consumed = !self.composer_matches_text(&composer_js, text);
+            let consumed = !self.composer_holds_text(&composer_js, text);
             if !consumed {
                 if attempt % 2 == 0 {
                     if !self.click_visible_real("send_button") {
@@ -1740,7 +1767,7 @@ return best?best.slice(0,300):null;})()"#;
             // — die UI "startet eine neue Session statt zu senden". Der Beweis steht
             // erst, wenn die Oberflaeche die Eingabe konsumiert hat (Composer leer)
             // ODER eine neue Antwort/Stop erschienen ist.
-            let composer_consumed = !self.composer_matches_text(&composer_js, &sent);
+            let composer_consumed = !self.composer_holds_text(&composer_js, &sent);
             let user_echo = user_baseline
                 .zip(self.user_message_count())
                 .is_some_and(|(before, now)| now > before);
@@ -1818,11 +1845,24 @@ fn base64_encode(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::submission_is_proven;
+    use super::{char_by_char_fallback_for, submission_is_proven, SHORT_PROMPT_TYPE_CHARS};
     use crate::browser::WebBrainBackend;
     use crate::mock_page::{MockPageDriver, MockPageState};
     use serde_json::json;
     use webagent_core::inference_types::{BrowserAttachment, BrowserAttachmentKind};
+
+    #[test]
+    fn t1014_zeichenweises_nachtippen_nur_fuer_kurze_prompts() {
+        assert!(char_by_char_fallback_for("hi"));
+        assert!(char_by_char_fallback_for(
+            &"x".repeat(SHORT_PROMPT_TYPE_CHARS)
+        ));
+        assert!(!char_by_char_fallback_for(
+            &"x".repeat(SHORT_PROMPT_TYPE_CHARS + 1)
+        ));
+        // Gemessene Live-Promts aus 2026-11-26T17:57 (43.609 Zeichen).
+        assert!(!char_by_char_fallback_for(&"x".repeat(43_609)));
+    }
 
     #[test]
     fn chatgpt_dom_rehydration_is_not_a_send_proof_without_user_echo() {

@@ -228,6 +228,17 @@ fn model_metadata_has_stable_catalog_shape() {
         webagent_core::config::model_max_tokens()
     );
     assert_eq!(meta["modalities"]["output"][1], "image");
+    // T-1014: Gemini bewirbt die gemessene Composer-Kapazitaet, nicht die
+    // Modellgrenze. Der Katalog ist damit Pi-Steuerungsgroesse, kein Versprechen.
+    let gemini = model_metadata("gemini");
+    assert_eq!(
+        gemini["context_window"],
+        webagent_core::config::DEFAULT_GEMINI_CONTEXT_WINDOW
+    );
+    assert_eq!(
+        gemini["max_tokens"],
+        webagent_core::config::DEFAULT_GEMINI_MAX_TOKENS
+    );
     let meta = model_metadata("kimi");
     assert_eq!(meta["modalities"]["input"][1], "image");
     assert_eq!(meta["modalities"]["output"][0], "text");

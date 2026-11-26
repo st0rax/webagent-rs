@@ -34,6 +34,15 @@ pub(crate) fn circuit_open_message(brain_id: &str, remaining_secs: i64) -> Strin
     format!("{CIRCUIT_OPEN_PREFIX}{brain_id} uebersprungen, noch {remaining_secs}s Cooldown")
 }
 
+/// Einheitliche Meldung, wenn ein Prompt die gemessene Composer-Grenze des
+/// Brains ueberschreitet. Der Client soll verkleinern/kompaktieren, nicht
+/// minutenlang in einen WebView laufen, der die Eingabe doch nicht annimmt.
+pub(crate) fn prompt_too_long_message(brain_id: &str, chars: usize, limit: usize) -> String {
+    format!(
+        "prompt_zu_lang: {brain_id} nimmt maximal {limit} Zeichen an (gemessen), erhalten {chars}; bitte Kontext verkleinern"
+    )
+}
+
 /// Restliche Cooldown-Sekunden, falls `error` von einem offenen Circuit-Breaker
 /// stammt. `None` heisst: kein offener Breaker, die Meldung kuendigt keine
 /// Wartezeit an.
@@ -322,13 +331,30 @@ fn relay_single_turn_checked(
     // T-970: ein frischer Beobachtungsbereich pro Relay-Lauf. Alle Events und
     // set_pending_*-Aufrufe dieses Laufs liegen im selben Thread.
     let _scope = webagent_core::brain_score::PendingScope::new();
+    let started = Instant::now();
+    let prompt_chars = message.chars().count();
+    // T-1014: Die gemessene Composer-Grenze gilt VOR dem Start des Brains und
+    // VOR der Breaker-Pruefung. Ein 38k-150k-Zeichen-Prompt in den WebView zu
+    // leiten kostete 69-356 s und hinterliess pasted_chars=0, sends=0. Ein
+    // uebergrosser Prompt ist kein Brain-Fehler: er bekommt seinen eigenen
+    // Grund, auch wenn das Brain gerade in einer Cooldown-Zeit liegt.
+    let prompt_limit = webagent_core::config::max_prompt_chars_for(brain_id);
+    if prompt_chars > prompt_limit {
+        let reason = prompt_too_long_message(brain_id, prompt_chars, prompt_limit);
+        webagent_core::brain_score::record_event(
+            brain_id,
+            false,
+            Some(&reason),
+            started.elapsed().as_millis() as u64,
+            prompt_chars,
+        );
+        return Err(RelayError(reason));
+    }
     // Ein Brain, das gerade wiederholt blockiert/rate-limitiert war, wird fuer eine
     // Cooldown-Zeit uebersprungen statt erneut in den vollen Timeout zu laufen.
     if let Some(remaining) = webagent_core::circuit_breaker::check(brain_id) {
         return Err(RelayError(circuit_open_message(brain_id, remaining)));
     }
-    let started = Instant::now();
-    let prompt_chars = message.chars().count();
     let mut backend = backend_factory::relay_backend(brain_id).map_err(RelayError)?;
     let (ready_timeout, wait_timeout) =
         resolve_attach_aware_timeouts(brain_id, message, timeout_override, !attachments.is_empty());
@@ -865,6 +891,14 @@ mod tests {
         let msg = circuit_open_message("qwen", 812);
         assert_eq!(msg, "circuit_open: qwen uebersprungen, noch 812s Cooldown");
         assert_eq!(open_circuit_remaining_secs(&msg), Some(812));
+    }
+
+    #[test]
+    fn prompt_zu_lang_meldung_nennt_brain_und_beide_zaehlen() {
+        let msg = prompt_too_long_message("gemini", 43_609, 24_000);
+        assert!(msg.starts_with("prompt_zu_lang: gemini "));
+        assert!(msg.contains("24000"));
+        assert!(msg.contains("43609"));
     }
 
     #[test]

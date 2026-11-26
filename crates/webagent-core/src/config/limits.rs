@@ -113,22 +113,70 @@ pub fn resolve_max_run_wall_secs(raw: Option<&str>) -> u64 {
 pub const DEFAULT_MODEL_CONTEXT_WINDOW: u64 = 1_000_000;
 pub const DEFAULT_MODEL_MAX_TOKENS: u64 = 65_536;
 
+/// Gemessene Composer-Grenze von Gemini in Zeichen (T-943, T-1014).
+///
+/// Erfolgreiche Live-Turns lagen am 2026-11-26 bei maximal 26.523 Zeichen;
+/// ab rund 32.000 Zeichen kuerzt die Oberflaeche still oder nimmt die Eingabe
+/// gar nicht erst an (2026-11-26: 38.561/43.609 Zeichen, `pasted_chars=0`,
+/// `sends=0`, 69-356 s bis zum Abbruch). 24.000 lsst Puffer gegen
+/// Normalisierung und Selektor-Drift. Kein geratenes Modell-Kontextfenster:
+/// dies ist die Eingabegrenze der WEBOBERFLAECHE, nicht des Modells.
+pub const DEFAULT_GEMINI_PROMPT_CHARS: usize = 24_000;
+
+/// Beworbene Gemini-Grenzen. Der Katalog meldet die tatsaechlich nutzbare
+/// Kapazitaet, damit Pi vor dem Senden kompaktiert statt einen Prompt zu
+/// erzeugen, den der Composer nicht annimmt.
+pub const DEFAULT_GEMINI_CONTEXT_WINDOW: u64 = 12_000;
+pub const DEFAULT_GEMINI_MAX_TOKENS: u64 = 4_000;
+
+fn one_limit(raw: Option<&str>, default: u64) -> u64 {
+    match raw.map(str::trim) {
+        Some(s) if !s.is_empty() => match s.parse::<u64>() {
+            Ok(0) | Err(_) => default,
+            Ok(n) => n,
+        },
+        _ => default,
+    }
+}
+
 /// Reine Auflösung der beworbenen Modellgrenzen (ohne Env-Zugriff, für Tests).
 /// `None`/leer/`0`/ungültig → Default; positive Werte werden übernommen.
 pub fn resolve_model_limits(raw_context: Option<&str>, raw_output: Option<&str>) -> (u64, u64) {
-    fn one(raw: Option<&str>, default: u64) -> u64 {
-        match raw.map(str::trim) {
-            Some(s) if !s.is_empty() => match s.parse::<u64>() {
-                Ok(0) | Err(_) => default,
-                Ok(n) => n,
-            },
-            _ => default,
-        }
-    }
     (
-        one(raw_context, DEFAULT_MODEL_CONTEXT_WINDOW),
-        one(raw_output, DEFAULT_MODEL_MAX_TOKENS),
+        one_limit(raw_context, DEFAULT_MODEL_CONTEXT_WINDOW),
+        one_limit(raw_output, DEFAULT_MODEL_MAX_TOKENS),
     )
+}
+
+/// Reine Auflösung der Gemini-Grenzen (ohne Env-Zugriff, für Tests).
+pub fn resolve_gemini_limits(raw_context: Option<&str>, raw_output: Option<&str>) -> (u64, u64) {
+    (
+        one_limit(raw_context, DEFAULT_GEMINI_CONTEXT_WINDOW),
+        one_limit(raw_output, DEFAULT_GEMINI_MAX_TOKENS),
+    )
+}
+
+/// Reine Auflösung der Promt-Obergrenze (ohne Env-Zugriff, für Tests).
+/// `None`/leer/`0`/ungültig → Default.
+pub fn resolve_prompt_chars(raw: Option<&str>) -> usize {
+    match raw.and_then(|s| s.trim().parse::<usize>().ok()) {
+        Some(n) if n > 0 => n,
+        _ => DEFAULT_GEMINI_PROMPT_CHARS,
+    }
+}
+
+/// Promt-Obergrenze je Brain, BEVOR ein Browser geoeffnet wird.
+///
+/// Nur Gemini ist gemessen begrenzt; andere Brains behalten ihr Verhalten
+/// (live bis 300k Zeichen belegt). Null bedeutet "keine Grenze" und wird
+/// nie als solche fehlinterpretiert: ein ungueltiger Env-Wert faellt auf den
+/// Messwert zurueck.
+pub fn max_prompt_chars_for(brain_id: &str) -> usize {
+    if brain_id == "gemini" {
+        resolve_prompt_chars(env::var("WEBAGENT_GEMINI_PROMPT_CHARS").ok().as_deref())
+    } else {
+        usize::MAX
+    }
 }
 
 fn env_model_limits() -> (u64, u64) {
@@ -146,6 +194,20 @@ pub fn model_context_window() -> u64 {
 /// Output-Limit, das der Katalog und die Pi-Konfiguration bewerben.
 pub fn model_max_tokens() -> u64 {
     env_model_limits().1
+}
+
+/// Beworbene Modellgrenzen je Brain. Gemini weicht bewusst ab: das Modell
+/// koennte 1M Tokens, der gemessene Web-Composer aber nur ~24k Zeichen.
+/// Wer die Env-Variablen setzt, kann die gemessenen Werteueberschreiben.
+pub fn model_limits_for(brain_id: &str) -> (u64, u64) {
+    if brain_id == "gemini" {
+        resolve_gemini_limits(
+            env::var("WEBAGENT_GEMINI_CONTEXT_WINDOW").ok().as_deref(),
+            env::var("WEBAGENT_GEMINI_MAX_TOKENS").ok().as_deref(),
+        )
+    } else {
+        env_model_limits()
+    }
 }
 
 #[cfg(test)]
@@ -179,6 +241,31 @@ mod tests {
         assert_eq!(
             resolve_model_limits(Some("0"), Some("nonsense")),
             (DEFAULT_MODEL_CONTEXT_WINDOW, DEFAULT_MODEL_MAX_TOKENS)
+        );
+    }
+
+    #[test]
+    fn gemini_limits_sind_kleiner_als_die_modellgrenzen() {
+        let (context, output) = resolve_gemini_limits(None, None);
+        assert_eq!(context, DEFAULT_GEMINI_CONTEXT_WINDOW);
+        assert_eq!(output, DEFAULT_GEMINI_MAX_TOKENS);
+        assert!(context < DEFAULT_MODEL_CONTEXT_WINDOW);
+        assert_eq!(
+            resolve_gemini_limits(Some("0"), Some("777")),
+            (DEFAULT_GEMINI_CONTEXT_WINDOW, 777)
+        );
+    }
+
+    #[test]
+    fn prompt_cap_nur_fuer_gemini_und_mit_fallback() {
+        assert_eq!(max_prompt_chars_for("gemini"), DEFAULT_GEMINI_PROMPT_CHARS);
+        assert_eq!(max_prompt_chars_for("chatgpt"), usize::MAX);
+        assert_eq!(resolve_prompt_chars(None), 24_000);
+        assert_eq!(resolve_prompt_chars(Some(" 1000 ")), 1_000);
+        assert_eq!(resolve_prompt_chars(Some("0")), DEFAULT_GEMINI_PROMPT_CHARS);
+        assert_eq!(
+            resolve_prompt_chars(Some("nonsense")),
+            DEFAULT_GEMINI_PROMPT_CHARS
         );
     }
 }

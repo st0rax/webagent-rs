@@ -293,16 +293,19 @@ pub fn web_search_isolation(brain: &str) -> (&'static str, &'static str) {
 ///
 /// `context_window`/`max_tokens` kommen aus der zentralen, env-ueberschreibbaren
 /// Konfiguration (`config::limits`), nicht aus einer zweiten hart codierten
-/// Zahl hier. `advertised_*` liefern die tatsaechlich bestaetigten Modalitaeten.
+/// Zahl hier. Gemini bewirbt bewusst die gemessene Composer-Kapazitaet statt
+/// des Modell-Kontextfensters, damit Pi vor dem Senden kompaktiert (T-1014).
+/// `advertised_*` liefern die tatsaechlich bestaetigten Modalitaeten.
 pub fn model_metadata(brain: &str) -> Value {
+    let (context_window, max_tokens) = webagent_core::config::model_limits_for(brain);
     let mut metadata = json!({
         "id": model_id(brain),
         "object": "model",
         "created": 0,
         "owned_by": "webagent",
         "brain": brain,
-        "context_window": webagent_core::config::model_context_window(),
-        "max_tokens": webagent_core::config::model_max_tokens(),
+        "context_window": context_window,
+        "max_tokens": max_tokens,
         "modalities": {
             "input": advertised_input_modalities(brain),
             "output": advertised_output_modalities(brain)
