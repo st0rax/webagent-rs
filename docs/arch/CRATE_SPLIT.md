@@ -100,15 +100,16 @@ gives the following measured graph:
 | rest | 77 | 12 | 7 | 59 internal |
 
 Every `rest → library` edge is an allowed application-to-library dependency.
-The six bold cells are the only edges that still point across a crate boundary
-in the wrong direction or into another library:
+The four bold cells were the only edges that pointed across a crate boundary
+in the wrong direction or into another library; all are now prepared for
+extraction by T-1006, T-1007 and T-1009:
 
-| Blocker | Measured edge | Required fix |
+| Blocker | Measured edge | Fix |
 |---|---|---|
-| core → transport | `contract → browser`, `counting → browser` | `contract` only needed protocol helpers re-exported by `browser`; `counting` needs a `BackendFactory`. `PageProbe` is prepared for later panel work, not for these two edges. |
-| transport → api | `browser → browser_inference` | shared inference/tool value types moved to core |
-| transport → rest | `browser_pool → brain_grid`, `webview_reveal → brain_grid`, `webview_runtime → brain_grid` | Done as T-1007: low-rank `panel_sink` owns `Rect`, pure layout and the desktop-fact `PanelSink`; root `brain_grid` implements and installs it. No file was moved. |
-| api → transport | `relay → browser` | public `BackendFactory` in core; the text path uses it since T-1006. The image path still constructs `WebBrainBackend` directly and needs a dedicated image-backend trait before extraction. |
+| core → transport | `contract → browser`, `counting → browser` | T-1006: `contract` imports protocol helpers directly; `counting` uses `BackendFactory`. `PageProbe` is prepared for later panel work, not for these two edges. |
+| transport → api | `browser → browser_inference` | T-1006: shared inference/tool value types moved to `core::inference_types` with old re-exports. |
+| transport → rest | `browser_pool → brain_grid`, `webview_reveal → brain_grid`, `webview_runtime → brain_grid` | T-1007: low-rank `panel_sink` owns `Rect`, pure layout and the desktop-fact `PanelSink`; root `brain_grid` implements and installs it. No file was moved. |
+| api → transport | `relay → browser` | T-1009: core `ImageGenerationBackend` trait plus `BackendFactory::create_image_backend`; the text path already used `BackendFactory` since T-1006. |
 
 T-1006 correction to the original wording: `PageProbe` alone does not fix
 `contract → browser` or `counting → browser`. `contract.rs:436/442` called
@@ -185,10 +186,11 @@ webagent-api
 └── https_client, comms, oobe
 ```
 
-Measured: 10 internal edges; 17 outbound to core, 1 to transport
-(`relay → browser`) and 7 inbound from the root app. After §4.1's traits are
-added, brain access is only `dyn BrainBackend` plus `BackendFactory`; the api
-crate names no `WebBrainBackend`, no `wry`/`tao` type and no concrete page.
+Baseline measurement: 10 internal edges; 17 outbound to core, 1 to transport
+(`relay → browser`) and 7 inbound from the root app. T-1009 removed that one
+outbound edge, so the api crate now names no `WebBrainBackend`, no `wry`/`tao`
+type and no concrete page: brain access is `dyn BrainBackend`, `dyn
+RelayBackend`, `dyn ImageGenerationBackend` and `BackendFactory`.
 Cargo dependencies: `serde`, `serde_json`, `time`, `tokio`, `tokio-rustls`,
 `rustls`, `webpki-roots` (all via `https_client`). No GUI crate, no `clap`.
 
@@ -228,10 +230,12 @@ no dependency is added or removed by the design.
    `WebBrainBackend`'s impl in transport. This removes the private-trait
    coupling to `browser_inference::BrowserAttachment` by moving that value
    type to core as well.
-2. **`BackendFactory` in core.** `relay.rs:151` and `relay.rs:364` call
-   `WebBrainBackend::from_config` directly. Injection of a factory trait lets
-   the root crate supply the concrete backend while api only sees the trait.
-   This is the measured `api → transport` blocker.
+2. **`BackendFactory` in core.** `relay.rs` used to call
+   `WebBrainBackend::from_config` directly for both text and image turns.
+   T-1006 routed the text path through `create_relay_backend`; T-1009 added
+   `create_image_backend` and the `ImageGenerationBackend` trait for the image
+   path. This removed the measured `api → transport` blocker; api only sees
+   core traits.
 3. **`ClientPresence` in core.** `api_bridge/transport.rs` defines
    `ClientPresence`/`AlwaysConnected`, but `relay.rs:5` and
    `browser_inference.rs` consume them. Move the trait and the harmless

@@ -201,6 +201,28 @@ pub trait RelayBackend {
     }
 }
 
+/// Core-facing image-generation turn backend (T-1009).
+///
+/// Image generators often finish an artifact without ever producing an
+/// assistant text message, so the relay image path needs its own small
+/// lifecycle rather than the text [`RelayBackend`]. The concrete browser
+/// implementation lives in the transport layer; callers only see this trait.
+pub trait ImageGenerationBackend {
+    fn image_start(&mut self, headless: bool) -> Result<(), String>;
+    fn image_ensure_ready(&mut self, timeout: f64) -> Result<SessionState, String>;
+    fn image_new_chat(&mut self) -> Result<(), String>;
+    fn image_enable_generation_mode(&mut self) -> Result<(), String>;
+    /// Marks the current UI state so previews from enabling the tool are not
+    /// mistaken for a generated artifact.
+    fn image_mark_baseline(&mut self) -> Result<(), String>;
+    fn image_send(&mut self, prompt: &str) -> Result<(), String>;
+    fn image_wake_renderer(&mut self);
+    fn image_latest(&self) -> Result<Option<(String, String)>, String>;
+    fn image_provider_error(&self) -> Option<String>;
+    fn image_report(&self) -> String;
+    fn image_stop(&mut self) -> Result<(), String>;
+}
+
 /// Read-only page probe that core may ask of a transport backend.
 ///
 /// This is the small capability behind later panel/window work; it never
@@ -228,6 +250,8 @@ pub trait BackendFactory {
     fn create_brain_backend(brain_id: &str) -> Result<Box<dyn BrainBackend>, String>;
     /// Backend with the relay-specific turn operations.
     fn create_relay_backend(brain_id: &str) -> Result<Box<dyn RelayBackend>, String>;
+    /// Backend for image-generation turns (T-1009).
+    fn create_image_backend(brain_id: &str) -> Result<Box<dyn ImageGenerationBackend>, String>;
 }
 
 /// Built-in browser-backed implementation of [`BackendFactory`].

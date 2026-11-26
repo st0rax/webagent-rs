@@ -5,8 +5,10 @@
 # and shrinks the browser cycle from six modules to three; contract->browser,
 # contract->brain and counting->browser are gone. T-1007 adds panel_sink
 # (90 modules, 276 edges, 3 cycles, 26 upward edges) and removes the three
-# transport->brain_grid edges. Every entry below is grandfathered debt; the
-# test fails on a new entry and on a stale entry (so the list can only shrink).
+# transport->brain_grid edges. T-1009 removes relay->browser (now 275 edges,
+# 90 modules, 3 cycles, 26 upward edges). Every entry below is grandfathered
+# debt; the test fails on a new entry and on a stale entry (so the list can only
+# shrink).
 #
 # Format: cycle:<sorted,comma-separated module names> | edge:<lower>-><higher>
 

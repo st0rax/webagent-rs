@@ -1,5 +1,13 @@
 # Current Work
 
+## 2026-11-26 - T-1009 implemented: ImageBackend boundary for relay
+
+- **Branch/claim:** `refactor/T-1009-image-backend`, claim commit `0ede5dc` (created on the parent branch, new branch points there), owner `local/opencode`. T-1009 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. This is the last T-1004 trait boundary, not crate extraction.
+- **Delivered:** new public `ImageGenerationBackend` trait plus `BackendFactory::create_image_backend` in `brain.rs`; `WebBrainBackend` implements it in `browser/backend.rs`; `relay_image_generation` now uses the factory and a testable `relay_image_turn(&mut dyn ImageGenerationBackend, …)` helper. Lifecycle order, trace output, timeout math, circuit-breaker behavior and error strings are unchanged. One mock-backed lifecycle test was added. Proof: `docs/proofs/T-1009/README.md`.
+- **Guard delta:** `relay → browser` is gone; no ratchet line existed for it, so only the baseline comment in `docs/arch/layer_exceptions.txt` changed. Measured 90 modules / 275 edges / 3 cycles / 26 upward edges (was 276 edges). `docs/arch/CRATE_SPLIT.md` now marks all four original cross-crate blockers as prepared.
+- **Gates measured:** claim lib 1530 passed / 0 failed / 1 ignored (51.80 s); final lib 1531 / 0 / 1 (77.82 s). `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1531 lib + 7 bin-unit + 4 integration; `cargo test --locked --no-default-features --quiet` 1525 lib + 7 bin-unit + 4 integration; `git diff --check` 0.
+- **Grenze / offen:** no crate extraction, merge, PR, tag, release, deployment, credentials, live provider call, browser login or live image generation. All phase-16 branches remain `claimed`. Next slice is the workspace extraction itself: upgrade the arch guard to cover all member crates, add the crate-direction invariant, then move core/transport/api with re-exports.
+
 ## 2026-11-26 - T-1008 implemented: local runnable WebView2 build
 
 - **Branch/claim:** `fix/T-1008-webview-loader-smoke`, claim commit `2d64df9`, owner `local/opencode`. T-1008 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. This is a local build fix, not crate extraction.
