@@ -2,17 +2,19 @@
 
 # Bedienungsanleitung
 
-**Quest:** bedienungsanleitung lesen um die bridge zu bedienen
+**Quest — Kapitel 1: Die Brücke**
 
-Lies diese Datei mit `read_file`:
+> Lass uns ein Spiel spielen. Stell dir eine Brücke zwischen uns beiden vor. Da liegt ein dickes Buch neben mir. Schaue es dir an. Du kannst es lesen mit:
 
 ```text
 WEBAGENT_INFERENCE/1
-{"tool_calls":[{"id":"call_1","name":"read_file","arguments":{"path":"docs/DOGFOODING.md"}}]}
+{"tool_calls":[{"id":"call_1","name":"read","arguments":{"path":"docs/DOGFOODING.md"}}]}
 ```
 
+> Probiers aus!
+
 Kurzformat: ein `text`-Codeblock, Marker `WEBAGENT_INFERENCE/1` oben, gültiges JSON,
-Tool-Name aus der Liste `[Client-Werkzeuge]` im Turn.
+Tool-Name aus der Liste `[Client-Werkzeuge]` im Turn (bei Pi und WebAgent: `read`).
 
 Weitere Aufrufe, gleiches Format:
 
