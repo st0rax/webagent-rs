@@ -1,3 +1,10 @@
+## 2026-11-26 - T-1010 branch caught up with released v0.11.8 master
+
+- **Lagebild:** Another session merged phase 16 through T-1009 into `origin/master` and published tag `v0.11.8` (`fb7b886`), explicitly leaving crate extraction to this session. `refactor/T-1010-workspace-guard` was based on the pre-release `92011a5`; `origin/master` was merged into it as a normal merge commit (no force-push, no history rewrite).
+- **Konfliktauflösung:** Board conflicts were resolved in favour of the released board: T-997..T-1009 stay `done`, T-976/T-977 remain present, T-1010 stays `claimed`. `Cargo.toml`/`Cargo.lock` kept released version `0.11.8` and gained the workspace skeleton. `docs/TASKBOARD.json` parses with 116 tasks; no conflict markers remain.
+- **Re-gates:** fmt 0; clippy 0; arch 5 passed with `modules=90, edges=277, cycles=3, upward_edges=26, crate_violations=0` (two new edges from released Play/T-976/T-977 code, no new exception); lib 1547 passed / 0 failed / 1 ignored (was 1531 before the master merge); all-targets 1547 lib + 7 bin-unit + 5 integration; no-default 1541 lib + 7 + 5; `git diff --check` 0. The T-1010 proof records both measurement points.
+- **Grenze / offen:** no crate extracted yet; this branch is still not merged into master. No new tag, release, deployment, credentials, live provider call or browser login. Next: T-1011 core extraction from this caught-up branch.
+
 ## 2026-11-26 - Produktstand ausgeliefert: Play-Code, Phase 16, Release-Vorbereitung
 
 - **Auftrag:** fertig machen. Das heisst den vorhandenen Produktstand auf `master` bringen und ausliefern, nicht die naechste Architekturbaustelle oeffnen.
@@ -21,6 +28,14 @@
   `--help` Exit 0, 54 Zeilen. Kein Login, kein Browserfenster.
 - **Board:** T-997..T-1008 nach dem Merge auf `done` gesetzt (`done_at`
   2026-11-26).
+
+## 2026-11-26 - T-1010 implemented: workspace skeleton and multi-crate guard
+
+- **Branch/claim:** `refactor/T-1010-workspace-guard`, claim commit `142f964`, owner `local/opencode`. T-1010 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. This slice adds only the workspace skeleton and guard coverage; no production module moved.
+- **Delivered:** root `Cargo.toml` gains `[workspace]` with `members = [".", "crates/webagent-core", "crates/webagent-transport", "crates/webagent-api"]`, `resolver = "2"`, `default-members = ["."]`; one shared `Cargo.lock`/`target/`. Three empty library members exist with their own manifests and no `[profile.*]`. All `[profile.*]` values and dependency versions are unchanged; two stale `0xC0000005` comments were corrected to the measured `0xC0000135` (T-1008). Proof: `docs/proofs/T-1010/README.md`.
+- **Guard upgrade:** `tests/arch_layers.rs` now discovers modules from every workspace `lib.rs`, records each module's owning crate, counts `crate::` plus explicit `webagent_core::`/`webagent_transport::`/`webagent_api::` paths, and enforces an allowed crate-pair matrix (core has no library outgoing edge; transport and api are siblings reaching only core; only root reaches all three). The conceptual layer/cycle/upward/stale-exception checks are unchanged. A new negative test rejects `api → transport`. `docs/arch/layer_exceptions.txt` records `crate_violations=0`; no exception line changed.
+- **Gates measured:** `cargo metadata --no-deps` lists all four packages. Claim lib 1531 passed / 0 failed / 1 ignored; final lib 1531 / 0 / 1 (52.06 s), unchanged. `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --test arch_layers -- --nocapture` 5 passed with `modules=90, edges=275, cycles=3, upward_edges=26, crate_violations=0`; `cargo test --all-targets --quiet` 1531 lib + 7 bin-unit + 5 integration; `cargo test --locked --no-default-features --quiet` 1525 lib + 7 bin-unit + 5 integration; debug/release build and `--version`/`--help` smoke exit 0; `git diff --check` 0. The root path deps are intentionally not added until T-1011 so clippy does not report unused dependencies.
+- **Grenze / offen:** no module moved, no dependency version changed, no merge, PR, tag, release, deployment, credentials, live provider call or browser login. All phase-16 branches remain `claimed`. Next slice is T-1011: move the core modules into `webagent-core` with root re-exports, add the path dep, and keep the guard and all gates green.
 
 ## 2026-11-26 - T-1009 implemented: ImageBackend boundary for relay
 

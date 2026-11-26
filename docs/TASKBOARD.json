@@ -2791,6 +2791,44 @@
       "done_at": "2026-11-26"
     },
     {
+      "id": "T-1010",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Workspace skeleton and multi-crate architecture guard",
+      "status": "claimed",
+      "depends_on": [],
+      "scope": [
+        "Cargo.toml",
+        "crates/webagent-core/Cargo.toml",
+        "crates/webagent-core/src/lib.rs",
+        "crates/webagent-transport/Cargo.toml",
+        "crates/webagent-transport/src/lib.rs",
+        "crates/webagent-api/Cargo.toml",
+        "crates/webagent-api/src/lib.rs",
+        "tests/arch_layers.rs",
+        "docs/arch/layers.toml",
+        "docs/arch/layer_exceptions.txt",
+        "docs/arch/CRATE_SPLIT.md",
+        "docs/proofs/T-1010/",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Add a Cargo workspace root with three empty library members (webagent-core, webagent-transport, webagent-api) while keeping every module in the root crate for this slice. Upgrade tests/arch_layers.rs to discover top-level modules from all crate lib.rs files, resolve crate:: plus webagent_core::/webagent_transport::/webagent_api:: paths, record each module's owning crate, and enforce an explicit allowed crate-pair matrix (core<-transport/api<-root, transport and api are siblings). Keep the conceptual layer ratchet, cycle and upward-edge checks unchanged. No module is moved yet.",
+      "dod": "Existing guards still measure 90 modules / 275 edges / 3 cycles / 26 upward edges with no new exception; a negative test proves an api -> transport edge is rejected; workspace metadata lists root plus three libraries; debug/release binaries still smoke-test; gates and before/after counts recorded; branch pushed, no merge.",
+      "non_goals": [
+        "No module file is moved in this slice.",
+        "No merge, PR, tag, release or deployment.",
+        "No change to [profile.*] values or dependency versions.",
+        "No credentials, live provider call or browser login."
+      ],
+      "proof_path": "docs/proofs/T-1010/README.md",
+      "verification": "cargo metadata --no-deps --format-version 1; cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; cargo test --locked --no-default-features --quiet; cargo build --locked; cargo build --release --locked; debug/release --version/--help; git diff --check",
+      "owner": "local/opencode",
+      "branch": "refactor/T-1010-workspace-guard",
+      "claimed_at": "2026-11-26"
+    },
+    {
       "id": "T-976",
       "phase": "15",
       "type": "fix",

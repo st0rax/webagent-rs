@@ -1,16 +1,20 @@
 //! Architecture ratchet for the top-level module graph.
 //!
-//! The graph is derived from production code only: every `crate::<module>` path
-//! found in `src/<module>.rs` and `src/<module>/**/*.rs` is one edge. Comments,
-//! doc comments, string literals and `#[cfg(test)]` items are removed first, so
-//! documentation links and test-only imports cannot create fake edges.
+//! The graph is derived from production code only: `crate::<module>` plus
+//! explicit `webagent_core::` / `webagent_transport::` / `webagent_api::` paths
+//! in every workspace member are edges. Top-level modules are discovered from
+//! all `src/lib.rs` files, so moving a module into a member crate does not hide
+//! it from the ratchet. Comments, doc comments, string literals and
+//! `#[cfg(test)]` items are removed first.
 //!
-//! Two invariants are enforced:
+//! Three invariants are enforced:
 //! 1. Every strongly connected component with more than one module (or a
 //!    self-loop) must be present in `docs/arch/layer_exceptions.txt`.
 //! 2. An edge from a lower-ranked layer to a higher-ranked layer must be listed
 //!    as an exception. Every listed exception must still exist, so the list can
 //!    only shrink when someone removes an edge or breaks a cycle.
+//! 3. Crate direction: core has no library outgoing edge, transport and api are
+//!    siblings, and only the root binary may depend on all three.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -33,22 +37,72 @@ fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-fn top_level_modules(root: &Path) -> BTreeSet<String> {
-    let source = fs::read_to_string(root.join("src/lib.rs")).expect("src/lib.rs must be readable");
-    let mut modules = BTreeSet::new();
-    for line in source.lines() {
-        let line = line.trim();
-        let rest = line
-            .strip_prefix("pub mod ")
-            .or_else(|| line.strip_prefix("mod "));
-        if let Some(rest) = rest {
-            let name = rest.trim().trim_end_matches(';').trim();
-            if !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                modules.insert(name.to_string());
+/// Ownership of one canonical top-level module.
+#[derive(Default)]
+struct GraphInput {
+    modules: BTreeSet<String>,
+    module_root: BTreeMap<String, PathBuf>,
+    module_crate: BTreeMap<String, String>,
+}
+
+fn crate_roots(root: &Path) -> Vec<PathBuf> {
+    let mut roots = vec![root.to_path_buf()];
+    let crates_dir = root.join("crates");
+    if crates_dir.is_dir() {
+        let mut dirs: Vec<PathBuf> = fs::read_dir(&crates_dir)
+            .expect("crates/ must be readable")
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir() && path.join("src").join("lib.rs").is_file())
+            .collect();
+        dirs.sort();
+        roots.extend(dirs);
+    }
+    roots
+}
+
+fn crate_label(root: &Path, workspace: &Path) -> String {
+    if root == workspace {
+        return "root".to_string();
+    }
+    match root.file_name().and_then(|name| name.to_str()) {
+        Some("webagent-core") => "core".to_string(),
+        Some("webagent-transport") => "transport".to_string(),
+        Some("webagent-api") => "api".to_string(),
+        other => panic!("unexpected workspace member: {other:?}"),
+    }
+}
+
+/// Discover top-level modules from every `lib.rs` in the workspace. Module
+/// names stay canonical and unique across crates, so the existing conceptual
+/// layer ratchet keeps working unchanged after files move out of `src/`.
+fn discover_modules(root: &Path) -> GraphInput {
+    let mut input = GraphInput::default();
+    for crate_root in crate_roots(root) {
+        let label = crate_label(&crate_root, root);
+        let source = fs::read_to_string(crate_root.join("src").join("lib.rs"))
+            .unwrap_or_else(|e| panic!("lib.rs unreadable in {}: {e}", crate_root.display()));
+        for line in source.lines() {
+            let line = line.trim();
+            let rest = line
+                .strip_prefix("pub mod ")
+                .or_else(|| line.strip_prefix("mod "));
+            if let Some(rest) = rest {
+                let name = rest.trim().trim_end_matches(';').trim();
+                if !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                    assert!(
+                        input.modules.insert(name.to_string()),
+                        "duplicate top-level module across crates: {name}"
+                    );
+                    input
+                        .module_root
+                        .insert(name.to_string(), crate_root.clone());
+                    input.module_crate.insert(name.to_string(), label.clone());
+                }
             }
         }
     }
-    modules
+    input
 }
 
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -63,13 +117,13 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn files_for_module(root: &Path, name: &str) -> Vec<PathBuf> {
+fn files_for_module(crate_root: &Path, name: &str) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    let single = root.join("src").join(format!("{name}.rs"));
+    let single = crate_root.join("src").join(format!("{name}.rs"));
     if single.is_file() {
         files.push(single);
     }
-    let folder = root.join("src").join(name);
+    let folder = crate_root.join("src").join(name);
     if folder.is_dir() {
         collect_rs_files(&folder, &mut files);
     }
@@ -235,37 +289,52 @@ fn strip_cfg_test(source: &str) -> String {
     out
 }
 
-fn module_edges(root: &Path, modules: &BTreeSet<String>) -> BTreeMap<String, BTreeSet<String>> {
+/// `crate::` is resolved inside the module's own crate; explicit
+/// `webagent_core::` / `webagent_transport::` / `webagent_api::` paths are
+/// canonicalized to the same module name. Re-exports in the root `lib.rs` are
+/// intentionally not scanned: they are declarations, not production calls.
+fn module_edges(input: &GraphInput) -> BTreeMap<String, BTreeSet<String>> {
+    let prefixes: [&[u8]; 4] = [
+        b"crate::",
+        b"webagent_core::",
+        b"webagent_transport::",
+        b"webagent_api::",
+    ];
     let mut edges: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for name in modules {
-        for file in files_for_module(root, name) {
+    for name in &input.modules {
+        let crate_root = &input.module_root[name];
+        for file in files_for_module(crate_root, name) {
             let source = fs::read_to_string(&file)
                 .unwrap_or_else(|e| panic!("cannot read {}: {e}", file.display()));
             let code = strip_cfg_test(&sanitize_code(&source));
             let bytes = code.as_bytes();
-            let needle = b"crate::";
             let mut i = 0;
-            while i + needle.len() <= bytes.len() {
-                if &bytes[i..i + needle.len()] == needle {
-                    let start = i + needle.len();
-                    let mut end = start;
-                    while end < bytes.len()
-                        && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
-                    {
-                        end += 1;
-                    }
-                    if end > start {
-                        let target = &code[start..end];
-                        if modules.contains(target) && target != name {
-                            edges
-                                .entry(name.clone())
-                                .or_default()
-                                .insert(target.to_string());
-                        }
-                    }
-                    i = end.max(i + needle.len());
-                } else {
+            while i < bytes.len() {
+                let prefix = prefixes
+                    .iter()
+                    .find(|needle| bytes[i..].starts_with(needle));
+                let Some(needle) = prefix else {
                     i += 1;
+                    continue;
+                };
+                let start = i + needle.len();
+                let mut end = start;
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+                {
+                    end += 1;
+                }
+                if end > start {
+                    let target = &code[start..end];
+                    if input.modules.contains(target) && target != name {
+                        edges
+                            .entry(name.clone())
+                            .or_default()
+                            .insert(target.to_string());
+                    }
+                    i = end;
+                } else {
+                    i += needle.len();
                 }
             }
         }
@@ -553,13 +622,55 @@ fn check_ratchet(
     (problems, upward)
 }
 
+/// Allowed crate pairs. `core` has no library outgoing edges, `transport` and
+/// `api` are siblings and may only reach `core`, and the root binary may reach
+/// all three. Anything else (notably api -> transport) is a wrong-direction
+/// crate edge even when the conceptual module ranks look downward.
+fn allowed_crate_pair(from: &str, to: &str) -> bool {
+    matches!(
+        (from, to),
+        ("core", "core")
+            | ("transport", "transport")
+            | ("api", "api")
+            | ("root", "root")
+            | ("root", "core")
+            | ("root", "transport")
+            | ("root", "api")
+            | ("transport", "core")
+            | ("api", "core")
+    )
+}
+
+fn check_crate_direction(
+    graph: &BTreeMap<String, BTreeSet<String>>,
+    module_crate: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut problems = Vec::new();
+    for (from, targets) in graph {
+        let Some(from_crate) = module_crate.get(from) else {
+            continue;
+        };
+        for to in targets {
+            let Some(to_crate) = module_crate.get(to) else {
+                continue;
+            };
+            if !allowed_crate_pair(from_crate, to_crate) {
+                problems.push(format!(
+                    "wrong crate direction {from} ({from_crate}) -> {to} ({to_crate})"
+                ));
+            }
+        }
+    }
+    problems
+}
+
 #[test]
 fn top_level_layers_and_cycles_are_a_ratchet() {
     let root = manifest_dir();
-    let modules = top_level_modules(&root);
-    assert!(modules.len() >= 80, "module list unexpectedly short");
+    let input = discover_modules(&root);
+    assert!(input.modules.len() >= 80, "module list unexpectedly short");
 
-    let graph = module_edges(&root, &modules);
+    let graph = module_edges(&input);
     let layers = parse_layers(
         &fs::read_to_string(root.join("docs/arch/layers.toml"))
             .expect("docs/arch/layers.toml must be readable"),
@@ -569,7 +680,8 @@ fn top_level_layers_and_cycles_are_a_ratchet() {
             .expect("docs/arch/layer_exceptions.txt must be readable"),
     );
 
-    let (problems, upward) = check_ratchet(&modules, &graph, &layers, &exceptions);
+    let (mut problems, upward) = check_ratchet(&input.modules, &graph, &layers, &exceptions);
+    problems.extend(check_crate_direction(&graph, &input.module_crate));
     assert!(
         problems.is_empty(),
         "architecture ratchet failed:\n{}",
@@ -577,10 +689,11 @@ fn top_level_layers_and_cycles_are_a_ratchet() {
     );
 
     let edge_count: usize = graph.values().map(BTreeSet::len).sum();
-    let cycles = find_cycles(&modules, &graph);
+    let cycles = find_cycles(&input.modules, &graph);
+    let violations = check_crate_direction(&graph, &input.module_crate).len();
     eprintln!(
-        "architecture guard: modules={}, edges={edge_count}, cycles={}, upward_edges={upward}",
-        modules.len(),
+        "architecture guard: modules={}, edges={edge_count}, cycles={}, upward_edges={upward}, crate_violations={violations}",
+        input.modules.len(),
         cycles.len()
     );
 }
@@ -637,5 +750,20 @@ fn ratchet_rejects_a_stale_exception() {
     assert!(
         problems.iter().any(|p| p.contains("stale edge exception")),
         "a stale exception must be removed: {problems:?}"
+    );
+}
+
+#[test]
+fn ratchet_rejects_api_to_transport_edge() {
+    let mut graph = BTreeMap::new();
+    graph.insert("relay".to_string(), BTreeSet::from(["browser".to_string()]));
+    let crates = BTreeMap::from([
+        ("relay".to_string(), "api".to_string()),
+        ("browser".to_string(), "transport".to_string()),
+    ]);
+    let problems = check_crate_direction(&graph, &crates);
+    assert!(
+        problems.iter().any(|p| p.contains("wrong crate direction")),
+        "an api -> transport edge must be rejected: {problems:?}"
     );
 }

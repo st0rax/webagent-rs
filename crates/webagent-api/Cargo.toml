@@ -1,0 +1,9 @@
+[package]
+name = "webagent-api"
+version = "0.11.7"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "webagent_api"
+path = "src/lib.rs"
