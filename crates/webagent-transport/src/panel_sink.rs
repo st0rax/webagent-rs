@@ -38,12 +38,12 @@ impl Rect {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn right(&self) -> i32 {
         self.x + self.width as i32
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn bottom(&self) -> i32 {
         self.y + self.height as i32
     }
@@ -53,7 +53,7 @@ impl Rect {
     }
 
     /// Ueberlappen sich zwei Kacheln? Beruehrende Kanten zaehlen nicht.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn overlaps(&self, other: &Rect) -> bool {
         if self.is_empty() || other.is_empty() {
             return false;
@@ -65,7 +65,7 @@ impl Rect {
     }
 
     /// Liegt `self` vollstaendig in `outer`?
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn contained_in(&self, outer: &Rect) -> bool {
         self.x >= outer.x
             && self.y >= outer.y

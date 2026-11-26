@@ -8,9 +8,9 @@
 
 use std::time::{Duration, Instant};
 
-use crate::brain::BrainBackend;
-use crate::inference_types::{BrowserAttachment, BrowserAttachmentKind};
 use serde_json::{json, Value};
+use webagent_core::brain::BrainBackend;
+use webagent_core::inference_types::{BrowserAttachment, BrowserAttachmentKind};
 
 use super::blocking::{banner_is_prompt_echo, block_banner_expr, is_technical_block_phrase_list};
 use super::WebBrainBackend;
@@ -101,7 +101,7 @@ impl WebBrainBackend {
             .strat_first("image_gen_provider_name")
             .unwrap_or_else(|| "ChatGPT".to_string());
         let surface_opened = if self.strat_flag("image_gen_open_trusted") {
-            let deadline = Instant::now() + crate::timeouts::send_submit_deadline();
+            let deadline = Instant::now() + webagent_core::timeouts::send_submit_deadline();
             let mut opened = false;
             while Instant::now() < deadline {
                 if self.open_attachment_surface_trusted() {
@@ -171,7 +171,9 @@ impl WebBrainBackend {
     ) -> Result<i32, String> {
         // T-936: jeder Sendevorgang startet mit einer frischen Turn-Beobachtung;
         // send_generic füllt dann Phase/Metriken, record_event konsumiert sie.
-        crate::brain_score::set_pending_turn(crate::brain_score::TurnObservation::default());
+        webagent_core::brain_score::set_pending_turn(
+            webagent_core::brain_score::TurnObservation::default(),
+        );
         if !attachments.is_empty() {
             self.prepare_attachment_mode(attachments)?;
             self.attach_files(attachments)?;
@@ -522,8 +524,8 @@ impl WebBrainBackend {
             return false;
         }
         let _ = self.dispatch_file_input_events();
-        let deadline = Instant::now() + crate::timeouts::send_response_deadline();
-        let soft_ready = Instant::now() + crate::timeouts::browser_settle();
+        let deadline = Instant::now() + webagent_core::timeouts::send_response_deadline();
+        let soft_ready = Instant::now() + webagent_core::timeouts::browser_settle();
         let mut native_files_observed = false;
         while Instant::now() < deadline {
             let signal_now = self.attachment_signal_count();
@@ -699,7 +701,7 @@ impl WebBrainBackend {
             // zweite Paste nicht in den noch laufenden Vue-Handler faellt.
             std::thread::sleep(Duration::from_millis(350));
         }
-        let deadline = Instant::now() + crate::timeouts::send_verify_deadline();
+        let deadline = Instant::now() + webagent_core::timeouts::send_verify_deadline();
         while Instant::now() < deadline {
             // The prompt text is inserted only after this helper returns, so
             // Kimi correctly keeps its Send button disabled at this stage.
@@ -1017,7 +1019,7 @@ impl WebBrainBackend {
         if !dispatched {
             return false;
         }
-        let deadline = Instant::now() + crate::timeouts::send_response_deadline();
+        let deadline = Instant::now() + webagent_core::timeouts::send_response_deadline();
         while Instant::now() < deadline {
             // Einige UIs bündeln mehrere Dateien in einem einzigen Preview-
             // Container. Ein neues sichtbares Signal belegt deshalb den
@@ -1070,8 +1072,8 @@ impl WebBrainBackend {
                 if let Some(reason) =
                     super::operations::pre_send_block_reason(driver.as_mut(), &self.selectors)
                 {
-                    crate::brain_score::update_pending_turn(|obs| {
-                        obs.phase = crate::brain_score::SendPhase::SelectorResolve;
+                    webagent_core::brain_score::update_pending_turn(|obs| {
+                        obs.phase = webagent_core::brain_score::SendPhase::SelectorResolve;
                     });
                     return Err(format!(
                         "send_phase=preflight: {reason}: {} ist nicht bereit, den Prompt anzunehmen; Modals und Anmeldung bleiben beim Menschen",
@@ -1085,11 +1087,11 @@ impl WebBrainBackend {
         let baseline = self.prepare_send_baseline();
         let user_baseline = self.user_message_count();
         if self.sel("composer").is_empty() {
-            crate::brain_score::update_pending_turn(|obs| {
-                obs.phase = crate::brain_score::SendPhase::SelectorResolve;
+            webagent_core::brain_score::update_pending_turn(|obs| {
+                obs.phase = webagent_core::brain_score::SendPhase::SelectorResolve;
             });
-            return Err(crate::brain_score::phase_error(
-                crate::brain_score::SendPhase::SelectorResolve,
+            return Err(webagent_core::brain_score::phase_error(
+                webagent_core::brain_score::SendPhase::SelectorResolve,
                 "Keine Composer-Selektoren konfiguriert",
             ));
         }
@@ -1105,8 +1107,8 @@ impl WebBrainBackend {
         // kimis Lexical-Editor meldete fill_composer frueher Erfolg, obwohl das Feld
         // leer blieb — dann ging Enter ins Leere und verify_submitted meldete
         // faelschlich "abgeschickt". Vor jedem Fuell-Versuch nochmal Modals schliessen.
-        crate::brain_score::update_pending_turn(|obs| {
-            obs.phase = crate::brain_score::SendPhase::Focus;
+        webagent_core::brain_score::update_pending_turn(|obs| {
+            obs.phase = webagent_core::brain_score::SendPhase::Focus;
         });
         let filled = if self.strat_flag("composer_fill") {
             self.wait_fill_composer(&composer_js, text, |s, js, t| {
@@ -1134,20 +1136,20 @@ impl WebBrainBackend {
             // / Inhalt nie akzeptiert (ContentCheck), keine Masse = Selektor
             // traf kein Element (Insert). Der alte Substring bleibt fuer externe
             // Erkennung im Detail erhalten.
-            let phase = if crate::brain_score::pending_turn_snapshot()
+            let phase = if webagent_core::brain_score::pending_turn_snapshot()
                 .and_then(|obs| obs.element_w)
                 .is_some()
             {
-                crate::brain_score::SendPhase::ContentCheck
+                webagent_core::brain_score::SendPhase::ContentCheck
             } else {
-                crate::brain_score::SendPhase::Insert
+                webagent_core::brain_score::SendPhase::Insert
             };
-            crate::brain_score::update_pending_turn(|obs| {
+            webagent_core::brain_score::update_pending_turn(|obs| {
                 obs.phase = phase;
                 obs.pasted_chars = Some(self.composer_char_count());
                 obs.expected_chars = Some(text.chars().count());
             });
-            return Err(crate::brain_score::phase_error(
+            return Err(webagent_core::brain_score::phase_error(
                 phase,
                 "Composer-Feld nicht gefunden (Timeout)",
             ));
@@ -1167,8 +1169,8 @@ impl WebBrainBackend {
         // Absendeweg nehmen statt zwischen Echt- und Synthetik-Klick zu flippen.
         let pointer_transparent = self.send_button_pointer_transparent();
         // T-936: Submit-Phase erreicht; die Beweiswartezeit ist die Settle-Phase.
-        crate::brain_score::update_pending_turn(|obs| {
-            obs.phase = crate::brain_score::SendPhase::Submit;
+        webagent_core::brain_score::update_pending_turn(|obs| {
+            obs.phase = webagent_core::brain_score::SendPhase::Submit;
         });
         // Fuenf Versuche statt drei: das Absenden in Lexical-/contenteditable-Editoren
         // (kimi) greift pro Versuch nur ~zur Haelfte; jeder weitere Versuch, der bei
@@ -1210,8 +1212,8 @@ impl WebBrainBackend {
                 if std::env::var_os("WEBAGENT_VERIFY_TRACE").is_some() {
                     eprintln!("[submit] submission proved");
                 }
-                crate::brain_score::update_pending_turn(|obs| {
-                    obs.phase = crate::brain_score::SendPhase::Settle;
+                webagent_core::brain_score::update_pending_turn(|obs| {
+                    obs.phase = webagent_core::brain_score::SendPhase::Settle;
                 });
                 return Ok(baseline);
             }
@@ -1237,13 +1239,13 @@ impl WebBrainBackend {
         self.capture_submit_failure_trace();
         // T-936: fehlgeschlagener Submit meldet Phase; der Banner-Text geht
         // gekuerzt und ohne PII in den Turn-Record (events.jsonl).
-        crate::brain_score::update_pending_turn(|obs| {
-            obs.phase = crate::brain_score::SendPhase::Submit;
+        webagent_core::brain_score::update_pending_turn(|obs| {
+            obs.phase = webagent_core::brain_score::SendPhase::Submit;
             obs.pasted_chars = Some(self.composer_char_count());
         });
         if let Some(banner) = self.detect_block_banner() {
-            crate::brain_score::update_pending_turn(|obs| {
-                obs.banner = Some(crate::brain_score::turn_banner(&banner));
+            webagent_core::brain_score::update_pending_turn(|obs| {
+                obs.banner = Some(webagent_core::brain_score::turn_banner(&banner));
             });
             return format!(
                 "send_phase=submit: blockiert: kein Absende-Beweis nach {attempts} Versuchen -- Seite zeigt: {banner}"
@@ -1489,14 +1491,14 @@ impl WebBrainBackend {
     fn ensure_composer_full(&self, text: &str) -> Result<(), String> {
         let intended = text.chars().count();
         let actual = self.composer_char_count();
-        crate::brain_score::update_pending_turn(|obs| {
-            obs.phase = crate::brain_score::SendPhase::ContentCheck;
+        webagent_core::brain_score::update_pending_turn(|obs| {
+            obs.phase = webagent_core::brain_score::SendPhase::ContentCheck;
             obs.pasted_chars = Some(actual);
             obs.expected_chars = Some(intended);
         });
         if intended > 0 && actual + actual / 10 < intended {
-            return Err(crate::brain_score::phase_error(
-                crate::brain_score::SendPhase::ContentCheck,
+            return Err(webagent_core::brain_score::phase_error(
+                webagent_core::brain_score::SendPhase::ContentCheck,
                 &format!(
                     "Composer enthaelt nur {} von {} Zeichen (Eingabe wurde gekuerzt)",
                     actual, intended
@@ -1608,13 +1610,13 @@ return best?best.slice(0,300):null;})()"#;
         }) && !self.wait_fill_composer(&composer_js, text, |s, js, t| {
             s.fill_composer_dom_set(js, t) && s.composer_matches_text(js, t)
         }) {
-            crate::brain_score::update_pending_turn(|obs| {
-                obs.phase = crate::brain_score::SendPhase::ContentCheck;
+            webagent_core::brain_score::update_pending_turn(|obs| {
+                obs.phase = webagent_core::brain_score::SendPhase::ContentCheck;
                 obs.pasted_chars = Some(self.composer_char_count());
                 obs.expected_chars = Some(text.chars().count());
             });
-            return Err(crate::brain_score::phase_error(
-                crate::brain_score::SendPhase::ContentCheck,
+            return Err(webagent_core::brain_score::phase_error(
+                webagent_core::brain_score::SendPhase::ContentCheck,
                 "Composer-Feld nicht gefunden (Timeout)",
             ));
         }
@@ -1666,8 +1668,9 @@ return best?best.slice(0,300):null;})()"#;
         // ProseMirror sonst mitten im Fuellen den 4s-Deadline reisst und der
         // Retry dann in die Mitte eines 13k-px-hohen Editors klickt.
         let boost = (text.len() as u64 / 4000).min(26);
-        let deadline =
-            Instant::now() + crate::timeouts::send_response_deadline() + Duration::from_secs(boost);
+        let deadline = Instant::now()
+            + webagent_core::timeouts::send_response_deadline()
+            + Duration::from_secs(boost);
         while Instant::now() < deadline {
             self.wake_renderer();
             if fill(self, composer_js, text) {
@@ -1817,9 +1820,9 @@ fn base64_encode(bytes: &[u8]) -> String {
 mod tests {
     use super::submission_is_proven;
     use crate::browser::WebBrainBackend;
-    use crate::inference_types::{BrowserAttachment, BrowserAttachmentKind};
     use crate::mock_page::{MockPageDriver, MockPageState};
     use serde_json::json;
+    use webagent_core::inference_types::{BrowserAttachment, BrowserAttachmentKind};
 
     #[test]
     fn chatgpt_dom_rehydration_is_not_a_send_proof_without_user_echo() {

@@ -2,7 +2,7 @@
 //!
 //! Statt fuer jedes Brain die Selektoren von Hand zu pflegen, bekommt webagent
 //! eine Chat-URL und klopft die Seite selbst ab: welche Bedienelemente gibt es,
-//! welcher Faehigkeit aus [`crate::capability::CATALOG`] gehoert jedes davon,
+//! welcher Faehigkeit aus [`webagent_core::capability::CATALOG`] gehoert jedes davon,
 //! und welcher Selektor trifft es stabil?
 //!
 //! # Warum das die drei offenen Faehigkeiten loest
@@ -105,7 +105,7 @@ impl Candidate {
 /// Vorschlag: dieser Selektor bedient diese Faehigkeit.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Proposal {
-    /// Schluessel aus [`crate::capability::CATALOG`], z.B. `deep_research`.
+    /// Schluessel aus [`webagent_core::capability::CATALOG`], z.B. `deep_research`.
     pub capability_key: &'static str,
     /// Schluessel in der Selektor-JSON, z.B. `deep_research_toggle`.
     pub selector_key: &'static str,
@@ -938,7 +938,7 @@ pub struct Verdict {
 ///
 /// `winning_selector` ist der tatsaechlich geklickte Selektor — der im Betrieb
 /// aufgeloeste Gewinner der Fallback-Kette, nicht der erste Eintrag.
-impl From<&Verdict> for crate::capability_proof::Measurement {
+impl From<&Verdict> for webagent_core::capability_proof::Measurement {
     fn from(v: &Verdict) -> Self {
         Self {
             capability_key: v.capability_key.to_string(),
@@ -957,7 +957,7 @@ impl From<&Verdict> for crate::capability_proof::Measurement {
 /// Oberflaeche (`operations::verify_surface`). Der Gewinner ist der Selektor,
 /// den `resolve_fallback` wirklich getroffen hat — nicht der erste
 /// Katalogeintrag.
-pub fn proposal_from(cap: &crate::capability::Capability, winner: &str) -> Proposal {
+pub fn proposal_from(cap: &webagent_core::capability::Capability, winner: &str) -> Proposal {
     Proposal {
         capability_key: cap.key,
         selector_key: cap.needs[0],
@@ -981,11 +981,11 @@ pub fn proposal_from(cap: &crate::capability::Capability, winner: &str) -> Propo
 /// kein Level" — und entzieht damit nie einen Beleg (§5: unbekannte Mechanik
 /// als unverified ausweisen; Plan-Luecke 19: `failed`/`unreachable`/`blocked`
 /// bleiben getrennt).
-pub fn verdict_outcome(v: &Verdict) -> crate::capability_proof::ProofOutcome {
+pub fn verdict_outcome(v: &Verdict) -> webagent_core::capability_proof::ProofOutcome {
     if v.proven {
-        crate::capability_proof::ProofOutcome::Passed
+        webagent_core::capability_proof::ProofOutcome::Passed
     } else {
-        crate::capability_proof::ProofOutcome::Unreachable
+        webagent_core::capability_proof::ProofOutcome::Unreachable
     }
 }
 
@@ -1127,7 +1127,7 @@ pub(crate) fn click_point_of(
 mod tests {
     #[test]
     fn model_trigger_surface_probe_cannot_certify_model_selection() {
-        let cap = crate::capability::capability("model_switch").unwrap();
+        let cap = webagent_core::capability::capability("model_switch").unwrap();
         let proposal = super::proposal_from(cap, "#model-menu");
         let state = crate::mock_page::MockPageState::new()
             .on_eval_seq(
@@ -1165,7 +1165,7 @@ mod tests {
     fn belegte_probe_ist_passed() {
         assert_eq!(
             verdict_outcome(&verdict("stop_generation", true, "belegt")),
-            crate::capability_proof::ProofOutcome::Passed
+            webagent_core::capability_proof::ProofOutcome::Passed
         );
     }
 
@@ -1193,7 +1193,7 @@ mod tests {
         for v in &faelle {
             assert_eq!(
                 verdict_outcome(v),
-                crate::capability_proof::ProofOutcome::Unreachable,
+                webagent_core::capability_proof::ProofOutcome::Unreachable,
                 "note: {}",
                 v.note
             );
@@ -1626,8 +1626,9 @@ mod tests {
     }
 
     fn selector_files() -> Vec<(String, serde_json::Value)> {
-        let dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/webagent-core/selectors");
+        // The selector assets belong to webagent-core; ask that crate for the
+        // path instead of deriving it from this crate's manifest directory.
+        let dir = webagent_core::config::selectors_dir();
         let mut out = Vec::new();
         for entry in std::fs::read_dir(dir).expect("selectors/ muss existieren") {
             let path = entry.expect("Eintrag").path();
@@ -1772,7 +1773,7 @@ mod tests {
 
     #[test]
     fn proposal_from_nimmt_den_gewinner_nicht_den_ersten_eintrag() {
-        let cap = crate::capability::CATALOG
+        let cap = webagent_core::capability::CATALOG
             .iter()
             .find(|c| c.key == "reasoning_toggle")
             .expect("capability");

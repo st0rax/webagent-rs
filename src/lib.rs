@@ -27,25 +27,15 @@ pub mod web_ui;
 pub mod web_ui_api;
 
 // ── brain: Gehirn-Abstraktion + Browser-Anbindung ──
+// T-1012: the browser/page/panel modules live in webagent-transport and are
+// re-exported below, so `crate::<module>` paths in the binary and tests keep
+// resolving exactly as before.
 pub mod bin_hooks;
-pub mod brain_probe;
-pub mod browser;
-pub mod browser_pool;
-pub mod login;
-pub mod mock_page;
-pub mod page_driver;
-pub mod panel_sink;
-#[cfg(any(feature = "webview", test))]
-mod upload_spa_js;
-pub mod webview_reveal;
-
-#[cfg(feature = "webview")]
-pub mod webview_runtime;
 
 // ── agent: Steuerung & Agent-Schleife ──
 // `counting` calls WebBackendFactory::create_brain_backend; that BackendFactory
-// impl lives in browser/backend.rs (root crate), so the module stays here until
-// the factory is injected as a dependency (separate task).
+// impl lives in webagent-transport/browser/backend.rs, so the module stays here
+// until the factory is injected as a trait object (separate task).
 pub mod controller;
 pub mod counting;
 pub mod knockout;
@@ -92,9 +82,9 @@ pub mod tui_state;
 #[cfg(feature = "tui")]
 pub mod tui_widgets;
 
-// T-1011: the platform-neutral modules now live in webagent-core. Re-export
-// them here so the root crate keeps its public API and crate::<module> paths.
+// T-1011/T-1012: platform-neutral modules live in webagent-core, browser/page
+// modules in webagent-transport. Re-export both so the root crate keeps its
+// public API and crate::<module> paths. The concrete WebBackendFactory marker
+// is re-exported by webagent-transport itself (see its lib.rs).
 pub use webagent_core::*;
-// Browser-local factory marker; re-exported at the root so callers need no
-// transport-layer path (the architecture ratchet counts module edges).
-pub use crate::browser::backend::WebBackendFactory;
+pub use webagent_transport::*;

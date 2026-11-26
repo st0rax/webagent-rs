@@ -24,9 +24,9 @@ use super::js;
 use super::operations;
 use super::selectors::Selectors;
 use super::{SessionState, WebBrainBackend};
-use crate::brain::BrainBackend;
-use crate::capability::{Capability, ProofKind};
-use crate::capability_proof::{Measurement, ProofOutcome};
+use webagent_core::brain::BrainBackend;
+use webagent_core::capability::{Capability, ProofKind};
+use webagent_core::capability_proof::{Measurement, ProofOutcome};
 
 /// Poll-Intervall der Generierungs-Probe (ein CDP-Roundtrip pro Poll).
 const POLL_INTERVAL_MS: u64 = 300;
@@ -101,7 +101,7 @@ pub fn probe_message(stamp: &str) -> String {
 pub fn resolve_verify_targets(
     caps: &[String],
 ) -> Result<(Vec<&'static Capability>, Vec<String>), String> {
-    let all = crate::capability::CATALOG;
+    let all = webagent_core::capability::CATALOG;
     if caps.is_empty() {
         return Ok((all.iter().collect(), Vec::new()));
     }
@@ -109,7 +109,7 @@ pub fn resolve_verify_targets(
     let mut keys: Vec<String> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
     for c in caps {
-        let cap = crate::capability::capability(c).ok_or_else(|| {
+        let cap = webagent_core::capability::capability(c).ok_or_else(|| {
             format!(
                 "unbekannte Faehigkeit '{c}' — gueltig: {}",
                 valid.join(", ")
@@ -148,11 +148,11 @@ pub fn resolve_verify_targets(
 pub fn verify_records(
     brain_id: &str,
     results: &[VerifyResult],
-) -> Vec<crate::capability_proof::ProofRecord> {
+) -> Vec<webagent_core::capability_proof::ProofRecord> {
     results
         .iter()
         .map(|r| {
-            crate::capability_proof::record_from_measurement(
+            webagent_core::capability_proof::record_from_measurement(
                 brain_id,
                 &r.measurement,
                 r.outcome,
@@ -185,7 +185,7 @@ pub fn verify_capabilities(
     preflight_secs: f64,
 ) -> Vec<VerifyResult> {
     let tr = Trace::new();
-    if let Some(_secs) = crate::circuit_breaker::check(&backend.brain_id) {
+    if let Some(_secs) = webagent_core::circuit_breaker::check(&backend.brain_id) {
         return all_unreachable(backend, targets, "circuit_open");
     }
     let driver_attached = backend.driver.borrow().is_some();
@@ -266,7 +266,7 @@ fn has_sel(sel: &Selectors, needs: &[&str]) -> bool {
 }
 
 fn hash_for(backend: &WebBrainBackend, cap: &Capability) -> u32 {
-    crate::capability_proof::selector_hash_for(cap, backend.selectors.as_value())
+    webagent_core::capability_proof::selector_hash_for(cap, backend.selectors.as_value())
 }
 
 fn measure(
@@ -1103,7 +1103,7 @@ fn generation_sequence(
     let stop_js = WebBrainBackend::js_selectors(&backend.sel("stop_button"));
     let baseline_text = backend.baseline_text.borrow().clone();
     let deadline =
-        crate::timeouts::resolve_timeout("wait_response", &backend.brain_id, probe, None);
+        webagent_core::timeouts::resolve_timeout("wait_response", &backend.brain_id, probe, None);
     let deadline = Instant::now() + Duration::from_secs_f64(deadline);
 
     let mut chat_proven = false;
@@ -1762,7 +1762,7 @@ mod tests {
     }
 
     fn cap(key: &str) -> &'static Capability {
-        crate::capability::capability(key).expect("im Katalog")
+        webagent_core::capability::capability(key).expect("im Katalog")
     }
 
     fn backend_for(brain_id: &str, state: MockPageState) -> WebBrainBackend {
@@ -2316,7 +2316,7 @@ mod tests {
     fn ziele_leer_ist_ganzer_katalog() {
         let (targets, warnings) = resolve_verify_targets(&[]).expect("leer ist ok");
         assert!(warnings.is_empty());
-        assert_eq!(targets.len(), crate::capability::CATALOG.len());
+        assert_eq!(targets.len(), webagent_core::capability::CATALOG.len());
         assert_eq!(targets.first().unwrap().key, "chat");
     }
 

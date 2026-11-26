@@ -17,18 +17,15 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
-use crate::brain::{BrainBackend, SessionState};
 use crate::page_driver::PageDriver;
 #[cfg(feature = "webview")]
 use crate::webview_runtime::WebViewRuntime;
+use webagent_core::brain::{BrainBackend, SessionState};
 
 mod blocking;
 mod send;
 mod surface;
 
-#[cfg(test)]
-pub(crate) use crate::protocol::BLOCK_BANNER_MAX_CHARS;
-pub(crate) use crate::protocol::{block_phrase_in_text, has_protocol_payload};
 #[cfg(test)]
 pub(crate) use blocking::{
     banner_is_prompt_echo, PROSE_STABILITY_SECONDS, STABILITY_SECONDS, TRUNCATED_STABILITY_SECONDS,
@@ -37,6 +34,9 @@ pub(crate) use blocking::{classify_completion, stable_norm, Completion};
 pub use send::is_send_disabled_error;
 #[cfg(test)]
 pub(crate) use send::submit_verify_rounds;
+#[cfg(test)]
+pub(crate) use webagent_core::protocol::BLOCK_BANNER_MAX_CHARS;
+pub use webagent_core::protocol::{block_phrase_in_text, has_protocol_payload};
 
 /// Web-Chat-Backend für einen Provider (chatgpt, claude, …).
 /// Ergebnis einer Live-Diagnose (echter Browser gegen die Provider-Seite).
@@ -107,13 +107,13 @@ impl WebBrainBackend {
 
     /// Erstellt ein Backend aus der zentralen Brain-Konfiguration.
     pub fn from_config(brain_id: &str) -> Result<Self, String> {
-        let brains = crate::config::brains();
+        let brains = webagent_core::config::brains();
         let spec = brains
             .get(brain_id)
             .ok_or_else(|| format!("Unbekanntes Brain: {brain_id}"))?;
         let url = spec.get("url").cloned().unwrap_or_default();
         let profile_dir = PathBuf::from(spec.get("profile_dir").cloned().unwrap_or_default());
-        let selectors = crate::config::load_selectors(brain_id)
+        let selectors = webagent_core::config::load_selectors(brain_id)
             .map(selectors::Selectors::from_value)
             .map_err(|e| format!("Selektoren nicht ladbar: {e}"))?;
         Ok(Self {
@@ -138,14 +138,14 @@ impl WebBrainBackend {
     /// aus `probe`): nur URL, noch keine Selektoren. `probe_surface` fuellt sie
     /// an der lebenden Oberflaeche, danach registriert der Aufrufer das Brain.
     pub fn from_url(brain_id: &str, url: &str) -> Result<Self, String> {
-        let id = crate::config::sanitize_brain_id(brain_id);
+        let id = webagent_core::config::sanitize_brain_id(brain_id);
         if id.is_empty() {
             return Err("Brain-ID leer".into());
         }
         if url.trim().is_empty() {
             return Err("URL leer".into());
         }
-        let profile_dir = crate::config::profiles_dir().join(&id);
+        let profile_dir = webagent_core::config::profiles_dir().join(&id);
         Ok(Self {
             brain_id: id,
             url: url.trim().to_string(),
@@ -403,7 +403,7 @@ impl WebBrainBackend {
         for i in 0..count.max(3) {
             let t = self.assistant_text(i);
             if !t.is_empty() {
-                out.push_str(&format!("  [{i}] {:?}", crate::char_prefix(&t, 60)));
+                out.push_str(&format!("  [{i}] {:?}", webagent_core::char_prefix(&t, 60)));
             }
         }
         out.push_str(&format!(
@@ -416,7 +416,7 @@ impl WebBrainBackend {
         let (pcount, ptext, pstop) = self.probe_generation(&assistant_js, &stop_js, -1);
         out.push_str(&format!(
             "  probe(count={pcount},text={:?},stop={pstop})",
-            crate::char_prefix(&ptext, 60)
+            webagent_core::char_prefix(&ptext, 60)
         ));
         let js = "var d=document.querySelector('[role=dialog],[aria-modal=true]');d?d.innerText.slice(0,120):'kein Dialog'";
         let dlg = self
@@ -461,7 +461,7 @@ impl WebBrainBackend {
         let body = Self::answer_read_body(reader, index, &self.sel("reasoning_exclude"));
         // Claude rendert seine Denk-Zusammenfassung in denselben Container und
         // das DOM liefert sie doppelt — sie gehoert nicht in die Antwort.
-        crate::observer::strip_repeated_lead_line(
+        webagent_core::observer::strip_repeated_lead_line(
             &self.eval_str(&Self::js_scan(&list, &body, "\"\"")),
         )
     }
@@ -551,7 +551,7 @@ impl WebBrainBackend {
                 // Gleiche Bereinigung wie in `assistant_text` — dies ist der
                 // zweite Auslesepfad (Warteschleife), und sein Text ist der,
                 // der am Ende zurueckgegeben wird.
-                crate::observer::strip_repeated_lead_line(
+                webagent_core::observer::strip_repeated_lead_line(
                     v.get("text").and_then(|x| x.as_str()).unwrap_or(""),
                 ),
                 v.get("stop").and_then(|x| x.as_bool()).unwrap_or(false),
@@ -668,7 +668,7 @@ mod tests {
     /// Keys wie `consent_reject_button` bei gemini/qwen frueher nie feuerten).
     #[test]
     fn all_text_form_selectors_are_recognized_by_prelude_parser() {
-        let dir = crate::config::selectors_dir();
+        let dir = webagent_core::config::selectors_dir();
         let mut checked = 0usize;
         let mut unrecognized = Vec::new();
         for entry in std::fs::read_dir(&dir).expect("selectors dir") {
@@ -807,7 +807,7 @@ mod tests {
         // Erkennung still auf den Indikator zurueck. Genau daran haette es
         // gelegen: geminis Indikator war der Composer, den auch die
         // ausgeloggte Startseite zeigt.
-        for (id, _url) in crate::config::BRAIN_TABLE {
+        for (id, _url) in webagent_core::config::BRAIN_TABLE {
             let backend = WebBrainBackend::from_config(id).unwrap_or_else(|e| panic!("{id}: {e}"));
             assert!(
                 !backend.sel("login_button").is_empty(),
@@ -819,7 +819,7 @@ mod tests {
 
     #[test]
     fn all_configured_brains_have_selectors() {
-        for (id, _url) in crate::config::BRAIN_TABLE {
+        for (id, _url) in webagent_core::config::BRAIN_TABLE {
             let backend = WebBrainBackend::from_config(id).unwrap_or_else(|e| panic!("{id}: {e}"));
             assert!(
                 !backend.sel("composer").is_empty(),
@@ -902,7 +902,7 @@ mod tests {
             false,
         );
         assert_eq!(r, Completion::Complete);
-        assert!(!crate::protocol::parse(partial).valid);
+        assert!(!webagent_core::protocol::parse(partial).valid);
     }
 
     #[test]

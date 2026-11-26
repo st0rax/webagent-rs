@@ -19,6 +19,7 @@ winres = "0.1"
 # PID-Liveness liefert das Crate selbst (siehe lib.rs / run_store).
 [dependencies]
 webagent-core = { path = "crates/webagent-core" }
+webagent-transport = { path = "crates/webagent-transport" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -49,7 +50,7 @@ default = ["webview"]
 # `--no-default-features` auch auf Windows keine GUI-Crates linkt. Derselbe
 # Featurename gilt auf Linux (WebKitGTK ueber wry) und auf Windows (WebView2),
 # ohne dass Linux an windows-only Crates scheitert.
-webview = ["webagent-core/webview", "dep:wry", "dep:tao", "dep:webview2-com", "dep:windows", "dep:arboard", "dep:clipboard-win", "dep:image"]
+webview = ["webagent-core/webview", "webagent-transport/webview", "dep:wry", "dep:tao", "dep:webview2-com", "dep:windows", "dep:arboard", "dep:clipboard-win", "dep:image"]
 # TUI bleibt hinter ihrem Feature als Legacy-Subcommand baubar
 # (docs/WEB_UI_API_TOOL_RESET.md, Phase 0 + 2), ist aber nicht mehr der
 # Defaultstart. Angelegter Stand: archive/tui-ui + tui-ui-preservation-2026-09-01.
@@ -77,6 +78,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 
 [dev-dependencies]
 webagent-core = { path = "crates/webagent-core", features = ["test-support"] }
+webagent-transport = { path = "crates/webagent-transport", features = ["test-support"] }
 
 [lib]
 name = "webagent"

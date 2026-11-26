@@ -19,11 +19,11 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::brain::SessionState;
 use crate::browser::js;
 use crate::browser::selectors::Selectors;
 use crate::browser::LiveDiagnosis;
 use crate::page_driver::PageDriver;
+use webagent_core::brain::SessionState;
 
 /// Rumpf der Sichtbarkeitsprüfung: das erste Element, das eine reale Fläche
 /// hat, gewinnt.

@@ -7,12 +7,12 @@
 //! Tests in `mod.rs` und externe Aufrufer greifen ueber die Re-Exports aus
 //! `mod.rs` zu.
 
-use crate::circuit_breaker::contains_at_word_boundary;
-use crate::observer::is_limit_response_text;
-use crate::protocol::{has_protocol_payload, is_possibly_truncated, BLOCK_PHRASES};
+use webagent_core::circuit_breaker::contains_at_word_boundary;
+use webagent_core::observer::is_limit_response_text;
+use webagent_core::protocol::{has_protocol_payload, is_possibly_truncated, BLOCK_PHRASES};
 
 // Die gemeinsame Phrasenliste und der reine Text-Klassifikator liegen jetzt in
-// `crate::protocol`; `mod.rs` re-exportiert sie weiterhin fuer bestehende Pfade.
+// `webagent_core::protocol`; `mod.rs` re-exportiert sie weiterhin fuer bestehende Pfade.
 
 pub(crate) const STABILITY_SECONDS: f64 = 1.5;
 
@@ -167,7 +167,7 @@ pub(crate) fn classify_completion(
 
     // Chrome / CoT-only snapshots (Thinking..., UI clock, Kimi reasoning echo)
     // must keep the waiter polling — never finish with status text as the answer.
-    let text_ready = !crate::observer::chat_answer_text(text).is_empty();
+    let text_ready = !webagent_core::observer::chat_answer_text(text).is_empty();
     if !text_ready {
         return Completion::Continue;
     }
@@ -187,7 +187,7 @@ pub(crate) fn classify_completion(
 
     // Ein vollständig geparstes Protokoll-Dokument ist immer fertig — auch wenn
     // der Stop-Button (durch Polling-Timing) noch kurz sichtbar wirkt.
-    if crate::protocol::parse(text).valid {
+    if webagent_core::protocol::parse(text).valid {
         return Completion::Complete;
     }
 

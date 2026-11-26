@@ -185,13 +185,27 @@ webagent-transport
                 PageProbe; emits PanelSink layout events
 ```
 
-Measured: 16 internal edges; 19 outbound and 3 inbound to/from core, 1 outbound
-to api (`browser → browser_inference`) and 3 outbound to the root app (the
-`brain_grid` hooks). Cargo dependencies: `serde_json`, `time`, and, behind the
-crate's own `webview` feature, `wry`, `tao`, `webview2-com`, `windows`,
-`arboard`, `clipboard-win`, `image`. The root `webview` feature forwards to
-`webagent-transport/webview`; `--no-default-features` must still produce a
-tree without those GUI crates, as T-1003 proved for the single package.
+**T-1012 status (2026-11-26).** The crate now owns all ten modules listed above
+(22 source files including the two `webview_runtime/` children). The root crate
+re-exports `webagent_transport::*`, so no caller path changed. The concrete
+`WebBackendFactory` marker moved with its `BackendFactory` impl into
+`browser/backend.rs` and is re-exported from the transport crate. Internal
+`crate::<core>` paths became explicit `webagent_core::` paths. `panel_sink`
+geometry helpers are available under the crate's `test-support` feature, which
+the root enables as a dev-dependency; production builds are unaffected. Measured
+guard state after the move: `modules=91, edges=278, cycles=3, upward_edges=26,
+crate_violations=0` — unchanged from T-1011, with no exception line added or
+removed. `--no-default-features` still excludes the GUI crates.
+
+Design-time measurement before extraction: 16 internal edges; 19 outbound and 3
+inbound to/from core, 1 outbound to api (`browser → browser_inference`) and 3
+outbound to the root app (the `brain_grid` hooks, already removed by T-1007).
+Cargo dependencies: `serde`, `serde_json`, `time`, `regex`, `fancy-regex`,
+`lazy_static`, and, behind the crate's own `webview` feature, `wry`, `tao`,
+`webview2-com`, `windows`, `arboard`, `clipboard-win`, `image`. The root
+`webview` feature forwards to `webagent-transport/webview`; `--no-default-
+features` must still produce a tree without those GUI crates, as T-1003 proved
+for the single package.
 
 ### 4.3 `webagent-api` (9 modules)
 

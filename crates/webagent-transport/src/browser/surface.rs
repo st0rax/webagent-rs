@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::brain::{BrainBackend, SessionState};
+use webagent_core::brain::{BrainBackend, SessionState};
 
 use super::{operations, LiveDiagnosis, WebBrainBackend};
 
@@ -391,7 +391,7 @@ return null;}})()"#,
             return Ok(true);
         }
         let _ = self.reveal_onscreen();
-        crate::bench_events::eprint_line(&format!(
+        webagent_core::bench_events::eprint_line(&format!(
             "[login] Browser geöffnet — bitte im Fenster bei '{}' anmelden. Warte auf Login…",
             self.brain_id
         ));
@@ -442,7 +442,7 @@ return null;}})()"#,
         // Klick 1: "Anmelden"/"Sign in". Echte Maus-Klicks, denn Geminis SSO-
         // Buttons ignorieren synthetische `el.click()`.
         self.dismiss_consent();
-        crate::bench_events::eprint_line("[auto-login] klicke 'Anmelden'…");
+        webagent_core::bench_events::eprint_line("[auto-login] klicke 'Anmelden'…");
         let first = self.click_visible_real("login_button");
         if !first {
             self.dismiss_consent();
@@ -456,7 +456,7 @@ return null;}})()"#,
         // Klick 2: falls eine Google-SSO-Oberfläche erscheint, deren Button
         // mitnehmen. Nur wenn sichtbar — manche Brains loggen ohne SSO ein.
         if self.any_visible("google_sso_button") {
-            crate::bench_events::eprint_line("[auto-login] klicke Google-SSO…");
+            webagent_core::bench_events::eprint_line("[auto-login] klicke Google-SSO…");
             self.click_visible_real("google_sso_button");
             std::thread::sleep(Duration::from_secs(3));
         }
@@ -691,7 +691,7 @@ return null;}})()"#,
         // Knopf, den wir suchen, darf hier nicht Voraussetzung sein.
         let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
         let baseline_text = self.baseline_text.borrow().clone();
-        let deadline = Instant::now() + crate::timeouts::surface_startup_deadline();
+        let deadline = Instant::now() + webagent_core::timeouts::surface_startup_deadline();
         let mut running = false;
         while Instant::now() < deadline {
             let (count, text, _) = self.probe_generation(&assistant_js, "[]", -1);
@@ -845,7 +845,7 @@ return null;}})()"#,
         };
 
         // Phase 1: warten bis die Antwort läuft, dann Abzug.
-        let deadline = Instant::now() + crate::timeouts::surface_startup_deadline();
+        let deadline = Instant::now() + webagent_core::timeouts::surface_startup_deadline();
         let mut running = false;
         while Instant::now() < deadline {
             let (count, text, _) = self.probe_generation(&assistant_js, "[]", -1);
@@ -868,7 +868,7 @@ return null;}})()"#,
         // Kriterium: zwei aufeinanderfolgende Abzüge mit gleicher Anzahl
         // sichtbarer Elemente. Danach ist der Aufbau stabil.
         let mut during = scan(self)?;
-        let stable_until = Instant::now() + crate::timeouts::surface_stable_grace();
+        let stable_until = Instant::now() + webagent_core::timeouts::surface_stable_grace();
         loop {
             std::thread::sleep(Duration::from_millis(700));
             let next = scan(self)?;
@@ -883,11 +883,11 @@ return null;}})()"#,
         // Phase 2: warten bis der Text stillsteht, dann erneut.
         let mut last = String::new();
         let mut stable_since = Instant::now();
-        let deadline2 = Instant::now() + crate::timeouts::surface_stable_deadline();
+        let deadline2 = Instant::now() + webagent_core::timeouts::surface_stable_deadline();
         while Instant::now() < deadline2 {
             let (_, text, _) = self.probe_generation(&assistant_js, "[]", -1);
             if !text.is_empty() && text == last {
-                if stable_since.elapsed() >= crate::timeouts::surface_stable_hold() {
+                if stable_since.elapsed() >= webagent_core::timeouts::surface_stable_hold() {
                     break;
                 }
             } else {

@@ -8,8 +8,8 @@
 //! damit schlechter gemacht als vor dem Refactoring.
 
 use super::WebBrainBackend;
-use crate::brain::BrainBackend;
 use std::time::Duration;
+use webagent_core::brain::BrainBackend;
 
 /// Selektorschluessel der Faehigkeit `temporary_chat` (siehe `capability.rs`).
 pub const TEMPORARY_CHAT_KEY: &str = "temporary_chat_button";
@@ -418,7 +418,7 @@ impl WebBrainBackend {
         if !Self::toggle_state_is_active(&state) {
             return true;
         }
-        crate::bench_events::eprint_line(&format!(
+        webagent_core::bench_events::eprint_line(&format!(
             "[browser] {}: {key} ist aktiv, wird ausgeschaltet ({state})",
             self.brain_id
         ));
@@ -442,8 +442,10 @@ impl WebBrainBackend {
     /// ausschliesslich dieser Konversation, keine Kontoeinstellung wird
     /// dauerhaft geaendert. Ohne brauchbaren Umschalter wird das Brain als
     /// nicht isolierbar gemeldet statt einen Erfolg zu behaupten.
-    pub(crate) fn ensure_web_search_off(&self) -> crate::inference_types::WebSearchObservation {
-        use crate::inference_types::WebSearchObservation;
+    pub(crate) fn ensure_web_search_off(
+        &self,
+    ) -> webagent_core::inference_types::WebSearchObservation {
+        use webagent_core::inference_types::WebSearchObservation;
         const KEY: &str = "web_search_toggle";
         if self.sel(KEY).is_empty() {
             return WebSearchObservation::not_isolatable("kein web_search_toggle konfiguriert");
@@ -466,7 +468,7 @@ impl WebBrainBackend {
         if !Self::toggle_state_is_active(&before) {
             return WebSearchObservation::already_off(&before);
         }
-        crate::bench_events::eprint_line(&format!(
+        webagent_core::bench_events::eprint_line(&format!(
             "[browser] {}: web_search_toggle ist aktiv, wird vor dem Senden ausgeschaltet",
             self.brain_id
         ));
