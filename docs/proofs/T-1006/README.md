@@ -4,8 +4,8 @@
 > `webagent` package: no crate extraction, no merge, and no change to
 > `Cargo.toml`, `[profile.*]` or dependencies.
 
-**Claim.** Branch `refactor/T-1006-core-traits`, claim commit `9bf1841`, owner
-`local/opencode`, 2026-11-26. The task was created and claimed in
+**Claim.** Branch `refactor/T-1006-core-traits`, claim commit `9bf1841`,
+implementation commit `7f87e5c`, owner `local/opencode`, 2026-11-26. The task was created and claimed in
 `docs/TASKBOARD.json` and mirrored in `docs/TASKBOARD.md` before any source
 file was edited. T-1006 stays `claimed`; no `done`, no PR and no merge.
 
