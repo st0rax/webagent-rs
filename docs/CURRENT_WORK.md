@@ -1,3 +1,8 @@
+## 2026-11-26 - T-1011 claimed: core extraction (no source edits yet)
+
+- **Claim:** `docs/TASKBOARD.json` and mirror now carry T-1011 as `claimed`, owner `local/opencode`, branch `refactor/T-1011-core-extraction`, 2026-11-26. It builds directly on the caught-up T-1010 branch (`cb1e51b`) and stays `claimed` until merged. No module was moved before this claim.
+- **Claim-time baseline:** lib 1547 passed / 0 failed / 1 ignored; guard `modules=90, edges=277, cycles=3, upward_edges=26, crate_violations=0`; fmt/clippy 0. The extraction must preserve these counts (modulo moved-module test relocation) and re-export the existing public API from the root crate.
+
 ## 2026-11-26 - T-1010 branch caught up with released v0.11.8 master
 
 - **Lagebild:** Another session merged phase 16 through T-1009 into `origin/master` and published tag `v0.11.8` (`fb7b886`), explicitly leaving crate extraction to this session. `refactor/T-1010-workspace-guard` was based on the pre-release `92011a5`; `origin/master` was merged into it as a normal merge commit (no force-push, no history rewrite).
