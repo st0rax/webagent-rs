@@ -69,6 +69,14 @@
 - Die API serialisiert Browserruns pro Brain; der kurze Turn wartete
   hoechstwahrscheinlich hinter dieser langen Anfrage. Das ist nicht
   bewiesen; die Live-Abnahme des Backend-Pfads bleibt offen.
+- Betriebszustand danach: `circuit_breaker/state.json` zeigt `chatgpt` mit
+  `consecutive_failures=3`, `open_until=1795731207` (900 s Sperre) und
+  genau dieser `ABSENDEKNOPF_DEAKTIVIERT`-Ursache. Der identische Fehler
+  stand bereits vor dem Tausch im Event von 21:46:48 UTC — er ist also
+  **kein** T-1016-Rueckfall. Ich habe den Breaker nicht manuell
+  zurueckgesetzt; das waere ein Eingriff in den laufenden Betrieb ohne
+  Freigabe. Weitere gesperrte Brains im selben File (claude, deepseek,
+  kimi, mock) sind alter Zustand und wurden nicht angefasst.
 - Belegt ist: Prozessstart, Health, Models, Hashes, identische Command Line.
   Nicht belegt ist: ein erfolgreicher Provider-Turn auf der neuen EXE.
 - Der Browser-Prozess `webagent · chatgpt (1)` ist nach dem Restart
