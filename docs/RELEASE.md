@@ -4,6 +4,10 @@
 > Merge und grüner CI freigegeben; dieser Vorgang läuft separat von T-967.
 > Der Patch-Release `v0.11.6` wurde am selben Tag über PR #107 (`1149dff`)
 > nach grüner CI getaggt und mit Workflow `45702611313` veröffentlicht.
+> Der Patch-Release `v0.11.7` folgte am 26.11.2026 über PR #112 (`d54d347`)
+> mit vollständig grünem Workflow `45725669798`, sieben geprüften Assets und
+> lokalem Deployment; der Live-Turn-Beleg liegt unter
+> `docs/proofs/live-turn-2026-11-26/`.
 
 # Release-Vorgang (T-967)
 

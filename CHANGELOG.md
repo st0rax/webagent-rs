@@ -7,6 +7,7 @@
 
 - Vier lokale Härtungsscheiben nach `master` zusammengeführt (PRs #108–#111; #109–#111 wurden wegen Doku-Konflikten als lokal gesquashte Commits mit PR-Referenz gepusht und anschließend geschlossen). T-969 liefert `docs/PROTOCOL.md` und `docs/SECURITY.md` aus dem Code; T-970 isoliert Turn-Beobachtungen thread-lokal (`PendingScope`), T-971 kennzeichnet `VerifiedFree` ehrlich als Registry-Beleg ohne Capability-Gate, T-972 teilt `controller.rs`/`webview_runtime.rs` in Untermodule (3349→1909 bzw. 3315→2229 Zeilen). Alle PR-Checks und die Gates auf dem zusammengeführten Stand sind grün (1521 passed / 0 failed / 1 ignored).
 - Der Boardstand T-969..T-972 ist `done`; `docs/CURRENT_WORK.md` hält den Merge- und Konfliktauflösungsweg fest. Kein Force-Push, keine History-Umschreibung.
+- Veröffentlicht 2026-11-26 00:08:24 UTC via vollständig grünem Workflow `45725669798` (PR #112, Tag `d54d347`, sieben SHA-256-geprüfte Assets). Die Windows-Artefakte wurden mit Rollback nach `webagent-deploy-target\release\` ausgeliefert; `--version`, `canary` 8/8 und die Loopback-Provider-Rolle (`/v1/models`, 401 ohne Token, echter Chat-Turn `PROVIDER-OK-20261126`) sind geprüft. Ein echter WebView2-Live-Turn mit bestehender Sitzung antwortete exakt `LIVE-OK-20261126-V0.11.7`; Rohbeleg in `docs/proofs/live-turn-2026-11-26/`. Fern-/Produktivbetrieb bleibt nicht belegt.
 
 ## [0.11.6] - 2026-11-25
 
