@@ -89,7 +89,9 @@ impl WorkerPool {
     /// `stale`-Failover waehrend dieses Fensters; ein offener Circuit-Breaker
     /// bleibt weiterhin ein sofortiges Block-Signal.
     fn startup_grace(poll_secs: u64) -> Duration {
-        Duration::from_secs(poll_secs.saturating_mul(3).clamp(30, 120))
+        let min = crate::timeouts::startup_grace_min().as_secs();
+        let max = crate::timeouts::startup_grace_max().as_secs();
+        Duration::from_secs(poll_secs.saturating_mul(3).clamp(min, max))
     }
 
     fn heartbeat_age_during_startup(

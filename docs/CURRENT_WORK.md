@@ -1,4 +1,33 @@
-# Current Work
+## 2026-11-26 - T-1010 branch caught up with released v0.11.8 master
+
+- **Lagebild:** Another session merged phase 16 through T-1009 into `origin/master` and published tag `v0.11.8` (`fb7b886`), explicitly leaving crate extraction to this session. `refactor/T-1010-workspace-guard` was based on the pre-release `92011a5`; `origin/master` was merged into it as a normal merge commit (no force-push, no history rewrite).
+- **Konfliktauflösung:** Board conflicts were resolved in favour of the released board: T-997..T-1009 stay `done`, T-976/T-977 remain present, T-1010 stays `claimed`. `Cargo.toml`/`Cargo.lock` kept released version `0.11.8` and gained the workspace skeleton. `docs/TASKBOARD.json` parses with 116 tasks; no conflict markers remain.
+- **Re-gates:** fmt 0; clippy 0; arch 5 passed with `modules=90, edges=277, cycles=3, upward_edges=26, crate_violations=0` (two new edges from released Play/T-976/T-977 code, no new exception); lib 1547 passed / 0 failed / 1 ignored (was 1531 before the master merge); all-targets 1547 lib + 7 bin-unit + 5 integration; no-default 1541 lib + 7 + 5; `git diff --check` 0. The T-1010 proof records both measurement points.
+- **Grenze / offen:** no crate extracted yet; this branch is still not merged into master. No new tag, release, deployment, credentials, live provider call or browser login. Next: T-1011 core extraction from this caught-up branch.
+
+## 2026-11-26 - Produktstand ausgeliefert: Play-Code, Phase 16, Release-Vorbereitung
+
+- **Auftrag:** fertig machen. Das heisst den vorhandenen Produktstand auf `master` bringen und ausliefern, nicht die naechste Architekturbaustelle oeffnen.
+- **Enthalten:** Phase 16 bis T-1009, Play-Kommando (`src/repl/play.rs`), sichtbare API-Turns (T-976), zentrale Modellgrenzen und Timeouts (T-977). `relay` deckt geparkte WebViews vor dem Turn auf (`relay_reveal_for_turn`).
+- **Nicht geoeffnet:** Play-v0.3-Spec-Tasks T-978..T-996 (kein Code, 0 Tests). Crate-Extraktion T-1010 bleibt in der anderen Session und ist nicht Teil dieser Auslieferung.
+- **Release:** `Cargo.toml` und `Cargo.lock` stehen auf `0.11.8`. Tag `v0.11.8` wird nach dem Versionsgate auf diesen Commit gesetzt. Kein Produktiv-Deployment.
+
+## 2026-11-26 - Phase 16 landed on master through T-1008
+
+- **Freigabe:** Der Eigentuemer hat die offene Arbeit aus der Session-Auswertung
+  bestaetigt: Release-Absturz schliessen und die ungemergte Phase-16-Kette nach
+  `master` legen. Kein Tag, kein GitHub-Release, kein Deployment, keine
+  Crate-Extraktion, kein Live-Lauf.
+- **Merge:** Fast-Forward `origin/master` `93d33a3` → `fa7c37d`
+  (`fix/T-1008-webview-loader-smoke`). 29 Commits, T-997 bis T-1008.
+- **Absturz, selbst geprueft:** Exit `-1073741515` ist `0xC0000135`
+  (`STATUS_DLL_NOT_FOUND`), nicht `0xC0000005`. Frischer Worktree auf `fa7c37d`,
+  `cargo build --release --locked` Exit 0 in 11m 12s, `WebView2Loader.dll`
+  (165336 Bytes) lag ohne manuelles Skript neben der EXE.
+  `target/release/webagent.exe --version` → `webagent 0.11.7 (fa7c37dda)`, Exit 0.
+  `--help` Exit 0, 54 Zeilen. Kein Login, kein Browserfenster.
+- **Board:** T-997..T-1008 nach dem Merge auf `done` gesetzt (`done_at`
+  2026-11-26).
 
 ## 2026-11-26 - T-1010 implemented: workspace skeleton and multi-crate guard
 
@@ -10,11 +39,10 @@
 
 ## 2026-11-26 - T-1009 implemented: ImageBackend boundary for relay
 
-- **Branch/claim:** `refactor/T-1009-image-backend`, claim commit `0ede5dc` (created on the parent branch, new branch points there), owner `local/opencode`. T-1009 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. This is the last T-1004 trait boundary, not crate extraction.
-- **Delivered:** new public `ImageGenerationBackend` trait plus `BackendFactory::create_image_backend` in `brain.rs`; `WebBrainBackend` implements it in `browser/backend.rs`; `relay_image_generation` now uses the factory and a testable `relay_image_turn(&mut dyn ImageGenerationBackend, …)` helper. Lifecycle order, trace output, timeout math, circuit-breaker behavior and error strings are unchanged. One mock-backed lifecycle test was added. Proof: `docs/proofs/T-1009/README.md`.
-- **Guard delta:** `relay → browser` is gone; no ratchet line existed for it, so only the baseline comment in `docs/arch/layer_exceptions.txt` changed. Measured 90 modules / 275 edges / 3 cycles / 26 upward edges (was 276 edges). `docs/arch/CRATE_SPLIT.md` now marks all four original cross-crate blockers as prepared.
-- **Gates measured:** claim lib 1530 passed / 0 failed / 1 ignored (51.80 s); final lib 1531 / 0 / 1 (77.82 s). `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1531 lib + 7 bin-unit + 4 integration; `cargo test --locked --no-default-features --quiet` 1525 lib + 7 bin-unit + 4 integration; `git diff --check` 0.
-- **Grenze / offen:** no crate extraction, merge, PR, tag, release, deployment, credentials, live provider call, browser login or live image generation. All phase-16 branches remain `claimed`. Next slice is the workspace extraction itself: upgrade the arch guard to cover all member crates, add the crate-direction invariant, then move core/transport/api with re-exports.
+- **Branch/claim:** `refactor/T-1009-image-backend`, claim commit `0ede5dc`, owner `local/opencode`. Trait-Grenze, keine Crate-Extraktion.
+- **Delivered:** `ImageGenerationBackend` plus `BackendFactory::create_image_backend` in `brain.rs`; `WebBrainBackend` implementiert das Trait; `relay_image_generation` geht ueber die Factory und `relay_image_turn`. Lifecycle, Traces, Timeouts und Fehlerstrings unveraendert. Proof: `docs/proofs/T-1009/README.md`.
+- **Nachgemessen auf dem Merge nach `6969da3`:** `rg crate::browser src/relay.rs` leer. `cargo test --lib image_turn_uses_the_core_trait_lifecycle` 1 passed. `cargo test --test arch_layers` 4 passed, `modules=90, edges=275, cycles=3, upward_edges=26`. `taskboard_invarianten_halten` 1 passed. `git diff --check` 0.
+- **Merge:** `origin/refactor/T-1009-image-backend` (`92011a5`) nach `master`. T-1009 danach `done`. Kein Tag, kein Release, keine Crate-Extraktion. T-1010 bleibt bei der anderen Session. Play-Mode-Branch `fix/T-976-api-turn-reveal` ist nicht enthalten.
 
 ## 2026-11-26 - T-1008 implemented: local runnable WebView2 build
 

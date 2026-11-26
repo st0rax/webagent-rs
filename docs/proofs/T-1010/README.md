@@ -80,10 +80,35 @@ file was edited. T-1010 stays `claimed`; no `done`, no PR and no merge.
   `WebView2Loader.dll`; `--version` and `--help` exited 0 in both profiles.
 - `git diff --check` — 0 (only LF→CRLF working-copy warnings on edited files).
 
+## Post-merge re-measurement (integration with released v0.11.8)
+
+While this slice was being prepared, another session merged phase 16 through
+T-1009 into `origin/master` and released v0.11.8 (`fb7b886`), explicitly leaving
+crate extraction to this session. `origin/master` was merged into
+`refactor/T-1010-workspace-guard` as a normal merge commit (no force-push, no
+history rewrite). The merge kept version `0.11.8`, the integrator's `done`
+statuses for T-997..T-1009 and its T-976/T-977 board entries, plus this
+slice's workspace skeleton, guard upgrade, T-1010 claim and proof. Board
+conflicts were resolved in favour of the released board; `docs/TASKBOARD.json`
+parses with 116 tasks.
+
+Re-measured on the merged tree: `cargo fmt --all -- --check` 0; `cargo clippy
+--features webview --all-targets -- -D warnings` 0; `cargo test --lib --quiet`
+1547 passed / 0 failed / 1 ignored (was 1531 before the master merge — the
+increase comes from the released Play/T-976/T-977 tests, not from this slice);
+`cargo test --test arch_layers -- --nocapture` 5 passed with `modules=90,
+edges=277, cycles=3, upward_edges=26, crate_violations=0` (two new edges came
+in with the released code, no new exception); `cargo test --all-targets --quiet`
+1547 lib + 7 bin-unit + 5 integration; `cargo test --locked
+--no-default-features --quiet` 1541 lib + 7 bin-unit + 5 integration;
+`git diff --check` 0.
+
 ## Grenze / offen
 
-No production module was moved, no dependency version changed, and no merge,
-PR, tag, release or deployment was made. No credentials were read or used, no
+No production module was moved and no dependency version changed by this
+slice. `origin/master` was merged *into* this branch to catch up with the
+v0.11.8 release; this branch was not merged into master, and no PR, new tag,
+new release or deployment was made by this slice. No credentials were read or used, no
 provider/login call was made and no live browser session was started. The task
 remains `claimed` until its branch is merged. Next slice: T-1011 moves the core
 modules into `webagent-core` with root re-exports, keeping the guard green.

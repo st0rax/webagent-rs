@@ -451,6 +451,33 @@ Write-Output $html
     }
 
     #[test]
+    fn test_parse_rendered_deepseek_glued_controls_before_raw_shell() {
+        let text = r#"textCopyDownloadWEBAGENT/1 SHELL
+id: bridge-check-1
+timeout_seconds: 30
+---SCRIPT---
+$key = $env:WEBAGENT_API_KEY
+Write-Output ("KEY_PRESENT: " + [bool]$key)
+---END SCRIPT---"#;
+        let result = parse(text);
+        assert!(result.valid, "error: {}", result.error);
+        assert_eq!(result.actions[0].id, "bridge-check-1");
+        assert!(result.actions[0].command.contains("$env:WEBAGENT_API_KEY"));
+    }
+
+    #[test]
+    fn test_parse_keeps_prosa_before_glued_controls() {
+        let text = r#"Denke nach…
+textCopyDownloadWEBAGENT/1 SHELL
+id: bridge-check-1
+timeout_seconds: 30
+---SCRIPT---
+Write-Output ok
+---END SCRIPT---"#;
+        assert!(!parse(text).valid);
+    }
+
+    #[test]
     fn test_parse_qwen_rendered_line_numbers_and_nbsp() {
         let rendered = format!(
             "JSON\n1\n2\n3\n{}",

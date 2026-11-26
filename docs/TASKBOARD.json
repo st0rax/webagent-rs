@@ -2287,8 +2287,7 @@
       "proof_path": "docs/CURRENT_WORK.md",
       "verification": "2026-11-25 auf refactor/T-972-controller-webview-split real gemessen: src/controller.rs 3349 -> 1909 Zeilen, src/webview_runtime.rs 3315 -> 2229 Zeilen; cargo fmt --all -- --check exit 0; cargo clippy --all-targets -- -D warnings exit 0; cargo test --lib 1517 passed / 0 failed / 1 ignored (unveraendert gegenueber Basis); git diff --check exit 0; Testzaehl vorher/nachher controller 44, webview 6.",
       "claimed_note": "Fund aus dem Prompt-Abgleich 2026-11-25: zwei God-Files mit je ueber 3000 Zeilen. Umsetzung als reine Bewegung: controller::tests -> src/controller/tests.rs (1439 Zeilen); webview_runtime::tests -> src/webview_runtime/tests.rs (95 Zeilen); WebView2-Datei-Upload-Helfer -> src/webview_runtime/file_input.rs (996 Zeilen, nur set_file_input_files_cdp fuer den Aufrufer pub(super)). Kein Logik-, API- oder Plattformpfadwechsel."
-    }
-,
+    },
     {
       "id": "T-973",
       "phase": "15",
@@ -2390,7 +2389,7 @@
       "phase": "16",
       "type": "test",
       "title": "Layer ratchet: guard test for module dependency direction and cycles",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "tests/arch_layers.rs",
@@ -2411,14 +2410,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "feature/T-997-arch-layers",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-998",
       "phase": "16",
       "type": "refactor",
       "title": "Break protocol/brain -> browser edges (shrinks the 7-module cycle)",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2440,14 +2440,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-998-protocol-browser-edge",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-999",
       "phase": "16",
       "type": "refactor",
       "title": "Remove config -> worker_pool dependency (atomic_write and retry constant)",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2468,14 +2469,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-999-config-worker-pool-edge",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1000",
       "phase": "16",
       "type": "refactor",
       "title": "Remove config -> brain_limits dependency",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-999"
       ],
@@ -2494,14 +2496,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1000-config-brain-limits-edge",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1001",
       "phase": "16",
       "type": "refactor",
       "title": "Resolve capability <-> capability_proof cycle",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2521,14 +2524,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1001-capability-cycle",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1002",
       "phase": "16",
       "type": "refactor",
       "title": "Resolve remaining TUI-side cycles ({repl, tui, tui_ansi}, {tui_load, tui_state})",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2551,14 +2555,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1002-tui-cycles",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1003",
       "phase": "16",
       "type": "build",
       "title": "Feature hygiene: keep Windows GUI dependencies out of the browser-free build",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2579,14 +2584,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check; cargo test --locked --no-default-features; cargo tree --no-default-features -e normal; run webagent --help and webagent diagnose --brain <id> --headless on the produced binary",
       "owner": "local/opencode",
       "branch": "chore/T-1003-feature-hygiene",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1004",
       "phase": "16",
       "type": "docs",
       "title": "Crate split decision: core / transport / api (design only)",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-998",
         "T-999",
@@ -2610,14 +2616,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "docs/T-1004-crate-split",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1005",
       "phase": "16",
       "type": "docs",
       "title": "CLI structure: command groups per layer with legacy aliases (design only)",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [
         "T-997"
       ],
@@ -2635,14 +2642,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
       "owner": "local/opencode",
       "branch": "docs/T-1005-cli-groups",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1006",
       "phase": "16",
       "type": "refactor",
       "title": "Public core traits and shared inference types in the current crate",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "src/inference_types.rs",
@@ -2676,14 +2684,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1006-core-traits",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1007",
       "phase": "16",
       "type": "refactor",
       "title": "PanelSink boundary: remove transport hooks into brain_grid",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "src/panel_sink.rs",
@@ -2711,14 +2720,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1007-panel-sink",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1008",
       "phase": "16",
       "type": "fix",
       "title": "Local runnable WebView2 build: auto-copy loader DLL and correct smoke diagnosis",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "build.rs",
@@ -2745,14 +2755,15 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; git diff --check; clean debug/release build; ./target/debug/webagent.exe --version/--help; ./target/release/webagent.exe --version/--help",
       "owner": "local/opencode",
       "branch": "fix/T-1008-webview-loader-smoke",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1009",
       "phase": "16",
       "type": "refactor",
       "title": "ImageBackend boundary: remove relay -> WebBrainBackend edge",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "src/brain.rs",
@@ -2776,7 +2787,8 @@
       "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1009-image-backend",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1010",
@@ -2815,6 +2827,78 @@
       "owner": "local/opencode",
       "branch": "refactor/T-1010-workspace-guard",
       "claimed_at": "2026-11-26"
+    },
+    {
+      "id": "T-976",
+      "phase": "15",
+      "type": "fix",
+      "title": "API-Turns decken geparkte Brain-Fenster auf",
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-976-api-turn-reveal",
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26",
+      "depends_on": [],
+      "scope": [
+        "src/browser/mod.rs",
+        "src/browser/backend.rs",
+        "src/relay.rs",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-976/api-turn-reveal.md"
+      ],
+      "objective": "Nach dem Reboot blieben Pi-Turns gegen die lokale Bridge haengen, obwohl das Brain-Fenster vorhanden war: ensure_ready parkt bei Ready, der API-Pfad ruft kein Reveal auf, wake_renderer ist nur ein CDP-Maus-Nudge. Ein frischer webagent/claude-Turn mit zwei Zeichen Prompt endete nach 94,6 s mit 'Request aborted' ohne Bridge-Event.",
+      "dod": "Der Bridge-/Relay-Pfad deckt das Brain-Fenster vor dem Turn auf und parkt es nach dem Turn zuverlaessig wieder; Unit-Tests belegen die Sichtbarkeits- und Rueckweg-Invariante; Gates gruen; echter Pi-Turn gegen die neu gebaute Bridge belegt.",
+      "handoff": "Geclaimt 2026-11-26 durch local/opencode auf master 93d33a3. Nutzeranforderung: 'ja fix und update meine test umgebung (wahrscheinlich fixen, bauen, bridge neu starten...you name it)'. Kein Login, keine Zugangsdaten, kein Fernzugriff.",
+      "non_goals": [
+        "Kein Eingriff in Pi-Sitzungsdateien, auth.json oder bestehende Tokens.",
+        "Kein Reboot/Re-Login ohne neue ausdrueckliche Freigabe.",
+        "Kein Fern- oder Produktiv-Deployment, kein neues Release ohne Freigabe.",
+        "Kein Umbau der Brain-Score- oder Proof-Gates."
+      ],
+      "proof_path": "docs/proofs/T-976/api-turn-reveal.md",
+      "verification": "Gates: fmt 0, clippy 0, 1525 passed / 0 failed / 1 ignored, diff-check 0. Release gebaut und deployt (SHA-256 8b7877c2136c035e8e5b3d8fa51c5fe92f76948ad2cd0e2146ceed5bb9696e52), Bridge neu gestartet PID 17372, health ok. Echter Pi-Turn webagent/auto 'hi' mit Antwort belegt; AUTO-Router fiel nach drei content_check-Fehlern auf gemini und lieferte sauber. Beleg docs/proofs/T-976/api-turn-reveal.md.",
+      "claimed_note": "Nutzerfreigabe zum Beenden der alten Pi-Session und Neustart; Deployment ausdruecklich freigegeben."
+    },
+    {
+      "id": "T-977",
+      "phase": "15",
+      "type": "fix",
+      "title": "Modellgrenzen anheben und Timeouts zentral konfigurierbar machen",
+      "status": "done",
+      "owner": "local/opencode",
+      "branch": "fix/T-976-api-turn-reveal",
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26",
+      "depends_on": [],
+      "scope": [
+        "src/config/limits.rs",
+        "src/config/mod.rs",
+        "src/api_bridge/catalog.rs",
+        "src/api_bridge/tests.rs",
+        "src/timeouts.rs",
+        "src/relay.rs",
+        "src/browser/backend.rs",
+        "src/browser/send.rs",
+        "src/browser/surface.rs",
+        "src/webview_runtime.rs",
+        "src/worker_pool.rs",
+        "examples/pi/extensions/webagent-models.ts",
+        "examples/pi/models.json",
+        "docs/API_BRIDGE.md",
+        "docs/CURRENT_WORK.md"
+      ],
+      "objective": "Nutzeranforderung: '128k kommt mir zu wenig vor. ausserdem output limit erhoehen' und 'alle hard codierten timeouts muessen verschwinden'. Die beworbenen Modellgrenzen waren an fuenf Stellen dupliziert und die turnkritischen Zeitwerte verstreut hart codiert.",
+      "non_goals": [
+        "Keine Aenderung an der Semantik von resolve_timeout (Override bleibt Minimum ausser bei Auto+Attachment).",
+        "Keine UI-Mikro-Sleeps im Millisekundenbereich und keine Test-Fixtures umgebaut.",
+        "Keine verifizierten pro-Brain-Kontingente behauptet; die Werte sind beworbene Defaults."
+      ],
+      "dod": "Ein zentraler, env-ueberschreibbarer Ort fuer Kontext/Output (1.000.000 / 65.536) und alle turnkritischen Dauern; Katalog, Pi-Erweiterung, statische Vorlagen und Doku konsistent; Gates gruen; Werte am live Katalog belegt.",
+      "verification": "fmt 0, clippy 0, 1525 passed / 0 failed / 1 ignored, diff-check 0. GET /v1/models gegen die neu gestartete Bridge: neun Modelle, context_window=1000000, max_tokens=65536. Neue Tests: modellgrenzen_defaults_sind_deutlich_hoever_als_128k, modellgrenzen_env_override_und_fallback, zentrale_dauern_sind_env_ueberschreibbar_und_fail_closed.",
+      "proof_path": "docs/proofs/T-976/api-turn-reveal.md",
+      "handoff": "Umschreibbare Env-Variablen: WEBAGENT_MODEL_CONTEXT_WINDOW, WEBAGENT_MODEL_MAX_TOKENS sowie WEBAGENT_RELAY_*_MS, WEBAGENT_BROWSER_*_MS, WEBAGENT_SEND_*_MS, WEBAGENT_SURFACE_*_MS, WEBAGENT_WEBVIEW_*_MS, WEBAGENT_STARTUP_GRACE_*_MS. Effektiv erst nach Bridge-Neustart wirksam."
     }
   ]
 }

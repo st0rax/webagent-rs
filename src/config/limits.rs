@@ -105,6 +105,49 @@ pub fn resolve_max_run_wall_secs(raw: Option<&str>) -> u64 {
     }
 }
 
+/// Vom `/v1/models`-Katalog beworbene Grenzen in Tokens.
+///
+/// Die alten Werte (128.000 Kontext / 16.384 Output) waren konservative
+/// Schaetzungen. Beide Werte bleiben per Env ueberschreibbar. Dies ist die
+/// einzige Quelle: Katalog, Pi-Extension und Doku leiten sich daraus ab.
+pub const DEFAULT_MODEL_CONTEXT_WINDOW: u64 = 1_000_000;
+pub const DEFAULT_MODEL_MAX_TOKENS: u64 = 65_536;
+
+/// Reine Auflösung der beworbenen Modellgrenzen (ohne Env-Zugriff, für Tests).
+/// `None`/leer/`0`/ungültig → Default; positive Werte werden übernommen.
+pub fn resolve_model_limits(raw_context: Option<&str>, raw_output: Option<&str>) -> (u64, u64) {
+    fn one(raw: Option<&str>, default: u64) -> u64 {
+        match raw.map(str::trim) {
+            Some(s) if !s.is_empty() => match s.parse::<u64>() {
+                Ok(0) | Err(_) => default,
+                Ok(n) => n,
+            },
+            _ => default,
+        }
+    }
+    (
+        one(raw_context, DEFAULT_MODEL_CONTEXT_WINDOW),
+        one(raw_output, DEFAULT_MODEL_MAX_TOKENS),
+    )
+}
+
+fn env_model_limits() -> (u64, u64) {
+    resolve_model_limits(
+        env::var("WEBAGENT_MODEL_CONTEXT_WINDOW").ok().as_deref(),
+        env::var("WEBAGENT_MODEL_MAX_TOKENS").ok().as_deref(),
+    )
+}
+
+/// Kontextfenster, das der Katalog und die Pi-Konfiguration bewerben.
+pub fn model_context_window() -> u64 {
+    env_model_limits().0
+}
+
+/// Output-Limit, das der Katalog und die Pi-Konfiguration bewerben.
+pub fn model_max_tokens() -> u64 {
+    env_model_limits().1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,6 +158,27 @@ mod tests {
         assert_eq!(
             max_observation_chars_for(None::<usize>),
             DEFAULT_MAX_OBSERVATION_CHARS
+        );
+    }
+
+    #[test]
+    fn modellgrenzen_defaults_sind_deutlich_hoever_als_128k() {
+        let (context, output) = resolve_model_limits(None, None);
+        assert_eq!(context, 1_000_000);
+        assert_eq!(output, 65_536);
+        assert!(context > 128_000);
+        assert!(output > 16_384);
+    }
+
+    #[test]
+    fn modellgrenzen_env_override_und_fallback() {
+        assert_eq!(
+            resolve_model_limits(Some("200000"), Some("32000")),
+            (200_000, 32_000)
+        );
+        assert_eq!(
+            resolve_model_limits(Some("0"), Some("nonsense")),
+            (DEFAULT_MODEL_CONTEXT_WINDOW, DEFAULT_MODEL_MAX_TOKENS)
         );
     }
 }

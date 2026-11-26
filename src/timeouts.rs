@@ -160,6 +160,103 @@ fn env_float(name: &str, default: f64) -> f64 {
         .unwrap_or(default)
 }
 
+/// Zentrale Einzeldauern des Relay-/Browser-Pfads (Millisekunden).
+///
+/// Alles, was einen Turn abbrechen oder merklich verlaengern kann, steht hier
+/// statt verstreut an den Aufrufstellen. Jede Dauer ist per Umgebungsvariable
+/// ueberschreibbar; `0`/ungueltig faellt auf den Default zurueck, damit ein
+/// Tippfehler nie ein Zeitlimit aufhebt. Damit gibt es weiterhin genau EINE
+/// Timeout-Politik — die bereits bestehende `resolve_timeout` Familie und
+/// diese Dauern liegen im selben Modul.
+fn env_ms(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(default)
+}
+
+macro_rules! env_duration {
+    ($getter:ident, $env_name:literal, $default_ms:expr) => {
+        #[doc = concat!("Per `", $env_name, "` ueberschreibbar.")]
+        pub fn $getter() -> std::time::Duration {
+            std::time::Duration::from_millis(env_ms($env_name, $default_ms))
+        }
+    };
+}
+
+// Relay: Abfrageintervalle waehrend Bild-/Antwortwarten.
+env_duration!(relay_image_poll, "WEBAGENT_RELAY_IMAGE_POLL_MS", 750);
+env_duration!(relay_response_poll, "WEBAGENT_RELAY_RESPONSE_POLL_MS", 700);
+// Browser: Navigation und Sichtphasen.
+env_duration!(
+    browser_nav_timeout,
+    "WEBAGENT_BROWSER_NAV_TIMEOUT_MS",
+    15_000
+);
+env_duration!(
+    browser_navigate_timeout,
+    "WEBAGENT_BROWSER_NAVIGATE_TIMEOUT_MS",
+    30_000
+);
+env_duration!(browser_settle, "WEBAGENT_BROWSER_SETTLE_MS", 1_500);
+// Senden: harte Deadlines der einzelnen Phasen.
+env_duration!(
+    send_submit_deadline,
+    "WEBAGENT_SEND_SUBMIT_DEADLINE_MS",
+    10_000
+);
+env_duration!(
+    send_response_deadline,
+    "WEBAGENT_SEND_RESPONSE_DEADLINE_MS",
+    4_000
+);
+env_duration!(
+    send_verify_deadline,
+    "WEBAGENT_SEND_VERIFY_DEADLINE_MS",
+    5_000
+);
+// Surface: Warten auf Start und stabile Seite.
+env_duration!(
+    surface_startup_deadline,
+    "WEBAGENT_SURFACE_STARTUP_DEADLINE_MS",
+    60_000
+);
+env_duration!(
+    surface_stable_deadline,
+    "WEBAGENT_SURFACE_STABLE_DEADLINE_MS",
+    180_000
+);
+env_duration!(
+    surface_stable_grace,
+    "WEBAGENT_SURFACE_STABLE_GRACE_MS",
+    20_000
+);
+env_duration!(
+    surface_stable_hold,
+    "WEBAGENT_SURFACE_STABLE_HOLD_MS",
+    4_000
+);
+// WebView-Bruecke: Wake, Kanal und JS-Ausfuehrung.
+env_duration!(
+    webview_wake_timeout,
+    "WEBAGENT_WEBVIEW_WAKE_TIMEOUT_MS",
+    15_000
+);
+env_duration!(
+    webview_recv_timeout,
+    "WEBAGENT_WEBVIEW_RECV_TIMEOUT_MS",
+    8_000
+);
+env_duration!(
+    webview_eval_timeout,
+    "WEBAGENT_WEBVIEW_EVAL_TIMEOUT_MS",
+    35_000
+);
+// Worker: Startup-Grace, bevor ein Heartbeat als stale gilt.
+env_duration!(startup_grace_min, "WEBAGENT_STARTUP_GRACE_MIN_MS", 30_000);
+env_duration!(startup_grace_max, "WEBAGENT_STARTUP_GRACE_MAX_MS", 120_000);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,6 +325,29 @@ mod tests {
         let base = resolve_timeout("ensure_ready", "chatgpt", "", None);
         assert!(base >= 80.0); // 45.0 * 1.0 * 2.0 = 90.0, clamped by min 30.0
         std::env::remove_var("WEBAGENT_TIMEOUT_MULT");
+    }
+
+    #[test]
+    fn zentrale_dauern_sind_env_ueberschreibbar_und_fail_closed() {
+        let _g = env_guard();
+        let name = "WEBAGENT_WEBVIEW_WAKE_TIMEOUT_MS";
+        std::env::set_var(name, "4200");
+        assert_eq!(
+            webview_wake_timeout(),
+            std::time::Duration::from_millis(4_200)
+        );
+        // 0 und ungueltig duerfen das Limit nicht aufheben.
+        std::env::set_var(name, "0");
+        assert_eq!(
+            webview_wake_timeout(),
+            std::time::Duration::from_millis(15_000)
+        );
+        std::env::set_var(name, "nonsense");
+        assert_eq!(
+            webview_wake_timeout(),
+            std::time::Duration::from_millis(15_000)
+        );
+        std::env::remove_var(name);
     }
 
     #[test]

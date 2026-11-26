@@ -194,6 +194,10 @@ pub trait RelayBackend {
         cancelled: &dyn Fn() -> bool,
     ) -> Result<BrainResponse, String>;
     fn relay_stop(&mut self) -> Result<(), String>;
+    /// API turns need a visible renderer. Backends without a window no-op.
+    fn relay_reveal_for_turn(&mut self) -> Result<(), String> {
+        Ok(())
+    }
     /// T-950: web-search state after `new_chat` and before sending. A backend
     /// without a page has nothing to observe and returns `None`.
     fn relay_web_search_state(&mut self) -> Option<WebSearchObservation> {

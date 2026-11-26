@@ -20,9 +20,10 @@ pub use brains::{
 };
 pub use clone::{CloneEntry, DryRunReport, ProfileClonePlan, ProfileClonePlanner};
 pub use limits::{
-    max_observation_chars, max_observation_chars_for, max_run_wall_secs, resolve_max_run_wall_secs,
-    AcceptedChars, DEFAULT_MAX_OBSERVATION_CHARS, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT,
-    MAX_RUN_WALL_SECONDS,
+    max_observation_chars, max_observation_chars_for, max_run_wall_secs, model_context_window,
+    model_max_tokens, resolve_max_run_wall_secs, resolve_model_limits, AcceptedChars,
+    DEFAULT_MAX_OBSERVATION_CHARS, DEFAULT_MODEL_CONTEXT_WINDOW, DEFAULT_MODEL_MAX_TOKENS,
+    LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT, MAX_RUN_WALL_SECONDS,
 };
 pub use paths::{
     data_dir, memory_dir, profiles_dir, root_dir, runs_dir, shared_profile_dir, src_dir,
