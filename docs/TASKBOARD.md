@@ -176,6 +176,25 @@ value restored in the same session (10054 ms). Raw transcript and DOM survey:
 passed; the remaining structural gaps in `model` and `managed_tools` are
 unchanged. No tag, release, or deployment.
 
+## Phase 16 - architecture layers (T-997..T-1005)
+
+Source: `docs/TASKBOARD.json`; edges are `depends_on`. Phase 16 starts at T-997 because
+T-976/T-977 are already `done` on the published board and T-978..T-996 are the Play-Mode tasks.
+The source fragment `TASKBOARD.refactor.json` was absent from the workspace and git history;
+the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997..T-1005.
+
+| ID | Phase | Task | Type | Status | Owner | Branch |
+|---|---|---|---|---|---|---|
+| T-997 | 16 | Layer ratchet: guard test for module dependency direction and cycles | test | claimed | local/opencode | feature/T-997-arch-layers |
+| T-998 | 16 | Break protocol/brain -> browser edges | refactor | free | - | - |
+| T-999 | 16 | Remove config -> worker_pool dependency | refactor | free | - | - |
+| T-1000 | 16 | Remove config -> brain_limits dependency | refactor | free | - | - |
+| T-1001 | 16 | Resolve capability <-> capability_proof cycle | refactor | free | - | - |
+| T-1002 | 16 | Resolve remaining TUI-side cycles | refactor | free | - | - |
+| T-1003 | 16 | Keep Windows GUI dependencies out of the browser-free build | build | free | - | - |
+| T-1004 | 16 | Crate split decision: core / transport / api (design only) | docs | free | - | - |
+| T-1005 | 16 | CLI structure: command groups per layer (design only) | docs | free | - | - |
+
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
 <!-- TASKBOARD-MIRROR-BEGIN -->
@@ -281,4 +300,13 @@ unchanged. No tag, release, or deployment.
 | T-973 | done |
 | T-974 | done |
 | T-975 | done |
+| T-997 | claimed |
+| T-998 | free |
+| T-999 | free |
+| T-1000 | free |
+| T-1001 | free |
+| T-1002 | free |
+| T-1003 | free |
+| T-1004 | free |
+| T-1005 | free |
 <!-- TASKBOARD-MIRROR-END -->

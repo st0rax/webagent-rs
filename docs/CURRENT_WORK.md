@@ -1,5 +1,14 @@
 # Current Work
 
+## 2026-11-26 - Phase 16 board prepared, T-997 claimed (bookkeeping only)
+
+- **Branch:** `feature/T-997-arch-layers`, created from clean `master` `93d33a3` in worktree `C:\Users\storax\Documents\Standardprojekt\webagent-rs-phase16`. The initial `feat/…` name was renamed before any commit: `scripts/commit-as-agent.ps1` and `taskboard::tests::taskboard_invarianten_halten` only allow `feature|fix|docs|chore|refactor|test` prefixes for new claims. The Play branch `fix/T-976-api-turn-reveal` stays untouched at `3779d47` (pushed; no merge/PR/tag).
+- **Board:** Added the nine phase-16 tasks `T-997..T-1005` to `docs/TASKBOARD.json` and to the machine-readable mirror plus a human-readable phase section in `docs/TASKBOARD.md`. Source: the JSON fragment pasted by the owner; `TASKBOARD.refactor.json` was absent from workspace and all git history. Owner-approved renumbering from `T-976..T-984` to `T-997..T-1005` covers `depends_on`, proof paths and verification strings; the historical `T-975` baseline reference stays unchanged. Board now has 109 tasks.
+- **Claim:** `T-997` (`Layer ratchet: guard test for module dependency direction and cycles`) is `claimed` by `local/opencode` on `feature/T-997-arch-layers` with `claimed_at=2026-11-26`. `T-998..T-1005` remain `free`.
+- **Baseline (measured, not quoted):** `cargo test --lib --quiet` on the unmodified branch base: **1521 passed / 0 failed / 1 ignored** in 57.96 s. This matches the prompt's `T-975` number; the prompt's other figures (89 top-level modules, about 94k lines, five cycles) still need re-measurement inside T-997.
+- **Gate for this bookkeeping commit:** `cargo test --lib taskboard::tests::taskboard_invarianten_halten -- --exact` 1 passed; `git diff --check` 0. No source code, Cargo.toml, CLI or protocol change in this commit.
+- **Next:** implement only the T-997 scope (`tests/arch_layers.rs`, `docs/arch/layers.toml`, `docs/arch/layer_exceptions.txt`, `docs/arch/LAYERS.md`, `docs/proofs/T-997/README.md`); then run the full four gates, record before/after test counts, push and stop for review. No next task is claimed.
+
 ## 2026-11-26 - T-975: Pi-Abdeckung geschlossen
 
 - **Branch:** `chore/T-975-pi-full-coverage`, Basis `master` `c9050f3`. T-975 ist `done` mit `done_at=2026-11-26`; Board und Markdown-Spiegel sind nachgezogen. Direkte Nutzeranforderung: „ja bitte auf 100% hinarbeiten". Keine Runtime-Änderung, kein Portwechsel, kein Eingriff in fremde Pi-Provider.

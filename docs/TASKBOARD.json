@@ -2384,5 +2384,234 @@
       "proof_path": "docs/CURRENT_WORK.md",
       "verification": "pi --list-models webagent exit 0 mit neun Modellen (auto, chatgpt, claude, deepseek, gemini, kimi, mistral, qwen, zai). Alle neun echten Pi-Turns exit 0 mit exaktem Marker WEBAGENT-<BRAIN>-OK-20261126. Dialog ueber echte Autostart-.lnk gestartet: sichtbares Fenster hwnd=23791118, visible=True, rect=122,130,1251,765; n{ENTER} -> optin=False port=False und prompt.log Antwort=aus; j{ENTER} -> optin=True port=True und Antwort=start, Bridge PID=7000 gesund. Beleg docs/proofs/T-975/pi-volle-abdeckung.md. Gates: fmt 0, clippy 0, 1521 passed / 0 failed / 1 ignored, diff-check 0.",
       "claimed_note": "Direkte Nutzeranforderung: 'ja bitte auf 100% hinarbeiten'."
-    }  ]
+    },
+    {
+      "id": "T-997",
+      "phase": "16",
+      "type": "test",
+      "title": "Layer ratchet: guard test for module dependency direction and cycles",
+      "status": "claimed",
+      "depends_on": [],
+      "scope": [
+        "tests/arch_layers.rs",
+        "docs/arch/layers.toml",
+        "docs/arch/layer_exceptions.txt",
+        "docs/arch/LAYERS.md",
+        "docs/proofs/T-997/"
+      ],
+      "objective": "Add a test that builds the top-level module graph from src/**/*.rs (edges = `crate::<module>` in production code; strip comments, doc comments, string literals and #[cfg(test)] first, otherwise doc links like [`crate::tui`] create false edges) and enforces: (a) no cycle outside docs/arch/layer_exceptions.txt, (b) no edge from a lower to a higher layer per docs/arch/layers.toml. Seed the exception list with the currently measured cycles: {api_bridge, brain, brain_probe, browser, browser_inference, protocol, relay}; {brain_limits, circuit_breaker, config, pool_failover, worker_pool}; {repl, tui, tui_ansi}; {capability, capability_proof}; {tui_load, tui_state}. The exception list may only shrink (ratchet). docs/arch/LAYERS.md documents the layer model (L0 remote chat, L1 runtime/WebView, L2 link/page driver and selectors, L3 routing/pool, L4 transport reliability, L5 session/persistence, L6 protocol/presentation, L7 applications: web UI, provider API, controller; plus a cross-cutting class for config, timeouts, events).",
+      "dod": "Test runs inside cargo test --lib or as an integration test, needs no browser or network, fails when a new cycle or upward edge appears, and the five known cycles are the only listed exceptions. Layer assignment of every top-level module is committed; ambiguous modules are listed with a one-line reason.",
+      "non_goals": [
+        "No behavior change: CLI, WEBAGENT/1 protocol, API responses and shell_policy decisions stay identical.",
+        "Do not touch [profile.*] in Cargo.toml (codegen-units = 16 prevents the 0xC0000005 loader crash).",
+        "No release, tag or deployment.",
+        "No code moves in this task."
+      ],
+      "proof_path": "docs/proofs/T-997/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
+      "owner": "local/opencode",
+      "branch": "feature/T-997-arch-layers",
+      "claimed_at": "2026-11-26"
+    },
+    {
+      "id": "T-998",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Break protocol/brain -> browser edges (shrinks the 7-module cycle)",
+      "status": "free",
+      "depends_on": [
+        "T-997"
+      ],
+      "scope": [
+        "src/protocol/parser.rs",
+        "src/protocol/mod.rs",
+        "src/brain.rs",
+        "src/browser/mod.rs",
+        "src/browser/blocking.rs"
+      ],
+      "objective": "Two pure text helpers live in the wrong module: `has_protocol_payload` (src/browser/mod.rs) is called from src/brain.rs:170 and `block_phrase_in_text` is called from src/protocol/parser.rs:892. Move both into the protocol layer (or a new leaf module under src/protocol/) and re-export from browser so existing paths keep compiling. Locate the exact definition of block_phrase_in_text with rg before editing.",
+      "dod": "`rg 'crate::browser' src/protocol src/brain.rs` returns nothing; layer test exceptions for the 7-module cycle are reduced accordingly and the removed edge is documented; test count unchanged.",
+      "non_goals": [
+        "No behavior change: CLI, WEBAGENT/1 protocol, API responses and shell_policy decisions stay identical.",
+        "Do not touch [profile.*] in Cargo.toml (codegen-units = 16 prevents the 0xC0000005 loader crash).",
+        "No release, tag or deployment."
+      ],
+      "proof_path": "docs/proofs/T-998/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+    },
+    {
+      "id": "T-999",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Remove config -> worker_pool dependency (atomic_write and retry constant)",
+      "status": "free",
+      "depends_on": [
+        "T-997"
+      ],
+      "scope": [
+        "src/config/brains.rs",
+        "src/worker_pool.rs",
+        "src/pool_state.rs",
+        "src/fsutil.rs"
+      ],
+      "objective": "config/brains.rs:322 uses crate::worker_pool::atomic_write (re-exported from pool_state) and :101 uses worker_pool::RETRY_UNAVAILABLE_AFTER_SECS. Place both in a dependency-free leaf (check rg for an existing util first; AGENTS.md rule 1: never build in parallel to existing code) and import from there in config and worker_pool.",
+      "dod": "`rg 'crate::worker_pool' src/config` returns nothing; behavior identical; layer exceptions updated.",
+      "non_goals": [
+        "No behavior change: CLI, WEBAGENT/1 protocol, API responses and shell_policy decisions stay identical.",
+        "Do not touch [profile.*] in Cargo.toml (codegen-units = 16 prevents the 0xC0000005 loader crash).",
+        "No release, tag or deployment."
+      ],
+      "proof_path": "docs/proofs/T-999/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+    },
+    {
+      "id": "T-1000",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Remove config -> brain_limits dependency",
+      "status": "free",
+      "depends_on": [
+        "T-999"
+      ],
+      "scope": [
+        "src/config/limits.rs",
+        "src/brain_limits.rs"
+      ],
+      "objective": "config/limits.rs:47 calls brain_limits::accepted_chars while brain_limits imports config::data_dir. Invert it: config exposes only the data path; the lookup of accepted_chars moves to the caller or into brain_limits, with config::limits taking the value by parameter.",
+      "dod": "No import of brain_limits in src/config; the cycle {brain_limits, circuit_breaker, config, pool_failover, worker_pool} is gone or reduced and the exception list shrinks accordingly.",
+      "non_goals": [
+        "No behavior change: CLI, WEBAGENT/1 protocol, API responses and shell_policy decisions stay identical.",
+        "Do not touch [profile.*] in Cargo.toml (codegen-units = 16 prevents the 0xC0000005 loader crash).",
+        "No release, tag or deployment."
+      ],
+      "proof_path": "docs/proofs/T-1000/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+    },
+    {
+      "id": "T-1001",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Resolve capability <-> capability_proof cycle",
+      "status": "free",
+      "depends_on": [
+        "T-997"
+      ],
+      "scope": [
+        "src/capability.rs",
+        "src/capability_proof.rs",
+        "src/capability_types.rs"
+      ],
+      "objective": "Shared types between capability and capability_proof go into one leaf module so the dependency runs in one direction only. AGENTS.md section 2 still holds: capability_proof stays the single proof gate, no second proof store.",
+      "dod": "Cycle removed from the exception list; no behavior change; proof file format unchanged.",
+      "non_goals": [
+        "No behavior change: CLI, WEBAGENT/1 protocol, API responses and shell_policy decisions stay identical.",
+        "Do not touch [profile.*] in Cargo.toml (codegen-units = 16 prevents the 0xC0000005 loader crash).",
+        "No release, tag or deployment."
+      ],
+      "proof_path": "docs/proofs/T-1001/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+    },
+    {
+      "id": "T-1002",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Resolve remaining TUI-side cycles ({repl, tui, tui_ansi}, {tui_load, tui_state})",
+      "status": "free",
+      "depends_on": [
+        "T-997"
+      ],
+      "scope": [
+        "src/repl/",
+        "src/tui.rs",
+        "src/tui_ansi.rs",
+        "src/tui_load.rs",
+        "src/tui_state.rs"
+      ],
+      "objective": "Low priority: the TUI is a legacy feature (docs/WEB_UI_API_TOOL_RESET.md). Fix the two small cycles only if each needs less than one small change; otherwise record a justification and keep them as permanent documented exceptions.",
+      "dod": "Both cycles removed, or each kept as an exception with a written reason in docs/arch/layer_exceptions.txt.",
+      "non_goals": [
+        "No behavior change: CLI, WEBAGENT/1 protocol, API responses and shell_policy decisions stay identical.",
+        "Do not touch [profile.*] in Cargo.toml (codegen-units = 16 prevents the 0xC0000005 loader crash).",
+        "No release, tag or deployment.",
+        "No TUI feature work."
+      ],
+      "proof_path": "docs/proofs/T-1002/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+    },
+    {
+      "id": "T-1003",
+      "phase": "16",
+      "type": "build",
+      "title": "Feature hygiene: keep Windows GUI dependencies out of the browser-free build",
+      "status": "free",
+      "depends_on": [
+        "T-997"
+      ],
+      "scope": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "src/lib.rs",
+        "docs/proofs/T-1003/"
+      ],
+      "objective": "In [target.'cfg(windows)'.dependencies] webview2-com, windows, arboard, clipboard-win and image are not optional, so `--no-default-features` still compiles them on Windows. Make them optional behind the `webview` feature (dep: syntax inside the target table), and move windows-sys to cfg(windows) if only Windows code uses it. Check with rg which non-GUI code needs the `windows` crate (JobObjects, ToolHelp) before moving it; keep only what the browser-free build requires. Measure and report link time and test binary size of `cargo test --lib --no-default-features` before and after.",
+      "dod": "`cargo tree --no-default-features -e normal` on Windows lists none of the GUI crates; default build and Linux build still compile; `webagent --help` and `webagent diagnose` run on the built binary (the 0xC0000005 crash is not caught by the compiler); measurements recorded in the proof.",
+      "non_goals": [
+        "No behavior change: CLI, WEBAGENT/1 protocol, API responses and shell_policy decisions stay identical.",
+        "Do not touch [profile.*] in Cargo.toml (codegen-units = 16 prevents the 0xC0000005 loader crash).",
+        "No release, tag or deployment."
+      ],
+      "proof_path": "docs/proofs/T-1003/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check; cargo test --locked --no-default-features; cargo tree --no-default-features -e normal; run webagent --help and webagent diagnose --brain <id> --headless on the produced binary"
+    },
+    {
+      "id": "T-1004",
+      "phase": "16",
+      "type": "docs",
+      "title": "Crate split decision: core / transport / api (design only)",
+      "status": "free",
+      "depends_on": [
+        "T-998",
+        "T-999",
+        "T-1000",
+        "T-1001",
+        "T-1003"
+      ],
+      "scope": [
+        "docs/arch/CRATE_SPLIT.md",
+        "docs/proofs/T-1004/"
+      ],
+      "objective": "Using the cleaned graph, decide whether and how to cut a workspace. Candidates: a small core (protocol, executor, shell_policy, brain trait, run_store, transcript, timeouts, events), a transport crate (browser, webview_runtime, page_driver, browser_pool, selectors), an api crate (api_bridge, browser_inference, session, source_scope) that depends only on the BrainBackend trait. Include: measured link time and build time baseline, dependency tree per crate, what needs a trait boundary (api_bridge calls relay and browser_inference today), where [profile.*] must stay (workspace root only), and an ordered list of follow-up tasks. Decision gate: wait for owner approval before any crate extraction.",
+      "dod": "Document committed with measurements, a recommended cut and an explicit no-go list; follow-up tasks proposed but not created.",
+      "non_goals": [
+        "No code changes.",
+        "No crate extraction without explicit owner approval.",
+        "Do not touch [profile.*] in Cargo.toml (codegen-units = 16 prevents the 0xC0000005 loader crash).",
+        "No release, tag or deployment."
+      ],
+      "proof_path": "docs/proofs/T-1004/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+    },
+    {
+      "id": "T-1005",
+      "phase": "16",
+      "type": "docs",
+      "title": "CLI structure: command groups per layer with legacy aliases (design only)",
+      "status": "free",
+      "depends_on": [
+        "T-997"
+      ],
+      "scope": [
+        "docs/arch/CLI_GROUPS.md",
+        "docs/proofs/T-1005/"
+      ],
+      "objective": "Snapshot the current `webagent --help` and subcommand helps. Propose groups instead of a flat list, keeping every old name as an alias: brain (login, login-all, show, hide), run (ask, run, relay, repl), check (diagnose, doctor, watchdog, brains-health, maintenance-check, canary), api (serve), dev/advanced (autoresearch, benchmark, tui). Define what stays visible in the default help.",
+      "dod": "Document with before/after help text and an alias table; no code changes.",
+      "non_goals": [
+        "No code changes.",
+        "No removal of any existing command name."
+      ],
+      "proof_path": "docs/proofs/T-1005/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+    }
+  ]
 }
