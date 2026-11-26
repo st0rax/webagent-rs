@@ -1,5 +1,9 @@
 # T-1000 proof: config no longer reaches brain_limits
 
+> **Referenz.** Task proof for T-1000. The live architecture ratchet remains
+> `tests/arch_layers.rs`, `docs/arch/layers.toml` and
+> `docs/arch/layer_exceptions.txt`.
+
 **Claim.** Branch `refactor/T-1000-config-brain-limits-edge`, claim commit `3d038ea`, owner `local/opencode`, 2026-11-26. The owner's "autonom weiterarbeiten" overrode the formal `depends_on: T-999` gate; T-999 stays `claimed` because it is not merged into `master`.
 
 ## Changes
