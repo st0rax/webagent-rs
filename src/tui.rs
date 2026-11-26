@@ -190,10 +190,9 @@ fn run_tui_ratatui(
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
 
+    use crate::tui_load::load_state;
     use crate::tui_render::ui;
-    use crate::tui_state::{
-        load_state, parse_view, select_wrap, App, InputMode, LogFilter, Panel, View,
-    };
+    use crate::tui_state::{parse_view, select_wrap, App, InputMode, LogFilter, Panel, View};
 
     let all = available_brain_ids();
     let selected: Vec<String> = if brains.trim().is_empty() {

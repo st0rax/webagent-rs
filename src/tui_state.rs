@@ -1,10 +1,9 @@
 //! tui_state — App-State + State-Management für TUI
 //!
 //! Kern-Strukturen: App, AgentView, select_wrap, on_tick.
-//! Die dateibasierte Beschaffung (`load_state`) liegt in [`crate::tui_load`].
-//! Rein-Rust, keine I/O im Modul.
-
-pub use crate::tui_load::load_state;
+//! Die dateibasierte Beschaffung (`load_state`) liegt in [`crate::tui_load`]
+//! und wird dort direkt importiert — kein Re-Export, damit die Abhängigkeit
+//! nur in eine Richtung laeuft. Rein-Rust, keine I/O im Modul.
 
 /// Spinner-Frames für Animation (80ms Tick).
 const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];

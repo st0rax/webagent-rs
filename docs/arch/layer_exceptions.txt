@@ -1,19 +1,26 @@
 # Architecture ratchet for tests/arch_layers.rs.
 # Measured on master 93d33a3: 87 top-level modules, 274 crate::<module> edges,
-# six strongly connected components; T-1000 removed brain_limits/config and
-# T-1001 removed capability/capability_proof, leaving four cycles. Every entry
-# below is grandfathered debt;
+# six strongly connected components; T-1000 removed brain_limits/config,
+# T-1001 removed capability/capability_proof and T-1002 removed
+# tui_load/tui_state, leaving three cycles. Every entry below is
+# grandfathered debt;
 # the test fails on a new entry and on a stale entry (so the list can only shrink).
 #
 # Format: cycle:<sorted,comma-separated module names> | edge:<lower>-><higher>
 
 # Cycles (six measured on master; the prompt listed five and missed
 # browser_pool, bin_hooks and the benchmark/controller cycle. T-1000 removed
-# brain_limits,config and T-1001 capability,capability_proof, so four remain).
+# brain_limits,config, T-1001 capability,capability_proof and T-1002
+# tui_load,tui_state, so three remain).
 cycle:api_bridge,brain_probe,browser,browser_inference,browser_pool,relay
 cycle:autoresearch,bench_harvest,bench_scoring,benchmark,controller,runs_report
+# T-1002 keeps bin_hooks/repl/tui/tui_ansi deliberately: the TUI is a legacy
+# feature (docs/WEB_UI_API_TOOL_RESET.md) and this is not a small change.
+# Breaking it would mean moving slash-command parsing, PersistentQueryPool,
+# run_tui/run_evolve and the ANSI control helpers out of three modules, with
+# no behavior gain. The task explicitly allows a documented permanent
+# exception; no TUI feature work was requested.
 cycle:bin_hooks,repl,tui,tui_ansi
-cycle:tui_load,tui_state
 
 # T-998: the former eight-module browser cycle shrank to six modules; `brain`
 # and `protocol` dropped out. `browser->protocol` was hidden inside that cycle

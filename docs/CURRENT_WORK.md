@@ -1,5 +1,14 @@
 # Current Work
 
+## 2026-11-26 - T-1002 implemented: tui_load/tui_state cycle removed, legacy TUI cycle documented
+
+- **Branch/claim:** `refactor/T-1002-tui-cycles`, claim commit `06f5f2d`, owner `local/opencode`. T-1002 stays `claimed`; no merge, no `done`, no PR. Formal `depends_on: T-997` was overridden by the owner's standing "autonom weiterarbeiten"; T-997 stays `claimed`.
+- **Bestand zuerst geprüft:** the only `tui_state -> tui_load` production edge was the `pub use crate::tui_load::load_state;` re-export, consumed solely by `tui.rs`. Removed it and imported `load_state` directly in `tui.rs`. The `bin_hooks,repl,tui,tui_ansi` cycle spans four modules and slash-command/`PersistentQueryPool`/`run_tui`/ANSI helpers; per the task's low-priority rule it stays with a written reason in `docs/arch/layer_exceptions.txt` (legacy TUI, no behavior gain, no feature work). Proof: `docs/proofs/T-1002/README.md`.
+- **Guard delta:** 88 modules / 274 edges (unchanged: one edge moved from `tui_state` to `tui`) / 3 cycles (was 4) / 32 upward edges (unchanged). Removed exception `cycle:tui_load,tui_state`; the remaining cycle line now carries its justification comment.
+- **Gates measured:** `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --lib --quiet` 1523 passed / 0 failed / 1 ignored (unchanged); `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1523 lib + 7 binary-unit + 4 integration passed; `cargo test --locked --no-default-features --test arch_layers --quiet` 4 passed; `git diff --check` 0.
+- **Binary smoke blocked, not a regression:** `--help` and `diagnose` still exit `-1073741515` (`0xC0000005`) before `main`, as at claim time. `Cargo.toml` and `[profile.*]` untouched.
+- **Grenze / offen:** no login, credentials, live provider call, TUI feature work, release, tag, deployment, PR or merge. T-1003..T-1005 remain free; T-1004 still needs explicit owner approval. Per the standing instruction, the next free slice (T-1003) may be claimed; stop before T-1004.
+
 ## 2026-11-26 - T-1001 implemented: capability <-> capability_proof cycle removed
 
 - **Branch/claim:** `refactor/T-1001-capability-cycle`, claim commit `2de15c5`, owner `local/opencode`. T-1001 stays `claimed`; no merge, no `done`, no PR. Formal `depends_on: T-997` was overridden by the owner's standing "autonom weiterarbeiten"; T-997 stays `claimed`.
