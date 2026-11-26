@@ -157,7 +157,7 @@ impl SessionService {
             run_id: run_id.to_string(),
             brain: brain.to_string(),
             task: task.to_string(),
-            created_at: crate::now_rfc3339(),
+            created_at: webagent_core::now_rfc3339(),
             status: "registered".to_string(),
             stream: EventStream::new(run_id),
             sources: SourceScope::load_default(),

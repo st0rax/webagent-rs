@@ -200,7 +200,7 @@ fn auto_attach_timeout_secs(
     config: &BridgeConfig,
 ) -> Option<f64> {
     if via_auto && !attachments.is_empty() {
-        Some(crate::timeouts::resolve_auto_attach_budget(
+        Some(webagent_core::timeouts::resolve_auto_attach_budget(
             routed_brain,
             task,
             config.timeout_secs,

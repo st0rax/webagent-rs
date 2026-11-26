@@ -1,9 +1,9 @@
 //! First-run OOBE wizard (Python `oobe.run_oobe_wizard` subset).
 
-use crate::config::{available_brain_ids, bot2bot_root, data_dir};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 use std::path::PathBuf;
+use webagent_core::config::{available_brain_ids, bot2bot_root, data_dir};
 
 const DEFAULT_BRAINS: &[&str] = &["chatgpt", "kimi", "gemini"];
 
@@ -36,7 +36,7 @@ pub fn load_oobe_state() -> OobeState {
 pub fn save_oobe_state(active_brains: &[String], login_skipped: bool) -> std::io::Result<()> {
     let payload = OobeState {
         completed: true,
-        completed_at: crate::now_rfc3339(),
+        completed_at: webagent_core::now_rfc3339(),
         active_brains: active_brains.to_vec(),
         login_skipped,
     };

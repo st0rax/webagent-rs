@@ -45,7 +45,7 @@ impl CommsStore {
 
     /// Store unter dem Standardpfad `data/comms/`.
     pub fn default_store() -> Self {
-        Self::new(crate::config::data_dir().join("comms"))
+        Self::new(webagent_core::config::data_dir().join("comms"))
     }
 
     fn history_path(&self) -> PathBuf {
@@ -77,7 +77,7 @@ impl CommsStore {
         let pid = std::process::id();
         format!(
             "{}_{:08x}",
-            crate::now_run_stamp(),
+            webagent_core::now_run_stamp(),
             (nanos ^ pid).wrapping_mul(0x9e3779b9)
         )
     }
@@ -118,7 +118,7 @@ impl CommsStore {
     ) -> std::io::Result<Message> {
         let msg = Message {
             id: Self::new_id(),
-            ts: crate::now_rfc3339(),
+            ts: webagent_core::now_rfc3339(),
             from: from.to_string(),
             to: to.to_string(),
             subject: subject.to_string(),
@@ -165,7 +165,7 @@ mod tests {
         std::env::temp_dir().join(format!(
             "test_comms_{}_{}_{}",
             std::process::id(),
-            crate::now_run_stamp(),
+            webagent_core::now_run_stamp(),
             id
         ))
     }

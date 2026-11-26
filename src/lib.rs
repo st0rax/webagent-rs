@@ -11,17 +11,12 @@
 // Löschen toter Items (siehe docs/ARCHITECTURE.md → "API-Fläche").
 
 // ── core: plattformreiner Kern (keine UI/Browser-Abhängigkeiten) ──
-pub mod api_bridge;
-pub mod browser_inference;
-pub mod comms;
+// T-1013: api_bridge, browser_inference, comms, free_cloud_chat, https_client,
+// oobe, session and source_scope now live in webagent-api; `relay` moved with
+// them and is re-exported below. Existing `crate::<module>` paths stay valid.
 pub mod fakebrain;
-pub mod free_cloud_chat;
 pub mod group_run;
-pub mod https_client;
 pub mod memory;
-pub mod oobe;
-pub mod session;
-pub mod source_scope;
 pub mod startup;
 pub mod web_ui;
 pub mod web_ui_api;
@@ -39,7 +34,6 @@ pub mod bin_hooks;
 pub mod controller;
 pub mod counting;
 pub mod knockout;
-pub mod relay;
 pub mod welcome;
 
 // Autoresearch: Canary-Tests für Brain-Erreichbarkeit
@@ -82,9 +76,11 @@ pub mod tui_state;
 #[cfg(feature = "tui")]
 pub mod tui_widgets;
 
-// T-1011/T-1012: platform-neutral modules live in webagent-core, browser/page
-// modules in webagent-transport. Re-export both so the root crate keeps its
-// public API and crate::<module> paths. The concrete WebBackendFactory marker
-// is re-exported by webagent-transport itself (see its lib.rs).
+// T-1011/T-1012/T-1013: platform-neutral modules live in webagent-core,
+// browser/page modules in webagent-transport, api/relay modules in webagent-api.
+// Re-export all three so the root crate keeps its public API and
+// crate::<module> paths. The concrete WebBackendFactory marker is re-exported
+// by webagent-transport itself (see its lib.rs).
+pub use webagent_api::*;
 pub use webagent_core::*;
 pub use webagent_transport::*;

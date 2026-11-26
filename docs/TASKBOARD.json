@@ -2903,6 +2903,45 @@
       "claimed_at": "2026-11-26"
     },
     {
+      "id": "T-1013",
+      "phase": "16",
+      "type": "refactor",
+      "title": "Extract API/relay modules into webagent-api",
+      "status": "claimed",
+      "depends_on": [],
+      "scope": [
+        "Cargo.toml",
+        "crates/webagent-api/Cargo.toml",
+        "crates/webagent-api/src/lib.rs",
+        "crates/webagent-api/src/",
+        "crates/webagent-core/src/",
+        "crates/webagent-transport/src/",
+        "src/main.rs",
+        "src/lib.rs",
+        "src/",
+        "docs/arch/layers.toml",
+        "docs/arch/layer_exceptions.txt",
+        "docs/arch/CRATE_SPLIT.md",
+        "docs/proofs/T-1013/",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Move the nine API/relay modules named in docs/arch/CRATE_SPLIT.md section 4.3 into the webagent-api workspace member. Keep root re-exports so all existing paths work, forward any needed features, and resolve the last api->transport blocker (relay uses the concrete WebBackendFactory) with a core-side factory provider installed by the binary. The architecture guard must remain green with crate_violations=0 and no new ratchet exception for a crate-direction violation.",
+      "dod": "Claim before any source edit; api crate owns the moved modules; root re-exports preserve public paths; before/after lib test counts and all gates recorded in docs/proofs/T-1013/README.md; branch pushed; no merge, done status or release.",
+      "non_goals": [
+        "No runtime behavior, dependency version or [profile.*] change beyond the factory boundary needed for the move.",
+        "No merge, PR, tag, release or deployment.",
+        "No new ratchet exception for a crate-direction violation.",
+        "No credentials, live provider call, browser login or live brain session."
+      ],
+      "proof_path": "docs/proofs/T-1013/README.md",
+      "verification": "cargo metadata --no-deps --format-version 1; cargo fmt --all -- --check; cargo clippy --workspace --features webview --all-targets -- -D warnings; cargo test --workspace --lib --quiet (claim-time and final, before/after); cargo test --test arch_layers -- --nocapture; cargo test --workspace --all-targets --quiet; cargo test --workspace --locked --no-default-features --quiet; debug/release --version/--help; git diff --check",
+      "owner": "local/opencode",
+      "branch": "refactor/T-1013-api-extraction",
+      "claimed_at": "2026-11-26"
+    },
+    {
       "id": "T-976",
       "phase": "15",
       "type": "fix",

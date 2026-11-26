@@ -56,7 +56,7 @@ impl ProvidersFile {
     }
 
     pub fn load_default() -> Result<Self, String> {
-        let path = crate::config::data_dir().join("providers.json");
+        let path = webagent_core::config::data_dir().join("providers.json");
         if !path.exists() {
             return Ok(Self {
                 version: 1,

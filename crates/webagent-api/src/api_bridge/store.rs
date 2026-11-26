@@ -138,7 +138,7 @@ pub(super) fn tenant_id(api_key: &str) -> String {
 }
 
 pub(super) fn local_state_root() -> PathBuf {
-    crate::config::data_dir().join(LOCAL_STATE_FORMAT)
+    webagent_core::config::data_dir().join(LOCAL_STATE_FORMAT)
 }
 
 pub(super) fn tenant_store_path(tenant: &str) -> PathBuf {

@@ -31,6 +31,7 @@ rank = 1
 modules = [
   "brain",
   "brain_probe",
+  "backend_factory",
   "inference_types",
   "panel_sink",
   "comms",
