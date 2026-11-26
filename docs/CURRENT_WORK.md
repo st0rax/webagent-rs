@@ -1,3 +1,9 @@
+## 2026-11-26 - play.rs lokal an GitHub master angeglichen
+
+- Der Eigentuemer hat auf GitHub `master` den Commit `e455a0b` (`Refactor play.rs for improved game structure`) gesetzt. `src/repl/play.rs` ist jetzt exakt dieser Blob (`c18c84fa002a1899d3419d617ed689e63eff63dc`): nur der Platzhalter mit `//! BRIDGE/1 — Platzhalter. Adventure folgt.` und `run_play`, das „Willkommen bei Pokimon" ausgibt. Die vorherige Adventure-Implementierung und ihre sieben Tests sind lokal entfernt; es wird kein Spielverhalten behauptet.
+- Der zweite lokale `master`-Worktree (`webagent-rs-phase16`) wurde von `54f94b2` auf `origin/master` `e455a0b` fast-forwarded und ist sauber. Der aktuelle Branch übernimmt denselben Dateiinhalt als lokale Scheibe.
+- Gates nach der Angleichung: fmt 0; clippy 0; lib 459 root + 182 api + 627 core + 280 transport = 1548 passed / 0 failed / 1 ignored (minus sieben `play`-Tests); arch 5 passed mit `modules=92, edges=281, crate_violations=0`; `git diff --check` 0. Kein Deployment, kein Neustart, kein Tag, kein Release, keine Zugangsdaten.
+
 ## 2026-11-26 - T-1014 implemented: Gemini prompt cap, fail-fast and tolerant composer proof
 
 - **Branch/claim:** `fix/T-1014-gemini-prompt-input` from `c44b166`, claim commit `bbd95da`, owner `local/opencode`. T-1014 is `done` in `docs/TASKBOARD.json` and the mirror. Proof: `docs/proofs/T-1014/README.md` and `gates.txt`.
