@@ -193,7 +193,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1002 | 16 | Resolve remaining TUI-side cycles | refactor | claimed | local/opencode | refactor/T-1002-tui-cycles |
 | T-1003 | 16 | Keep Windows GUI dependencies out of the browser-free build | build | claimed | local/opencode | chore/T-1003-feature-hygiene |
 | T-1004 | 16 | Crate split decision: core / transport / api (design only) | docs | free | - | - |
-| T-1005 | 16 | CLI structure: command groups per layer (design only) | docs | free | - | - |
+| T-1005 | 16 | CLI structure: command groups per layer (design only) | docs | claimed | local/opencode | docs/T-1005-cli-groups |
 
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
@@ -308,5 +308,5 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1002 | claimed |
 | T-1003 | claimed |
 | T-1004 | free |
-| T-1005 | free |
+| T-1005 | claimed |
 <!-- TASKBOARD-MIRROR-END -->

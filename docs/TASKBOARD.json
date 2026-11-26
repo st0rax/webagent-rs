@@ -2614,7 +2614,7 @@
       "phase": "16",
       "type": "docs",
       "title": "CLI structure: command groups per layer with legacy aliases (design only)",
-      "status": "free",
+      "status": "claimed",
       "depends_on": [
         "T-997"
       ],
@@ -2629,7 +2629,10 @@
         "No removal of any existing command name."
       ],
       "proof_path": "docs/proofs/T-1005/README.md",
-      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
+      "owner": "local/opencode",
+      "branch": "docs/T-1005-cli-groups",
+      "claimed_at": "2026-11-26"
     }
   ]
 }
