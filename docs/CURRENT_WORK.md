@@ -1,5 +1,13 @@
 # Current Work
 
+## 2026-11-26 - T-1005 delivered: CLI grouping design (no code changes)
+
+- **Branch/claim:** `docs/T-1005-cli-groups`, claim commit `afd11c9`, owner `local/opencode`. T-1005 stays `claimed`; no merge, no `done`, no PR. Formal `depends_on: T-997` was overridden by the owner's standing "autonom weiterarbeiten"; T-997 stays `claimed`.
+- **Delivered:** `docs/arch/CLI_GROUPS.md` with the verbatim before-help snapshot, 43-command inventory, proposal for `brain`/`run`/`check`/`api`/`dev` groups, illustrative after-help, default-help policy and an alias table keeping every old name callable. Proof: `docs/proofs/T-1005/README.md`. No `src/`, Cargo or test file was touched.
+- **Snapshot source:** browser-free binary at `938bbf1` (`--no-default-features`), because the default `webview` binary crashes before `main` with `0xC0000005`; the command enum is not feature-gated, so help text is identical.
+- **Gates measured:** `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --lib --quiet` 1523 passed / 0 failed / 1 ignored (unchanged); `git diff --check` 0; startup markdown-banner test 1 passed.
+- **Grenze / offen:** design only, no command removed, no behavior change, no credentials, release, tag, deployment, PR or merge. Open for implementation: whether `serve` maps to `api` or `ui --api`, and whether hidden root aliases get a `help --all`. T-1004 remains free and still needs explicit owner approval; no further task was claimed.
+
 ## 2026-11-26 - T-1003 implemented: Windows GUI dependencies behind `webview`
 
 - **Branch/claim:** `chore/T-1003-feature-hygiene`, claim commit `a76d79d`, owner `local/opencode`. The initial `build/` name was renamed before the claim because the board invariant and commit script only allow `feature|fix|docs|chore|refactor|test`. T-1003 stays `claimed`; no merge, no `done`, no PR. Formal `depends_on: T-997` was overridden by the owner's standing "autonom weiterarbeiten".
