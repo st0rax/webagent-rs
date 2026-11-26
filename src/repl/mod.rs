@@ -4,11 +4,13 @@
 
 mod autonomous;
 pub mod commands;
+mod play;
 mod pool;
 mod text;
 
 pub use commands::parse_slash_command;
 pub use commands::{ReplAction, SlashCommand};
+pub use play::run_play;
 pub use pool::{isolated_query, PersistentQueryPool};
 
 use text::{boxed, display_chat_text, fmt_duration, fmt_est_tokens, get_facts_string};

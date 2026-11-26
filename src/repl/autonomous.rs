@@ -415,6 +415,7 @@ impl ReplSession {
             skip_brain_start: true,
             skip_brain_stop: true,
             suppress_memory_context: false,
+            observation_hook: None,
         };
         match self.controller.run_with_options(
             &effective,
