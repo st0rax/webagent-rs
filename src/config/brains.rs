@@ -82,7 +82,7 @@ pub fn use_sparse_profile_copy() -> bool {
 /// Cooldown-Dauer (Sekunden) fuer ein als BLOCK erkanntes Brain, bevor es durch
 /// einen frischen Worker wiederhergestellt wird. Ueberschreibbar via
 /// WEBAGENT_BLOCK_COOLDOWN_S (Default 600 = 10 min). Spiegelt
-/// `worker_pool::BLOCK_COOLDOWN_SECS` als kanonische Untergrenze.
+/// `pool_state::BLOCK_COOLDOWN_SECS` als kanonische Untergrenze.
 pub fn block_cooldown_secs() -> u64 {
     env::var("WEBAGENT_BLOCK_COOLDOWN_S")
         .ok()
@@ -93,12 +93,12 @@ pub fn block_cooldown_secs() -> u64 {
 /// Retry-Verzoegerung (Sekunden) fuer `unavailable` Brains, bevor sie automatisch
 /// wieder als `available` reflaggt werden. Ueberschreibbar via
 /// WEBAGENT_RETRY_UNAVAILABLE_S (Default 120). Spiegelt
-/// `worker_pool::RETRY_UNAVAILABLE_AFTER_SECS` als kanonischen Default.
+/// `pool_state::RETRY_UNAVAILABLE_AFTER_SECS` als kanonischen Default.
 pub fn retry_unavailable_secs() -> u64 {
     env::var("WEBAGENT_RETRY_UNAVAILABLE_S")
         .ok()
         .and_then(|v| v.trim().parse().ok())
-        .unwrap_or(crate::worker_pool::RETRY_UNAVAILABLE_AFTER_SECS)
+        .unwrap_or(crate::pool_state::RETRY_UNAVAILABLE_AFTER_SECS)
 }
 
 /// Maximales Alter eines Worker-Heartbeats (Sekunden), bevor der Supervisor den
@@ -319,7 +319,7 @@ pub fn register_custom_brain(brain_id: &str, url: &str) -> std::io::Result<bool>
     }
     let body = serde_json::to_string_pretty(&list)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
-    crate::worker_pool::atomic_write(&path, body.as_bytes())?;
+    crate::pool_state::atomic_write(&path, body.as_bytes())?;
     Ok(true)
 }
 

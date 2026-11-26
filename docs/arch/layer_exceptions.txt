@@ -10,7 +10,7 @@
 cycle:api_bridge,brain_probe,browser,browser_inference,browser_pool,relay
 cycle:autoresearch,bench_harvest,bench_scoring,benchmark,controller,runs_report
 cycle:bin_hooks,repl,tui,tui_ansi
-cycle:brain_limits,circuit_breaker,config,pool_failover,worker_pool
+cycle:brain_limits,config
 cycle:capability,capability_proof
 cycle:tui_load,tui_state
 
