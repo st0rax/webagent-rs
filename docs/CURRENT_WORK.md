@@ -1,3 +1,30 @@
+## 2026-11-26 - T-1015 live deployt und verifiziert
+
+- **Freigabe:** Der Eigentuemer schrieb „autonom auf fertigstellung hinarbeiten";
+  auf die konkrete Frage nach EXE-Tausch und Neustart antwortete er
+  „Ja, deployen + restarten". Danach wurden Backup, Tausch und Restart ausgefuehrt.
+- **Build/Stand:** `cargo build --release --locked` 0 aus `573719d11`;
+  EXE-SHA-256 `E35A709265019B66E8D1E18C6A2FDA7389A67C5DBB99B2BA8CAD4B40795780C8`,
+  DLL unveraendert (`465A7DDF…A0A6F`). Architektur-Guard 5 passed
+  (`modules=92, edges=282, crate_violations=0`), `git diff --check` 0.
+- **Sicherung/Restart:** Neuer Rollback-Ordner
+  `backup-release-before-T1015-20261126\` mit geprueften Hashes der bisherigen
+  T-1014-EXE (`6CC16E34…E390B72B`), DLL, SHA-Datei und Breaker-Zustand; der
+  aeltere T-1014-Ordner bleibt. PID `4484` gestoppt, Port frei, neue PID `2564`
+  mit identischer Command Line, Health `ok`. `/v1/models`: neun Modelle,
+  Gemini `12000/4000`, ohne Header 401.
+- **Live-Belege:** Turn 1 (43.386 ms, HTTP 200) lieferte genau `chatgpt bereit.`
+  und die Logzeilen `[T-1015] Begruessungs-Stub erkannt` sowie
+  `[T-1015] Retry erschoepft … kein PASS` — genau ein Frisch-Chat-Retry, kein
+  falscher Erfolg. Turn 2 (15.072 ms, HTTP 200) lieferte
+  `finish_reason=tool_calls` mit `read_file {"path":"docs/API_BRIDGE.md"}` und
+  keinen `model_output_envelope_invalid`; beide Events `success=true`, `sends=1`.
+  Der zweite Rohtext wird nicht persistiert — die Trailer-Klasse ist zusaetzlich
+  per Unit-Test belegt.
+- **Grenze:** Kein Login, keine Zugangsdatenausgabe (Header nur verwendet),
+  kein Tag, Release, Versionssprung oder neues oeffentliches Artefakt.
+  Beleg/Rueckweg: `docs/proofs/deploy-T1015-bridge-restart-2026-11-26/README.md`.
+
 ## 2026-11-26 - T-1015 umgesetzt: Begruessungs-Stubs und Umschlag-Trailer
 
 - **Auslöser/Auswertung:** Der Eigentuemer verlangte „session opencode „greeting"

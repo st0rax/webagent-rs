@@ -1,9 +1,10 @@
-# T-1015 — vorbereiteter lokaler Deploy/Restart (NICHT ausgeführt)
+# T-1015 — vorbereiteter lokaler Deploy/Restart (ausgeführt)
 
-> **Status:** Nur Plan. Es gab für T-1015 noch **keine** ausdrückliche Freigabe
-> für EXE-Tausch oder Bridge-Neustart. Die aktive Bridge läuft weiter mit der
-> T-1014-EXE. Dieses Dokument schaltet nichts live und ist kein Beleg für einen
-> Deploy.
+> **Status:** Plan und Ablauf wurden nach ausdrücklicher Freigabe ausgeführt.
+> Der tatsächliche Beleg mit Hashes, PIDs und Live-Turns steht unter
+> `docs/proofs/deploy-T1015-bridge-restart-2026-11-26/README.md`.
+> Dieser Abschnitt bleibt als nachvollziehbare Vorbereitung erhalten und
+> beschreibt nicht mehr den aktuellen Live-Zustand.
 
 ## Stand vor dem Schritt (geprüft 2026-11-26)
 
@@ -20,12 +21,13 @@
   mit der damaligen EXE (`A58D3194…`), DLL, SHA-Datei und
   `circuit-state-before.json`. Er bleibt unangetastet.
 
-## Freigabe — genau jetzt noch offen
+## Freigabe — historischer Zustand vor dem Schritt
 
 Ein EXE-Tausch und Neustart der laufenden Bridge hat Außenwirkung auf die
 aktive API und die Browser-Sitzungen. Er darf erst nach einer **konkreten**
 Freigabe durch den Eigentuemer erfolgen (z. B. „start die bridge bitte nue mit
-T-1015"). Ein allgemeines „mach weiter" genuegt dafuer nicht.
+T-1015"). Ein allgemeines „mach weiter" genuegt dafuer nicht. Die konkrete
+Freigabe wurde danach mit „Ja, deployen + restarten" erteilt.
 
 ## Ablauf nach Freigabe
 

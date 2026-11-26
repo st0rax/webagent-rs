@@ -6,7 +6,9 @@
 - Task: T-1015
 - Owner: local/opencode
 - Branch: `fix/T-1015-greeting-stub-retry`
-- Status: umgesetzt und geprüft; Gates siehe `gates.txt`
+- Status: umgesetzt, geprüft und vom Eigentuemer freigegeben live deployt;
+  Gates siehe `gates.txt`, Deploy-Beleg
+  `docs/proofs/deploy-T1015-bridge-restart-2026-11-26/README.md`
 
 ## Auswertung der Session `Greeting`
 
@@ -84,9 +86,11 @@ Quelle: lokale OpenCode-DB `C:\Users\storax\.local\share\opencode\opencode.db`
 - Der Fix beseitigt **nicht** das Modellverhalten selbst: ein erneuter Stub
   wird zurückgegeben, kein Erfolg behauptet. Es gibt keinen zweiten Retry
   derselben Fehlerklasse; die vorhandene T-961-Klasse bleibt separat.
-- Die aktive Bridge läuft weiterhin mit der T-1014-EXE (`84ba99fb5`), PID
-  `4484`, Port `127.0.0.1:8788`, Health `ok`. Für T-1015 gab es **keinen**
-  EXE-Tausch, keinen Neustart, keinen Live-Provider-Turn und kein Deployment.
-  Der Rollback-Ordner `backup-release-T1014-20261126` bleibt erhalten.
+- Die aktive Bridge läuft nach ausdruecklicher Freigabe jetzt mit der
+  T-1015-EXE (`573719d11`), PID `2564`, Port `127.0.0.1:8788`, Health `ok`.
+  Zwei kontrollierte Live-Turns und der Rueckweg sind im Deploy-Beleg
+  `docs/proofs/deploy-T1015-bridge-restart-2026-11-26/README.md` dokumentiert.
+  Die Rollback-Ordner `backup-release-before-T1015-20261126` und
+  `backup-release-T1014-20261126` bleiben erhalten.
 - Keine Zugangsdaten gelesen oder ausgegeben, kein Login, kein Tag, kein
   GitHub-Release, kein Versionssprung.

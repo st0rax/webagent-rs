@@ -3076,7 +3076,7 @@
       "status": "done",
       "title": "Greeting-only stubs and trailing tool-envelope garbage",
       "type": "fix",
-      "verification": "fmt 0; clippy 0; lib 459+185+628+280=1552 passed / 0 failed / 1 ignored; tui 0; no-default 0; diff-check 0; 4 new regression tests; details docs/proofs/T-1015/gates.txt"
+      "verification": "fmt 0; clippy 0; lib 459+185+628+280=1552 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; release build 0 (573719d11); diff-check 0; 4 new regression tests; details docs/proofs/T-1015/gates.txt; owner-approved deploy and two live turns in docs/proofs/deploy-T1015-bridge-restart-2026-11-26/README.md"
     }
   ]
 }
