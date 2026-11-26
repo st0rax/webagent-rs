@@ -189,7 +189,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-998 | 16 | Break protocol/brain -> browser edges | refactor | claimed | local/opencode | refactor/T-998-protocol-browser-edge |
 | T-999 | 16 | Remove config -> worker_pool dependency | refactor | claimed | local/opencode | refactor/T-999-config-worker-pool-edge |
 | T-1000 | 16 | Remove config -> brain_limits dependency | refactor | claimed | local/opencode | refactor/T-1000-config-brain-limits-edge |
-| T-1001 | 16 | Resolve capability <-> capability_proof cycle | refactor | free | - | - |
+| T-1001 | 16 | Resolve capability <-> capability_proof cycle | refactor | claimed | local/opencode | refactor/T-1001-capability-cycle |
 | T-1002 | 16 | Resolve remaining TUI-side cycles | refactor | free | - | - |
 | T-1003 | 16 | Keep Windows GUI dependencies out of the browser-free build | build | free | - | - |
 | T-1004 | 16 | Crate split decision: core / transport / api (design only) | docs | free | - | - |
@@ -304,7 +304,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-998 | claimed |
 | T-999 | claimed |
 | T-1000 | claimed |
-| T-1001 | free |
+| T-1001 | claimed |
 | T-1002 | free |
 | T-1003 | free |
 | T-1004 | free |
