@@ -1,0 +1,45 @@
+T-1014 gates 2026-11-26 (branch fix/T-1014-gemini-prompt-input, base c44b166, claim bbd95da)
+
+cargo fmt --all -- --check
+  fmt_exit=0
+
+cargo clippy --workspace --features webview --all-targets --locked -- -D warnings
+  clippy_exit=0
+
+cargo test --workspace --lib --locked --quiet
+  lib_exit=0
+  root:      466 passed; 0 failed; 1 ignored
+  api:       182 passed; 0 failed; 0 ignored
+  core:      627 passed; 0 failed; 0 ignored
+  transport: 280 passed; 0 failed; 0 ignored
+  total:    1555 passed; 0 failed; 1 ignored
+
+cargo test --test arch_layers --locked -- --nocapture
+  arch_exit=0
+  5 passed; modules=92, edges=281, cycles=3, upward_edges=26, crate_violations=0
+
+cargo test --workspace --all-targets --locked --quiet
+  alltargets_exit=0
+  lib 466/182/627/280; bin-unit 7; integration 5
+
+cargo test --workspace --all-targets --locked --no-default-features --quiet
+  nodefault_exit=0
+  lib 466/182/627/274; bin-unit 7; integration 5
+
+cargo build --release --locked
+  releasebuild_exit=0
+  target/release/webagent.exe --version -> webagent 0.11.8 (bbd95da76+dirty), exit 0
+  WebView2Loader.dll present=true
+  Hinweis: +dirty wurde vor dem Commit gemessen. Binary nur lokal, nicht deployt.
+
+git diff --check
+  diffcheck_exit=0
+
+Gezielte Tests waehrend der Umsetzung:
+  cargo test -p webagent-core --lib config::limits            -> 5 passed
+  cargo test -p webagent-api --lib prompt_zu_lang             -> 1 passed
+  cargo test -p webagent-transport --lib t1014                -> 1 passed
+  cargo test -p webagent-transport --lib langer_prompt        -> 2 passed
+
+Live-Grenze: Bridge-PID 15908 und deployte EXE blieben unveraendert. Kein
+Provider-Turn, kein Login, kein Neustart und kein Deployment ohne Freigabe.

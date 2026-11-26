@@ -375,6 +375,58 @@ impl WebBrainBackend {
         self.eval_bool(&Self::js_scan(composer_js, &body, "false"))
     }
 
+    /// T-1014: Fill-Nachweis fuer lange Prompts. Rich-Editern normalisieren
+    /// Leerzeichen, NBSP oder Zeilenumbrueche, ohne Inhalt zu verlieren; der
+    /// strikte Gleichheitsvergleich meldete deshalb live „Composer-Feld nicht
+    /// gefunden (Timeout)" bei `pasted_chars=52.420` von 52.499 Zeichen.
+    /// Ab 1.000 Zeichen genuegen Anfang, Ende und Zeichenzahl im 10-%-Band —
+    /// ein still gekuerzter Prompt faellt damit weiterhin durch.
+    pub(super) fn composer_holds_text(&self, composer_js: &str, text: &str) -> bool {
+        let expected: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        // Der strikte Vergleich bleibt der schnelle Pfad und schuetzt bestehende
+        // Mocks und kurze Prompts: nur wenn er die Normalisierung eines
+        // Rich-Editors meldet, greift die tolerante Laengen-/Randpruefung.
+        if expected.chars().count() <= 1_000 || self.composer_matches_text(composer_js, text) {
+            return true;
+        }
+        let expr = Self::js_scan(
+            composer_js,
+            "var el=Q(S[i]);if(el){var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');var n=v.replace(/\\s+/g,' ').trim();var a=Array.from(n);return {len:a.length,head:a.slice(0,256).join(''),tail:a.slice(-256).join('')};}return null;",
+            "null",
+        );
+        let Ok(value) = self.eval(&expr) else {
+            return false;
+        };
+        let actual = value.get("len").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let head = value.get("head").and_then(Value::as_str).unwrap_or("");
+        let tail = value.get("tail").and_then(Value::as_str).unwrap_or("");
+        Self::long_text_holds(&expected, actual, head, tail)
+    }
+
+    /// Reine Vergleichslogik zu [`Self::composer_holds_text`], ohne Browserver.
+    pub(super) fn long_text_holds(
+        expected: &str,
+        actual_len: usize,
+        head: &str,
+        tail: &str,
+    ) -> bool {
+        let chars: Vec<char> = expected.chars().collect();
+        let n = chars.len();
+        if n == 0 || actual_len + actual_len / 10 < n || actual_len > n + n / 10 {
+            return false;
+        }
+        let wanted_head: String = chars.iter().take(256).collect();
+        let wanted_tail: String = chars
+            .iter()
+            .rev()
+            .take(256)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        head == wanted_head && tail == wanted_tail
+    }
+
     /// Playwright-`fill()`-Äquivalent: DOM setzen + input/change-Events (Angular/React).
     pub(super) fn fill_composer_dom_set(&self, composer_js: &str, text: &str) -> bool {
         let coord_body = "var el=Q(S[i]);if(el){var r=el.getBoundingClientRect();if(r.width>0&&r.height>0){var top=Math.max(r.top,0),bot=Math.min(r.bottom,window.innerHeight||r.bottom),left=Math.max(r.left,0),right=Math.min(r.right,window.innerWidth||r.right);var clamp=(bot-top<1||right-left<1);if(clamp){top=Math.min(Math.max((r.top+r.bottom)/2,2),(window.innerHeight||600)-2);left=Math.min(Math.max((r.left+r.right)/2,2),(window.innerWidth||800)-2);return {x:left,y:top,w:r.width,h:r.height,clamp:clamp,i:i};}return {x:(left+right)/2,y:(top+bot)/2,w:r.width,h:r.height,clamp:clamp,i:i};}}";
@@ -799,5 +851,56 @@ mod tests {
             .as_deref()
             .map(|b| b.contains("Accept all"))
             .unwrap_or(false));
+    }
+
+    /// T-1014: Normalisierung durch Rich-Editoren darf den Fill-Nachweis nicht
+    /// kippen, solange Anfang, Ende und Laenge im gemessenen Band bleiben.
+    #[test]
+    fn langer_prompt_bleibt_bei_normalisierung_als_gefüllt_erkannt() {
+        let expected = format!("{} MITTE {}", "A".repeat(300), "Z".repeat(300));
+        let head: String = expected.chars().take(256).collect();
+        let tail: String = expected
+            .chars()
+            .rev()
+            .take(256)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        // 4 Zeichen weniger als erwartet (Whitespace-Kollaps), innerhalb von 10%.
+        assert!(WebBrainBackend::long_text_holds(
+            &expected,
+            expected.chars().count() - 4,
+            &head,
+            &tail
+        ));
+    }
+
+    /// T-1014: Still gekuerzte Prompts oder vertauschte Raender duerfen nicht
+    /// als gefuellt gelten — sonst sendet die Bridge die falsche Aufgabe.
+    #[test]
+    fn langer_prompt_bei_kuerzung_oder_falschen_raendern_abgelehnt() {
+        let expected = format!("{} MITTE {}", "A".repeat(300), "Z".repeat(300));
+        let head: String = expected.chars().take(256).collect();
+        let tail: String = expected
+            .chars()
+            .rev()
+            .take(256)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        assert!(!WebBrainBackend::long_text_holds(
+            &expected,
+            expected.chars().count() / 2,
+            &head,
+            &tail
+        ));
+        assert!(!WebBrainBackend::long_text_holds(
+            &expected,
+            expected.chars().count(),
+            &tail,
+            &head
+        ));
     }
 }

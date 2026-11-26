@@ -20,8 +20,10 @@ pub use brains::{
 };
 pub use clone::{CloneEntry, DryRunReport, ProfileClonePlan, ProfileClonePlanner};
 pub use limits::{
-    max_observation_chars, max_observation_chars_for, max_run_wall_secs, model_context_window,
-    model_max_tokens, resolve_max_run_wall_secs, resolve_model_limits, AcceptedChars,
+    max_observation_chars, max_observation_chars_for, max_prompt_chars_for, max_run_wall_secs,
+    model_context_window, model_limits_for, model_max_tokens, resolve_gemini_limits,
+    resolve_max_run_wall_secs, resolve_model_limits, resolve_prompt_chars, AcceptedChars,
+    DEFAULT_GEMINI_CONTEXT_WINDOW, DEFAULT_GEMINI_MAX_TOKENS, DEFAULT_GEMINI_PROMPT_CHARS,
     DEFAULT_MAX_OBSERVATION_CHARS, DEFAULT_MODEL_CONTEXT_WINDOW, DEFAULT_MODEL_MAX_TOKENS,
     LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT, MAX_RUN_WALL_SECONDS,
 };
