@@ -1,6 +1,17 @@
 # Current Work
 
-## 2026-11-26 - Pokiman: Kernel-Ladebuch, Beleg-Pellets und Savegame (lokal, fertig für Commit)
+## 2026-11-26 - Pokiman: echter `deepseek`-Lauf, Parser-Bug gefunden und gefixt (commitbereit)
+
+- **Branch / Eigentümer:** `fix/T-976-api-turn-reveal`, Basis `3de1111`, Eigentümer `local/opencode`. Working Tree enthält `M src/protocol/parser.rs`, `M src/protocol/mod.rs`, neu `docs/proofs/pokiman-live-deepseek-20261126.md` und die Fortschreibung dieser Datei. Kein Merge, kein PR, kein Deployment; Bridge PID 17372 und `/health` unberührt. Keine Zugangsdaten gelesen/ausgegeben.
+- **Live-Lauf 1 (headful) scheiterte mit 0 XP / 2 Fehlern.** Echter Transcript-Beleg: DeepSeek schickte ein korrektes `WEBAGENT/1 SHELL`-Rohskript mit `$env:WEBAGENT_API_KEY`, aber mit angeklebtem WebView-Chrome `textCopyDownload…`. Der Parser schnitt das nicht ab (erkennt nur eigene UI-Zeilen), fiel auf JSON zurück und meldete `Ungültiges JSON: expected ident at line 1 column 2`. Im Repair-Durchgang verlor das Brain alle `$` → PowerShell-Syntaxfehler. Alter Spielstand gesichert als `%TEMP%\opencode\dogfooding-play\save-bugrun-20261126.json`.
+- **Fix im zentralen Parser:** `src/protocol/parser.rs` kennt jetzt `is_glued_ui_controls` für angeklebte Button-Labels; der Vorspann wird nur verworfen, wenn **alle** Zeilen UI-Chrome sind, damit echte Prosa weiter abgelehnt wird. Kein zweiter Parser, kein zweiter Beleg-Speicher. Zwei neue Tests in `src/protocol/mod.rs`.
+- **Zwei headful Weck-Versuche danach:** `Navigation timeout after 8.01s … WebView möglicherweise eingefroren`; kein hängender Prozess, kein Profil-Lock, kein Circuit-Eintrag. Mit `--headless` (gleiches Profil/Session) kam sofort `Kern deepseek geladen. Zustand: angemeldet`. Ursache des headful-Hängens nicht endgültig bewiesen.
+- **Erfolgreicher Live-Lauf (`--headless`):** `ask deepseek lies das buch` → `shell: Get-Content docs/DOGFOODING.md`, Exit 0, `Belege 1, XP +30, korrekt`, `TUTORIAL-ABGESCHLOSSEN … DOGFOODING-OK-20261126`, Abzeichen `startschein`; `scan` → `shell: bridge-check-1` gegen `/health` (HTTP 200) und `/v1/models` (HTTP 200, 9 Modelle), `Belege 1, XP +30, korrekt`, Abzeichen `brueckenstein`. Run `20261126_064021_00154c0c`: `status=done`, `cycles=2`, `observation_bytes=4219`. Kein Tokenwert in Log/Transkript/Savegame.
+- **Spielstand jetzt:** `deepseek XP 60 / Level 1 / korrekt 2 / fehlerhaft 0`, Geister 0, Abzeichen `startschein, brueckenstein`, Raum `bridge>`, Kern aktiv. XP nur aus zurückgepipeten Observations.
+- **Gates nach dem Fix (real gemessen):** `cargo fmt --all -- --check` 0; `cargo check --locked --all-targets` 0; `cargo clippy --all-targets --locked -- -D warnings` 0; `cargo test --locked --lib` **1535 passed / 0 failed / 1 ignored**; `cargo build --locked` 0; `git diff --check` 0.
+- **Beleg:** `docs/proofs/pokiman-live-deepseek-20261126.md` mit den drei Läufen, Root cause, Fix und Grenzen.
+
+## 2026-11-26 - Pokiman: Kernel-Ladebuch, Beleg-Pellets und Savegame (abgeschlossen mit `3de1111`)
 
 - **Branch / Eigentümer:** `fix/T-976-api-turn-reveal`, Basis `677981e`, Eigentümer `local/opencode`. Kein Merge, kein PR, kein Deployment, kein Reboot der laufenden Bridge (PID 17372 bleibt unberührt). Keine Zugangsdaten gelesen; `auth.json` unberührt.
 - **Neuer Subcommand:** `webagent play --brain deepseek [--headless]` (`Commands::Play` in `src/cli.rs`, Dispatch in `src/main.rs`, `pub use play::run_play` in `src/repl/mod.rs`). Startet exakt mit „POKIMAN // OCP-Abteilung 8788 — Kernlager: chatgpt, claude, deepseek / deepseek ist der einzige geladene Kern … Willst du deepseek laden? [j/n]" und fragt echt stdin ab.
@@ -10,7 +21,7 @@
 - **Items:** `sonderbonbon` (+1 Level, **keine XP**), `heiltrank` (+5 XP nur beim nächsten belegten Zug), `kabelbinder` (+10 XP nur beim nächsten belegten Zug). `take` in den Räumen, `give <core> <item>`, `inventory`, `status`. Persistenz unter `data_dir()/play/save.json` mit Auto-Save nach jedem Zug und explizitem `save`.
 - **Gates real gemessen:** `cargo fmt --all` 0; `cargo check --locked --all-targets` 0; `cargo clippy --all-targets --locked -- -D warnings` 0; `cargo test --locked --lib` **1533 passed / 0 failed / 1 ignored** (7 neue `repl::play`-Tests); `cargo build --locked` 0; `webagent play --help` exit 0; `git diff --check` 0.
 - **Beleg separat:** `docs/proofs/dogfooding-alle-brains-20261126.md` hält die echte Alle-Brain-Matrix (5/9 Abschluss, 3/9 Marker, XP nach Observations). Wird in einem eigenen Commit mitgenommen, bevor die Spiel-Scheibe kommt.
-- **Grenze:** Kein Live-Durchlauf von `webagent play` gegen ein echtes Brain in dieser Scheibe — nur Unit-Tests, CLI-Smoke und der Controller-Hook im Code. Kein Login, kein CAPTCHA, kein Fern-/Produktivbetrieb, kein Tag/Release/Deployment.
+- **Grenze (Stand der Scheibe `3de1111`):** Damals kein Live-Durchlauf gegen ein echtes Brain — nur Unit-Tests, CLI-Smoke und der Controller-Hook im Code. Der Live-Lauf wurde anschließend im Abschnitt oben nachgeholt. Kein Login, kein CAPTCHA, kein Fern-/Produktivbetrieb, kein Tag/Release/Deployment.
 
 ## 2026-11-26 - Dogfooding-Anleitung, Minimal-Prompt und Bash-Kompaktion (in Arbeit, uncommittet)
 
