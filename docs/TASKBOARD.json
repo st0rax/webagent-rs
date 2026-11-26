@@ -3128,10 +3128,11 @@
         "docs/proofs/T-1017/README.md",
         "docs/proofs/T-1017/gates.txt"
       ],
-      "status": "claimed",
+      "status": "done",
       "title": "Browser prompt budget instead of silent UI length rejection",
       "type": "fix",
-      "verification": "gates.txt: fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0; 2 neue Regressionstests. Finaler Build/Deploy/Live-Nachweis noch offen."
+      "verification": "gates.txt: fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0; 2 neue Regressionstests. Branch bd0b350 gepusht und per Fast-Forward nach master bd0b350 gemergt. Finaler Release-Build, Deploy und Live-Nachweis stehen noch offen und werden in CURRENT_WORK/proofs nachgetragen.",
+      "done_at": "2026-11-26"
     }
   ]
 }

@@ -1,3 +1,10 @@
+## 2026-11-26 - T-1017 auf master (Build/Deploy noch offen)
+
+- Branch `bd0b350` (opencode-Identität) gepusht und per Fast-Forward nach
+  `master` `bd0b350` gemergt; `master` gepusht. Board 123/123 `done`,
+  Spiegel nachgezogen. Der finale Release-Build und der EXE-Tausch stehen
+  noch aus; die aktive EXE bleibt bis dahin `D96F4999…EEAB` (PID 16972).
+
 ## 2026-11-26 - T-1017 umgesetzt (Prompt-Budget; Deploy/Live noch offen)
 
 - **Anlass:** Auf „kümmer dich drum" hin wurde die `chatgpt`-Längengrenze
