@@ -105,9 +105,12 @@ reproducible as a regression; it is documented rather than hidden.
 
 After the binary-affecting `main.rs` change, `cargo build` succeeded, but
 `target/debug/webagent.exe --help` and `diagnose --brain deepseek --headless`
-both exit `-1073741515` (`0xC0000005`) before `main`, exactly as in the T-1004
-and T-1006 proofs. No `[profile.*]` line and no dependency was changed, so the
-pre-existing loader issue remains the limit on live binary smoke.
+both exited `-1073741515` before `main`, exactly as in the T-1004 and T-1006
+proofs. The hex value was misread as `0xC0000005`; it is `0xC0000135`
+(`STATUS_DLL_NOT_FOUND`) because `WebView2Loader.dll` was not beside the EXE.
+T-1008 adds the automatic copy and verifies debug/release smoke; see
+`docs/proofs/T-1008/README.md`. No `[profile.*]` line and no dependency was
+changed, so this was a pre-existing loader issue rather than a T-1007 regression.
 
 ## Grenze / offen
 

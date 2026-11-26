@@ -21,13 +21,16 @@ All numbers below were re-measured on this branch's claim commit `f27928b`
 | Clean lib test build+link | `cargo clean -p webagent`; timed `cargo test --lib --no-run --message-format=json` | 65.98 s; test executable 162,341,370 bytes (382 files / 2.0 GiB removed by the clean) |
 | Clean default binary build+link | `cargo clean -p webagent`; timed `cargo build --message-format=json` | 40.47 s; `target/debug/webagent.exe` 150,514,926 bytes (43 files / 422.7 MiB removed by the clean) |
 | Direct Cargo dependencies | `cargo tree --depth 1 -e normal` | 21 direct dependencies (list in §5) |
-| Default binary smoke | `target\debug\webagent.exe --help` | exit `-1073741515` (`0xC0000005`), zero-byte stdout, before `main` |
+| Default binary smoke | `target\debug\webagent.exe --help` | exit `-1073741515` (`0xC0000135`, misread then as `0xC0000005`), zero-byte stdout, before `main` |
 
-The default `webview` binary crash is pre-existing and reproduced at the claim
-commit. It is not a regression of this design task, but it also means the
-"run the binary after binary-affecting changes" item cannot be satisfied on
-this host. The browser-free binary remains usable: T-1003 measured `--help`
-exit 0 and the intended `page-unavailable` message for `diagnose`.
+The default `webview` binary startup failure is pre-existing and reproduced at
+the claim commit. The hex value was misread as `0xC0000005` in the phase-16
+notes; `-1073741515` is `0xC0000135` (`STATUS_DLL_NOT_FOUND`) because
+`WebView2Loader.dll` was missing beside the EXE. T-1008 now copies it in the
+root build script and verifies debug/release `--version` and `--help`; see
+`docs/proofs/T-1008/README.md`. The browser-free binary remains usable: T-1003
+measured `--help` exit 0 and the intended `page-unavailable` message for
+`diagnose`.
 
 The graph was derived with the exact production-code sanitizer from
 `tests/arch_layers.rs` (comments, doc comments, string/char literals and
@@ -266,10 +269,12 @@ gets its own proof store, its own selector hash or its own TTL logic.
 `Cargo.toml` currently has `[profile.release]`, `[profile.dev]` and an empty
 `[profile.test]` section. The settings are load-bearing:
 
-- `codegen-units = 16` in `release` and `dev` (test inherits dev) keeps the
-  Windows binary below the loader threshold; the default 256 produced
-  `0xC0000005` before `main` and was measured on 2026-09-03. The same crash is
-  still reproduced at this task's claim commit.
+- `codegen-units = 16` in `release` and `dev` (test inherits dev) stays as-is,
+  but the old claim that it prevents a `0xC0000005` loader threshold is wrong.
+  The measured `0xC0000135` at task-claim time was `STATUS_DLL_NOT_FOUND` from
+  the missing `WebView2Loader.dll`, fixed in T-1008; the 2026-09-03 note used
+  the same wrong hex diagnosis. Keep these settings until a separate, measured
+  reason to change them exists.
 - `[profile.dev] debug = 1`, `incremental = true` keeps test links affordable
   while retaining panic line numbers; `debug-assertions` stays on.
 

@@ -5,8 +5,10 @@
 
 .DESCRIPTION
   Nach `cargo build` / `cargo build --release` liegt die DLL oft nur unter
-  target/*/build/webview2-com-sys-*/out/x64/ — ohne Kopie startet die Binary
-  auf manchen Maschinen mit 0xC0000135 (DLL not found).
+  target/*/build/webview2-com-sys[-<hash>]/out/x64/ — ohne Kopie startet die
+  Binary mit 0xC0000135 (STATUS_DLL_NOT_FOUND), nicht mit 0xC0000005.
+  Das Root-build.rs kopiert die DLL inzwischen automatisch; dieses Skript
+  bleibt als manueller Fallback und fuer den CI-Release-Schritt erhalten.
 
   Nutzung:
     pwsh -File scripts/copy-webview2-loader.ps1

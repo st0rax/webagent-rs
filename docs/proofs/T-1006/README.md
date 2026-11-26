@@ -99,10 +99,13 @@ contract test in `brain`. No existing test was weakened or removed.
 ## Binary smoke (blocked, not a regression)
 
 After the binary-affecting source changes, `target/debug/webagent.exe --help`
-and `target/debug/webagent.exe diagnose` both exit `-1073741515`
-(`0xC0000005`) before `main`, exactly as measured in the T-1004 proof. No
-`[profile.*]` line and no dependency was changed, so this remains a
-pre-existing loader issue rather than a T-1006 regression.
+and `target/debug/webagent.exe diagnose` both exited `-1073741515` before
+`main`, exactly as measured in the T-1004 proof. That hex value was misread as
+`0xC0000005`; it is `0xC0000135` (`STATUS_DLL_NOT_FOUND`) caused by a missing
+`WebView2Loader.dll` beside the EXE. T-1008 adds the automatic copy and verifies
+debug/release smoke; see `docs/proofs/T-1008/README.md`. No `[profile.*]` line
+and no dependency was changed, so this was a pre-existing loader issue rather
+than a T-1006 regression.
 
 ## Grenze / offen
 

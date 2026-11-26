@@ -71,10 +71,13 @@ six cross-crate blockers listed in `CRATE_SPLIT.md` §3.2.
 
 ## Binary smoke
 
-`target\debug\webagent.exe --help` exits `-1073741515` (`0xC0000005`) with an
-empty output at the claim commit, exactly as in T-1000..T-1003. This is a
-pre-existing host/loader problem, not a regression; no binary-affecting change
-was made here. The browser-free `--help` path remains verified by T-1003.
+`target\debug\webagent.exe --help` exited `-1073741515` at the claim commit with
+empty output, exactly as in T-1000..T-1003. The hex code was misread there as
+`0xC0000005`; the correct value is `0xC0000135` (`STATUS_DLL_NOT_FOUND`) because
+`WebView2Loader.dll` was not next to the EXE. T-1008 fixes the automatic copy
+and verifies debug/release smoke; see `docs/proofs/T-1008/README.md`. This was
+a pre-existing host/loader problem, not a regression; no binary-affecting
+change was made here. The browser-free `--help` path remains verified by T-1003.
 
 ## Boundaries
 

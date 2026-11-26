@@ -8,7 +8,9 @@ argument and no behavior. Implementation needs a separate, approved task.
 
 ## 1. Snapshot method
 
-The default `webview` binary on this host exits `0xC0000005` before `main`, so
+At snapshot time the default `webview` binary exited `-1073741515` before
+`main` — misread then as `0xC0000005`, actually `0xC0000135`
+(`STATUS_DLL_NOT_FOUND`, missing `WebView2Loader.dll`, fixed in T-1008) — so
 the snapshot was taken from the browser-free binary built at `938bbf1` with
 `cargo build --no-default-features`:
 

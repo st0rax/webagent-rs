@@ -1,5 +1,14 @@
 # Current Work
 
+## 2026-11-26 - T-1008 implemented: local runnable WebView2 build
+
+- **Branch/claim:** `fix/T-1008-webview-loader-smoke`, claim commit `2d64df9`, owner `local/opencode`. T-1008 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. This is a local build fix, not crate extraction.
+- **Diagnosis correction:** every phase-16 note that reads exit `-1073741515` as `0xC0000005` was wrong. `-1073741515` is `0xC0000135` (`STATUS_DLL_NOT_FOUND`); `gdb` showed `During startup program exited with code 0xc0000135.` with no stack, i.e. the loader failed before `main` because `WebView2Loader.dll` was missing beside the EXE. The correction is recorded in the proofs for T-1004/T-1006/T-1007, `docs/arch/CRATE_SPLIT.md`, `docs/arch/CLI_GROUPS.md` and `docs/proofs/T-1008/README.md`.
+- **Delivered:** the existing root `build.rs` now copies `WebView2Loader.dll` from `target/<profile>/build/webview2-com-sys[-<hash>]/out/x64` to `target/<profile>/` for Windows + `webview` builds. It handles both the Cargo 1.100 `build/webagent/<hash>/out` layout and the older `build/webagent-<hash>/out` layout by locating the profile directory through the sys-crate build folder. `scripts/copy-webview2-loader.ps1` stays as a documented manual fallback and for CI. No `Cargo.toml`, `[profile.*]`, dependency or workflow change.
+- **Smoke proven:** with the DLL deleted first, `cargo build --locked` and `cargo build --release --locked` each recreated it; debug and release `--version` and `--help` all exit 0. Browser-free `cargo build --no-default-features --locked` also exits 0 and emits no missing-DLL warning.
+- **Gates measured:** claim-time lib 1530 passed / 0 failed / 1 ignored (55.72 s); final lib 1530 / 0 / 1 (49.43 s), unchanged. `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --test arch_layers -- --nocapture` 4 passed with `modules=90, edges=276, cycles=3, upward_edges=26`; `cargo test --all-targets --quiet` 1530 lib + 7 bin-unit + 4 integration; `git diff --check` 0.
+- **Grenze / offen:** no crate extraction, merge, PR, tag, release, deployment, credentials, live provider call or browser login. All phase-16 branches remain `claimed`. The owner has approved the remaining work; next slice is the image-backend trait for `relay → WebBrainBackend`, then crate extraction and merges. Proof: `docs/proofs/T-1008/README.md`.
+
 ## 2026-11-26 - T-1007 implemented: PanelSink boundary for transport
 
 - **Branch/claim:** `refactor/T-1007-panel-sink`, claim commit `6fec681`, owner `local/opencode`. T-1007 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. It is follow-up 3 from `docs/arch/CRATE_SPLIT.md`, not crate extraction.

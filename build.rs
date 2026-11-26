@@ -3,6 +3,7 @@
 //! wurde (Abgleich deployte Kopie vs. HEAD, siehe delivery/post_deploy_check.ps1).
 //! Bewusst nur std — kein zusätzliches Build-Dependency.
 
+use std::path::Path;
 use std::process::Command;
 
 fn git(args: &[&str]) -> Option<String> {
@@ -11,6 +12,87 @@ fn git(args: &[&str]) -> Option<String> {
         return None;
     }
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Kopiert WebView2Loader.dll neben webagent.exe, damit der Default-Build
+/// lokal startbar ist. `webview2-com-sys` legt die DLL nur unter
+/// `target/<profile>/build/webview2-com-sys[-<hash>]/out/x64` ab; ohne Kopie
+/// endet der Start vor `main` mit 0xC0000135 (DLL not found), nicht mit einer
+/// Access Violation. Das Skript `scripts/copy-webview2-loader.ps1` bleibt als
+/// manueller Fallback und fuer den CI-Release-Schritt erhalten.
+fn copy_webview2_loader(target: &str) {
+    if !target.contains("windows") || std::env::var_os("CARGO_FEATURE_WEBVIEW").is_none() {
+        return;
+    }
+    let Ok(out_dir) = std::env::var("OUT_DIR") else {
+        return;
+    };
+    // Cargo 1.100 legt OUT_DIR unter target/<profile>/build/webagent/<hash>/out
+    // ab,aelter Layouts unter target/<profile>/build/webagent-<hash>/out. Statt
+    // eine feste Anzahl Eltern zu zaehlen, suchen wir das Profilverzeichnis,
+    // das `build/webview2-com-sys[-<hash>]` enthaelt.
+    let has_sys_dir = |dir: &Path| {
+        let build = dir.join("build");
+        build.join("webview2-com-sys").is_dir()
+            || std::fs::read_dir(&build).is_ok_and(|entries| {
+                entries.flatten().any(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("webview2-com-sys-")
+                })
+            })
+    };
+    let Some(profile_dir) = Path::new(&out_dir).ancestors().find(|dir| has_sys_dir(dir)) else {
+        return;
+    };
+    let build_dir = profile_dir.join("build");
+    let Ok(entries) = std::fs::read_dir(&build_dir) else {
+        println!(
+            "cargo:warning=WebView2Loader.dll: build directory {} missing; run scripts/copy-webview2-loader.ps1 for local smoke",
+            build_dir.display()
+        );
+        return;
+    };
+
+    // Cargo schreibt OUT_DIR inzwischen unter build/webview2-com-sys/<hash>/out,
+    // frueher unter build/webview2-com-sys-<hash>/out. Beide Layouts zaehlen.
+    let mut candidates = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("webview2-com-sys-") {
+            candidates.push(entry.path());
+        } else if name == "webview2-com-sys" {
+            if let Ok(inner) = std::fs::read_dir(entry.path()) {
+                candidates.extend(
+                    inner
+                        .flatten()
+                        .filter(|child| child.file_type().is_ok_and(|kind| kind.is_dir()))
+                        .map(|child| child.path()),
+                );
+            }
+        }
+    }
+
+    let source = candidates
+        .into_iter()
+        .map(|dir| dir.join("out").join("x64").join("WebView2Loader.dll"))
+        .find(|path| path.is_file());
+    let Some(source) = source else {
+        println!(
+            "cargo:warning=WebView2Loader.dll not found under {}; run scripts/copy-webview2-loader.ps1 for local smoke",
+            build_dir.display()
+        );
+        return;
+    };
+    let destination = profile_dir.join("WebView2Loader.dll");
+    if let Err(error) = std::fs::copy(&source, &destination) {
+        println!(
+            "cargo:warning=could not copy WebView2Loader.dll to {}: {error}",
+            destination.display()
+        );
+    }
 }
 
 fn main() {
@@ -56,4 +138,5 @@ fn main() {
             );
         }
     }
+    copy_webview2_loader(&target);
 }
