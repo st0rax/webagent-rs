@@ -3016,6 +3016,36 @@
       "verification": "fmt 0, clippy 0, 1525 passed / 0 failed / 1 ignored, diff-check 0. GET /v1/models gegen die neu gestartete Bridge: neun Modelle, context_window=1000000, max_tokens=65536. Neue Tests: modellgrenzen_defaults_sind_deutlich_hoever_als_128k, modellgrenzen_env_override_und_fallback, zentrale_dauern_sind_env_ueberschreibbar_und_fail_closed.",
       "proof_path": "docs/proofs/T-976/api-turn-reveal.md",
       "handoff": "Umschreibbare Env-Variablen: WEBAGENT_MODEL_CONTEXT_WINDOW, WEBAGENT_MODEL_MAX_TOKENS sowie WEBAGENT_RELAY_*_MS, WEBAGENT_BROWSER_*_MS, WEBAGENT_SEND_*_MS, WEBAGENT_SURFACE_*_MS, WEBAGENT_WEBVIEW_*_MS, WEBAGENT_STARTUP_GRACE_*_MS. Effektiv erst nach Bridge-Neustart wirksam."
+    },
+    {
+      "branch": "fix/T-1014-gemini-prompt-input",
+      "claimed_at": "2026-11-26",
+      "depends_on": [],
+      "dod": "Claim before source edits; measured Gemini composer cap is enforced before any browser start; no per-character typing fallback for long prompts; unit tests for cap and fail-fast; gates green; branch pushed; no release, tag or deployment.",
+      "done_at": null,
+      "id": "T-1014",
+      "non_goals": [
+        "No credential access, login, live provider call or browser session.",
+        "No new release, tag, version bump or deployment.",
+        "No silent truncation of prompts; over-limit prompts fail with a named error."
+      ],
+      "objective": "Live logs 2026-11-26 show Gemini prompt input stalling for 69-356 s with 38k-150k chars, pasted_chars=0 and sends=0. Fail fast before the browser starts when a prompt exceeds the measured composer budget, advertise a usable per-brain context window so Pi compacts earlier, and remove the per-character typing fallback that makes long prompts take minutes.",
+      "owner": "local/opencode",
+      "phase": "16",
+      "proof_path": "docs/proofs/T-1014/README.md",
+      "scope": [
+        "crates/webagent-core/src/config/limits.rs",
+        "crates/webagent-api/src/relay.rs",
+        "crates/webagent-api/src/api_bridge/catalog.rs",
+        "crates/webagent-transport/src/browser/send.rs",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "status": "claimed",
+      "title": "Gemini prompt input: measured cap and no per-character fallback",
+      "type": "fix",
+      "verification": "cargo fmt --all -- --check; cargo clippy --workspace --features webview --all-targets --locked -- -D warnings; cargo test --workspace --lib --locked --quiet; cargo test --test arch_layers -- --nocapture; git diff --check"
     }
   ]
 }
