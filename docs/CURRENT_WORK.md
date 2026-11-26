@@ -7,8 +7,7 @@
   `master` legen. Kein Tag, kein GitHub-Release, kein Deployment, keine
   Crate-Extraktion, kein Live-Lauf.
 - **Merge:** Fast-Forward `origin/master` `93d33a3` → `fa7c37d`
-  (`fix/T-1008-webview-loader-smoke`). 29 Commits, T-997 bis T-1008. T-1009
-  bleibt auf `refactor/T-1009-image-backend` und ist nicht enthalten.
+  (`fix/T-1008-webview-loader-smoke`). 29 Commits, T-997 bis T-1008.
 - **Absturz, selbst geprueft:** Exit `-1073741515` ist `0xC0000135`
   (`STATUS_DLL_NOT_FOUND`), nicht `0xC0000005`. Frischer Worktree auf `fa7c37d`,
   `cargo build --release --locked` Exit 0 in 11m 12s, `WebView2Loader.dll`
@@ -16,10 +15,14 @@
   `target/release/webagent.exe --version` → `webagent 0.11.7 (fa7c37dda)`, Exit 0.
   `--help` Exit 0, 54 Zeilen. Kein Login, kein Browserfenster.
 - **Board:** T-997..T-1008 nach dem Merge auf `done` gesetzt (`done_at`
-  2026-11-26). Der Status behauptet damit nicht mehr als `master` ausliefert.
-- **Nicht erledigt:** Play-Mode-Branch `fix/T-976-api-turn-reveal`, T-1009
-  (ImageBackend, nur Claim), Tag/Release. Der User-PATH zeigt weiter auf
-  `webagent-rs-t967-opencode\target\debug`, nicht auf diesen Stand.
+  2026-11-26).
+
+## 2026-11-26 - T-1009 implemented: ImageBackend boundary for relay
+
+- **Branch/claim:** `refactor/T-1009-image-backend`, claim commit `0ede5dc`, owner `local/opencode`. Trait-Grenze, keine Crate-Extraktion.
+- **Delivered:** `ImageGenerationBackend` plus `BackendFactory::create_image_backend` in `brain.rs`; `WebBrainBackend` implementiert das Trait; `relay_image_generation` geht ueber die Factory und `relay_image_turn`. Lifecycle, Traces, Timeouts und Fehlerstrings unveraendert. Proof: `docs/proofs/T-1009/README.md`.
+- **Nachgemessen auf dem Merge nach `6969da3`:** `rg crate::browser src/relay.rs` leer. `cargo test --lib image_turn_uses_the_core_trait_lifecycle` 1 passed. `cargo test --test arch_layers` 4 passed, `modules=90, edges=275, cycles=3, upward_edges=26`. `taskboard_invarianten_halten` 1 passed. `git diff --check` 0.
+- **Merge:** `origin/refactor/T-1009-image-backend` (`92011a5`) nach `master`. T-1009 danach `done`. Kein Tag, kein Release, keine Crate-Extraktion. T-1010 bleibt bei der anderen Session. Play-Mode-Branch `fix/T-976-api-turn-reveal` ist nicht enthalten.
 
 ## 2026-11-26 - T-1008 implemented: local runnable WebView2 build
 

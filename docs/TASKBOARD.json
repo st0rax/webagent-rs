@@ -2758,6 +2758,38 @@
       "branch": "fix/T-1008-webview-loader-smoke",
       "claimed_at": "2026-11-26",
       "done_at": "2026-11-26"
+    },
+    {
+      "id": "T-1009",
+      "phase": "16",
+      "type": "refactor",
+      "title": "ImageBackend boundary: remove relay -> WebBrainBackend edge",
+      "status": "done",
+      "depends_on": [],
+      "scope": [
+        "src/brain.rs",
+        "src/browser/backend.rs",
+        "src/relay.rs",
+        "docs/arch/CRATE_SPLIT.md",
+        "docs/proofs/T-1009/",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "objective": "Prepare the last T-1004 trait boundary without extracting a crate or merging. Add a public, dependency-free ImageGenerationBackend trait in brain.rs and BackendFactory::create_image_backend; implement it on WebBrainBackend in the browser backend by delegating to the existing inherent image methods. Route relay_image_generation through WebBackendFactory instead of constructing WebBrainBackend directly, keeping relay_image_generation and GeneratedImage public paths and the exact lifecycle order, trace lines and error strings. Add a mock-backed contract test so the image turn loop is testable without a browser. The architecture guard must prove the relay -> browser edge is gone.",
+      "dod": "No crate::browser reference remains in relay.rs; the guard reports the edge gone with no new exception; claim-time and final lib test counts plus all gates are recorded; branch pushed, no crate move and no merge.",
+      "non_goals": [
+        "No workspace or crate extraction.",
+        "No merge, PR, tag, release or deployment.",
+        "No change to image-generation behavior, prompts, selectors or timeouts.",
+        "No Cargo.toml, [profile.*] or dependency changes."
+      ],
+      "proof_path": "docs/proofs/T-1009/README.md",
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (re-measure at claim time and report before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; git diff --check",
+      "owner": "local/opencode",
+      "branch": "refactor/T-1009-image-backend",
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     }
   ]
 }

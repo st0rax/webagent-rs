@@ -4,8 +4,9 @@ use std::time::Instant;
 
 #[cfg(test)]
 use crate::brain::BrainResponse;
-use crate::brain::{BackendFactory, BrainBackend, RelayBackend, SessionState, WebBackendFactory};
-use crate::browser::WebBrainBackend;
+use crate::brain::{
+    BackendFactory, ImageGenerationBackend, RelayBackend, SessionState, WebBackendFactory,
+};
 use crate::inference_types::{BrowserAttachment, ClientPresence};
 use crate::timeouts::resolve_timeout;
 
@@ -91,10 +92,34 @@ pub fn relay_image_generation(
         return Err(RelayError(circuit_open_message(brain_id, remaining)));
     }
     let started = Instant::now();
-    let mut backend = WebBrainBackend::from_config(brain_id).map_err(RelayError)?;
+    // T-1009: api knows only the core trait; the browser backend is supplied by
+    // the factory. This removes the last `relay -> browser` crate edge.
+    let mut backend = WebBackendFactory::create_image_backend(brain_id).map_err(RelayError)?;
+    relay_image_turn(
+        backend.as_mut(),
+        brain_id,
+        prompt,
+        headless,
+        timeout_override,
+        started,
+        trace,
+    )
+}
+
+/// Image turn against an abstract backend. Kept separate from construction so
+/// the lifecycle can be tested without a browser (T-1009).
+fn relay_image_turn(
+    backend: &mut dyn ImageGenerationBackend,
+    brain_id: &str,
+    prompt: &str,
+    headless: bool,
+    timeout_override: Option<f64>,
+    started: Instant,
+    trace: bool,
+) -> Result<GeneratedImage, RelayError> {
     let ready_timeout = resolve_timeout("ensure_ready", brain_id, "", timeout_override);
     let wait_timeout = resolve_timeout("wait_response", brain_id, prompt, timeout_override);
-    backend.start(headless).map_err(RelayError)?;
+    backend.image_start(headless).map_err(RelayError)?;
     if trace {
         eprintln!(
             "[image] browser started after {:.1}s",
@@ -102,10 +127,10 @@ pub fn relay_image_generation(
         );
     }
     let state = backend
-        .ensure_ready(ready_timeout)
+        .image_ensure_ready(ready_timeout)
         .unwrap_or(SessionState::Error);
     if state.is_hard_block() {
-        let _ = backend.relay_stop();
+        let _ = backend.image_stop();
         return Err(RelayError(format!("session_state={state:?}")));
     }
     if state.is_soft_login_doubt() {
@@ -121,22 +146,22 @@ pub fn relay_image_generation(
             started.elapsed().as_secs_f64()
         );
     }
-    if let Err(error) = backend.relay_new_chat() {
-        let _ = backend.relay_stop();
+    if let Err(error) = backend.image_new_chat() {
+        let _ = backend.image_stop();
         return Err(RelayError(error));
     }
-    if let Err(error) = backend.enable_image_generation_mode() {
-        let _ = backend.relay_stop();
+    if let Err(error) = backend.image_enable_generation_mode() {
+        let _ = backend.image_stop();
         return Err(RelayError(error));
     }
     // Das Aktivieren des Bildtools rendert selbst Icons/Previews. Erst danach
     // markieren, damit diese UI-Bilder nie als Generator-Ergebnis gelten.
-    if let Err(error) = backend.mark_image_generation_baseline() {
-        let _ = backend.relay_stop();
+    if let Err(error) = backend.image_mark_baseline() {
+        let _ = backend.image_stop();
         return Err(RelayError(error));
     }
-    if let Err(error) = backend.send(prompt) {
-        let _ = backend.relay_stop();
+    if let Err(error) = backend.image_send(prompt) {
+        let _ = backend.image_stop();
         return Err(RelayError(error));
     }
     if trace {
@@ -149,8 +174,8 @@ pub fn relay_image_generation(
     let remaining = total_budget.saturating_sub(started.elapsed());
     let deadline = Instant::now() + remaining;
     let result = loop {
-        backend.wake_renderer();
-        match backend.latest_generated_image() {
+        backend.image_wake_renderer();
+        match backend.image_latest() {
             Ok(Some((mime_type, base64))) => {
                 if trace {
                     eprintln!(
@@ -163,13 +188,13 @@ pub fn relay_image_generation(
             Ok(None) => {}
             Err(error) => break Err(RelayError(error)),
         }
-        if let Some(error) = backend.image_generation_provider_error() {
+        if let Some(error) = backend.image_provider_error() {
             break Err(RelayError(format!(
                 "provider_unavailable: {brain_id}: {error}"
             )));
         }
         if Instant::now() >= deadline {
-            let report = backend.image_generation_report();
+            let report = backend.image_report();
             if trace {
                 eprintln!("[image] timeout report: {report}");
             }
@@ -180,7 +205,7 @@ pub fn relay_image_generation(
         }
         std::thread::sleep(std::time::Duration::from_millis(750));
     };
-    let _ = backend.relay_stop();
+    let _ = backend.image_stop();
     result
 }
 
@@ -853,6 +878,85 @@ mod tests {
         assert_eq!(
             open_circuit_remaining_secs("circuit_open: qwen uebersprungen, noch 0s Cooldown"),
             None
+        );
+    }
+
+    /// Bild-Backend ohne Browser: liefert sofort ein Artefakt und protokolliert
+    /// die Reihenfolge der Lebenszyklus-Aufrufe (T-1009).
+    struct BildMock {
+        calls: Vec<&'static str>,
+    }
+
+    impl ImageGenerationBackend for BildMock {
+        fn image_start(&mut self, _headless: bool) -> Result<(), String> {
+            self.calls.push("start");
+            Ok(())
+        }
+        fn image_ensure_ready(&mut self, _timeout: f64) -> Result<SessionState, String> {
+            self.calls.push("ensure_ready");
+            Ok(SessionState::Ready)
+        }
+        fn image_new_chat(&mut self) -> Result<(), String> {
+            self.calls.push("new_chat");
+            Ok(())
+        }
+        fn image_enable_generation_mode(&mut self) -> Result<(), String> {
+            self.calls.push("enable_generation_mode");
+            Ok(())
+        }
+        fn image_mark_baseline(&mut self) -> Result<(), String> {
+            self.calls.push("mark_baseline");
+            Ok(())
+        }
+        fn image_send(&mut self, _prompt: &str) -> Result<(), String> {
+            self.calls.push("send");
+            Ok(())
+        }
+        fn image_wake_renderer(&mut self) {
+            self.calls.push("wake_renderer");
+        }
+        fn image_latest(&self) -> Result<Option<(String, String)>, String> {
+            Ok(Some(("image/png".into(), "YWJj".into())))
+        }
+        fn image_provider_error(&self) -> Option<String> {
+            None
+        }
+        fn image_report(&self) -> String {
+            "mock".into()
+        }
+        fn image_stop(&mut self) -> Result<(), String> {
+            self.calls.push("stop");
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn image_turn_uses_the_core_trait_lifecycle() {
+        let mut backend = BildMock { calls: Vec::new() };
+        let image = relay_image_turn(
+            &mut backend,
+            "mock-image",
+            "ein Bild",
+            false,
+            Some(1.0),
+            Instant::now(),
+            false,
+        )
+        .expect("mock image");
+        assert_eq!(image.mime_type, "image/png");
+        assert_eq!(image.base64, "YWJj");
+        assert_eq!(
+            backend.calls,
+            vec![
+                "start",
+                "ensure_ready",
+                "new_chat",
+                "enable_generation_mode",
+                "mark_baseline",
+                "send",
+                "wake_renderer",
+                "stop",
+            ]
         );
     }
 

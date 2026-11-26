@@ -11,7 +11,8 @@ use super::{
     WebBrainBackend,
 };
 use crate::brain::{
-    BackendFactory, BrainBackend, BrainResponse, PageProbe, RelayBackend, WebBackendFactory,
+    BackendFactory, BrainBackend, BrainResponse, ImageGenerationBackend, PageProbe, RelayBackend,
+    WebBackendFactory,
 };
 use crate::inference_types::{BrowserAttachment, WebSearchObservation};
 // Beide nur mit `webview`: ohne das Feature gibt es weder das Modul noch einen
@@ -659,12 +660,62 @@ impl RelayBackend for WebBrainBackend {
     }
 }
 
+impl ImageGenerationBackend for WebBrainBackend {
+    fn image_start(&mut self, headless: bool) -> Result<(), String> {
+        WebBrainBackend::start(self, headless)
+    }
+
+    fn image_ensure_ready(&mut self, timeout: f64) -> Result<SessionState, String> {
+        WebBrainBackend::ensure_ready(self, timeout)
+    }
+
+    fn image_new_chat(&mut self) -> Result<(), String> {
+        WebBrainBackend::new_chat(self)
+    }
+
+    fn image_enable_generation_mode(&mut self) -> Result<(), String> {
+        WebBrainBackend::enable_image_generation_mode(self)
+    }
+
+    fn image_mark_baseline(&mut self) -> Result<(), String> {
+        WebBrainBackend::mark_image_generation_baseline(self)
+    }
+
+    fn image_send(&mut self, prompt: &str) -> Result<(), String> {
+        WebBrainBackend::send(self, prompt).map(|_| ())
+    }
+
+    fn image_wake_renderer(&mut self) {
+        WebBrainBackend::wake_renderer(self);
+    }
+
+    fn image_latest(&self) -> Result<Option<(String, String)>, String> {
+        WebBrainBackend::latest_generated_image(self)
+    }
+
+    fn image_provider_error(&self) -> Option<String> {
+        WebBrainBackend::image_generation_provider_error(self)
+    }
+
+    fn image_report(&self) -> String {
+        WebBrainBackend::image_generation_report(self)
+    }
+
+    fn image_stop(&mut self) -> Result<(), String> {
+        WebBrainBackend::stop(self)
+    }
+}
+
 impl BackendFactory for WebBackendFactory {
     fn create_brain_backend(brain_id: &str) -> Result<Box<dyn BrainBackend>, String> {
         Ok(Box::new(WebBrainBackend::from_config(brain_id)?))
     }
 
     fn create_relay_backend(brain_id: &str) -> Result<Box<dyn RelayBackend>, String> {
+        Ok(Box::new(WebBrainBackend::from_config(brain_id)?))
+    }
+
+    fn create_image_backend(brain_id: &str) -> Result<Box<dyn ImageGenerationBackend>, String> {
         Ok(Box::new(WebBrainBackend::from_config(brain_id)?))
     }
 }
