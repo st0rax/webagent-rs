@@ -27,10 +27,11 @@ Eine neue Session startet ohne Verlauf. Statt Systemprompt und Anleitung vorab z
 |---|---:|---:|---:|
 | Alter Systemprompt allein | 5691 | 1565 | 1365 |
 | Aktueller Systemprompt allein | 2777 | 748 | 666 |
-| Quest + `read_file`-Block | 321 | **88** | **83** |
+| Quest + `read_file`-Block | 403 | **112** | **108** |
+| Quest allein | 287 | 77 | 71 |
 | Nur der `read_file`-Block | 114 | 35 | 37 |
 
-Gegenüber dem alten Systemprompt spart der minimale Start 1477 Tokens (`cl100k_base`, −94,4 %) bzw. 1282 Tokens (`o200k_base`, −93,9 %). Gegenüber dem bereits gekürzten Systemprompt sind es 660 bzw. 583 Tokens. Der Block ist das Wire-Format aus `src/browser_inference.rs` (`WEBAGENT_INFERENCE/1` + `tool_calls` mit `read_file`/`path`); die Quest steht in `docs/DOGFOODING.md`.
+Gegenüber dem alten Systemprompt spart der minimale Start 1453 Tokens (`cl100k_base`, −92,8 %) bzw. 1257 Tokens (`o200k_base`, −92,1 %). Gegenüber dem bereits gekürzten Systemprompt sind es 636 bzw. 558 Tokens. Der Block ist das Wire-Format aus `src/browser_inference.rs` (`WEBAGENT_INFERENCE/1` + `tool_calls` mit `read_file`/`path`); die Quest steht in `docs/DOGFOODING.md`.
 
 ## Bash-Output (Kompaktionslogik)
 
