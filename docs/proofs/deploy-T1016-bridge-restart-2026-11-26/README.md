@@ -2,6 +2,13 @@
 
 > **Referenz.** Deploy-Beleg für den lokalen EXE-Tausch auf T-1016. Kein
 > GitHub-Release, kein Tag, kein Versionssprung, keine Zugangsdatenausgabe.
+>
+> **Stand 2026-11-27:** Die hier beschriebene T-1016-EXE
+> (`D96F4999…EEAB`, PID 16972) wurde zwischenzeitlich durch T-1017 ersetzt.
+> Aktuell aktiv ist `webagent 0.11.8 (e326001d3)`, SHA-256
+> `59B94B061B686999E8A392D0FF4B589876D60D88AF1B42F055905EC73AC2046B`,
+> PID 14960. Beleg und Rueckweg:
+> `docs/proofs/T-1017/README.md` (Abschnitt „Finaler Build …").
 
 ## Freigabe
 

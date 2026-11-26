@@ -1,3 +1,31 @@
+## 2026-11-27 - T-1017 final deployt und live abgenommen (Stand)
+
+- **Finaler Stand:** `master` `e326001` (gepusht), Release-Build
+  `webagent 0.11.8 (e326001d3)`, EXE-SHA-256
+  `59B94B061B686999E8A392D0FF4B589876D60D88AF1B42F055905EC73AC2046B`
+  (DLL `465A7DDF…A0A6F`). Aktiv als PID `14960` mit identischer
+  Command-Line, Health `ok`, `/v1/models` 200 mit Header / 401 ohne.
+  Backup/Rueckweg:
+  `backup-release-before-T1017-descriptions-20261127\`.
+- **Live-Abnahme `chatgpt`:** 12 Tools + 99.935 Zeichen Kontext → HTTP 200,
+  Antwort exakt `T1017-MEDIUM-OK`, 39,7 s; Event `success=true`,
+  `sends=1`, `prompt_chars=102806`. Kleiner Turn mit 12 Tools → HTTP 200,
+  exakt `T1017-DESC0-OK`, 22,6 s, `prompt_chars=2917`. Damit ist die
+  Längengrenze fuer den bisherigen ~196k-Fehler behoben; die externen
+  `tools=12`-Turns landen jetzt bei ~134k statt ~196k.
+- **Grenze ehrlich:** Ein 134.851-Zeichen-Turn wurde gesendet (`sends=1`,
+  kein `ABSENDEKNOPF_DEAKTIVIERT`), lieferte aber auf synthetischen
+  Fülltext innerhalb von 240 s keine Antwort. Ueber 140.000 Zeichen
+  scheitert der Turn in 0,15 s mit benanntem Budgetfehler statt nach
+  90–240 s still in der UI. Kein PASS ohne `success=true`-Event behauptet.
+- **Code-Entscheid:** Tool-Beschreibungen werden komplett entfernt
+  (`TOOL_DESCRIPTION_LIMITS=[0]`), Namen/Parameter/Typen bleiben; damit
+  schrumpft das 12-Tool-Schema von ~9 KiB auf ~2,4 KiB. Kein
+  Nutzerprompt-Text gekürzt, kein Login, keine Zugangsdatenausgabe, kein
+  Tag/Release/Versionssprung. Board 123/123 `done`.
+- Beleg: `docs/proofs/T-1017/{README.md,gates.txt}`. Die Abschnitte
+  „Build/Deploy noch offen" weiter unten sind historische Zwischenstaende.
+
 ## 2026-11-27 - T-1017 live kalibriert: echte UI-Grenze ~140k statt 200k
 
 - Der erste T-1017-Build (`03dbe14be`, EXE `D4D54039…5B1`) wurde mit

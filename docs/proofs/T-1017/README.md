@@ -99,5 +99,40 @@ verifiziert:
 - Kein Prompt-Text wird gekürzt, zusammengefasst oder umformuliert.
 - Kein Tag, GitHub-Release, Versionssprung oder neues öffentliches Artefakt.
 - Keine Zugangsdaten gelesen, angezeigt oder weitergegeben.
-- Der finale Deploy und der zweite Live-Nachweis werden nach dem Rebuild
-  in `docs/CURRENT_WORK.md` nachgetragen.
+## Finaler Build, Deploy und Live-Abnahme (2026-11-27)
+
+- Commit `e326001` (`master`, gepusht). Release-Build
+  `webagent 0.11.8 (e326001d3)`, Exit 0; EXE-SHA-256
+  `59B94B061B686999E8A392D0FF4B589876D60D88AF1B42F055905EC73AC2046B`,
+  DLL unverändert `465A7DDF…A0A6F`, Budget-Fehlertext im Binary vorhanden.
+- Rollback-Ordner
+  `...\webagent-deploy-target\backup-release-before-T1017-descriptions-20261127\`
+  (EXE `27544821…02E1`, DLL, SHA-Datei, Breaker-State). Alte PID `16644`
+  gestoppt, Port frei. Neue PID `14960`, **identische** Command-Line
+  (`--skip-startup-reconcile api serve --brain chatgpt --headless --port 8788
+  --timeout-secs 120`), Health `ok`, `/v1/models` 200 mit Header / 401 ohne.
+  Logs: `bridge.err|out.restart-T1017-final-20261127.log`.
+- **Kleiner Turn:** 12 Tools mit je ~6.400 Zeichen Beschreibung, Prompt
+  `Antworte exakt mit T1017-DESC0-OK.` → HTTP 200, Antwort exakt
+  `T1017-DESC0-OK`, 22,6 s. Event 00:15:48 `+01:00`: `success=true`,
+  `sends=1`, `prompt_chars=2917` (statt 9073 vor `[0]`).
+- **Großer Turn:** 12 Tools, 99.935 Zeichen synthetischer Kontext plus
+  Schlussanweisung → HTTP 200, Antwort exakt `T1017-MEDIUM-OK`, 39,7 s.
+  Event `success=true`, `sends=1`, `prompt_chars=102806`. Damit ist die
+  Browser-Inference mit großem Prompt und 12 Werkzeugen live abgenommen.
+- **Grenzerprobe:** 134.851 Zeichen wurden gesendet (`sends=1`, kein
+  `ABSENDEKNOPF_DEAKTIVIERT`); der synthetische Füllprompt lieferte innerhalb
+  des 240-s-Client-Timeouts keine Antwort (`client_disconnected`). Das ist
+  ein Antwort-/Testprompt-Problem, keine Längenablehnung mehr.
+- **Guard:** 150.000 Zeichen + 12 Tools → 0,15 s, 502
+  `invalid_request_error`, Meldung `Prompt zu gross fuer die
+  Browser-Oberflaeche: 152427 Zeichen (Maximum 140000); Werkzeugbeschreibungen
+  sind bereits komprimiert`. Kein Browserlauf, kein Breaker-Eintrag.
+- Breaker `chatgpt` nach der Abnahme ohne Eintrag. Kein Tag, GitHub-Release,
+  Versionssprung oder Login; `WEBAGENT_API_KEY` nur als Header verwendet,
+  nie angezeigt oder gespeichert.
+- **Rückweg:** PID 14960 stoppen, EXE/DLL/SHA-Datei aus
+  `backup-release-before-T1017-descriptions-20261127\` zurückkopieren,
+  Breaker-State bei Bedarf wiederherstellen, mit identischer Command Line
+  neu starten. Zwischenstufen: `backup-release-before-T1017-20261126\` und
+  `backup-release-before-T1017-calibrated-20261127\`.

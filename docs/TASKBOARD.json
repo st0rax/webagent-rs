@@ -3131,7 +3131,7 @@
       "status": "done",
       "title": "Browser prompt budget instead of silent UI length rejection",
       "type": "fix",
-      "verification": "gates.txt: zwei Gate-Serien gruen, zuletzt fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0; 2 Regressionstests. Branch bd0b350 gepusht und nach master gemergt. Live-Kalibrierung: chatgpt tools=12 HTTP 200, Antwort exakt T1017-LIVE-OK, Event 23:44:52 success=true sends=1 prompt_chars=27432; Guard 192439 Zeichen in 0,13s benannt abgelehnt; UI akzeptiert 138561, lehnt 147459 ab -> Schema 12 KiB, Guard 140000. Finaler Rebuild/Redeploy und zweiter Live-Nachweis offen.",
+      "verification": "gates.txt: drei Gate-Serien gruen, zuletzt fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0. Master e326001 gepusht; release webagent 0.11.8 (e326001d3), exe sha256 59B94B061B686999E8A392D0FF4B589876D60D88AF1B42F055905EC73AC2046B; aktiv PID 14960, identische Command Line, Health ok, 9 Modelle mit Header / 401 ohne; Backup backup-release-before-T1017-descriptions-20261127. Live-Abnahme chatgpt tools=12: HTTP 200, Antwort exakt T1017-MEDIUM-OK, 39,7s, Event success=true sends=1 prompt_chars=102806; kleiner Turn exakt T1017-DESC0-OK, prompt_chars=2917; 134851 Zeichen gesendet ohne ABSENDEKNOPF_DEAKTIVIERT; >140000 in 0,15s benannt abgelehnt. Kein Prompttext gekuerzt, kein Tag/Release/Login. Siehe docs/proofs/T-1017/README.md.",
       "done_at": "2026-11-26"
     }
   ]
