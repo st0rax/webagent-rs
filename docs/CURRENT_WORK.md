@@ -1,3 +1,27 @@
+## 2026-11-26 - T-1016 umgesetzt: Selektoren-Fallback bei I/O-Fehler
+
+- **Auslöser:** Der Eigentuemer testete die Binary auf einem zweiten PC und
+  meldete „backend fehler selektronre nicht ladbar das gerät ist nicht bereit
+  os error 21". Die Meldung stammt aus `Browser::from_config` →
+  `load_selectors` → `read_selector_file`: der Compile-Zeit-Pfad
+  `CARGO_MANIFEST_DIR/selectors` kann auf einem fremden PC auf einem nicht
+  bereiten Laufwerk liegen; `os error 21` war bisher ein harter Fehler,
+  obwohl die Selektoren eingebettet in der Binary stecken.
+- **Claim/Branch:** `fix/T-1016-selector-io-fallback` von `origin/master`
+  (`1accbe3`), Board-Eintrag vor den Source-Edits. Beleg:
+  `docs/proofs/T-1016/README.md`, `gates.txt`.
+- **Geliefert:** `read_selector_file` behandelt jetzt jeden I/O-Fehler als
+  „Datei nicht vorhanden" und warnt sichtbar mit Pfad und Fehler; kaputtes
+  JSON bleibt `InvalidData`. Damit greift bei den mitgelieferten Dateien die
+  eingebettete Kopie, bei der Nutzerdatei die Basis ohne Overlay. Zwei neue
+  Regressionstests (I/O-Fehler, kaputtes JSON). Keine Aenderung an
+  Merge-Semantik oder Selektor-Inhalten.
+- **Grenze:** Der lokale Bridge-Prozess (T-1015, PID `2564`) wurde nicht
+  angefasst. Ein EXE-Tausch oder Neustart braucht eine neue ausdrueckliche
+  Freigabe; auf dem zweiten PC muss der Eigentuemer die neue Binary selbst
+  einsetzen. Kein Tag, Release, Versionssprung oder Login; keine
+  Zugangsdatenausgabe.
+
 ## 2026-11-26 - T-1015 live deployt und verifiziert
 
 - **Freigabe:** Der Eigentuemer schrieb „autonom auf fertigstellung hinarbeiten";

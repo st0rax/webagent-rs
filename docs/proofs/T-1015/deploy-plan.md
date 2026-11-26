@@ -1,5 +1,8 @@
 # T-1015 — vorbereiteter lokaler Deploy/Restart (ausgeführt)
 
+> **Referenz (historisch).** Dokumentiert den vorbereiteten Ablauf; dieser
+> Abschnitt ist kein aktueller Live-Status.
+
 > **Status:** Plan und Ablauf wurden nach ausdrücklicher Freigabe ausgeführt.
 > Der tatsächliche Beleg mit Hashes, PIDs und Live-Turns steht unter
 > `docs/proofs/deploy-T1015-bridge-restart-2026-11-26/README.md`.

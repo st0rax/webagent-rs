@@ -1,0 +1,51 @@
+T-1016 gates 2026-11-26 (branch fix/T-1016-selector-io-fallback, base 1accbe3)
+
+cargo fmt --all -- --check
+  fmt=0
+
+cargo clippy -q --all-targets -- -D warnings
+  clippy=0
+
+cargo test --workspace --lib -q
+  lib=0
+  root:      459 passed; 0 failed; 1 ignored
+  api:       185 passed; 0 failed; 0 ignored
+  core:      630 passed; 0 failed; 0 ignored
+  transport: 280 passed; 0 failed; 0 ignored
+  total:    1554 passed; 0 failed; 1 ignored
+
+cargo test --test arch_layers -- --nocapture
+  arch=0
+  5 passed; modules=92, edges=282, cycles=3, upward_edges=26, crate_violations=0
+
+cargo check --features tui -q
+  tui=0
+
+cargo check --no-default-features -q
+  no-default=0
+
+cargo build --release --locked
+  releasebuild=0
+  --version -> webagent 0.11.8 (1accbe331+dirty), exit 0
+  WebView2Loader.dll present=true
+  exe sha256=F2DE0203AC809576E86E02956057B5554D297FB672EF8E24794F04848476D332
+  Hinweis: +dirty und dieser Hash wurden vor dem Commit gemessen. Nach dem
+  Merge wird der Release-Build wiederholt und der finale Hash im README
+  dokumentiert.
+
+git diff --check
+  diffcheck=0
+
+Gezielte Tests waehrend der Umsetzung:
+  cargo test -p webagent-core --lib config::selectors::tests -> 2 passed
+
+Zwei transient Fehlschlaege beim Gesamtlauf, beide beim Rerun gruen:
+  startup::tests::betriebs_markdown_hat_eine_wahrheit
+    (fehlendes Referenz-Banner in docs/proofs/T-1015/deploy-plan.md nach einer
+     frueheren Doc-Aenderung; Banner ergaenzt, danach 1 passed und Gesamtlauf 0)
+  relay::tests::abbruch_im_warteloop_beendet_turn_frueh
+    (timing-abhaengiger Wait-Loop-Test; einzeln 0, Gesamtlauf danach 0)
+
+Live-Grenze: Bridge-PID 2564 (T-1015) unveraendert. Kein EXE-Tausch,
+Neustart, Provider-Turn, Login oder Zugangsdatenausgabe. Kein Tag, Release,
+Versionssprung oder Deployment.

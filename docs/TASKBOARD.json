@@ -3077,6 +3077,32 @@
       "title": "Greeting-only stubs and trailing tool-envelope garbage",
       "type": "fix",
       "verification": "fmt 0; clippy 0; lib 459+185+628+280=1552 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; release build 0 (573719d11); diff-check 0; 4 new regression tests; details docs/proofs/T-1015/gates.txt; owner-approved deploy and two live turns in docs/proofs/deploy-T1015-bridge-restart-2026-11-26/README.md"
+    },
+    {
+      "branch": "fix/T-1016-selector-io-fallback",
+      "claimed_at": "2026-11-26",
+      "depends_on": [],
+      "dod": "Claim before source edits; unreadable selector files (including os error 21 / device not ready) no longer break backend creation; malformed JSON still fails closed; regression test for the I/O error class; gates green; branch pushed and merged to master; no local bridge restart without a new owner approval.",
+      "id": "T-1016",
+      "non_goals": [
+        "No change to selector merge semantics or to any selector content.",
+        "No local bridge restart, tag, release, version bump or new deployment."
+      ],
+      "objective": "On a second PC the user saw 'Selektoren nicht ladbar: Das Geraet ist nicht bereit (os error 21)'. Browser::from_config reads the compiled-in CARGO_MANIFEST_DIR/selectors path; when that path is on an unavailable mapped/removable drive the I/O error is not NotFound and aborts the backend although selectors are embedded in the binary. Treat unreadable selector files as absent with a visible warning while keeping malformed JSON a hard error.",
+      "owner": "local/opencode",
+      "phase": "16",
+      "proof_path": "docs/proofs/T-1016/README.md",
+      "scope": [
+        "crates/webagent-core/src/config/selectors.rs",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md"
+      ],
+      "done_at": "2026-11-26",
+      "status": "done",
+      "title": "Selector I/O error on second PC breaks backend creation",
+      "type": "fix",
+      "verification": "fmt 0; clippy 0; lib 459+185+630+280=1554 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; release build 0; diff-check 0; 2 new regression tests; details docs/proofs/T-1016/gates.txt"
     }
   ]
 }
