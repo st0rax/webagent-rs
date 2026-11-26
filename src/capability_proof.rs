@@ -18,7 +18,7 @@ use std::sync::Mutex;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
-use crate::capability::Capability;
+use crate::capability_types::{capability, capability_for_route, Capability};
 use crate::config::data_dir;
 
 lazy_static! {
@@ -190,7 +190,7 @@ pub fn record_proof(rec: ProofRecord) {
 /// erzeugen, ohne ein eigenes Gate zu bauen.
 ///
 /// `route` ist ein Fähigkeitsname oder ein Selektor-Schlüssel (aufgelöst über
-/// [`crate::capability::capability_for_route`]). Der Hash wird gegen die
+/// [`capability_for_route`]). Der Hash wird gegen die
 /// **aktuellen** Selektoren des Brains gebildet, damit der Beleg am Gate
 /// dieselbe Grundlage hat wie bei `verify`. Fehler werden still geschluckt:
 /// eine unauflösbare Route, unlesbare Selektoren oder ein nicht schreibbarer
@@ -210,7 +210,7 @@ pub(crate) fn record_route_proof_at(
     latency_ms: u64,
     path: &PathBuf,
 ) {
-    let Some(key) = crate::capability::capability_for_route(route) else {
+    let Some(key) = capability_for_route(route) else {
         return;
     };
     // A successful one-way command has no independent round-trip evidence.
@@ -219,7 +219,7 @@ pub(crate) fn record_route_proof_at(
     if key == "model_switch" {
         return;
     }
-    let Some(cap) = crate::capability::capability(key) else {
+    let Some(cap) = capability(key) else {
         return;
     };
     let Ok(sel) = crate::config::load_selectors(brain_id) else {
@@ -510,7 +510,7 @@ mod tests {
 
     #[test]
     fn selector_hash_ueber_needs_in_kanonischer_reihenfolge() {
-        let cap = crate::capability::capability("model_switch").unwrap();
+        let cap = capability("model_switch").unwrap();
         let sel = serde_json::json!({
             "model_menu": ["a", "b"],
             "model_option": ["c"],
@@ -534,7 +534,7 @@ mod tests {
 
     #[test]
     fn selector_hash_ignoriert_fremde_schluessel() {
-        let cap = crate::capability::capability("chat").unwrap();
+        let cap = capability("chat").unwrap();
         let sel = serde_json::json!({
             "composer": ["#x"],
             "send_button": ["#y"],
@@ -586,7 +586,7 @@ mod tests {
             let path = unique_path();
             record_route_proof_at(&id, "chat", "testlauf", 7, &path);
             let sel = crate::config::load_selectors(&id).expect("selektoren");
-            let cap = crate::capability::capability("chat").expect("chat");
+            let cap = capability("chat").expect("chat");
             let hash = selector_hash_for(cap, &sel);
             assert!(matches!(
                 proof_state_at(&id, "chat", hash, &path),
@@ -617,7 +617,7 @@ mod tests {
     fn model_selection_gate_invalidates_legacy_trigger_proofs_only() {
         let sel = serde_json::json!({"model_menu": ["#m"], "model_option": ["#o"], "composer": ["#c"], "send_button": ["#s"]});
         for key in ["model_switch", "chat"] {
-            let cap = crate::capability::capability(key).unwrap();
+            let cap = capability(key).unwrap();
             let mut legacy = String::new();
             for need in cap.needs {
                 legacy.push_str(need);

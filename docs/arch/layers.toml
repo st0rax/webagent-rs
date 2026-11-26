@@ -76,6 +76,7 @@ modules = [
   "memory",
   "capability",
   "capability_proof",
+  "capability_types",
   "wiki_memory",
   "goal_plan",
 ]

@@ -1,5 +1,16 @@
 # Current Work
 
+## 2026-11-26 - T-1001 implemented: capability <-> capability_proof cycle removed
+
+- **Branch/claim:** `refactor/T-1001-capability-cycle`, claim commit `2de15c5`, owner `local/opencode`. T-1001 stays `claimed`; no merge, no `done`, no PR. Formal `depends_on: T-997` was overridden by the owner's standing "autonom weiterarbeiten"; T-997 stays `claimed`.
+- **Bestand zuerst geprüft:** `src/capability_types.rs` did not exist; the leaf named in the board scope was created. `capability_proof` remains the single proof gate and store — no second gate. `ProofKind`, `Capability`, `CATALOG`, `capability()` and `capability_for_route()` moved verbatim into the dependency-free leaf; `capability.rs` re-exports them, so all public paths and callers stay identical. `capability_proof.rs` imports from `capability_types`; no `crate::capability` reference remains there. Proof: `docs/proofs/T-1001/README.md`.
+- **Guard delta:** the `capability,capability_proof` cycle is gone. Measured graph: 88 modules (new leaf) / 274 edges (was 273) / 4 cycles (was 5) / 32 upward edges (unchanged). `docs/arch/layer_exceptions.txt` lost the cycle line; no `edge:` line changed because the three modules share L4.
+- **Gates measured:** `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --lib --quiet` 1523 passed / 0 failed / 1 ignored (unchanged from claim baseline, no tests added); `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1523 lib + 7 binary-unit + 4 integration passed; `cargo test --locked --no-default-features --test arch_layers --quiet` 4 passed; `git diff --check` 0.
+- **Deviation:** `src/lib.rs` (module declaration) and `docs/arch/layers.toml` (one L4 entry) are outside the three-file scope but required for a new top-level module to exist and be ranked. No behavior change to CLI, protocol, API, shell policy or proof-file format. `Cargo.toml` and `[profile.*]` untouched.
+- **Follow-up already published:** the claim-time baseline was red because the T-1000 proof lacked the mandatory reference banner. Fixed on `refactor/T-1000-config-brain-limits-edge` at `27b38af` (pushed) and cherry-picked here at `52b41f8`; baseline then measured green.
+- **Binary smoke blocked, not a regression:** `--help` and `diagnose` still exit `-1073741515` (`0xC0000005`) before `main`, as at claim time.
+- **Grenze / offen:** no login, credentials, live provider call, release, tag, deployment, PR or merge. T-1002..T-1005 remain free; T-1004 still needs explicit owner approval. Per the standing instruction, the next free slice (T-1002) may be claimed; stop before T-1004.
+
 ## 2026-11-26 - T-1000 implemented: config no longer reaches brain_limits
 
 - **Branch/claim:** `refactor/T-1000-config-brain-limits-edge`, claim commit `3d038ea`, owner `local/opencode`. T-1000 stays `claimed`; no merge, no `done`, no PR. Formally `depends_on: T-999`, but the owner's "autonom weiterarbeiten" explicitly overrode that gate just as the earlier "mach" did; T-999 stays `claimed` because it is not merged.
