@@ -6,7 +6,7 @@
 - Task: T-1014
 - Owner: local/opencode
 - Branch: `fix/T-1014-gemini-prompt-input`
-- Status: umgesetzt und geprüft; Gates siehe `gates.txt`.
+- Status: umgesetzt und geprüft, auf `master` gemergt (`a6c8b97`); Gates siehe `gates.txt`.
 
 ## Befund (live, 2026-11-26)
 
