@@ -51,14 +51,27 @@ pub fn shipped_selector_table() -> &'static [(&'static str, &'static str)] {
     EMBEDDED_SELECTORS
 }
 
-/// Liest eine Selektor-Datei, falls vorhanden. Fehlende Datei = `None` (kein
-/// Fehler); kaputtes JSON bleibt ein Fehler — sonst faellt eine verungluecke
-/// Reparatur still auf die Basis zurueck und niemand merkt es.
+/// Liest eine Selektor-Datei, falls vorhanden. Fehlende oder nicht lesbare
+/// Datei = `None` (kein Fehler); kaputtes JSON bleibt ein Fehler — sonst faellt
+/// eine verunglueckte Reparatur still auf die Basis zurueck und niemand merkt es.
+///
+/// T-1016: Der Pfad der mitgelieferten Dateien ist `CARGO_MANIFEST_DIR` aus der
+/// BUILD-Zeit. Auf einem anderen PC kann das ein nicht erreichbares Laufwerk
+/// sein; `read_to_string` liefert dann z. B. „Das Geraet ist nicht bereit (os
+/// error 21)" statt `NotFound`. Das darf die Backend-Erzeugung nicht abbrechen,
+/// denn die Selektoren stecken zusaetzlich eingebettet in der Binary. Ein
+/// unlesbarer Pfad wird mit einer sichtbaren Warnung als `None` behandelt.
 fn read_selector_file(path: &std::path::Path) -> std::io::Result<Option<serde_json::Value>> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e),
+        Err(e) => {
+            crate::bench_events::eprint_line(&format!(
+                "[selectors] {} nicht lesbar ({e}); Datei wird als nicht vorhanden behandelt.",
+                path.display()
+            ));
+            return Ok(None);
+        }
     };
     serde_json::from_str(&content).map(Some).map_err(|e| {
         std::io::Error::new(
@@ -162,6 +175,52 @@ pub(crate) fn fnv1a(s: &str) -> u32 {
         h = h.wrapping_mul(16777619);
     }
     h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_selector_file;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("webagent-{tag}-{nonce}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn unlesbare_selektor_datei_gilt_als_nicht_vorhanden() {
+        // T-1016: ein Verzeichnis an der Dateistelle erzeugt beim Lesen einen
+        // echten I/O-Fehler (kein NotFound) — dieselbe Klasse wie „Geraet nicht
+        // bereit (os error 21)" auf einem fremden PC. Die Binary muss weiterhin
+        // mit den eingebetteten Selektoren starten.
+        let dir = temp_dir("t1016-unreadable");
+        let blocked = dir.join("chatgpt.json");
+        fs::create_dir(&blocked).unwrap();
+        let result = read_selector_file(&blocked);
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            result.is_ok(),
+            "I/O-Fehler darf nicht abbrechen: {result:?}"
+        );
+        assert!(result.unwrap().is_none(), "Datei gilt als nicht vorhanden");
+    }
+
+    #[test]
+    fn kaputtes_selektor_json_bleibt_ein_fehler() {
+        let dir = temp_dir("t1016-broken");
+        let file = dir.join("chatgpt.json");
+        fs::write(&file, "{ kaputt").unwrap();
+        let result = read_selector_file(&file);
+        let _ = fs::remove_dir_all(&dir);
+        let error = result.expect_err("kaputtes JSON bleibt ein Fehler");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
 }
 
 /// profiles/encapsulated/{brain}_{runstamp} — gekapselte, isolierte Laufzeit-
