@@ -200,10 +200,10 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1007 | 16 | PanelSink boundary: remove transport hooks into brain_grid | refactor | done | local/opencode | refactor/T-1007-panel-sink |
 | T-1008 | 16 | Auto-copy WebView2Loader.dll and correct binary-smoke diagnosis | fix | done | local/opencode | fix/T-1008-webview-loader-smoke |
 | T-1009 | 16 | ImageBackend boundary: remove relay -> WebBrainBackend edge | refactor | done | local/opencode | refactor/T-1009-image-backend |
-| T-1010 | 16 | Workspace skeleton and multi-crate architecture guard | refactor | claimed | local/opencode | refactor/T-1010-workspace-guard |
-| T-1011 | 16 | Extract platform-neutral core modules into webagent-core | refactor | claimed | local/opencode | refactor/T-1011-core-extraction |
-| T-1012 | 16 | Extract browser/transport modules into webagent-transport | refactor | claimed | local/opencode | refactor/T-1012-transport-extraction |
-| T-1013 | 16 | Extract API/relay modules into webagent-api | refactor | claimed | local/opencode | refactor/T-1013-api-extraction |
+| T-1010 | 16 | Workspace skeleton and multi-crate architecture guard | refactor | done | local/opencode | refactor/T-1010-workspace-guard |
+| T-1011 | 16 | Extract platform-neutral core modules into webagent-core | refactor | done | local/opencode | refactor/T-1011-core-extraction |
+| T-1012 | 16 | Extract browser/transport modules into webagent-transport | refactor | done | local/opencode | refactor/T-1012-transport-extraction |
+| T-1013 | 16 | Extract API/relay modules into webagent-api | refactor | done | local/opencode | refactor/T-1013-api-extraction |
 
 ## Machine-readable mirror (generated from docs/TASKBOARD.json)
 
@@ -323,10 +323,10 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1007 | done |
 | T-1008 | done |
 | T-1009 | done |
-| T-1010 | claimed |
-| T-1011 | claimed |
-| T-1012 | claimed |
-| T-1013 | claimed |
+| T-1010 | done |
+| T-1011 | done |
+| T-1012 | done |
+| T-1013 | done |
 | T-976 | done |
 | T-977 | done |
 <!-- TASKBOARD-MIRROR-END -->

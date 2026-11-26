@@ -2795,7 +2795,7 @@
       "phase": "16",
       "type": "refactor",
       "title": "Workspace skeleton and multi-crate architecture guard",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "Cargo.toml",
@@ -2826,14 +2826,15 @@
       "verification": "cargo metadata --no-deps --format-version 1; cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; cargo test --locked --no-default-features --quiet; cargo build --locked; cargo build --release --locked; debug/release --version/--help; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1010-workspace-guard",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1011",
       "phase": "16",
       "type": "refactor",
       "title": "Extract platform-neutral core modules into webagent-core",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "Cargo.toml",
@@ -2863,14 +2864,15 @@
       "verification": "cargo metadata --no-deps --format-version 1; cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib --quiet (claim-time and final, before/after); cargo test --test arch_layers -- --nocapture; cargo test --all-targets --quiet; cargo test --locked --no-default-features --quiet; debug/release --version/--help; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1011-core-extraction",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1012",
       "phase": "16",
       "type": "refactor",
       "title": "Extract browser/transport modules into webagent-transport",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "Cargo.toml",
@@ -2900,14 +2902,15 @@
       "verification": "cargo metadata --no-deps --format-version 1; cargo fmt --all -- --check; cargo clippy --workspace --features webview --all-targets -- -D warnings; cargo test --workspace --lib --quiet (claim-time and final, before/after); cargo test --test arch_layers -- --nocapture; cargo test --workspace --all-targets --quiet; cargo test --workspace --locked --no-default-features --quiet; debug/release --version/--help; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1012-transport-extraction",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-1013",
       "phase": "16",
       "type": "refactor",
       "title": "Extract API/relay modules into webagent-api",
-      "status": "claimed",
+      "status": "done",
       "depends_on": [],
       "scope": [
         "Cargo.toml",
@@ -2939,7 +2942,8 @@
       "verification": "cargo metadata --no-deps --format-version 1; cargo fmt --all -- --check; cargo clippy --workspace --features webview --all-targets -- -D warnings; cargo test --workspace --lib --quiet (claim-time and final, before/after); cargo test --test arch_layers -- --nocapture; cargo test --workspace --all-targets --quiet; cargo test --workspace --locked --no-default-features --quiet; debug/release --version/--help; git diff --check",
       "owner": "local/opencode",
       "branch": "refactor/T-1013-api-extraction",
-      "claimed_at": "2026-11-26"
+      "claimed_at": "2026-11-26",
+      "done_at": "2026-11-26"
     },
     {
       "id": "T-976",
