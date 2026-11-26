@@ -2528,7 +2528,7 @@
       "phase": "16",
       "type": "refactor",
       "title": "Resolve remaining TUI-side cycles ({repl, tui, tui_ansi}, {tui_load, tui_state})",
-      "status": "free",
+      "status": "claimed",
       "depends_on": [
         "T-997"
       ],
@@ -2548,7 +2548,10 @@
         "No TUI feature work."
       ],
       "proof_path": "docs/proofs/T-1002/README.md",
-      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check"
+      "verification": "cargo fmt --all -- --check; cargo clippy --features webview --all-targets -- -D warnings; cargo test --lib (baseline at last done task T-975: 1521 passed, 0 failed, 1 ignored; re-measure at claim time and report before/after); git diff --check",
+      "owner": "local/opencode",
+      "branch": "refactor/T-1002-tui-cycles",
+      "claimed_at": "2026-11-26"
     },
     {
       "id": "T-1003",
