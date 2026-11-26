@@ -9,3 +9,7 @@ docs/proofs/T-961/semantic-denial-retry/*.log -text
 # Raw DOM survey dumps (T-927/T-928) are audit evidence: store byte-for-byte.
 docs/proofs/T-927/*.txt -text
 docs/proofs/T-928/*.txt -text
+
+# T-973 Pi-Rohtranskript und Turn-Beleg sind Audit-Evidenz: byte-for-byte speichern.
+docs/proofs/T-973/*.json -text
+docs/proofs/T-973/*.md -text
