@@ -274,7 +274,7 @@ Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kom
           "id": "webagent/chatgpt",
           "name": "WebAgent ChatGPT",
           "reasoning": false,
-          "input": ["text", "image", "audio"],
+          "input": ["text", "image"],
           "contextWindow": 128000,
           "maxTokens": 16384,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
@@ -344,7 +344,7 @@ Für den Anthropic-Adapter wird derselbe Token verwendet. Die `baseUrl` endet **
           "id": "webagent/chatgpt",
           "name": "WebAgent ChatGPT (Anthropic format)",
           "reasoning": false,
-          "input": ["text", "image", "audio"],
+          "input": ["text", "image"],
           "contextWindow": 128000,
           "maxTokens": 16384,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
