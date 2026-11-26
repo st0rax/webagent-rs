@@ -10,10 +10,10 @@ use super::{
     block_phrase_in_text, classify_completion, stable_norm, Completion, SessionState,
     WebBrainBackend,
 };
-use crate::brain::{
+use webagent_core::brain::{
     BackendFactory, BrainBackend, BrainResponse, ImageGenerationBackend, PageProbe, RelayBackend,
 };
-use crate::inference_types::{BrowserAttachment, WebSearchObservation};
+use webagent_core::inference_types::{BrowserAttachment, WebSearchObservation};
 // Beide nur mit `webview`: ohne das Feature gibt es weder das Modul noch einen
 // Aufrufer, und die CI baut mit `--no-default-features`.
 #[cfg(feature = "webview")]
@@ -174,7 +174,7 @@ impl WebBrainBackend {
                     if std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1") {
                         let inventar = self.visible_button_inventory();
                         if !inventar.is_empty() {
-                            crate::bench_events::eprint_line(&format!(
+                            webagent_core::bench_events::eprint_line(&format!(
                                 "[browser] {}: kein Stop-Button erkannt, sichtbare Bedienelemente waehrend der Generierung: {inventar}",
                                 self.brain_id
                             ));
@@ -275,7 +275,7 @@ impl WebBrainBackend {
                         && !stop_seen_ever
                         && std::env::var("WEBAGENT_STOP_INVENTORY").ok().as_deref() == Some("1")
                     {
-                        crate::bench_events::eprint_line(&format!(
+                        webagent_core::bench_events::eprint_line(&format!(
                             "[browser] {}: kein Stop-Knopf erkannt — Fertigsignal kommt aus \
                              Textstabilitaet. Bestandsaufnahme im Log zeigt, ob ein \
                              unterscheidbarer Knopf ueberhaupt existiert",
@@ -283,7 +283,7 @@ impl WebBrainBackend {
                         ));
                     }
                     if let Some(hit) = block_phrase_in_text(&text) {
-                        crate::bench_events::eprint_line(&format!(
+                        webagent_core::bench_events::eprint_line(&format!(
                             "[browser] {}: Block-Phrase '{hit}' im Antworttext erkannt",
                             self.brain_id
                         ));
@@ -332,7 +332,7 @@ impl BrainBackend for WebBrainBackend {
             // Shared-Pool nur ohne Override. Mit profile_override (Swarm-Kopie)
             // nie den Pool-Tab recyclen — sonst landet man wieder im Shared-
             // Profil (SingletonLock / Session-Mix). Eigener Runtime-Pfad.
-            if crate::config::use_shared_browser() && self.profile_override.is_none() {
+            if webagent_core::config::use_shared_browser() && self.profile_override.is_none() {
                 return crate::browser_pool::BrowserPool::global()
                     .lock()
                     .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
@@ -344,7 +344,7 @@ impl BrainBackend for WebBrainBackend {
                 .open_page(&profile, &self.url, headless, &self.brain_id)
                 .map_err(|e| e.to_string())?;
             let nav_start = Instant::now();
-            let nav_timeout = crate::timeouts::browser_nav_timeout();
+            let nav_timeout = webagent_core::timeouts::browser_nav_timeout();
             driver.navigate(&self.url, nav_timeout).map_err(|e| {
                 let elapsed = nav_start.elapsed();
                 // T-804: bekannter Navigationstimeout wird mit Herkunft im
@@ -352,7 +352,7 @@ impl BrainBackend for WebBrainBackend {
                 // Lease-Marke (Shared-Master/Legacy), bleibt der Reset bewusst
                 // unbekannt — record_reset_in no-op't dann.
                 if self.profile_override.is_some() {
-                    let _ = crate::config::record_reset_in(
+                    let _ = webagent_core::config::record_reset_in(
                         self.effective_profile_dir(),
                         "navigation_timeout",
                     );
@@ -384,7 +384,7 @@ impl BrainBackend for WebBrainBackend {
             // Mirror start(): Shared-Pool nur ohne Override. Mit profile_override
             // (Swarm-Kopie) haben wir eine eigene Runtime — die muss hier fallen,
             // sonst bleibt der WebView-Prozess hängen und Isolation bricht.
-            if crate::config::use_shared_browser() && self.profile_override.is_none() {
+            if webagent_core::config::use_shared_browser() && self.profile_override.is_none() {
                 *self.driver.borrow_mut() = None;
                 *self.view_id.borrow_mut() = None;
                 self.revealed.set(false);
@@ -487,7 +487,7 @@ impl BrainBackend for WebBrainBackend {
             let mut guard = self.driver.borrow_mut();
             let driver = guard.as_mut().ok_or("Backend nicht gestartet")?;
             driver
-                .navigate(&url, crate::timeouts::browser_navigate_timeout())
+                .navigate(&url, webagent_core::timeouts::browser_navigate_timeout())
                 .map_err(|e| e.to_string())?;
         }
         Ok(())
@@ -576,7 +576,10 @@ impl BrainBackend for WebBrainBackend {
             None => return Err("Browser-Driver nicht gestartet".into()),
         };
         driver
-            .navigate(reference, crate::timeouts::browser_navigate_timeout())
+            .navigate(
+                reference,
+                webagent_core::timeouts::browser_navigate_timeout(),
+            )
             .map(|_| true)
             .map_err(|e| e.to_string())
     }

@@ -8,21 +8,21 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "webview")]
 use std::time::Duration;
 
-#[cfg(feature = "webview")]
-use crate::brain::BrainBackend;
 #[cfg(any(feature = "webview", test))]
 use crate::browser::WebBrainBackend;
-#[cfg(any(feature = "webview", test))]
-use crate::config::persist_browser_tabs;
-#[cfg(feature = "webview")]
-use crate::config::{
-    encapsulated_profile_dir, prepare_shared_profile_for_clone, runtime_pool_profile_dir,
-    shared_profile_dir, ProfileClonePlanner,
-};
 #[cfg(feature = "webview")]
 use crate::page_driver::PageDriver;
 #[cfg(feature = "webview")]
 use crate::webview_runtime::{WebViewPageDriver, WebViewRuntime};
+#[cfg(feature = "webview")]
+use webagent_core::brain::BrainBackend;
+#[cfg(any(feature = "webview", test))]
+use webagent_core::config::persist_browser_tabs;
+#[cfg(feature = "webview")]
+use webagent_core::config::{
+    encapsulated_profile_dir, prepare_shared_profile_for_clone, runtime_pool_profile_dir,
+    shared_profile_dir, ProfileClonePlanner,
+};
 
 /// Max. Versuche den geteilten Browser zu nutzen, bevor ein Brain auf die
 /// gekapselte Fallback-Instanz faellt. Spiegelt circuit_breaker::DEFAULT_MAX_FAILURES.
@@ -264,7 +264,7 @@ impl BrowserPool {
         for _ in 0..POOL_FALLBACK_RETRIES {
             match self.start_brain(backend, headless, None) {
                 Ok(()) => return Ok(()),
-                Err(e) => crate::bench_events::eprint_line(&format!(
+                Err(e) => webagent_core::bench_events::eprint_line(&format!(
                     "[browser_pool] Shared-Versuch fuer Brain '{}' fehlgeschlagen: {}",
                     brain_id, e
                 )),
@@ -272,7 +272,7 @@ impl BrowserPool {
         }
 
         // 2) Fallback: gekapselte Instanz (eigenes Profil-Image, eigenes Runtime).
-        crate::bench_events::eprint_line(&format!(
+        webagent_core::bench_events::eprint_line(&format!(
             "[browser_pool] Shared-Browser fuer Brain '{}' nach {} Versuchen fehlgeschlagen -> gekapselte Instanz",
             brain_id, POOL_FALLBACK_RETRIES
         ));
@@ -312,7 +312,7 @@ impl BrowserPool {
             return Ok(());
         }
 
-        let runstamp = crate::now_run_stamp();
+        let runstamp = webagent_core::now_run_stamp();
         let clone_dir = encapsulated_profile_dir(brain_id, &runstamp);
         // Der gemeinsame Master darf erst nach OS-Lock und Pending-Recovery gelesen
         // werden; ansonsten kÃ¶nnte ein Crashzustand in den Fallback geklont werden.
@@ -615,9 +615,9 @@ impl BrowserPool {
             // Runtime drop. Retain the established grace period before
             // copying the profile back to the master.
             std::thread::sleep(std::time::Duration::from_secs(5));
-            crate::config::write_back_session_to_master().map_err(|error| {
-                crate::bench_events::emit(
-                    crate::bench_events::Level::Warn,
+            webagent_core::config::write_back_session_to_master().map_err(|error| {
+                webagent_core::bench_events::emit(
+                    webagent_core::bench_events::Level::Warn,
                     None,
                     &format!("[master-profile] {error}"),
                 );
@@ -679,8 +679,8 @@ impl BrowserPool {
     #[allow(dead_code)]
     pub fn shutdown(&mut self) {
         if let Err(error) = self.shutdown_with_result() {
-            crate::bench_events::emit(
-                crate::bench_events::Level::Warn,
+            webagent_core::bench_events::emit(
+                webagent_core::bench_events::Level::Warn,
                 None,
                 &format!("[master-profile] geordneter Shutdown fehlgeschlagen: {error}"),
             );

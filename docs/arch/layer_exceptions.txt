@@ -15,7 +15,10 @@
 # new top-level module `support` adds one rank-0 edge, so the baseline is now
 # 91 modules, 278 edges, 3 cycles, 26 upward edges, crate_violations=0. No
 # exception line was added or removed. `counting` stays in the root crate: it
-# calls WebBackendFactory::create_brain_backend. Every entry below is
+# calls WebBackendFactory::create_brain_backend. T-1012 moves ten browser/page/
+# panel modules into webagent-transport; the measured graph is unchanged (91
+# modules, 278 edges, 3 cycles, 26 upward edges, crate_violations=0) and no
+# exception line was added or removed. Every entry below is
 # grandfathered debt; the test fails on a new entry and on a stale entry (so
 # the list can only shrink).
 #

@@ -217,7 +217,7 @@ impl WebViewRuntime {
         // deadline, leaving only a black window and no terminal controller
         // event in the transcript.
         let (_view_id, driver) =
-            self.wake_and_wait(resp_rx, crate::timeouts::webview_wake_timeout())?;
+            self.wake_and_wait(resp_rx, webagent_core::timeouts::webview_wake_timeout())?;
         Ok(driver)
     }
 
@@ -230,7 +230,7 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
-        self.wake_and_wait(resp_rx, crate::timeouts::webview_wake_timeout())
+        self.wake_and_wait(resp_rx, webagent_core::timeouts::webview_wake_timeout())
     }
 
     /// Holt ein Tab-Fenster auf den Bildschirm (Brain-Kachelansicht) oder parkt es wieder.
@@ -252,7 +252,7 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
-        self.wake_and_wait(resp_rx, crate::timeouts::webview_wake_timeout())
+        self.wake_and_wait(resp_rx, webagent_core::timeouts::webview_wake_timeout())
     }
 
     /// Holt den Fokus ausdruecklich auf eine Kachel (`focus = true`) oder gibt
@@ -272,7 +272,7 @@ impl WebViewRuntime {
                 respond: resp_tx,
             })
             .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
-        self.wake_and_wait(resp_rx, crate::timeouts::webview_wake_timeout())
+        self.wake_and_wait(resp_rx, webagent_core::timeouts::webview_wake_timeout())
     }
 
     fn wake_and_wait<T>(&self, resp_rx: Receiver<Result<T>>, timeout: Duration) -> Result<T> {
@@ -325,7 +325,7 @@ impl WebViewPageDriver {
         // the polling loop and left the process looking frozen; the controller
         // needs a bounded failure so it can record the event and terminate the
         // run (or recreate the view).
-        rx.recv_timeout(crate::timeouts::webview_recv_timeout())
+        rx.recv_timeout(webagent_core::timeouts::webview_recv_timeout())
             .map_err(|_| {
                 PageDriverError::Timeout(
                     "Page-Befehl timeout (WebView moeglicherweise eingefroren)".into(),
@@ -608,7 +608,7 @@ fn attach_network_observation(
     webview: &wry::WebView,
     event_loop: &mut EventLoop<()>,
 ) -> Result<Option<Box<dyn FnOnce()>>> {
-    use crate::network_observation as net;
+    use webagent_core::network_observation as net;
     use webview2_com::CoTaskMemPWSTR;
     use windows::core::{HSTRING, PWSTR};
     use windows::Win32::System::WinRT::EventRegistrationToken;
@@ -815,7 +815,7 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
     // Deaktivieren statt behandeln: das Skript bekommt sofort einen Default-Wert
     // zurueck, es gibt gar nichts mehr zum Haengenbleiben.
     if let Err(e) = disable_native_script_dialogs(&webview) {
-        crate::bench_events::eprint_line(&format!(
+        webagent_core::bench_events::eprint_line(&format!(
             "[webview] Konnte native JS-Dialoge nicht deaktivieren: {e}"
         ));
     }
@@ -825,7 +825,7 @@ Object.defineProperty(navigator, 'webdriver', { get: function() { return undefin
     let network_cleanup = match attach_network_observation(&webview, event_loop) {
         Ok(cleanup) => cleanup,
         Err(error) => {
-            crate::bench_events::eprint_line(&format!(
+            webagent_core::bench_events::eprint_line(&format!(
                 "[T940] CDP-Netzwerkbeobachtung nicht aktivierbar: {error}"
             ));
             None
@@ -1511,11 +1511,11 @@ fn browser_args() -> String {
                 args.push(' ');
                 args.push_str(&a);
             }
-            crate::bench_events::eprint_line(&format!(
+            webagent_core::bench_events::eprint_line(&format!(
                 "[webview] Mikrofon wird aus {path} gespeist"
             ));
         } else {
-            crate::bench_events::eprint_line(&format!(
+            webagent_core::bench_events::eprint_line(&format!(
                 "[webview] WEBAGENT_FAKE_AUDIO zeigt auf keine Datei: {path} — ignoriert"
             ));
         }
@@ -1656,7 +1656,7 @@ fn eval_js(
         webview,
         expression,
         event_loop,
-        crate::timeouts::webview_eval_timeout(),
+        webagent_core::timeouts::webview_eval_timeout(),
     )
 }
 

@@ -27,7 +27,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::browser::WebBrainBackend;
-use crate::config::available_brain_ids;
+use webagent_core::config::available_brain_ids;
 
 /// Ergebnis eines einzelnen Login-Versuchs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,7 +53,7 @@ pub fn login_all(timeout_per_brain: Duration, parallel: usize, force: bool) -> V
     let brains = available_brain_ids();
     if parallel > 0 {
         let cap = cap_parallel(parallel);
-        if crate::config::use_shared_browser() {
+        if webagent_core::config::use_shared_browser() {
             eprintln!(
                 "[login-all] --parallel deaktiviert bei WEBAGENT_USE_SHARED_BROWSER=1 \
                  (ein geteiltes Profil fuer alle Brains, kein Parallel-Login moeglich). \
@@ -277,8 +277,8 @@ fn login_all_sequential(brains: &[String], timeout: Duration, force: bool) -> Ve
         .iter()
         .map(|brain| login_one(brain, timeout, force, None))
         .collect();
-    if crate::config::use_shared_browser() {
-        crate::config::seal_master_profile();
+    if webagent_core::config::use_shared_browser() {
+        webagent_core::config::seal_master_profile();
     }
     results
 }
@@ -292,7 +292,7 @@ fn login_all_sequential(brains: &[String], timeout: Duration, force: bool) -> Ve
 /// „bereits eingeloggt"-Fall: dass die Erkennung anschlaegt, ist genau der
 /// Nachweis, dass ein alter „Login nötig"-Eintrag veraltet ist.
 pub fn clear_breaker(brain_id: &str) {
-    if crate::circuit_breaker::clear(brain_id) {
+    if webagent_core::circuit_breaker::clear(brain_id) {
         println!("[login] {brain_id}: Breaker-Sperre aufgehoben.");
     }
 }
@@ -302,7 +302,7 @@ pub fn clear_breaker(brain_id: &str) {
 /// # Warum das noetig ist
 ///
 /// Der Worker-Pool oeffnet seine Tabs IMMER aus einer Laufzeit-Kopie von
-/// `profiles/shared` ([`crate::config::runtime_pool_profile_dir`]) — er ist ein
+/// `profiles/shared` ([`webagent_core::config::runtime_pool_profile_dir`]) — er ist ein
 /// GETEILTER Browser und braucht ein Profil, das die Sitzungen aller Brains
 /// kennt. Der Login schreibt aber nur dann direkt ins Master, wenn
 /// `WEBAGENT_USE_SHARED_BROWSER=1` gesetzt ist; sonst landet er in
@@ -319,10 +319,10 @@ pub fn clear_breaker(brain_id: &str) {
 /// wird dafuer kurz entsiegelt und danach wieder versiegelt.
 fn sync_login_to_master(brain_id: &str) {
     // Im Shared-Betrieb schreibt der Login ohnehin direkt ins Master.
-    if crate::config::use_shared_browser() {
+    if webagent_core::config::use_shared_browser() {
         return;
     }
-    let src = crate::config::profiles_dir().join(brain_id);
+    let src = webagent_core::config::profiles_dir().join(brain_id);
     if !src.is_dir() {
         return;
     }
@@ -344,7 +344,7 @@ fn sync_login_to_master(brain_id: &str) {
     // Sicherung vor jeder Mutation, Gewichtsvergleich, Abgleich der
     // Sitzungsnachweise und Rollback. Eine Spiegelung, die dem Master Brains
     // NEHMEN wuerde, wird damit abgelehnt statt ausgefuehrt.
-    match crate::config::write_back_dir_to_master(&src) {
+    match webagent_core::config::write_back_dir_to_master(&src) {
         Ok(()) => println!("[login] {brain_id}: Sitzung ins Hauptprofil gespiegelt."),
         Err(e) => {
             eprintln!("[login] {brain_id}: Spiegelung ins Hauptprofil abgelehnt: {e}");
@@ -364,13 +364,13 @@ fn maybe_copy_to_reference(brain_id: &str) {
         .map(|v| v == "1")
         .unwrap_or(false)
     {
-        let src = crate::config::profiles_dir().join(brain_id);
-        let dst = crate::config::reference_profile_dir(brain_id);
+        let src = webagent_core::config::profiles_dir().join(brain_id);
+        let dst = webagent_core::config::reference_profile_dir(brain_id);
         if !src.is_dir() {
             return;
         }
         let _ = std::fs::create_dir_all(&dst);
-        match crate::config::copy_dir_all(&src, &dst) {
+        match webagent_core::config::copy_dir_all(&src, &dst) {
             Ok(()) => println!("[login-all] Referenz-Profil gespiegelt → {:?}", dst),
             Err(e) => eprintln!("[login-all] Referenz-Spiegelung fehlgeschlagen: {e}"),
         }
@@ -391,9 +391,9 @@ fn login_one(
     profile_override: Option<PathBuf>,
 ) -> LoginResult {
     // Shared-Betrieb: das Master muss für den Login kurz beschreibbar sein.
-    let shared_mode = crate::config::use_shared_browser();
+    let shared_mode = webagent_core::config::use_shared_browser();
     if shared_mode {
-        crate::config::unseal_master_profile();
+        webagent_core::config::unseal_master_profile();
     }
 
     println!("[login-all] {brain_id}: Browser öffnen…");
@@ -417,7 +417,7 @@ fn login_one(
     } else if shared_mode {
         // Nur das Master kennt alle Sessions: Login landet direkt in
         // `profiles/shared` statt `profiles/<brain>`.
-        backend = backend.with_profile_override(crate::config::shared_profile_dir());
+        backend = backend.with_profile_override(webagent_core::config::shared_profile_dir());
     }
 
     // Bereits eingeloggt? Nur wenn nicht --force.
@@ -484,7 +484,7 @@ fn finish_login(
 ) -> LoginResult {
     if shared_mode {
         drop(backend);
-        crate::config::seal_master_profile();
+        webagent_core::config::seal_master_profile();
     }
     result
 }
@@ -533,7 +533,7 @@ mod tests {
         // Einloggen wieder `logged_in: false`.
         for brain in ["gemini", "chatgpt", "deepseek", "claude"] {
             let backend = WebBrainBackend::from_config(brain).expect("config");
-            let erwartet = crate::config::profiles_dir().join(brain);
+            let erwartet = webagent_core::config::profiles_dir().join(brain);
             assert_eq!(
                 backend.effective_profile_dir(),
                 &erwartet,

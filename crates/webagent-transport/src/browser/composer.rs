@@ -53,8 +53,8 @@ impl WebBrainBackend {
             .get("clamp")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        crate::brain_score::update_pending_turn(|obs| {
-            obs.phase = crate::brain_score::SendPhase::Focus;
+        webagent_core::brain_score::update_pending_turn(|obs| {
+            obs.phase = webagent_core::brain_score::SendPhase::Focus;
             obs.selector_index = idx;
             obs.element_w = w;
             obs.element_h = h;
@@ -189,8 +189,8 @@ impl WebBrainBackend {
         // fail-closed benennen statt zu raten oder einen unbekannten Knopf zu
         // klicken. Jede Abweichung wird in der Turn-Beobachtung protokolliert.
         let (diagnosis, detail, stations) = self.diagnose_focus_failure();
-        crate::brain_score::update_pending_turn(|obs| {
-            obs.phase = crate::brain_score::SendPhase::Focus;
+        webagent_core::brain_score::update_pending_turn(|obs| {
+            obs.phase = webagent_core::brain_score::SendPhase::Focus;
             obs.focus_trap = keyboard.trapped;
             obs.focus_diagnosis = Some(diagnosis.to_string());
             obs.focus_stations = Some(stations);
@@ -304,8 +304,8 @@ impl WebBrainBackend {
             FocusMethod::Click => "click",
             FocusMethod::None => "none",
         };
-        crate::brain_score::update_pending_turn(|obs| {
-            obs.phase = crate::brain_score::SendPhase::Focus;
+        webagent_core::brain_score::update_pending_turn(|obs| {
+            obs.phase = webagent_core::brain_score::SendPhase::Focus;
             obs.focus_arrived = Some(out.arrived);
             obs.focus_method = Some(method.to_string());
             obs.focus_tries = Some(out.tries);
@@ -557,7 +557,7 @@ mod tests {
         // Fokusstrategie war keyboard, verifiziert, ohne Koordinaten gegriffen:
         // genau drei echte Tab-Drucke vor dem activeElement-Treffer.
         assert_eq!(state2.press_key_payloads().len(), 3);
-        let obs = crate::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
+        let obs = webagent_core::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
         assert_eq!(obs.focus_method.as_deref(), Some("keyboard"));
         assert_eq!(obs.focus_arrived, Some(true));
         assert_eq!(obs.focus_tries, Some(3));
@@ -592,7 +592,7 @@ mod tests {
 
         // Alle 5 Tab-Versuche scheiterten (tabindex=-1), el_focus hat geholfen.
         assert_eq!(state2.press_key_payloads().len(), 5);
-        let obs = crate::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
+        let obs = webagent_core::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
         assert_eq!(obs.focus_method.as_deref(), Some("el_focus"));
         assert_eq!(obs.focus_arrived, Some(true));
         assert_eq!(obs.focus_tries, Some(5));
@@ -618,7 +618,7 @@ mod tests {
 
         assert!(!filled);
         assert_eq!(state2.press_key_payloads().len(), 5);
-        let obs = crate::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
+        let obs = webagent_core::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
         assert_eq!(obs.focus_method.as_deref(), Some("none"));
         assert_eq!(obs.focus_arrived, Some(false));
         assert!(!obs.tabindex_fallback);
@@ -645,7 +645,7 @@ mod tests {
 
         backend.fill_composer(&composer_js, "Hallo Welt");
 
-        let obs = crate::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
+        let obs = webagent_core::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
         assert_eq!(obs.focus_method.as_deref(), Some("click"));
         assert_eq!(obs.focus_arrived, Some(false));
         assert!(!obs.tabindex_fallback);
@@ -789,7 +789,7 @@ mod tests {
         let filled = backend.fill_composer(&composer_js, "Hallo Welt");
 
         assert!(!filled);
-        let obs = crate::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
+        let obs = webagent_core::brain_score::pending_turn_snapshot().expect("Turn-Beobachtung");
         assert_eq!(obs.focus_method.as_deref(), Some("none"));
         assert_eq!(obs.focus_arrived, Some(false));
         assert!(obs.focus_trap);

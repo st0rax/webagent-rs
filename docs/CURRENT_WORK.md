@@ -1,3 +1,11 @@
+## 2026-11-26 - T-1012 implemented: transport modules extracted (branch pushed)
+
+- **Branch/claim:** `refactor/T-1012-transport-extraction`, claim commit `3c4388d`, owner `local/opencode`. T-1012 was claimed in board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. Proof: `docs/proofs/T-1012/README.md`.
+- **Delivered:** 22 source files (ten top-level modules) moved with `git mv` into `crates/webagent-transport/src/`: `browser` (11 files), `brain_probe`, `browser_pool`, `login`, `mock_page`, `page_driver`, `panel_sink`, `upload_spa_js`, `webview_reveal`, `webview_runtime` (plus its two child files). Root re-exports `webagent_transport::*`, so all existing paths stay valid. `crate::<core>` was rewritten to explicit `webagent_core::` paths in 13 files; `WebBackendFactory` and its `BackendFactory` impl moved together to satisfy the orphan rule. `panel_sink` geometry helpers are exposed under a new `test-support` feature used by root dev-dependencies. No runtime behavior, dependency version or `[profile.*]` change.
+- **Guard/docs:** `CRATE_SPLIT.md` §4.2 and `layer_exceptions.txt` record the measured state; `layers.toml` and the exception lines needed no edit. Guard still `modules=91, edges=278, cycles=3, upward_edges=26, crate_violations=0`; `api → transport` still rejected.
+- **Gates:** fmt 0; clippy 0; arch 5 passed; workspace lib tests 647 root + 623 core + 277 transport = 1547 passed / 0 failed / 1 ignored (identical to claim-time total); all-targets adds 7 bin-unit + 5 integration; no-default 647 + 623 + 271 passed / 1 ignored; offline check 0; debug/release builds 0 with `--version`/`--help` exit 0 and `WebView2Loader.dll` present; `git diff --check` 0.
+- **Grenze / offen:** no api module moved, no merge, tag, release or deployment, no credentials, provider call or browser login. Next: T-1013 api extraction from this branch.
+
 ## 2026-11-26 - T-1012 claimed: transport extraction (no source edits yet)
 
 - **Claim:** `docs/TASKBOARD.json` and mirror carry T-1012 as `claimed`, owner `local/opencode`, branch `refactor/T-1012-transport-extraction`, 2026-11-26. It branches from the pushed T-1011 implementation commit `2635336` and stays `claimed` until merged. No source file was moved before this claim.
