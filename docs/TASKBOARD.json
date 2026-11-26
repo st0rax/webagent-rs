@@ -2172,6 +2172,7 @@
       "owner": "local/opencode",
       "branch": "docs/T-969-protocol-security",
       "claimed_at": "2026-11-25",
+      "done_at": "2026-11-26",
       "depends_on": [],
       "scope": [
         "docs/PROTOCOL.md",
@@ -2201,6 +2202,7 @@
       "owner": "local/opencode",
       "branch": "fix/T-970-observation-scope",
       "claimed_at": "2026-11-25",
+      "done_at": "2026-11-26",
       "depends_on": [],
       "scope": [
         "src/brain_score.rs",
@@ -2231,6 +2233,7 @@
       "owner": "local/opencode",
       "branch": "fix/T-971-verifiedfree-proof",
       "claimed_at": "2026-11-25",
+      "done_at": "2026-11-26",
       "depends_on": [],
       "scope": [
         "src/free_cloud_chat.rs",
@@ -2261,6 +2264,7 @@
       "owner": "local/opencode",
       "branch": "refactor/T-972-controller-webview-split",
       "claimed_at": "2026-11-25",
+      "done_at": "2026-11-26",
       "depends_on": [],
       "scope": [
         "src/controller.rs",
