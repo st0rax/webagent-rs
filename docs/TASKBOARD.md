@@ -187,7 +187,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 |---|---|---|---|---|---|---|
 | T-997 | 16 | Layer ratchet: guard test for module dependency direction and cycles | test | claimed | local/opencode | feature/T-997-arch-layers |
 | T-998 | 16 | Break protocol/brain -> browser edges | refactor | claimed | local/opencode | refactor/T-998-protocol-browser-edge |
-| T-999 | 16 | Remove config -> worker_pool dependency | refactor | free | - | - |
+| T-999 | 16 | Remove config -> worker_pool dependency | refactor | claimed | local/opencode | refactor/T-999-config-worker-pool-edge |
 | T-1000 | 16 | Remove config -> brain_limits dependency | refactor | free | - | - |
 | T-1001 | 16 | Resolve capability <-> capability_proof cycle | refactor | free | - | - |
 | T-1002 | 16 | Resolve remaining TUI-side cycles | refactor | free | - | - |
@@ -302,7 +302,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-975 | done |
 | T-997 | claimed |
 | T-998 | claimed |
-| T-999 | free |
+| T-999 | claimed |
 | T-1000 | free |
 | T-1001 | free |
 | T-1002 | free |
