@@ -1,10 +1,11 @@
 # Architecture ratchet for tests/arch_layers.rs.
-# Measured on master 93d33a3: 87 top-level modules, 274 crate::<module> edges,
-# six strongly connected components; T-1000 removed brain_limits/config,
-# T-1001 removed capability/capability_proof and T-1002 removed
-# tui_load/tui_state, leaving three cycles. Every entry below is
-# grandfathered debt;
-# the test fails on a new entry and on a stale entry (so the list can only shrink).
+# Baseline on master 93d33a3: 87 modules, 274 crate::<module> edges, six SCCs.
+# T-1000 removed brain_limits/config, T-1001 capability/capability_proof,
+# T-1002 tui_load/tui_state, leaving three cycles. T-1006 adds inference_types
+# (89 modules, 275 edges, 29 upward edges) and shrinks the browser cycle from
+# six modules to three; contract->browser, contract->brain and counting->browser
+# are gone. Every entry below is grandfathered debt; the test fails on a new
+# entry and on a stale entry (so the list can only shrink).
 #
 # Format: cycle:<sorted,comma-separated module names> | edge:<lower>-><higher>
 
@@ -12,7 +13,11 @@
 # browser_pool, bin_hooks and the benchmark/controller cycle. T-1000 removed
 # brain_limits,config, T-1001 capability,capability_proof and T-1002
 # tui_load,tui_state, so three remain).
-cycle:api_bridge,brain_probe,browser,browser_inference,browser_pool,relay
+# T-1006 moved the shared types out of browser_inference; the former six-module
+# cycle shrank to three modules. browser_inference and free_cloud_chat moved to
+# L3 so their remaining downward edges stay legal; api_bridge/browser_inference/
+# relay are no longer part of this strongly connected component.
+cycle:brain_probe,browser,browser_pool
 cycle:autoresearch,bench_harvest,bench_scoring,benchmark,controller,runs_report
 # T-1002 keeps bin_hooks/repl/tui/tui_ansi deliberately: the TUI is a legacy
 # feature (docs/WEB_UI_API_TOOL_RESET.md) and this is not a small change.
@@ -42,10 +47,7 @@ edge:browser->observer
 edge:browser->protocol
 edge:browser_inference->observer
 edge:browser_pool->brain_grid
-edge:contract->brain
-edge:contract->browser
 edge:counting->brain
-edge:counting->browser
 edge:design_vote->knockout
 edge:doctor->run_store
 edge:file_actions->protocol

@@ -4,107 +4,20 @@
 //! Browser-Sitzung aus. Sie startet absichtlich keinen `AgentController`,
 //! interpretiert kein `webagent/1` und fuehrt keine lokalen Werkzeuge aus.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
-const TOOL_ENVELOPE: &str = "WEBAGENT_INFERENCE/1";
-/// Stabiler Marker fuer Fehler, die in der MODELLAUSGABE liegen (T-953).
-/// `api_bridge/provider_handlers.rs` erkennt ihn und meldet `server_error` statt
-/// `invalid_request_error`: die Client-Anfrage war gueltig, das Browsermodell
-/// lieferte einen unbrauchbaren Werkzeugumschlag.
-pub const MODEL_OUTPUT_ERROR_MARKER: &str = "MODEL_OUTPUT_ERROR:";
-
-/// Kennzeichnet einen Parserfehler der Modellausgabe mit dem stabilen Marker.
-fn model_output_error(message: impl std::fmt::Display) -> String {
-    format!("{MODEL_OUTPUT_ERROR_MARKER} {message}")
-}
-
-/// Stabiler Fehlername für das native DSML-Werkzeugformat (T-957).
-const DSML_TOOL_FORMAT_ERROR: &str = "DSML_TOOL_FORMAT_UNSUPPORTED";
-/// DSML-Marker aus dem realen deepseek-Beispiel (2026-09-14). Die zweite Form
-/// ist die im Taskboard gespeicherte, durch eine Zeichencodierung verformte
-/// Variante desselben Markers.
-const DSML_MARKERS: [&str; 2] = ["｜｜DSML｜｜", "´¢£´¢£DSML´¢£´¢£"];
-// Browser chat UIs are substantially less tolerant of a giant tool prompt
-// than their HTTP APIs. Keep the serialized schema block bounded while still
-// retaining every tool name and its argument shape for the model.
-const MAX_TOOL_SCHEMA_BYTES: usize = 64 * 1024;
-const TOOL_DESCRIPTION_LIMITS: &[usize] = &[1024, 512, 256, 128, 0];
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct BrowserTool {
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub parameters: Value,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BrowserToolChoice {
-    Auto,
-    None,
-    Required,
-    Function(String),
-}
-
-/// Eine vom API-Client eingereichte Multimodal-Datei.
-///
-/// Die Datei wird nach der Browser-Navigation in ein `input[type=file]` gesetzt;
-/// der textuelle Prompt enthält nur einen transparenten Attachment-Marker.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BrowserAttachment {
-    pub kind: BrowserAttachmentKind,
-    pub file_name: String,
-    pub mime_type: String,
-    pub data: Vec<u8>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrowserAttachmentKind {
-    Image,
-    Audio,
-}
-
-/// Providerneutraler Auftrag fuer genau einen Browser-Modellturn.
-#[derive(Debug, Clone)]
-pub struct BrowserInferenceRequest<'a> {
-    pub brain: &'a str,
-    pub prompt: &'a str,
-    pub tools: &'a [BrowserTool],
-    pub tool_choice: BrowserToolChoice,
-    pub headless: bool,
-    pub timeout_secs: Option<f64>,
-    pub model: Option<&'a str>,
-    /// T-961: nur gesetzt von der OpenAI-Bridge auf einem Werkzeug-
-    /// Fortsetzungsturn. Bei einer semantischen Verfuegbarkeitsverweigerung
-    /// wird genau einmal in einem frischen Chat mit diesem Prompt retryt.
-    pub retry_prompt: Option<&'a str>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct BrowserToolCall {
-    pub id: String,
-    pub name: String,
-    pub arguments: Value,
-}
-
-/// Normalisierte Antwort eines einzelnen Browser-Modellturns.
-#[derive(Debug, Clone, PartialEq)]
-pub struct BrowserInferenceResponse {
-    pub text: Option<String>,
-    pub tool_calls: Vec<BrowserToolCall>,
-}
-
-impl BrowserInferenceResponse {
-    pub fn finish_reason(&self) -> &'static str {
-        if self.tool_calls.is_empty() {
-            "stop"
-        } else {
-            "tool_calls"
-        }
-    }
-}
+// T-1006: the data shapes live in the browser-free core module. Re-exporting
+// them keeps every existing `crate::browser_inference::…` path source-compatible.
+pub(crate) use crate::inference_types::{
+    model_output_error, DSML_MARKERS, DSML_TOOL_FORMAT_ERROR, MAX_TOOL_SCHEMA_BYTES,
+    TOOL_DESCRIPTION_LIMITS, TOOL_ENVELOPE,
+};
+pub use crate::inference_types::{
+    BrowserAttachment, BrowserAttachmentKind, BrowserInferenceRequest, BrowserInferenceResponse,
+    BrowserTool, BrowserToolCall, BrowserToolChoice, MODEL_OUTPUT_ERROR_MARKER,
+};
 
 /// Fuehrt genau einen Browser-Modellturn ohne Agent-Harness aus.
 pub fn complete(request: BrowserInferenceRequest<'_>) -> Result<BrowserInferenceResponse, String> {
@@ -112,7 +25,7 @@ pub fn complete(request: BrowserInferenceRequest<'_>) -> Result<BrowserInference
         request,
         &[],
         &mut |_| {},
-        &crate::api_bridge::AlwaysConnected,
+        &crate::inference_types::AlwaysConnected,
     )
 }
 
@@ -122,7 +35,7 @@ pub fn complete_with_attachments(
     request: BrowserInferenceRequest<'_>,
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
-    presence: &dyn crate::api_bridge::ClientPresence,
+    presence: &dyn crate::inference_types::ClientPresence,
 ) -> Result<BrowserInferenceResponse, String> {
     complete_streaming_with_attachments(request, attachments, on_update, presence)
 }
@@ -138,7 +51,7 @@ pub fn complete_streaming(
         request,
         &[],
         on_update,
-        &crate::api_bridge::AlwaysConnected,
+        &crate::inference_types::AlwaysConnected,
     )
 }
 
@@ -147,7 +60,7 @@ pub fn complete_streaming_with_attachments(
     request: BrowserInferenceRequest<'_>,
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
-    presence: &dyn crate::api_bridge::ClientPresence,
+    presence: &dyn crate::inference_types::ClientPresence,
 ) -> Result<BrowserInferenceResponse, String> {
     if request.prompt.trim().is_empty() {
         return Err("Inference-Prompt darf nicht leer sein.".to_string());

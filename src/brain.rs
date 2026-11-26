@@ -1,5 +1,7 @@
 //! brain — BrainBackend-Trait und zugehörige Typen (portiert aus base.py).
 
+use crate::inference_types::{BrowserAttachment, WebSearchObservation};
+
 /// Session-Status eines Brain-Backends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionState {
@@ -150,7 +152,86 @@ pub trait BrainBackend {
     fn page(&self) -> Option<&dyn std::any::Any> {
         None
     }
+
+    /// Schaltet einen erkennbaren UI-Umschalter aus. Backends ohne Oberflaeche
+    /// melden `false`; das Browser-Backend ueberschreibt die Methode (T-1006).
+    fn disable_toggle(&self, _key: &str) -> bool {
+        false
+    }
+
+    /// Diagnostic snapshot for a failed turn. Plain backends report only the
+    /// session state; the browser backend adds its measured DOM inventory.
+    fn diagnostic_state(&self) -> String {
+        format!("session_state={:?}", self.session_state())
+    }
 }
+
+/// Core-facing relay turn loop. The concrete browser implementation lives in
+/// the transport layer; relay itself only knows this trait (T-1006).
+pub trait RelayBackend {
+    /// Starts the underlying session. Defaults keep turn-loop mocks simple;
+    /// the browser implementation delegates to `WebBrainBackend::start`.
+    fn relay_start(&mut self, _headless: bool) -> Result<(), String> {
+        Ok(())
+    }
+    fn relay_ensure_ready(&mut self, _timeout: f64) -> Result<SessionState, String> {
+        Ok(SessionState::Ready)
+    }
+    fn relay_switch_model(&mut self, _want: &str) -> Result<String, String> {
+        Ok(String::new())
+    }
+    fn relay_new_chat(&mut self) -> Result<(), String>;
+    fn relay_send_with_attachments(
+        &mut self,
+        text: &str,
+        attachments: &[BrowserAttachment],
+    ) -> Result<i32, String>;
+    fn relay_wait_response_streaming(
+        &mut self,
+        baseline_count: i32,
+        timeout: f64,
+        on_update: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<BrainResponse, String>;
+    fn relay_stop(&mut self) -> Result<(), String>;
+    /// T-950: web-search state after `new_chat` and before sending. A backend
+    /// without a page has nothing to observe and returns `None`.
+    fn relay_web_search_state(&mut self) -> Option<WebSearchObservation> {
+        None
+    }
+}
+
+/// Read-only page probe that core may ask of a transport backend.
+///
+/// This is the small capability behind later panel/window work; it never
+/// exposes a WebView type. Implementors decide how much of a page snapshot is
+/// safe to hand out.
+pub trait PageProbe {
+    /// Stable label used in diagnostics (usually the brain id).
+    fn page_label(&self) -> &str;
+    /// Whether a page is currently attached.
+    fn has_page(&self) -> bool {
+        false
+    }
+    /// Bounded text snapshot of the page, when one can be read.
+    fn page_snapshot(&self, _max_chars: usize) -> Option<String> {
+        None
+    }
+}
+
+/// Factory boundary between core/api callers and the concrete browser backend.
+///
+/// The marker type is deliberately in core so callers need no transport path.
+/// The implementation is supplied by the browser module at link time.
+pub trait BackendFactory {
+    /// Plain backend for benchmark/counting turns.
+    fn create_brain_backend(brain_id: &str) -> Result<Box<dyn BrainBackend>, String>;
+    /// Backend with the relay-specific turn operations.
+    fn create_relay_backend(brain_id: &str) -> Result<Box<dyn RelayBackend>, String>;
+}
+
+/// Built-in browser-backed implementation of [`BackendFactory`].
+pub struct WebBackendFactory;
 
 /// `true`, wenn eine Brain-Antwort inhaltsleer ist und ein erneuter Versuch
 /// sinnvoll erscheint — leer, nur Whitespace, oder die Ausfallmeldung mancher
@@ -234,6 +315,32 @@ fn is_ui_glitch_line(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct DummyProbe;
+
+    impl PageProbe for DummyProbe {
+        fn page_label(&self) -> &str {
+            "dummy"
+        }
+        fn has_page(&self) -> bool {
+            true
+        }
+        fn page_snapshot(&self, max_chars: usize) -> Option<String> {
+            Some("sehr langer Seiteninhalt".chars().take(max_chars).collect())
+        }
+    }
+
+    #[test]
+    fn page_probe_exposes_a_bounded_snapshot() {
+        let probe = DummyProbe;
+        assert_eq!(probe.page_label(), "dummy");
+        assert!(probe.has_page());
+        assert_eq!(
+            probe.page_snapshot(4).as_deref(),
+            Some("sehr"),
+            "snapshot must respect the caller's bound"
+        );
+    }
 
     #[test]
     fn test_is_retryable_empty_response() {

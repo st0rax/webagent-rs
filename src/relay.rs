@@ -2,10 +2,11 @@
 
 use std::time::Instant;
 
-use crate::api_bridge::ClientPresence;
-use crate::brain::{BrainBackend, BrainResponse, SessionState};
+#[cfg(test)]
+use crate::brain::BrainResponse;
+use crate::brain::{BackendFactory, BrainBackend, RelayBackend, SessionState, WebBackendFactory};
 use crate::browser::WebBrainBackend;
-use crate::browser_inference::BrowserAttachment;
+use crate::inference_types::{BrowserAttachment, ClientPresence};
 use crate::timeouts::resolve_timeout;
 
 #[derive(Debug)]
@@ -47,32 +48,8 @@ pub(crate) fn open_circuit_remaining_secs(error: &str) -> Option<i64> {
     digits.parse::<i64>().ok().filter(|seconds| *seconds > 0)
 }
 
-/// Backend-Schnittstelle, die die Turn-Schleife braucht.
-///
-/// `WebBrainBackend` delegiert nur. Die Trennung existiert, damit die Schleife
-/// mit einem Mock-Backend pruefbar ist (T-947: ein stummer Anbieter darf nur
-/// eine Sendung erhalten) — ohne echten Browser/CDP.
-trait RelayBackend {
-    fn relay_new_chat(&mut self) -> Result<(), String>;
-    fn relay_send_with_attachments(
-        &mut self,
-        text: &str,
-        attachments: &[BrowserAttachment],
-    ) -> Result<i32, String>;
-    fn relay_wait_response_streaming(
-        &mut self,
-        baseline_count: i32,
-        timeout: f64,
-        on_update: &mut dyn FnMut(&str),
-        cancelled: &dyn Fn() -> bool,
-    ) -> Result<BrainResponse, String>;
-    fn relay_stop(&mut self) -> Result<(), String>;
-    /// T-950: Websuche nach `new_chat` und vor dem Senden pruefen. Das
-    /// Mock-Backend hat keine Oberflaeche und meldet deshalb `None`.
-    fn relay_web_search_state(&mut self) -> Option<crate::brain_score::WebSearchObservation> {
-        None
-    }
-}
+// T-1006: `RelayBackend` is now a public core trait in `crate::brain`. The
+// turn loop stays generic over it, so the T-947 mocks keep working unchanged.
 
 /// Begruendung eines fehlgeschlagenen Turns, dessen Modellausgabe ungueltig
 /// war. Stabiler brain_score-Grund, damit Fehler der Modellausgabe nicht als
@@ -93,40 +70,6 @@ pub const CLIENT_GONE_REASON: &str = "client_disconnected";
 pub struct OutputCheck<'a> {
     pub validate: &'a dyn Fn(&str) -> Result<(), String>,
     pub correction_message: &'a dyn Fn(&str) -> String,
-}
-
-impl RelayBackend for WebBrainBackend {
-    fn relay_new_chat(&mut self) -> Result<(), String> {
-        WebBrainBackend::new_chat(self)
-    }
-    fn relay_send_with_attachments(
-        &mut self,
-        text: &str,
-        attachments: &[BrowserAttachment],
-    ) -> Result<i32, String> {
-        WebBrainBackend::send_with_attachments(self, text, attachments)
-    }
-    fn relay_wait_response_streaming(
-        &mut self,
-        baseline_count: i32,
-        timeout: f64,
-        on_update: &mut dyn FnMut(&str),
-        cancelled: &dyn Fn() -> bool,
-    ) -> Result<BrainResponse, String> {
-        WebBrainBackend::wait_response_streaming_with_cancel(
-            self,
-            baseline_count,
-            timeout,
-            on_update,
-            cancelled,
-        )
-    }
-    fn relay_stop(&mut self) -> Result<(), String> {
-        WebBrainBackend::stop(self)
-    }
-    fn relay_web_search_state(&mut self) -> Option<crate::brain_score::WebSearchObservation> {
-        Some(self.ensure_web_search_off())
-    }
 }
 
 /// Fuehrt einen Browserturn aus und wartet auf ein echtes Bildartefakt statt
@@ -297,7 +240,7 @@ pub fn relay_single_turn_with_attachments_streaming(
     attachments: &[BrowserAttachment],
     on_update: &mut dyn FnMut(&str),
 ) -> Result<String, RelayError> {
-    let always = crate::api_bridge::AlwaysConnected;
+    let always = crate::inference_types::AlwaysConnected;
     relay_single_turn_checked(
         brain_id,
         message,
@@ -361,13 +304,13 @@ fn relay_single_turn_checked(
     }
     let started = Instant::now();
     let prompt_chars = message.chars().count();
-    let mut backend = WebBrainBackend::from_config(brain_id).map_err(RelayError)?;
+    let mut backend = WebBackendFactory::create_relay_backend(brain_id).map_err(RelayError)?;
     let (ready_timeout, wait_timeout) =
         resolve_attach_aware_timeouts(brain_id, message, timeout_override, !attachments.is_empty());
 
-    backend.start(headless).map_err(RelayError)?;
+    backend.relay_start(headless).map_err(RelayError)?;
     let state = backend
-        .ensure_ready(ready_timeout)
+        .relay_ensure_ready(ready_timeout)
         .unwrap_or(SessionState::Error);
     if state.is_hard_block() {
         let _ = backend.relay_stop();
@@ -396,7 +339,7 @@ fn relay_single_turn_checked(
         None
     };
     if let Some(want) = model {
-        match backend.switch_model(want) {
+        match backend.relay_switch_model(want) {
             Ok(now) => {
                 // „bereits aktiv" ist kein Wechsel: die Beschriftung trug das
                 // Ziel schon vorher, also hat dieser Lauf den Antrieb nicht
@@ -425,7 +368,7 @@ fn relay_single_turn_checked(
         }
     }
     run_turn_loop(
-        &mut backend,
+        &mut *backend,
         brain_id,
         message,
         attachments,
@@ -445,7 +388,7 @@ fn relay_single_turn_checked(
 /// Generic ueber [`RelayBackend`], damit die DoD (T-947) "ein stummer Anbieter
 /// erhaelt genau eine Sendung" mit einem Mock-Backend testbar ist.
 #[allow(clippy::too_many_arguments)]
-fn run_turn_loop<B: RelayBackend>(
+fn run_turn_loop<B: RelayBackend + ?Sized>(
     backend: &mut B,
     brain_id: &str,
     message: &str,
@@ -966,7 +909,7 @@ mod tests {
             None,
             &mut |_| {},
             None,
-            &crate::api_bridge::AlwaysConnected,
+            &crate::inference_types::AlwaysConnected,
         );
         assert!(
             result.is_err(),
@@ -1028,7 +971,7 @@ mod tests {
             None,
             &mut |_| {},
             None,
-            &crate::api_bridge::AlwaysConnected,
+            &crate::inference_types::AlwaysConnected,
         );
         assert!(result.is_err());
         assert!(backend.attempts > 0, "Retry-Send muss versucht werden");
@@ -1209,7 +1152,7 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
-            &crate::api_bridge::AlwaysConnected,
+            &crate::inference_types::AlwaysConnected,
         );
         assert!(
             result.is_err(),
@@ -1257,7 +1200,7 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
-            &crate::api_bridge::AlwaysConnected,
+            &crate::inference_types::AlwaysConnected,
         );
         assert!(result.is_err());
         assert_eq!(backend.new_chats, 1);
@@ -1283,7 +1226,7 @@ mod tests {
             None,
             &mut |_| {},
             Some(&check),
-            &crate::api_bridge::AlwaysConnected,
+            &crate::inference_types::AlwaysConnected,
         );
         assert!(result.is_ok(), "{result:?}");
         assert_eq!(backend.new_chats, 1);

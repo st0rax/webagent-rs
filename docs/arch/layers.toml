@@ -23,7 +23,6 @@ modules = [
   "pool_failover",
   "pool_state",
   "worker_pool",
-  "contract",
 ]
 
 [layer.L0]
@@ -31,7 +30,7 @@ rank = 1
 modules = [
   "brain",
   "brain_probe",
-  "browser_inference",
+  "inference_types",
   "comms",
   "https_client",
   "login",
@@ -53,7 +52,6 @@ modules = [
 rank = 3
 modules = [
   "browser_pool",
-  "free_cloud_chat",
   "source_scope",
   "bot2bot_worker",
 ]
@@ -62,6 +60,8 @@ modules = [
 rank = 4
 modules = [
   "relay",
+  "browser_inference",
+  "free_cloud_chat",
   "network_observation",
   "watchdog",
   "doctor",
@@ -101,6 +101,7 @@ modules = [
   "welcome",
   "canary",
   "fakebrain",
+  "contract",
 ]
 
 [layer.L7]

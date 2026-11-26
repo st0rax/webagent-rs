@@ -1,5 +1,15 @@
 # Current Work
 
+## 2026-11-26 - T-1006 implemented: public core traits and shared inference types
+
+- **Branch/claim:** `refactor/T-1006-core-traits`, claim commit `9bf1841`, owner `local/opencode`. T-1006 was created and claimed in the board/mirror before source edits and stays `claimed`; no merge, no `done`, no PR. This is F1 from the T-1004 follow-up list, not crate extraction.
+- **Delivered:** new dependency-free `src/inference_types.rs` owns the shared inference/tool types, `ClientPresence`/`AlwaysConnected` and `WebSearchObservation`; old paths keep working via re-exports. `brain.rs` publishes `RelayBackend`, `BackendFactory`, `PageProbe` and `WebBackendFactory`; the browser module implements them. `relay_single_turn_checked`, `counting` and `contract` now use the new boundaries. Proof: `docs/proofs/T-1006/README.md`.
+- **Correction to T-1004:** `PageProbe` alone does not remove `contract → browser` or `counting → browser`. `contract` used protocol helpers merely re-exported by `browser`; `counting` needed `BackendFactory`. `docs/arch/CRATE_SPLIT.md` now says so. The image-generation relay path still constructs `WebBrainBackend` directly and needs a separate image-backend trait before extraction.
+- **Guard delta:** removed three stale `edge:` lines and replaced the six-module browser cycle with `brain_probe,browser,browser_pool`; no exception was added. `browser_inference`/`free_cloud_chat` moved to L3 and `contract` to L6 so remaining edges are downward. Measured 89 modules / 275 edges / 3 cycles / 29 upward edges (was 88 / 274 / 3 / 32).
+- **Tests re-measured:** claim 1524 total / 1523 passed / 0 failed / 1 ignored (50.53 s); final 1528 total / 1527 passed / 0 failed / 1 ignored (50.20 s). Four new unit tests (three in `inference_types`, one `PageProbe` test in `brain`). All gates green: `cargo fmt --all -- --check` 0; `cargo clippy --features webview --all-targets -- -D warnings` 0; `cargo test --test arch_layers -- --nocapture` 4 passed; `cargo test --all-targets --quiet` 1527 lib + 7 bin-unit + 4 integration passed; `git diff --check` 0.
+- **Binary smoke blocked, not a regression:** default `webview` `--help` and `diagnose` still exit `-1073741515` (`0xC0000005`) before `main`, identical to the T-1004 baseline. `Cargo.toml`, `[profile.*]` and dependencies were not touched.
+- **Grenze / offen:** no crate extraction, merge, PR, tag, release, deployment, credentials, live provider call or browser login. All phase-16 branches remain `claimed`; crate extraction still needs a fresh explicit owner approval. Next owner choice: review/push this branch, or approve the next follow-up (PanelSink/image backend) explicitly.
+
 ## 2026-11-26 - T-1004 delivered: crate split decision (design only)
 
 - **Branch/claim:** `docs/T-1004-crate-split`, claim commit `f27928b`, owner `local/opencode`. T-1004 stays `claimed`; no merge, no `done`, no PR. The owner phrase `mach fertig den senf` approved finishing the design document only, not crate extraction. Formal `depends_on` is satisfied in substance by T-998..T-1003, but those branches are also still unmerged.

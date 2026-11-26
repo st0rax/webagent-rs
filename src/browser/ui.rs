@@ -442,8 +442,8 @@ impl WebBrainBackend {
     /// ausschliesslich dieser Konversation, keine Kontoeinstellung wird
     /// dauerhaft geaendert. Ohne brauchbaren Umschalter wird das Brain als
     /// nicht isolierbar gemeldet statt einen Erfolg zu behaupten.
-    pub(crate) fn ensure_web_search_off(&self) -> crate::brain_score::WebSearchObservation {
-        use crate::brain_score::WebSearchObservation;
+    pub(crate) fn ensure_web_search_off(&self) -> crate::inference_types::WebSearchObservation {
+        use crate::inference_types::WebSearchObservation;
         const KEY: &str = "web_search_toggle";
         if self.sel(KEY).is_empty() {
             return WebSearchObservation::not_isolatable("kein web_search_toggle konfiguriert");

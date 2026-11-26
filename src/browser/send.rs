@@ -9,7 +9,7 @@
 use std::time::{Duration, Instant};
 
 use crate::brain::BrainBackend;
-use crate::browser_inference::{BrowserAttachment, BrowserAttachmentKind};
+use crate::inference_types::{BrowserAttachment, BrowserAttachmentKind};
 use serde_json::{json, Value};
 
 use super::blocking::{banner_is_prompt_echo, block_banner_expr, is_technical_block_phrase_list};
@@ -1816,7 +1816,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 mod tests {
     use super::submission_is_proven;
     use crate::browser::WebBrainBackend;
-    use crate::browser_inference::{BrowserAttachment, BrowserAttachmentKind};
+    use crate::inference_types::{BrowserAttachment, BrowserAttachmentKind};
     use crate::mock_page::{MockPageDriver, MockPageState};
     use serde_json::json;
 

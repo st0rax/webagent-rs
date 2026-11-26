@@ -10,7 +10,10 @@ use super::{
     block_phrase_in_text, classify_completion, stable_norm, Completion, SessionState,
     WebBrainBackend,
 };
-use crate::brain::{BrainBackend, BrainResponse};
+use crate::brain::{
+    BackendFactory, BrainBackend, BrainResponse, PageProbe, RelayBackend, WebBackendFactory,
+};
+use crate::inference_types::{BrowserAttachment, WebSearchObservation};
 // Beide nur mit `webview`: ohne das Feature gibt es weder das Modul noch einen
 // Aufrufer, und die CI baut mit `--no-default-features`.
 #[cfg(feature = "webview")]
@@ -572,6 +575,97 @@ impl BrainBackend for WebBrainBackend {
             .navigate(reference, Duration::from_secs(30))
             .map(|_| true)
             .map_err(|e| e.to_string())
+    }
+
+    fn disable_toggle(&self, key: &str) -> bool {
+        WebBrainBackend::disable_toggle(self, key)
+    }
+
+    fn diagnostic_state(&self) -> String {
+        WebBrainBackend::diagnostic_state(self)
+    }
+}
+
+// T-1006: the core traits are implemented here, where the concrete WebView
+// backend lives. Core/api callers see only the traits and the marker type.
+impl PageProbe for WebBrainBackend {
+    fn page_label(&self) -> &str {
+        &self.brain_id
+    }
+
+    fn has_page(&self) -> bool {
+        self.driver.borrow().is_some()
+    }
+
+    fn page_snapshot(&self, max_chars: usize) -> Option<String> {
+        let mut guard = self.driver.borrow_mut();
+        let driver = guard.as_mut()?;
+        let text = crate::page_driver::PageDriver::eval_string(
+            driver.as_mut(),
+            "document.body ? document.body.innerText : ''",
+        )
+        .ok()?;
+        Some(text.chars().take(max_chars).collect())
+    }
+}
+
+impl RelayBackend for WebBrainBackend {
+    fn relay_start(&mut self, headless: bool) -> Result<(), String> {
+        WebBrainBackend::start(self, headless)
+    }
+
+    fn relay_ensure_ready(&mut self, timeout: f64) -> Result<SessionState, String> {
+        WebBrainBackend::ensure_ready(self, timeout)
+    }
+
+    fn relay_switch_model(&mut self, want: &str) -> Result<String, String> {
+        WebBrainBackend::switch_model(self, want)
+    }
+
+    fn relay_new_chat(&mut self) -> Result<(), String> {
+        WebBrainBackend::new_chat(self)
+    }
+
+    fn relay_send_with_attachments(
+        &mut self,
+        text: &str,
+        attachments: &[BrowserAttachment],
+    ) -> Result<i32, String> {
+        WebBrainBackend::send_with_attachments(self, text, attachments)
+    }
+
+    fn relay_wait_response_streaming(
+        &mut self,
+        baseline_count: i32,
+        timeout: f64,
+        on_update: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<BrainResponse, String> {
+        WebBrainBackend::wait_response_streaming_with_cancel(
+            self,
+            baseline_count,
+            timeout,
+            on_update,
+            cancelled,
+        )
+    }
+
+    fn relay_stop(&mut self) -> Result<(), String> {
+        WebBrainBackend::stop(self)
+    }
+
+    fn relay_web_search_state(&mut self) -> Option<WebSearchObservation> {
+        Some(self.ensure_web_search_off())
+    }
+}
+
+impl BackendFactory for WebBackendFactory {
+    fn create_brain_backend(brain_id: &str) -> Result<Box<dyn BrainBackend>, String> {
+        Ok(Box::new(WebBrainBackend::from_config(brain_id)?))
+    }
+
+    fn create_relay_backend(brain_id: &str) -> Result<Box<dyn RelayBackend>, String> {
+        Ok(Box::new(WebBrainBackend::from_config(brain_id)?))
     }
 }
 

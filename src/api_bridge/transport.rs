@@ -28,23 +28,9 @@ use std::{
     time::Duration,
 };
 
-/// Beobachtet, ob der HTTP-Aufrufer noch verbunden ist (T-946).
-///
-/// Bewusst ein Trait: die Bridge benutzt einen echten TCP-Socket, Tests einen
-/// schaltbaren Stub. Damit ist der Beleg "Folgeanfrage wartet nicht auf einen
-/// verwaisten Turn" ohne echten Browser und ohne Zugangsdaten pruefbar.
-pub trait ClientPresence: Send + Sync {
-    fn connected(&self) -> bool;
-}
-
-/// Immer verbunden — fuer `fake_reply` und Pfade ohne echten Socket.
-pub struct AlwaysConnected;
-
-impl ClientPresence for AlwaysConnected {
-    fn connected(&self) -> bool {
-        true
-    }
-}
+// T-1006: the presence contract is shared with relay/browser_inference and
+// therefore lives in the browser-free core module. Keep the old path alive.
+pub use crate::inference_types::{AlwaysConnected, ClientPresence};
 
 /// Kurzer Peek-Timeout: ein EOF liegt sofort vor, ein ruhender aber
 /// lebendiger Client liefert `WouldBlock`/`TimedOut` und gilt als verbunden.

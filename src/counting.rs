@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use crate::brain::{BrainBackend, SessionState};
-use crate::browser::WebBrainBackend;
+use crate::brain::{BackendFactory, BrainBackend, SessionState, WebBackendFactory};
 use crate::timeouts::resolve_timeout;
+
+/// Ein Brain-Slot im Zaehlspiel: ID, trait-basiertes Backend, Bereitschaft.
+type BackendSlot = (String, Option<Box<dyn BrainBackend>>, bool);
 
 /// Per-Brain-Mindestfenster fuer `wait_response`. chatgpt braucht in einer
 /// frischen Sitzung bis zu mehrere Minuten fuer die erste Antwort (Platzhalter
@@ -84,10 +86,10 @@ pub fn counting_game(brain_ids: &[String], headless: bool, target: u32) -> i32 {
     ));
 
     // Alle Sitzungen oeffnen und bereit melden lassen.
-    let mut backends: Vec<(String, Option<WebBrainBackend>, bool)> = Vec::new();
+    let mut backends: Vec<BackendSlot> = Vec::new();
     for id in brain_ids {
         crate::bench_events::eprint_line(&format!("[count] {id}: Sitzung oeffnen…"));
-        let mut backend = match WebBrainBackend::from_config(id) {
+        let mut backend = match WebBackendFactory::create_brain_backend(id) {
             Ok(b) => b,
             Err(e) => {
                 crate::bench_events::eprint_line(&format!(

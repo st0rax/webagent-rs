@@ -130,58 +130,9 @@ pub struct TurnObservation {
     pub banner: Option<String>,
 }
 
-/// T-950: Zustand der anbieterseitigen Websuche unmittelbar vor dem Senden.
-/// Der Zustand wird nicht erfunden: `status` beschreibt, ob ein Umschalter
-/// vorhanden und erfolgreich ausgeschaltet wurde oder ob das Brain nicht
-/// isolierbar ist. `before`/`after` sind die gemessenen Zustandsstrings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WebSearchObservation {
-    pub status: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub before: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub after: Option<String>,
-}
-
-/// Zustandsstrings koennen bei manchen Oberflaechen sehr lange Klassenlisten
-/// sein; im Log reicht der Beleg, nicht das ganze DOM.
-fn clip_state(state: &str) -> String {
-    state.trim().chars().take(160).collect()
-}
-
-impl WebSearchObservation {
-    pub fn turned_off(before: &str, after: &str) -> Self {
-        Self {
-            status: "off_before_send".to_string(),
-            before: Some(clip_state(before)),
-            after: Some(clip_state(after)),
-        }
-    }
-    pub fn already_off(state: &str) -> Self {
-        Self {
-            status: "already_off".to_string(),
-            before: Some(clip_state(state)),
-            after: None,
-        }
-    }
-    pub fn not_isolatable(reason: &str) -> Self {
-        Self {
-            status: "not_isolatable".to_string(),
-            before: Some(clip_state(reason)),
-            after: None,
-        }
-    }
-    pub fn toggle_failed(before: &str, after: &str) -> Self {
-        Self {
-            status: "toggle_failed".to_string(),
-            before: Some(clip_state(before)),
-            after: Some(clip_state(after)),
-        }
-    }
-    pub fn is_off(&self) -> bool {
-        matches!(self.status.as_str(), "off_before_send" | "already_off")
-    }
-}
+// T-1006: the observation value is shared with the relay trait and now lives
+// in the browser-free core module; the old path is preserved for callers.
+pub use crate::inference_types::WebSearchObservation;
 
 fn is_false(v: &bool) -> bool {
     !*v

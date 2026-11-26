@@ -102,10 +102,17 @@ in the wrong direction or into another library:
 
 | Blocker | Measured edge | Required fix |
 |---|---|---|
-| core → transport | `contract → browser`, `counting → browser` | `PageProbe` trait in core; browser implements it in transport |
-| transport → api | `browser → browser_inference` | shared inference/tool value types move to core |
+| core → transport | `contract → browser`, `counting → browser` | `contract` only needed protocol helpers re-exported by `browser`; `counting` needs a `BackendFactory`. `PageProbe` is prepared for later panel work, not for these two edges. |
+| transport → api | `browser → browser_inference` | shared inference/tool value types moved to core |
 | transport → rest | `browser_pool → brain_grid`, `webview_reveal → brain_grid`, `webview_runtime → brain_grid` | `PanelSink`/`WindowLayout` callback in transport, implemented by the root app |
-| api → transport | `relay → browser` | public `BackendFactory` in core; transport supplies `WebBrainBackend` |
+| api → transport | `relay → browser` | public `BackendFactory` in core; the text path uses it since T-1006. The image path still constructs `WebBrainBackend` directly and needs a dedicated image-backend trait before extraction. |
+
+T-1006 correction to the original wording: `PageProbe` alone does not fix
+`contract → browser` or `counting → browser`. `contract.rs:436/442` called
+protocol helpers that `browser` merely re-exported, and `counting.rs:90`
+constructed a concrete `WebBrainBackend`. The shared page probe is still useful
+as a small core-facing capability, but the two measured edges are removed by a
+protocol import and the factory respectively.
 
 After those four fixes the library graph is acyclic by construction: core has
 no outgoing crate edge, api and transport depend only on core, and the root
@@ -234,9 +241,11 @@ no dependency is added or removed by the design.
    core `inference_types` module (or extend `protocol`) so
    `browser → browser_inference` disappears and api_bridge's many
    `crate::browser_inference::…` references become internal to api only.
-5. **`PageProbe` in core.** `contract → browser` and `counting → browser`
-   are already grandfathered upward edges. Replace them with a small trait
-   implemented by transport; do not move the browser crate into core.
+5. **`PageProbe` in core.** Published in T-1006 as a small read-only page
+   capability implemented by transport; do not move the browser crate into
+   core. It is not the fix for `contract → browser` or `counting → browser`
+   (see the correction in §3): the former was a re-exported protocol helper,
+   the latter needs `BackendFactory`.
 6. **`PanelSink`/`WindowLayout` in transport.** `browser_pool`,
    `webview_reveal` and `webview_runtime` reach `brain_grid` in the root app
    for desktop tiling. Let transport emit layout intents through a callback;
@@ -275,16 +284,19 @@ These are proposals only. No ID was assigned and nothing was written to
 `docs/TASKBOARD.json`. Each item expects the usual proof, four gates and a
 before/after test count; none may merge without separate approval.
 
-1. **Publish the core traits.** Add public `RelayBackend`, `BackendFactory`,
-   `ClientPresence`, `PageProbe` and shared inference types in `src/`, switch
-   call sites, keep the ratchet green. No crate move yet.
+1. **Publish the core traits.** Done as T-1006 in the current crate: public
+   `RelayBackend`, `BackendFactory`, `ClientPresence`, `PageProbe` and shared
+   inference types exist in `src/`, old paths still re-export, call sites
+   switched, ratchet green. No crate move.
 2. **Break `browser → browser_inference`.** Move the shared value types to
    their new home, delete the exception only after the guard proves the edge
    is gone.
 3. **Break the three `brain_grid` hooks.** Introduce `PanelSink` and verify
    window parking/focus behaviour against the existing T-1002 notes.
-4. **Break `contract`/`counting → browser`.** Introduce `PageProbe`, remove
-   both grandfathered `edge:` lines only after the guard confirms removal.
+4. **Break `contract`/`counting → browser`.** Done as T-1006: `contract` uses
+   `crate::protocol` helpers and `counting` uses `BackendFactory`; both
+   grandfathered `edge:` lines were removed only after the guard confirmed the
+   edges were gone. `PageProbe` was published separately for later panel work.
 5. **Owner gate: approve extraction.** This is the explicit permission needed
    before any file is moved. Without it, stop here.
 6. **Create the workspace and move core.** Add member manifests, move the 34

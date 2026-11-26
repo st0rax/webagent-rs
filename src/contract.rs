@@ -425,7 +425,7 @@ where
 ///
 /// Die zwei Kernel-Mechaniken sind schnell und ohne Browser: [`crate::brain::
 /// is_retryable_empty_response`] kennt die Glitch-/Limit-Profile,
-/// [`crate::browser::block_phrase_in_text`] die Provider-Block-Phrasen.
+/// [`crate::protocol::block_phrase_in_text`] die Provider-Block-Phrasen.
 pub fn classify_surface_text(raw: &str) -> SurfaceOutcome {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -433,13 +433,13 @@ pub fn classify_surface_text(raw: &str) -> SurfaceOutcome {
             raw: raw.to_string(),
         };
     }
-    if crate::browser::has_protocol_payload(trimmed) {
+    if crate::protocol::has_protocol_payload(trimmed) {
         return SurfaceOutcome::Content;
     }
     if crate::brain::is_retryable_empty_response(trimmed) {
         // Zwischen Glitch und Provider-Limit unterscheiden, damit ein
         // Einstiegspunkt Limits nicht als transienten Repair-Versuch behandelt.
-        if let Some(_phrase) = crate::browser::block_phrase_in_text(trimmed) {
+        if let Some(_phrase) = crate::protocol::block_phrase_in_text(trimmed) {
             return SurfaceOutcome::Limit;
         }
         return SurfaceOutcome::UiGlitch {
