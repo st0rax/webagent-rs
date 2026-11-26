@@ -8,6 +8,13 @@
 - Owner: local/opencode
 - Branch: `fix/T-1016-selector-io-fallback`
 - Status: umgesetzt und geprüft; Gates siehe `gates.txt`
+- Finaler Release-Build aus `master` (`6ccec0e34`):
+  `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\T1016-20261126\`
+  mit `webagent.exe` (SHA-256
+  `D96F4999693AE24F69DEE20A010483A55863B1CA8E813E32956E8781E573EEAB`) und
+  `WebView2Loader.dll`. `--version` → `webagent 0.11.8 (6ccec0e34)`, Exit 0.
+  Der Ordner ist nur zum Kopieren auf den zweiten PC da; die aktive lokale
+  `release\`-EXE bleibt bei T-1015 (`E35A7092…`).
 
 ## Befund (Meldung des Eigentuemers, 2026-11-26)
 

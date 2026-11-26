@@ -16,6 +16,14 @@
   eingebettete Kopie, bei der Nutzerdatei die Basis ohne Overlay. Zwei neue
   Regressionstests (I/O-Fehler, kaputtes JSON). Keine Aenderung an
   Merge-Semantik oder Selektor-Inhalten.
+- **Finaler Build/Staging:** Nach dem Merge nach `master` (`6ccec0e34`)
+  `cargo build --release --locked` 0, `--version` → `webagent 0.11.8
+  (6ccec0e34)`, Exit 0. Die EXE liegt (zusammen mit `WebView2Loader.dll` und
+  `README.txt`) nur im Staging-Ordner
+  `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\T1016-20261126\`
+  — SHA-256 `D96F4999693AE24F69DEE20A010483A55863B1CA8E813E32956E8781E573EEAB`
+  (DLL `465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311C10EA0A6F`).
+  Die aktive lokale `release\`-EXE bleibt bei T-1015 (`E35A7092…`).
 - **Grenze:** Der lokale Bridge-Prozess (T-1015, PID `2564`) wurde nicht
   angefasst. Ein EXE-Tausch oder Neustart braucht eine neue ausdrueckliche
   Freigabe; auf dem zweiten PC muss der Eigentuemer die neue Binary selbst

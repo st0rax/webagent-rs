@@ -29,9 +29,14 @@ cargo build --release --locked
   --version -> webagent 0.11.8 (1accbe331+dirty), exit 0
   WebView2Loader.dll present=true
   exe sha256=F2DE0203AC809576E86E02956057B5554D297FB672EF8E24794F04848476D332
-  Hinweis: +dirty und dieser Hash wurden vor dem Commit gemessen. Nach dem
-  Merge wird der Release-Build wiederholt und der finale Hash im README
-  dokumentiert.
+  Hinweis: +dirty und dieser Hash wurden vor dem Commit gemessen.
+
+Finaler Release-Build aus origin/master (Merge 6ccec0e34):
+  cargo build --release --locked -> 0
+  --version -> webagent 0.11.8 (6ccec0e34), exit 0
+  exe sha256=D96F4999693AE24F69DEE20A010483A55863B1CA8E813E32956E8781E573EEAB
+  WebView2Loader.dll sha256=465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311C10EA0A6F
+  Staging: ...\webagent-deploy-target\T1016-20261126\ (nicht aktiv)
 
 git diff --check
   diffcheck=0
