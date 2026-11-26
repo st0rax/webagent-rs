@@ -36,6 +36,12 @@ Test mit dynamischer Grenze statt fest eingeschriebener 180001):
   arch=0 (5 passed, modules=92, edges=282, crate_violations=0)
   tui=0; no-default=0; diffcheck=0
 
-Hinweis: Die erste Gates-Serie lief vor dem Merge, die zweite nach der
-Live-Kalibrierung. Der finale Release-Build aus master und der zweite
-Live-Nachweis werden in README.md und docs/CURRENT_WORK.md ergaenzt.
+Dritte Gates-Serie nach dem Entfernen aller Tool-Beschreibungen ([0]):
+  fmt=0; clippy=0; lib=0 (459+187+630+280 = 1556 passed, 0 failed, 1 ignored)
+  arch=0 (5 passed, modules=92, edges=282, crate_violations=0)
+  tui=0; no-default=0; diffcheck=0
+
+Hinweis: Serie 1 lief vor dem Merge, Serie 2 nach der Live-Kalibrierung,
+Serie 3 nach dem Verschaeufen auf beschreibungsfreie Tool-Schemata. Der
+finale Release-Build aus master und der grosse Live-Turn werden in
+README.md und docs/CURRENT_WORK.md ergaenzt.

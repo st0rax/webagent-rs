@@ -39,7 +39,11 @@ pub const DSML_MARKERS: [&str; 2] = ["｜｜DSML｜｜", "´¢£´¢£DSML´¢£
 // dropped entirely before the schema is truncated. The external client's
 // ~132k prompt plus a small schema then stays under the UI limit.
 pub const MAX_TOOL_SCHEMA_BYTES: usize = 12 * 1024;
-pub const TOOL_DESCRIPTION_LIMITS: &[usize] = &[256, 0];
+/// Only the description-free form is sent. Skipping the intermediate 256/128
+/// char steps keeps a 12-tool schema near 2.4 KiB instead of ~9 KiB; with the
+/// external client's ~132k prompt that is the difference between sending and
+/// a silent UI rejection. Names, property names and types stay untouched.
+pub const TOOL_DESCRIPTION_LIMITS: &[usize] = &[0];
 /// Oberhalb dieser Groesse lehnt die Browser-Oberflaeche die Eingabe still ab
 /// (deaktivierter Absendeknopf). Ein zu grosser Prompt muss deshalb **vor** dem
 /// Browserlauf scheitern, statt eine Minute die Brain-Sperre zu belegen.

@@ -30,13 +30,15 @@ reproduzierbar in der Provider-Oberfläche:
 
 `crates/webagent-core/src/inference_types.rs`:
 
-- `MAX_TOOL_SCHEMA_BYTES`: `64 * 1024` → `12 * 1024`. Die Komprimierung
-  (`TOOL_DESCRIPTION_LIMITS = [256, 0]`) kürzt Beschreibungen und entfernt sie
-  im letzten Schritt vollständig; **alle** Werkzeugnamen und Parameterformen
-  bleiben erhalten.
+- `MAX_TOOL_SCHEMA_BYTES`: `64 * 1024` → `12 * 1024`.
+  `TOOL_DESCRIPTION_LIMITS = [0]` entfernt **alle** Beschreibungen sofort
+  (statt Zwischenstufen 1024/512/256/128/0 zu versuchen); **alle**
+  Werkzeugnamen, Parameternamen und Typen bleiben erhalten. Ein 12-Tool-
+  Schema schrumpft damit von ~9 KiB auf ~2,4 KiB.
 - Neu: `MAX_BROWSER_PROMPT_CHARS = 140_000`. Der Wert wurde live zwischen
   138.561 (gesendet) und 147.459 (abgelehnt) Zeichen eingegrenzt; der erste
-  entwurf mit 180.000 war zu hoch.
+  Entwurf mit 180.000 war zu hoch. Mit dem kleinen Schema landet der externe
+  ~132k-Prompt bei ~134k und damit unter der Grenze.
 
 `crates/webagent-api/src/browser_inference.rs`:
 
@@ -81,10 +83,12 @@ verifiziert:
   tatsächlich gesendet (`sends=1`, kein `ABSENDEKNOPF_DEAKTIVIERT`), aber
   die synthetischen Füllprompts lieferten innerhalb von 200 s / 260 s keine
   Antwort. Das beweist die Akzeptanz der Eingabe, **keinen** Antwort-PASS.
-- **Folge:** Der Guard wurde auf 140.000 gesenkt und das Schema-Budget auf
-  12 KiB (Beschreibungen werden im Bedarfsfall ganz entfernt). Damit bleibt
-  der externe Prompt (~132k Text + komprimierte Tool-Schemata) unter der
-  realen UI-Grenze. Der nachfolgende Build muss dies erneut belegen.
+- **Folge:** Der Guard wurde auf 140.000 gesenkt. Mit
+  `TOOL_DESCRIPTION_LIMITS = [256, 0]` blieb das 12-Tool-Schema bei ~9 KiB
+  (Event `prompt_chars=9073`): der externe ~132k-Prompt hätte die 140k-Grenze
+  erneut überschritten. Deshalb werden Beschreibungen jetzt sofort vollständig
+  entfernt (`[0]`); das Schema liegt bei ~2,4 KiB. Der nachfolgende Build
+  muss dies mit einem großen Turn erneut belegen.
 
 ## Erwartung und Grenze
 

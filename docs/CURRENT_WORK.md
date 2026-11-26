@@ -18,6 +18,9 @@
   `TOOL_DESCRIPTION_LIMITS = [256, 0]`, `MAX_BROWSER_PROMPT_CHARS`
   180.000 → 140.000. Kein Nutzerprompt-Text gekürzt. Gates erneut grün
   (fmt/clippy/lib/arch/tui/no-default/diff-check 0; 1556 passed).
+  Danach auf `[0]` verschärft: mit `[256, 0]` blieb das 12-Tool-Schema bei
+  ~9 KiB (Event `prompt_chars=9073`) und der externe ~132k-Prompt hätte
+  140k überschritten; `[0]` bringt das Schema auf ~2,4 KiB.
   Beleg: `docs/proofs/T-1017/{README.md,gates.txt}`.
 - Breaker wurde für die Messungen mehrfach mit Backup zurueckgesetzt
   (`state-before-T1017-live-20261126.json`, `-size-120k`, `-size-100k`,
