@@ -1,4 +1,9 @@
-# Current Work
+## 2026-11-26 - Produktstand ausgeliefert: Play-Code, Phase 16, Release-Vorbereitung
+
+- **Auftrag:** fertig machen. Das heisst den vorhandenen Produktstand auf `master` bringen und ausliefern, nicht die naechste Architekturbaustelle oeffnen.
+- **Enthalten:** Phase 16 bis T-1009, Play-Kommando (`src/repl/play.rs`), sichtbare API-Turns (T-976), zentrale Modellgrenzen und Timeouts (T-977). `relay` deckt geparkte WebViews vor dem Turn auf (`relay_reveal_for_turn`).
+- **Nicht geoeffnet:** Play-v0.3-Spec-Tasks T-978..T-996 (kein Code, 0 Tests). Crate-Extraktion T-1010 bleibt in der anderen Session und ist nicht Teil dieser Auslieferung.
+- **Release:** `Cargo.toml` und `Cargo.lock` stehen auf `0.11.8`. Tag `v0.11.8` wird nach dem Versionsgate auf diesen Commit gesetzt. Kein Produktiv-Deployment.
 
 ## 2026-11-26 - Phase 16 landed on master through T-1008
 

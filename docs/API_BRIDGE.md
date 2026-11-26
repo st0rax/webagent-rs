@@ -83,6 +83,8 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8788/v1/chat/completions `
   -ContentType application/json -Body $body
 ```
 
+Für den Selbsttest über die eigene Bridge (Dogfooding) inklusive korrektem JSON-Block und dem Hinweis `versuchs mal mit`: [docs/DOGFOODING.md](DOGFOODING.md).
+
 ## Endpunkte
 
 | Methode und Pfad | Format | Verhalten |
@@ -248,6 +250,8 @@ Zum Ausprobieren ohne Eingriff in eine vorhandene Pi-Konfiguration liegt unter `
 
 Fuer den normalen Multi-Brain-Betrieb ist `examples/pi/extensions/webagent-models.ts` massgeblich. Die Pi-Erweiterung fragt `/v1/models` beim Start ab, registriert alle gelieferten Brains dynamisch und aktualisiert sie bei `/models` erneut. Damit erscheinen auch spaeter hinzugefuegte Custom-Brains ohne manuelle Pflege einer Pi-Modellliste.
 
+**Kontext- und Output-Limit (T-977):** Der Katalog bewirbt 1.000.000 Tokens Kontext und 65.536 Tokens Output. Beide Werte kommen aus `src/config/limits.rs` und sind ueber `WEBAGENT_MODEL_CONTEXT_WINDOW` bzw. `WEBAGENT_MODEL_MAX_TOKENS` (Prozessumgebung der Bridge) ohne Rebuild ueberschreibbar. Die statischen Beispiele in diesem Dokument und in `examples/pi/models.json` sowie die Fallbacks der Pi-Erweiterung spiegeln dieselben Werte; der Katalog bleibt bei Abweichungen massgeblich. Aenderungen an der laufenden Bridge wirken erst nach einem Neustart; eine reine Pi-Konfiguration laesst sich dagegen sofort anpassen.
+
 ### OpenAI Chat Completions
 
 Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kompatible Providerdefinition an. Pi kann Provider über `models.json` konfigurieren und löst Umgebungsvariablen in `apiKey` auf.[1] [2]
@@ -275,8 +279,8 @@ Lege in `%USERPROFILE%\.pi\agent\models.json` eine benutzerdefinierte OpenAI-kom
           "name": "WebAgent ChatGPT",
           "reasoning": false,
           "input": ["text", "image"],
-          "contextWindow": 128000,
-          "maxTokens": 16384,
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
         }
       ]
@@ -345,8 +349,8 @@ Für den Anthropic-Adapter wird derselbe Token verwendet. Die `baseUrl` endet **
           "name": "WebAgent ChatGPT (Anthropic format)",
           "reasoning": false,
           "input": ["text", "image"],
-          "contextWindow": 128000,
-          "maxTokens": 16384,
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
         }
       ]

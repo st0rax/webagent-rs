@@ -3,6 +3,12 @@
 
 ## [Unreleased]
 
+## [0.11.8] - 2026-11-26
+
+- Phase 16 is on `master`: layer ratchet, cycle breaks, Windows GUI crates behind the `webview` feature, and the WebView2 loader copy so a normal build starts. Exit `-1073741515` is `0xC0000135` (missing `WebView2Loader.dll`), not an access violation.
+- T-1009 routes image turns through `ImageGenerationBackend`. `relay` no longer constructs `WebBrainBackend` directly.
+- Play command, visible API turns, and raised model limits ship: context window 1_000_000 and output 65_536, both overridable. Parked WebViews are revealed before an API turn. The unbuilt Play v0.3 spec tasks T-978..T-996 are not opened.
+
 ## [0.11.7] - 2026-11-26
 
 - Vier lokale Härtungsscheiben nach `master` zusammengeführt (PRs #108–#111; #109–#111 wurden wegen Doku-Konflikten als lokal gesquashte Commits mit PR-Referenz gepusht und anschließend geschlossen). T-969 liefert `docs/PROTOCOL.md` und `docs/SECURITY.md` aus dem Code; T-970 isoliert Turn-Beobachtungen thread-lokal (`PendingScope`), T-971 kennzeichnet `VerifiedFree` ehrlich als Registry-Beleg ohne Capability-Gate, T-972 teilt `controller.rs`/`webview_runtime.rs` in Untermodule (3349→1909 bzw. 3315→2229 Zeilen). Alle PR-Checks und die Gates auf dem zusammengeführten Stand sind grün (1521 passed / 0 failed / 1 ignored).

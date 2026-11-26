@@ -26,7 +26,7 @@ mod types;
 pub use plan::validate_action_plan;
 #[cfg(test)]
 pub(crate) use resume::{incomplete_retry_backoff, is_valid_resume_conversation_ref};
-pub use types::{BrainTurn, RunOptions};
+pub use types::{BrainTurn, ObservationEvent, ObservationHook, ObservationKind, RunOptions};
 
 // Konfigurationskonstanten (aus CONVENTIONS.md: keine externe config-Crate)
 use crate::config::{max_observation_chars_for, LOOP_GUARD_ABORT_COUNT, LOOP_GUARD_WARN_COUNT};
@@ -164,6 +164,8 @@ pub struct AgentController<B: BrainBackend, E: ShellExecutor> {
     /// bleibt das historische Verhalten (naechster Git-Root ab Prozess-CWD).
     workspace_root: Option<std::path::PathBuf>,
     fresh_chat: bool,
+    /// Nur für Aufsicht/Spiel: sieht echte Observations, nie Behauptungen.
+    observation_hook: Option<ObservationHook>,
 }
 
 /// Erfasst wachsende Antwort-Snapshots eines Turns, damit der Controller
@@ -229,6 +231,24 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         }
     }
 
+    /// Meldet eine echte Observation an den optionalen Beobachter.
+    fn notify_observation(
+        &self,
+        kind: types::ObservationKind,
+        action_id: &str,
+        ok: bool,
+        text: &str,
+    ) {
+        if let Some(hook) = &self.observation_hook {
+            hook(types::ObservationEvent {
+                kind,
+                action_id: action_id.to_string(),
+                ok,
+                text: text.to_string(),
+            });
+        }
+    }
+
     pub fn brain(&self) -> &B {
         &self.brain
     }
@@ -283,6 +303,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
             quiet: false,
             workspace_root: None,
             fresh_chat: false,
+            observation_hook: None,
         }
     }
 
@@ -890,6 +911,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                         );
                     }
                     self.record_completed_action(&action.id, &action.text);
+                    self.notify_observation(
+                        types::ObservationKind::Message,
+                        &action.id,
+                        true,
+                        &action.text,
+                    );
                     if std::env::var_os("WEBAGENT_READONLY_RUN").is_none() {
                         if let Some(nudge) = self.no_change_nudge() {
                             observations.push(nudge);
@@ -936,6 +963,13 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     observations.push(observation.clone());
                     self.record_completed_action(&action.id, &observation);
                     self.track_observation_bytes(&observation);
+                    let ok = result.error.is_none() && result.exit_code == Some(0);
+                    self.notify_observation(
+                        types::ObservationKind::Shell,
+                        &action.id,
+                        ok,
+                        &observation,
+                    );
                     self.act_steps += 1;
 
                     if is_read {
@@ -1021,6 +1055,12 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
                     observations.push(observation.clone());
                     self.record_completed_action(&action.id, &observation);
                     self.track_observation_bytes(&observation);
+                    self.notify_observation(
+                        types::ObservationKind::File,
+                        &action.id,
+                        exit_code == Some(0),
+                        &observation,
+                    );
                     self.act_steps += 1;
                 }
             }
@@ -1321,6 +1361,7 @@ impl<B: BrainBackend, E: ShellExecutor> AgentController<B, E> {
         self.shell_reads_since_write = 0;
         self.read_budget_warned = false;
         self.no_change_nudges = 0;
+        self.observation_hook = opts.observation_hook.clone();
 
         let (resume_id, continuation, handoff) = match start {
             RunStart::Fresh => (None, None, None),

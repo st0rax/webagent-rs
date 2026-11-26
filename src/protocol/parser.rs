@@ -203,6 +203,40 @@ pub fn strip_rendered_ui_controls(text: &str) -> String {
 /// `1 2 3`. Dieser Vorspann gehört nicht zum Protokoll. Der unveränderte
 /// Providertext bleibt im Transcript; nur der Parser erhält die normalisierte
 /// Nutzlast ab dem ersten `WEBAGENT/1`-Marker.
+/// WebViews kleben Codeblock-Controls manchmal ohne Trennzeichen an den Marker,
+/// z.B. `textCopyDownloadWEBAGENT/1 SHELL`. Diese Labels sind Transport-Chrome,
+/// kein Brain-Text. Erkannt wird nur ein Vorspann, der vollständig aus solchen
+/// Controls besteht — echte Prosa davor bleibt erhalten und wird abgelehnt.
+fn is_glued_ui_controls(prefix: &str) -> bool {
+    const CONTROLS: [&str; 9] = [
+        "text",
+        "json",
+        "code",
+        "copy",
+        "download",
+        "kopieren",
+        "herunterladen",
+        "regenerate",
+        "thoughtprocess",
+    ];
+    let mut rest = prefix.trim().to_ascii_lowercase();
+    if rest.is_empty() {
+        return false;
+    }
+    loop {
+        let before = rest.len();
+        for control in CONTROLS {
+            if rest.starts_with(control) {
+                rest = rest[control.len()..].to_string();
+                break;
+            }
+        }
+        if rest.len() == before {
+            return rest.is_empty();
+        }
+    }
+}
+
 fn strip_leading_provider_text(text: &str) -> String {
     let marker = "WEBAGENT/1";
     let Some(index) = text.find(marker) else {
@@ -229,14 +263,20 @@ fn strip_leading_provider_text(text: &str) -> String {
     if index == 0 || text[..index].trim_start().starts_with(['{', '[']) {
         return text.to_string();
     }
-    let looks_like_provider_ui = text[..index].lines().any(|line| {
+    let prefix = &text[..index];
+    let glued_ui_prefix = prefix.lines().all(|line| {
         let line = line.trim();
-        line.eq_ignore_ascii_case("thought process text")
-            || line.eq_ignore_ascii_case("copy")
-            || line.eq_ignore_ascii_case("regenerate")
-            || line == "1 2 3"
-            || line.chars().all(|c| c == '\u{a0}' || c.is_whitespace())
-    });
+        line.is_empty() || is_glued_ui_controls(line)
+    }) && prefix.lines().any(is_glued_ui_controls);
+    let looks_like_provider_ui = glued_ui_prefix
+        || prefix.lines().any(|line| {
+            let line = line.trim();
+            line.eq_ignore_ascii_case("thought process text")
+                || line.eq_ignore_ascii_case("copy")
+                || line.eq_ignore_ascii_case("regenerate")
+                || line == "1 2 3"
+                || line.chars().all(|c| c == '\u{a0}' || c.is_whitespace())
+        });
     if looks_like_provider_ui {
         text[index..].to_string()
     } else {

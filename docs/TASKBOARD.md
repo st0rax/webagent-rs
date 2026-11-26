@@ -176,6 +176,8 @@ value restored in the same session (10054 ms). Raw transcript and DOM survey:
 passed; the remaining structural gaps in `model` and `managed_tools` are
 unchanged. No tag, release, or deployment.
 
+Shipped with this release: T-976 (visible API turns) and T-977 (model limits and timeouts) are `done`. The unbuilt Play v0.3 spec tasks T-978..T-996 were not opened; `docs/PLAY_MODE_SPEC.md` remains the design, not an open board.
+
 ## Phase 16 - architecture layers (T-997..T-1005)
 
 Source: `docs/TASKBOARD.json`; edges are `depends_on`. Phase 16 starts at T-997 because
@@ -317,4 +319,7 @@ the owner pasted it in chat and approved renumbering the phase-16 tasks to T-997
 | T-1007 | done |
 | T-1008 | done |
 | T-1009 | done |
+| T-976 | done |
+| T-977 | done |
+
 <!-- TASKBOARD-MIRROR-END -->

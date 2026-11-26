@@ -203,7 +203,7 @@ fn relay_image_turn(
                 wait_timeout,
             )));
         }
-        std::thread::sleep(std::time::Duration::from_millis(750));
+        std::thread::sleep(crate::timeouts::relay_image_poll());
     };
     let _ = backend.image_stop();
     result
@@ -334,6 +334,13 @@ fn relay_single_turn_checked(
         resolve_attach_aware_timeouts(brain_id, message, timeout_override, !attachments.is_empty());
 
     backend.relay_start(headless).map_err(RelayError)?;
+    // T-976: ein geparktes WebView antwortet per CDP nicht zuverlaessig.
+    // Aufdecken vor dem Turn; der Backend-Drop parkt wieder.
+    if let Err(e) = backend.relay_reveal_for_turn() {
+        crate::bench_events::eprint_line(&format!(
+            "[relay] {brain_id}: Turn-Reveal fehlgeschlagen ({e}); fahre ohne Aufdecken fort"
+        ));
+    }
     let state = backend
         .relay_ensure_ready(ready_timeout)
         .unwrap_or(SessionState::Error);
@@ -479,7 +486,7 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
                 "[relay] {brain_id}: Wiederholung {turn}/{}  (vorher: {last_err})",
                 max_turns.saturating_sub(1)
             ));
-            std::thread::sleep(std::time::Duration::from_millis(700));
+            std::thread::sleep(crate::timeouts::relay_response_poll());
         }
         if let Err(e) = backend.relay_new_chat() {
             last_err = e;

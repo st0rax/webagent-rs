@@ -204,6 +204,8 @@ fn dispatch(command: Commands) -> i32 {
 
         Commands::Repl { brain, headless } => webagent::repl::run_repl(&brain, headless),
 
+        Commands::Play { brain, headless } => webagent::repl::run_play(&brain, headless),
+
         Commands::Doctor { brain, json } => {
             cmd_doctor(if brain.is_empty() { None } else { Some(brain) }, json)
         }

@@ -691,7 +691,7 @@ return null;}})()"#,
         // Knopf, den wir suchen, darf hier nicht Voraussetzung sein.
         let assistant_js = self.sel_js("assistant_message", &["div.prose"]);
         let baseline_text = self.baseline_text.borrow().clone();
-        let deadline = Instant::now() + Duration::from_secs(60);
+        let deadline = Instant::now() + crate::timeouts::surface_startup_deadline();
         let mut running = false;
         while Instant::now() < deadline {
             let (count, text, _) = self.probe_generation(&assistant_js, "[]", -1);
@@ -845,7 +845,7 @@ return null;}})()"#,
         };
 
         // Phase 1: warten bis die Antwort läuft, dann Abzug.
-        let deadline = Instant::now() + Duration::from_secs(60);
+        let deadline = Instant::now() + crate::timeouts::surface_startup_deadline();
         let mut running = false;
         while Instant::now() < deadline {
             let (count, text, _) = self.probe_generation(&assistant_js, "[]", -1);
@@ -868,7 +868,7 @@ return null;}})()"#,
         // Kriterium: zwei aufeinanderfolgende Abzüge mit gleicher Anzahl
         // sichtbarer Elemente. Danach ist der Aufbau stabil.
         let mut during = scan(self)?;
-        let stable_until = Instant::now() + Duration::from_secs(20);
+        let stable_until = Instant::now() + crate::timeouts::surface_stable_grace();
         loop {
             std::thread::sleep(Duration::from_millis(700));
             let next = scan(self)?;
@@ -883,11 +883,11 @@ return null;}})()"#,
         // Phase 2: warten bis der Text stillsteht, dann erneut.
         let mut last = String::new();
         let mut stable_since = Instant::now();
-        let deadline2 = Instant::now() + Duration::from_secs(180);
+        let deadline2 = Instant::now() + crate::timeouts::surface_stable_deadline();
         while Instant::now() < deadline2 {
             let (_, text, _) = self.probe_generation(&assistant_js, "[]", -1);
             if !text.is_empty() && text == last {
-                if stable_since.elapsed() >= Duration::from_secs(4) {
+                if stable_since.elapsed() >= crate::timeouts::surface_stable_hold() {
                     break;
                 }
             } else {

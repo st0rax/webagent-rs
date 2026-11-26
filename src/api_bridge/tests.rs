@@ -216,8 +216,14 @@ fn model_metadata_has_stable_catalog_shape() {
     assert_eq!(auto["modalities"]["input"][2], "audio");
     let meta = model_metadata("chatgpt");
     assert_eq!(meta["id"], "webagent/chatgpt");
-    assert_eq!(meta["context_window"], 128000);
-    assert_eq!(meta["max_tokens"], 16384);
+    // T-977: die Grenzen kommen aus der zentralen Konfiguration und sind
+    // per Env ueberschreibbar. Der Test liest deshalb dieselbe Quelle, statt
+    // eine zweite Zahl zu pflegen.
+    assert_eq!(
+        meta["context_window"],
+        crate::config::model_context_window()
+    );
+    assert_eq!(meta["max_tokens"], crate::config::model_max_tokens());
     assert_eq!(meta["modalities"]["output"][1], "image");
     let meta = model_metadata("kimi");
     assert_eq!(meta["modalities"]["input"][1], "image");

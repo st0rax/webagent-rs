@@ -214,6 +214,17 @@ pub enum Commands {
         headless: bool,
     },
 
+    /// Pokiman: Kern-Ladebuch und Beleg-Pellets auf der Bridge (Savegame in data/play)
+    Play {
+        /// Brain-Backend (z.B. deepseek); `auto` waehlt das Default-Brain
+        #[arg(long, default_value = "deepseek")]
+        brain: String,
+
+        /// Headless-Browser (Standard: sichtbar)
+        #[arg(long)]
+        headless: bool,
+    },
+
     /// Pro-Brain Diagnose: Selektoren, Profil-Lock, letzte Antwort, Recovery
     Doctor {
         /// Nur diese Gehirne prüfen (leer = alle)

@@ -101,7 +101,7 @@ impl WebBrainBackend {
             .strat_first("image_gen_provider_name")
             .unwrap_or_else(|| "ChatGPT".to_string());
         let surface_opened = if self.strat_flag("image_gen_open_trusted") {
-            let deadline = Instant::now() + Duration::from_secs(10);
+            let deadline = Instant::now() + crate::timeouts::send_submit_deadline();
             let mut opened = false;
             while Instant::now() < deadline {
                 if self.open_attachment_surface_trusted() {
@@ -522,8 +522,8 @@ impl WebBrainBackend {
             return false;
         }
         let _ = self.dispatch_file_input_events();
-        let deadline = Instant::now() + Duration::from_secs(4);
-        let soft_ready = Instant::now() + Duration::from_millis(1500);
+        let deadline = Instant::now() + crate::timeouts::send_response_deadline();
+        let soft_ready = Instant::now() + crate::timeouts::browser_settle();
         let mut native_files_observed = false;
         while Instant::now() < deadline {
             let signal_now = self.attachment_signal_count();
@@ -699,7 +699,7 @@ impl WebBrainBackend {
             // zweite Paste nicht in den noch laufenden Vue-Handler faellt.
             std::thread::sleep(Duration::from_millis(350));
         }
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + crate::timeouts::send_verify_deadline();
         while Instant::now() < deadline {
             // The prompt text is inserted only after this helper returns, so
             // Kimi correctly keeps its Send button disabled at this stage.
@@ -1017,7 +1017,7 @@ impl WebBrainBackend {
         if !dispatched {
             return false;
         }
-        let deadline = Instant::now() + Duration::from_secs(4);
+        let deadline = Instant::now() + crate::timeouts::send_response_deadline();
         while Instant::now() < deadline {
             // Einige UIs bündeln mehrere Dateien in einem einzigen Preview-
             // Container. Ein neues sichtbares Signal belegt deshalb den
@@ -1666,7 +1666,8 @@ return best?best.slice(0,300):null;})()"#;
         // ProseMirror sonst mitten im Fuellen den 4s-Deadline reisst und der
         // Retry dann in die Mitte eines 13k-px-hohen Editors klickt.
         let boost = (text.len() as u64 / 4000).min(26);
-        let deadline = Instant::now() + Duration::from_secs(4 + boost);
+        let deadline =
+            Instant::now() + crate::timeouts::send_response_deadline() + Duration::from_secs(boost);
         while Instant::now() < deadline {
             self.wake_renderer();
             if fill(self, composer_js, text) {
