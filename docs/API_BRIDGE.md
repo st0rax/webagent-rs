@@ -83,6 +83,8 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8788/v1/chat/completions `
   -ContentType application/json -Body $body
 ```
 
+Für den Selbsttest über die eigene Bridge (Dogfooding) inklusive korrektem JSON-Block und dem Hinweis `versuchs mal mit`: [docs/DOGFOODING.md](DOGFOODING.md).
+
 ## Endpunkte
 
 | Methode und Pfad | Format | Verhalten |
