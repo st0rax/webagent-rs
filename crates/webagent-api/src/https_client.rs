@@ -8,6 +8,10 @@ use std::{collections::BTreeMap, path::Path, sync::Arc, time::Duration};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
+/// Obergrenze fuer manuelle Provider-Antworten. Ohne diese Grenze konnte ein
+/// Endpunkt den Speicher des Prozesses mit einem endlosen Body fuellen; der
+/// 30-Sekunden-Timeout allein begrenzt nur die Zeit, nicht die Groesse.
+const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Eine manuelle API-Quelle fuer einen Brain (oder `default` = Browser).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,12 +162,26 @@ fn https_request(
         }
         tls.flush().await.map_err(|e| format!("Flush: {e}"))?;
         let mut buf = Vec::new();
-        tokio::time::timeout(READ_TIMEOUT, tls.read_to_end(&mut buf))
+        // Ein Byte ueber die Grenze lesen, damit Ueberschreitung erkennbar
+        // bleibt; parse_http_response bekommt nie einen abgeschnittenen Body.
+        let mut limited = tls.take(MAX_RESPONSE_BYTES + 1);
+        tokio::time::timeout(READ_TIMEOUT, limited.read_to_end(&mut buf))
             .await
             .map_err(|_| "Lese-Timeout".to_string())?
             .map_err(|e| format!("Lesen: {e}"))?;
+        check_response_size(buf.len())?;
         parse_http_response(&buf)
     })
+}
+
+fn check_response_size(len: usize) -> Result<(), String> {
+    if (len as u64) > MAX_RESPONSE_BYTES {
+        Err(format!(
+            "HTTPS-Antwort zu gross: {len} Bytes (Limit {MAX_RESPONSE_BYTES})"
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn client_config() -> Result<Arc<rustls::ClientConfig>, String> {
@@ -264,6 +282,15 @@ mod tests {
         assert_eq!(p, 8443);
         assert_eq!(path, "/");
         assert!(split_https_url("http://x").is_err());
+    }
+
+    #[test]
+    fn antwortgroesse_ist_begrenzt() {
+        assert!(check_response_size(0).is_ok());
+        assert!(check_response_size(MAX_RESPONSE_BYTES as usize).is_ok());
+        let err = check_response_size(MAX_RESPONSE_BYTES as usize + 1).unwrap_err();
+        assert!(err.contains("zu gross"), "{err}");
+        assert!(err.contains("8388608"), "{err}");
     }
 
     #[test]

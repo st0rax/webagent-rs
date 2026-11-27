@@ -43,6 +43,22 @@ jobs:
         run: cargo test --locked --no-default-features --verbose
         # Kern-Unit-Tests ohne Embedded WebView (kein GTK/WebView2 in CI).
 
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      # `cargo audit` ist kein Cargo-Subcommand der Standardinstallation.
+      # Der Job ist bewusst eigenstaendig: ein Advisory blockiert den PR,
+      # ohne den Build-Job mit einer Tool-Installation zu verzoegern.
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit Cargo.lock
+        run: cargo audit
+
   linux-webview:
     name: build (Linux, WebView via WebKitGTK)
     runs-on: ubuntu-latest
