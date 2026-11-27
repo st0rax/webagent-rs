@@ -2157,7 +2157,8 @@ nicht als PASS gezaehlt. Im finalen Lauf war die Tab-URL keine `/c/...`-URL;
 der bedingte Skip-Pfad wurde nicht ausgeloest und wird nicht als Live-Beleg
 behauptet.
 
-Naechste sichere Aktion: Branch nach `master` integrieren, sobald der
-Dokumentations-Commit gepusht ist. Kein Tag, GitHub-Release oder
-Versionssprung ohne neue ausdrueckliche Freigabe. Produktiv-Bridge 8788 bleibt
-unangetastet; Test-Bridge 8789 wird gestoppt.
+Integration: Branch `feature/T-1019-continue-provider-chat` mit `89605ba` und
+`b8b9401` gepusht und per Fast-Forward nach `master` (`b8b9401`) integriert.
+Kein Tag, GitHub-Release oder Versionssprung ohne neue ausdrueckliche
+Freigabe. Produktiv-Bridge 8788 bleibt unangetastet; Test-Bridge 8789 ist
+gestoppt.
