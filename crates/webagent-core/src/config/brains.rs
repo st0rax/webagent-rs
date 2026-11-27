@@ -179,6 +179,18 @@ pub fn continue_provider_chat() -> bool {
     )
 }
 
+/// T-1021: Provider-WebView-Fenster dauerhaft sichtbar halten, damit der
+/// tatsaechlich gesendete Prompt aus der Oberflaeche kopiert werden kann.
+/// Default aus: der Regelbetrieb parkt das Fenster weiterhin nach Turn-Ende
+/// und schliesst den Shared-Runtime.
+pub fn keep_windows_visible() -> bool {
+    let v = env::var("WEBAGENT_KEEP_WINDOWS_VISIBLE").unwrap_or_default();
+    matches!(
+        v.trim().to_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
 /// Fester Debug-Port für den Shared-Browser-Pool (ein Chromium, viele Tabs).
 pub fn shared_debug_port() -> u16 {
     env::var("WEBAGENT_SHARED_DEBUG_PORT")
@@ -421,4 +433,31 @@ pub(super) fn swarm_profile_scope_key(run_id: &str, brain_id: &str) -> String {
         }
     }
     format!("{hash:016x}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keep_windows_visible_ist_opt_in() {
+        const KEY: &str = "WEBAGENT_KEEP_WINDOWS_VISIBLE";
+        let previous = env::var(KEY).ok();
+        let restore = || match &previous {
+            Some(v) => env::set_var(KEY, v),
+            None => env::remove_var(KEY),
+        };
+
+        env::remove_var(KEY);
+        assert!(!keep_windows_visible());
+
+        env::set_var(KEY, " 1 ");
+        assert!(keep_windows_visible());
+        env::set_var(KEY, "ON");
+        assert!(keep_windows_visible());
+        env::set_var(KEY, "0");
+        assert!(!keep_windows_visible());
+
+        restore();
+    }
 }

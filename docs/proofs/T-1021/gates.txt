@@ -1,18 +1,36 @@
-T-1021 gates - 2026-11-27
-Branch feature/T-1021-visible-webview, Claim cd0888c, Stand vor Versionsrelease 0.11.9
+T-1021 gates - 2026-11-27 (finaler Stand mit Opt-in-Flag)
+Branch feature/T-1021-visible-webview, Claim cd0888c, Version 0.11.9
 
-pwsh -NoProfile -File scripts/supervise-bridge.ps1 -?          -> 0 (Parameterblock gelesen)
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/supervise-bridge.ps1 -> 0
-  (supervisor.log: 06:40:14 Bridge gestartet PID=18580,
-                   06:40:15 OK Bridge gesund PID=18580)
-GET http://127.0.0.1:8788/health                              -> status=ok
-Command Line PID 18580                                        -> ohne --headless
-POST /v1/chat/completions (webagent/chatgpt, minimaler Turn)  -> success=true, antwort_chars=2
-EnumWindows + GetWindowRect (HWND 1442666)                    -> 06:42:01..06:42:18 Rect=320,66,1616,1005
-                                                                 06:41:57..06:42:00 Rect=-32000,-32000,...
-git diff --check                                              -> 0
+pwsh -NoProfile -File scripts/verify-release-version.ps1 -Tag v0.11.9 -> 0
+cargo fmt --all -- --check                                          -> 0
+cargo clippy -q --all-targets -- -D warnings                        -> 0
+cargo test --workspace --lib -q --locked                            -> 0
+cargo test --test arch_layers -- --nocapture                        -> 0
+cargo check --features tui -q                                       -> 0
+cargo check --no-default-features -q                                -> 0
+git diff --check                                                    -> 0
+cargo build --release --locked                                      -> 0
+.\target\release\webagent.exe --version                             -> webagent 0.11.9
 
-Befund: waehrend des Turns sichtbar, nach dem Turn Runtime-Teardown und Fenster
-geschlossen. Dauerhaft sichtbar braucht einen Binary-Eingriff und einen EXE-
-Tausch; dafuer liegt keine separate Freigabe vor. Kein Login, keine
-Zugangsdatenausgabe, kein Prompt-Rohtext im Log.
+test result: ok. 459 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
+test result: ok. 193 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 632 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 284 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+Summe: 1568 bestanden, 0 fehlgeschlagen, 1 ignoriert
+(vorher 1565; +3 neue Tests: 1 Config-Test, 2 Park-Entscheidungs-Tests)
+
+arch: 5 passed (modules=92, edges=283, cycles=3, upward_edges=26,
+crate_violations=0).
+
+Gezielte neue Tests:
+config::brains::tests::keep_windows_visible_ist_opt_in               -> ok
+webview_reveal::tests::keep_visible_underbindet_park_und_fokus       -> ok
+webview_reveal::tests::park_ohne_keep_visible_setzt_bounds_und_fokus_zurueck -> ok
+
+Frueherer Teilbeleg vor dem Binary-Eingriff (siehe README):
+- Supervisor ohne --headless, Bridge-PID 18580, health=ok.
+- Minimaler Turn success=true; HWND 1442666 'webagent · chatgpt (1)'
+  06:42:01..06:42:18 Rect=320,66,1616,1005, danach Fenster geschlossen.
+  Das war die Ausgangslage fuer die Binary-Aenderung.
+
+Kein Login, keine Zugangsdatenausgabe, kein Prompt-Rohtext im Log.

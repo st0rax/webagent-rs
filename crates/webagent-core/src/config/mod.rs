@@ -12,12 +12,12 @@ mod writeback;
 
 pub use brains::{
     block_cooldown_secs, bot2bot_root, brains, consensus_workspace, continue_provider_chat,
-    custom_brains_path, ensure_data_dirs, load_custom_brains, parse_custom_brains,
-    persist_browser_tabs, reference_profile_dir, reference_profile_dir_in, register_custom_brain,
-    resolve_selectors_path, retry_unavailable_secs, sanitize_brain_id, selectors_dir,
-    shared_debug_port, stale_heartbeat_secs, swarm_profile_dir, swarm_profile_dir_in,
-    use_shared_browser, use_sparse_profile_copy, user_selectors_dir, BRAIN_TABLE,
-    SPARSE_COPY_WHITELIST,
+    custom_brains_path, ensure_data_dirs, keep_windows_visible, load_custom_brains,
+    parse_custom_brains, persist_browser_tabs, reference_profile_dir, reference_profile_dir_in,
+    register_custom_brain, resolve_selectors_path, retry_unavailable_secs, sanitize_brain_id,
+    selectors_dir, shared_debug_port, stale_heartbeat_secs, swarm_profile_dir,
+    swarm_profile_dir_in, use_shared_browser, use_sparse_profile_copy, user_selectors_dir,
+    BRAIN_TABLE, SPARSE_COPY_WHITELIST,
 };
 pub use clone::{CloneEntry, DryRunReport, ProfileClonePlan, ProfileClonePlanner};
 pub use limits::{

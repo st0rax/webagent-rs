@@ -2217,7 +2217,10 @@ Fenster ist waehrend des Turns sichtbar und der Prompt kann in diesem Zeitraum
 kopiert werden; dauerhaft bleibt es nicht. `BrowserPool::stop_brain` schliesst
 bei `refs==0` den Shared-Runtime, auch mit `WEBAGENT_PERSIST_TABS=1`.
 
-Fuer dauerhaft sichtbare Fenster braucht es einen Binary-Eingriff und einen
-EXE-Tausch; dafuer liegt keine separate Freigabe vor. Die Produktiv-EXE ist
-unveraendert (T-1019-Stand). Offene Entscheidung: during-turn genuegt oder
-Binary-Aenderung + Deployment freigeben.
+Der Eigentuemer hat daraufhin Binary-Aenderung und EXE-Tausch ausdruecklich
+freigegeben. Umgesetzt: Opt-in `WEBAGENT_KEEP_WINDOWS_VISIBLE` (Default aus),
+`park_offscreen` als No-op bei gesetztem Flag und `stop_brain` ohne
+Runtime-Teardown; der Supervisor setzt das Flag. Finale Gates gruen: fmt 0,
+clippy 0, lib 459+193+632+284=1568 bestanden / 0 fehlgeschlagen / 1 ignoriert
+(+3 neue Tests), arch 5, tui 0, no-default 0, diff-check 0, release 0,
+`webagent 0.11.9`. Deploy und finaler HWND/Rect-Beleg stehen noch aus.

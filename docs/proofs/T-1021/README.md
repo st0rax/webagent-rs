@@ -52,10 +52,22 @@ und damit alle WebView-Fenster schließt. Das gilt auch mit
 `WEBAGENT_PERSIST_TABS=1`: der Tab bleibt im Profil erhalten, das Fenster aber
 nicht.
 
-Ein dauerhaft offenes Fenster erfordert einen Code-Eingriff in der Binary und
-damit einen neuen EXE-Deploy. Dafür liegt keine gesonderte Freigabe vor; die
-produktive Bridge läuft weiter mit der T-1019-EXE. Diese Scheibe ändert daher
-nur den Startparameter, nicht das Binary.
+## Finale Umsetzung (nach ausdrücklicher Freigabe)
 
-Kein Login, keine Profil-/Token-Lektüre, kein Prompt-Rohtext im Log, kein Tag
+Der Eigentümer hat am 27.11.2026 die Binary-Änderung und den EXE-Tausch
+ausdrücklich freigegeben. Umgesetzt:
+
+- `WEBAGENT_KEEP_WINDOWS_VISIBLE` als Opt-in in `config::brains` (Default aus).
+- `webview_reveal::park_offscreen` lässt das Fenster bei gesetztem Flag stehen
+  (kein `set_bounds(None)`, kein Fokusentzug).
+- `browser_pool::stop_brain` überspringt bei gesetztem Flag den
+  `complete_required_teardown`; der Shared-Runtime und damit alle WebView-
+  Fenster bleiben über Turns hinweg offen. Der geordnete Write-back läuft
+  beim Prozessende über den Pool-Drop.
+- Der Supervisor setzt das Flag zusätzlich zu den drei T-1019-Flags.
+
+Der Deploy der neuen EXE und der abschließende HWND/Rect-Nachweis werden in
+diesem Beleg ergänzt, sobald die produktive Bridge neu gestartet ist.
+
+Kein Login, keine Profil-/Token-Lektüre, kein Prompt-Rohtext im Log. Kein Tag
 und kein GitHub-Release in dieser Scheibe.

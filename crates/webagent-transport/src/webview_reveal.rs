@@ -26,7 +26,19 @@ pub fn reveal_onscreen(ctrl: &dyn ViewWindowControl, rect: Rect) -> Result<(), S
 }
 
 /// Parkt das Fenster wieder offscreen und gibt den Fokus ab.
+///
+/// T-1021: mit `WEBAGENT_KEEP_WINDOWS_VISIBLE=1` bleibt das Fenster bewusst
+/// stehen, damit der gesendete Prompt aus der Oberflaeche kopiert werden kann.
+/// Der Default (Flag aus) parkt weiterhin wie zuvor.
 pub fn park_offscreen(ctrl: &dyn ViewWindowControl) -> Result<(), String> {
+    park_offscreen_unless(ctrl, webagent_core::config::keep_windows_visible())
+}
+
+/// Reine Entscheidung: `keep_visible=true` laesst das Fenster unangetastet.
+fn park_offscreen_unless(ctrl: &dyn ViewWindowControl, keep_visible: bool) -> Result<(), String> {
+    if keep_visible {
+        return Ok(());
+    }
     ctrl.set_bounds(None)?;
     ctrl.focus_view(false)?;
     Ok(())
@@ -112,6 +124,25 @@ mod tests {
         assert_eq!(ctrl.bounds.borrow()[0], Some(rect));
         assert_eq!(ctrl.bounds.borrow()[1], None);
         assert_eq!(*ctrl.focuses.borrow(), vec![true, false]);
+    }
+
+    #[test]
+    fn keep_visible_underbindet_park_und_fokus() {
+        let ctrl = RecordingViewControl::default();
+        park_offscreen_unless(&ctrl, true).unwrap();
+        assert!(ctrl.calls.borrow().is_empty());
+        assert!(ctrl.bounds.borrow().is_empty());
+        assert!(ctrl.focuses.borrow().is_empty());
+    }
+
+    #[test]
+    fn park_ohne_keep_visible_setzt_bounds_und_fokus_zurueck() {
+        let ctrl = RecordingViewControl::default();
+        park_offscreen_unless(&ctrl, false).unwrap();
+        assert_eq!(
+            *ctrl.calls.borrow(),
+            vec!["set_bounds(None)", "focus(false)"]
+        );
     }
 
     #[test]

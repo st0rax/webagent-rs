@@ -17,7 +17,10 @@ use crate::webview_runtime::{WebViewPageDriver, WebViewRuntime};
 #[cfg(feature = "webview")]
 use webagent_core::brain::BrainBackend;
 #[cfg(any(feature = "webview", test))]
-use webagent_core::config::{continue_provider_chat, persist_browser_tabs};
+#[cfg(feature = "webview")]
+use webagent_core::config::continue_provider_chat;
+#[cfg(any(feature = "webview", test))]
+use webagent_core::config::persist_browser_tabs;
 #[cfg(feature = "webview")]
 use webagent_core::config::{
     encapsulated_profile_dir, prepare_shared_profile_for_clone, runtime_pool_profile_dir,
@@ -381,11 +384,17 @@ impl BrowserPool {
 
             #[cfg(feature = "webview")]
             {
-                let owns_runtime = self.runtime.is_some();
-                let has_live_refs = self.tabs.values().any(|tab| tab.refs > 0);
-                complete_required_teardown(owns_runtime, has_live_refs, || {
-                    self.shutdown_shared_runtime_with_result()
-                })?;
+                // T-1021: mit dauerhaft sichtbaren Fenstern darf der letzte Stop
+                // den Shared-Runtime nicht schliessen — `close_shared_tabs`
+                // wuerde alle WebViews entfernen. Der geordnete Write-back
+                // erfolgt beim Prozessende ueber den Drop des Pools.
+                if !webagent_core::config::keep_windows_visible() {
+                    let owns_runtime = self.runtime.is_some();
+                    let has_live_refs = self.tabs.values().any(|tab| tab.refs > 0);
+                    complete_required_teardown(owns_runtime, has_live_refs, || {
+                        self.shutdown_shared_runtime_with_result()
+                    })?;
+                }
             }
             return Ok(());
         }

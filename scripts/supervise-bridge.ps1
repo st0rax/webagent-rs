@@ -96,6 +96,11 @@ $env:WEBAGENT_USE_SHARED_BROWSER = "1"
 $env:WEBAGENT_PERSIST_TABS = "1"
 $env:WEBAGENT_CONTINUE_PROVIDER_CHAT = "1"
 
+# T-1021: Provider-WebViews dauerhaft sichtbar halten. Ohne dieses Flag parkt
+# BrowserPool::stop_brain nach jedem Turn und schliesst den Shared-Runtime —
+# auch mit WEBAGENT_PERSIST_TABS=1. Der Prompt bleibt dann kopierbar.
+$env:WEBAGENT_KEEP_WINDOWS_VISIBLE = "1"
+
 if (Test-BridgeHealth) {
     Write-Status "OK Bridge gesund, keine Aenderung"
     exit 0
