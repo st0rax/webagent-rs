@@ -3197,6 +3197,36 @@
       "proof_path": "docs/proofs/T-1019/README.md",
       "verification": "Live PASS 2026-11-27 auf Port 8789 mit sauberem Commit-Build 89605ba: Turn 1 HTTP 200 Antwort exakt T1019-TURN1-OK, Turn 2 HTTP 200 Antwort exakt Otter, beide success=true und sends=1, prompt_chars 236/231 ohne Verlaufs-Rahmen. Belege in docs/proofs/T-1019/README.md und gates.txt. Bedingungsloses new_chat-Skip vorher verworfen (HTTP 502, Composer-Feld nicht gefunden); der bedingte Skip-Pfad wurde im Live-Lauf nicht ausgeloest und wird nicht als Live-Beleg behauptet.",
       "done_at": "2026-11-27"
+    },
+    {
+      "id": "T-1020",
+      "title": "DeepSeek-Anweisung als Bridge-Prompt umsetzen",
+      "type": "feat",
+      "phase": "16",
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "feature/T-1020-bridge-prompt",
+      "claimed_at": "2026-11-27",
+      "depends_on": [],
+      "objective": "Der am 2026-11-27 zweimal eingefuegte Block '# Anweisung fuer big-pickle' soll als WebAgent-Bridge-Prompt wirken: Identitaet und Verhalten des Modells hinter dem Brain, knappe Antwort ohne Meta-Analyse, Werkzeugnutzung nach Bedarf, kein Erfinden von Ergebnissen, klare Fehlermeldung mit Alternativweg. Bisher steht in prompt_with_identity() nur die alte Identitaetszeile.",
+      "dod": "Claim vor Source-Aenderung; Verhalten ausschliesslich im Bridge-Prompt, nicht als OpenCode-Betriebsmodus; bestehende WEBAGENT_INFERENCE/1-Regel in prompt_with_tools() bleibt unveraendert und widerspruchsfrei; auto/leeres Brain bleibt ohne Identitaetsclaim; Nutzerprompt wird nicht gekuerzt oder umformuliert; Tests und docs/API_BRIDGE.md angepasst; Gates gruen; Commit/Push; Beleg in docs/proofs/T-1020; kein Deploy, Tag, GitHub-Release oder Versionssprung.",
+      "non_goals": [
+        "Kein Kuerzen oder Umformulieren des Nutzerprompts.",
+        "Kein Ersetzen oder Abschwaechen der WEBAGENT_INFERENCE/1-Regel.",
+        "Keine Aenderung der Default-Semantik fuer auto oder leeres Brain.",
+        "Kein Deploy, Tag, GitHub-Release oder Versionssprung."
+      ],
+      "scope": [
+        "crates/webagent-api/src/browser_inference.rs",
+        "docs/API_BRIDGE.md",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-1020/README.md",
+        "docs/proofs/T-1020/gates.txt"
+      ],
+      "proof_path": "docs/proofs/T-1020/README.md",
+      "verification": "offen - wird mit Gates und Belegen gefuellt"
     }
   ]
 }
