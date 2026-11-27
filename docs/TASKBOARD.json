@@ -3168,13 +3168,13 @@
       "title": "Continue provider chat instead of reframing full context",
       "type": "feat",
       "phase": "16",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "feature/T-1019-continue-provider-chat",
       "claimed_at": "2026-11-27",
       "depends_on": [],
       "objective": "Pro API-Turn wird der komplette messages-Verlauf als [du]/[user]/[tool]-Rahmen in ein frisches Provider-Chat geklebt; defaultmaessig wird zudem pro Request eine neue WebView erzeugt und danach verworfen. Mit WEBAGENT_CONTINUE_PROVIDER_CHAT=1 soll nur die aktuelle Nachricht in einen persistenten Shared-Browser-Tab gesendet werden; der Provider-Chat behaelt seinen eigenen Verlauf.",
-      "dod": "Claim; Config-Flag mit Test; conversation_prompt sendet im Modus nur die aktuelle Nachricht inkl. Tool-Label; Relay macht kein new_chat und nur einen Versuch; Shared-Pool navigiert vorhandenen Tab nicht neu; Tests; Gates gruen; Commit/Push; separater Test-Port 8789 mit Health und Zwei-Turn-Gedaechtnis; kein Prompts-Text gekuerzt; kein Tag/Release/Login.",
+      "dod": "Claim; Config-Flag mit Test; conversation_prompt sendet im Modus nur die aktuelle Nachricht inkl. Tool-Label; Relay macht nur einen Versuch und skippt new_chat nur bei nachgewiesener /c/-Konversation; Shared-Pool navigiert vorhandenen Tab nicht neu; Tests; Gates gruen; Commit/Push; separater Test-Port 8789 mit Health und Zwei-Turn-Gedaechtnis; kein Prompts-Text gekuerzt; kein Tag/Release/Login.",
       "non_goals": [
         "Kein Aendern der Default-Semantik ohne Flag.",
         "Kein Kuerzen oder Umformulieren des Nutzerprompts.",
@@ -3190,11 +3190,13 @@
         "docs/TASKBOARD.json",
         "docs/TASKBOARD.md",
         "docs/proofs/T-1019/README.md",
-        "docs/proofs/T-1019/gates.txt"
+        "docs/proofs/T-1019/gates.txt",
+        "crates/webagent-core/src/brain.rs",
+        "crates/webagent-transport/src/browser/backend.rs"
       ],
       "proof_path": "docs/proofs/T-1019/README.md",
-      "verification": "noch offen",
-      "done_at": null
+      "verification": "Live PASS 2026-11-27 auf Port 8789 mit sauberem Commit-Build 89605ba: Turn 1 HTTP 200 Antwort exakt T1019-TURN1-OK, Turn 2 HTTP 200 Antwort exakt Otter, beide success=true und sends=1, prompt_chars 236/231 ohne Verlaufs-Rahmen. Belege in docs/proofs/T-1019/README.md und gates.txt. Bedingungsloses new_chat-Skip vorher verworfen (HTTP 502, Composer-Feld nicht gefunden); der bedingte Skip-Pfad wurde im Live-Lauf nicht ausgeloest und wird nicht als Live-Beleg behauptet.",
+      "done_at": "2026-11-27"
     }
   ]
 }

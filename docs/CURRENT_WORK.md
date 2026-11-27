@@ -2132,3 +2132,32 @@ Die nächste sichere Aktion ist die **Live-Abnahme am erreichbaren Desktop-Arbei
 - **Arbeitsbaum:** nach diesem Übergabecommit erneut prüfen; `master` direkt pushen, keine History umschreiben.
 
 > **Hinweis zur Wahrheitspflege:** Historische Live-Befunde aus August 2026 sind nützlich für die Diagnose, aber kein aktueller Verfügbarkeitsbeleg. Maßgeblich für v1.0 sind frische, reproduzierbare Belege am Release Candidate — für `v0.11.3` in `docs/proofs/G-001/g001-abschluss-2026-09-12.json` zusammengeführt.
+
+## T-1019 — Provider-Chat fortsetzen (2026-11-27)
+
+**Status:** done, Code-Commit `89605ba` auf `feature/T-1019-continue-provider-chat`.
+**Belege:** `docs/proofs/T-1019/README.md`, `docs/proofs/T-1019/gates.txt`.
+
+Mit `WEBAGENT_CONTINUE_PROVIDER_CHAT=1` schickt die Bridge nur die aktuelle
+Nachricht in den Provider-Chat; der Default bleibt unveraendert. Shared-Tabs
+werden nicht neu navigiert, der Relay macht genau einen Versuch und ueberspringt
+`new_chat()` nur bei nachgewiesener `/c/...`-Konversation.
+
+Gates: fmt/clippy/lib/arch/tui/no-default/diff-check/release alle gruen;
+1562 Tests bestanden, 0 fehlgeschlagen, 1 ignoriert. Sauberer Release-Build
+`89605ba7d`, EXE-SHA256 `CE6F874FBDAD3A8D1F479847621DBD28645AA93CB5461299750F524DF0118F2D`.
+
+Live auf Test-Port 8789: Turn 1 HTTP 200, genau `T1019-TURN1-OK`; Turn 2 HTTP
+200, genau `Otter`; beides `success=true`, `sends=1`, `prompt_chars` 236/231.
+Der zweite Prompt enthaelt das Wort `Otter` nicht — das Gedaechtnis lag beim
+Provider, nicht im Bridge-Kontext. Ein zuvor gebautes bedingungsloses
+`new_chat`-Skip wurde mit HTTP 502 und
+`send_phase=insert: Composer-Feld nicht gefunden (Timeout)` verworfen und
+nicht als PASS gezaehlt. Im finalen Lauf war die Tab-URL keine `/c/...`-URL;
+der bedingte Skip-Pfad wurde nicht ausgeloest und wird nicht als Live-Beleg
+behauptet.
+
+Naechste sichere Aktion: Branch nach `master` integrieren, sobald der
+Dokumentations-Commit gepusht ist. Kein Tag, GitHub-Release oder
+Versionssprung ohne neue ausdrueckliche Freigabe. Produktiv-Bridge 8788 bleibt
+unangetastet; Test-Bridge 8789 wird gestoppt.

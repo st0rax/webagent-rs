@@ -1,0 +1,36 @@
+T-1019 gates — 2026-11-27
+Commit unter Pruefung: 89605ba (feature/T-1019-continue-provider-chat)
+Binary: webagent 0.11.8 (89605ba7d)
+EXE-SHA256: CE6F874FBDAD3A8D1F479847621DBD28645AA93CB5461299750F524DF0118F2D
+
+cargo fmt --all -- --check                          -> 0
+cargo clippy -q --all-targets -- -D warnings        -> 0
+cargo test --workspace --lib -q                     -> 0
+cargo test --test arch_layers -- --nocapture        -> 0
+cargo check --features tui -q                       -> 0
+cargo check --no-default-features -q                -> 0
+git diff --check                                    -> 0
+cargo build --release --locked                      -> 0
+
+test result: ok. 459 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
+test result: ok. 190 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 631 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 282 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+Summe: 1562 bestanden, 0 fehlgeschlagen, 1 ignoriert
+
+Gezielte neue Tests:
+config::tests::test_continue_provider_chat_flag                       -> ok
+api_bridge::tests::continue_provider_chat_sends_only_current_message  -> ok
+relay::tests::continue_chat_erlaubt_nur_einen_versuch                  -> ok
+relay::tests::continue_chat_skippt_new_chat_nur_in_bestehender_konversation -> ok
+
+Live (Port 8789, shared + persist + continue):
+health 200 {"service":"webagent-provider-bridge","status":"ok"}
+/v1/models mit Authorization-Header 200, ohne Header 401
+Turn 1 HTTP 200, Antwort exakt T1019-TURN1-OK, success=true, sends=1, prompt_chars=236
+Turn 2 HTTP 200, Antwort exakt Otter,        success=true, sends=1, prompt_chars=231
+events_delta=2, kein send_phase-Fehler
+
+Verworfen: bedingungsloses new_chat-Skip — HTTP 502,
+send_phase=insert: Composer-Feld nicht gefunden (Timeout), 2x ~151 s.
+Kein success=true in diesem verworfenen Lauf; nicht als PASS gewertet.
