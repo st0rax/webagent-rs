@@ -35,10 +35,10 @@ reproduzierbar in der Provider-Oberfläche:
   (statt Zwischenstufen 1024/512/256/128/0 zu versuchen); **alle**
   Werkzeugnamen, Parameternamen und Typen bleiben erhalten. Ein 12-Tool-
   Schema schrumpft damit von ~9 KiB auf ~2,4 KiB.
-- Neu: `MAX_BROWSER_PROMPT_CHARS = 140_000`. Der Wert wurde live zwischen
-  138.561 (gesendet) und 147.459 (abgelehnt) Zeichen eingegrenzt; der erste
-  Entwurf mit 180.000 war zu hoch. Mit dem kleinen Schema landet der externe
-  ~132k-Prompt bei ~134k und damit unter der Grenze.
+- `MAX_BROWSER_PROMPT_CHARS` zuerst `180_000`, dann `140_000`, jetzt
+  **`120_000`**. Die untere Beobachtung ist ein Antwort-PASS bei 102.806
+  Zeichen; bei 130.215 Zeichen kam trotz Sendung nach 353 s kein Text mehr.
+  Der Guard liegt jetzt unterhalb dieser Silent-Non-Response-Grenze.
 
 `crates/webagent-api/src/browser_inference.rs`:
 
@@ -48,8 +48,8 @@ reproduzierbar in der Provider-Oberfläche:
   Browserlauf wirksam; `complete` und `api_bridge::inference` nutzen
   denselben Pfad.
 - Fehlertext ist benannt: `Prompt zu gross fuer die Browser-Oberflaeche:
-  <n> Zeichen (Maximum 140000); Werkzeugbeschreibungen sind bereits
-  komprimiert`. Ein solcher Turn scheitert sofort statt nach ~90 Sekunden
+  <n> Zeichen (Maximum 120000); Werkzeugbeschreibungen sind bereits
+  komprimiert`. Ein solcher Turn scheitert sofort statt nach 90–350 Sekunden
   und erzeugt keinen `ABSENDEKNOPF_DEAKTIVIERT`-Breakereintrag mehr.
 
 Neue Regressionstests:
@@ -92,13 +92,13 @@ verifiziert:
 
 ## Erwartung und Grenze
 
-- Erwartung für die externen `tools=12`-Turns: kompakter Prompt < 140k,
-  Browser sendet ihn. Die Antwort ist bei ~103k belegt; bei ~132k blieb sie
-  trotz erfolgreicher Sendung aus (Renderer-Timeout). "Sendung geht" und
-  "Antwort kommt" sind deshalb getrennt zu belegen.
-- Wenn der externe Prompttext allein bereits über 140k liegt, bleibt nur der
-  schnelle, benannte Fehler — ein Kürzen des Nutzertextes ist nicht Teil
-  dieses Tasks.
+- Unterstützt und live belegt: kompakter Prompt bis 120k mit 12 Tools →
+  Browser sendet, Antwort kommt (Beleg bei 102.806 Zeichen).
+- Oberhalb 120k gab es auch ohne Tools bei ~130k keine Antwort (353 s,
+  `timeout_no_text`). Der Turn scheitert jetzt in Bruchteilen einer Sekunde
+  mit benanntem Fehler, statt die Brain-Sperre minutenlang zu belegen.
+- Ein Kürzen des Nutzerprompt-Textes ist nicht Teil dieses Tasks; deshalb
+  bleibt ein externer Prompt über 120k ein bewusster, schneller Fehler.
 - Kein Prompt-Text wird gekürzt, zusammengefasst oder umformuliert.
 - Kein Tag, GitHub-Release, Versionssprung oder neues öffentliches Artefakt.
 - Keine Zugangsdaten gelesen, angezeigt oder weitergegeben.
@@ -147,3 +147,24 @@ verifiziert:
   Breaker-State bei Bedarf wiederherstellen, mit identischer Command Line
   neu starten. Zwischenstufen: `backup-release-before-T1017-20261126\` und
   `backup-release-before-T1017-calibrated-20261127\`.
+
+## 2026-11-27 - Guard auf 120000 abgesenkt (silent non-response)
+
+Nach dem Final-Deploy wurde die verbleibende Lücke weiter eingegrenzt: ein
+`tools=12`-Turn mit 132.906 Zeichen wurde gesendet, lieferte aber nach 351 s
+`timeout_no_text` (`generation_complete=false`, `raw_chars=0`). Zur
+Isolierung wurde derselbe Realtext ohne Werkzeuge erneut geschickt
+(130.043 Zeichen Request, Event `prompt_chars=130215`): HTTP 502 nach 352,9 s,
+`timeout_budget=312s`, `backend_status=timeout_no_message`, `sends=1`,
+`raw_chars=0`. Damit sind die Werkzeugdefinitionen nicht die Ursache; die
+Browser-Oberfläche nimmt die Eingabe an, generiert aber keine Antwort.
+
+`MAX_BROWSER_PROMPT_CHARS` ist deshalb von 140.000 auf **120.000** gesenkt:
+unterhalb der belegten Antwortgrenze (102.806 Zeichen mit `success=true`),
+oberhalb der stillen Nicht-Antwort. Ein solcher Turn scheitert jetzt in
+Bruchteilen einer Sekunde mit benanntem Budgetfehler statt die Brain-Sperre
+über fünf bis sechs Minuten zu belegen. Der Nutzerprompt-Text wird weiterhin
+nicht gekürzt, zusammengefasst oder umformuliert.
+
+Gates für diese Änderung: vierte Serie in `gates.txt` grün. Build, Deploy
+und Live-Gegenprobe folgen im nächsten Abschnitt.

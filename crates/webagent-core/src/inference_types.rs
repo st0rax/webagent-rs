@@ -44,12 +44,12 @@ pub const MAX_TOOL_SCHEMA_BYTES: usize = 12 * 1024;
 /// external client's ~132k prompt that is the difference between sending and
 /// a silent UI rejection. Names, property names and types stay untouched.
 pub const TOOL_DESCRIPTION_LIMITS: &[usize] = &[0];
-/// Oberhalb dieser Groesse lehnt die Browser-Oberflaeche die Eingabe still ab
-/// (deaktivierter Absendeknopf). Ein zu grosser Prompt muss deshalb **vor** dem
-/// Browserlauf scheitern, statt eine Minute die Brain-Sperre zu belegen.
-/// Die Grenze wurde live eingegrenzt: 138.561 Zeichen wurden gesendet,
-/// 147.459 Zeichen wurden abgelehnt.
-pub const MAX_BROWSER_PROMPT_CHARS: usize = 140_000;
+/// Oberhalb dieser Groesse nimmt die Browser-Oberflaeche die Eingabe zwar noch
+/// an, generiert aber keine Antwort mehr: 102.806 Zeichen lieferten live eine
+/// Antwort, 130.215 Zeichen liefen 353 s in `timeout_no_text`. Der Guard liegt
+/// deshalb unterhalb der silent-non-response-Grenze, damit solche Turns sofort
+/// benannt scheitern statt die Brain-Sperre minutenlang zu belegen.
+pub const MAX_BROWSER_PROMPT_CHARS: usize = 120_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BrowserTool {

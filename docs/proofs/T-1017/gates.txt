@@ -50,5 +50,12 @@ Finaler Release-Build aus master (e326001d3):
   Aktiv als PID 14960, identische Command Line, Health ok, 9 Modelle mit
   Header / 401 ohne. Live-Abnahme siehe README.md ("Finaler Build ...").
 
+Vierte Gates-Serie nach Absenkung des Prompt-Guards auf 120000 Zeichen:
+  fmt=0; clippy=0; lib=0 (459+187+630+280 = 1556 passed, 0 failed, 1 ignored)
+  browser_inference=0 (32 passed, 0 failed)
+  arch=0 (5 passed, modules=92, edges=282, cycles=3, upward_edges=26, crate_violations=0)
+  tui=0; no-default=0; diffcheck=0
+
 Hinweis: Serie 1 lief vor dem Merge, Serie 2 nach der Live-Kalibrierung,
-Serie 3 nach dem Verschaeufen auf beschreibungsfreie Tool-Schemata.
+Serie 3 nach dem Verschaeufen auf beschreibungsfreie Tool-Schemata,
+Serie 4 nach dem Absenken des Guards auf die belegte Antwortgrenze.

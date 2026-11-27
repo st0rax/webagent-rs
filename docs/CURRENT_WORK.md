@@ -1,3 +1,22 @@
+## 2026-11-27 - T-1017: Guard auf 120k abgesenkt (Build/Deploy offen)
+
+- **Neue Erkenntnis:** Ein `tools=12`-Turn mit 132.906 Zeichen wurde gesendet,
+  blieb aber 351 s ohne Antwort (`timeout_no_text`, `raw_chars=0`). Ein
+  Kontrollturn ohne Werkzeuge mit 130.043 Zeichen Request (Event
+  `prompt_chars=130215`) scheiterte nach 352,9 s mit
+  `timeout_no_message`. Damit sind Werkzeugdefinitionen nicht die Ursache.
+- **Änderung:** `MAX_BROWSER_PROMPT_CHARS` 140.000 → **120.000**, unterhalb
+  der belegten Antwortgrenze bei 102.806 Zeichen. Überlange Turns scheitern
+  sofort benannt statt die Brain-Sperre minutenlang zu belegen. Kein
+  Nutzerprompt-Text gekürzt.
+- **Gates:** vierte Serie grün: fmt 0; clippy 0; lib 459+187+630+280 = 1556
+  passed / 0 failed / 1 ignored; browser_inference 32 passed; arch 5 passed;
+  tui 0; no-default 0; diff-check 0.
+- **Offen:** Commit/Push als `opencode`, Release-Build aus `master`,
+  EXE-Tausch mit neuem Backup, identische Bridge-Command-Line, Health-Check
+  und Live-Gegenprobe (>120k sofortiger Budgetfehler; ~103k mit 12 Tools
+  erneut `success=true`). Danach Board-Verification final aktualisieren.
+
 ## 2026-11-27 - T-1017 final deployt und live abgenommen (Stand)
 
 - **Finaler Stand:** `master` `e326001` (gepusht), Release-Build
