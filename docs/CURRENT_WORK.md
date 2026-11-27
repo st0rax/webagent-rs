@@ -1,5 +1,16 @@
 > Fruehere Eintraege (bis 25.11.2026): `docs/archive/CURRENT_WORK-2026-11-25.md`.
 
+## 2026-11-27 - Doku-Nachzug: Pflichtlektuere auf v0.11.10
+
+- **Stand:** done. `GOALS.md`, `README.md`, `docs/OVERVIEW.md` und
+  `docs/PRODUCTION_READINESS.md` zeigen jetzt `v0.11.10`, `origin/master`
+  `a916039`, 127/127 `done` und die aktiv deployte EXE
+  `7EF813D5…D4CC`. Die historische Bewertung in
+  `docs/PRODUCTION_READINESS.md` bleibt als `v0.11.7`-Beleg gekennzeichnet.
+- **Kein Release-Wechsel:** Tag `v0.11.10` bleibt auf `629009b`; dieser
+  Doku-Commit liegt danach auf `origin/master`. Kein Code-, Versions- oder
+  Deployment-Wechsel, keine Zugangsdaten, keine Live-Logins.
+
 ## 2026-11-27 - v0.11.10 final: Audit-Fixes gemergt, getaggt, veröffentlicht, deployt
 
 - **Owner/Freigabe:** local/opencode auf
