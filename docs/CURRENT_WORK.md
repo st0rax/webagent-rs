@@ -2204,8 +2204,8 @@ und keine Zugangsdatenausgabe.
 
 ## T-1021 - Bridge-WebView sichtbar schalten (2026-11-27)
 
-**Status:** in Arbeit auf `feature/T-1021-visible-webview`; Claim `cd0888c`
-gepusht. `scripts/supervise-bridge.ps1` startet jetzt ohne `--headless`; die
+**Status:** done auf `master` (`f11f604` + finaler Doku-Commit); Claim
+`cd0888c` gepusht. `scripts/supervise-bridge.ps1` startet jetzt ohne `--headless`; die
 drei T-1019-Flags bleiben unveraendert. Die aktive Bridge wurde ueber den
 Supervisor neu gestartet: `bridge.pid=18580`, Command Line ohne `--headless`,
 health=ok. Beleg: `docs/proofs/T-1021/README.md`.
@@ -2223,4 +2223,20 @@ freigegeben. Umgesetzt: Opt-in `WEBAGENT_KEEP_WINDOWS_VISIBLE` (Default aus),
 Runtime-Teardown; der Supervisor setzt das Flag. Finale Gates gruen: fmt 0,
 clippy 0, lib 459+193+632+284=1568 bestanden / 0 fehlgeschlagen / 1 ignoriert
 (+3 neue Tests), arch 5, tui 0, no-default 0, diff-check 0, release 0,
-`webagent 0.11.9`. Deploy und finaler HWND/Rect-Beleg stehen noch aus.
+`webagent 0.11.9`.
+
+**Deploy und Abnahme (27.11.2026):** Neue EXE SHA-256
+`9C33E843EFD4F49CC188150334234960C59DF7099E472FD76661AA6D34EF0CE7`
+(DLL `465A7DDF…A0A6F`) produktiv auf 8788 deployt; Rueckweg in
+`backup-release-before-T1021-20261127\` mit alter EXE `CE6F874F…8F2D`.
+Bridge ueber den Supervisor neu gestartet: PID `18544`, Command Line ohne
+`--headless`, health `ok`. Live-Turn 07:04:30 `success=true` (`prompt_chars=1041`,
+`sends=1`, Event in `brain_score/events.jsonl`). Finaler HWND/Rect-Beleg ohne
+weiteren Turn 07:07:23..07:07:53: `webagent · chatgpt (1)`, HWND `3803212`,
+`Visible=True`, 7/7 Messpunkte `Rect=320,66,1616,1005` — das Fenster bleibt
+nach dem Turn dauerhaft auf dem Bildschirm und der Prompt ist kopierbar.
+Ein anschliessender Folgeturn lief in einen HTTP-Client-Timeout; das Fenster
+blieb auch dabei sichtbar, ein success-Event wird dafuer nicht behauptet.
+Kein Login, keine Zugangsdatenausgabe, kein Prompt-Rohtext im Log. Beleg:
+`docs/proofs/T-1021/{README.md,gates.txt,visibility-after-turn.txt}`.
+Tag und GitHub-Release `v0.11.9` stehen in dieser Scheibe weiter aus.

@@ -33,4 +33,18 @@ Frueherer Teilbeleg vor dem Binary-Eingriff (siehe README):
   06:42:01..06:42:18 Rect=320,66,1616,1005, danach Fenster geschlossen.
   Das war die Ausgangslage fuer die Binary-Aenderung.
 
-Kein Login, keine Zugangsdatenausgabe, kein Prompt-Rohtext im Log.
+Deploy und Live-Abnahme nach der Freigabe:
+- backup-release-before-T1021-20261127/webagent.exe SHA256 CE6F874F...8F2D
+- deployte EXE SHA256 9C33E843EFD4F49CC188150334234960C59DF7099E472FD76661AA6D34EF0CE7
+- deployte DLL SHA256 465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311C10EA0A6F
+- Supervisor: 07:03:03 Bridge gestartet PID=18544 / OK Bridge gesund PID=18544
+- CommandLine PID=18544: ohne --headless; health=ok
+- Live-Turn 07:04:30 success=true (Event prompt_chars=1041, sends=1)
+- Finaler HWND 3803212 'webagent · chatgpt (1)': 07:07:23..07:07:53,
+  7/7 Messpunkte Visible=True Rect=320,66,1616,1005 (ohne weiteren Turn).
+- Folgeturn 07:05:17..07:06:37: HWND durchgehend sichtbar; HTTP-Timeout,
+  kein success-Event dafuer behauptet.
+- Rohmessung: visibility-after-turn.txt
+
+Kein Login, keine Zugangsdatenausgabe, kein Prompt-Rohtext im Log. Kein Tag
+und kein GitHub-Release in dieser Scheibe.

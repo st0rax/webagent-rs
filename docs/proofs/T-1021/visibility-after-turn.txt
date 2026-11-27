@@ -1,0 +1,12 @@
+bridgePid=18544  probe ohne weiteren Turn
+2026-11-27T07:07:23 HWND=3803212 Visible=True Rect=320,66,1616,1005 Title=webagent · chatgpt (1)
+2026-11-27T07:07:28 HWND=3803212 Visible=True Rect=320,66,1616,1005 Title=webagent · chatgpt (1)
+2026-11-27T07:07:33 HWND=3803212 Visible=True Rect=320,66,1616,1005 Title=webagent · chatgpt (1)
+2026-11-27T07:07:38 HWND=3803212 Visible=True Rect=320,66,1616,1005 Title=webagent · chatgpt (1)
+2026-11-27T07:07:43 HWND=3803212 Visible=True Rect=320,66,1616,1005 Title=webagent · chatgpt (1)
+2026-11-27T07:07:48 HWND=3803212 Visible=True Rect=320,66,1616,1005 Title=webagent · chatgpt (1)
+2026-11-27T07:07:53 HWND=3803212 Visible=True Rect=320,66,1616,1005 Title=webagent · chatgpt (1)
+
+Messung: Windows PowerShell, EnumWindows + GetWindowThreadProcessId +
+GetWindowRect + IsWindowVisible. Filter: Prozess-ID aus bridge.pid und
+Titel 'chatgpt'. Kein Prompttext, keine Zugangsdaten im Log.

@@ -3234,7 +3234,7 @@
       "title": "Bridge-WebView dauerhaft sichtbar schalten",
       "type": "config",
       "phase": "16",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "feature/T-1021-visible-webview",
       "claimed_at": "2026-11-27",
@@ -3248,13 +3248,20 @@
       ],
       "scope": [
         "scripts/supervise-bridge.ps1",
+        "crates/webagent-core/src/config/brains.rs",
+        "crates/webagent-core/src/config/mod.rs",
+        "crates/webagent-transport/src/browser_pool.rs",
+        "crates/webagent-transport/src/webview_reveal.rs",
         "docs/CURRENT_WORK.md",
         "docs/TASKBOARD.json",
         "docs/TASKBOARD.md",
-        "docs/proofs/T-1021/README.md"
+        "docs/proofs/T-1021/README.md",
+        "docs/proofs/T-1021/gates.txt",
+        "docs/proofs/T-1021/visibility-after-turn.txt"
       ],
       "proof_path": "docs/proofs/T-1021/README.md",
-      "verification": "Claim cd0888c gepusht. Supervisor startet ohne --headless; Bridge-PID 18580 mit CommandLine ohne --headless, health=ok. Minimaler Turn success=true (antwort_chars=2). HWND 1442666 'webagent · chatgpt (1)': 06:41:57..06:42:00 Rect=-32000,-32000,-30704,-31061; 06:42:01..06:42:18 Rect=320,66,1616,1005 (sichtbar); ab 06:42:19 Fenster geschlossen. Befund: waehrend des Turns sichtbar, NICHT dauerhaft. BrowserPool::stop_brain schliesst bei refs==0 den Shared-Runtime (complete_required_teardown -> close_shared_tabs), auch mit WEBAGENT_PERSIST_TABS=1. Dauerhaft braucht Binary-Aenderung + EXE-Tausch; dafuer liegt keine separate Freigabe vor. Kein Login, keine Zugangsdatenausgabe, kein Prompt-Rohtext im Log. Nach ausdruecklicher Freigabe: Opt-in WEBAGENT_KEEP_WINDOWS_VISIBLE in config::brains, park_offscreen no-op und stop_brain ohne Teardown; Supervisor setzt das Flag. Finale Gates: fmt 0, clippy 0, lib 459+193+632+284=1568 passed / 0 failed / 1 ignored (+3 neue Tests), arch 5, tui 0, no-default 0, diff-check 0, release 0. Deploy und finaler HWND-Beleg folgen. Siehe docs/proofs/T-1021/README.md."
+      "verification": "Claim cd0888c gepusht. Ausgangslage vor dem Binary-Eingriff: nur waehrend des Turns sichtbar (HWND 1442666, 06:42:01..06:42:18 Rect=320,66,1616,1005), danach Fenster geschlossen durch BrowserPool::stop_brain. Nach ausdruecklicher Freigabe: Opt-in WEBAGENT_KEEP_WINDOWS_VISIBLE in config::brains, park_offscreen no-op, stop_brain ohne Teardown; Supervisor setzt das Flag und startet ohne --headless. Finale Gates: fmt 0, clippy 0, lib 459+193+632+284=1568 passed / 0 failed / 1 ignored (+3 neue Tests), arch 5, tui 0, no-default 0, diff-check 0, release 0, webagent 0.11.9. Deploy: EXE SHA256 9C33E843EFD4F49CC188150334234960C59DF7099E472FD76661AA6D34EF0CE7, DLL 465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311C10EA0A6F, Backup backup-release-before-T1021-20261127 (alte EXE CE6F874F...). Produktive Bridge PID=18544, CommandLine ohne --headless, health=ok, supervisor.log 07:03:03 Bridge gestartet/OK. Live-Turn 07:04:30 success=true (Event brain_score/events.jsonl, prompt_chars=1041, sends=1). Finaler Beleg ohne weiteren Turn 07:07:23..07:07:53: HWND 3803212 'webagent · chatgpt (1)', Visible=True, 7/7 Messpunkte Rect=320,66,1616,1005; zusaetzlich 07:05:17..07:06:37 waehrend eines weiteren Turns durchgehend sichtbar. Ein Folgeturn lief in einen HTTP-Client-Timeout, ohne dass das Fenster verschwand; kein success-Event dafuer behauptet. Kein Login, keine Zugangsdatenausgabe, kein Prompt-Rohtext im Log, kein Tag/Release in dieser Scheibe. Siehe docs/proofs/T-1021/README.md.",
+      "done_at": "2026-11-27"
     }
   ]
 }
