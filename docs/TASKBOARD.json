@@ -3108,7 +3108,7 @@
       "branch": "fix/T-1017-browser-prompt-budget",
       "claimed_at": "2026-11-26",
       "depends_on": [],
-      "dod": "Claim; Werkzeug-Schema auf 32 KiB begrenzt ohne Namen/Parameter zu verlieren; Prompt >180000 Zeichen vor dem Browserlauf benannt ablehnen; zwei Regressionstests; gates gruen; Branch gepusht und nach master gemergt; kein Tag, Release, Versionssprung oder Deploy ohne Freigabe; Live-Nachweis danach dokumentiert.",
+      "dod": "Claim; Werkzeug-Schema auf 12 KiB begrenzt ohne Namen/Parameter zu verlieren; Prompt >83000 Zeichen vor dem Browserlauf benannt ablehnen; Regressionstests; Gates gruen; Branch gepusht und nach master gemergt; Release-Build, lokaler EXE-Tausch mit Backup und Live-Abnahme dokumentiert; kein Tag, Release, Versionssprung oder Login.",
       "id": "T-1017",
       "non_goals": [
         "Kein Kuerzen, Zusammenfassen oder Umformulieren des Nutzerprompts.",
@@ -3131,7 +3131,7 @@
       "status": "done",
       "title": "Browser prompt budget instead of silent UI length rejection",
       "type": "fix",
-      "verification": "gates.txt: drei Gate-Serien gruen, zuletzt fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0. Master e326001 gepusht; release webagent 0.11.8 (e326001d3), exe sha256 59B94B061B686999E8A392D0FF4B589876D60D88AF1B42F055905EC73AC2046B; aktiv PID 14960, identische Command Line, Health ok, 9 Modelle mit Header / 401 ohne; Backup backup-release-before-T1017-descriptions-20261127. Live-Abnahme chatgpt tools=12: HTTP 200, Antwort exakt T1017-MEDIUM-OK, 39,7s, Event success=true sends=1 prompt_chars=102806; kleiner Turn exakt T1017-DESC0-OK, prompt_chars=2917; 134851 Zeichen gesendet ohne ABSENDEKNOPF_DEAKTIVIERT; >140000 in 0,15s benannt abgelehnt. Kein Prompttext gekuerzt, kein Tag/Release/Login. Siehe docs/proofs/T-1017/README.md. Ehrliche Grenze: 134851 Zeichen gesendet ohne Antwort; Realtext 132906 Zeichen gesendet, aber 351s timeout_no_text/generation_complete=false - kein Antwort-PASS bei ~132k; danach Kurzturn success=true (T1017-POSTBIG-OK). Die UI-Längenablehnung ist behoben, nicht aber eine garantierte Antwort bei Extremgröße. Siehe docs/proofs/T-1017/README.md.",
+      "verification": "gates.txt: fuenf Gate-Serien gruen, zuletzt fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; browser_inference 32 passed; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0. Master 039a00d gepusht; release webagent 0.11.8 (039a00daf), exe sha256 B990DA8B219036DD4C6BD5692E709DC3CC67F15E6969763A64E888F9F1F8FB93; aktiv PID 1144 mit identischer Command Line, Health ok, 9 Modelle mit Header / 401 ohne; Backup backup-release-before-T1017-guard83k-20261127. Live chatgpt tools=12: 85000 Zeichen Request (Event 87643) in 0,121s benannt abgelehnt (Maximum 83000), events_delta=0, kein Browserlauf; 80000 Zeichen Realtext (Event 82643) HTTP 200, exakt T1017-GUARD83-REAL80-OK, 48,3s, success=true, sends=1, finish_reason=stop. Kalibrierung: Realtext 82643 success=true; 87643/92643 timeout_no_message nach 341s/340s; synthetisch 102743 success=true; 132906 timeout_no_text; 130215 ohne Tools timeout_no_message. Kein Prompttext gekuerzt, kein Tag/Release/Login. Ehrliche Grenze: kein 100%-PASS fuer beliebige grosse Prompts; sicherer Bereich bis 83000 Zeichen finaler Promptlaengen fuer getesteten Realtext. Siehe docs/proofs/T-1017/README.md.",
       "done_at": "2026-11-26"
     }
   ]

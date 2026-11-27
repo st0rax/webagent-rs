@@ -180,4 +180,44 @@ Turns oberhalb der Grenze scheitern sofort benannt statt fünf bis sechs
 Minuten die Brain-Sperre zu belegen.
 
 Gates für die 120k-Zwischenstufe: vierte Serie in `gates.txt` grün. Gates,
-Build und Deploy für die finale 83k-Grenze folgen im nächsten Abschnitt.
+Build, Deploy und Live-Abnahme der finalen 83k-Grenze stehen im nächsten
+Abschnitt.
+
+## 2026-11-27 - Finaler 83k-Build, Deploy und Live-Abnahme
+
+- Commit `039a00d` (`master`, gepusht). Release-Build
+  `webagent 0.11.8 (039a00daf)`, Exit 0; EXE-SHA-256
+  `B990DA8B219036DD4C6BD5692E709DC3CC67F15E6969763A64E888F9F1F8FB93`,
+  DLL unverändert `465A7DDF…A0A6F`. Der Budget-Hinweis liegt als Formatstring
+  im Binary; der numerische Wert wird zur Laufzeit aus der Konstante
+  formatiert. Gates: fünfte Serie in `gates.txt` grün.
+- Rollback-Ordner
+  `...\webagent-deploy-target\backup-release-before-T1017-guard83k-20261127\`
+  mit der vorherigen EXE `CD51BBE6…52A4B4F`, DLL und Breaker-State.
+  PID `3768` gestoppt, Port frei. Neue PID `1144`, **identische**
+  Command-Line (`--skip-startup-reconcile api serve --brain chatgpt
+  --headless --port 8788 --timeout-secs 120`), Health `ok`, `/v1/models`
+  200 mit Header / 401 ohne. Logs:
+  `bridge.err|out.restart-T1017-guard83k-20261127.log`.
+- **Guard-PASS:** Realtext-Request mit 85.000 Zeichen, 12 Tools → 0,121 s,
+  HTTP 502 `invalid_request_error`, Meldung
+  `Prompt zu gross fuer die Browser-Oberflaeche: 87643 Zeichen (Maximum 83000);
+  Werkzeugbeschreibungen sind bereits komprimiert`. `events_delta=0`, kein
+  Browserlauf, kein Breaker-Eintrag.
+- **Antwort-PASS:** Realtext aus `docs/` mit 80.000 Zeichen, 12 Tools →
+  HTTP 200, exakt `T1017-GUARD83-REAL80-OK`, 48,3 s, `finish_reason=stop`.
+  Event `success=true`, `sends=1`, `prompt_chars=82643`.
+- **Ehrliche Grenze:** Belegt ist ein sicherer Bereich bis 83.000 Zeichen
+  finaler Promptlänge für den getesteten Realtext. Darüber scheitert der
+  Turn sofort benannt; ein 100%-PASS für beliebige größere Prompts gibt es
+  nicht. Synthetischer Fülltext antwortete zwar bei 102.743 Zeichen, wurde
+  aber nicht als Grundlage der Grenze genommen. Kein Prompttext gekürzt,
+  kein Login, kein Tag/Release/Versionssprung; `WEBAGENT_API_KEY` nur als
+  Header verwendet und nie angezeigt.
+- **Lokales Staging für den zweiten PC:**
+  `...\webagent-deploy-target\T1017-guard83k-20261127\` mit EXE, DLL und
+  README; Hashes geprüft. Kein automatisches Deployment auf dem zweiten PC.
+- **Rückweg:** PID `1144` stoppen, EXE/DLL aus dem
+  `backup-release-before-T1017-guard83k-20261127\` zurückkopieren,
+  Breaker-State bei Bedarf wiederherstellen und mit identischer Command
+  Line neu starten. Ältere Rollback-Stufen bleiben erhalten.

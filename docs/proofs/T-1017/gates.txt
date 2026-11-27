@@ -66,3 +66,18 @@ Hinweis: Serie 1 lief vor dem Merge, Serie 2 nach der Live-Kalibrierung,
 Serie 3 nach dem Verschaeufen auf beschreibungsfreie Tool-Schemata,
 Serie 4 nach dem Absenken des Guards auf 120000, Serie 5 nach der
 Realtext-Kalibrierung auf 83000.
+
+Finaler Release-Build aus master (039a00daf):
+  cargo build --release --locked -> 0
+  --version -> webagent 0.11.8 (039a00daf), exit 0
+  exe sha256=B990DA8B219036DD4C6BD5692E709DC3CC67F15E6969763A64E888F9F1F8FB93
+  dll sha256=465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311C10EA0A6F
+  Budget-Fehlertext im Binary gefunden=true (Zahl wird zur Laufzeit formatiert)
+  Aktiv als PID 1144, identische Command Line, Health ok, 9 Modelle mit
+  Header / 401 ohne. Backup: backup-release-before-T1017-guard83k-20261127\.
+  Live Guard: 85000 Zeichen Request (Event 87643) -> 0,121 s, HTTP 502
+  "Prompt zu gross fuer die Browser-Oberflaeche ... (Maximum 83000)",
+  events_delta=0, kein Browserlauf.
+  Live PASS: 80000 Zeichen Realtext (Event 82643), 12 Tools -> HTTP 200,
+  exakt T1017-GUARD83-REAL80-OK, 48,3 s, success=true, sends=1.
+  Lokales Staging: T1017-guard83k-20261127\ (EXE/DLL-Hashes geprueft).

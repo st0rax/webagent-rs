@@ -1,24 +1,36 @@
-## 2026-11-27 - T-1017: Guard auf 83k kalibriert (Build/Deploy offen)
+## 2026-11-27 - T-1017 final: Guard 83k deployt und live abgenommen
 
-- **Zwischenstand 120k deployt:** Commit `c983557` (gepusht) senkte den Guard
-  von 140.000 auf 120.000. Release `webagent 0.11.8 (c98355706)`, EXE
-  `CD51BBE6…52A4B4F`, als PID `3768` mit identischer Command-Line aktiv,
-  Health `ok`, `/v1/models` 200 mit Header / 401 ohne. Backup:
-  `backup-release-before-T1017-guard120k-20261127\`.
-- **Guard-PASS damit:** 150.097 Zeichen Request (Event 152.740) → 0,166 s,
-  502 `Prompt zu gross … (Maximum 120000)`, kein Event, kein Browserlauf.
-- **Inhalts-Effekt:** Synthetischer Fülltext bei 102.743 Zeichen antwortete in
-  33,3 s (`success=true`), Realtext aus `docs/` gleicher Länge lief 352 s in
-  `timeout_no_message`. Realtext 82.643 Zeichen → 44,3 s `success=true`;
-  Realtext 87.643 und 92.643 Zeichen → 341 s bzw. 340 s ohne Antwort.
-  Kurzturns dazwischen waren grün (`T1017-120K-SHORT-OK`, `success=true`).
-- **Aktuelle Änderung (uncommitted):** `MAX_BROWSER_PROMPT_CHARS` 120.000 →
-  **83.000**, zwischen den belegten Realtext-Grenzen. Damit wird der
-  schlechtere Fall abgedeckt; der Nutzerprompt wird nicht gekürzt.
-- **Offen:** Gates für 83k, Commit/Push als `opencode`, Release-Build,
-  EXE-Tausch mit neuem Backup, identische Bridge-Command-Line, Health-Check,
-  Live-Gegenprobe (>83k sofort benannt; Realtext ~80k `success=true`) und
-  finale Aktualisierung von Board/Doku.
+- **Finaler Stand:** `master` `039a00d` (gepusht), Release-Build
+  `webagent 0.11.8 (039a00daf)`, EXE-SHA-256
+  `B990DA8B219036DD4C6BD5692E709DC3CC67F15E6969763A64E888F9F1F8FB93`
+  (DLL `465A7DDF…A0A6F`). Aktiv als PID `1144` mit identischer
+  Command-Line, Health `ok`, `/v1/models` 200 mit Header / 401 ohne.
+  Backup/Rückweg:
+  `backup-release-before-T1017-guard83k-20261127\`.
+- **Kalibrierung:** Ein `tools=12`-Turn mit 132.906 Zeichen wurde gesendet,
+  blieb aber 351 s ohne Antwort; ohne Tools bei 130.215 Zeichen 353 s.
+  Synthetischer Fülltext antwortete bei 102.743 Zeichen in 33,3 s, Realtext
+  gleicher Länge nicht. Realtext 82.643 Zeichen → `success=true` (44,3 s);
+  87.643 und 92.643 Zeichen → 341 s / 340 s ohne Antwort. Deshalb
+  `MAX_BROWSER_PROMPT_CHARS = 83_000` (zwischen 82.643 und 87.643).
+- **Live-Abnahme `chatgpt`, 12 Tools:** 85.000 Zeichen Request (Event
+  87.643) → 0,121 s, HTTP 502 mit `Maximum 83000`, `events_delta=0`, kein
+  Browserlauf. 80.000 Zeichen Realtext (Event 82.643) → HTTP 200, exakt
+  `T1017-GUARD83-REAL80-OK`, 48,3 s, `success=true`, `sends=1`,
+  `finish_reason=stop`.
+- **Gates finale Scheibe:** fünfte Serie grün: fmt 0; clippy 0; lib
+  459+187+630+280 = 1556 passed / 0 failed / 1 ignored; browser_inference
+  32 passed; arch 5 passed; tui 0; no-default 0; diff-check 0.
+- **Ehrliche Grenze:** Kein 100%-PASS für beliebige große Prompts. Belegt
+  ist der sichere Bereich bis 83.000 Zeichen finaler Promptlänge für den
+  getesteten Realtext; darüber schneller benannter Fehler statt 5–6 Minuten
+  Brain-Sperre. Kein Nutzerprompt-Text gekürzt, kein Login, kein
+  Tag/Release/Versionssprung; `WEBAGENT_API_KEY` nur als Header verwendet.
+- Für den zweiten PC liegt die finale EXE im lokalen Staging-Ordner
+  `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\T1017-guard83k-20261127\`
+  (EXE, DLL, README, Hashes geprüft). Kein automatisches Deployment dort.
+- Beleg: `docs/proofs/T-1017/{README.md,gates.txt}`. Die Abschnitte
+  „Build/Deploy noch offen" weiter unten sind historische Zwischenstaende.
 
 ## 2026-11-27 - T-1017 final deployt und live abgenommen (Stand)
 
