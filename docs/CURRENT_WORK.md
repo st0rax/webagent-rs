@@ -1,17 +1,29 @@
-## 2026-11-27 - T-1018: Composer-Beweis für kurze Prompts (Deploy offen)
+## 2026-11-27 - T-1018 final: Composer-Beweis kurz deployt und live belegt
 
-- **Anlass:** `composer_holds_text` lieferte bei Prompts ≤ 1.000 Zeichen ohne
-  Composer-Vergleich `true`. Damit konnten ein leerer Editor als „gefüllt"
-  und ein nicht konsumierter Prompt als „gesendet" gelten.
-- **Änderung:** Der strikte Normalvergleich ist jetzt für alle Längen
-  zwingend; die 10-%-Toleranz bleibt nur für lange Prompts. Zwei neue
-  Regressionstests (Treffer/Nicht-Treffer bei kurzem Prompt).
+- **Finaler Stand:** `master` `23ac4e9` (gepusht), Release-Build
+  `webagent 0.11.8 (23ac4e9b3)`, EXE-SHA-256
+  `BBB9C714A0074C6AC975582BB337CB2720B1F189703419A7C5711ECBF35EDA3B`
+  (DLL `465A7DDF…A0A6F`). Aktiv als PID `9008` mit identischer
+  Command-Line, Health `ok`, `/v1/models` 200 mit Header / 401 ohne.
+  Backup/Rückweg: `backup-release-before-T1018-20261127\`.
+- **Fix:** `composer_holds_text` verlangt jetzt auch bei Prompts ≤ 1.000
+  Zeichen einen echten Composer-Treffer. Vorher lieferte die Kurzschaltung
+  ohne Vergleich `true`, womit ein leerer Editor als „gefüllt" und ein
+  nicht konsumierter Prompt als „gesendet" gelten konnte. Die 10-%-Toleranz
+  für lange Prompts bleibt unverändert.
+- **Live-Abnahme `chatgpt`, 12 Tools:** Kurzprompt → HTTP 200, exakt
+  `T1018-SHORT-OK`, 20,6 s, `success=true`, `prompt_chars=2677`.
+  85.000 Zeichen Request (Event 87.643) → 0,102 s, 502 `Maximum 83000`,
+  `events_delta=0`. 80.000 Zeichen Realtext (Event 82.643) → HTTP 200,
+  exakt `T1018-REAL80-OK`, 35,1 s, `success=true`, `sends=1`.
 - **Gates:** fmt 0; clippy 0; lib 459+187+630+282 = 1558 passed / 0 failed /
   1 ignored; arch 5 passed; tui 0; no-default 0; diff-check 0.
   Beleg: `docs/proofs/T-1018/{README.md,gates.txt}`.
-- **Offen:** Commit/Push als `opencode`, Release-Build, EXE-Tausch mit
-  Backup, identische Bridge-Command-Line, Health-Check und Live-Turn mit
-  kurzem Prompt; danach Board auf `done` setzen.
+- Für den zweiten PC liegt die finale EXE im lokalen Staging-Ordner
+  `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\T1018-20261127\`
+  (EXE, DLL, README, Hashes geprüft). Kein automatisches Deployment dort.
+- Kein Nutzerprompt-Text gekürzt, kein Login, kein Tag/Release/
+  Versionssprung; `WEBAGENT_API_KEY` nur als Header verwendet.
 
 ## 2026-11-27 - T-1017 final: Guard 83k deployt und live abgenommen
 

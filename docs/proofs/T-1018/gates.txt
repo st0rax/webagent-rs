@@ -36,3 +36,18 @@ cargo check --no-default-features -q
 
 git diff --check
   diffcheck=0
+
+Finaler Release-Build aus master (23ac4e9b3):
+  cargo build --release --locked -> 0
+  --version -> webagent 0.11.8 (23ac4e9b3), exit 0
+  exe sha256=BBB9C714A0074C6AC975582BB337CB2720B1F189703419A7C5711ECBF35EDA3B
+  dll sha256=465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311C10EA0A6F
+  Aktiv als PID 9008, identische Command Line, Health ok, 9 Modelle mit
+  Header / 401 ohne. Backup: backup-release-before-T1018-20261127\.
+  Kurzer Turn: HTTP 200, exakt T1018-SHORT-OK, 20,6 s, success=true,
+  prompt_chars=2677.
+  Guard: 85000 Zeichen (Event 87643) -> 0,102 s, HTTP 502, Maximum 83000,
+  events_delta=0.
+  Realtext 80000 Zeichen (Event 82643) -> HTTP 200, exakt
+  T1018-REAL80-OK, 35,1 s, success=true, sends=1.
+  Lokales Staging: T1018-20261127\ (EXE/DLL-Hashes geprueft).

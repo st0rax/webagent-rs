@@ -3139,7 +3139,7 @@
       "title": "Composer content proof for short prompts",
       "type": "fix",
       "phase": "16",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "fix/T-1018-composer-short-proof",
       "claimed_at": "2026-11-27",
@@ -3160,8 +3160,8 @@
         "docs/proofs/T-1018/gates.txt"
       ],
       "proof_path": "docs/proofs/T-1018/README.md",
-      "verification": "noch offen",
-      "done_at": null
+      "verification": "gates.txt: fmt 0; clippy 0; lib 459+187+630+282=1558 passed / 0 failed / 1 ignored (2 neue T-1018-Tests); arch 5 passed; tui 0; no-default 0; diff-check 0. Master 23ac4e9 gepusht; release webagent 0.11.8 (23ac4e9b3), exe sha256 BBB9C714A0074C6AC975582BB337CB2720B1F189703419A7C5711ECBF35EDA3B; aktiv PID 9008, identische Command Line, Health ok, 9 Modelle mit Header / 401 ohne; Backup backup-release-before-T1018-20261127. Live chatgpt tools=12: Kurzprompt HTTP 200 exakt T1018-SHORT-OK, 20,6s, success=true, prompt_chars=2677; 85000 Zeichen (Event 87643) in 0,102s benannt abgelehnt (Maximum 83000), events_delta=0; 80000 Realtext (Event 82643) HTTP 200 exakt T1018-REAL80-OK, 35,1s, success=true, sends=1. Kein Prompttext gekuerzt, kein Tag/Release/Login. Siehe docs/proofs/T-1018/README.md.",
+      "done_at": "2026-11-27"
     }
   ]
 }

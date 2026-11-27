@@ -46,7 +46,34 @@ Der Befund war seit dem T-1016-Deploy dokumentiert, aber nicht gefixt.
 Siehe `gates.txt`. Kurz gesagt: fmt 0, clippy 0, 1558 Tests / 0 Fehler /
 1 ignored, Architektur 5 passed, TUI 0, no-default 0, diff-check 0.
 
-## Deploy und Live-Abnahme
+## Finaler Build, Deploy und Live-Abnahme
 
-Folgen nach dem Commit und dem Release-Build; dieser Abschnitt wird dann
-um die aktive PID, Hashes und den Live-Turn ergänzt.
+- Commit `23ac4e9` (`master`, gepusht). Release-Build
+  `webagent 0.11.8 (23ac4e9b3)`, Exit 0; EXE-SHA-256
+  `BBB9C714A0074C6AC975582BB337CB2720B1F189703419A7C5711ECBF35EDA3B`,
+  DLL unverändert `465A7DDF…A0A6F`.
+- Rollback-Ordner
+  `...\webagent-deploy-target\backup-release-before-T1018-20261127\`
+  mit der vorherigen EXE `B990DA8B…F8FB93`, DLL und Breaker-State.
+  PID `1144` gestoppt, Port frei. Neue PID `9008`, **identische**
+  Command-Line (`--skip-startup-reconcile api serve --brain chatgpt
+  --headless --port 8788 --timeout-secs 120`), Health `ok`, `/v1/models`
+  200 mit Header / 401 ohne. Logs:
+  `bridge.err|out.restart-T1018-20261127.log`.
+- **Kurzer Turn:** 12 Tools, Prompt `Antworte exakt mit T1018-SHORT-OK.` →
+  HTTP 200, Antwort exakt `T1018-SHORT-OK`, 20,6 s. Event
+  `success=true`, `sends=1`, `prompt_chars=2677`. Der neue strikte
+  Composer-Beweis hat den Kurzturn also nicht blockiert.
+- **Guard unverändert:** 85.000 Zeichen Request, 12 Tools → 0,102 s,
+  HTTP 502 mit `Maximum 83000`, `events_delta=0`, kein Browserlauf.
+- **Großer Pfad unverändert:** 80.000 Zeichen Realtext, 12 Tools →
+  HTTP 200, exakt `T1018-REAL80-OK`, 35,1 s, `success=true`,
+  `sends=1`, `prompt_chars=82643`.
+- Kein Tag, GitHub-Release, Versionssprung oder Login;
+  `WEBAGENT_API_KEY` nur als Header verwendet und nie angezeigt.
+- **Lokales Staging für den zweiten PC:**
+  `...\webagent-deploy-target\T1018-20261127\` mit EXE, DLL und README;
+  Hashes geprüft. Kein automatisches Deployment dort.
+- **Rückweg:** PID `9008` stoppen, EXE/DLL aus
+  `backup-release-before-T1018-20261127\` zurückkopieren, Breaker-State
+  bei Bedarf wiederherstellen und mit identischer Command Line neu starten.
