@@ -1,5 +1,22 @@
 > Fruehere Eintraege (bis 25.11.2026): `docs/archive/CURRENT_WORK-2026-11-25.md`.
 
+## 2026-11-27 - v0.11.10 in Arbeit: Merge, Tag, Release, Deployment
+
+- **Owner/Freigabe:** local/opencode auf
+  `fix/audit-isolation-and-denylist` (`53768e3`). Der Eigentuemer hat am
+  27.11.2026 „immer sofort" fuer Merge, Tag, GitHub-Release und Deployment
+  erteilt; es wird nicht erneut nachgefragt. Keine Force-Pushes, keine
+  History-Umschreibung, keine Zugangsdaten, keine Live-Logins.
+- **Umfang:** die drei Audit-Scheiben `0216eb3`, `b7ff548` und `53768e3`
+  (Test-Isolation, Denylist, `/api/*`-Origin-Guard, HTTPS-Limit,
+  `cargo audit`-CI, Lockfile-Patches, Archiv, Reveal-Tab, Composer-Puffer).
+- **Versionsbump:** `0.11.9` → `0.11.10` in Root-`Cargo.toml`, den drei
+  Crate-Manifesten und allen vier `webagent*`-Eintraegen in `Cargo.lock`;
+  `CHANGELOG.md` und `docs/RELEASE.md` nachgezogen.
+- **Stand:** Gate-Relauf, Commit/Push, Fast-Forward-Merge, Tag, Release und
+  lokales Deployment mit Backup/Rollback laufen in dieser Scheibe; Ergebnisse
+  werden hier nachgetragen, bevor die Scheibe als done gilt.
+
 ## 2026-11-27 - Audit-Schlussscheibe: Reveal-Tab und Composer-Toleranz
 
 - **Owner/Freigabe:** local/opencode, gleicher Branch

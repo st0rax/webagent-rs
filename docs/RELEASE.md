@@ -19,6 +19,12 @@
 > WebView; sie ist nicht das CI-Release-EXE (`4C01B44C…73D`). Ein
 > Fern-Deployment fand nicht statt. Belege: `docs/CURRENT_WORK.md`,
 > `docs/proofs/T-1019/`, `docs/proofs/T-1020/`, `docs/proofs/T-1021/`.
+> Der Patch-Release `v0.11.10` enthält die Audit-Fixes aus
+> `fix/audit-isolation-and-denylist`. Der Eigentümer hat am 27.11.2026
+> ausdrücklich „immer sofort" für Merge, Tag, GitHub-Release und Deployment
+> freigegeben; diese Scheibe führt alle vier Schritte ohne erneute Rückfrage
+> aus. Tag und Workflow-ID werden nach dem Publish in `docs/CURRENT_WORK.md`
+> und im Release-Beleg nachgetragen.
 
 # Release-Vorgang (T-967)
 
@@ -35,9 +41,9 @@ Workflows gegen `v0.11.4` scheitert absichtlich an der Versionsprüfung.
 ## Reihenfolge
 
 1. **Bump:** `Cargo.toml` `[package].version` und den `webagent`-Eintrag in
-   `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.9`).
+   `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.10`).
 2. **Lokal prüfen:**
-   `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.9` → Exit 0.
+   `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.10` → Exit 0.
    Gegen `v0.11.4` muss das Skript Exit 1 liefern.
 3. **Gates:** `cargo fmt --all -- --check`,
    `cargo clippy --all-targets -- -D warnings`, `cargo test --lib`,

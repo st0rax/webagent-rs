@@ -3,6 +3,17 @@
 
 ## [Unreleased]
 
+## [0.11.10] - 2026-11-27
+
+- Patch-Release mit den Audit-Fixes aus `fix/audit-isolation-and-denylist`. Alle vier Crates und das Lockfile stehen auf `0.11.10`; Tag `v0.11.10` wird nach grünen Gates und Fast-Forward-Merge auf `master` gesetzt.
+- Test-Daten-Isolation: Untercrate-Testbinaries schreiben nicht mehr in `%LOCALAPPDATA%\webagent\data`; Leaderboard/Circuit-Breaker remain unberührt.
+- Shell-Denylist: sechs Umgehungen (`rm -fr /`, `bash -c …`, `cmd /c rd /s …`, `format.com`, `del /s …` u. a.) sind geschlossen.
+- `/api/*`: Zugriff wird über Host/Origin/`Sec-Fetch-Site` geprüft (vom Eigentümer gewählte Variante statt Token-Plumbing).
+- HTTPS-Agent-Antworten sind auf 8 MiB begrenzt; `cargo audit` läuft als eigener CI-Job, und das Lockfile enthält patchweise Anhebungen (0 Vulnerabilities, 11 bewusst offene Warnungen).
+- Reveal-Tab: eine lesende `page_exists`-Runtime-Abfrage verwirft geschlossene Pool-Tabs und meldet benannt „Tab ist geschlossen; Brain neu starten“. Bekanntes Risiko: eine fehlgeschlagene Abfrage gilt als veraltet und kann eine noch live Tab neu öffnen.
+- Composer: die pauschale 10-%-Toleranz wurde durch einen gemessenen Puffer von 16–256 Zeichen ersetzt; Kopf und Ende werden weiter exakt verglichen.
+- Gates auf dem finalen Stand: fmt 0, diff-check 0, clippy 0, Workspace-Lib 1582 bestanden / 0 fehlgeschlagen / 1 ignoriert, Arch 5/5, TUI 0, no-default 0, Release-Build 0, `cargo audit` 0 Vulnerabilities.
+
 ## [0.11.9] - 2026-11-27
 
 - Patch-Release nach ausdrücklicher Eigentümerfreigabe. Alle Crates und das Lockfile stehen auf `0.11.9`; Tag `v0.11.9` wird erst nach grünen Gates auf den gemergten Commit gesetzt. Kein Deployment in diesem Release.
