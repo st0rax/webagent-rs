@@ -9,11 +9,13 @@
 > lokalem Deployment; der Live-Turn-Beleg liegt unter
 > `docs/proofs/live-turn-2026-11-26/`.
 > Der Patch-Release `v0.11.8` (Tag-Commit `fb7b886`) wurde am 26.11.2026
-> veröffentlicht. Die 49 Commits danach (T-1007..T-1018, Stand 27.11.2026)
-> sind bewusst **nicht** neu getaggt; ein weiterer Tag braucht eine neue
-> ausdrückliche Freigabe (G-009). Operativ ist der Stand lokal final:
-> `master` mit T-1018, aktive Binary `webagent 0.11.8 (23ac4e9b3)`,
-> Belege in `docs/CURRENT_WORK.md` und `docs/proofs/T-1018/`.
+> veröffentlicht. Die Commits danach (T-1007..T-1018) waren zunächst bewusst
+> **nicht** neu getaggt; G-009 verlangte dafür eine neue ausdrückliche Freigabe.
+> Diese Freigabe wurde am 27.11.2026 erteilt. Der Patch-Release `v0.11.9`
+> umfasst T-1007..T-1020 und wird nach grünen Gates und Merge auf `master`
+> getaggt. Die aktive lokale Bridge läuft weiterhin mit der T-1019-EXE
+> (`webagent 0.11.8`); dieser Release enthält kein Deployment. Belege:
+> `docs/CURRENT_WORK.md`, `docs/proofs/T-1019/`, `docs/proofs/T-1020/`.
 
 # Release-Vorgang (T-967)
 
@@ -30,9 +32,9 @@ Workflows gegen `v0.11.4` scheitert absichtlich an der Versionsprüfung.
 ## Reihenfolge
 
 1. **Bump:** `Cargo.toml` `[package].version` und den `webagent`-Eintrag in
-   `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.8`).
+   `Cargo.lock` auf dieselbe nächste Patch-Version setzen (aktuell `0.11.9`).
 2. **Lokal prüfen:**
-   `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.8` → Exit 0.
+   `pwsh -File scripts/verify-release-version.ps1 -Tag v0.11.9` → Exit 0.
    Gegen `v0.11.4` muss das Skript Exit 1 liefern.
 3. **Gates:** `cargo fmt --all -- --check`,
    `cargo clippy --all-targets -- -D warnings`, `cargo test --lib`,

@@ -3,6 +3,16 @@
 
 ## [Unreleased]
 
+## [0.11.9] - 2026-11-27
+
+- Patch-Release nach ausdrücklicher Eigentümerfreigabe. Alle Crates und das Lockfile stehen auf `0.11.9`; Tag `v0.11.9` wird erst nach grünen Gates auf den gemergten Commit gesetzt. Kein Deployment in diesem Release.
+- T-1017: Der Browser-Prompt wird vor dem Browserlauf auf 83.000 Zeichen geprüft. Zu grosse Prompts scheitern benannt und schnell statt minutenlang im Provider-Chat zu hängen; 80.000 Zeichen Realtext blieben im Live-Test erfolgreich.
+- T-1018: Der Composer-Treffer gilt jetzt auch für kurze Prompts strikt; ein leerer Editor kann nicht mehr als gefüllt und ein nicht konsumierter Prompt nicht mehr als gesendet gelten.
+- T-1019: Mit `WEBAGENT_CONTINUE_PROVIDER_CHAT=1` geht nur die aktuelle Nachricht in den Provider-Chat, geteilte Tabs werden nicht neu navigiert und `new_chat()` wird nur bei nachgewiesener Konversation übersprungen. Der Supervisor setzt die drei Shared/Persist/Continue-Flags selbst. Zwei-Turn-Livetests auf 8788 und 8789: `success=true`, `sends=1`, Antworten exakt wie vorgegeben.
+- T-1020: Die vom Eigentümer freigegebene `big-pickle`-Anweisung ist Bridge-Prompt im Browser-Turn: User-Turn ist die Aufgabe, keine versteckte Nachricht, keine Meta-Kommentierung, knappe Antwort, Werkzeuge nach Bedarf, keine erfundenen Ergebnisse. Brain-Identität, Nutzerprompt und die einzige `WEBAGENT_INFERENCE/1`-Regel bleiben unverändert; `auto` bleibt ohne Präfix.
+- Vor dem Release bestand ein schon älterer Gate-Fehler: `docs/proofs/T-1019/README.md` hatte kein Archiv-/Referenzbanner. Nur die Bannerzeile wurde ergänzt.
+- Gates auf dem finalen Stand: fmt 0, clippy 0, Workspace-Lib 1565 bestanden / 0 fehlgeschlagen / 1 ignoriert, Arch 5, TUI 0, no-default 0, diff-check 0, Release-Build 0.
+
 ## [0.11.8] - 2026-11-26
 
 - Phase 16 is on `master`: layer ratchet, cycle breaks, Windows GUI crates behind the `webview` feature, and the WebView2 loader copy so a normal build starts. Exit `-1073741515` is `0xC0000135` (missing `WebView2Loader.dll`), not an access violation.
