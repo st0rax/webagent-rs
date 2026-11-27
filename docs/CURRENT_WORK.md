@@ -2172,5 +2172,7 @@ drei Flags jetzt selbst. End-to-end geprueft: PID `7236` gestoppt, Supervisor
 startete PID `14192` mit identischer Command-Line, Health ok,
 `bridge.pid=14192`; danach Turn 1 `T1019-SUPERVISOR-OK` und Turn 2 `Otter`,
 beide `success=true`, `prompt_chars` 241/231. Der Modus ueberlebt damit den
-Supervisor-Neustart. Kein Tag, GitHub-Release oder Versionssprung.
+Supervisor-Neustart. Staging für den zweiten PC liegt in
+`webagent-deploy-target\T1019-20261127\` (EXE, DLL, README, Hashes; kein
+automatisches Deployment). Kein Tag, GitHub-Release oder Versionssprung.
 Test-Bridge 8789 ist gestoppt.

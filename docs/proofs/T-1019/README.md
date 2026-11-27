@@ -91,6 +91,11 @@ unverändert zum Befund aus dem Shared-Only-Test mit `continue=0`
   `sends=1`, `prompt_chars` 237/231.
 - `bridge.pid` wurde zunaechst auf PID `7236` korrigiert und nach dem
   Supervisor-Test von diesem selbst auf `14192` gesetzt.
+- Staging für den zweiten PC:
+  `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\T1019-20261127\`
+  mit EXE, DLL, `README.txt` und `webagent.exe.sha256`. Kein automatisches
+  Deployment dort; das README nennt die drei erforderlichen Flags und weist
+  auf die aktualisierte `supervise-bridge.ps1` hin.
 
 **Supervisor end-to-end:** `scripts/supervise-bridge.ps1` setzt die drei Flags
 jetzt selbst. Kontrolliert getestet: PID `7236` gestoppt, Supervisor gestartet,
