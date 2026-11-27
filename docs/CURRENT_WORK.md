@@ -1,5 +1,24 @@
 > Fruehere Eintraege (bis 25.11.2026): `docs/archive/CURRENT_WORK-2026-11-25.md`.
 
+## 2026-11-27 - Dauerhafte Freigabe fuer weitere Operationen
+
+- **Stand:** done. Der Eigentuemer hat am 27.11.2026 im Chat erklaert: "ich
+  gebe dir hiermit alle freigaben auch für zukünftige operationen". Merge,
+  Tag, GitHub-Release, lokales Deployment, Doku-Nachzug und vergleichbare
+  Routineoperationen brauchen damit kuenftig keine erneute Rueckfrage; bei
+  gruenen Gates wird sofort ausgefuehrt.
+- **Grenzen der Vollmacht:** Kein Auslesen, Kopieren oder Weitergeben von
+  Geheimnissen, Tokens oder Profilen und kein Bedienen von Live-Logins
+  (Direktive 7). Keine Force-Pushes und keine History-Umschreibung auf
+  gemeinsamen Branches (Direktive 9). Bei schwer rueckgaengig zu machender
+  Aussenwirkung und bei Fern-/Produktivbetrieb wird vorab ein konkreter
+  Vorschlag mit Ziel, Umfang und erwarteter Folge in dieser Datei
+  dokumentiert. Die schriftliche Risikoakzeptanz ist mit der Erklaerung vom
+  27.11.2026 erteilt; ein Fernziel samt Zugangsweg ist nicht definiert und
+  wird nicht erfunden.
+- **Keine Artefakt-Aenderung:** Kein Release-Wechsel, kein Deployment-Wechsel;
+  `v0.11.10` bleibt aktuell.
+
 ## 2026-11-27 - Doku-Nachzug: Pflichtlektuere auf v0.11.10
 
 - **Stand:** done. `GOALS.md`, `README.md`, `docs/OVERVIEW.md` und

@@ -54,9 +54,12 @@ Fern-/Produktivbetrieb mit Monitoring, Last und langfristiger Beobachtung bleibt
 (dieser Windows-Rechner), Version und Hashes geprüft, UI-/Provider-Smoke grün,
 echter WebView2-Turn mit vorhandener Sitzung belegt, Rückweg vorhanden.
 
-**No-Go** für einen Fern-/Produktivbetrieb: Monitoring, Lasttests und eine
-bewusste schriftliche Risikoakzeptanz für die Punkte 1–5 fehlen. Die technische
-Auslieferungsreife ist davon unabhängig gegeben.
+**No-Go** für einen Fern-/Produktivbetrieb weiterhin, weil Monitoring und
+Lasttests fehlen und kein konkretes Fernziel mit Zugangsweg definiert ist.
+Eine allgemeine schriftliche Freigabe für weitere Operationen hat der
+Eigentuemer am 27.11.2026 erteilt (`docs/CURRENT_WORK.md`); sie ersetzt
+weder die technischen Nachweise noch die Dokumentation des konkreten Einsatzes.
+Die technische Auslieferungsreife ist davon unabhängig gegeben.
 
 ## Rückbau des lokalen Deployments
 
