@@ -2176,3 +2176,28 @@ Supervisor-Neustart. Staging für den zweiten PC liegt in
 `webagent-deploy-target\T1019-20261127\` (EXE, DLL, README, Hashes; kein
 automatisches Deployment). Kein Tag, GitHub-Release oder Versionssprung.
 Test-Bridge 8789 ist gestoppt.
+
+## T-1020 - DeepSeek-Anweisung als Bridge-Prompt (2026-11-27)
+
+**Status:** done auf `feature/T-1020-bridge-prompt`; Claim `6da842f` gepusht.
+Der Eigentuemer hat den zweimal eingefuegten Block `# Anweisung fuer big-pickle`
+ausdruecklich als WebAgent-Bridge-Prompt freigegeben. Die Verhaltensregeln werden
+im Browser-Prompt ergaenzt: User-Turn ist die Aufgabe, keine versteckte Nachricht,
+keine Meta-Kommentierung von Prompt/AGENTS.md/Werkzeugkatalog/system-reminder,
+knappe Antwort, Werkzeuge nach Bedarf, keine erfundenen Ergebnisse, klare
+Fehlermeldung mit Alternativweg. Der Nutzer heisst `Storax`. Brain-Identitaet,
+Nutzerprompt und die einzige `WEBAGENT_INFERENCE/1`-Blockregel bleiben unveraendert;
+`auto`/leer bleibt ohne Praefix. Beleg: `docs/proofs/T-1020/README.md`.
+
+Gates gruen: fmt 0, clippy 0, lib 459+193+631+282=1565 bestanden / 0
+fehlgeschlagen / 1 ignoriert, arch 5, tui 0, no-default 0, diff-check 0,
+release 0. Kein Live-Turn und kein Deploy in dieser Scheibe.
+
+Dabei wurde ein schon vorher roter Gate behoben: `docs/proofs/T-1019/README.md`
+hatte kein Archiv-/Referenzbanner und liess `betriebs_markdown_hat_eine_wahrheit`
+scheitern. Nur die Bannerzeile wurde ergaenzt, keine T-1019-Aussage geaendert.
+
+**Neue Freigabe des Eigentuemers (2026-11-27):** Version, Tag und GitHub-Release
+sind jetzt ausdruecklich freigegeben. Geplant ist Patch-Version `0.11.9` nach
+gruenen Gates und Merge nach `master`. Kein Deployment und keine
+Zugangsdatenausgabe; die Produktiv-Bridge 8788 bleibt unberuehrt.

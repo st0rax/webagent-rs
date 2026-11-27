@@ -3203,7 +3203,7 @@
       "title": "DeepSeek-Anweisung als Bridge-Prompt umsetzen",
       "type": "feat",
       "phase": "16",
-      "status": "claimed",
+      "status": "done",
       "owner": "local/opencode",
       "branch": "feature/T-1020-bridge-prompt",
       "claimed_at": "2026-11-27",
@@ -3226,7 +3226,8 @@
         "docs/proofs/T-1020/gates.txt"
       ],
       "proof_path": "docs/proofs/T-1020/README.md",
-      "verification": "offen - wird mit Gates und Belegen gefuellt"
+      "verification": "gates.txt: fmt 0; clippy 0; lib 459+193+631+282=1565 passed / 0 failed / 1 ignored (3 neue Tests); browser_inference 35 passed; arch 5 passed; tui 0; no-default 0; diff-check 0; release 0. Claim 6da842f gepusht. Bridge-Prompt in prompt_with_identity() ergaenzt: Identitaet webagent/<brain>, Nutzer Storax, Verhaltensregeln und Bridge-Kontext; einziger WEBAGENT_INFERENCE/1-Umschlag bleibt in prompt_with_tools(), Nutzerprompt bytegenau, auto/leer unveraendert. Vorher rot: fehlendes Referenzbanner in docs/proofs/T-1019/README.md; nur Bannerzeile ergaenzt. Kein Live-Turn, Deploy, Login oder Tag in dieser Scheibe. Siehe docs/proofs/T-1020/README.md.",
+      "done_at": "2026-11-27"
     }
   ]
 }

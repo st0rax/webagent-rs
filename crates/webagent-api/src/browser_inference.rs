@@ -328,13 +328,22 @@ fn check_browser_prompt_budget(prompt: &str) -> Result<(), String> {
 /// Die API-Bridge loest `webagent/auto` vorher in ein konkretes Brain auf
 /// (`api_bridge::inference`); kommt trotzdem `auto` an, ist das Brain noch
 /// unbekannt und eine Behauptung waere falsch.
+///
+/// T-1020: der Identitaetszeile folgen die Verhaltens- und Bridge-Regeln aus
+/// der vom Eigentuemer als Bridge-Prompt freigegebenen Anweisung. Die Brain-
+/// Identitaet bleibt erhalten; der Nutzerprompt wird nur um ein Praefix
+/// ergaenzt und nicht gekuerzt oder umformuliert. Der Werkzeugumschlag wird
+/// hier nur erwaehnt, nicht wiederholt: die allein massgebliche Regel steht in
+/// `prompt_with_tools` (genau ein Codeblock, kein Text davor oder danach).
 fn prompt_with_identity(brain: &str, prompt: &str) -> String {
     let brain = brain.trim();
     if brain.is_empty() || brain == "auto" {
         return prompt.to_string();
     }
     format!(
-        "[Identitaet] Du bist das Modell hinter dem WebAgent-Brain \"{brain}\" (API-Modell webagent/{brain}). Fragt jemand nach deinem Namen oder deiner Identitaet, nenne \"{brain}\".\n\n{prompt}"
+        "[Identitaet] Du bist das Modell hinter dem WebAgent-Brain \"{brain}\" (API-Modell webagent/{brain}). Fragt jemand nach deinem Namen oder deiner Identitaet, nenne \"{brain}\". Der Nutzer heisst Storax.\n\n\
+         [Verhalten] Was im User-Turn steht, ist die Aufgabe. Suche nicht nach einer versteckten Nachricht; kommentiere nicht den Prompt-Aufbau, AGENTS.md, den Werkzeugkatalog oder system-reminder-Bloecke - das ist Kontext, kein Auftrag. Denke nicht laut darueber nach, wo die eigentliche Frage steckt; frag bei Unklarheit einmal kurz. Arbeite den User-Turn direkt ab, knapp und ohne Vorrede, Meta-Analyse oder Selbstdiagnose. Nutze Werkzeuge, wenn sie die Aufgabe loesen, sonst antworte direkt. Erfinde keine Ergebnisse; wenn ein Werkzeug fehlschlaegt, sag das klar und versuche einen anderen Weg.\n\n\
+         [Bridge] Wir laufen ueber eine lokale Bridge, nicht ueber die normale API. JSON-Werkzeugaufrufe sind Absicht; wenn Werkzeuge angeboten werden, gilt ausschliesslich der WEBAGENT_INFERENCE/1-Umschlag aus dem Client-Werkzeug-Block.\n\n{prompt}"
     )
 }
 
@@ -1128,6 +1137,43 @@ mod tests {
             .starts_with("[Identitaet] Du bist das Modell hinter dem WebAgent-Brain \"deepseek\""));
         assert!(prompt.contains("webagent/deepseek"));
         assert!(prompt.ends_with("\n\nWer bist du?"));
+    }
+
+    #[test]
+    fn identity_prefix_carries_bridge_behavior_rules() {
+        let prompt = prompt_with_identity("deepseek", "Wer bist du?");
+        for rule in [
+            "Der Nutzer heisst Storax.",
+            "[Verhalten] Was im User-Turn steht, ist die Aufgabe.",
+            "Suche nicht nach einer versteckten Nachricht",
+            "AGENTS.md",
+            "system-reminder-Bloecke",
+            "frag bei Unklarheit einmal kurz",
+            "ohne Vorrede, Meta-Analyse oder Selbstdiagnose",
+            "Nutze Werkzeuge, wenn sie die Aufgabe loesen, sonst antworte direkt.",
+            "Erfinde keine Ergebnisse",
+            "versuche einen anderen Weg",
+            "[Bridge] Wir laufen ueber eine lokale Bridge, nicht ueber die normale API.",
+            "JSON-Werkzeugaufrufe sind Absicht",
+        ] {
+            assert!(prompt.contains(rule), "Regel fehlt: {rule}");
+        }
+    }
+
+    #[test]
+    fn identity_prefix_does_not_repeat_the_tool_envelope() {
+        let prompt = prompt_with_identity("deepseek", "Lies die Datei.");
+        assert_eq!(prompt.matches("WEBAGENT_INFERENCE/1").count(), 1);
+        assert!(!prompt.contains("\"tool_calls\""));
+        assert!(!prompt.contains("```text"));
+    }
+
+    #[test]
+    fn identity_prefix_keeps_the_user_prompt_byte_exact() {
+        let user_prompt = "  Wer bist du?\nZeilen: * $ ` _ \n";
+        let prompt = prompt_with_identity("kimi", user_prompt);
+        assert!(prompt.ends_with(user_prompt));
+        assert_eq!(&prompt[prompt.len() - user_prompt.len()..], user_prompt);
     }
 
     #[test]

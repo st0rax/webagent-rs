@@ -1,5 +1,6 @@
 # T-1019 — Provider-Chat fortsetzen statt Gesamtkontext neu zu rahmen
 
+**Referenzstatus:** abgeschlossene Scheibe; der laufende Stand steht in `docs/CURRENT_WORK.md`.
 **Status:** done (Code-Commit `89605ba`, Dokumentations-Commit folgt)
 **Datum:** 2026-11-27
 **Branch:** `feature/T-1019-continue-provider-chat`

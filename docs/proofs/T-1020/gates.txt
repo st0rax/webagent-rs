@@ -1,0 +1,37 @@
+T-1020 gates - 2026-11-27
+Commit unter Pruefung: working tree auf 6da842f + T-1020-Aenderungen (0.11.8)
+Binary vor Versionssprung: webagent 0.11.8
+
+cargo fmt --all -- --check                          -> 0
+cargo clippy -q --all-targets -- -D warnings        -> 0
+cargo test --workspace --lib -q                     -> 0
+cargo test --test arch_layers -- --nocapture        -> 0
+cargo check --features tui -q                       -> 0
+cargo check --no-default-features -q                -> 0
+git diff --check                                    -> 0
+cargo build --release --locked                      -> 0
+
+test result: ok. 459 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
+test result: ok. 193 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 631 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 282 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+Summe: 1565 bestanden, 0 fehlgeschlagen, 1 ignoriert
+
+Gezielte neue Tests (browser_inference::tests, 35 passed):
+prompt_names_the_brain_first                          -> ok
+identity_prefix_carries_bridge_behavior_rules         -> ok
+identity_prefix_does_not_repeat_the_tool_envelope     -> ok
+identity_prefix_keeps_the_user_prompt_byte_exact      -> ok
+auto_brain_gets_no_identity_claim                     -> ok
+
+arch: 5 passed (modules=92, edges=282, cycles=3, upward_edges=26,
+crate_violations=0).
+
+Erster Lauf war rot: startup::tests::betriebs_markdown_hat_eine_wahrheit
+meldete fehlendes Archiv-/Referenzbanner in docs/proofs/T-1019/README.md.
+Dieser Fehler bestand schon vor T-1020. Nach Ergänzung nur der Bannerzeile
+lief die gesamte Serie gruen. Kein T-1019-Ergebnis wurde geaendert.
+
+Kein Live-Turn, kein Deploy, kein Login, keine Zugangsdatenlektuere.
+Kein Tag oder GitHub-Release in dieser Scheibe; die spaetere Release-Freigabe
+des Eigentuemers wird separat dokumentiert.
