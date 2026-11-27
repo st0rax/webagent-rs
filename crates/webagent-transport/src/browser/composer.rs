@@ -366,13 +366,19 @@ impl WebBrainBackend {
     /// normalisiert wird. Ein passender Anfang reicht fuer Maschinenprompts
     /// nicht: Kimi hatte dadurch still nur Absatz eins uebernommen.
     pub(super) fn composer_matches_text(&self, composer_js: &str, text: &str) -> bool {
+        self.eval_bool(&Self::composer_exact_expr(composer_js, text))
+    }
+
+    /// Exakter Normalvergleich als JS-Ausdruck. Separat, damit der Beweis auch
+    /// im Test gegen denselben Ausdruck scriptet werden kann.
+    fn composer_exact_expr(composer_js: &str, text: &str) -> String {
         let expected = text.split_whitespace().collect::<Vec<_>>().join(" ");
         let expected = serde_json::to_string(&expected).unwrap_or_else(|_| "\"\"".into());
         let body = format!(
             "var el=Q(S[i]);if(el){{var v=('value' in el)?(el.value||''):(el.innerText||el.textContent||'');\
              return v.replace(/\\s+/g,' ').trim()==={expected};}}"
         );
-        self.eval_bool(&Self::js_scan(composer_js, &body, "false"))
+        Self::js_scan(composer_js, &body, "false")
     }
 
     /// T-1014: Fill-Nachweis fuer lange Prompts. Rich-Editern normalisieren
@@ -381,13 +387,18 @@ impl WebBrainBackend {
     /// gefunden (Timeout)" bei `pasted_chars=52.420` von 52.499 Zeichen.
     /// Ab 1.000 Zeichen genuegen Anfang, Ende und Zeichenzahl im 10-%-Band —
     /// ein still gekuerzter Prompt faellt damit weiterhin durch.
+    ///
+    /// Fuer kurze Prompts bleibt der strikte Vergleich zwingend: die alte
+    /// Kurzschluss-Bedingung lieferte ohne jeden Composer-Treffer `true` und
+    /// liess damit „verbraucht"-Pruefungen sowie Fill-Nachweise falsch
+    /// erfolgreich werden.
     pub(super) fn composer_holds_text(&self, composer_js: &str, text: &str) -> bool {
         let expected: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-        // Der strikte Vergleich bleibt der schnelle Pfad und schuetzt bestehende
-        // Mocks und kurze Prompts: nur wenn er die Normalisierung eines
-        // Rich-Editors meldet, greift die tolerante Laengen-/Randpruefung.
-        if expected.chars().count() <= 1_000 || self.composer_matches_text(composer_js, text) {
+        if self.composer_matches_text(composer_js, text) {
             return true;
+        }
+        if expected.chars().count() <= 1_000 {
+            return false;
         }
         let expr = Self::js_scan(
             composer_js,
@@ -902,5 +913,36 @@ mod tests {
             &tail,
             &head
         ));
+    }
+
+    /// T-1018: Der alte Kurzschluss lieferte bei kurzen Prompts ohne jeden
+    /// Composer-Treffer `true`. Damit konnte ein leerer Editor als „gefuellt"
+    /// und ein nicht konsumierter Prompt als „verbraucht" gelten.
+    #[test]
+    fn kurzer_prompt_ohne_composer_treffer_ist_kein_beweis() {
+        let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
+        let composer_js = sel.js("composer", &[]);
+        let text = "Antworte exakt mit OK.";
+        let state = MockPageState::new().on_eval(
+            WebBrainBackend::composer_exact_expr(&composer_js, text),
+            json!(false),
+        );
+        let backend = backend_for("qwen", state);
+        assert!(!backend.composer_holds_text(&composer_js, text));
+    }
+
+    /// T-1018: Der strikte Treffer bleibt der gueltige Beweis fuer kurze
+    /// Prompts — die Verschärfung darf echte Fill-Erfolge nicht ablehnen.
+    #[test]
+    fn kurzer_prompt_mit_exaktem_composer_inhalt_ist_belegt() {
+        let sel = backend_for("qwen", MockPageState::new()).selectors.clone();
+        let composer_js = sel.js("composer", &[]);
+        let text = "Antworte exakt mit OK.";
+        let state = MockPageState::new().on_eval(
+            WebBrainBackend::composer_exact_expr(&composer_js, text),
+            json!(true),
+        );
+        let backend = backend_for("qwen", state);
+        assert!(backend.composer_holds_text(&composer_js, text));
     }
 }

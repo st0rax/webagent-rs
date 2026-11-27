@@ -3133,6 +3133,35 @@
       "type": "fix",
       "verification": "gates.txt: fuenf Gate-Serien gruen, zuletzt fmt 0; clippy 0; lib 459+187+630+280=1556 passed / 0 failed / 1 ignored; browser_inference 32 passed; arch 5 passed (modules=92, edges=282, crate_violations=0); tui 0; no-default 0; diff-check 0. Master 039a00d gepusht; release webagent 0.11.8 (039a00daf), exe sha256 B990DA8B219036DD4C6BD5692E709DC3CC67F15E6969763A64E888F9F1F8FB93; aktiv PID 1144 mit identischer Command Line, Health ok, 9 Modelle mit Header / 401 ohne; Backup backup-release-before-T1017-guard83k-20261127. Live chatgpt tools=12: 85000 Zeichen Request (Event 87643) in 0,121s benannt abgelehnt (Maximum 83000), events_delta=0, kein Browserlauf; 80000 Zeichen Realtext (Event 82643) HTTP 200, exakt T1017-GUARD83-REAL80-OK, 48,3s, success=true, sends=1, finish_reason=stop. Kalibrierung: Realtext 82643 success=true; 87643/92643 timeout_no_message nach 341s/340s; synthetisch 102743 success=true; 132906 timeout_no_text; 130215 ohne Tools timeout_no_message. Kein Prompttext gekuerzt, kein Tag/Release/Login. Ehrliche Grenze: kein 100%-PASS fuer beliebige grosse Prompts; sicherer Bereich bis 83000 Zeichen finaler Promptlaengen fuer getesteten Realtext. Siehe docs/proofs/T-1017/README.md.",
       "done_at": "2026-11-26"
+    },
+    {
+      "id": "T-1018",
+      "title": "Composer content proof for short prompts",
+      "type": "fix",
+      "phase": "16",
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "fix/T-1018-composer-short-proof",
+      "claimed_at": "2026-11-27",
+      "depends_on": [],
+      "objective": "composer_holds_text gab bei Prompts bis 1000 Zeichen ohne jeden Composer-Vergleich true zurueck. Damit konnten ein leerer Editor als gefuellt und ein nicht konsumierter Prompt als gesendet gelten. Der strikte Normalvergleich wird fuer kurze Prompts zwingend.",
+      "dod": "Claim; strikter Composer-Treffer auch fuer kurze Prompts; zwei Regressionstests; Gates gruen; Commit/Push als opencode; Beleg in docs/proofs/T-1018; kein Tag, Release, Versionssprung oder Login.",
+      "non_goals": [
+        "Kein Kuerzen oder Umformulieren des Nutzerprompts.",
+        "Keine Aenderung der Toleranzregel fuer lange Prompts.",
+        "Kein Tag, GitHub-Release oder Versionssprung."
+      ],
+      "scope": [
+        "crates/webagent-transport/src/browser/composer.rs",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-1018/README.md",
+        "docs/proofs/T-1018/gates.txt"
+      ],
+      "proof_path": "docs/proofs/T-1018/README.md",
+      "verification": "noch offen",
+      "done_at": null
     }
   ]
 }

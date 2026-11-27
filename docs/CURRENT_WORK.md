@@ -1,3 +1,18 @@
+## 2026-11-27 - T-1018: Composer-Beweis für kurze Prompts (Deploy offen)
+
+- **Anlass:** `composer_holds_text` lieferte bei Prompts ≤ 1.000 Zeichen ohne
+  Composer-Vergleich `true`. Damit konnten ein leerer Editor als „gefüllt"
+  und ein nicht konsumierter Prompt als „gesendet" gelten.
+- **Änderung:** Der strikte Normalvergleich ist jetzt für alle Längen
+  zwingend; die 10-%-Toleranz bleibt nur für lange Prompts. Zwei neue
+  Regressionstests (Treffer/Nicht-Treffer bei kurzem Prompt).
+- **Gates:** fmt 0; clippy 0; lib 459+187+630+282 = 1558 passed / 0 failed /
+  1 ignored; arch 5 passed; tui 0; no-default 0; diff-check 0.
+  Beleg: `docs/proofs/T-1018/{README.md,gates.txt}`.
+- **Offen:** Commit/Push als `opencode`, Release-Build, EXE-Tausch mit
+  Backup, identische Bridge-Command-Line, Health-Check und Live-Turn mit
+  kurzem Prompt; danach Board auf `done` setzen.
+
 ## 2026-11-27 - T-1017 final: Guard 83k deployt und live abgenommen
 
 - **Finaler Stand:** `master` `039a00d` (gepusht), Release-Build

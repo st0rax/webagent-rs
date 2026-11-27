@@ -1,0 +1,38 @@
+T-1018 gates 2026-11-27 (master, Claim fix/T-1018-composer-short-proof)
+
+cargo test -p webagent-transport --lib composer
+  composer_tests=0
+  20 passed; 0 failed
+  kurzer_prompt_ohne_composer_treffer_ist_kein_beweis ... ok
+  kurzer_prompt_mit_exaktem_composer_inhalt_ist_belegt ... ok
+
+cargo test -p webagent-core --lib taskboard_invarianten_halten
+  invariant=0
+  1 passed; 0 failed
+
+cargo fmt --all -- --check
+  fmt=0
+
+cargo clippy -q --all-targets -- -D warnings
+  clippy=0
+
+cargo test --workspace --lib -q
+  lib=0
+  root:      459 passed; 0 failed; 1 ignored
+  api:       187 passed; 0 failed; 0 ignored
+  core:      630 passed; 0 failed; 0 ignored
+  transport: 282 passed; 0 failed; 0 ignored  (2 neue T-1018-Tests)
+  total:    1558 passed; 0 failed; 1 ignored
+
+cargo test --test arch_layers -- --nocapture
+  arch=0
+  5 passed; modules=92, edges=282, cycles=3, upward_edges=26, crate_violations=0
+
+cargo check --features tui -q
+  tui=0
+
+cargo check --no-default-features -q
+  no-default=0
+
+git diff --check
+  diffcheck=0
