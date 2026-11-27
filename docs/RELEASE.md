@@ -22,9 +22,11 @@
 > Der Patch-Release `v0.11.10` enthält die Audit-Fixes aus
 > `fix/audit-isolation-and-denylist`. Der Eigentümer hat am 27.11.2026
 > ausdrücklich „immer sofort" für Merge, Tag, GitHub-Release und Deployment
-> freigegeben; diese Scheibe führt alle vier Schritte ohne erneute Rückfrage
-> aus. Tag und Workflow-ID werden nach dem Publish in `docs/CURRENT_WORK.md`
-> und im Release-Beleg nachgetragen.
+> freigegeben; alle vier Schritte wurden ohne erneute Rückfrage ausgeführt:
+> annotierter Tag `63ed6c9` auf `629009b`, Workflow `46067339957` vollständig
+> grün, Release public, sieben SHA-256-geprüfte Assets und lokales Deployment
+> mit Backup/Rollback. Belege: `docs/CURRENT_WORK.md` und
+> `docs/proofs/release-v0.11.10-2026-11-27/README.md`.
 
 # Release-Vorgang (T-967)
 

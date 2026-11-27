@@ -5,14 +5,15 @@
 
 ## [0.11.10] - 2026-11-27
 
-- Patch-Release mit den Audit-Fixes aus `fix/audit-isolation-and-denylist`. Alle vier Crates und das Lockfile stehen auf `0.11.10`; Tag `v0.11.10` wird nach grünen Gates und Fast-Forward-Merge auf `master` gesetzt.
-- Test-Daten-Isolation: Untercrate-Testbinaries schreiben nicht mehr in `%LOCALAPPDATA%\webagent\data`; Leaderboard/Circuit-Breaker remain unberührt.
+- Patch-Release mit den Audit-Fixes aus `fix/audit-isolation-and-denylist`. Alle vier Crates und das Lockfile stehen auf `0.11.10`; Tag `v0.11.10` wurde nach grünen Gates und Fast-Forward-Merge auf `origin/master` gesetzt.
+- Test-Daten-Isolation: Untercrate-Testbinaries schreiben nicht mehr in `%LOCALAPPDATA%\webagent\data`; Leaderboard/Circuit-Breaker bleiben unberührt.
 - Shell-Denylist: sechs Umgehungen (`rm -fr /`, `bash -c …`, `cmd /c rd /s …`, `format.com`, `del /s …` u. a.) sind geschlossen.
 - `/api/*`: Zugriff wird über Host/Origin/`Sec-Fetch-Site` geprüft (vom Eigentümer gewählte Variante statt Token-Plumbing).
 - HTTPS-Agent-Antworten sind auf 8 MiB begrenzt; `cargo audit` läuft als eigener CI-Job, und das Lockfile enthält patchweise Anhebungen (0 Vulnerabilities, 11 bewusst offene Warnungen).
 - Reveal-Tab: eine lesende `page_exists`-Runtime-Abfrage verwirft geschlossene Pool-Tabs und meldet benannt „Tab ist geschlossen; Brain neu starten“. Bekanntes Risiko: eine fehlgeschlagene Abfrage gilt als veraltet und kann eine noch live Tab neu öffnen.
 - Composer: die pauschale 10-%-Toleranz wurde durch einen gemessenen Puffer von 16–256 Zeichen ersetzt; Kopf und Ende werden weiter exakt verglichen.
 - Gates auf dem finalen Stand: fmt 0, diff-check 0, clippy 0, Workspace-Lib 1582 bestanden / 0 fehlgeschlagen / 1 ignoriert, Arch 5/5, TUI 0, no-default 0, Release-Build 0, `cargo audit` 0 Vulnerabilities.
+- Veröffentlicht am 27.11.2026 mit Tag-Commit `629009b` und vollständig grünem Release-Workflow `46067339957`; sieben Assets gegen ihre Digests geprüft. Lokales Deployment mit Backup/Rollback: `--version` → `webagent 0.11.10 (629009b0c)`, Canary 8/8, Bridges auf 8788/8789 gesund. Kein Live-Turn, kein Login, kein Fern-Deployment.
 
 ## [0.11.9] - 2026-11-27
 

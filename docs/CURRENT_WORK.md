@@ -1,21 +1,47 @@
 > Fruehere Eintraege (bis 25.11.2026): `docs/archive/CURRENT_WORK-2026-11-25.md`.
 
-## 2026-11-27 - v0.11.10 in Arbeit: Merge, Tag, Release, Deployment
+## 2026-11-27 - v0.11.10 final: Audit-Fixes gemergt, getaggt, veröffentlicht, deployt
 
 - **Owner/Freigabe:** local/opencode auf
-  `fix/audit-isolation-and-denylist` (`53768e3`). Der Eigentuemer hat am
+  `fix/audit-isolation-and-denylist` (`629009b`). Der Eigentuemer hat am
   27.11.2026 „immer sofort" fuer Merge, Tag, GitHub-Release und Deployment
-  erteilt; es wird nicht erneut nachgefragt. Keine Force-Pushes, keine
+  erteilt; es wurde nicht erneut nachgefragt. Keine Force-Pushes, keine
   History-Umschreibung, keine Zugangsdaten, keine Live-Logins.
 - **Umfang:** die drei Audit-Scheiben `0216eb3`, `b7ff548` und `53768e3`
   (Test-Isolation, Denylist, `/api/*`-Origin-Guard, HTTPS-Limit,
   `cargo audit`-CI, Lockfile-Patches, Archiv, Reveal-Tab, Composer-Puffer).
-- **Versionsbump:** `0.11.9` → `0.11.10` in Root-`Cargo.toml`, den drei
+  Versionsbump `0.11.9` → `0.11.10` in Root-`Cargo.toml`, den drei
   Crate-Manifesten und allen vier `webagent*`-Eintraegen in `Cargo.lock`;
   `CHANGELOG.md` und `docs/RELEASE.md` nachgezogen.
-- **Stand:** Gate-Relauf, Commit/Push, Fast-Forward-Merge, Tag, Release und
-  lokales Deployment mit Backup/Rollback laufen in dieser Scheibe; Ergebnisse
-  werden hier nachgetragen, bevor die Scheibe als done gilt.
+- **Versionsgate/Gates:** `verify-release-version.ps1 -Tag v0.11.10` → 0,
+  `-Tag v0.11.9` → 1, `-Tag v0.11.4` → 1. Final: fmt 0, diffcheck 0,
+  clippy 0, lib 1582 passed / 0 failed / 1 ignored, arch 5/5, tui 0,
+  no-default 0, release 0, `cargo audit` 0 Vulnerabilities / 11 offene
+  Warnungen (Log `C:\Users\storax\AppData\Local\Temp\opencode\audit-fix-gates.log`).
+- **Merge/CI:** `629009b` per Fast-Forward auf `origin/master` gepusht
+  (`fix/audit-isolation-and-denylist:refs/heads/master`, kein Force-Push). Der
+  lokale `master`-Branch ist im Worktree `webagent-rs-phase16` ausgecheckt und
+  wurde nicht angefasst; `origin/master` ist die Referenz. CI `46066913891`
+  success, alle vier Jobs gruen.
+- **Tag/Release:** annotierter Tag `v0.11.10` (Tag-Objekt `63ed6c9951ead2f8a895dbe8caa8115854eba7c3`)
+  auf `629009b0c79b5364735540d05a7a6bea2fbcce8d`, gepusht. Release-Workflow
+  `46067339957` success (verify, android, linux, windows, github-release);
+  Release `https://github.com/st0rax/webagent-rs/releases/tag/v0.11.10` public,
+  kein Draft/Pre-Release. Alle sieben Assets gegen die Release-Digests und die
+  `.sha256`-Dateien geprueft (`BAD_COUNT=0`).
+- **Deployment:** veroeffentlichte Windows-Assets in
+  `...\webagent-deploy-target\release\` aktiviert. Backup/Rueckweg:
+  `backup-release-before-v0.11.10-20261127\` mit Hashes der vorherigen Dateien
+  (EXE `9C33E843…0CE7`). Neue EXE-SHA-256
+  `7ef813d57a42a99a5ae4e59008f3ce476a89334562013c01726b37d7209ad4cc`, DLL
+  `465a7ddfb3a0da4c3965daf2ad6ac7548513f42329b58aebc337311c10ea0a6f`.
+  `--version` → `webagent 0.11.10 (629009b0c)`, `--help` 0; Canary 8/8 `ok`.
+  Ports 8788 (PID `11684`, ohne `--headless`, sichtbare WebViews) und 8789
+  (PID `10804`, urspruengliche Kommandozeile) mit `health=ok`.
+- **Grenzen:** nur lokales Deployment, kein Provider-Live-Turn, kein Login,
+  keine Secrets gelesen. 11 `cargo audit`-Warnungen und das bekannte
+  `page_exists`-Risiko bleiben bewusst offen. Vollstaendiger Beleg:
+  `docs/proofs/release-v0.11.10-2026-11-27/README.md`.
 
 ## 2026-11-27 - Audit-Schlussscheibe: Reveal-Tab und Composer-Toleranz
 
