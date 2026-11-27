@@ -1,3 +1,24 @@
+## 2026-11-27 - v0.11.9 final: Tag und GitHub-Release verifiziert
+
+- **Status:** done. Annotierter Tag `v0.11.9` auf `master` `87d0153`
+  (Tag-Objekt `82cae8f`) gepusht; GitHub-Release
+  `https://github.com/st0rax/webagent-rs/releases/tag/v0.11.9` ist public,
+  kein Draft, kein Pre-Release. Release-Workflow `45950140641` success:
+  verify 0, windows 0, linux 0, android 0, github-release 0.
+- **Sieben Assets geprueft** (alle heruntergeladen und mit den `.sha256`-
+  Dateien abgeglichen, 3/3 OK): `webagent-windows-x86_64.exe`
+  (`4C01B44C…73D`), `.sha256`, `WebView2Loader.dll`
+  (`465A7DDF…A0A6F`), `webagent-linux-x86_64` (`7A2FC4D0…1000`),
+  `.sha256`, `webagent-aarch64-linux-android` (`FF39FDFC…AB7`), `.sha256`.
+- **Unterschied bewusst dokumentiert:** das CI-Release-EXE hat eine andere
+  Hash-Summe als die lokal deployte EXE (`9C33E843…0CE7`); beide stammen aus
+  derselben Source (`f11f604`, danach nur Doku-Commit `87d0153`), aber aus
+  unterschiedlichen Build-Umgebungen. Die `WebView2Loader.dll` ist identisch.
+  Produktiv laeuft weiter die deployte EXE mit dauerhaft sichtbarem WebView
+  (PID `18544`, HWND `3803212`, `Rect=320,66,1616,1005`).
+- Kein Zugangsdatenauslesen, kein Prompt-Rohtext im Log; Tag/Release waren
+  ausdruecklich freigegeben.
+
 ## 2026-11-27 - T-1018 final: Composer-Beweis kurz deployt und live belegt
 
 - **Finaler Stand:** `master` `23ac4e9` (gepusht), Release-Build
@@ -2239,4 +2260,5 @@ Ein anschliessender Folgeturn lief in einen HTTP-Client-Timeout; das Fenster
 blieb auch dabei sichtbar, ein success-Event wird dafuer nicht behauptet.
 Kein Login, keine Zugangsdatenausgabe, kein Prompt-Rohtext im Log. Beleg:
 `docs/proofs/T-1021/{README.md,gates.txt,visibility-after-turn.txt}`.
-Tag und GitHub-Release `v0.11.9` stehen in dieser Scheibe weiter aus.
+Tag und GitHub-Release `v0.11.9` wurden danach in einer eigenen,
+freigegebenen Scheibe erstellt und geprueft (Abschnitt oben).
