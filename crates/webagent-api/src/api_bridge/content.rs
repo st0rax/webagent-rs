@@ -451,6 +451,22 @@ pub(crate) fn conversation_prompt(
     system: Option<String>,
     messages: &[ConversationMessage],
 ) -> Result<PromptBundle, String> {
+    conversation_prompt_with_continuation(
+        system,
+        messages,
+        webagent_core::config::continue_provider_chat(),
+    )
+}
+
+/// T-1019: Im Fortsetzungs-Modus (`WEBAGENT_CONTINUE_PROVIDER_CHAT=1`) bekommt
+/// das Brain nur die aktuelle Nachricht. Der Provider-Chat selbst behaelt den
+/// Verlauf, weil der Browser-Tab ueber Turns hinweg offen bleibt. Ohne Flag
+/// bleibt die bestehende vollstaendige Verlaufs-Rahmung unveraendert.
+pub(crate) fn conversation_prompt_with_continuation(
+    system: Option<String>,
+    messages: &[ConversationMessage],
+    continue_chat: bool,
+) -> Result<PromptBundle, String> {
     if messages.is_empty() {
         return Err("messages darf nicht leer sein.".to_string());
     }
@@ -484,10 +500,10 @@ pub(crate) fn conversation_prompt(
     let retry_task = tool_continuation_retry_task(&system_context, messages)?;
 
     let mut attachments = Vec::new();
-    let current_text = content_to_prompt(&current.content, &mut attachments)?;
+    let raw_current_text = content_to_prompt(&current.content, &mut attachments)?;
     if messages.len() == 1 {
         return Ok(PromptBundle {
-            text: system_context + &current_text,
+            text: system_context + &raw_current_text,
             attachments,
             retry_task,
         });
@@ -505,10 +521,21 @@ pub(crate) fn conversation_prompt(
             .as_deref()
             .filter(|id| !id.trim().is_empty())
             .unwrap_or("unbekannt");
-        format!("[Client-Werkzeug-Ergebnis] [tool_call_id: {call_id}]\n{current_text}")
+        format!("[Client-Werkzeug-Ergebnis] [tool_call_id: {call_id}]\n{raw_current_text}")
     } else {
-        current_text
+        raw_current_text
     };
+
+    // T-1019: Der Provider-Chat traegt den Verlauf bereits selbst. Nur die
+    // aktuelle Nachricht (mit Tool-Label) geht in den Composer; kein
+    // "[du]/[user]"-Rahmen, kein "Fortsetzung derselben Unterhaltung".
+    if continue_chat {
+        return Ok(PromptBundle {
+            text: system_context + &current_text,
+            attachments,
+            retry_task,
+        });
+    }
 
     // Zweite Person statt Protokoll zwischen Dritten: Unter "[brain]" hielten
     // Modelle ihre eigenen Beitraege fuer die eines anderen und antworteten

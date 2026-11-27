@@ -3162,6 +3162,39 @@
       "proof_path": "docs/proofs/T-1018/README.md",
       "verification": "gates.txt: fmt 0; clippy 0; lib 459+187+630+282=1558 passed / 0 failed / 1 ignored (2 neue T-1018-Tests); arch 5 passed; tui 0; no-default 0; diff-check 0. Master 23ac4e9 gepusht; release webagent 0.11.8 (23ac4e9b3), exe sha256 BBB9C714A0074C6AC975582BB337CB2720B1F189703419A7C5711ECBF35EDA3B; aktiv PID 9008, identische Command Line, Health ok, 9 Modelle mit Header / 401 ohne; Backup backup-release-before-T1018-20261127. Live chatgpt tools=12: Kurzprompt HTTP 200 exakt T1018-SHORT-OK, 20,6s, success=true, prompt_chars=2677; 85000 Zeichen (Event 87643) in 0,102s benannt abgelehnt (Maximum 83000), events_delta=0; 80000 Realtext (Event 82643) HTTP 200 exakt T1018-REAL80-OK, 35,1s, success=true, sends=1. Kein Prompttext gekuerzt, kein Tag/Release/Login. Siehe docs/proofs/T-1018/README.md.",
       "done_at": "2026-11-27"
+    },
+    {
+      "id": "T-1019",
+      "title": "Continue provider chat instead of reframing full context",
+      "type": "feat",
+      "phase": "16",
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "feature/T-1019-continue-provider-chat",
+      "claimed_at": "2026-11-27",
+      "depends_on": [],
+      "objective": "Pro API-Turn wird der komplette messages-Verlauf als [du]/[user]/[tool]-Rahmen in ein frisches Provider-Chat geklebt; defaultmaessig wird zudem pro Request eine neue WebView erzeugt und danach verworfen. Mit WEBAGENT_CONTINUE_PROVIDER_CHAT=1 soll nur die aktuelle Nachricht in einen persistenten Shared-Browser-Tab gesendet werden; der Provider-Chat behaelt seinen eigenen Verlauf.",
+      "dod": "Claim; Config-Flag mit Test; conversation_prompt sendet im Modus nur die aktuelle Nachricht inkl. Tool-Label; Relay macht kein new_chat und nur einen Versuch; Shared-Pool navigiert vorhandenen Tab nicht neu; Tests; Gates gruen; Commit/Push; separater Test-Port 8789 mit Health und Zwei-Turn-Gedaechtnis; kein Prompts-Text gekuerzt; kein Tag/Release/Login.",
+      "non_goals": [
+        "Kein Aendern der Default-Semantik ohne Flag.",
+        "Kein Kuerzen oder Umformulieren des Nutzerprompts.",
+        "Kein Tag, GitHub-Release oder Versionssprung."
+      ],
+      "scope": [
+        "crates/webagent-core/src/config/mod.rs",
+        "crates/webagent-api/src/api_bridge/content.rs",
+        "crates/webagent-api/src/api_bridge/tests.rs",
+        "crates/webagent-api/src/relay.rs",
+        "crates/webagent-transport/src/browser_pool.rs",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-1019/README.md",
+        "docs/proofs/T-1019/gates.txt"
+      ],
+      "proof_path": "docs/proofs/T-1019/README.md",
+      "verification": "noch offen",
+      "done_at": null
     }
   ]
 }

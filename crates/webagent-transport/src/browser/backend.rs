@@ -637,6 +637,12 @@ impl RelayBackend for WebBrainBackend {
         WebBrainBackend::new_chat(self)
     }
 
+    fn relay_conversation_active(&self) -> bool {
+        WebBrainBackend::get_conversation_ref(self)
+            .map(|url| url.contains("/c/"))
+            .unwrap_or(false)
+    }
+
     fn relay_send_with_attachments(
         &mut self,
         text: &str,

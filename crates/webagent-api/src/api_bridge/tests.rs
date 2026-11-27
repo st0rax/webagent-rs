@@ -636,6 +636,44 @@ fn current_tool_result_gets_explicit_label_and_call_id() {
     assert!(prompt.contains("PI_TOOL_1_abc"));
 }
 
+/// T-1019: Im Fortsetzungs-Modus traegt der Provider-Chat den Verlauf. Die
+/// Bridge darf nicht bei jedem Turn den kompletten Rahmen erneut mitschicken.
+#[test]
+fn continue_provider_chat_sends_only_current_message() {
+    let messages = vec![
+        ConversationMessage {
+            role: "user".into(),
+            content: json!("Mein Codewort ist Otter."),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+        },
+        ConversationMessage {
+            role: "assistant".into(),
+            content: json!("Verstanden."),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+        },
+        ConversationMessage {
+            role: "user".into(),
+            content: json!("Wie lautet es?"),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+        },
+    ];
+
+    let continued = conversation_prompt_with_continuation(None, &messages, true).unwrap();
+    assert_eq!(continued.text, "Wie lautet es?");
+    assert!(!continued
+        .text
+        .contains("Fortsetzung derselben Unterhaltung"));
+    assert!(!continued.text.contains("[du]"));
+
+    let framed = conversation_prompt_with_continuation(None, &messages, false).unwrap();
+    assert!(framed.text.contains("Fortsetzung derselben Unterhaltung"));
+    assert!(framed.text.contains("[du]"));
+    assert!(framed.text.ends_with("Wie lautet es?"));
+}
+
 #[test]
 fn t961_retry_prompt_keeps_original_task_and_results_without_meta() {
     // T-961: der Retry muss in einem frischen Chat mit dem UNVERAENDERTEN

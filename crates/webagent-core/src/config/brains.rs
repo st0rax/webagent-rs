@@ -167,6 +167,18 @@ pub fn persist_browser_tabs() -> bool {
     }
 }
 
+/// T-1019: Provider-Chat ueber Turns hinweg fortsetzen statt pro API-Request
+/// einen neu gerahmten Gesamtverlauf in ein frisches Chat zu kleben.
+/// Default aus: die bestehende Chat-Completions-Semantik bleibt unveraendert,
+/// solange kein Aufrufer den Modus ausdruecklich einschaltet.
+pub fn continue_provider_chat() -> bool {
+    let v = env::var("WEBAGENT_CONTINUE_PROVIDER_CHAT").unwrap_or_default();
+    matches!(
+        v.trim().to_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
 /// Fester Debug-Port für den Shared-Browser-Pool (ein Chromium, viele Tabs).
 pub fn shared_debug_port() -> u16 {
     env::var("WEBAGENT_SHARED_DEBUG_PORT")

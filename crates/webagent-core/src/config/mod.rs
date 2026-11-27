@@ -11,12 +11,13 @@ mod selectors;
 mod writeback;
 
 pub use brains::{
-    block_cooldown_secs, bot2bot_root, brains, consensus_workspace, custom_brains_path,
-    ensure_data_dirs, load_custom_brains, parse_custom_brains, persist_browser_tabs,
-    reference_profile_dir, reference_profile_dir_in, register_custom_brain, resolve_selectors_path,
-    retry_unavailable_secs, sanitize_brain_id, selectors_dir, shared_debug_port,
-    stale_heartbeat_secs, swarm_profile_dir, swarm_profile_dir_in, use_shared_browser,
-    use_sparse_profile_copy, user_selectors_dir, BRAIN_TABLE, SPARSE_COPY_WHITELIST,
+    block_cooldown_secs, bot2bot_root, brains, consensus_workspace, continue_provider_chat,
+    custom_brains_path, ensure_data_dirs, load_custom_brains, parse_custom_brains,
+    persist_browser_tabs, reference_profile_dir, reference_profile_dir_in, register_custom_brain,
+    resolve_selectors_path, retry_unavailable_secs, sanitize_brain_id, selectors_dir,
+    shared_debug_port, stale_heartbeat_secs, swarm_profile_dir, swarm_profile_dir_in,
+    use_shared_browser, use_sparse_profile_copy, user_selectors_dir, BRAIN_TABLE,
+    SPARSE_COPY_WHITELIST,
 };
 pub use clone::{CloneEntry, DryRunReport, ProfileClonePlan, ProfileClonePlanner};
 pub use limits::{
@@ -730,6 +731,22 @@ mod tests {
         assert!(use_shared_browser());
         env::set_var(key, "0");
         assert!(!use_shared_browser());
+        match prev {
+            Some(v) => env::set_var(key, v),
+            None => env::remove_var(key),
+        }
+    }
+
+    #[test]
+    fn test_continue_provider_chat_flag() {
+        let key = "WEBAGENT_CONTINUE_PROVIDER_CHAT";
+        let prev = env::var(key).ok();
+        env::remove_var(key);
+        assert!(!continue_provider_chat());
+        env::set_var(key, "1");
+        assert!(continue_provider_chat());
+        env::set_var(key, "off");
+        assert!(!continue_provider_chat());
         match prev {
             Some(v) => env::set_var(key, v),
             None => env::remove_var(key),

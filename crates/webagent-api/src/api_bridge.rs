@@ -91,8 +91,8 @@ pub(crate) use content::{
 };
 #[cfg(test)]
 pub(crate) use content::{
-    content_to_prompt, conversation_task, decode_base64, openai_task,
-    reject_unsupported_openai_fields, responses_content, responses_task, text_content,
+    content_to_prompt, conversation_prompt_with_continuation, conversation_task, decode_base64,
+    openai_task, reject_unsupported_openai_fields, responses_content, responses_task, text_content,
 };
 #[cfg(test)]
 pub(crate) use response_protocol::responses_sse;

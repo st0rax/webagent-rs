@@ -181,6 +181,13 @@ pub trait RelayBackend {
         Ok(String::new())
     }
     fn relay_new_chat(&mut self) -> Result<(), String>;
+    /// T-1019: Ist der anhaengende Browser-Tab auf einer Konversationsseite
+    /// (z. B. `/c/<id>`), traegt er eine laufende Provider-Konversation. Nur
+    /// dann darf der Turn ohne `relay_new_chat()` fortgesetzt werden.
+    /// Backends ohne Browser melden false und behalten die alte Semantik.
+    fn relay_conversation_active(&self) -> bool {
+        false
+    }
     fn relay_send_with_attachments(
         &mut self,
         text: &str,

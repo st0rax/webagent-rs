@@ -445,6 +445,26 @@ fn relay_single_turn_checked(
 ///
 /// Generic ueber [`RelayBackend`], damit die DoD (T-947) "ein stummer Anbieter
 /// erhaelt genau eine Sendung" mit einem Mock-Backend testbar ist.
+const MAX_RELAY_TURNS: usize = 3;
+
+/// T-1019: Reine Decision-Tabelle fuer die Versuchszahl. Separat, damit der
+/// Modus ohne globale Umgebungsvariablen im Test geprueft werden kann.
+fn max_relay_turns(continue_chat: bool, has_attachments: bool) -> usize {
+    if continue_chat || has_attachments {
+        1
+    } else {
+        MAX_RELAY_TURNS
+    }
+}
+
+/// T-1019: Ein frischer Shared-Tab hat noch keine Konversation. `new_chat`
+/// muss ihn erst auf eine Seite mit Composer bringen; nur eine bereits
+/// geoeffnete Konversationsseite (`/c/...`) beweist einen fortsetzbaren
+/// Provider-Chat.
+fn skip_provider_new_chat(continue_chat: bool, conversation_active: bool) -> bool {
+    continue_chat && conversation_active
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_turn_loop<B: RelayBackend + ?Sized>(
     backend: &mut B,
@@ -477,8 +497,12 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
     // Nachricht verarbeitet hat, ist dann unbekannt, ein erneutes Senden
     // dupliziert den Prompt (massenhaftes identisches Senden = Kontorisiko).
     // Attachment-Turns: ein Versuch (Upload-Fehler sind deterministisch).
-    const MAX_TURNS: usize = 3;
-    let max_turns = if attachments.is_empty() { MAX_TURNS } else { 1 };
+    // T-1019: Im Fortsetzungs-Modus bleibt der Provider-Chat ueber Turns hinweg
+    // bestehen. Ein `new_chat` wuerde genau diesen Verlauf verwerfen, und ein
+    // Wiederholungsturn wuerde denselben Prompt in derselben Konversation
+    // duplizieren. Deshalb genau ein Versuch ohne Chat-Reset.
+    let continue_chat = webagent_core::config::continue_provider_chat();
+    let max_turns = max_relay_turns(continue_chat, !attachments.is_empty());
     let deadline = started + std::time::Duration::from_secs_f64(wait_timeout.max(1.0));
     let mut last_err = format!("kein Versuch ausgefuehrt fuer {brain_id}");
     let mut sends: u32 = 0;
@@ -514,7 +538,11 @@ fn run_turn_loop<B: RelayBackend + ?Sized>(
             ));
             std::thread::sleep(webagent_core::timeouts::relay_response_poll());
         }
-        if let Err(e) = backend.relay_new_chat() {
+        if skip_provider_new_chat(continue_chat, backend.relay_conversation_active()) {
+            webagent_core::bench_events::eprint_line(&format!(
+                "[relay] {brain_id}: bestehende Provider-Konversation (/c/) wird fortgesetzt (kein new_chat)"
+            ));
+        } else if let Err(e) = backend.relay_new_chat() {
             last_err = e;
             continue;
         }
@@ -873,6 +901,22 @@ fn is_attachment_capability_failure(error: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn continue_chat_erlaubt_nur_einen_versuch() {
+        assert_eq!(max_relay_turns(false, false), 3);
+        assert_eq!(max_relay_turns(false, true), 1);
+        assert_eq!(max_relay_turns(true, false), 1);
+        assert_eq!(max_relay_turns(true, true), 1);
+    }
+
+    #[test]
+    fn continue_chat_skippt_new_chat_nur_in_bestehender_konversation() {
+        assert!(!skip_provider_new_chat(false, false));
+        assert!(!skip_provider_new_chat(false, true));
+        assert!(!skip_provider_new_chat(true, false));
+        assert!(skip_provider_new_chat(true, true));
+    }
 
     #[test]
     fn provider_error_page_is_not_an_answer() {

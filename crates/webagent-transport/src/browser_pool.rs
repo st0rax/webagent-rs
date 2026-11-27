@@ -17,7 +17,7 @@ use crate::webview_runtime::{WebViewPageDriver, WebViewRuntime};
 #[cfg(feature = "webview")]
 use webagent_core::brain::BrainBackend;
 #[cfg(any(feature = "webview", test))]
-use webagent_core::config::persist_browser_tabs;
+use webagent_core::config::{continue_provider_chat, persist_browser_tabs};
 #[cfg(feature = "webview")]
 use webagent_core::config::{
     encapsulated_profile_dir, prepare_shared_profile_for_clone, runtime_pool_profile_dir,
@@ -197,10 +197,15 @@ impl BrowserPool {
 
             if let Some(tab) = self.tabs.get_mut(&brain_id) {
                 let mut driver = tab.driver_proto.clone();
-                let navigated = driver
-                    .navigate(backend.brain_url(), Duration::from_secs(30))
-                    .map_err(|e| e.to_string());
-                note_navigation(&mut tab.refs, navigated)?;
+                // T-1019: Im Fortsetzungs-Modus ist genau dieses Tab der
+                // Gedaechtnistraeger des Provider-Chats. Ein navigate() wuerde
+                // den Verlauf verwerfen; nur den Driver anhaengen.
+                if !continue_provider_chat() {
+                    let navigated = driver
+                        .navigate(backend.brain_url(), Duration::from_secs(30))
+                        .map_err(|e| e.to_string());
+                    note_navigation(&mut tab.refs, navigated)?;
+                }
                 backend.attach_page_driver(Box::new(driver));
                 return Ok(());
             }
