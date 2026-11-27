@@ -13,11 +13,17 @@
   exakt `T1017-DESC0-OK`, 22,6 s, `prompt_chars=2917`. Damit ist die
   Längengrenze fuer den bisherigen ~196k-Fehler behoben; die externen
   `tools=12`-Turns landen jetzt bei ~134k statt ~196k.
-- **Grenze ehrlich:** Ein 134.851-Zeichen-Turn wurde gesendet (`sends=1`,
-  kein `ABSENDEKNOPF_DEAKTIVIERT`), lieferte aber auf synthetischen
-  Fülltext innerhalb von 240 s keine Antwort. Ueber 140.000 Zeichen
-  scheitert der Turn in 0,15 s mit benanntem Budgetfehler statt nach
-  90–240 s still in der UI. Kein PASS ohne `success=true`-Event behauptet.
+- **Grenze ehrlich — nicht 100 %:** 134.851 Zeichen wurden gesendet
+  (`sends=1`, kein `ABSENDEKNOPF_DEAKTIVIERT`), aber ohne Antwort. Ein
+  Realtext-Turn mit 132.906 Zeichen (Dokumentation statt Fülltext) wurde
+  ebenfalls gesendet und lief 351 s in
+  `timeout_no_text: renderer may be unresponsive after wake,
+  generation_complete=false, raw_chars=0` — kein Antwort-PASS. Danach war
+  ein 12-Tool-Kurzturn wieder grün (`T1017-POSTBIG-OK`, 20,4 s,
+  `success=true`). Ueber 140.000 Zeichen scheitert der Turn in 0,15 s mit
+  benanntem Budgetfehler. Die Längenablehnung ist behoben, die Antwort bei
+  ~132k dagegen nicht garantiert. Kein PASS ohne `success=true`-Event
+  behauptet.
 - **Code-Entscheid:** Tool-Beschreibungen werden komplett entfernt
   (`TOOL_DESCRIPTION_LIMITS=[0]`), Namen/Parameter/Typen bleiben; damit
   schrumpft das 12-Tool-Schema von ~9 KiB auf ~2,4 KiB. Kein

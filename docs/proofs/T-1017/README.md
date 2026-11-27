@@ -93,12 +93,16 @@ verifiziert:
 ## Erwartung und Grenze
 
 - Erwartung für die externen `tools=12`-Turns: kompakter Prompt < 140k,
-  Browser sendet ihn, Antwort wird belegt. Wenn der externe Prompttext
-  allein bereits über 140k liegt, bleibt nur der schnelle, benannte Fehler —
-  ein Kürzen des Nutzertextes ist nicht Teil dieses Tasks.
+  Browser sendet ihn. Die Antwort ist bei ~103k belegt; bei ~132k blieb sie
+  trotz erfolgreicher Sendung aus (Renderer-Timeout). "Sendung geht" und
+  "Antwort kommt" sind deshalb getrennt zu belegen.
+- Wenn der externe Prompttext allein bereits über 140k liegt, bleibt nur der
+  schnelle, benannte Fehler — ein Kürzen des Nutzertextes ist nicht Teil
+  dieses Tasks.
 - Kein Prompt-Text wird gekürzt, zusammengefasst oder umformuliert.
 - Kein Tag, GitHub-Release, Versionssprung oder neues öffentliches Artefakt.
 - Keine Zugangsdaten gelesen, angezeigt oder weitergegeben.
+
 ## Finaler Build, Deploy und Live-Abnahme (2026-11-27)
 
 - Commit `e326001` (`master`, gepusht). Release-Build
@@ -122,8 +126,15 @@ verifiziert:
   Browser-Inference mit großem Prompt und 12 Werkzeugen live abgenommen.
 - **Grenzerprobe:** 134.851 Zeichen wurden gesendet (`sends=1`, kein
   `ABSENDEKNOPF_DEAKTIVIERT`); der synthetische Füllprompt lieferte innerhalb
-  des 240-s-Client-Timeouts keine Antwort (`client_disconnected`). Das ist
-  ein Antwort-/Testprompt-Problem, keine Längenablehnung mehr.
+  des 240-s-Client-Timeouts keine Antwort (`client_disconnected`).
+- **Echter 132k-Turn (Realtext aus `docs/`, nicht Fülltext):** 132.906 Zeichen,
+  `sends=1`, **keine** Längenablehnung, aber nach 351 s
+  `timeout_no_text: renderer may be unresponsive after wake – move mouse or
+  restart brain, generation_complete=false, raw_chars=0`. Damit ist die
+  Längengrenze behoben, aber ein Antwort-PASS bei ~132k ist **nicht** belegt.
+- **Brain danach gesund:** Direkt im Anschluss 12 Tools + Kurzprompt →
+  HTTP 200, exakt `T1017-POSTBIG-OK`, 20,4 s, `success=true`, `sends=1`,
+  `prompt_chars=2415`. Der grosse Turn hat den Brain nicht beschädigt.
 - **Guard:** 150.000 Zeichen + 12 Tools → 0,15 s, 502
   `invalid_request_error`, Meldung `Prompt zu gross fuer die
   Browser-Oberflaeche: 152427 Zeichen (Maximum 140000); Werkzeugbeschreibungen
