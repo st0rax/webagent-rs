@@ -9,8 +9,11 @@
 > lokalem Deployment; der Live-Turn-Beleg liegt unter
 > `docs/proofs/live-turn-2026-11-26/`.
 > Der Patch-Release `v0.11.8` (Tag-Commit `fb7b886`) wurde am 26.11.2026
-> veröffentlicht. Die 32 Commits danach (T-1007..T-1016) sind bewusst **nicht**
-> neu getaggt; ein weiterer Tag braucht eine neue ausdrückliche Freigabe (G-009).
+> veröffentlicht. Die 49 Commits danach (T-1007..T-1018, Stand 27.11.2026)
+> sind bewusst **nicht** neu getaggt; ein weiterer Tag braucht eine neue
+> ausdrückliche Freigabe (G-009). Operativ ist der Stand lokal final:
+> `master` mit T-1018, aktive Binary `webagent 0.11.8 (23ac4e9b3)`,
+> Belege in `docs/CURRENT_WORK.md` und `docs/proofs/T-1018/`.
 
 # Release-Vorgang (T-967)
 

@@ -1,5 +1,8 @@
 # T-1018 — Composer-Inhaltsbeweis auch für kurze Prompts
 
+> **Referenz.** Task-Beleg für T-1018. Der Fix verlangt auch bei kurzen
+> Prompts einen echten Composer-Treffer und kürzt keinen Nutzertext.
+
 ## Anlass
 
 `crates/webagent-transport/src/browser/composer.rs` lieferte aus
