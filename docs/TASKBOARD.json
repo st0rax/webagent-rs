@@ -3228,6 +3228,33 @@
       "proof_path": "docs/proofs/T-1020/README.md",
       "verification": "gates.txt: fmt 0; clippy 0; lib 459+193+631+282=1565 passed / 0 failed / 1 ignored (3 neue Tests); browser_inference 35 passed; arch 5 passed; tui 0; no-default 0; diff-check 0; release 0. Claim 6da842f gepusht. Bridge-Prompt in prompt_with_identity() ergaenzt: Identitaet webagent/<brain>, Nutzer Storax, Verhaltensregeln und Bridge-Kontext; einziger WEBAGENT_INFERENCE/1-Umschlag bleibt in prompt_with_tools(), Nutzerprompt bytegenau, auto/leer unveraendert. Vorher rot: fehlendes Referenzbanner in docs/proofs/T-1019/README.md; nur Bannerzeile ergaenzt. Kein Live-Turn, Deploy, Login oder Tag in dieser Scheibe. Siehe docs/proofs/T-1020/README.md.",
       "done_at": "2026-11-27"
+    },
+    {
+      "id": "T-1021",
+      "title": "Bridge-WebView dauerhaft sichtbar schalten",
+      "type": "config",
+      "phase": "16",
+      "status": "claimed",
+      "owner": "local/opencode",
+      "branch": "feature/T-1021-visible-webview",
+      "claimed_at": "2026-11-27",
+      "depends_on": [],
+      "objective": "Die Bridge auf 8788 startet mit --headless; dadurch stehen die Provider-WebViews auf -32000 und der Prompt im Composer ist nicht sichtbar und nicht kopierbar. Der Eigentuemer will die Fenster permanent sichtbar, um den tatsaechlich gesendeten Prompt aus der Oberflaeche kopieren zu koennen.",
+      "dod": "Claim vor Aenderung; Supervisor startet ohne --headless und behaelt die drei T-1019-Flags; Neustart der aktiven Bridge mit Health- und HWND/Rect-Beleg; kein Login, keine Zugangsdatenausgabe, kein Prompttext gekuerzt; Gates gruen; Commit/Push; Beleg in docs/proofs/T-1021; kein Tag, GitHub-Release oder Versionssprung in dieser Scheibe.",
+      "non_goals": [
+        "Kein Aendern des Prompt-Aufbaus oder der T-1019-Fortsetzungslogik.",
+        "Kein Login, keine Profil-/Token-Lektuere.",
+        "Kein Tag, GitHub-Release oder Versionssprung in dieser Scheibe."
+      ],
+      "scope": [
+        "scripts/supervise-bridge.ps1",
+        "docs/CURRENT_WORK.md",
+        "docs/TASKBOARD.json",
+        "docs/TASKBOARD.md",
+        "docs/proofs/T-1021/README.md"
+      ],
+      "proof_path": "docs/proofs/T-1021/README.md",
+      "verification": "offen - wird mit HWND/Rect und Gates gefuellt"
     }
   ]
 }
