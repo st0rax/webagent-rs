@@ -89,9 +89,10 @@ unverändert zum Befund aus dem Shared-Only-Test mit `continue=0`
   `sends=1`, `prompt_chars` 237/231.
 - `bridge.pid` wurde auf die neue PID `7236` korrigiert.
 
-**Betriebsgrenze:** `scripts/supervise-bridge.ps1` setzt die drei Flags nicht.
-Ein Supervisor-Neustart würde die Bridge ohne T-1019-Modus starten; das ist
-bekannt und hier nicht geändert. Kein Tag, Release oder Versionssprung.
+**Supervisor:** `scripts/supervise-bridge.ps1` setzt die drei Flags jetzt
+selbst. Ein Supervisor-Neustart behält damit den T-1019-Modus. Geprüft mit
+Parser (0 Fehler) und Lauf bei gesunder Bridge (Exit 0, keine Neustart-Aktion,
+PID 7236 unverändert, Health `ok`). Kein Tag, Release oder Versionssprung.
 
 ## Rückweg / Nebenwirkungen
 

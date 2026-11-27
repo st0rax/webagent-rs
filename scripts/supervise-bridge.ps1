@@ -87,6 +87,13 @@ if ([string]::IsNullOrWhiteSpace($token)) {
 }
 [Environment]::SetEnvironmentVariable($ApiKeyEnv, $token, "Process")
 
+# T-1019: Ein Supervisor-Neustart muss die aktive Bridge-Konfiguration
+# beibehalten. Ohne diese drei Flags waere der fortsetzende Provider-Chat
+# nach einem Neustart still wieder inaktiv.
+$env:WEBAGENT_USE_SHARED_BROWSER = "1"
+$env:WEBAGENT_PERSIST_TABS = "1"
+$env:WEBAGENT_CONTINUE_PROVIDER_CHAT = "1"
+
 if (Test-BridgeHealth) {
     Write-Status "OK Bridge gesund, keine Aenderung"
     exit 0
