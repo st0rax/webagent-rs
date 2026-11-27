@@ -148,7 +148,7 @@ verifiziert:
   neu starten. Zwischenstufen: `backup-release-before-T1017-20261126\` und
   `backup-release-before-T1017-calibrated-20261127\`.
 
-## 2026-11-27 - Guard auf 120000 abgesenkt (silent non-response)
+## 2026-11-27 - Guard auf die Realtext-Grenze kalibriert
 
 Nach dem Final-Deploy wurde die verbleibende Lücke weiter eingegrenzt: ein
 `tools=12`-Turn mit 132.906 Zeichen wurde gesendet, lieferte aber nach 351 s
@@ -156,15 +156,28 @@ Nach dem Final-Deploy wurde die verbleibende Lücke weiter eingegrenzt: ein
 Isolierung wurde derselbe Realtext ohne Werkzeuge erneut geschickt
 (130.043 Zeichen Request, Event `prompt_chars=130215`): HTTP 502 nach 352,9 s,
 `timeout_budget=312s`, `backend_status=timeout_no_message`, `sends=1`,
-`raw_chars=0`. Damit sind die Werkzeugdefinitionen nicht die Ursache; die
-Browser-Oberfläche nimmt die Eingabe an, generiert aber keine Antwort.
+`raw_chars=0`. Werkzeugdefinitionen sind damit nicht die Ursache.
 
-`MAX_BROWSER_PROMPT_CHARS` ist deshalb von 140.000 auf **120.000** gesenkt:
-unterhalb der belegten Antwortgrenze (102.806 Zeichen mit `success=true`),
-oberhalb der stillen Nicht-Antwort. Ein solcher Turn scheitert jetzt in
-Bruchteilen einer Sekunde mit benanntem Budgetfehler statt die Brain-Sperre
-über fünf bis sechs Minuten zu belegen. Der Nutzerprompt-Text wird weiterhin
-nicht gekürzt, zusammengefasst oder umformuliert.
+Zunächst wurde `MAX_BROWSER_PROMPT_CHARS` auf **120.000** gesenkt und als
+PID `3768` deployt (EXE `CD51BBE6…52A4B4F`). Live mit dieser Binary:
+150.097 Zeichen Request (Event zählt 152.740) → 0,166 s, benannter 502-Fehler
+`Maximum 120000`, kein Event, kein Browserlauf. Damit ist die schnelle
+Ablehnung belegt.
 
-Gates für diese Änderung: vierte Serie in `gates.txt` grün. Build, Deploy
-und Live-Gegenprobe folgen im nächsten Abschnitt.
+Weitere Messungen mit derselben Binary zeigten jedoch einen
+**Inhalts-Effekt**: synthetischer Fülltext bei 102.743 Zeichen antwortete in
+33,3 s (`success=true`), Realtext aus `docs/` gleicher Länge lief 352 s in
+`timeout_no_message`. Realtext bei 82.643 Zeichen antwortete in 44,3 s
+(`success=true`); bei 87.643 und 92.643 Zeichen kam nach 341 s bzw. 340 s
+keine Antwort. Ein Kurzturn dazwischen war jeweils grün, der Renderer war
+also nicht global verklemmt.
+
+Deshalb ist der Guard jetzt konservativ auf **83.000** gesetzt: zwischen der
+belegten Realtext-Antwort bei 82.643 und der ersten belegten
+Realtext-Nicht-Antwort bei 87.643. Er schützt vor dem schlechteren Fall,
+ohne den Nutzerprompt zu kürzen, zusammenzufassen oder umzuformulieren.
+Turns oberhalb der Grenze scheitern sofort benannt statt fünf bis sechs
+Minuten die Brain-Sperre zu belegen.
+
+Gates für die 120k-Zwischenstufe: vierte Serie in `gates.txt` grün. Gates,
+Build und Deploy für die finale 83k-Grenze folgen im nächsten Abschnitt.

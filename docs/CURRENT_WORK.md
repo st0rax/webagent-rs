@@ -1,21 +1,24 @@
-## 2026-11-27 - T-1017: Guard auf 120k abgesenkt (Build/Deploy offen)
+## 2026-11-27 - T-1017: Guard auf 83k kalibriert (Build/Deploy offen)
 
-- **Neue Erkenntnis:** Ein `tools=12`-Turn mit 132.906 Zeichen wurde gesendet,
-  blieb aber 351 s ohne Antwort (`timeout_no_text`, `raw_chars=0`). Ein
-  Kontrollturn ohne Werkzeuge mit 130.043 Zeichen Request (Event
-  `prompt_chars=130215`) scheiterte nach 352,9 s mit
-  `timeout_no_message`. Damit sind Werkzeugdefinitionen nicht die Ursache.
-- **Änderung:** `MAX_BROWSER_PROMPT_CHARS` 140.000 → **120.000**, unterhalb
-  der belegten Antwortgrenze bei 102.806 Zeichen. Überlange Turns scheitern
-  sofort benannt statt die Brain-Sperre minutenlang zu belegen. Kein
-  Nutzerprompt-Text gekürzt.
-- **Gates:** vierte Serie grün: fmt 0; clippy 0; lib 459+187+630+280 = 1556
-  passed / 0 failed / 1 ignored; browser_inference 32 passed; arch 5 passed;
-  tui 0; no-default 0; diff-check 0.
-- **Offen:** Commit/Push als `opencode`, Release-Build aus `master`,
-  EXE-Tausch mit neuem Backup, identische Bridge-Command-Line, Health-Check
-  und Live-Gegenprobe (>120k sofortiger Budgetfehler; ~103k mit 12 Tools
-  erneut `success=true`). Danach Board-Verification final aktualisieren.
+- **Zwischenstand 120k deployt:** Commit `c983557` (gepusht) senkte den Guard
+  von 140.000 auf 120.000. Release `webagent 0.11.8 (c98355706)`, EXE
+  `CD51BBE6…52A4B4F`, als PID `3768` mit identischer Command-Line aktiv,
+  Health `ok`, `/v1/models` 200 mit Header / 401 ohne. Backup:
+  `backup-release-before-T1017-guard120k-20261127\`.
+- **Guard-PASS damit:** 150.097 Zeichen Request (Event 152.740) → 0,166 s,
+  502 `Prompt zu gross … (Maximum 120000)`, kein Event, kein Browserlauf.
+- **Inhalts-Effekt:** Synthetischer Fülltext bei 102.743 Zeichen antwortete in
+  33,3 s (`success=true`), Realtext aus `docs/` gleicher Länge lief 352 s in
+  `timeout_no_message`. Realtext 82.643 Zeichen → 44,3 s `success=true`;
+  Realtext 87.643 und 92.643 Zeichen → 341 s bzw. 340 s ohne Antwort.
+  Kurzturns dazwischen waren grün (`T1017-120K-SHORT-OK`, `success=true`).
+- **Aktuelle Änderung (uncommitted):** `MAX_BROWSER_PROMPT_CHARS` 120.000 →
+  **83.000**, zwischen den belegten Realtext-Grenzen. Damit wird der
+  schlechtere Fall abgedeckt; der Nutzerprompt wird nicht gekürzt.
+- **Offen:** Gates für 83k, Commit/Push als `opencode`, Release-Build,
+  EXE-Tausch mit neuem Backup, identische Bridge-Command-Line, Health-Check,
+  Live-Gegenprobe (>83k sofort benannt; Realtext ~80k `success=true`) und
+  finale Aktualisierung von Board/Doku.
 
 ## 2026-11-27 - T-1017 final deployt und live abgenommen (Stand)
 
