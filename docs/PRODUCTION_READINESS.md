@@ -2,7 +2,7 @@
 
 > **Referenz.** Bewertung des damals veröffentlichten und lokal ausgelieferten
 > Stands `v0.11.7`, keine neue Freigabe. Die Tabelle unten wurde nicht auf den
-> aktuellen Stand (`v0.11.10`, `origin/master` `a916039`) neu bewertet;
+> aktuellen Stand (`v0.11.10`, Tag-Commit `629009b`) neu bewertet;
 > operative Wahrheit: `docs/CURRENT_WORK.md`. Das lokale Deployment läuft
 > inzwischen mit `v0.11.10`; Beleg:
 > `docs/proofs/release-v0.11.10-2026-11-27/README.md`.

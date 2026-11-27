@@ -1,5 +1,19 @@
 > Fruehere Eintraege (bis 25.11.2026): `docs/archive/CURRENT_WORK-2026-11-25.md`.
 
+## 2026-11-27 - Drift-Bereinigung in lebenden Dokumenten
+
+- **Stand:** done. `GOALS.md`, `docs/OVERVIEW.md` und
+  `docs/PRODUCTION_READINESS.md` nannten noch den `master`-Head `a916039`
+  einer Zwischenstufe. Stabile Referenz ist jetzt der Release-Commit
+  `629009b` mit dem Zusatz, dass danach nur Doku-Commits folgten; damit
+  bleibt der naechste Doku-Commit ohne erneute Korrektur konsistent.
+- **Go/No-Go korrigiert:** `GOALS.md` sagte weiter No-Go "ohne schriftliche
+  Risikoakzeptanz"; die Freigabe liegt seit 27.11.2026 vor. Der No-Go
+  besteht wegen fehlendem Fernziel, Monitoring und Lasttests fort
+  (`docs/PRODUCTION_READINESS.md`).
+- **Kein Release-Wechsel:** kein Code-, Versions- oder Deployment-Wechsel;
+  keine Zugangsdaten, keine Live-Logins.
+
 ## 2026-11-27 - Dauerhafte Freigabe fuer weitere Operationen
 
 - **Stand:** done. Der Eigentuemer hat am 27.11.2026 im Chat erklaert: "ich
