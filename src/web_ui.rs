@@ -15,6 +15,7 @@ use std::{
 
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const HEALTH_JSON: &[u8] = br#"{"status":"ok","ui":"embedded"}"#;
+const FORBIDDEN_UI: &[u8] = b"Forbidden: lokale UI-Anfrage erwartet";
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Standard-Loopback-Port der Web-UI und der/des gemeinsamen API-Bridge-Servers.
@@ -54,6 +55,73 @@ pub fn bind_listener(addr: SocketAddr) -> Result<TcpListener, String> {
         return Err("Web-UI darf nur an eine Loopback-Adresse binden.".to_string());
     }
     TcpListener::bind(addr).map_err(|error| format!("Web-UI nicht bindbar: {error}"))
+}
+
+/// Host-Header auf Loopback pruefen. `evil.example` kann per DNS-Rebinding
+/// zwar auf 127.0.0.1 zeigen, ist aber kein lokaler UI-Host und wird abgewiesen.
+fn host_is_loopback(value: &str) -> bool {
+    let lower = value.trim().to_ascii_lowercase();
+    let name = if let Some(inside) = lower.strip_prefix('[') {
+        inside.split(']').next().unwrap_or("")
+    } else if lower.contains("::") {
+        // Ungeklammertes IPv6 (z. B. `::1`) ist kein `host:port`.
+        lower.as_str()
+    } else if let Some((name, port)) = lower.rsplit_once(':') {
+        if port.chars().all(|c| c.is_ascii_digit()) {
+            name
+        } else {
+            lower.as_str()
+        }
+    } else {
+        lower.as_str()
+    };
+    matches!(name, "localhost" | "127.0.0.1" | "::1") || name.starts_with("127.")
+}
+
+/// Origin muss dieselbe Loopback-UI und derselbe Port sein. Fehlt der Origin
+/// (curl, CLI), gilt die Host-Pruefung; Browser-CSRF von anderen Ports wird
+/// damit abgewehrt.
+fn origin_is_local(origin: &str, port: u16) -> bool {
+    let lower = origin.trim().to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("http://") else {
+        return false;
+    };
+    let (name, origin_port) = if let Some(inside) = rest.strip_prefix('[') {
+        let name = inside.split(']').next().unwrap_or("");
+        let after = inside.split_once(']').map_or("", |(_, after)| after);
+        (name, after.strip_prefix(':'))
+    } else if let Some((name, after)) = rest.rsplit_once(':') {
+        (name, Some(after))
+    } else {
+        (rest, None)
+    };
+    let port_matches = origin_port.and_then(|value| value.parse::<u16>().ok()) == Some(port);
+    host_is_loopback(name) && port_matches
+}
+
+/// Minimaler Gate fuer `/api/*`: lokaler Host, lokaler Origin und kein
+/// cross-site Fetch. `/v1/*` bleibt separat ueber Bearer-Token geschuetzt.
+fn is_local_ui_request(request: &crate::api_bridge::HttpRequest, local_port: u16) -> bool {
+    let Some(host) = request.header("host") else {
+        return false;
+    };
+    if !host_is_loopback(host) {
+        return false;
+    }
+    if let Some(origin) = request.header("origin") {
+        if !origin_is_local(origin, local_port) {
+            return false;
+        }
+    }
+    if let Some(site) = request.header("sec-fetch-site") {
+        if !matches!(
+            site.trim().to_ascii_lowercase().as_str(),
+            "none" | "same-origin" | "same-site"
+        ) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Startet den Dienst und blockiert.
@@ -156,9 +224,17 @@ fn handle_connection(
 
     let path = request.path.as_str();
     let body = String::from_utf8_lossy(&request.body).into_owned();
+    let local_port = stream
+        .local_addr()
+        .map(|addr| addr.port())
+        .unwrap_or(config.bind.port());
     let (status, ctype, body_bytes) = if path.starts_with("/api/") {
-        let resp = dispatch(&request.method, path, &request.query, &body, state);
-        (resp.status, resp.content_type, resp.body)
+        if !is_local_ui_request(&request, local_port) {
+            (403, "text/plain; charset=utf-8", FORBIDDEN_UI.to_vec())
+        } else {
+            let resp = dispatch(&request.method, path, &request.query, &body, state);
+            (resp.status, resp.content_type, resp.body)
+        }
     } else if let Some((ctype, body)) = lookup(path) {
         (200, ctype, body.to_vec())
     } else {
@@ -285,7 +361,13 @@ mod tests {
         assert!(out.contains("api/health/brains"));
     }
 
-    fn one_shot(request: &[u8], api_bridge: Option<crate::api_bridge::BridgeConfig>) -> String {
+    fn one_shot_with_port<F>(
+        build_request: F,
+        api_bridge: Option<crate::api_bridge::BridgeConfig>,
+    ) -> (String, u16)
+    where
+        F: FnOnce(u16) -> Vec<u8>,
+    {
         let listener = bind_listener("127.0.0.1:0".parse().unwrap()).unwrap();
         let addr = listener.local_addr().unwrap();
         thread::spawn(move || {
@@ -298,10 +380,15 @@ mod tests {
         });
         thread::sleep(Duration::from_millis(20));
         let mut client = StdTcp::connect_timeout(&addr, Duration::from_secs(2)).unwrap();
-        client.write_all(request).unwrap();
+        client.write_all(&build_request(addr.port())).unwrap();
         let mut out = String::new();
         client.read_to_string(&mut out).unwrap();
-        out
+        (out, addr.port())
+    }
+
+    fn one_shot(request: &[u8], api_bridge: Option<crate::api_bridge::BridgeConfig>) -> String {
+        let bytes = request.to_vec();
+        one_shot_with_port(|_| bytes, api_bridge).0
     }
 
     #[test]
@@ -327,6 +414,65 @@ mod tests {
         assert!(out.contains("HTTP/1.1 200"), "{out}");
         assert!(out.contains("\"timestamp\""), "{out}");
         assert!(out.contains("\"brains\""), "{out}");
+    }
+
+    #[test]
+    fn api_mit_lokalem_origin_und_host_laeuft() {
+        let (out, _port) = one_shot_with_port(
+            |port| {
+                format!(
+                    "GET /api/health/brains HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nOrigin: http://localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n\r\n"
+                )
+                .into_bytes()
+            },
+            None,
+        );
+        assert!(out.contains("HTTP/1.1 200"), "{out}");
+        assert!(out.contains("\"brains\""), "{out}");
+    }
+
+    #[test]
+    fn api_weist_fremden_origin_und_rebinding_host_ab() {
+        for (host, origin, site) in [
+            ("127.0.0.1", Some("https://evil.example"), None),
+            ("evil.example", Some("http://evil.example"), None),
+            ("127.0.0.1", None, Some("cross-site")),
+        ] {
+            let origin_line = origin.map_or(String::new(), |o| format!("Origin: {o}\r\n"));
+            let site_line = site.map_or(String::new(), |s| format!("Sec-Fetch-Site: {s}\r\n"));
+            let req = format!(
+                "GET /api/health/brains HTTP/1.1\r\nHost: {host}\r\n{origin_line}{site_line}\r\n"
+            );
+            let out = one_shot(req.as_bytes(), None);
+            assert!(out.contains("HTTP/1.1 403"), "host={host}: {out}");
+            assert!(out.contains("Forbidden"), "{out}");
+        }
+    }
+
+    #[test]
+    fn api_post_mit_fremdem_origin_startet_keine_session() {
+        let body = br#"{"brain":"chatgpt","task":"hi"}"#;
+        let req = format!(
+            "POST /api/sessions HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: http://evil.example\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            std::str::from_utf8(body).unwrap()
+        );
+        let out = one_shot(req.as_bytes(), None);
+        assert!(out.contains("HTTP/1.1 403"), "{out}");
+        assert!(!out.contains("\"run_id\""), "{out}");
+    }
+
+    #[test]
+    fn host_und_origin_pruefung_sind_portgenau() {
+        assert!(host_is_loopback("127.0.0.1:8788"));
+        assert!(host_is_loopback("[::1]:8788"));
+        assert!(host_is_loopback("LOCALHOST"));
+        assert!(!host_is_loopback("evil.example:8788"));
+        assert!(origin_is_local("http://127.0.0.1:8788", 8788));
+        assert!(origin_is_local("http://[::1]:8788", 8788));
+        assert!(!origin_is_local("http://localhost:9999", 8788));
+        assert!(!origin_is_local("https://localhost:8788", 8788));
+        assert!(!origin_is_local("http://evil.example:8788", 8788));
     }
 
     #[test]

@@ -528,6 +528,17 @@ pub struct HttpRequest {
     pub body: Vec<u8>,
 }
 
+impl HttpRequest {
+    /// Header-Wert ueber den normalisierten (kleingeschriebenen) Namen.
+    /// Erlaubt der Web-UI, Host/Origin/Sec-Fetch-Site zu pruefen, ohne die
+    /// Header-Map selbst offenzulegen.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .get(&name.to_ascii_lowercase())
+            .map(String::as_str)
+    }
+}
+
 pub struct HttpResponse {
     status: u16,
     content_type: &'static str,

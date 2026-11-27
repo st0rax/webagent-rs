@@ -1,7 +1,9 @@
-# Produktreife — Stand 26.11.2026
+# Produktreife — historischer Beleg Stand 26.11.2026
 
-> **Referenz.** Bewertung des veröffentlichten und lokal ausgelieferten Stands
-> `v0.11.7`, keine neue Freigabe. Operative Wahrheit: `docs/CURRENT_WORK.md`.
+> **Referenz.** Bewertung des damals veröffentlichten und lokal ausgelieferten
+> Stands `v0.11.7`, keine neue Freigabe. Die Tabelle unten wurde nicht auf den
+> aktuellen Stand (`v0.11.9`, `master` `6e4ca4f`) neu bewertet; operative
+> Wahrheit: `docs/CURRENT_WORK.md`.
 
 **Urteil:** Release- und Installationsreife **ja**. Der definierte Zielbetrieb
 auf diesem Windows-Rechner (Browser-Chat als Gehirn, lokale Provider-Rolle für

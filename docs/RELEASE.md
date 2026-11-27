@@ -12,10 +12,13 @@
 > veröffentlicht. Die Commits danach (T-1007..T-1018) waren zunächst bewusst
 > **nicht** neu getaggt; G-009 verlangte dafür eine neue ausdrückliche Freigabe.
 > Diese Freigabe wurde am 27.11.2026 erteilt. Der Patch-Release `v0.11.9`
-> umfasst T-1007..T-1020 und wird nach grünen Gates und Merge auf `master`
-> getaggt. Die aktive lokale Bridge läuft weiterhin mit der T-1019-EXE
-> (`webagent 0.11.8`); dieser Release enthält kein Deployment. Belege:
-> `docs/CURRENT_WORK.md`, `docs/proofs/T-1019/`, `docs/proofs/T-1020/`.
+> umfasst T-1007..T-1021 und wurde am 27.11.2026 nach grünen Gates und Merge
+> auf `master` mit Workflow `45950140641` veröffentlicht (Tag-Commit
+> `87d0153`, sieben geprüfte Assets). Die lokal deployte EXE stammt aus
+> `f11f604` (SHA-256 `9C33E843…0CE7`) und läuft mit dauerhaft sichtbarem
+> WebView; sie ist nicht das CI-Release-EXE (`4C01B44C…73D`). Ein
+> Fern-Deployment fand nicht statt. Belege: `docs/CURRENT_WORK.md`,
+> `docs/proofs/T-1019/`, `docs/proofs/T-1020/`, `docs/proofs/T-1021/`.
 
 # Release-Vorgang (T-967)
 

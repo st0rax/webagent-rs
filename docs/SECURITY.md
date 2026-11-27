@@ -3,11 +3,15 @@
 > **Referenz:** Beschreibung des implementierten Modells, keine unabhängige
 > Sicherheitsprüfung und keine Zertifizierung.
 >
-> **Stand:** 2026-11-25, abgeleitet aus `AGENTS.md`, `src/shell_policy.rs`,
-> `src/file_actions.rs`, `src/api_bridge/boundary.rs`,
-> `src/network_observation.rs`, `src/capability_proof.rs`, `src/run_store.rs`
-> und `.gitignore`. Dies ist eine Beschreibung des implementierten Modells,
-> **keine** unabhängige Sicherheitsprüfung und keine Zertifizierung.
+> **Stand:** 2026-11-27, abgeleitet aus `AGENTS.md`,
+> `crates/webagent-core/src/shell_policy.rs`,
+> `crates/webagent-core/src/file_actions.rs`,
+> `crates/webagent-api/src/api_bridge/boundary.rs`,
+> `crates/webagent-core/src/network_observation.rs`,
+> `crates/webagent-core/src/capability_proof.rs`,
+> `crates/webagent-core/src/run_store.rs` und `.gitignore`. Dies ist eine
+> Beschreibung des implementierten Modells, **keine** unabhängige
+> Sicherheitsprüfung und keine Zertifizierung.
 
 ## Bedrohungsmodell
 
@@ -15,12 +19,12 @@ Der Agent ist ein **Single-User-, lokaler** Harness. Die Shell ist nach Design
 offen: Der Agent braucht generische Shell-Macht, keine Mandanten-Trennung. Das
 Schutzziel ist nicht „kein Shell", sondern (1) versehentlich destruktive oder
 injektionsgetriebene Befehle zu erkennen und (2) jede Entscheidung auditierbar
-zu machen. Siehe `src/shell_policy.rs:1-8`.
+zu machen. Siehe `crates/webagent-core/src/shell_policy.rs:1-8`.
 
 Jede Modellausgabe ist potenziell feindlich: Text kann aus Webseiten, Tool-
 Output oder einer Brain-Antwort stammen. Vertrauensgrenzen:
 
-1. **WebView/Brain-Inhalt** → Parser (`src/protocol/`) → Controller. Der Parser
+1. **WebView/Brain-Inhalt** → Parser (`crates/webagent-core/src/protocol/`) → Controller. Der Parser
    führt nichts aus und lehnt Prosa, unbekannte Felder und doppelte IDs ab.
 2. **Controller** → Policy → Werkzeuge (Shell/Datei). Die Policy sitzt vor
    `executor.execute`, nicht dahinter.
@@ -29,7 +33,7 @@ Output oder einer Brain-Antwort stammen. Vertrauensgrenzen:
 
 ## Shell
 
-- Denylist und destruktive Muster in `src/shell_policy.rs`: rekursives
+- Denylist und destruktive Muster in `crates/webagent-core/src/shell_policy.rs`: rekursives
   `Remove-Item`, `rm -rf` auf Root/Home/Wildcard, `rd/rmdir /s`, `format`,
   `mkfs`, `diskpart`/`clear-disk`/`remove-partition`, `dd of=/dev/`, HKLM-Registry-Löschung,
   Fork-Bomb, `curl|sh` und `irm|iex`.
@@ -46,7 +50,7 @@ Output oder einer Brain-Antwort stammen. Vertrauensgrenzen:
 
 ## Dateien und Workspace
 
-- `src/file_actions.rs` kanonisiert den Workspace-Root, lehnt `..`-Traversal ab
+- `crates/webagent-core/src/file_actions.rs` kanonisiert den Workspace-Root, lehnt `..`-Traversal ab
   und prüft Symlinks: ein Link darf nicht aus dem Root hinauszeigen.
 - `edit` verlangt einen exakt und eindeutig vorkommenden Anker; `edit_batch`
   validiert alle Einträge vor dem ersten Schreibvorgang (atomar).
@@ -60,21 +64,21 @@ Output oder einer Brain-Antwort stammen. Vertrauensgrenzen:
 
 ## Lokale API
 
-- Die Bridge bindet ausschließlich an Loopback; `src/api_bridge.rs:213`
-  verweigert einen nicht-Loopback-Bind.
+- Die Bridge bindet ausschließlich an Loopback; `src/web_ui.rs:51`
+  (`bind_listener`) verweigert einen nicht-Loopback-Bind.
 - `Authorization: Bearer <token>` oder `x-api-key` werden gegen den
-  konfigurierten Token in `src/api_bridge/boundary.rs` verglichen
+  konfigurierten Token in `crates/webagent-api/src/api_bridge/boundary.rs` verglichen
   (`constant_time_equal`). Fehlender/falscher Token → 401 mit dem festen Text
   `Ungueltiger oder fehlender API-Token.`
 - Endpunkte: `/v1/models`, `/v1/chat/completions`, `/v1/responses`,
   `/v1/messages`. Streaming und Non-Streaming sind in
-  `src/api_bridge/wire.rs` getrennt; Antworten sind `no-store`.
+  `crates/webagent-api/src/api_bridge/wire.rs` getrennt; Antworten sind `no-store`.
 - Die API spricht keine Credentials aus und ersetzt keine WebView-Sitzung; sie
   vermittelt einen Turn an das angemeldete Brain.
 
 ## Redaktion und Beobachtung
 
-- `src/network_observation.rs` ist **opt-in** (`WEBAGENT_NETWORK_OBSERVE`) und
+- `crates/webagent-core/src/network_observation.rs` ist **opt-in** (`WEBAGENT_NETWORK_OBSERVE`) und
   ausschließlich lesend: nur `Network.enable` plus drei Sensor-Events, kein
   Interception, keine Mutation, kein Port-/WebSocket-Kanal.
 - URLs werden auf `scheme://host` reduziert; Query, Fragment und Userinfo —
@@ -84,10 +88,10 @@ Output oder einer Brain-Antwort stammen. Vertrauensgrenzen:
 
 ## Persistenz und Belege
 
-- `src/run_store.rs` schreibt `meta.json` über temporäre Datei + `rename`,
+- `crates/webagent-core/src/run_store.rs` schreibt `meta.json` über temporäre Datei + `rename`,
   hält `events.jsonl` unter einem prozessübergreifenden `events.lock` mit
   `fsync` und quarantinetert abgeschnittene Tails statt sie zu erraten.
-- Es gibt **genau einen** Beleg-Gate: `src/capability_proof.rs` schreibt nach
+- Es gibt **genau einen** Beleg-Gate: `crates/webagent-core/src/capability_proof.rs` schreibt nach
   `data_dir()/capability/proofs.jsonl` über `record_measurement` /
   `record_proof` / `record_route_proof`.
 - `ProofState` unterscheidet `Proven`, `Expired`, `Failed`, `Never`. Ein Beleg
@@ -100,12 +104,12 @@ Output oder einer Brain-Antwort stammen. Vertrauensgrenzen:
 
 ## Bekannte Grenzen (Stand 2026-11-25)
 
-- **Parallelität:** `src/brain_score.rs` hält `PENDING_TURN`,
+- **Parallelität:** `crates/webagent-core/src/brain_score.rs` hält `PENDING_TURN`,
   `PENDING_WEB_SEARCH` und `PENDING_SOURCE_HINTS` als prozessglobale Mutexe.
   Ein Restzustand zwischen Läufen ist nicht strukturell ausgeschlossen;
   T-970 ist dafür geclaimt und noch offen.
 - **`VerifiedFree`:** `AccessMode::VerifiedFree` in
-  `src/free_cloud_chat.rs` ist eine Registry-Kennzeichnung mit datiertem
+  `crates/webagent-api/src/free_cloud_chat.rs` ist eine Registry-Kennzeichnung mit datiertem
   Markdown-Beleg (`docs/proofs/T-926/`), kein gate-gestützter Eintrag in
   `proofs.jsonl`. T-971 ist dafür geclaimt und noch offen.
 - **Panics:** user-nahe Pfade sind nicht als panic-frei zertifiziert; `unwrap`

@@ -93,13 +93,15 @@ pub fn data_dir() -> PathBuf {
 ///
 /// Cargo setzt beim Testlauf keine eindeutige Variable. Früher wurde nur
 /// geprüft, ob die Binary unter `target/…/deps/` liegt. Auf dieser Werkbank
-/// legt Cargo die Unit-Testbinary jedoch unter
-/// `target/debug/build/webagent/<hash>/out/…` ab — die Annahme war also falsch,
-/// und Tests schrieben in `%LOCALAPPDATA%\webagent\data` (das echte
-/// Leaderboard). Wir prüfen deshalb zusätzlich `cfg!(test)` (Unit-Tests der
-/// Lib) und das unverwechselbare Cargo-Testbinary-Muster
-/// `webagent-<16 Hex>.exe` (Integrations-/Bin-Tests). Wer es überstimmen muss,
-/// setzt `WEBAGENT_FORCE_REAL_DATA=1`.
+/// legt Cargo die Testbinaries jedoch unter
+/// `target/debug/build/<crate>/<hash>/out/<target>-<16 Hex>.exe` ab — die
+/// Annahme war also falsch, und Tests schrieben in
+/// `%LOCALAPPDATA%\webagent\data` (echtes Leaderboard und Circuit-Breaker).
+/// Der erste Fix erkannte nur `webagent-<16 Hex>.exe`; damit blieben die
+/// Testbinaries der Untercrates (`webagent_api-…`, `webagent_core-…`,
+/// `arch_layers-…`) unerkannt. Entscheidend ist der 16-Hex-Suffix, nicht der
+/// Crate-Name davor. `cfg!(test)` deckt zusätzlich die Unit-Tests der eigenen
+/// Crates ab. Wer es überstimmen muss, setzt `WEBAGENT_FORCE_REAL_DATA=1`.
 pub(crate) fn is_test_run() -> bool {
     if env::var("WEBAGENT_FORCE_REAL_DATA")
         .map(|v| v == "1")
@@ -114,15 +116,27 @@ pub(crate) fn is_test_run() -> bool {
         return false;
     };
     let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    if let Some(hash) = name.strip_prefix("webagent-") {
-        if hash.len() >= 16 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
-            return true;
-        }
+    if is_cargo_test_binary_name(name) {
+        return true;
     }
     exe.parent()
         .and_then(|d| d.file_name())
         .map(|n| n == "deps")
         .unwrap_or(false)
+}
+
+/// Erkennt Cargo-Testbinaries am unverwechselbaren `<name>-<16 Hex>`-Suffix.
+/// Der Präfix ist bewusst egal: je nach Crate heißt die Datei
+/// `webagent-…`, `webagent_api-…`, `webagent_core-…` oder `arch_layers-…`.
+/// Die produktive `webagent.exe` hat keinen Hex-Suffix und bleibt erkannt
+/// als Nicht-Testlauf.
+fn is_cargo_test_binary_name(file_name: &str) -> bool {
+    let lower = file_name.to_ascii_lowercase();
+    let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
+    let Some((_, hash)) = stem.rsplit_once('-') else {
+        return false;
+    };
+    hash.len() == 16 && hash.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// data/runs/ — Run-Metadaten und Transcripts
@@ -141,7 +155,45 @@ pub fn profiles_dir() -> PathBuf {
     webagent_root_stable().join("profiles")
 }
 
-/// profiles/shared/ — Gemeinsames Browser-Profil (wenn shared_browser aktiviert)
+/// profiles/shared/ - Gemeinsames Browser-Profil (wenn shared_browser aktiviert)
 pub fn shared_profile_dir() -> PathBuf {
     profiles_dir().join("shared")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_cargo_test_binary_name;
+
+    #[test]
+    fn testbinary_suffix_ist_unabhaengig_vom_crate_namen() {
+        for name in [
+            "webagent-0123456789abcdef.exe",
+            "webagent_api-5dac752d0b479209.exe",
+            "webagent_core-5dac752d0b479209.exe",
+            "arch_layers-5dac752d0b479209.exe",
+            "webagent_api-0123456789abcdef",
+            "zz_audit_shell-0123456789ABCDEF.exe",
+        ] {
+            assert!(
+                is_cargo_test_binary_name(name),
+                "Testbinary nicht erkannt: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn produktivbinary_ist_kein_testbinary() {
+        for name in [
+            "webagent.exe",
+            "webagent",
+            "webagent-1234.exe",
+            "webagent-0123456789abcdefgh.exe",
+            "webagent-0123456789abcdef.bak",
+        ] {
+            assert!(
+                !is_cargo_test_binary_name(name),
+                "Falsch als Testbinary erkannt: {name}"
+            );
+        }
+    }
 }

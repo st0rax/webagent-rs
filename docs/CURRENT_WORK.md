@@ -1,3 +1,25 @@
+## 2026-11-27 - Audit-Fixes: Isolation, Denylist, UI-Haertung, Doku (in Arbeit)
+
+- **Owner/Pfad:** local/opencode, Worktree
+  `C:\Users\storax\Documents\Standardprojekt\webagent-rs-audit-fixes`,
+  Branch `fix/audit-isolation-and-denylist` auf Basis `origin/master` `6e4ca4f`.
+  Der alte Worktree `webagent-rs-t1008` bleibt unberuehrt (27 Commits hinterher).
+- **Zweck:** reproduzierte P1-Befunde der Projektpruefung beheben: (1)
+  Untercrate-Testbinaries schrieben in `%LOCALAPPDATA%\webagent\data`
+  (Leaderboard/Circuit-Breaker), (2) sechs Denylist-Umgehungen (`rm -fr /`,
+  `bash -c …`, `cmd /c rd /s …`, `format.com`, `del /s …`), (3) `/api/*` ohne
+  Herkunftspruefung. Der Eigentuemer hat fuer (3) ausdruecklich Host/Origin statt
+  Token-Plumbing gewaehlt. Kein Tag, kein Release, kein Deployment, keine
+  Versionsaenderung.
+- **Stand:** done. Alle Gates gegen den Endstand gruen: fmt 0, diffcheck 0,
+  clippy 0, lib 1576 passed / 0 failed / 1 ignored, arch 5/5, tui 0,
+  no-default 0, release 0 (Log
+  `C:\Users\storax\AppData\Local\Temp\opencode\audit-fix-gates.log`).
+  Belege: `docs/proofs/audit-2026-11-27/README.md`. Kein Tag, kein Release,
+  kein Deployment, kein Merge.
+- **Nicht enthalten:** Reveal-Tab-Bug, HTTPS-Body-Limit, `cargo audit` in CI,
+  10-%-Composer-Toleranz — bleiben bewusst offen.
+
 ## 2026-11-27 - v0.11.9 final: Tag und GitHub-Release verifiziert
 
 - **Status:** done. Annotierter Tag `v0.11.9` auf `master` `87d0153`

@@ -48,7 +48,9 @@ lazy_static! {
         (Regex::new(r"(?i)\brd\s+/s|rmdir\s+/s").unwrap(), "rd/rmdir /s (rekursiv)", &["rd", "rmdir"]),
         (Regex::new(r"(?i)\bdel\s+.*\*\.\*\s*/s").unwrap(), "del /s Massenlöschung", &["del"]),
         // Datenträger/Partitionen
-        (Regex::new(r"(?i)^\s*format\s+[a-z]:").unwrap(), "Datenträger formatieren", &["format"]),
+        // `format.com C:` ist derselbe Befehl wie `format C:`; die alte
+        // Anker-Regex liess die .com-Variante durch.
+        (Regex::new(r"(?i)\bformat(?:\.com|\.exe)?\s+[a-z]:").unwrap(), "Datenträger formatieren", &["format"]),
         (Regex::new(r"(?i)\bmkfs(\.\w+)?\b").unwrap(), "Dateisystem neu anlegen (mkfs)", &["mkfs"]),
         (Regex::new(r"(?i)diskpart|clear-disk|remove-partition").unwrap(), "Partitions-/Disk-Eingriff", &["diskpart", "clear-disk", "remove-partition"]),
         (Regex::new(r"(?i)\bdd\s+.*of=\s*/dev/").unwrap(), "dd auf ein Blockgerät", &["dd"]),
@@ -292,13 +294,39 @@ const COMMAND_PREFIXES: &[&str] = &["sudo", "doas", "command", "builtin", "time"
 /// `echo rm -rf /` bleiben erlaubt. `rm -rf "/"` bleibt verboten, weil die
 /// Quotes nur das Ziel einschliessen.
 fn deny_label_for_statement(stmt: &str) -> Option<&'static str> {
+    deny_label_for_statement_depth(stmt, MAX_WRAPPER_DEPTH)
+}
+
+/// Maximale Tiefe für verschachtelte Wrapper (`bash -c`, `cmd /c`); schuetzt
+/// vor endloser Rekursion bei selbstaufrufenden Konstrukten.
+const MAX_WRAPPER_DEPTH: u8 = 3;
+/// Kommandos, die ein anderes Kommando als Argument ausführen. Ohne diese
+/// Regel war `bash -c "rm -rf /"` ein erlaubtes `bash`-Statement.
+const EXEC_WRAPPERS: &[&str] = &[
+    "bash",
+    "sh",
+    "zsh",
+    "dash",
+    "cmd",
+    "wsl",
+    "powershell",
+    "pwsh",
+];
+/// Flag, hinter dem das auszuführende Kommando steht. Fehlt es, wird alles
+/// nach dem Wrapper-Kommando selbst geprüft (`wsl rm -rf /`).
+const WRAPPER_FLAGS: &[&str] = &["-c", "-lc", "-e", "--command", "--exec", "/c", "/k"];
+
+fn deny_label_for_statement_depth(stmt: &str, depth: u8) -> Option<&'static str> {
     let stages = pipeline_stages(stmt);
     for stage in &stages {
-        if token_is_one_of(&command_token(stage), &["rm"]) {
-            let n = after_command_prefixes(stage).to_lowercase();
-            if n.starts_with("rm -rf /") || n.starts_with("rm.exe -rf /") {
-                return Some("rm -rf auf absolutem Pfad");
-            }
+        if let Some(label) = rm_root_denial(stage) {
+            return Some(label);
+        }
+        if let Some(label) = del_mass_denial(stage) {
+            return Some(label);
+        }
+        if let Some(label) = wrapped_command_denial(stage, depth) {
+            return Some(label);
         }
     }
     let visible = quoted_spans_removed(stmt);
@@ -318,6 +346,98 @@ fn deny_label_for_statement(stmt: &str) -> Option<&'static str> {
             if pattern.is_match(&stage_visible) || pattern.is_match(&stage_plain) {
                 return Some(*label);
             }
+        }
+    }
+    None
+}
+
+/// `rm -rf /`, `rm -fr /`, `rm -rf --no-preserve-root /` und weitere
+/// Reihenfolgen. Die alte Regex verlangte das literal `-rf` direkt vor dem
+/// Ziel; `-fr` und zusätzliche Flags dazwischen gingen durch. Entscheidend
+/// ist jetzt: rekursives Löschen plus absolutes Pfad-, Home- oder
+/// Wildcard-Ziel — unabhängig von Flag-Reihenfolge und -Gruppierung.
+fn rm_root_denial(stage: &str) -> Option<&'static str> {
+    if !token_is_one_of(&command_token(stage), &["rm"]) {
+        return None;
+    }
+    let args: Vec<String> = after_command_prefixes(stage)
+        .split_whitespace()
+        .skip(1)
+        .map(str::to_string)
+        .collect();
+    let recursive = args.iter().any(|arg| {
+        if let Some(long) = arg.strip_prefix("--") {
+            long.eq_ignore_ascii_case("recursive")
+        } else {
+            arg.starts_with('-') && arg[1..].chars().any(|c| c.eq_ignore_ascii_case(&'r'))
+        }
+    });
+    let dangerous_target = args.iter().any(|arg| {
+        arg.starts_with('/')
+            || arg.starts_with('~')
+            || arg == "*"
+            || arg.to_ascii_lowercase().starts_with("$env:")
+    });
+    if recursive && dangerous_target {
+        Some("rm -r auf Root/Home/Wildcard")
+    } else {
+        None
+    }
+}
+
+/// `del /s /q C:\*.*` und `del C:\*.* /s`: die alte Regex verlangte das
+/// `*.*` vor `/s`, liess also die gebräuchliche Flag-Reihenfolge durch.
+fn del_mass_denial(stage: &str) -> Option<&'static str> {
+    if !token_is_one_of(&command_token(stage), &["del", "erase"]) {
+        return None;
+    }
+    let args = unwrap_quotes(stage).to_ascii_lowercase();
+    let words: Vec<&str> = args.split_whitespace().skip(1).collect();
+    // Token-Grenze statt Substring: `/script` ist kein `/s`.
+    let recursive = words.iter().any(|word| {
+        word.strip_prefix('/').is_some_and(|flags| {
+            let flags = flags.to_ascii_lowercase();
+            flags.starts_with('s') && flags.chars().all(|flag| "sqfarh".contains(flag))
+        })
+    });
+    let wildcard = words.iter().any(|word| word.contains("*.*"));
+    if recursive && wildcard {
+        Some("del /s Massenlöschung")
+    } else {
+        None
+    }
+}
+
+/// Wrapper wie `bash -c "rm -rf /"` oder `cmd /c rd /s /q C:\` wurden nur am
+/// äusseren Kommando geprüft und daher erlaubt. Das eingebettete Kommando
+/// durchläuft jetzt dieselbe Denylist (mit Tiefenbegrenzung).
+fn wrapped_command_denial(stage: &str, depth: u8) -> Option<&'static str> {
+    if depth == 0 {
+        return None;
+    }
+    let token = command_token(stage);
+    if !EXEC_WRAPPERS.contains(&token.as_str()) {
+        return None;
+    }
+    let low = unwrap_quotes(stage).to_ascii_lowercase();
+    let mut parts = low.split_whitespace();
+    parts.next(); // das Wrapper-Kommando selbst
+    let mut inner = Vec::new();
+    let mut flag_seen = false;
+    for part in parts {
+        if !flag_seen && WRAPPER_FLAGS.contains(&part) {
+            flag_seen = true;
+            continue;
+        }
+        inner.push(part);
+    }
+    if inner.is_empty() {
+        return None;
+    }
+    let inner_command = inner.join(" ");
+    for inner_stmt in split_statements(&inner_command) {
+        if let Some(label) = deny_label_for_statement_depth(&inner_stmt, depth - 1) {
+            return Some(label);
         }
     }
     None
@@ -878,6 +998,50 @@ mod tests {
             locker.is_empty(),
             "Pflicht-Deny durchgelassen (nicht lockern, Harvest lehnt den Lock-Test ab): {locker:?}"
         );
+    }
+
+    #[test]
+    fn denylist_schliesst_bekannte_umgehungen() {
+        // Audit 2026-11-27: sechs dieser Befehle waren praktisch ALLOW.
+        for cmd in [
+            "rm -fr /",
+            "rm -rf --no-preserve-root /",
+            "rm -r -f ~",
+            "rm -rf $env:USERPROFILE",
+            "bash -c \"rm -rf /\"",
+            "sh -c 'rm -rf ~'",
+            "cmd /c rd /s /q C:\\Windows\\Temp",
+            "wsl rm -rf /",
+            "format.com C:",
+            "cmd /c format C:",
+            "del /s /q C:\\*.*",
+            "del C:\\*.* /s",
+        ] {
+            assert!(
+                matches!(evaluate_with_mode(cmd, false), Decision::Deny(_)),
+                "Umgehung durchgelassen: {cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn wrapper_regeln_erlauben_harmlose_inhalte() {
+        for cmd in [
+            "echo \"rm -rf /\"",
+            "bash -c \"echo hallo\"",
+            "cmd /c echo hallo",
+            "Select-String -Pattern \"rm -rf /\"",
+            "rm -rf ./build",
+            "rm output.log",
+            "del output.log",
+            "del /script *.*",
+        ] {
+            assert_eq!(
+                evaluate_with_mode(cmd, false),
+                Decision::Allow,
+                "harmloser Befehl blockiert: {cmd}"
+            );
+        }
     }
 
     #[test]
