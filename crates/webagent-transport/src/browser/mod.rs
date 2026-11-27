@@ -202,10 +202,10 @@ impl WebBrainBackend {
                 self.revealed.set(true);
                 return Ok(());
             }
-            crate::browser_pool::BrowserPool::global()
+            let mut pool = crate::browser_pool::BrowserPool::global()
                 .lock()
-                .map_err(|_| "BrowserPool-Sperre verloren".to_string())?
-                .reveal_brain(&self.brain_id)?;
+                .map_err(|_| "BrowserPool-Sperre verloren".to_string())?;
+            pool.reveal_brain(&self.brain_id)?;
             self.revealed.set(true);
             Ok(())
         }

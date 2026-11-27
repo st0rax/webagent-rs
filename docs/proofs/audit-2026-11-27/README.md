@@ -1,8 +1,8 @@
 # Audit-Fixes 2026-11-27 — Isolation, Denylist, UI-Härtung, Doku
 
 **Referenzstatus:** Branch `fix/audit-isolation-and-denylist`; der laufende
-Stand steht in `docs/CURRENT_WORK.md`. Erste Scheibe `0216eb3` ist gepusht,
-diese Folgescheibe wird nach den Gates committet.
+Stand steht in `docs/CURRENT_WORK.md`. `0216eb3` und `b7ff548` sind gepusht,
+die Schlussscheibe wird nach den Gates committet.
 **Datum:** 2026-11-27
 **Branch:** `fix/audit-isolation-and-denylist` (Basis `origin/master` `6e4ca4f`)
 **Eigentümer:** local/opencode (Audit auf ausdrückliches „los jetzt“)
@@ -119,11 +119,31 @@ unmaintained/unsound/yanked Crates ohne Patch oder nur mit Major-Upgrade
 `proc-macro-error`, `clipboard-win`); sie sind bewusst nicht Teil dieser
 Scheibe.
 
+## Schlussscheibe - freigegebene Verhaltenaenderungen
+
+- **Reveal-Tab:** Der Bridge-Fehler `Tab 2 existiert nicht` entstand, weil
+  `PooledTab.view_id` ein geschlossenes `PageSlot` ueberlebte. Neu:
+  `WebViewRuntime::page_exists` fragt im UI-Thread nach dem Slot
+  (`RuntimeMessage::PageExists`); `pooled_tab_is_live` akzeptiert nur
+  `Ok(true)`. `start_brain` verwirft einen veralteten Pool-Eintrag und oeffnet
+  das Tab ueber den bestehenden `open_page`-Pfad neu. `reveal_brain` verwirft
+  ihn ebenfalls und gibt einen benannten Fehler. Dafuer wurde die Signatur auf
+  `&mut self` umgestellt und die zwei Aufrufer angepasst. Risk: bei einer
+  fehlgeschlagenen Abfrage wird eine noch live Tab neu geoeffnet; der
+  Eigentuemer hat dieses Risiko freigegeben.
+- **Composer-Toleranz:** Die fruehere 10-%-Bandbreite erlaubte bei 48k Zeichen
+  rund 4.800 fehlende Zeichen bei intakten Raendern. Jetzt berechnet
+  `composer_length_reserve` den gemessenen Unterschied zwischen Roh- und
+  normalisiertem Text und klemmt ihn auf 16..256 Zeichen. `long_text_holds`,
+  `ensure_composer_full` und die Submit-Diagnose nutzen denselben Wert; Kopf
+  und Ende bleiben exakt. Neue Grenztests: reserviert, reserviert+1 und
+  5-%-Luecke mit intakten Raendern.
+
 ## Gates (Endstand, 2026-11-27)
 
 Alle Exit-Codes 0: `cargo fmt --all -- --check`, `git diff --check`,
 `cargo clippy --features webview --all-targets --locked -- -D warnings`,
-`cargo test --workspace --lib --locked` (463 + 194 + 636 + 284 = **1577
+`cargo test --workspace --lib --locked` (463 + 194 + 636 + 289 = **1582
 passed**, 0 failed, 1 ignored), `cargo test --test arch_layers --locked`
 (5/5), `cargo check --features tui --locked`,
 `cargo check --no-default-features --locked`,
@@ -131,10 +151,11 @@ passed**, 0 failed, 1 ignored), `cargo test --test arch_layers --locked`
 allowed warnings). Log:
 `C:\Users\storax\AppData\Local\Temp\opencode\audit-fix-gates.log`; die
 Zwischenläufe mit fmt-/Clippy-/Testfehlern sind durch diesen Lauf ersetzt.
-Zielgruppe der Regressionstests: 2 `paths`, 2 `shell_policy`, 4 `web_ui`.
+Zielgruppe der Regressionstests: 2 `paths`, 2 `shell_policy`, 4 `web_ui`,
+1 `https_client`, 5 `composer`/`send`/`browser_pool`.
 
 ## Nicht Teil dieser Scheibe
 
-`Turn-Reveal fehlgeschlagen … Tab 2 existiert nicht` und die 10-%-Toleranz im
-Composer-Vergleich. Der Eigentuemer hat beide Fixes freigegeben; sie folgen
-als eigene Scheibe. Ein Tag/Release/Deployment wurde nicht ausgelöst.
+Bewusst offen: die 11 `cargo audit`-Warnungen ohne Patch oder mit
+Major-Upgrade. Der Reveal-Tab-Fehler und die 10-%-Toleranz sind in der
+Schlussscheibe behoben. Ein Tag/Release/Deployment wurde nicht ausgelöst.

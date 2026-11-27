@@ -385,8 +385,10 @@ impl WebBrainBackend {
     /// Leerzeichen, NBSP oder Zeilenumbrueche, ohne Inhalt zu verlieren; der
     /// strikte Gleichheitsvergleich meldete deshalb live „Composer-Feld nicht
     /// gefunden (Timeout)" bei `pasted_chars=52.420` von 52.499 Zeichen.
-    /// Ab 1.000 Zeichen genuegen Anfang, Ende und Zeichenzahl im 10-%-Band —
-    /// ein still gekuerzter Prompt faellt damit weiterhin durch.
+    /// Ab 1.000 Zeichen genuegen Anfang, Ende und Zeichenzahl innerhalb des
+    /// gemessenen Normalisierungs-Puffers (siehe [`Self::composer_length_reserve`])
+    /// — nicht mehr im frueheren 10-%-Band, das bei 48k Zeichen rund 4.800
+    /// fehlende Zeichen mitten im Prompt vertuscht hat.
     ///
     /// Fuer kurze Prompts bleibt der strikte Vergleich zwingend: die alte
     /// Kurzschluss-Bedingung lieferte ohne jeden Composer-Treffer `true` und
@@ -411,7 +413,24 @@ impl WebBrainBackend {
         let actual = value.get("len").and_then(Value::as_u64).unwrap_or(0) as usize;
         let head = value.get("head").and_then(Value::as_str).unwrap_or("");
         let tail = value.get("tail").and_then(Value::as_str).unwrap_or("");
-        Self::long_text_holds(&expected, actual, head, tail)
+        let reserve = Self::composer_length_reserve(text);
+        Self::long_text_holds(&expected, actual, head, tail, reserve)
+    }
+
+    /// Puffer fuer Zeichen, die ein Rich-Editor beim Normalisieren von
+    /// Leerraum tatsaechlich verliert. Der alte pauschale 10-%-Abzug war bei
+    /// langen Prompts ein falsch positiver Fill-Nachweis: bei 48k Zeichen
+    /// durften rund 4.800 Zeichen mitten im Text fehlen, solange Kopf und Ende
+    /// stimmten. Jetzt zaehlt nur der gemessene Unterschied zwischen Roh- und
+    /// normalisiertem Text, mit kleinem Boden fuer NBSP/Zero-Width-Varianten
+    /// und einer Deckelung gegen Editor-Artefakte.
+    pub(super) fn composer_length_reserve(text: &str) -> usize {
+        const MIN: usize = 16;
+        const MAX: usize = 256;
+        let raw = text.chars().count();
+        let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let measured = raw.saturating_sub(normalized.chars().count());
+        measured.clamp(MIN, MAX)
     }
 
     /// Reine Vergleichslogik zu [`Self::composer_holds_text`], ohne Browserver.
@@ -420,10 +439,13 @@ impl WebBrainBackend {
         actual_len: usize,
         head: &str,
         tail: &str,
+        reserve: usize,
     ) -> bool {
         let chars: Vec<char> = expected.chars().collect();
         let n = chars.len();
-        if n == 0 || actual_len + actual_len / 10 < n || actual_len > n + n / 10 {
+        let margin = reserve.min(n);
+        if n == 0 || actual_len.saturating_add(margin) < n || actual_len > n.saturating_add(margin)
+        {
             return false;
         }
         let wanted_head: String = chars.iter().take(256).collect();
@@ -878,12 +900,68 @@ mod tests {
             .into_iter()
             .rev()
             .collect();
-        // 4 Zeichen weniger als erwartet (Whitespace-Kollaps), innerhalb von 10%.
+        // 4 Zeichen weniger als erwartet (Whitespace-Kollaps), innerhalb des
+        // gemessenen Puffers.
+        let reserve = WebBrainBackend::composer_length_reserve(&expected);
         assert!(WebBrainBackend::long_text_holds(
             &expected,
             expected.chars().count() - 4,
             &head,
-            &tail
+            &tail,
+            reserve
+        ));
+    }
+
+    /// Der Puffer kommt aus der tatsaechlichen Normalisierung, nicht aus einem
+    /// Prozentsatz der Textlaenge: gemessen, minimal 16, maximal 256 Zeichen.
+    #[test]
+    fn normalisierungsreserve_ist_gemessen_und_gedeckelt() {
+        assert_eq!(
+            WebBrainBackend::composer_length_reserve(&"x".repeat(60_000)),
+            16
+        );
+        let collapsed = format!("{} MITTE {}", "A".repeat(300), "Z".repeat(300));
+        assert_eq!(WebBrainBackend::composer_length_reserve(&collapsed), 16);
+        let many_breaks = format!("a{}b", "\n ".repeat(400));
+        assert_eq!(WebBrainBackend::composer_length_reserve(&many_breaks), 256);
+    }
+
+    /// Eine echte Luecke mitten im langen Prompt darf nicht mehr durch den
+    /// Puffer gedeckt werden — genau das war das 10-%-Band.
+    #[test]
+    fn lange_luecke_mit_intakten_raendern_wird_abgelehnt() {
+        let expected = format!("{} MITTE {}", "A".repeat(300), "Z".repeat(300));
+        let head: String = expected.chars().take(256).collect();
+        let tail: String = expected
+            .chars()
+            .rev()
+            .take(256)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let reserve = WebBrainBackend::composer_length_reserve(&expected);
+        let len = expected.chars().count();
+        assert!(!WebBrainBackend::long_text_holds(
+            &expected,
+            len - len / 20,
+            &head,
+            &tail,
+            reserve
+        ));
+        assert!(!WebBrainBackend::long_text_holds(
+            &expected,
+            len - reserve - 1,
+            &head,
+            &tail,
+            reserve
+        ));
+        assert!(WebBrainBackend::long_text_holds(
+            &expected,
+            len - reserve,
+            &head,
+            &tail,
+            reserve
         ));
     }
 
@@ -901,17 +979,20 @@ mod tests {
             .into_iter()
             .rev()
             .collect();
+        let reserve = WebBrainBackend::composer_length_reserve(&expected);
         assert!(!WebBrainBackend::long_text_holds(
             &expected,
             expected.chars().count() / 2,
             &head,
-            &tail
+            &tail,
+            reserve
         ));
         assert!(!WebBrainBackend::long_text_holds(
             &expected,
             expected.chars().count(),
             &tail,
-            &head
+            &head,
+            reserve
         ));
     }
 

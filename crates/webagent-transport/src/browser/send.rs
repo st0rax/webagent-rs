@@ -1279,9 +1279,11 @@ impl WebBrainBackend {
         // einen blockierenden Dialog. Es gab keinen — der Editor hatte den Text
         // schlicht nicht angenommen. Eine Vermutung als Ursache auszugeben, hat
         // die Suche in die falsche Richtung geschickt.
-        let intended = self.last_sent.borrow().chars().count();
+        let sent = self.last_sent.borrow();
+        let intended = sent.chars().count();
+        let reserve = WebBrainBackend::composer_length_reserve(&sent);
         let actual = self.composer_char_count();
-        if intended > 0 && actual + actual / 10 < intended {
+        if intended > 0 && actual.saturating_add(reserve) < intended {
             return format!(
                 "send_phase=submit: Absenden fehlgeschlagen nach {attempts} Versuchen: der Composer enthaelt \
                  nur {actual} von {intended} Zeichen — die Eingabe wurde von der \
@@ -1499,18 +1501,20 @@ impl WebBrainBackend {
     /// dann eine Rueckfrage statt der Aufgabe, aber es kam HTTP 200 zurueck.
     ///
     /// Die Pruefung vergleicht die Zeichenzahl des tatsaechlichen Composerinhalts
-    /// mit der gewuenschten und erlaubt 10% Abweichung fuer Normalisierung
-    /// (z.B. Whitespace in contenteditable/ProseMirror). Wird mehr gekuerzt,
-    /// gibt es einen benannten ContentCheck-Fehler statt eines falschen Erfolgs.
+    /// mit der gewuenschten. Erlaubt ist nur der gemessene Normalisierungs-Puffer
+    /// aus `composer::composer_length_reserve` (minimum 16, maximum 256 Zeichen),
+    /// nicht mehr die frueheren pauschalen 10 %. Wird mehr gekuerzt, gibt es
+    /// einen benannten ContentCheck-Fehler statt eines falschen Erfolgs.
     fn ensure_composer_full(&self, text: &str) -> Result<(), String> {
         let intended = text.chars().count();
+        let reserve = WebBrainBackend::composer_length_reserve(text);
         let actual = self.composer_char_count();
         webagent_core::brain_score::update_pending_turn(|obs| {
             obs.phase = webagent_core::brain_score::SendPhase::ContentCheck;
             obs.pasted_chars = Some(actual);
             obs.expected_chars = Some(intended);
         });
-        if intended > 0 && actual + actual / 10 < intended {
+        if intended > 0 && actual.saturating_add(reserve) < intended {
             return Err(webagent_core::brain_score::phase_error(
                 webagent_core::brain_score::SendPhase::ContentCheck,
                 &format!(
@@ -1935,6 +1939,32 @@ mod tests {
         let backend = WebBrainBackend::from_config("gemini").expect("gemini");
         backend.attach_page_driver(Box::new(MockPageDriver::new(state)));
         assert!(backend.ensure_composer_full(&text).is_ok());
+    }
+
+    fn backend_with_char_count(count: u64) -> WebBrainBackend {
+        let probe = WebBrainBackend::from_config("gemini").expect("gemini");
+        let expr = char_count_expr(&probe);
+        let state = MockPageState::new().on_eval(&expr, json!(count));
+        let backend = WebBrainBackend::from_config("gemini").expect("gemini");
+        backend.attach_page_driver(Box::new(MockPageDriver::new(state)));
+        backend
+    }
+
+    /// Der ContentCheck darf nur den gemessenen Puffer akzeptieren. Bei 1000
+    /// Zeichen sind das 16 und nicht mehr 100 oder 90 — eine Luecke knapp
+    /// jenseits der Grenze muss benannt scheitern.
+    #[test]
+    fn contentcheck_akzeptiert_nur_den_gemessenen_puffer() {
+        let text = "x".repeat(1000);
+        let reserve = WebBrainBackend::composer_length_reserve(&text);
+        assert_eq!(reserve, 16);
+        assert!(backend_with_char_count((1000 - reserve) as u64)
+            .ensure_composer_full(&text)
+            .is_ok());
+        let err = backend_with_char_count((1000 - reserve - 1) as u64)
+            .ensure_composer_full(&text)
+            .expect_err("Luecke jenseits des Puffers muss scheitern");
+        assert!(err.contains("gekuerzt"), "{err}");
     }
 
     /// Minimal eval map so attach_files can reach the native CDP call without a

@@ -50,6 +50,13 @@ enum RuntimeMessage {
         view_id: ViewId,
         respond: Sender<Result<()>>,
     },
+    /// Nur lesen: lebt der Page-Slot zu dieser View-ID noch? Der Pool kann eine
+    /// ID ueber ein geschlossenes Fenster hinweg cachen; Reveal wuerde sonst
+    /// `Tab N existiert nicht` melden statt den Tab neu zu oeffnen.
+    PageExists {
+        view_id: ViewId,
+        respond: Sender<Result<bool>>,
+    },
     /// Fenster auf eine Bildschirmposition holen (Brain-Kachelansicht) oder wieder
     /// off-screen parken. `None` = zurueck auf [`OFFSCREEN_POS`], also exakt
     /// das Verhalten ohne Kachelansicht.
@@ -226,6 +233,23 @@ impl WebViewRuntime {
         let (resp_tx, resp_rx) = mpsc::channel();
         self.tx
             .send(RuntimeMessage::ClosePage {
+                view_id,
+                respond: resp_tx,
+            })
+            .map_err(|_| PageDriverError::Protocol("WebView-Thread beendet".into()))?;
+        self.wake_and_wait(resp_rx, webagent_core::timeouts::webview_wake_timeout())
+    }
+
+    /// Fragt im UI-Thread, ob der Page-Slot zu `view_id` noch existiert.
+    ///
+    /// Ein fensterseitiges `CloseRequested` entfernt den Slot, aber nicht den
+    /// gecachten `PooledTab`. Diese Abfrage ist die einzige verlaessliche
+    /// Moeglichkeit, vor dem Wiederverwenden einer Driver-Kopie zu pruefen, ob
+    /// das Fenster dahinter noch da ist.
+    pub fn page_exists(&self, view_id: ViewId) -> Result<bool> {
+        let (resp_tx, resp_rx) = mpsc::channel();
+        self.tx
+            .send(RuntimeMessage::PageExists {
                 view_id,
                 respond: resp_tx,
             })
@@ -546,6 +570,9 @@ fn pump_runtime(rt: &mut SharedRuntime, event_loop: &mut EventLoop<()>) -> bool 
             RuntimeMessage::ClosePage { view_id, respond } => {
                 let result = close_page(rt, view_id);
                 let _ = respond.send(result);
+            }
+            RuntimeMessage::PageExists { view_id, respond } => {
+                let _ = respond.send(Ok(rt.pages.contains_key(&view_id)));
             }
             RuntimeMessage::SetBounds {
                 view_id,

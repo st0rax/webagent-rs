@@ -320,7 +320,7 @@ fn brain_visibility(state: &UiState, brain_id: &str, show: bool) -> ApiResponse 
         let pool_result = crate::browser_pool::BrowserPool::global()
             .lock()
             .map_err(|_| "BrowserPool-Sperre verloren".to_string())
-            .and_then(|pool| {
+            .and_then(|mut pool| {
                 if show {
                     pool.reveal_brain(brain_id)
                 } else {

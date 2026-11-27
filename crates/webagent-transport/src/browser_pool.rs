@@ -82,6 +82,24 @@ pub(crate) fn note_navigation(refs: &mut u32, navigated: Result<(), String>) -> 
     Ok(())
 }
 
+/// Ein gecachter `PooledTab` ist nur dann wiederverwendbar, wenn der Runtime
+/// den zugehoerigen Page-Slot noch kennt. Ein `CloseRequested` entfernt den
+/// Slot, aber nicht den Pool-Eintrag; ein Fehler der Abfrage gilt ebenfalls als
+/// nicht live — dann lieber neu oeffnen als einen toten View-ID an Reveal zu
+/// geben.
+#[cfg(any(feature = "webview", test))]
+fn pooled_tab_is_live(page_exists: Result<bool, String>) -> bool {
+    matches!(page_exists, Ok(true))
+}
+
+/// Nur den Pool-Eintrag entfernen. Als freie Funktion ueber `&mut HashMap`,
+/// damit daneben eine unveraenderte Ausleihe von `self.runtime` bestehen
+/// bleiben kann.
+#[cfg(feature = "webview")]
+fn forget_pooled_tab(tabs: &mut HashMap<String, PooledTab>, brain_id: &str) {
+    tabs.remove(brain_id);
+}
+
 /// Schliesst einen vom Pool besessenen Runtime-Klon, sobald keine laufende
 /// Referenz mehr davon abhaengt. Persistierte Tabs mit `refs == 0` duerfen
 /// waehrend einer noch aktiven Shared-Ausfuehrung offen bleiben; sie duerfen
@@ -197,6 +215,23 @@ impl BrowserPool {
                 .runtime
                 .as_ref()
                 .ok_or("Shared-WebView nicht gestartet")?;
+
+            // Ein vom Fenster geschlossener Tab bleibt im Pool eingetragen.
+            // Reveal wuerde dann die gecachte View-ID an einen Runtime schicken,
+            // der den Page-Slot schon entfernt hat („Tab 2 existiert nicht").
+            // Lieber den Eintrag verwerfen und unten neu oeffnen.
+            if let Some(tab) = self.tabs.get(&brain_id) {
+                let stale_view_id = tab.view_id;
+                let live = runtime
+                    .page_exists(stale_view_id)
+                    .map_err(|e| e.to_string());
+                if !pooled_tab_is_live(live) {
+                    forget_pooled_tab(&mut self.tabs, &brain_id);
+                    webagent_core::bench_events::eprint_line(&format!(
+                        "[browser_pool] veralteter Tab {brain_id} (view {stale_view_id}) wird neu geoeffnet"
+                    ));
+                }
+            }
 
             if let Some(tab) = self.tabs.get_mut(&brain_id) {
                 let mut driver = tab.driver_proto.clone();
@@ -544,19 +579,34 @@ impl BrowserPool {
     }
 
     /// Holt ein Pool-/gekapseltes Brain-Fenster onscreen (Login/Captcha).
+    ///
+    /// Ein veralteter Pool-Eintrag wird hier verworfen; der naechste
+    /// `start_brain` oeffnet den Tab neu. Das ist bewusst kein stummes
+    /// Weitergeben einer View-ID, die der Runtime nicht mehr kennt.
     #[cfg(feature = "webview")]
-    pub fn reveal_brain(&self, brain: &str) -> Result<(), String> {
+    pub fn reveal_brain(&mut self, brain: &str) -> Result<(), String> {
         let id = brain.to_lowercase();
         let rect = crate::webview_reveal::reveal_rect();
         if let Some(tab) = self.tabs.get(&id) {
+            let view_id = tab.view_id;
+            let live = {
+                let runtime = self
+                    .runtime
+                    .as_ref()
+                    .ok_or_else(|| format!("{id}: kein Shared-Runtime"))?;
+                pooled_tab_is_live(runtime.page_exists(view_id).map_err(|e| e.to_string()))
+            };
+            if !live {
+                forget_pooled_tab(&mut self.tabs, &id);
+                return Err(format!(
+                    "{id}: Tab {view_id} ist geschlossen; Brain neu starten"
+                ));
+            }
             let runtime = self
                 .runtime
                 .as_ref()
                 .ok_or_else(|| format!("{id}: kein Shared-Runtime"))?;
-            let ctrl = crate::webview_reveal::RuntimeViewControl {
-                runtime,
-                view_id: tab.view_id,
-            };
+            let ctrl = crate::webview_reveal::RuntimeViewControl { runtime, view_id };
             return crate::webview_reveal::reveal_onscreen(&ctrl, rect)
                 .map_err(|e| format!("{id}: {e}"));
         }
@@ -736,6 +786,35 @@ mod tests {
         let mut refs = u32::MAX;
         note_navigation(&mut refs, Ok(())).unwrap();
         assert_eq!(refs, u32::MAX, "saturating_add verletzt");
+    }
+
+    #[test]
+    fn gecachter_tab_gilt_nur_bei_positiver_runtime_antwort_als_live() {
+        assert!(pooled_tab_is_live(Ok(true)));
+        assert!(!pooled_tab_is_live(Ok(false)));
+        assert!(!pooled_tab_is_live(Err("WebView-Thread beendet".into())));
+    }
+
+    #[cfg(feature = "webview")]
+    #[test]
+    fn veralteter_pool_eintrag_wird_vergessen() {
+        let mut tabs = HashMap::new();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        tabs.insert(
+            "mock".into(),
+            PooledTab {
+                view_id: 2,
+                driver_proto: WebViewPageDriver {
+                    view_id: 2,
+                    page_tx: tx,
+                    upload_paths: std::sync::Arc::new(Mutex::new(Vec::new())),
+                },
+                refs: 1,
+            },
+        );
+        assert!(tabs.contains_key("mock"));
+        forget_pooled_tab(&mut tabs, "mock");
+        assert!(!tabs.contains_key("mock"));
     }
 
     #[test]

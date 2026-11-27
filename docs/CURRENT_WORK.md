@@ -1,5 +1,37 @@
 > Fruehere Eintraege (bis 25.11.2026): `docs/archive/CURRENT_WORK-2026-11-25.md`.
 
+## 2026-11-27 - Audit-Schlussscheibe: Reveal-Tab und Composer-Toleranz
+
+- **Owner/Freigabe:** local/opencode, gleicher Branch
+  `fix/audit-isolation-and-denylist`, auf `b7ff548`. Der Eigentuemer hat beide
+  Eingriffe ausdruecklich freigegeben. Kein Tag, kein Release, kein
+  Deployment, kein Merge, keine Versionsaenderung.
+- **Reveal-Tab:** `crates/webagent-transport/src/webview_runtime.rs` hat jetzt
+  die lesende Runtime-Abfrage `page_exists` (`RuntimeMessage::PageExists`).
+  `browser_pool.rs` prueft vor der Wiederverwendung eines gecachten
+  `PooledTab`, ob der Page-Slot noch lebt (`pooled_tab_is_live`); wenn nicht,
+  wird der Eintrag verworfen und in `start_brain` neu geoeffnet. `reveal_brain`
+  verwirft einen veralteten Eintrag ebenfalls und meldet benannt
+  „Tab ist geschlossen; Brain neu starten" statt „Tab 2 existiert nicht".
+  Dafuer `reveal_brain(&mut self)` und zwei angepasste Aufrufer
+  (`src/web_ui_api.rs`, `crates/webagent-transport/src/browser/mod.rs`).
+- **Composer:** `composer_length_reserve` misst den Unterschied zwischen Roh-
+  und normalisiertem Text, geklemmt auf 16..256 Zeichen. Die alte pauschale
+  10-%-Toleranz ist aus `long_text_holds`, `ensure_composer_full` und der
+  Submit-Diagnose entfernt; alle drei Pfade nutzen denselben Puffer. Kopf und
+  Ende werden weiter exakt verglichen.
+- **Regressionstests:** ungültige/fehlgeschlagene Runtime-Antwort gilt nicht
+  als live, veralteter Pool-Eintrag wird entfernt; gemessener Puffer, Luecke
+  knapp jenseits der Grenze, 5-%-Luecke mit intakten Raendern sowie
+  ContentCheck genau an der/reserve-plus-eins-Grenze.
+- **Gates:** fmt 0, diffcheck 0, clippy 0, lib 1582 passed / 0 failed /
+  1 ignored, arch 5/5, tui 0, no-default 0, release 0, cargo audit 0
+  (Log `C:\Users\storax\AppData\Local\Temp\opencode\audit-fix-gates.log`).
+- **Bekanntes Risiko:** eine fehlgeschlagene `page_exists`-Abfrage wird als
+  veraltet gewertet und kann eine noch live Tab neu oeffnen (Verlust des
+  laufenden Chat-Verlaufs). Das ist die vom Eigentuemer freigegebene
+  Kurskorrektur gegenueber dem stillen Reveal-Fehler.
+
 ## 2026-11-27 - Audit-Folgescheibe: HTTPS-Limit, CI-Audit, Lockfile, Archiv
 
 - **Owner/Pfad:** local/opencode, gleicher Branch
@@ -26,7 +58,7 @@
   1 ignored, arch 5/5, tui 0, no-default 0, release 0, cargo audit 0
   (Log `C:\Users\storax\AppData\Local\Temp\opencode\audit-fix-gates.log`).
 - **Freigaben:** Owner hat den Reveal-Tab-Fix und die Composer-Toleranzbegrenzung
-  freigegeben; beide folgen als eigene Scheibe.
+  freigegeben; beide sind in der vorstehenden Scheibe umgesetzt.
 
 ## 2026-11-27 - Audit-Fixes: Isolation, Denylist, UI-Haertung, Doku
 
