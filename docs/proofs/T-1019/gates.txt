@@ -43,6 +43,10 @@ DLL-SHA256 unverändert: 465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311
 health ok, /v1/models 200 mit Header / 401 ohne
 Turn 1 HTTP 200, exakt T1019-DEPLOY-OK, success=true, sends=1, prompt_chars=237
 Turn 2 HTTP 200, exakt Otter,        success=true, sends=1, prompt_chars=231
-bridge.pid=7236; Supervisor setzt die drei Flags jetzt selbst.
+bridge.pid zunaeckst 7236; Supervisor setzt die drei Flags jetzt selbst.
 supervise-bridge.ps1: Parser 0 Fehler, Lauf bei gesunder Bridge Exit 0,
-keine Neustart-Aktion, PID 7236 unverändert, health ok.
+keine Neustart-Aktion.
+End-to-end: PID 7236 gestoppt, Supervisor startete PID 14192, health ok,
+bridge.pid=14192, identische Command-Line.
+Turn 1 HTTP 200, exakt T1019-SUPERVISOR-OK, success=true, sends=1, prompt_chars=241
+Turn 2 HTTP 200, exakt Otter,                success=true, sends=1, prompt_chars=231

@@ -2168,7 +2168,9 @@ Deploy auf 8788: Backup
 `WEBAGENT_CONTINUE_PROVIDER_CHAT=1`. Health ok, Auth 200/401, Turn 1
 `T1019-DEPLOY-OK`, Turn 2 `Otter`, beide `success=true`.
 `bridge.pid` auf `7236` korrigiert. `scripts/supervise-bridge.ps1` setzt die
-drei Flags jetzt selbst, damit ein Supervisor-Neustart den T-1019-Modus
-behaelt; Parser 0 Fehler, Lauf bei gesunder Bridge Exit 0 ohne
-Neustart-Aktion. Kein Tag, GitHub-Release oder Versionssprung. Test-Bridge
-8789 ist gestoppt.
+drei Flags jetzt selbst. End-to-end geprueft: PID `7236` gestoppt, Supervisor
+startete PID `14192` mit identischer Command-Line, Health ok,
+`bridge.pid=14192`; danach Turn 1 `T1019-SUPERVISOR-OK` und Turn 2 `Otter`,
+beide `success=true`, `prompt_chars` 241/231. Der Modus ueberlebt damit den
+Supervisor-Neustart. Kein Tag, GitHub-Release oder Versionssprung.
+Test-Bridge 8789 ist gestoppt.

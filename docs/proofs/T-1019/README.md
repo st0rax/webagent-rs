@@ -77,6 +77,8 @@ unverändert zum Befund aus dem Shared-Only-Test mit `continue=0`
   DLL `465A7DDF…A0A6F` und Breaker-State.
 - Alte PID `9008` gestoppt; neue PID `7236`, identische Command-Line
   (`--skip-startup-reconcile api serve --brain chatgpt --headless --port 8788 --timeout-secs 120`).
+  Der anschliessende Supervisor-Test restartete die Bridge als PID `14192`
+  (siehe Supervisor-Abschnitt); das ist die jetzt aktive PID.
 - Aktivierte Environment-Variablen im Prozess:
   `WEBAGENT_USE_SHARED_BROWSER=1`, `WEBAGENT_PERSIST_TABS=1`,
   `WEBAGENT_CONTINUE_PROVIDER_CHAT=1`. Ohne diese Flags bleibt das Feature
@@ -87,12 +89,18 @@ unverändert zum Befund aus dem Shared-Only-Test mit `continue=0`
 - Live auf 8788: Turn 1 HTTP 200, exakt `T1019-DEPLOY-OK` (116,7 s);
   Turn 2 HTTP 200, exakt `Otter` (25,1 s); beide `success=true`,
   `sends=1`, `prompt_chars` 237/231.
-- `bridge.pid` wurde auf die neue PID `7236` korrigiert.
+- `bridge.pid` wurde zunaechst auf PID `7236` korrigiert und nach dem
+  Supervisor-Test von diesem selbst auf `14192` gesetzt.
 
-**Supervisor:** `scripts/supervise-bridge.ps1` setzt die drei Flags jetzt
-selbst. Ein Supervisor-Neustart behält damit den T-1019-Modus. Geprüft mit
-Parser (0 Fehler) und Lauf bei gesunder Bridge (Exit 0, keine Neustart-Aktion,
-PID 7236 unverändert, Health `ok`). Kein Tag, Release oder Versionssprung.
+**Supervisor end-to-end:** `scripts/supervise-bridge.ps1` setzt die drei Flags
+jetzt selbst. Kontrolliert getestet: PID `7236` gestoppt, Supervisor gestartet,
+neue PID `14192` mit identischer Command-Line, Health `ok`, `bridge.pid=14192`.
+Danach auf 8788: Turn 1 HTTP 200, exakt `T1019-SUPERVISOR-OK` (95,8 s);
+Turn 2 HTTP 200, exakt `Otter` (51,1 s); beide `success=true`, `sends=1`,
+`prompt_chars` 241/231. Der Modus überlebt also einen Supervisor-Neustart.
+Der aufrufende Shell-Wrapper des Supervisor-Aufrufs lief in ein Handle-Timeout;
+der Supervisor selbst protokollierte `Bridge gestartet PID=14192` und
+`OK Bridge gesund PID=14192`. Kein Tag, Release oder Versionssprung.
 
 ## Rückweg / Nebenwirkungen
 
@@ -102,7 +110,9 @@ PID 7236 unverändert, Health `ok`). Kein Tag, Release oder Versionssprung.
   Der `chatgpt`-Eintrag wurde vor dem Test entfernt und nach dem Erfolg neu
   als Success geschrieben.
 - Test-Bridge `8789` wurde nach der Beweisaufnahme gestoppt.
-- Rückweg Deploy: PID 7236 stoppen, EXE/DLL aus
+- Rückweg Deploy: aktive PID `14192` stoppen, EXE/DLL aus
   `backup-release-before-T1019-20261127\` zurückkopieren, Breaker-State bei
   Bedarf wiederherstellen und mit der obigen Command-Line neu starten.
+  Der Supervisor muss dabei mit dem alten Skriptstand laufen oder seine
+  drei Flag-Zeilen entfernt werden.
 - Version bleibt `0.11.8`; kein Tag, kein Release, kein Versionssprung.
