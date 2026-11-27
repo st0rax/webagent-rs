@@ -70,11 +70,38 @@ kanonischen Profile eingeloggt sind` stammt aus dem Shared-Profil und ist
 unverändert zum Befund aus dem Shared-Only-Test mit `continue=0`
 (`T1019-SHARED-OK`, HTTP 200). Sie ist keine Aussage über chatgpt.
 
+## Deploy auf die aktive Bridge (2026-11-27)
+
+- Backup: `C:\Users\storax\Documents\Standardprojekt\webagent-deploy-target\backup-release-before-T1019-20261127\`
+  mit EXE `BBB9C714A0074C6AC975582BB337CB2720B1F189703419A7C5711ECBF35EDA3B`,
+  DLL `465A7DDF…A0A6F` und Breaker-State.
+- Alte PID `9008` gestoppt; neue PID `7236`, identische Command-Line
+  (`--skip-startup-reconcile api serve --brain chatgpt --headless --port 8788 --timeout-secs 120`).
+- Aktivierte Environment-Variablen im Prozess:
+  `WEBAGENT_USE_SHARED_BROWSER=1`, `WEBAGENT_PERSIST_TABS=1`,
+  `WEBAGENT_CONTINUE_PROVIDER_CHAT=1`. Ohne diese Flags bleibt das Feature
+  per Design inaktiv.
+- Deployte EXE-SHA256: `CE6F874FBDAD3A8D1F479847621DBD28645AA93CB5461299750F524DF0118F2D`
+  (`webagent 0.11.8 (89605ba7d)`); DLL unverändert.
+- Health `ok`, `/v1/models` 200 mit Header / 401 ohne.
+- Live auf 8788: Turn 1 HTTP 200, exakt `T1019-DEPLOY-OK` (116,7 s);
+  Turn 2 HTTP 200, exakt `Otter` (25,1 s); beide `success=true`,
+  `sends=1`, `prompt_chars` 237/231.
+- `bridge.pid` wurde auf die neue PID `7236` korrigiert.
+
+**Betriebsgrenze:** `scripts/supervise-bridge.ps1` setzt die drei Flags nicht.
+Ein Supervisor-Neustart würde die Bridge ohne T-1019-Modus starten; das ist
+bekannt und hier nicht geändert. Kein Tag, Release oder Versionssprung.
+
 ## Rückweg / Nebenwirkungen
 
-- Produktiv-Bridge `8788` (PID 9008) wurde nicht angerührt.
+- Produktiv-Bridge `8788` (alt PID 9008, jetzt 7236) wurde nur mit Backup und
+  identischer Command-Line neu gestartet.
 - Breaker-Sicherung: `C:\Users\storax\AppData\Local\webagent\data\circuit_breaker\state-before-T1019-live-20261127.json`.
   Der `chatgpt`-Eintrag wurde vor dem Test entfernt und nach dem Erfolg neu
   als Success geschrieben.
-- Test-Bridge `8789` wird nach der Beweisaufnahme gestoppt.
-- Version bleibt `0.11.8`; kein Tag, kein Release, kein Deployment.
+- Test-Bridge `8789` wurde nach der Beweisaufnahme gestoppt.
+- Rückweg Deploy: PID 7236 stoppen, EXE/DLL aus
+  `backup-release-before-T1019-20261127\` zurückkopieren, Breaker-State bei
+  Bedarf wiederherstellen und mit der obigen Command-Line neu starten.
+- Version bleibt `0.11.8`; kein Tag, kein Release, kein Versionssprung.

@@ -34,3 +34,13 @@ events_delta=2, kein send_phase-Fehler
 Verworfen: bedingungsloses new_chat-Skip — HTTP 502,
 send_phase=insert: Composer-Feld nicht gefunden (Timeout), 2x ~151 s.
 Kein success=true in diesem verworfenen Lauf; nicht als PASS gewertet.
+
+Deploy 2026-11-27:
+Backup backup-release-before-T1019-20261127, alte PID 9008 gestoppt,
+neue PID 7236, identische Command-Line, shared+persist+continue aktiv.
+EXE-SHA256 deployt: CE6F874FBDAD3A8D1F479847621DBD28645AA93CB5461299750F524DF0118F2D
+DLL-SHA256 unverändert: 465A7DDFB3A0DA4C3965DAF2AD6AC7548513F42329B58AEBC337311C10EA0A6F
+health ok, /v1/models 200 mit Header / 401 ohne
+Turn 1 HTTP 200, exakt T1019-DEPLOY-OK, success=true, sends=1, prompt_chars=237
+Turn 2 HTTP 200, exakt Otter,        success=true, sends=1, prompt_chars=231
+bridge.pid=7236; Supervisor setzt die drei Flags nicht (bekannte Betriebsgrenze).

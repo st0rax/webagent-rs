@@ -2158,7 +2158,16 @@ der bedingte Skip-Pfad wurde nicht ausgeloest und wird nicht als Live-Beleg
 behauptet.
 
 Integration: Branch `feature/T-1019-continue-provider-chat` mit `89605ba` und
-`b8b9401` gepusht und per Fast-Forward nach `master` (`b8b9401`) integriert.
-Kein Tag, GitHub-Release oder Versionssprung ohne neue ausdrueckliche
-Freigabe. Produktiv-Bridge 8788 bleibt unangetastet; Test-Bridge 8789 ist
-gestoppt.
+`b8b9401` gepusht und per Fast-Forward nach `master` (`b8b9401`) integriert;
+`185dc35` dokumentiert die Integration. Danach ausdruecklich freigegebener
+Deploy auf 8788: Backup
+`webagent-deploy-target\backup-release-before-T1019-20261127\`, alte PID
+`9008` gestoppt, neue PID `7236` mit identischer Command-Line, deployte EXE
+`CE6F874F…F0118F2D`, DLL `465A7DDF…A0A6F`. Aktiv:
+`WEBAGENT_USE_SHARED_BROWSER=1`, `WEBAGENT_PERSIST_TABS=1`,
+`WEBAGENT_CONTINUE_PROVIDER_CHAT=1`. Health ok, Auth 200/401, Turn 1
+`T1019-DEPLOY-OK`, Turn 2 `Otter`, beide `success=true`.
+`bridge.pid` auf `7236` korrigiert. Bekannte Betriebsgrenze:
+`scripts/supervise-bridge.ps1` setzt die drei Flags nicht; ein
+Supervisor-Neustart startet ohne T-1019-Modus. Kein Tag, GitHub-Release oder
+Versionssprung. Test-Bridge 8789 ist gestoppt.
