@@ -3254,7 +3254,7 @@
         "docs/proofs/T-1021/README.md"
       ],
       "proof_path": "docs/proofs/T-1021/README.md",
-      "verification": "offen - wird mit HWND/Rect und Gates gefuellt"
+      "verification": "Claim cd0888c gepusht. Supervisor startet ohne --headless; Bridge-PID 18580 mit CommandLine ohne --headless, health=ok. Minimaler Turn success=true (antwort_chars=2). HWND 1442666 'webagent · chatgpt (1)': 06:41:57..06:42:00 Rect=-32000,-32000,-30704,-31061; 06:42:01..06:42:18 Rect=320,66,1616,1005 (sichtbar); ab 06:42:19 Fenster geschlossen. Befund: waehrend des Turns sichtbar, NICHT dauerhaft. BrowserPool::stop_brain schliesst bei refs==0 den Shared-Runtime (complete_required_teardown -> close_shared_tabs), auch mit WEBAGENT_PERSIST_TABS=1. Dauerhaft braucht Binary-Aenderung + EXE-Tausch; dafuer liegt keine separate Freigabe vor. Kein Login, keine Zugangsdatenausgabe, kein Prompt-Rohtext im Log. Siehe docs/proofs/T-1021/README.md."
     }
   ]
 }

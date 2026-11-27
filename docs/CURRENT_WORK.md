@@ -2198,6 +2198,26 @@ hatte kein Archiv-/Referenzbanner und liess `betriebs_markdown_hat_eine_wahrheit
 scheitern. Nur die Bannerzeile wurde ergaenzt, keine T-1019-Aussage geaendert.
 
 **Neue Freigabe des Eigentuemers (2026-11-27):** Version, Tag und GitHub-Release
-sind jetzt ausdruecklich freigegeben. Geplant ist Patch-Version `0.11.9` nach
-gruenen Gates und Merge nach `master`. Kein Deployment und keine
-Zugangsdatenausgabe; die Produktiv-Bridge 8788 bleibt unberuehrt.
+sind jetzt ausdruecklich freigegeben. Patch-Version `0.11.9` ist auf `master`
+committet (`93e3769`); Tag und GitHub-Release stehen noch aus. Kein EXE-Tausch
+und keine Zugangsdatenausgabe.
+
+## T-1021 - Bridge-WebView sichtbar schalten (2026-11-27)
+
+**Status:** in Arbeit auf `feature/T-1021-visible-webview`; Claim `cd0888c`
+gepusht. `scripts/supervise-bridge.ps1` startet jetzt ohne `--headless`; die
+drei T-1019-Flags bleiben unveraendert. Die aktive Bridge wurde ueber den
+Supervisor neu gestartet: `bridge.pid=18580`, Command Line ohne `--headless`,
+health=ok. Beleg: `docs/proofs/T-1021/README.md`.
+
+HWND/Rect-Messung mit einem minimalen Live-Turn (`success=true`): WebView
+`webagent · chatgpt (1)`, HWND `1442666`. 06:42:01..06:42:18 Rect
+`320,66,1616,1005` (sichtbar), danach Fenster geschlossen. **Befund:** das
+Fenster ist waehrend des Turns sichtbar und der Prompt kann in diesem Zeitraum
+kopiert werden; dauerhaft bleibt es nicht. `BrowserPool::stop_brain` schliesst
+bei `refs==0` den Shared-Runtime, auch mit `WEBAGENT_PERSIST_TABS=1`.
+
+Fuer dauerhaft sichtbare Fenster braucht es einen Binary-Eingriff und einen
+EXE-Tausch; dafuer liegt keine separate Freigabe vor. Die Produktiv-EXE ist
+unveraendert (T-1019-Stand). Offene Entscheidung: during-turn genuegt oder
+Binary-Aenderung + Deployment freigeben.

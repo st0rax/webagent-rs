@@ -8,7 +8,9 @@ Ist die Bridge gesund, passiert nichts. Andernfalls stoppt er ausschliesslich
 den Prozess, den er selbst ueber bridge.pid gestartet hat, und startet die
 Bridge neu. WEBAGENT_API_KEY wird aus der Benutzer-Umgebung gelesen und nie
 protokolliert. Es werden keine Profil-, Cookie- oder Token-Dateien geoeffnet.
-Nur Loopback-Adressen sind zulaessig.
+Nur Loopback-Adressen sind zulaessig. T-1021: die Bridge startet bewusst ohne
+`--headless`, damit die Provider-WebViews im sichtbaren Arbeitsbereich liegen
+und der tatsaechlich gesendete Prompt aus der Oberflaeche kopiert werden kann.
 
 Exit-Codes: 0 gesund, 2 Konfiguration fehlt, 3 Port belegt, 4 Prozess beendet,
 5 Gesundheit nicht erreicht.
@@ -130,11 +132,14 @@ if ($listener) {
     exit 3
 }
 
+# T-1021: bewusst OHNE `--headless`. Mit dem Flag starten die Provider-WebViews
+# auf -32000/-32000; der gesendete Prompt ist dann weder sichtbar noch
+# kopierbar. Ohne das Flag liegen die Fenster im sichtbaren Arbeitsbereich.
+# Die drei T-1019-Flags oben (shared/persist/continue) bleiben unveraendert.
 $arguments = @(
     "--skip-startup-reconcile",
     "api", "serve",
     "--brain", $Brain,
-    "--headless",
     "--port", "$port",
     "--timeout-secs", "120"
 )
